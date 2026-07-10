@@ -177,10 +177,12 @@ describe('SkillsView', () => {
 
     render(<SkillsView workspace="/books/demo" />)
 
-    await user.click(await screen.findByRole('button', { name: /references\/style\.md/ }))
+    await user.click(await screen.findByRole('button', { name: '目录文件' }))
+    await user.click(await screen.findByRole('button', { name: /style\.md/ }))
     await waitFor(() => {
       expect(vi.mocked(getSkillFileDocument)).toHaveBeenCalledWith('user', 'draft-plan', 'references/style.md')
     })
+    await user.click(screen.getByRole('button', { name: 'Raw' }))
     const editor = screen.getByRole('textbox') as HTMLTextAreaElement
     await waitFor(() => {
       expect(editor.value).toContain('# Style')
@@ -193,6 +195,33 @@ describe('SkillsView', () => {
       expect(vi.mocked(saveSkillFileDocument)).toHaveBeenCalledWith('user', 'draft-plan', 'references/style.md', '# Updated\n')
     })
     expect(vi.mocked(saveSkillDocument)).not.toHaveBeenCalled()
+  })
+
+  it('renders Skill markdown by default and switches to raw editing', async () => {
+    const user = userEvent.setup()
+    const doc = skillDocument({
+      name: 'draft-plan',
+      description: 'Planning',
+      scope: 'user',
+      path: '/nova/skills/draft-plan/SKILL.md',
+      editable: true,
+      active: true,
+      content: '---\nname: draft-plan\ndescription: Planning\n---\n\n# Draft Plan\n\n- Keep the outline lean\n',
+    })
+    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [doc] }))
+    vi.mocked(getSkillDocument).mockResolvedValue(doc)
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    expect(await screen.findByRole('heading', { name: 'Draft Plan' })).toBeInTheDocument()
+    expect(screen.queryByText(/name: draft-plan/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'SKILL.md' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Raw' }))
+
+    const editor = screen.getByRole('textbox') as HTMLTextAreaElement
+    expect(editor.value).toContain('# Draft Plan')
   })
 
   it('scans Remote URL sources and installs only selected Skills', async () => {

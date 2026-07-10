@@ -115,8 +115,8 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
   const selectedTarget = targetOption(activeSlot?.target || 'turn_context')
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
-      <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_150px_150px]">
+    <div data-testid="teller-editor" className="teller-editor flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+      <div className="teller-metadata-grid grid min-w-0 shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
         <Field label={t('settingPanel.field.name')}>
           <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
         </Field>
@@ -155,8 +155,8 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
         />
       </div>
 
-      <div className="grid min-h-[520px] flex-1 grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="flex max-h-60 min-h-0 flex-col overflow-hidden border-b border-[var(--nova-border)] bg-[var(--nova-surface)] lg:max-h-none lg:border-b-0 lg:border-r">
+      <div className="teller-injection-layout grid min-h-[520px] min-w-0 flex-1">
+        <aside className="teller-injection-rules flex max-h-60 min-h-0 min-w-0 flex-col overflow-hidden border-b border-[var(--nova-border)] bg-[var(--nova-surface)]">
           <div className="flex h-11 items-center justify-between border-b border-[var(--nova-border)] px-3">
             <div className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.injectRules.title')}</div>
             <Button className={iconActionClassName} variant="outline" size="icon" onClick={addSlot} aria-label={t('settingPanel.injectRules.new')}>
@@ -186,9 +186,9 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
         </aside>
 
         {activeSlot ? (
-          <section className="flex min-h-0 flex-col">
+          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
             <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
-              <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(240px,320px)_32px]">
+              <div className="teller-rule-grid grid min-w-0 gap-3">
                 <Field label={t('settingPanel.field.ruleName')}>
                   <Input className={inputClassName} value={activeSlot.name} onChange={(event) => updateSlot({ name: event.target.value })} />
                 </Field>
@@ -233,7 +233,7 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-                <div className="lg:col-span-3">
+                <div className="teller-rule-summary">
                   <div className="min-w-0 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5">
                     <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
                       <span>{targetLabel(selectedTarget.value as TellerTarget, t)}</span>
@@ -245,7 +245,7 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
                 </div>
               </div>
             </div>
-            <div className="min-h-[420px] flex-1 p-4 lg:min-h-0">
+            <div className="min-h-[420px] flex-1 p-4">
               <Textarea
                 autoResize={false}
                 className="nova-field h-full min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"

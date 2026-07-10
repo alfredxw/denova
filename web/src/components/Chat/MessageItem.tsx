@@ -1,11 +1,9 @@
 import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import ReactMarkdown from 'react-markdown'
-import type { Components } from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { Activity, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, ClipboardCheck, ClipboardList, Clock3, Copy, Dice5, FileText, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw, Send, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
+import { MarkdownRenderer, type MarkdownRendererComponents } from '@/components/common/MarkdownRenderer'
 import { workspaceAssetURL, type ChapterIllustration, type ChatMessage, type InteractiveImage, type InteractiveImageError } from '@/lib/api'
 import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { isWorkspaceImagePath } from '@/lib/workspace-file-kind'
@@ -1589,20 +1587,15 @@ function sanitizeThinkTags(text: string): string {
 
 const MarkdownContent = memo(function MarkdownContent({ content, highlightDialogue }: { content: string; highlightDialogue: boolean }) {
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={highlightDialogue ? dialogueMarkdownComponents : markdownComponents}
-    >
-      {content}
-    </ReactMarkdown>
+    <MarkdownRenderer content={content} components={highlightDialogue ? dialogueMarkdownComponents : markdownComponents} />
   )
 })
 
-const markdownComponents: Components = {
+const markdownComponents: MarkdownRendererComponents = {
   img: ChatMarkdownImage,
 }
 
-const dialogueMarkdownComponents: Components = {
+const dialogueMarkdownComponents: MarkdownRendererComponents = {
   ...markdownComponents,
   p: ({ children }: { children?: ReactNode }) => <p>{highlightDialogueNodes(children)}</p>,
   li: ({ children }: { children?: ReactNode }) => <li>{highlightDialogueNodes(children)}</li>,

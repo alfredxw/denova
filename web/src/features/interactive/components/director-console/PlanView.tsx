@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Edit3, Eye, FileText, Loader2, RefreshCw, Save, ShieldAlert } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
-import type { Components } from 'react-markdown'
 import { useTranslation } from 'react-i18next'
-import remarkGfm from 'remark-gfm'
+import { MarkdownRenderer, type MarkdownRendererComponents } from '@/components/common/MarkdownRenderer'
 import { Button } from '@/components/ui/button'
 import type { DirectorPlan, DirectorPlanDocs, DirectorPlanMetadata, RuleResolution, TerminalOutcome } from '../../types'
 import { RuleAuditCard } from './RuleAuditCard'
@@ -179,12 +177,12 @@ function DirectorPlanMarkdown({ content }: { content: string }) {
   }
   return (
     <div data-testid="director-plan-markdown" className="max-h-[min(62vh,640px)] overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-3 text-xs leading-5 text-[var(--nova-text)]">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={directorMarkdownComponents}>{content}</ReactMarkdown>
+      <MarkdownRenderer content={content} components={directorMarkdownComponents} />
     </div>
   )
 }
 
-const directorMarkdownComponents: Components = {
+const directorMarkdownComponents: MarkdownRendererComponents = {
   h1: ({ children }) => <h1 className="mb-3 break-words text-base font-semibold leading-6 text-[var(--nova-text)] [overflow-wrap:anywhere]">{children}</h1>,
   h2: ({ children }) => <h2 className="mb-2 mt-4 break-words text-sm font-semibold leading-5 text-[var(--nova-text)] [overflow-wrap:anywhere]">{children}</h2>,
   h3: ({ children }) => <h3 className="mb-1.5 mt-3 break-words text-xs font-semibold leading-5 text-[var(--nova-text)] [overflow-wrap:anywhere]">{children}</h3>,

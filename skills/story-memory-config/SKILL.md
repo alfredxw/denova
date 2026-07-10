@@ -14,7 +14,7 @@ Use this skill before calling `write_story_memory_records` or the legacy `write_
 2. Use `list_story_memory_records` before changing records. Use `read_story_memory_records` when exact `values` are needed.
 3. Keep structure and record changes separate:
    - Structure definitions now belong to Story Memory Structure presets under the Story Director module system.
-   - Records store concrete story facts for one branch.
+   - Records store concrete narrative continuity facts for one branch.
 4. For new schema changes, switch to `story-director-config`: use `write_story_memory_structure_presets`, then update `story_director.module_refs.memory_structure_id` with `write_story_directors`.
 5. Always pass the active `story_id`. Pass `branch_id` for record writes when the user is working on a specific branch.
 6. Do not write story memory by editing story JSONL files directly.
@@ -46,6 +46,7 @@ Field definitions use:
 - `order`: integer sort order.
 
 Do not delete built-in structures unless the user explicitly asks and accepts the impact. Prefer disabling optional custom structures.
+Do not add current time, location, current event, resources, relationship scores, ongoing conditions, rule flags, or other state-management fields to Story Memory structures. Add those to the State System through `story-director-config` and `write_actor_states`.
 
 ## Record Rules
 
@@ -72,6 +73,7 @@ Story Memory is branch-aware. If a visible inherited record from another branch 
 ## Content Boundaries
 
 - Story Memory is evolving branch-local truth, not stable lore.
-- Record concrete facts from the story and user corrections.
+- Record concrete narrative facts from the story and user corrections.
+- Use State System, not Story Memory, for current scene state, computable resources, relationship scores, ongoing conditions, and rule flags.
 - Do not invent unseen events, relationships, abilities, or world rules to fill fields.
 - If a required field is unknown, write a bounded placeholder such as `待确认` only when the user accepts that ambiguity.

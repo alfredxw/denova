@@ -5,6 +5,185 @@
 
 @custom-variant dark (&:is([data-theme="dark"] *));
 
+/* Preset editors respond to the space inside the workbench, not the browser viewport. */
+.preset-config-visual-container {
+  container-name: preset-config-editor;
+  container-type: inline-size;
+}
+
+.preset-visual-editor-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container preset-config-editor (min-width: 760px) {
+  .preset-visual-editor-shell {
+    grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  }
+}
+
+/* Image presets also live beside the persistent directory, so viewport breakpoints are misleading. */
+.image-preset-editor {
+  container-name: image-preset-editor;
+  container-type: inline-size;
+}
+
+.image-preset-metadata-grid,
+.image-preset-layout,
+.image-preset-rule-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container image-preset-editor (min-width: 820px) {
+  .image-preset-metadata-grid {
+    grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) 180px 120px;
+  }
+
+  .image-preset-layout {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .image-preset-rules {
+    max-height: none;
+    border-right-width: 1px;
+    border-bottom-width: 0;
+  }
+
+  .image-preset-rule-grid {
+    grid-template-columns: minmax(220px, 1fr) minmax(240px, 320px) 32px;
+  }
+
+  .image-preset-rule-summary {
+    grid-column: 1 / -1;
+  }
+}
+
+.teller-editor {
+  container-name: teller-editor;
+  container-type: inline-size;
+}
+
+.teller-metadata-grid,
+.teller-injection-layout,
+.teller-rule-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container teller-editor (min-width: 820px) {
+  .teller-metadata-grid {
+    grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) 150px 150px;
+  }
+
+  .teller-injection-layout {
+    grid-template-columns: 280px minmax(0, 1fr);
+  }
+
+  .teller-injection-rules {
+    max-height: none;
+    border-right-width: 1px;
+    border-bottom-width: 0;
+  }
+
+  .teller-rule-grid {
+    grid-template-columns: minmax(220px, 1fr) minmax(240px, 320px) 32px;
+  }
+
+  .teller-rule-summary {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Radix uses an inline display:table wrapper. Override it where horizontal growth is never valid. */
+:is(.actor-state-tree-scroll, .preset-directory-scroll) [data-slot="scroll-area-viewport"] > div {
+  display: block !important;
+  width: 100%;
+  min-width: 0 !important;
+  max-width: 100%;
+}
+
+/* The state editor responds to its own pane width, not the browser viewport. */
+.actor-state-explorer {
+  container-name: actor-state-editor;
+  container-type: inline-size;
+  position: relative;
+}
+
+.actor-state-explorer-layout {
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.actor-state-navigation {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(88%, 360px);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  transform: translateX(-104%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform var(--nova-motion-normal) var(--nova-ease);
+  box-shadow: var(--nova-shadow);
+  z-index: 2;
+}
+
+.actor-state-navigation[data-open="true"] {
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.actor-state-navigation-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in srgb, var(--nova-bg-deep) 54%, transparent);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity var(--nova-motion-normal) var(--nova-ease);
+  z-index: 1;
+}
+
+.actor-state-navigation-backdrop[data-open="true"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+@container actor-state-editor (min-width: 780px) {
+  .actor-state-explorer-layout {
+    grid-template-columns: minmax(260px, 30%) minmax(0, 1fr);
+  }
+
+  .actor-state-navigation {
+    position: static;
+    width: auto;
+    transform: none;
+    visibility: visible;
+    pointer-events: auto;
+    box-shadow: none;
+    z-index: auto;
+  }
+
+  .actor-state-navigation-backdrop,
+  .actor-state-navigation-trigger,
+  .actor-state-navigation-close {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .actor-state-navigation,
+  .actor-state-navigation-backdrop {
+    transition: none;
+  }
+}
+
 :root {
   --nova-bg: #1a1a1a;
   --nova-bg-deep: #050505;

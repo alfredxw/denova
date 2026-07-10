@@ -164,7 +164,7 @@ func (l *StoryMemoryStructureLibrary) ensureBuiltins() error {
 	path := filepath.Join(l.dir(), DefaultStoryMemoryStructureModuleID+".json")
 	if current, err := parseStoryMemoryStructureFile(path); err == nil && current.BuiltinOverridden {
 		return nil
-	} else if err == nil && current.Version == storyDirectorModuleVersion {
+	} else if err == nil && current.Version == storyDirectorModuleVersion && !storyMemoryStructureModuleDiffersFromBuiltin(current) {
 		return nil
 	}
 	return writeStoryMemoryStructureFile(path, DefaultStoryMemoryStructureModule())

@@ -8,8 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- 游戏模式：默认状态系统预设改为更通用的 `protagonist`、`important_character`、`opponent` 三类状态表模板，不再默认写入固定 `hp`、`stamina`、`affection` 数值字段；新建故事仍只预创建主角状态对象，重要角色和敌人/怪物按剧情需要再创建。
-- Game Mode: Generalized the default State System preset to `protagonist`, `important_character`, and `opponent` state-table templates instead of fixed `hp`, `stamina`, and `affection` numeric fields. New stories still create only the protagonist state object up front, with important characters and enemies/monsters added when the story needs them.
+- Skills：新增内置 `orchestrate-projects` Skill，用于按里程碑路线图、Goal-mode 目标、线程分工、复核和本地验证协调长周期项目。
+- Skills: Added the built-in `orchestrate-projects` Skill for coordinating long-running projects with milestone roadmaps, Goal-mode objectives, thread delegation, audits, and local validation.
+- WebUI：Skills 页面支持基于当前主题的 Markdown 阅读预览，并可一键切换到 Raw 编辑。
+- WebUI: The Skills page now supports theme-aware Markdown preview with a one-click Raw editing mode.
+- WebUI：Skills 页面内的 Skill 支持用文件树浏览 `SKILL.md` 与 references/scripts 等目录文件，替代顶部横向文件列表。
+- WebUI: Skill files in the Skills page now use a file-tree browser for `SKILL.md`, references, scripts, and related files instead of the top horizontal file list.
+- 游戏模式：默认状态系统预设改为更通用的 `story_context`、`protagonist`、`important_character`、`opponent` 状态表模板，不再默认写入固定 `hp`、`stamina`、`affection` 数值字段；新建故事预创建故事上下文和主角状态对象，重要角色和敌人/怪物按剧情需要再创建。
+- Game Mode: Generalized the default State System preset to `story_context`, `protagonist`, `important_character`, and `opponent` state-table templates instead of fixed `hp`, `stamina`, and `affection` numeric fields. New stories create story-context and protagonist state objects up front, with important characters and enemies/monsters added when the story needs them.
 - 游戏模式：状态系统新增修仙、西幻、末世和无限流 4 个题材内置预设；每个预设提供 `protagonist`、`important_character`、`opponent` 作为默认示例状态表模板，不预设数值范围，并允许用户继续扩展世界、故事倒计时、特定角色、势力、基地、副本等任意状态对象模板，供不同故事导演通过 `actor_state_id` 引用。
 - Game Mode: Added four built-in genre State System presets for xianxia, western fantasy, apocalypse, and infinite-flow stories. Each preset ships `protagonist`, `important_character`, and `opponent` as default example state-table templates without fixed numeric bounds, while allowing users to add arbitrary state-object templates such as world state, story clocks, specific character routes, factions, bases, or instances. Story Directors continue to reference them through `actor_state_id`.
 - Agent：Prompt cache 诊断增强，run trace 摘要现在聚合 `prompt_tokens`、`cached_prompt_tokens`、`uncached_prompt_tokens` 和 `cache_hit_rate`；`cache_attribution` 新增 per-tool fingerprint，便于定位具体工具 schema 变动而不暴露完整 schema。
@@ -105,6 +111,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- WebUI：Skills Markdown 预览不再渲染 `SKILL.md` frontmatter，目录文件树默认收起，按需通过“目录文件”按钮展开。
+- WebUI: Skills Markdown preview no longer renders `SKILL.md` frontmatter, and the file tree is collapsed by default behind the Directory Files button.
+- 不兼容变更：游戏模式默认 Story Memory Structure 不再默认注入 `current_state`、`rule_state_summary` 和 `relationship_state` 状态类结构；它们保留为可显式启用的旧版派生摘要。默认状态系统新增 `story_context` / `story` 状态对象，当前时间、地点、当前事件、资源、关系数值、持续状态和规则标记以 State System 为真源；既有故事记忆记录不自动迁移或删除。
+- Breaking: Game Mode default Story Memory Structure no longer injects state-like `current_state`, `rule_state_summary`, and `relationship_state` structures by default; they remain available as explicitly enabled legacy derived summaries. The default State System now adds a `story_context` / `story` state object, making current time, location, current event, resources, relationship scores, ongoing conditions, and rule flags source-of-truth State System data. Existing story memory records are not migrated or deleted.
 - 方案预设：资源编辑区重设计为高端控制台式布局，资源元信息、可视化/JSON 切换、主从列表和二级编辑面板统一采用双层 bezel 与胶囊控制，降低状态系统、开局词条等配置页的视觉噪音。
 - Presets: Redesigned the resource editor area into a higher-end console layout. Resource metadata, Visual/JSON switching, master-detail lists, and nested editor panes now share double-bezel surfaces and pill controls, reducing visual noise in State System, opening-trait, and related configuration pages.
 - 方案预设：状态系统可视化编辑器重构为更清晰的 master-detail 工作区，模板、字段 schema 和初始状态对象分区显示；配置段标题、统计和视图切换也收敛到统一 header，减少卡片嵌套和误导性的选中态。
@@ -200,6 +210,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 方案预设：修复左侧资源目录和状态结构树在笔记本高度下无法稳定滚到底部、长字段路径撑宽内部滚动层并贴入详情区的问题；两个列表现在都有明确的高度收缩、独立纵向滚动和路径截断边界。
+- Presets: Fixed the resource directory and State System tree not reliably reaching their final items at laptop heights, and long field paths widening the internal scroll layer into the detail pane. Both lists now have explicit height containment, independent vertical scrolling, and path truncation boundaries.
+- 方案预设：修复叙事风格、图像方案、事件包和记忆结构等复合编辑器按浏览器宽度而非实际编辑区宽度切换多栏，导致 1024px 窗口下右侧表单被裁切的问题；编辑器现在使用容器响应，窄编辑区纵向堆叠，宽编辑区恢复主从双栏。
+- Presets: Fixed narrative-style, image-preset, event-package, and memory-structure editors switching columns from the browser viewport instead of their actual pane width, which clipped right-side forms at 1024px. Editors now use container-responsive stacking in narrow panes and restore master-detail columns when space is available.
 - Agent：`write_file` 等写工具参数被 provider `content_filter` 截断时，Denova 现在会把 `finish_reason`、`args_complete=false`、目标路径、`retryable=false` 和“文件未写入”作为 tool result 上下文返回给 Agent，由 Agent 告知用户原因，不再提示反复重试同一个工具调用。
 - Agent: When provider `content_filter` interrupts `write_file` and other write-tool arguments, Denova now returns `finish_reason`, `args_complete=false`, target path, `retryable=false`, and “no file was written” as model-visible tool-result context so the Agent can explain the failure instead of repeatedly retrying the same tool call.
 - WebUI：修复 Agent trace 在单个工具调用结束后立刻自动折叠的问题；当前轮仍在 streaming 时，thinking 和工具调用会保持展开，直到本轮输出结束后再自动收起。

@@ -339,12 +339,13 @@ describe('SettingPanel', () => {
     render(<PresetModeHarness />)
 
     expect(screen.queryByLabelText('方案预设模式筛选')).not.toBeInTheDocument()
+    expect(screen.getByTestId('preset-directory-scroll')).toHaveClass('h-0', 'overflow-hidden', 'overscroll-y-contain')
     expect(screen.queryByText('在目录中选择条目，右侧打开编辑。')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '配置管理 Agent' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '叙事风格' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '图像方案' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '故事导演' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /默认导演/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /经典叙事/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建故事导演' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建叙事风格' })).toBeInTheDocument()
@@ -353,6 +354,7 @@ describe('SettingPanel', () => {
     expect(sectionHeader('故事导演').compareDocumentPosition(sectionHeader('图像方案')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: '展开全部目录' }))
+    expect(screen.getByRole('button', { name: /默认导演/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /均衡 DM 检定/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /推进型 DM：失败也前进/ })).toBeInTheDocument()
@@ -415,7 +417,8 @@ describe('SettingPanel', () => {
     await user.click(await screen.findByRole('button', { name: /默认事件包/ }))
     await user.click(await screen.findByRole('button', { name: '新增事件卡' }))
     expect(screen.getByTestId('event-package-card-editor')).toHaveClass('grid')
-    expect(screen.getByTestId('event-package-card-editor')).toHaveClass('overflow-visible')
+    expect(screen.getByTestId('preset-config-visual-editor')).toHaveClass('preset-config-visual-container')
+    expect(screen.getByTestId('event-package-card-editor')).toHaveClass('preset-visual-editor-shell', 'overflow-hidden')
     expect(screen.getByTestId('event-package-card-detail-scroll')).toHaveClass('p-3')
     expect(screen.getByTestId('event-package-card-detail-scroll')).not.toHaveClass('overflow-y-auto')
     await user.type(screen.getByLabelText('事件类型名'), '伏笔回收')
@@ -636,6 +639,37 @@ describe('SettingPanel', () => {
     expect(updateEventPackage).not.toHaveBeenCalled()
   })
 
+  it('edits memory structure metadata in the top bar without a tags card', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    await user.click(screen.getByRole('button', { name: '展开全部目录' }))
+    await user.click(screen.getByRole('button', { name: /默认记忆结构/ }))
+
+    const metadata = screen.getByTestId('preset-inline-metadata')
+    const nameInput = within(metadata).getByRole('textbox', { name: '名称' })
+    const descriptionInput = within(metadata).getByRole('textbox', { name: '描述' })
+    expect(nameInput).toHaveValue('默认记忆结构')
+    expect(descriptionInput).toHaveValue('默认记忆结构 description')
+    expect(within(metadata).queryByRole('textbox', { name: '标签' })).not.toBeInTheDocument()
+    expect(screen.queryByText('编辑内置资源会保存为同 ID 覆盖；右上角可恢复内置版本。')).not.toBeInTheDocument()
+    expect(screen.getByTestId('preset-config-visual-editor')).toHaveClass('preset-config-visual-container')
+    expect(screen.getByTestId('memory-structure-editor')).toHaveClass('preset-visual-editor-shell', 'overflow-hidden')
+
+    await user.clear(nameInput)
+    await user.type(nameInput, '长期记忆结构')
+    await user.clear(descriptionInput)
+    await user.type(descriptionInput, '记录长期承接信息')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(updateStoryMemoryStructure).toHaveBeenCalled())
+    expect(updateStoryMemoryStructure).toHaveBeenCalledWith('default', expect.objectContaining({
+      name: '长期记忆结构',
+      description: '记录长期承接信息',
+      tags: [],
+    }), '')
+  })
+
   it('edits TRPG checks as a single DM-style dice config', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
@@ -651,18 +685,24 @@ describe('SettingPanel', () => {
     expect(screen.queryByText('默认难度')).not.toBeInTheDocument()
     expect(screen.queryByText('掷骰方式')).not.toBeInTheDocument()
     expect(screen.queryByText('状态影响')).not.toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: '难度判断标准' })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: '状态影响指引' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: '必须检定例子' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: '不要检定例子' })).toBeInTheDocument()
-    expect(screen.getAllByRole('combobox')).toHaveLength(2)
     expect(screen.queryByRole('button', { name: '新增规则' })).not.toBeInTheDocument()
-
-    expect(screen.getByDisplayValue('固定 d20')).toBeDisabled()
 
     const ruleLabelInput = screen.getByRole('textbox', { name: '规则名称' })
     await user.clear(ruleLabelInput)
     await user.type(ruleLabelInput, '自定义 DM 检定')
+
+    const mustCheckExamples = '守卫逼近时强行撬锁\n攻击警戒守卫'
+    const skipCheckExamples = '观察空房间\n和友善同伴闲聊'
+    fireEvent.change(screen.getByRole('textbox', { name: '必须检定例子' }), { target: { value: mustCheckExamples } })
+    fireEvent.change(screen.getByRole('textbox', { name: '不要检定例子' }), { target: { value: skipCheckExamples } })
+
+    await user.click(screen.getByRole('tab', { name: /如何裁定/ }))
+    expect(screen.getByRole('textbox', { name: '难度判断标准' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '状态影响指引' })).toBeInTheDocument()
+    expect(screen.getAllByRole('combobox')).toHaveLength(1)
+    expect(screen.getByDisplayValue('固定 d20')).toBeDisabled()
 
     const modifierField = screen.getByText('修正值').closest('label') as HTMLElement
     const modifierInput = within(modifierField).getByRole('textbox')
@@ -675,12 +715,8 @@ describe('SettingPanel', () => {
 
     const difficultyGuidance = '目标警戒越高难度越高，主角准备充分时降低一档。'
     const stateEffectGuidance = '失败时警戒 +1，代价成功时体力 -1。'
-    const mustCheckExamples = '守卫逼近时强行撬锁\n攻击警戒守卫'
-    const skipCheckExamples = '观察空房间\n和友善同伴闲聊'
     fireEvent.change(screen.getByRole('textbox', { name: '难度判断标准' }), { target: { value: difficultyGuidance } })
     fireEvent.change(screen.getByRole('textbox', { name: '状态影响指引' }), { target: { value: stateEffectGuidance } })
-    fireEvent.change(screen.getByRole('textbox', { name: '必须检定例子' }), { target: { value: mustCheckExamples } })
-    fireEvent.change(screen.getByRole('textbox', { name: '不要检定例子' }), { target: { value: skipCheckExamples } })
 
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(updateRuleSystem).toHaveBeenCalled())

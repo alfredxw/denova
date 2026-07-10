@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
 import { Bell, CheckCheck, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { MarkdownRenderer } from '@/components/common/MarkdownRenderer'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { formatDateTime, getResolvedLocale } from '@/i18n'
 import { getMessages, markAllMessagesRead, markMessageRead } from './api'
@@ -179,7 +178,7 @@ export function MessageCenterButton({ className = '' }: { className?: string }) 
                     <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{messageMeta(activeItem, t)}</div>
                   </div>
                   {activeItem.type === 'changelog' && <DonationPrompt />}
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{activeItem.body}</ReactMarkdown>
+                  <MarkdownRenderer content={activeItem.body} />
                 </article>
               ) : (
                 <div className="flex h-full min-h-48 items-center justify-center text-xs text-[var(--nova-text-faint)]">

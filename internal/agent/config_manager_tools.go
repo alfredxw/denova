@@ -52,7 +52,7 @@ type storyDirectorWriteInput struct {
 type storyDirectorWriteOperation struct {
 	Op       string                    `json:"op" jsonschema:"description=操作类型：create/update/delete"`
 	ID       string                    `json:"id" jsonschema:"description=目标故事导演 ID；update/delete 必填"`
-	Director interactive.StoryDirector `json:"director" jsonschema:"description=create/update 使用的完整故事导演配置；module_refs 保存叙事风格、多个事件包、TRPG 检定、状态系统（actor_state）、Story Memory Structure 和图像方案引用，并用 *_disabled 显式关闭某个模块；事件包使用 event_package_ids；TRPG 检定使用 rule_system_id 选择一个 DM 检定风格资源；状态系统使用 actor_state_id，状态系统模板是状态表 schema，可表示主角、重要角色、敌人、世界、故事倒计时、特定角色、势力、基地或副本等状态对象，protagonist/important_character/opponent 只是默认示例；开局词条和 initial_state_ops 属于状态系统的 opening_selector 配置，不要在故事导演 module_refs 里新增 opening_selector_id；记忆结构使用 memory_structure_id 和 memory_structure_disabled；TRPG rule_templates 只作为兼容容器，资源内只使用 rule_templates[0]，检定固定 d20，可配置 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id；strategy 建议使用枚举 mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，random_event_rate=0/0.08/0.15/0.3，rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only，branch_planning_turns 默认 5；strategy.planning_templates.plan 可配置单份 director.md Markdown 模板且必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略和输出协议"`
+	Director interactive.StoryDirector `json:"director" jsonschema:"description=create/update 使用的完整故事导演配置；module_refs 保存叙事风格、多个事件包、TRPG 检定、状态系统（actor_state）、Story Memory Structure 和图像方案引用，并用 *_disabled 显式关闭某个模块；事件包使用 event_package_ids；TRPG 检定使用 rule_system_id 选择一个 DM 检定风格资源；状态系统使用 actor_state_id，状态系统模板是状态表 schema，可表示故事上下文、主角、重要角色、敌人、世界、故事倒计时、特定角色、势力、基地或副本等状态对象，story_context/protagonist/important_character/opponent 只是默认示例；开局词条和 initial_state_ops 属于状态系统的 opening_selector 配置，不要在故事导演 module_refs 里新增 opening_selector_id；记忆结构使用 memory_structure_id 和 memory_structure_disabled，只定义叙事承接 schema，不负责状态管理；TRPG rule_templates 只作为兼容容器，资源内只使用 rule_templates[0]，检定固定 d20，可配置 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id；strategy 建议使用枚举 mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，random_event_rate=0/0.08/0.15/0.3，rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only，branch_planning_turns 默认 5；strategy.planning_templates.plan 可配置单份 director.md Markdown 模板且必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略和输出协议"`
 }
 
 type eventPackageWriteInput struct {
@@ -74,7 +74,7 @@ type actorStateWriteInput struct {
 type actorStateWriteOperation struct {
 	Op         string                       `json:"op" jsonschema:"description=操作类型：create/update/delete"`
 	ID         string                       `json:"id" jsonschema:"description=目标状态系统 ID；update/delete 必填"`
-	ActorState interactive.ActorStateModule `json:"actor_state" jsonschema:"description=create/update 使用的完整状态系统模块配置；actor_state.templates 定义状态表模板和字段 schema，可按作品需要定义 protagonist、important_character、opponent、world_state、story_clock、heroine_route、faction_state、base_state、instance_state 等；initial_actors 是初始状态对象实例，可以是角色，也可以是世界、故事、势力、基地或副本；opening_selector 可配置开局词条池和 initial_state_ops，它是状态初始化来源，不是独立故事导演模块"`
+	ActorState interactive.ActorStateModule `json:"actor_state" jsonschema:"description=create/update 使用的完整状态系统模块配置；actor_state.templates 定义状态表模板和字段 schema，可按作品需要定义 story_context、protagonist、important_character、opponent、world_state、story_clock、heroine_route、faction_state、base_state、instance_state 等；initial_actors 是初始状态对象实例，可以是故事上下文、角色、世界、故事、势力、基地或副本；opening_selector 可配置开局词条池和 initial_state_ops，它是状态初始化来源，不是独立故事导演模块"`
 }
 
 type storyMemoryStructurePresetWriteInput struct {
@@ -85,7 +85,7 @@ type storyMemoryStructurePresetWriteInput struct {
 type storyMemoryStructurePresetWriteOperation struct {
 	Op     string                                 `json:"op" jsonschema:"description=操作类型：create/update/delete"`
 	ID     string                                 `json:"id" jsonschema:"description=目标故事记忆结构预设 ID；update/delete 必填"`
-	Preset interactive.StoryMemoryStructureModule `json:"preset" jsonschema:"description=create/update 使用的完整故事记忆结构预设；structures 定义表结构和字段 schema，records 不属于预设"`
+	Preset interactive.StoryMemoryStructureModule `json:"preset" jsonschema:"description=create/update 使用的完整故事记忆结构预设；structures 定义叙事承接表结构和字段 schema，records 不属于预设；不要把可计算状态、当前场景状态或规则字段放进记忆结构"`
 }
 
 type imagePresetWriteInput struct {
@@ -630,7 +630,7 @@ func newReadActorStatesTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteActorStatesTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_actor_states", "批量创建、更新或删除状态系统。状态系统是游戏模式独占模块；create/update 必须写完整 actor_state.templates 和 initial_actors。模板是状态表 schema，protagonist、important_character、opponent 只是默认示例；可按作品需要定义 world_state、story_clock、heroine_route、faction_state、base_state、instance_state 等。initial_actors 是初始状态对象实例，可以是角色、世界、故事、势力、基地或副本。opening_selector 可配置开局词条池、权重、抽取数量和 initial_state_ops；词条只是状态初始化来源，最终必须落到 StateOp，不要新增独立词条抽取器。只把会影响后续承接或规则检定的结构化状态放进状态系统，普通叙事记录、一次性 NPC、场景流水、任务细节和普通物品留在故事记忆。字段 path 不要带 actors.<state_object_id>.state 前缀，只写模板内字段路径，例如 crisis.countdown。删除内置状态系统会恢复内置版本；删除自定义状态系统必须来自用户明确指令。", func(ctx context.Context, input actorStateWriteInput) (string, error) {
+	return utils.InferTool("write_actor_states", "批量创建、更新或删除状态系统。状态系统是游戏模式独占模块；create/update 必须写完整 actor_state.templates 和 initial_actors。模板是状态表 schema，story_context、protagonist、important_character、opponent 只是默认示例；可按作品需要定义 world_state、story_clock、heroine_route、faction_state、base_state、instance_state 等。initial_actors 是初始状态对象实例，可以是故事上下文、角色、世界、故事、势力、基地或副本。opening_selector 可配置开局词条池、权重、抽取数量和 initial_state_ops；词条只是状态初始化来源，最终必须落到 StateOp，不要新增独立词条抽取器。当前时间、地点、事件、资源、关系数值、持续状态、规则标记，以及会影响后续承接或规则检定的结构化状态都放进状态系统；普通叙事记录、一次性 NPC、场景流水、任务细节和普通物品留在故事记忆。字段 path 不要带 actors.<state_object_id>.state 前缀，只写模板内字段路径，例如 crisis.countdown。删除内置状态系统会恢复内置版本；删除自定义状态系统必须来自用户明确指令。", func(ctx context.Context, input actorStateWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入状态系统")
@@ -667,7 +667,7 @@ func newWriteActorStatesTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newListStoryMemoryStructurePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_story_memory_structure_presets", "列出 Story Memory Structure 预设索引，返回 ID、名称、简介、标签、类型、结构数量和启用结构数量；这是游戏模式独占导演模块，只定义长期记忆 schema，不包含任何故事运行时 records。需要完整字段 schema 时再调用 read_story_memory_structure_presets。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_story_memory_structure_presets", "列出 Story Memory Structure 预设索引，返回 ID、名称、简介、标签、类型、结构数量和启用结构数量；这是游戏模式独占导演模块，只定义叙事承接 schema，不负责状态管理，也不包含任何故事运行时 records。需要完整字段 schema 时再调用 read_story_memory_structure_presets。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
@@ -705,7 +705,7 @@ func newListStoryMemoryStructurePresetsTool(novaDir string) (tool.BaseTool, erro
 }
 
 func newReadStoryMemoryStructurePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_story_memory_structure_presets", "按 Story Memory Structure 预设 ID 批量读取完整配置。structures 定义 schema；运行时 records、auto_interval_turns、手动/自动整理开关都属于具体故事，不属于预设。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_story_memory_structure_presets", "按 Story Memory Structure 预设 ID 批量读取完整配置。structures 只定义剧情纪要、长期人物档案、世界上下文、进行中事项、伏笔和长期弧线等叙事承接 schema；运行时 records、auto_interval_turns、手动/自动整理开关都属于具体故事，不属于预设。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法读取故事记忆结构预设")
@@ -728,7 +728,7 @@ func newReadStoryMemoryStructurePresetsTool(novaDir string) (tool.BaseTool, erro
 }
 
 func newWriteStoryMemoryStructurePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_story_memory_structure_presets", "批量创建、更新或删除 Story Memory Structure 预设。create/update 必须写完整 structures；只管理 schema，不写故事 records。要让故事使用该结构，更新 story_director.module_refs.memory_structure_id；禁用写 memory_structure_disabled=true 并保留 ID。删除内置 ID 会恢复内置默认内容；删除自定义 ID 必须来自用户明确指令。", func(ctx context.Context, input storyMemoryStructurePresetWriteInput) (string, error) {
+	return utils.InferTool("write_story_memory_structure_presets", "批量创建、更新或删除 Story Memory Structure 预设。create/update 必须写完整 structures；只管理叙事承接 schema，不写故事 records，也不新增可计算状态、当前场景状态或规则字段。要让故事使用该结构，更新 story_director.module_refs.memory_structure_id；禁用写 memory_structure_disabled=true 并保留 ID。删除内置 ID 会恢复内置默认内容；删除自定义 ID 必须来自用户明确指令。", func(ctx context.Context, input storyMemoryStructurePresetWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入故事记忆结构预设")
@@ -822,7 +822,7 @@ func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_story_directors", "按故事导演 ID 批量读取完整配置。故事导演是游戏模式独占模块；module_refs 决定引用哪些模块，event_package_ids 可引用多个事件包，rule_system_id 引用一个 TRPG 检定资源来选择 DM 检定风格，actor_state_id 引用状态系统；状态系统模板是状态表 schema，可表示主角、重要角色、敌人、世界、故事倒计时、特定角色、势力、基地或副本等状态对象，状态系统内的 opening_selector 负责开局词条和 initial_state_ops；memory_structure_id 引用 Story Memory Structure 预设，*_disabled=true 表示对应模块关闭且保留原 ID 以便重新启用。TRPG rule_templates 只作为兼容容器，资源内只使用 rule_templates[0]，检定固定 d20，支持 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，random_event_rate=0/0.08/0.15/0.3，rule_state_consumption_mode=hybrid_auto/director_only，rule_visibility_mode=audit_only/public_roll；branch_planning_turns 控制最近分支规划回合数；planning_templates.plan 是单份 director.md Markdown 模板；strategy.prompt_markdown 是纯 Markdown 高级策略提示，最多 64KB。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_story_directors", "按故事导演 ID 批量读取完整配置。故事导演是游戏模式独占模块；module_refs 决定引用哪些模块，event_package_ids 可引用多个事件包，rule_system_id 引用一个 TRPG 检定资源来选择 DM 检定风格，actor_state_id 引用状态系统；状态系统模板是状态表 schema，可表示故事上下文、主角、重要角色、敌人、世界、故事倒计时、特定角色、势力、基地或副本等状态对象，状态系统内的 opening_selector 负责开局词条和 initial_state_ops；memory_structure_id 引用 Story Memory Structure 预设，*_disabled=true 表示对应模块关闭且保留原 ID 以便重新启用，记忆结构只负责叙事承接。TRPG rule_templates 只作为兼容容器，资源内只使用 rule_templates[0]，检定固定 d20，支持 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，random_event_rate=0/0.08/0.15/0.3，rule_state_consumption_mode=hybrid_auto/director_only，rule_visibility_mode=audit_only/public_roll；branch_planning_turns 控制最近分支规划回合数；planning_templates.plan 是单份 director.md Markdown 模板；strategy.prompt_markdown 是纯 Markdown 高级策略提示，最多 64KB。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法读取故事导演")
@@ -845,7 +845,7 @@ func newReadStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_story_directors", "批量创建、更新或删除故事导演配置。故事导演通过 module_refs 可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统、Story Memory Structure 和图像方案；用 narrative_style_disabled、event_packages_disabled、rule_system_disabled、actor_state_disabled、memory_structure_disabled、image_preset_disabled 关闭模块，关闭时保留对应 ID。不要写 opening_selector_id 或 opening_selector_disabled；开局词条属于状态系统 opening_selector，应通过 write_actor_states 更新。事件包引用写 event_package_ids；TRPG 检定引用写 rule_system_id，选择一个代表 DM 检定风格的 TRPG 检定资源；TRPG rule_templates 只作为兼容容器，资源内只使用 rule_templates[0]，检定固定 d20，可配置 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings，不要把多种 DM 风格写进同一个资源；带 state_bindings 的 TRPG 检定资源必须配置 actor_state_id；状态系统引用写 actor_state_id，模板是状态表 schema，可表示主角、重要角色、敌人、世界、故事倒计时、特定角色、势力、基地或副本等状态对象；记忆结构引用写 memory_structure_id，结构内容用 write_story_memory_structure_presets 管理。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，random_event_rate=0/0.08/0.15/0.3，rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only；branch_planning_turns 默认 5；planning_templates.plan 可写单份 director.md Markdown 模板并必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略、工具权限和输出协议。删除内置故事导演会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input storyDirectorWriteInput) (string, error) {
+	return utils.InferTool("write_story_directors", "批量创建、更新或删除故事导演配置。故事导演通过 module_refs 可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统、Story Memory Structure 和图像方案；用 narrative_style_disabled、event_packages_disabled、rule_system_disabled、actor_state_disabled、memory_structure_disabled、image_preset_disabled 关闭模块，关闭时保留对应 ID。不要写 opening_selector_id 或 opening_selector_disabled；开局词条属于状态系统 opening_selector，应通过 write_actor_states 更新。事件包引用写 event_package_ids；TRPG 检定引用写 rule_system_id，选择一个代表 DM 检定风格的 TRPG 检定资源；TRPG rule_templates 只作为兼容容器，资源内只使用 rule_templates[0]，检定固定 d20，可配置 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings，不要把多种 DM 风格写进同一个资源；带 state_bindings 的 TRPG 检定资源必须配置 actor_state_id；状态系统引用写 actor_state_id，模板是状态表 schema，可表示故事上下文、主角、重要角色、敌人、世界、故事倒计时、特定角色、势力、基地或副本等状态对象；记忆结构引用写 memory_structure_id，结构内容用 write_story_memory_structure_presets 管理且只负责叙事承接，不负责状态管理。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，random_event_rate=0/0.08/0.15/0.3，rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only；branch_planning_turns 默认 5；planning_templates.plan 可写单份 director.md Markdown 模板并必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略、工具权限和输出协议。删除内置故事导演会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input storyDirectorWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入故事导演")
@@ -1023,7 +1023,7 @@ func newWriteSkillsTool(cfg *config.Config) (tool.BaseTool, error) {
 }
 
 func newListStoryMemoryStructuresTool(workspace, novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_story_memory_structures", "读取某个互动故事当前有效的故事记忆结构定义和来源；结构现在默认来自故事导演引用的 Story Memory Structure 预设。新配置请优先使用 list/read/write_story_memory_structure_presets，并通过 write_story_directors 修改 module_refs.memory_structure_id。本工具保留用于查看具体故事当前生效结构。", func(ctx context.Context, input storyMemoryInput) (string, error) {
+	return utils.InferTool("list_story_memory_structures", "读取某个互动故事当前有效的故事记忆结构定义和来源；结构现在默认来自故事导演引用的 Story Memory Structure 预设，只负责叙事承接，不负责状态管理。新配置请优先使用 list/read/write_story_memory_structure_presets，并通过 write_story_directors 修改 module_refs.memory_structure_id。本工具保留用于查看具体故事当前生效结构。", func(ctx context.Context, input storyMemoryInput) (string, error) {
 		_ = ctx
 		state, err := interactive.NewStoreWithNovaDir(workspace, novaDir).StoryMemory(input.StoryID, input.BranchID, input.IncludeArchived)
 		if err != nil {

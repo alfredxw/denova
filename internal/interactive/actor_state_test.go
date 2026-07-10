@@ -81,6 +81,65 @@ func TestActorStatePatchValidationAndReplay(t *testing.T) {
 	}
 }
 
+func TestDefaultActorStateIncludesStoryContextStateObject(t *testing.T) {
+	system := defaultActorStateSystem()
+	if template := actorStateTemplateByID(system, ActorStateStoryContextTemplateID); template.ID == "" {
+		t.Fatalf("default actor state should include story context template: %#v", system.Templates)
+	}
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:           "故事上下文状态",
+		StoryTellerID:   "classic",
+		InitialStateOps: actorStateInitialOps(system),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	initialSnapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := getPath(initialSnapshot.State, "actors.story.template_id"); got != ActorStateStoryContextTemplateID {
+		t.Fatalf("story context object should be initialized, got %#v state=%#v", got, initialSnapshot.State)
+	}
+
+	turn, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "查看四周", Narrative: "主角停在黄泉酒馆门口。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := ValidateActorStatePatches(system, []ActorStatePatch{{
+		ActorID:    DefaultStoryContextActorID,
+		ActorName:  "故事上下文",
+		TemplateID: ActorStateStoryContextTemplateID,
+		Role:       "story_context",
+		State: map[string]any{
+			"timeline.start_date": "2026-07-09",
+			"scene.location":      "黄泉酒馆门口",
+			"scene.current_time":  "子时",
+			"scene.current_day":   "第 1 天",
+			"scene.current_event": "主角抵达黄泉酒馆",
+			"scene.pressure":      "门内有人等待主角表态",
+		},
+		Reason: "本回合确认当前场景、时间和事件。",
+	}}, turn.ID)
+	if err != nil {
+		t.Fatalf("default story context patch should pass: %v", err)
+	}
+	if _, err := store.AppendStateDelta(story.ID, AppendStateDeltaRequest{ParentID: turn.ID, BranchID: "main", Ops: result.Ops}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := getPath(snapshot.State, "actors.story.state.scene.location"); got != "黄泉酒馆门口" {
+		t.Fatalf("story context location should replay, got %#v", got)
+	}
+	if got := getPath(snapshot.State, "actors.story.state.scene.current_event"); got != "主角抵达黄泉酒馆" {
+		t.Fatalf("story context event should replay, got %#v", got)
+	}
+}
+
 func TestActorStateSupportsCustomNonCharacterStateObjects(t *testing.T) {
 	system := normalizeActorStateSystem(StoryDirectorActorStateSystem{
 		Templates: []ActorStateTemplate{{

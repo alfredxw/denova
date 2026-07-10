@@ -224,7 +224,7 @@ func newInteractiveStoryMemoryPatchTools(ctx InteractiveStoryToolContext) ([]too
 	if ctx.Store == nil || ctx.StoryID == "" || ctx.TurnID == "" {
 		return nil, nil
 	}
-	applyTool, err := utils.InferTool("apply_story_memory_patches", "写入当前互动故事分支的故事记忆 patch。只用于已经在本回合正文中成立、后续需要承接的信息；字段、结构、key 和 values 必须来自注入的 Story Memory schema。后端会按分支和结构校验，并写入 story memory 记录。", func(callCtx context.Context, input applyStoryMemoryPatchesInput) (string, error) {
+	applyTool, err := utils.InferTool("apply_story_memory_patches", "写入当前互动故事分支的故事记忆 patch。只用于已经在本回合正文中成立、后续需要承接的叙事信息；字段、结构、key 和 values 必须来自注入的 Story Memory schema。可计算状态、当前时间地点、当前事件、关系数值、持续状态和规则标记必须写入状态系统，不要写成故事记忆。后端会按分支和结构校验，并写入 story memory 记录。", func(callCtx context.Context, input applyStoryMemoryPatchesInput) (string, error) {
 		_ = callCtx
 		if len(input.Patches) == 0 {
 			err := fmt.Errorf("故事记忆 patch 不能为空")

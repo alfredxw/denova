@@ -56,6 +56,12 @@ describe('TellerEditor style contents', () => {
       />,
     )
 
+    const editorShell = screen.getByTestId('image-preset-editor')
+    expect(editorShell).toHaveClass('image-preset-editor')
+    expect(editorShell.querySelector('.image-preset-metadata-grid')).toBeInTheDocument()
+    expect(editorShell.querySelector('.image-preset-layout')).toBeInTheDocument()
+    expect(editorShell.querySelector('.image-preset-rule-grid')).toBeInTheDocument()
+
     const editor = screen.getByPlaceholderText(/高质量游戏 CG/)
     fireEvent.change(editor, { target: { value: '图'.repeat(4050) } })
 
@@ -305,7 +311,8 @@ describe('TellerEditor style contents', () => {
 
     const injectGrid = container.querySelector('.min-h-\\[520px\\]')
     expect(injectGrid).toHaveClass('flex-1')
-    expect(injectGrid).toHaveClass('lg:grid-cols-[280px_minmax(0,1fr)]')
+    expect(injectGrid).toHaveClass('teller-injection-layout', 'min-w-0')
+    expect(injectGrid).not.toHaveClass('lg:grid-cols-[280px_minmax(0,1fr)]')
 
     const sceneInput = screen.getByPlaceholderText('场景描述，如：激烈打斗 / 日常对话 / 压抑悬疑')
     expect(sceneInput).toHaveClass('md:flex-1')
@@ -337,6 +344,11 @@ describe('TellerEditor style contents', () => {
   it('keeps orchestration editing out of narrative styles', () => {
     render(<Harness initial={teller()} onChange={() => {}} onSave={() => {}} />)
 
+    const editorShell = screen.getByTestId('teller-editor')
+    expect(editorShell).toHaveClass('teller-editor')
+    expect(editorShell.querySelector('.teller-metadata-grid')).toBeInTheDocument()
+    expect(editorShell.querySelector('.teller-injection-layout')).toBeInTheDocument()
+    expect(editorShell.querySelector('.teller-rule-grid')).toBeInTheDocument()
     expect(screen.queryByText('叙事编排')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '新增事件包' })).not.toBeInTheDocument()
     expect(screen.getByText('注入规则')).toBeInTheDocument()

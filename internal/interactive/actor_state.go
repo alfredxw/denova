@@ -228,15 +228,11 @@ func defaultActorStateSystem() StoryDirectorActorStateSystem {
 	return normalizeActorStateSystem(StoryDirectorActorStateSystem{
 		Templates: []ActorStateTemplate{
 			actorStateTemplate(DefaultActorID, "默认主角状态表", "记录主角当前可行动、可检定、可结算的通用互动状态；用户可按作品需要新增世界、故事倒计时、特定角色、势力、基地、副本等自定义状态表。", commonProtagonistStateFields()),
+			defaultStoryContextTemplate(),
 			actorStateTemplate(ActorStateImportantCharacterTemplateID, "默认重要角色状态表", "记录反复登场且会影响互动承接的重要角色状态；特定角色线可以另建独立状态表。", commonImportantCharacterStateFields()),
 			actorStateTemplate(ActorStateOpponentTemplateID, "默认敌人/怪物状态表", "记录敌人、怪物、反派、Boss 或异常实体的当前对抗状态；危机、势力或副本也可另建状态表。", commonOpponentStateFields()),
 		},
-		InitialActors: []ActorStateInitialActor{{
-			ID:         DefaultActorID,
-			Name:       "主角",
-			TemplateID: "protagonist",
-			Role:       "protagonist",
-		}},
+		InitialActors: defaultActorStateInitialActors(),
 	})
 }
 

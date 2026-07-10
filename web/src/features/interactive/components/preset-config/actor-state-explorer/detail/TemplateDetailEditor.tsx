@@ -1,0 +1,316 @@
+import { Hash, Plus, User } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
+import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
+import { novaEase } from '@/features/motion/motion-tokens'
+import { nextPresetId } from '../../utils'
+import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate } from '../../../../types'
+import type { ExplorerProps, TreeNode } from '../types'
+import { findNode } from '../build-tree'
+import { FieldTypeBadge } from '../shared/FieldTypeBadge'
+import { VisibilityBadge } from '../shared/VisibilityBadge'
+import { DetailResponsiveGrid, DetailStack } from './DetailLayout'
+
+interface TemplateDetailEditorProps {
+  template: ActorStateTemplate
+  templateIndex: number
+  selectedId: string
+  tree: TreeNode[]
+  value: ExplorerProps['value']
+  onChange: (value: ExplorerProps['value']) => void
+  onSelect: (id: string) => void
+}
+
+export function TemplateDetailEditor({
+  template,
+  templateIndex,
+  selectedId,
+  tree,
+  value,
+  onChange,
+  onSelect,
+}: TemplateDetailEditorProps) {
+  const { t } = useTranslation()
+  const fields = template.fields || []
+  const actors = (value.initial_actors || []).filter((a) => a.template_id === template.id)
+
+  const updateTemplate = (patch: Partial<ActorStateTemplate>) => {
+    const templates = [...(value.templates || [])]
+    templates[templateIndex] = { ...template, ...patch }
+    onChange({ ...value, templates })
+  }
+
+  const addField = () => {
+    const newField: ActorStateField = {
+      id: nextPresetId('field'),
+      path: `state.field_${fields.length}`,
+      name: t('settingPanel.actorState.explorer.newField', { count: fields.length + 1 }),
+      type: 'string',
+      visibility: 'visible',
+      order: fields.length,
+    }
+    updateTemplate({ fields: [...fields, newField] })
+  }
+
+  const addActor = () => {
+    const newActor: ActorStateInitialActor = {
+      id: nextPresetId('actor'),
+      name: t('settingPanel.actorState.explorer.newActor', { count: actors.length + 1 }),
+      template_id: template.id,
+      role: 'supporting',
+      state: {},
+    }
+    const initialActors = [...(value.initial_actors || []), newActor]
+    onChange({ ...value, initial_actors: initialActors })
+  }
+
+  return (
+    <DetailStack>
+      {/* Template basic info */}
+      <motion.section
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, ease: novaEase }}
+        className="space-y-3"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-semibold text-[var(--nova-text-faint)]">
+            {t('settingPanel.actorState.explorer.templateInfo')}
+          </span>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1">
+            <label className="text-[11px] text-[var(--nova-text-faint)]">ID</label>
+            <Input
+              className="nova-field h-8 text-xs focus-visible:ring-0"
+              value={template.id}
+              onChange={(e) => updateTemplate({ id: e.target.value })}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.field.name')}</label>
+            <Input
+              className="nova-field h-8 text-xs focus-visible:ring-0"
+              value={template.name || ''}
+              onChange={(e) => updateTemplate({ name: e.target.value })}
+              placeholder={t('settingPanel.actorState.explorer.templateNamePlaceholder')}
+            />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] text-[var(--nova-text-faint)]">{t('common.description')}</label>
+          <Textarea
+            className="nova-field min-h-[60px] resize-none text-xs focus-visible:ring-0"
+            value={template.description || ''}
+            onChange={(e) => updateTemplate({ description: e.target.value })}
+            placeholder={t('settingPanel.actorState.explorer.templateDescriptionPlaceholder')}
+          />
+        </div>
+      </motion.section>
+
+      <DetailResponsiveGrid className="items-start">
+        <section className="space-y-2">
+          {/* Fields section */}
+          <SectionHeader
+            title={t('settingPanel.actorState.fields')}
+            count={fields.length}
+            onAdd={addField}
+            addLabel={t('settingPanel.actorState.addField')}
+          />
+          <div className="space-y-1.5">
+            <AnimatePresence initial={false}>
+              {fields.map((field, fIndex) => {
+                const nodeId = `field:${template.id}:${field.id || field.path || fIndex}`
+                const node = findNode(tree, nodeId)
+                const isSelected = node ? nodeId === selectedId : false
+                return (
+                  <FieldInlineRow
+                    key={field.id || field.path || fIndex}
+                    field={field}
+                    selected={isSelected}
+                    onClick={() => onSelect(nodeId)}
+                  />
+                )
+              })}
+            </AnimatePresence>
+            {fields.length === 0 ? (
+              <EmptyHint text={t('settingPanel.actorState.explorer.emptyTemplateFields')} />
+            ) : null}
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          {/* Actors section */}
+          <SectionHeader
+            title={t('settingPanel.actorState.initialActors')}
+            count={actors.length}
+            onAdd={addActor}
+            addLabel={t('settingPanel.actorState.addInitialActor')}
+          />
+          <div className="space-y-1.5">
+            <AnimatePresence initial={false}>
+              {actors.map((actor, aIndex) => {
+                const nodeId = `actor:${actor.id || actor.template_id || 'actor'}-${aIndex}`
+                return (
+                  <ActorInlineRow
+                    key={actor.id || aIndex}
+                    actor={actor}
+                    templateName={template.name}
+                    selected={nodeId === selectedId}
+                    onClick={() => onSelect(nodeId)}
+                  />
+                )
+              })}
+            </AnimatePresence>
+            {actors.length === 0 ? (
+              <EmptyHint text={t('settingPanel.actorState.explorer.emptyTemplateActors')} />
+            ) : null}
+          </div>
+        </section>
+      </DetailResponsiveGrid>
+    </DetailStack>
+  )
+}
+
+// ── Sub-components ────────────────────────────────────────────────
+
+function SectionHeader({
+  title,
+  count,
+  onAdd,
+  addLabel,
+}: {
+  title: string
+  count: number
+  onAdd: () => void
+  addLabel: string
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-semibold text-[var(--nova-text-faint)]">
+          {title}
+        </span>
+        <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">
+          {count}
+        </span>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 rounded-full px-2.5 text-[11px] text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]"
+        onClick={onAdd}
+      >
+        <Plus className="mr-1 h-3.5 w-3.5" />
+        {addLabel}
+      </Button>
+    </div>
+  )
+}
+
+function FieldInlineRow({
+  field,
+  selected,
+  onClick,
+}: {
+  field: ActorStateField
+  selected: boolean
+  onClick: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.15, ease: novaEase }}
+      className={cn(
+        'group flex cursor-pointer items-center gap-2.5 rounded-[12px] border px-3 py-2 transition-colors',
+        selected
+          ? 'border-[var(--nova-accent)]/40 bg-[var(--nova-surface)] shadow-[inset_2px_0_0_var(--nova-accent)]'
+          : 'border-[var(--nova-border)] bg-[var(--nova-surface)] hover:border-[var(--nova-accent)]/20 hover:bg-[var(--nova-hover)]',
+      )}
+      onClick={onClick}
+    >
+      <Hash className={cn(
+        'h-3.5 w-3.5 shrink-0',
+        selected ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-faint)]',
+      )} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="truncate text-[12px] font-medium text-[var(--nova-text)]">
+            {field.name || field.path || t('settingPanel.actorState.explorer.unnamedField')}
+          </span>
+          <FieldTypeBadge type={field.type} />
+          {field.visibility ? <VisibilityBadge visibility={field.visibility} /> : null}
+        </div>
+        <div className="mt-0.5 truncate font-mono text-[10px] text-[var(--nova-text-faint)]">
+          {field.path}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+function ActorInlineRow({
+  actor,
+  templateName,
+  selected,
+  onClick,
+}: {
+  actor: ActorStateInitialActor
+  templateName?: string
+  selected: boolean
+  onClick: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.15, ease: novaEase }}
+      className={cn(
+        'group flex cursor-pointer items-center gap-2.5 rounded-[12px] border px-3 py-2 transition-colors',
+        selected
+          ? 'border-[var(--nova-accent)]/40 bg-[var(--nova-surface)] shadow-[inset_2px_0_0_var(--nova-accent)]'
+          : 'border-[var(--nova-border)] bg-[var(--nova-surface)] hover:border-[var(--nova-accent)]/20 hover:bg-[var(--nova-hover)]',
+      )}
+      onClick={onClick}
+    >
+      <User className={cn(
+        'h-3.5 w-3.5 shrink-0',
+        selected ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-faint)]',
+      )} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate text-[12px] font-medium text-[var(--nova-text)]">
+            {actor.name || actor.id || t('settingPanel.actorState.explorer.unnamedActor')}
+          </span>
+          {actor.role ? (
+            <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">
+              {actor.role}
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-0.5 truncate font-mono text-[10px] text-[var(--nova-text-faint)]">
+          {templateName || actor.template_id}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+function EmptyHint({ text }: { text: string }) {
+  return (
+    <div className="rounded-[12px] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-6 text-center text-[11px] text-[var(--nova-text-faint)]">
+      {text}
+    </div>
+  )
+}

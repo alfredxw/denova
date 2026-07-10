@@ -12,6 +12,7 @@ import type { ActorStateModule, EventPackageModule, ImagePreset, OpeningSelector
 import { ActorStateEditor, EventPackageEditor, ImagePresetEditor, OpeningSelectorEditor, RuleSystemEditor, StoryMemoryStructureEditor, TellerDirectory } from '../SettingPanelSections'
 import { TellerEditor } from '../SettingPanelTellerEditor'
 import { StoryDirectorEditor } from '../story-director/StoryDirectorEditor'
+import { PRESET_CONFIG_HEADER_ACTIONS_TARGET_ID } from '../preset-config/PresetConfigSectionEditor'
 import { usePresetResourceAutosave } from './usePresetResourceAutosave'
 import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneMemoryStructure, cloneOpeningSelector, cloneRuleSystem, cloneStoryDirector, cloneTeller, currentPresetBuiltinOverridden, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_MEMORY_STRUCTURES, EMPTY_OPENING_SELECTORS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeMemoryStructurePayload, makeOpeningSelectorPayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newMemoryStructureDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDeleteTarget, type PresetDrafts } from './presetResources'
 
@@ -959,8 +960,25 @@ export function PresetSettingsPanel({
   const presetConfigInvalid = isPresetConfigResourceKind(presetResourceKind) && !presetConfigValid
   const saveDisabled = saving || presetConfigInvalid || !activeDraft
   const titleIcon = presetResourceKind === 'image' ? <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" /> : <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
+  const actorStateTopbarEditable = presetResourceKind === 'actor-state' && Boolean(actorStateDraft) && !isTellerConfigAgentActive
+  const topbarMetadataDraft = !isTellerConfigAgentActive
+    ? presetResourceKind === 'actor-state'
+      ? actorStateDraft
+      : presetResourceKind === 'memory-structure'
+        ? memoryStructureDraft
+        : null
+    : null
+  const updateTopbarMetadata = (patch: Partial<{ name: string; description: string }>) => {
+    if (presetResourceKind === 'actor-state') {
+      setActorStateDraft((current) => (current ? { ...current, ...patch } : current))
+      return
+    }
+    if (presetResourceKind === 'memory-structure') {
+      setMemoryStructureDraft((current) => (current ? { ...current, ...patch } : current))
+    }
+  }
   const directoryPanel = (
-    <div className="nova-sidebar flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">
+    <div className="nova-sidebar flex h-full min-h-0 flex-col overflow-hidden bg-[var(--nova-surface-2)]">
       <TellerDirectory
         resourceKind={presetResourceKind}
         usageMode={presetUsageMode}
@@ -1016,21 +1034,43 @@ export function PresetSettingsPanel({
         {({ isMobile, openLeft }) => (
           <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             <div className="nova-topbar flex min-h-12 shrink-0 items-center justify-between gap-3 border-b px-4">
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
                 {isMobile && (
                   <button type="button" className="nova-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: t('settingPanel.mode.teller') })} onClick={openLeft}>
                     <PanelLeft className="h-4 w-4" />
                   </button>
                 )}
-                <div className="min-w-0">
-                  <div className="flex min-w-0 items-center gap-2">
-                    {titleIcon}
-                    <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : presetEditorTitle(presetResourceKind, presetDrafts, t)}</h2>
+                {topbarMetadataDraft ? (
+                  <div className="min-w-0 flex-1" data-testid="preset-inline-metadata">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {titleIcon}
+                      <input
+                        className="h-5 min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1 text-sm font-semibold text-[var(--nova-text)] outline-none transition hover:border-[var(--nova-border-soft)] hover:bg-[var(--nova-hover)] focus:border-[var(--nova-accent)] focus:bg-[var(--nova-surface)]"
+                        value={topbarMetadataDraft.name}
+                        onChange={(event) => updateTopbarMetadata({ name: event.target.value })}
+                        aria-label={t('settingPanel.field.name')}
+                      />
+                    </div>
+                    <input
+                      className="mt-0.5 h-5 w-full rounded-md border border-transparent bg-transparent px-1 text-[11px] text-[var(--nova-text-faint)] outline-none transition placeholder:text-[var(--nova-text-faint)] hover:border-[var(--nova-border-soft)] hover:bg-[var(--nova-hover)] focus:border-[var(--nova-accent)] focus:bg-[var(--nova-surface)] focus:text-[var(--nova-text-muted)]"
+                      value={topbarMetadataDraft.description}
+                      onChange={(event) => updateTopbarMetadata({ description: event.target.value })}
+                      placeholder={t('settingPanel.placeholder.description')}
+                      aria-label={t('settingPanel.field.description')}
+                    />
                   </div>
-                  <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : presetEditorSubtitle(presetResourceKind, presetDrafts, t)}</p>
-                </div>
+                ) : (
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {titleIcon}
+                      <h2 className="truncate text-sm font-semibold text-[var(--nova-text)]">{isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : presetEditorTitle(presetResourceKind, presetDrafts, t)}</h2>
+                    </div>
+                    <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : presetEditorSubtitle(presetResourceKind, presetDrafts, t)}</p>
+                  </div>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {actorStateTopbarEditable ? <div id={PRESET_CONFIG_HEADER_ACTIONS_TARGET_ID} className="flex shrink-0 items-center" /> : null}
                 {canRestoreBuiltinPreset && (
                   <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saving} onClick={() => void handleRestoreBuiltinPreset()} aria-label={t('settingPanel.restoreBuiltin')} title={t('settingPanel.restoreBuiltin')}>
                     <RotateCcw className="h-4 w-4" />
@@ -1123,6 +1163,8 @@ export function PresetSettingsPanel({
                 setOpeningSelectorDraft={setOpeningSelectorDraft}
                 openingSelectorTagDraft={openingSelectorTagDraft}
                 setOpeningSelectorTagDraft={setOpeningSelectorTagDraft}
+                onOpenActorState={(id) => selectPresetResource('actor-state', id)}
+                onOpenRuleSystem={(id) => selectPresetResource('rule', id)}
                 onSave={handleSave}
                 onValidityChange={setPresetConfigValid}
               />
@@ -1205,6 +1247,8 @@ interface PresetResourcePaneProps {
   setOpeningSelectorDraft: (draft: OpeningSelectorModule | null) => void
   openingSelectorTagDraft: string
   setOpeningSelectorTagDraft: (value: string) => void
+  onOpenActorState: (id: string) => void
+  onOpenRuleSystem: (id: string) => void
   onSave: () => void
   onValidityChange: (valid: boolean) => void
 }
@@ -1212,8 +1256,8 @@ interface PresetResourcePaneProps {
 function PresetResourcePane(props: PresetResourcePaneProps) {
   if (props.kind === 'image') return <ImagePresetPane draft={props.imagePresetDraft} setDraft={props.setImagePresetDraft} tagDraft={props.imagePresetTagDraft} setTagDraft={props.setImagePresetTagDraft} onSave={props.onSave} />
   if (props.kind === 'event') return <EventPackagePane draft={props.eventPackageDraft} setDraft={props.setEventPackageDraft} tagDraft={props.eventPackageTagDraft} setTagDraft={props.setEventPackageTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
-  if (props.kind === 'rule') return <RuleSystemPane draft={props.ruleSystemDraft} actorStates={props.actorStates} setDraft={props.setRuleSystemDraft} tagDraft={props.ruleSystemTagDraft} setTagDraft={props.setRuleSystemTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
-  if (props.kind === 'actor-state') return <ActorStatePane draft={props.actorStateDraft} setDraft={props.setActorStateDraft} tagDraft={props.actorStateTagDraft} setTagDraft={props.setActorStateTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
+  if (props.kind === 'rule') return <RuleSystemPane draft={props.ruleSystemDraft} actorStates={props.actorStates} setDraft={props.setRuleSystemDraft} tagDraft={props.ruleSystemTagDraft} setTagDraft={props.setRuleSystemTagDraft} onOpenActorState={props.onOpenActorState} onSave={props.onSave} onValidityChange={props.onValidityChange} />
+  if (props.kind === 'actor-state') return <ActorStatePane draft={props.actorStateDraft} ruleSystems={props.ruleSystems} setDraft={props.setActorStateDraft} tagDraft={props.actorStateTagDraft} setTagDraft={props.setActorStateTagDraft} onOpenRuleSystem={props.onOpenRuleSystem} onSave={props.onSave} onValidityChange={props.onValidityChange} />
   if (props.kind === 'memory-structure') return <MemoryStructurePane draft={props.memoryStructureDraft} setDraft={props.setMemoryStructureDraft} tagDraft={props.memoryStructureTagDraft} setTagDraft={props.setMemoryStructureTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
   if (props.kind === 'opening') return <OpeningSelectorPane draft={props.openingSelectorDraft} setDraft={props.setOpeningSelectorDraft} tagDraft={props.openingSelectorTagDraft} setTagDraft={props.setOpeningSelectorTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
   if (props.kind === 'director') {
@@ -1249,11 +1293,11 @@ function EventPackagePane(props: { draft: EventPackageModule | null; setDraft: (
   return <EventPackageEditor {...props} />
 }
 
-function RuleSystemPane(props: { draft: RuleSystemModule | null; actorStates: ActorStateModule[]; setDraft: (draft: RuleSystemModule | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
+function RuleSystemPane(props: { draft: RuleSystemModule | null; actorStates: ActorStateModule[]; setDraft: (draft: RuleSystemModule | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onOpenActorState: (id: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
   return <RuleSystemEditor {...props} />
 }
 
-function ActorStatePane(props: { draft: ActorStateModule | null; setDraft: (draft: ActorStateModule | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
+function ActorStatePane(props: { draft: ActorStateModule | null; ruleSystems: RuleSystemModule[]; setDraft: (draft: ActorStateModule | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onOpenRuleSystem: (id: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
   return <ActorStateEditor {...props} />
 }
 

@@ -8,6 +8,8 @@ const (
 
 	ActorStateImportantCharacterTemplateID = "important_character"
 	ActorStateOpponentTemplateID           = "opponent"
+	ActorStateStoryContextTemplateID       = "story_context"
+	DefaultStoryContextActorID             = "story"
 )
 
 func builtinActorStateModules() []ActorStateModule {
@@ -157,17 +159,43 @@ func actorStatePresetModule(id, name, description string, tags []string, templat
 		Name:        name,
 		Description: description,
 		ActorState: StoryDirectorActorStateSystem{
-			Templates: templates,
-			InitialActors: []ActorStateInitialActor{{
-				ID:         DefaultActorID,
-				Name:       "主角",
-				TemplateID: "protagonist",
-				Role:       "protagonist",
-			}},
+			Templates:     appendStoryContextTemplate(templates),
+			InitialActors: defaultActorStateInitialActors(),
 		},
 		OpeningSelector: StoryDirectorOpeningSelector{Enabled: true},
 		Tags:            tags,
 	})
+}
+
+func appendStoryContextTemplate(templates []ActorStateTemplate) []ActorStateTemplate {
+	for _, template := range templates {
+		if normalizeActorStateID(template.ID) == ActorStateStoryContextTemplateID {
+			return templates
+		}
+	}
+	return append(append([]ActorStateTemplate(nil), templates...), defaultStoryContextTemplate())
+}
+
+func defaultStoryContextTemplate() ActorStateTemplate {
+	return actorStateTemplate(ActorStateStoryContextTemplateID, "默认故事上下文状态表", "记录当前故事线可行动、可检定、可承接的全局时间、地点、场景和压力；这是 Story Memory 旧 current_state 的运行态真源。", commonStoryContextStateFields())
+}
+
+func defaultActorStateInitialActors() []ActorStateInitialActor {
+	return []ActorStateInitialActor{
+		{
+			ID:         DefaultActorID,
+			Name:       "主角",
+			TemplateID: "protagonist",
+			Role:       "protagonist",
+		},
+		{
+			ID:          DefaultStoryContextActorID,
+			Name:        "故事上下文",
+			TemplateID:  ActorStateStoryContextTemplateID,
+			Role:        "story_context",
+			Description: "当前分支的剧内时间、地点、场景和全局压力状态。",
+		},
+	}
 }
 
 func actorStateTemplate(id, name, description string, fields []ActorStateField) ActorStateTemplate {
@@ -189,6 +217,21 @@ func commonProtagonistStateFields() []ActorStateField {
 		listStateField(60, "assets.key_items", "关键物品", "记录当前持有且会影响后续行动、检定或分支的物品。", "spoiler"),
 		listStateField(70, "effects.ongoing", "持续影响", "记录仍在生效的伤势、增益、削弱、约束或承诺。", "spoiler"),
 		listStateField(80, "risks.hidden", "隐藏风险", "记录不宜直接展示给玩家但需要后台承接的风险。", "hidden"),
+	}
+}
+
+func commonStoryContextStateFields() []ActorStateField {
+	return []ActorStateField{
+		textStateField(10, "timeline.start_date", "故事开局日期", "记录当前故事线的剧内开局日期；初始化后除非用户明确重置开局时间，否则不要改动。", "visible"),
+		textStateField(20, "scene.location", "当前详细地点", "记录主角或当前可玩视角所在的具体场景名称。", "visible"),
+		textStateField(30, "scene.previous_time", "上轮场景时间", "记录上一轮交互结束时的剧内时间。", "visible"),
+		textStateField(40, "scene.elapsed_time", "经过的时间", "记录当前时间相对上轮场景时间经过了多久。", "visible"),
+		textStateField(50, "scene.current_time", "当前剧内时间", "记录当前回合结束后的剧内时间。", "visible"),
+		textStateField(60, "scene.current_day", "当前天数", "记录从故事开局日期开始计算的剧内天数，例如第 1 天。", "visible"),
+		textStateField(70, "scene.current_event", "当前事件", "记录本轮结束后仍影响下一轮的当前事件，不写下一步选项。", "visible"),
+		textStateField(80, "scene.pressure", "当前场景压力", "记录当前场景最影响行动的危机、倒计时、限制或收益窗口。", "spoiler"),
+		listStateField(90, "scene.available_hooks", "可承接钩子", "记录已经铺垫且可在后续行动中承接的信息点、冲突口或机会。", "spoiler"),
+		listStateField(100, "rules.active_flags", "当前规则标记", "记录会影响后续检定或分支的布尔、枚举或规则标记。", "spoiler"),
 	}
 }
 

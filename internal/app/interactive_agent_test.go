@@ -152,7 +152,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	for _, want := range []string{
 		"apply_actor_state_patch",
 		"apply_story_memory_patches",
-		"Story Memory 的 current_state、rule_state_summary 只是叙事摘要",
+		"Story Memory 只记录剧情纪要、长期人物档案、世界上下文、进行中事项、伏笔和长期弧线",
 		"资料库优先",
 		"不负责替用户选择下一步行动",
 	} {

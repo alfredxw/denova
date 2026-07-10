@@ -102,9 +102,13 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 		if items[index].ID != id {
 			t.Fatalf("built-in actor state order mismatch at %d: got %s want %s; items=%#v", index, items[index].ID, id, items)
 		}
-		requireActorStateTemplates(t, item, "protagonist", ActorStateImportantCharacterTemplateID, ActorStateOpponentTemplateID)
-		if len(item.ActorState.InitialActors) != 1 || item.ActorState.InitialActors[0].ID != DefaultActorID || item.ActorState.InitialActors[0].TemplateID != "protagonist" {
-			t.Fatalf("actor state %s should ship one starter protagonist state object: %#v", id, item.ActorState.InitialActors)
+		requireActorStateTemplates(t, item, "protagonist", ActorStateStoryContextTemplateID, ActorStateImportantCharacterTemplateID, ActorStateOpponentTemplateID)
+		if len(item.ActorState.InitialActors) != 2 ||
+			item.ActorState.InitialActors[0].ID != DefaultActorID ||
+			item.ActorState.InitialActors[0].TemplateID != "protagonist" ||
+			item.ActorState.InitialActors[1].ID != DefaultStoryContextActorID ||
+			item.ActorState.InitialActors[1].TemplateID != ActorStateStoryContextTemplateID {
+			t.Fatalf("actor state %s should ship starter protagonist and story context state objects: %#v", id, item.ActorState.InitialActors)
 		}
 		requireNoActorStateFieldBounds(t, item)
 	}
@@ -114,9 +118,10 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 		t.Fatalf("Get default actor state failed: %v", err)
 	}
 	if !actorStateTemplateHasField(defaultActorState, "protagonist", "current.body_status") ||
+		!actorStateTemplateHasField(defaultActorState, ActorStateStoryContextTemplateID, "scene.current_event") ||
 		!actorStateTemplateHasField(defaultActorState, ActorStateImportantCharacterTemplateID, "relationship.attitude_to_protagonist") ||
 		!actorStateTemplateHasField(defaultActorState, ActorStateOpponentTemplateID, "threat.status") {
-		t.Fatalf("default actor state should expose generic protagonist, important-character, and opponent fields: %#v", defaultActorState.ActorState.Templates)
+		t.Fatalf("default actor state should expose generic protagonist, story-context, important-character, and opponent fields: %#v", defaultActorState.ActorState.Templates)
 	}
 
 	xiuxian, err := library.Get(ActorStateXiuxianID)
@@ -397,6 +402,56 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 	}
 	if restoredMemory.Custom || restoredMemory.BuiltinOverridden || restoredMemory.Name == "我的记忆结构" {
 		t.Fatalf("unexpected restored memory structure: %#v", restoredMemory)
+	}
+}
+
+func TestStoryMemoryStructureBuiltinRefreshesWhenNotOverridden(t *testing.T) {
+	novaDir := t.TempDir()
+	library := NewStoryMemoryStructureLibrary(novaDir)
+	if err := os.MkdirAll(library.dir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(library.dir(), DefaultStoryMemoryStructureModuleID+".json")
+	stale := DefaultStoryMemoryStructureModule()
+	for i := range stale.Structures {
+		if stale.Structures[i].ID == "current_state" {
+			stale.Structures[i].Description = "旧版当前状态说明"
+			stale.Structures[i].Enabled = boolPtr(true)
+			break
+		}
+	}
+	if err := writeStoryMemoryStructureFile(path, stale); err != nil {
+		t.Fatal(err)
+	}
+	refreshed, err := library.Get(DefaultStoryMemoryStructureModuleID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentState := storyMemoryStructureByID(refreshed.Structures, "current_state")
+	if strings.Contains(currentState.Description, "旧版当前状态说明") || storyMemoryStructureEnabled(currentState) {
+		t.Fatalf("non-overridden built-in memory structure should refresh to current defaults: %#v", currentState)
+	}
+
+	overridden := DefaultStoryMemoryStructureModule()
+	overridden.BuiltinOverridden = true
+	overridden.Name = "用户覆盖的默认记忆结构"
+	for i := range overridden.Structures {
+		if overridden.Structures[i].ID == "current_state" {
+			overridden.Structures[i].Description = "用户覆盖当前状态说明"
+			overridden.Structures[i].Enabled = boolPtr(true)
+			break
+		}
+	}
+	if err := writeStoryMemoryStructureFile(path, overridden); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := library.Get(DefaultStoryMemoryStructureModuleID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentState = storyMemoryStructureByID(kept.Structures, "current_state")
+	if kept.Name != "用户覆盖的默认记忆结构" || !strings.Contains(currentState.Description, "用户覆盖当前状态说明") || !storyMemoryStructureEnabled(currentState) {
+		t.Fatalf("overridden built-in memory structure should be preserved: module=%#v current_state=%#v", kept, currentState)
 	}
 }
 

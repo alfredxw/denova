@@ -41,6 +41,7 @@ interface FileTreeProps {
   selectedFile: string | null
   onSelectFile: (path: string) => void
   onReferenceFile?: (path: string) => void
+  defaultExpandedPaths?: readonly string[]
   onCreateItem?: (path: string, type: 'file' | 'dir') => Promise<void>
   onDeleteItem?: (path: string) => Promise<void>
   onRenameItem?: (path: string, newName: string) => Promise<void>
@@ -78,6 +79,7 @@ export function FileTree({
   selectedFile,
   onSelectFile,
   onReferenceFile,
+  defaultExpandedPaths = [],
   onCreateItem,
   onDeleteItem,
   onRenameItem,
@@ -105,6 +107,15 @@ export function FileTree({
   const [deleteTarget, setDeleteTarget] = useState<string | string[] | null>(null)
 
   const selectedPathList = useMemo(() => Array.from(selectedPaths), [selectedPaths])
+  const defaultExpandedPathSet = useMemo(() => new Set(defaultExpandedPaths), [defaultExpandedPaths])
+  const capabilities = useMemo(() => ({
+    canReferenceFile: Boolean(onReferenceFile),
+    canCreateItem: Boolean(onCreateItem),
+    canDeleteItem: Boolean(onDeleteItem),
+    canRenameItem: Boolean(onRenameItem),
+    canCopyItem: Boolean(onCopyItem),
+    canMoveItem: Boolean(onMoveItem),
+  }), [onCopyItem, onCreateItem, onDeleteItem, onMoveItem, onReferenceFile, onRenameItem])
 
   const clearSelection = () => setSelectedPaths(new Set())
 
@@ -228,6 +239,8 @@ export function FileTree({
         selectedPaths={selectedPaths}
         dragPaths={dragPaths}
         dragOverPath={dragOverPath}
+        defaultExpandedPaths={defaultExpandedPathSet}
+        {...capabilities}
         onSelectFile={onSelectFile}
         onSelectPath={updateSelection}
         onContextSelectPath={selectForContextMenu}
@@ -288,6 +301,13 @@ interface FileTreeListProps {
   selectedPaths: Set<string>
   dragPaths: string[]
   dragOverPath: string
+  defaultExpandedPaths: Set<string>
+  canReferenceFile: boolean
+  canCreateItem: boolean
+  canDeleteItem: boolean
+  canRenameItem: boolean
+  canCopyItem: boolean
+  canMoveItem: boolean
   onSelectFile: (path: string) => void
   onSelectPath: (path: string, event?: MouseEvent) => void
   onContextSelectPath: (path: string) => void
@@ -349,6 +369,13 @@ interface FileTreeNodeProps {
   selectedPaths: Set<string>
   dragPaths: string[]
   dragOverPath: string
+  defaultExpandedPaths: Set<string>
+  canReferenceFile: boolean
+  canCreateItem: boolean
+  canDeleteItem: boolean
+  canRenameItem: boolean
+  canCopyItem: boolean
+  canMoveItem: boolean
   onSelectFile: (path: string) => void
   onSelectPath: (path: string, event?: MouseEvent) => void
   onContextSelectPath: (path: string) => void
@@ -383,6 +410,13 @@ function FileTreeNode({
   selectedPaths,
   dragPaths,
   dragOverPath,
+  defaultExpandedPaths,
+  canReferenceFile,
+  canCreateItem,
+  canDeleteItem,
+  canRenameItem,
+  canCopyItem,
+  canMoveItem,
   onSelectFile,
   onSelectPath,
   onContextSelectPath,
@@ -401,7 +435,7 @@ function FileTreeNode({
   chapterStats,
 }: FileTreeNodeProps) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(DEFAULT_EXPANDED.has(node.name))
+  const [expanded, setExpanded] = useState(DEFAULT_EXPANDED.has(node.name) || defaultExpandedPaths.has(path))
   const isDir = node.type === 'dir'
   const isSelected = selectedFile === path
   const isMultiSelected = selectedPaths.has(path)
@@ -424,8 +458,8 @@ function FileTreeNode({
     onDragStartPaths(paths)
   }
 
-  const actions: TreeAction[] = [
-    ...(!isDir && !isBatchAction
+  const actions = compactTreeActions([
+    ...(!isDir && !isBatchAction && canReferenceFile
       ? [
           {
             label: t('sidebar.referenceToChat'),
@@ -435,46 +469,67 @@ function FileTreeNode({
           { separator: true },
         ]
       : []),
-    {
-      label: t('sidebar.createFile'),
-      icon: <FilePlus className="h-3.5 w-3.5" />,
-      onSelect: () => {
-        if (isDir) setExpanded(true)
-        onStartInlineEdit('create-file', createTargetDir, '')
-      },
-    },
-    {
-      label: t('sidebar.createDir'),
-      icon: <FolderPlus className="h-3.5 w-3.5" />,
-      onSelect: () => {
-        if (isDir) setExpanded(true)
-        onStartInlineEdit('create-dir', createTargetDir, '')
-      },
-    },
-    { separator: true },
-    {
-      label: isBatchAction ? undefined : t('sidebar.rename'),
-      icon: <Pencil className="h-3.5 w-3.5" />,
-      onSelect: () => onStartInlineEdit('rename', parentPath, node.name, path),
-    },
-    {
-      label: isBatchAction ? t('sidebar.copySelected', { count: actionPaths.length }) : t('sidebar.copy'),
-      icon: <Copy className="h-3.5 w-3.5" />,
-      onSelect: () => onOpenOperation('copy', isBatchAction ? t('common.items', { count: actionPaths.length }) : path, isBatchAction ? parentPath : defaultCopyPath, actionPaths, isBatchAction),
-    },
-    {
-      label: isBatchAction ? t('sidebar.moveSelected', { count: actionPaths.length }) : t('sidebar.move'),
-      icon: <MoveRight className="h-3.5 w-3.5" />,
-      onSelect: () => onOpenOperation('move', isBatchAction ? t('common.items', { count: actionPaths.length }) : path, isBatchAction ? parentPath : path, actionPaths, isBatchAction),
-    },
-    { separator: true },
-    {
-      label: isBatchAction ? t('sidebar.deleteSelected', { count: actionPaths.length }) : t('sidebar.delete'),
-      icon: <Trash2 className="h-3.5 w-3.5" />,
-      danger: true,
-      onSelect: () => onDeleteTarget(isBatchAction ? actionPaths : path),
-    },
-  ].filter(action => action.separator || action.label) as TreeAction[]
+    ...(canCreateItem
+      ? [
+          {
+            label: t('sidebar.createFile'),
+            icon: <FilePlus className="h-3.5 w-3.5" />,
+            onSelect: () => {
+              if (isDir) setExpanded(true)
+              onStartInlineEdit('create-file', createTargetDir, '')
+            },
+          },
+          {
+            label: t('sidebar.createDir'),
+            icon: <FolderPlus className="h-3.5 w-3.5" />,
+            onSelect: () => {
+              if (isDir) setExpanded(true)
+              onStartInlineEdit('create-dir', createTargetDir, '')
+            },
+          },
+          { separator: true },
+        ]
+      : []),
+    ...(canRenameItem && !isBatchAction
+      ? [
+          {
+            label: t('sidebar.rename'),
+            icon: <Pencil className="h-3.5 w-3.5" />,
+            onSelect: () => onStartInlineEdit('rename', parentPath, node.name, path),
+          },
+        ]
+      : []),
+    ...(canCopyItem
+      ? [
+          {
+            label: isBatchAction ? t('sidebar.copySelected', { count: actionPaths.length }) : t('sidebar.copy'),
+            icon: <Copy className="h-3.5 w-3.5" />,
+            onSelect: () => onOpenOperation('copy', isBatchAction ? t('common.items', { count: actionPaths.length }) : path, isBatchAction ? parentPath : defaultCopyPath, actionPaths, isBatchAction),
+          },
+        ]
+      : []),
+    ...(canMoveItem
+      ? [
+          {
+            label: isBatchAction ? t('sidebar.moveSelected', { count: actionPaths.length }) : t('sidebar.move'),
+            icon: <MoveRight className="h-3.5 w-3.5" />,
+            onSelect: () => onOpenOperation('move', isBatchAction ? t('common.items', { count: actionPaths.length }) : path, isBatchAction ? parentPath : path, actionPaths, isBatchAction),
+          },
+        ]
+      : []),
+    ...(canDeleteItem
+      ? [
+          { separator: true },
+          {
+            label: isBatchAction ? t('sidebar.deleteSelected', { count: actionPaths.length }) : t('sidebar.delete'),
+            icon: <Trash2 className="h-3.5 w-3.5" />,
+            danger: true,
+            onSelect: () => onDeleteTarget(isBatchAction ? actionPaths : path),
+          },
+        ]
+      : []),
+  ])
+  const canDrag = !isRenaming && (canCopyItem || canMoveItem)
 
   if (isDir) {
     return (
@@ -489,7 +544,7 @@ function FileTreeNode({
                     ? 'bg-[var(--nova-drop-bg)] text-[var(--nova-text)]'
                     : 'text-[var(--nova-tree-text)] hover:bg-[var(--nova-hover)]'
               }`}
-              draggable={!isRenaming}
+              draggable={canDrag}
               onContextMenu={() => onContextSelectPath(path)}
               onDragStart={startDrag}
               onDragEnd={onDragEnd}
@@ -537,12 +592,14 @@ function FileTreeNode({
                   <span className="truncate">{node.name}</span>
                 )}
               </button>
-              {!isRenaming && <NodeDropdown actions={actions} />}
+              {!isRenaming && actions.length > 0 && <NodeDropdown actions={actions} />}
             </div>
           </ContextMenuTrigger>
-          <ContextMenuContent className={MENU_CONTENT_CLASS}>
-            {renderActionMenu(actions, 'context')}
-          </ContextMenuContent>
+          {actions.length > 0 && (
+            <ContextMenuContent className={MENU_CONTENT_CLASS}>
+              {renderActionMenu(actions, 'context')}
+            </ContextMenuContent>
+          )}
         </ContextMenu>
         {expanded && (
           <div className="ml-3">
@@ -553,6 +610,13 @@ function FileTreeNode({
               selectedPaths={selectedPaths}
               dragPaths={dragPaths}
               dragOverPath={dragOverPath}
+              defaultExpandedPaths={defaultExpandedPaths}
+              canReferenceFile={canReferenceFile}
+              canCreateItem={canCreateItem}
+              canDeleteItem={canDeleteItem}
+              canRenameItem={canRenameItem}
+              canCopyItem={canCopyItem}
+              canMoveItem={canMoveItem}
               onSelectFile={onSelectFile}
               onSelectPath={onSelectPath}
               onContextSelectPath={onContextSelectPath}
@@ -586,7 +650,7 @@ function FileTreeNode({
                 ? 'bg-[var(--nova-selection-bg)] text-[var(--nova-text)]'
                 : 'text-[var(--nova-tree-text)] hover:bg-[var(--nova-hover)]'
             }`}
-            draggable={!isRenaming}
+            draggable={canDrag}
             onContextMenu={() => onContextSelectPath(path)}
             onDragStart={startDrag}
             onDragEnd={onDragEnd}
@@ -625,12 +689,14 @@ function FileTreeNode({
                 </span>
               )}
             </button>
-            {!isRenaming && <NodeDropdown actions={actions} />}
+            {!isRenaming && actions.length > 0 && <NodeDropdown actions={actions} />}
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className={MENU_CONTENT_CLASS}>
-          {renderActionMenu(actions, 'context')}
-        </ContextMenuContent>
+        {actions.length > 0 && (
+          <ContextMenuContent className={MENU_CONTENT_CLASS}>
+            {renderActionMenu(actions, 'context')}
+          </ContextMenuContent>
+        )}
       </ContextMenu>
     </li>
   )
@@ -663,6 +729,21 @@ function NodeDropdown({ actions }: { actions: TreeAction[] }) {
       </DropdownMenuContent>
     </DropdownMenu>
   )
+}
+
+function compactTreeActions(actions: TreeAction[]) {
+  const compacted: TreeAction[] = []
+  for (const action of actions) {
+    if (action.separator) {
+      if (compacted.length > 0 && !compacted[compacted.length - 1].separator) {
+        compacted.push(action)
+      }
+      continue
+    }
+    if (action.label) compacted.push(action)
+  }
+  if (compacted[compacted.length - 1]?.separator) compacted.pop()
+  return compacted
 }
 
 function renderActionMenu(actions: TreeAction[], type: 'context' | 'dropdown') {

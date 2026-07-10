@@ -16,9 +16,11 @@ import { type LoreItem, workspaceAssetURL } from '@/lib/api'
 import { INTERACTIVE_OPENING_PRESET_ENTRY_ID, newBookOpeningPreset, type BookOpeningPreset } from '../opening'
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, ImagePresetSlot, OpeningSelectorModule, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller, TellerEventPackage } from '../types'
-import { PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
+import { PRESET_CONFIG_HEADER_ACTIONS_TARGET_ID, PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
 import { normalizeTRPGSystem } from './preset-config/ruleTemplates'
-import { ActorStateVisualEditor, EventPackageVisualEditor, MemoryStructureVisualEditor, OpeningSelectorVisualEditor, TRPGSystemVisualEditor } from './preset-config/visual-editors'
+import { EventPackageVisualEditor, MemoryStructureVisualEditor, OpeningSelectorVisualEditor } from './preset-config/visual-editors'
+import { TRPGSystemVisualEditor } from './preset-config/TRPGSystemVisualEditor'
+import { ActorStateExplorer, type ExplorerProps } from './preset-config/actor-state-explorer'
 import { BooleanSwitchField } from './setting-panel/BooleanSwitchField'
 
 const CREATOR_PATH = 'CREATOR.md'
@@ -343,10 +345,13 @@ export function TellerDirectory({
   }
   useEffect(() => {
     setCollapsedSections((current) => {
-      if (current[resourceKind] === false) return current
-      return { ...current, [resourceKind]: false }
+      const next = { ...current }
+      for (const kind of PRESET_DIRECTORY_ORDER) {
+        if (presetResourceVisibleInMode(kind, usageMode)) next[kind] = kind !== resourceKind
+      }
+      return next
     })
-  }, [resourceKind])
+  }, [resourceKind, usageMode])
 
   useEffect(() => {
     if (isConfigAgentActive || presetResourceVisibleInMode(resourceKind, usageMode)) return
@@ -405,8 +410,8 @@ export function TellerDirectory({
           </button>
         </div>
       </div>
-      <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-2 p-2">
+      <ScrollArea className="preset-directory-scroll h-0 min-h-0 flex-1 overflow-hidden overscroll-y-contain" data-testid="preset-directory-scroll">
+        <div className="w-full min-w-0 space-y-2 p-2 pb-4">
           {isVisible('director') ? (
             <PresetDirectorySection
               kind="director"
@@ -528,7 +533,10 @@ export function TellerDirectory({
                   active={!isConfigAgentActive && resourceKind === 'rule' && activeRuleSystemId === item.id}
                   Icon={Dice5}
                   title={item.name}
-                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.ruleSystem.summaryCount', { rules: item.trpg_system?.rule_templates?.length || 0 })}`}
+                  summary={t('settingPanel.trpgRule.directorySummary', {
+                    policy: t(`settingPanel.trpgRule.failurePolicy.${item.trpg_system?.rule_templates?.[0]?.failure_policy || 'fail_forward'}`),
+                    state: actorStates.find((state) => state.id === item.actor_state_id)?.name || t('settingPanel.trpgRule.noActorStateBinding'),
+                  })}
                   onSelect={() => onSelectRuleSystem(item.id)}
                 />
               ))}
@@ -553,7 +561,10 @@ export function TellerDirectory({
                   active={!isConfigAgentActive && resourceKind === 'actor-state' && activeActorStateId === item.id}
                   Icon={Database}
                   title={item.name}
-                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.actorState.summaryCount', { templates: item.actor_state?.templates?.length || 0, actors: item.actor_state?.initial_actors?.length || 0 })}`}
+                  summary={t('settingPanel.actorState.directorySummary', {
+                    templates: item.actor_state?.templates?.length || 0,
+                    checks: ruleSystems.filter((rule) => rule.actor_state_id === item.id).length,
+                  })}
                   onSelect={() => onSelectActorState(item.id)}
                 />
               ))}
@@ -682,7 +693,7 @@ function PresetDirectoryItem({
 }
 
 function defaultPresetSectionCollapsed(kind: PresetResourceKind, resourceKind: PresetResourceKind) {
-  return kind !== resourceKind && kind !== 'director' && kind !== 'teller'
+  return kind !== resourceKind
 }
 
 function presetStatusLabel(item: { custom?: boolean; builtin_overridden?: boolean }, t: (key: string) => string) {
@@ -737,6 +748,7 @@ export function RuleSystemEditor({
   tagDraft,
   setDraft,
   setTagDraft,
+  onOpenActorState,
   onSave,
   onValidityChange,
 }: {
@@ -745,6 +757,7 @@ export function RuleSystemEditor({
   tagDraft: string
   setDraft: (draft: RuleSystemModule | null) => void
   setTagDraft: (value: string) => void
+  onOpenActorState?: (id: string) => void
   onSave: () => void
   onValidityChange?: (valid: boolean) => void
 }) {
@@ -756,23 +769,7 @@ export function RuleSystemEditor({
   }
 
   return (
-    <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
-      <section className="rounded-[var(--nova-radius)] bg-[var(--nova-surface)] p-4">
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-          <Field label={t('settingPanel.trpgRule.actorStateBinding')}>
-            <Select value={draft.actor_state_id || '__none__'} onValueChange={(value) => setDraft({ ...draft, actor_state_id: value === '__none__' ? '' : value })}>
-              <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
-              <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                <SelectItem value="__none__">{t('settingPanel.trpgRule.noActorStateBinding')}</SelectItem>
-                {actorStates.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || item.id}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </Field>
-          <div className="self-end rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-            {t('settingPanel.trpgRule.actorStateBindingDesc')}
-          </div>
-        </div>
-      </section>
+    <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft} metadata="compact">
       <PresetConfigSectionEditor
         sectionId="rule-system.trpg-system"
         resetKey={`${draft.id}:trpg_system`}
@@ -784,7 +781,15 @@ export function RuleSystemEditor({
         onSave={onSave}
         onValidityChange={(valid) => setSectionValid('trpg_system', valid)}
       >
-        {(props) => <TRPGSystemVisualEditor {...props} actorState={actorStates.find((item) => item.id === draft.actor_state_id)?.actor_state} />}
+        {(props) => (
+          <TRPGSystemVisualEditor
+            {...props}
+            actorStateId={draft.actor_state_id}
+            actorStates={actorStates}
+            onActorStateChange={(actor_state_id) => setDraft({ ...draft, actor_state_id })}
+            onOpenActorState={onOpenActorState}
+          />
+        )}
       </PresetConfigSectionEditor>
     </ModuleEditorShell>
   )
@@ -792,16 +797,20 @@ export function RuleSystemEditor({
 
 export function ActorStateEditor({
   draft,
+  ruleSystems = [],
   tagDraft,
   setDraft,
   setTagDraft,
+  onOpenRuleSystem,
   onSave,
   onValidityChange,
 }: {
   draft: ActorStateModule | null
+  ruleSystems?: RuleSystemModule[]
   tagDraft: string
   setDraft: (draft: ActorStateModule | null) => void
   setTagDraft: (value: string) => void
+  onOpenRuleSystem?: (id: string) => void
   onSave: () => void
   onValidityChange?: (valid: boolean) => void
 }) {
@@ -812,34 +821,89 @@ export function ActorStateEditor({
     return <EmptyState title={t('settingPanel.editor.noActorStateSelected')} description={t('settingPanel.editor.noActorStateSelectedDesc')} />
   }
 
+  // Combine actor_state and opening_selector into a single explorer value
+  const explorerValue: ExplorerProps['value'] = {
+    templates: draft.actor_state?.templates || [],
+    initial_actors: draft.actor_state?.initial_actors || [],
+    trait_pools: draft.opening_selector?.trait_pools || [],
+    initial_state_ops: draft.opening_selector?.initial_state_ops || [],
+    opening_enabled: draft.opening_selector?.enabled ?? true,
+  }
+
+  const handleExplorerChange = (value: ExplorerProps['value']) => {
+    setDraft({
+      ...draft,
+      actor_state: {
+        templates: value.templates || [],
+        initial_actors: value.initial_actors || [],
+      },
+      opening_selector: {
+        enabled: value.opening_enabled ?? true,
+        trait_pools: value.trait_pools || [],
+        initial_state_ops: value.initial_state_ops || [],
+      },
+    })
+  }
+  const linkedRuleSystems = ruleSystems.filter((rule) => rule.actor_state_id === draft.id)
+
   return (
-    <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
-      <PresetConfigSectionEditor
-        sectionId="actor-state.actor-state"
-        resetKey={`${draft.id}:actor_state`}
-        title={t('settingPanel.actorState.title')}
-        description={t('settingPanel.actorState.description')}
-        value={draft.actor_state || { templates: [], initial_actors: [] }}
-        summary={t('settingPanel.actorState.summaryCount', { templates: draft.actor_state?.templates?.length || 0, actors: draft.actor_state?.initial_actors?.length || 0 })}
-        onChange={(actor_state) => setDraft({ ...draft, actor_state })}
-        onSave={onSave}
-        onValidityChange={(valid) => setSectionValid('actor_state', valid)}
-      >
-        {(props) => <ActorStateVisualEditor {...props} />}
-      </PresetConfigSectionEditor>
-      <PresetConfigSectionEditor
-        sectionId="actor-state.opening-selector"
-        resetKey={`${draft.id}:opening_selector`}
-        title={t('settingPanel.actorState.openingTitle')}
-        description={t('settingPanel.actorState.openingDescription')}
-        value={draft.opening_selector || { enabled: true, trait_pools: [], initial_state_ops: [] }}
-        summary={t('settingPanel.storyDirector.openingSelectorSummary', { pools: draft.opening_selector?.trait_pools?.length || 0, ops: draft.opening_selector?.initial_state_ops?.length || 0 })}
-        onChange={(opening_selector) => setDraft({ ...draft, opening_selector })}
-        onSave={onSave}
-        onValidityChange={(valid) => setSectionValid('opening_selector', valid)}
-      >
-        {(props) => <OpeningSelectorVisualEditor {...props} />}
-      </PresetConfigSectionEditor>
+    <ModuleEditorShell
+      draft={draft}
+      tagDraft={tagDraft}
+      setDraft={setDraft}
+      setTagDraft={setTagDraft}
+      metadata="none"
+      contentClassName="flex min-h-0 flex-1 p-0"
+    >
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex min-h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1.5">
+          <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">
+            {linkedRuleSystems.length
+              ? t('settingPanel.actorState.usedByChecks', { count: linkedRuleSystems.length })
+              : t('settingPanel.actorState.notUsedByChecks')}
+          </span>
+          {linkedRuleSystems.map((rule) => (
+            <Button
+              key={rule.id}
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 shrink-0 rounded-full px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+              onClick={() => onOpenRuleSystem?.(rule.id)}
+              aria-label={t('settingPanel.actorState.openCheck', { name: rule.name || rule.id })}
+            >
+              <Dice5 data-icon="inline-start" />
+              {rule.name || rule.id}
+            </Button>
+          ))}
+        </div>
+        <PresetConfigSectionEditor
+          sectionId="actor-state.unified"
+          resetKey={`${draft.id}:unified`}
+          title={t('settingPanel.actorState.title')}
+          description={t('settingPanel.actorState.description')}
+          value={explorerValue}
+          summary={t('settingPanel.actorState.summaryCount', {
+            templates: explorerValue.templates?.length || 0,
+            actors: explorerValue.initial_actors?.length || 0,
+          })}
+          onChange={handleExplorerChange}
+          onSave={onSave}
+          onValidityChange={(valid) => setSectionValid('actor_state', valid)}
+          layout="flush"
+          hideHeaderText
+          headerActionsTargetId={PRESET_CONFIG_HEADER_ACTIONS_TARGET_ID}
+        >
+          {(props) => (
+            <ActorStateExplorer
+              value={props.value}
+              onChange={props.onChange}
+              onValidityChange={props.onValidityChange}
+              layout="attached"
+            />
+          )}
+        </PresetConfigSectionEditor>
+      </div>
     </ModuleEditorShell>
   )
 }
@@ -866,7 +930,14 @@ export function StoryMemoryStructureEditor({
   }
 
   return (
-    <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
+    <ModuleEditorShell
+      draft={draft}
+      tagDraft={tagDraft}
+      setDraft={setDraft}
+      setTagDraft={setTagDraft}
+      metadata="none"
+      contentClassName="grid min-h-0 flex-1 gap-5 overflow-y-auto p-4 lg:p-5"
+    >
       <PresetConfigSectionEditor
         sectionId="story-memory-structure.structures"
         resetKey={`${draft.id}:structures`}
@@ -929,21 +1000,49 @@ function ModuleEditorShell<T extends { name: string; description: string; custom
   tagDraft,
   setDraft,
   setTagDraft,
+  metadata = 'full',
+  contentClassName = 'grid gap-5 p-4 lg:p-5',
   children,
 }: {
   draft: T
   tagDraft: string
   setDraft: (draft: T | null) => void
   setTagDraft: (value: string) => void
+  metadata?: 'full' | 'compact' | 'none'
+  contentClassName?: string
   children: ReactNode
 }) {
   const { t } = useTranslation()
   const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden bg-[var(--nova-bg)]">
-      <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-4">
-        <div className="rounded-[26px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-          <div className="grid gap-3 rounded-[21px] bg-[var(--nova-surface)] p-4 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] lg:grid-cols-[minmax(220px,1fr)_minmax(260px,1.4fr)_190px_auto]">
+    <div className={`flex min-h-0 flex-1 flex-col overflow-x-hidden bg-[var(--nova-bg)] ${metadata === 'none' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+      {metadata === 'full' ? (
+        <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-4">
+          <div className="rounded-[26px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+            <div className="grid gap-3 rounded-[21px] bg-[var(--nova-surface)] p-4 shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)] 2xl:grid-cols-[minmax(220px,1fr)_minmax(260px,1.4fr)_190px_auto]">
+              <Field label={t('settingPanel.field.name')}>
+                <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+              </Field>
+              <Field label={t('settingPanel.field.description')}>
+                <Input className={inputClassName} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} placeholder={t('settingPanel.placeholder.description')} />
+              </Field>
+              <Field label={t('settingPanel.field.tags')}>
+                <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
+              </Field>
+              <div className="flex min-w-0 items-end lg:justify-end">
+                <Badge variant="outline" className="h-8 max-w-full rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-[11px] font-normal text-[var(--nova-text-faint)]">
+                  <span className="truncate">{presetStatusLabel(draft, t)}</span>
+                </Badge>
+              </div>
+              <div className="rounded-[16px] border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)] 2xl:col-span-full">
+                {editHint}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : metadata === 'compact' ? (
+        <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
             <Field label={t('settingPanel.field.name')}>
               <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
             </Field>
@@ -953,18 +1052,16 @@ function ModuleEditorShell<T extends { name: string; description: string; custom
             <Field label={t('settingPanel.field.tags')}>
               <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
             </Field>
-            <div className="flex min-w-0 items-end lg:justify-end">
-              <Badge variant="outline" className="h-8 max-w-full rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-[11px] font-normal text-[var(--nova-text-faint)]">
-                <span className="truncate">{presetStatusLabel(draft, t)}</span>
+            <div className="flex min-w-0 items-end gap-2">
+              <Badge variant="outline" className="h-8 shrink-0 rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-[11px] font-normal text-[var(--nova-text-faint)]">
+                {presetStatusLabel(draft, t)}
               </Badge>
-            </div>
-            <div className="rounded-[16px] border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)] lg:col-span-full">
-              {editHint}
+              <span className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]" title={editHint}>{editHint}</span>
             </div>
           </div>
         </div>
-      </div>
-      <div className="grid gap-5 p-4 lg:p-5">
+      ) : null}
+      <div className={contentClassName}>
         {children}
       </div>
     </div>
@@ -1099,8 +1196,8 @@ export function ImagePresetEditor({
   const contentValue = activeSlot?.content || ''
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
-      <div className="grid shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_180px_120px]">
+    <div data-testid="image-preset-editor" className="image-preset-editor flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
+      <div className="image-preset-metadata-grid grid min-w-0 shrink-0 gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3">
         <Field label={t('settingPanel.field.name')}>
           <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
         </Field>
@@ -1114,8 +1211,8 @@ export function ImagePresetEditor({
           <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-xs text-[var(--nova-text-faint)]">{presetStatusLabel(draft, t)}</span>
         </div>
       </div>
-      <div className="grid min-h-[520px] flex-1 grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="flex max-h-60 min-h-0 flex-col overflow-hidden border-b border-[var(--nova-border)] bg-[var(--nova-surface)] lg:max-h-none lg:border-b-0 lg:border-r">
+      <div className="image-preset-layout grid min-h-[520px] min-w-0 flex-1">
+        <aside className="image-preset-rules flex max-h-60 min-h-0 min-w-0 flex-col overflow-hidden border-b border-[var(--nova-border)] bg-[var(--nova-surface)]">
           <div className="flex h-11 items-center justify-between border-b border-[var(--nova-border)] px-3">
             <div className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.imagePreset.rulesTitle')}</div>
             <Button className={iconActionClassName} variant="outline" size="icon" onClick={addSlot} aria-label={t('settingPanel.injectRules.new')}>
@@ -1150,9 +1247,9 @@ export function ImagePresetEditor({
         </aside>
 
         {activeSlot ? (
-          <section className="flex min-h-0 flex-col">
+          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
             <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4">
-              <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(240px,320px)_32px]">
+              <div className="image-preset-rule-grid grid min-w-0 gap-3">
                 <Field label={t('settingPanel.field.ruleName')}>
                   <Input className={inputClassName} value={activeSlot.name} onChange={(event) => updateSlotById(activeSlot.id, { name: event.target.value })} />
                 </Field>
@@ -1175,7 +1272,7 @@ export function ImagePresetEditor({
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-                <div className="lg:col-span-3">
+                <div className="image-preset-rule-summary">
                   <div className="min-w-0 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2.5">
                     <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
                       <span>{imagePresetTargetLabel(selectedTarget, t)}</span>
@@ -1187,7 +1284,7 @@ export function ImagePresetEditor({
                 </div>
               </div>
             </div>
-            <div className="min-h-[420px] flex-1 p-4 lg:min-h-0">
+            <div className="min-h-[420px] flex-1 p-4">
               <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
                 <span className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.imagePreset.ruleContent')}</span>
                 <span className="shrink-0 font-mono text-[10px] text-[var(--nova-text-faint)]">{contentValue.length}/{IMAGE_PRESET_PROMPT_LIMIT}</span>

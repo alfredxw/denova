@@ -116,15 +116,15 @@ func TestStoryMemoryStructuresRecordsAndBranchCopyOnWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if enabled := enabledStoryMemoryStructureCount(state.Structures); enabled != 10 || state.Settings.AutoIntervalTurns != defaultStoryMemoryInterval || !state.Settings.Enabled {
+	if enabled := enabledStoryMemoryStructureCount(state.Structures); enabled != 7 || state.Settings.AutoIntervalTurns != defaultStoryMemoryInterval || !state.Settings.Enabled {
 		t.Fatalf("default story memory state mismatch: %#v", state)
 	}
 	currentState := storyMemoryStructureByID(state.Structures, "current_state")
-	if currentState.Description != "记录当前剧情线的全局时间、地点和场景状态。此表有且仅有一行。" {
+	if !strings.Contains(currentState.Description, "旧版派生摘要") {
 		t.Fatalf("current_state preset description mismatch: %#v", currentState)
 	}
-	if !currentState.ReadOnly || !currentState.Derived {
-		t.Fatalf("current_state should be read-only derived narrative state: %#v", currentState)
+	if !currentState.ReadOnly || !currentState.Derived || storyMemoryStructureEnabled(currentState) {
+		t.Fatalf("current_state should be disabled read-only derived narrative state: %#v", currentState)
 	}
 	for _, want := range []string{"story_start_date", "location", "time", "current_day", "event"} {
 		if !storyMemoryStructureHasField(currentState, want) {
@@ -137,14 +137,12 @@ func TestStoryMemoryStructuresRecordsAndBranchCopyOnWrite(t *testing.T) {
 			t.Fatalf("protagonist preset missing field %q: %#v", want, protagonist.Fields)
 		}
 	}
-	for _, disabledID := range []string{"romance_profile", "romance_diary", "mature_relationship_profile"} {
+	for _, disabledID := range []string{"current_state", "rule_state_summary", "relationship_state", "romance_profile", "romance_diary", "mature_relationship_profile"} {
 		if structure := storyMemoryStructureByID(state.Structures, disabledID); storyMemoryStructureEnabled(structure) {
 			t.Fatalf("optional built-in structure should be disabled by default: %#v", structure)
 		}
 	}
 	defaultNarrativeStructures := map[string][]string{
-		"rule_state_summary":     {"resources", "conditions", "last_rule_checks"},
-		"relationship_state":     {"name", "relationship_type", "misunderstanding", "next_hook"},
 		"foreshadowing_resolved": {"title", "status", "payoff_condition", "payoff_result"},
 		"long_term_arc_progress": {"arc_name", "arc_type", "current_phase", "terminal_risk"},
 	}
@@ -152,9 +150,6 @@ func TestStoryMemoryStructuresRecordsAndBranchCopyOnWrite(t *testing.T) {
 		structure := storyMemoryStructureByID(state.Structures, structureID)
 		if !storyMemoryStructureEnabled(structure) {
 			t.Fatalf("default narrative structure should be enabled: %#v", structure)
-		}
-		if structureID == "rule_state_summary" && (!structure.ReadOnly || !structure.Derived) {
-			t.Fatalf("rule_state_summary should be read-only derived narrative state: %#v", structure)
 		}
 		for _, fieldID := range fields {
 			if !storyMemoryStructureHasField(structure, fieldID) {
@@ -290,10 +285,10 @@ func TestDerivedStoryMemoryStateTablesRejectManualEdits(t *testing.T) {
 		},
 	}})
 	if err != nil {
-		t.Fatalf("agent patch should still update derived narrative summary: %v", err)
+		t.Fatalf("disabled derived summary patch should be ignored without failing: %v", err)
 	}
-	if len(records) != 1 || records[0].StructureID != "rule_state_summary" || records[0].Source != "agent" {
-		t.Fatalf("derived narrative summary patch mismatch: %#v", records)
+	if len(records) != 0 {
+		t.Fatalf("disabled derived narrative summary patch should be ignored: %#v", records)
 	}
 }
 
@@ -411,11 +406,8 @@ func TestStoryMemorySchemaContextIncludesStructuresWithoutRecords(t *testing.T) 
 	}
 	for _, want := range []string{
 		"structure_id",
-		"## current_state",
 		"## important_character",
 		"## open_threads",
-		"## rule_state_summary",
-		"## relationship_state",
 		"## foreshadowing_resolved",
 		"## long_term_arc_progress",
 		"## relationship_clock",
@@ -429,6 +421,11 @@ func TestStoryMemorySchemaContextIncludesStructuresWithoutRecords(t *testing.T) 
 	} {
 		if !strings.Contains(context, want) {
 			t.Fatalf("schema context missing %q:\n%s", want, context)
+		}
+	}
+	for _, disabled := range []string{"## current_state", "## rule_state_summary", "## relationship_state"} {
+		if strings.Contains(context, disabled) {
+			t.Fatalf("disabled state-like structure should stay out of schema context %q:\n%s", disabled, context)
 		}
 	}
 }
