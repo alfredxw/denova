@@ -1,0 +1,191 @@
+CHANGELOG.md
+  s_ce6b8d7fd184a1::t_015e32af2e5d86 11-18,114-117,213-216
+internal/agent/config_manager_tools.go
+  s_2a7746e39f8b4c::t_7020325208412e 55,77,88,633,670,708,731,825,848,1026
+internal/agent/interactive_memory_tools.go
+  s_5d247eeeaa8b76::t_b448028c48d2a1 227
+internal/agent/prompt.go
+  s_5d247eeeaa8b76::t_a73d2f0f1d0061 718,721
+internal/app/interactive_agent_test.go
+  s_5d247eeeaa8b76::t_a0f9047ff98524 155
+internal/interactive/actor_state.go
+  s_2a7746e39f8b4c::t_5bec54bf015f97 231,235
+internal/interactive/actor_state_presets.go
+  s_2a7746e39f8b4c::t_811f11d07f39ed 11-12,162-163,170-200,223-237
+internal/interactive/actor_state_test.go
+  s_5d247eeeaa8b76::t_21d62d41144733 84-142
+internal/interactive/director_modules_test.go
+  s_5d247eeeaa8b76::t_0b99748935cc39 105-111,121,124,408-457
+internal/interactive/memory_schema.go
+  s_5d247eeeaa8b76::t_e5c20a67776af9 143,152,157-159,165,171-172,181,201,209,212-213,241,246,260
+internal/interactive/memory_structure_modules.go
+  s_5d247eeeaa8b76::t_8d137febb2d57b 167
+internal/interactive/memory_test.go
+  s_5d247eeeaa8b76::t_1e60c41c1e6ca3 119,123,126-127,140,288,290-291,426-430
+internal/prompts/interactive.go
+  s_5d247eeeaa8b76::t_d5ed8565a27a59 245,265,267-268
+skills/orchestrate-projects/SKILL.md
+  s_23347edc1976da::t_67f6871d0664fb 1-32
+skills/story-director-config/SKILL.md
+  s_5d247eeeaa8b76::t_d9c98fe362efae 31,34-36
+skills/story-memory-config/SKILL.md
+  s_5d247eeeaa8b76::t_6a698de186b889 17,49,76-77
+web/src/components/Chat/MessageItem.tsx
+  s_e8a4de4869fd7c::t_4955ab1d4ff969 6,1590,1594,1598
+web/src/components/Sidebar/FileTree.tsx
+  s_0b13e0faec3dd1::t_04c2b2826fbcfe 44,82,110-118,242-243,304-310,372-378,413-419,438,461-462,472-532,547,595,598-602,613-619,653,692,695-699,734-748
+web/src/components/common/MarkdownRenderer.tsx
+  s_e8a4de4869fd7c::t_4af4adba9dfb6c 1-31
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_ce6b8d7fd184a1::t_7b9f22173411eb 342,348,357,420-421,642-672,696-706
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_ce6b8d7fd184a1::t_42380cb458472a 19,21-23,348-352,354,413-414,536-539,564-567,696,751,760,772,784-792,800,804,809,813,824-848,850-906,933-940,1003-1004,1011-1012,1018-1045,1055-1057,1059,1063-1064,1199-1200,1214-1215,1250,1252,1275,1287
+web/src/features/interactive/components/SettingPanelTellerEditor.test.tsx
+  s_ce6b8d7fd184a1::t_05b691bb3d4a4c 59-64,314-315,347-351
+web/src/features/interactive/components/SettingPanelTellerEditor.tsx
+  s_ce6b8d7fd184a1::t_4aac3daf564937 118-119,158-159,189,191,236,248
+web/src/features/interactive/components/director-console/PlanView.tsx
+  s_e8a4de4869fd7c::t_d68bc58415728b 4,180,185
+web/src/features/interactive/components/preset-config/PresetConfigSectionEditor.tsx
+  s_ce6b8d7fd184a1::t_e5365fa8e222c8 2,12-13,24-26,38-40,55,61,83-91,134-175,178-203,205,207,210,214-220
+web/src/features/interactive/components/preset-config/TRPGSystemVisualEditor.test.tsx
+  s_ce6b8d7fd184a1::t_108585e54a7a10 1-41
+web/src/features/interactive/components/preset-config/TRPGSystemVisualEditor.tsx
+  s_ce6b8d7fd184a1::t_90f0372754fdbf 1-393
+web/src/features/interactive/components/preset-config/actor-state-explorer/ActorStateExplorer.test.tsx
+  s_ce6b8d7fd184a1::t_0f64b395a8355a 1-42
+web/src/features/interactive/components/preset-config/actor-state-explorer/ActorStateExplorer.tsx
+  s_ce6b8d7fd184a1::t_9081c806d1b4b6 1-282
+web/src/features/interactive/components/preset-config/actor-state-explorer/build-tree.ts
+  s_ce6b8d7fd184a1::t_4823fda7f9fe8d 1-214
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/ActorDetailEditor.tsx
+  s_ce6b8d7fd184a1::t_2d18d3a4cb1bbc 1-150
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/DetailLayout.tsx
+  s_0b13e0faec3dd1::t_6fe5ac196a6f02 1-49
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/FieldDetailEditor.tsx
+  s_ce6b8d7fd184a1::t_2c4cdf6aec51c9 1-259
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/OpeningOpsEditor.tsx
+  s_ce6b8d7fd184a1::t_777b167c57b746 1-54
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/PoolDetailEditor.tsx
+  s_ce6b8d7fd184a1::t_c01bca2bae4bd8 1-199
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/StateDetailArea.tsx
+  s_ce6b8d7fd184a1::t_c9be2962f28020 1-249
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/TemplateDetailEditor.tsx
+  s_ce6b8d7fd184a1::t_494ce0c6c0aff4 1-316
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/TraitDetailEditor.tsx
+  s_ce6b8d7fd184a1::t_0bec96fcdd4a51 1-130
+web/src/features/interactive/components/preset-config/actor-state-explorer/index.ts
+  s_2a7746e39f8b4c::t_5c6e183f290b21 1-2
+web/src/features/interactive/components/preset-config/actor-state-explorer/path-suggestions.ts
+  s_2a7746e39f8b4c::t_7f80040735dcb7 1-110
+web/src/features/interactive/components/preset-config/actor-state-explorer/shared/Breadcrumb.tsx
+  s_ce6b8d7fd184a1::t_82ffd3352eb81b 1-59
+web/src/features/interactive/components/preset-config/actor-state-explorer/shared/FieldTypeBadge.tsx
+  s_ce6b8d7fd184a1::t_0c6dd8b26da7e0 1-27
+web/src/features/interactive/components/preset-config/actor-state-explorer/shared/InlineItemRow.tsx
+  s_ce6b8d7fd184a1::t_7f541d5e3f5e46 1-103
+web/src/features/interactive/components/preset-config/actor-state-explorer/shared/KeyValEditor.tsx
+  s_ce6b8d7fd184a1::t_9e29d3efb8f686 1-190
+web/src/features/interactive/components/preset-config/actor-state-explorer/shared/StateOpBuilder.tsx
+  s_ce6b8d7fd184a1::t_119d3313f82e4b 1-210
+web/src/features/interactive/components/preset-config/actor-state-explorer/shared/StateOpCard.tsx
+  s_ce6b8d7fd184a1::t_8193572b8fa88e 1-267
+web/src/features/interactive/components/preset-config/actor-state-explorer/shared/StateValueEditor.tsx
+  s_ce6b8d7fd184a1::t_97ad4cbd34a49d 1-290
+web/src/features/interactive/components/preset-config/actor-state-explorer/shared/TemplateStateEditor.tsx
+  s_ce6b8d7fd184a1::t_cfc6216c765484 1-192
+web/src/features/interactive/components/preset-config/actor-state-explorer/shared/VisibilityBadge.tsx
+  s_ce6b8d7fd184a1::t_6cd538ed75ac54 1-29
+web/src/features/interactive/components/preset-config/actor-state-explorer/tree/StateTreeGroupHeader.tsx
+  s_ce6b8d7fd184a1::t_8a54c9c6f18f7c 1-107
+web/src/features/interactive/components/preset-config/actor-state-explorer/tree/StateTreeNavigator.tsx
+  s_ce6b8d7fd184a1::t_b7d0ae572246b9 1-78
+web/src/features/interactive/components/preset-config/actor-state-explorer/tree/StateTreeNode.tsx
+  s_ce6b8d7fd184a1::t_c405b6835d15d2 1-287
+web/src/features/interactive/components/preset-config/actor-state-explorer/types.ts
+  s_2a7746e39f8b4c::t_720f0e157c71ef 1-49
+web/src/features/interactive/components/preset-config/actor-state-explorer/use-explorer-selection.ts
+  s_ce6b8d7fd184a1::t_191179e9cbce8b 1-55
+web/src/features/interactive/components/preset-config/actor-state-explorer/validation.test.ts
+  s_0b13e0faec3dd1::t_dd13fbaeaa3075 1-39
+web/src/features/interactive/components/preset-config/actor-state-explorer/validation.ts
+  s_0b13e0faec3dd1::t_1c770e87c1b557 1-35
+web/src/features/interactive/components/preset-config/visual-editors.tsx
+  s_ce6b8d7fd184a1::t_a183a23266ac4a 14,21
+web/src/features/interactive/components/setting-panel/PresetSettingsPanel.tsx
+  s_ce6b8d7fd184a1::t_329e5da9883419 15,963-979,981,1037,1043-1068,1070,1073,1166-1167,1250-1251,1259-1260,1296,1300
+web/src/features/messages/MessageCenter.tsx
+  s_e8a4de4869fd7c::t_f70967c1857f34 4,181
+web/src/features/skills/SkillsView.test.tsx
+  s_e8a4de4869fd7c::t_3feb918f97bbfc 180-181,185,200-226
+web/src/features/skills/SkillsView.tsx
+  s_e8a4de4869fd7c::t_768e90df478d96 3,7,9,15,30,42-43,72,75-78,138-139,715-745,761-798,800,1510-1551
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_ce6b8d7fd184a1::t_9180f42d681fcb 126,153-252,448-457,493
+web/src/i18n/locales/en-US/skills.ts
+  s_e8a4de4869fd7c::t_c3dc5f5bb1f54c 67-69
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_ce6b8d7fd184a1::t_cd2e291e6d3e4e 126,153-252,448-457,493
+web/src/i18n/locales/zh-CN/skills.ts
+  s_e8a4de4869fd7c::t_a6d137dc129676 67-69
+web/src/index.css
+  s_ce6b8d7fd184a1::t_4c475a5929b1a6 8-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9a9026454ff8774fa9a59aad9dc6d6da76bcb7c2",
+  "prompts": {},
+  "sessions": {
+    "s_0b13e0faec3dd1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f47a2-c543-7581-bab9-77a4f8b1bb6f",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_23347edc1976da": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f47e7-cecd-7c32-9fde-4df01e29de9a",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_2a7746e39f8b4c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "76f69fc3-8a1e-4c9e-9e5b-4961e12db327",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_5d247eeeaa8b76": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f477d-d78d-7050-965c-73291af8da9a",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_ce6b8d7fd184a1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4968-b74e-7021-91f1-e44f47b11fef",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_e8a4de4869fd7c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f47a6-cd95-74a2-8554-5b2cc3f56752",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
