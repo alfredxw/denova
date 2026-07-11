@@ -78,7 +78,7 @@ func TestInteractiveStoryToolMiddlewareAllowsReadTools(t *testing.T) {
 	}
 }
 
-func TestInteractiveDirectorPlanFileMiddlewareAllowsStateTools(t *testing.T) {
+func TestInteractiveDirectorPlanFileMiddlewareBlocksStateAndMemoryTools(t *testing.T) {
 	middleware := newInteractiveDirectorPlanFileMiddleware([]string{"/tmp/story/director/main/director.md"})
 	for _, name := range []string{"apply_actor_state_patch", "apply_story_memory_patches"} {
 		called := false
@@ -97,8 +97,43 @@ func TestInteractiveDirectorPlanFileMiddlewareAllowsStateTools(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !called || result != "ok" {
-			t.Fatalf("%s should pass through, called=%v result=%s", name, called, result)
+		if called || !strings.Contains(result, "不能写 Actor State 或 Story Memory") {
+			t.Fatalf("%s should be blocked, called=%v result=%s", name, called, result)
+		}
+	}
+}
+
+func TestInteractiveMemoryRecorderMiddlewareAllowsMemoryToolOnly(t *testing.T) {
+	middleware := newInteractiveDirectorPlanFileMiddleware(nil, "memory_update")
+	for _, tc := range []struct {
+		name    string
+		allowed bool
+	}{
+		{name: "apply_story_memory_patches", allowed: true},
+		{name: "apply_actor_state_patch", allowed: false},
+		{name: "read_file", allowed: false},
+	} {
+		called := false
+		endpoint, err := middleware.WrapInvokableToolCall(
+			context.Background(),
+			func(context.Context, string, ...tool.Option) (string, error) {
+				called = true
+				return "ok", nil
+			},
+			&adk.ToolContext{Name: tc.name},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := endpoint(context.Background(), `{}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tc.allowed && (!called || result != "ok") {
+			t.Fatalf("%s should pass through, called=%v result=%s", tc.name, called, result)
+		}
+		if !tc.allowed && (called || !strings.Contains(result, "只能使用 apply_story_memory_patches")) {
+			t.Fatalf("%s should be blocked, called=%v result=%s", tc.name, called, result)
 		}
 	}
 }

@@ -40,24 +40,13 @@ export interface PresetDrafts {
   memoryStructure: StoryMemoryStructureModule | null
 }
 
-export function splitTags(value: string) {
-  return value
-    .split(/[，,]/)
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-}
-
-export function presetResourceDraftSignature(item: object, tagDraft: string) {
-  return JSON.stringify({
-    ...item,
-    tags: splitTags(tagDraft),
-  })
+export function presetResourceDraftSignature(item: object) {
+  return JSON.stringify(item)
 }
 
 export function cloneTeller(teller: Teller): Teller {
   return {
     ...teller,
-    tags: [...(teller.tags || [])],
     slots: [...(teller.slots || [])],
     context_policy: { ...teller.context_policy },
     style_refs: [...(teller.style_refs || [])],
@@ -66,7 +55,7 @@ export function cloneTeller(teller: Teller): Teller {
 }
 
 export function cloneImagePreset(preset: ImagePreset): ImagePreset {
-  return { ...preset, tags: [...(preset.tags || [])] }
+  return { ...preset }
 }
 
 export function cloneStoryDirector(director: StoryDirector): StoryDirector {
@@ -89,27 +78,24 @@ export function cloneMemoryStructure(item: StoryMemoryStructureModule): StoryMem
   return cloneJSON(item)
 }
 
-export function makeTellerPayload(draft: Teller, tagDraft: string): Partial<Teller> {
+export function makeTellerPayload(draft: Teller): Partial<Teller> {
   return {
     ...draft,
     id: draft.id,
-    tags: splitTags(tagDraft),
   }
 }
 
-export function makeImagePresetPayload(draft: ImagePreset, tagDraft: string): Partial<ImagePreset> {
+export function makeImagePresetPayload(draft: ImagePreset): Partial<ImagePreset> {
   return {
     ...draft,
     id: draft.id,
-    tags: splitTags(tagDraft),
   }
 }
 
-export function makeStoryDirectorPayload(draft: StoryDirector, tagDraft: string): Partial<StoryDirector> {
+export function makeStoryDirectorPayload(draft: StoryDirector): Partial<StoryDirector> {
   const payload = cloneStoryDirector({
     ...draft,
     id: draft.id,
-    tags: splitTags(tagDraft),
   })
   delete (payload as unknown as Record<string, unknown>).event_system
   delete (payload as unknown as Record<string, unknown>).opening_selector
@@ -129,39 +115,35 @@ export function makeStoryDirectorPayload(draft: StoryDirector, tagDraft: string)
   return payload
 }
 
-export function makeEventPackagePayload(draft: EventPackageModule, tagDraft: string): Partial<EventPackageModule> {
+export function makeEventPackagePayload(draft: EventPackageModule): Partial<EventPackageModule> {
   const payload = cloneEventPackage({
     ...draft,
     id: draft.id,
-    tags: splitTags(tagDraft),
   })
   delete (payload as unknown as Record<string, unknown>).event_system
   delete (payload as unknown as Record<string, unknown>).custom_events
   return payload
 }
 
-export function makeRuleSystemPayload(draft: RuleSystemModule, tagDraft: string): Partial<RuleSystemModule> {
+export function makeRuleSystemPayload(draft: RuleSystemModule): Partial<RuleSystemModule> {
   return {
     ...draft,
     id: draft.id,
     trpg_system: normalizeTRPGSystem(draft.trpg_system),
-    tags: splitTags(tagDraft),
   }
 }
 
-export function makeActorStatePayload(draft: ActorStateModule, tagDraft: string): Partial<ActorStateModule> {
+export function makeActorStatePayload(draft: ActorStateModule): Partial<ActorStateModule> {
   return {
     ...draft,
     id: draft.id,
-    tags: splitTags(tagDraft),
   }
 }
 
-export function makeMemoryStructurePayload(draft: StoryMemoryStructureModule, tagDraft: string): Partial<StoryMemoryStructureModule> {
+export function makeMemoryStructurePayload(draft: StoryMemoryStructureModule): Partial<StoryMemoryStructureModule> {
   return {
     ...draft,
     id: draft.id,
-    tags: splitTags(tagDraft),
   }
 }
 
@@ -176,7 +158,6 @@ export function newTellerDraft(t?: PresetDraftTranslator): Partial<Teller> {
     random_event_rate: 0.15,
     style_refs: [],
     style_rules: [],
-    tags: [presetDraftText(t, 'settingPanel.presetDraft.customTag', '自定义')],
     context_policy: {
       creator: 'always',
       lore: 'relevant',
@@ -240,7 +221,6 @@ export function newStoryDirectorDraft(t?: PresetDraftTranslator): Partial<StoryD
       templates: [],
       initial_actors: [],
     },
-    tags: [presetDraftText(t, 'settingPanel.presetDraft.customTag', '自定义')],
     version: 2,
     custom: true,
   }
@@ -252,7 +232,6 @@ export function newEventPackageDraft(t?: PresetDraftTranslator): Partial<EventPa
     name: presetDraftText(t, 'settingPanel.presetDraft.event.name', '自定义事件包'),
     description: presetDraftText(t, 'settingPanel.presetDraft.event.description', '新的事件包，配置事件卡、强度、冷却和事件描述。'),
     events: [],
-    tags: [presetDraftText(t, 'settingPanel.presetDraft.customTag', '自定义')],
     version: 1,
     custom: true,
   }
@@ -266,7 +245,6 @@ export function newRuleSystemDraft(t?: PresetDraftTranslator): Partial<RuleSyste
     trpg_system: {
       rule_templates: defaultRuleTemplates(),
     },
-    tags: [presetDraftText(t, 'settingPanel.presetDraft.customTag', '自定义')],
     version: 1,
     custom: true,
   }
@@ -291,7 +269,6 @@ export function newActorStateDraft(t?: PresetDraftTranslator): Partial<ActorStat
       trait_pools: [],
       initial_actors: [{ id: 'protagonist', name: presetDraftText(t, 'settingPanel.presetDraft.actor.initialName', '主角'), template_id: 'protagonist', role: 'protagonist' }],
     },
-    tags: [presetDraftText(t, 'settingPanel.presetDraft.customTag', '自定义')],
     version: 5,
     custom: true,
   }
@@ -303,7 +280,6 @@ export function newMemoryStructureDraft(t?: PresetDraftTranslator): Partial<Stor
     name: presetDraftText(t, 'settingPanel.presetDraft.memory.name', '自定义记忆结构'),
     description: presetDraftText(t, 'settingPanel.presetDraft.memory.description', '新的故事记忆结构，配置长期记忆分组、字段和整理要求。'),
     structures: [],
-    tags: [presetDraftText(t, 'settingPanel.presetDraft.customTag', '自定义')],
     version: 1,
     custom: true,
   }
@@ -315,7 +291,6 @@ export function newImagePresetDraft(t?: PresetDraftTranslator): Partial<ImagePre
     name: presetDraftText(t, 'settingPanel.presetDraft.image.name', '自定义图像方案'),
     description: presetDraftText(t, 'settingPanel.presetDraft.image.description', '新的图像风格方案'),
     prompt: presetDraftText(t, 'settingPanel.presetDraft.image.prompt', '描述画面风格、媒介、构图、镜头语言、光影、色彩、角色与环境呈现限制，以及需要避免的内容。'),
-    tags: [presetDraftText(t, 'settingPanel.presetDraft.customTag', '自定义')],
     version: 1,
     custom: true,
   }

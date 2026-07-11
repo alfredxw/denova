@@ -20,9 +20,7 @@ export function StoryDirectorEditor({
   actorStates,
   memoryStructures,
   imagePresets,
-  tagDraft,
   setDraft,
-  setTagDraft,
   onValidityChange,
 }: {
   draft: StoryDirector | null
@@ -32,9 +30,7 @@ export function StoryDirectorEditor({
   actorStates: ActorStateModule[]
   memoryStructures: StoryMemoryStructureModule[]
   imagePresets: ImagePreset[]
-  tagDraft: string
   setDraft: (draft: StoryDirector | null) => void
-  setTagDraft: (value: string) => void
   onValidityChange?: (valid: boolean) => void
 }) {
   const { t } = useTranslation()
@@ -130,12 +126,10 @@ export function StoryDirectorEditor({
       <PresetMetadataPanel
         name={draft.name}
         description={draft.description}
-        tags={tagDraft}
         status={presetStatusLabel(draft, t)}
         hint={draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')}
         onNameChange={(name) => setDraft({ ...draft, name })}
         onDescriptionChange={(description) => setDraft({ ...draft, description })}
-        onTagsChange={setTagDraft}
         sticky
       />
 

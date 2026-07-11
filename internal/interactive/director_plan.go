@@ -92,6 +92,7 @@ type DirectorPlanRunStatus struct {
 	StartReady     bool              `json:"start_ready,omitempty"`
 	Blocking       bool              `json:"blocking,omitempty"`
 	BaselineHashes map[string]string `json:"baseline_hashes,omitempty"`
+	Decision       *PlanDecision     `json:"decision,omitempty"`
 }
 
 type DirectorPlanMetadata struct {
@@ -116,20 +117,21 @@ type DirectorPlan struct {
 }
 
 type DirectorPlanStatus struct {
-	StoryID       string `json:"story_id"`
-	BranchID      string `json:"branch_id"`
-	Status        string `json:"status"`
-	Summary       string `json:"summary,omitempty"`
-	Error         string `json:"error,omitempty"`
-	SourceTurnID  string `json:"source_turn_id,omitempty"`
-	UpdatedAt     string `json:"updated_at,omitempty"`
-	PlannedDocs   int    `json:"planned_docs"`
-	CompletedDocs int    `json:"completed_docs"`
-	DocBytes      int    `json:"doc_bytes"`
-	VisibleBytes  int    `json:"visible_bytes"`
-	StartReady    bool   `json:"start_ready"`
-	Blocking      bool   `json:"blocking"`
-	Revision      string `json:"revision,omitempty"`
+	StoryID       string        `json:"story_id"`
+	BranchID      string        `json:"branch_id"`
+	Status        string        `json:"status"`
+	Summary       string        `json:"summary,omitempty"`
+	Error         string        `json:"error,omitempty"`
+	SourceTurnID  string        `json:"source_turn_id,omitempty"`
+	UpdatedAt     string        `json:"updated_at,omitempty"`
+	PlannedDocs   int           `json:"planned_docs"`
+	CompletedDocs int           `json:"completed_docs"`
+	DocBytes      int           `json:"doc_bytes"`
+	VisibleBytes  int           `json:"visible_bytes"`
+	StartReady    bool          `json:"start_ready"`
+	Blocking      bool          `json:"blocking"`
+	Revision      string        `json:"revision,omitempty"`
+	Decision      *PlanDecision `json:"decision,omitempty"`
 }
 
 type UpdateDirectorPlanRequest struct {
@@ -422,6 +424,8 @@ func (s *Store) CompleteDirectorPlanRun(storyID, branchID string, token Director
 		return DirectorPlan{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	decision := ParsePlanDecision(summary)
+	decision.BaseRevision = token.Revision
 	if token.Revision != "" && token.Revision != storedMetadata.Revision {
 		storedMetadata.LastRun = &DirectorPlanRunStatus{
 			Status:        DirectorPlanStatusConflict,
@@ -456,16 +460,38 @@ func (s *Store) CompleteDirectorPlanRun(storyID, branchID string, token Director
 		}
 		return DirectorPlan{}, err
 	}
+	if decision.Mode == PlanDecisionKeep && directorPlanHashesEqual(token.Hashes, directorPlanHashes(plan.Docs)) {
+		storedMetadata.LastRun = &DirectorPlanRunStatus{
+			Status:        DirectorPlanStatusReady,
+			Summary:       firstNonEmpty(decision.Reason, "后台导演确认当前计划继续有效。"),
+			SourceTurnID:  sourceTurnID,
+			UpdatedAt:     now,
+			PlannedDocs:   len(requiredDirectorPlanDocKinds()),
+			CompletedDocs: len(requiredDirectorPlanDocKinds()),
+			StartReady:    true,
+			Blocking:      false,
+			Decision:      &decision,
+		}
+		if err := s.writeDirectorPlanMetadataLocked(storyID, branchID, storedMetadata); err != nil {
+			return DirectorPlan{}, err
+		}
+		return s.readDirectorPlanLocked(storyID, branchID)
+	}
+	if decision.Mode == PlanDecisionKeep {
+		decision.Mode = PlanDecisionPatch
+		decision.Reason = firstNonEmpty(decision.Reason, "导演实际修改了计划，按 patch 记录。")
+	}
 	plan.Metadata = s.buildDirectorPlanMetadataLocked(storyID, branchID, NormalizeBranchPlanningTurns(plan.Metadata.BranchPlanningTurns), "interactive_director", sourceTurnID)
 	plan.Metadata.LastRun = &DirectorPlanRunStatus{
 		Status:        DirectorPlanStatusReady,
-		Summary:       firstNonEmpty(strings.TrimSpace(summary), "后台导演已更新导演规划。"),
+		Summary:       firstNonEmpty(decision.Reason, strings.TrimSpace(summary), "后台导演已更新导演规划。"),
 		SourceTurnID:  sourceTurnID,
 		UpdatedAt:     now,
 		PlannedDocs:   len(requiredDirectorPlanDocKinds()),
 		CompletedDocs: len(requiredDirectorPlanDocKinds()),
 		StartReady:    true,
 		Blocking:      false,
+		Decision:      &decision,
 	}
 	if err := s.writeDirectorPlanMetadataLocked(storyID, branchID, plan.Metadata); err != nil {
 		return DirectorPlan{}, err
@@ -789,7 +815,28 @@ func DirectorPlanStatusFromPlan(plan DirectorPlan, hasTurns bool) DirectorPlanSt
 		StartReady:    startReady,
 		Blocking:      blocking,
 		Revision:      plan.Metadata.Revision,
+		Decision:      runDecision(run),
 	}
+}
+
+func directorPlanHashesEqual(left, right map[string]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for key, value := range left {
+		if right[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func runDecision(run *DirectorPlanRunStatus) *PlanDecision {
+	if run == nil || run.Decision == nil {
+		return nil
+	}
+	decision := *run.Decision
+	return &decision
 }
 
 func writeDirectorPlanContextBlock(sb *strings.Builder, title, content string) {

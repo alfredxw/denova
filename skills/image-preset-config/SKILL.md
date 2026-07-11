@@ -25,7 +25,6 @@ Important fields:
 - `name`: user visible name.
 - `description`: short explanation of the visual style.
 - `prompt`: visual constraints for image generation only. Keep it under 4000 characters.
-- `tags`: short searchable labels.
 
 Do not change `version`, `path`, `custom`, `invalid`, `error`, `created_at`, or `updated_at` unless preserving an existing complete object from `read_image_presets`.
 

@@ -254,14 +254,14 @@
   container-type: inline-size;
   border-bottom: 1px solid var(--preset-line);
   background: var(--preset-surface);
-  padding: 12px 16px;
+  padding: 8px 12px;
 }
 
 .preset-metadata-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 176px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 152px), 1fr));
   align-items: end;
-  gap: 12px;
+  gap: 8px;
 }
 
 .preset-field-label {
@@ -277,7 +277,7 @@
   display: inline-flex;
   width: fit-content;
   max-width: 100%;
-  height: 36px;
+  height: 32px;
   align-items: center;
   gap: 8px;
   border: 1px solid var(--preset-line);
@@ -298,17 +298,21 @@
 }
 
 .preset-metadata-hint {
-  margin-top: 10px;
+  margin-top: 6px;
   border-left: 2px solid var(--preset-warning);
-  padding: 2px 0 2px 10px;
+  padding: 1px 0 1px 8px;
   color: var(--nova-text-muted);
   font-size: var(--nova-ui-micro-font-size);
-  line-height: 1.55;
+  line-height: 1.4;
 }
 
-@container preset-metadata (min-width: 680px) {
-  .preset-metadata-description {
-    grid-column: span 2;
+@container preset-metadata (min-width: 440px) {
+  .preset-metadata-grid {
+    grid-template-columns: minmax(120px, 0.8fr) minmax(160px, 1.3fr) max-content;
+  }
+
+  .preset-metadata-grid:has(.preset-metadata-extra) {
+    grid-template-columns: minmax(92px, 0.75fr) minmax(120px, 1.2fr) minmax(72px, 0.55fr) max-content;
   }
 }
 
@@ -2122,4 +2126,84 @@ html[data-nova-motion="off"] *::after {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+/* Director Console: a story continuity desk, scoped to the resizable game sidebar. */
+.director-console {
+  --director-canvas: #070707;
+  --director-panel: #11110f;
+  --director-brass: #c39a58;
+  --director-live: #85aa90;
+  --director-ember: #b45f58;
+  container-name: director-console;
+  container-type: inline-size;
+  background: var(--director-canvas);
+  font-family: var(--nova-ui-font-family);
+}
+
+[data-theme="light"] .director-console {
+  --director-canvas: #ffffff;
+  --director-panel: #fafaf7;
+  --director-brass: #8a611f;
+  --director-live: #3f6f4d;
+  --director-ember: #963f39;
+}
+
+.director-console__display {
+  font-family: var(--nova-reading-font-family);
+  letter-spacing: -0.018em;
+}
+
+.director-console__scroll {
+  scrollbar-gutter: stable;
+}
+
+.actor-cue-strip {
+  scrollbar-color: var(--nova-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+.memory-ledger-card::before {
+  position: absolute;
+  inset: 12px auto 12px 0;
+  width: 2px;
+  border-radius: 0 999px 999px 0;
+  background: var(--director-brass);
+  content: '';
+  opacity: 0.74;
+}
+
+.director-plan-sheet {
+  scrollbar-color: var(--nova-scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+.director-plan-action-label {
+  display: none;
+}
+
+@container director-console (min-width: 400px) {
+  .director-state-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .director-run-metrics,
+  .director-process-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .director-plan-action-label {
+    display: inline;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .director-console *,
+  .director-console *::before,
+  .director-console *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

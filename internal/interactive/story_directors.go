@@ -47,7 +47,6 @@ type StoryDirector struct {
 	OpeningSelector   StoryDirectorOpeningSelector  `json:"opening_selector,omitempty"`
 	MigrationWarnings []string                      `json:"migration_warnings,omitempty"`
 	ResolvedSnapshot  StoryDirectorResolvedSnapshot `json:"resolved_snapshot,omitempty"`
-	Tags              []string                      `json:"tags"`
 	Path              string                        `json:"path,omitempty"`
 	Custom            bool                          `json:"custom"`
 	BuiltinOverridden bool                          `json:"builtin_overridden,omitempty"`
@@ -302,7 +301,6 @@ func (l *StoryDirectorLibrary) migrateLegacyTellerOrchestrations() error {
 		)
 		director.CreatedAt = firstNonEmptyString(teller.CreatedAt, now)
 		director.UpdatedAt = now
-		director.Tags = normalizeStringListLimit(append(director.Tags, "迁移"), maxTurnBriefListItems)
 		if err := writeStoryDirectorFile(path, director); err != nil {
 			return err
 		}
@@ -464,7 +462,6 @@ func ensureMigratedEventPackages(library *EventPackageLibrary, director StoryDir
 			Name:        firstNonEmptyString(pkg.Name, director.Name+" 事件包"),
 			Description: "由旧故事导演内嵌事件配置迁移生成。",
 			Events:      pkg.Events,
-			Tags:        migratedDirectorModuleTags(director.Tags),
 		})
 		if err != nil {
 			return nil, err
@@ -484,7 +481,6 @@ func ensureMigratedRuleSystem(library *RuleSystemLibrary, director StoryDirector
 		Name:        director.Name + " TRPG 检定",
 		Description: "由旧故事导演内嵌 trpg_system 迁移生成。",
 		TRPGSystem:  director.TRPGSystem,
-		Tags:        migratedDirectorModuleTags(director.Tags),
 	})
 	if err != nil {
 		return "", err
@@ -523,16 +519,11 @@ func ensureMigratedActorState(library *ActorStateLibrary, director StoryDirector
 		ActorState:        actorState,
 		OpeningSelector:   director.OpeningSelector,
 		MigrationWarnings: director.MigrationWarnings,
-		Tags:              migratedDirectorModuleTags(director.Tags),
 	})
 	if err != nil {
 		return "", err
 	}
 	return module.ID, nil
-}
-
-func migratedDirectorModuleTags(tags []string) []string {
-	return normalizeStringListLimit(append(append([]string{}, tags...), "迁移"), maxTurnBriefListItems)
 }
 
 func persistResolvedStoryDirectorSnapshot(path string, director StoryDirector) {
@@ -559,6 +550,9 @@ func storyDirectorDiffersFromBuiltin(director StoryDirector) bool {
 
 func storyDirectorComparable(director StoryDirector) StoryDirector {
 	director = normalizeStoryDirector(director)
+	if snapshot := FreezeActorStateSchema(director.ActorState, false); snapshot != nil {
+		director.ActorState = snapshot.System
+	}
 	director.Path = ""
 	director.Custom = false
 	director.BuiltinOverridden = false
@@ -594,7 +588,6 @@ func DefaultStoryDirector() StoryDirector {
 		EventPackages: []TellerEventPackage{tellerEventPackageFromModule(DefaultEventPackageModule())},
 		TRPGSystem:    DefaultRuleSystemModule().TRPGSystem,
 		ActorState:    defaultActorState.ActorState,
-		Tags:          []string{"内置", "导演"},
 	})
 }
 
@@ -627,7 +620,6 @@ func StoryDirectorFromTellerOrchestration(id, name, description string, randomEv
 			TraitPools:      config.Opening.TraitPools,
 			InitialStateOps: config.Opening.InitialStateOps,
 		},
-		Tags: []string{"内置", "导演"},
 	})
 }
 
@@ -663,8 +655,8 @@ func normalizeStoryDirector(director StoryDirector) StoryDirector {
 		director.MigrationWarnings = normalizeStringListLimit(append(director.MigrationWarnings, warnings...), maxTurnBriefListItems)
 		director.OpeningSelector = StoryDirectorOpeningSelector{}
 	}
+	director.TRPGSystem = resolveRuleStateFieldIDs(director.ActorState, director.TRPGSystem)
 	director.ResolvedSnapshot = normalizeStoryDirectorResolvedSnapshot(director.ResolvedSnapshot)
-	director.Tags = normalizeStringListLimit(director.Tags, maxTurnBriefListItems)
 	return director
 }
 

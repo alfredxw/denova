@@ -100,15 +100,6 @@ export function stateEntries(state?: Record<string, unknown>) {
   return Object.entries(state).filter(([, value]) => value !== undefined && value !== null)
 }
 
-export function safeJSONString(value: unknown, limit = 1200) {
-  try {
-    const text = JSON.stringify(value, null, 2)
-    return text.length > limit ? `${text.slice(0, limit)}...` : text
-  } catch {
-    return String(value)
-  }
-}
-
 export function readNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0
 }

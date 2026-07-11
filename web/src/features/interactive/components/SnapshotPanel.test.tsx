@@ -81,7 +81,7 @@ describe('SnapshotPanel', () => {
               state_consumption: {
                 status: 'partial',
                 mode: 'hybrid_auto',
-                applied_ops: [{ op: 'set', path: 'actors.protagonist.state.resources.hp', value: 0, reason: '被禁制反震', source_kind: 'rule_resolution', source_id: 'rr_1' }],
+                applied_actor_ops: [{ op: 'set', actor_id: 'protagonist', field_id: '当前生命', value: 0, reason: '被禁制反震', source_kind: 'rule_resolution', source_id: 'rr_1' }],
                 warnings: [{ path: 'actors.protagonist.state.conditions.poisoned', reason: '字段不在状态系统中' }],
               },
               terminal_candidate: { type: 'bad_end', reason: '强闯失败导致主线中断', check_id: 'check_1' },

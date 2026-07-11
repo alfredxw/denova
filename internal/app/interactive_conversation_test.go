@@ -1,9 +1,9 @@
 package app
 
 import (
+	"context"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/cloudwego/eino/schema"
 
@@ -12,18 +12,76 @@ import (
 	"denova/internal/session"
 )
 
-func TestBoundedDirectorInstructionPreservesOutputProtocol(t *testing.T) {
-	suffix := "\n请完成必要工具调用和文件编辑后，只输出一句中文摘要，不要输出故事正文、完整 Markdown 或 JSON patch。\n"
-	instruction := strings.Repeat("超长导演上下文。", interactiveDirectorInstructionMaxBytes) + suffix
-	bounded := boundedDirectorInstruction(instruction)
-	if len(bounded) > interactiveDirectorInstructionMaxBytes {
-		t.Fatalf("director instruction exceeded hard budget: %d", len(bounded))
+func TestSubmitTurnResultValidatesFrozenActorStateImmediately(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	actorState := interactive.StoryDirectorActorStateSystem{
+		Templates: []interactive.ActorStateTemplate{{
+			ID:   "protagonist",
+			Name: "主角",
+			Fields: []interactive.ActorStateField{
+				{Name: "当前身体/精神 状态", Type: "string", Order: 10},
+				{Name: "生命值", Type: "number", Order: 20},
+			},
+		}},
+		InitialActors: []interactive.ActorStateInitialActor{{
+			ID: "protagonist", Name: "主角", TemplateID: "protagonist",
+			State: map[string]any{"当前身体/精神 状态": "正常", "生命值": 10},
+		}},
 	}
-	if !utf8.ValidString(bounded) {
-		t.Fatal("director instruction was truncated across a UTF-8 boundary")
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "即时校验", ActorState: &actorState})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(bounded, strings.TrimSpace(suffix)) {
-		t.Fatalf("director output protocol was lost after truncation: %q", bounded[len(bounded)-256:])
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "休息", 800, &config.Config{})
+	base := interactive.TurnResult{
+		Contract:    interactive.TurnContract{PlayerIntent: "休息"},
+		SceneResult: interactive.TurnSceneResult{Status: "continued"},
+		PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"},
+	}
+	unknown := base
+	unknown.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{"body.status": "良好"}}}
+	if _, err := conversation.SubmitTurnResult(context.Background(), unknown); err == nil || !strings.Contains(err.Error(), "合法状态名称") {
+		t.Fatalf("unknown field should fail at tool invocation with allowed names, err=%v", err)
+	}
+	wrongType := base
+	wrongType.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{"生命值": "很多"}}}
+	if _, err := conversation.SubmitTurnResult(context.Background(), wrongType); err == nil || !strings.Contains(err.Error(), "生命值") {
+		t.Fatalf("wrong field type should fail at tool invocation, err=%v", err)
+	}
+	valid := base
+	valid.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{"当前身体/精神 状态": "安定"}}}
+	if _, err := conversation.SubmitTurnResult(context.Background(), valid); err != nil {
+		t.Fatalf("valid localized field ID should be staged: %v", err)
+	}
+	if err := conversation.AppendAssistantWithThinking("主角平复了呼吸。", ""); err != nil {
+		t.Fatalf("validated result and narrative should commit atomically: %v", err)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actors, _ := snapshot.State["actors"].(map[string]any)
+	actor, _ := actors["protagonist"].(map[string]any)
+	state, _ := actor["state"].(map[string]any)
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.Narrative != "主角平复了呼吸。" || state["当前身体/精神 状态"] != "安定" {
+		t.Fatalf("narrative and actor state must survive the same commit: turn=%#v state=%#v", snapshot.CurrentTurn, state)
+	}
+}
+
+func TestDirectorContextBudgetFollowsModelWindowAndCapsEachSource(t *testing.T) {
+	small := newDirectorContextBudget(&config.Config{OpenAIContextWindowTokens: 128000}, interactiveDirectorTaskDirectorPlanUpdate)
+	large := newDirectorContextBudget(&config.Config{OpenAIContextWindowTokens: 400000}, interactiveDirectorTaskDirectorPlanUpdate)
+	if small.thresholdTokens != 115200 || large.thresholdTokens != 360000 {
+		t.Fatalf("threshold tokens should follow the configured 90%% model window: small=%d large=%d", small.thresholdTokens, large.thresholdTokens)
+	}
+	if large.initialTokens <= small.initialTokens {
+		t.Fatalf("larger model window should expose a larger source budget: small=%d large=%d", small.initialTokens, large.initialTokens)
+	}
+	value := strings.Repeat("完整导演来源。", interactive.DirectorContextMaxBytes)
+	kept := large.take("large.source", value, interactive.DirectorContextMaxBytes*2)
+	if len(kept) > interactive.DirectorContextMaxBytes {
+		t.Fatalf("single source exceeded 64KB hard limit: %d", len(kept))
 	}
 }
 
@@ -111,6 +169,7 @@ func TestInteractiveConversationModelContextMessagesEnterNextTurnWithoutThinking
 	if err := conversation.AppendContextMessage(schema.ToolMessage("找到门的机关设定", "call-lore", schema.WithToolName("list_lore_items"))); err != nil {
 		t.Fatal(err)
 	}
+	submitTestTurnResult(t, conversation, "观察门缝", "确认蓝光来源")
 	if err := conversation.AppendAssistantWithThinking("门缝里透出蓝光。", "隐藏思考"); err != nil {
 		t.Fatal(err)
 	}

@@ -71,7 +71,6 @@ function teller(id: string, name: string): Teller {
     name,
     description: '',
     random_event_rate: 0,
-    tags: [],
     context_policy: {
       creator: 'summary',
       lore: 'summary',

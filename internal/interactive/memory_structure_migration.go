@@ -70,7 +70,6 @@ func (s *Store) MigrateStoryMemoryStructuresToDirectorModules() error {
 			Name:        trimBytes(firstNonEmptyString(story.Title, meta.Title, story.ID)+" 记忆结构", 256),
 			Description: "由旧故事级记忆结构迁移生成。运行时记录仍保留在原故事记忆文件中。",
 			Structures:  book.Structures,
-			Tags:        []string{"迁移", "记忆"},
 		}
 		if _, err := memoryLibrary.Get(moduleID); err == nil {
 			if _, err := memoryLibrary.Update(moduleID, module, ""); err != nil {

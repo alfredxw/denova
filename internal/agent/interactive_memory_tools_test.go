@@ -185,55 +185,6 @@ func TestApplyStoryMemoryPatchesToolWritesValidatedCurrentBranchRecords(t *testi
 	}
 }
 
-func TestApplyActorStatePatchToolCreatesActorWithAssignedTraits(t *testing.T) {
-	workspace := t.TempDir()
-	store := interactive.NewStore(workspace)
-	system := interactive.StoryDirectorActorStateSystem{
-		Templates: []interactive.ActorStateTemplate{
-			{ID: "protagonist", Name: "主角"},
-			{ID: "opponent", Name: "敌人/怪物", Fields: []interactive.ActorStateField{{ID: "threat", Path: "threat", Name: "威胁", Type: "string", Visibility: "visible"}}, TraitRules: []interactive.ActorTraitRule{{PoolID: "monster_nature", DrawCount: 1}}},
-		},
-		TraitPools:    []interactive.ActorTraitPool{{ID: "monster_nature", Name: "怪物特性", Traits: []interactive.ActorTraitDefinition{{ID: "armored", Name: "甲壳", Weight: 1, Visibility: "visible"}}}},
-		InitialActors: []interactive.ActorStateInitialActor{{ID: "protagonist", Name: "主角", TemplateID: "protagonist", Role: "protagonist"}},
-	}
-	initialOps, err := interactive.BuildActorStateInitialOps(system, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "Actor 工具", Origin: "遭遇怪物", InitialStateOps: initialOps})
-	if err != nil {
-		t.Fatal(err)
-	}
-	turn, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{BranchID: "main", User: "观察怪物", Narrative: "一只甲兽走出阴影。"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	tools, err := newInteractiveActorStateTools(InteractiveStoryToolContext{Store: store, StoryID: story.ID, BranchID: "main", TurnID: turn.ID, ActorState: system})
-	if err != nil || len(tools) != 1 {
-		t.Fatalf("create Actor state tool failed: count=%d err=%v", len(tools), err)
-	}
-	output, err := tools[0].(tool.InvokableTool).InvokableRun(context.Background(), `{"patches":[{"actor_id":"shell-beast","actor_name":"甲兽","template_id":"opponent","role":"monster","state":{"threat":"逼近"},"reason":"怪物首次登场"}]}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var parsed actorStatePatchToolOutput
-	if err := json.Unmarshal([]byte(output), &parsed); err != nil {
-		t.Fatal(err)
-	}
-	if len(parsed.CreatedActors) != 1 || parsed.CreatedActors[0] != "shell-beast" || len(parsed.AssignedTraits["shell-beast"]) != 1 || parsed.AssignedTraits["shell-beast"][0].TraitID != "armored" {
-		t.Fatalf("tool should report created Actor and assigned trait snapshots: %s", output)
-	}
-	snapshot, err := store.Snapshot(story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	actors := snapshot.State["actors"].(map[string]any)
-	beast := actors["shell-beast"].(map[string]any)
-	if beast["template_id"] != "opponent" || len(beast["traits"].([]any)) != 1 {
-		t.Fatalf("tool result should persist through replay: %#v", beast)
-	}
-}
-
 func TestPrepareInteractiveTurnToolUsesRuleResolutionCallback(t *testing.T) {
 	expected := interactive.RuleResolution{
 		ID: "rr_test",
@@ -276,6 +227,50 @@ func TestPrepareInteractiveTurnToolUsesRuleResolutionCallback(t *testing.T) {
 	}
 	if !strings.Contains(output, `"resolution_id": "rr_test"`) || !strings.Contains(output, `"outcome": "failure"`) || strings.Contains(output, "accepted_brief") || strings.Contains(output, `"seed"`) || strings.Contains(output, `"request"`) {
 		t.Fatalf("unexpected output: %s", output)
+	}
+}
+
+func TestSubmitInteractiveTurnResultToolStagesStructuredOutcome(t *testing.T) {
+	want := interactive.TurnResult{
+		Contract:       interactive.TurnContract{PlayerIntent: "调查丹炉", SceneGoal: "确认药味来源"},
+		FactCandidates: []interactive.StoryFactCandidate{{Kind: "clue", Subject: "丹炉", Fact: "药味中混有陌生灵气", Visibility: "player_known", Importance: "high"}},
+		Choices:        []string{"检查炉灰", "询问苏灿灿"},
+	}
+	called := false
+	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
+		SubmitTurnResult: func(_ context.Context, input interactive.TurnResult) (interactive.TurnResult, error) {
+			called = true
+			if input.Contract.SceneGoal != want.Contract.SceneGoal {
+				t.Fatalf("unexpected turn result: %#v", input)
+			}
+			return input, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]tool.BaseTool{}
+	for _, item := range tools {
+		info, err := item.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		byName[info.Name] = item
+	}
+	submit, ok := byName["submit_interactive_turn_result"].(tool.InvokableTool)
+	if !ok {
+		t.Fatalf("submit_interactive_turn_result missing: %#v", byName)
+	}
+	payload, err := json.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := submit.InvokableRun(context.Background(), string(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !called || !strings.Contains(result, "确认药味来源") {
+		t.Fatalf("submit callback/result mismatch: called=%v result=%s", called, result)
 	}
 }
 

@@ -34,13 +34,14 @@ type interactiveStoryToolMiddleware struct {
 type interactiveDirectorPlanFileMiddleware struct {
 	*adk.BaseChatModelAgentMiddleware
 	allowedPaths map[string]bool
+	task         string
 }
 
 func newInteractiveStoryToolMiddleware() *interactiveStoryToolMiddleware {
 	return &interactiveStoryToolMiddleware{}
 }
 
-func newInteractiveDirectorPlanFileMiddleware(allowedPaths []string) *interactiveDirectorPlanFileMiddleware {
+func newInteractiveDirectorPlanFileMiddleware(allowedPaths []string, tasks ...string) *interactiveDirectorPlanFileMiddleware {
 	allowed := make(map[string]bool, len(allowedPaths))
 	for _, path := range allowedPaths {
 		cleaned := cleanDirectorPlanToolPath(path)
@@ -48,7 +49,11 @@ func newInteractiveDirectorPlanFileMiddleware(allowedPaths []string) *interactiv
 			allowed[cleaned] = true
 		}
 	}
-	return &interactiveDirectorPlanFileMiddleware{allowedPaths: allowed}
+	task := ""
+	if len(tasks) > 0 {
+		task = strings.TrimSpace(tasks[0])
+	}
+	return &interactiveDirectorPlanFileMiddleware{allowedPaths: allowed, task: task}
 }
 
 func (m *interactiveDirectorPlanFileMiddleware) WrapInvokableToolCall(
@@ -79,6 +84,12 @@ func (m *interactiveDirectorPlanFileMiddleware) WrapStreamableToolCall(
 
 func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name, args string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
+	if m != nil && m.task == "memory_update" {
+		if name == "apply_story_memory_patches" {
+			return ""
+		}
+		return fmt.Sprintf("[tool error] Memory Recorder 只能使用 apply_story_memory_patches，拒绝工具: %s", name)
+	}
 	switch name {
 	case "read_file", "write_file", "edit_file":
 		target := cleanDirectorPlanToolPath(toolPathFromArgs(args))
@@ -90,9 +101,9 @@ func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name,
 		}
 		return ""
 	case "apply_actor_state_patch", "apply_story_memory_patches":
-		return ""
+		return fmt.Sprintf("[tool error] Director 只维护 ArcPlan，不能写 Actor State 或 Story Memory，拒绝工具: %s", name)
 	default:
-		return fmt.Sprintf("[tool error] interactive_director 只能使用 read_file、write_file、edit_file、apply_actor_state_patch、apply_story_memory_patches 维护当前分支后台状态，拒绝工具: %s", name)
+		return fmt.Sprintf("[tool error] Director 只能使用 read_file、write_file、edit_file 维护当前分支 ArcPlan，拒绝工具: %s", name)
 	}
 }
 
@@ -156,7 +167,7 @@ func isInteractiveStoryWriteTool(name string) bool {
 }
 
 func interactiveStoryWriteToolBlockedMessage(name string) string {
-	return fmt.Sprintf("[tool error] 游戏模式禁止使用写文件工具 %q。请不要修改 workspace 文件，只输出本回合故事正文；状态变化由后端状态 Agent 异步写入 story jsonl。", name)
+	return fmt.Sprintf("[tool error] 游戏模式禁止使用写文件工具 %q。请不要修改 workspace 文件；先用 submit_interactive_turn_result 提交隐藏回合结果，再只输出本回合故事正文。", name)
 }
 
 type ToolDecision struct {

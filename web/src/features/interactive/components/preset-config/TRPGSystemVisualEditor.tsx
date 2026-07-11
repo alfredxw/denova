@@ -68,9 +68,9 @@ export function TRPGSystemVisualEditor({
   }
 
   return (
-    <Tabs value={activeSection} onValueChange={setActiveSection} className="trpg-system-workspace min-h-0 gap-3">
-      <div className="flex flex-col gap-3 px-1 pt-1">
-        <p className="max-w-[76ch] text-xs leading-5 text-[var(--nova-text-faint)]">
+    <Tabs value={activeSection} onValueChange={setActiveSection} className="trpg-system-workspace min-h-0 gap-2.5">
+      <div className="flex shrink-0 flex-col gap-2 px-1 pt-0.5">
+        <p className="max-w-[76ch] text-[11px] leading-4 text-[var(--nova-text-faint)]">
           {t('settingPanel.trpgRule.singleConfigDesc')}
         </p>
         <TabsList variant="line" className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b border-[var(--nova-border)] bg-transparent p-0">
@@ -155,7 +155,7 @@ export function TRPGSystemVisualEditor({
 
 function WorkflowTab({ value, icon: Icon, label, description }: { value: string; icon: typeof Dice5; label: string; description: string }) {
   return (
-    <TabsTrigger value={value} className="h-auto min-w-fit flex-none justify-start gap-2 rounded-none px-3 py-2.5 text-left after:bottom-0">
+    <TabsTrigger value={value} className="h-auto min-w-fit flex-none justify-start gap-2 rounded-none px-2.5 py-2 text-left after:bottom-0">
       <Icon data-icon="inline-start" />
       <span className="flex min-w-0 flex-col items-start">
         <span className="text-xs font-semibold">{label}</span>
@@ -266,6 +266,7 @@ function StateBindingEditor({
                 <TemplateSelectField label={t('settingPanel.trpgRule.targetTemplate')} value={active.target_template_id || ''} templates={templates} allowEmpty onChange={(target_template_id) => patchActive({ target_template_id })} />
               </div>
               <Field label={t('settingPanel.trpgRule.trigger')}><Textarea autoResize={false} className="nova-field min-h-16 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.trigger || ''} onChange={(event) => patchActive({ trigger: event.target.value })} /></Field>
+              <StateFieldReferenceEditor binding={active} templates={templates} onChange={patchActive} />
               <JSONFragmentEditor label={t('settingPanel.trpgRule.modifiers')} value={active.modifiers || []} onChange={(modifiers) => patchActive({ modifiers: modifiers as RuleStateBinding['modifiers'] })} onValidChange={setModifiersValid} />
               <JSONFragmentEditor label={t('settingPanel.trpgRule.narrativeStateRefs')} value={active.narrative_state_refs || []} onChange={(narrative_state_refs) => patchActive({ narrative_state_refs: narrative_state_refs as RuleStateBinding['narrative_state_refs'] })} onValidChange={setRefsValid} />
               <JSONFragmentEditor label={t('settingPanel.trpgRule.outcomeStateChanges')} value={active.outcome_state_changes || []} onChange={(outcome_state_changes) => patchActive({ outcome_state_changes: outcome_state_changes as RuleStateBinding['outcome_state_changes'] })} onValidChange={setChangesValid} />
@@ -274,6 +275,115 @@ function StateBindingEditor({
         </div>
       </div>
     </DetailPanel>
+  )
+}
+
+function StateFieldReferenceEditor({
+  binding,
+  templates,
+  onChange,
+}: {
+  binding: RuleStateBinding
+  templates: ActorStateTemplate[]
+  onChange: (patch: Partial<RuleStateBinding>) => void
+}) {
+  const { t } = useTranslation()
+  const rows: ReactNode[] = []
+  const selector = (key: string, label: string, source: string | undefined, fieldId: string | undefined, update: (fieldId: string) => void) => (
+    <StateFieldSelect
+      key={key}
+      label={label}
+      source={source}
+      fieldId={fieldId}
+      actorTemplateId={binding.actor_template_id}
+      targetTemplateId={binding.target_template_id}
+      templates={templates}
+      onChange={update}
+    />
+  )
+
+  binding.modifiers?.forEach((item, index) => {
+    rows.push(selector(`modifier-${index}`, t('settingPanel.trpgRule.fieldReference.modifier', { index: index + 1 }), item.source, item.field_id, (field_id) => {
+      onChange({ modifiers: binding.modifiers?.map((candidate, candidateIndex) => candidateIndex === index ? { ...candidate, field_id, field_path: undefined } : candidate) })
+    }))
+  })
+  binding.narrative_state_refs?.forEach((item, index) => {
+    if (item.source === 'scene') return
+    rows.push(selector(`narrative-${index}`, t('settingPanel.trpgRule.fieldReference.narrative', { index: index + 1 }), item.source, item.field_id, (field_id) => {
+      onChange({ narrative_state_refs: binding.narrative_state_refs?.map((candidate, candidateIndex) => candidateIndex === index ? { ...candidate, field_id, field_path: undefined } : candidate) })
+    }))
+  })
+  binding.outcome_state_changes?.forEach((outcome, outcomeIndex) => {
+    outcome.state_changes?.forEach((item, changeIndex) => {
+      rows.push(selector(`outcome-${outcomeIndex}-${changeIndex}`, t('settingPanel.trpgRule.fieldReference.outcome', { outcome: outcome.outcome || '-', index: changeIndex + 1 }), item.source, item.field_id, (field_id) => {
+        onChange({
+          outcome_state_changes: binding.outcome_state_changes?.map((candidate, candidateOutcomeIndex) => candidateOutcomeIndex !== outcomeIndex ? candidate : {
+            ...candidate,
+            state_changes: candidate.state_changes?.map((change, candidateChangeIndex) => candidateChangeIndex === changeIndex ? { ...change, field_id, field_path: undefined } : change),
+          }),
+        })
+      }))
+      item.change_formula?.terms?.forEach((term, termIndex) => {
+        rows.push(selector(`formula-${outcomeIndex}-${changeIndex}-${termIndex}`, t('settingPanel.trpgRule.fieldReference.formula', { index: termIndex + 1 }), term.source, term.field_id, (field_id) => {
+          onChange({
+            outcome_state_changes: binding.outcome_state_changes?.map((candidate, candidateOutcomeIndex) => candidateOutcomeIndex !== outcomeIndex ? candidate : {
+              ...candidate,
+              state_changes: candidate.state_changes?.map((change, candidateChangeIndex) => candidateChangeIndex !== changeIndex ? change : {
+                ...change,
+                change_formula: {
+                  ...change.change_formula,
+                  terms: change.change_formula?.terms?.map((candidateTerm, candidateTermIndex) => candidateTermIndex === termIndex ? { ...candidateTerm, field_id, field_path: undefined } : candidateTerm),
+                },
+              }),
+            }),
+          })
+        }))
+      })
+    })
+  })
+
+  return (
+    <div role="group" aria-label={t('settingPanel.trpgRule.fieldReferences')} className="grid gap-2 rounded-[12px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5">
+      <div>
+        <div className="text-[11px] font-medium text-[var(--nova-text-muted)]">{t('settingPanel.trpgRule.fieldReferences')}</div>
+        <div className="mt-1 text-[10px] leading-4 text-[var(--nova-text-faint)]">{t('settingPanel.trpgRule.fieldReferencesDesc')}</div>
+      </div>
+      {rows.length ? <div className={fieldGridClassName}>{rows}</div> : <div className="text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.trpgRule.fieldReferencesEmpty')}</div>}
+    </div>
+  )
+}
+
+function StateFieldSelect({
+  label,
+  source,
+  fieldId,
+  actorTemplateId,
+  targetTemplateId,
+  templates,
+  onChange,
+}: {
+  label: string
+  source?: string
+  fieldId?: string
+  actorTemplateId?: string
+  targetTemplateId?: string
+  templates: ActorStateTemplate[]
+  onChange: (fieldId: string) => void
+}) {
+  const templateId = source === 'target' ? targetTemplateId : actorTemplateId
+  const fields = templates.find((template) => template.id === templateId)?.fields || []
+  const current = String(fieldId || '').normalize('NFKC').trim()
+  const options = fields.map((field) => String(field.name || '').normalize('NFKC').trim()).filter(Boolean)
+  if (current && !options.includes(current)) options.push(current)
+  return (
+    <Field label={label}>
+      <Select value={current} onValueChange={onChange} disabled={!options.length}>
+        <SelectTrigger aria-label={label} className={selectClassName}><SelectValue /></SelectTrigger>
+        <SelectContent className="nova-panel border text-[var(--nova-text)]">
+          {options.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </Field>
   )
 }
 

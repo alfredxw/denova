@@ -51,6 +51,10 @@ export function FieldDetailEditor({
 
   const isEnum = field.type === 'enum'
   const isNumber = field.type === 'number'
+	const normalizedName = normalizeStateName(field.name)
+	const nameConflict = normalizedName !== '' && (template.fields || []).some((candidate, index) => (
+		index !== fieldIndex && normalizeStateName(candidate.name) === normalizedName
+	))
 
   return (
     <DetailStack>
@@ -63,9 +67,7 @@ export function FieldDetailEditor({
       >
         <FieldTypeBadge type={field.type} />
         {field.visibility ? <VisibilityBadge visibility={field.visibility} /> : null}
-        <span className="font-mono text-[10px] text-[var(--nova-text-faint)]">
-          {field.path}
-        </span>
+        <span className="text-[10px] text-[var(--nova-text-faint)]">{t('settingPanel.actorState.explorer.nameIsId')}</span>
       </motion.div>
 
       <DetailResponsiveGrid className="items-start">
@@ -77,7 +79,7 @@ export function FieldDetailEditor({
             </span>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3">
             <FormField label={t('settingPanel.field.name')}>
               <Input
                 className="nova-field h-8 text-xs focus-visible:ring-0"
@@ -86,15 +88,16 @@ export function FieldDetailEditor({
                 placeholder={t('settingPanel.actorState.explorer.fieldNamePlaceholder')}
               />
             </FormField>
-            <FormField label={t('settingPanel.actorState.explorer.path')}>
-              <Input
-                className="nova-field h-8 font-mono text-xs focus-visible:ring-0"
-                value={field.path || ''}
-                onChange={(e) => updateField({ path: e.target.value })}
-                placeholder="state.health"
-              />
-            </FormField>
           </div>
+			{nameConflict ? (
+				<div role="alert" className="rounded-[12px] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-[11px] text-[var(--nova-danger)]">
+					{t('settingPanel.actorState.explorer.nameConflict')}
+				</div>
+			) : (
+				<div className="rounded-[12px] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-muted)]">
+					{t('settingPanel.actorState.explorer.nameIdHelp')}
+				</div>
+			)}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <FormField label={t('settingPanel.actorState.explorer.type')}>
@@ -254,6 +257,10 @@ export function FieldDetailEditor({
       </DetailResponsiveGrid>
     </DetailStack>
   )
+}
+
+function normalizeStateName(value: string | undefined) {
+	return (value || '').normalize('NFKC').trim().toLocaleLowerCase()
 }
 
 function FormField({ label, children }: { label: string; children: React.ReactNode }) {

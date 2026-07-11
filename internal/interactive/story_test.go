@@ -589,7 +589,7 @@ func TestAppendTurnWithStateConsumesRuleStateChanges(t *testing.T) {
 		t.Fatalf("CreateStory failed: %v", err)
 	}
 	req := sampleTurnCheckRequest()
-	req.Outcomes.Failure.StateChanges = []TurnStateChange{{Path: "resources.stamina", Change: -10, Reason: "强行开锁透支体力"}}
+	req.Outcomes.Failure.StateChanges = []TurnStateChange{{ActorID: "protagonist", FieldID: "体力", Change: -10, Reason: "强行开锁透支体力"}}
 	seed := seedForTurnCheckOutcome(t, "1d20", "normal", "normal", 0, 0, "failure")
 	resolution, err := resolveTurnRulesWithSeed(story.ID, "main", initialStoryState(), req, seed)
 	if err != nil {
@@ -611,11 +611,11 @@ func TestAppendTurnWithStateConsumesRuleStateChanges(t *testing.T) {
 	if turn.RuleResolution.StateConsumption.Status != "applied" {
 		t.Fatalf("state consumption status = %s", turn.RuleResolution.StateConsumption.Status)
 	}
-	if len(turn.RuleResolution.StateConsumption.AppliedOps) != 1 {
+	if len(turn.RuleResolution.StateConsumption.AppliedActorOps) != 1 {
 		t.Fatalf("expected one applied op: %#v", turn.RuleResolution.StateConsumption)
 	}
-	op := turn.RuleResolution.StateConsumption.AppliedOps[0]
-	if op.Path != "actors.protagonist.state.resources.stamina" || op.SourceKind != StateOpSourceRuleResolution || op.SourceID != resolution.ID {
+	op := turn.RuleResolution.StateConsumption.AppliedActorOps[0]
+	if op.ActorID != "protagonist" || op.FieldID != "体力" || op.SourceKind != StateOpSourceRuleResolution || op.SourceID != resolution.ID {
 		t.Fatalf("unexpected applied op: %#v", op)
 	}
 
@@ -623,7 +623,7 @@ func TestAppendTurnWithStateConsumesRuleStateChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	value := getPath(snapshot.State, "actors.protagonist.state.resources.stamina")
+	value := actorStateFieldValue(snapshot.State, "protagonist", "体力")
 	if got := numberFromAny(value); got != 0 {
 		t.Fatalf("stamina should clamp to 0, got %#v in state %#v", value, snapshot.State)
 	}
@@ -639,7 +639,7 @@ func TestAppendTurnWithStateSkipsUnknownRuleStateChanges(t *testing.T) {
 		t.Fatalf("CreateStory failed: %v", err)
 	}
 	req := sampleTurnCheckRequest()
-	req.Outcomes.Failure.StateChanges = []TurnStateChange{{Path: "actors.protagonist.state.conditions.poisoned", Change: 1, Reason: "中毒"}}
+	req.Outcomes.Failure.StateChanges = []TurnStateChange{{ActorID: "protagonist", FieldID: "中毒", Change: 1, Reason: "中毒"}}
 	seed := seedForTurnCheckOutcome(t, "1d20", "normal", "normal", 0, 0, "failure")
 	resolution, err := resolveTurnRulesWithSeed(story.ID, "main", initialStoryState(), req, seed)
 	if err != nil {
@@ -677,7 +677,7 @@ func TestRerollRuleResolutionReplacesAutomaticRuleStateOps(t *testing.T) {
 		t.Fatalf("CreateStory failed: %v", err)
 	}
 	req := sampleTurnCheckRequest()
-	stateChange := []TurnStateChange{{Path: "resources.stamina", Change: -1, Reason: "本次检定消耗体力"}}
+	stateChange := []TurnStateChange{{ActorID: "protagonist", FieldID: "体力", Change: -1, Reason: "本次检定消耗体力"}}
 	req.Outcomes.CriticalSuccess.StateChanges = stateChange
 	req.Outcomes.Success.StateChanges = stateChange
 	req.Outcomes.Failure.StateChanges = stateChange
@@ -704,13 +704,13 @@ func TestRerollRuleResolutionReplacesAutomaticRuleStateOps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := numberFromAny(getPath(snapshot.State, "actors.protagonist.state.resources.stamina")); got != 4 {
+	if got := numberFromAny(actorStateFieldValue(snapshot.State, "protagonist", "体力")); got != 4 {
 		t.Fatalf("reroll should replace old automatic op instead of stacking, stamina=%v state=%#v", got, snapshot.State)
 	}
-	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.StateDelta == nil || len(snapshot.CurrentTurn.StateDelta.Ops) != 1 {
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.StateDelta == nil || len(snapshot.CurrentTurn.StateDelta.ActorOps) != 1 {
 		t.Fatalf("expected exactly one rule state op after reroll: %#v", snapshot.CurrentTurn)
 	}
-	op := snapshot.CurrentTurn.StateDelta.Ops[0]
+	op := snapshot.CurrentTurn.StateDelta.ActorOps[0]
 	if op.SourceKind != StateOpSourceRuleResolution || op.SourceID != reroll.ID {
 		t.Fatalf("expected reroll op to point at new resolution: %#v", op)
 	}
@@ -1193,7 +1193,7 @@ func TestSwitchTurnVersionKeepsLaterCanonicalPath(t *testing.T) {
 }
 
 func TestBackgroundTurnUpdatesDoNotRewindBranchHead(t *testing.T) {
-	t.Run("state delta", func(t *testing.T) {
+	t.Run("state delta rejects stale turn", func(t *testing.T) {
 		store := NewStore(t.TempDir())
 		story, err := store.CreateStory(CreateStoryRequest{Title: "状态晚到", StoryTellerID: "classic"})
 		if err != nil {
@@ -1211,8 +1211,8 @@ func TestBackgroundTurnUpdatesDoNotRewindBranchHead(t *testing.T) {
 			ParentID: first.ID,
 			BranchID: "main",
 			Ops:      []StateOp{{Op: "set", Path: "scene.phase", Value: "late-state"}},
-		}); err != nil {
-			t.Fatal(err)
+		}); err == nil || !strings.Contains(err.Error(), "不是当前分支头") {
+			t.Fatalf("late state update should be rejected, got %v", err)
 		}
 
 		snapshot, err := store.Snapshot(story.ID, "main")
@@ -1220,7 +1220,7 @@ func TestBackgroundTurnUpdatesDoNotRewindBranchHead(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != second.ID {
-			t.Fatalf("late state update should not rewind branch head: %#v", snapshot.Turns)
+			t.Fatalf("rejected late state update should not rewind branch head: %#v", snapshot.Turns)
 		}
 		if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != second.ID {
 			t.Fatalf("current turn should remain latest after late state update: %#v", snapshot.CurrentTurn)

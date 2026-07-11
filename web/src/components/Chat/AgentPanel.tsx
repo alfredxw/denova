@@ -602,7 +602,7 @@ function ImagePresetSelector({ workspace, value, presets, onValueChange }: { wor
 
   const normalizedPresets = useMemo(() => {
     if (presets.some((preset) => preset.id === value)) return presets
-    return [{ id: value || 'game-cg', name: value || 'game-cg', description: '', prompt: '', tags: [], custom: true, version: 1 }, ...presets]
+    return [{ id: value || 'game-cg', name: value || 'game-cg', description: '', prompt: '', custom: true, version: 1 }, ...presets]
   }, [presets, value])
   const selected = normalizedPresets.find((preset) => preset.id === value) || normalizedPresets.find((preset) => preset.id === 'game-cg') || normalizedPresets[0]
 

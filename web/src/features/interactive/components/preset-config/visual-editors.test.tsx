@@ -20,7 +20,6 @@ describe('preset visual editor selection stability', () => {
         id: 'events',
         name: 'Events',
         description: '',
-        tags: [],
         custom: true,
         events: [
           { id: 'event_one', type_name: 'First Event', enabled: true },

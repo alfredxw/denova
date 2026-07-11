@@ -6,7 +6,7 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, NotebookText, PanelLeft, PenLine, Search, Settings, SlidersHorizontal, Sparkles, X } from 'lucide-react'
+import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft, PenLine, Search, Settings, SlidersHorizontal, Sparkles, X } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
@@ -47,7 +47,7 @@ interface WorkbenchShellProps {
   onDismissUpdateNotice?: () => void
 }
 
-type ActivityItemId = 'writing' | 'story' | 'timeline' | 'memory' | 'lore' | 'teller' | 'versions' | 'books' | 'skills' | 'agents' | 'automations'
+type ActivityItemId = 'writing' | 'story' | 'timeline' | 'lore' | 'teller' | 'versions' | 'books' | 'skills' | 'agents' | 'automations'
 type ActivityOrderScope = 'ide' | 'interactive'
 type SortableActivityItemId = `${ActivityOrderScope}:${ActivityItemId}`
 
@@ -69,7 +69,7 @@ const ACTIVITY_ORDER_STORAGE_KEYS: Record<ActivityOrderScope, string> = {
   interactive: 'nova.activity.order.interactive.v2',
 }
 const DEFAULT_IDE_ACTIVITY_ORDER: ActivityItemId[] = ['writing', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
-const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'timeline', 'memory', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
+const DEFAULT_INTERACTIVE_ACTIVITY_ORDER: ActivityItemId[] = ['story', 'timeline', 'lore', 'teller', 'versions', 'books', 'skills', 'agents', 'automations']
 const ACTIVITY_BAR_WIDTH_STORAGE_KEY = 'nova.layout.activityBarWidth'
 const ACTIVITY_BAR_COLLAPSED_WIDTH = 64
 const ACTIVITY_BAR_MIN_WIDTH = 112
@@ -285,7 +285,7 @@ export function WorkbenchShell({
       id: 'story',
       label: t('workbench.activity.story'),
       onClick: () => openInteractiveSubmode('story'),
-      active: interactiveModeActive && interactiveSubmode === 'story',
+      active: interactiveModeActive && (interactiveSubmode === 'story' || interactiveSubmode === 'memory'),
       icon: <MessageSquareText className="h-4 w-4" />,
     },
     {
@@ -301,13 +301,6 @@ export function WorkbenchShell({
       onClick: () => openInteractiveSubmode('lore'),
       active: interactiveModeActive && interactiveSubmode === 'lore',
       icon: <Database className="h-4 w-4" />,
-    },
-    {
-      id: 'memory',
-      label: t('workbench.activity.memory'),
-      onClick: () => openInteractiveSubmode('memory'),
-      active: interactiveModeActive && interactiveSubmode === 'memory',
-      icon: <NotebookText className="h-4 w-4" />,
     },
     {
       id: 'teller',

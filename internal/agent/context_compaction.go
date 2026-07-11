@@ -41,21 +41,25 @@ type contextCompactionPolicy struct {
 }
 
 type ContextCompactionResult struct {
-	Triggered           bool
-	SkippedReason       string
-	Phase               string
-	TokensBefore        int
-	TokensAfter         int
-	ContextWindowTokens int
-	Strategy            string
-	Threshold           float64
-	Epoch               int
-	Summary             string
-	TargetRatio         float64
-	SourceMessageCount  int
-	MessageCountBefore  int
-	MessageCountAfter   int
-	RetainedTurns       int
+	Triggered                bool
+	SkippedReason            string
+	Phase                    string
+	TokensBefore             int
+	TokensAfter              int
+	ProjectedTokensBefore    int
+	ProjectedTokensAfter     int
+	ReservedCompletionTokens int
+	ReservedToolResultTokens int
+	ContextWindowTokens      int
+	Strategy                 string
+	Threshold                float64
+	Epoch                    int
+	Summary                  string
+	TargetRatio              float64
+	SourceMessageCount       int
+	MessageCountBefore       int
+	MessageCountAfter        int
+	RetainedTurns            int
 }
 
 type contextCompactionSummaryFunc func(ctx context.Context, cfg *config.Config, agentKind string, existingMemory string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, int, error)
@@ -80,8 +84,13 @@ type ContextCompactionInput struct {
 	Force               bool
 	ExistingMemory      string
 	ContextWindowTokens int
-	ReferenceContext    string
-	KeepLatestUser      bool
+	// ReservedCompletionTokens and ReservedToolResultTokens make compaction
+	// decisions against projected context usage, not only the prompt assembled
+	// before the next model/tool step.
+	ReservedCompletionTokens int
+	ReservedToolResultTokens int
+	ReferenceContext         string
+	KeepLatestUser           bool
 }
 
 type contextCompactionContextKey struct{}
@@ -153,17 +162,22 @@ func BuildContextCompaction(ctx context.Context, cfg *config.Config, agentKind s
 	if phase == "" {
 		phase = contextCompactionPhasePreRun
 	}
+	input = withDefaultContextProjectionReserves(cfg, agentKind, input, 0)
 	tokensBefore := EstimateContextTokens(input.Messages, input.Tools)
+	projectedTokensBefore := projectedContextTokens(tokensBefore, input)
 	result := ContextCompactionResult{
-		Phase:               phase,
-		TokensBefore:        tokensBefore,
-		ContextWindowTokens: policy.ContextWindowTokens,
-		Strategy:            policy.Strategy,
-		Threshold:           policy.Threshold,
-		MessageCountBefore:  len(input.Messages),
-		RetainedTurns:       policy.RetainedTurns,
+		Phase:                    phase,
+		TokensBefore:             tokensBefore,
+		ProjectedTokensBefore:    projectedTokensBefore,
+		ReservedCompletionTokens: input.ReservedCompletionTokens,
+		ReservedToolResultTokens: input.ReservedToolResultTokens,
+		ContextWindowTokens:      policy.ContextWindowTokens,
+		Strategy:                 policy.Strategy,
+		Threshold:                policy.Threshold,
+		MessageCountBefore:       len(input.Messages),
+		RetainedTurns:            policy.RetainedTurns,
 	}
-	shouldCompact, skipped := policy.shouldCompact(tokensBefore, input.Force)
+	shouldCompact, skipped := policy.shouldCompact(projectedTokensBefore, input.Force)
 	if !shouldCompact {
 		result.SkippedReason = skipped
 		return input.Messages, result, nil
@@ -190,11 +204,56 @@ func BuildContextCompaction(ctx context.Context, cfg *config.Config, agentKind s
 	result.Epoch = epoch
 	result.Summary = summary
 	result.TokensAfter = EstimateContextTokens(newMessages, input.Tools)
+	result.ProjectedTokensAfter = projectedContextTokens(result.TokensAfter, input)
 	result.TargetRatio = contextCompactionRatio(countRunes(summary), inputChars)
 	result.SourceMessageCount = len(source)
 	result.MessageCountAfter = len(newMessages)
 	emitContextCompactionEvent(input.Emit, phase, "completed", result)
 	return newMessages, result, nil
+}
+
+// EstimateContextProjectionReserves returns bounded reserves for completion and
+// retained tool results. expectedOutputChars should be the user-configured
+// target when one exists; otherwise a small model-relative reserve is used.
+func EstimateContextProjectionReserves(cfg *config.Config, agentKind string, expectedOutputChars int) (completionTokens, toolResultTokens int) {
+	model := config.ResolveAgentModel(cfg, agentKind)
+	window := model.ContextWindowTokens
+	completionTokens = expectedOutputChars
+	if completionTokens <= 0 {
+		completionTokens = max(2048, window/50)
+	} else {
+		// Leave room for the hidden structured result and normal completion
+		// variance around the visible user-configured target.
+		completionTokens += max(1024, expectedOutputChars/4)
+	}
+	if window > 0 {
+		completionTokens = min(completionTokens, max(2048, window/4))
+	}
+	contextSettings := config.ResolveAgentContext(cfg, agentKind)
+	if contextSettings.ToolResultRetentionEnabled && contextSettings.ToolResultContextBudgetKB > 0 {
+		// Tool result budgets are bytes. Dividing by three is a conservative
+		// mixed Chinese/English token estimate without assuming ASCII-only text.
+		toolResultTokens = contextSettings.ToolResultContextBudgetKB * 1024 / 3
+		if window > 0 {
+			toolResultTokens = min(toolResultTokens, max(1024, window/10))
+		}
+	}
+	return completionTokens, toolResultTokens
+}
+
+func withDefaultContextProjectionReserves(cfg *config.Config, agentKind string, input ContextCompactionInput, expectedOutputChars int) ContextCompactionInput {
+	completion, tools := EstimateContextProjectionReserves(cfg, agentKind, expectedOutputChars)
+	if input.ReservedCompletionTokens <= 0 {
+		input.ReservedCompletionTokens = completion
+	}
+	if input.ReservedToolResultTokens <= 0 {
+		input.ReservedToolResultTokens = tools
+	}
+	return input
+}
+
+func projectedContextTokens(promptTokens int, input ContextCompactionInput) int {
+	return max(1, promptTokens+max(0, input.ReservedCompletionTokens)+max(0, input.ReservedToolResultTokens))
 }
 
 func compactionSourceBaseMessages(input ContextCompactionInput) []*schema.Message {
@@ -630,20 +689,23 @@ func emitContextCompactionEvent(emit func(Event), phase, status string, result C
 		return
 	}
 	emit(Event{Type: "context_compaction", Data: map[string]any{
-		"phase":                 phase,
-		"status":                status,
-		"tokens_before":         result.TokensBefore,
-		"tokens_after":          result.TokensAfter,
-		"context_window_tokens": result.ContextWindowTokens,
-		"strategy":              result.Strategy,
-		"threshold":             result.Threshold,
-		"target_ratio":          result.TargetRatio,
-		"epoch":                 result.Epoch,
-		"source_message_count":  result.SourceMessageCount,
-		"message_count_before":  result.MessageCountBefore,
-		"message_count_after":   result.MessageCountAfter,
-		"skipped_reason":        result.SkippedReason,
-		"summary":               result.Summary,
+		"phase":                       phase,
+		"status":                      status,
+		"tokens_before":               result.TokensBefore,
+		"projected_tokens_before":     result.ProjectedTokensBefore,
+		"reserved_completion_tokens":  result.ReservedCompletionTokens,
+		"reserved_tool_result_tokens": result.ReservedToolResultTokens,
+		"tokens_after":                result.TokensAfter,
+		"context_window_tokens":       result.ContextWindowTokens,
+		"strategy":                    result.Strategy,
+		"threshold":                   result.Threshold,
+		"target_ratio":                result.TargetRatio,
+		"epoch":                       result.Epoch,
+		"source_message_count":        result.SourceMessageCount,
+		"message_count_before":        result.MessageCountBefore,
+		"message_count_after":         result.MessageCountAfter,
+		"skipped_reason":              result.SkippedReason,
+		"summary":                     result.Summary,
 	}})
 }
 
@@ -652,15 +714,18 @@ func emitContextCompactionDeltaEvent(emit func(Event), phase string, result Cont
 		return
 	}
 	emit(Event{Type: "context_compaction", Data: map[string]any{
-		"phase":                 phase,
-		"status":                "delta",
-		"attempt":               attempt,
-		"delta":                 delta,
-		"tokens_before":         result.TokensBefore,
-		"context_window_tokens": result.ContextWindowTokens,
-		"strategy":              result.Strategy,
-		"threshold":             result.Threshold,
-		"message_count_before":  result.MessageCountBefore,
+		"phase":                       phase,
+		"status":                      "delta",
+		"attempt":                     attempt,
+		"delta":                       delta,
+		"tokens_before":               result.TokensBefore,
+		"projected_tokens_before":     result.ProjectedTokensBefore,
+		"reserved_completion_tokens":  result.ReservedCompletionTokens,
+		"reserved_tool_result_tokens": result.ReservedToolResultTokens,
+		"context_window_tokens":       result.ContextWindowTokens,
+		"strategy":                    result.Strategy,
+		"threshold":                   result.Threshold,
+		"message_count_before":        result.MessageCountBefore,
 	}})
 }
 

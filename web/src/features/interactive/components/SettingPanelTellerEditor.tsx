@@ -31,7 +31,7 @@ const STYLE_SOURCE_LIMIT = 40000
 const STYLE_FILE_ACCEPT = '.txt,.md,.markdown,text/plain,text/markdown,text/x-markdown'
 const STYLE_MARKDOWN_TAG = 'style_reference_markdown'
 
-export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft, activeSlotId, setActiveSlotId, onSave }: { workspace: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; tagDraft: string; setTagDraft: (value: string) => void; activeSlotId: string; setActiveSlotId: (id: string) => void; onSave: () => void }) {
+export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActiveSlotId, onSave }: { workspace: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; activeSlotId: string; setActiveSlotId: (id: string) => void; onSave: () => void }) {
   const { t } = useTranslation()
   const activeSlot = draft?.slots?.find((slot) => slot.id === activeSlotId) || draft?.slots?.[0] || null
   const [targetPickerOpen, setTargetPickerOpen] = useState(false)
@@ -121,14 +121,12 @@ export function TellerEditor({ workspace, draft, setDraft, tagDraft, setTagDraft
       <PresetMetadataPanel
         name={draft.name}
         description={draft.description}
-        tags={tagDraft}
         status={draft.custom ? t('settingPanel.custom') : draft.builtin_overridden ? t('settingPanel.builtInOverridden') : t('settingPanel.builtIn')}
         hint={editHint}
         onNameChange={(name) => setDraft({ ...draft, name })}
         onDescriptionChange={(description) => setDraft({ ...draft, description })}
-        onTagsChange={setTagDraft}
         extra={(
-          <PresetField label={t('settingPanel.field.randomEventRate')}>
+          <PresetField className="preset-metadata-extra" label={t('settingPanel.field.randomEventRate')}>
           <Input
             className="nova-field h-9 min-w-0 text-xs shadow-none"
             aria-label={t('settingPanel.field.randomEventRate')}

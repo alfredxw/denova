@@ -4,23 +4,21 @@ export type PresetResourceSaveMode = 'manual' | 'auto'
 
 const PRESET_RESOURCE_AUTOSAVE_DELAY_MS = 1200
 
-interface PresetResourceAutosaveOptions<Draft extends { id: string; updated_at?: string }, Payload, Saved extends { tags?: string[]; updated_at?: string }> {
+interface PresetResourceAutosaveOptions<Draft extends { id: string; updated_at?: string }, Payload, Saved extends { updated_at?: string }> {
   draft: Draft | null
-  tagDraft: string
   active: boolean
   scopeKey?: string
   valid?: boolean
-  makePayload: (draft: Draft, tagDraft: string) => Payload
-  signature: (value: Partial<Draft> | Payload | Saved, tagDraft: string) => string
+  makePayload: (draft: Draft) => Payload
+  signature: (value: Partial<Draft> | Payload | Saved) => string
   save: (id: string, payload: Payload, baseRevision?: string) => Promise<Saved>
   onSaved?: (saved: Saved, mode: PresetResourceSaveMode, previousDraft: Draft) => void
   onAutoSaveError?: (error: unknown) => void
   onFlushError?: (error: unknown) => void
 }
 
-export function usePresetResourceAutosave<Draft extends { id: string; updated_at?: string }, Payload, Saved extends { tags?: string[]; updated_at?: string }>({
+export function usePresetResourceAutosave<Draft extends { id: string; updated_at?: string }, Payload, Saved extends { updated_at?: string }>({
   draft,
-  tagDraft,
   active,
   scopeKey = '',
   valid = true,
@@ -41,7 +39,6 @@ export function usePresetResourceAutosave<Draft extends { id: string; updated_at
   const scopeKeyRef = useRef(scopeKey)
   const mountedRef = useRef(true)
   const draftRef = useRef(draft)
-  const tagDraftRef = useRef(tagDraft)
   const validRef = useRef(valid)
   const makePayloadRef = useRef(makePayload)
   const signatureRef = useRef(signature)
@@ -51,7 +48,6 @@ export function usePresetResourceAutosave<Draft extends { id: string; updated_at
   const onFlushErrorRef = useRef(onFlushError)
 
   draftRef.current = draft
-  tagDraftRef.current = tagDraft
   validRef.current = valid
   makePayloadRef.current = makePayload
   signatureRef.current = signature
@@ -76,14 +72,14 @@ export function usePresetResourceAutosave<Draft extends { id: string; updated_at
     timerRef.current = null
   }, [])
 
-  const resetBaseline = useCallback((nextDraft: Draft | null, nextTagDraft = '') => {
+  const resetBaseline = useCallback((nextDraft: Draft | null) => {
     const nextResourceId = nextDraft?.id || ''
     if (nextResourceId !== baselineResourceIdRef.current) {
       baselineGenerationRef.current += 1
       baselineResourceIdRef.current = nextResourceId
     }
     baseRevisionRef.current = nextDraft?.updated_at || ''
-    savedSignatureRef.current = nextDraft ? signatureRef.current(nextDraft, nextTagDraft) : ''
+    savedSignatureRef.current = nextDraft ? signatureRef.current(nextDraft) : ''
   }, [])
 
   const saveNow = useCallback((mode: PresetResourceSaveMode) => {
@@ -91,9 +87,8 @@ export function usePresetResourceAutosave<Draft extends { id: string; updated_at
     const snapshot = draftRef.current
     if (!snapshot || !validRef.current) return Promise.resolve(null)
 
-    const tags = tagDraftRef.current
-    const payload = makePayloadRef.current(snapshot, tags)
-    const nextSignature = signatureRef.current(payload, tags)
+    const payload = makePayloadRef.current(snapshot)
+    const nextSignature = signatureRef.current(payload)
     const baselineGeneration = baselineGenerationRef.current
     const queuedScopeKey = scopeKeyRef.current
     const queuedBaseRevision = baseRevisionRef.current
@@ -156,7 +151,7 @@ export function usePresetResourceAutosave<Draft extends { id: string; updated_at
       cancelPending()
       return
     }
-    const nextSignature = signature(draft, tagDraft)
+    const nextSignature = signature(draft)
     if (nextSignature === savedSignatureRef.current) return
     cancelPending()
     const scheduledScopeKey = scopeKeyRef.current
@@ -169,7 +164,7 @@ export function usePresetResourceAutosave<Draft extends { id: string; updated_at
       })
     }, PRESET_RESOURCE_AUTOSAVE_DELAY_MS)
     return cancelPending
-  }, [active, cancelPending, draft, saveNow, scopeKey, signature, tagDraft, valid])
+  }, [active, cancelPending, draft, saveNow, scopeKey, signature, valid])
 
   useEffect(() => {
     mountedRef.current = true

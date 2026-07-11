@@ -228,7 +228,7 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 }
 
 func newListImagePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_image_presets", "列出图像方案索引，返回 ID、名称、简介、标签、类型和注入规则概览；图像方案是共享模块，可用于写作模式和游戏模式；需要完整 slots 内容时再调用 read_image_presets。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_image_presets", "列出图像方案索引，返回 ID、名称、简介、类型和注入规则概览；图像方案是共享模块，可用于写作模式和游戏模式；需要完整 slots 内容时再调用 read_image_presets。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
@@ -247,9 +247,6 @@ func newListImagePresetsTool(novaDir string) (tool.BaseTool, error) {
 			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  适用: 共享模块（写作模式 / 游戏模式）\n", preset.ID, preset.Name, boolLabel(preset.Custom, "custom", "built-in"))
 			if preset.Description != "" {
 				fmt.Fprintf(&sb, "  简介: %s\n", preset.Description)
-			}
-			if len(preset.Tags) > 0 {
-				fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(preset.Tags, "、"))
 			}
 			if len(preset.Slots) > 0 {
 				enabled := 0
@@ -397,7 +394,7 @@ func newWriteStyleReferencesTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newListTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_tellers", "列出叙事风格索引，返回 ID、名称、简介、标签和槽位概览；叙事风格是共享模块，可用于写作模式和游戏模式；需要完整配置时再调用 read_tellers。叙事风格只负责文风、提示词槽位、场景风格和上下文策略；场景风格应引用 list_style_references 返回的共享 path。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_tellers", "列出叙事风格索引，返回 ID、名称、简介和槽位概览；叙事风格是共享模块，可用于写作模式和游戏模式；需要完整配置时再调用 read_tellers。叙事风格只负责文风、提示词槽位、场景风格和上下文策略；场景风格应引用 list_style_references 返回的共享 path。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
@@ -416,9 +413,6 @@ func newListTellersTool(novaDir string) (tool.BaseTool, error) {
 			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  适用: 共享模块（写作模式 / 游戏模式）\n  槽位: %d\n", teller.ID, teller.Name, boolLabel(teller.Custom, "custom", "built-in"), len(teller.Slots))
 			if teller.Description != "" {
 				fmt.Fprintf(&sb, "  简介: %s\n", teller.Description)
-			}
-			if len(teller.Tags) > 0 {
-				fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(teller.Tags, "、"))
 			}
 			sb.WriteString("\n")
 		}
@@ -487,7 +481,7 @@ func newWriteTellersTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newListEventPackagesTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_event_packages", "列出事件包索引，返回 ID、名称、简介、标签、类型和事件卡数量；事件包是游戏模式独占模块，一个事件包就是一组事件卡。需要完整事件卡内容时再调用 read_event_packages。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_event_packages", "列出事件包索引，返回 ID、名称、简介、类型和事件卡数量；事件包是游戏模式独占模块，一个事件包就是一组事件卡。需要完整事件卡内容时再调用 read_event_packages。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
@@ -506,9 +500,6 @@ func newListEventPackagesTool(novaDir string) (tool.BaseTool, error) {
 			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  事件卡: %d\n", item.ID, item.Name, boolLabel(item.Custom, "custom", "built-in"), len(item.Events))
 			if item.Description != "" {
 				fmt.Fprintf(&sb, "  简介: %s\n", item.Description)
-			}
-			if len(item.Tags) > 0 {
-				fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(item.Tags, "、"))
 			}
 			sb.WriteString("\n")
 		}
@@ -577,7 +568,7 @@ func newWriteEventPackagesTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newListActorStatesTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_actor_states", "列出状态系统索引，返回 ID、名称、简介、标签、类型、模板数量、初始 Actor 数量和词条池数量；状态系统是游戏模式结构化 Actor 状态和词条库的唯一真源。模板可表示主角、重要角色、敌人、怪物、世界、故事倒计时、势力、基地或副本等 Actor。需要完整字段 schema、trait_rules 或词条定义时再调用 read_actor_states。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_actor_states", "列出状态系统索引，返回 ID、名称、简介、类型、模板数量、初始 Actor 数量和词条池数量；状态系统是游戏模式结构化 Actor 状态和词条库的唯一真源。模板可表示主角、重要角色、敌人、怪物、世界、故事倒计时、势力、基地或副本等 Actor。需要完整字段 schema、trait_rules 或词条定义时再调用 read_actor_states。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
@@ -597,9 +588,6 @@ func newListActorStatesTool(novaDir string) (tool.BaseTool, error) {
 			if item.Description != "" {
 				fmt.Fprintf(&sb, "  简介: %s\n", item.Description)
 			}
-			if len(item.Tags) > 0 {
-				fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(item.Tags, "、"))
-			}
 			sb.WriteString("\n")
 		}
 		return strings.TrimSpace(sb.String()), nil
@@ -607,7 +595,7 @@ func newListActorStatesTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadActorStatesTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_actor_states", "按状态系统 ID 批量读取完整配置。字段 schema 支持 number/string/bool/enum/object/list、default、min/max、visible/hidden/spoiler、description 和 update_instruction；trait_pools 定义可复用词条，模板 trait_rules 用 pool_id 和 draw_count 声明创建 Actor 时的自动抽取规则；initial_actors 定义初始 Actor。词条本身不得携带路径操作，抽取结果会由后端作为定义快照持久化到 actors.<actor_id>.traits；运行时普通字段位于 actors.<actor_id>.state.<field_path>。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_actor_states", "按状态系统 ID 批量读取完整配置。字段 schema 支持 name/type/default/min/max/options/visibility/description/update_instruction/order；规范化后的 name 同时是状态 ID，同一模板内不可重名。trait_pools 定义可复用词条，模板 trait_rules 声明创建 Actor 时的自动抽取规则；initial_actors 定义初始 Actor。故事创建时冻结状态名称，后续所有字段引用使用 actor_id + field_id。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法读取状态系统")
@@ -667,7 +655,7 @@ func newWriteActorStatesTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newListStoryMemoryStructurePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_story_memory_structure_presets", "列出 Story Memory Structure 预设索引，返回 ID、名称、简介、标签、类型、结构数量和启用结构数量；这是游戏模式独占导演模块，只定义叙事承接 schema，不负责状态管理，也不包含任何故事运行时 records。需要完整字段 schema 时再调用 read_story_memory_structure_presets。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_story_memory_structure_presets", "列出 Story Memory Structure 预设索引，返回 ID、名称、简介、类型、结构数量和启用结构数量；这是游戏模式独占导演模块，只定义叙事承接 schema，不负责状态管理，也不包含任何故事运行时 records。需要完整字段 schema 时再调用 read_story_memory_structure_presets。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
@@ -694,9 +682,6 @@ func newListStoryMemoryStructurePresetsTool(novaDir string) (tool.BaseTool, erro
 			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  适用: 游戏模式\n  结构: %d/%d 启用\n  字段: %d\n", item.ID, item.Name, boolLabel(item.Custom, "custom", "built-in"), enabled, len(item.Structures), fields)
 			if item.Description != "" {
 				fmt.Fprintf(&sb, "  简介: %s\n", item.Description)
-			}
-			if len(item.Tags) > 0 {
-				fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(item.Tags, "、"))
 			}
 			sb.WriteString("\n")
 		}
@@ -765,7 +750,7 @@ func newWriteStoryMemoryStructurePresetsTool(novaDir string) (tool.BaseTool, err
 }
 
 func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_story_directors", "列出故事导演索引，返回 ID、名称、简介、标签、策略、模块引用开关和系统配置概览；策略会用中文标签展示，完整枚举 ID 见 read/write 工具说明。故事导演是游戏模式独占模块；需要完整配置时再调用 read_story_directors。故事导演可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统、Story Memory Structure 和图像方案；Actor 词条库属于状态系统。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_story_directors", "列出故事导演索引，返回 ID、名称、简介、策略、模块引用开关和系统配置概览；策略会用中文名称展示，完整枚举 ID 见 read/write 工具说明。故事导演是游戏模式独占模块；需要完整配置时再调用 read_story_directors。故事导演可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统、Story Memory Structure 和图像方案；Actor 词条库属于状态系统。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
@@ -811,9 +796,6 @@ func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 			)
 			if director.Description != "" {
 				fmt.Fprintf(&sb, "  简介: %s\n", director.Description)
-			}
-			if len(director.Tags) > 0 {
-				fmt.Fprintf(&sb, "  标签: %s\n", strings.Join(director.Tags, "、"))
 			}
 			sb.WriteString("\n")
 		}

@@ -731,10 +731,10 @@ function defaultPresetSectionCollapsed(kind: PresetResourceKind, resourceKind: P
   return kind !== resourceKind
 }
 
-function filterPresetDirectoryItems<T extends { name: string; description?: string; tags?: string[] }>(items: T[], query: string) {
+function filterPresetDirectoryItems<T extends { name: string; description?: string }>(items: T[], query: string) {
   const normalizedQuery = query.trim().toLocaleLowerCase()
   if (!normalizedQuery) return items
-  return items.filter((item) => [item.name, item.description || '', ...(item.tags || [])]
+  return items.filter((item) => [item.name, item.description || '']
     .join('\n')
     .toLocaleLowerCase()
     .includes(normalizedQuery))
@@ -748,16 +748,12 @@ function presetStatusLabel(item: { custom?: boolean; builtin_overridden?: boolea
 
 export function EventPackageEditor({
   draft,
-  tagDraft,
   setDraft,
-  setTagDraft,
   onSave,
   onValidityChange,
 }: {
   draft: EventPackageModule | null
-  tagDraft: string
   setDraft: (draft: EventPackageModule | null) => void
-  setTagDraft: (value: string) => void
   onSave: () => void
   onValidityChange?: (valid: boolean) => void
 }) {
@@ -768,7 +764,7 @@ export function EventPackageEditor({
   }
 
   return (
-    <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft}>
+    <ModuleEditorShell draft={draft} setDraft={setDraft}>
       <PresetConfigSectionEditor
         sectionId="event-package.events"
         resetKey={`${draft.id}:events`}
@@ -789,18 +785,14 @@ export function EventPackageEditor({
 export function RuleSystemEditor({
   draft,
   actorStates = [],
-  tagDraft,
   setDraft,
-  setTagDraft,
   onOpenActorState,
   onSave,
   onValidityChange,
 }: {
   draft: RuleSystemModule | null
   actorStates?: ActorStateModule[]
-  tagDraft: string
   setDraft: (draft: RuleSystemModule | null) => void
-  setTagDraft: (value: string) => void
   onOpenActorState?: (id: string) => void
   onSave: () => void
   onValidityChange?: (valid: boolean) => void
@@ -813,7 +805,7 @@ export function RuleSystemEditor({
   }
 
   return (
-    <ModuleEditorShell draft={draft} tagDraft={tagDraft} setDraft={setDraft} setTagDraft={setTagDraft} metadata="compact">
+    <ModuleEditorShell draft={draft} setDraft={setDraft} metadata="compact">
       <PresetConfigSectionEditor
         sectionId="rule-system.trpg-system"
         resetKey={`${draft.id}:trpg_system`}
@@ -842,18 +834,14 @@ export function RuleSystemEditor({
 export function ActorStateEditor({
   draft,
   ruleSystems = [],
-  tagDraft,
   setDraft,
-  setTagDraft,
   onOpenRuleSystem,
   onSave,
   onValidityChange,
 }: {
   draft: ActorStateModule | null
   ruleSystems?: RuleSystemModule[]
-  tagDraft: string
   setDraft: (draft: ActorStateModule | null) => void
-  setTagDraft: (value: string) => void
   onOpenRuleSystem?: (id: string) => void
   onSave: () => void
   onValidityChange?: (valid: boolean) => void
@@ -882,9 +870,7 @@ export function ActorStateEditor({
   return (
     <ModuleEditorShell
       draft={draft}
-      tagDraft={tagDraft}
       setDraft={setDraft}
-      setTagDraft={setTagDraft}
       metadata="compact"
       contentClassName="flex min-h-[320px] flex-1 p-0"
     >
@@ -948,16 +934,12 @@ export function ActorStateEditor({
 
 export function StoryMemoryStructureEditor({
   draft,
-  tagDraft,
   setDraft,
-  setTagDraft,
   onSave,
   onValidityChange,
 }: {
   draft: StoryMemoryStructureModule | null
-  tagDraft: string
   setDraft: (draft: StoryMemoryStructureModule | null) => void
-  setTagDraft: (value: string) => void
   onSave: () => void
   onValidityChange?: (valid: boolean) => void
 }) {
@@ -970,9 +952,7 @@ export function StoryMemoryStructureEditor({
   return (
     <ModuleEditorShell
       draft={draft}
-      tagDraft={tagDraft}
       setDraft={setDraft}
-      setTagDraft={setTagDraft}
       metadata="compact"
       contentClassName="grid min-h-0 flex-1 gap-4 overflow-y-auto p-3 sm:p-4"
     >
@@ -995,17 +975,13 @@ export function StoryMemoryStructureEditor({
 
 function ModuleEditorShell<T extends { name: string; description: string; custom: boolean; builtin_overridden?: boolean }>({
   draft,
-  tagDraft,
   setDraft,
-  setTagDraft,
   metadata = 'full',
   contentClassName = 'grid min-h-0 flex-1 gap-4 overflow-y-auto p-3 sm:p-4',
   children,
 }: {
   draft: T
-  tagDraft: string
   setDraft: (draft: T | null) => void
-  setTagDraft: (value: string) => void
   metadata?: 'full' | 'compact' | 'none'
   contentClassName?: string
   children: ReactNode
@@ -1018,12 +994,10 @@ function ModuleEditorShell<T extends { name: string; description: string; custom
         <PresetMetadataPanel
           name={draft.name}
           description={draft.description}
-          tags={tagDraft}
           status={presetStatusLabel(draft, t)}
           hint={editHint}
           onNameChange={(name) => setDraft({ ...draft, name })}
           onDescriptionChange={(description) => setDraft({ ...draft, description })}
-          onTagsChange={setTagDraft}
         />
       ) : null}
       <div className={contentClassName}>
@@ -1099,15 +1073,11 @@ function usePresetSectionValidity(resetKey: string, onValidityChange?: (valid: b
 
 export function ImagePresetEditor({
   draft,
-  tagDraft,
   setDraft,
-  setTagDraft,
   onSave,
 }: {
   draft: ImagePreset | null
-  tagDraft: string
   setDraft: (draft: ImagePreset | null) => void
-  setTagDraft: (value: string) => void
   onSave: () => void
 }) {
   const { t } = useTranslation()
@@ -1164,12 +1134,10 @@ export function ImagePresetEditor({
       <PresetMetadataPanel
         name={draft.name}
         description={draft.description}
-        tags={tagDraft}
         status={presetStatusLabel(draft, t)}
         hint={editHint}
         onNameChange={(name) => setDraft({ ...draft, name })}
         onDescriptionChange={(description) => setDraft({ ...draft, description })}
-        onTagsChange={setTagDraft}
       />
       <div className="image-preset-layout grid min-h-[320px] min-w-0 flex-1 overflow-y-auto">
         <aside className="image-preset-rules flex max-h-56 min-h-0 min-w-0 flex-col overflow-hidden border-b border-[var(--preset-line)] bg-[var(--preset-surface)]">

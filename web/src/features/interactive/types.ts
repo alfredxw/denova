@@ -48,7 +48,6 @@ export interface Teller {
   style_refs?: string[] | null
   style_rules?: StyleRule[] | null
   orchestration?: TellerOrchestrationConfig | null
-  tags: string[]
   context_policy: TellerContextPolicy
   slots: TellerPromptSlot[]
   custom: boolean
@@ -66,7 +65,6 @@ export interface ImagePreset {
   description: string
   prompt?: string
   slots?: ImagePresetSlot[]
-  tags: string[]
   path?: string
   custom: boolean
   builtin_overridden?: boolean
@@ -88,7 +86,6 @@ export interface StoryDirector {
   actor_state?: StoryDirectorActorStateSystem
   opening_selector?: StoryDirectorOpeningSelector
   resolved_snapshot?: StoryDirectorResolvedSnapshot
-  tags: string[]
   path?: string
   custom: boolean
   builtin_overridden?: boolean
@@ -142,7 +139,6 @@ export interface EventPackageModule {
   name: string
   description: string
   events?: TellerEventCard[]
-  tags: string[]
   path?: string
   custom: boolean
   builtin_overridden?: boolean
@@ -159,7 +155,6 @@ export interface RuleSystemModule {
   description: string
   actor_state_id?: string
   trpg_system: StoryDirectorTRPGSystem
-  tags: string[]
   path?: string
   custom: boolean
   builtin_overridden?: boolean
@@ -176,7 +171,6 @@ export interface ActorStateModule {
   description: string
   actor_state: StoryDirectorActorStateSystem
   migration_warnings?: string[]
-  tags: string[]
   path?: string
   custom: boolean
   builtin_overridden?: boolean
@@ -192,7 +186,6 @@ export interface StoryMemoryStructureModule {
   name: string
   description: string
   structures: StoryMemoryStructure[]
-  tags: string[]
   path?: string
   custom: boolean
   builtin_overridden?: boolean
@@ -299,8 +292,9 @@ export interface InitialActorTraitRoll {
 }
 
 export interface ActorStateField {
+  /** Legacy v5 fields accepted only while loading old workspace data. */
   id?: string
-  path: string
+  path?: string
   name: string
   type: 'number' | 'string' | 'bool' | 'enum' | 'object' | 'list' | string
   default?: unknown
@@ -438,14 +432,75 @@ export interface TurnEvent {
   state_delta?: StateDelta
   hot_state?: HotState
   rule_resolution?: RuleResolution
+	turn_result?: TurnResult
   terminal_outcome?: TerminalOutcome
   state_status?: 'pending' | 'ready' | 'failed'
   state_error?: string
   memory_entry_id?: string
-  memory_status?: 'pending' | 'ready' | 'failed'
+  memory_status?: 'pending' | 'running' | 'ready' | 'failed'
   memory_error?: string
   versions?: TurnVersion[]
   version_idx?: number
+}
+
+export interface TurnContract {
+  player_intent: string
+  scene_goal: string
+  beats?: string[]
+  npc_intents?: string[]
+  reveals?: string[]
+  costs?: string[]
+  continuity_constraints?: string[]
+  choice_axes?: string[]
+  expected_state_changes?: string[]
+  scene_transition_candidate?: TurnSceneTransition
+  plan_alignment_candidate?: {
+    level?: 'aligned' | 'minor_deviation' | 'major_deviation' | string
+    invalidated_plan_refs?: string[]
+    reason?: string
+  }
+}
+
+export interface TurnSceneTransition {
+  kind?: 'none' | 'exit' | 'enter' | 'replace' | string
+  from?: string
+  to?: string
+  reason?: string
+}
+
+export interface TurnResult {
+  contract: TurnContract
+  actor_state_patches?: Array<{
+    actor_id?: string
+    actor_name?: string
+    template_id?: string
+    state?: Record<string, unknown>
+    reason?: string
+  }>
+  fact_candidates?: Array<{
+    kind?: string
+    subject?: string
+    fact: string
+    visibility?: string
+    importance?: string
+    people?: string[]
+    places?: string[]
+    tags?: string[]
+  }>
+  scene_result?: {
+    status?: 'continued' | 'completed' | 'transitioned' | 'terminal' | string
+    scene_id?: string
+    next_scene_id?: string
+    summary?: string
+    next_scene_goal?: string
+  }
+  plan_signals?: {
+    scene_transition?: TurnSceneTransition
+    deviation_level?: 'none' | 'minor' | 'major' | string
+    invalidated_refs?: string[]
+    reason?: string
+  }
+  choices?: string[]
 }
 
 export interface TurnDisplayEvent {
@@ -513,7 +568,20 @@ interface TurnVersion {
 }
 
 interface StateDelta {
-  ops: StateOp[]
+	schema_version?: number
+  ops?: StateOp[]
+  actor_ops?: ActorStateOp[]
+}
+
+export interface ActorStateOp {
+  op: string
+  actor_id: string
+  field_id: string
+  value?: unknown
+  reason?: string
+  source_turn_id?: string
+  source_kind?: string
+  source_id?: string
 }
 
 export interface StateOp {
@@ -582,6 +650,7 @@ export interface DirectorPlanRunStatus {
   completed_docs?: number
   start_ready?: boolean
   blocking?: boolean
+  decision?: PlanDecision
 }
 
 export interface DirectorPlanStatus {
@@ -599,6 +668,25 @@ export interface DirectorPlanStatus {
   start_ready: boolean
   blocking: boolean
   revision?: string
+  decision?: PlanDecision
+}
+
+export interface PlanDecision {
+  mode: 'keep' | 'patch' | 'replan' | string
+  triggers?: string[]
+  scene_transition?: {
+    kind?: 'none' | 'exit' | 'enter' | 'replace' | string
+    from?: string
+    to?: string
+    evidence?: string[]
+  }
+  deviation?: {
+    level?: 'none' | 'minor' | 'major' | string
+    invalidated_plan_refs?: string[]
+    reason?: string
+  }
+  reason?: string
+  base_revision?: string
 }
 
 export interface DirectorPlanMetadata {
@@ -659,7 +747,8 @@ export interface RuleStateBinding {
 
 export interface RuleStateBindingModifier {
   source?: 'actor' | 'target' | string
-  field_path?: string
+	field_id?: string
+	field_path?: string
   effect?: 'advantage' | 'resistance' | string
   scale?: number
   offset?: number
@@ -671,7 +760,8 @@ export interface RuleStateBindingModifier {
 
 export interface RuleNarrativeStateRef {
   source?: 'actor' | 'target' | 'scene' | string
-  field_path?: string
+	field_id?: string
+	field_path?: string
   usage?: 'check_decision' | 'difficulty' | 'outcome_design' | 'prose' | 'memory' | string
   guidance?: string
 }
@@ -683,7 +773,8 @@ export interface RuleOutcomeStateChangeBinding {
 
 export interface RuleComputedStateChange {
   source?: 'actor' | 'target' | string
-  field_path?: string
+	field_id?: string
+	field_path?: string
   change_formula?: RuleStateChangeFormula
   reason?: string
 }
@@ -698,7 +789,8 @@ export interface RuleStateChangeFormula {
 
 export interface RuleStateFormulaTerm {
   source?: 'actor' | 'target' | string
-  field_path?: string
+	field_id?: string
+	field_path?: string
   scale?: number
   offset?: number
 }
@@ -742,7 +834,9 @@ interface TurnCheckRule {
 
 interface TurnCheckBonus {
   kind?: string
-  source_path?: string
+	actor_id?: string
+	field_id?: string
+	source_path?: string
   reason: string
   value: number
 }
@@ -760,7 +854,9 @@ interface TurnCheckOutcome {
 }
 
 interface TurnStateChange {
-  path: string
+	actor_id?: string
+	field_id?: string
+	path?: string
   change: number
   reason?: string
 }
@@ -770,7 +866,8 @@ interface TurnCheckAdjudication {
   stakes?: string
   difficulty_reason?: string
   roll_mode_reason?: string
-  state_paths?: string[]
+	state_refs?: Array<{ actor_id: string; field_id: string }>
+	state_paths?: string[]
 }
 
 interface RuleResult {
@@ -806,11 +903,14 @@ interface RuleStateConsumption {
   status: 'none' | 'disabled' | 'applied' | 'partial' | 'skipped' | string
   mode?: 'hybrid_auto' | 'director_only' | string
   applied_ops?: StateOp[]
+	applied_actor_ops?: ActorStateOp[]
   warnings?: RuleStateConsumptionWarning[]
 }
 
 interface RuleStateConsumptionWarning {
-  path?: string
+	actor_id?: string
+	field_id?: string
+	path?: string
   reason: string
 }
 
@@ -890,7 +990,16 @@ export interface Snapshot {
   director_plan?: DirectorPlan
   director_plan_status?: DirectorPlanStatus
   state: Record<string, unknown>
+  actor_state_schema?: ActorStateSchemaSnapshot
   graph?: StoryGraph
+}
+
+export interface ActorStateSchemaSnapshot {
+  version: number
+  system: StoryDirectorActorStateSystem
+	trpg_system?: StoryDirectorTRPGSystem
+  legacy_field_paths?: Record<string, Record<string, string>>
+  legacy_actor_templates?: Record<string, string>
 }
 
 interface ContextCompactionEvent {
@@ -902,6 +1011,10 @@ interface ContextCompactionEvent {
   retained_turns?: number
   tokens_before?: number
   tokens_after?: number
+	projected_tokens_before?: number
+	projected_tokens_after?: number
+	reserved_completion_tokens?: number
+	reserved_tool_result_tokens?: number
   target_ratio?: number
   context_window_tokens?: number
   strategy?: string

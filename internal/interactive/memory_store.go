@@ -192,6 +192,73 @@ func (s *Store) MarkInteractiveMemoryReady(storyID, branchID, turnID string) err
 	return s.markTurnMemoryReadyLocked(storyID, meta, lines, branchID, strings.TrimSpace(turnID), "")
 }
 
+// MarkInteractiveMemoryRunReady records that Memory Recorder has completed a
+// real run, even when it produced no patches. The marker prevents a no-op run
+// from being scheduled again on every following turn.
+func (s *Store) MarkInteractiveMemoryRunReady(storyID, branchID, turnID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return err
+	}
+	branchID, _, err = resolveBranch(meta, branchID)
+	if err != nil {
+		return err
+	}
+	turnID = strings.TrimSpace(turnID)
+	return s.markTurnMemoryReadyLocked(storyID, meta, lines, branchID, turnID, interactiveMemoryRunMarkerPrefix+turnID)
+}
+
+// ClaimInteractiveMemoryRun atomically claims one turn for memory recording.
+// Automatic maintenance is idempotent; explicit user rebuilds may force a new
+// revision of the derived Story Memory index.
+func (s *Store) ClaimInteractiveMemoryRun(storyID, branchID, turnID string, force bool) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return false, err
+	}
+	branchID, _, err = resolveBranch(meta, branchID)
+	if err != nil {
+		return false, err
+	}
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return false, fmt.Errorf("记忆运行缺少所属回合")
+	}
+	updated := false
+	for _, record := range lines {
+		if record.Envelope.ID != turnID || record.Envelope.Type != StoryEventTypeTurn {
+			continue
+		}
+		status, _ := record.Raw["memory_status"].(string)
+		status = strings.TrimSpace(status)
+		if !force && (status == "running" || status == "ready") {
+			return false, nil
+		}
+		record.Raw["memory_status"] = "running"
+		delete(record.Raw, "memory_error")
+		updated = true
+		break
+	}
+	if !updated {
+		return false, fmt.Errorf("记忆运行所属回合不存在: %s", turnID)
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	meta.UpdatedAt = now
+	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
+		return false, err
+	}
+	if err := s.touchIndexLocked(storyID, now, 0); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Store) MarkInteractiveMemoryFailed(storyID string, req MarkStateFailedRequest) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -223,10 +290,6 @@ func (s *Store) MarkInteractiveMemoryFailed(storyID string, req MarkStateFailedR
 		}
 		raw["memory_status"] = "failed"
 		raw["memory_error"] = errText
-		if current, ok := raw["state_status"].(string); ok && current == "pending" {
-			raw["state_status"] = "failed"
-			raw["state_error"] = errText
-		}
 		updated = true
 		break
 	}
@@ -323,10 +386,6 @@ func (s *Store) markTurnMemoryReadyLocked(storyID string, meta StoryMeta, lines 
 			raw["memory_entry_id"] = memoryID
 		}
 		delete(raw, "memory_error")
-		if current, ok := raw["state_status"].(string); ok && current == "pending" {
-			raw["state_status"] = "ready"
-			delete(raw, "state_error")
-		}
 		updated = true
 		break
 	}

@@ -696,7 +696,6 @@ describe('SettingPanel', () => {
     const descriptionInput = within(metadata).getByRole('textbox', { name: '描述' })
     expect(nameInput).toHaveValue('默认记忆结构')
     expect(descriptionInput).toHaveValue('默认记忆结构 description')
-    expect(within(metadata).getByRole('textbox', { name: '标签' })).toBeInTheDocument()
     expect(screen.getByText('编辑内置资源会保存为同 ID 覆盖；右上角可恢复内置版本。')).toBeInTheDocument()
     expect(screen.getByTestId('preset-config-visual-editor')).toHaveClass('preset-config-visual-container')
     expect(screen.getByTestId('memory-structure-editor')).toHaveClass('preset-visual-editor-shell', 'overflow-hidden')
@@ -711,7 +710,6 @@ describe('SettingPanel', () => {
     expect(updateStoryMemoryStructure).toHaveBeenCalledWith('default', expect.objectContaining({
       name: '长期记忆结构',
       description: '记录长期承接信息',
-      tags: [],
     }), '', '/workspace')
   })
 
@@ -1073,7 +1071,6 @@ function teller(id: string, name: string): Teller {
     random_event_rate: 0.15,
     style_refs: [],
     style_rules: [],
-    tags: [],
     context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' },
     slots: [{ id: 'identity', name: '系统提示', target: 'system', enabled: true, content: 'rules' }],
     custom: id !== 'classic',
@@ -1088,7 +1085,6 @@ function imagePreset(id: string, name: string): ImagePreset {
     description: `${name} description`,
     prompt: '## 图像请求 Prompt（tool_request）\n\nvisual prompt',
     slots: [{ id: 'tool_request', name: '图像请求 Prompt', target: 'tool_request', enabled: true, content: 'visual prompt' }],
-    tags: [],
     custom: id !== 'game-cg',
   }
 }
@@ -1115,7 +1111,6 @@ function storyDirector(id: string, name: string): StoryDirector {
       events: [],
     }],
     trpg_system: { rule_templates: [] },
-    tags: [],
     custom: id !== 'default',
   }
 }
@@ -1127,7 +1122,6 @@ function eventPackage(id: string, name: string): EventPackageModule {
     name,
     description: `${name} description`,
     events: [],
-    tags: [],
     custom: id !== 'default',
   }
 }
@@ -1139,7 +1133,6 @@ function ruleSystem(id: string, name: string): RuleSystemModule {
     name,
     description: `${name} description`,
     trpg_system: { rule_templates: defaultRuleTemplates() },
-    tags: [],
     custom: !isBuiltinRuleSystemID(id),
   }
 }
@@ -1166,7 +1159,6 @@ function memoryStructure(id: string, name: string): StoryMemoryStructureModule {
       fields: [{ id: 'event', name: '事件', enabled: true, order: 10 }],
       order: 10,
     }],
-    tags: [],
     custom: id !== 'default',
   }
 }

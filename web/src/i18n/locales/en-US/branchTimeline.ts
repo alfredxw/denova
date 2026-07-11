@@ -28,6 +28,9 @@ const branchTimeline = {
   'branchTimeline.mainBranch': 'Main',
   'branchTimeline.terminalBadge': 'END',
   'branchTimeline.terminalNode': 'Terminal node',
+	'branchTimeline.currentNode': 'current node',
+	'branchTimeline.nodeAria': 'Turn {{index}}: {{title}}, {{state}}',
+	'branchTimeline.linearRoute': 'This is a linear route. Select a node to branch from it.',
 } as const
 
 export default branchTimeline

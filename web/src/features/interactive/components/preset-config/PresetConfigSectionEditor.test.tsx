@@ -32,7 +32,9 @@ describe('PresetConfigSectionEditor', () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     const onValidityChange = vi.fn()
-    render(<ArraySectionHarness onChange={onChange} onValidityChange={onValidityChange} />)
+    const { container } = render(<ArraySectionHarness onChange={onChange} onValidityChange={onValidityChange} />)
+
+    expect(container.querySelector('section')).toHaveClass('self-start')
 
     await user.click(screen.getByRole('button', { name: 'JSON' }))
     const editor = screen.getByTestId('preset-config-json-input')

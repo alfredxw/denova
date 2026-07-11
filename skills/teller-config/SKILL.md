@@ -26,7 +26,6 @@ Important fields:
 - `id`: stable ID. Required for update/delete; create may generate one if omitted.
 - `name`: user visible name.
 - `description`: short explanation of the narrative style.
-- `tags`: short searchable labels.
 - `context_policy`: controls which context groups the teller expects.
 - `slots`: prompt slots used by writing and interactive story prompt assembly.
 

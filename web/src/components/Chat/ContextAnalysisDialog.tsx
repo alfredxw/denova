@@ -87,7 +87,15 @@ function ContextUsageSummary({ analysis }: { analysis: ContextAnalysis }) {
   const { t } = useTranslation()
   const usage = analysis.context_usage_ratio ? Math.round(analysis.context_usage_ratio * 100) : 0
   const items = [
-    { label: t('chat.contextAnalysis.tokenEstimate'), value: formatNumber(analysis.token_estimate ?? 0) },
+		{
+			label: t('chat.contextAnalysis.tokenEstimate'),
+			value: formatNumber(analysis.projected_token_estimate ?? analysis.token_estimate ?? 0),
+			title: t('chat.contextAnalysis.projectedTokenHint', {
+				prompt: formatNumber(analysis.token_estimate ?? 0),
+				completion: formatNumber(analysis.reserved_completion_tokens ?? 0),
+				tools: formatNumber(analysis.reserved_tool_result_tokens ?? 0),
+			}),
+		},
     { label: t('chat.contextAnalysis.contextWindow'), value: analysis.context_window_tokens ? formatNumber(analysis.context_window_tokens) : t('common.notSet') },
     { label: t('chat.contextAnalysis.contextUsage'), value: analysis.context_window_tokens ? `${usage}%` : t('common.notSet') },
     { label: t('chat.contextAnalysis.compaction'), value: analysis.compaction_active ? t('chat.contextAnalysis.compactionActive', { epoch: analysis.compaction_epoch ?? 0 }) : t('chat.contextAnalysis.compactionInactive') },
@@ -96,7 +104,7 @@ function ContextUsageSummary({ analysis }: { analysis: ContextAnalysis }) {
   return (
     <div className="grid gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[11px] sm:grid-cols-5">
       {items.map((item) => (
-        <div key={item.label} className="min-w-0">
+			<div key={item.label} className="min-w-0" title={'title' in item ? item.title : undefined}>
           <div className="truncate text-[var(--nova-text-faint)]">{item.label}</div>
           <div className="mt-0.5 truncate font-medium text-[var(--nova-text)]">{item.value}</div>
         </div>

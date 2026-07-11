@@ -1,5 +1,6 @@
 const storyMemory = {
   'storyMemory.title': 'Story Memory',
+  'storyMemory.backToStory': 'Back to Story',
   'storyMemory.subtitle': 'Manage current plot, characters, quests, and summaries by structure',
   'storyMemory.branchSummary': '{{branch}} · Head {{head}}',
   'storyMemory.loadFailed': 'Failed to load story memory',

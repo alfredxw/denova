@@ -34,6 +34,7 @@ import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateSto
 import type { ImagePreset, InteractiveTurnPersistedEvent, RuleResolution, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { StoryDirectorPicker } from './StoryDirectorPicker'
+import { PlayerStoryHUD } from './PlayerStoryHUD'
 import { TurnNavigator, type TurnNavigationItem } from './TurnNavigator'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
@@ -504,6 +505,14 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         .slice(0, 10),
     [generatedHotChoices],
   )
+  const persistedHotChoices = useMemo(
+    () =>
+      (snapshot?.current_turn?.turn_result?.choices || snapshot?.current_turn?.hot_state?.choices || [])
+        .map((choice) => choice.trim())
+        .filter(Boolean)
+        .slice(0, 10),
+    [snapshot?.current_turn?.hot_state?.choices, snapshot?.current_turn?.turn_result?.choices],
+  )
   const directorPlanStatus = snapshot?.director_plan_status
   const directorBlocking = false
   const directorStatusVisible = Boolean(directorPlanStatus && directorBlocking)
@@ -595,10 +604,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   useEffect(() => {
     hotChoicesAbortRef.current?.abort()
-    setGeneratedHotChoices([])
-    setHotChoicesExpanded(false)
+    setGeneratedHotChoices(persistedHotChoices)
+    setHotChoicesExpanded(hotChoicesMode === 'auto' && persistedHotChoices.length > 0)
     setHotChoicesLoading(false)
-  }, [snapshotKey])
+  }, [hotChoicesMode, persistedHotChoices, snapshotKey])
 
   useEffect(() => {
     if (!stagePreferences.hotChoicesEnabled) {
@@ -613,8 +622,13 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     if (streaming || hotChoicesMode !== 'auto') return
     if (pendingAutoHotChoicesKeyRef.current !== snapshotKey) return
     pendingAutoHotChoicesKeyRef.current = ''
+    if (persistedHotChoices.length > 0) {
+      setGeneratedHotChoices(persistedHotChoices)
+      setHotChoicesExpanded(true)
+      return
+    }
     void requestHotChoices()
-  }, [hotChoicesMode, requestHotChoices, snapshotKey, streaming])
+  }, [hotChoicesMode, persistedHotChoices, requestHotChoices, snapshotKey, streaming])
 
   const send = async (override?: { message?: string; rewindTurnId?: string }) => {
     const sourceMessage = override?.message ?? input
@@ -649,6 +663,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     stageAbortControllers.set(stageKey, abortController)
     const narrativeFilter = createInteractiveNarrativeFilter()
     let finishedNormally = false
+    let streamFailed = false
     let receivedPersistedTurn = false
     let persistedSnapshot: Snapshot | undefined = undefined
     try {
@@ -745,6 +760,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             flushLiveMessageBuffer()
             finishLiveMessages()
             setStageActivityContent('')
+            streamFailed = true
             setStageLiveMessages((prev) => [
               ...prev,
               {
@@ -760,7 +776,15 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             collapseNonNarrativeMessages()
             if (text) appendAssistantMessage(text)
             finishLiveMessages()
-            finishedNormally = true
+            if (!receivedPersistedTurn && !streamFailed) {
+              streamFailed = true
+              setStageLiveMessages([{
+                role: 'error',
+                content: t('storyStage.activity.persistenceMissing'),
+              }])
+            } else if (!streamFailed) {
+              finishedNormally = true
+            }
             setStageActivityContent('')
             break
           }
@@ -1172,6 +1196,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         <div className="nova-story-stage-content flex min-h-0 flex-1 overflow-hidden bg-[var(--nova-surface-2)]">
           <TurnNavigator items={turnNavigationItems} activeAnchorId={activeTurnAnchorId} onSelect={handleTurnNavigationSelect} />
           <section className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
+            <PlayerStoryHUD turn={snapshot?.current_turn} directorStatus={snapshot?.director_plan_status} />
             {snapshotLoading && messages.length === 0 && !streaming ? (
               <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 text-center text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div className="flex max-w-md flex-col items-center gap-3">
@@ -2109,7 +2134,7 @@ function StoryImagePresetMenu({ story, presets, disabled, onChange }: { story?: 
   const [saving, setSaving] = useState(false)
   const normalizedPresets = useMemo(() => {
     if (presets.some((preset) => preset.id === current.preset_id)) return presets
-    return [{ id: current.preset_id || 'game-cg', name: current.preset_id || 'game-cg', description: '', prompt: '', tags: [], custom: true, version: 1 }, ...presets]
+    return [{ id: current.preset_id || 'game-cg', name: current.preset_id || 'game-cg', description: '', prompt: '', custom: true, version: 1 }, ...presets]
   }, [current.preset_id, presets])
   const selected = normalizedPresets.find((preset) => preset.id === current.preset_id) || normalizedPresets.find((preset) => preset.id === 'game-cg') || normalizedPresets[0]
 
@@ -2226,11 +2251,13 @@ function publicRuleRollFromToolOutput(content: string): PublicRuleRoll | null {
   const stateChanges = Array.isArray(parsed.state_changes)
     ? parsed.state_changes
       .map((item) => isPlainRecord(item) ? {
-        path: String(item.path || '').trim(),
+				actor_id: String(item.actor_id || '').trim() || undefined,
+				field_id: String(item.field_id || '').trim() || undefined,
+				path: String(item.path || '').trim() || undefined,
         change: Number(item.change),
         reason: typeof item.reason === 'string' ? item.reason : undefined,
       } : null)
-      .filter((item): item is NonNullable<typeof item> => Boolean(item && item.path && Number.isFinite(item.change)))
+			.filter((item): item is NonNullable<typeof item> => Boolean(item && (item.field_id || item.path) && Number.isFinite(item.change)))
     : undefined
   return {
     resolution_id: stringFromRecord(parsed, 'resolution_id'),

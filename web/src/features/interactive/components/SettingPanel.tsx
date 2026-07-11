@@ -19,7 +19,7 @@ import type { PresetResourceKind, PresetUsageMode } from '../preset-ownership'
 import type { ImagePreset, StoryDirector, Teller } from '../types'
 import { CreatorDirectory, CreatorEditor, LoreDirectory, LoreEditor, OpeningPresetEditor } from './SettingPanelSections'
 import { PresetSettingsPanel } from './setting-panel/PresetSettingsPanel'
-import { EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, splitTags } from './setting-panel/presetResources'
+import { EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS } from './setting-panel/presetResources'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
@@ -356,7 +356,7 @@ function LoreSettingPanel({
 
   const saveLoreDraft = async (mode: 'manual' | 'auto') => {
     if (!draft) return null
-    const payload = { ...draft, tags: splitTags(tagDraft) }
+    const payload = { ...draft, tags: splitLoreTags(tagDraft) }
     const signature = loreDraftSignature(payload, tagDraft)
     if (mode === 'auto' && signature === loreSavedSignature.current) return null
     const item = await updateLoreItem(draft.id, payload, loreBaseRevisionRef.current)
@@ -988,8 +988,15 @@ function isAbortError(err: unknown) {
 function loreDraftSignature(item: Partial<LoreItem>, tagDraft: string) {
   return JSON.stringify({
     ...item,
-    tags: splitTags(tagDraft),
+    tags: splitLoreTags(tagDraft),
   })
+}
+
+function splitLoreTags(value: string) {
+  return value
+    .split(/[，,]/)
+    .map((tag) => tag.trim())
+    .filter(Boolean)
 }
 
 function notifyLoreUpdated(itemIds: string[] = []) {

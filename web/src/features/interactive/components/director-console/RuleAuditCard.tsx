@@ -39,7 +39,7 @@ export function RuleAuditCard({ ruleResolution, terminalOutcome, error, rerollin
           {ruleRequest.state ? <InfoLine label={t('snapshot.field.state')} value={ruleRequest.state} /> : null}
         </div>
       ) : null}
-      {adjudication?.reason || adjudication?.stakes || adjudication?.difficulty_reason || adjudication?.roll_mode_reason || adjudication?.state_paths?.length ? (
+		{adjudication?.reason || adjudication?.stakes || adjudication?.difficulty_reason || adjudication?.roll_mode_reason || adjudication?.state_refs?.length ? (
         <div className="mt-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1.5 text-xs">
           <div className="mb-1 font-medium text-[var(--nova-text)]">{t('snapshot.ruleAudit.adjudication')}</div>
           <div className="space-y-1 leading-5">
@@ -47,7 +47,7 @@ export function RuleAuditCard({ ruleResolution, terminalOutcome, error, rerollin
             {adjudication.stakes ? <InfoLine label={t('snapshot.ruleAudit.stakes')} value={adjudication.stakes} /> : null}
             {adjudication.difficulty_reason ? <InfoLine label={t('snapshot.ruleAudit.difficultyReason')} value={adjudication.difficulty_reason} /> : null}
             {adjudication.roll_mode_reason ? <InfoLine label={t('snapshot.ruleAudit.rollModeReason')} value={adjudication.roll_mode_reason} /> : null}
-            {adjudication.state_paths?.length ? <InfoLine label={t('snapshot.ruleAudit.statePaths')} value={adjudication.state_paths.join(', ')} /> : null}
+			{adjudication.state_refs?.length ? <InfoLine label={t('snapshot.ruleAudit.statePaths')} value={adjudication.state_refs.map((ref) => `${ref.actor_id} / ${ref.field_id}`).join(', ')} /> : null}
           </div>
         </div>
       ) : null}
@@ -77,13 +77,13 @@ export function RuleAuditCard({ ruleResolution, terminalOutcome, error, rerollin
           </div>
           <StateValue value={{
             mode: stateConsumption.mode,
-            applied_ops: stateConsumption.applied_ops,
+						applied_actor_ops: stateConsumption.applied_actor_ops,
           }} />
           {stateConsumption.warnings?.length ? (
             <div className="mt-2 space-y-1 border-t border-[var(--nova-border)] pt-2 text-[11px] leading-5 text-[var(--nova-text-muted)]">
               {stateConsumption.warnings.map((warning, index) => (
-                <div key={`${warning.path || 'warning'}-${index}`} className="break-words [overflow-wrap:anywhere]">
-                  {warning.path ? <span className="text-[var(--nova-text-faint)]">{warning.path}: </span> : null}
+				<div key={`${warning.actor_id || 'warning'}:${warning.field_id || index}`} className="break-words [overflow-wrap:anywhere]">
+					{warning.actor_id || warning.field_id ? <span className="text-[var(--nova-text-faint)]">{warning.actor_id} / {warning.field_id}: </span> : null}
                   {warning.reason}
                 </div>
               ))}

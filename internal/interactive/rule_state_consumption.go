@@ -14,26 +14,38 @@ const (
 )
 
 type RuleStateConsumption struct {
-	Status     string                        `json:"status"`
-	Mode       string                        `json:"mode,omitempty"`
-	AppliedOps []StateOp                     `json:"applied_ops,omitempty"`
-	Warnings   []RuleStateConsumptionWarning `json:"warnings,omitempty"`
+	Status          string                        `json:"status"`
+	Mode            string                        `json:"mode,omitempty"`
+	AppliedOps      []StateOp                     `json:"applied_ops,omitempty"`
+	AppliedActorOps []ActorStateOp                `json:"applied_actor_ops,omitempty"`
+	Warnings        []RuleStateConsumptionWarning `json:"warnings,omitempty"`
 }
 
 type RuleStateConsumptionWarning struct {
-	Path   string `json:"path,omitempty"`
-	Reason string `json:"reason"`
+	ActorID string `json:"actor_id,omitempty"`
+	FieldID string `json:"field_id,omitempty"`
+	Path    string `json:"-"`
+	Reason  string `json:"reason"`
 }
 
 func applyRuleStateConsumption(state map[string]any, system StoryDirectorActorStateSystem, turnID string, resolution *RuleResolution, mode string) []StateOp {
+	_, actorOps := applyRuleStateConsumptionV2(state, system, turnID, resolution, mode)
+	ops := make([]StateOp, 0, len(actorOps))
+	for _, op := range actorOps {
+		ops = append(ops, StateOp{Op: op.Op, Path: actorStateFieldPath(op.ActorID, op.FieldID), Value: op.Value, Reason: op.Reason, SourceTurnID: op.SourceTurnID, SourceKind: op.SourceKind, SourceID: op.SourceID})
+	}
+	return normalizeStateOps(ops)
+}
+
+func applyRuleStateConsumptionV2(state map[string]any, system StoryDirectorActorStateSystem, turnID string, resolution *RuleResolution, mode string) ([]StateOp, []ActorStateOp) {
 	if resolution == nil {
-		return nil
+		return nil, nil
 	}
 	mode = normalizeRuleStateConsumptionMode(mode)
 	changes := normalizeTurnStateChanges(resolution.Result.StateChanges)
 	if len(changes) == 0 {
 		resolution.StateConsumption = &RuleStateConsumption{Status: "none", Mode: mode}
-		return nil
+		return nil, nil
 	}
 	if mode == RuleStateConsumptionModeDirectorOnly {
 		resolution.StateConsumption = &RuleStateConsumption{
@@ -43,61 +55,56 @@ func applyRuleStateConsumption(state map[string]any, system StoryDirectorActorSt
 				Reason: "规则状态自动消费已关闭；该检定结果将由后台导演按叙事上下文处理。",
 			}},
 		}
-		return nil
+		return nil, nil
 	}
 	system = normalizeActorStateSystem(system)
-	ops := make([]StateOp, 0, len(changes))
+	actorOps := make([]ActorStateOp, 0, len(changes))
 	warnings := make([]RuleStateConsumptionWarning, 0)
 	for _, change := range changes {
-		op, ok, warning := ruleStateChangeToOp(state, system, turnID, *resolution, change)
+		op, ok, warning := ruleStateChangeToActorOp(state, system, turnID, *resolution, change)
 		if !ok {
 			warnings = append(warnings, warning)
 			continue
 		}
-		ops = append(ops, op)
-		applyStateOp(state, op)
+		actorOps = append(actorOps, op)
+		applyActorStateOp(state, op)
 	}
 	status := "applied"
 	switch {
-	case len(ops) == 0:
+	case len(actorOps) == 0:
 		status = "skipped"
 	case len(warnings) > 0:
 		status = "partial"
 	}
 	resolution.StateConsumption = normalizeRuleStateConsumptionPointer(&RuleStateConsumption{
-		Status:     status,
-		Mode:       mode,
-		AppliedOps: ops,
-		Warnings:   warnings,
+		Status:          status,
+		Mode:            mode,
+		AppliedActorOps: actorOps,
+		Warnings:        warnings,
 	})
-	return ops
+	return nil, actorOps
 }
 
-func ruleStateChangeToOp(state map[string]any, system StoryDirectorActorStateSystem, turnID string, resolution RuleResolution, change TurnStateChange) (StateOp, bool, RuleStateConsumptionWarning) {
-	path := canonicalStatePath(change.Path)
-	if !validStatePathSyntax(path) {
-		return StateOp{}, false, RuleStateConsumptionWarning{Path: strings.TrimSpace(change.Path), Reason: "状态路径无效"}
+func ruleStateChangeToActorOp(state map[string]any, system StoryDirectorActorStateSystem, turnID string, resolution RuleResolution, change TurnStateChange) (ActorStateOp, bool, RuleStateConsumptionWarning) {
+	normalized := normalizeTurnStateChanges([]TurnStateChange{change})
+	if len(normalized) == 0 || normalized[0].ActorID == "" || normalized[0].FieldID == "" {
+		return ActorStateOp{}, false, RuleStateConsumptionWarning{Reason: "状态引用必须提供 actor_id 和 field_id"}
 	}
-	actorID, fieldPath, ok := parseActorStateFieldPath(path)
-	if !ok {
-		return StateOp{}, false, RuleStateConsumptionWarning{Path: path, Reason: "状态路径不属于 Actor State 字段"}
+	change = normalized[0]
+	actorID := change.ActorID
+	fieldRef := change.FieldID
+	templateID, found := actorTemplateIDFromStateOrSystem(state, system, actorID)
+	if !found {
+		return ActorStateOp{}, false, RuleStateConsumptionWarning{ActorID: actorID, FieldID: fieldRef, Reason: "目标 Actor 不存在或缺少状态模板"}
 	}
-	templateID, ok := actorTemplateIDFromStateOrSystem(state, system, actorID)
-	if !ok {
-		return StateOp{}, false, RuleStateConsumptionWarning{Path: path, Reason: "目标 Actor 不存在或缺少状态模板"}
-	}
-	template := actorStateTemplateByID(system, templateID)
-	if template.ID == "" {
-		return StateOp{}, false, RuleStateConsumptionWarning{Path: path, Reason: fmt.Sprintf("Actor 状态模板不存在: %s", templateID)}
-	}
-	field, ok := actorStateFieldByPath(template, fieldPath)
-	if !ok {
-		return StateOp{}, false, RuleStateConsumptionWarning{Path: path, Reason: fmt.Sprintf("字段不在状态系统中: %s", fieldPath)}
+	field, found := actorStateFieldByID(actorStateTemplateByID(system, templateID), fieldRef)
+	if !found {
+		return ActorStateOp{}, false, RuleStateConsumptionWarning{ActorID: actorID, FieldID: fieldRef, Reason: fmt.Sprintf("字段不在状态系统中: %s", fieldRef)}
 	}
 	if field.Type != "number" {
-		return StateOp{}, false, RuleStateConsumptionWarning{Path: path, Reason: fmt.Sprintf("字段不是 number 类型: %s", fieldPath)}
+		return ActorStateOp{}, false, RuleStateConsumptionWarning{ActorID: actorID, FieldID: fieldRef, Reason: fmt.Sprintf("字段不是 number 类型: %s", fieldRef)}
 	}
-	current, ok := actorStateNumber(getPath(state, path))
+	current, ok := actorStateNumber(actorStateFieldValue(state, actorID, actorStateFieldID(field)))
 	if !ok {
 		if defaultValue, defaultOK := actorStateNumber(field.Default); defaultOK {
 			current = defaultValue
@@ -111,15 +118,15 @@ func ruleStateChangeToOp(state map[string]any, system StoryDirectorActorStateSys
 		next = *field.Max
 	}
 	reason := firstNonEmptyString(change.Reason, resolution.Result.Result, resolution.Request.Cost, resolution.Request.Challenge)
-	return StateOp{
-		Op:           "set",
-		Path:         path,
-		Value:        next,
-		Reason:       reason,
-		SourceTurnID: turnID,
-		SourceKind:   StateOpSourceRuleResolution,
-		SourceID:     resolution.ID,
-	}, true, RuleStateConsumptionWarning{}
+	return ActorStateOp{Op: "set", ActorID: actorID, FieldID: actorStateFieldID(field), Value: next, Reason: reason, SourceTurnID: turnID, SourceKind: StateOpSourceRuleResolution, SourceID: resolution.ID}, true, RuleStateConsumptionWarning{}
+}
+
+func ruleStateChangeToOp(state map[string]any, system StoryDirectorActorStateSystem, turnID string, resolution RuleResolution, change TurnStateChange) (StateOp, bool, RuleStateConsumptionWarning) {
+	op, ok, warning := ruleStateChangeToActorOp(state, system, turnID, resolution, change)
+	if !ok {
+		return StateOp{}, false, warning
+	}
+	return StateOp{Op: op.Op, Path: actorStateFieldPath(op.ActorID, op.FieldID), Value: op.Value, Reason: op.Reason, SourceTurnID: op.SourceTurnID, SourceKind: op.SourceKind, SourceID: op.SourceID}, true, RuleStateConsumptionWarning{}
 }
 
 func parseActorStateFieldPath(path string) (string, string, bool) {
@@ -151,12 +158,7 @@ func actorTemplateIDFromStateOrSystem(state map[string]any, system StoryDirector
 }
 
 func actorStateFieldByPath(template ActorStateTemplate, path string) (ActorStateField, bool) {
-	for _, field := range normalizeActorStateFields(template.Fields) {
-		if field.Path == path {
-			return field, true
-		}
-	}
-	return ActorStateField{}, false
+	return actorStateFieldByID(template, path)
 }
 
 func removeRuleResolutionStateOps(ops []StateOp, resolutionID string) []StateOp {
@@ -174,6 +176,20 @@ func removeRuleResolutionStateOps(ops []StateOp, resolutionID string) []StateOp 
 		return nil
 	}
 	return out
+}
+
+func removeRuleResolutionActorOps(ops []ActorStateOp, resolutionID string) []ActorStateOp {
+	if len(ops) == 0 {
+		return nil
+	}
+	out := make([]ActorStateOp, 0, len(ops))
+	for _, op := range ops {
+		if op.SourceKind == StateOpSourceRuleResolution && (resolutionID == "" || op.SourceID == resolutionID) {
+			continue
+		}
+		out = append(out, op)
+	}
+	return normalizeActorStateOps(out)
 }
 
 func normalizeRuleStateConsumptionMode(mode string) string {
@@ -195,14 +211,23 @@ func normalizeRuleStateConsumptionPointer(value *RuleStateConsumption) *RuleStat
 	next.Status = normalizeRuleStateConsumptionStatus(next.Status)
 	next.Mode = normalizeRuleStateConsumptionMode(next.Mode)
 	next.AppliedOps = normalizeStateOps(next.AppliedOps)
+	next.AppliedActorOps = normalizeActorStateOps(next.AppliedActorOps)
 	if len(next.Warnings) > maxTurnBriefListItems {
 		next.Warnings = next.Warnings[:maxTurnBriefListItems]
 	}
 	warnings := make([]RuleStateConsumptionWarning, 0, len(next.Warnings))
 	for _, warning := range next.Warnings {
-		warning.Path = trimBytes(warning.Path, 512)
+		warning.ActorID = normalizeActorStateID(warning.ActorID)
+		warning.FieldID = normalizeActorStateFieldName(warning.FieldID)
+		if warning.ActorID == "" || warning.FieldID == "" {
+			if actorID, fieldID, ok := parseActorStateFieldPath(warning.Path); ok {
+				warning.ActorID = actorID
+				warning.FieldID = fieldID
+			}
+		}
+		warning.Path = ""
 		warning.Reason = trimBytes(warning.Reason, 1024)
-		if warning.Path == "" && warning.Reason == "" {
+		if warning.ActorID == "" && warning.FieldID == "" && warning.Reason == "" {
 			continue
 		}
 		warnings = append(warnings, warning)

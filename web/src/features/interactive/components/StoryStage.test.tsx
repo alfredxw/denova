@@ -49,6 +49,44 @@ beforeEach(() => {
 })
 
 describe('StoryStage hot choices mode', () => {
+	it('uses persisted TurnResult choices and HUD without a second choices Agent call', async () => {
+		const turn = {
+			id: 'turn-1',
+			parent_id: null,
+			branch_id: 'main',
+			ts: '2026-06-28T00:00:00Z',
+			user: '检查钟楼',
+			narrative: '钟楼上有反光一闪。',
+			state_status: 'ready' as const,
+			memory_status: 'running' as const,
+			turn_result: {
+				contract: { player_intent: '检查钟楼', scene_goal: '确认反光来源' },
+				scene_result: { status: 'continued', scene_id: '旧城钟楼', summary: '发现钟楼上的可疑反光', next_scene_goal: '找到观察角度' },
+				choices: ['绕到钟楼背面', '询问附近守夜人'],
+			},
+		}
+		render(
+			<VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+				<StoryStage
+					workspace="/tmp/book"
+					stories={[story()]}
+					story={story()}
+					tellers={[]}
+					storyId="story-1"
+					branchId="main"
+					snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [turn], current_turn: turn, state: {} }}
+					onDone={() => undefined}
+				/>
+			</VirtuosoMockContext.Provider>,
+		)
+
+		expect(await screen.findByText('绕到钟楼背面')).toBeInTheDocument()
+		expect(screen.getByText('找到观察角度')).toBeInTheDocument()
+		expect(screen.getByText('发现钟楼上的可疑反光')).toBeInTheDocument()
+		expect(screen.getByLabelText('当前故事态势')).toHaveTextContent('记忆整理中')
+		expect(generateInteractiveHotChoicesMock).not.toHaveBeenCalled()
+	})
+
   it('defaults to auto and keeps generated choices hidden until the user opens them', async () => {
     const user = userEvent.setup()
     sendInteractiveMessageMock.mockResolvedValue(interactiveStream([
@@ -452,6 +490,29 @@ describe('StoryStage composer', () => {
 })
 
 describe('StoryStage streaming rendering', () => {
+	it('discards optimistic narrative when done arrives without persistence confirmation', async () => {
+		const user = userEvent.setup()
+		const stream = controllableInteractiveStream()
+		const handleDone = vi.fn().mockResolvedValue(undefined)
+		try {
+			sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+			render(<StoryStageHarness onDone={handleDone} />)
+			await user.type(screen.getByPlaceholderText('你要做什么？'), '继续前进')
+			await user.click(screen.getByRole('button', { name: '发送' }))
+			await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
+			act(() => {
+				stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '这段正文没有落盘。' }) })
+				stream.enqueue({ event: 'done', data: '{}' })
+				stream.close()
+			})
+			expect(await screen.findByText(/没有收到持久化确认/)).toBeInTheDocument()
+			expect(screen.queryByText('这段正文没有落盘。')).not.toBeInTheDocument()
+			await waitFor(() => expect(handleDone).toHaveBeenCalled())
+		} finally {
+			stream.close()
+		}
+	})
+
   it('batches fast interactive chunks into one animation frame without slicing text', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
@@ -491,6 +552,7 @@ describe('StoryStage streaming rendering', () => {
       act(() => runAnimationFrames(frames))
 
       expect(await screen.findByText('青石镇外风声忽然停了。')).toBeInTheDocument()
+			stream.enqueue({ event: 'interactive_turn_persisted', data: JSON.stringify(persistedTurnEvent()) })
       stream.enqueue({ event: 'done', data: '{}' })
       stream.close()
     } finally {
@@ -571,13 +633,16 @@ describe('StoryStage streaming rendering', () => {
       await waitFor(() => expect(screen.getByText('正在检查开场资料。')).toBeInTheDocument())
       expect(screen.getByText('list_lore_items')).toBeInTheDocument()
 
-      act(() => {
+		act(() => {
         stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '门外有灯。' }) })
+			})
+
+		act(() => {
+				stream.enqueue({ event: 'interactive_turn_persisted', data: JSON.stringify(persistedTurnEvent()) })
         stream.enqueue({ event: 'done', data: '{}' })
         stream.close()
       })
 
-      expect(await screen.findByText('门外有灯。')).toBeInTheDocument()
       await waitFor(() => expect(handleDone).toHaveBeenCalled())
       await waitFor(() => expect(screen.queryByText('正在检查开场资料。')).not.toBeInTheDocument())
       expect(screen.queryByText('list_lore_items')).not.toBeInTheDocument()
@@ -852,7 +917,7 @@ describe('StoryStage opening panel', () => {
   })
 })
 
-function StoryStageHarness() {
+function StoryStageHarness({ onDone }: { onDone?: (options?: { silent?: boolean }) => Promise<Snapshot | void> } = {}) {
   const [snapshot, setSnapshot] = useState<Snapshot>({ story_id: 'story-1', branch_id: 'main', turns: [], state: {} })
   const nextSnapshot: Snapshot = {
     story_id: 'story-1',
@@ -878,10 +943,10 @@ function StoryStageHarness() {
         storyId="story-1"
         branchId="main"
         snapshot={snapshot}
-        onDone={() => {
+		onDone={onDone || (() => {
           setSnapshot(nextSnapshot)
           return Promise.resolve(nextSnapshot)
-        }}
+		})}
       />
     </VirtuosoMockContext.Provider>
   )
@@ -968,7 +1033,13 @@ function directorStatus(status: string, overrides: Partial<NonNullable<Snapshot[
 function interactiveStream(events: Array<{ event: string; data: string }>) {
   return new ReadableStream({
     start(controller) {
+			let persisted = false
       for (const event of events) {
+				if (event.event === 'interactive_turn_persisted') persisted = true
+				if (event.event === 'done' && !persisted) {
+					controller.enqueue({ event: 'interactive_turn_persisted', data: JSON.stringify(persistedTurnEvent()) })
+					persisted = true
+				}
         controller.enqueue(event)
       }
       controller.close()
@@ -1045,7 +1116,6 @@ function storyDirector(ruleVisibilityMode: string) {
     },
     trpg_system: { rule_templates: [] },
     opening_selector: { enabled: true },
-    tags: [],
     custom: false,
   }
 }

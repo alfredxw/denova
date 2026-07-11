@@ -6,6 +6,31 @@ import { ActorStateExplorer } from './ActorStateExplorer'
 import type { ExplorerProps } from './types'
 
 describe('ActorStateExplorer', () => {
+	it('uses normalized names as IDs and rejects duplicate names within one template', async () => {
+		const onValidityChange = vi.fn()
+		render(
+			<ActorStateExplorer
+				value={{
+					templates: [{
+						id: 'protagonist',
+						name: '主角状态',
+						fields: [
+							{ name: 'Ａ', type: 'string' },
+							{ name: ' a ', type: 'string' },
+						],
+					}],
+					initial_actors: [],
+					trait_pools: [],
+				}}
+				onChange={vi.fn()}
+				onValidityChange={onValidityChange}
+			/>,
+		)
+
+		await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false))
+		expect(screen.queryByText(/^路径$|^Path$/)).not.toBeInTheDocument()
+	})
+
   it('uses compact standalone sizing and exposes the state navigator as a tree', async () => {
     const user = userEvent.setup()
     const { container } = render(

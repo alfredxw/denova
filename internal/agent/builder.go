@@ -69,17 +69,23 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 
 func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...InteractiveStoryToolContext) (adk.Agent, error) {
 	var allowedPaths []string
+	maintenanceTask := ""
 	if len(toolContexts) > 0 {
 		allowedPaths = toolContexts[0].DirectorPlanAllowedPaths
+		maintenanceTask = toolContexts[0].MaintenanceTask
+	}
+	systemInstruction := prompts.BuildInteractiveDirectorSystemInstruction()
+	if maintenanceTask == "memory_update" {
+		systemInstruction = prompts.BuildInteractiveMemoryRecorderSystemInstruction()
 	}
 	return buildDeepAgent(ctx, cfg, deepAgentSpec{
 		Kind:              config.AgentKindInteractiveDirector,
 		Name:              "DenovaInteractiveDirectorAgent",
 		Description:       "AI 互动故事后台导演",
-		Instruction:       protectedSystemInstruction(cfg, config.AgentKindInteractiveDirector, prompts.BuildInteractiveDirectorSystemInstruction()),
+		Instruction:       protectedSystemInstruction(cfg, config.AgentKindInteractiveDirector, systemInstruction),
 		EnableSkills:      false,
 		DisableWriteTodos: true,
-		ExtraHandlers:     []adk.ChatModelAgentMiddleware{newInteractiveDirectorPlanFileMiddleware(allowedPaths)},
+		ExtraHandlers:     []adk.ChatModelAgentMiddleware{newInteractiveDirectorPlanFileMiddleware(allowedPaths, maintenanceTask)},
 		ExtraToolsFactory: interactiveDirectorToolsFactory(cfg, toolContexts...),
 	})
 }
@@ -504,18 +510,17 @@ func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...Interac
 		if len(toolContexts) == 0 {
 			return nil, nil
 		}
-		var tools []tool.BaseTool
-		actorTools, err := newInteractiveActorStateTools(toolContexts[0])
-		if err != nil {
-			return nil, err
+		ctx := toolContexts[0]
+		switch strings.TrimSpace(ctx.MaintenanceTask) {
+		case "memory_update":
+			return newInteractiveStoryMemoryPatchTools(ctx)
+		case "director_plan_update":
+			return nil, nil
+		default:
+			// Compatibility for explicit callers that have not selected a phase:
+			// expose only the derived-memory writer, never Actor State mutation.
+			return newInteractiveStoryMemoryPatchTools(ctx)
 		}
-		tools = append(tools, actorTools...)
-		memoryPatchTools, err := newInteractiveStoryMemoryPatchTools(toolContexts[0])
-		if err != nil {
-			return nil, err
-		}
-		tools = append(tools, memoryPatchTools...)
-		return tools, nil
 	}
 }
 

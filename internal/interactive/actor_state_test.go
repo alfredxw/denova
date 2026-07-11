@@ -36,9 +36,9 @@ func TestActorStatePatchValidationAndReplay(t *testing.T) {
 	})
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{
-		Title:           "Actor 状态",
-		StoryTellerID:   "classic",
-		InitialStateOps: actorStateInitialOps(system),
+		Title:         "Actor 状态",
+		StoryTellerID: "classic",
+		ActorState:    &system,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -52,8 +52,8 @@ func TestActorStatePatchValidationAndReplay(t *testing.T) {
 		ActorName:  "主角",
 		TemplateID: "protagonist",
 		State: map[string]any{
-			"resources.hp":    float64(7),
-			"conditions.main": "wounded",
+			"生命": float64(7),
+			"状态": "wounded",
 		},
 		Reason: "本回合主角受伤。",
 	}}, turn.ID)
@@ -63,20 +63,17 @@ func TestActorStatePatchValidationAndReplay(t *testing.T) {
 	if len(result.Ops) == 0 || result.Ops[0].SourceTurnID != turn.ID {
 		t.Fatalf("actor patch should produce traced state ops: %#v", result.Ops)
 	}
-	if _, err := store.AppendStateDelta(story.ID, AppendStateDeltaRequest{ParentID: turn.ID, BranchID: "main", Ops: result.Ops}); err != nil {
+	if _, err := store.AppendStateDelta(story.ID, AppendStateDeltaRequest{ParentID: turn.ID, BranchID: "main", Ops: result.Ops, ActorOps: result.ActorOps}); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := numberFromAny(getPath(snapshot.State, "actors.protagonist.state.resources.hp")); got != 7 {
-		t.Fatalf("actor hp should replay from actor path, got %v state=%#v", got, snapshot.State)
+	if got := numberFromAny(actorStateFieldValue(snapshot.State, "protagonist", "生命")); got != 7 {
+		t.Fatalf("actor hp should replay from the frozen field ID, got %v state=%#v", got, snapshot.State)
 	}
-	if got := numberFromAny(getPath(snapshot.State, "resources.hp")); got != 7 {
-		t.Fatalf("legacy hp path should read actor state, got %v state=%#v", got, snapshot.State)
-	}
-	if got := getPath(snapshot.State, "actors.protagonist.state.conditions.main"); got != "wounded" {
+	if got := actorStateFieldValue(snapshot.State, "protagonist", "状态"); got != "wounded" {
 		t.Fatalf("enum state should replay, got %#v", got)
 	}
 }
@@ -88,9 +85,9 @@ func TestDefaultActorStateIncludesStoryContextStateObject(t *testing.T) {
 	}
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{
-		Title:           "故事上下文状态",
-		StoryTellerID:   "classic",
-		InitialStateOps: actorStateInitialOps(system),
+		Title:         "故事上下文状态",
+		StoryTellerID: "classic",
+		ActorState:    &system,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -113,29 +110,29 @@ func TestDefaultActorStateIncludesStoryContextStateObject(t *testing.T) {
 		TemplateID: ActorStateStoryContextTemplateID,
 		Role:       "story_context",
 		State: map[string]any{
-			"timeline.start_date": "2026-07-09",
-			"scene.location":      "黄泉酒馆门口",
-			"scene.current_time":  "子时",
-			"scene.current_day":   "第 1 天",
-			"scene.current_event": "主角抵达黄泉酒馆",
-			"scene.pressure":      "门内有人等待主角表态",
+			"故事开局日期": "2026-07-09",
+			"当前详细地点": "黄泉酒馆门口",
+			"当前剧内时间": "子时",
+			"当前天数":   "第 1 天",
+			"当前事件":   "主角抵达黄泉酒馆",
+			"当前场景压力": "门内有人等待主角表态",
 		},
 		Reason: "本回合确认当前场景、时间和事件。",
 	}}, turn.ID)
 	if err != nil {
 		t.Fatalf("default story context patch should pass: %v", err)
 	}
-	if _, err := store.AppendStateDelta(story.ID, AppendStateDeltaRequest{ParentID: turn.ID, BranchID: "main", Ops: result.Ops}); err != nil {
+	if _, err := store.AppendStateDelta(story.ID, AppendStateDeltaRequest{ParentID: turn.ID, BranchID: "main", Ops: result.Ops, ActorOps: result.ActorOps}); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := getPath(snapshot.State, "actors.story.state.scene.location"); got != "黄泉酒馆门口" {
+	if got := actorStateFieldValue(snapshot.State, "story", "当前详细地点"); got != "黄泉酒馆门口" {
 		t.Fatalf("story context location should replay, got %#v", got)
 	}
-	if got := getPath(snapshot.State, "actors.story.state.scene.current_event"); got != "主角抵达黄泉酒馆" {
+	if got := actorStateFieldValue(snapshot.State, "story", "当前事件"); got != "主角抵达黄泉酒馆" {
 		t.Fatalf("story context event should replay, got %#v", got)
 	}
 }
@@ -192,9 +189,9 @@ func TestActorStateSupportsCustomNonCharacterStateObjects(t *testing.T) {
 
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{
-		Title:           "自定义状态对象",
-		StoryTellerID:   "classic",
-		InitialStateOps: actorStateInitialOps(system),
+		Title:         "自定义状态对象",
+		StoryTellerID: "classic",
+		ActorState:    &system,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -206,7 +203,7 @@ func TestActorStateSupportsCustomNonCharacterStateObjects(t *testing.T) {
 	if got := getPath(initialSnapshot.State, "actors.world.template_id"); got != "world_state" {
 		t.Fatalf("world state object should use custom template, got %#v state=%#v", got, initialSnapshot.State)
 	}
-	if got := getPath(initialSnapshot.State, "actors.world.state.crisis.countdown"); got != "100天后世界毁灭" {
+	if got := actorStateFieldValue(initialSnapshot.State, "world", "毁灭倒计时"); got != "100天后世界毁灭" {
 		t.Fatalf("world countdown should come from template default, got %#v", got)
 	}
 
@@ -220,7 +217,7 @@ func TestActorStateSupportsCustomNonCharacterStateObjects(t *testing.T) {
 		TemplateID: "world_state",
 		Role:       "world",
 		State: map[string]any{
-			"crisis.countdown": "99天后世界毁灭",
+			"毁灭倒计时": "99天后世界毁灭",
 		},
 		Reason: "钟楼事件确认世界倒计时推进。",
 	}, {
@@ -229,15 +226,15 @@ func TestActorStateSupportsCustomNonCharacterStateObjects(t *testing.T) {
 		TemplateID: "heroine_route",
 		Role:       "specific_character_route",
 		State: map[string]any{
-			"route.current_stage": "从戒备转为愿意合作",
-			"route.flags":         []any{"知道主角救过她", "仍隐瞒家族契约"},
+			"当前攻略阶段": "从戒备转为愿意合作",
+			"关键旗标":   []any{"知道主角救过她", "仍隐瞒家族契约"},
 		},
 		Reason: "本回合兰若明确改变对主角的合作态度。",
 	}}, turn.ID)
 	if err != nil {
 		t.Fatalf("custom non-character state patches should pass: %v", err)
 	}
-	if _, err := store.AppendStateDelta(story.ID, AppendStateDeltaRequest{ParentID: turn.ID, BranchID: "main", Ops: result.Ops}); err != nil {
+	if _, err := store.AppendStateDelta(story.ID, AppendStateDeltaRequest{ParentID: turn.ID, BranchID: "main", Ops: result.Ops, ActorOps: result.ActorOps}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -245,13 +242,13 @@ func TestActorStateSupportsCustomNonCharacterStateObjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := getPath(snapshot.State, "actors.world.state.crisis.countdown"); got != "99天后世界毁灭" {
+	if got := actorStateFieldValue(snapshot.State, "world", "毁灭倒计时"); got != "99天后世界毁灭" {
 		t.Fatalf("world countdown should replay through actor-state path, got %#v", got)
 	}
 	if got := getPath(snapshot.State, "actors.heroine_lan.template_id"); got != "heroine_route" {
 		t.Fatalf("heroine route should use custom template, got %#v", got)
 	}
-	if got := getPath(snapshot.State, "actors.heroine_lan.state.route.current_stage"); got != "从戒备转为愿意合作" {
+	if got := actorStateFieldValue(snapshot.State, "heroine_lan", "当前攻略阶段"); got != "从戒备转为愿意合作" {
 		t.Fatalf("heroine route stage should replay, got %#v", got)
 	}
 }

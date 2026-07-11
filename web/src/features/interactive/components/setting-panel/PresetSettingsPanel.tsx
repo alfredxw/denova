@@ -68,37 +68,30 @@ export function PresetSettingsPanel({
   const [tellers, setTellers] = useState<Teller[]>(externalTellers)
   const [activeTellerId, setActiveTellerId] = useState('')
   const [tellerDraft, setTellerDraft] = useState<Teller | null>(null)
-  const [tellerTagDraft, setTellerTagDraft] = useState('')
   const [activeSlotId, setActiveSlotId] = useState('')
   const [storyDirectors, setStoryDirectors] = useState<StoryDirector[]>(externalStoryDirectors)
   const [activeStoryDirectorId, setActiveStoryDirectorId] = useState('')
   const [storyDirectorDraft, setStoryDirectorDraft] = useState<StoryDirector | null>(null)
-  const [storyDirectorTagDraft, setStoryDirectorTagDraft] = useState('')
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>(externalImagePresets)
   const [activeImagePresetId, setActiveImagePresetId] = useState('')
   const [imagePresetDraft, setImagePresetDraft] = useState<ImagePreset | null>(null)
-  const [imagePresetTagDraft, setImagePresetTagDraft] = useState('')
   const [eventPackages, setEventPackages] = useState<EventPackageModule[]>(EMPTY_EVENT_PACKAGES)
   const [activeEventPackageId, setActiveEventPackageId] = useState('')
   const [eventPackageDraft, setEventPackageDraft] = useState<EventPackageModule | null>(null)
-  const [eventPackageTagDraft, setEventPackageTagDraft] = useState('')
   const [ruleSystems, setRuleSystems] = useState<RuleSystemModule[]>(EMPTY_RULE_SYSTEMS)
   const [activeRuleSystemId, setActiveRuleSystemId] = useState('')
   const [ruleSystemDraft, setRuleSystemDraft] = useState<RuleSystemModule | null>(null)
-  const [ruleSystemTagDraft, setRuleSystemTagDraft] = useState('')
   const [actorStates, setActorStates] = useState<ActorStateModule[]>(EMPTY_ACTOR_STATES)
   const [activeActorStateId, setActiveActorStateId] = useState('')
   const [actorStateDraft, setActorStateDraft] = useState<ActorStateModule | null>(null)
-  const [actorStateTagDraft, setActorStateTagDraft] = useState('')
   const [memoryStructures, setMemoryStructures] = useState<StoryMemoryStructureModule[]>(EMPTY_MEMORY_STRUCTURES)
   const [activeMemoryStructureId, setActiveMemoryStructureId] = useState('')
   const [memoryStructureDraft, setMemoryStructureDraft] = useState<StoryMemoryStructureModule | null>(null)
-  const [memoryStructureTagDraft, setMemoryStructureTagDraft] = useState('')
 
-  const markAutosavedListEntry = (kind: PresetResourceKind, item: { id: string; tags?: string[] }) => {
+  const markAutosavedListEntry = (kind: PresetResourceKind, item: { id: string } & object) => {
     autosavedListEntriesRef.current[kind] = {
       id: item.id,
-      signature: presetResourceDraftSignature(item, (item.tags || []).join('，')),
+      signature: presetResourceDraftSignature(item),
     }
   }
 
@@ -106,14 +99,14 @@ export function PresetSettingsPanel({
     delete autosavedListEntriesRef.current[kind]
   }
 
-  const shouldPreserveAutosavedDraft = (kind: PresetResourceKind, item: ({ id: string; tags?: string[] } & object) | null, draftId?: string) => {
+  const shouldPreserveAutosavedDraft = (kind: PresetResourceKind, item: ({ id: string } & object) | null, draftId?: string) => {
     const autosavedEntry = autosavedListEntriesRef.current[kind]
     if (!autosavedEntry) return false
     if (
       !item
       || item.id !== autosavedEntry.id
       || draftId !== item.id
-      || presetResourceDraftSignature(item, (item.tags || []).join('，')) !== autosavedEntry.signature
+      || presetResourceDraftSignature(item) !== autosavedEntry.signature
     ) {
       delete autosavedListEntriesRef.current[kind]
       return false
@@ -262,7 +255,6 @@ export function PresetSettingsPanel({
     const activeExternalTeller = externalTellers.find((teller) => teller.id === activeTellerId) || null
     if (!shouldPreserveAutosavedDraft('teller', activeExternalTeller, tellerDraft?.id)) {
       setTellerDraft(null)
-      setTellerTagDraft('')
       setActiveSlotId('')
     }
   }, [externalTellers, workspace])
@@ -276,7 +268,6 @@ export function PresetSettingsPanel({
     const activeExternalDirector = externalStoryDirectors.find((director) => director.id === activeStoryDirectorId) || null
     if (!shouldPreserveAutosavedDraft('director', activeExternalDirector, storyDirectorDraft?.id)) {
       setStoryDirectorDraft(null)
-      setStoryDirectorTagDraft('')
     }
   }, [externalStoryDirectors, workspace])
 
@@ -289,7 +280,6 @@ export function PresetSettingsPanel({
     const activeExternalPreset = externalImagePresets.find((preset) => preset.id === activeImagePresetId) || null
     if (!shouldPreserveAutosavedDraft('image', activeExternalPreset, imagePresetDraft?.id)) {
       setImagePresetDraft(null)
-      setImagePresetTagDraft('')
     }
   }, [externalImagePresets, workspace])
 
@@ -299,7 +289,6 @@ export function PresetSettingsPanel({
       return eventPackages[0]?.id || ''
     })
     setEventPackageDraft(null)
-    setEventPackageTagDraft('')
   }, [workspace])
 
   useEffect(() => {
@@ -308,7 +297,6 @@ export function PresetSettingsPanel({
       return ruleSystems[0]?.id || ''
     })
     setRuleSystemDraft(null)
-    setRuleSystemTagDraft('')
   }, [workspace])
 
   useEffect(() => {
@@ -317,7 +305,6 @@ export function PresetSettingsPanel({
       return actorStates[0]?.id || ''
     })
     setActorStateDraft(null)
-    setActorStateTagDraft('')
   }, [workspace])
 
   useEffect(() => {
@@ -326,7 +313,6 @@ export function PresetSettingsPanel({
       return memoryStructures[0]?.id || ''
     })
     setMemoryStructureDraft(null)
-    setMemoryStructureTagDraft('')
   }, [workspace])
 
   const presetDrafts: PresetDrafts = useMemo(() => ({
@@ -396,7 +382,6 @@ export function PresetSettingsPanel({
   const tellerAutosave = usePresetResourceAutosave<Teller, Partial<Teller>, Teller>({
     draft: tellerDraft,
     scopeKey: workspace,
-    tagDraft: tellerTagDraft,
     active: presetResourceKind === 'teller' && activeTellerId !== TELLER_CONFIG_AGENT_ENTRY_ID,
     makePayload: makeTellerPayload,
     signature: presetResourceDraftSignature,
@@ -414,7 +399,6 @@ export function PresetSettingsPanel({
   const storyDirectorAutosave = usePresetResourceAutosave<StoryDirector, Partial<StoryDirector>, StoryDirector>({
     draft: storyDirectorDraft,
     scopeKey: workspace,
-    tagDraft: storyDirectorTagDraft,
     active: presetResourceKind === 'director',
     valid: presetConfigValid,
     makePayload: makeStoryDirectorPayload,
@@ -433,7 +417,6 @@ export function PresetSettingsPanel({
   const imagePresetAutosave = usePresetResourceAutosave<ImagePreset, Partial<ImagePreset>, ImagePreset>({
     draft: imagePresetDraft,
     scopeKey: workspace,
-    tagDraft: imagePresetTagDraft,
     active: presetResourceKind === 'image',
     makePayload: makeImagePresetPayload,
     signature: presetResourceDraftSignature,
@@ -451,7 +434,6 @@ export function PresetSettingsPanel({
   const eventPackageAutosave = usePresetResourceAutosave<EventPackageModule, Partial<EventPackageModule>, EventPackageModule>({
     draft: eventPackageDraft,
     scopeKey: workspace,
-    tagDraft: eventPackageTagDraft,
     active: presetResourceKind === 'event',
     valid: presetConfigValid,
     makePayload: makeEventPackagePayload,
@@ -470,7 +452,6 @@ export function PresetSettingsPanel({
   const ruleSystemAutosave = usePresetResourceAutosave<RuleSystemModule, Partial<RuleSystemModule>, RuleSystemModule>({
     draft: ruleSystemDraft,
     scopeKey: workspace,
-    tagDraft: ruleSystemTagDraft,
     active: presetResourceKind === 'rule',
     valid: presetConfigValid,
     makePayload: makeRuleSystemPayload,
@@ -489,7 +470,6 @@ export function PresetSettingsPanel({
   const actorStateAutosave = usePresetResourceAutosave<ActorStateModule, Partial<ActorStateModule>, ActorStateModule>({
     draft: actorStateDraft,
     scopeKey: workspace,
-    tagDraft: actorStateTagDraft,
     active: presetResourceKind === 'actor-state',
     valid: presetConfigValid,
     makePayload: makeActorStatePayload,
@@ -508,7 +488,6 @@ export function PresetSettingsPanel({
   const memoryStructureAutosave = usePresetResourceAutosave<StoryMemoryStructureModule, Partial<StoryMemoryStructureModule>, StoryMemoryStructureModule>({
     draft: memoryStructureDraft,
     scopeKey: workspace,
-    tagDraft: memoryStructureTagDraft,
     active: presetResourceKind === 'memory-structure',
     valid: presetConfigValid,
     makePayload: makeMemoryStructurePayload,
@@ -527,7 +506,6 @@ export function PresetSettingsPanel({
   useEffect(() => {
     if (activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID) {
       setTellerDraft(null)
-      setTellerTagDraft('')
       tellerAutosave.resetBaseline(null)
       setActiveSlotId('')
       return
@@ -535,74 +513,60 @@ export function PresetSettingsPanel({
     const teller = tellers.find((entry) => entry.id === activeTellerId) || null
     if (shouldPreserveAutosavedDraft('teller', teller, tellerDraft?.id)) return
     const nextDraft = teller ? cloneTeller(teller) : null
-    const nextTagDraft = (teller?.tags || []).join('，')
     setTellerDraft(nextDraft)
-    setTellerTagDraft(nextTagDraft)
     setActiveSlotId((current) => {
       if (current && teller?.slots?.some((slot) => slot.id === current)) return current
       return teller?.slots?.[0]?.id || ''
     })
-    tellerAutosave.resetBaseline(nextDraft, nextTagDraft)
+    tellerAutosave.resetBaseline(nextDraft)
   }, [activeTellerId, tellers, tellerAutosave.resetBaseline])
 
   useEffect(() => {
     const preset = imagePresets.find((entry) => entry.id === activeImagePresetId) || null
     if (shouldPreserveAutosavedDraft('image', preset, imagePresetDraft?.id)) return
     const nextDraft = preset ? cloneImagePreset(preset) : null
-    const nextTagDraft = (preset?.tags || []).join('，')
     setImagePresetDraft(nextDraft)
-    setImagePresetTagDraft(nextTagDraft)
-    imagePresetAutosave.resetBaseline(nextDraft, nextTagDraft)
+    imagePresetAutosave.resetBaseline(nextDraft)
   }, [activeImagePresetId, imagePresets, imagePresetAutosave.resetBaseline])
 
   useEffect(() => {
     const director = storyDirectors.find((entry) => entry.id === activeStoryDirectorId) || null
     if (shouldPreserveAutosavedDraft('director', director, storyDirectorDraft?.id)) return
     const nextDraft = director ? cloneStoryDirector(director) : null
-    const nextTagDraft = (director?.tags || []).join('，')
     setStoryDirectorDraft(nextDraft)
-    setStoryDirectorTagDraft(nextTagDraft)
-    storyDirectorAutosave.resetBaseline(nextDraft, nextTagDraft)
+    storyDirectorAutosave.resetBaseline(nextDraft)
   }, [activeStoryDirectorId, storyDirectors, storyDirectorAutosave.resetBaseline])
 
   useEffect(() => {
     const item = eventPackages.find((entry) => entry.id === activeEventPackageId) || null
     if (shouldPreserveAutosavedDraft('event', item, eventPackageDraft?.id)) return
     const nextDraft = item ? cloneEventPackage(item) : null
-    const nextTagDraft = (item?.tags || []).join('，')
     setEventPackageDraft(nextDraft)
-    setEventPackageTagDraft(nextTagDraft)
-    eventPackageAutosave.resetBaseline(nextDraft, nextTagDraft)
+    eventPackageAutosave.resetBaseline(nextDraft)
   }, [activeEventPackageId, eventPackages, eventPackageAutosave.resetBaseline])
 
   useEffect(() => {
     const item = ruleSystems.find((entry) => entry.id === activeRuleSystemId) || null
     if (shouldPreserveAutosavedDraft('rule', item, ruleSystemDraft?.id)) return
     const nextDraft = item ? cloneRuleSystem(item) : null
-    const nextTagDraft = (item?.tags || []).join('，')
     setRuleSystemDraft(nextDraft)
-    setRuleSystemTagDraft(nextTagDraft)
-    ruleSystemAutosave.resetBaseline(nextDraft, nextTagDraft)
+    ruleSystemAutosave.resetBaseline(nextDraft)
   }, [activeRuleSystemId, ruleSystems, ruleSystemAutosave.resetBaseline])
 
   useEffect(() => {
     const item = actorStates.find((entry) => entry.id === activeActorStateId) || null
     if (shouldPreserveAutosavedDraft('actor-state', item, actorStateDraft?.id)) return
     const nextDraft = item ? cloneActorState(item) : null
-    const nextTagDraft = (item?.tags || []).join('，')
     setActorStateDraft(nextDraft)
-    setActorStateTagDraft(nextTagDraft)
-    actorStateAutosave.resetBaseline(nextDraft, nextTagDraft)
+    actorStateAutosave.resetBaseline(nextDraft)
   }, [activeActorStateId, actorStates, actorStateAutosave.resetBaseline])
 
   useEffect(() => {
     const item = memoryStructures.find((entry) => entry.id === activeMemoryStructureId) || null
     if (shouldPreserveAutosavedDraft('memory-structure', item, memoryStructureDraft?.id)) return
     const nextDraft = item ? cloneMemoryStructure(item) : null
-    const nextTagDraft = (item?.tags || []).join('，')
     setMemoryStructureDraft(nextDraft)
-    setMemoryStructureTagDraft(nextTagDraft)
-    memoryStructureAutosave.resetBaseline(nextDraft, nextTagDraft)
+    memoryStructureAutosave.resetBaseline(nextDraft)
   }, [activeMemoryStructureId, memoryStructures, memoryStructureAutosave.resetBaseline])
 
   useEffect(() => {
@@ -1122,34 +1086,20 @@ export function PresetSettingsPanel({
                 memoryStructures={memoryStructures}
                 tellerDraft={tellerDraft}
                 setTellerDraft={setTellerDraft}
-                tellerTagDraft={tellerTagDraft}
-                setTellerTagDraft={setTellerTagDraft}
                 activeSlotId={activeSlotId}
                 setActiveSlotId={setActiveSlotId}
                 storyDirectorDraft={storyDirectorDraft}
                 setStoryDirectorDraft={setStoryDirectorDraft}
-                storyDirectorTagDraft={storyDirectorTagDraft}
-                setStoryDirectorTagDraft={setStoryDirectorTagDraft}
                 imagePresetDraft={imagePresetDraft}
                 setImagePresetDraft={setImagePresetDraft}
-                imagePresetTagDraft={imagePresetTagDraft}
-                setImagePresetTagDraft={setImagePresetTagDraft}
                 eventPackageDraft={eventPackageDraft}
                 setEventPackageDraft={setEventPackageDraft}
-                eventPackageTagDraft={eventPackageTagDraft}
-                setEventPackageTagDraft={setEventPackageTagDraft}
                 ruleSystemDraft={ruleSystemDraft}
                 setRuleSystemDraft={setRuleSystemDraft}
-                ruleSystemTagDraft={ruleSystemTagDraft}
-                setRuleSystemTagDraft={setRuleSystemTagDraft}
                 actorStateDraft={actorStateDraft}
                 setActorStateDraft={setActorStateDraft}
-                actorStateTagDraft={actorStateTagDraft}
-                setActorStateTagDraft={setActorStateTagDraft}
                 memoryStructureDraft={memoryStructureDraft}
                 setMemoryStructureDraft={setMemoryStructureDraft}
-                memoryStructureTagDraft={memoryStructureTagDraft}
-                setMemoryStructureTagDraft={setMemoryStructureTagDraft}
                 onOpenActorState={(id) => selectPresetResource('actor-state', id)}
                 onOpenRuleSystem={(id) => selectPresetResource('rule', id)}
                 onSave={handleSave}
@@ -1202,34 +1152,20 @@ interface PresetResourcePaneProps {
   memoryStructures: StoryMemoryStructureModule[]
   tellerDraft: Teller | null
   setTellerDraft: (draft: Teller | null) => void
-  tellerTagDraft: string
-  setTellerTagDraft: (value: string) => void
   activeSlotId: string
   setActiveSlotId: (value: string) => void
   storyDirectorDraft: StoryDirector | null
   setStoryDirectorDraft: (draft: StoryDirector | null) => void
-  storyDirectorTagDraft: string
-  setStoryDirectorTagDraft: (value: string) => void
   imagePresetDraft: ImagePreset | null
   setImagePresetDraft: (draft: ImagePreset | null) => void
-  imagePresetTagDraft: string
-  setImagePresetTagDraft: (value: string) => void
   eventPackageDraft: EventPackageModule | null
   setEventPackageDraft: (draft: EventPackageModule | null) => void
-  eventPackageTagDraft: string
-  setEventPackageTagDraft: (value: string) => void
   ruleSystemDraft: RuleSystemModule | null
   setRuleSystemDraft: (draft: RuleSystemModule | null) => void
-  ruleSystemTagDraft: string
-  setRuleSystemTagDraft: (value: string) => void
   actorStateDraft: ActorStateModule | null
   setActorStateDraft: (draft: ActorStateModule | null) => void
-  actorStateTagDraft: string
-  setActorStateTagDraft: (value: string) => void
   memoryStructureDraft: StoryMemoryStructureModule | null
   setMemoryStructureDraft: (draft: StoryMemoryStructureModule | null) => void
-  memoryStructureTagDraft: string
-  setMemoryStructureTagDraft: (value: string) => void
   onOpenActorState: (id: string) => void
   onOpenRuleSystem: (id: string) => void
   onSave: () => void
@@ -1237,11 +1173,11 @@ interface PresetResourcePaneProps {
 }
 
 function PresetResourcePane(props: PresetResourcePaneProps) {
-  if (props.kind === 'image') return <ImagePresetPane draft={props.imagePresetDraft} setDraft={props.setImagePresetDraft} tagDraft={props.imagePresetTagDraft} setTagDraft={props.setImagePresetTagDraft} onSave={props.onSave} />
-  if (props.kind === 'event') return <EventPackagePane draft={props.eventPackageDraft} setDraft={props.setEventPackageDraft} tagDraft={props.eventPackageTagDraft} setTagDraft={props.setEventPackageTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
-  if (props.kind === 'rule') return <RuleSystemPane draft={props.ruleSystemDraft} actorStates={props.actorStates} setDraft={props.setRuleSystemDraft} tagDraft={props.ruleSystemTagDraft} setTagDraft={props.setRuleSystemTagDraft} onOpenActorState={props.onOpenActorState} onSave={props.onSave} onValidityChange={props.onValidityChange} />
-  if (props.kind === 'actor-state') return <ActorStatePane draft={props.actorStateDraft} ruleSystems={props.ruleSystems} setDraft={props.setActorStateDraft} tagDraft={props.actorStateTagDraft} setTagDraft={props.setActorStateTagDraft} onOpenRuleSystem={props.onOpenRuleSystem} onSave={props.onSave} onValidityChange={props.onValidityChange} />
-  if (props.kind === 'memory-structure') return <MemoryStructurePane draft={props.memoryStructureDraft} setDraft={props.setMemoryStructureDraft} tagDraft={props.memoryStructureTagDraft} setTagDraft={props.setMemoryStructureTagDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
+  if (props.kind === 'image') return <ImagePresetPane draft={props.imagePresetDraft} setDraft={props.setImagePresetDraft} onSave={props.onSave} />
+  if (props.kind === 'event') return <EventPackagePane draft={props.eventPackageDraft} setDraft={props.setEventPackageDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
+  if (props.kind === 'rule') return <RuleSystemPane draft={props.ruleSystemDraft} actorStates={props.actorStates} setDraft={props.setRuleSystemDraft} onOpenActorState={props.onOpenActorState} onSave={props.onSave} onValidityChange={props.onValidityChange} />
+  if (props.kind === 'actor-state') return <ActorStatePane draft={props.actorStateDraft} ruleSystems={props.ruleSystems} setDraft={props.setActorStateDraft} onOpenRuleSystem={props.onOpenRuleSystem} onSave={props.onSave} onValidityChange={props.onValidityChange} />
+  if (props.kind === 'memory-structure') return <MemoryStructurePane draft={props.memoryStructureDraft} setDraft={props.setMemoryStructureDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
   if (props.kind === 'director') {
     return (
       <StoryDirectorPane
@@ -1253,41 +1189,39 @@ function PresetResourcePane(props: PresetResourcePaneProps) {
         memoryStructures={props.memoryStructures}
         imagePresets={props.imagePresets}
         setDraft={props.setStoryDirectorDraft}
-        tagDraft={props.storyDirectorTagDraft}
-        setTagDraft={props.setStoryDirectorTagDraft}
         onSave={props.onSave}
         onValidityChange={props.onValidityChange}
       />
     )
   }
-  return <TellerPane workspace={props.workspace} draft={props.tellerDraft} setDraft={props.setTellerDraft} tagDraft={props.tellerTagDraft} setTagDraft={props.setTellerTagDraft} activeSlotId={props.activeSlotId} setActiveSlotId={props.setActiveSlotId} onSave={props.onSave} />
+  return <TellerPane workspace={props.workspace} draft={props.tellerDraft} setDraft={props.setTellerDraft} activeSlotId={props.activeSlotId} setActiveSlotId={props.setActiveSlotId} onSave={props.onSave} />
 }
 
-function TellerPane(props: { workspace: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; tagDraft: string; setTagDraft: (value: string) => void; activeSlotId: string; setActiveSlotId: (value: string) => void; onSave: () => void }) {
+function TellerPane(props: { workspace: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; activeSlotId: string; setActiveSlotId: (value: string) => void; onSave: () => void }) {
   return <TellerEditor {...props} />
 }
 
-function ImagePresetPane(props: { draft: ImagePreset | null; setDraft: (draft: ImagePreset | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onSave: () => void }) {
+function ImagePresetPane(props: { draft: ImagePreset | null; setDraft: (draft: ImagePreset | null) => void; onSave: () => void }) {
   return <ImagePresetEditor {...props} />
 }
 
-function EventPackagePane(props: { draft: EventPackageModule | null; setDraft: (draft: EventPackageModule | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
+function EventPackagePane(props: { draft: EventPackageModule | null; setDraft: (draft: EventPackageModule | null) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
   return <EventPackageEditor {...props} />
 }
 
-function RuleSystemPane(props: { draft: RuleSystemModule | null; actorStates: ActorStateModule[]; setDraft: (draft: RuleSystemModule | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onOpenActorState: (id: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
+function RuleSystemPane(props: { draft: RuleSystemModule | null; actorStates: ActorStateModule[]; setDraft: (draft: RuleSystemModule | null) => void; onOpenActorState: (id: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
   return <RuleSystemEditor {...props} />
 }
 
-function ActorStatePane(props: { draft: ActorStateModule | null; ruleSystems: RuleSystemModule[]; setDraft: (draft: ActorStateModule | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onOpenRuleSystem: (id: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
+function ActorStatePane(props: { draft: ActorStateModule | null; ruleSystems: RuleSystemModule[]; setDraft: (draft: ActorStateModule | null) => void; onOpenRuleSystem: (id: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
   return <ActorStateEditor {...props} />
 }
 
-function MemoryStructurePane(props: { draft: StoryMemoryStructureModule | null; setDraft: (draft: StoryMemoryStructureModule | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
+function MemoryStructurePane(props: { draft: StoryMemoryStructureModule | null; setDraft: (draft: StoryMemoryStructureModule | null) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
   return <StoryMemoryStructureEditor {...props} />
 }
 
-function StoryDirectorPane(props: { draft: StoryDirector | null; tellers: Teller[]; eventPackages: EventPackageModule[]; ruleSystems: RuleSystemModule[]; actorStates: ActorStateModule[]; memoryStructures: StoryMemoryStructureModule[]; imagePresets: ImagePreset[]; setDraft: (draft: StoryDirector | null) => void; tagDraft: string; setTagDraft: (value: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
+function StoryDirectorPane(props: { draft: StoryDirector | null; tellers: Teller[]; eventPackages: EventPackageModule[]; ruleSystems: RuleSystemModule[]; actorStates: ActorStateModule[]; memoryStructures: StoryMemoryStructureModule[]; imagePresets: ImagePreset[]; setDraft: (draft: StoryDirector | null) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
   return <StoryDirectorEditor {...props} />
 }
 

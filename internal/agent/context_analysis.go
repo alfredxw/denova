@@ -17,20 +17,23 @@ import (
 )
 
 type ContextAnalysis struct {
-	AgentKind           string                     `json:"agent_kind"`
-	Mode                string                     `json:"mode"`
-	SystemPrompt        string                     `json:"system_prompt"`
-	SystemPromptParts   []ContextAnalysisPart      `json:"system_prompt_parts"`
-	ContextParts        []ContextAnalysisPart      `json:"context_parts"`
-	ContextMessages     []ContextAnalysisPart      `json:"context_messages"`
-	MessageCount        int                        `json:"message_count"`
-	TokenEstimate       int                        `json:"token_estimate"`
-	ContextWindowTokens int                        `json:"context_window_tokens"`
-	ContextUsageRatio   float64                    `json:"context_usage_ratio"`
-	CompactionEpoch     int                        `json:"compaction_epoch,omitempty"`
-	CompactionActive    bool                       `json:"compaction_active,omitempty"`
-	WouldCompact        bool                       `json:"would_compact,omitempty"`
-	Compaction          *ContextAnalysisCompaction `json:"compaction,omitempty"`
+	AgentKind                string                     `json:"agent_kind"`
+	Mode                     string                     `json:"mode"`
+	SystemPrompt             string                     `json:"system_prompt"`
+	SystemPromptParts        []ContextAnalysisPart      `json:"system_prompt_parts"`
+	ContextParts             []ContextAnalysisPart      `json:"context_parts"`
+	ContextMessages          []ContextAnalysisPart      `json:"context_messages"`
+	MessageCount             int                        `json:"message_count"`
+	TokenEstimate            int                        `json:"token_estimate"`
+	ProjectedTokenEstimate   int                        `json:"projected_token_estimate"`
+	ReservedCompletionTokens int                        `json:"reserved_completion_tokens"`
+	ReservedToolResultTokens int                        `json:"reserved_tool_result_tokens"`
+	ContextWindowTokens      int                        `json:"context_window_tokens"`
+	ContextUsageRatio        float64                    `json:"context_usage_ratio"`
+	CompactionEpoch          int                        `json:"compaction_epoch,omitempty"`
+	CompactionActive         bool                       `json:"compaction_active,omitempty"`
+	WouldCompact             bool                       `json:"would_compact,omitempty"`
+	Compaction               *ContextAnalysisCompaction `json:"compaction,omitempty"`
 }
 
 type ContextAnalysisCompaction struct {
@@ -226,22 +229,25 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 		}
 		contextMessages = append(contextMessages, contextAnalysisPartFromMessage(fmt.Sprintf("message_%d", i+1), source, title, msg))
 	}
-	usage := analyzeContextUsage(cfg, config.AgentKindIDE, systemPrompt, messages)
+	usage := analyzeContextUsage(cfg, config.AgentKindIDE, systemPrompt, messages, 0)
 	return ContextAnalysis{
-		AgentKind:           config.AgentKindIDE,
-		Mode:                "ide",
-		SystemPrompt:        systemPrompt,
-		SystemPromptParts:   systemParts,
-		ContextParts:        composition.ContextLog.FullParts(),
-		ContextMessages:     contextMessages,
-		MessageCount:        len(contextMessages),
-		TokenEstimate:       usage.tokens,
-		ContextWindowTokens: usage.window,
-		ContextUsageRatio:   usage.ratio,
-		CompactionEpoch:     usage.compactionEpoch(compaction),
-		CompactionActive:    compaction != nil && strings.TrimSpace(compaction.Summary) != "",
-		WouldCompact:        usage.wouldCompact,
-		Compaction:          contextAnalysisCompactionFromSession(compaction),
+		AgentKind:                config.AgentKindIDE,
+		Mode:                     "ide",
+		SystemPrompt:             systemPrompt,
+		SystemPromptParts:        systemParts,
+		ContextParts:             composition.ContextLog.FullParts(),
+		ContextMessages:          contextMessages,
+		MessageCount:             len(contextMessages),
+		TokenEstimate:            usage.tokens,
+		ProjectedTokenEstimate:   usage.projectedTokens,
+		ReservedCompletionTokens: usage.completionReserve,
+		ReservedToolResultTokens: usage.toolResultReserve,
+		ContextWindowTokens:      usage.window,
+		ContextUsageRatio:        usage.ratio,
+		CompactionEpoch:          usage.compactionEpoch(compaction),
+		CompactionActive:         compaction != nil && strings.TrimSpace(compaction.Summary) != "",
+		WouldCompact:             usage.wouldCompact,
+		Compaction:               contextAnalysisCompactionFromSession(compaction),
 	}, nil
 }
 
@@ -300,22 +306,25 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		}
 		contextMessages = append(contextMessages, contextAnalysisPartFromMessage(fmt.Sprintf("message_%d", i+1), source, title, msg))
 	}
-	usage := analyzeContextUsage(cfg, config.AgentKindInteractiveStory, systemPrompt, messages)
+	usage := analyzeContextUsage(cfg, config.AgentKindInteractiveStory, systemPrompt, messages, teller.ReplyTargetChars)
 	return ContextAnalysis{
-		AgentKind:           config.AgentKindInteractiveStory,
-		Mode:                "interactive",
-		SystemPrompt:        systemPrompt,
-		SystemPromptParts:   systemParts,
-		ContextParts:        composition.ContextLog.FullParts(),
-		ContextMessages:     contextMessages,
-		MessageCount:        len(contextMessages),
-		TokenEstimate:       usage.tokens,
-		ContextWindowTokens: usage.window,
-		ContextUsageRatio:   usage.ratio,
-		CompactionEpoch:     interactiveCompactionEpoch(compaction, compactionEpoch),
-		CompactionActive:    compaction != nil && strings.TrimSpace(compaction.Summary) != "",
-		WouldCompact:        usage.wouldCompact,
-		Compaction:          contextAnalysisCompactionFromInteractive(compaction),
+		AgentKind:                config.AgentKindInteractiveStory,
+		Mode:                     "interactive",
+		SystemPrompt:             systemPrompt,
+		SystemPromptParts:        systemParts,
+		ContextParts:             composition.ContextLog.FullParts(),
+		ContextMessages:          contextMessages,
+		MessageCount:             len(contextMessages),
+		TokenEstimate:            usage.tokens,
+		ProjectedTokenEstimate:   usage.projectedTokens,
+		ReservedCompletionTokens: usage.completionReserve,
+		ReservedToolResultTokens: usage.toolResultReserve,
+		ContextWindowTokens:      usage.window,
+		ContextUsageRatio:        usage.ratio,
+		CompactionEpoch:          interactiveCompactionEpoch(compaction, compactionEpoch),
+		CompactionActive:         compaction != nil && strings.TrimSpace(compaction.Summary) != "",
+		WouldCompact:             usage.wouldCompact,
+		Compaction:               contextAnalysisCompactionFromInteractive(compaction),
 	}, nil
 }
 
@@ -326,19 +335,22 @@ func BuildInteractiveDirectorContextAnalysis(cfg *config.Config, instruction str
 	if len(contextMessages) == 0 {
 		contextMessages = append(contextMessages, contextAnalysisPartFromMessage("message_1", "本轮导演指令", "后台导演规划指令", messages[0]))
 	}
-	usage := analyzeContextUsage(cfg, config.AgentKindInteractiveDirector, systemPrompt, messages)
+	usage := analyzeContextUsage(cfg, config.AgentKindInteractiveDirector, systemPrompt, messages, 1024)
 	return ContextAnalysis{
-		AgentKind:           config.AgentKindInteractiveDirector,
-		Mode:                "interactive_director",
-		SystemPrompt:        systemPrompt,
-		SystemPromptParts:   systemParts,
-		ContextParts:        contextMessages,
-		ContextMessages:     contextMessages,
-		MessageCount:        len(messages),
-		TokenEstimate:       usage.tokens,
-		ContextWindowTokens: usage.window,
-		ContextUsageRatio:   usage.ratio,
-		WouldCompact:        usage.wouldCompact,
+		AgentKind:                config.AgentKindInteractiveDirector,
+		Mode:                     "interactive_director",
+		SystemPrompt:             systemPrompt,
+		SystemPromptParts:        systemParts,
+		ContextParts:             contextMessages,
+		ContextMessages:          contextMessages,
+		MessageCount:             len(messages),
+		TokenEstimate:            usage.tokens,
+		ProjectedTokenEstimate:   usage.projectedTokens,
+		ReservedCompletionTokens: usage.completionReserve,
+		ReservedToolResultTokens: usage.toolResultReserve,
+		ContextWindowTokens:      usage.window,
+		ContextUsageRatio:        usage.ratio,
+		WouldCompact:             usage.wouldCompact,
 	}, nil
 }
 
@@ -403,10 +415,13 @@ func buildIDEAnalysisMessages(cfg *config.Config, effectiveMessages []*schema.Me
 }
 
 type contextUsageAnalysis struct {
-	tokens       int
-	window       int
-	ratio        float64
-	wouldCompact bool
+	tokens            int
+	projectedTokens   int
+	completionReserve int
+	toolResultReserve int
+	window            int
+	ratio             float64
+	wouldCompact      bool
 }
 
 func (u contextUsageAnalysis) compactionEpoch(compaction *session.ContextCompaction) int {
@@ -416,7 +431,7 @@ func (u contextUsageAnalysis) compactionEpoch(compaction *session.ContextCompact
 	return compaction.Epoch
 }
 
-func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, messages []*schema.Message) contextUsageAnalysis {
+func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, messages []*schema.Message, expectedOutputChars int) contextUsageAnalysis {
 	modelSettings := config.ResolveAgentModel(cfg, agentKind)
 	contextSettings := config.ResolveAgentContext(cfg, agentKind)
 	estimatedMessages := make([]*schema.Message, 0, len(messages)+1)
@@ -425,9 +440,16 @@ func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, mes
 	}
 	estimatedMessages = append(estimatedMessages, messages...)
 	tokens := EstimateContextTokens(estimatedMessages, nil)
-	usage := contextUsageAnalysis{tokens: tokens, window: modelSettings.ContextWindowTokens}
+	completionReserve, toolResultReserve := EstimateContextProjectionReserves(cfg, agentKind, expectedOutputChars)
+	usage := contextUsageAnalysis{
+		tokens:            tokens,
+		projectedTokens:   tokens + completionReserve + toolResultReserve,
+		completionReserve: completionReserve,
+		toolResultReserve: toolResultReserve,
+		window:            modelSettings.ContextWindowTokens,
+	}
 	if usage.window > 0 {
-		usage.ratio = float64(tokens) / float64(usage.window)
+		usage.ratio = float64(usage.projectedTokens) / float64(usage.window)
 		usage.wouldCompact = contextSettings.CompactionEnabled && usage.ratio >= contextSettings.CompactionThreshold
 	}
 	return usage

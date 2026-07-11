@@ -28,6 +28,9 @@ const branchTimeline = {
   'branchTimeline.mainBranch': '主线',
   'branchTimeline.terminalBadge': '终局',
   'branchTimeline.terminalNode': '终局节点',
+	'branchTimeline.currentNode': '当前节点',
+	'branchTimeline.nodeAria': '第 {{index}} 回合：{{title}}，{{state}}',
+	'branchTimeline.linearRoute': '当前是单线剧情；选择节点可从该处创建分支',
 } as const
 
 export default branchTimeline

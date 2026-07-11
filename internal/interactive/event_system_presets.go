@@ -43,48 +43,42 @@ func builtinEventPackageModules() []EventPackageModule {
 			GenreXuanhuanEventPackageID,
 			"玄幻核心事件包",
 			"面向东方玄幻、热血升级、家族宗门冲突和大世界奇遇的事件卡包。",
-			[]string{"内置", "事件", "玄幻"},
 			xuanhuanEventCards(),
 		),
 		builtinGenreEventPackageModule(
 			GenreXiuxianEventPackageID,
 			"修仙核心事件包",
 			"面向修仙、问道、宗门任务、心魔天劫和因果机缘的事件卡包。",
-			[]string{"内置", "事件", "修仙"},
 			xiuxianEventCards(),
 		),
 		builtinGenreEventPackageModule(
 			GenreApocalypseEventPackageID,
 			"末世核心事件包",
 			"面向末世求生、基地建设、感染异变、资源稀缺和幸存者冲突的事件卡包。",
-			[]string{"内置", "事件", "末世"},
 			apocalypseEventCards(),
 		),
 		builtinGenreEventPackageModule(
 			GenreWesternEventPackageID,
 			"西幻核心事件包",
 			"面向剑与魔法、王国纷争、地下城、神谕教会和异族盟约的事件卡包。",
-			[]string{"内置", "事件", "西幻"},
 			westernFantasyEventCards(),
 		),
 		builtinGenreEventPackageModule(
 			GenreUrbanEventPackageID,
 			"都市核心事件包",
 			"面向都市成长、职场商业、家庭关系、舆论案件和情感拉扯的事件卡包。",
-			[]string{"内置", "事件", "都市"},
 			urbanEventCards(),
 		),
 		builtinGenreEventPackageModule(
 			GenreTRPGEventPackageID,
 			"TRPG核心事件包",
 			"面向桌面角色扮演式互动叙事，强调任务钩子、线索、检定、遭遇和失败前进。",
-			[]string{"内置", "事件", "TRPG"},
 			trpgEventCards(),
 		),
 	}
 }
 
-func builtinGenreEventPackageModule(id, name, description string, tags []string, cards []genreEventCardPreset) EventPackageModule {
+func builtinGenreEventPackageModule(id, name, description string, cards []genreEventCardPreset) EventPackageModule {
 	pkg := builtinGenreEventPackage(id, name, cards)
 	return normalizeEventPackageModule(EventPackageModule{
 		Version:     storyDirectorModuleVersion,
@@ -92,7 +86,6 @@ func builtinGenreEventPackageModule(id, name, description string, tags []string,
 		Name:        name,
 		Description: description,
 		Events:      pkg.Events,
-		Tags:        tags,
 	})
 }
 

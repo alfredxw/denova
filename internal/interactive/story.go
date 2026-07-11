@@ -116,8 +116,33 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+	actorState := StoryDirectorActorStateSystem{}
+	trpgSystem := StoryDirectorTRPGSystem{}
+	if req.ActorState != nil {
+		actorState = *req.ActorState
+	} else if strings.TrimSpace(s.novaDir) != "" {
+		director := s.storyDirectorForMeta(meta)
+		actorState = director.ActorState
+		trpgSystem = director.TRPGSystem
+	}
+	if req.TRPGSystem != nil {
+		trpgSystem = *req.TRPGSystem
+	}
+	if !actorStateEmpty(actorState) {
+		meta.ActorStateSchema = FreezeActorStateSchemaWithRules(actorState, trpgSystem, len(req.InitialStateOps) > 0)
+	}
 	initialStateOps := normalizeStateOps(req.InitialStateOps)
-	if len(initialStateOps) > 0 {
+	generatedOps := []StateOp(nil)
+	initialActorOps := []ActorStateOp(nil)
+	if meta.ActorStateSchema != nil {
+		generatedOps, initialActorOps, err = BuildActorStateInitialChanges(meta.ActorStateSchema.System, req.InitialTraitRolls)
+		if err != nil {
+			return StorySummary{}, err
+		}
+	}
+	initialStateOps = normalizeStateOps(append(initialStateOps, generatedOps...))
+	initialActorOps = normalizeActorStateOps(initialActorOps)
+	if len(initialStateOps) > 0 || len(initialActorOps) > 0 {
 		for _, op := range initialStateOps {
 			if err := validateStateOp(op); err != nil {
 				return StorySummary{}, err
@@ -131,8 +156,8 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		return StorySummary{}, err
 	}
 	events := []any{meta}
-	if len(initialStateOps) > 0 {
-		events = append(events, newStateDeltaEvent(meta.Branches["main"].Head, "", "main", now, initialStateOps))
+	if len(initialStateOps) > 0 || len(initialActorOps) > 0 {
+		events = append(events, newStateDeltaEventWithActorOps(meta.Branches["main"].Head, "", "main", now, initialStateOps, initialActorOps))
 	}
 	if err := writeJSONL(s.storyPath(story.ID), events); err != nil {
 		return StorySummary{}, err
@@ -242,6 +267,9 @@ func (s *Store) DeleteStory(storyID string) error {
 		}
 	}
 	if err := os.Remove(s.storyPath(storyID)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Remove(s.actorStateSchemaPath(storyID)); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	if err := os.Remove(s.usagePath(storyID)); err != nil && !os.IsNotExist(err) {
@@ -478,6 +506,9 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	if branchIsTerminal(lines, branch.Head) {
 		return TurnEvent{}, nil, fmt.Errorf("当前分支已终局，请从历史回合创建新分支后继续")
 	}
+	if req.ExpectedParentID != nil && branch.Head != strings.TrimSpace(*req.ExpectedParentID) {
+		return TurnEvent{}, nil, fmt.Errorf("当前分支已前进，拒绝提交基于旧版本的回合: expected_parent=%s current_head=%s", strings.TrimSpace(*req.ExpectedParentID), branch.Head)
+	}
 	parentID := any(nil)
 	if branch.Head != "" {
 		parentID = branch.Head
@@ -485,7 +516,13 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	path, _ := eventPath(branch.Head, eventsByID(lines))
 	state := stateFromPath(path)
 	director := s.storyDirectorForMeta(meta)
+	actorState := actorStateSystemFromSnapshot(meta.ActorStateSchema, director.ActorState)
+	applyLegacyActorStateAliases(state, meta.ActorStateSchema)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	turnResult := normalizeTurnResultPointer(req.TurnResult)
+	if req.TurnResult != nil && turnResult == nil {
+		return TurnEvent{}, nil, fmt.Errorf("TurnResult 未通过校验")
+	}
 	turn := TurnEvent{
 		V:                    schemaVersion,
 		Type:                 StoryEventTypeTurn,
@@ -503,28 +540,65 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		HotState:             normalizeHotState(req.HotState),
 		TurnBrief:            normalizeTurnBriefPointer(req.TurnBrief),
 		RuleResolution:       normalizeRuleResolutionPointer(req.RuleResolution),
+		TurnResult:           turnResult,
 		TerminalOutcome:      normalizeTerminalOutcomePointer(req.TerminalOutcome),
 		MemoryStatus:         "pending",
 		Flags:                map[string]bool{"pinned": false, "locked": false},
 	}
 	ops := normalizeStateOps(req.Ops)
+	actorOps := normalizeActorStateOps(req.ActorOps)
+	if turn.TurnResult != nil && len(turn.TurnResult.ActorStatePatches) > 0 {
+		patches := append([]ActorStatePatch(nil), turn.TurnResult.ActorStatePatches...)
+		for i := range patches {
+			patches[i].SourceTurnID = turn.ID
+		}
+		patchResult, err := ValidateActorStatePatchesAgainstState(actorState, state, patches, turn.ID)
+		if err != nil {
+			return TurnEvent{}, nil, fmt.Errorf("TurnResult Actor State 校验失败: %w", err)
+		}
+		for i := range patchResult.Ops {
+			patchResult.Ops[i].SourceKind = StateOpSourceTurnResult
+			patchResult.Ops[i].SourceID = turn.ID
+			patchResult.Ops[i].SourceTurnID = turn.ID
+		}
+		ops = append(ops, patchResult.Ops...)
+		for i := range patchResult.ActorOps {
+			patchResult.ActorOps[i].SourceKind = StateOpSourceTurnResult
+			patchResult.ActorOps[i].SourceID = turn.ID
+			patchResult.ActorOps[i].SourceTurnID = turn.ID
+		}
+		actorOps = append(actorOps, patchResult.ActorOps...)
+	}
 	if turn.RuleResolution != nil {
-		ops = append(ops, applyRuleStateConsumption(state, director.ActorState, turn.ID, turn.RuleResolution, director.Strategy.RuleStateConsumptionMode)...)
+		ruleOps, ruleActorOps := applyRuleStateConsumptionV2(state, actorState, turn.ID, turn.RuleResolution, director.Strategy.RuleStateConsumptionMode)
+		ops = append(ops, ruleOps...)
+		actorOps = append(actorOps, ruleActorOps...)
+	}
+	if turn.HotState == nil && turn.TurnResult != nil {
+		turn.HotState = normalizeHotState(&HotState{Choices: turn.TurnResult.Choices})
 	}
 	branch.Head = turn.ID
 
 	var delta *StateDeltaEvent
-	if len(ops) > 0 {
+	actorOps = normalizeActorStateOps(actorOps)
+	if len(ops) > 0 || len(actorOps) > 0 {
 		for _, op := range ops {
 			if err := validateStateOp(op); err != nil {
 				return TurnEvent{}, nil, err
 			}
 		}
-		stateDelta := newStateDelta(ops)
+		for _, op := range actorOps {
+			if err := validateActorStateOp(op); err != nil {
+				return TurnEvent{}, nil, err
+			}
+		}
+		stateDelta := newStateDeltaWithActorOps(ops, actorOps)
 		turn.StateDelta = &stateDelta
 		turn.StateStatus = "ready"
-		stateDeltaEvent := newStateDeltaEvent(turn.ID, parentIDString(parentID), branchID, now, ops)
+		stateDeltaEvent := newStateDeltaEventWithActorOps(turn.ID, parentIDString(parentID), branchID, now, ops, actorOps)
 		delta = &stateDeltaEvent
+	} else if turn.TurnResult != nil {
+		turn.StateStatus = "ready"
 	} else {
 		turn.StateStatus = "pending"
 	}
@@ -731,7 +805,7 @@ func reparentStoryEvent(lines []StoryEventRecord, child StoryEventRecord, oldPar
 func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (StateDeltaEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(req.Ops) == 0 {
+	if len(req.Ops) == 0 && len(req.ActorOps) == 0 {
 		return StateDeltaEvent{}, fmt.Errorf("状态变化不能为空")
 	}
 
@@ -754,8 +828,12 @@ func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (S
 	if parentID == "" {
 		return StateDeltaEvent{}, fmt.Errorf("状态变化缺少所属回合")
 	}
+	if parentID != branch.Head {
+		return StateDeltaEvent{}, fmt.Errorf("状态变化所属回合不是当前分支头: turn=%s head=%s", parentID, branch.Head)
+	}
 	ops := normalizeStateOps(req.Ops)
-	if len(ops) == 0 {
+	actorOps := normalizeActorStateOps(req.ActorOps)
+	if len(ops) == 0 && len(actorOps) == 0 {
 		return StateDeltaEvent{}, fmt.Errorf("状态变化不能为空")
 	}
 	for _, op := range ops {
@@ -763,8 +841,13 @@ func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (S
 			return StateDeltaEvent{}, err
 		}
 	}
+	for _, op := range actorOps {
+		if err := validateActorStateOp(op); err != nil {
+			return StateDeltaEvent{}, err
+		}
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	event := newStateDeltaEvent(parentID, parentID, branchID, now, ops)
+	event := newStateDeltaEventWithActorOps(parentID, parentID, branchID, now, ops, actorOps)
 	updated := false
 	for i := range lines {
 		raw := lines[i].Raw
@@ -776,10 +859,14 @@ func (s *Store) AppendStateDelta(storyID string, req AppendStateDeltaRequest) (S
 			return StateDeltaEvent{}, err
 		}
 		nextOps := append([]StateOp(nil), ops...)
+		nextActorOps := append([]ActorStateOp(nil), actorOps...)
 		if turn.StateDelta != nil && len(turn.StateDelta.Ops) > 0 {
 			nextOps = append(append([]StateOp(nil), turn.StateDelta.Ops...), nextOps...)
 		}
-		raw["state_delta"] = newStateDelta(nextOps)
+		if turn.StateDelta != nil && len(turn.StateDelta.ActorOps) > 0 {
+			nextActorOps = append(append([]ActorStateOp(nil), turn.StateDelta.ActorOps...), nextActorOps...)
+		}
+		raw["state_delta"] = newStateDeltaWithActorOps(nextOps, nextActorOps)
 		raw["state_status"] = "ready"
 		delete(raw, "state_error")
 		updated = true
@@ -885,6 +972,8 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 	request := NormalizeTurnCheckRequest(target.RuleResolution.Request)
 	state := stateBeforeTurn(path, target.ID)
 	director := s.storyDirectorForMeta(meta)
+	actorState := actorStateSystemFromSnapshot(meta.ActorStateSchema, director.ActorState)
+	applyLegacyActorStateAliases(state, meta.ActorStateSchema)
 	next, err := ResolveTurnRulesWithDirector(storyID, branchID, state, director, request)
 	if err != nil {
 		return RuleResolution{}, err
@@ -892,7 +981,7 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	next.CreatedAt = now
 	next.ID = newID("rr")
-	ruleOps := applyRuleStateConsumption(state, director.ActorState, target.ID, &next, director.Strategy.RuleStateConsumptionMode)
+	ruleOps, ruleActorOps := applyRuleStateConsumptionV2(state, actorState, target.ID, &next, director.Strategy.RuleStateConsumptionMode)
 	terminalOutcome := terminalOutcomeFromRuleResolution(next, target.ID, target.Narrative)
 	updated := false
 	for i := range lines {
@@ -902,17 +991,20 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 		lines[i].Raw["rule_resolution"] = next
 		delete(lines[i].Raw, "turn_brief")
 		existingOps := []StateOp{}
+		existingActorOps := []ActorStateOp{}
 		if target.StateDelta != nil {
 			existingOps = append(existingOps, target.StateDelta.Ops...)
+			existingActorOps = append(existingActorOps, target.StateDelta.ActorOps...)
 		}
 		nextOps := append(removeRuleResolutionStateOps(existingOps, target.RuleResolution.ID), ruleOps...)
-		if len(nextOps) > 0 {
+		nextActorOps := append(removeRuleResolutionActorOps(existingActorOps, target.RuleResolution.ID), ruleActorOps...)
+		if len(nextOps) > 0 || len(nextActorOps) > 0 {
 			for _, op := range nextOps {
 				if err := validateStateOp(op); err != nil {
 					return RuleResolution{}, err
 				}
 			}
-			lines[i].Raw["state_delta"] = newStateDelta(nextOps)
+			lines[i].Raw["state_delta"] = newStateDeltaWithActorOps(nextOps, nextActorOps)
 			lines[i].Raw["state_status"] = "ready"
 			delete(lines[i].Raw, "state_error")
 		} else {
@@ -1128,12 +1220,18 @@ func stateFromPath(path []StoryEventRecord) map[string]any {
 				for _, op := range delta.Ops {
 					applyStateOp(state, op)
 				}
+				for _, op := range delta.ActorOps {
+					applyActorStateOp(state, op)
+				}
 			}
 		case StoryEventTypeTurn:
 			var turn TurnEvent
 			if err := mapToStruct(record.Raw, &turn); err == nil && turn.StateDelta != nil {
 				for _, op := range turn.StateDelta.Ops {
 					applyStateOp(state, op)
+				}
+				for _, op := range turn.StateDelta.ActorOps {
+					applyActorStateOp(state, op)
 				}
 			}
 		}
@@ -1154,12 +1252,18 @@ func stateBeforeTurn(path []StoryEventRecord, turnID string) map[string]any {
 				for _, op := range delta.Ops {
 					applyStateOp(state, op)
 				}
+				for _, op := range delta.ActorOps {
+					applyActorStateOp(state, op)
+				}
 			}
 		case StoryEventTypeTurn:
 			var turn TurnEvent
 			if err := mapToStruct(record.Raw, &turn); err == nil && turn.StateDelta != nil {
 				for _, op := range turn.StateDelta.Ops {
 					applyStateOp(state, op)
+				}
+				for _, op := range turn.StateDelta.ActorOps {
+					applyActorStateOp(state, op)
 				}
 			}
 		}
@@ -1243,6 +1347,7 @@ func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	meta.ReplyTargetChars = normalizeStoryReplyTargetChars(meta.ReplyTargetChars)
 	meta.Opening = normalizeStoryOpeningConfig(meta.Opening)
 	meta.ImageSettings = normalizeStoryImageSettings(meta.ImageSettings)
+	meta.ActorStateSchema = normalizeActorStateSchemaSnapshot(meta.ActorStateSchema)
 	return meta
 }
 

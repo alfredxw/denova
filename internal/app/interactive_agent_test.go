@@ -110,6 +110,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		}
 	}
 
+	submitTestTurnResult(t, conversation, "点燃火把", "照亮酒馆墙面")
 	if err := conversation.AppendAssistantWithThinking("火光照亮了墙上的新线索。", "先判断现场风险。"); err != nil {
 		t.Fatal(err)
 	}
@@ -150,9 +151,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"apply_actor_state_patch",
-		"apply_story_memory_patches",
-		"Story Memory 只记录剧情纪要、长期人物档案、世界上下文、进行中事项、伏笔和长期弧线",
+		"keep、patch 或 replan",
+		"不得写入它们",
 		"资料库优先",
 		"不负责替用户选择下一步行动",
 	} {
@@ -164,13 +164,10 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatalf("director instruction should include bounded lore for maintenance: %s", directorInstruction)
 	}
 	for _, want := range []string{
-		"故事记忆结构与字段协议",
-		"## important_character",
-		"key_field_id: name",
-		"name（姓名） required",
-		"plot_summary",
+		"当前分支故事记忆",
 		"近期剧情历史",
-		"本回合 RuleResolution / TerminalOutcome 审计 JSON",
+		"本回合 TurnResult / RuleResolution / StateDelta 审计 JSON",
+		"turn_result",
 		"我点燃火把",
 		"状态系统 Schema",
 		"当前状态系统快照",
@@ -179,6 +176,9 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		if !strings.Contains(directorInstruction, want) {
 			t.Fatalf("director instruction should include maintenance context %q: %s", want, directorInstruction)
 		}
+	}
+	if strings.Contains(directorInstruction, "故事记忆结构与字段协议") {
+		t.Fatalf("director plan context should not duplicate Memory Recorder schema: %s", directorInstruction)
 	}
 	if strings.Contains(directorInstruction, "经典叙事者") || strings.Contains(directorInstruction, "导演本轮上下文规则") {
 		t.Fatalf("director instruction should not include story-only teller rules: %s", directorInstruction)
@@ -193,6 +193,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatalf("unexpected character state: %#v", linchuan)
 	}
 
+	submitTestTurnResult(t, conversation, "继续调查", "确认柜台后的通道")
 	if err := conversation.AppendAssistant("柜台后的影子露出一道能通往地窖的缝。"); err != nil {
 		t.Fatal(err)
 	}
@@ -228,6 +229,30 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	threads := snapshot.State["threads"].([]any)
 	if len(threads) != 1 {
 		t.Fatalf("unexpected threads: %#v", threads)
+	}
+}
+
+func TestInteractiveConversationRejectsAssistantWithoutTurnResult(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:            "不完整回合",
+		StoryTellerID:    "classic",
+		ReplyTargetChars: 800,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", story.ReplyTargetChars, nil)
+	if err := conversation.AppendAssistant("主角向前走去。"); err == nil || !strings.Contains(err.Error(), "submit_interactive_turn_result") {
+		t.Fatalf("assistant without TurnResult should be rejected, got %v", err)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Turns) != 0 {
+		t.Fatalf("rejected assistant must not persist a partial turn: %#v", snapshot.Turns)
 	}
 }
 
@@ -443,16 +468,17 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 			State:      "主角站在秘境入口，禁制正在收束。",
 			Difficulty: "very_hard",
 			Outcomes: interactive.TurnCheckOutcomes{
-				CriticalSuccess: interactive.TurnCheckOutcome{Result: "强闯成功。", StateChanges: []interactive.TurnStateChange{{Path: "resources.hp", Change: -1, Reason: "禁制擦伤。"}}},
-				Success:         interactive.TurnCheckOutcome{Result: "勉强闯入。", StateChanges: []interactive.TurnStateChange{{Path: "resources.hp", Change: -1, Reason: "硬闯消耗生命。"}}},
-				Failure:         interactive.TurnCheckOutcome{Result: "被禁制震回。", StateChanges: []interactive.TurnStateChange{{Path: "resources.hp", Change: -1, Reason: "禁制反震。"}}},
-				CriticalFailure: interactive.TurnCheckOutcome{Result: "禁制彻底反噬。", StateChanges: []interactive.TurnStateChange{{Path: "resources.hp", Change: -1, Reason: "禁制严重反噬。"}}},
+				CriticalSuccess: interactive.TurnCheckOutcome{Result: "强闯成功。", StateChanges: []interactive.TurnStateChange{{ActorID: "protagonist", FieldID: "生命", Change: -1, Reason: "禁制擦伤。"}}},
+				Success:         interactive.TurnCheckOutcome{Result: "勉强闯入。", StateChanges: []interactive.TurnStateChange{{ActorID: "protagonist", FieldID: "生命", Change: -1, Reason: "硬闯消耗生命。"}}},
+				Failure:         interactive.TurnCheckOutcome{Result: "被禁制震回。", StateChanges: []interactive.TurnStateChange{{ActorID: "protagonist", FieldID: "生命", Change: -1, Reason: "禁制反震。"}}},
+				CriticalFailure: interactive.TurnCheckOutcome{Result: "禁制彻底反噬。", StateChanges: []interactive.TurnStateChange{{ActorID: "protagonist", FieldID: "生命", Change: -1, Reason: "禁制严重反噬。"}}},
 			},
 		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
+	submitTestTurnResult(t, conversation, "闯入秘境", "裁定入口禁制")
 	if err := conversation.AppendAssistant("秘境入口的白光猛然坍缩，主角被禁制震回台阶。"); err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +495,7 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 	if snapshot.CurrentTurn.RuleResolution.StateConsumption == nil || snapshot.CurrentTurn.RuleResolution.StateConsumption.Status != "applied" {
 		t.Fatalf("state consumption audit missing: %#v", snapshot.CurrentTurn.RuleResolution)
 	}
-	if snapshot.CurrentTurn.StateDelta == nil || len(snapshot.CurrentTurn.StateDelta.Ops) != 1 || snapshot.CurrentTurn.StateDelta.Ops[0].SourceKind != interactive.StateOpSourceRuleResolution {
+	if snapshot.CurrentTurn.StateDelta == nil || len(snapshot.CurrentTurn.StateDelta.ActorOps) != 1 || snapshot.CurrentTurn.StateDelta.ActorOps[0].SourceKind != interactive.StateOpSourceRuleResolution {
 		t.Fatalf("rule state op missing: %#v", snapshot.CurrentTurn.StateDelta)
 	}
 }
@@ -552,6 +578,7 @@ func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {
 	if err := conversation.UpdateDisplayToolResult("call-2", "apply_story_memory_patches", "success", "已写入 1 条记忆"); err != nil {
 		t.Fatal(err)
 	}
+	submitTestTurnResult(t, conversation, "调查档案柜", "找到档案室线索")
 	if err := conversation.AppendAssistantWithThinking("档案柜里露出一张潮湿的地图。", "先分析档案室线索。第二轮基于工具结果继续判断。"); err != nil {
 		t.Fatal(err)
 	}
@@ -905,5 +932,16 @@ func TestParseInteractiveAssistantOutput(t *testing.T) {
 	_, err = parseInteractiveAssistantOutput("")
 	if err == nil {
 		t.Fatalf("expected empty narrative error")
+	}
+}
+
+func submitTestTurnResult(t *testing.T, conversation *interactiveConversation, intent, goal string) {
+	t.Helper()
+	if _, err := conversation.SubmitTurnResult(context.Background(), interactive.TurnResult{
+		Contract:    interactive.TurnContract{PlayerIntent: intent, SceneGoal: goal},
+		SceneResult: interactive.TurnSceneResult{Status: "continued", Summary: goal},
+		PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"},
+	}); err != nil {
+		t.Fatalf("SubmitTurnResult failed: %v", err)
 	}
 }

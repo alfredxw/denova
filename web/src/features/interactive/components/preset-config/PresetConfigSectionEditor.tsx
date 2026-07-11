@@ -139,7 +139,7 @@ export function PresetConfigSectionEditor<T extends object>({
   )
   const headerActions = (
     <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-      <div className="flex h-9 items-center gap-1 rounded-[12px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1">
+      <div className="flex h-8 items-center gap-1 rounded-[11px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1">
         <Button
           type="button"
           className={modeButtonClassName(viewMode === 'visual')}
@@ -184,7 +184,7 @@ export function PresetConfigSectionEditor<T extends object>({
     <section className={cn(
       flush
         ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--nova-bg)]'
-        : 'overflow-hidden rounded-[14px] border border-[var(--nova-border)] bg-[var(--nova-surface)]',
+        : 'w-full self-start overflow-hidden rounded-[14px] border border-[var(--nova-border)] bg-[var(--nova-surface)]',
     )}>
       <div className={cn(
         flush
@@ -194,18 +194,18 @@ export function PresetConfigSectionEditor<T extends object>({
         {headerActionsTarget ? createPortal(headerActions, headerActionsTarget) : null}
         {showHeader ? (
           <div className={cn(
-            'flex flex-wrap items-start justify-between gap-4 border-b border-[var(--nova-border)]',
-            flush ? 'shrink-0 px-4 py-3' : 'px-4 py-4',
+            'flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b border-[var(--nova-border)]',
+            flush ? 'shrink-0 px-3 py-2' : 'px-3 py-2.5',
           )}>
             {!hideHeaderText ? (
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1 basis-48">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <div className="truncate text-[15px] font-semibold text-[var(--nova-text)]">{title}</div>
-                  <Badge variant="outline" className="h-6 rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 text-[11px] font-normal text-[var(--nova-text-faint)]">
+                  <div className="truncate text-sm font-semibold text-[var(--nova-text)]">{title}</div>
+                  <Badge variant="outline" className="h-5 rounded-full border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[10px] font-normal text-[var(--nova-text-faint)]">
                     {summary}
                   </Badge>
                 </div>
-                <div className="mt-1 max-w-[78ch] text-xs leading-5 text-[var(--nova-text-faint)]">{description}</div>
+                <div className="mt-0.5 line-clamp-2 max-w-[78ch] text-[11px] leading-4 text-[var(--nova-text-faint)]">{description}</div>
               </div>
             ) : null}
             {showInlineHeaderActions ? headerActions : null}

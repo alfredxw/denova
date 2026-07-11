@@ -4,16 +4,14 @@ import type { ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-const controlClassName = 'nova-field h-9 min-w-0 text-xs shadow-none focus-visible:ring-0'
+const controlClassName = 'nova-field h-8 min-w-0 text-xs shadow-none focus-visible:ring-0'
 
 interface PresetMetadataPanelProps {
   name: string
   description: string
-  tags: string
   status: string
   onNameChange: (value: string) => void
   onDescriptionChange: (value: string) => void
-  onTagsChange: (value: string) => void
   hint?: string
   extra?: ReactNode
   sticky?: boolean
@@ -24,11 +22,9 @@ interface PresetMetadataPanelProps {
 export function PresetMetadataPanel({
   name,
   description,
-  tags,
   status,
   onNameChange,
   onDescriptionChange,
-  onTagsChange,
   hint,
   extra,
   sticky = false,
@@ -58,14 +54,6 @@ export function PresetMetadataPanel({
           />
         </PresetField>
         {extra}
-        <PresetField className="preset-metadata-tags" label={t('settingPanel.field.tags')}>
-          <Input
-            className={controlClassName}
-            value={tags}
-            onChange={(event) => onTagsChange(event.target.value)}
-            placeholder={t('settingPanel.placeholder.tags')}
-          />
-        </PresetField>
         <div className="preset-metadata-status grid min-w-0 gap-1.5">
           <span className="preset-field-label">{t('settingPanel.presetConfig.status')}</span>
           <span className="preset-status-badge" title={status}>
@@ -89,7 +77,7 @@ export function PresetField({
   className?: string
 }) {
   return (
-    <label className={cn('grid min-w-0 gap-1.5', className)}>
+    <label className={cn('grid min-w-0 gap-1', className)}>
       <span className="preset-field-label">{label}</span>
       {children}
     </label>

@@ -19,6 +19,7 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
+	submitTestTurnResult(t, conversation, "走出门外", "确认雾中环境")
 	if err := conversation.AppendAssistantWithThinking("雾气在门外散开。", "先确认场景。"); err != nil {
 		t.Fatal(err)
 	}
