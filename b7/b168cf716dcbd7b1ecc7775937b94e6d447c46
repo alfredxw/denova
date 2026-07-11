@@ -1,0 +1,160 @@
+CHANGELOG.md
+  s_6cd514d0e42340::t_e0f2ca19f694c2 9-13,16-36,51-52
+README.en.md
+  s_6cd514d0e42340::t_160b273b83516f 69
+README.md
+  s_6cd514d0e42340::t_1b6f421893d4c2 69
+internal/agent/builder.go
+  s_6cd514d0e42340::t_811b5c9d93d959 518
+internal/agent/config_manager_tools.go
+  s_aab743330b14ff::t_f32bed39b605d4 55,782,807,830,1208-1210,1212,1214
+internal/agent/interactive_event_tools.go
+  s_6cd514d0e42340::t_e98f001e023ae7 1-52
+internal/agent/middleware.go
+  s_6cd514d0e42340::t_b670695cf71db0 94-95,108
+internal/app/interactive_agent_test.go
+  s_aab743330b14ff::t_00f55e35d97cab 85-87,399,401-406,437,441
+internal/app/interactive_app_service.go
+  s_aab743330b14ff::t_252c3b18e7eb36 319
+internal/app/interactive_conversation.go
+  s_6cd514d0e42340::t_6b28352b80f3d5 145,151,932-939,961-962
+internal/app/interactive_director.go
+  s_aab743330b14ff::t_8da18d3ddf1386 238
+internal/interactive/director_events.go
+  s_aab743330b14ff::t_fe7130efee56bd 1-339
+internal/interactive/director_modules_test.go
+  s_6cd514d0e42340::t_4ad02f1ef655ca 509,526-527,530-532,535-536
+internal/interactive/director_plan.go
+  s_aab743330b14ff::t_73d4c688c9e25a 85-96,110,122-138,150-152,156-158,274,282-291,313,320,332-336,347,366,374-378,386-388,422,425-428,435-444,446-455,490-494,513-531,534-543,555,557-566,665,754,763,879-895,919-925
+internal/interactive/director_test.go
+  s_aab743330b14ff::t_2284b9ceaeda95 4,10-193
+internal/interactive/orchestration_test.go
+  s_6cd514d0e42340::t_c7b2e5ef3b2817 512-516
+internal/interactive/plan_decision.go
+  s_aab743330b14ff::t_0e9bb7989f1751 21,62-65
+internal/interactive/story_directors.go
+  s_6cd514d0e42340::t_fe9ae51eff3a0a 16,28-32,69-70,586,599,611,676-680,687-695,697-708,773-775,780-782,785,816-819,856-864,873
+internal/interactive/story_directors_test.go
+  s_aab743330b14ff::t_fe5ea8924cf804 11-25,49,81,263-267,287
+internal/interactive/tellers.go
+  s_6cd514d0e42340::t_2063107c694fd7 18,34-50,75,394-395,397-403,461,543,969-970,972-976
+internal/interactive/tellers_test.go
+  s_15e6d9c356873b::t_cd18a22f532e7f 406
+internal/prompts/interactive.go
+  s_6cd514d0e42340::t_0312c6523fe965 58-59,191,195,200-201,300-303,327-332
+internal/prompts/interactive_test.go
+  s_15e6d9c356873b::t_f673344ea1e0f7 43
+web/src/App.tsx
+  s_6cd514d0e42340::t_7922275bc9c96e 664-666,669,771-776
+web/src/components/Editor/MarkdownEditor.test.tsx
+  s_6cd514d0e42340::t_3721d5b122afe5 30-34,67-68,121-160,463
+web/src/components/Editor/MarkdownEditor.tsx
+  s_6cd514d0e42340::t_7ead1354494992 40,210,380,391,393,397-400,408,612-614,624,642-644
+web/src/components/common/command-palette.tsx
+  s_6cd514d0e42340::t_beb47c890c6f93 39,52,91-93,95
+web/src/components/workbench/BookSettingsShortcuts.test.tsx
+  s_6cd514d0e42340::t_50327b9cbc9dd3 1-69
+web/src/components/workbench/BookSettingsShortcuts.tsx
+  s_6cd514d0e42340::t_e027f5a486329c 1-227
+web/src/components/workbench/ModeRouter.tsx
+  s_6cd514d0e42340::t_d6b6202543c335 2,10,226-230,395-396,467,626,729-730,739-740,751,753,759,763-768,781-782,784,787-789,791-793,795-798,801
+web/src/components/workbench/WorkbenchShell.responsive.test.tsx
+  s_6cd514d0e42340::t_ff0e4d2edb6a27 13,98-111
+web/src/components/workbench/WorkbenchShell.tsx
+  s_6cd514d0e42340::t_0f82cdfa7baf36 30,101,536-541
+web/src/features/interactive/api.ts
+  s_aab743330b14ff::t_10ef62eebc0b6e 83,87,91,95
+web/src/features/interactive/components/MemoryPanel.test.tsx
+  s_aab743330b14ff::t_559480d9911a23 320,334-335,354-383
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_aab743330b14ff::t_451433676c7dfd 524,539-541,550
+web/src/features/interactive/components/SettingPanelTellerEditor.test.tsx
+  s_aab743330b14ff::t_c1ef0ee43d3dcd 321-325
+web/src/features/interactive/components/SettingPanelTellerEditor.tsx
+  s_aab743330b14ff::t_06d026ef080f57 21,38,114
+web/src/features/interactive/components/StoryStage.test.tsx
+  s_15e6d9c356873b::t_38c100e77c0a89 82
+web/src/features/interactive/components/director-console/ActorTabs.tsx
+  s_15e6d9c356873b::t_9baa0b0e32c3f0 1-2,4-5,7-15,17-48,50-88
+web/src/features/interactive/components/director-console/DirectorConsole.tsx
+  s_aab743330b14ff::t_0fe2825e2cfd01 154,159,194,199,315-317
+web/src/features/interactive/components/director-console/PlanView.tsx
+  s_aab743330b14ff::t_9553ec9b9820ec 2,24-26,46-48,81-84,131-162
+web/src/features/interactive/components/director-console/StateView.test.tsx
+  s_15e6d9c356873b::t_a385c598964cb3 1,3,51-52,60,66,80-82,84-86,90,102-143
+web/src/features/interactive/components/director-console/StateView.tsx
+  s_15e6d9c356873b::t_9ac7977e04bec0 5,60-64,108
+web/src/features/interactive/components/setting-panel/presetResources.ts
+  s_aab743330b14ff::t_061d7247ae878e 209
+web/src/features/interactive/components/story-director/StoryDirectorEditor.tsx
+  s_6cd514d0e42340::t_802427b2c30200 11,13,229-234
+web/src/features/interactive/components/story-director/constants.ts
+  s_6cd514d0e42340::t_b8a70c2707ec61 37-41
+web/src/features/interactive/types.ts
+  s_aab743330b14ff::t_3b1cb136680e60 218,359-360,647-648,666-668,686-720,733-734
+web/src/hooks/use-workspace-hotkeys.test.tsx
+  s_6cd514d0e42340::t_8a1d63f744ed23 1-29
+web/src/hooks/use-workspace-hotkeys.ts
+  s_6cd514d0e42340::t_1e3fc19212e2fc 10,20,56-59
+web/src/i18n/locales/en-US/command.ts
+  s_6cd514d0e42340::t_b98cba1d1f125f 2
+web/src/i18n/locales/en-US/editor.ts
+  s_6cd514d0e42340::t_10cfb0c42131d4 22
+web/src/i18n/locales/en-US/memoryPanel.ts
+  s_6cd514d0e42340::t_641d41fb30e6eb 49-56,66-67
+web/src/i18n/locales/en-US/planning.ts
+  s_6cd514d0e42340::t_2c4ab96c99d3dd 5-13,24
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_aab743330b14ff::t_494b07f1f0696f 338,516,557-564
+web/src/i18n/locales/zh-CN/command.ts
+  s_6cd514d0e42340::t_db8245d711652b 2
+web/src/i18n/locales/zh-CN/editor.ts
+  s_6cd514d0e42340::t_7ca2a4735e4d8b 22
+web/src/i18n/locales/zh-CN/memoryPanel.ts
+  s_6cd514d0e42340::t_d6d87748a1cb29 49-56,66-67
+web/src/i18n/locales/zh-CN/planning.ts
+  s_6cd514d0e42340::t_8751c07b71eedd 5-13,24
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_aab743330b14ff::t_dc06d7e0feab3a 338,516,557-564
+web/src/test/msw/handlers.ts
+  s_aab743330b14ff::t_06560c0f9cc0e0 124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b7b168cf716dcbd7b1ecc7775937b94e6d447c46",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_15e6d9c356873b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f518c-cdd8-7130-be32-4ac4408e60c4",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_6cd514d0e42340": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5197-8b48-7f41-a50b-0685becbdc39",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_aab743330b14ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5165-d189-7291-a653-6bf8844a2352",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
