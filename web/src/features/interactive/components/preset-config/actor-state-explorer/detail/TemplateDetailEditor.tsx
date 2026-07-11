@@ -7,7 +7,6 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { novaEase } from '@/features/motion/motion-tokens'
-import { nextPresetId } from '../../utils'
 import type { ActorStateField, ActorStateTemplate } from '../../../../types'
 import type { ExplorerProps, TreeNode } from '../types'
 import { fieldNodeId, findNode, templateNodeId } from '../build-tree'
@@ -61,8 +60,6 @@ export function TemplateDetailEditor({
 
   const addField = () => {
     const newField: ActorStateField = {
-      id: nextPresetId('field'),
-      path: `state.field_${fields.length}`,
       name: t('settingPanel.actorState.explorer.newField', { count: fields.length + 1 }),
       type: 'string',
       visibility: 'visible',
@@ -149,7 +146,7 @@ export function TemplateDetailEditor({
                 const isSelected = node ? nodeId === selectedId : false
                 return (
                   <FieldInlineRow
-                    key={field.id || field.path || fIndex}
+					key={fIndex}
                     field={field}
                     selected={isSelected}
                     onClick={() => onSelect(nodeId)}
@@ -305,14 +302,12 @@ function FieldInlineRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="truncate text-[12px] font-medium text-[var(--nova-text)]">
-            {field.name || field.path || t('settingPanel.actorState.explorer.unnamedField')}
+			{field.name || t('settingPanel.actorState.explorer.unnamedField')}
           </span>
           <FieldTypeBadge type={field.type} />
           {field.visibility ? <VisibilityBadge visibility={field.visibility} /> : null}
         </div>
-        <div className="mt-0.5 truncate font-mono text-[10px] text-[var(--nova-text-faint)]">
-          {field.path}
-        </div>
+		<div className="mt-0.5 truncate text-[10px] text-[var(--nova-text-faint)]">{t('settingPanel.actorState.explorer.nameIsId')}</div>
       </div>
     </motion.div>
   )

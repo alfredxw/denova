@@ -28,20 +28,19 @@ type Library struct {
 var ErrPresetRevisionConflict = errors.New("图像方案已被其他操作更新，请重新加载后再保存")
 
 type Preset struct {
-	Version           int      `json:"version"`
-	ID                string   `json:"id"`
-	Name              string   `json:"name"`
-	Description       string   `json:"description"`
-	Prompt            string   `json:"prompt,omitempty"`
-	Slots             []Slot   `json:"slots,omitempty"`
-	Tags              []string `json:"tags"`
-	Path              string   `json:"path,omitempty"`
-	Custom            bool     `json:"custom"`
-	BuiltinOverridden bool     `json:"builtin_overridden,omitempty"`
-	Invalid           bool     `json:"invalid,omitempty"`
-	Error             string   `json:"error,omitempty"`
-	CreatedAt         string   `json:"created_at,omitempty"`
-	UpdatedAt         string   `json:"updated_at,omitempty"`
+	Version           int    `json:"version"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Description       string `json:"description"`
+	Prompt            string `json:"prompt,omitempty"`
+	Slots             []Slot `json:"slots,omitempty"`
+	Path              string `json:"path,omitempty"`
+	Custom            bool   `json:"custom"`
+	BuiltinOverridden bool   `json:"builtin_overridden,omitempty"`
+	Invalid           bool   `json:"invalid,omitempty"`
+	Error             string `json:"error,omitempty"`
+	CreatedAt         string `json:"created_at,omitempty"`
+	UpdatedAt         string `json:"updated_at,omitempty"`
 }
 
 type Slot struct {
@@ -273,7 +272,6 @@ func normalizePreset(preset Preset) Preset {
 		preset.Slots = []Slot{defaultToolRequestSlot(legacyPrompt)}
 	}
 	preset.Prompt = preset.PromptForTargets(TargetToolRequest)
-	preset.Tags = normalizeTags(preset.Tags)
 	return preset
 }
 
@@ -346,20 +344,6 @@ func validateID(id string) error {
 	return nil
 }
 
-func normalizeTags(tags []string) []string {
-	result := make([]string, 0, len(tags))
-	seen := map[string]bool{}
-	for _, tag := range tags {
-		tag = strings.TrimSpace(tag)
-		if tag == "" || seen[tag] {
-			continue
-		}
-		seen[tag] = true
-		result = append(result, tag)
-	}
-	return result
-}
-
 func truncateRunes(value string, max int) string {
 	if max <= 0 {
 		return ""
@@ -420,23 +404,22 @@ func (p Preset) PromptForTargets(targets ...string) string {
 var builtinPresets = map[string]Preset{
 	DefaultID: builtinPreset(
 		DefaultID, "游戏CG",
-		"偏互动游戏事件图、角色立绘与关键场景 CG", []string{"游戏", "CG"}, "以高质量插画 CG 视觉呈现，大师级作品，高细节，虚幻5：主体清晰，镜头有戏剧张力，构图服务行动与场景信息；角色服装、道具、环境细节要贴合已发生剧情。光影偏电影化，色彩饱满但不过曝，画面可作为互动剧情关键回合插图。避免文字、水印、logo、UI 面板和未来剧情剧透。"),
+		"偏互动游戏事件图、角色立绘与关键场景 CG", "以高质量插画 CG 视觉呈现，大师级作品，高细节，虚幻5：主体清晰，镜头有戏剧张力，构图服务行动与场景信息；角色服装、道具、环境细节要贴合已发生剧情。光影偏电影化，色彩饱满但不过曝，画面可作为互动剧情关键回合插图。避免文字、水印、logo、UI 面板和未来剧情剧透。"),
 	"realistic": builtinPreset(
 		"realistic", "写实",
-		"偏摄影感、真实材质和自然光影", []string{"写实", "摄影"}, "以写实摄影感呈现：强调真实材质、自然光影、可信空间关系和克制的戏剧化处理。人物表情、姿态和环境痕迹应符合当前情境，避免夸张二次元比例、过度滤镜、塑料质感和不必要的幻想装饰。避免文字、水印、logo 和未来剧情剧透。"),
+		"偏摄影感、真实材质和自然光影", "以写实摄影感呈现：强调真实材质、自然光影、可信空间关系和克制的戏剧化处理。人物表情、姿态和环境痕迹应符合当前情境，避免夸张二次元比例、过度滤镜、塑料质感和不必要的幻想装饰。避免文字、水印、logo 和未来剧情剧透。"),
 	"2d-illustration": builtinPreset(
 		"2d-illustration", "2D插画",
-		"偏小说插图、手绘感与清晰氛围表达", []string{"2D", "插画"}, "以精致 2D 插画呈现：线条干净，色块和光影层次清晰，适合小说章节插图和角色场景氛围图。构图要突出主体与情绪，背景保留足够叙事信息但不喧宾夺主。避免过度写实摄影质感、3D 渲染感、文字、水印、logo 和未来剧情剧透。"),
+		"偏小说插图、手绘感与清晰氛围表达", "以精致 2D 插画呈现：线条干净，色块和光影层次清晰，适合小说章节插图和角色场景氛围图。构图要突出主体与情绪，背景保留足够叙事信息但不喧宾夺主。避免过度写实摄影质感、3D 渲染感、文字、水印、logo 和未来剧情剧透。"),
 }
 
-func builtinPreset(id, name, description string, tags []string, prompt string) Preset {
+func builtinPreset(id, name, description, prompt string) Preset {
 	return normalizePreset(Preset{
 		Version:     Version,
 		ID:          id,
 		Name:        name,
 		Description: description,
 		Slots:       []Slot{defaultToolRequestSlot(prompt)},
-		Tags:        tags,
 	})
 }
 

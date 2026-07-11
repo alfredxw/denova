@@ -21,8 +21,10 @@ export interface DirectorConsoleProps {
   loading: boolean
   memoryLoading: boolean
   memoryError: string
-  syncStatus?: string
-  syncError?: string
+	stateStatus?: string
+	stateError?: string
+	memoryStatus?: string
+	memorySyncError?: string
   activeTab: ConsoleTab
   onTabChange: (tab: ConsoleTab) => void
   directorRevealed: boolean
@@ -51,8 +53,10 @@ export function DirectorConsole({
   loading,
   memoryLoading,
   memoryError,
-  syncStatus,
-  syncError,
+	stateStatus,
+	stateError,
+	memoryStatus,
+	memorySyncError,
   activeTab,
   onTabChange,
   directorRevealed,
@@ -103,6 +107,10 @@ export function DirectorConsole({
   const canAnalyzeDirectorContext = Boolean(storyId && currentTurnId)
   const hasDirectorRun = Boolean(directorPlan || directorStatus || directorMetadata?.last_run || planLoading || retryingDirector)
   const stateFacts = useMemo(() => stateEntries(snapshot?.state), [snapshot?.state])
+  const actorCount = useMemo(() => {
+    const actors = stateFacts.find(([key]) => key === 'actors')?.[1]
+    return actors && typeof actors === 'object' && !Array.isArray(actors) ? Object.keys(actors).length : 0
+  }, [stateFacts])
 
   useEffect(() => {
     setProcessRevealed(false)
@@ -244,13 +252,12 @@ export function DirectorConsole({
   }
 
   return (
-    <aside className="flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface)]">
-      <DirectorConsoleHeader />
-      <ConsoleTabs activeTab={activeTab} onChange={onTabChange} />
-      {memoryError ? <div className="mx-4 mt-3 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{memoryError}</div> : null}
-      {directorError ? <div className="mx-4 mt-3 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{directorError}</div> : null}
-      <div className="min-h-0 flex-1 overflow-hidden px-3 py-3">
-        <div className="h-full min-h-0 overflow-y-auto px-1 pb-2">
+    <aside className="director-console flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--director-canvas)] text-[var(--nova-text)]">
+      <DirectorConsoleHeader branchId={branchId} turnCount={(snapshot?.turns || []).length || (snapshot?.current_turn ? 1 : 0)} />
+      <ConsoleTabs activeTab={activeTab} onChange={onTabChange} stateCount={actorCount} memoryCount={filteredRecords.length} />
+      {activeTab === 'plan' && directorError ? <div className="mx-4 mt-3 rounded-[10px] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-5 text-[var(--nova-danger)]">{directorError}</div> : null}
+      <div className="min-h-0 flex-1 overflow-hidden px-4 py-4">
+        <div className="director-console__scroll h-full min-h-0 overflow-y-auto pb-4 pr-1">
           {activeTab === 'run' ? (
             <DirectorRunView
               storyId={storyId}
@@ -274,9 +281,12 @@ export function DirectorConsole({
               onAnalyze={openDirectorContextAnalysis}
             />
           ) : activeTab === 'state' ? (
-            <StateView snapshot={snapshot} stateFacts={stateFacts} syncStatus={syncStatus} syncError={syncError} />
+            <StateView snapshot={snapshot} stateFacts={stateFacts} syncStatus={stateStatus} syncError={stateError} />
           ) : activeTab === 'memory' ? (
             <MemoryView
+				loadError={memoryError}
+				memoryStatus={memoryStatus}
+				memorySyncError={memorySyncError}
               memoryLoading={memoryLoading}
               structures={structures}
               filteredRecords={filteredRecords}

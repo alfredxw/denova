@@ -282,6 +282,65 @@ func applyStateOp(state map[string]any, op StateOp) {
 	}
 }
 
+func applyActorStateOp(state map[string]any, op ActorStateOp) {
+	actorID := normalizeActorStateID(op.ActorID)
+	fieldID := normalizeActorStateFieldName(op.FieldID)
+	if actorID == "" || fieldID == "" {
+		return
+	}
+	actors, _ := state[actorStateRoot].(map[string]any)
+	if actors == nil {
+		actors = map[string]any{}
+		state[actorStateRoot] = actors
+	}
+	actor, _ := actors[actorID].(map[string]any)
+	if actor == nil {
+		actor = map[string]any{"id": actorID}
+		actors[actorID] = actor
+	}
+	fields, _ := actor["state"].(map[string]any)
+	if fields == nil {
+		fields = map[string]any{}
+		actor["state"] = fields
+	}
+	switch strings.TrimSpace(op.Op) {
+	case "set":
+		fields[fieldID] = op.Value
+	case "inc":
+		current := numberFromAny(fields[fieldID])
+		by := 1.0
+		if value, ok := actorStateNumber(op.Value); ok {
+			by = value
+		}
+		fields[fieldID] = current + by
+	case "unset":
+		delete(fields, fieldID)
+	}
+}
+
+func normalizeActorStateOps(ops []ActorStateOp) []ActorStateOp {
+	if len(ops) == 0 {
+		return nil
+	}
+	result := make([]ActorStateOp, 0, len(ops))
+	for _, op := range ops {
+		op.Op = strings.TrimSpace(op.Op)
+		op.ActorID = normalizeActorStateID(op.ActorID)
+		op.FieldID = normalizeActorStateFieldName(op.FieldID)
+		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
+		op.SourceTurnID = trimBytes(op.SourceTurnID, 128)
+		op.SourceKind = trimBytes(op.SourceKind, 128)
+		op.SourceID = trimBytes(op.SourceID, 128)
+		if validateActorStateOp(op) == nil {
+			result = append(result, op)
+		}
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
+}
+
 func getPath(root map[string]any, path string) any {
 	path = strings.TrimSpace(path)
 	if value := getPathExact(root, path); value != nil {

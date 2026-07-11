@@ -10,11 +10,17 @@ vi.mock('@/hooks/useIsMobile', () => ({
 }))
 
 vi.mock('@/components/layout/workspace-layout', () => ({
-  WorkspaceLayout: ({ topBar, main }: { topBar: ReactNode; main: ReactNode }) => <section data-testid="desktop-shell">{topBar}{main}</section>,
+  WorkspaceLayout: ({ topBar, activityBar, main }: { topBar: ReactNode; activityBar: ReactNode; main: ReactNode }) => <section data-testid="desktop-shell">{topBar}{activityBar}{main}</section>,
 }))
 
 vi.mock('@/components/layout/workspace-mobile-layout', () => ({
-  WorkspaceMobileLayout: ({ topBar, main }: { topBar: ReactNode; main: ReactNode }) => <section data-testid="mobile-shell">{topBar}{main}</section>,
+  WorkspaceMobileLayout: ({ topBar, main, activityItems }: { topBar: ReactNode; main: ReactNode; activityItems: Array<{ id: string; label: string; active: boolean; onClick: () => void }> }) => (
+    <section data-testid="mobile-shell">
+      {topBar}
+      <nav>{activityItems.map((item) => <button key={item.id} type="button" aria-pressed={item.active} onClick={item.onClick}>{item.label}</button>)}</nav>
+      {main}
+    </section>
+  ),
 }))
 
 vi.mock('@/features/messages/MessageCenter', () => ({
@@ -72,6 +78,22 @@ describe('WorkbenchShell responsive main content', () => {
     rerender(<WorkbenchShell {...props} />)
     expect(screen.getByRole('button', { name: /写作模式|Writing Mode/ })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: /游戏模式|Game Mode/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('keeps Story Memory out of primary navigation and treats its manager as part of Story', () => {
+    const props = {
+      ...workbenchProps(<div />),
+      interactiveSubmode: 'memory' as const,
+    }
+    const { rerender } = render(<WorkbenchShell {...props} />)
+
+    expect(screen.queryByRole('button', { name: /故事记忆|Story Memory/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /剧情|Story/ })).toHaveClass('is-active')
+
+    responsiveState.mobile = true
+    rerender(<WorkbenchShell {...props} />)
+    expect(screen.queryByRole('button', { name: /故事记忆|Story Memory/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /剧情|Story/ })).toHaveAttribute('aria-pressed', 'true')
   })
 })
 

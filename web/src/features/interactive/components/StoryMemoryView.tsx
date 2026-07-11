@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, Bot, Brain, ChevronDown, ChevronRight, Edit3, Loader2, PanelLeft, PanelRight, Plus, RefreshCw, RotateCcw, Save, SlidersHorizontal, X } from 'lucide-react'
+import { Archive, ArrowLeft, Bot, Brain, ChevronDown, ChevronRight, Edit3, Loader2, PanelLeft, PanelRight, Plus, RefreshCw, RotateCcw, Save, SlidersHorizontal, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
@@ -10,9 +10,10 @@ interface StoryMemoryViewProps {
   storyId?: string
   branchId?: string
   branches?: BranchSummary[]
+  onBackToStory?: () => void
 }
 
-export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemoryViewProps) {
+export function StoryMemoryView({ storyId, branchId, branches = [], onBackToStory }: StoryMemoryViewProps) {
   const { t } = useTranslation()
   const [state, setState] = useState<StoryMemoryState | null>(null)
   const [memoryBranchId, setMemoryBranchId] = useState(branchId || '')
@@ -225,6 +226,16 @@ export function StoryMemoryView({ storyId, branchId, branches = [] }: StoryMemor
     <section className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
       <header className="nova-topbar flex shrink-0 flex-col items-stretch gap-2 border-b border-[var(--nova-border)] px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-4 sm:py-3">
         <div className="flex min-w-0 items-center gap-2">
+          {onBackToStory && (
+            <button
+              type="button"
+              className="nova-nav-item inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 text-xs font-medium text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+              onClick={onBackToStory}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>{t('storyMemory.backToStory')}</span>
+            </button>
+          )}
           <Brain className="h-4 w-4 shrink-0 text-[var(--nova-text-muted)]" />
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold">{t('storyMemory.title')}</h2>

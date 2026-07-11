@@ -63,8 +63,6 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
     const tpl = { ...templates[tIndex] }
     const fields = [...(tpl.fields || [])]
     const newField: ActorStateField = {
-      id: nextPresetId('field'),
-      path: `state.field_${fields.length}`,
       name: t('settingPanel.actorState.explorer.newField', { count: fields.length + 1 }),
       type: 'string',
       visibility: 'visible',
@@ -74,7 +72,7 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
     tpl.fields = fields
     templates[tIndex] = tpl
     onChange({ ...value, templates })
-    setTimeout(() => handleSelect(`field:${templateId}:${newField.id || newField.path}`), 0)
+    setTimeout(() => handleSelect(`field:${templateId}:${fields.length - 1}`), 0)
   }, [handleSelect, onChange, t, value])
 
   const handleAddActor = useCallback((templateId: string) => {
@@ -134,11 +132,12 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
     switch (data.kind) {
       case 'template': {
         const cloned = cloneWithNewId(data.template, 'tpl')
-        // Also clone fields with new IDs
-        cloned.fields = (data.template.fields || []).map((f) => ({
-          ...f,
-          id: nextPresetId('field'),
-        }))
+				cloned.fields = (data.template.fields || []).map((field) => {
+					const next = { ...field }
+					delete next.id
+					delete next.path
+					return next
+				})
         const templates = [...(value.templates || [])]
         templates.splice(data.index + 1, 0, cloned)
         onChange({ ...value, templates })

@@ -97,8 +97,8 @@ function DirectorRunStatusCard({ status, metadata, loading, error }: { status?: 
   const statusIcon = failed ? <AlertCircle className="h-4 w-4" /> : running ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />
 
   return (
-    <section data-testid="director-run-summary" className="overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
-      <div className={`h-1 w-full ${running ? 'animate-pulse bg-[linear-gradient(90deg,var(--nova-accent-blue),var(--nova-warning),var(--nova-accent-blue))]' : failed ? 'bg-[var(--nova-danger)]' : 'bg-[var(--nova-accent-green)]'}`} />
+    <section data-testid="director-run-summary" className="overflow-hidden rounded-[12px] border border-[var(--nova-border)] bg-[var(--director-panel)]">
+      <div className={`h-0.5 w-full ${running ? 'animate-pulse bg-[var(--director-brass)]' : failed ? 'bg-[var(--nova-danger)]' : 'bg-[var(--director-live)]'}`} />
       <div className="p-3">
         <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
@@ -107,11 +107,21 @@ function DirectorRunStatusCard({ status, metadata, loading, error }: { status?: 
                 {statusIcon}
               </span>
               <div className="min-w-0">
-                <h3 className="truncate text-sm font-semibold text-[var(--nova-text)]">{t('memoryPanel.run.statusTitle')}</h3>
-                <p className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]">{directorStatusLabel(status, loading, t)}</p>
+                <h3 className="director-console__display truncate text-base font-semibold text-[var(--nova-text)]">{t('memoryPanel.run.statusTitle')}</h3>
+                <p className="mt-0.5 truncate text-[9px] uppercase tracking-[0.12em] text-[var(--nova-text-faint)]">{directorStatusLabel(status, loading, t)}</p>
               </div>
             </div>
             <p className="mt-3 break-words text-xs leading-5 text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">{summary}</p>
+            {status?.decision?.mode ? (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--nova-text-muted)]">
+                <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 font-medium text-[var(--nova-text)]">
+                  {t(`memoryPanel.planDecision.${status.decision.mode}`, { defaultValue: status.decision.mode })}
+                </span>
+                {status.decision.triggers?.slice(0, 3).map((trigger) => (
+                  <span key={trigger} className="rounded-full bg-[var(--nova-hover)] px-2 py-0.5">{trigger}</span>
+                ))}
+              </div>
+            ) : null}
           </div>
           {updatedAt ? (
             <span className="shrink-0 rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 text-[10px] text-[var(--nova-text-faint)]">
@@ -120,7 +130,7 @@ function DirectorRunStatusCard({ status, metadata, loading, error }: { status?: 
           ) : null}
         </div>
 
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="director-run-metrics mt-3 grid grid-cols-1 gap-px overflow-hidden rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-border)]">
           <RunMetric icon={<FileText className="h-3.5 w-3.5" />} label={t('snapshot.director.docs')} value={`${totals.completed}/${totals.planned}`} />
           <RunMetric icon={<Clock3 className="h-3.5 w-3.5" />} label={t('snapshot.director.branchPlanningTurns')} value={String(metadata?.branch_planning_turns || 5)} />
           <RunMetric icon={<Activity className="h-3.5 w-3.5" />} label={t('memoryPanel.run.visibleBytes')} value={`${formatBytes(totals.visibleBytes)} / ${formatBytes(totals.totalBytes)}`} />
@@ -170,18 +180,18 @@ function DirectorProcessPanel({
   const { t } = useTranslation()
   const process = useDirectorProcessMessages({ status, metadata, loading, displayEvents, generateMessages, generating, generateActivity })
   return (
-    <section data-testid="director-process-panel" className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
+    <section data-testid="director-process-panel" className="rounded-[12px] border border-[var(--nova-border)] bg-[var(--director-panel)] p-3">
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[var(--nova-text)]">
-            <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--nova-accent-blue)]" />
-            <span className="truncate">{t('memoryPanel.process.title')}</span>
+            <Activity className="h-3.5 w-3.5 shrink-0 text-[var(--director-brass)]" />
+            <span className="director-console__display truncate text-[15px]">{t('memoryPanel.process.title')}</span>
           </div>
           <p className="mt-1 text-[11px] leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.process.description')}</p>
         </div>
       </div>
 
-      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+      <div className="director-process-actions mt-3 grid grid-cols-1 gap-2">
         <ProcessActionButton
           icon={retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
           label={retrying ? t('memoryPanel.directorManualRunning') : t('memoryPanel.directorManualRun')}
@@ -206,7 +216,7 @@ function DirectorProcessPanel({
         {!revealed ? (
           <DirectorProcessGate onReveal={onReveal} />
         ) : process.messages.length > 0 || process.streaming ? (
-          <div className="flex h-[320px] min-h-[240px] flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
+          <div className="flex h-[320px] min-h-[240px] flex-col overflow-hidden rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)]">
             <MessageList
               messages={process.messages}
               isStreaming={process.streaming}
@@ -218,7 +228,7 @@ function DirectorProcessPanel({
             />
           </div>
         ) : (
-          <div className="flex min-h-[160px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.process.empty')}</div>
+          <div className="flex min-h-[180px] items-center justify-center rounded-[10px] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.process.empty')}</div>
         )}
       </div>
     </section>
@@ -315,14 +325,14 @@ function useDirectorProcessMessages({
 function DirectorProcessGate({ onReveal }: { onReveal: () => void }) {
   const { t } = useTranslation()
   return (
-    <div className="flex min-h-[188px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-5 text-center">
+    <div className="flex min-h-[200px] items-center justify-center rounded-[10px] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-5 text-center">
       <div className="max-w-[24rem]">
-        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-warning)]">
+        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--director-panel)] text-[var(--director-brass)]">
           <ShieldAlert className="h-5 w-5" />
         </div>
-        <h3 className="mt-3 text-sm font-semibold text-[var(--nova-text)]">{t('memoryPanel.process.spoilerTitle')}</h3>
+        <h3 className="director-console__display mt-3 text-base font-semibold text-[var(--nova-text)]">{t('memoryPanel.process.spoilerTitle')}</h3>
         <p className="mt-2 text-xs leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.process.spoilerDescription')}</p>
-        <Button type="button" size="sm" variant="outline" className="mt-4 gap-2 border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:border-[var(--nova-accent)]" onClick={onReveal}>
+        <Button type="button" size="sm" variant="outline" className="mt-4 gap-2 rounded-[9px] border-[var(--director-brass)] bg-[color-mix(in_srgb,var(--director-brass)_10%,var(--nova-surface))] text-[var(--nova-text)] hover:bg-[color-mix(in_srgb,var(--director-brass)_16%,var(--nova-surface))]" onClick={onReveal}>
           <Eye className="h-3.5 w-3.5" />
           {t('memoryPanel.process.reveal')}
         </Button>
@@ -337,7 +347,7 @@ function ProcessActionButton({ icon, label, disabled, onClick }: { icon: ReactNo
       type="button"
       variant="outline"
       size="sm"
-      className="min-w-0 justify-start gap-2 border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
+      className="min-w-0 justify-start gap-2 rounded-[9px] border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:border-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
       disabled={disabled}
       onClick={onClick}
     >
@@ -349,7 +359,7 @@ function ProcessActionButton({ icon, label, disabled, onClick }: { icon: ReactNo
 
 function RunMetric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-2">
+    <div className="min-w-0 bg-[var(--nova-surface)] px-2.5 py-2">
       <div className="flex min-w-0 items-center gap-1.5 text-[10px] text-[var(--nova-text-faint)]">
         {icon}
         <span className="truncate">{label}</span>
@@ -362,11 +372,11 @@ function RunMetric({ icon, label, value }: { icon: ReactNode; label: string; val
 function DirectorEmptyState({ error, running }: { error?: string; running?: boolean }) {
   const { t } = useTranslation()
   return (
-    <section className="flex min-h-[220px] flex-col items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-4 py-6 text-center">
-      <div className="flex h-10 w-10 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-accent-blue)]">
+    <section className="flex min-h-[240px] flex-col items-center justify-center rounded-[12px] border border-dashed border-[var(--nova-border)] bg-[var(--director-panel)] px-4 py-6 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--director-brass)]">
         {running ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
       </div>
-      <h3 className="mt-3 text-sm font-semibold text-[var(--nova-text)]">{t('memoryPanel.directorEmpty')}</h3>
+      <h3 className="director-console__display mt-3 text-base font-semibold text-[var(--nova-text)]">{t('memoryPanel.directorEmpty')}</h3>
       <p className="mt-2 max-w-[24rem] text-xs leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.directorManualRunHint')}</p>
       {error ? <div className="mt-3 w-full rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{error}</div> : null}
     </section>

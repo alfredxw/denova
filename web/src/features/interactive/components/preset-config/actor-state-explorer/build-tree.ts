@@ -16,8 +16,8 @@ export function buildStateTree(value: ExplorerProps['value'], t: TFunction): Tre
     const fieldNodes: TreeNode[] = fields.map((field, fIndex) => ({
       id: fieldNodeId(template.id, field, fIndex),
       kind: 'field' as const,
-      label: field.name || field.path || field.id || t('settingPanel.actorState.explorer.fieldFallback', { count: fIndex + 1 }),
-      subtitle: [field.path, field.type].filter(Boolean).join(' · '),
+			label: field.name || t('settingPanel.actorState.explorer.fieldFallback', { count: fIndex + 1 }),
+			subtitle: field.type,
       badge: field.visibility ? visibilityBadge(field.visibility, t) : undefined,
       selectable: true,
       children: [],
@@ -109,7 +109,8 @@ export function templateNodeId(template: { id?: string }, index: number): string
 }
 
 export function fieldNodeId(templateId: string, field: ActorStateField, index: number): string {
-  return `field:${templateId}:${field.id || field.path || index}`
+	void field
+	return `field:${templateId}:${index}`
 }
 
 export function actorNodeId(actor: ActorStateInitialActor, index: number): string {

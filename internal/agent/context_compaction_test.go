@@ -117,6 +117,35 @@ func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 	}
 }
 
+func TestBuildContextCompactionTriggersOnProjectedNinetyPercentUsage(t *testing.T) {
+	previous := summarizeContextForCompaction
+	defer func() { summarizeContextForCompaction = previous }()
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*schema.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
+		return "压缩后的事实摘要。", 100, nil
+	}
+
+	cfg := &config.Config{OpenAIContextWindowTokens: 1000}
+	messages := []*schema.Message{
+		schema.UserMessage("上一轮用户行动"),
+		schema.AssistantMessage("上一轮剧情结果", nil),
+		schema.UserMessage("当前用户行动"),
+	}
+	_, result, err := BuildContextCompaction(context.Background(), cfg, config.AgentKindInteractiveStory, ContextCompactionInput{
+		Messages:                 messages,
+		ReservedCompletionTokens: 850,
+		KeepLatestUser:           true,
+	}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TokensBefore >= 900 {
+		t.Fatalf("raw prompt should be below threshold for this test: %#v", result)
+	}
+	if !result.Triggered || result.ProjectedTokensBefore < 900 {
+		t.Fatalf("projected prompt + completion reserve should trigger at 90%%: %#v", result)
+	}
+}
+
 func TestBuildContextCompactionEmitsStreamingSummaryDelta(t *testing.T) {
 	previous := summarizeContextForCompaction
 	defer func() { summarizeContextForCompaction = previous }()

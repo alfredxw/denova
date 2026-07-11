@@ -233,8 +233,8 @@ function RuleRollBlock({ message }: { message: ChatMessage }) {
         {stateChanges.length ? (
           <div className="mt-1 flex flex-wrap gap-1">
             {stateChanges.map((change, index) => (
-              <span key={`${change.path}-${index}`} className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">
-                {change.path} {formatSignedRuleRollNumber(change.change)}
+				<span key={`${change.actor_id || ''}:${change.field_id || change.path || index}`} className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">
+					{[change.actor_id, change.field_id].filter(Boolean).join(' / ') || change.path} {formatSignedRuleRollNumber(change.change)}
               </span>
             ))}
           </div>

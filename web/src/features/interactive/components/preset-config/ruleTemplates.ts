@@ -93,11 +93,11 @@ function normalizeModifiers(value: unknown): RuleStateBindingModifier[] | undefi
   const items = value.slice(0, 24).map((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return null
     const source = item as Partial<RuleStateBindingModifier>
-    const fieldPath = String(source.field_path || '').trim()
-    if (!fieldPath) return null
+		const fieldId = String(source.field_id || source.field_path || '').normalize('NFKC').trim()
+		if (!fieldId) return null
     return {
       source: stringOption(source.source, ['actor', 'target'], 'actor'),
-      field_path: fieldPath,
+			field_id: fieldId,
       effect: stringOption(source.effect, ['advantage', 'resistance'], 'advantage'),
       scale: numberOrDefault(source.scale, 1),
       offset: numberOrDefault(source.offset, 0),
@@ -117,7 +117,7 @@ function normalizeNarrativeRefs(value: unknown): RuleNarrativeStateRef[] | undef
     const source = item as Partial<RuleNarrativeStateRef>
     return {
       source: stringOption(source.source, ['actor', 'target', 'scene'], 'actor'),
-      field_path: String(source.field_path || '').trim(),
+			field_id: String(source.field_id || source.field_path || '').normalize('NFKC').trim(),
       usage: stringOption(source.usage, ['check_decision', 'difficulty', 'outcome_design', 'prose', 'memory'], 'outcome_design'),
       guidance: String(source.guidance || ''),
     }
@@ -145,11 +145,11 @@ function normalizeComputedStateChanges(value: unknown): RuleComputedStateChange[
   const items = value.slice(0, 24).map((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return null
     const source = item as Partial<RuleComputedStateChange>
-    const fieldPath = String(source.field_path || '').trim()
-    if (!fieldPath) return null
+		const fieldId = String(source.field_id || source.field_path || '').normalize('NFKC').trim()
+		if (!fieldId) return null
     return {
       source: stringOption(source.source, ['actor', 'target'], 'actor'),
-      field_path: fieldPath,
+			field_id: fieldId,
       change_formula: normalizeFormula(source.change_formula),
       reason: String(source.reason || ''),
     }
@@ -173,11 +173,11 @@ function normalizeFormulaTerms(value: unknown): RuleStateFormulaTerm[] | undefin
   const items = value.slice(0, 24).map((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return null
     const source = item as Partial<RuleStateFormulaTerm>
-    const fieldPath = String(source.field_path || '').trim()
-    if (!fieldPath) return null
+		const fieldId = String(source.field_id || source.field_path || '').normalize('NFKC').trim()
+		if (!fieldId) return null
     return {
       source: stringOption(source.source, ['actor', 'target'], 'actor'),
-      field_path: fieldPath,
+			field_id: fieldId,
       scale: numberOrDefault(source.scale, 1),
       offset: numberOrDefault(source.offset, 0),
     }

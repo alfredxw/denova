@@ -40,7 +40,7 @@ describe('HomeView book covers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(getImagePresets).mockResolvedValue([
-      { version: 2, id: 'realistic', name: '写实', description: '', tags: [], custom: false },
+      { version: 2, id: 'realistic', name: '写实', description: '', custom: false },
     ])
     vi.mocked(fetchSettings).mockResolvedValue({ effective: { ide_image_preset_id: 'realistic' } } as any)
     vi.mocked(getBookInfo).mockResolvedValue({

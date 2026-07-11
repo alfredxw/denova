@@ -1,6 +1,5 @@
 import { Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { safeJSONString } from './utils'
 
 export function InfoLine({ label, value }: { label: string; value: string }) {
   return (
@@ -12,7 +11,7 @@ export function InfoLine({ label, value }: { label: string; value: string }) {
 }
 export function SyncBadge({ status, error, loading }: { status?: string; error?: string; loading?: boolean }) {
   const { t } = useTranslation()
-  if (loading || status === 'pending') {
+  if (loading || status === 'pending' || status === 'running') {
     return (
       <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-[11px] text-[var(--nova-text-muted)]">
         <Loader2 className="h-3 w-3 animate-spin" />
@@ -31,9 +30,69 @@ export function MemoryChip({ children }: { children: string }) {
 }
 
 export function StateValue({ value }: { value: unknown }) {
-  if (value === null || value === undefined || value === '') return <span className="text-xs text-[var(--nova-text-faint)]">-</span>
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return <p className="whitespace-pre-wrap break-words text-xs leading-5 text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">{String(value)}</p>
+  const { t } = useTranslation()
+  if (value === null || value === undefined || value === '') return <span className="text-xs text-[var(--nova-text-faint)]">—</span>
+  if (typeof value === 'boolean') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs text-[var(--nova-text-muted)]">
+        <span className={`h-1.5 w-1.5 rounded-full ${value ? 'bg-[var(--nova-success)]' : 'bg-[var(--nova-text-faint)]'}`} />
+        {value ? t('memoryPanel.stateValue.yes') : t('memoryPanel.stateValue.no')}
+      </span>
+    )
   }
-  return <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-[var(--nova-radius)] bg-[var(--nova-surface-2)] p-2 text-[11px] leading-5 text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">{safeJSONString(value)}</pre>
+  if (typeof value === 'number') return <span className="font-mono text-xs tabular-nums text-[var(--nova-text)]">{value}</span>
+  if (typeof value === 'string') {
+    return <p className="whitespace-pre-wrap break-words text-xs leading-5 text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">{value}</p>
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span className="text-xs text-[var(--nova-text-faint)]">{t('memoryPanel.stateValue.empty')}</span>
+    const simple = value.every((item) => item === null || ['string', 'number', 'boolean'].includes(typeof item))
+    if (simple) {
+      return (
+        <div className="flex flex-wrap gap-1.5">
+          {value.map((item, index) => (
+            <span key={`${String(item)}-${index}`} className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 text-[11px] text-[var(--nova-text-muted)]">
+              {item === null ? '—' : String(item)}
+            </span>
+          ))}
+        </div>
+      )
+    }
+    return (
+      <ol className="space-y-1.5">
+        {value.slice(0, 16).map((item, index) => (
+          <li key={index} className="grid grid-cols-[18px_minmax(0,1fr)] gap-1.5 rounded-[8px] bg-[var(--nova-surface)] px-2 py-1.5">
+            <span className="pt-0.5 font-mono text-[9px] text-[var(--nova-text-faint)]">{String(index + 1).padStart(2, '0')}</span>
+            <StateValue value={item} />
+          </li>
+        ))}
+      </ol>
+    )
+  }
+  if (isRecord(value)) {
+    const entries = Object.entries(value).filter(([, item]) => item !== undefined)
+    if (entries.length === 0) return <span className="text-xs text-[var(--nova-text-faint)]">{t('memoryPanel.stateValue.empty')}</span>
+    return (
+      <dl className="divide-y divide-[var(--nova-border-soft)] overflow-hidden rounded-[8px] border border-[var(--nova-border-soft)] bg-[var(--nova-surface)]">
+        {entries.slice(0, 20).map(([key, item]) => (
+          <div key={key} className="grid grid-cols-[minmax(72px,0.8fr)_minmax(0,1.2fr)] gap-2 px-2 py-1.5">
+            <dt className="break-words text-[10px] leading-4 text-[var(--nova-text-faint)] [overflow-wrap:anywhere]">{humanizeStateKey(key)}</dt>
+            <dd className="min-w-0"><StateValue value={item} /></dd>
+          </div>
+        ))}
+      </dl>
+    )
+  }
+  return <span className="break-words text-xs text-[var(--nova-text-muted)]">{String(value)}</span>
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function humanizeStateKey(value: string) {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/^\w/, (letter) => letter.toUpperCase())
 }

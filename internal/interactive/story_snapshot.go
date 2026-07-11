@@ -15,7 +15,7 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 		return Snapshot{}, fmt.Errorf("分支不存在: %s", branchID)
 	}
 	state := initialStoryState()
-	snapshot := Snapshot{StoryID: storyID, BranchID: branchID, State: state}
+	snapshot := Snapshot{StoryID: storyID, BranchID: branchID, State: state, ActorStateSchema: meta.ActorStateSchema}
 	eventsByID := eventsByID(lines)
 	path, pathSet := eventPath(branch.Head, eventsByID)
 	turnVersions := buildTurnVersionIndex(lines)
@@ -46,6 +46,9 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 				for _, op := range turn.StateDelta.Ops {
 					applyStateOp(state, op)
 				}
+				for _, op := range turn.StateDelta.ActorOps {
+					applyActorStateOp(state, op)
+				}
 			}
 		case StoryEventTypeStateDelta:
 			var delta StateDeltaEvent
@@ -54,6 +57,9 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			}
 			for _, op := range delta.Ops {
 				applyStateOp(state, op)
+			}
+			for _, op := range delta.ActorOps {
+				applyActorStateOp(state, op)
 			}
 		case StoryEventTypeCompaction:
 			var compaction ContextCompactionEvent
@@ -70,6 +76,7 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			snapshot.ContextCompactionRemoval = &removal
 		}
 	}
+	applyLegacyActorStateAliases(state, meta.ActorStateSchema)
 	snapshot.Graph = buildStoryGraph(meta, lines, eventsByID, pathSet)
 	return snapshot, nil
 }

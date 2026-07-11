@@ -1,11 +1,16 @@
 package interactive
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
 	"time"
 )
+
+const interactiveMemoryRunMarkerPrefix = "memory-run:"
 
 func (s *Store) SaveStoryMemoryRecord(storyID string, req StoryMemoryRecordRequest) (StoryMemoryRecord, error) {
 	s.mu.Lock()
@@ -94,6 +99,10 @@ func (s *Store) ApplyStoryMemoryPatches(storyID, branchID, turnID string, patche
 			log.Printf("[interactive-memory] skip story memory patch with missing keyed key story_id=%s branch_id=%s structure_id=%s", storyID, branchID, patch.StructureID)
 			continue
 		}
+		structure := storyMemoryStructureByID(runtimeStructures, normalizedPatch.StructureID)
+		if structure.Mode == "append" && strings.TrimSpace(normalizedPatch.RecordID) == "" {
+			normalizedPatch.RecordID = storyMemoryPatchRecordID(anchorTurnID, normalizedPatch)
+		}
 		record, err := applyStoryMemoryPatchWithStructuresLocked(&book, runtimeStructures, branchID, anchorTurnID, normalizedPatch, pathSet)
 		if err != nil {
 			return nil, err
@@ -106,6 +115,25 @@ func (s *Store) ApplyStoryMemoryPatches(storyID, branchID, turnID string, patche
 		return nil, err
 	}
 	return records, nil
+}
+
+func storyMemoryPatchRecordID(anchorTurnID string, patch StoryMemoryPatch) string {
+	canonical := struct {
+		TurnID      string            `json:"turn_id"`
+		Op          string            `json:"op"`
+		StructureID string            `json:"structure_id"`
+		Key         string            `json:"key,omitempty"`
+		Values      map[string]string `json:"values,omitempty"`
+	}{
+		TurnID:      strings.TrimSpace(anchorTurnID),
+		Op:          strings.TrimSpace(patch.Op),
+		StructureID: sanitizeMemoryID(patch.StructureID),
+		Key:         strings.TrimSpace(patch.Key),
+		Values:      patch.Values,
+	}
+	data, _ := json.Marshal(canonical)
+	sum := sha256.Sum256(data)
+	return "memrun-" + hex.EncodeToString(sum[:12])
 }
 
 func normalizeStoryMemoryPatchForAgent(book interactiveMemoryBook, structures []StoryMemoryStructure, patch StoryMemoryPatch) (StoryMemoryPatch, bool) {
@@ -405,7 +433,9 @@ func saveStoryMemoryRecordLocked(book *interactiveMemoryBook, branchID, anchorTu
 			return record, validateStoryMemoryRecord(record, structure)
 		}
 	}
-	record.ID = newID("mem")
+	if !strings.HasPrefix(record.ID, "memrun_") {
+		record.ID = newID("mem")
+	}
 	if structure.Mode != "append" {
 		if existing, ok := findStoryMemoryUpsertRecord(book.Records, structure, branchID, record.Key, pathSet); ok {
 			record.ID = existing.ID
@@ -558,6 +588,11 @@ func storyMemoryAutoDecisionLocked(book interactiveMemoryBook, lines []StoryEven
 	interval := normalizeStoryMemoryInterval(book.Settings.AutoIntervalTurns)
 	turns := turnPath(lines, headID)
 	lastIndex := -1
+	for i, turn := range turns {
+		if strings.HasPrefix(turn.MemoryEntryID, interactiveMemoryRunMarkerPrefix) {
+			lastIndex = i
+		}
+	}
 	pathSet := eventPathSet(headID, lines)
 	for _, record := range visibleStoryMemoryRecords(book.Records, branchID, pathSet, false) {
 		if record.Source != "agent" {

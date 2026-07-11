@@ -10,37 +10,39 @@ import (
 	"denova/internal/session"
 )
 
-// appendAssistantIfAny 将已生成的正文持久化，避免异常中断后刷新丢失输出。
-func appendAssistantIfAny(conversation Conversation, content, thinking *strings.Builder, metadata session.MessageMetadata) string {
+// appendAssistantIfAny persists generated output and returns the persistence
+// error to the run loop. A completed stream must never hide a failed commit.
+func appendAssistantIfAny(conversation Conversation, content, thinking *strings.Builder, metadata session.MessageMetadata) (string, error) {
 	if content == nil || content.Len() == 0 {
-		return ""
+		return "", nil
 	}
 	generated := content.String()
 	reasoning := ""
 	if thinking != nil && thinking.Len() > 0 {
 		reasoning = thinking.String()
 	}
+	var persistErr error
 	if appender, ok := conversation.(interface {
 		AppendAssistantWithMetadata(content, thinking string, metadata session.MessageMetadata) error
 	}); ok {
-		if err := appender.AppendAssistantWithMetadata(generated, reasoning, metadata); err != nil {
-			log.Printf("[agent-run] persist assistant message failed err=%v", err)
-		}
+		persistErr = appender.AppendAssistantWithMetadata(generated, reasoning, metadata)
 	} else if appender, ok := conversation.(interface {
 		AppendAssistantWithThinking(content, thinking string) error
 	}); ok {
-		if err := appender.AppendAssistantWithThinking(generated, reasoning); err != nil {
-			log.Printf("[agent-run] persist assistant message failed err=%v", err)
-		}
-	} else if err := conversation.AppendAssistant(generated); err != nil {
-		log.Printf("[agent-run] persist assistant message failed err=%v", err)
+		persistErr = appender.AppendAssistantWithThinking(generated, reasoning)
+	} else {
+		persistErr = conversation.AppendAssistant(generated)
+	}
+	if persistErr != nil {
+		log.Printf("[agent-run] persist assistant message failed err=%v", persistErr)
+		return generated, persistErr
 	}
 	log.Printf("[agent-run] persisted assistant message bytes=%d thinking_bytes=%d", len(generated), len(reasoning))
 	content.Reset()
 	if thinking != nil {
 		thinking.Reset()
 	}
-	return generated
+	return generated, nil
 }
 
 func discardPlanAssistantContentIfNeeded(planMode bool, planParser *planProtocolParser, content, thinking *strings.Builder) {

@@ -6,7 +6,6 @@ import { usePresetResourceAutosave } from './usePresetResourceAutosave'
 interface DraftResource {
   id: string
   name: string
-  tags?: string[]
   updated_at?: string
 }
 
@@ -302,12 +301,11 @@ function HookHarness({
 }) {
   const autosave = usePresetResourceAutosave<DraftResource, DraftResource, DraftResource>({
     draft,
-    tagDraft: (draft.tags || []).join('，'),
     active: true,
     scopeKey,
     valid,
-    makePayload: (item, tagDraft) => ({ ...item, tags: splitTags(tagDraft) }),
-    signature: (value, tagDraft) => JSON.stringify({ ...value, tags: splitTags(tagDraft) }),
+    makePayload: (item) => ({ ...item }),
+    signature: (value) => JSON.stringify(value),
     save,
     onSaved,
     onAutoSaveError,
@@ -315,7 +313,7 @@ function HookHarness({
   })
   const baselineKey = JSON.stringify(baseline)
   useEffect(() => {
-    autosave.resetBaseline(baseline, (baseline.tags || []).join('，'))
+    autosave.resetBaseline(baseline)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autosave.resetBaseline, baselineKey])
   controls = autosave
@@ -323,7 +321,7 @@ function HookHarness({
 }
 
 function resource(id: string, name: string, updatedAt = 'r1'): DraftResource {
-  return { id, name, tags: ['tag'], updated_at: updatedAt }
+  return { id, name, updated_at: updatedAt }
 }
 
 function deferred<T>() {
@@ -334,13 +332,6 @@ function deferred<T>() {
     reject = rejectPromise
   })
   return { promise, resolve, reject }
-}
-
-function splitTags(value: string) {
-  return value
-    .split(/[，,]/)
-    .map((tag) => tag.trim())
-    .filter(Boolean)
 }
 
 async function advanceAutosave() {

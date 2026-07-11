@@ -88,7 +88,7 @@ func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
 	}
 }
 
-func TestInteractiveDirectorPromptTreatsActorStateTemplatesAsCustomStateTables(t *testing.T) {
+func TestInteractiveDirectorPromptReadsCustomActorStateWithoutWritingIt(t *testing.T) {
 	system := BuildInteractiveDirectorSystemInstruction()
 	instruction := InteractiveDirectorInstruction(InteractiveDirectorPromptInput{
 		Title:             "百日终末",
@@ -102,12 +102,10 @@ func TestInteractiveDirectorPromptTreatsActorStateTemplatesAsCustomStateTables(t
 	})
 	combined := system + "\n" + instruction
 	for _, want := range []string{
-		"protagonist、important_character、opponent 只是默认示例",
 		"world_state",
 		"heroine_route",
-		"按当前状态系统 schema 选择已存在的 template_id",
-		"不得臆造字段或 template_id",
-		"需要新增状态表或字段时交给配置管理或用户显式配置",
+		"只能读取已提交的 Actor State",
+		"不得写入它们",
 	} {
 		if !strings.Contains(combined, want) {
 			t.Fatalf("director prompt should describe customizable state tables %q:\n%s", want, combined)
@@ -118,6 +116,7 @@ func TestInteractiveDirectorPromptTreatsActorStateTemplatesAsCustomStateTables(t
 		"重要人物用 important_character",
 		"敌人/怪物/规则实体用 opponent",
 		"唯一合法分类",
+		"apply_actor_state_patch",
 	} {
 		if strings.Contains(combined, forbidden) {
 			t.Fatalf("director prompt should not hard-code fixed actor-state categories %q:\n%s", forbidden, combined)

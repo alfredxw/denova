@@ -1,11 +1,40 @@
 package agent
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/cloudwego/eino/schema"
+
 	"denova/internal/session"
 )
+
+func TestAppendAssistantIfAnyReturnsPersistenceFailure(t *testing.T) {
+	wantErr := errors.New("disk full")
+	conversation := &failingAssistantConversation{err: wantErr}
+	var content strings.Builder
+	content.WriteString("不会被误报为成功的正文")
+	generated, err := appendAssistantIfAny(conversation, &content, nil, session.MessageMetadata{})
+	if !errors.Is(err, wantErr) || generated != "不会被误报为成功的正文" {
+		t.Fatalf("persistence failure must reach the run loop: generated=%q err=%v", generated, err)
+	}
+	if content.Len() == 0 {
+		t.Fatal("failed persistence must not clear the only in-memory copy")
+	}
+}
+
+type failingAssistantConversation struct{ err error }
+
+func (c *failingAssistantConversation) PrepareMessages(string, string) ([]*schema.Message, error) {
+	return nil, nil
+}
+func (c *failingAssistantConversation) AppendAssistant(string) error { return c.err }
+func (c *failingAssistantConversation) MarkInterrupted(string, string, string) error {
+	return nil
+}
+func (c *failingAssistantConversation) PendingInterruption() *session.Interruption { return nil }
+func (c *failingAssistantConversation) ResolveInterruption(string) error           { return nil }
 
 func TestDisplayRecorderKeepsWriteFileContentArgs(t *testing.T) {
 	appender := &displayRecorderTestAppender{}

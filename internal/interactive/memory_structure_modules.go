@@ -22,7 +22,6 @@ type StoryMemoryStructureModule struct {
 	Name              string                 `json:"name"`
 	Description       string                 `json:"description"`
 	Structures        []StoryMemoryStructure `json:"structures"`
-	Tags              []string               `json:"tags"`
 	Path              string                 `json:"path,omitempty"`
 	Custom            bool                   `json:"custom"`
 	BuiltinOverridden bool                   `json:"builtin_overridden,omitempty"`
@@ -177,7 +176,6 @@ func DefaultStoryMemoryStructureModule() StoryMemoryStructureModule {
 		Name:        "默认故事记忆结构",
 		Description: "面向互动故事长期承接的默认结构定义。运行时记录仍按具体故事和分支保存。",
 		Structures:  defaultStoryMemoryStructures(),
-		Tags:        []string{"内置", "记忆"},
 	})
 }
 
@@ -219,7 +217,6 @@ func normalizeStoryMemoryStructureModule(item StoryMemoryStructureModule) StoryM
 	item.Name = trimBytes(firstNonEmptyString(item.Name, item.ID, "故事记忆结构预设"), 256)
 	item.Description = trimBytes(item.Description, 1024)
 	item.Structures = normalizeStoryMemoryStructuresForModule(item.Structures)
-	item.Tags = normalizeStringListLimit(item.Tags, maxTurnBriefListItems)
 	return item
 }
 

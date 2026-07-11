@@ -18,22 +18,22 @@ type RuleStateBinding struct {
 }
 
 type RuleStateBindingModifier struct {
-	Source    string   `json:"source,omitempty"`
-	FieldPath string   `json:"field_path,omitempty"`
-	Effect    string   `json:"effect,omitempty"`
-	Scale     float64  `json:"scale,omitempty"`
-	Offset    float64  `json:"offset,omitempty"`
-	Min       *float64 `json:"min,omitempty"`
-	Max       *float64 `json:"max,omitempty"`
-	Rounding  string   `json:"rounding,omitempty"`
-	Required  *bool    `json:"required,omitempty"`
+	Source   string   `json:"source,omitempty"`
+	FieldID  string   `json:"field_id,omitempty"`
+	Effect   string   `json:"effect,omitempty"`
+	Scale    float64  `json:"scale,omitempty"`
+	Offset   float64  `json:"offset,omitempty"`
+	Min      *float64 `json:"min,omitempty"`
+	Max      *float64 `json:"max,omitempty"`
+	Rounding string   `json:"rounding,omitempty"`
+	Required *bool    `json:"required,omitempty"`
 }
 
 type RuleNarrativeStateRef struct {
-	Source    string `json:"source,omitempty"`
-	FieldPath string `json:"field_path,omitempty"`
-	Usage     string `json:"usage,omitempty"`
-	Guidance  string `json:"guidance,omitempty"`
+	Source   string `json:"source,omitempty"`
+	FieldID  string `json:"field_id,omitempty"`
+	Usage    string `json:"usage,omitempty"`
+	Guidance string `json:"guidance,omitempty"`
 }
 
 type RuleOutcomeStateChangeBinding struct {
@@ -43,7 +43,7 @@ type RuleOutcomeStateChangeBinding struct {
 
 type RuleComputedStateChange struct {
 	Source        string                 `json:"source,omitempty"`
-	FieldPath     string                 `json:"field_path,omitempty"`
+	FieldID       string                 `json:"field_id,omitempty"`
 	ChangeFormula RuleStateChangeFormula `json:"change_formula,omitempty"`
 	Reason        string                 `json:"reason,omitempty"`
 }
@@ -57,10 +57,10 @@ type RuleStateChangeFormula struct {
 }
 
 type RuleStateFormulaTerm struct {
-	Source    string  `json:"source,omitempty"`
-	FieldPath string  `json:"field_path,omitempty"`
-	Scale     float64 `json:"scale,omitempty"`
-	Offset    float64 `json:"offset,omitempty"`
+	Source  string  `json:"source,omitempty"`
+	FieldID string  `json:"field_id,omitempty"`
+	Scale   float64 `json:"scale,omitempty"`
+	Offset  float64 `json:"offset,omitempty"`
 }
 
 type RuleStateBindingAudit struct {
@@ -84,15 +84,18 @@ type RuleStateBindingInput struct {
 	Source        string  `json:"source,omitempty"`
 	ActorID       string  `json:"actor_id,omitempty"`
 	TemplateID    string  `json:"template_id,omitempty"`
-	Path          string  `json:"path,omitempty"`
+	FieldID       string  `json:"field_id,omitempty"`
+	Path          string  `json:"-"`
 	RawValue      float64 `json:"raw_value"`
 	ComputedValue float64 `json:"computed_value"`
 	Effect        string  `json:"effect,omitempty"`
 }
 
 type RuleStateBindingWarning struct {
-	Path   string `json:"path,omitempty"`
-	Reason string `json:"reason"`
+	ActorID string `json:"actor_id,omitempty"`
+	FieldID string `json:"field_id,omitempty"`
+	Path    string `json:"-"`
+	Reason  string `json:"reason"`
 }
 
 func normalizeRuleStateBindings(values []RuleStateBinding) []RuleStateBinding {
@@ -120,6 +123,59 @@ func normalizeRuleStateBindings(values []RuleStateBinding) []RuleStateBinding {
 	return out
 }
 
+func resolveRuleStateFieldIDs(system StoryDirectorActorStateSystem, trpg StoryDirectorTRPGSystem) StoryDirectorTRPGSystem {
+	system = normalizeActorStateSystem(system)
+	trpg.RuleTemplates = normalizeRuleChecks(trpg.RuleTemplates)
+	for checkIndex := range trpg.RuleTemplates {
+		for bindingIndex := range trpg.RuleTemplates[checkIndex].StateBindings {
+			binding := &trpg.RuleTemplates[checkIndex].StateBindings[bindingIndex]
+			for index := range binding.Modifiers {
+				templateID := binding.ActorTemplateID
+				if binding.Modifiers[index].Source == "target" {
+					templateID = binding.TargetTemplateID
+				}
+				binding.Modifiers[index].FieldID = resolvedRuleStateFieldID(system, templateID, binding.Modifiers[index].FieldID)
+			}
+			for index := range binding.NarrativeStateRefs {
+				templateID := binding.ActorTemplateID
+				if binding.NarrativeStateRefs[index].Source == "target" {
+					templateID = binding.TargetTemplateID
+				}
+				if binding.NarrativeStateRefs[index].Source != "scene" {
+					binding.NarrativeStateRefs[index].FieldID = resolvedRuleStateFieldID(system, templateID, binding.NarrativeStateRefs[index].FieldID)
+				}
+			}
+			for groupIndex := range binding.OutcomeStateChanges {
+				for changeIndex := range binding.OutcomeStateChanges[groupIndex].StateChanges {
+					change := &binding.OutcomeStateChanges[groupIndex].StateChanges[changeIndex]
+					templateID := binding.ActorTemplateID
+					if change.Source == "target" {
+						templateID = binding.TargetTemplateID
+					}
+					change.FieldID = resolvedRuleStateFieldID(system, templateID, change.FieldID)
+					for termIndex := range change.ChangeFormula.Terms {
+						term := &change.ChangeFormula.Terms[termIndex]
+						termTemplateID := binding.ActorTemplateID
+						if term.Source == "target" {
+							termTemplateID = binding.TargetTemplateID
+						}
+						term.FieldID = resolvedRuleStateFieldID(system, termTemplateID, term.FieldID)
+					}
+				}
+			}
+		}
+	}
+	return trpg
+}
+
+func resolvedRuleStateFieldID(system StoryDirectorActorStateSystem, templateID, reference string) string {
+	reference = normalizeActorStateFieldName(reference)
+	if field, ok := actorStateFieldByID(actorStateTemplateByID(system, templateID), reference); ok {
+		return actorStateFieldID(field)
+	}
+	return reference
+}
+
 func normalizeRuleStateBindingModifiers(values []RuleStateBindingModifier) []RuleStateBindingModifier {
 	if len(values) > maxTurnBriefListItems {
 		values = values[:maxTurnBriefListItems]
@@ -127,14 +183,14 @@ func normalizeRuleStateBindingModifiers(values []RuleStateBindingModifier) []Rul
 	out := make([]RuleStateBindingModifier, 0, len(values))
 	for _, value := range values {
 		value.Source = normalizeRuleBindingSource(value.Source)
-		value.FieldPath = strings.TrimSpace(value.FieldPath)
+		value.FieldID = normalizeActorStateFieldName(value.FieldID)
 		value.Effect = normalizeRuleBindingEffect(value.Effect)
 		if value.Scale == 0 {
 			value.Scale = 1
 		}
 		value.Rounding = normalizeRuleBindingRounding(value.Rounding)
 		normalizeMinMaxPointers(&value.Min, &value.Max)
-		if value.Source == "" || value.FieldPath == "" || value.Effect == "" {
+		if value.Source == "" || value.FieldID == "" || value.Effect == "" {
 			continue
 		}
 		out = append(out, value)
@@ -152,10 +208,10 @@ func normalizeRuleNarrativeStateRefs(values []RuleNarrativeStateRef) []RuleNarra
 	out := make([]RuleNarrativeStateRef, 0, len(values))
 	for _, value := range values {
 		value.Source = normalizeRuleNarrativeSource(value.Source)
-		value.FieldPath = strings.TrimSpace(value.FieldPath)
+		value.FieldID = normalizeActorStateFieldName(value.FieldID)
 		value.Usage = normalizeRuleNarrativeUsage(value.Usage)
 		value.Guidance = trimBytes(value.Guidance, maxTurnBriefTextBytes)
-		if value.Source == "" || (value.Source != "scene" && value.FieldPath == "") {
+		if value.Source == "" || (value.Source != "scene" && value.FieldID == "") {
 			continue
 		}
 		out = append(out, value)
@@ -192,10 +248,10 @@ func normalizeRuleComputedStateChanges(values []RuleComputedStateChange) []RuleC
 	out := make([]RuleComputedStateChange, 0, len(values))
 	for _, value := range values {
 		value.Source = normalizeRuleBindingSource(value.Source)
-		value.FieldPath = strings.TrimSpace(value.FieldPath)
+		value.FieldID = normalizeActorStateFieldName(value.FieldID)
 		value.ChangeFormula = normalizeRuleStateChangeFormula(value.ChangeFormula)
 		value.Reason = trimBytes(value.Reason, 512)
-		if value.Source == "" || value.FieldPath == "" {
+		if value.Source == "" || value.FieldID == "" {
 			continue
 		}
 		out = append(out, value)
@@ -213,11 +269,11 @@ func normalizeRuleStateChangeFormula(value RuleStateChangeFormula) RuleStateChan
 	terms := make([]RuleStateFormulaTerm, 0, len(value.Terms))
 	for _, term := range value.Terms {
 		term.Source = normalizeRuleBindingSource(term.Source)
-		term.FieldPath = strings.TrimSpace(term.FieldPath)
+		term.FieldID = normalizeActorStateFieldName(term.FieldID)
 		if term.Scale == 0 {
 			term.Scale = 1
 		}
-		if term.Source == "" || term.FieldPath == "" {
+		if term.Source == "" || term.FieldID == "" {
 			continue
 		}
 		terms = append(terms, term)
@@ -293,9 +349,16 @@ func normalizeRuleStateBindingInputs(values []RuleStateBindingInput) []RuleState
 		value.Source = normalizeRuleBindingSource(value.Source)
 		value.ActorID = normalizeActorStateID(value.ActorID)
 		value.TemplateID = normalizeActorStateID(value.TemplateID)
-		value.Path = canonicalStatePath(value.Path)
+		value.FieldID = normalizeActorStateFieldName(value.FieldID)
+		if value.FieldID == "" {
+			if actorID, fieldID, ok := parseActorStateFieldPath(value.Path); ok {
+				value.ActorID = firstNonEmptyString(value.ActorID, actorID)
+				value.FieldID = fieldID
+			}
+		}
+		value.Path = ""
 		value.Effect = normalizeRuleBindingEffect(value.Effect)
-		if value.Source == "" && value.Path == "" {
+		if value.Source == "" && value.FieldID == "" {
 			continue
 		}
 		out = append(out, value)
@@ -312,9 +375,17 @@ func normalizeRuleStateBindingWarnings(values []RuleStateBindingWarning) []RuleS
 	}
 	out := make([]RuleStateBindingWarning, 0, len(values))
 	for _, value := range values {
-		value.Path = canonicalStatePath(value.Path)
+		value.ActorID = normalizeActorStateID(value.ActorID)
+		value.FieldID = normalizeActorStateFieldName(value.FieldID)
+		if value.ActorID == "" || value.FieldID == "" {
+			if actorID, fieldID, ok := parseActorStateFieldPath(value.Path); ok {
+				value.ActorID = actorID
+				value.FieldID = fieldID
+			}
+		}
+		value.Path = ""
 		value.Reason = trimBytes(value.Reason, 512)
-		if value.Path == "" && value.Reason == "" {
+		if value.ActorID == "" && value.FieldID == "" && value.Reason == "" {
 			continue
 		}
 		out = append(out, value)
@@ -378,19 +449,23 @@ func resolveRuleStateBinding(state map[string]any, director StoryDirector, req T
 		NarrativeStateRefs: append([]RuleNarrativeStateRef(nil), binding.NarrativeStateRefs...),
 	}
 	for _, modifier := range binding.Modifiers {
-		value, fieldTemplateID, path, ok, err := readBindingNumber(state, director.ActorState, actorID, targetActorID, modifier.Source, modifier.FieldPath)
+		value, fieldTemplateID, _, ok, err := readBindingNumber(state, director.ActorState, actorID, targetActorID, modifier.Source, modifier.FieldID)
 		if err != nil {
 			if ruleBindingRequired(modifier.Required) {
-				return nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s modifier %s.%s: %w", bindingID, modifier.Source, modifier.FieldPath, err)
+				return nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s modifier %s.%s: %w", bindingID, modifier.Source, modifier.FieldID, err)
 			}
 			audit.Warnings = append(audit.Warnings, RuleStateBindingWarning{Reason: err.Error()})
 			continue
 		}
 		if !ok {
 			if ruleBindingRequired(modifier.Required) {
-				return nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s modifier %s.%s 缺少 number 值", bindingID, modifier.Source, modifier.FieldPath)
+				return nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s modifier %s.%s 缺少 number 值", bindingID, modifier.Source, modifier.FieldID)
 			}
-			audit.Warnings = append(audit.Warnings, RuleStateBindingWarning{Path: path, Reason: "可选 modifier 缺少 number 值"})
+			warningActorID := actorID
+			if modifier.Source == "target" {
+				warningActorID = targetActorID
+			}
+			audit.Warnings = append(audit.Warnings, RuleStateBindingWarning{ActorID: warningActorID, FieldID: modifier.FieldID, Reason: "可选 modifier 缺少 number 值"})
 			continue
 		}
 		computed := applyRuleBindingNumber(value*modifier.Scale+modifier.Offset, modifier.Rounding, modifier.Min, modifier.Max)
@@ -402,7 +477,7 @@ func resolveRuleStateBinding(state map[string]any, director StoryDirector, req T
 			Source:        modifier.Source,
 			ActorID:       inputActorID,
 			TemplateID:    firstNonEmptyString(fieldTemplateID, actorTemplateID),
-			Path:          path,
+			FieldID:       modifier.FieldID,
 			RawValue:      value,
 			ComputedValue: computed,
 			Effect:        modifier.Effect,
@@ -412,10 +487,11 @@ func resolveRuleStateBinding(state map[string]any, director StoryDirector, req T
 		case "advantage":
 			audit.BindingBonusTotal += computed
 			audit.BonusDetails = append(audit.BonusDetails, TurnCheckBonus{
-				Kind:       "state_binding",
-				SourcePath: path,
-				Reason:     fmt.Sprintf("%s: %s", firstNonEmptyString(binding.Label, binding.ID), modifier.FieldPath),
-				Value:      computed,
+				Kind:    "state_binding",
+				ActorID: inputActorID,
+				FieldID: modifier.FieldID,
+				Reason:  fmt.Sprintf("%s: %s", firstNonEmptyString(binding.Label, binding.ID), modifier.FieldID),
+				Value:   computed,
 			})
 		case "resistance":
 			audit.BindingResistanceTotal += computed
@@ -481,21 +557,20 @@ func computeBindingOutcomeStateChanges(state map[string]any, system StoryDirecto
 		if targetActorID == "" {
 			return nil, nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s outcome_state_changes 缺少 target_actor_id", bindingID)
 		}
-		field, templateID, err := bindingNumberField(system, state, targetActorID, item.FieldPath)
+		field, templateID, err := bindingNumberField(system, state, targetActorID, item.FieldID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s outcome_state_changes %s.%s: %w", bindingID, item.Source, item.FieldPath, err)
+			return nil, nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s outcome_state_changes %s.%s: %w", bindingID, item.Source, item.FieldID, err)
 		}
 		if field.Type != "number" {
-			return nil, nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s outcome_state_changes 字段不是 number: %s", bindingID, item.FieldPath)
+			return nil, nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s outcome_state_changes 字段不是 number: %s", bindingID, item.FieldID)
 		}
 		change, err := computeBindingFormula(state, system, audit.ActorID, audit.TargetActorID, item.ChangeFormula)
 		if err != nil {
-			return nil, nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s outcome_state_changes %s.%s: %w", bindingID, item.Source, item.FieldPath, err)
+			return nil, nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s outcome_state_changes %s.%s: %w", bindingID, item.Source, item.FieldID, err)
 		}
-		path := actorStateFieldPath(targetActorID, item.FieldPath)
 		reason := firstNonEmptyString(item.Reason, fmt.Sprintf("state binding %s %s", bindingID, outcome))
 		_ = templateID
-		changes = append(changes, TurnStateChange{Path: path, Change: change, Reason: reason})
+		changes = append(changes, TurnStateChange{ActorID: targetActorID, FieldID: actorStateFieldID(field), Change: change, Reason: reason})
 	}
 	return normalizeTurnStateChanges(changes), warnings, nil
 }
@@ -503,12 +578,12 @@ func computeBindingOutcomeStateChanges(state map[string]any, system StoryDirecto
 func computeBindingFormula(state map[string]any, system StoryDirectorActorStateSystem, actorID, targetActorID string, formula RuleStateChangeFormula) (float64, error) {
 	total := formula.Base
 	for _, term := range formula.Terms {
-		value, _, _, ok, err := readBindingNumber(state, system, actorID, targetActorID, term.Source, term.FieldPath)
+		value, _, _, ok, err := readBindingNumber(state, system, actorID, targetActorID, term.Source, term.FieldID)
 		if err != nil {
 			return 0, err
 		}
 		if !ok {
-			return 0, fmt.Errorf("字段缺少 number 值: %s.%s", term.Source, term.FieldPath)
+			return 0, fmt.Errorf("字段缺少 number 值: %s.%s", term.Source, term.FieldID)
 		}
 		total += value*term.Scale + term.Offset
 	}
@@ -545,8 +620,11 @@ func readBindingNumber(state map[string]any, system StoryDirectorActorStateSyste
 	if field.Type != "number" {
 		return 0, templateID, actorStateFieldPath(readActorID, fieldPath), false, fmt.Errorf("字段不是 number 类型: %s", fieldPath)
 	}
-	path := actorStateFieldPath(readActorID, fieldPath)
-	value, ok := actorStateNumber(getPath(state, path))
+	path := actorStateFieldPath(readActorID, actorStateFieldID(field))
+	value, ok := actorStateNumber(actorStateFieldValue(state, readActorID, actorStateFieldID(field)))
+	if !ok && strings.TrimSpace(field.LegacyPath) != "" {
+		value, ok = actorStateNumber(getPath(state, actorStateFieldPath(readActorID, field.LegacyPath)))
+	}
 	if ok {
 		return value, templateID, path, true, nil
 	}
@@ -585,13 +663,13 @@ func duplicateStateChangeWarnings(configured, manual []TurnStateChange) []RuleSt
 	}
 	seen := map[string]bool{}
 	for _, change := range normalizeTurnStateChanges(configured) {
-		seen[canonicalStatePath(change.Path)] = true
+		seen[change.ActorID+"\x00"+actorStateFieldNameKey(change.FieldID)] = true
 	}
 	warnings := []RuleStateBindingWarning{}
 	for _, change := range normalizeTurnStateChanges(manual) {
-		path := canonicalStatePath(change.Path)
-		if seen[path] {
-			warnings = append(warnings, RuleStateBindingWarning{Path: path, Reason: "binding 与 DM 临场 state_changes 修改同一路径，将按顺序执行"})
+		key := change.ActorID + "\x00" + actorStateFieldNameKey(change.FieldID)
+		if seen[key] {
+			warnings = append(warnings, RuleStateBindingWarning{ActorID: change.ActorID, FieldID: change.FieldID, Reason: "binding 与 DM 临场 state_changes 修改同一状态字段，将按顺序执行"})
 		}
 	}
 	return warnings

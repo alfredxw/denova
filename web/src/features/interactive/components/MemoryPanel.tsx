@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAgentSSEUIMessageStream } from '@/hooks/useAgentSSEUIMessageStream'
 import { createAgentDataMessage, createAgentTextMessage } from '@/hooks/useAgentUIMessageStream'
@@ -25,17 +25,18 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [selectedStructureId, setSelectedStructureId] = useState(allStructuresId)
-  const [activeTab, setActiveTab] = useState<ConsoleTab>('run')
+  const [activeTab, setActiveTab] = useState<ConsoleTab>('state')
   const [directorRevealed, setDirectorRevealed] = useState(false)
-  const autoGenerateTurnKeyRef = useRef('')
 
   const effectiveBranchId = branchId || snapshot?.branch_id || ''
-  const turnSyncStatus = snapshot?.current_turn?.memory_status || snapshot?.current_turn?.state_status || ''
-  const syncStatus = turnSyncStatus === 'pending' || turnSyncStatus === 'failed' ? turnSyncStatus : memory?.sync_status || turnSyncStatus
-  const syncError = snapshot?.current_turn?.memory_error || snapshot?.current_turn?.state_error || memory?.sync_error || ''
+	const stateStatus = snapshot?.current_turn?.state_status || ''
+	const stateError = snapshot?.current_turn?.state_error || ''
+	const turnMemoryStatus = snapshot?.current_turn?.memory_status || ''
+	const memoryStatus = turnMemoryStatus === 'pending' || turnMemoryStatus === 'running' || turnMemoryStatus === 'failed' ? turnMemoryStatus : memory?.sync_status || turnMemoryStatus
+	const memorySyncError = snapshot?.current_turn?.memory_error || memory?.sync_error || ''
 
   useEffect(() => {
-    setActiveTab('run')
+    setActiveTab('state')
     setDirectorRevealed(false)
   }, [effectiveBranchId, storyId])
 
@@ -99,17 +100,15 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
     return structures.filter((structure) => structure.id === selectedStructureId)
   }, [selectedStructureId, structures])
 
-  const runStoryMemoryGenerate = useCallback(async (source: 'manual' | 'auto' = 'manual') => {
+  const runStoryMemoryGenerate = useCallback(async () => {
     if (!storyId || generating) return
-    if (source === 'manual') {
-      setActiveTab('run')
-    }
+    setActiveTab('run')
     resetStreamingState()
-    setGenerateMessages([createAgentTextMessage('user', source === 'auto' ? t('memoryPanel.autoGenerateRequest') : t('memoryPanel.generateRequest'))])
+    setGenerateMessages([createAgentTextMessage('user', t('memoryPanel.generateRequest'))])
     const controller = new AbortController()
     setAbortController(controller)
     try {
-      const stream = await generateStoryMemoryStream(storyId, effectiveBranchId, source, controller.signal)
+      const stream = await generateStoryMemoryStream(storyId, effectiveBranchId, 'manual', controller.signal)
       await consumeAgentSSEStream(stream)
       await loadMemory()
     } catch (err) {
@@ -119,15 +118,6 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
     }
   }, [consumeAgentSSEStream, effectiveBranchId, generating, loadMemory, resetStreamingState, setAbortController, setGenerateMessages, storyId, t])
 
-  useEffect(() => {
-    const turn = snapshot?.current_turn
-    if (!storyId || !effectiveBranchId || !turn?.id || turn.memory_status !== 'pending' || generating) return
-    const turnKey = `${storyId}:${effectiveBranchId}:${turn.id}`
-    if (autoGenerateTurnKeyRef.current === turnKey) return
-    autoGenerateTurnKeyRef.current = turnKey
-    void runStoryMemoryGenerate('auto')
-  }, [effectiveBranchId, generating, runStoryMemoryGenerate, snapshot?.current_turn?.id, snapshot?.current_turn?.memory_status, storyId])
-
   return (
     <DirectorConsole
       storyId={storyId}
@@ -136,8 +126,10 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
       loading={loading}
       memoryLoading={memoryLoading}
       memoryError={error}
-      syncStatus={syncStatus}
-      syncError={syncError}
+		stateStatus={stateStatus}
+		stateError={stateError}
+		memoryStatus={memoryStatus}
+		memorySyncError={memorySyncError}
       activeTab={activeTab}
       onTabChange={setActiveTab}
       directorRevealed={directorRevealed}

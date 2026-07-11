@@ -512,7 +512,6 @@ func TestDirectorEventCatalogPrioritizesConfiguredEventCardsBeforeDefaults(t *te
 		"test-pack",
 		"测试事件包",
 		"用于验证事件目录顺序。",
-		nil,
 		urbanEventCards(),
 	)
 	director := normalizeStoryDirector(StoryDirector{

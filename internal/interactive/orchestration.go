@@ -91,7 +91,7 @@ type TurnCheckRequest struct {
 	Challenge    string                `json:"challenge" jsonschema_description:"检定挑战：需要 d20 固定裁定的风险、阻碍或冲突。"`
 	Cost         string                `json:"cost" jsonschema_description:"潜在代价：失败、暴露、资源消耗或关系损失等后果。"`
 	State        string                `json:"state" jsonschema_description:"当前状态说明：只写与本次检定直接相关的可见状态、资源、位置、关系或限制。"`
-	Adjudication TurnCheckAdjudication `json:"adjudication,omitempty" jsonschema_description:"投前裁定依据：说明为什么需要检定、风险 stakes、难度依据、优势/劣势依据和使用到的状态路径。"`
+	Adjudication TurnCheckAdjudication `json:"adjudication,omitempty" jsonschema_description:"投前裁定依据：说明为什么需要检定、风险 stakes、难度依据、优势/劣势依据；状态引用使用 actor_id + field_id。"`
 	Rule         TurnCheckRule         `json:"rule,omitempty" jsonschema_description:"可选规则设置；省略时默认 template=dice_check、roll_mode=normal、modifier=0。若来自 TRPG 模板，填写 template_id、label、failure_policy；如使用 state binding，填写 binding_id、actor_id 和必要的 target_actor_id。"`
 	Bonuses      []TurnCheckBonus      `json:"bonuses,omitempty" jsonschema_description:"运行时加成或减值列表。正数表示有利条件，负数表示不利条件；固定 d20 下会加入检定总值。"`
 	Difficulty   string                `json:"difficulty" jsonschema:"enum=very_easy,enum=easy,enum=normal,enum=hard,enum=very_hard" jsonschema_description:"五档难度枚举，只能使用 very_easy/easy/normal/hard/very_hard；普通难度用 normal，不要写 medium 或 moderate。"`
@@ -99,11 +99,18 @@ type TurnCheckRequest struct {
 }
 
 type TurnCheckAdjudication struct {
-	Reason           string   `json:"reason,omitempty" jsonschema_description:"为什么本行动需要固定检定，而不是直接裁定。"`
-	Stakes           string   `json:"stakes,omitempty" jsonschema_description:"这次检定的明确风险、代价或不可逆后果。"`
-	DifficultyReason string   `json:"difficulty_reason,omitempty" jsonschema_description:"本次 difficulty 的判断依据。"`
-	RollModeReason   string   `json:"roll_mode_reason,omitempty" jsonschema_description:"本次优势/劣势/正常投骰的判断依据。"`
-	StatePaths       []string `json:"state_paths,omitempty" jsonschema_description:"本次裁定直接参考的状态路径，例如 actors.protagonist.state.resources.stamina。"`
+	Reason           string          `json:"reason,omitempty" jsonschema_description:"为什么本行动需要固定检定，而不是直接裁定。"`
+	Stakes           string          `json:"stakes,omitempty" jsonschema_description:"这次检定的明确风险、代价或不可逆后果。"`
+	DifficultyReason string          `json:"difficulty_reason,omitempty" jsonschema_description:"本次 difficulty 的判断依据。"`
+	RollModeReason   string          `json:"roll_mode_reason,omitempty" jsonschema_description:"本次优势/劣势/正常投骰的判断依据。"`
+	StateRefs        []ActorStateRef `json:"state_refs,omitempty" jsonschema_description:"本次裁定直接参考的状态字段；每项使用 actor_id 和故事冻结 schema 中的 field_id。"`
+	StatePaths       []string        `json:"-"`
+}
+
+// ActorStateRef identifies one field without encoding it into a dotted path.
+type ActorStateRef struct {
+	ActorID string `json:"actor_id" jsonschema_description:"Actor ID。"`
+	FieldID string `json:"field_id" jsonschema_description:"故事冻结 schema 中的状态名称/ID。"`
 }
 
 type TurnCheckRule struct {
@@ -121,7 +128,9 @@ type TurnCheckRule struct {
 
 type TurnCheckBonus struct {
 	Kind       string  `json:"kind,omitempty" jsonschema_description:"修正来源类型，例如 attribute/state/equipment/environment/help/other。"`
-	SourcePath string  `json:"source_path,omitempty" jsonschema_description:"修正来源路径，例如 actors.protagonist.state.resources.stamina；没有结构化来源时可省略。"`
+	ActorID    string  `json:"actor_id,omitempty" jsonschema_description:"结构化状态来源的 Actor ID；没有状态来源时可省略。"`
+	FieldID    string  `json:"field_id,omitempty" jsonschema_description:"结构化状态来源的字段 ID；没有状态来源时可省略。"`
+	SourcePath string  `json:"-"`
 	Reason     string  `json:"reason" jsonschema_description:"加成或减值原因，必须能从当前状态或已知设定解释。"`
 	Value      float64 `json:"value" jsonschema_description:"加成值，正数加到检定总值，负数从检定总值扣除。"`
 }
@@ -139,9 +148,11 @@ type TurnCheckOutcome struct {
 }
 
 type TurnStateChange struct {
-	Path   string  `json:"path" jsonschema_description:"状态路径，例如 resources.stamina 或 actors.protagonist.state.resources.hp。"`
-	Change float64 `json:"change" jsonschema_description:"数值变化量，负数表示扣减，正数表示增加。"`
-	Reason string  `json:"reason,omitempty" jsonschema_description:"为什么该结果会导致这项状态变化。"`
+	ActorID string  `json:"actor_id" jsonschema_description:"需要改变的 Actor ID。"`
+	FieldID string  `json:"field_id" jsonschema_description:"故事冻结 schema 中的 number 状态名称/ID。"`
+	Path    string  `json:"-"`
+	Change  float64 `json:"change" jsonschema_description:"数值变化量，负数表示扣减，正数表示增加。"`
+	Reason  string  `json:"reason,omitempty" jsonschema_description:"为什么该结果会导致这项状态变化。"`
 }
 
 type RuleResolution struct {
@@ -354,8 +365,8 @@ func ValidateTurnCheckRequest(req TurnCheckRequest) error {
 			return fmt.Errorf("prepare_interactive_turn outcomes.%s 缺少 result", name)
 		}
 		for _, change := range outcome.StateChanges {
-			if !validStatePathSyntax(change.Path) {
-				return fmt.Errorf("prepare_interactive_turn outcomes.%s.state_changes path 无效: %s", name, change.Path)
+			if change.ActorID == "" || change.FieldID == "" {
+				return fmt.Errorf("prepare_interactive_turn outcomes.%s.state_changes 必须提供 actor_id 和 field_id", name)
 			}
 		}
 	}
@@ -513,6 +524,13 @@ func normalizeTurnCheckAdjudication(value TurnCheckAdjudication) TurnCheckAdjudi
 	value.Stakes = trimBytes(value.Stakes, maxTurnBriefTextBytes)
 	value.DifficultyReason = trimBytes(value.DifficultyReason, maxTurnBriefTextBytes)
 	value.RollModeReason = trimBytes(value.RollModeReason, maxTurnBriefTextBytes)
+	value.StateRefs = normalizeActorStateRefs(value.StateRefs)
+	for _, path := range normalizeStatePathList(value.StatePaths) {
+		if actorID, fieldID, ok := parseActorStateFieldPath(path); ok {
+			value.StateRefs = append(value.StateRefs, ActorStateRef{ActorID: actorID, FieldID: fieldID})
+		}
+	}
+	value.StateRefs = normalizeActorStateRefs(value.StateRefs)
 	value.StatePaths = normalizeStatePathList(value.StatePaths)
 	return value
 }
@@ -524,9 +542,19 @@ func normalizeTurnCheckBonuses(values []TurnCheckBonus) []TurnCheckBonus {
 	out := make([]TurnCheckBonus, 0, len(values))
 	for _, value := range values {
 		value.Kind = normalizeTurnCheckEnumToken(value.Kind)
-		value.SourcePath = strings.TrimSpace(value.SourcePath)
-		if validStatePathSyntax(value.SourcePath) {
-			value.SourcePath = canonicalStatePath(value.SourcePath)
+		value.ActorID = normalizeActorStateID(value.ActorID)
+		value.FieldID = normalizeActorStateFieldName(value.FieldID)
+		legacyPath := strings.TrimSpace(value.SourcePath)
+		if value.ActorID == "" || value.FieldID == "" {
+			if actorID, fieldID, ok := parseActorStateFieldPath(value.SourcePath); ok {
+				value.ActorID = actorID
+				value.FieldID = fieldID
+			}
+		}
+		if validStatePathSyntax(legacyPath) {
+			value.SourcePath = canonicalStatePath(legacyPath)
+		} else {
+			value.SourcePath = ""
 		}
 		value.Reason = trimBytes(value.Reason, 512)
 		out = append(out, value)
@@ -543,11 +571,42 @@ func normalizeTurnStateChanges(values []TurnStateChange) []TurnStateChange {
 	}
 	out := make([]TurnStateChange, 0, len(values))
 	for _, value := range values {
-		value.Path = strings.TrimSpace(value.Path)
-		if validStatePathSyntax(value.Path) {
-			value.Path = canonicalStatePath(value.Path)
+		value.ActorID = normalizeActorStateID(value.ActorID)
+		value.FieldID = normalizeActorStateFieldName(value.FieldID)
+		if value.ActorID == "" || value.FieldID == "" {
+			if actorID, fieldID, ok := parseActorStateFieldPath(value.Path); ok {
+				value.ActorID = actorID
+				value.FieldID = fieldID
+			}
+		}
+		if value.ActorID != "" && value.FieldID != "" {
+			value.Path = actorStateFieldPath(value.ActorID, value.FieldID)
+		} else {
+			value.Path = ""
 		}
 		value.Reason = trimBytes(value.Reason, 512)
+		out = append(out, value)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func normalizeActorStateRefs(values []ActorStateRef) []ActorStateRef {
+	if len(values) > maxTurnBriefListItems {
+		values = values[:maxTurnBriefListItems]
+	}
+	out := make([]ActorStateRef, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value.ActorID = normalizeActorStateID(value.ActorID)
+		value.FieldID = normalizeActorStateFieldName(value.FieldID)
+		key := value.ActorID + "\x00" + actorStateFieldNameKey(value.FieldID)
+		if value.ActorID == "" || value.FieldID == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
 		out = append(out, value)
 	}
 	if len(out) == 0 {

@@ -37,7 +37,6 @@ func xiuxianActorStateModule() ActorStateModule {
 		ActorStateXiuxianID,
 		"修仙状态系统",
 		"面向修仙、问道、宗门、秘境和心魔因果的状态表模板集合；默认模板只是起点，可继续添加世界、势力、特定角色等自定义状态表。",
-		[]string{"内置", "状态", "修仙"},
 		[]ActorStateTemplate{
 			actorStateTemplate("protagonist", "默认主角状态表", "记录主角当前可行动、可检定、可结算的修仙状态；用户可按作品需要新增更具体的状态表。", append(commonProtagonistStateFields(), []ActorStateField{
 				textStateField(110, "cultivation.realm", "境界/修为", "记录当前境界、层次、瓶颈或突破状态。", "visible"),
@@ -68,7 +67,6 @@ func westernFantasyActorStateModule() ActorStateModule {
 		ActorStateWesternFantasyID,
 		"西幻状态系统",
 		"面向剑与魔法、王国、地下城、教会神谕和异族盟约的状态表模板集合；默认模板只是起点，可继续添加世界、势力、基地、特定角色等自定义状态表。",
-		[]string{"内置", "状态", "西幻"},
 		[]ActorStateTemplate{
 			actorStateTemplate("protagonist", "默认主角状态表", "记录主角当前可行动、可检定、可结算的西幻冒险状态；用户可按作品需要新增更具体的状态表。", append(commonProtagonistStateFields(), []ActorStateField{
 				textStateField(110, "magic.status", "魔法状态", "记录法力、神术、元素亲和、施法受限或魔力异常。", "visible"),
@@ -96,7 +94,6 @@ func apocalypseActorStateModule() ActorStateModule {
 		ActorStateApocalypseID,
 		"末世状态系统",
 		"面向末世求生、感染异变、基地建设、资源稀缺和幸存者冲突的状态表模板集合；默认模板只是起点，可继续添加基地、世界危机、势力、特定角色等自定义状态表。",
-		[]string{"内置", "状态", "末世"},
 		[]ActorStateTemplate{
 			actorStateTemplate("protagonist", "默认主角状态表", "记录主角当前可行动、可检定、可结算的末世生存状态；用户可按作品需要新增更具体的状态表。", append(commonProtagonistStateFields(), []ActorStateField{
 				textStateField(110, "survival.hunger_thirst_fatigue", "饥渴/疲劳", "记录饥饿、缺水、睡眠不足、体力透支等生存压力。", "visible"),
@@ -126,7 +123,6 @@ func infiniteFlowActorStateModule() ActorStateModule {
 		ActorStateInfiniteFlowID,
 		"无限流状态系统",
 		"面向副本规则、主线任务、积分结算、规则污染、队伍博弈和异常实体的状态表模板集合；默认模板只是起点，可继续添加副本、规则、故事倒计时、特定角色等自定义状态表。",
-		[]string{"内置", "状态", "无限流"},
 		[]ActorStateTemplate{
 			actorStateTemplate("protagonist", "默认主角状态表", "记录主角当前可行动、可检定、可结算的无限流副本状态；用户可按作品需要新增更具体的状态表。", append(commonProtagonistStateFields(), []ActorStateField{
 				textStateField(110, "instance.stage", "副本阶段", "记录刚进入、探索中、规则暴露、危机爆发、Boss 前夜、结算后等阶段。", "visible"),
@@ -152,7 +148,7 @@ func infiniteFlowActorStateModule() ActorStateModule {
 	)
 }
 
-func actorStatePresetModule(id, name, description string, tags []string, templates []ActorStateTemplate) ActorStateModule {
+func actorStatePresetModule(id, name, description string, templates []ActorStateTemplate) ActorStateModule {
 	return normalizeActorStateModule(ActorStateModule{
 		Version:     storyDirectorModuleVersion,
 		ID:          id,
@@ -162,7 +158,6 @@ func actorStatePresetModule(id, name, description string, tags []string, templat
 			Templates:     appendStoryContextTemplate(templates),
 			InitialActors: defaultActorStateInitialActors(),
 		},
-		Tags: tags,
 	})
 }
 

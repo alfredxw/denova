@@ -160,7 +160,8 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
     const branchID = snapshot?.branch_id
     const directorStatus = snapshot?.director_plan_status?.status || ''
     const directorPending = directorStatus === 'running' || (directorStatus === 'waiting_opening' && (snapshot?.turns?.length || 0) > 0)
-    if (!branchID || (snapshot?.current_turn?.state_status !== 'pending' && snapshot?.current_turn?.memory_status !== 'pending' && !directorPending)) return
+    const memoryPending = snapshot?.current_turn?.memory_status === 'pending' || snapshot?.current_turn?.memory_status === 'running'
+    if (!branchID || (snapshot?.current_turn?.state_status !== 'pending' && !memoryPending && !directorPending)) return
     const timer = window.setInterval(() => {
       void reloadSnapshot(branchID)
     }, 1000)
@@ -293,7 +294,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
           <div className="flex min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
             <motion.div key={contentKey} variants={panelPresence} initial="initial" animate="animate" transition={{ duration: 0.2, ease: novaEase }} className="flex min-h-0 flex-1 flex-col">
               {submode === 'memory' ? (
-                <StoryMemoryView storyId={currentStoryId} branchId={currentBranchId} branches={branches} />
+                <StoryMemoryView storyId={currentStoryId} branchId={currentBranchId} branches={branches} onBackToStory={() => setSubmode('story')} />
               ) : settingsWorkspaceVisible ? (
                 <SettingPanel mode={settingMode} workspace={workspace} presetFocus={presetFocus} presetUsageMode="game" tellers={tellers} storyDirectors={storyDirectors} imagePresets={imagePresets} onTellersChange={setTellers} onStoryDirectorsChange={setStoryDirectors} onImagePresetsChange={onImagePresetsChange} />
               ) : submode === 'timeline' ? (

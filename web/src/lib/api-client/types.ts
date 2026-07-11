@@ -23,6 +23,10 @@ export interface ChatMessage {
   attempt?: number
   tokens_before?: number
   tokens_after?: number
+	projected_tokens_before?: number
+	projected_tokens_after?: number
+	reserved_completion_tokens?: number
+	reserved_tool_result_tokens?: number
   context_window_tokens?: number
   threshold?: number
   target_ratio?: number
@@ -81,7 +85,9 @@ export interface PublicRuleRoll {
 }
 
 export interface PublicRuleStateChange {
-  path: string
+	actor_id?: string
+	field_id?: string
+	path?: string
   change: number
   reason?: string
 }
@@ -240,6 +246,9 @@ export interface ContextAnalysis {
   context_messages: ContextAnalysisPart[]
   message_count: number
   token_estimate?: number
+	projected_token_estimate?: number
+	reserved_completion_tokens?: number
+	reserved_tool_result_tokens?: number
   context_window_tokens?: number
   context_usage_ratio?: number
   compaction_epoch?: number

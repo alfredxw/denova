@@ -203,7 +203,7 @@ func TestResolveTurnRulesAppliesStateBindingModifiersAndOutcomeChanges(t *testin
 	req.Rule.ActorID = "protagonist"
 	req.Rule.TargetActorID = "wolf_1"
 	req.Difficulty = "normal"
-	req.Outcomes.Success.StateChanges = []TurnStateChange{{Path: "actors.wolf_1.state.resources.guard", Change: -1, Reason: "临场追击继续削弱护体。"}}
+	req.Outcomes.Success.StateChanges = []TurnStateChange{{ActorID: "wolf_1", FieldID: "护体", Change: -1, Reason: "临场追击继续削弱护体。"}}
 	seed := seedForTurnCheckOutcome(t, "1d20", "normal", "normal", 2, 3, "success")
 
 	resolution, err := resolveTurnRulesWithSeedAndDirector("st_binding", "main", state, director, req, seed)
@@ -219,16 +219,16 @@ func TestResolveTurnRulesAppliesStateBindingModifiersAndOutcomeChanges(t *testin
 	if resolution.StateBinding == nil || resolution.StateBinding.BindingBonusTotal != 3 || resolution.StateBinding.BindingResistanceTotal != 2 {
 		t.Fatalf("missing binding audit: %#v", resolution.StateBinding)
 	}
-	if len(resolution.StateBinding.StateInputs) != 2 || resolution.StateBinding.StateInputs[0].Path != "actors.protagonist.state.attributes.strength" || resolution.StateBinding.StateInputs[1].Path != "actors.wolf_1.state.attributes.defense" {
+	if len(resolution.StateBinding.StateInputs) != 2 || resolution.StateBinding.StateInputs[0].ActorID != "protagonist" || resolution.StateBinding.StateInputs[0].FieldID != "力量" || resolution.StateBinding.StateInputs[1].ActorID != "wolf_1" || resolution.StateBinding.StateInputs[1].FieldID != "防御" {
 		t.Fatalf("unexpected state inputs: %#v", resolution.StateBinding.StateInputs)
 	}
 	if len(resolution.Result.StateChanges) != 2 {
 		t.Fatalf("expected binding state change plus manual state change: %#v", resolution.Result.StateChanges)
 	}
-	if resolution.Result.StateChanges[0].Path != "actors.wolf_1.state.resources.guard" || resolution.Result.StateChanges[0].Change != -4 {
+	if resolution.Result.StateChanges[0].ActorID != "wolf_1" || resolution.Result.StateChanges[0].FieldID != "护体" || resolution.Result.StateChanges[0].Change != -4 {
 		t.Fatalf("binding outcome state change should be computed from attack-defense: %#v", resolution.Result.StateChanges)
 	}
-	if len(resolution.StateBinding.Warnings) != 1 || !strings.Contains(resolution.StateBinding.Warnings[0].Reason, "同一路径") {
+	if len(resolution.StateBinding.Warnings) != 1 || !strings.Contains(resolution.StateBinding.Warnings[0].Reason, "同一状态字段") {
 		t.Fatalf("duplicate state changes should produce warning: %#v", resolution.StateBinding.Warnings)
 	}
 
@@ -236,7 +236,7 @@ func TestResolveTurnRulesAppliesStateBindingModifiersAndOutcomeChanges(t *testin
 	if len(ops) != 2 {
 		t.Fatalf("expected both state changes to be consumed in order: %#v", ops)
 	}
-	if got := numberFromAny(getPath(state, "actors.wolf_1.state.resources.guard")); got != 0 {
+	if got := numberFromAny(actorStateFieldValue(state, "wolf_1", "护体")); got != 0 {
 		t.Fatalf("guard should be clamped after configured and manual changes, got %v", got)
 	}
 }
@@ -261,7 +261,7 @@ func TestResolveTurnRulesStateBindingValidationErrors(t *testing.T) {
 	})
 	t.Run("non number modifier", func(t *testing.T) {
 		next := director
-		next.TRPGSystem.RuleTemplates[0].StateBindings[0].Modifiers[0].FieldPath = "conditions.realm"
+		next.TRPGSystem.RuleTemplates[0].StateBindings[0].Modifiers[0].FieldID = "conditions.realm"
 		req := stateBindingTestRequest()
 		_, err := resolveTurnRulesWithSeedAndDirector("st_binding", "main", state, next, req, 7)
 		if err == nil || !strings.Contains(err.Error(), "不是 number") {
@@ -359,21 +359,21 @@ func stateBindingTestDirectorAndState() (StoryDirector, map[string]any) {
 				ActorTemplateID:  "protagonist",
 				TargetTemplateID: "monster",
 				Modifiers: []RuleStateBindingModifier{
-					{Source: "actor", FieldPath: "attributes.strength", Effect: "advantage", Scale: 1},
-					{Source: "target", FieldPath: "attributes.defense", Effect: "resistance", Scale: 1},
+					{Source: "actor", FieldID: "attributes.strength", Effect: "advantage", Scale: 1},
+					{Source: "target", FieldID: "attributes.defense", Effect: "resistance", Scale: 1},
 				},
 				NarrativeStateRefs: []RuleNarrativeStateRef{
-					{Source: "actor", FieldPath: "conditions.realm", Usage: "outcome_design", Guidance: "境界只影响四档结果写法。"},
+					{Source: "actor", FieldID: "conditions.realm", Usage: "outcome_design", Guidance: "境界只影响四档结果写法。"},
 				},
 				OutcomeStateChanges: []RuleOutcomeStateChangeBinding{{
 					Outcome: "success",
 					StateChanges: []RuleComputedStateChange{{
-						Source:    "target",
-						FieldPath: "resources.guard",
+						Source:  "target",
+						FieldID: "resources.guard",
 						ChangeFormula: RuleStateChangeFormula{
 							Terms: []RuleStateFormulaTerm{
-								{Source: "actor", FieldPath: "attributes.attack", Scale: -1},
-								{Source: "target", FieldPath: "attributes.defense", Scale: 1},
+								{Source: "actor", FieldID: "attributes.attack", Scale: -1},
+								{Source: "target", FieldID: "attributes.defense", Scale: 1},
 							},
 							Min:      floatPtr(-8),
 							Max:      floatPtr(-1),
@@ -514,7 +514,6 @@ func TestOpeningRollProducesTraitsStateOps(t *testing.T) {
 		Name:            "成长流",
 		Description:     "demo",
 		RandomEventRate: 0.2,
-		Tags:            []string{},
 		ContextPolicy: TellerContextPolicy{
 			Creator:      "always",
 			Lore:         "relevant",

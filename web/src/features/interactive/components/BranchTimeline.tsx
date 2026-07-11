@@ -134,6 +134,8 @@ export function BranchTimeline({
   const emptyBranchCount = graphBranches.filter((branch) => isEmptyBranch(branch, graphNodes)).length
   const metrics = useMemo(() => buildGraphMetrics(scrollSize.width), [scrollSize.width])
   const layout = useMemo(() => buildGraphLayout(graphNodes, graphBranches, metrics, scrollSize), [graphBranches, graphNodes, metrics, scrollSize])
+	const nodeOrderByID = useMemo(() => new Map(graphNodes.map((node, index) => [node.id, index + 1])), [graphNodes])
+	const linearRoute = graphBranches.length <= 1
 
   const currentPositionedNode = useMemo(() => {
     const branchHead = graphBranches.find((branch) => branch.id === currentBranchId)?.head
@@ -241,12 +243,6 @@ export function BranchTimeline({
         <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-hidden">
           <span className="truncate text-[var(--nova-text-faint)]">{t('branchTimeline.nodeCount', { count: graphNodes.length || snapshot?.turns?.length || 0 })}</span>
           {emptyBranchCount > 0 && <Badge variant="outline" className="hidden border-[var(--nova-accent)]/35 bg-[var(--nova-accent)]/10 text-[var(--nova-accent)] sm:inline-flex">{t('branchTimeline.emptyBranchCount', { count: emptyBranchCount })}</Badge>}
-          {selectedNode && (
-            <Button variant="outline" size="xs" className="nova-nav-item hidden gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] sm:inline-flex" onClick={openCreateDialog}>
-              <Plus className="h-3.5 w-3.5" />
-              {t('branchTimeline.createFromSelected')}
-            </Button>
-          )}
         </div>
       </div>
 
@@ -275,10 +271,6 @@ export function BranchTimeline({
                 <Move className="h-3.5 w-3.5" />
                 {t('branchTimeline.dragHint')}
               </span>
-              <Button size="xs" variant="outline" className="nova-nav-item gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!selectedNode} onClick={openCreateDialog}>
-                <Plus className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-                {t('branchTimeline.createBranch')}
-              </Button>
             </div>
           </div>
 
@@ -323,6 +315,11 @@ export function BranchTimeline({
                       : undefined,
                   }}
                   onClick={() => selectNode(node)}
+							aria-label={t('branchTimeline.nodeAria', {
+								index: nodeOrderByID.get(node.id) || 1,
+								title: node.title,
+								state: node.current ? t('branchTimeline.currentNode') : node.terminal ? t('branchTimeline.terminalNode') : '',
+							})}
 	                  title={`${node.title}\n${node.summary}${node.terminal ? `\n${t('branchTimeline.terminalNode')}` : ''}`}
 	                >
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full shadow-[0_0_14px_currentColor]" style={{ background: color, color }} />
@@ -372,7 +369,7 @@ export function BranchTimeline({
             <Button size="xs" variant="outline" className="nova-nav-item shrink-0 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] sm:hidden" onClick={recenter} disabled={!currentPositionedNode} aria-label={t('branchTimeline.recenter')} title={t('branchTimeline.recenter')}>
               <Crosshair className="h-3.5 w-3.5" />
             </Button>
-            <MiniMap layout={layout} scrollRef={scrollRef} ariaLabel={t('branchTimeline.minimap')} />
+			{linearRoute ? <div className="hidden flex-1 text-center text-[11px] text-[var(--nova-text-faint)] sm:block">{t('branchTimeline.linearRoute')}</div> : <MiniMap layout={layout} scrollRef={scrollRef} ariaLabel={t('branchTimeline.minimap')} />}
             {selectedNode && (
               <Button size="xs" className="shrink-0 gap-1.5 border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]" onClick={openCreateDialog}>
                 <Plus className="h-3.5 w-3.5" />

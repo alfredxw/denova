@@ -268,26 +268,25 @@ function ActorStateTemplateDetails({
     if (!activeField) setDefaultValid(true)
   }, [activeField])
   useEffect(() => {
-    onValidChange(defaultValid && initialActorValid)
-  }, [defaultValid, initialActorValid, onValidChange])
+		const names = fields.map((field) => normalizeActorStateFieldName(field.name))
+		const fieldsValid = names.every(Boolean) && new Set(names).size === names.length
+		onValidChange(defaultValid && initialActorValid && fieldsValid)
+	}, [defaultValid, fields, initialActorValid, onValidChange])
 
   const setFields = (nextFields: ActorStateField[]) => onPatch({ fields: nextFields })
   const patchField = (patch: Partial<ActorStateField>) => {
     if (!activeField) return
     const nextField = { ...activeField, ...patch }
-    if (patch.id !== undefined) setActiveFieldId(actorStateFieldKey(nextField, activeIndex))
     setFields(fields.map((field, index) => (index === activeIndex ? nextField : field)))
   }
   const addField = () => {
-    const id = nextPresetId('field').replace(/-/g, '_')
-    const field: ActorStateField = { id, path: id, name: '', type: 'number', visibility: 'visible', order: (fields.length + 1) * 10 }
+		const field: ActorStateField = { name: '', type: 'number', visibility: 'visible', order: (fields.length + 1) * 10 }
     setFields([...fields, field])
-    setActiveFieldId(id)
+		setActiveFieldId(actorStateFieldKey(field, fields.length))
   }
   const copyField = () => {
     if (!activeField) return
-    const field = cloneWithNewId(activeField, 'field') as ActorStateField
-    field.id = (field.id || nextPresetId('field')).replace(/-/g, '_')
+		const field: ActorStateField = { ...activeField, id: undefined, path: undefined, name: `${activeField.name} ${t('settingPanel.actorState.explorer.copySuffix')}`.trim() }
     setFields([...fields, field])
     setActiveFieldId(actorStateFieldKey(field, fields.length))
   }
@@ -321,7 +320,7 @@ function ActorStateTemplateDetails({
             items={fields}
             activeId={activeFieldId}
             getId={actorStateFieldKey}
-            getTitle={(field, index) => field.name || field.path || field.id || `${t('settingPanel.actorState.field')} ${index + 1}`}
+			getTitle={(field, index) => field.name || `${t('settingPanel.actorState.field')} ${index + 1}`}
             getSubtitle={(field) => [field.type, field.visibility].filter(Boolean).join(' · ')}
             addLabel={t('settingPanel.actorState.addField')}
             emptyLabel={t('settingPanel.actorState.fields')}
@@ -372,14 +371,12 @@ function ActorStateFieldDetails({
   return (
     <DetailPanel
       dense
-      title={field.name || field.path || field.id || t('settingPanel.actorState.field')}
-      description={field.path || field.id || ''}
+		title={field.name || t('settingPanel.actorState.field')}
+		description={t('settingPanel.actorState.explorer.nameIdHelp')}
       meta={field.type || 'number'}
       actions={<DetailActions onCopy={onCopy} onDelete={onDelete} />}
     >
       <div className={fieldGridClassName}>
-        <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={field.id || ''} onChange={(event) => onPatch({ id: event.target.value })} /></Field>
-        <Field label={t('settingPanel.presetConfig.path')}><Input className={inputClassName} value={field.path || ''} onChange={(event) => onPatch({ path: event.target.value })} /></Field>
         <Field label={t('settingPanel.field.name')}><Input className={inputClassName} value={field.name || ''} onChange={(event) => onPatch({ name: event.target.value })} /></Field>
         <Field label={t('settingPanel.presetConfig.type')}>
           <Select value={field.type || 'number'} onValueChange={(type) => onPatch({ type })}>
@@ -630,7 +627,12 @@ function actorStateTemplateKey(item: ActorStateTemplate, index: number) {
 }
 
 function actorStateFieldKey(item: ActorStateField, index: number) {
-  return item.id || item.path || `field-${index}`
+	void item
+	return `field-${index}`
+}
+
+function normalizeActorStateFieldName(value: string | undefined) {
+	return (value || '').normalize('NFKC').trim().toLocaleLowerCase()
 }
 
 function actorStateActorKey(item: ActorStateInitialActor, index: number) {

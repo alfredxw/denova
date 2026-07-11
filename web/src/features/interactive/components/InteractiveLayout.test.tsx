@@ -40,7 +40,11 @@ vi.mock('./SettingPanel', () => ({
 }))
 
 vi.mock('./StoryMemoryView', () => ({
-  StoryMemoryView: () => <div data-testid="story-memory-view" />,
+  StoryMemoryView: ({ onBackToStory }: { onBackToStory?: () => void }) => (
+    <div data-testid="story-memory-view">
+      <button type="button" onClick={onBackToStory}>mock back to story</button>
+    </div>
+  ),
 }))
 
 vi.mock('./StoryPicker', () => ({
@@ -105,6 +109,21 @@ beforeEach(() => {
 })
 
 describe('InteractiveLayout story creation', () => {
+  it('returns from the Story Memory manager to the Story workspace', async () => {
+    vi.mocked(getInteractiveStories).mockResolvedValue({
+      current_story_id: 'st_1',
+      stories: [story('st_1', '故事线')],
+    })
+    useInteractiveStore.setState({ submode: 'memory' })
+
+    render(<InteractiveLayout workspace="/workspace" />)
+
+    await waitFor(() => expect(screen.getByTestId('story-memory-view')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'mock back to story' }))
+
+    expect(screen.getByTestId('story-stage-probe')).toBeInTheDocument()
+  })
+
   it('selects and lists a newly created story even when stale story indexes resolve later', async () => {
     const initialIndex = deferred<{ current_story_id: string; stories: StorySummary[] }>()
     const afterCreateIndex = deferred<{ current_story_id: string; stories: StorySummary[] }>()
@@ -198,7 +217,6 @@ function teller(id: string, name: string): Teller {
     name,
     description: '',
     random_event_rate: 0,
-    tags: [],
     context_policy: {
       creator: 'summary',
       lore: 'summary',
@@ -219,7 +237,6 @@ function storyDirector(id: string, name: string, narrativeStyleId: string): Stor
     strategy: { enabled: true },
     trpg_system: {},
     opening_selector: { enabled: true },
-    tags: [],
     custom: false,
   }
 }

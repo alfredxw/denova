@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	storyDirectorModuleVersion     = 5
+	storyDirectorModuleVersion     = 6
 	DefaultEventPackageID          = "default"
 	DefaultEventSystemID           = "default"
 	DefaultRuleSystemID            = "default"
@@ -87,7 +87,6 @@ type EventPackageModule struct {
 	Name              string            `json:"name"`
 	Description       string            `json:"description"`
 	Events            []TellerEventCard `json:"events,omitempty"`
-	Tags              []string          `json:"tags"`
 	Path              string            `json:"path,omitempty"`
 	Custom            bool              `json:"custom"`
 	BuiltinOverridden bool              `json:"builtin_overridden,omitempty"`
@@ -120,7 +119,6 @@ type RuleSystemModule struct {
 	Description       string                  `json:"description"`
 	ActorStateID      string                  `json:"actor_state_id,omitempty"`
 	TRPGSystem        StoryDirectorTRPGSystem `json:"trpg_system"`
-	Tags              []string                `json:"tags"`
 	Path              string                  `json:"path,omitempty"`
 	Custom            bool                    `json:"custom"`
 	BuiltinOverridden bool                    `json:"builtin_overridden,omitempty"`
@@ -138,7 +136,6 @@ type ActorStateModule struct {
 	ActorState        StoryDirectorActorStateSystem `json:"actor_state"`
 	OpeningSelector   StoryDirectorOpeningSelector  `json:"opening_selector,omitempty"`
 	MigrationWarnings []string                      `json:"migration_warnings,omitempty"`
-	Tags              []string                      `json:"tags"`
 	Path              string                        `json:"path,omitempty"`
 	Custom            bool                          `json:"custom"`
 	BuiltinOverridden bool                          `json:"builtin_overridden,omitempty"`
@@ -829,7 +826,6 @@ func DefaultEventPackageModule() EventPackageModule {
 		Name:        "默认事件包",
 		Description: "通用爽文与互动叙事事件卡，覆盖打脸、奇遇、冲突、恋爱、伏笔回收等基础事件。",
 		Events:      pkg.Events,
-		Tags:        []string{"内置", "事件"},
 	})
 }
 
@@ -966,7 +962,6 @@ func builtinRuleSystemModule(id, name, description string, check RuleCheck) Rule
 		Name:        name,
 		Description: description,
 		TRPGSystem:  StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{check}},
-		Tags:        []string{"内置", "TRPG", "DM风格"},
 	})
 }
 
@@ -977,7 +972,6 @@ func DefaultActorStateModule() ActorStateModule {
 		Name:        "默认状态系统",
 		Description: "以主角等关键状态对象为起点维护结构化字段和可复用词条库，供规则检定、资源消耗和长期承接读取；可按作品需要扩展其他状态表模板。",
 		ActorState:  defaultActorStateSystem(),
-		Tags:        []string{"内置", "状态"},
 	})
 }
 
@@ -1160,7 +1154,6 @@ func normalizeEventPackageModule(item EventPackageModule) EventPackageModule {
 	item.Name = trimBytes(firstNonEmptyString(item.Name, item.ID, "事件包"), 256)
 	item.Description = trimBytes(item.Description, 1024)
 	item.Events = normalizeTellerEventCards(item.Events, item.ID)
-	item.Tags = normalizeStringListLimit(item.Tags, maxTurnBriefListItems)
 	return item
 }
 
@@ -1185,7 +1178,6 @@ func normalizeRuleSystemModule(item RuleSystemModule) RuleSystemModule {
 	if len(item.TRPGSystem.RuleTemplates) == 0 {
 		item.TRPGSystem.RuleTemplates = DefaultRuleCheckTemplates()
 	}
-	item.Tags = normalizeStringListLimit(item.Tags, maxTurnBriefListItems)
 	return item
 }
 
@@ -1203,7 +1195,6 @@ func normalizeActorStateModule(item ActorStateModule) ActorStateModule {
 		item.OpeningSelector = StoryDirectorOpeningSelector{}
 		item.NeedsMigration = true
 	}
-	item.Tags = normalizeStringListLimit(item.Tags, maxTurnBriefListItems)
 	return item
 }
 
@@ -1311,6 +1302,9 @@ func validateActorStateModule(item ActorStateModule) error {
 	if len(item.ActorState.Templates) == 0 {
 		return errors.New("状态系统至少需要一个 actor 类型模板")
 	}
+	if err := validateActorStateSystem(item.ActorState); err != nil {
+		return err
+	}
 	if err := validateActorTraitSystem(item.ActorState); err != nil {
 		return err
 	}
@@ -1408,6 +1402,7 @@ func parseActorStateFile(path string) (ActorStateModule, error) {
 	sourceVersion := item.Version
 	hadLegacyOpening := openingSelectorHasContent(item.OpeningSelector)
 	item = normalizeActorStateModule(item)
+	item.ActorState = attachBuiltinActorStateLegacyPaths(item.ID, item.ActorState)
 	item.SourceVersion = sourceVersion
 	item.NeedsMigration = item.NeedsMigration || sourceVersion < storyDirectorModuleVersion || hadLegacyOpening
 	if err := validateActorStateModule(item); err != nil {
@@ -1701,7 +1696,6 @@ func eventPackageModuleFromTellerPackage(pkg TellerEventPackage, source EventSys
 		Name:              firstNonEmptyString(pkg.Name, source.Name, pkg.ID),
 		Description:       firstNonEmptyString(source.Description, "由旧事件系统迁移生成。"),
 		Events:            pkg.Events,
-		Tags:              source.Tags,
 		BuiltinOverridden: source.BuiltinOverridden && IsBuiltinEventPackageID(pkg.ID),
 		CreatedAt:         source.CreatedAt,
 		UpdatedAt:         source.UpdatedAt,
@@ -1746,7 +1740,6 @@ func eventPackageModuleFromCustomEvents(source EventSystemModule) EventPackageMo
 		Name:        firstNonEmptyString(source.Name, source.ID) + " 迁移事件包",
 		Description: "由旧事件系统 custom_events 自动迁移生成。",
 		Events:      cards,
-		Tags:        append(normalizeStringListLimit(source.Tags, maxTurnBriefListItems), "迁移"),
 		CreatedAt:   source.CreatedAt,
 		UpdatedAt:   source.UpdatedAt,
 	})

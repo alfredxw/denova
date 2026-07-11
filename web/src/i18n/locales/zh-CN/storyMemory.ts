@@ -1,5 +1,6 @@
 const storyMemory = {
   'storyMemory.title': '故事记忆',
+  'storyMemory.backToStory': '返回剧情',
   'storyMemory.subtitle': '按结构维护当前剧情、角色、任务和纪要',
   'storyMemory.branchSummary': '{{branch}} · Head {{head}}',
   'storyMemory.loadFailed': '故事记忆加载失败',

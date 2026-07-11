@@ -365,8 +365,6 @@ function Harness({ initial, onChange, onSave }: { initial: Teller; onChange: (dr
       workspace="/tmp/book"
       draft={draft}
       setDraft={setDraft}
-      tagDraft=""
-      setTagDraft={() => {}}
       activeSlotId="identity"
       setActiveSlotId={() => {}}
       onSave={onSave}
@@ -384,8 +382,6 @@ function ImagePresetHarness({ initial, onChange, onSave }: { initial: ImagePrese
     <ImagePresetEditor
       draft={draft}
       setDraft={setDraft}
-      tagDraft=""
-      setTagDraft={() => {}}
       onSave={onSave}
     />
   )
@@ -399,7 +395,6 @@ function imagePreset(): ImagePreset {
     description: '',
     prompt: '## 图像请求 Prompt（tool_request）\n\n',
     slots: [{ id: 'tool_request', name: '图像请求 Prompt', target: 'tool_request', enabled: true, content: '' }],
-    tags: [],
     custom: true,
   }
 }
@@ -413,7 +408,6 @@ function teller(): Teller {
     random_event_rate: 0,
     style_refs: [],
     style_rules: [{ scene: '激烈打斗', style_refs: [] }],
-    tags: [],
     context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' },
     slots: [{ id: 'identity', name: '系统提示', target: 'system', enabled: true, content: '规则' }],
     custom: true,

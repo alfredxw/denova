@@ -69,8 +69,8 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if created.ModuleRefs.EventPackagesDisabled || created.ModuleRefs.RuleSystemDisabled || created.ModuleRefs.OpeningSelectorDisabled {
 		t.Fatalf("legacy-style directors without disabled refs should keep modules enabled: %#v", created.ModuleRefs)
 	}
-	if len(created.ActorState.Templates) != 1 || len(created.ActorState.Templates[0].Fields) != 1 || created.ActorState.Templates[0].Fields[0].Visibility != "hidden" {
-		t.Fatalf("state fields should be validated and preserve visibility: %#v", created.ActorState)
+	if len(created.ActorState.Templates) != 1 || len(created.ActorState.Templates[0].Fields) != 2 || created.ActorState.Templates[0].Fields[0].Name != "法力" || created.ActorState.Templates[0].Fields[0].Visibility != "hidden" {
+		t.Fatalf("state field names should be preserved as IDs without path syntax filtering: %#v", created.ActorState)
 	}
 	if len(created.TRPGSystem.RuleTemplates) != 1 || created.TRPGSystem.RuleTemplates[0].Dice != "1d20" || created.TRPGSystem.RuleTemplates[0].Modifier != 10 {
 		t.Fatalf("rule templates should normalize to the simplified schema: %#v", created.TRPGSystem.RuleTemplates)
@@ -85,9 +85,12 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if strings.Contains(string(ruleData), "impact") || strings.Contains(string(ruleData), "category") || strings.Contains(string(ruleData), "default_difficulty") || strings.Contains(string(ruleData), "default_roll_mode") {
 		t.Fatalf("rule template JSON should not keep removed fields: %s", string(ruleData))
 	}
-	ops := StoryDirectorInitialStateOps(created)
-	if !containsStateOp(ops, "actors.protagonist.state.resources.mana", float64(3)) || !containsStateOp(ops, "actors.protagonist.state.resources.mana_max", float64(9)) || !containsStateOpPath(ops, "actors.protagonist.traits") {
-		t.Fatalf("initial state ops should include attribute defaults and actor trait snapshots: %#v", ops)
+	ops, actorOps, err := BuildActorStateInitialChanges(created.ActorState, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsActorStateOp(actorOps, "protagonist", "法力", float64(3)) || !containsStateOpPath(ops, "actors.protagonist.traits") {
+		t.Fatalf("initial state changes should use the name-based field ID and trait snapshots: ops=%#v actor_ops=%#v", ops, actorOps)
 	}
 
 	updated, err := library.Update(created.ID, StoryDirector{
@@ -376,6 +379,15 @@ func containsStateOp(ops []StateOp, path string, value any) bool {
 func containsStateOpPath(ops []StateOp, path string) bool {
 	for _, op := range ops {
 		if op.Path == path {
+			return true
+		}
+	}
+	return false
+}
+
+func containsActorStateOp(ops []ActorStateOp, actorID, fieldID string, value any) bool {
+	for _, op := range ops {
+		if op.ActorID == actorID && op.FieldID == fieldID && op.Value == value {
 			return true
 		}
 	}

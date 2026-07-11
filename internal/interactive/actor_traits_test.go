@@ -105,11 +105,11 @@ func TestLegacyActorWithoutTemplateCanBeBoundExplicitly(t *testing.T) {
 	if len(result.CreatedActors) != 0 {
 		t.Fatalf("binding a legacy Actor must not recreate it: %#v", result)
 	}
-	next := applyActorTraitTestOps(state, result.Ops)
+	next := applyActorTraitTestOps(state, result.Ops, result.ActorOps)
 	if got := getPath(next, "actors.legacy.template_id"); got != "important_character" {
 		t.Fatalf("legacy Actor template binding was not persisted: %#v", next)
 	}
-	if got := getPath(next, "actors.legacy.state.status"); got != "ready" {
+	if got := actorStateFieldValue(next, "legacy", "状态"); got != "ready" {
 		t.Fatalf("legacy Actor state update was not applied: %#v", next)
 	}
 }
@@ -182,7 +182,7 @@ func TestActorStateRuntimeContextFiltersVisibilityAndLibrary(t *testing.T) {
 	if strings.Contains(context, "secret") || strings.Contains(context, "未被抽取的配置词条") {
 		t.Fatalf("hidden traits and the reusable library must stay out of runtime context: %s", context)
 	}
-	if len(context) > 64*1024 || !strings.Contains(context, "Snapshot.State.actors") {
+	if len(context) > 64*1024 || !strings.Contains(context, `"kind": "actor_state_runtime"`) || !strings.Contains(context, `"field_id": "状态"`) {
 		t.Fatalf("runtime context must be sourced and bounded: bytes=%d context=%s", len(context), context)
 	}
 }
@@ -270,15 +270,15 @@ func TestActorStateV4MigrationBacksUpBeforeFirstSave(t *testing.T) {
 	if !migrated.NeedsMigration || migrated.SourceVersion != 4 || len(migrated.MigrationWarnings) == 0 {
 		t.Fatalf("legacy module should surface pending migration and warnings: %#v", migrated)
 	}
-	if len(migrated.ActorState.TraitPools) != 1 || migrated.ActorState.InitialActors[0].State["status"] != "ready" {
+	if len(migrated.ActorState.TraitPools) != 1 || migrated.ActorState.InitialActors[0].State["状态"] != "ready" {
 		t.Fatalf("legacy pools and mappable Actor state should migrate: %#v", migrated.ActorState)
 	}
 	if _, err := library.Update("legacy", migrated, migrated.UpdatedAt); err != nil {
 		t.Fatal(err)
 	}
-	backups, err := filepath.Glob(filepath.Join(novaDir, "backups", "state-system-v4", "*", "legacy.json"))
+	backups, err := filepath.Glob(filepath.Join(novaDir, "backups", "state-system-v6", "*", "legacy.json"))
 	if err != nil || len(backups) != 1 {
-		t.Fatalf("expected one timestamped v4 backup: paths=%#v err=%v", backups, err)
+		t.Fatalf("expected one timestamped v6 backup: paths=%#v err=%v", backups, err)
 	}
 	backupData, err := os.ReadFile(backups[0])
 	if err != nil {
@@ -315,12 +315,17 @@ func actorTraitTestSystem() StoryDirectorActorStateSystem {
 	}
 }
 
-func applyActorTraitTestOps(state map[string]any, ops []StateOp) map[string]any {
+func applyActorTraitTestOps(state map[string]any, ops []StateOp, actorOpGroups ...[]ActorStateOp) map[string]any {
 	if state == nil {
 		state = map[string]any{}
 	}
 	for _, op := range ops {
 		applyStateOp(state, op)
+	}
+	for _, actorOps := range actorOpGroups {
+		for _, op := range actorOps {
+			applyActorStateOp(state, op)
+		}
 	}
 	return state
 }

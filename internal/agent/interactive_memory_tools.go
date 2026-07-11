@@ -25,15 +25,15 @@ type InteractiveStoryToolContext struct {
 	StoryID                  string
 	BranchID                 string
 	TurnID                   string
-	ActorState               interactive.StoryDirectorActorStateSystem
+	MaintenanceTask          string
 	DirectorPlanAllowedPaths []string
-	OnActorStateApplied      func(appliedOps int)
 	OnStoryMemoryApplied     func(applied int)
 	OnStateMaintenanceFailed func(error)
 	// DisplayConversation receives display-only progress for background helper
 	// agents. It must not receive final assistant text as model-visible context.
 	DisplayConversation Conversation
 	PrepareTurn         func(context.Context, interactive.TurnCheckRequest) (interactive.RuleResolution, error)
+	SubmitTurnResult    func(context.Context, interactive.TurnResult) (interactive.TurnResult, error)
 }
 
 type listInteractiveMemoriesInput struct {
@@ -47,10 +47,6 @@ type listInteractiveMemoriesInput struct {
 type readInteractiveMemoriesInput struct {
 	IDs   []string `json:"ids" jsonschema:"description=要读取正文的互动长期记忆 ID 列表；可按需一次读取多个相关记忆"`
 	Query string   `json:"query,omitempty" jsonschema:"description=可选，说明本次读取记忆是为了回答哪类当前行动或线索；用于记录最近召回"`
-}
-
-type applyActorStatePatchInput struct {
-	Patches []interactive.ActorStatePatch `json:"patches" jsonschema:"description=要写入的关键 Actor 结构化状态更新。新 Actor 必须包含 actor_id、template_id 和 reason，并会按模板自动抽取词条；已有 Actor 可省略 template_id。state 只能使用状态系统 schema 中声明的字段路径；trait_changes 支持 draw/reroll/set/remove。"`
 }
 
 type applyStoryMemoryPatchesInput struct {
@@ -83,15 +79,6 @@ type interactiveMemoryIndexItem struct {
 	Importance int      `json:"importance"`
 	Manual     bool     `json:"manual,omitempty"`
 	UpdatedAt  string   `json:"updated_at,omitempty"`
-}
-
-type actorStatePatchToolOutput struct {
-	AppliedActors  []string                                    `json:"applied_actors"`
-	CreatedActors  []string                                    `json:"created_actors,omitempty"`
-	AssignedTraits map[string][]interactive.ActorTraitInstance `json:"assigned_traits,omitempty"`
-	Ops            int                                         `json:"ops"`
-	BranchID       string                                      `json:"branch_id"`
-	TurnID         string                                      `json:"turn_id"`
 }
 
 type storyMemoryPatchToolOutput struct {
@@ -172,60 +159,6 @@ func newInteractiveMemoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool
 	return []tool.BaseTool{listTool, readTool}, nil
 }
 
-func newInteractiveActorStateTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
-	ctx.StoryID = strings.TrimSpace(ctx.StoryID)
-	ctx.BranchID = strings.TrimSpace(ctx.BranchID)
-	ctx.TurnID = strings.TrimSpace(ctx.TurnID)
-	if ctx.Store == nil || ctx.StoryID == "" || ctx.TurnID == "" {
-		return nil, nil
-	}
-	applyTool, err := utils.InferTool("apply_actor_state_patch", "创建或更新关键状态对象的结构化状态。状态对象可以是主角、重要角色、反派、怪物、Boss、规则实体、世界、故事倒计时、特定角色、势力、基地或副本等；protagonist、important_character、opponent 只是常见默认模板。创建新 Actor 时后端会写入模板默认值并按 trait_rules 自动从词条库抽取词条；已有 Actor 不会重复抽取，可用 trait_changes 执行 draw、reroll、set 或 remove。只能写入 schema 中已声明的字段，且已有 Actor 的 template_id 不可隐式更换。后端会把最终结果写成可重放 StateOp。", func(callCtx context.Context, input applyActorStatePatchInput) (string, error) {
-		_ = callCtx
-		snapshot, err := ctx.Store.Snapshot(ctx.StoryID, ctx.BranchID)
-		if err != nil {
-			reportStateMaintenanceFailure(ctx, err)
-			return "", err
-		}
-		result, err := interactive.ValidateActorStatePatchesAgainstState(ctx.ActorState, snapshot.State, input.Patches, ctx.TurnID)
-		if err != nil {
-			reportStateMaintenanceFailure(ctx, err)
-			return "", err
-		}
-		if len(result.Ops) == 0 {
-			err := fmt.Errorf("Actor 状态更新没有产生可写入操作")
-			reportStateMaintenanceFailure(ctx, err)
-			return "", err
-		}
-		if _, err := ctx.Store.AppendStateDelta(ctx.StoryID, interactive.AppendStateDeltaRequest{
-			ParentID: ctx.TurnID,
-			BranchID: ctx.BranchID,
-			Ops:      result.Ops,
-		}); err != nil {
-			reportStateMaintenanceFailure(ctx, err)
-			return "", err
-		}
-		if ctx.OnActorStateApplied != nil {
-			ctx.OnActorStateApplied(len(result.Ops))
-		}
-		data, err := json.MarshalIndent(actorStatePatchToolOutput{
-			AppliedActors:  result.AppliedActors,
-			CreatedActors:  result.CreatedActors,
-			AssignedTraits: result.AssignedTraits,
-			Ops:            len(result.Ops),
-			BranchID:       ctx.BranchID,
-			TurnID:         ctx.TurnID,
-		}, "", "  ")
-		if err != nil {
-			return "", err
-		}
-		return string(data), nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return []tool.BaseTool{applyTool}, nil
-}
-
 func newInteractiveStoryMemoryPatchTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
 	ctx.StoryID = strings.TrimSpace(ctx.StoryID)
 	ctx.BranchID = strings.TrimSpace(ctx.BranchID)
@@ -233,7 +166,7 @@ func newInteractiveStoryMemoryPatchTools(ctx InteractiveStoryToolContext) ([]too
 	if ctx.Store == nil || ctx.StoryID == "" || ctx.TurnID == "" {
 		return nil, nil
 	}
-	applyTool, err := utils.InferTool("apply_story_memory_patches", "写入当前互动故事分支的故事记忆 patch。只用于已经在本回合正文中成立、后续需要承接的叙事信息；字段、结构、key 和 values 必须来自注入的 Story Memory schema。可计算状态、当前时间地点、当前事件、关系数值、持续状态和规则标记必须写入状态系统，不要写成故事记忆。后端会按分支和结构校验，并写入 story memory 记录。", func(callCtx context.Context, input applyStoryMemoryPatchesInput) (string, error) {
+	applyTool, err := utils.InferTool("apply_story_memory_patches", "写入当前互动故事分支的故事记忆 patch。只用于已提交 TurnResult 和正文中成立、后续需要承接的叙事事实；字段、结构、key 和 values 必须来自注入的 Story Memory schema。可计算状态、关系数值、持续状态和规则标记以已提交 StateDelta 为准，不要复制成故事记忆，也不得尝试修改 Actor State。后端会按分支和结构校验，并写入可重建的 story memory 记录。", func(callCtx context.Context, input applyStoryMemoryPatchesInput) (string, error) {
 		_ = callCtx
 		if len(input.Patches) == 0 {
 			err := fmt.Errorf("故事记忆 patch 不能为空")
@@ -271,31 +204,58 @@ func reportStateMaintenanceFailure(ctx InteractiveStoryToolContext, err error) {
 }
 
 func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
-	if ctx.PrepareTurn == nil {
+	if ctx.PrepareTurn == nil && ctx.SubmitTurnResult == nil {
 		return nil, nil
 	}
-	desc := strings.Join([]string{
-		"执行本回合一次固定 d20 规则检定。Interactive Agent 负责填写用户行为、意图、挑战、消耗、当前状态说明、投前裁定依据、运行时加成来源和值、难度等级，以及大成功/成功/失败/大失败四档后果；本工具负责掷骰、应用优势或劣势、计算目标、判定结果，并返回命中的最终后果。",
-		"参数协议：difficulty 必须是 very_easy/easy/normal/hard/very_hard；普通难度使用 normal，不要使用 medium/moderate。adjudication 必须说明为什么需要检定、stakes、难度依据、优势/劣势依据和使用到的状态路径。rule 可省略；如提供，template 只能是 dice_check，roll_mode 只能是 normal/advantage/disadvantage，modifier 是模板难度修正值且正数更难；来自 TRPG 模板时填写 template_id、label、failure_policy。",
-		"若本轮上下文提供了 TRPG 检定配置，请先用配置里的 trigger、must_check_examples、skip_check_examples 判断是否检定，用 difficulty_guidance 判断 difficulty/bonuses，用 state_effect_guidance 设计 outcomes.state_changes；state_changes 只写本次检定直接导致的可计算数值变化，叙事线索和短期事实留给后台导演维护。",
-		"若配置提供 state_bindings，请选择 binding_id，并填写 actor_id 与必要的 target_actor_id；binding 中的 modifiers 和 outcome_state_changes 会由工具自动读取 Actor State 并计算，不要重复手算进 bonuses 或 outcomes.state_changes；narrative_state_refs 只用于帮助你在投骰前写好四档 outcomes.*.result。",
-		`最小示例：{"action":"撬锁","intent":"潜入仓库","challenge":"巡逻逼近时开锁","cost":"失败会消耗体力并暴露","state":"主角有简易工具，体力尚可。","adjudication":{"reason":"开锁有时间压力且失败会改变警戒状态。","stakes":"失败会消耗体力并让巡逻靠近。","difficulty_reason":"旧锁简单但附近有人巡逻，维持普通难度。","roll_mode_reason":"工具合适但环境紧张，正常投骰。","state_paths":["actors.protagonist.state.resources.stamina"]},"rule":{"template_id":"dm-osr-player-skill","label":"OSR 型 DM：玩家技巧优先","failure_policy":"blocked","modifier":0},"bonuses":[{"kind":"equipment","reason":"有简易开锁工具","value":2}],"difficulty":"normal","outcomes":{"critical_success":{"result":"无声开锁并发现额外线索。"},"success":{"result":"开锁成功但耗时。"},"failure":{"result":"没能打开，巡逻更近。","state_changes":[{"path":"actors.protagonist.state.resources.stamina","change":-1,"reason":"紧张尝试消耗体力。"}]},"critical_failure":{"result":"工具折断并惊动巡逻。","state_changes":[{"path":"actors.protagonist.state.resources.stamina","change":-2,"reason":"强行操作导致明显体力消耗。"}]}}}`,
-	}, "\n")
-	prepareTool, err := utils.InferTool("prepare_interactive_turn", desc, func(callCtx context.Context, input interactive.TurnCheckRequest) (string, error) {
-		resolution, err := ctx.PrepareTurn(callCtx, input)
+	tools := make([]tool.BaseTool, 0, 2)
+	if ctx.PrepareTurn != nil {
+		desc := strings.Join([]string{
+			"执行本回合一次固定 d20 规则检定。Interactive Agent 负责填写用户行为、意图、挑战、消耗、当前状态说明、投前裁定依据、运行时加成来源和值、难度等级，以及大成功/成功/失败/大失败四档后果；本工具负责掷骰、应用优势或劣势、计算目标、判定结果，并返回命中的最终后果。",
+			"参数协议：difficulty 必须是 very_easy/easy/normal/hard/very_hard；普通难度使用 normal，不要使用 medium/moderate。adjudication 必须说明为什么需要检定、stakes、难度依据、优势/劣势依据；引用状态时使用 state_refs 的 actor_id + field_id。rule 可省略；如提供，template 只能是 dice_check，roll_mode 只能是 normal/advantage/disadvantage，modifier 是模板难度修正值且正数更难；来自 TRPG 模板时填写 template_id、label、failure_policy。",
+			"若本轮上下文提供了 TRPG 检定配置，请先用配置里的 trigger、must_check_examples、skip_check_examples 判断是否检定，用 difficulty_guidance 判断 difficulty/bonuses，用 state_effect_guidance 设计 outcomes.state_changes；state_changes 只写本次检定直接导致的可计算数值变化，叙事线索和短期事实留给后台导演维护。",
+			"若配置提供 state_bindings，请选择 binding_id，并填写 actor_id 与必要的 target_actor_id；binding 中的 modifiers 和 outcome_state_changes 会由工具自动读取 Actor State 并计算，不要重复手算进 bonuses 或 outcomes.state_changes；narrative_state_refs 只用于帮助你在投骰前写好四档 outcomes.*.result。",
+			`最小示例：{"action":"撬锁","intent":"潜入仓库","challenge":"巡逻逼近时开锁","cost":"失败会消耗体力并暴露","state":"主角有简易工具，体力尚可。","adjudication":{"reason":"开锁有时间压力且失败会改变警戒状态。","stakes":"失败会消耗体力并让巡逻靠近。","difficulty_reason":"旧锁简单但附近有人巡逻，维持普通难度。","roll_mode_reason":"工具合适但环境紧张，正常投骰。","state_refs":[{"actor_id":"protagonist","field_id":"体力"}]},"rule":{"template_id":"dm-osr-player-skill","label":"OSR 型 DM：玩家技巧优先","failure_policy":"blocked","modifier":0},"bonuses":[{"kind":"equipment","reason":"有简易开锁工具","value":2}],"difficulty":"normal","outcomes":{"critical_success":{"result":"无声开锁并发现额外线索。"},"success":{"result":"开锁成功但耗时。"},"failure":{"result":"没能打开，巡逻更近。","state_changes":[{"actor_id":"protagonist","field_id":"体力","change":-1,"reason":"紧张尝试消耗体力。"}]},"critical_failure":{"result":"工具折断并惊动巡逻。","state_changes":[{"actor_id":"protagonist","field_id":"体力","change":-2,"reason":"强行操作导致明显体力消耗。"}]}}}`,
+		}, "\n")
+		prepareTool, err := utils.InferTool("prepare_interactive_turn", desc, func(callCtx context.Context, input interactive.TurnCheckRequest) (string, error) {
+			resolution, err := ctx.PrepareTurn(callCtx, input)
+			if err != nil {
+				return "", err
+			}
+			data, err := json.MarshalIndent(resolution.ToolOutput(), "", "  ")
+			if err != nil {
+				return "", err
+			}
+			return string(data), nil
+		})
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		data, err := json.MarshalIndent(resolution.ToolOutput(), "", "  ")
-		if err != nil {
-			return "", err
-		}
-		return string(data), nil
-	})
-	if err != nil {
-		return nil, err
+		tools = append(tools, prepareTool)
 	}
-	return []tool.BaseTool{prepareTool}, nil
+	if ctx.SubmitTurnResult != nil {
+		desc := strings.Join([]string{
+			"在输出故事正文前提交本回合的隐藏 TurnResult。每一回合都必须调用一次，无论是否执行了固定检定；本工具只暂存结构化结果，正文成功完成后才由后端与 Turn、RuleResolution 和 StateDelta 原子提交。",
+			"contract 记录玩家意图、场景目标、1-3 个节拍、NPC 主动意图、揭示、代价、连续性约束和选择维度。actor_state_patches 只声明正文已经确定的非规则状态变化；RuleResolution 已产生的数值变化不得重复。fact_candidates 只记录已经发生的事实，禁止写未来计划。scene_result 和 plan_signals 用于后台 Memory Recorder 与 Director。choices 提供 2-4 个与正文结尾一致的下一步行动建议。",
+			"actor_state_patches.state 的键必须直接使用本故事冻结状态 schema 提供的 field_id（通常是中文名称），不要构造路径、拼音或英文别名。工具会当场校验 Actor、模板、字段、类型和枚举；报错后根据返回的合法字段修正并重试。",
+			"调用完成后，最终回复仍然只能输出玩家可见的故事正文，不得泄露 TurnResult、JSON、工具结果或状态补丁。",
+		}, "\n")
+		submitTool, err := utils.InferTool("submit_interactive_turn_result", desc, func(callCtx context.Context, input interactive.TurnResult) (string, error) {
+			result, err := ctx.SubmitTurnResult(callCtx, input)
+			if err != nil {
+				return "", err
+			}
+			data, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return "", err
+			}
+			return string(data), nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		tools = append(tools, submitTool)
+	}
+	return tools, nil
 }
 
 func normalizeInteractiveMemoryToolLimit(value, fallback, max int) int {

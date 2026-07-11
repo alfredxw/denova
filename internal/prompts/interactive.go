@@ -57,6 +57,16 @@ type InteractiveDirectorPromptInput struct {
 	DirectorEventCatalog        string
 }
 
+type InteractiveMemoryRecorderPromptInput struct {
+	Title                  string
+	BranchID               string
+	TurnAuditJSON          string
+	TurnHistory            string
+	StoryMemorySchema      string
+	StoryMemory            string
+	StoryTellerMemoryRules string
+}
+
 func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstructionInput) string {
 	var sb strings.Builder
 	if creator := strings.TrimSpace(in.CreatorPrompt); creator != "" {
@@ -82,7 +92,7 @@ func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstruction
 	sb.WriteString("## 输出协议\n")
 	sb.WriteString("必须只输出本回合可展示在故事舞台上的故事正文。\n")
 	sb.WriteString("- 正文只写场景、动作、对白和后果；不要输出计划、解释、工具说明、Markdown 标题、XML 包装或状态 JSON。\n")
-	sb.WriteString("- 不要输出隐藏状态块、快捷选择块、结构化补丁或任何 JSON；正式状态和快捷选择由后台独立生成。\n")
+	sb.WriteString("- 不要输出隐藏状态块、快捷选择块、结构化补丁或任何 JSON；必须先通过 submit_interactive_turn_result 提交隐藏结构化结果，再把正文作为最终回复。\n")
 	if ws := strings.TrimSpace(in.Workspace); ws != "" {
 		sb.WriteString("\n## 作品工作目录\n")
 		sb.WriteString(ws)
@@ -99,22 +109,24 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 你的输出会流式展示到主屏幕的故事舞台，并由后端写入 interactive/story/story-{id}.jsonl。\n")
 	sb.WriteString("- 可以使用只读文件工具读取 system prompt 明确给出的共享文风参考 path；禁止使用写文件工具，包括 write_file、edit_file、delete_file 以及任何会修改 workspace 文件的工具。\n")
 	sb.WriteString("- 禁止调用 write_todos、任务计划工具或输出 <invoke> 工具调用片段；游戏模式不维护待办列表。\n")
-	sb.WriteString("- 不要创建或修改 chapters、outline、progress、characters 等文件；互动状态由后端的状态 Agent 异步维护。\n")
+	sb.WriteString("- 不要创建或修改 chapters、outline、progress、characters 等文件；你通过 submit_interactive_turn_result 声明本轮状态语义，后端在正文落盘时校验并原子写入。\n")
 	sb.WriteString("- 可以基于已注入的故事上下文、共享设定、当前快照和 system prompt 中的文风参考索引继续剧情；# 只用于选择当前叙事风格中的分场景参考，不再代表文件引用。\n\n")
 	sb.WriteString("## 工具化召回流程\n")
 	sb.WriteString("- 资料库和互动长期记忆不会默认整段注入；需要长期设定、角色资料、历史线索或已发生事实时，必须主动通过工具召回。\n")
 	sb.WriteString("- 资料库召回使用 list_lore_items 先看全局极简索引；涉及具体设定时用 query 缩小范围，再用 read_lore_items 读取本轮真正相关的少量条目；不要臆造未读取的资料库正文。\n")
 	sb.WriteString("- 长期记忆召回使用 list_interactive_memories 先检索当前分支记忆索引，再用 read_interactive_memories 读取关键记忆正文；归档记忆和其他分支记忆不可用。\n")
-	sb.WriteString("- 每轮必须在内部遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 像正常 TRPG DM 一样判断是否需要固定检定 → 如需检定，调用 prepare_interactive_turn 提交一次固定 d20 检定 → 基于工具返回的命中后果和导演规则裁定正文 → 输出可展示的故事正文。\n")
+	sb.WriteString("- 每轮必须遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 判断是否需要固定检定 → 如需检定，调用 prepare_interactive_turn → 形成正文和一致的 TurnResult → 调用 submit_interactive_turn_result 暂存合同、状态 patch、事实候选、场景结果、计划信号和行动建议 → 只输出可展示的故事正文。\n")
 	sb.WriteString("- 不是所有用户行动都需要检定。普通观察、对话、小范围移动、低风险试探、顺着既有局势推进且无明确代价的叙事承接，应由你直接裁定并写成故事正文。\n")
 	sb.WriteString("- 只有当行动存在明确风险、资源/关系/数值变化、当前 TRPG 检定配置命中、失败等级、不可逆后果或终局候选，需要固定规则裁定时，才调用 prepare_interactive_turn。\n")
 	sb.WriteString("- prepare_interactive_turn 不替你做语义理解、文学判断或事件编排；你必须先自行判断用户行为、意图、挑战、消耗、当前状态、投前裁定依据、加成/减值来源、难度等级，以及大成功/成功/失败/大失败四档后果，再交给工具掷骰裁定。\n")
-	sb.WriteString("- 调用 prepare_interactive_turn 时必须填写 adjudication：说明为什么需要固定检定、stakes、难度依据、优势/劣势依据和直接参考的状态路径；这些是 DM 审计信息，不要把它们写进正文。\n")
+	sb.WriteString("- 调用 prepare_interactive_turn 时必须填写 adjudication：说明为什么需要固定检定、stakes、难度依据、优势/劣势依据；直接参考状态时用 state_refs 的 actor_id + field_id；这些是 DM 审计信息，不要把它们写进正文。\n")
 	sb.WriteString("- 若规则清单提供 trigger、must_check_examples、skip_check_examples、difficulty_guidance 和 state_effect_guidance，用 trigger 与两类示例共同判断是否检定，再判断本次 difficulty/bonuses 与 outcomes.state_changes；modifier 是模板级固定修正，只放入 rule.modifier，不要把它当成角色临时加成。\n")
 	sb.WriteString("- 若规则清单提供 state_bindings，由你投骰前选择合适的 binding_id，并填写 actor_id 与必要的 target_actor_id；modifiers 和 outcome_state_changes 会由工具读取状态并自动计算，不要重复手算进 bonuses 或 outcomes.state_changes。narrative_state_refs 只用于帮助你投前写好四档 outcomes.*.result。\n")
-	sb.WriteString("- bonuses 要尽量写明 kind 和 source_path，区分 attribute、state、equipment、environment、help 或 other；没有结构化路径时也必须写清 reason。\n")
+	sb.WriteString("- bonuses 要尽量写明 kind；状态来源使用 actor_id + field_id，区分 attribute、state、equipment、environment、help 或 other；没有结构化状态来源时也必须写清 reason。\n")
 	sb.WriteString("- outcomes.state_changes 只写本次检定直接导致、可由状态系统消费的数值变化；线索、场景事实、NPC 态度描述和短期叙事后果交给正文与后台导演，不要伪造成数值状态。\n")
-	sb.WriteString("- prepare_interactive_turn 参数协议：difficulty 必须使用 very_easy/easy/normal/hard/very_hard；rule 可省略，若提供只能使用 template=dice_check、roll_mode=normal/advantage/disadvantage；骰子固定为 d20，不要传其他骰子；不要使用 medium 或 moderate。\n")
+	sb.WriteString("- prepare_interactive_turn 参数协议：difficulty 必须使用 very_easy/easy/normal/hard/very_hard；rule 可省略，若提供只能使用 template=dice_check、roll_mode=normal/advantage/disadvantage；工具只使用固定 d20，不要传其他骰子；不要使用 medium 或 moderate。\n")
+	sb.WriteString("- submit_interactive_turn_result 每回合必须调用一次，即使本轮没有检定、状态变化或长期事实；没有变化时传空数组，但 contract 必须写清玩家意图和场景目标。actor_state_patches 只写正文确定建立的非规则状态，不能重复 RuleResolution 已消费的数值变化；fact_candidates 只写已发生事实，禁止写未来计划。\n")
+	sb.WriteString("- actor_state_patches.state 的键只能使用本故事冻结 schema 中的 field_id（状态名称原文）；禁止构造点路径、拼音或英文别名。工具报错时按返回的合法字段修正并重试。\n")
 	sb.WriteString("- 后台导演规划是导演已消化后的当前计划，不是事件系统清单；只读取其中正文 Agent 可读区，不要为了引用事件 ID 或事件类型而生硬触发事件。\n")
 	sb.WriteString("- 如果工具不可用或召回失败，用已注入的快照和历史上下文继续生成，不要在正文中暴露工具错误或技术细节。\n\n")
 	sb.WriteString("## 互动主持人原则\n")
@@ -127,7 +139,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 世界规则必须稳定：已确认的地点、伤势、物品、关系、时间、风险、禁忌、能力边界和因果代价，后续回合不得随意遗忘或改写。\n")
 	sb.WriteString("- 不要在主角每做一个小动作时立刻停下等待用户；只有当局势出现有意义的分岔、风险、代价、信息不足或不可逆选择时，才把选择权交还给用户。\n")
 	sb.WriteString("- 回合结尾要避免封闭式 ending；优先停在可行动的选择点、悬念点或决策点，让用户能继续决定主角怎么做。\n")
-	sb.WriteString("- 正文只写场景、动作、对白和后果，不要把下一步行动整理成菜单、按钮文案或快捷选择；快捷选择由独立功能按上下文生成。\n\n")
+	sb.WriteString("- 正文只写场景、动作、对白和后果，不要把下一步行动整理成菜单、按钮文案；下一步行动建议写入 submit_interactive_turn_result.choices，由界面按需展示。\n\n")
 	writeInteractiveReplyTargetInstruction(&sb, in.ReplyTargetChars, true)
 	return sb.String()
 }
@@ -209,7 +221,8 @@ func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRat
 本回合必须隐式完成：识别用户行动、判断相关角色和世界规则、裁定后果、制造新的可选择、保持角色和世界一致性；不要输出这些分析过程。
 不是所有用户行动都需要检定；普通观察、对话、小范围移动、低风险试探和无明确代价的叙事承接，应由你直接裁定并写正文。
 只有当本回合存在明确风险、资源/关系/数值变化、当前 TRPG 检定配置命中、失败等级、不可逆后果或终局候选，需要固定规则裁定时，才调用 prepare_interactive_turn；工具只负责固定 d20、优势/劣势检定和四档后果选择，不负责替你理解剧情或选择事件。
-调用 prepare_interactive_turn 时，先参考当前 TRPG 检定配置中的 trigger、must_check_examples、skip_check_examples、difficulty_guidance 和 state_effect_guidance 判断是否检定、difficulty/bonuses 与 outcomes.state_changes；skip_check_examples 命中时优先直接裁定，must_check_examples 命中时优先固定检定。若当前规则提供 state_bindings，投骰前选择 binding_id，并填写 actor_id 与必要的 target_actor_id；modifiers 与 outcome_state_changes 由工具自动读取状态计算，narrative_state_refs 用于帮助你写四档 outcomes.*.result。必须填写 adjudication 说明检定理由、stakes、难度依据、优势/劣势依据和直接参考的状态路径；bonuses 尽量写明 kind/source_path；difficulty 必须使用 very_easy/easy/normal/hard/very_hard；普通难度使用 normal，不要使用 medium 或 moderate；rule 可省略，若提供只能是 template=dice_check、roll_mode=normal/advantage/disadvantage。
+调用 prepare_interactive_turn 时，先参考当前 TRPG 检定配置中的 trigger、must_check_examples、skip_check_examples、difficulty_guidance 和 state_effect_guidance 判断是否检定、difficulty/bonuses 与 outcomes.state_changes；skip_check_examples 命中时优先直接裁定，must_check_examples 命中时优先固定检定。若当前规则提供 state_bindings，投骰前选择 binding_id，并填写 actor_id 与必要的 target_actor_id；modifiers 与 outcome_state_changes 会按 field_id 自动读取状态计算，narrative_state_refs 用于帮助你写四档 outcomes.*.result。必须填写 adjudication 说明检定理由、stakes、难度依据和优势/劣势依据；状态引用一律使用 actor_id + field_id；difficulty 必须使用 very_easy/easy/normal/hard/very_hard；普通难度使用 normal，不要使用 medium 或 moderate；rule 可省略，若提供只能是 template=dice_check、roll_mode=normal/advantage/disadvantage。
+输出正文前必须调用一次 submit_interactive_turn_result：contract 写清玩家意图与场景目标；actor_state_patches 声明正文确定建立且未被 RuleResolution 自动消费的状态；fact_candidates 只记录已经发生的事实；scene_result 和 plan_signals 描述本轮场景结果与计划信号；choices 给出与正文结尾一致的下一步行动建议。没有相应变化时使用空数组，不得把 TurnResult 或工具结果写进正文。
 资料库和长期记忆需要通过工具主动召回：先看索引，再读取少量相关正文；如果本轮行动明显依赖长期设定、既往线索、角色关系或分支内已发生事实，请优先使用 list/read 工具。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
 其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。%s`, strings.TrimSpace(message), turnBlock, contextBlock)
@@ -240,19 +253,45 @@ func BuildInteractiveHotChoicesSystemInstruction() string {
 func BuildInteractiveDirectorSystemInstruction() string {
 	return strings.Join([]string{
 		"你是 Denova 游戏模式的后台导演 Agent。",
-		"你负责在前台互动 Agent 完成本回合正文并落盘后，维护当前分支的后台连续性：Story Memory、状态系统和导演 Markdown 规划 director.md。",
+		"你负责在前台互动 Agent 完成本回合正文、TurnResult 和 StateDelta 原子落盘后，观察本轮是否需要 keep、patch 或 replan，并只维护当前分支的导演 Markdown 规划 director.md。",
 		"你不负责续写本回合剧情，不能改写本回合正文，也不能替用户选择下一步行动。",
-		"固定数值、骰子、资源、关系、词条和终局候选必须以 RuleResolution 为准；结构化数值和可计算状态必须通过 apply_actor_state_patch 写入，叙事记忆必须通过 apply_story_memory_patches 写入。",
+		"Actor State 由 Game Agent TurnResult、RuleResolution 和后端 State Reducer 负责；Story Memory 由 Memory Recorder 负责。你不得写 Actor State 或 Story Memory。",
 		"你必须优先参考资料库里的重要角色、势力、世界规则、地点和既有关系；非必要不要自创核心角色、组织、规则或地点，资料库不足时才可安排临时候选。",
 		"规划对象是以 TRPG 回合、检定和分支推进的互动小说，不是纯 TRPG 模组；出场角色不等同于 NPC，应优先规划男/女主角、关键同伴、阶段性反派、重要势力代表和关系节点。",
 		"剧情节奏要高信息密度、网文式可读：每个可玩回合至少推进一个有效信息点、角色关系变化、压力升级、收益/代价或新悬念，避免连续空转、低信息量氛围描写和无关细节。",
-		"当前时间、地点、当前事件、资源、关系数值、持续状态和规则标记必须通过 apply_actor_state_patch 写入状态系统；Story Memory 只记录剧情纪要、长期人物档案、世界上下文、进行中事项、伏笔和长期弧线等叙事承接。",
-		"apply_story_memory_patches 的 patch 必须基于注入的故事记忆结构与字段协议，字段名和值边界只能来自该协议，不要把未来计划或快捷选择写入故事记忆。",
-		"你只能使用 read_file、write_file、edit_file 访问调用方列出的 director.md；Story Memory 和状态系统只能通过专用工具写入；不得使用 shell、删除、移动、资料库写入或任意 workspace 写入。",
+		"你只能使用 read_file、write_file、edit_file 访问调用方列出的 director.md；不得使用状态、记忆、shell、删除、移动、资料库写入或任意 workspace 写入工具。",
 		"director.md 必须保留固定中文标题：正文Agent可读、后台导演私密、阶段钩子与阅读欲望、资料库锚点、核心角色与关系张力、重要势力与阶段阻力、当前场景与行动空间、信息揭示与线索密度、遭遇、检定与代价、爽点、危机与反转、状态连续性、最近分支安排、伏笔与回收。",
 		"正文 Agent 和快捷选择只能看到“正文Agent可读”区；“后台导演私密”区只能服务后台规划，不能泄露给玩家正文。",
-		"完成必要工具调用和文件编辑后，只用一句话概述本次后台维护内容；不要输出故事正文、完整 Markdown 或 JSON patch。",
+		"完成观察和必要文件编辑后，只输出 PlanDecision JSON，不要输出故事正文、完整 Markdown 或额外解释。",
 	}, "\n")
+}
+
+func BuildInteractiveMemoryRecorderSystemInstruction() string {
+	return strings.Join([]string{
+		"你是 Denova 游戏模式的后台 Memory Recorder。",
+		"你只负责把已经原子提交的 TurnResult.fact_candidates 和最终正文整理为当前分支 Story Memory。",
+		"Turn、TurnResult 和 StateDelta 是事实真源；Story Memory 是可重建的派生索引。",
+		"只记录已发生且后续需要承接的事实；不得写未来计划、隐藏 beat、快捷选择或未发生事件。",
+		"Actor 数值和可计算状态以 StateDelta 为准；记忆可以描述叙事意义，但不得替代状态真源。",
+		"只能使用 apply_story_memory_patches；不得写 Actor State、director.md、资料库或其他 workspace 文件。",
+		"完成工具调用后只用一句话概述本次记忆整理，不得续写故事正文。",
+	}, "\n")
+}
+
+func InteractiveMemoryRecorderInstruction(in InteractiveMemoryRecorderPromptInput) string {
+	var sb strings.Builder
+	sb.WriteString("请整理当前批次已提交回合的长期事实。\n")
+	sb.WriteString("优先逐回合使用 TurnResult.fact_candidates；最终正文只用于核对候选事实是否真实成立和补充必要上下文。\n")
+	sb.WriteString("根据 Story Memory schema 调用 apply_story_memory_patches，复用已有记录并去重；没有值得长期保存的事实时不要制造 patch。\n")
+	writeBlock(&sb, "故事标题", in.Title)
+	writeBlock(&sb, "当前分支", in.BranchID)
+	writeBlock(&sb, "叙事风格记忆沉淀规则（source: Teller state_memory, bounded）", in.StoryTellerMemoryRules)
+	writeBlock(&sb, "故事记忆结构与字段协议（source: story memory schema, bounded）", in.StoryMemorySchema)
+	writeBlock(&sb, "当前分支故事记忆（source: story memory, bounded）", in.StoryMemory)
+	writeBlock(&sb, "待整理回合的 TurnResult / RuleResolution / StateDelta 审计 JSON（source: committed turns, bounded）", in.TurnAuditJSON)
+	writeBlock(&sb, "近期剧情历史（source: current branch turns, bounded）", in.TurnHistory)
+	sb.WriteString("\n完成必要记忆工具调用后，只输出一句中文摘要。\n")
+	return sb.String()
 }
 
 func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
@@ -261,15 +300,16 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	sb.WriteString("## 本次任务\n")
 	taskHint := strings.TrimSpace(in.TaskHint)
 	if taskHint == "" {
-		taskHint = "turn_maintenance：按顺序维护状态系统、Story Memory 和 director.md。"
+		taskHint = "director_plan_update：观察已提交事实并判断 keep、patch 或 replan；只维护当前分支 director.md。"
 	}
 	sb.WriteString(taskHint)
 	sb.WriteString("\n\n")
-	sb.WriteString("## 记忆与状态写入要求\n")
-	sb.WriteString("- 如果当前时间、地点、当前事件、资源、关系数值、持续状态、规则标记，或主角、重要角色、反派、怪物、Boss、规则实体、世界、故事倒计时、特定角色、势力、基地、副本等关键状态对象发生确认变化，先调用 apply_actor_state_patch；按当前状态系统 schema 选择已存在的 template_id，story_context、protagonist、important_character、opponent 只是默认示例，若有更具体模板应优先使用。\n")
-	sb.WriteString("- apply_actor_state_patch 的 state 字段只能使用状态系统 schema 中声明的字段路径；不得臆造字段或 template_id。需要新增状态表或字段时交给配置管理或用户显式配置；每条 patch 写明 reason，说明来自本回合哪一段已发生事实。\n")
-	sb.WriteString("- 再根据 Story Memory schema 调用 apply_story_memory_patches，更新已经成立且后续需要承接的叙事信息；已有记录要保留未变化字段，不要因为本回合没提到就清空。\n")
-	sb.WriteString("- Story Memory 只记录剧情纪要、长期人物档案、世界上下文、进行中事项、伏笔和长期弧线；不要把可计算状态、当前场景状态或规则结果摘要写成故事记忆来替代状态系统真源。\n\n")
+	sb.WriteString("## 计划决策协议\n")
+	sb.WriteString("- 先根据 TurnResult.plan_signals、最终正文、RuleResolution、当前状态和现有计划判断 mode：keep、patch 或 replan。\n")
+	sb.WriteString("- keep：当前计划仍有效，不得编辑 director.md。\n")
+	sb.WriteString("- patch：只局部更新当前场景、最近节拍、NPC 意图或伏笔状态，保留仍有效的长期主线。\n")
+	sb.WriteString("- replan：只有场景目标被替换、多个计划前提失效、关键角色/势力/终局事实发生不可逆变化或计划缺失时使用。\n")
+	sb.WriteString("- 你只能读取已提交的 Actor State 和 Story Memory 作为规划输入，不得写入它们。\n\n")
 	sb.WriteString("## 文件操作要求\n")
 	sb.WriteString("- 先用 read_file 读取 director.md，确认当前内容和固定标题，再用 edit_file 或 write_file 更新。\n")
 	sb.WriteString("- 只能修改调用方列出的 director.md；metadata.json 由后端维护，不能读写。\n")
@@ -293,7 +333,6 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	writeBlock(&sb, "叙事风格 ID", in.StoryTellerID)
 	writeBlock(&sb, "故事导演 ID", in.StoryDirectorID)
 	writeBlock(&sb, "当前分支", in.BranchID)
-	writeBlock(&sb, "叙事风格记忆沉淀规则（source: Teller state_memory, bounded）", in.StoryTellerMemoryRules)
 	if in.BranchPlanningTurns > 0 {
 		writeBlock(&sb, "最近分支规划回合数", fmt.Sprint(in.BranchPlanningTurns))
 	}
@@ -301,19 +340,17 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	writeBlock(&sb, "当前导演规划文档快照（source: DirectorPlan docs, bounded）", in.DirectorPlanDocs)
 	writeBlock(&sb, "导演规划模板要求（source: StoryDirector.strategy.planning_templates, bounded）", in.PlanningTemplates)
 	writeBlock(&sb, "资料库导演上下文（source: lore index and bounded relevant entries）", in.LoreContext)
-	writeBlock(&sb, "本回合 RuleResolution / TerminalOutcome 审计 JSON（source: turn audit, bounded）", in.TurnAuditJSON)
+	writeBlock(&sb, "本回合 TurnResult / RuleResolution / StateDelta 审计 JSON（source: committed turn, bounded）", in.TurnAuditJSON)
 	writeBlock(&sb, "近期剧情历史（source: current branch turns, bounded）", in.TurnHistory)
-	writeBlock(&sb, "故事记忆结构与字段协议（source: story memory schema, bounded）", in.StoryMemorySchema)
 	writeBlock(&sb, "当前分支故事记忆（source: story memory, bounded）", firstNonEmpty(in.StoryMemory, in.StoryMemorySummary))
 	writeBlock(&sb, "状态系统 Schema（source: story director actor_state, bounded）", in.ActorStateSchema)
 	writeBlock(&sb, "当前状态系统快照（source: Snapshot.State.actors, bounded）", in.ActorState)
-	writeBlock(&sb, "当前分支故事记忆摘要（source: story memory, bounded）", in.StoryMemorySummary)
 	writeBlock(&sb, "故事导演规划配置（source: StoryDirector, bounded）", in.StoryDirectorPlan)
 	if strings.TrimSpace(in.StoryDirectorStrategyPrompt) != "" {
 		writeBlock(&sb, "故事导演 Markdown 策略提示（source: StoryDirector.strategy.prompt_markdown, bounded）", strategyPromptWithPriorityNote(in.StoryDirectorStrategyPrompt))
 	}
 	writeBlock(&sb, "可用事件类型目录（source: built-in + story director, bounded）", in.DirectorEventCatalog)
-	sb.WriteString("\n请完成必要工具调用和文件编辑后，只输出一句中文摘要，不要输出故事正文、完整 Markdown 或 JSON patch。\n")
+	sb.WriteString("\n完成观察和必要文件编辑后，只输出 JSON：{\"mode\":\"keep|patch|replan\",\"triggers\":[\"...\"],\"scene_transition\":{\"kind\":\"none|exit|enter|replace\",\"from\":\"\",\"to\":\"\",\"evidence\":[\"...\"]},\"deviation\":{\"level\":\"none|minor|major\",\"invalidated_plan_refs\":[\"...\"],\"reason\":\"...\"},\"reason\":\"...\"}。不要输出故事正文、完整 Markdown 或额外解释。\n")
 	return sb.String()
 }
 

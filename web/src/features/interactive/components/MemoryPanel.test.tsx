@@ -25,7 +25,8 @@ describe('MemoryPanel', () => {
     vi.restoreAllMocks()
   })
 
-  it('auto-starts generation stream when the current turn memory is pending', async () => {
+  it('does not let panel mounting trigger background memory writes', async () => {
+    const onOpenMemoryManager = vi.fn()
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
       if (url.includes('/story-memory/generate/stream')) {
@@ -47,7 +48,7 @@ describe('MemoryPanel', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    render(<MemoryPanel storyId="story-1" branchId="main" snapshot={{
+    render(<MemoryPanel storyId="story-1" branchId="main" onOpenMemoryManager={onOpenMemoryManager} snapshot={{
       story_id: 'story-1',
       branch_id: 'main',
       turns: [],
@@ -63,32 +64,26 @@ describe('MemoryPanel', () => {
       },
     }} />)
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/story-memory/generate/stream', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ branch_id: 'main', source: 'auto' }),
-    })))
+		await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/story-memory?branch=main', expect.anything()))
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/story-memory/generate/stream'))).toBe(false)
     expect(screen.getByText('导演控制台')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '运行' })).toHaveClass('bg-[var(--nova-active)]')
+    expect(screen.getByRole('button', { name: '状态' })).toHaveAttribute('aria-current', 'page')
     expect(screen.queryByTestId('director-rail')).not.toBeInTheDocument()
     expect(screen.queryByText('导演编排可能涉及剧透')).not.toBeInTheDocument()
     expect(screen.queryByText('自动整理当前回合的故事记忆')).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: '查看后台执行过程' }))
-    await waitFor(() => expect(screen.getByText('自动整理当前回合的故事记忆')).toBeInTheDocument())
-    expect(screen.getByText('apply_story_memory_patches')).toBeInTheDocument()
-    expect(screen.getByText('整理完成：写入 1 条更新，当前可见 1 条记录')).toBeInTheDocument()
-
     await userEvent.click(screen.getByRole('button', { name: '记忆' }))
-    expect(screen.getByRole('button', { name: '记忆' })).toHaveClass('bg-[var(--nova-active)]')
+    expect(screen.getByRole('button', { name: '记忆' })).toHaveAttribute('aria-current', 'page')
     expect(screen.queryByRole('button', { name: '记忆内容' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '整理过程' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '显示归档项' })).not.toBeInTheDocument()
     expect(screen.queryByText('自动整理当前回合的故事记忆')).not.toBeInTheDocument()
+    const manageButton = screen.getByRole('button', { name: '打开故事记忆管理' })
+    expect(manageButton).toHaveTextContent('管理')
+    await userEvent.click(manageButton)
+    expect(onOpenMemoryManager).toHaveBeenCalledTimes(1)
     expect(screen.getAllByText('顾清漪').length).toBeGreaterThan(0)
-    expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/story-memory/generate/stream', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ branch_id: 'main', source: 'auto' }),
-    }))
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/story-memory/generate/stream'))).toBe(false)
   })
 
   it('switches console tabs without duplicating tab navigation in a side rail', async () => {
@@ -107,15 +102,16 @@ describe('MemoryPanel', () => {
       director_plan_status: directorStatus('ready'),
     }} />)
 
-    expect(screen.getByRole('button', { name: '运行' })).toHaveClass('bg-[var(--nova-active)]')
-    expect(screen.getByTestId('director-run-summary')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '状态' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.queryByTestId('director-run-summary')).not.toBeInTheDocument()
     expect(screen.queryByTestId('director-rail')).not.toBeInTheDocument()
     expect(screen.queryByText('故事记忆')).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: '状态' }))
-    expect(screen.getByRole('button', { name: '状态' })).toHaveClass('bg-[var(--nova-active)]')
-    expect(screen.getByText('Actor 状态')).toBeInTheDocument()
+    expect(screen.getByText('故事此刻')).toBeInTheDocument()
     expect(screen.getAllByText('protagonist').length).toBeGreaterThan(0)
+
+    await openBackstagePanel()
+    expect(screen.getByTestId('director-run-summary')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: '记忆' }))
     expect(screen.getAllByText('顾清漪').length).toBeGreaterThan(0)
@@ -198,7 +194,7 @@ describe('MemoryPanel', () => {
           state_consumption: {
             status: 'partial',
             mode: 'hybrid_auto',
-            applied_ops: [{ op: 'set', path: 'actors.protagonist.state.resources.hp', value: 0, source_kind: 'rule_resolution', source_id: 'rr_1' }],
+            applied_actor_ops: [{ op: 'set', actor_id: 'protagonist', field_id: '当前生命', value: 0, source_kind: 'rule_resolution', source_id: 'rr_1' }],
             warnings: [{ path: 'actors.protagonist.state.conditions.poisoned', reason: '字段不在状态系统中' }],
           },
           terminal_candidate: { type: 'bad_end', reason: '强闯失败导致主线中断', check_id: 'check_1' },
@@ -208,6 +204,7 @@ describe('MemoryPanel', () => {
 
     expect(screen.queryByDisplayValue(/公开压力升高/)).not.toBeInTheDocument()
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/director'))).toBe(false)
+    await openBackstagePanel()
     expect(screen.getByTestId('director-run-summary')).toBeInTheDocument()
     expect(screen.getByText('后台导演运行')).toBeInTheDocument()
     expect(screen.getByText('director unavailable')).toBeInTheDocument()
@@ -230,7 +227,7 @@ describe('MemoryPanel', () => {
     expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/director'))).toBe(false)
     await userEvent.click(screen.getByRole('button', { name: '查看导演编排' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/director?branch=main'))).toBe(true))
-    expect(screen.getAllByText('导演编排').length).toBeGreaterThan(0)
+    expect(screen.getByText('导演节拍表')).toBeInTheDocument()
     expect(screen.getByTestId('director-plan-markdown')).toBeInTheDocument()
     expect(screen.getByText(/公开压力升高/)).toBeInTheDocument()
     expect(screen.queryByDisplayValue(/公开压力升高/)).not.toBeInTheDocument()
@@ -265,6 +262,7 @@ describe('MemoryPanel', () => {
       }),
     }} />)
 
+    await openBackstagePanel()
     await userEvent.click(screen.getByRole('button', { name: '查看后台执行过程' }))
     await waitFor(() => expect(screen.getAllByText('等待首个开局回合后开始规划。').length).toBeGreaterThan(1))
 
@@ -304,6 +302,7 @@ describe('MemoryPanel', () => {
       },
     }} />)
 
+    await openBackstagePanel()
     await waitFor(() => expect(screen.getByRole('button', { name: '分析导演上下文' })).toBeInTheDocument())
     await userEvent.click(screen.getByRole('button', { name: '分析导演上下文' }))
 
@@ -463,6 +462,7 @@ describe('MemoryPanel', () => {
       state: {},
     }} />)
 
+    await openBackstagePanel()
     await waitFor(() => expect(screen.getByRole('button', { name: '手动触发导演规划' })).toBeInTheDocument())
     expect(screen.getByText('当前分支暂无导演编排或规则审计')).toBeInTheDocument()
 
@@ -481,8 +481,13 @@ describe('MemoryPanel', () => {
 })
 
 async function openPlanPanel() {
-  await waitFor(() => expect(screen.getByRole('button', { name: '运行' })).toHaveClass('bg-[var(--nova-active)]'))
   await userEvent.click(screen.getByRole('button', { name: '规划' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: '规划' })).toHaveAttribute('aria-current', 'page'))
+}
+
+async function openBackstagePanel() {
+  await userEvent.click(screen.getByRole('button', { name: '后台' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: '后台' })).toHaveAttribute('aria-current', 'page'))
 }
 
 function sse(events: Array<[string, unknown]>) {

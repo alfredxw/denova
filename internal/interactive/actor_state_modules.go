@@ -8,6 +8,31 @@ import (
 	"time"
 )
 
+func attachBuiltinActorStateLegacyPaths(id string, system StoryDirectorActorStateSystem) StoryDirectorActorStateSystem {
+	builtin, ok := builtinActorStateModuleByID(id)
+	if !ok {
+		return system
+	}
+	legacyByTemplateAndName := map[string]map[string]string{}
+	for _, template := range builtin.ActorState.Templates {
+		legacyByTemplateAndName[template.ID] = map[string]string{}
+		for _, field := range template.Fields {
+			legacyByTemplateAndName[template.ID][actorStateFieldNameKey(field.Name)] = field.LegacyPath
+		}
+	}
+	for templateIndex := range system.Templates {
+		template := &system.Templates[templateIndex]
+		for fieldIndex := range template.Fields {
+			field := &template.Fields[fieldIndex]
+			if legacyPath := legacyByTemplateAndName[template.ID][actorStateFieldNameKey(field.Name)]; legacyPath != "" {
+				field.LegacyPath = legacyPath
+				field.Path = legacyPath
+			}
+		}
+	}
+	return system
+}
+
 func (l *ActorStateLibrary) List() ([]ActorStateModule, error) {
 	if err := l.ensureBuiltins(); err != nil {
 		return nil, err
@@ -120,7 +145,7 @@ func (l *ActorStateLibrary) backupActorStateBeforeMigration(path string) error {
 		return err
 	}
 	timestamp := time.Now().UTC().Format("20060102T150405.000000000Z")
-	backupDir := filepath.Join(l.novaDir, "backups", "state-system-v4", timestamp)
+	backupDir := filepath.Join(l.novaDir, "backups", "state-system-v6", timestamp)
 	if err := os.MkdirAll(backupDir, 0o755); err != nil {
 		return err
 	}

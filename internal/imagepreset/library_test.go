@@ -1,12 +1,28 @@
 package imagepreset
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestPresetDropsLegacyTopLevelTags(t *testing.T) {
+	var preset Preset
+	if err := json.Unmarshal([]byte(`{"id":"legacy","tags":["unused"]}`), &preset); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(preset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encoded, []byte(`"tags"`)) {
+		t.Fatalf("legacy preset tags leaked into persisted JSON: %s", encoded)
+	}
+}
 
 func TestLibraryMaterializesBuiltins(t *testing.T) {
 	lib := NewLibrary(t.TempDir())
@@ -39,7 +55,6 @@ func TestPresetPromptNormalizesAndRoundTrips(t *testing.T) {
 		Name:        "视觉方案",
 		Description: "自定义视觉方案",
 		Prompt:      longPrompt,
-		Tags:        []string{"自定义", "自定义"},
 	})
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
@@ -52,9 +67,6 @@ func TestPresetPromptNormalizesAndRoundTrips(t *testing.T) {
 	}
 	if len(created.Slots) != 1 || created.Slots[0].Target != TargetToolRequest {
 		t.Fatalf("legacy prompt should become tool_request slot: %#v", created.Slots)
-	}
-	if len(created.Tags) != 1 {
-		t.Fatalf("tags should be deduped: %#v", created.Tags)
 	}
 	loaded, err := lib.Get("visual")
 	if err != nil {

@@ -91,7 +91,11 @@ func outputProtocolForAgent(agentKind string) string {
 			"- 正文只写场景、动作、对白和后果；不要输出计划、解释、工具说明、Markdown 标题、XML 包装、隐藏状态块、快捷选择块或任何 JSON。",
 		}, "\n")
 	case config.AgentKindInteractiveDirector:
-		return "- 必须通过专用工具维护 Story Memory 和状态系统，并只通过受限文件工具更新当前分支 director.md；完成后只输出一句简短摘要，不得续写剧情或输出 JSON patch。"
+		return strings.Join([]string{
+			"- 当前调用为 director_plan_update 时，只能维护当前分支 director.md，并只输出 PlanDecision JSON。",
+			"- 当前调用为 memory_update 时，只能通过 apply_story_memory_patches 维护 Story Memory，完成后输出一句简短摘要。",
+			"- 两种阶段都不得续写剧情或写入 Actor State。",
+		}, "\n")
 	case config.AgentKindInteractiveHotChoices:
 		return "- 必须只输出 JSON object，格式为 {\"choices\":[\"...\"]}；不得续写剧情或修改故事状态。"
 	case config.AgentKindVersionSummary:
@@ -120,6 +124,7 @@ func agentRuntimeContract(agentKind string) string {
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
 			"- 互动叙事 Agent 可以使用只读文件工具读取 system prompt 明确给出的共享文风参考；禁止修改 workspace 文件，禁止输出或调用写文件、删除文件、任务计划等工具。",
+			"- 每回合最终正文前必须调用 submit_interactive_turn_result，提交与正文一致的 TurnContract、非规则 Actor 状态 patch、事实候选、场景结果、计划信号和行动建议；后端只在正文成功时原子提交。",
 			"- 互动叙事 Agent 必须遵守内置输出协议，面向故事舞台的正文必须直接作为最终回复输出，不得夹带状态 JSON、工具说明或 XML 包装。",
 			"- 互动叙事 Agent 的篇幅必须以当前 story 的每轮目标字数为最高约束；其它内置提示、CREATOR.md 章节篇幅、导演规则或用户自定义提示中的篇幅倾向都不得要求超过该目标。",
 		}, "\n")
@@ -135,12 +140,13 @@ func agentRuntimeContract(agentKind string) string {
 		}, "\n")
 	case config.AgentKindInteractiveDirector:
 		return strings.Join([]string{
-			"- 互动导演 Agent 是后台回合维护 Agent，根据调用方提供的有界回合审计、RuleResolution、故事记忆、状态系统、资料库导演上下文和导演规划文件维护后台状态。",
-			"- Story Memory 与状态系统的真实写入必须通过专用工具完成；director.md 只能通过受限文件工具编辑当前分支规划文件。",
-			"- 互动导演 Agent 不得续写故事正文，不得替用户选择行动，不得使用 shell、todo、资料库写入或任意 workspace 写入。",
-			"- 互动导演 Agent 必须优先复用资料库中的重要角色、势力、规则、地点和既有关系，并通过高信息密度的角色关系、势力压力、信息揭示、爽点危机、检定代价和分支安排规划后续互动；固定数值、骰子和资源结算结果必须以 RuleResolution 为准。",
-			"- 如果 RuleResolution.state_consumption 显示 applied 或 partial，已应用的数值型 Actor 状态不得通过 apply_actor_state_patch 重复写入；只补充长期记忆、叙事后果，或处理 state_consumption.warnings 中确实成立但未自动消费的状态。",
-			"- 互动导演 Agent 必须把可给正文 Agent 读取的信息放在“正文Agent可读”区，把隐藏真相和未来反转放在“后台导演私密”区。",
+			"- 后台维护分为两个互斥阶段：memory_update 只整理 Story Memory，director_plan_update 只观察并维护当前分支 director.md；必须以调用方实际提供的工具和任务说明为准。",
+			"- Actor State 已由 Game Agent 的 TurnResult、RuleResolution 和后端 State Reducer 原子提交；任何阶段都不得再次写入、覆盖或修正 Actor State。",
+			"- memory_update 只能使用 apply_story_memory_patches，Turn、TurnResult 和 StateDelta 是事实真源，Story Memory 只是可重建的派生索引。",
+			"- director_plan_update 只能使用受限 read_file、write_file、edit_file 维护当前分支 director.md，并输出 keep、patch 或 replan 的 PlanDecision JSON；不得写 Story Memory。",
+			"- 不得续写故事正文、替用户选择行动，也不得使用 shell、todo、资料库写入或任意 workspace 写入。",
+			"- 规划阶段必须优先复用资料库中的重要角色、势力、规则、地点和既有关系，并通过高信息密度的角色关系、势力压力、信息揭示、爽点危机、检定代价和分支安排服务后续互动。",
+			"- 规划阶段必须把可给正文 Agent 读取的信息放在“正文Agent可读”区，把隐藏真相和未来反转放在“后台导演私密”区。",
 		}, "\n")
 	case config.AgentKindInteractiveHotChoices:
 		return "- 快捷选项 Agent 必须只输出符合内置 schema 的 JSON object；不得续写剧情或修改故事状态。"

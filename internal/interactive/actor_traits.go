@@ -305,37 +305,62 @@ func actorTraitPoolByID(system StoryDirectorActorStateSystem, id string) (ActorT
 }
 
 func BuildActorStateInitialOps(system StoryDirectorActorStateSystem, rolls []InitialActorTraitRoll) ([]StateOp, error) {
+	ops, actorOps, err := BuildActorStateInitialChanges(system, rolls)
+	if err != nil {
+		return nil, err
+	}
+	// Compatibility for callers that still consume v1 StateOps. New story
+	// creation persists ActorOps directly.
+	for _, actorOp := range actorOps {
+		templateID := ""
+		for _, actor := range normalizeActorStateSystem(system).InitialActors {
+			if actor.ID == actorOp.ActorID {
+				templateID = actor.TemplateID
+				break
+			}
+		}
+		template := actorStateTemplateByID(system, templateID)
+		field, _ := actorStateFieldByID(template, actorOp.FieldID)
+		legacyPath := firstNonEmptyString(field.LegacyPath, actorOp.FieldID)
+		ops = append(ops, StateOp{Op: actorOp.Op, Path: actorStateFieldPath(actorOp.ActorID, legacyPath), Value: actorOp.Value, Reason: actorOp.Reason, SourceTurnID: actorOp.SourceTurnID, SourceKind: actorOp.SourceKind, SourceID: actorOp.SourceID})
+	}
+	return normalizeStateOps(ops), nil
+}
+
+func BuildActorStateInitialChanges(system StoryDirectorActorStateSystem, rolls []InitialActorTraitRoll) ([]StateOp, []ActorStateOp, error) {
 	system = normalizeActorStateSystem(system)
 	if actorStateEmpty(system) {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if err := validateActorTraitSystem(system); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	rollByActor := map[string]InitialActorTraitRoll{}
 	for _, roll := range rolls {
 		roll.ActorID = normalizeActorStateID(roll.ActorID)
 		if roll.ActorID == "" {
-			return nil, fmt.Errorf("初始词条抽取缺少 actor_id")
+			return nil, nil, fmt.Errorf("初始词条抽取缺少 actor_id")
 		}
 		if _, exists := rollByActor[roll.ActorID]; exists {
-			return nil, fmt.Errorf("初始词条抽取重复: %s", roll.ActorID)
+			return nil, nil, fmt.Errorf("初始词条抽取重复: %s", roll.ActorID)
 		}
 		rollByActor[roll.ActorID] = roll
 	}
 	knownActors := map[string]bool{}
 	ops := make([]StateOp, 0)
+	actorOps := make([]ActorStateOp, 0)
 	for _, actor := range system.InitialActors {
 		knownActors[actor.ID] = true
 		template := actorStateTemplateByID(system, actor.TemplateID)
 		if template.ID == "" {
 			continue
 		}
-		baseOps, err := buildNewActorStateOps(template, actor.ID, actor.Name, actor.Role, actor.Description, actor.State, "", "")
+		baseOps, baseActorOps, _, err := buildNewActorStateOps(template, actor.ID, actor.Name, actor.Role, actor.Description, actor.State, "", "")
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		ops = append(ops, baseOps...)
+		actorOps = append(actorOps, baseActorOps...)
 		roll := rollByActor[actor.ID]
 		result, err := rollActorTraits(system, ActorTraitRollRequest{
 			ActorID:    actor.ID,
@@ -344,7 +369,7 @@ func BuildActorStateInitialOps(system StoryDirectorActorStateSystem, rolls []Ini
 			Seed:       roll.Seed,
 		}, "initial_trait_roll", "story_create")
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if len(result.Traits) > 0 {
 			ops = append(ops, StateOp{
@@ -358,13 +383,13 @@ func BuildActorStateInitialOps(system StoryDirectorActorStateSystem, rolls []Ini
 	}
 	for actorID := range rollByActor {
 		if !knownActors[actorID] {
-			return nil, fmt.Errorf("初始词条抽取目标不是初始 Actor: %s", actorID)
+			return nil, nil, fmt.Errorf("初始词条抽取目标不是初始 Actor: %s", actorID)
 		}
 	}
-	return normalizeStateOps(ops), nil
+	return normalizeStateOps(ops), normalizeActorStateOps(actorOps), nil
 }
 
-func buildNewActorStateOps(template ActorStateTemplate, actorID, name, role, description string, state map[string]any, reason, sourceTurnID string) ([]StateOp, error) {
+func buildNewActorStateOps(template ActorStateTemplate, actorID, name, role, description string, state map[string]any, reason, sourceTurnID string) ([]StateOp, []ActorStateOp, map[string]any, error) {
 	ops := []StateOp{
 		{Op: "set", Path: actorStateActorPath(actorID, "id"), Value: actorID, Reason: reason, SourceTurnID: sourceTurnID},
 		{Op: "set", Path: actorStateActorPath(actorID, "name"), Value: trimBytes(firstNonEmptyString(name, actorID), 128), Reason: reason, SourceTurnID: sourceTurnID},
@@ -374,14 +399,14 @@ func buildNewActorStateOps(template ActorStateTemplate, actorID, name, role, des
 	if strings.TrimSpace(description) != "" {
 		ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(actorID, "description"), Value: trimBytes(description, maxTurnBriefTextBytes), Reason: reason, SourceTurnID: sourceTurnID})
 	}
-	fieldByPath := map[string]ActorStateField{}
+	fieldByReference := actorStateFieldsByReference(template)
+	actorOps := []ActorStateOp{}
+	normalizedState := map[string]any{}
 	for _, field := range template.Fields {
-		fieldByPath[field.Path] = field
+		fieldID := actorStateFieldID(field)
 		if field.Default != nil {
-			ops = append(ops, StateOp{Op: "set", Path: actorStateFieldPath(actorID, field.Path), Value: field.Default, Reason: reason, SourceTurnID: sourceTurnID})
-		}
-		if field.Type == "number" && field.Max != nil {
-			ops = append(ops, StateOp{Op: "set", Path: actorStateFieldPath(actorID, field.Path+"_max"), Value: *field.Max, Reason: reason, SourceTurnID: sourceTurnID})
+			actorOps = append(actorOps, ActorStateOp{Op: "set", ActorID: actorID, FieldID: fieldID, Value: field.Default, Reason: reason, SourceTurnID: sourceTurnID})
+			normalizedState[fieldID] = field.Default
 		}
 	}
 	keys := make([]string, 0, len(state))
@@ -390,17 +415,19 @@ func buildNewActorStateOps(template ActorStateTemplate, actorID, name, role, des
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		field, ok := fieldByPath[key]
+		field, ok := fieldByReference[actorStateFieldNameKey(key)]
 		if !ok {
-			return nil, fmt.Errorf("Actor 状态字段不在模板中: actor=%s template=%s field=%s", actorID, template.ID, key)
+			return nil, nil, nil, fmt.Errorf("Actor 状态字段不在模板中: actor=%s template=%s field=%s", actorID, template.ID, key)
 		}
 		value, err := normalizeActorStateValue(field, state[key])
 		if err != nil {
-			return nil, err
+			return nil, nil, nil, err
 		}
-		ops = append(ops, StateOp{Op: "set", Path: actorStateFieldPath(actorID, key), Value: value, Reason: reason, SourceTurnID: sourceTurnID})
+		fieldID := actorStateFieldID(field)
+		normalizedState[fieldID] = value
+		actorOps = append(actorOps, ActorStateOp{Op: "set", ActorID: actorID, FieldID: fieldID, Value: value, Reason: reason, SourceTurnID: sourceTurnID})
 	}
-	return normalizeStateOps(ops), nil
+	return normalizeStateOps(ops), normalizeActorStateOps(actorOps), normalizedState, nil
 }
 
 func actorTraitInstancesFromState(state map[string]any, actorID string) []ActorTraitInstance {
@@ -598,16 +625,32 @@ func ActorStateRuntimeContext(system StoryDirectorActorStateSystem, state map[st
 		}
 		rawState, _ := record["state"].(map[string]any)
 		visibleState := map[string]any{}
+		writableFields := make([]map[string]any, 0, len(template.Fields))
 		for _, field := range template.Fields {
 			if field.Visibility == "hidden" {
 				continue
 			}
-			if value := getPathExact(rawState, field.Path); value != nil {
-				setPath(visibleState, field.Path, value)
+			fieldID := actorStateFieldID(field)
+			value := rawState[fieldID]
+			if value == nil && strings.TrimSpace(field.LegacyPath) != "" {
+				value = getPathExact(rawState, field.LegacyPath)
 			}
+			if value != nil {
+				visibleState[fieldID] = value
+			}
+			writableFields = append(writableFields, map[string]any{
+				"field_id":           fieldID,
+				"type":               field.Type,
+				"options":            field.Options,
+				"description":        field.Description,
+				"update_instruction": field.UpdateInstruction,
+			})
 		}
 		if len(visibleState) > 0 {
 			entry["state"] = visibleState
+		}
+		if len(writableFields) > 0 {
+			entry["writable_fields"] = writableFields
 		}
 		traits := actorTraitInstancesFromState(state, actorID)
 		visibleTraits := make([]ActorTraitInstance, 0, len(traits))
@@ -622,7 +665,7 @@ func ActorStateRuntimeContext(system StoryDirectorActorStateSystem, state map[st
 		actors[actorID] = entry
 	}
 	payload := map[string]any{
-		"source": map[string]any{"kind": "actor_state_runtime", "path": "Snapshot.State.actors"},
+		"source": map[string]any{"kind": "actor_state_runtime"},
 		"limits": map[string]any{"max_bytes": limitBytes, "max_actors": maxTurnBriefListItems, "max_traits_per_actor": maxActorTraitsPerActor},
 		"actors": actors,
 	}

@@ -90,7 +90,6 @@ describe('StoryPicker', () => {
             name: '经典叙事',
             description: '',
             random_event_rate: 0.15,
-            tags: [],
             context_policy: {
               creator: 'always',
               lore: 'relevant',
@@ -290,7 +289,6 @@ function classicTeller() {
     name: '经典叙事',
     description: '',
     random_event_rate: 0.15,
-    tags: [],
     context_policy: {
       creator: 'always',
       lore: 'relevant',
@@ -337,7 +335,6 @@ function classicStoryDirector(): StoryDirector {
         ],
       }],
     },
-    tags: [],
     custom: false,
   }
 }

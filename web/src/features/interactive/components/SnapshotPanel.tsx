@@ -146,7 +146,7 @@ export function SnapshotPanel({ snapshot, loading = false }: { snapshot: Snapsho
                   stakes: ruleRequest.adjudication.stakes,
                   difficulty_reason: ruleRequest.adjudication.difficulty_reason,
                   roll_mode_reason: ruleRequest.adjudication.roll_mode_reason,
-                  state_paths: ruleRequest.adjudication.state_paths,
+									state_refs: ruleRequest.adjudication.state_refs,
                 })} />
               </div>
             ) : null}
@@ -191,7 +191,7 @@ export function SnapshotPanel({ snapshot, loading = false }: { snapshot: Snapsho
                 <StateValue value={compactRecord({
                   status: stateConsumption.status,
                   mode: stateConsumption.mode,
-                  applied_ops: stateConsumption.applied_ops,
+                  applied_actor_ops: stateConsumption.applied_actor_ops,
                   warnings: stateConsumption.warnings,
                 })} />
               </div>
