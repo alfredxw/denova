@@ -306,58 +306,6 @@ func (s *Store) StoryContext(storyID, branchID string) (StoryContext, error) {
 	return StoryContext{Meta: meta, Snapshot: snapshot}, nil
 }
 
-func (s *Store) HotChoices(storyID, branchID string) (HotChoicesEvent, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	meta, lines, err := s.readStoryLocked(storyID)
-	if err != nil {
-		return HotChoicesEvent{}, false, err
-	}
-	branchID, branch, err := resolveBranch(meta, branchID)
-	if err != nil {
-		return HotChoicesEvent{}, false, err
-	}
-	event, ok := latestHotChoicesForHead(lines, branchID, branch.Head)
-	return event, ok, nil
-}
-
-func (s *Store) SaveHotChoices(storyID, branchID string, choices []string) (HotChoicesEvent, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	choices = normalizeChoiceListLimit(choices, 10)
-	if len(choices) == 0 {
-		return HotChoicesEvent{}, fmt.Errorf("快捷选择不能为空")
-	}
-	meta, lines, err := s.readStoryLocked(storyID)
-	if err != nil {
-		return HotChoicesEvent{}, err
-	}
-	branchID, branch, err := resolveBranch(meta, branchID)
-	if err != nil {
-		return HotChoicesEvent{}, err
-	}
-	now := time.Now().UTC().Format(time.RFC3339Nano)
-	event := HotChoicesEvent{
-		V:        schemaVersion,
-		Type:     StoryEventTypeHotChoices,
-		ID:       newID("hc"),
-		ParentID: branch.Head,
-		BranchID: branchID,
-		Ts:       now,
-		Choices:  choices,
-	}
-	meta.UpdatedAt = now
-	if err := s.rewriteStoryLocked(storyID, meta, lines, event); err != nil {
-		return HotChoicesEvent{}, err
-	}
-	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
-		return HotChoicesEvent{}, err
-	}
-	return event, nil
-}
-
 func (s *Store) AppendContextCompaction(storyID, branchID string, event ContextCompactionEvent) (ContextCompactionEvent, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -537,7 +485,6 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		AgentKind:            strings.TrimSpace(req.AgentKind),
 		DisplayEvents:        sanitizeDisplayEvents(req.DisplayEvents),
 		ModelContextMessages: sanitizeModelContextMessages(req.ModelContextMessages),
-		HotState:             normalizeHotState(req.HotState),
 		TurnBrief:            normalizeTurnBriefPointer(req.TurnBrief),
 		RuleResolution:       normalizeRuleResolutionPointer(req.RuleResolution),
 		TurnResult:           turnResult,
@@ -573,9 +520,6 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		ruleOps, ruleActorOps := applyRuleStateConsumptionV2(state, actorState, turn.ID, turn.RuleResolution, director.Strategy.RuleStateConsumptionMode)
 		ops = append(ops, ruleOps...)
 		actorOps = append(actorOps, ruleActorOps...)
-	}
-	if turn.HotState == nil && turn.TurnResult != nil {
-		turn.HotState = normalizeHotState(&HotState{Choices: turn.TurnResult.Choices})
 	}
 	branch.Head = turn.ID
 

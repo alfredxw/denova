@@ -112,11 +112,11 @@ func TestAgentSessionAPIClearsBackgroundAgentContext(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 
-	clearResp := performJSONRequest(t, server, http.MethodPost, "/api/agents/interactive_hot_choices/session/clear", nil)
+	clearResp := performJSONRequest(t, server, http.MethodPost, "/api/agents/version_summary/session/clear", nil)
 	if clearResp.Code != http.StatusOK {
 		t.Fatalf("clear status = %d body=%s", clearResp.Code, clearResp.Body.String())
 	}
-	messagesResp := performJSONRequest(t, server, http.MethodGet, "/api/agents/interactive_hot_choices/session/messages", nil)
+	messagesResp := performJSONRequest(t, server, http.MethodGet, "/api/agents/version_summary/session/messages", nil)
 	if messagesResp.Code != http.StatusOK {
 		t.Fatalf("messages status = %d body=%s", messagesResp.Code, messagesResp.Body.String())
 	}

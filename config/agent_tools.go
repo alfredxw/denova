@@ -16,17 +16,16 @@ const (
 
 // AgentToolSettings 保存各类 Agent 的工具能力开关。
 type AgentToolSettings struct {
-	Default               AgentToolOverride `toml:"default,omitempty" json:"default,omitempty"`
-	IDE                   AgentToolOverride `toml:"ide,omitempty" json:"ide,omitempty"`
-	InteractiveStory      AgentToolOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
-	ConfigManager         AgentToolOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
-	InteractiveDirector   AgentToolOverride `toml:"interactive_director,omitempty" json:"interactive_director,omitempty"`
-	InteractiveHotChoices AgentToolOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
-	VersionSummary        AgentToolOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
-	ToolAgent             AgentToolOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
-	Image                 AgentToolOverride `toml:"image,omitempty" json:"image,omitempty"`
-	Automation            AgentToolOverride `toml:"automation,omitempty" json:"automation,omitempty"`
-	ContextCompaction     AgentToolOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
+	Default             AgentToolOverride `toml:"default,omitempty" json:"default,omitempty"`
+	IDE                 AgentToolOverride `toml:"ide,omitempty" json:"ide,omitempty"`
+	InteractiveStory    AgentToolOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
+	ConfigManager       AgentToolOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
+	InteractiveDirector AgentToolOverride `toml:"interactive_director,omitempty" json:"interactive_director,omitempty"`
+	VersionSummary      AgentToolOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
+	ToolAgent           AgentToolOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
+	Image               AgentToolOverride `toml:"image,omitempty" json:"image,omitempty"`
+	Automation          AgentToolOverride `toml:"automation,omitempty" json:"automation,omitempty"`
+	ContextCompaction   AgentToolOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
 
 // AgentToolOverride 的指针字段用于区分继承与显式关闭。
@@ -104,10 +103,9 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			AgentConfigRead:  off,
 			AgentConfigWrite: off,
 		},
-		InteractiveHotChoices: noToolAgentOverride(),
-		VersionSummary:        noToolAgentOverride(),
-		ToolAgent:             noToolAgentOverride(),
-		ContextCompaction:     noToolAgentOverride(),
+		VersionSummary:    noToolAgentOverride(),
+		ToolAgent:         noToolAgentOverride(),
+		ContextCompaction: noToolAgentOverride(),
 		Image: AgentToolOverride{
 			FileRead:         off,
 			FileWrite:        off,
@@ -156,17 +154,16 @@ func noToolAgentOverride() AgentToolOverride {
 
 func MergeAgentToolSettings(parent, child AgentToolSettings) AgentToolSettings {
 	return AgentToolSettings{
-		Default:               mergeAgentToolOverride(parent.Default, child.Default),
-		IDE:                   mergeAgentToolOverride(parent.IDE, child.IDE),
-		InteractiveStory:      mergeAgentToolOverride(parent.InteractiveStory, child.InteractiveStory),
-		ConfigManager:         mergeAgentToolOverride(parent.ConfigManager, child.ConfigManager),
-		InteractiveDirector:   mergeAgentToolOverride(parent.InteractiveDirector, child.InteractiveDirector),
-		InteractiveHotChoices: mergeAgentToolOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
-		VersionSummary:        mergeAgentToolOverride(parent.VersionSummary, child.VersionSummary),
-		ToolAgent:             mergeAgentToolOverride(parent.ToolAgent, child.ToolAgent),
-		Image:                 mergeAgentToolOverride(parent.Image, child.Image),
-		Automation:            mergeAgentToolOverride(parent.Automation, child.Automation),
-		ContextCompaction:     mergeAgentToolOverride(parent.ContextCompaction, child.ContextCompaction),
+		Default:             mergeAgentToolOverride(parent.Default, child.Default),
+		IDE:                 mergeAgentToolOverride(parent.IDE, child.IDE),
+		InteractiveStory:    mergeAgentToolOverride(parent.InteractiveStory, child.InteractiveStory),
+		ConfigManager:       mergeAgentToolOverride(parent.ConfigManager, child.ConfigManager),
+		InteractiveDirector: mergeAgentToolOverride(parent.InteractiveDirector, child.InteractiveDirector),
+		VersionSummary:      mergeAgentToolOverride(parent.VersionSummary, child.VersionSummary),
+		ToolAgent:           mergeAgentToolOverride(parent.ToolAgent, child.ToolAgent),
+		Image:               mergeAgentToolOverride(parent.Image, child.Image),
+		Automation:          mergeAgentToolOverride(parent.Automation, child.Automation),
+		ContextCompaction:   mergeAgentToolOverride(parent.ContextCompaction, child.ContextCompaction),
 	}
 }
 

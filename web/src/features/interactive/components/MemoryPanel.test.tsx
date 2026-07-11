@@ -107,7 +107,7 @@ describe('MemoryPanel', () => {
     expect(screen.queryByTestId('director-rail')).not.toBeInTheDocument()
     expect(screen.queryByText('故事记忆')).not.toBeInTheDocument()
 
-    expect(screen.getByText('故事此刻')).toBeInTheDocument()
+		expect(screen.queryByText('故事此刻')).not.toBeInTheDocument()
     expect(screen.getAllByText('protagonist').length).toBeGreaterThan(0)
 
     await openBackstagePanel()

@@ -477,6 +477,7 @@ func applyDirectorMemoryForTest(toolContext agent.InteractiveStoryToolContext) e
 func committedTurnResultForTest(playerIntent, sceneGoal, fact string) *interactive.TurnResult {
 	result := &interactive.TurnResult{
 		Contract: interactive.TurnContract{PlayerIntent: playerIntent, SceneGoal: sceneGoal},
+		Choices:  []string{"继续推进", "观察周围"},
 		SceneResult: interactive.TurnSceneResult{
 			Status:  "continued",
 			Summary: fact,

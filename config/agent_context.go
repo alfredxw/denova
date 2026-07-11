@@ -17,17 +17,16 @@ const (
 
 // AgentContextSettings stores per-agent context compaction settings.
 type AgentContextSettings struct {
-	Default               AgentContextOverride `toml:"default,omitempty" json:"default,omitempty"`
-	IDE                   AgentContextOverride `toml:"ide,omitempty" json:"ide,omitempty"`
-	InteractiveStory      AgentContextOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
-	ConfigManager         AgentContextOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
-	InteractiveDirector   AgentContextOverride `toml:"interactive_director,omitempty" json:"interactive_director,omitempty"`
-	InteractiveHotChoices AgentContextOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
-	VersionSummary        AgentContextOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
-	ToolAgent             AgentContextOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
-	Image                 AgentContextOverride `toml:"image,omitempty" json:"image,omitempty"`
-	Automation            AgentContextOverride `toml:"automation,omitempty" json:"automation,omitempty"`
-	ContextCompaction     AgentContextOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
+	Default             AgentContextOverride `toml:"default,omitempty" json:"default,omitempty"`
+	IDE                 AgentContextOverride `toml:"ide,omitempty" json:"ide,omitempty"`
+	InteractiveStory    AgentContextOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
+	ConfigManager       AgentContextOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
+	InteractiveDirector AgentContextOverride `toml:"interactive_director,omitempty" json:"interactive_director,omitempty"`
+	VersionSummary      AgentContextOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
+	ToolAgent           AgentContextOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
+	Image               AgentContextOverride `toml:"image,omitempty" json:"image,omitempty"`
+	Automation          AgentContextOverride `toml:"automation,omitempty" json:"automation,omitempty"`
+	ContextCompaction   AgentContextOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
 
 type AgentContextOverride struct {
@@ -71,17 +70,16 @@ func DefaultAgentContextSettings() AgentContextSettings {
 
 func MergeAgentContextSettings(parent, child AgentContextSettings) AgentContextSettings {
 	return AgentContextSettings{
-		Default:               mergeAgentContextOverride(parent.Default, child.Default),
-		IDE:                   mergeAgentContextOverride(parent.IDE, child.IDE),
-		InteractiveStory:      mergeAgentContextOverride(parent.InteractiveStory, child.InteractiveStory),
-		ConfigManager:         mergeAgentContextOverride(parent.ConfigManager, child.ConfigManager),
-		InteractiveDirector:   mergeAgentContextOverride(parent.InteractiveDirector, child.InteractiveDirector),
-		InteractiveHotChoices: mergeAgentContextOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
-		VersionSummary:        mergeAgentContextOverride(parent.VersionSummary, child.VersionSummary),
-		ToolAgent:             mergeAgentContextOverride(parent.ToolAgent, child.ToolAgent),
-		Image:                 mergeAgentContextOverride(parent.Image, child.Image),
-		Automation:            mergeAgentContextOverride(parent.Automation, child.Automation),
-		ContextCompaction:     mergeAgentContextOverride(parent.ContextCompaction, child.ContextCompaction),
+		Default:             mergeAgentContextOverride(parent.Default, child.Default),
+		IDE:                 mergeAgentContextOverride(parent.IDE, child.IDE),
+		InteractiveStory:    mergeAgentContextOverride(parent.InteractiveStory, child.InteractiveStory),
+		ConfigManager:       mergeAgentContextOverride(parent.ConfigManager, child.ConfigManager),
+		InteractiveDirector: mergeAgentContextOverride(parent.InteractiveDirector, child.InteractiveDirector),
+		VersionSummary:      mergeAgentContextOverride(parent.VersionSummary, child.VersionSummary),
+		ToolAgent:           mergeAgentContextOverride(parent.ToolAgent, child.ToolAgent),
+		Image:               mergeAgentContextOverride(parent.Image, child.Image),
+		Automation:          mergeAgentContextOverride(parent.Automation, child.Automation),
+		ContextCompaction:   mergeAgentContextOverride(parent.ContextCompaction, child.ContextCompaction),
 	}
 }
 
@@ -204,7 +202,6 @@ func sanitizeAgentContextSettings(settings AgentContextSettings) AgentContextSet
 	settings.InteractiveStory = sanitizeAgentContextOverride(settings.InteractiveStory)
 	settings.ConfigManager = sanitizeAgentContextOverride(settings.ConfigManager)
 	settings.InteractiveDirector = sanitizeAgentContextOverride(settings.InteractiveDirector)
-	settings.InteractiveHotChoices = sanitizeAgentContextOverride(settings.InteractiveHotChoices)
 	settings.VersionSummary = sanitizeAgentContextOverride(settings.VersionSummary)
 	settings.ToolAgent = sanitizeAgentContextOverride(settings.ToolAgent)
 	settings.Image = sanitizeAgentContextOverride(settings.Image)

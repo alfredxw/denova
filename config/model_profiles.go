@@ -18,17 +18,16 @@ type ModelProfileSettings struct {
 }
 
 type AgentModelSettings struct {
-	Default               AgentModelOverride `toml:"default,omitempty" json:"default,omitempty"`
-	IDE                   AgentModelOverride `toml:"ide,omitempty" json:"ide,omitempty"`
-	InteractiveStory      AgentModelOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
-	ConfigManager         AgentModelOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
-	InteractiveDirector   AgentModelOverride `toml:"interactive_director,omitempty" json:"interactive_director,omitempty"`
-	InteractiveHotChoices AgentModelOverride `toml:"interactive_hot_choices,omitempty" json:"interactive_hot_choices,omitempty"`
-	VersionSummary        AgentModelOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
-	ToolAgent             AgentModelOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
-	Image                 AgentModelOverride `toml:"image,omitempty" json:"image,omitempty"`
-	Automation            AgentModelOverride `toml:"automation,omitempty" json:"automation,omitempty"`
-	ContextCompaction     AgentModelOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
+	Default             AgentModelOverride `toml:"default,omitempty" json:"default,omitempty"`
+	IDE                 AgentModelOverride `toml:"ide,omitempty" json:"ide,omitempty"`
+	InteractiveStory    AgentModelOverride `toml:"interactive_story,omitempty" json:"interactive_story,omitempty"`
+	ConfigManager       AgentModelOverride `toml:"config_manager,omitempty" json:"config_manager,omitempty"`
+	InteractiveDirector AgentModelOverride `toml:"interactive_director,omitempty" json:"interactive_director,omitempty"`
+	VersionSummary      AgentModelOverride `toml:"version_summary,omitempty" json:"version_summary,omitempty"`
+	ToolAgent           AgentModelOverride `toml:"tool_agent,omitempty" json:"tool_agent,omitempty"`
+	Image               AgentModelOverride `toml:"image,omitempty" json:"image,omitempty"`
+	Automation          AgentModelOverride `toml:"automation,omitempty" json:"automation,omitempty"`
+	ContextCompaction   AgentModelOverride `toml:"context_compaction,omitempty" json:"context_compaction,omitempty"`
 }
 
 type AgentModelOverride struct {
@@ -51,17 +50,16 @@ type ResolvedModelSettings struct {
 
 func MergeAgentModelSettings(parent, child AgentModelSettings) AgentModelSettings {
 	return AgentModelSettings{
-		Default:               mergeAgentModelOverride(parent.Default, child.Default),
-		IDE:                   mergeAgentModelOverride(parent.IDE, child.IDE),
-		InteractiveStory:      mergeAgentModelOverride(parent.InteractiveStory, child.InteractiveStory),
-		ConfigManager:         mergeAgentModelOverride(parent.ConfigManager, child.ConfigManager),
-		InteractiveDirector:   mergeAgentModelOverride(parent.InteractiveDirector, child.InteractiveDirector),
-		InteractiveHotChoices: mergeAgentModelOverride(parent.InteractiveHotChoices, child.InteractiveHotChoices),
-		VersionSummary:        mergeAgentModelOverride(parent.VersionSummary, child.VersionSummary),
-		ToolAgent:             mergeAgentModelOverride(parent.ToolAgent, child.ToolAgent),
-		Image:                 mergeAgentModelOverride(parent.Image, child.Image),
-		Automation:            mergeAgentModelOverride(parent.Automation, child.Automation),
-		ContextCompaction:     mergeAgentModelOverride(parent.ContextCompaction, child.ContextCompaction),
+		Default:             mergeAgentModelOverride(parent.Default, child.Default),
+		IDE:                 mergeAgentModelOverride(parent.IDE, child.IDE),
+		InteractiveStory:    mergeAgentModelOverride(parent.InteractiveStory, child.InteractiveStory),
+		ConfigManager:       mergeAgentModelOverride(parent.ConfigManager, child.ConfigManager),
+		InteractiveDirector: mergeAgentModelOverride(parent.InteractiveDirector, child.InteractiveDirector),
+		VersionSummary:      mergeAgentModelOverride(parent.VersionSummary, child.VersionSummary),
+		ToolAgent:           mergeAgentModelOverride(parent.ToolAgent, child.ToolAgent),
+		Image:               mergeAgentModelOverride(parent.Image, child.Image),
+		Automation:          mergeAgentModelOverride(parent.Automation, child.Automation),
+		ContextCompaction:   mergeAgentModelOverride(parent.ContextCompaction, child.ContextCompaction),
 	}
 }
 

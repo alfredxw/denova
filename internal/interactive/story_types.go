@@ -42,7 +42,6 @@ type AppendTurnWithStateRequest struct {
 	ModelContextMessages []ModelContextMessage `json:"model_context_messages,omitempty"`
 	Ops                  []StateOp             `json:"ops,omitempty"`
 	ActorOps             []ActorStateOp        `json:"actor_ops,omitempty"`
-	HotState             *HotState             `json:"hot_state,omitempty"`
 	TurnBrief            *TurnBrief            `json:"turn_brief,omitempty"`
 	RuleResolution       *RuleResolution       `json:"rule_resolution,omitempty"`
 	TurnResult           *TurnResult           `json:"turn_result,omitempty"`

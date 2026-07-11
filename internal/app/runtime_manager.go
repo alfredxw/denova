@@ -634,9 +634,6 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.ChapterGroupMax != nil {
 		cfg.ChapterGroupMax = appSettingsInt(effective.ChapterGroupMax, 8)
 	}
-	if effective.InteractiveHotChoices != nil {
-		cfg.InteractiveHotChoices = *effective.InteractiveHotChoices
-	}
 	if effective.VersionTimedEnabled != nil {
 		cfg.VersionTimedEnabled = *effective.VersionTimedEnabled
 	}
@@ -748,9 +745,6 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.ChapterGroupMax != nil {
 		cfg.ChapterGroupMax = appSettingsInt(settings.ChapterGroupMax, 8)
-	}
-	if settings.InteractiveHotChoices != nil {
-		cfg.InteractiveHotChoices = *settings.InteractiveHotChoices
 	}
 	if settings.VersionTimedEnabled != nil {
 		cfg.VersionTimedEnabled = *settings.VersionTimedEnabled

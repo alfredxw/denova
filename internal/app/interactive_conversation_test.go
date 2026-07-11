@@ -38,6 +38,7 @@ func TestSubmitTurnResultValidatesFrozenActorStateImmediately(t *testing.T) {
 		Contract:    interactive.TurnContract{PlayerIntent: "休息"},
 		SceneResult: interactive.TurnSceneResult{Status: "continued"},
 		PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"},
+		Choices:     []string{"继续休息", "检查当前状态"},
 	}
 	unknown := base
 	unknown.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{"body.status": "良好"}}}

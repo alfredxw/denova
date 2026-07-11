@@ -102,14 +102,52 @@ describe('useWorkspace', () => {
     })
 
     await act(async () => {
-      await workspace?.saveCurrentFile('第一次保存')
+      await workspace?.saveFileContent('chapters/ch01.md', '第一次保存')
     })
     expect(apiMock.saveFile).toHaveBeenLastCalledWith('chapters/ch01.md', '第一次保存', 'rev-1')
 
     await act(async () => {
-      await workspace?.saveCurrentFile('第二次保存')
+      await workspace?.saveFileContent('chapters/ch01.md', '第二次保存')
     })
     expect(apiMock.saveFile).toHaveBeenLastCalledWith('chapters/ch01.md', '第二次保存', 'rev-2')
+  })
+
+  it('文件切换期间的迟到保存不会污染新文件的 revision', async () => {
+    const firstSave = deferred<{ path: string; message: string; revision: string }>()
+    apiMock.readFile.mockImplementation((path: string) => Promise.resolve(
+      path === 'setting/outline.md'
+        ? { path, content: '大纲', revision: 'outline-rev-1' }
+        : { path, content: '进度', revision: 'progress-rev-1' },
+    ))
+    apiMock.saveFile.mockImplementation((path: string) => (
+      path === 'setting/outline.md'
+        ? firstSave.promise
+        : Promise.resolve({ path, message: 'ok', revision: 'progress-rev-2' })
+    ))
+
+    let workspace: ReturnType<typeof useWorkspace> | null = null
+    render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
+
+    await waitFor(() => expect(apiMock.getCurrentWorkspace).toHaveBeenCalled())
+    await act(async () => {
+      await workspace?.selectFile('setting/outline.md')
+    })
+    let outlineSave: Promise<boolean> | undefined
+    act(() => {
+      outlineSave = workspace?.saveFileContent('setting/outline.md', '大纲修改后')
+    })
+    await act(async () => {
+      await workspace?.selectFile('setting/progress.md')
+    })
+    await act(async () => {
+      firstSave.resolve({ path: 'setting/outline.md', message: 'ok', revision: 'outline-rev-2' })
+      await outlineSave
+    })
+    await act(async () => {
+      await workspace?.saveFileContent('setting/progress.md', '进度修改后')
+    })
+
+    expect(apiMock.saveFile).toHaveBeenLastCalledWith('setting/progress.md', '进度修改后', 'progress-rev-1')
   })
 })
 

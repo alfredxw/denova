@@ -15,13 +15,6 @@ func TestInteractivePromptsSkipLegacyCharacterAndWorldFallback(t *testing.T) {
 			ReplyTargetChars: 800,
 			LongTermMemory:   "林川仍在黄泉酒馆。",
 		}),
-		"hot choices": InteractiveHotChoicesInstruction(InteractiveHotChoicesPromptInput{
-			Title:         "末日开端",
-			Origin:        "主角醒来发现世界已末日",
-			StoryTellerID: "classic",
-			BranchID:      "main",
-			TurnHistory:   "第 1 回合剧情：门后传来低沉的风声。",
-		}),
 		"director maintenance": InteractiveDirectorInstruction(InteractiveDirectorPromptInput{
 			Title:             "末日开端",
 			Origin:            "主角醒来发现世界已末日",

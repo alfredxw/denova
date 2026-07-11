@@ -47,7 +47,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
 
   // 用 ref 追踪最新 selectedFile，避免异步回调闭包捕获旧值
   const selectedFileRef = useRef<string | null>(null)
-  const selectedFileRevisionRef = useRef<string>('')
+  const fileRevisionsRef = useRef<Map<string, string>>(new Map())
   const selectFileRequestRef = useRef(0)
   selectedFileRef.current = selectedFile
 
@@ -56,7 +56,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     setLoading(false)
     setSelectedFile(null)
     setFileContent('')
-    selectedFileRevisionRef.current = ''
+    fileRevisionsRef.current.clear()
     setSummary(null)
   }, [])
 
@@ -161,7 +161,6 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     if (workspaceFileKind(path) === 'image') {
       setSelectedFile(path)
       setFileContent('')
-      selectedFileRevisionRef.current = ''
       return
     }
     try {
@@ -170,7 +169,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       // React 18 自动批量：两个 setState 合并为一次渲染，确保 MarkdownEditor 拿到一致的 (fileName, content)
       setSelectedFile(path)
       setFileContent(data.content || '')
-      selectedFileRevisionRef.current = data.revision || ''
+      fileRevisionsRef.current.set(path, data.revision || '')
     } catch (e) {
       console.error('读取文件失败', e)
     }
@@ -180,7 +179,6 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const clearSelectedFile = useCallback(() => {
     setSelectedFile(null)
     setFileContent('')
-    selectedFileRevisionRef.current = ''
   }, [])
 
   /** 读取指定文件内容 */
@@ -197,7 +195,6 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     if (!currentFile) return
     if (workspaceFileKind(currentFile) === 'image') {
       setFileContent('')
-      selectedFileRevisionRef.current = ''
       return
     }
 
@@ -213,32 +210,32 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       // 仅当选中文件没有在异步期间改变时才更新内容
       if (selectedFileRef.current === currentFile) {
         setFileContent(data.content || '')
-        selectedFileRevisionRef.current = data.revision || ''
+        fileRevisionsRef.current.set(currentFile, data.revision || '')
       }
     } catch (e) {
       console.error('刷新当前文件失败', e)
     }
   }, [fetchTree, fetchSummary, workspace])
 
-  /** 保存当前文件内容 */
-  const saveCurrentFile = useCallback(async (content: string): Promise<boolean> => {
-    if (!workspace || !selectedFile) return false
+  /** 保存指定文件内容；路径和 revision 绑定，避免文件切换期间的迟到响应串写。 */
+  const saveFileContent = useCallback(async (path: string, content: string): Promise<boolean> => {
+    if (!workspace || !path) return false
     try {
-      const result = await saveFile(selectedFile, content, selectedFileRevisionRef.current)
-      if (result.revision) selectedFileRevisionRef.current = result.revision
+      const result = await saveFile(path, content, fileRevisionsRef.current.get(path) || '')
+      if (result.revision) fileRevisionsRef.current.set(path, result.revision)
       await fetchSummary()
       return true
     } catch (e) {
       console.error('保存文件失败', e)
       return false
     }
-  }, [fetchSummary, selectedFile, workspace])
+  }, [fetchSummary, workspace])
 
   /** 切换 workspace 后刷新所有状态 */
   const refreshAll = useCallback(async () => {
     setSelectedFile(null)
     setFileContent('')
-    selectedFileRevisionRef.current = ''
+    fileRevisionsRef.current.clear()
     await Promise.all([fetchWorkspace(), fetchBooks()])
   }, [fetchWorkspace, fetchBooks])
 
@@ -254,7 +251,6 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     if (selectedFile === path || selectedFile?.startsWith(`${path}/`)) {
       setSelectedFile(null)
       setFileContent('')
-      selectedFileRevisionRef.current = ''
     }
     await Promise.all([fetchTree(), fetchSummary()])
   }, [fetchTree, fetchSummary, selectedFile])
@@ -313,7 +309,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     books,
     selectFile,
     clearSelectedFile,
-    saveCurrentFile,
+    saveFileContent,
     readFile,
     createItem,
     deleteItem,

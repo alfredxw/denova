@@ -27,11 +27,11 @@ func TestPersistAgentCallInStoreWritesFullMessages(t *testing.T) {
 	longInput := strings.Repeat("输入", 7000)
 	longOutput := strings.Repeat("输出", 5000)
 
-	if err := persistAgentCallInStore(store, config.AgentKindInteractiveHotChoices, longInput, longOutput); err != nil {
+	if err := persistAgentCallInStore(store, config.AgentKindVersionSummary, longInput, longOutput); err != nil {
 		t.Fatal(err)
 	}
 
-	sess, err := agentSessionFromStore(store, config.AgentKindInteractiveHotChoices)
+	sess, err := agentSessionFromStore(store, config.AgentKindVersionSummary)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -148,7 +148,7 @@ describe('MarkdownEditor', () => {
   it('自动保存进行中继续编辑时串行保存最新内容，避免旧请求晚返回覆盖新内容', async () => {
     vi.useFakeTimers()
     const firstSave = deferred<boolean>()
-    const onSave = vi.fn((content: string) => content === '第一版' ? firstSave.promise : Promise.resolve(true))
+    const onSave = vi.fn((_path: string, content: string) => content === '第一版\n' ? firstSave.promise : Promise.resolve(true))
 
     render(
       <MarkdownEditor
@@ -166,7 +166,7 @@ describe('MarkdownEditor', () => {
     })
 
     expect(onSave).toHaveBeenCalledTimes(1)
-    expect(onSave).toHaveBeenLastCalledWith('第一版\n')
+    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第一版\n')
 
     act(() => {
       tiptapMock.markdown = '第二版'
@@ -183,7 +183,92 @@ describe('MarkdownEditor', () => {
     })
 
     expect(onSave).toHaveBeenCalledTimes(2)
-    expect(onSave).toHaveBeenLastCalledWith('第二版\n')
+    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第二版\n')
+  })
+
+  it('切换文件时为排队中的自动保存保留各自的目标文件', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<boolean>()
+    const saveOutline = vi.fn(() => firstSave.promise)
+    const saveProgress = vi.fn(() => Promise.resolve(true))
+    const { rerender } = render(
+      <MarkdownEditor
+        fileName="setting/outline.md"
+        content="大纲初始内容"
+        onSave={saveOutline}
+        autoSaveDelayMs={1200}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '大纲修改后'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(1200)
+    })
+
+    expect(saveOutline).toHaveBeenCalledWith('setting/outline.md', '大纲修改后\n')
+
+    rerender(
+      <MarkdownEditor
+        fileName="setting/progress.md"
+        content="进度初始内容"
+        onSave={saveProgress}
+        autoSaveDelayMs={1200}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '进度修改后'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(1200)
+    })
+
+    expect(saveProgress).not.toHaveBeenCalled()
+
+    await act(async () => {
+      firstSave.resolve(true)
+      await firstSave.promise
+      await Promise.resolve()
+    })
+
+    expect(saveOutline).toHaveBeenCalledTimes(1)
+    expect(saveProgress).toHaveBeenCalledTimes(1)
+    expect(saveProgress).toHaveBeenCalledWith('setting/progress.md', '进度修改后\n')
+  })
+
+  it('自动保存延迟期间切换文件会立即保存旧文件草稿', async () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn(() => Promise.resolve(true))
+    const { rerender } = render(
+      <MarkdownEditor
+        fileName="setting/outline.md"
+        content="大纲初始内容"
+        onSave={onSave}
+        autoSaveDelayMs={1200}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '大纲尚未到保存时间'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(600)
+    })
+
+    rerender(
+      <MarkdownEditor
+        fileName="setting/progress.md"
+        content="进度初始内容"
+        onSave={onSave}
+        autoSaveDelayMs={1200}
+      />,
+    )
+
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(onSave).toHaveBeenCalledWith('setting/outline.md', '大纲尚未到保存时间\n')
   })
 
   it('用户修改后按配置延迟自动保存，不按周期重复保存', async () => {
@@ -213,7 +298,7 @@ describe('MarkdownEditor', () => {
     })
 
     expect(onSave).toHaveBeenCalledTimes(1)
-    expect(onSave).toHaveBeenLastCalledWith('修改后\n')
+    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '修改后\n')
 
     await act(async () => {
       vi.advanceTimersByTime(5000)
@@ -242,7 +327,7 @@ describe('MarkdownEditor', () => {
 
     await user.click(screen.getByRole('button', { name: '保存' }))
 
-    expect(onSave).toHaveBeenCalledWith('修改后\n')
+    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '修改后\n')
     expect(toastMock.success).not.toHaveBeenCalled()
   })
 

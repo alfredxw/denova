@@ -107,7 +107,7 @@ function App() {
 
   const {
     tree, loading, selectedFile, fileContent, workspace, workspaceLoaded, summary, books,
-    selectFile, clearSelectedFile, saveCurrentFile, createItem, deleteItem, renameItem, copyItem, moveItem,
+    selectFile, clearSelectedFile, saveFileContent, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
   } = useWorkspace({ autoRefreshEnabled: workspaceAutoRefreshEnabled })
 
@@ -351,11 +351,11 @@ function App() {
     notifyVersionChange()
   }
 
-  const handleSaveCurrentFile = useCallback(async (content: string) => {
-    const saved = await saveCurrentFile(content)
+  const handleSaveCurrentFile = useCallback(async (path: string, content: string) => {
+    const saved = await saveFileContent(path, content)
     if (saved) notifyVersionChange()
     return saved
-  }, [notifyVersionChange, saveCurrentFile])
+  }, [notifyVersionChange, saveFileContent])
 
   const handleCreateItem = useCallback(async (path: string, type: 'file' | 'dir') => {
     await createItem(path, type)

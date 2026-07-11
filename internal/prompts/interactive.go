@@ -222,32 +222,10 @@ func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRat
 不是所有用户行动都需要检定；普通观察、对话、小范围移动、低风险试探和无明确代价的叙事承接，应由你直接裁定并写正文。
 只有当本回合存在明确风险、资源/关系/数值变化、当前 TRPG 检定配置命中、失败等级、不可逆后果或终局候选，需要固定规则裁定时，才调用 prepare_interactive_turn；工具只负责固定 d20、优势/劣势检定和四档后果选择，不负责替你理解剧情或选择事件。
 调用 prepare_interactive_turn 时，先参考当前 TRPG 检定配置中的 trigger、must_check_examples、skip_check_examples、difficulty_guidance 和 state_effect_guidance 判断是否检定、difficulty/bonuses 与 outcomes.state_changes；skip_check_examples 命中时优先直接裁定，must_check_examples 命中时优先固定检定。若当前规则提供 state_bindings，投骰前选择 binding_id，并填写 actor_id 与必要的 target_actor_id；modifiers 与 outcome_state_changes 会按 field_id 自动读取状态计算，narrative_state_refs 用于帮助你写四档 outcomes.*.result。必须填写 adjudication 说明检定理由、stakes、难度依据和优势/劣势依据；状态引用一律使用 actor_id + field_id；difficulty 必须使用 very_easy/easy/normal/hard/very_hard；普通难度使用 normal，不要使用 medium 或 moderate；rule 可省略，若提供只能是 template=dice_check、roll_mode=normal/advantage/disadvantage。
-输出正文前必须调用一次 submit_interactive_turn_result：contract 写清玩家意图与场景目标；actor_state_patches 声明正文确定建立且未被 RuleResolution 自动消费的状态；fact_candidates 只记录已经发生的事实；scene_result 和 plan_signals 描述本轮场景结果与计划信号；choices 给出与正文结尾一致的下一步行动建议。没有相应变化时使用空数组，不得把 TurnResult 或工具结果写进正文。
+输出正文前必须调用一次 submit_interactive_turn_result：contract 写清玩家意图与场景目标；actor_state_patches 声明正文确定建立且未被 RuleResolution 自动消费的状态；fact_candidates 只记录已经发生的事实；scene_result 和 plan_signals 描述本轮场景结果与计划信号；非终局回合的 choices 必须给出 2 到 4 个与正文结尾一致、可直接输入的下一步行动建议。没有状态或事实变化时对应数组使用空值，不得把 TurnResult 或工具结果写进正文。
 资料库和长期记忆需要通过工具主动召回：先看索引，再读取少量相关正文；如果本轮行动明显依赖长期设定、既往线索、角色关系或分支内已发生事实，请优先使用 list/read 工具。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
 其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。%s`, strings.TrimSpace(message), turnBlock, contextBlock)
-}
-
-type InteractiveHotChoicesPromptInput struct {
-	Title          string
-	Origin         string
-	StoryTellerID  string
-	BranchID       string
-	LoreItems      string
-	DirectorPlan   string
-	TurnHistory    string
-	ExcludeChoices string
-}
-
-func BuildInteractiveHotChoicesSystemInstruction() string {
-	return strings.Join([]string{
-		"你是 Denova 游戏模式的快捷行动建议 Agent。",
-		"你只负责根据当前故事上下文生成用户下一轮可直接输入的行动建议，不负责续写剧情。",
-		"不要输出思考过程、解释、Markdown 或代码块。",
-		"必须只输出 JSON 对象，格式为 {\"choices\":[\"...\"]}。",
-		"choices 需要是 2 到 5 条中文行动句，每条都应从玩家第一人称或明确行动意图出发，可直接放入输入框。",
-		"建议要彼此有区分度，覆盖观察、对话、探索、冒险、保守应对等不同可行方向，但不得引入上下文未支撑的新事实。",
-	}, "\n")
 }
 
 func BuildInteractiveDirectorSystemInstruction() string {
@@ -369,23 +347,6 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func InteractiveHotChoicesInstruction(in InteractiveHotChoicesPromptInput) string {
-	var sb strings.Builder
-	sb.WriteString("请基于以下互动故事上下文，生成下一轮快捷行动建议。\n\n")
-	if strings.TrimSpace(in.LoreItems) != "" {
-		writeBlock(&sb, "资料库", in.LoreItems)
-	}
-	if strings.TrimSpace(in.DirectorPlan) != "" {
-		writeBlock(&sb, "后台导演规划可读区（source: director.md visible section, bounded）", in.DirectorPlan)
-	}
-	writeBlock(&sb, "历史回合", in.TurnHistory)
-	if strings.TrimSpace(in.ExcludeChoices) != "" {
-		writeBlock(&sb, "已展示过的选择（不要重复）", in.ExcludeChoices)
-	}
-	sb.WriteString("\n只输出 JSON，例如：{\"choices\":[\"我先观察门缝里的动静。\",\"我压低声音询问身边的人。\"]}。\n")
-	return sb.String()
 }
 
 func writeField(sb *strings.Builder, name, value string) {

@@ -51,8 +51,8 @@ describe('StateView', () => {
     const actorCard = screen.getByRole('heading', { name: '林风' }).closest('article')
     expect(actorCard).not.toBeNull()
     const card = within(actorCard as HTMLElement)
-    expect(card.getByText('主角')).toBeInTheDocument()
-    expect(card.getByText(/修行者/)).toBeInTheDocument()
+    expect(card.queryByText('主角')).not.toBeInTheDocument()
+    expect(card.queryByText(/修行者/)).not.toBeInTheDocument()
     expect(card.getByText('来自失落纪元且尚未完全觉醒的古老血脉')).toHaveAttribute('title', '一条足够长、用于验证窄状态卡截断展示的词条说明。')
     expect(card.queryByText('导演隐藏词条')).not.toBeInTheDocument()
     expect(card.getByText(/青石镇客栈/)).toBeInTheDocument()
@@ -64,7 +64,7 @@ describe('StateView', () => {
     expect(screen.queryByText('actors')).not.toBeInTheDocument()
   })
 
-  it('prioritizes the protagonist and switches the visible Actor sheet through tabs', async () => {
+  it('prioritizes the protagonist and switches the visible Actor sheet through the Actor select', async () => {
     render(
       <StateView
         snapshot={{ story_id: 'story', branch_id: 'main', turns: [], state: {} }}
@@ -78,14 +78,32 @@ describe('StateView', () => {
       />,
     )
 
-    const actorTabs = screen.getAllByRole('tab')
-    expect(actorTabs[0]).toHaveAccessibleName(/林风/)
+    const actorSelect = screen.getByRole('combobox', { name: '当前镜头角色' })
+    expect(actorSelect).toHaveTextContent('林风')
     expect(screen.getByRole('heading', { name: '林风' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '沈凝' })).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('tab', { name: /沈凝/ }))
+    await userEvent.click(actorSelect)
+    await userEvent.click(screen.getByRole('option', { name: '沈凝' }))
     expect(screen.getByRole('heading', { name: '沈凝' })).toBeInTheDocument()
     expect(screen.getByText('观望')).toBeInTheDocument()
+  })
+
+  it('uses the standard full-width Select without a custom Actor tab scroller', () => {
+    render(
+      <StateView
+        snapshot={{ story_id: 'story', branch_id: 'main', turns: [], state: {} }}
+        stateFacts={[['actors', {
+          protagonist: { name: '林风', role: 'protagonist', state: { stance: '迎战' } },
+          supporting: { name: '沈凝', role: 'supporting', state: { stance: '观望' } },
+          opponent: { name: '顾临渊', role: 'opponent', state: { stance: '敌对' } },
+        }]]}
+      />,
+    )
+
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+    expect(screen.queryAllByRole('tab')).toHaveLength(0)
+    expect(screen.getByRole('combobox', { name: '当前镜头角色' })).toHaveClass('w-full', 'min-w-0')
   })
 
   it('does not fall back to raw state keys when a frozen template has no visible fields', () => {

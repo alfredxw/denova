@@ -22,41 +22,38 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 	}
 
 	models := AgentModelSettings{
-		IDE:                   AgentModelOverride{ProfileID: AgentKindIDE},
-		InteractiveStory:      AgentModelOverride{ProfileID: AgentKindInteractiveStory},
-		Image:                 AgentModelOverride{ProfileID: AgentKindImage},
-		ConfigManager:         AgentModelOverride{ProfileID: AgentKindConfigManager},
-		InteractiveDirector:   AgentModelOverride{ProfileID: AgentKindInteractiveDirector},
-		InteractiveHotChoices: AgentModelOverride{ProfileID: AgentKindInteractiveHotChoices},
-		VersionSummary:        AgentModelOverride{ProfileID: AgentKindVersionSummary},
-		ToolAgent:             AgentModelOverride{ProfileID: AgentKindToolAgent},
-		Automation:            AgentModelOverride{ProfileID: AgentKindAutomation},
-		ContextCompaction:     AgentModelOverride{ProfileID: AgentKindContextCompaction},
+		IDE:                 AgentModelOverride{ProfileID: AgentKindIDE},
+		InteractiveStory:    AgentModelOverride{ProfileID: AgentKindInteractiveStory},
+		Image:               AgentModelOverride{ProfileID: AgentKindImage},
+		ConfigManager:       AgentModelOverride{ProfileID: AgentKindConfigManager},
+		InteractiveDirector: AgentModelOverride{ProfileID: AgentKindInteractiveDirector},
+		VersionSummary:      AgentModelOverride{ProfileID: AgentKindVersionSummary},
+		ToolAgent:           AgentModelOverride{ProfileID: AgentKindToolAgent},
+		Automation:          AgentModelOverride{ProfileID: AgentKindAutomation},
+		ContextCompaction:   AgentModelOverride{ProfileID: AgentKindContextCompaction},
 	}
 	prompts := AgentPromptSettings{
-		IDE:                   AgentPromptOverride{SystemPrompt: AgentKindIDE},
-		InteractiveStory:      AgentPromptOverride{SystemPrompt: AgentKindInteractiveStory},
-		Image:                 AgentPromptOverride{SystemPrompt: AgentKindImage},
-		ConfigManager:         AgentPromptOverride{SystemPrompt: AgentKindConfigManager},
-		InteractiveDirector:   AgentPromptOverride{SystemPrompt: AgentKindInteractiveDirector},
-		InteractiveHotChoices: AgentPromptOverride{SystemPrompt: AgentKindInteractiveHotChoices},
-		VersionSummary:        AgentPromptOverride{SystemPrompt: AgentKindVersionSummary},
-		ToolAgent:             AgentPromptOverride{SystemPrompt: AgentKindToolAgent},
-		Automation:            AgentPromptOverride{SystemPrompt: AgentKindAutomation},
-		ContextCompaction:     AgentPromptOverride{SystemPrompt: AgentKindContextCompaction},
+		IDE:                 AgentPromptOverride{SystemPrompt: AgentKindIDE},
+		InteractiveStory:    AgentPromptOverride{SystemPrompt: AgentKindInteractiveStory},
+		Image:               AgentPromptOverride{SystemPrompt: AgentKindImage},
+		ConfigManager:       AgentPromptOverride{SystemPrompt: AgentKindConfigManager},
+		InteractiveDirector: AgentPromptOverride{SystemPrompt: AgentKindInteractiveDirector},
+		VersionSummary:      AgentPromptOverride{SystemPrompt: AgentKindVersionSummary},
+		ToolAgent:           AgentPromptOverride{SystemPrompt: AgentKindToolAgent},
+		Automation:          AgentPromptOverride{SystemPrompt: AgentKindAutomation},
+		ContextCompaction:   AgentPromptOverride{SystemPrompt: AgentKindContextCompaction},
 	}
 	on := true
 	tools := AgentToolSettings{
-		IDE:                   AgentToolOverride{FileRead: &on},
-		InteractiveStory:      AgentToolOverride{FileWrite: &on},
-		Image:                 AgentToolOverride{ImageGeneration: &on},
-		ConfigManager:         AgentToolOverride{ShellExecute: &on},
-		InteractiveDirector:   AgentToolOverride{LoreWrite: &on},
-		InteractiveHotChoices: AgentToolOverride{LoreWrite: &on},
-		VersionSummary:        AgentToolOverride{Todo: &on},
-		ToolAgent:             AgentToolOverride{WebSearch: &on},
-		Automation:            AgentToolOverride{FileRead: &on, WebSearch: &on},
-		ContextCompaction:     AgentToolOverride{Skills: &on},
+		IDE:                 AgentToolOverride{FileRead: &on},
+		InteractiveStory:    AgentToolOverride{FileWrite: &on},
+		Image:               AgentToolOverride{ImageGeneration: &on},
+		ConfigManager:       AgentToolOverride{ShellExecute: &on},
+		InteractiveDirector: AgentToolOverride{LoreWrite: &on},
+		VersionSummary:      AgentToolOverride{Todo: &on},
+		ToolAgent:           AgentToolOverride{WebSearch: &on},
+		Automation:          AgentToolOverride{FileRead: &on, WebSearch: &on},
+		ContextCompaction:   AgentToolOverride{Skills: &on},
 	}
 	thresholds := map[string]*float64{}
 	for _, definition := range definitions {
@@ -64,16 +61,15 @@ func TestAgentKindRegistryDefinesUniqueKindsAndConfigAccessors(t *testing.T) {
 		thresholds[definition.Kind] = &value
 	}
 	contexts := AgentContextSettings{
-		IDE:                   AgentContextOverride{CompactionThreshold: thresholds[AgentKindIDE]},
-		InteractiveStory:      AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveStory]},
-		Image:                 AgentContextOverride{CompactionThreshold: thresholds[AgentKindImage]},
-		ConfigManager:         AgentContextOverride{CompactionThreshold: thresholds[AgentKindConfigManager]},
-		InteractiveDirector:   AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveDirector]},
-		InteractiveHotChoices: AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveHotChoices]},
-		VersionSummary:        AgentContextOverride{CompactionThreshold: thresholds[AgentKindVersionSummary]},
-		ToolAgent:             AgentContextOverride{CompactionThreshold: thresholds[AgentKindToolAgent]},
-		Automation:            AgentContextOverride{CompactionThreshold: thresholds[AgentKindAutomation]},
-		ContextCompaction:     AgentContextOverride{CompactionThreshold: thresholds[AgentKindContextCompaction]},
+		IDE:                 AgentContextOverride{CompactionThreshold: thresholds[AgentKindIDE]},
+		InteractiveStory:    AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveStory]},
+		Image:               AgentContextOverride{CompactionThreshold: thresholds[AgentKindImage]},
+		ConfigManager:       AgentContextOverride{CompactionThreshold: thresholds[AgentKindConfigManager]},
+		InteractiveDirector: AgentContextOverride{CompactionThreshold: thresholds[AgentKindInteractiveDirector]},
+		VersionSummary:      AgentContextOverride{CompactionThreshold: thresholds[AgentKindVersionSummary]},
+		ToolAgent:           AgentContextOverride{CompactionThreshold: thresholds[AgentKindToolAgent]},
+		Automation:          AgentContextOverride{CompactionThreshold: thresholds[AgentKindAutomation]},
+		ContextCompaction:   AgentContextOverride{CompactionThreshold: thresholds[AgentKindContextCompaction]},
 	}
 
 	for _, definition := range definitions {

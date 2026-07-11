@@ -46,8 +46,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Agent: Model calls now freeze the final tool schema snapshot and pass a detached copy to the provider, preventing provider adapters or middleware from mutating schemas used by later calls and improving prompt-cache prefix stability.
 - WebUI：Agent Trace 摘要面板新增 run 级缓存命中展示，直接显示命中率和 cached/prompt token 汇总。
 - WebUI: Agent Trace summaries now show run-level cache hits with cached/prompt token totals.
-- Agent：最终 assistant 消息和游戏回合正文现在持久化 `run_id` / `agent_kind`，刷新后也可从最终输出跳转到对应 Trace；纯模型辅助 Agent（快捷选项、版本说明、章节正则、自动化触发、独立上下文压缩等）在没有父 run 时会创建独立本地 trace。
-- Agent: Final assistant messages and Game Mode turn prose now persist `run_id` / `agent_kind`, so the final output can jump back to its Trace after refresh. Model-only helper agents such as hot choices, version summaries, chapter-regex inference, automation trigger checks, and standalone context compaction now create their own local trace when no parent run exists.
+- Agent：最终 assistant 消息和游戏回合正文现在持久化 `run_id` / `agent_kind`，刷新后也可从最终输出跳转到对应 Trace；纯模型辅助 Agent（版本说明、章节正则、自动化触发、独立上下文压缩等）在没有父 run 时会创建独立本地 trace。
+- Agent: Final assistant messages and Game Mode turn prose now persist `run_id` / `agent_kind`, so the final output can jump back to its Trace after refresh. Model-only helper agents such as version summaries, chapter-regex inference, automation trigger checks, and standalone context compaction now create their own local trace when no parent run exists.
 - WebUI：Agent Trace 明细超过展示上限时改为保留首尾记录并插入省略标记，长任务也能看到最终收尾；Trace 摘要中的工具调用数改用后端真实计数，并移除尚未实现的 OTLP exporter 选项。
 - WebUI: Agent Trace details now keep both head and tail records with an omitted-record marker when capped, so long runs still show their final lifecycle records. Tool-call counts use backend summary counters, and the unimplemented OTLP exporter option was removed.
 - WebUI：Agent/Chat 类时间线统一到 AI SDK `UIMessage` 协议；`/api/chat`、`/api/chat/stream`、`/api/session/messages`、配置管理和自动化运行消息接口现在直接返回或流式输出 `AgentUIMessage`，并移除临时 `/api/chat/ui`、`/api/chat/ui/stream`、`/api/session/messages/ui` 并行入口。该 beta 变更不兼容旧 `ChatMessage[]` response/stream shape。
@@ -123,7 +123,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Skills：新增内置 `lore` Skill，简要说明 `list_lore_items`、`read_lore_items` 和 `write_lore_items` 的使用顺序、参数格式与长期设定边界。
 - Skills: Added the built-in `lore` Skill with concise guidance for `list_lore_items`, `read_lore_items`, and `write_lore_items` order, argument shape, and stable-lore boundaries.
 - 游戏模式：新增叙事编排基础能力，互动 Agent 可提交 TurnBrief，并通过 `prepare_interactive_turn` 执行固定数值、骰子、安全表达式、资源和终局候选检定；回合会持久化 RuleResolution 审计数据。新增独立 `interactive_director` 后台导演 Agent，按故事分支维护单份 `director.md` 导演规划文档和后端元数据；互动正文与热选项只注入有界可见区，导演私密区只供后台导演使用。前端支持导演规划读取、编辑、重建、规则重抽、主角词条预览，以及在故事导演策略中配置主线强度、失败策略、节奏曲线、分支规划回合数、单文档规划模板和事件包。终局分支默认禁止继续追加普通回合，需要从历史节点创建新分支。
-- Game Mode: Added the narrative orchestration foundation. The interactive agent can submit a TurnBrief and use `prepare_interactive_turn` for fixed numeric, dice, safe-expression, resource, and terminal-candidate checks; turns now persist RuleResolution audit data. Added an independent `interactive_director` background Director Agent that maintains one branch-scoped `director.md` plan plus backend metadata; interactive prose and hot choices only receive bounded visible sections, while private director sections remain exclusive to the background director. The frontend now supports Director plan read/edit/rebuild, rule rerolls, protagonist-trait previews, and Story Director strategy configuration for mainline strength, failure policy, pacing curve, branch planning turns, a single planning template, and event packages. Terminal branches now block normal continuation by default and require branching from history.
+- Game Mode: Added the narrative orchestration foundation. The interactive agent can submit a TurnBrief and use `prepare_interactive_turn` for fixed numeric, dice, safe-expression, resource, and terminal-candidate checks; turns now persist RuleResolution audit data. Added an independent `interactive_director` background Director Agent that maintains one branch-scoped `director.md` plan plus backend metadata; interactive prose receives only bounded visible sections, while private director sections remain exclusive to the background director. The frontend now supports Director plan read/edit/rebuild, rule rerolls, protagonist-trait previews, and Story Director strategy configuration for mainline strength, failure policy, pacing curve, branch planning turns, a single planning template, and event packages. Terminal branches now block normal continuation by default and require branching from history.
 - 游戏模式：事件包升级为只由事件卡组成的可编辑卡包，支持事件类型名、Markdown 事件描述、权重、冷却、强度和标签；配置 Agent 可读取有界资料库上下文并通过方案预设工具生成 12-24 张贴合世界观的事件卡。
 - Game Mode: Event packages now use editable event cards only, with type names, Markdown descriptions, weight, cooldown, intensity, and tags; the Config Manager Agent can read bounded lore context and generate 12-24 world-grounded event cards through teller preset tools.
 - 游戏模式：新增独立“故事导演 / Story Director”资源、`/api/story-directors` CRUD、配置管理 Agent 工具和设置页编辑器；故事导演集中管理导演策略及事件包、TRPG 检定、状态系统、记忆结构和图像方案引用。
@@ -133,6 +133,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 游戏模式：删除独立快捷选项 Agent。非终局 `TurnResult` 现在必须携带 2–4 个行动建议，玩家舞台直接读取并按需展开，不再执行二次模型请求、自动/手动生成或“更多”请求；旧故事的 `hot_state` / `hot_choices` 仅保留只读显示兼容。
+- Game Mode: Removed the standalone Hot Choices Agent. Non-terminal `TurnResult` values must now carry 2–4 action suggestions, which the player stage reads directly and expands on demand without a second model request, auto/manual generation, or “more” requests. Legacy `hot_state` / `hot_choices` data remains read-compatible only.
+- 不兼容变更：删除 `interactive_hot_choices` Agent kind、对应模型/提示词/Skills/上下文配置、`interactive_hot_choices_enabled` 设置，以及 `POST /api/interactive/stories/:id/hot-choices`；旧配置字段会被忽略。
+- Breaking: Removed the `interactive_hot_choices` Agent kind, its model/prompt/Skills/context configuration, the `interactive_hot_choices_enabled` setting, and `POST /api/interactive/stories/:id/hot-choices`; legacy configuration fields are ignored.
 - 游戏模式：移除“故事记忆”一级菜单，将其完整管理页降级为剧情导演台“记忆”视图中的二级入口；剧情右栏新增始终可见的“管理”按钮，管理页标题栏提供明确的“返回剧情”操作，结构定义继续统一在方案预设维护。
 - Game Mode: Removed Story Memory from primary navigation and made its full manager a secondary destination from the Story Director Console's Memory view. The story sidebar now exposes a persistent Manage button, the manager header provides an explicit Back to Story action, and structure definitions remain centralized in Presets.
 - WebUI：全局主题色阶收敛为纯色中性体系，dark 模式的应用底色、一级菜单和顶栏统一为纯黑，内容面板按炭黑层级抬升并提高次级文字亮度；light 模式同步移除蓝灰底色，改用纯白与中性灰，仅在运行、成功、提示和危险语义中保留克制的琥珀、绿与暗红。
@@ -240,6 +244,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- WebUI：修复写作编辑器在自动保存进行中或延迟期间切换文件时，大纲、创作规则、写作进度、灵感和角色当前状态等草稿可能串写或丢失的问题；保存队列现在保留每份草稿的目标路径与对应保存回调，按文件隔离 revision，并在离开文件前提交待触发的草稿。
+- WebUI: Fixed writing-editor drafts such as outline, creator rules, progress, ideas, and character state being cross-written or lost when switching files during an in-flight or delayed autosave. Queued saves now retain each draft's target path and matching save callback, isolate revisions per file, and flush scheduled drafts before leaving a file.
+- WebUI：修复后台 Director 的 thinking 与 `director.md` 文件工具事件混入 Game Agent 主故事时间线的问题；后台过程仍保留在导演控制台“运行”页中。
+- WebUI: Fixed background Director thinking and `director.md` file-tool events leaking into the Game Agent story timeline; background progress remains available in the Director Console Run view.
+- WebUI：压缩导演控制台状态页，移除冗余“故事此刻”说明与重复角色元信息；镜头角色切换改用项目内置的 shadcn Select，避免窄侧栏下自定义 Tabs 错位和横向滚动。
+- WebUI: Compacted the Director Console State view by removing the redundant Story Now introduction and repeated Actor metadata; cast switching now uses the built-in shadcn Select, avoiding custom Tab misalignment and horizontal scrolling in narrow sidebars.
 - 安全：远程 Skill 安装改用禁用代理的专用 HTTPS 客户端，对初始 URL、每次重定向和全部 DNS 解析结果执行公网地址校验；Skill 文档读写及选择性版本恢复改为基于 `os.Root` 的 no-follow 路径访问、原子写入和失败回滚，阻止 SSRF 与符号链接越界。
 - Security: Remote Skill installation now uses a proxy-disabled HTTPS client that validates the initial URL, every redirect, and every resolved address as public. Skill document access and selective version restore now use `os.Root` no-follow paths, atomic writes, and rollback to prevent SSRF and symlink escapes.
 - 构建：Go 最低版本提升到 1.26.5，并在 CI 增加 `govulncheck`；当前代码扫描不再包含可调用的 Go 漏洞。

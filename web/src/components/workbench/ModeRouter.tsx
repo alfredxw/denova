@@ -104,7 +104,7 @@ interface ModeRouterProps {
   onMoveItem: (from: string, to: string) => Promise<void>
   onActivateTab: (tab: Tab) => void
   onCloseTab: (tab: Tab) => void
-  onSaveCurrentFile: (content: string) => Promise<boolean>
+  onSaveCurrentFile: (path: string, content: string) => Promise<boolean>
   onQuoteSelection: (selection: TextSelection) => void
   onCreateChatSession: (title?: string) => void | Promise<void>
   onSwitchChatSession: (id: string) => void | Promise<void>

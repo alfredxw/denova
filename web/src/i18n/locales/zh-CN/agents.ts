@@ -19,8 +19,6 @@ const agents = {
   'agents.image.subtitle': '通用图像生成与互动图像',
   'agents.interactiveDirector.title': '后台导演 Agent',
   'agents.interactiveDirector.subtitle': '维护故事记忆、角色状态与导演规划',
-  'agents.interactiveHotChoices.title': '快捷选项 Agent',
-  'agents.interactiveHotChoices.subtitle': '生成可选行动',
   'agents.versionSummary.title': '版本说明 Agent',
   'agents.versionSummary.subtitle': '自动版本摘要',
   'agents.toolAgent.title': '工具 Agent',

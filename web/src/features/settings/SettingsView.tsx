@@ -561,25 +561,15 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       group: t('settings.group.interactive'),
       title: t('settings.section.interactive'),
       children: activeLayer === 'workspace' ? (
-        <>
-          <BoolTri label={t('settings.interactive.hotChoices')} value={draft.interactive_hot_choices_enabled ?? null}
-                   effective={effective.interactive_hot_choices_enabled}
-                   onChange={(v) => setField('interactive_hot_choices_enabled', v)} />
-          <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}
-               placeholder={placeholderFor('interactive_stage_line_height')}
-               step={0.05}
-               onChange={(v) => setField('interactive_stage_line_height', v)} />
-        </>
+        <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}
+             placeholder={placeholderFor('interactive_stage_line_height')}
+             step={0.05}
+             onChange={(v) => setField('interactive_stage_line_height', v)} />
       ) : (
-        <>
-          <BoolTri label={t('settings.interactive.hotChoices')} value={draft.interactive_hot_choices_enabled ?? null}
-                   effective={effective.interactive_hot_choices_enabled}
-                   onChange={(v) => setField('interactive_hot_choices_enabled', v)} />
-          <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}
-               placeholder={placeholderFor('interactive_stage_line_height')}
-               step={0.05}
-               onChange={(v) => setField('interactive_stage_line_height', v)} />
-        </>
+        <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}
+             placeholder={placeholderFor('interactive_stage_line_height')}
+             step={0.05}
+             onChange={(v) => setField('interactive_stage_line_height', v)} />
       ),
     },
   ]

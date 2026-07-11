@@ -96,8 +96,6 @@ func outputProtocolForAgent(agentKind string) string {
 			"- 当前调用为 memory_update 时，只能通过 apply_story_memory_patches 维护 Story Memory，完成后输出一句简短摘要。",
 			"- 两种阶段都不得续写剧情或写入 Actor State。",
 		}, "\n")
-	case config.AgentKindInteractiveHotChoices:
-		return "- 必须只输出 JSON object，格式为 {\"choices\":[\"...\"]}；不得续写剧情或修改故事状态。"
 	case config.AgentKindVersionSummary:
 		return "- 必须只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"
 	case config.AgentKindToolAgent:
@@ -148,8 +146,6 @@ func agentRuntimeContract(agentKind string) string {
 			"- 规划阶段必须优先复用资料库中的重要角色、势力、规则、地点和既有关系，并通过高信息密度的角色关系、势力压力、信息揭示、爽点危机、检定代价和分支安排服务后续互动。",
 			"- 规划阶段必须把可给正文 Agent 读取的信息放在“正文Agent可读”区，把隐藏真相和未来反转放在“后台导演私密”区。",
 		}, "\n")
-	case config.AgentKindInteractiveHotChoices:
-		return "- 快捷选项 Agent 必须只输出符合内置 schema 的 JSON object；不得续写剧情或修改故事状态。"
 	case config.AgentKindVersionSummary:
 		return "- 版本说明 Agent 必须只输出一句版本说明，不得输出解释、编号、Markdown 或多行内容。"
 	case config.AgentKindToolAgent:

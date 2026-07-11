@@ -119,6 +119,17 @@ func parseChapterSplitRegexContent(content string) (string, string, error) {
 	return regex, strings.TrimSpace(payload.Reason), nil
 }
 
+func extractJSONContent(content string) string {
+	content = strings.TrimSpace(content)
+	if strings.HasPrefix(content, "```") {
+		content = strings.TrimPrefix(content, "```json")
+		content = strings.TrimPrefix(content, "```")
+		content = strings.TrimSpace(content)
+		content = strings.TrimSuffix(content, "```")
+	}
+	return strings.TrimSpace(content)
+}
+
 func valueOrZero(v *int) int {
 	if v == nil {
 		return 0

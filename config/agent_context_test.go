@@ -100,12 +100,12 @@ func TestResolveAgentContextCompactionDefaultsAndCaps(t *testing.T) {
 
 func TestResolveAgentContextUsesPerAgentOverride(t *testing.T) {
 	defaultThreshold := 0.80
-	hotChoicesThreshold := 0.70
+	directorThreshold := 0.70
 	defaultRecentTurns := 4
-	hotChoicesRecentTurns := 2
+	directorRecentTurns := 2
 	cfg := &Config{AgentContexts: AgentContextSettings{
-		Default:               AgentContextOverride{CompactionThreshold: &defaultThreshold, CompactionRecentTurns: &defaultRecentTurns},
-		InteractiveHotChoices: AgentContextOverride{CompactionThreshold: &hotChoicesThreshold, CompactionRecentTurns: &hotChoicesRecentTurns},
+		Default:             AgentContextOverride{CompactionThreshold: &defaultThreshold, CompactionRecentTurns: &defaultRecentTurns},
+		InteractiveDirector: AgentContextOverride{CompactionThreshold: &directorThreshold, CompactionRecentTurns: &directorRecentTurns},
 	}}
 	if got := ResolveAgentContext(cfg, AgentKindIDE).CompactionThreshold; got != 0.80 {
 		t.Fatalf("default inherited threshold = %v, want 0.80", got)
@@ -113,10 +113,10 @@ func TestResolveAgentContextUsesPerAgentOverride(t *testing.T) {
 	if got := ResolveAgentContext(cfg, AgentKindIDE).CompactionRecentTurns; got != 4 {
 		t.Fatalf("default inherited recent turns = %v, want 4", got)
 	}
-	if got := ResolveAgentContext(cfg, AgentKindInteractiveHotChoices).CompactionThreshold; got != 0.70 {
+	if got := ResolveAgentContext(cfg, AgentKindInteractiveDirector).CompactionThreshold; got != 0.70 {
 		t.Fatalf("per-agent threshold = %v, want 0.70", got)
 	}
-	if got := ResolveAgentContext(cfg, AgentKindInteractiveHotChoices).CompactionRecentTurns; got != 2 {
+	if got := ResolveAgentContext(cfg, AgentKindInteractiveDirector).CompactionRecentTurns; got != 2 {
 		t.Fatalf("per-agent recent turns = %v, want 2", got)
 	}
 }

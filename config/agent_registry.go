@@ -1,16 +1,15 @@
 package config
 
 const (
-	AgentKindIDE                   = "ide"
-	AgentKindInteractiveStory      = "interactive_story"
-	AgentKindConfigManager         = "config_manager"
-	AgentKindInteractiveDirector   = "interactive_director"
-	AgentKindInteractiveHotChoices = "interactive_hot_choices"
-	AgentKindVersionSummary        = "version_summary"
-	AgentKindToolAgent             = "tool_agent"
-	AgentKindImage                 = "image"
-	AgentKindAutomation            = "automation"
-	AgentKindContextCompaction     = "context_compaction"
+	AgentKindIDE                 = "ide"
+	AgentKindInteractiveStory    = "interactive_story"
+	AgentKindConfigManager       = "config_manager"
+	AgentKindInteractiveDirector = "interactive_director"
+	AgentKindVersionSummary      = "version_summary"
+	AgentKindToolAgent           = "tool_agent"
+	AgentKindImage               = "image"
+	AgentKindAutomation          = "automation"
+	AgentKindContextCompaction   = "context_compaction"
 )
 
 // AgentKindDefinition is the registry entry for one runtime Agent kind.
@@ -60,15 +59,6 @@ var agentKindRegistry = []AgentKindDefinition{
 		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.InteractiveDirector },
 		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveDirector },
 		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.InteractiveDirector },
-	},
-	{
-		Kind:            AgentKindInteractiveHotChoices,
-		SessionID:       "interactive-hot-choices-agent",
-		ModelOverride:   func(settings AgentModelSettings) AgentModelOverride { return settings.InteractiveHotChoices },
-		ToolOverride:    func(settings AgentToolSettings) AgentToolOverride { return settings.InteractiveHotChoices },
-		PromptOverride:  func(settings AgentPromptSettings) AgentPromptOverride { return settings.InteractiveHotChoices },
-		SkillOverride:   func(settings AgentSkillSettings) AgentSkillOverride { return settings.InteractiveHotChoices },
-		ContextOverride: func(settings AgentContextSettings) AgentContextOverride { return settings.InteractiveHotChoices },
 	},
 	{
 		Kind:            AgentKindVersionSummary,

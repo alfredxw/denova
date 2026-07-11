@@ -64,7 +64,6 @@ type Config struct {
 	VersionAgentEnabled         bool                         `toml:"-"`
 	VersionAgentCharThreshold   int                          `toml:"-"`
 	InteractiveReplyTargetChars int                          `toml:"-"`
-	InteractiveHotChoices       bool                         `toml:"-"`
 	ResumeLastWorkspace         bool                         `toml:"-"`
 	UpdateCheckEnabled          bool                         `toml:"-"`
 }
@@ -127,7 +126,6 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		VersionAgentEnabled:         settingsBool(s.VersionAgentEnabled, true),
 		VersionAgentCharThreshold:   settingsInt(s.VersionAgentCharThreshold, 3000),
 		InteractiveReplyTargetChars: 2000,
-		InteractiveHotChoices:       settingsBool(s.InteractiveHotChoices, true),
 		ResumeLastWorkspace:         true,
 		UpdateCheckEnabled:          settingsBool(s.UpdateCheckEnabled, true),
 	}
@@ -324,7 +322,6 @@ func Load() *Config {
 			VersionAgentEnabled:         settingsBool(d.VersionAgentEnabled, true),
 			VersionAgentCharThreshold:   settingsInt(d.VersionAgentCharThreshold, 3000),
 			InteractiveReplyTargetChars: 2000,
-			InteractiveHotChoices:       settingsBool(d.InteractiveHotChoices, true),
 			ResumeLastWorkspace:         true,
 			UpdateCheckEnabled:          settingsBool(d.UpdateCheckEnabled, true),
 		}

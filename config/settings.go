@@ -90,7 +90,6 @@ type Settings struct {
 	WritingSkillDefault     string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
 
 	// 游戏模式
-	InteractiveHotChoices      *bool    `toml:"interactive_hot_choices_enabled,omitempty" json:"interactive_hot_choices_enabled,omitempty"`
 	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
 }
@@ -152,11 +151,10 @@ func DefaultSettings() Settings {
 		TraceExporter:               DefaultTraceExporter,
 		TraceRetentionRuns:          intPtr(DefaultTraceRetentionRuns),
 		AgentModels: AgentModelSettings{
-			IDE:                   AgentModelOverride{EnableThinking: boolPtr(true)},
-			ConfigManager:         AgentModelOverride{EnableThinking: boolPtr(true)},
-			InteractiveHotChoices: AgentModelOverride{EnableThinking: boolPtr(false)},
-			VersionSummary:        AgentModelOverride{EnableThinking: boolPtr(false)},
-			ToolAgent:             AgentModelOverride{EnableThinking: boolPtr(false)},
+			IDE:            AgentModelOverride{EnableThinking: boolPtr(true)},
+			ConfigManager:  AgentModelOverride{EnableThinking: boolPtr(true)},
+			VersionSummary: AgentModelOverride{EnableThinking: boolPtr(false)},
+			ToolAgent:      AgentModelOverride{EnableThinking: boolPtr(false)},
 		},
 		AgentTools:                 DefaultAgentToolSettings(),
 		AgentSkills:                AgentSkillSettings{},
@@ -167,7 +165,6 @@ func DefaultSettings() Settings {
 		IDEStoryTellerID:           "classic",
 		IDEImagePresetID:           "game-cg",
 		WritingSkillDefault:        DefaultWritingSkillName,
-		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
 	}
@@ -332,9 +329,6 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.WritingSkillDefault != "" {
 		out.WritingSkillDefault = child.WritingSkillDefault
-	}
-	if child.InteractiveHotChoices != nil {
-		out.InteractiveHotChoices = child.InteractiveHotChoices
 	}
 	if child.InteractiveStageFontSize != nil {
 		out.InteractiveStageFontSize = child.InteractiveStageFontSize

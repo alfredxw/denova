@@ -52,9 +52,6 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.VolumeDirFormat != "v{order:05}-{volume}" {
 		t.Fatalf("VolumeDirFormat default: %s", s.VolumeDirFormat)
 	}
-	if s.InteractiveHotChoices == nil || *s.InteractiveHotChoices != true {
-		t.Fatalf("InteractiveHotChoices default")
-	}
 	if s.AgentModels.IDE.EnableThinking == nil || !*s.AgentModels.IDE.EnableThinking {
 		t.Fatalf("IDE thinking should default on")
 	}
@@ -144,7 +141,6 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		AllowLANAccess:             boolPtr(false),
 		WritingSkillDefault:        "novel-standard",
 		IDEImagePresetID:           "realistic",
-		InteractiveHotChoices:      boolPtr(true),
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
 	}
@@ -172,7 +168,6 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		IDEImagePresetID:           "2d-illustration",
 		RemoteAccessUsername:       "reader",
 		RemoteAccessPasswordHash:   "$2a$10$hash",
-		InteractiveHotChoices:      boolPtr(false),
 		InteractiveStageFontSize:   intPtr(18),
 		InteractiveStageLineHeight: floatPtr(1.95),
 	}
@@ -242,9 +237,6 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.RemoteAccessUsername != "reader" || out.RemoteAccessPasswordHash == "" || !out.RemoteAccessPasswordSet {
 		t.Fatalf("remote access credentials should override parent: %#v", out)
-	}
-	if out.InteractiveHotChoices == nil || *out.InteractiveHotChoices != false {
-		t.Fatalf("InteractiveHotChoices should override parent")
 	}
 	if out.InteractiveStageFontSize == nil || *out.InteractiveStageFontSize != 18 {
 		t.Fatalf("InteractiveStageFontSize should override parent")

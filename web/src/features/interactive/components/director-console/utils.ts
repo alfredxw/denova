@@ -10,7 +10,7 @@ export function extractDirectorDisplayEvents(snapshot: Snapshot | null, status?:
   return events.filter(isDirectorDisplayEvent)
 }
 
-function isDirectorDisplayEvent(event: TurnDisplayEvent) {
+export function isDirectorDisplayEvent(event: TurnDisplayEvent) {
   if (event.agent_kind === 'interactive_director') return true
   const name = event.name || event.content || ''
   if (!['read_file', 'write_file', 'edit_file'].includes(name)) return false

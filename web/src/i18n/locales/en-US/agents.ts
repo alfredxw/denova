@@ -19,8 +19,6 @@ const agents = {
   'agents.image.subtitle': 'General image generation and interactive images',
   'agents.interactiveDirector.title': 'Background Director Agent',
   'agents.interactiveDirector.subtitle': 'Maintains story memory, actor state, and director planning',
-  'agents.interactiveHotChoices.title': 'Quick Choices Agent',
-  'agents.interactiveHotChoices.subtitle': 'Generate optional actions',
   'agents.versionSummary.title': 'Version Summary Agent',
   'agents.versionSummary.subtitle': 'Automatic version summaries',
   'agents.toolAgent.title': 'Tool Agent',

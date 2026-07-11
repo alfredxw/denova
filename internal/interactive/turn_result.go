@@ -97,11 +97,7 @@ func NormalizeTurnResult(result TurnResult) TurnResult {
 	result.PlanSignals.DeviationLevel = normalizeEnum(result.PlanSignals.DeviationLevel, "none", "minor", "major")
 	result.PlanSignals.InvalidatedRefs = normalizeStringListLimit(result.PlanSignals.InvalidatedRefs, maxTurnBriefListItems)
 	result.PlanSignals.Reason = trimBytes(result.PlanSignals.Reason, maxTurnBriefTextBytes)
-	if hot := normalizeHotState(&HotState{Choices: result.Choices}); hot != nil {
-		result.Choices = hot.Choices
-	} else {
-		result.Choices = nil
-	}
+	result.Choices = normalizeChoiceListLimit(result.Choices, 4)
 	return result
 }
 
@@ -113,6 +109,9 @@ func ValidateTurnResult(result TurnResult) error {
 		if strings.TrimSpace(fact.Fact) == "" {
 			return fmt.Errorf("TurnResult 事实候选内容不能为空")
 		}
+	}
+	if len(result.Choices) == 1 || (result.SceneResult.Status != "terminal" && len(result.Choices) < 2) {
+		return fmt.Errorf("TurnResult choices 必须提供 2 到 4 个与正文结尾一致的行动建议；终局回合可以为空")
 	}
 	return nil
 }

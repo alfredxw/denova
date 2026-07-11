@@ -77,6 +77,15 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 		}
 	}
 	applyLegacyActorStateAliases(state, meta.ActorStateSchema)
+	if snapshot.CurrentTurn != nil && (snapshot.CurrentTurn.TurnResult == nil || len(snapshot.CurrentTurn.TurnResult.Choices) == 0) && snapshot.CurrentTurn.HotState == nil {
+		if legacy, ok := latestHotChoicesForHead(lines, branchID, snapshot.CurrentTurn.ID); ok {
+			hotState := normalizeHotState(&HotState{Choices: legacy.Choices})
+			snapshot.CurrentTurn.HotState = hotState
+			if len(snapshot.Turns) > 0 {
+				snapshot.Turns[len(snapshot.Turns)-1].HotState = hotState
+			}
+		}
+	}
 	snapshot.Graph = buildStoryGraph(meta, lines, eventsByID, pathSet)
 	return snapshot, nil
 }

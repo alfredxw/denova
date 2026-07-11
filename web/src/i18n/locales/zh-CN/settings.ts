@@ -93,7 +93,6 @@ const settings = {
   'settings.ide.hideNovelChapterBodyInLiveOutput': '隐藏章节正文在 Agent 流中的输出',
   'settings.ide.hideNovelChapterBodyInLiveOutputHelp': '开启后，章节正文不在 Agent 流中输出；文件仍正常写入。',
   'settings.ide.maxOpenTabs': '最大同时打开 Tab 数',
-  'settings.interactive.hotChoices': '输入框快捷选择',
   'settings.interactive.lineHeight': '故事舞台行间距',
   'settings.interactive.workspaceOnly': '游戏模式参数按每本书单独保存，请切换到工作区配置后修改。',
   'settings.model.modelProfiles': '语言模型',

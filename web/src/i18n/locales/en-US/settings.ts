@@ -93,7 +93,6 @@ const settings = {
   'settings.ide.hideNovelChapterBodyInLiveOutput': 'Hide Chapter Body from Agent Stream',
   'settings.ide.hideNovelChapterBodyInLiveOutputHelp': 'When enabled, chapter body is hidden from the Agent stream. Files are still written normally.',
   'settings.ide.maxOpenTabs': 'Max Open Tabs',
-  'settings.interactive.hotChoices': 'Input Quick Choices',
   'settings.interactive.lineHeight': 'Story Stage Line Height',
   'settings.interactive.workspaceOnly': 'Game Mode settings are saved per book. Switch to workspace config to edit them.',
   'settings.model.modelProfiles': 'Language Models',

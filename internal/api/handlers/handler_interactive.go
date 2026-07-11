@@ -445,23 +445,6 @@ func (h *Handlers) HandleInteractiveTurnVersionSwitch(ctx context.Context, c *ap
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *Handlers) HandleInteractiveHotChoices(ctx context.Context, c *app.RequestContext) {
-	var body struct {
-		Branch         string   `json:"branch"`
-		ExcludeChoices []string `json:"exclude_choices"`
-	}
-	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	result, err := h.app.GenerateInteractiveHotChoices(ctx, c.Param("id"), body.Branch, body.ExcludeChoices)
-	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, result)
-}
-
 func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestContext) {
 	var body struct {
 		Mode               string   `json:"mode"`

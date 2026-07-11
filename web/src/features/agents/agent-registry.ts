@@ -1,5 +1,5 @@
 import type { ElementType } from 'react'
-import { Archive, Clock, Database, FileText, FolderOpen, Globe2, ImagePlus, ListChecks, MessageSquareText, PenLine, Search, Settings2, Sparkles, Terminal, Wrench } from 'lucide-react'
+import { Archive, Clock, Database, FileText, FolderOpen, Globe2, ImagePlus, ListChecks, MessageSquareText, PenLine, Search, Settings2, Terminal, Wrench } from 'lucide-react'
 import type { AgentModelSettings, AgentSkillSettings, AgentToolOverride } from '@/features/settings/types'
 import type { SkillSummary } from '@/lib/api'
 
@@ -31,7 +31,6 @@ export const AGENTS: AgentViewDefinition[] = [
   { key: 'interactive_story', titleKey: 'agents.interactiveStory.title', subtitleKey: 'agents.interactiveStory.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'tools', icon: MessageSquareText },
   { key: 'interactive_director', titleKey: 'agents.interactiveDirector.title', subtitleKey: 'agents.interactiveDirector.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'tools', icon: FileText },
   { key: 'image', titleKey: 'agents.image.title', subtitleKey: 'agents.image.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'tools', icon: ImagePlus },
-  { key: 'interactive_hot_choices', titleKey: 'agents.interactiveHotChoices.title', subtitleKey: 'agents.interactiveHotChoices.subtitle', groupKey: 'agents.group.interactive', capabilityMode: 'model_only', icon: Sparkles },
   { key: 'version_summary', titleKey: 'agents.versionSummary.title', subtitleKey: 'agents.versionSummary.subtitle', groupKey: 'agents.group.version', capabilityMode: 'model_only', icon: ListChecks },
   { key: 'tool_agent', titleKey: 'agents.toolAgent.title', subtitleKey: 'agents.toolAgent.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'model_only', icon: Wrench },
   { key: 'automation', titleKey: 'agents.automation.title', subtitleKey: 'agents.automation.subtitle', groupKey: 'agents.group.utility', capabilityMode: 'tools', icon: Clock },
@@ -74,7 +73,6 @@ export const FALLBACK_AGENT_TOOL_VALUES: Record<VisibleAgentKey, Required<AgentT
   interactive_director: { file_read: true, web_search: false, file_write: true, image_generation: false, shell_execute: false, skills: false, lore_read: false, lore_write: false, todo: false, agent_config_read: false, agent_config_write: false },
   image: { file_read: false, web_search: false, file_write: false, image_generation: true, shell_execute: false, skills: true, lore_read: false, lore_write: false, todo: false, agent_config_read: false, agent_config_write: false },
   config_manager: { file_read: true, web_search: true, file_write: true, image_generation: false, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: true, agent_config_read: true, agent_config_write: true },
-  interactive_hot_choices: disabledTools(),
   version_summary: disabledTools(),
   tool_agent: disabledTools(),
   automation: { file_read: true, web_search: true, file_write: true, image_generation: false, shell_execute: false, skills: true, lore_read: true, lore_write: true, todo: true, agent_config_read: false, agent_config_write: false },

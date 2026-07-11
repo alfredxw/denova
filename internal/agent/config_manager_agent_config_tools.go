@@ -390,8 +390,6 @@ func setAgentModelOverride(settings *config.Settings, agent string, value config
 		settings.AgentModels.ConfigManager = value
 	case config.AgentKindInteractiveDirector:
 		settings.AgentModels.InteractiveDirector = value
-	case config.AgentKindInteractiveHotChoices:
-		settings.AgentModels.InteractiveHotChoices = value
 	case config.AgentKindVersionSummary:
 		settings.AgentModels.VersionSummary = value
 	case config.AgentKindToolAgent:
@@ -417,8 +415,6 @@ func setAgentToolOverride(settings *config.Settings, agent string, value config.
 		settings.AgentTools.ConfigManager = value
 	case config.AgentKindInteractiveDirector:
 		settings.AgentTools.InteractiveDirector = value
-	case config.AgentKindInteractiveHotChoices:
-		settings.AgentTools.InteractiveHotChoices = value
 	case config.AgentKindVersionSummary:
 		settings.AgentTools.VersionSummary = value
 	case config.AgentKindToolAgent:
@@ -444,8 +440,6 @@ func setAgentPromptOverride(settings *config.Settings, agent string, value confi
 		settings.AgentPrompts.ConfigManager = value
 	case config.AgentKindInteractiveDirector:
 		settings.AgentPrompts.InteractiveDirector = value
-	case config.AgentKindInteractiveHotChoices:
-		settings.AgentPrompts.InteractiveHotChoices = value
 	case config.AgentKindVersionSummary:
 		settings.AgentPrompts.VersionSummary = value
 	case config.AgentKindToolAgent:
@@ -471,8 +465,6 @@ func setAgentSkillOverride(settings *config.Settings, agent string, value config
 		settings.AgentSkills.ConfigManager = value
 	case config.AgentKindInteractiveDirector:
 		settings.AgentSkills.InteractiveDirector = value
-	case config.AgentKindInteractiveHotChoices:
-		settings.AgentSkills.InteractiveHotChoices = value
 	case config.AgentKindVersionSummary:
 		settings.AgentSkills.VersionSummary = value
 	case config.AgentKindToolAgent:
@@ -498,8 +490,6 @@ func setAgentContextOverride(settings *config.Settings, agent string, value conf
 		settings.AgentContexts.ConfigManager = value
 	case config.AgentKindInteractiveDirector:
 		settings.AgentContexts.InteractiveDirector = value
-	case config.AgentKindInteractiveHotChoices:
-		settings.AgentContexts.InteractiveHotChoices = value
 	case config.AgentKindVersionSummary:
 		settings.AgentContexts.VersionSummary = value
 	case config.AgentKindToolAgent:

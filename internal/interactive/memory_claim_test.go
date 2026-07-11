@@ -12,7 +12,7 @@ func TestClaimInteractiveMemoryRunIsIdempotentAndIndependentFromState(t *testing
 		BranchID:   "main",
 		User:       "继续",
 		Narrative:  "剧情继续。",
-		TurnResult: &TurnResult{Contract: TurnContract{PlayerIntent: "继续"}},
+		TurnResult: &TurnResult{Contract: TurnContract{PlayerIntent: "继续"}, Choices: []string{"继续向前", "观察四周"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +57,7 @@ func TestCompletedNoOpMemoryRunResetsAutoInterval(t *testing.T) {
 			BranchID:   "main",
 			User:       "继续",
 			Narrative:  "剧情继续。",
-			TurnResult: &TurnResult{Contract: TurnContract{PlayerIntent: "继续"}},
+			TurnResult: &TurnResult{Contract: TurnContract{PlayerIntent: "继续"}, Choices: []string{"继续向前", "观察四周"}},
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -106,7 +106,7 @@ func TestAppendStoryMemoryPatchIsIdempotentPerTurn(t *testing.T) {
 		BranchID:   "main",
 		User:       "检查路标",
 		Narrative:  "路标背面刻着警告。",
-		TurnResult: &TurnResult{Contract: TurnContract{PlayerIntent: "检查路标"}},
+		TurnResult: &TurnResult{Contract: TurnContract{PlayerIntent: "检查路标"}, Choices: []string{"沿路标前进", "检查周围痕迹"}},
 	})
 	if err != nil {
 		t.Fatal(err)

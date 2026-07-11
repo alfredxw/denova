@@ -3,6 +3,7 @@ package interactive
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing.T) {
@@ -68,8 +69,8 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 	if turn.StateStatus != "ready" || turn.MemoryStatus != "pending" {
 		t.Fatalf("turn phase status mismatch: state=%q memory=%q", turn.StateStatus, turn.MemoryStatus)
 	}
-	if turn.HotState == nil || len(turn.HotState.Choices) != 2 {
-		t.Fatalf("turn choices should be materialized from turn result: %#v", turn.HotState)
+	if turn.HotState != nil || len(turn.TurnResult.Choices) != 2 {
+		t.Fatalf("new turn choices should exist only in turn result: turn_result=%#v hot_state=%#v", turn.TurnResult, turn.HotState)
 	}
 
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -78,6 +79,76 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 	}
 	if got := actorStateFieldValue(snapshot.State, "protagonist", "当前身体状态"); got != "掌心灼伤缓解，体力恢复" {
 		t.Fatalf("body status = %#v", got)
+	}
+}
+
+func TestValidateTurnResultRequiresChoicesExceptAtTerminal(t *testing.T) {
+	base := TurnResult{Contract: TurnContract{PlayerIntent: "前进", SceneGoal: "离开大厅"}}
+	if err := ValidateTurnResult(base); err == nil || !strings.Contains(err.Error(), "2 到 4") {
+		t.Fatalf("non-terminal turn without choices should fail, err=%v", err)
+	}
+	base.Choices = []string{"只有一个"}
+	if err := ValidateTurnResult(base); err == nil {
+		t.Fatal("non-terminal turn with one choice should fail")
+	}
+	base.Choices = []string{"推开门", "检查窗户"}
+	if err := ValidateTurnResult(base); err != nil {
+		t.Fatalf("two choices should pass: %v", err)
+	}
+	base.SceneResult.Status = "terminal"
+	base.Choices = nil
+	if err := ValidateTurnResult(base); err != nil {
+		t.Fatalf("terminal turn may omit choices: %v", err)
+	}
+}
+
+func TestNormalizeTurnResultKeepsAtMostFourUniqueChoices(t *testing.T) {
+	result := NormalizeTurnResult(TurnResult{Choices: []string{" A ", "A", "B", "C", "D", "E"}})
+	if got := result.Choices; len(got) != 4 || strings.Join(got, ",") != "A,B,C,D" {
+		t.Fatalf("normalized choices = %#v", got)
+	}
+}
+
+func TestSnapshotRestoresLegacyHotChoicesAsReadOnlyFallback(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "旧快捷选项", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+		BranchID:  "main",
+		User:      "我推开门",
+		Narrative: "门外传来脚步声。",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store.mu.Lock()
+	meta, lines, err := store.readStoryLocked(story.ID)
+	if err == nil {
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		err = store.rewriteStoryLocked(story.ID, meta, lines, HotChoicesEvent{
+			V:        schemaVersion,
+			Type:     StoryEventTypeHotChoices,
+			ID:       "legacy-hot-choices",
+			ParentID: turn.ID,
+			BranchID: "main",
+			Ts:       now,
+			Choices:  []string{"沿墙观察", "询问守夜人"},
+		})
+	}
+	store.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.TurnResult != nil || snapshot.CurrentTurn.HotState == nil || len(snapshot.CurrentTurn.HotState.Choices) != 2 {
+		t.Fatalf("legacy choices should remain readable without creating a TurnResult: %#v", snapshot.CurrentTurn)
 	}
 }
 
@@ -93,7 +164,7 @@ func TestAppendTurnWithStateRejectsStaleExpectedParent(t *testing.T) {
 		ExpectedParentID: &base,
 		User:             "先行动",
 		Narrative:        "第一回合完成。",
-		TurnResult:       &TurnResult{Contract: TurnContract{PlayerIntent: "先行动"}},
+		TurnResult:       &TurnResult{Contract: TurnContract{PlayerIntent: "先行动"}, Choices: []string{"继续行动", "观察环境"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +174,7 @@ func TestAppendTurnWithStateRejectsStaleExpectedParent(t *testing.T) {
 		ExpectedParentID: &base,
 		User:             "迟到行动",
 		Narrative:        "不应写入。",
-		TurnResult:       &TurnResult{Contract: TurnContract{PlayerIntent: "迟到行动"}},
+		TurnResult:       &TurnResult{Contract: TurnContract{PlayerIntent: "迟到行动"}, Choices: []string{"继续行动", "观察环境"}},
 	})
 	if err == nil || !strings.Contains(err.Error(), "分支已前进") {
 		t.Fatalf("expected stale parent rejection after %s, got %v", first.ID, err)
@@ -120,7 +191,7 @@ func TestAppendStateDeltaRejectsNonHeadTurn(t *testing.T) {
 		BranchID:   "main",
 		User:       "第一步",
 		Narrative:  "第一回合。",
-		TurnResult: &TurnResult{Contract: TurnContract{PlayerIntent: "第一步"}},
+		TurnResult: &TurnResult{Contract: TurnContract{PlayerIntent: "第一步"}, Choices: []string{"继续行动", "观察环境"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -129,7 +200,7 @@ func TestAppendStateDeltaRejectsNonHeadTurn(t *testing.T) {
 		BranchID:   "main",
 		User:       "第二步",
 		Narrative:  "第二回合。",
-		TurnResult: &TurnResult{Contract: TurnContract{PlayerIntent: "第二步"}},
+		TurnResult: &TurnResult{Contract: TurnContract{PlayerIntent: "第二步"}, Choices: []string{"继续行动", "观察环境"}},
 	})
 	if err != nil {
 		t.Fatal(err)

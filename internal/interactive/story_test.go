@@ -487,12 +487,6 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 			{Op: "set", Path: "on_stage", Value: []any{"林川"}},
 			{Op: "merge", Path: "characters.林川", Value: map[string]any{"location": "黄泉酒馆"}},
 		},
-		HotState: &HotState{Choices: []string{
-			"我靠近地窖门，观察门缝和周围痕迹。",
-			"",
-			"我靠近地窖门，观察门缝和周围痕迹。",
-			"我回头询问柜台后的影子是谁。",
-		}},
 	})
 	if err != nil {
 		t.Fatalf("AppendTurnWithState failed: %v", err)
@@ -505,9 +499,6 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	}
 	if turn.StateDelta == nil || len(turn.StateDelta.Ops) != 2 {
 		t.Fatalf("expected turn to carry embedded state delta: %#v", turn.StateDelta)
-	}
-	if turn.HotState == nil || len(turn.HotState.Choices) != 2 {
-		t.Fatalf("expected normalized hot state choices: %#v", turn.HotState)
 	}
 
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -565,13 +556,8 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	if _, ok := turnLine["state_delta"].(map[string]any)["narrative"]; ok {
 		t.Fatalf("state_delta should not contain narrative: %#v", turnLine["state_delta"])
 	}
-	hotState, ok := turnLine["hot_state"].(map[string]any)
-	if !ok {
-		t.Fatalf("turn should embed hot_state: %#v", turnLine)
-	}
-	choices, ok := hotState["choices"].([]any)
-	if !ok || len(choices) != 2 {
-		t.Fatalf("hot_state choices = %#v, want 2 choices", hotState["choices"])
+	if _, ok := turnLine["hot_state"]; ok {
+		t.Fatalf("new turns should keep choices only in turn_result: %#v", turnLine["hot_state"])
 	}
 	if _, ok := turnLine["state"]; ok {
 		t.Fatalf("turn should not persist copied full state: %#v", turnLine["state"])

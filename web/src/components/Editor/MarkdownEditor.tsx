@@ -28,7 +28,7 @@ import { formatLocaleNumber } from '@/i18n'
 interface MarkdownEditorProps {
   fileName: string | null
   content: string
-  onSave: (content: string) => Promise<boolean>
+  onSave: (fileName: string, content: string) => Promise<boolean>
   onQuoteSelection?: (sel: QuoteSelection) => void
   saveSignal?: number
   autoSaveEnabled?: boolean
@@ -48,7 +48,12 @@ interface EditorSearchIntent {
 
 type EditorTheme = 'ide' | 'paper' | 'sepia'
 type SaveStatus = 'dirty' | 'auto-saving' | 'auto-saved' | 'manual-saving' | 'manual-saved' | 'error'
-type PendingSave = { text: string; mode: 'manual' | 'auto' }
+type PendingSave = {
+  fileName: string
+  text: string
+  mode: 'manual' | 'auto'
+  save: (fileName: string, content: string) => Promise<boolean>
+}
 
 interface EditorSettings {
   lineHeight: number
@@ -216,13 +221,15 @@ export function MarkdownEditor({
   const autoSaveTimer = useRef<number | null>(null)
   const saveStatusClearTimer = useRef<number | null>(null)
   const saveInFlightRef = useRef(false)
-  const pendingSaveRef = useRef<PendingSave | null>(null)
+  const pendingSavesRef = useRef<PendingSave[]>([])
+  const scheduledSaveRef = useRef<PendingSave | null>(null)
   const lastSyncedFileRef = useRef<string | null>(null)
   const lastSyncedContentRef = useRef('')
   const fileNameRef = useRef<string | null>(fileName)
+  const onSaveRef = useRef(onSave)
   const autoSaveEnabledRef = useRef(autoSaveEnabled)
   const autoSaveDelayMsRef = useRef(normalizeAutoSaveDelayMs(autoSaveDelayMs))
-  const saveEditorContentRef = useRef<(mode: 'manual' | 'auto') => Promise<void>>(async () => {})
+  const queueEditorSaveRef = useRef<(save: PendingSave) => Promise<void>>(async () => {})
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastSaveSignalRef = useRef(saveSignal)
   const lastIllustrationInsertNonceRef = useRef<number | null>(null)
@@ -297,13 +304,15 @@ export function MarkdownEditor({
 
   useEffect(() => {
     fileNameRef.current = fileName
-  }, [fileName])
+    onSaveRef.current = onSave
+  }, [fileName, onSave])
 
   useEffect(() => {
     autoSaveEnabledRef.current = autoSaveEnabled
     if (!autoSaveEnabled && autoSaveTimer.current) {
       window.clearTimeout(autoSaveTimer.current)
       autoSaveTimer.current = null
+      scheduledSaveRef.current = null
     }
   }, [autoSaveEnabled])
 
@@ -312,10 +321,12 @@ export function MarkdownEditor({
   }, [resolvedAutoSaveDelayMs])
 
   useEffect(() => {
-    if (autoSaveTimer.current) {
-      window.clearTimeout(autoSaveTimer.current)
-      autoSaveTimer.current = null
-    }
+    const scheduled = scheduledSaveRef.current
+    if (!scheduled || scheduled.fileName === fileName) return
+    if (autoSaveTimer.current) window.clearTimeout(autoSaveTimer.current)
+    autoSaveTimer.current = null
+    scheduledSaveRef.current = null
+    void queueEditorSaveRef.current(scheduled)
   }, [fileName])
 
   const updateSearch = useCallback((query: string, nextIndex = 0) => {
@@ -471,43 +482,56 @@ export function MarkdownEditor({
 
   useEffect(() => clearSaveStatusTimer, [clearSaveStatusTimer])
 
-  const persistEditorContent = useCallback(async (text: string, mode: 'manual' | 'auto') => {
-    clearSaveStatusTimer()
-    setSaveStatus(mode === 'auto' ? 'auto-saving' : 'manual-saving')
-    const ok = await onSave(text)
+  const persistEditorContent = useCallback(async ({ fileName: targetFile, text, mode, save }: PendingSave) => {
+    if (fileNameRef.current === targetFile) {
+      clearSaveStatusTimer()
+      setSaveStatus(mode === 'auto' ? 'auto-saving' : 'manual-saving')
+    }
+    const ok = await save(targetFile, text)
     const nextStatus: SaveStatus = ok ? (mode === 'auto' ? 'auto-saved' : 'manual-saved') : 'error'
-    setSaveStatus(nextStatus)
+    if (fileNameRef.current === targetFile) setSaveStatus(nextStatus)
     if (mode === 'manual') {
       if (!ok) toast.error(t('editor.saveFailed'))
     }
-    scheduleSaveStatusClear(nextStatus, mode === 'auto' ? 1400 : 2000)
-  }, [clearSaveStatusTimer, onSave, scheduleSaveStatusClear, t])
+    if (fileNameRef.current === targetFile) {
+      scheduleSaveStatusClear(nextStatus, mode === 'auto' ? 1400 : 2000)
+    }
+  }, [clearSaveStatusTimer, scheduleSaveStatusClear, t])
 
-  const queueEditorSave = useCallback(async (text: string, mode: 'manual' | 'auto') => {
-    lastSyncedContentRef.current = text
+  const queueEditorSave = useCallback(async (save: PendingSave) => {
+    if (fileNameRef.current === save.fileName) lastSyncedContentRef.current = save.text
     if (saveInFlightRef.current) {
-      const pendingMode = mode === 'manual' || pendingSaveRef.current?.mode === 'manual' ? 'manual' : 'auto'
-      pendingSaveRef.current = { text, mode: pendingMode }
-      setSaveStatus(pendingMode === 'auto' ? 'auto-saving' : 'manual-saving')
+      const existingIndex = pendingSavesRef.current.findIndex((pending) => (
+        pending.fileName === save.fileName && pending.save === save.save
+      ))
+      const existing = existingIndex >= 0 ? pendingSavesRef.current[existingIndex] : null
+      const pending = {
+        ...save,
+        mode: save.mode === 'manual' || existing?.mode === 'manual' ? 'manual' : 'auto',
+      } satisfies PendingSave
+      if (existingIndex >= 0) pendingSavesRef.current[existingIndex] = pending
+      else pendingSavesRef.current.push(pending)
+      if (fileNameRef.current === save.fileName) {
+        setSaveStatus(pending.mode === 'auto' ? 'auto-saving' : 'manual-saving')
+      }
       return
     }
 
     saveInFlightRef.current = true
-    let nextText = text
-    let nextMode = mode
+    let nextSave: PendingSave | undefined = save
     try {
-      for (;;) {
-        pendingSaveRef.current = null
-        await persistEditorContent(nextText, nextMode)
-        const pending = pendingSaveRef.current as PendingSave | null
-        if (!pending || pending.text === nextText) break
-        nextText = pending.text
-        nextMode = pending.mode
+      while (nextSave) {
+        await persistEditorContent(nextSave)
+        nextSave = pendingSavesRef.current.shift()
       }
     } finally {
       saveInFlightRef.current = false
     }
   }, [persistEditorContent])
+
+  useEffect(() => {
+    queueEditorSaveRef.current = queueEditorSave
+  }, [queueEditorSave])
 
   /** 保存当前编辑内容 */
   const saveEditorContent = useCallback(async (mode: 'manual' | 'auto') => {
@@ -515,12 +539,8 @@ export function MarkdownEditor({
     const text = isTxtFile(fileName)
       ? normalizeEditorText(editor.getText({ blockSeparator: '\n' }))
       : normalizeEditorText(editor.getMarkdown())
-    await queueEditorSave(text, mode)
-  }, [editor, fileName, queueEditorSave])
-
-  useEffect(() => {
-    saveEditorContentRef.current = saveEditorContent
-  }, [saveEditorContent])
+    await queueEditorSave({ fileName, text, mode, save: onSave })
+  }, [editor, fileName, onSave, queueEditorSave])
 
   /** 执行手动保存 */
   const handleSave = useCallback(async () => {
@@ -528,6 +548,7 @@ export function MarkdownEditor({
       window.clearTimeout(autoSaveTimer.current)
       autoSaveTimer.current = null
     }
+    scheduledSaveRef.current = null
     await saveEditorContent('manual')
   }, [saveEditorContent])
 
@@ -542,7 +563,8 @@ export function MarkdownEditor({
     if (!editor) return
 
     const handleUpdate = () => {
-      if (!fileNameRef.current) return
+      const targetFile = fileNameRef.current
+      if (!targetFile) return
       clearSaveStatusTimer()
       setSaveStatus('dirty')
       if (!autoSaveEnabledRef.current) {
@@ -550,14 +572,22 @@ export function MarkdownEditor({
           window.clearTimeout(autoSaveTimer.current)
           autoSaveTimer.current = null
         }
+        scheduledSaveRef.current = null
         return
       }
       if (autoSaveTimer.current) {
         window.clearTimeout(autoSaveTimer.current)
       }
+      const text = isTxtFile(targetFile)
+        ? normalizeEditorText(editor.getText({ blockSeparator: '\n' }))
+        : normalizeEditorText(editor.getMarkdown())
+      const scheduled: PendingSave = { fileName: targetFile, text, mode: 'auto', save: onSaveRef.current }
+      scheduledSaveRef.current = scheduled
       autoSaveTimer.current = window.setTimeout(() => {
         autoSaveTimer.current = null
-        void saveEditorContentRef.current('auto')
+        if (scheduledSaveRef.current !== scheduled) return
+        scheduledSaveRef.current = null
+        void queueEditorSaveRef.current(scheduled)
       }, autoSaveDelayMsRef.current)
     }
 

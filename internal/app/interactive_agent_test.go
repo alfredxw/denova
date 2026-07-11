@@ -795,32 +795,6 @@ func TestInteractiveDirectorInstructionUsesModelVisibleCompactedHistory(t *testi
 	}
 }
 
-func TestHotChoicesTurnHistoryUsesModelVisibleCompactedHistory(t *testing.T) {
-	turns := make([]interactive.TurnEvent, 0, 10)
-	for i := 1; i <= 10; i++ {
-		turns = append(turns, interactive.TurnEvent{
-			User:      fmt.Sprintf("第%d次行动", i),
-			Narrative: fmt.Sprintf("第%d段剧情", i),
-		})
-	}
-	compaction := &interactive.ContextCompactionEvent{
-		Epoch:           2,
-		Summary:         "压缩摘要：主角已进入旧城。",
-		SourceTurnCount: 10,
-	}
-	turnMemory := buildInteractiveModelVisibleTurnMemory(turns, compaction)
-	history := formatHotChoicesTurnHistory(turnMemory, compaction)
-	if !strings.Contains(history, "[Denova Context Compaction] epoch=2") || !strings.Contains(history, "压缩摘要：主角已进入旧城。") {
-		t.Fatalf("hot choices history should include active compaction summary: %s", history)
-	}
-	if strings.Contains(history, "第1次行动") || strings.Contains(history, "第9次行动") {
-		t.Fatalf("hot choices history should not include turns omitted by compaction: %s", history)
-	}
-	if !strings.Contains(history, "第10次行动") {
-		t.Fatalf("hot choices history should include retained model-visible tail: %s", history)
-	}
-}
-
 func TestInteractiveTurnMemoryKeepsFullTurnChain(t *testing.T) {
 	turns := []interactive.TurnEvent{
 		{User: "第1次行动", Narrative: "第1段剧情"},
@@ -941,6 +915,7 @@ func submitTestTurnResult(t *testing.T, conversation *interactiveConversation, i
 		Contract:    interactive.TurnContract{PlayerIntent: intent, SceneGoal: goal},
 		SceneResult: interactive.TurnSceneResult{Status: "continued", Summary: goal},
 		PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"},
+		Choices:     []string{"继续当前行动", "观察周围变化"},
 	}); err != nil {
 		t.Fatalf("SubmitTurnResult failed: %v", err)
 	}

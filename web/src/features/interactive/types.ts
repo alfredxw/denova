@@ -930,11 +930,6 @@ export interface TerminalOutcome {
   restart_suggestions?: string[]
 }
 
-export interface HotChoicesResponse {
-  enabled: boolean
-  choices: string[]
-}
-
 export interface OpeningRollRequest {
   teller_id?: string
   story_director_id?: string

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, ArrowRight, Gauge, Sparkles, UserRound, UsersRound } from 'lucide-react'
+import { Activity, ArrowRight, Sparkles, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { ActorStateField, ActorStateSchemaSnapshot, ActorTraitInstance, Snapshot, TurnEvent } from '../../types'
-import { StateValue, SyncBadge } from './shared'
+import { StateValue } from './shared'
 
 type ActorEntry = [string, Record<string, unknown>]
 type StateChange = {
@@ -15,7 +15,7 @@ type StateChange = {
   reason?: string
 }
 
-export function StateView({ snapshot, stateFacts, syncStatus, syncError }: { snapshot: Snapshot | null; stateFacts: Array<[string, unknown]>; syncStatus?: string; syncError?: string }) {
+export function StateView({ snapshot, stateFacts, syncError }: { snapshot: Snapshot | null; stateFacts: Array<[string, unknown]>; syncStatus?: string; syncError?: string }) {
   const { t } = useTranslation()
   const turn = snapshot?.current_turn
   const stateObjects = useMemo(() => actorEntries(stateFacts), [stateFacts])
@@ -37,21 +37,11 @@ export function StateView({ snapshot, stateFacts, syncStatus, syncError }: { sna
   const changes = useMemo(() => stateChanges(turn?.state_delta), [turn?.state_delta])
   const actorNames = useMemo(() => new Map(actors.map(([actorId, actor]) => [actorId, actorName(actorId, actor)])), [actors])
   const hasState = stateObjects.length > 0 || otherFacts.length > 0
+  const selectedActor = actors.find(([actorId]) => actorId === selectedActorId)
 
   return (
-    <div className="space-y-6">
-      <section aria-labelledby="director-story-state-title">
-        <header className="mb-3 flex min-w-0 items-start justify-between gap-3 px-0.5">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <Gauge className="h-3.5 w-3.5 shrink-0 text-[var(--director-brass)]" />
-              <h3 id="director-story-state-title" className="text-xs font-semibold text-[var(--nova-text)]">{t('memoryPanel.storyStateTitle')}</h3>
-            </div>
-            <p className="mt-1 text-[11px] leading-4 text-[var(--nova-text-faint)]">{t('memoryPanel.storyStateHint')}</p>
-          </div>
-          <SyncBadge status={syncStatus} error={syncError} loading={syncStatus === 'pending'} />
-        </header>
-
+    <div className="min-w-0 space-y-5">
+      <section className="min-w-0">
         {turn?.state_error || syncError ? (
           <div className="mb-3 rounded-[10px] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-5 text-[var(--nova-danger)]">
             {turn?.state_error || syncError}
@@ -61,46 +51,28 @@ export function StateView({ snapshot, stateFacts, syncStatus, syncError }: { sna
         {!hasState ? (
           <StateEmpty />
         ) : actors.length > 0 ? (
-          <Tabs value={selectedActorId} onValueChange={setSelectedActorId} className="gap-0">
-            <div className="actor-cue-strip -mx-4 overflow-x-auto border-y border-[var(--nova-border)] bg-[var(--director-panel)] px-4 py-2.5">
-              <div className="mb-2 flex items-center justify-between gap-3 px-0.5">
-                <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--nova-text-faint)]">
-                  <UsersRound className="h-3 w-3" />
-                  {t('memoryPanel.actorCue')}
-                </span>
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <div className="flex min-w-0 items-center justify-between gap-2 px-0.5">
+                <span className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--nova-text-faint)]">{t('memoryPanel.actorCue')}</span>
                 <span className="text-[10px] text-[var(--nova-text-faint)]">{t('memoryPanel.actorCount', { count: actors.length })}</span>
               </div>
-              <TabsList variant="line" className="h-auto w-max min-w-full justify-start gap-2 p-0">
-                {actors.map(([actorId, actor]) => {
-                  const name = actorName(actorId, actor)
-                  const lead = isLeadActor(actorId, actor)
-                  const roleLabel = lead ? t('memoryPanel.actorLead') : stringValue(actor.role) || t('memoryPanel.actorSupporting')
-                  return (
-                    <TabsTrigger
-                      key={actorId}
-                      value={actorId}
-                      aria-label={name === roleLabel ? name : t('memoryPanel.actorTabLabel', { name, role: roleLabel })}
-                      className="group min-h-12 min-w-[132px] flex-none justify-start gap-2 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2 text-left shadow-none after:hidden hover:border-[color-mix(in_srgb,var(--director-brass)_45%,var(--nova-border))] data-[state=active]:border-[var(--director-brass)] data-[state=active]:bg-[var(--nova-active)] data-[state=active]:text-[var(--nova-text)]"
-                    >
-                      <ActorMark name={name} lead={lead} />
-                      <span className="min-w-0">
-                        <span className="block truncate text-xs font-semibold text-[var(--nova-text)]">{name}</span>
-                        <span className="mt-0.5 block truncate text-[9px] font-normal text-[var(--nova-text-faint)]">
-                          {roleLabel}
-                        </span>
-                      </span>
-                    </TabsTrigger>
-                  )
-                })}
-              </TabsList>
+              <Select value={selectedActorId} onValueChange={setSelectedActorId}>
+                <SelectTrigger size="sm" aria-label={t('memoryPanel.actorCue')} className="w-full min-w-0">
+                  <SelectValue placeholder={t('memoryPanel.actorCue')} />
+                </SelectTrigger>
+                <SelectContent position="popper" align="start">
+                  <SelectGroup>
+                    {actors.map(([actorId, actor]) => (
+                      <SelectItem key={actorId} value={actorId}>{actorName(actorId, actor)}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
 
-            {actors.map(([actorId, actor]) => (
-              <TabsContent key={actorId} value={actorId} className="mt-0">
-                <ActorStateSheet actorId={actorId} actor={actor} schema={snapshot?.actor_state_schema} />
-              </TabsContent>
-            ))}
-          </Tabs>
+            {selectedActor ? <ActorStateSheet actorId={selectedActor[0]} actor={selectedActor[1]} schema={snapshot?.actor_state_schema} /> : null}
+          </div>
         ) : null}
       </section>
 
@@ -132,7 +104,6 @@ export function StateView({ snapshot, stateFacts, syncStatus, syncError }: { sna
 function ActorStateSheet({ actorId, actor, schema }: { actorId: string; actor: Record<string, unknown>; schema?: ActorStateSchemaSnapshot }) {
   const { t } = useTranslation()
   const name = actorName(actorId, actor)
-  const role = stringValue(actor.role)
   const templateId = stringValue(actor.template_id)
   const template = schema?.system.templates?.find((item) => item.id === templateId)
   const fields = actorFieldEntries(actor, template?.fields)
@@ -141,24 +112,13 @@ function ActorStateSheet({ actorId, actor, schema }: { actorId: string; actor: R
     : []
 
   return (
-    <article className="relative pt-5">
-      <div className="flex min-w-0 items-start gap-3 border-b border-[var(--nova-border)] pb-4">
-        <ActorMark name={name} lead={isLeadActor(actorId, actor)} large />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <h4 className="director-console__display truncate text-xl font-semibold leading-7 text-[var(--nova-text)]">{name}</h4>
-            {isLeadActor(actorId, actor) ? <ActorBadge>{t('memoryPanel.actorLead')}</ActorBadge> : role ? <ActorBadge>{role}</ActorBadge> : null}
-          </div>
-          <p className="mt-0.5 truncate text-[10px] text-[var(--nova-text-faint)]">
-            {template?.name || templateId || t('memoryPanel.actorTemplateUnknown')}
-            <span aria-hidden="true"> · </span>
-            <span className="font-mono">{actorId}</span>
-          </p>
-        </div>
+    <article className="relative min-w-0 pt-3">
+      <div className="min-w-0 border-b border-[var(--nova-border)] pb-2">
+        <h4 className="director-console__display truncate text-base font-semibold leading-6 text-[var(--nova-text)]">{name}</h4>
       </div>
 
       {traits.length > 0 ? (
-        <div className="border-b border-[var(--nova-border)] py-3">
+        <div className="border-b border-[var(--nova-border)] py-2.5">
           <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nova-text-faint)]">{t('memoryPanel.actorTraits')}</div>
           <div className="flex flex-wrap gap-1.5">
             {traits.map((trait) => (
@@ -174,8 +134,8 @@ function ActorStateSheet({ actorId, actor, schema }: { actorId: string; actor: R
         </div>
       ) : null}
 
-      <div className="py-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
+      <div className="py-3">
+        <div className="mb-2 flex items-center justify-between gap-2">
           <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nova-text-faint)]">{t('memoryPanel.actorFields')}</span>
           <span className="text-[10px] text-[var(--nova-text-faint)]">{t('memoryPanel.fieldCount', { count: fields.length })}</span>
         </div>
@@ -268,19 +228,6 @@ function StateEmpty() {
       <p className="mt-1 text-[10px] leading-4 text-[var(--nova-text-faint)]">{t('memoryPanel.stateEmptyHint')}</p>
     </div>
   )
-}
-
-function ActorMark({ name, lead, large = false }: { name: string; lead: boolean; large?: boolean }) {
-  return (
-    <span aria-hidden="true" className={`relative flex shrink-0 items-center justify-center rounded-full border font-semibold ${large ? 'h-11 w-11 text-sm' : 'h-8 w-8 text-[10px]'} ${lead ? 'border-[var(--director-brass)] bg-[color-mix(in_srgb,var(--director-brass)_13%,var(--nova-surface))] text-[var(--director-brass)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}>
-      {actorInitials(name)}
-      {lead ? <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border-2 border-[var(--nova-surface)] bg-[var(--director-live)]" /> : null}
-    </span>
-  )
-}
-
-function ActorBadge({ children }: { children: React.ReactNode }) {
-  return <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-[9px] text-[var(--nova-text-faint)]">{children}</span>
 }
 
 function actorEntries(stateFacts: Array<[string, unknown]>): ActorEntry[] {
@@ -379,14 +326,6 @@ function inferredFieldType(value: unknown) {
   if (value === null) return 'object'
   if (typeof value === 'boolean') return 'bool'
   return typeof value
-}
-
-function actorInitials(name: string) {
-  const trimmed = name.trim()
-  if (!trimmed) return '•'
-  if (/^[\u3400-\u9fff]/.test(trimmed)) return trimmed.slice(0, 1)
-  const words = trimmed.split(/\s+/).filter(Boolean)
-  return words.length > 1 ? `${words[0][0]}${words[1][0]}`.toUpperCase() : trimmed.slice(0, 2).toUpperCase()
 }
 
 function isActorTrait(value: unknown): value is ActorTraitInstance {
