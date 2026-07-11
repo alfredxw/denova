@@ -1,0 +1,332 @@
+AGENTS.md
+  h_beed6209b76699 26
+CHANGELOG.md
+  s_918c6398272db8::t_40edb8067e0784 11-28,31-32,73-74,81-82,136-137,142-145,283-284
+internal/agent/builder.go
+  s_42285777805047::t_63e5f820d654a8 72,75-79,85,88,513-522
+internal/agent/chat.go
+  s_918c6398272db8::t_1fabc7fa8307ca 294,296-305,310-317,383-385,394-397,418-421,443-446,501-504,538-552
+internal/agent/chat_display.go
+  s_918c6398272db8::t_1debf1b9314b4b 13-15,17,24,28,32-38,45
+internal/agent/chat_display_test.go
+  s_918c6398272db8::t_0973c615213a49 4,8-9,13-38
+internal/agent/config_manager_tools.go
+  s_918c6398272db8::t_40b109a285c1ef 231,397,484,571,598,658,753
+internal/agent/context_analysis.go
+  s_42285777805047::t_a995df73feab14 20-36,232,234-250,309,311-327,338,340-353,418-424,434,443-450,452
+internal/agent/context_analysis_test.go
+  s_42285777805047::t_888012ca2eb8e4 142
+internal/agent/context_compaction.go
+  s_42285777805047::t_365409c8833772 44-62,87-93,165,167,169-180,207,215-258,692-708,717-728
+internal/agent/context_compaction_test.go
+  s_42285777805047::t_2d96fc36028528 120-148
+internal/agent/conversation.go
+  s_e1c3b665e2461d::t_33dfb8426bb60d 124,130,132-143,181,198
+internal/agent/interactive_memory_tools.go
+  s_918c6398272db8::t_8493a098acf2db 28,36,169,207,210-229,231,233-252,254,256,258
+internal/agent/interactive_memory_tools_test.go
+  s_42285777805047::t_c284758ed9a60d 233-276
+internal/agent/middleware.go
+  s_42285777805047::t_6559f25730cb11 37,44,52-56,87-92,104,106,170
+internal/agent/middleware_test.go
+  s_42285777805047::t_5b6f1de42b01d1 81,100-136
+internal/agent/prompt_test.go
+  s_42285777805047::t_7cc105ebdf6889 327-329,331,338
+internal/agent/system_prompt.go
+  s_42285777805047::t_59ac0b9a75a097 94-98,127,143-149
+internal/agent/system_prompt_test.go
+  s_42285777805047::t_bfba63cde1868c 89
+internal/app/interactive_agent_test.go
+  s_918c6398272db8::t_5568247be09f19 113,154-155,167,169-170,180-182,196,235-258,471-474,481,498,581,937-947
+internal/app/interactive_app_service.go
+  s_918c6398272db8::t_700c35fd33cede 136-137,474-485,878-879,881-885,905-927,929,934-938,952-953
+internal/app/interactive_conversation.go
+  s_918c6398272db8::t_b84931c1c76dc0 45-46,74-81,88,90,92,106,195,206-245,271-277,493-496,499,508,514,840-859,896-898,904,920,922-933,956,966,970,978-1003,1008-1009,1011-1012,1017-1050,1079-1117,1122-1132,1140-1142,1144-1155,1157,1169-1179,1405-1410
+internal/app/interactive_conversation_test.go
+  s_918c6398272db8::t_d7fd246407685a 4,15-76,78-79,81-84,172
+internal/app/interactive_director.go
+  s_42285777805047::t_b5f1b8f3415aca 30,46-65,76,104-111,136-143,202,220-221,247,259,286-289
+internal/app/interactive_director_tasks.go
+  s_42285777805047::t_71f6ed9d293190 19,24,28-33,45-49,55-64,70-76,82-107
+internal/app/interactive_director_tasks_test.go
+  s_42285777805047::t_f2cda532fe27d1 5,30-89
+internal/app/interactive_director_test.go
+  s_42285777805047::t_70bce7519697c9 118,133-137,143-148,150-174,219-223,229-232,242,272-276,282-286,436,458,477-494
+internal/app/interactive_persisted_event_test.go
+  s_42285777805047::t_59d6f387b66b03 22
+internal/imagepreset/library.go
+  s_c76a9365e81760::t_e32063a282919a 31-43,407,410,413,416
+internal/imagepreset/library_test.go
+  s_c76a9365e81760::t_8f66f00842bf66 4-5,13-26
+internal/interactive/actor_state.go
+  s_918c6398272db8::t_c6335835296ec4 8-10,81-86,99-160,187-199,221,236,240-242,245,292-295,298,313,344-345,366-367,378-669,748,752,758,767,772,777,782,784,786,791,793,795,797,799,821,823-827,831,833-836,843,851,874,891,904,912,917,922
+internal/interactive/actor_state_modules.go
+  s_918c6398272db8::t_1e220d4a8b43dd 11-35,148
+internal/interactive/actor_state_presets.go
+  s_c76a9365e81760::t_f513d18d5e1d3f 151
+internal/interactive/actor_state_test.go
+  s_918c6398272db8::t_d0da2f28435aac 39-41,55-56,66,73-74,76,88-90,113-118,125,132,135,192-194,206,220,229-230,237,245,251
+internal/interactive/actor_state_v2_test.go
+  s_918c6398272db8::t_bf2e12da770b03 1-305
+internal/interactive/actor_traits.go
+  s_918c6398272db8::t_c0d24110ebe731 308-330,333,336,342,345,351,358,360,363,372,386,389,392,402-404,406,408-409,418,420,424,426-428,430,628,633-639,641-647,652-654,668
+internal/interactive/actor_traits_test.go
+  s_918c6398272db8::t_2d57197f588f1e 108,112,185,273,279,281,318,325-329
+internal/interactive/director_modules.go
+  s_918c6398272db8::t_f5a89770be5bd6 18,1305-1307,1405
+internal/interactive/director_plan.go
+  s_42285777805047::t_50dd2fc4a4bbea 95,120-134,427-428,463-483,487,494,818-836,838-839
+internal/interactive/event_system_presets.go
+  s_c76a9365e81760::t_9de019c683f5d6 81
+internal/interactive/memory_claim_test.go
+  s_42285777805047::t_2bef7888ab4c71 1-133
+internal/interactive/memory_patch.go
+  s_42285777805047::t_89132436d80909 4-6,13-14,102-105,120-138,436-438,591-595
+internal/interactive/memory_store.go
+  s_42285777805047::t_328fe974eaf600 195-261
+internal/interactive/orchestration.go
+  s_918c6398272db8::t_20a72aafbdd0d3 94,102-113,131-133,151-155,368-369,527-533,545-557,574-585,596-617
+internal/interactive/orchestration_test.go
+  s_918c6398272db8::t_dba9299bf4d2c3 206,222,228,231,239,264,362-363,366,371-372,375-376
+internal/interactive/plan_decision.go
+  s_42285777805047::t_3c807ff5f09df5 1-62
+internal/interactive/plan_decision_test.go
+  s_42285777805047::t_4d00fe7c657baa 1-14
+internal/interactive/preset_metadata_test.go
+  s_c76a9365e81760::t_122fb8192a3919 1-36
+internal/interactive/rule_state_binding.go
+  s_918c6398272db8::t_cc42a93f7a9f66 21-29,33-36,46,60-63,87-88,95-98,126-178,186,193,211,214,251,254,272,276,352-359,361,378-386,388,452,455,462,464-468,480,490-494,560,562,565,569,573,581,586,623-627,666,670-672
+internal/interactive/rule_state_consumption.go
+  s_918c6398272db8::t_23b6650a89a002 17-21,25-28,32-40,42,48,58,61,64,69-70,74,80-83,85,88-102,105,107,121-129,161,181-194,214,220-228,230
+internal/interactive/rule_state_legacy_adapter.go
+  s_918c6398272db8::t_c194f77b91be91 1-111
+internal/interactive/story.go
+  s_918c6398272db8::t_fd36abbdeeeb6a 119-133,135-145,159-160,272-274,509-511,519-520,522-525,543,549-571,573-578,583-584,590-595,598,600-601,808,831-833,835-836,844-848,850,862,866-869,975-976,984,994,997,1000-1001,1007,1223-1225,1233-1235,1255-1257,1265-1267,1350
+internal/interactive/story_directors.go
+  s_918c6398272db8::t_ab2230faa70618 553-555,658
+internal/interactive/story_directors_test.go
+  s_918c6398272db8::t_cb4f8704652441 72-73,88-93,387-395
+internal/interactive/story_schema.go
+  s_918c6398272db8::t_17e0dfadc0f59a 18,73,160-163,177-182,195-214
+internal/interactive/story_snapshot.go
+  s_918c6398272db8::t_c820ae2d0230bf 18,49-51,61-63,79
+internal/interactive/story_state.go
+  s_918c6398272db8::t_31bca62525df61 285-343
+internal/interactive/story_storage.go
+  s_918c6398272db8::t_5f1ec98a2f2593 9-10,25-28,128-130,134-195
+internal/interactive/story_test.go
+  s_918c6398272db8::t_5b03df96a998e4 592,614,617-618,626,642,680,707,710,713,1196,1214-1215,1223
+internal/interactive/story_types.go
+  s_918c6398272db8::t_4e0c086ec1c116 10-21,35,44,48,76-79,154-168,189,302-304,322-330,400
+internal/interactive/tellers.go
+  s_c76a9365e81760::t_b4635d4c993c88 946,951,956,961,968
+internal/interactive/turn_result.go
+  s_42285777805047::t_5061582d555d04 1-23,26-31,33-37,39-48,50-56,58-63,65-74,76-106,108-118,120-129,131-146,148-153,156-175,178-188
+internal/interactive/turn_result_test.go
+  s_918c6398272db8::t_54f003301a3615 1-145
+internal/prompts/interactive.go
+  s_918c6398272db8::t_a08a5e08d72320 60-69,95,112,118,122,125,127-129,142,224-225,256,258,262,265,269-296,303,307-312,343,353
+internal/prompts/interactive_test.go
+  s_42285777805047::t_876030c596d3df 91,107-108,119
+web/src/components/Chat/AgentPanel.tsx
+  s_c76a9365e81760::t_6b11270a57e909 605
+web/src/components/Chat/ContextAnalysisDialog.tsx
+  s_42285777805047::t_7ea0605141579d 90-98,107
+web/src/components/Chat/MessageItem.tsx
+  s_918c6398272db8::t_d0efe0aa301680 236-237
+web/src/components/Chat/composer-token-input.tsx
+  s_918c6398272db8::t_3019b920b3c915 210-214,218-219
+web/src/components/Chat/context-compaction-message.ts
+  s_42285777805047::t_ffa7e697b15db1 20-23
+web/src/components/Home/HomeView.test.tsx
+  s_42285777805047::t_62db305de133cf 43
+web/src/components/workbench/WorkbenchShell.responsive.test.tsx
+  s_efa09d6a3c4878::t_932f956ccfb693 13,17-23,82-97
+web/src/components/workbench/WorkbenchShell.tsx
+  s_918c6398272db8::t_f4f29cbe96c841 9,50,72,288
+web/src/features/interactive/components/BranchTimeline.tsx
+  s_42285777805047::t_9705db77e98a4c 137-138,318-322,372
+web/src/features/interactive/components/InteractiveLayout.test.tsx
+  s_918c6398272db8::t_54711c1c778e9e 43-47,112-126
+web/src/features/interactive/components/InteractiveLayout.tsx
+  s_efa09d6a3c4878::t_6bebfe7def23fa 163-164,297
+web/src/features/interactive/components/MemoryPanel.test.tsx
+  s_918c6398272db8::t_097c701a56aeac 28-29,51,67-68,70,76,81-84,86,105-106,110,113-115,197,207,230,265,305,465,485-490
+web/src/features/interactive/components/MemoryPanel.tsx
+  s_918c6398272db8::t_da6e14680bbc0b 1,28,32-36,39,103,105,107,111,129-132
+web/src/features/interactive/components/PlayerStoryHUD.tsx
+  s_42285777805047::t_38f057c71ca069 1,3,5,7-21,23-39,42
+web/src/features/interactive/components/SettingPanel.tsx
+  s_42285777805047::t_0cd56457952f9a 22,359,991,995-1001
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_42285777805047::t_b6c384d5c73ae6 734,737,767,808
+web/src/features/interactive/components/SettingPanelTellerEditor.tsx
+  s_c76a9365e81760::t_ddffb87af44f5b 34,129
+web/src/features/interactive/components/SnapshotPanel.test.tsx
+  s_918c6398272db8::t_1c0269ff976cda 84
+web/src/features/interactive/components/SnapshotPanel.tsx
+  s_918c6398272db8::t_be5f0023de5f15 149,194
+web/src/features/interactive/components/StoryMemoryView.test.tsx
+  s_918c6398272db8::t_57ce930ad32fcd 1-15
+web/src/features/interactive/components/StoryMemoryView.tsx
+  s_efa09d6a3c4878::t_f5a43d4b4bbe31 2,13,16,229-238
+web/src/features/interactive/components/StoryStage.test.tsx
+  s_918c6398272db8::t_87b2673d16796f 52-89,493-515,555,636,638-641,920,946,949,1036,1038-1042
+web/src/features/interactive/components/StoryStage.tsx
+  s_918c6398272db8::t_0a0cf074346c41 37,508-515,607-608,610,625-629,631,666,763,779-787,1199,2137,2254-2256,2260
+web/src/features/interactive/components/director-console/ConsoleTabs.tsx
+  s_d3c7d9bb350c60::t_487879b7937817 2,6,8-10,12,15-16,21,23-24,29,33
+web/src/features/interactive/components/director-console/DirectorConsole.tsx
+  s_d3c7d9bb350c60::t_288548562fdf09 24-27,56-59,110-113,255-260,284,287-289
+web/src/features/interactive/components/director-console/DirectorConsoleHeader.tsx
+  s_d3c7d9bb350c60::t_e8ee28118ac242 1,4,7-19,23
+web/src/features/interactive/components/director-console/DirectorRunView.tsx
+  s_d3c7d9bb350c60::t_f0da0ca26bfd5b 100-101,110-111,115-124,133,183,187-188,194,219,231,328,330,333,335,350,362,375-376,379
+web/src/features/interactive/components/director-console/MemoryView.tsx
+  s_d3c7d9bb350c60::t_9ed3c6111cd25a 1,4,9-11,23-25,39-64,68-78,80-82,100,102,104,106,112,114,119,121,134-143,148,154,162,164-165,167,179,181-188,191,193-195,202-209
+web/src/features/interactive/components/director-console/PlanView.tsx
+  s_918c6398272db8::t_ac3ffd97da67a7 79-88,91,93,96,98,101,103,107-113,115-117,130-138,141,143,146-149,158-161,164,170,189,196-197,215,223-231
+web/src/features/interactive/components/director-console/RuleAuditCard.tsx
+  s_918c6398272db8::t_5acb5dd6c8a044 42,50,80,85-86
+web/src/features/interactive/components/director-console/StateView.test.tsx
+  s_918c6398272db8::t_80f20ce508fa2e 2,10-20,27,51,54-55,59-63,66-110
+web/src/features/interactive/components/director-console/StateView.tsx
+  s_918c6398272db8::t_39d42ff3f3e71a 1-2,4-5,8-17,21-22,24-40,42-50,53-71,73-101,103-104,106-113,115-125,132,134,137-138,144-146,148-150,152-156,160-162,168,174-187,189,192-194,196-212,215-223,228-270,273-286,289-389,407-411
+web/src/features/interactive/components/director-console/shared.tsx
+  s_d3c7d9bb350c60::t_3293a183a046bf 14,33-70,72-97
+web/src/features/interactive/components/preset-config/PresetConfigSectionEditor.test.tsx
+  s_42285777805047::t_0d4bcb44394a48 35-37
+web/src/features/interactive/components/preset-config/PresetConfigSectionEditor.tsx
+  s_42285777805047::t_3e2aa8dbd6c9a6 142,187,197-198,201,203-204,208
+web/src/features/interactive/components/preset-config/PresetEditorChrome.test.tsx
+  s_42285777805047::t_18bf5dbe874e0a 1-21
+web/src/features/interactive/components/preset-config/PresetEditorChrome.tsx
+  s_42285777805047::t_63945e9a448cf5 7,80
+web/src/features/interactive/components/preset-config/TRPGSystemVisualEditor.test.tsx
+  s_918c6398272db8::t_e88c3cd9de6961 28-35,42,51,100-136
+web/src/features/interactive/components/preset-config/TRPGSystemVisualEditor.tsx
+  s_918c6398272db8::t_4918b7c9e9a1b1 71-73,158,269,281-389
+web/src/features/interactive/components/preset-config/actor-state-explorer/ActorStateExplorer.test.tsx
+  s_918c6398272db8::t_cefbacfd919e4d 9-33
+web/src/features/interactive/components/preset-config/actor-state-explorer/ActorStateExplorer.tsx
+  s_918c6398272db8::t_99e82905a6d660 75,135-140
+web/src/features/interactive/components/preset-config/actor-state-explorer/build-tree.ts
+  s_918c6398272db8::t_6299fd7ae8c612 19-20,112-113
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/FieldDetailEditor.tsx
+  s_918c6398272db8::t_2df014e556b053 54-57,70,82,92-100,262-265
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/TemplateDetailEditor.tsx
+  s_918c6398272db8::t_fb025def976b99 149,305,310
+web/src/features/interactive/components/preset-config/actor-state-explorer/shared/TemplateStateEditor.tsx
+  s_918c6398272db8::t_f2fc0c5c8134b0 1,21,23,38,40,65
+web/src/features/interactive/components/preset-config/actor-state-explorer/validation.ts
+  s_918c6398272db8::t_647799c6927307 21,23-25,40-43
+web/src/features/interactive/components/preset-config/ruleTemplates.ts
+  s_918c6398272db8::t_af380b9c151701 96-97,100,120,148-149,152,176-177,180
+web/src/features/interactive/components/preset-config/visual-editors.tsx
+  s_918c6398272db8::t_74151b850f584b 271-274,283,285,289,323,374-375,630-635
+web/src/features/interactive/components/setting-panel/PresetSettingsPanel.tsx
+  s_c76a9365e81760::t_06353915e9d96e 91,94,102,109,521,529,537,545,553,561,569,1176-1180,1197,1200,1204,1208,1212,1216,1220,1224
+web/src/features/interactive/components/setting-panel/presetResources.ts
+  s_42285777805047::t_019b3ef7d4c247 43-44,58,81,88,95,118,128,136,143
+web/src/features/interactive/components/setting-panel/usePresetResourceAutosave.test.tsx
+  s_c76a9365e81760::t_80d4ff7aab99fc 307-308,316,324
+web/src/features/interactive/components/setting-panel/usePresetResourceAutosave.ts
+  s_c76a9365e81760::t_aa0fc767f0e577 7,12-13,20,75,82,90-91,154,167
+web/src/features/interactive/types.ts
+  s_918c6398272db8::t_d5e42fcc8f1b1e 295,297,435,440,446-505,571-584,653,671-689,750-751,763-764,776-777,792-793,837-839,857-859,869-870,906,911-913,993,997-1004,1014-1017
+web/src/i18n/locales/en-US/branchTimeline.ts
+  s_42285777805047::t_3770cfd4bfde53 31-33
+web/src/i18n/locales/en-US/chat.ts
+  s_42285777805047::t_0429a072a476ec 219-220
+web/src/i18n/locales/en-US/memoryPanel.ts
+  s_d3c7d9bb350c60::t_43e09f38873d7d 6-7,9,12-13,33-35,37,51-53,55,57-61,63,67-76,80-83,88,103-104
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_918c6398272db8::t_53a3ca46e68b73 106,203-206,502-508,574,805
+web/src/i18n/locales/en-US/storyMemory.ts
+  s_efa09d6a3c4878::t_417bb263a74980 3
+web/src/i18n/locales/en-US/storyStage.ts
+  s_918c6398272db8::t_931bd386d2af66 7-22,84,88,99
+web/src/i18n/locales/zh-CN/branchTimeline.ts
+  s_42285777805047::t_96182faf446359 31-33
+web/src/i18n/locales/zh-CN/chat.ts
+  s_42285777805047::t_a7a06b990f7578 219-220
+web/src/i18n/locales/zh-CN/memoryPanel.ts
+  s_d3c7d9bb350c60::t_cb1e7caeffbc71 6-7,9,12-13,33-35,37,51-53,55,57-61,63,67-76,80-83,88,103-104
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_918c6398272db8::t_5d82931d255b83 106,203-206,502-508,574,805
+web/src/i18n/locales/zh-CN/storyMemory.ts
+  s_efa09d6a3c4878::t_d5911c359dad6c 3
+web/src/i18n/locales/zh-CN/storyStage.ts
+  s_918c6398272db8::t_b718711bcb47ce 7-22,84,88,99
+web/src/index.css
+  s_918c6398272db8::t_f92584c49414a1 257,262,264,280,301,303,306,309-315,2130-2209
+web/src/lib/agent-legacy-message.ts
+  s_42285777805047::t_1c182391932d82 153-156
+web/src/lib/agent-message-view.ts
+  s_42285777805047::t_a466d51ac2adfe 338-341
+web/src/lib/api-client/types.ts
+  s_918c6398272db8::t_fcb44dda0233c2 26-29,88-90,249-251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "deaa58447a88b8c8dc91f1e7da159ac79b66ffee",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_42285777805047": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4aef-1a99-7091-92ab-d9117768b65c",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_918c6398272db8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4c66-ede2-7150-ae6b-3da0042b2975",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_c76a9365e81760": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4c3e-62ea-7d93-b7b0-87ed597b4c7a",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_d3c7d9bb350c60": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4cb0-0769-7213-a1b2-352df762889b",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_e1c3b665e2461d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4c0f-f663-7bd3-925f-8241f730b4a4",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_efa09d6a3c4878": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4c97-5787-7923-8bf3-5d4ea5d873c2",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
