@@ -739,17 +739,16 @@ function ChapterOutline({
 }) {
   const { t } = useTranslation()
   const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set())
-  const [bookSettingsExpanded, setBookSettingsExpanded] = useState(false)
   const [chapterPlanHistoryExpanded, setChapterPlanHistoryExpanded] = useState(false)
   const volumes = useMemo(() => groupChaptersByVolume(chapters, t), [chapters, t])
   const settingShortcuts = useMemo<PlanningShortcutItem[]>(() => [
     { document: planningDocument(outline, 'setting/outline.md', t('planning.outline')), icon: 'outline', label: t('planning.outlineTab') },
     { document: planningDocument(undefined, 'CREATOR.md', t('planning.creatorRules')), icon: 'creator', label: t('planning.creatorRulesTab') },
-    { document: planningDocument(undefined, 'setting/progress.md', t('planning.writingProgress')), icon: 'progress', label: t('planning.writingProgressTab') },
+    { document: planningDocument(ideas, 'ideas.md', t('planning.ideas')), icon: 'ideas' , label: t('planning.ideas') },
   ], [outline, t])
-  const bookSettings = useMemo<PlanningDocumentItem[]>(() => [
-    { document: planningDocument(ideas, 'ideas.md', t('planning.ideas')), icon: 'ideas' },
-    { document: planningDocument(undefined, 'setting/character-states.md', t('planning.characterStates')), icon: 'characterState' },
+  const bookSettings = useMemo<PlanningShortcutItem[]>(() => [
+    { document: planningDocument(undefined, 'setting/progress.md', t('planning.writingProgress')), icon: 'progress', label: t('planning.writingProgressTab') },
+    { document: planningDocument(undefined, 'setting/character-states.md', t('planning.characterStates')), icon: 'characterState' , label: t('planning.characterStates') },
   ], [ideas, t])
   const hasPlanning = settingShortcuts.length > 0 || bookSettings.length > 0 || chapterPlans.length > 0
   const latestChapterPlan = chapterPlans[chapterPlans.length - 1]
@@ -782,18 +781,6 @@ function ChapterOutline({
       <section className="space-y-1.5">
         <div className="flex items-center justify-between gap-2 px-1">
           <span className="text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.bookSettings')}</span>
-          <button
-            type="button"
-            className="nova-nav-item flex min-w-0 items-center gap-1 rounded-[var(--nova-radius)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]"
-            onClick={() => setBookSettingsExpanded((expanded) => !expanded)}
-          >
-            {bookSettingsExpanded ? (
-              <ChevronDown className="h-3 w-3 shrink-0" />
-            ) : (
-              <ChevronRight className="h-3 w-3 shrink-0" />
-            )}
-            <span className="truncate">{t('planning.bookSettingCount', { count: bookSettings.length })}</span>
-          </button>
         </div>
         <div className="flex items-center gap-1">
           {settingShortcuts.map((item) => {
@@ -813,20 +800,24 @@ function ChapterOutline({
             )
           })}
         </div>
-        {bookSettingsExpanded && (
-          <div className="space-y-0.5 pl-1">
-            {bookSettings.map((item) => (
-              <PlanningListItem
-                key={item.document.path}
-                document={item.document}
-                icon={item.icon}
-                selected={selectedFile === item.document.path}
-                onSelectFile={onSelectFile}
-                compact
-              />
-            ))}
-          </div>
-        )}
+        <div className="flex items-center gap-1">
+          {bookSettings.map((item) => {
+            const selected = selectedFile === item.document.path
+            return (
+                <button
+                    key={item.document.path}
+                    type="button"
+                    className={`nova-nav-item min-w-0 flex-1 px-1.5 py-1 text-[11px] font-medium ${
+                        selected ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'
+                    }`}
+                    title={item.document.title}
+                    onClick={() => onSelectFile(item.document.path)}
+                >
+                  <span className="block truncate">{item.label}</span>
+                </button>
+            )
+          })}
+        </div>
       </section>
 
       <section className="space-y-1.5">

@@ -11,7 +11,7 @@ const planning = {
   'planning.creatorRules': 'Creation Rules',
   'planning.creatorRulesTab': 'Rules',
   'planning.writingProgress': 'Writing Progress',
-  'planning.writingProgressTab': 'Progress',
+  'planning.writingProgressTab': 'Current Writing Progress',
   'planning.characterStates': 'Current Character State',
   'planning.chapterPlans': 'Chapter Group Outlines',
   'planning.chapterPlanCount': '{{count}} groups',
