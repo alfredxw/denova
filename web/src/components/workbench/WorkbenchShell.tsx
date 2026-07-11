@@ -27,6 +27,7 @@ interface WorkbenchShellProps {
   appVersion: string
   summary: WorkspaceSummary | null
   currentChapter?: ChapterSummary
+  editorLine?: number
   isStreaming: boolean
   projectVisible: boolean
   activityBarExpanded: boolean
@@ -97,6 +98,7 @@ export function WorkbenchShell({
   appVersion,
   summary,
   currentChapter,
+  editorLine,
   isStreaming,
   projectVisible,
   activityBarExpanded,
@@ -530,6 +532,12 @@ export function WorkbenchShell({
       )}
       {mode === 'ide' && currentChapter && (
         <span className="ml-4">{t('workbench.status.currentChapter', { title: currentChapter.display_title, words: formatNumber(currentChapter.words), status: currentChapter.status })}</span>
+      )}
+      {mode === 'ide' && currentChapter && (
+        <span className="ml-4">
+          {t('editor.updatedAt', { time: currentChapter.updated_at || t('editor.unknownTime') })}
+          {editorLine !== undefined && ` · ${t('editor.currentLine', { line: formatNumber(editorLine) })}`}
+        </span>
       )}
       {isStreaming && <span className="ml-auto">{t('workbench.status.streaming')}</span>}
     </div>

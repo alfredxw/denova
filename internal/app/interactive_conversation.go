@@ -142,13 +142,13 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		history = append(history, schema.AssistantMessage(turn.Narrative, nil))
 	}
 	history = agent.ApplyToolResultContextPolicyForConversation(history, c.ToolResultContextPolicy())
-	history = append(history, schema.UserMessage(prompts.InteractiveStoryTurnInstruction(agentMessage, tellerTurnContextPrompt, storyDirector.Strategy.RandomEventRate, runtimeContext)))
+	history = append(history, schema.UserMessage(prompts.InteractiveStoryTurnInstruction(agentMessage, tellerTurnContextPrompt, runtimeContext)))
 	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, storyMemory, directorPlanVisible, ruleSummary, strategyPrompt, turnMemory, agentMessage)
 	c.mu.Lock()
 	c.lastSources = sourceSummary
 	c.mu.Unlock()
 	log.Printf(
-		"[interactive-agent] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s story_director_id=%s teller_slots=%s teller_turn_context=%s random_event_rate=%.2f story_memory=%s director_plan=%s turns=%d model_turns=%d compressed_turns=%s history=%s turn_instruction=%s sources=%s",
+		"[interactive-agent] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s story_director_id=%s teller_slots=%s teller_turn_context=%s story_memory=%s director_plan=%s turns=%d model_turns=%d compressed_turns=%s history=%s turn_instruction=%s sources=%s",
 		c.storyID,
 		storyCtx.Snapshot.BranchID,
 		interactivePartSummary(storyCtx.Meta.Title),
@@ -157,7 +157,6 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		storyCtx.Meta.StoryDirectorID,
 		interactiveTellerSlotSummary(teller, "turn_context"),
 		interactivePartSummary(tellerTurnContextPrompt),
-		storyDirector.Strategy.RandomEventRate,
 		interactivePartSummary(storyMemory),
 		interactivePartSummary(directorPlanVisible),
 		len(storyCtx.Snapshot.Turns),
@@ -930,7 +929,14 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 	planningTemplates := budget.take("director.strategy.templates", boundedJSON(storyDirector.Strategy.PlanningTemplates, interactiveDirectorContextBytes), interactiveDirectorContextBytes)
 	planningSummary := budget.take("director.planning_summary", interactive.StoryDirectorPlanningSummary(storyDirector, interactiveDirectorContextBytes), interactiveDirectorContextBytes)
 	strategyContext := budget.take("director.strategy.prompt", strategyPrompt, interactiveDirectorContextBytes)
-	eventCatalog := budget.take("director.events", boundedJSON(interactiveDirectorEventCatalog(storyDirector), interactiveDirectorContextBytes), interactiveDirectorContextBytes)
+	eventOpportunity, eventRuntime, eventIndex, eventErr := c.store.DirectorEventContext(c.storyID, storyCtx.Snapshot.BranchID, turn.ID)
+	if eventErr != nil {
+		return "", fmt.Errorf("读取事件编排上下文失败: %w", eventErr)
+	}
+	eventCatalog := ""
+	if len(eventIndex) > 0 {
+		eventCatalog = budget.take("director.events", boundedJSON(eventIndex, interactiveDirectorContextBytes), interactiveDirectorContextBytes)
+	}
 	instruction := prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{
 		Title:                       title,
 		Origin:                      origin,
@@ -952,6 +958,8 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		StoryDirectorPlan:           planningSummary,
 		StoryDirectorStrategyPrompt: strategyContext,
 		DirectorEventCatalog:        eventCatalog,
+		EventOpportunity:            budget.take("director.event_opportunity", boundedJSON(eventOpportunity, 4*1024), 4*1024),
+		EventRuntime:                budget.take("director.event_runtime", boundedJSON(eventRuntime, 8*1024), 8*1024),
 	})
 	log.Printf("[interactive-director-agent] context budget story_id=%s branch_id=%s turn_id=%s instruction_bytes=%d model_window_tokens=%d threshold_tokens=%d source_budget_tokens=%d fragments=%s", c.storyID, storyCtx.Snapshot.BranchID, turn.ID, len(instruction), budget.contextWindowTokens, budget.thresholdTokens, budget.initialTokens, budget.trace())
 	log.Printf(

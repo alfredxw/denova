@@ -44,7 +44,6 @@ export interface Teller {
   id: string
   name: string
   description: string
-  random_event_rate: number
   style_refs?: string[] | null
   style_rules?: StyleRule[] | null
   orchestration?: TellerOrchestrationConfig | null
@@ -216,7 +215,7 @@ interface StoryDirectorStrategy {
   mainline_strength?: string
   failure_policy?: string
   pacing_curve?: string
-  random_event_rate?: number
+	event_frequency?: 'off' | 'sparse' | 'balanced' | 'frequent' | string
   director_agent_mode?: 'triggered' | 'every_turn' | 'off' | string
   rule_state_consumption_mode?: 'hybrid_auto' | 'director_only' | string
   rule_visibility_mode?: 'audit_only' | 'public_roll' | string
@@ -357,7 +356,8 @@ interface TellerOrchestrationConfig {
   enabled: boolean
   mainline_strength?: string
   failure_policy?: string
-  pacing_curve?: string
+	pacing_curve?: string
+	event_frequency?: 'off' | 'sparse' | 'balanced' | 'frequent' | string
   event_packages?: TellerEventPackage[]
   custom_events?: DirectorEvent[]
   rule_templates?: RuleCheck[]
@@ -378,8 +378,6 @@ export interface TellerEventCard {
   enabled: boolean
   category?: string
   tags?: string[]
-  weight?: number
-  cooldown_turns?: number
   intensity?: string
 }
 
@@ -609,8 +607,6 @@ interface DirectorEvent {
   hidden_truth?: string
   template?: string
   normalized_trigger?: string
-  weight?: number
-  cooldown_turns?: number
   intensity?: string
   required_foreshadowing?: string[]
   payoff_target?: string
@@ -620,8 +616,6 @@ interface DirectorEvent {
   compatible_genres?: string[]
   incompatible_state_flags?: string[]
   user_configured?: boolean
-  last_triggered_turn_id?: string
-  next_eligible_after_turns?: number
   director_instruction_note?: string
 }
 
@@ -650,7 +644,8 @@ export interface DirectorPlanRunStatus {
   completed_docs?: number
   start_ready?: boolean
   blocking?: boolean
-  decision?: PlanDecision
+	decision?: PlanDecision
+	event_opportunity?: EventOpportunity
 }
 
 export interface DirectorPlanStatus {
@@ -668,7 +663,9 @@ export interface DirectorPlanStatus {
   start_ready: boolean
   blocking: boolean
   revision?: string
-  decision?: PlanDecision
+	decision?: PlanDecision
+	event_runtime?: DirectorEventRuntime
+	event_opportunity?: EventOpportunity
 }
 
 export interface PlanDecision {
@@ -686,7 +683,41 @@ export interface PlanDecision {
     reason?: string
   }
   reason?: string
-  base_revision?: string
+	base_revision?: string
+	event_decision?: EventDecision
+}
+
+export interface EventDecision {
+	mode: 'none' | 'seed' | 'advance' | 'payoff' | 'resolve' | 'abandon' | string
+	event_ref?: string
+	summary?: string
+	reason?: string
+	evidence?: string[]
+	evidence_turn_ids?: string[]
+}
+
+export interface EventOpportunity {
+	due: boolean
+	kind: 'none' | 'new' | 'active' | string
+	reason?: string
+	turns_since_review?: number
+	review_interval?: number
+	active_event_ref?: string
+	forced?: boolean
+}
+
+export interface DirectorEventThread {
+	event_ref: string
+	summary?: string
+	stage?: string
+	seeded_turn_id?: string
+	updated_turn_id?: string
+}
+
+export interface DirectorEventRuntime {
+	active?: DirectorEventThread
+	last_opportunity_turn_id?: string
+	recent_decisions?: Array<{ id: string; source_turn_id: string; decision: EventDecision }>
 }
 
 export interface DirectorPlanMetadata {
@@ -699,7 +730,8 @@ export interface DirectorPlanMetadata {
   source?: string
   source_turn_id?: string
   docs?: Record<string, DirectorPlanDocInfo>
-  last_run?: DirectorPlanRunStatus
+	last_run?: DirectorPlanRunStatus
+	event_runtime?: DirectorEventRuntime
 }
 
 export interface DirectorPlan {

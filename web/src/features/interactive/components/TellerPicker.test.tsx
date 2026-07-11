@@ -70,7 +70,6 @@ function teller(id: string, name: string): Teller {
     id,
     name,
     description: '',
-    random_event_rate: 0,
     context_policy: {
       creator: 'summary',
       lore: 'summary',

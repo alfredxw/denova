@@ -91,6 +91,8 @@ func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name,
 		return fmt.Sprintf("[tool error] Memory Recorder 只能使用 apply_story_memory_patches，拒绝工具: %s", name)
 	}
 	switch name {
+	case "read_event_cards":
+		return ""
 	case "read_file", "write_file", "edit_file":
 		target := cleanDirectorPlanToolPath(toolPathFromArgs(args))
 		if target == "" {
@@ -103,7 +105,7 @@ func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name,
 	case "apply_actor_state_patch", "apply_story_memory_patches":
 		return fmt.Sprintf("[tool error] Director 只维护 ArcPlan，不能写 Actor State 或 Story Memory，拒绝工具: %s", name)
 	default:
-		return fmt.Sprintf("[tool error] Director 只能使用 read_file、write_file、edit_file 维护当前分支 ArcPlan，拒绝工具: %s", name)
+		return fmt.Sprintf("[tool error] Director 只能使用 read_file、write_file、edit_file 和 read_event_cards，拒绝工具: %s", name)
 	}
 }
 

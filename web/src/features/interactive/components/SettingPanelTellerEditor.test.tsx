@@ -318,27 +318,11 @@ describe('TellerEditor style contents', () => {
     expect(sceneInput.parentElement).toHaveClass('md:flex-wrap')
   })
 
-  it('allows decimal random event rates without collapsing intermediate input', async () => {
-    let currentDraft = teller()
-    render(
-      <Harness
-        initial={currentDraft}
-        onChange={(draft) => {
-          currentDraft = draft
-        }}
-        onSave={() => {}}
-      />,
-    )
-
-    const rateInput = screen.getByRole('textbox', { name: '随机事件率' })
-    fireEvent.change(rateInput, { target: { value: '0.' } })
-    expect(rateInput).toHaveValue('0.')
-    expect(currentDraft.random_event_rate).toBe(0)
-
-    fireEvent.change(rateInput, { target: { value: '0.15' } })
-    expect(rateInput).toHaveValue('0.15')
-    expect(currentDraft.random_event_rate).toBe(0.15)
-  })
+	it('keeps event cadence controls out of narrative styles', () => {
+		render(<Harness initial={teller()} onChange={() => {}} onSave={() => {}} />)
+		expect(screen.queryByText('随机事件率')).not.toBeInTheDocument()
+		expect(screen.queryByText('事件机会频率')).not.toBeInTheDocument()
+	})
 
   it('keeps orchestration editing out of narrative styles', () => {
     render(<Harness initial={teller()} onChange={() => {}} onSave={() => {}} />)
@@ -405,7 +389,6 @@ function teller(): Teller {
     id: 'custom',
     name: '自定义',
     description: '',
-    random_event_rate: 0,
     style_refs: [],
     style_rules: [{ scene: '激烈打斗', style_refs: [] }],
     context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' },

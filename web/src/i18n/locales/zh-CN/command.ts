@@ -1,5 +1,5 @@
 const command = {
-  'command.closePanels': '关闭面板',
+  'command.toggleRightPanel': '切换右侧栏',
   'command.continueWriting': '继续写作',
   'command.empty': '未找到匹配命令',
   'command.group.workbench': '工作台',

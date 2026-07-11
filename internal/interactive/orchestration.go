@@ -38,8 +38,6 @@ type DirectorEvent struct {
 	HiddenTruth             string   `json:"hidden_truth,omitempty"`
 	Template                string   `json:"template,omitempty"`
 	NormalizedTrigger       string   `json:"normalized_trigger,omitempty"`
-	Weight                  float64  `json:"weight,omitempty"`
-	CooldownTurns           int      `json:"cooldown_turns,omitempty"`
 	Intensity               string   `json:"intensity,omitempty"`
 	RequiredForeshadowing   []string `json:"required_foreshadowing,omitempty"`
 	PayoffTarget            string   `json:"payoff_target,omitempty"`
@@ -49,8 +47,6 @@ type DirectorEvent struct {
 	CompatibleGenres        []string `json:"compatible_genres,omitempty"`
 	IncompatibleStateFlags  []string `json:"incompatible_state_flags,omitempty"`
 	UserConfigured          bool     `json:"user_configured,omitempty"`
-	LastTriggeredTurnID     string   `json:"last_triggered_turn_id,omitempty"`
-	NextEligibleAfterTurns  int      `json:"next_eligible_after_turns,omitempty"`
 	DirectorInstructionNote string   `json:"director_instruction_note,omitempty"`
 }
 
@@ -946,17 +942,7 @@ func normalizeDirectorEvents(values []DirectorEvent) []DirectorEvent {
 		value.FailureLevel = trimBytes(value.FailureLevel, 128)
 		value.CompatibleGenres = normalizeStringListLimit(value.CompatibleGenres, maxTurnBriefListItems)
 		value.IncompatibleStateFlags = normalizeStringListLimit(value.IncompatibleStateFlags, maxTurnBriefListItems)
-		value.LastTriggeredTurnID = trimBytes(value.LastTriggeredTurnID, 128)
 		value.DirectorInstructionNote = trimBytes(value.DirectorInstructionNote, maxTurnBriefTextBytes)
-		if value.Weight < 0 {
-			value.Weight = 0
-		}
-		if value.CooldownTurns < 0 {
-			value.CooldownTurns = 0
-		}
-		if value.NextEligibleAfterTurns < 0 {
-			value.NextEligibleAfterTurns = 0
-		}
 		key := value.ID
 		if key == "" {
 			key = value.Name

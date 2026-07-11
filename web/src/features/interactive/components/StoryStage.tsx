@@ -34,7 +34,6 @@ import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateSto
 import type { ImagePreset, InteractiveTurnPersistedEvent, RuleResolution, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { StoryDirectorPicker } from './StoryDirectorPicker'
-import { PlayerStoryHUD } from './PlayerStoryHUD'
 import { TurnNavigator, type TurnNavigationItem } from './TurnNavigator'
 import { isDirectorDisplayEvent } from './director-console/utils'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -1109,7 +1108,6 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         <div className="nova-story-stage-content flex min-h-0 flex-1 overflow-hidden bg-[var(--nova-surface-2)]">
           <TurnNavigator items={turnNavigationItems} activeAnchorId={activeTurnAnchorId} onSelect={handleTurnNavigationSelect} />
           <section className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
-            <PlayerStoryHUD turn={snapshot?.current_turn} directorStatus={snapshot?.director_plan_status} />
             {snapshotLoading && messages.length === 0 && !streaming ? (
               <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 text-center text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div className="flex max-w-md flex-col items-center gap-3">

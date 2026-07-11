@@ -317,7 +317,7 @@ describe('MemoryPanel', () => {
     expect(within(dialog).getByText(/lore index and bounded relevant entries/)).toBeInTheDocument()
   })
 
-  it('rebuilds director plan from the summary action', async () => {
+	it('rebuilds director plan from the summary action', async () => {
     const onSnapshotRefresh = vi.fn()
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
@@ -331,7 +331,8 @@ describe('MemoryPanel', () => {
         return Response.json(storyMemoryState())
       }
       return Response.json({})
-    })
+	})
+
     vi.stubGlobal('fetch', fetchMock)
 
     render(<MemoryPanel storyId="story-1" branchId="main" onSnapshotRefresh={onSnapshotRefresh} snapshot={{
@@ -350,8 +351,36 @@ describe('MemoryPanel', () => {
       method: 'POST',
       body: JSON.stringify({ branch_id: 'main' }),
     })))
-    await waitFor(() => expect(onSnapshotRefresh).toHaveBeenCalledTimes(1))
-  })
+		await waitFor(() => expect(onSnapshotRefresh).toHaveBeenCalledTimes(1))
+	})
+
+	it('shows event runtime only after spoiler reveal and can force evaluation', async () => {
+		const plan = directorPlan() as ReturnType<typeof directorPlan> & { metadata: Record<string, unknown> }
+		plan.metadata.event_runtime = {
+			active: { event_ref: 'default/face-slap', stage: 'seed', summary: '公开质疑已经埋下。' },
+			recent_decisions: [{ id: 'decision-1', source_turn_id: 'turn-1', decision: { mode: 'seed', event_ref: 'default/face-slap' } }],
+		}
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+			if (url.includes('/director/run')) return Response.json(directorStatus('running'))
+			if (url.includes('/director')) return Response.json(plan)
+			if (url.includes('/story-memory')) return Response.json(storyMemoryState())
+			return Response.json({})
+		})
+		vi.stubGlobal('fetch', fetchMock)
+
+		render(<MemoryPanel storyId="story-1" branchId="main" snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [], state: {}, director_plan_status: directorStatus('ready') }} />)
+		await openPlanPanel()
+		expect(screen.queryByText('事件编排运行态')).not.toBeInTheDocument()
+		await userEvent.click(screen.getByRole('button', { name: '查看导演编排' }))
+		await waitFor(() => expect(screen.getByText('事件编排运行态')).toBeInTheDocument())
+		expect(screen.getByText('default/face-slap')).toBeInTheDocument()
+		await userEvent.click(screen.getByRole('button', { name: '立即评估' }))
+		await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/interactive/stories/story-1/director/run', expect.objectContaining({
+			method: 'POST',
+			body: JSON.stringify({ branch_id: 'main', force_event_evaluation: true }),
+		})))
+	})
 
   it('saves director plan edits from the summary action', async () => {
     const onSnapshotRefresh = vi.fn()

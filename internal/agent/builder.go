@@ -515,7 +515,7 @@ func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...Interac
 		case "memory_update":
 			return newInteractiveStoryMemoryPatchTools(ctx)
 		case "director_plan_update":
-			return nil, nil
+			return newInteractiveEventTools(ctx)
 		default:
 			// Compatibility for explicit callers that have not selected a phase:
 			// expose only the derived-memory writer, never Actor State mutation.

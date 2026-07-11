@@ -1,5 +1,5 @@
 const command = {
-  'command.closePanels': 'Close Panels',
+  'command.toggleRightPanel': 'Toggle Right Sidebar',
   'command.continueWriting': 'Continue Writing',
   'command.empty': 'No matching command',
   'command.group.workbench': 'Workbench',

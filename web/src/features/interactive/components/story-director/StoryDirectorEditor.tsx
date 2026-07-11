@@ -8,9 +8,9 @@ import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModul
 import { PresetMetadataPanel } from '../preset-config/PresetEditorChrome'
 import { BooleanSwitchField } from '../setting-panel/BooleanSwitchField'
 import { DirectorModuleConsole } from './ModuleConsole'
-import { consoleSectionClassName, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RANDOM_RATE_OPTIONS, STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS, STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StrategySelectOption } from './constants'
+import { consoleSectionClassName, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_EVENT_FREQUENCY_OPTIONS, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS, STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StrategySelectOption } from './constants'
 import { EmptyState, Field, SectionTitle } from './shared'
-import { directorResolvedEventPackages, findById, normalizeBranchPlanningTurns, normalizedStoryDirectorRefs, parseDecimalInput, presetStatusLabel, strategyOptionText, strategyRateValue, utf8ByteLength, validateDirectorPlanningTemplate } from './utils'
+import { directorResolvedEventPackages, findById, normalizeBranchPlanningTurns, normalizedStoryDirectorRefs, presetStatusLabel, strategyOptionText, utf8ByteLength, validateDirectorPlanningTemplate } from './utils'
 
 export function StoryDirectorEditor({
   draft,
@@ -226,11 +226,12 @@ export function StoryDirectorEditor({
               options={STORY_DIRECTOR_PACING_OPTIONS}
               onChange={(pacing_curve) => updateStrategy({ pacing_curve })}
             />
-            <StrategyRateSelect
-              label={t('settingPanel.field.randomEventRate')}
-              value={draft.strategy?.random_event_rate}
-              fallbackValue="0.15"
-              onChange={(random_event_rate) => updateStrategy({ random_event_rate })}
+			<StrategySelect
+				label={t('settingPanel.storyDirector.eventFrequency')}
+				value={draft.strategy?.event_frequency || ''}
+				fallbackValue="balanced"
+				options={STORY_DIRECTOR_EVENT_FREQUENCY_OPTIONS}
+				onChange={(event_frequency) => updateStrategy({ event_frequency })}
             />
           </div>
 
@@ -336,28 +337,6 @@ function StrategySelect({
       </Select>
       <span className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{selectedDescription}</span>
     </Field>
-  )
-}
-
-function StrategyRateSelect({
-  label,
-  value,
-  fallbackValue,
-  onChange,
-}: {
-  label: string
-  value: number | undefined
-  fallbackValue: string
-  onChange: (value: number) => void
-}) {
-  return (
-    <StrategySelect
-      label={label}
-      value={strategyRateValue(value, fallbackValue)}
-      fallbackValue={fallbackValue}
-      options={STORY_DIRECTOR_RANDOM_RATE_OPTIONS}
-      onChange={(next) => onChange(parseDecimalInput(next))}
-    />
   )
 }
 

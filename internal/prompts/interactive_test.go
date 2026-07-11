@@ -40,7 +40,7 @@ func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
 	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{
 		ReplyTargetChars: 600,
 	})
-	turn := InteractiveStoryTurnInstruction("我推开门", "", 0, "")
+	turn := InteractiveStoryTurnInstruction("我推开门", "", "")
 	for name, output := range map[string]string{
 		"system": system,
 		"turn":   turn,

@@ -49,8 +49,6 @@ func directorEventTemplate(id, name, category, summary string) DirectorEvent {
 		PublicSummary:     summary,
 		Template:          summary,
 		NormalizedTrigger: category,
-		Weight:            1,
-		CooldownTurns:     2,
 		Intensity:         "medium",
 	}
 }

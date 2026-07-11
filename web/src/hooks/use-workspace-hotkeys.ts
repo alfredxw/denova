@@ -7,7 +7,7 @@ interface WorkspaceHotkeysOptions {
   onOpenSearch?: () => void
   onGenerate?: () => void
   onOpenDiff?: () => void
-  onEscape?: () => void
+  onToggleRightPanel?: () => void
 }
 
 /** 注册工作台全局快捷键，hook 只分发事件，不直接调用业务 API。 */
@@ -17,7 +17,7 @@ export function useWorkspaceHotkeys({
   onOpenSearch,
   onGenerate,
   onOpenDiff,
-  onEscape,
+  onToggleRightPanel,
 }: WorkspaceHotkeysOptions) {
   const shouldSkipWorkspaceAction = (event: KeyboardEvent) => {
     return isEditableTarget(event.target) || isNativeTextEditingShortcut(event)
@@ -53,7 +53,8 @@ export function useWorkspaceHotkeys({
     onOpenDiff?.()
   }, { enableOnFormTags: true, enableOnContentEditable: true }, [onOpenDiff])
 
-  useHotkeys('esc', () => {
-    onEscape?.()
-  }, { enableOnFormTags: true }, [onEscape])
+  useHotkeys('meta+alt+b, ctrl+alt+b', (event) => {
+    event.preventDefault()
+    onToggleRightPanel?.()
+  }, { enableOnFormTags: true, enableOnContentEditable: true }, [onToggleRightPanel])
 }

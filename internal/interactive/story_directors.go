@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	storyDirectorVersion   = 3
+	storyDirectorVersion   = 4
 	DefaultStoryDirectorID = "default"
 
 	maxStoryDirectorRules               = 64
@@ -25,6 +25,11 @@ const (
 	DefaultRuleVisibilityMode           = RuleVisibilityModeAuditOnly
 	RuleVisibilityModeAuditOnly         = "audit_only"
 	RuleVisibilityModePublicRoll        = "public_roll"
+	EventFrequencyOff                   = "off"
+	EventFrequencySparse                = "sparse"
+	EventFrequencyBalanced              = "balanced"
+	EventFrequencyFrequent              = "frequent"
+	DefaultEventFrequency               = EventFrequencyBalanced
 )
 
 var ErrStoryDirectorRevisionConflict = errors.New("故事导演已被其他操作更新，请重新加载后再保存")
@@ -61,7 +66,8 @@ type StoryDirectorStrategy struct {
 	MainlineStrength         string                         `json:"mainline_strength,omitempty"`
 	FailurePolicy            string                         `json:"failure_policy,omitempty"`
 	PacingCurve              string                         `json:"pacing_curve,omitempty"`
-	RandomEventRate          float64                        `json:"random_event_rate,omitempty"`
+	EventFrequency           string                         `json:"event_frequency,omitempty"`
+	LegacyRandomEventRate    *float64                       `json:"random_event_rate,omitempty" jsonschema:"-"`
 	DirectorAgentMode        string                         `json:"director_agent_mode,omitempty"`
 	RuleStateConsumptionMode string                         `json:"rule_state_consumption_mode,omitempty"`
 	RuleVisibilityMode       string                         `json:"rule_visibility_mode,omitempty"`
@@ -296,7 +302,6 @@ func (l *StoryDirectorLibrary) migrateLegacyTellerOrchestrations() error {
 			directorID,
 			directorName,
 			"由旧叙事风格中的 orchestration 配置迁移生成。",
-			teller.RandomEventRate,
 			*teller.Orchestration,
 		)
 		director.CreatedAt = firstNonEmptyString(teller.CreatedAt, now)
@@ -578,7 +583,7 @@ func DefaultStoryDirector() StoryDirector {
 			MainlineStrength:         "soft_guidance",
 			FailurePolicy:            "reversible",
 			PacingCurve:              "progressive",
-			RandomEventRate:          0.15,
+			EventFrequency:           DefaultEventFrequency,
 			DirectorAgentMode:        DefaultDirectorAgentMode,
 			RuleStateConsumptionMode: DefaultRuleStateConsumptionMode,
 			RuleVisibilityMode:       DefaultRuleVisibilityMode,
@@ -591,7 +596,7 @@ func DefaultStoryDirector() StoryDirector {
 	})
 }
 
-func StoryDirectorFromTellerOrchestration(id, name, description string, randomEventRate float64, config TellerOrchestrationConfig) StoryDirector {
+func StoryDirectorFromTellerOrchestration(id, name, description string, config TellerOrchestrationConfig) StoryDirector {
 	return normalizeStoryDirector(StoryDirector{
 		Version:     storyDirectorVersion,
 		ID:          NormalizeStoryDirectorID(id),
@@ -603,7 +608,7 @@ func StoryDirectorFromTellerOrchestration(id, name, description string, randomEv
 			MainlineStrength:         config.MainlineStrength,
 			FailurePolicy:            config.FailurePolicy,
 			PacingCurve:              config.PacingCurve,
-			RandomEventRate:          randomEventRate,
+			EventFrequency:           config.EventFrequency,
 			DirectorAgentMode:        DefaultDirectorAgentMode,
 			RuleStateConsumptionMode: DefaultRuleStateConsumptionMode,
 			RuleVisibilityMode:       DefaultRuleVisibilityMode,
@@ -668,19 +673,40 @@ func normalizeStoryDirectorStrategy(strategy StoryDirectorStrategy) StoryDirecto
 	strategy.MainlineStrength = normalizeOrchestrationOption(strategy.MainlineStrength, "soft_guidance")
 	strategy.FailurePolicy = normalizeOrchestrationOption(strategy.FailurePolicy, "reversible")
 	strategy.PacingCurve = normalizeOrchestrationOption(strategy.PacingCurve, "progressive")
+	if strings.TrimSpace(strategy.EventFrequency) == "" && strategy.LegacyRandomEventRate != nil {
+		strategy.EventFrequency = eventFrequencyFromLegacyRate(*strategy.LegacyRandomEventRate)
+	}
+	strategy.EventFrequency = normalizeEventFrequency(strategy.EventFrequency)
+	strategy.LegacyRandomEventRate = nil
 	strategy.DirectorAgentMode = normalizeDirectorAgentMode(strategy.DirectorAgentMode)
 	strategy.RuleStateConsumptionMode = normalizeRuleStateConsumptionMode(strategy.RuleStateConsumptionMode)
 	strategy.RuleVisibilityMode = normalizeRuleVisibilityMode(strategy.RuleVisibilityMode)
 	strategy.PromptMarkdown = trimBytes(strategy.PromptMarkdown, MaxStoryDirectorStrategyPromptBytes)
 	strategy.BranchPlanningTurns = NormalizeBranchPlanningTurns(strategy.BranchPlanningTurns)
 	strategy.PlanningTemplates = NormalizeStoryDirectorPlanningTemplates(strategy.PlanningTemplates)
-	if strategy.RandomEventRate < 0 {
-		strategy.RandomEventRate = 0
-	}
-	if strategy.RandomEventRate > 1 {
-		strategy.RandomEventRate = 1
-	}
 	return strategy
+}
+
+func normalizeEventFrequency(value string) string {
+	switch strings.TrimSpace(value) {
+	case EventFrequencyOff, EventFrequencySparse, EventFrequencyBalanced, EventFrequencyFrequent:
+		return strings.TrimSpace(value)
+	default:
+		return DefaultEventFrequency
+	}
+}
+
+func eventFrequencyFromLegacyRate(rate float64) string {
+	switch {
+	case rate <= 0:
+		return EventFrequencyOff
+	case rate <= 0.10:
+		return EventFrequencySparse
+	case rate <= 0.22:
+		return EventFrequencyBalanced
+	default:
+		return EventFrequencyFrequent
+	}
 }
 
 func normalizeRuleVisibilityMode(mode string) string {
@@ -744,14 +770,19 @@ func DirectorEventCatalogFromStoryDirector(director StoryDirector) []DirectorEve
 	}
 	events := []DirectorEvent{}
 	for _, pkg := range director.EventPackages {
+		if !pkg.Enabled {
+			continue
+		}
 		for _, eventCard := range pkg.Events {
 			if !eventCard.Enabled {
 				continue
 			}
-			events = upsertDirectorEvent(events, directorEventFromTellerEventCard(eventCard))
+			event := directorEventFromTellerEventCard(eventCard)
+			event.ID = strings.Trim(strings.TrimSpace(pkg.ID), "/") + "/" + strings.Trim(strings.TrimSpace(eventCard.ID), "/")
+			events = upsertDirectorEvent(events, event)
 		}
 	}
-	return appendDefaultDirectorEventTemplates(events)
+	return events
 }
 
 func StoryDirectorRuleSummary(director StoryDirector, limitBytes int) string {
@@ -782,11 +813,10 @@ func StoryDirectorPlanningSummary(director StoryDirector, limitBytes int) string
 			"story_director_id": director.ID,
 			"name":              director.Name,
 		},
-		"limits":         map[string]int{"max_bytes": limitBytes},
-		"strategy":       storyDirectorStructuredStrategySummary(director.Strategy),
-		"event_packages": director.EventPackages,
-		"state_system":   storyDirectorActorStateSchemaSummary(director.ActorState),
-		"trpg_system":    director.TRPGSystem,
+		"limits":       map[string]int{"max_bytes": limitBytes},
+		"strategy":     storyDirectorStructuredStrategySummary(director.Strategy),
+		"state_system": storyDirectorActorStateSchemaSummary(director.ActorState),
+		"trpg_system":  director.TRPGSystem,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
@@ -823,15 +853,15 @@ func ActorStateSchemaContext(system StoryDirectorActorStateSystem, limitBytes in
 }
 
 type storyDirectorStructuredStrategy struct {
-	Enabled                  bool    `json:"enabled"`
-	MainlineStrength         string  `json:"mainline_strength,omitempty"`
-	FailurePolicy            string  `json:"failure_policy,omitempty"`
-	PacingCurve              string  `json:"pacing_curve,omitempty"`
-	RandomEventRate          float64 `json:"random_event_rate,omitempty"`
-	DirectorAgentMode        string  `json:"director_agent_mode,omitempty"`
-	RuleStateConsumptionMode string  `json:"rule_state_consumption_mode,omitempty"`
-	RuleVisibilityMode       string  `json:"rule_visibility_mode,omitempty"`
-	BranchPlanningTurns      int     `json:"branch_planning_turns,omitempty"`
+	Enabled                  bool   `json:"enabled"`
+	MainlineStrength         string `json:"mainline_strength,omitempty"`
+	FailurePolicy            string `json:"failure_policy,omitempty"`
+	PacingCurve              string `json:"pacing_curve,omitempty"`
+	EventFrequency           string `json:"event_frequency,omitempty"`
+	DirectorAgentMode        string `json:"director_agent_mode,omitempty"`
+	RuleStateConsumptionMode string `json:"rule_state_consumption_mode,omitempty"`
+	RuleVisibilityMode       string `json:"rule_visibility_mode,omitempty"`
+	BranchPlanningTurns      int    `json:"branch_planning_turns,omitempty"`
 }
 
 func storyDirectorStructuredStrategySummary(strategy StoryDirectorStrategy) storyDirectorStructuredStrategy {
@@ -840,7 +870,7 @@ func storyDirectorStructuredStrategySummary(strategy StoryDirectorStrategy) stor
 		MainlineStrength:         strategy.MainlineStrength,
 		FailurePolicy:            strategy.FailurePolicy,
 		PacingCurve:              strategy.PacingCurve,
-		RandomEventRate:          strategy.RandomEventRate,
+		EventFrequency:           strategy.EventFrequency,
 		DirectorAgentMode:        strategy.DirectorAgentMode,
 		RuleStateConsumptionMode: strategy.RuleStateConsumptionMode,
 		RuleVisibilityMode:       strategy.RuleVisibilityMode,

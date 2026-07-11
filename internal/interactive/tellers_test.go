@@ -356,8 +356,6 @@ func TestTellerEventCardsNormalizeAndBuildDirectorCatalog(t *testing.T) {
 						Enabled:             true,
 						Category:            "学院",
 						Tags:                []string{"外门", "考核", "外门"},
-						Weight:              2,
-						CooldownTurns:       3,
 						Intensity:           "high",
 					},
 					{
@@ -405,7 +403,7 @@ func TestTellerEventCardsNormalizeAndBuildDirectorCatalog(t *testing.T) {
 		t.Fatalf("director catalog should contain enabled event cards only: %#v", catalog)
 	}
 	event := directorEventByID(catalog, "academy_trial")
-	if event.Name != "外门考核打脸" || event.Category != "学院" || event.Template == "" || event.Weight != 2 || event.CooldownTurns != 3 || event.Intensity != "high" {
+	if event.Name != "外门考核打脸" || event.Category != "学院" || event.Template == "" || event.Intensity != "high" {
 		t.Fatalf("event card should map to director event: %#v", event)
 	}
 	if !strings.Contains(event.Summary, "主角在外门考核") || !strings.Contains(event.Template, "背景融合方式") {

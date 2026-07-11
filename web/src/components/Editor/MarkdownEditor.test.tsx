@@ -27,8 +27,11 @@ const tiptapMock = vi.hoisted(() => {
       },
     },
     state: {
-      doc: { textContent: '' },
-      selection: { from: 0, to: 0, empty: true },
+      doc: {
+        textContent: '',
+        forEach: vi.fn(),
+      },
+      selection: { from: 0, to: 0, head: 0, empty: true },
       tr: { setMeta: vi.fn() },
     },
     view: {
@@ -61,7 +64,8 @@ const tiptapMock = vi.hoisted(() => {
       handlers.clear()
       this.markdown = ''
       this.text = ''
-      editor.state.selection = { from: 0, to: 0, empty: true }
+      editor.state.selection = { from: 0, to: 0, head: 0, empty: true }
+      editor.state.doc.forEach.mockReset()
       vi.clearAllMocks()
     },
   }
@@ -112,6 +116,46 @@ describe('MarkdownEditor', () => {
     expect(screen.getByRole('textbox', { name: '十六进制颜色' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '恢复默认' })).toBeInTheDocument()
     expect(screen.getByText('背景主题')).toBeInTheDocument()
+  })
+
+  it('在更新时间右侧实时显示光标所在行号', () => {
+    const onLineChange = vi.fn()
+    tiptapMock.editor.state.doc.forEach.mockImplementation((callback) => {
+      callback({ nodeSize: 3 }, 0)
+      callback({ nodeSize: 3 }, 3)
+      callback({ nodeSize: 3 }, 6)
+    })
+
+    render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content="第一行\n\n第二行\n\n第三行"
+        onSave={vi.fn()}
+        onLineChange={onLineChange}
+        chapterSummary={{
+          path: 'chapters/ch01.md',
+          file_name: 'ch01.md',
+          display_title: '第一章',
+          index: 1,
+          words: 10,
+          status: 'draft',
+          confirmed: false,
+          updated_at: '2026-07-11 22:00',
+          volume: '',
+          volume_path: '',
+        }}
+      />,
+    )
+
+    expect(onLineChange).toHaveBeenLastCalledWith(1)
+
+    act(() => {
+      tiptapMock.editor.state.selection = { from: 7, to: 7, head: 7, empty: true }
+      tiptapMock.emit('selectionUpdate')
+    })
+
+    expect(onLineChange).toHaveBeenLastCalledWith(3)
+    expect(document.querySelector('.nova-editor-statusbar')).not.toBeInTheDocument()
   })
 
   it('默认对白高亮跟随编辑器背景主题变化，手动颜色优先', async () => {
@@ -416,7 +460,7 @@ describe('MarkdownEditor', () => {
   })
 
   it('插入插画 signal 时向 Markdown 文档插入 image node', async () => {
-    tiptapMock.editor.state.selection = { from: 5, to: 5, empty: true }
+    tiptapMock.editor.state.selection = { from: 5, to: 5, head: 5, empty: true }
 
     render(
       <MarkdownEditor

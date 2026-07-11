@@ -509,11 +509,11 @@ func TestResolveTurnRulesCriticalOutcomes(t *testing.T) {
 
 func TestOpeningRollProducesTraitsStateOps(t *testing.T) {
 	teller := Teller{
-		Version:         tellerVersion,
-		ID:              "growth",
-		Name:            "成长流",
-		Description:     "demo",
-		RandomEventRate: 0.2,
+		Version:               tellerVersion,
+		ID:                    "growth",
+		Name:                  "成长流",
+		Description:           "demo",
+		LegacyRandomEventRate: floatPtr(0.2),
 		ContextPolicy: TellerContextPolicy{
 			Creator:      "always",
 			Lore:         "relevant",
@@ -533,7 +533,6 @@ func TestOpeningRollProducesTraitsStateOps(t *testing.T) {
 						ID:      "hidden-bloodline",
 						Name:    "隐脉",
 						Summary: "灵力上限更高",
-						Weight:  1,
 						Ops:     []StateOp{{Op: "set", Path: "traits.hidden_bloodline", Value: true}},
 					}},
 				}},

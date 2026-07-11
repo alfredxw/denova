@@ -6,8 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- WebUI：修复裸 `Esc` 会全局隐藏右侧 AI 栏、与输入法取消候选或重输冲突的问题；写作与游戏模式统一改用 VS Code 风格的 `Ctrl+Alt+B`（macOS 为 `⌘⌥B`）切换右侧栏，并清理模式切换后已销毁编辑器遗留的按键监听错误。
+- WebUI: Fixed bare `Esc` globally hiding the right AI sidebar and conflicting with IME candidate cancellation or re-entry. Writing and Game modes now use the VS Code-style `Ctrl+Alt+B` (`⌘⌥B` on macOS) to toggle the right sidebar, and stale keyboard listeners no longer access a destroyed editor after mode changes.
+
 ### Added
 
+- WebUI：写作模式“书籍设定”改为工作区级可自定义快捷入口；默认 Pin 大纲、规则、进度、灵感和状态，支持从动态发现的非章节 Markdown 中搜索、Pin/取消 Pin，并在管理面板拖拽排序，不再固定快捷项与折叠项数量。
+- WebUI: Writing mode Book Settings are now workspace-specific customizable shortcuts. Outline, Rules, Progress, Ideas, and State are pinned by default; users can search dynamically discovered non-chapter Markdown files, pin or unpin them, and drag to reorder them without fixed shortcut or overflow counts.
+- 游戏模式：完成事件编排 V2。故事导演以 `off / sparse / balanced / frequent` 的确定性事件机会频率替代软提示概率；Director 在同一次 `PlanDecision` 中审计 `none / seed / advance / payoff / resolve / abandon`，分支级活动事件与有界决策历史保存在 Director metadata，支持重试幂等、分支继承、回退重建、手动强制评估和显式重置。
+- Game Mode: Completed Event Orchestration V2. Story Directors now use deterministic `off / sparse / balanced / frequent` event-opportunity cadence instead of a soft prompt probability. The Director audits `none / seed / advance / payoff / resolve / abandon` in the same `PlanDecision`; branch-scoped active events and bounded decision history live in Director metadata with idempotent retries, branch inheritance, rewind reconstruction, manual forced evaluation, and explicit reset.
+- 游戏模式：事件包现在是严格的显式边界，只解析故事导演已选择且启用的事件包；事件引用统一为 `package_id/card_id`，不再隐式补入通用事件模板。Director 只在新事件机会到期时收到紧凑索引，并可通过只读 `read_event_cards` 按需读取最多 8 张卡。
+- Game Mode: Event packages are now strict explicit boundaries: only enabled packages selected by the Story Director are resolved, event references use `package_id/card_id`, and generic templates are no longer appended implicitly. The Director receives a compact index only when a new-event opportunity is due and can read up to eight cards on demand through the read-only `read_event_cards` tool.
+- WebUI：故事导演设置新增双语“事件机会频率”，移除叙事风格中的随机事件率以及事件卡的权重/冷却编辑；剧透确认后的导演节拍表新增事件运行态、最近决策、立即评估和重置事件控制。
+- WebUI: Added a bilingual Event Opportunity Frequency control to Story Director settings, removed Random Event Rate from narrative styles and weight/cooldown from event cards, and added event runtime, latest decision, Evaluate Now, and Reset Events controls behind the Director beat-sheet spoiler gate.
+
+### Changed
+
+- WebUI：“书籍设定”默认 Pin 扩展为大纲、规则、进度、灵感和状态，并自动迁移仍使用旧三项默认值的工作区；快捷标签从固定两列改为按内容宽度自适应换行，在保持舒适间距的同时提升侧栏信息密度。
+- WebUI: Book Settings now pins Outline, Rules, Progress, Ideas, and State by default and migrates workspaces still using the legacy three-item default. Shortcut chips now wrap by content width instead of using a fixed two-column grid, increasing sidebar density without cramped spacing.
+- WebUI：写作侧栏“章节组细纲”在没有细纲时收敛为单行空状态；存在细纲时默认展开并支持整组折叠，折叠后保留数量，新生成第一份细纲时自动展开一次。
+- WebUI: The writing sidebar Chapter Group Outlines section now collapses to a single-line empty state when no outline exists. Existing outlines default open but the whole section can be collapsed with its count retained, and the first newly generated outline expands the section once.
+
+- 游戏模式：旧 `random_event_rate` 在读取时迁移为事件频率（`<=0` 关闭、`<=0.10` 稀疏、`<=0.22` 均衡、其余频繁）并在下次保存时清理；旧事件卡 `weight` / `cooldown_turns` 会被忽略并不再写回。该 beta 配置输出不兼容依赖这些字段的外部工具。
+- Game Mode: Legacy `random_event_rate` values migrate on read (`<=0` off, `<=0.10` sparse, `<=0.22` balanced, otherwise frequent) and are removed on the next save. Legacy event-card `weight` / `cooldown_turns` values are ignored and no longer written. This beta output is incompatible with external tools that depend on those fields.
+
+- WebUI：写作工作台最底部的全局状态栏新增章节更新时间与当前光标或选区所在行号，并移除编辑器内部重复的状态栏；行号支持中英文实时显示。
+- WebUI: The writing workbench global bottom status bar now shows the chapter updated time and current cursor or selection line, while the duplicate editor-local status bar has been removed; line numbers update live in Chinese and English.
 - 游戏模式：Actor State Module 升级到 v6。状态字段配置删除独立 `id` / `path`，Unicode 规范化后的名称原文同时作为状态 ID；同一模板内按大小写无关规则阻止重名，不同模板允许同名。该 beta 配置格式不兼容 v5，旧文件首次保存前会备份到 `.nova/backups/state-system-v6/<timestamp>/`。
 - Game Mode: Upgraded Actor State Modules to v6. State field configuration no longer exposes separate `id` / `path` values; the Unicode-normalized name itself is the state ID. Case-insensitive duplicates are rejected within a template while different templates may reuse a name. This beta format is incompatible with v5, and old files are backed up under `.nova/backups/state-system-v6/<timestamp>/` before first save.
 - 游戏模式：新故事会冻结 Actor State schema、词条规则和 TRPG 字段引用；全局模板改名只影响之后创建的故事，已有故事及其分支继续使用开局 schema。旧故事首次加载会先备份原 JSONL，再冻结自己的 schema，并通过内存 legacy adapter 将旧状态路径映射为冻结字段 ID，不重写历史事件；无法匹配模板的旧字段会保留为该故事专属字段。
@@ -22,8 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Game Mode: Added a required per-turn `TurnContract + TurnResult` protocol. The Game Agent now produces player-facing prose and the hidden structured result in one run; the backend validates the expected parent and persists Turn, RuleResolution, TurnResult, and StateDelta in one commit boundary. New Agent turns without a TurnResult are rejected.
 - 游戏模式：后台维护拆分为 Memory Recorder 与 Director 两个独立阶段。Memory Recorder 只能把已提交事实整理为可重建的 Story Memory，并以确定性 patch ID 和无变更运行标记保证重试幂等；Director 只能观察后输出 `keep / patch / replan` 的 PlanDecision 并维护当前分支 `director.md`。Actor State 只由后端 State Reducer 写入。
 - Game Mode: Split background maintenance into independent Memory Recorder and Director phases. The Memory Recorder can only organize committed facts into rebuildable Story Memory, with deterministic patch IDs and no-op run markers making retries idempotent; the Director can only observe, emit a `keep / patch / replan` PlanDecision, and maintain the current branch `director.md`. Actor State is written only by the backend State Reducer.
-- 游戏模式：玩家舞台新增基于 TurnResult 的场景、当前目标和最近结果 HUD；行动建议随回合持久化。导演控制台分别展示状态提交、记忆整理与 PlanDecision，分支路线收敛为单一分支创建入口并改进节点读屏语义。
-- Game Mode: Added a TurnResult-backed player HUD for scene, current objective, and latest outcome, with action suggestions persisted on each turn. The Director Console now distinguishes state commits, memory recording, and PlanDecision, while the branch map uses one branch-creation action and shorter accessible node labels.
+- 游戏模式：行动建议随回合持久化；玩家舞台移除与正文重复的故事态势 HUD。导演控制台分别展示状态提交、记忆整理与 PlanDecision，并用自适应 Actor Tab 与“更多”列表切换镜头角色；分支路线收敛为单一分支创建入口并改进节点读屏语义。
+- Game Mode: Action suggestions now persist with each turn, while the redundant story-situation HUD has been removed from the player stage. The Director Console distinguishes state commits, memory recording, and PlanDecision, and switches shot actors through adaptive tabs with a More overflow menu; the branch map uses one branch-creation action and shorter accessible node labels.
 - 游戏模式：导演控制台重构为以“故事此刻”为首屏的场记台，主角优先并支持按 Actor 切换状态；嵌套状态与本回合变化改为结构化可读展示，不再输出 Raw JSON。故事记忆与导演规划分别重排为事实簿和节拍表，后台执行移到末级页签。
 - Game Mode: Rebuilt the Director Console as a continuity desk that opens on Story Now, prioritizes the protagonist, and switches state by Actor. Nested state and turn changes now use readable structured views instead of raw JSON; Story Memory and Director planning are reorganized as a continuity ledger and beat sheet, with background execution moved to the final tab.
 - 游戏模式：状态系统 v5 新增通用 `trait_pools` 与模板级 `trait_rules`。主角、重要角色、敌人和怪物统一在 Actor 创建时写入模板默认值、实例覆盖值并自动抽取词条；抽取结果以带来源的定义快照持久化到 `actors.<actor_id>.traits`，分支、回退和重放不会受后续词条库修改影响。

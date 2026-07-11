@@ -80,19 +80,19 @@ export function updateInteractiveDirector(storyId: string, input: UpdateDirector
   })
 }
 
-export function rebuildInteractiveDirector(storyId: string, branchId?: string): Promise<DirectorPlan> {
+export function rebuildInteractiveDirector(storyId: string, branchId?: string, options: { resetEvents?: boolean } = {}): Promise<DirectorPlan> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/rebuild`, {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ branch_id: branchId }),
+		body: JSON.stringify({ branch_id: branchId, ...(options.resetEvents ? { reset_events: true } : {}) }),
   })
 }
 
-export function runInteractiveDirector(storyId: string, branchId?: string): Promise<DirectorPlanStatus> {
+export function runInteractiveDirector(storyId: string, branchId?: string, options: { forceEventEvaluation?: boolean } = {}): Promise<DirectorPlanStatus> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/director/run`, {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ branch_id: branchId }),
+		body: JSON.stringify({ branch_id: branchId, ...(options.forceEventEvaluation ? { force_event_evaluation: true } : {}) }),
   })
 }
 

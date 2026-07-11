@@ -55,6 +55,8 @@ type InteractiveDirectorPromptInput struct {
 	StoryDirectorPlan           string
 	StoryDirectorStrategyPrompt string
 	DirectorEventCatalog        string
+	EventOpportunity            string
+	EventRuntime                string
 }
 
 type InteractiveMemoryRecorderPromptInput struct {
@@ -186,26 +188,17 @@ func writeInteractiveReplyTargetInstruction(sb *strings.Builder, value int, bull
 	fmt.Fprintf(sb, "%s【最高篇幅约束】当前互动故事的每轮目标字数由 story 级运行参数决定；这是互动剧情正文唯一的内置字数目标，高于 CREATOR.md 的章节篇幅、导演规则和其他 Denova 内置提示中的篇幅倾向。运行时拿到具体目标后必须主动收束内容，优先写聚焦、有推进、可继续互动的一回合，不要依赖输出上限截断。%s", prefix, suffix)
 }
 
-func InteractiveStoryTurnInstruction(message, turnContext string, randomEventRate float64, runtimeContext string) string {
+func InteractiveStoryTurnInstruction(message, turnContext, runtimeContext string) string {
 	turnContext = strings.TrimSpace(turnContext)
 	runtimeContext = strings.TrimSpace(runtimeContext)
 	turnBlock := ""
-	if turnContext != "" || randomEventRate > 0 {
+	if turnContext != "" {
 		var sb strings.Builder
 		sb.WriteString(`
 导演本轮上下文规则：
 `)
-		if turnContext != "" {
-			sb.WriteString(turnContext)
-			sb.WriteString("\n")
-		} else {
-			sb.WriteString("（未配置专门规则，仅使用随机事件率影响剧情扰动强度。）\n")
-		}
-		fmt.Fprintf(&sb, `
-
-导演随机事件率：%.2f。该值代表本轮主动引入意外、压力、转折或新线索的倾向；值越高，越应该让场景出现符合导演风格的扰动，但扰动必须遵守既有设定和因果。
-以上导演规则必须显著影响本轮剧情裁定、NPC 主动反应、代价、暗线推进和可选择；不要把规则文本作为正文输出。
-		`, randomEventRate)
+		sb.WriteString(turnContext)
+		sb.WriteString("\n\n以上导演规则必须显著影响本轮剧情裁定、NPC 主动反应、代价、暗线推进和可选择；不要把规则文本作为正文输出。")
 		turnBlock = sb.String()
 	}
 	contextBlock := ""
@@ -304,6 +297,10 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	sb.WriteString("- “正文Agent可读”区只放本轮后正文 Agent 可使用的信息；不得放会剧透关键真相、幕后动机或未来答案的内容。\n")
 	sb.WriteString("- “后台导演私密”区可保存隐藏真相、长期反转、未公开角色动机、备用代价和伏笔回收条件。\n")
 	sb.WriteString("- 事件目录只是规划输入；不要做强制/禁用队列，事件要融入当前设定、角色关系、冲突源和 RuleResolution 结果。\n")
+	sb.WriteString("- EventOpportunity.due=false 时不得输出 event_decision；due=true 且 kind=new 时必须输出 event_decision，并且 mode 只能是 none 或 seed。\n")
+	sb.WriteString("- kind=new 时目录只提供 event_ref 索引；需要卡片细节时调用 read_event_cards，一次最多读取 8 张。只能 seed 当前目录中的 event_ref。\n")
+	sb.WriteString("- kind=active 时观察当前活跃事件：没有变化就省略 event_decision；有事实证据时可 advance、payoff、resolve 或 abandon。advance/payoff/resolve 必须引用当前分支真实的 evidence_turn_ids。\n")
+	sb.WriteString("- 第一版每个分支最多一个活跃事件；事件运行态由后端写入 metadata.json，不要把它伪造到 Story Memory 或 Actor State。\n")
 	sb.WriteString("- 如果本回合出现终局、重大失败或用户偏离主线，要承接为分支状态和后续代价，而不是强行圆回原主线。\n")
 	sb.WriteString("- 保存后的 director.md 必须包含全部固定标题，且不超过后端字节上限。\n\n")
 	writeBlock(&sb, "故事标题", in.Title)
@@ -327,8 +324,12 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	if strings.TrimSpace(in.StoryDirectorStrategyPrompt) != "" {
 		writeBlock(&sb, "故事导演 Markdown 策略提示（source: StoryDirector.strategy.prompt_markdown, bounded）", strategyPromptWithPriorityNote(in.StoryDirectorStrategyPrompt))
 	}
-	writeBlock(&sb, "可用事件类型目录（source: built-in + story director, bounded）", in.DirectorEventCatalog)
-	sb.WriteString("\n完成观察和必要文件编辑后，只输出 JSON：{\"mode\":\"keep|patch|replan\",\"triggers\":[\"...\"],\"scene_transition\":{\"kind\":\"none|exit|enter|replace\",\"from\":\"\",\"to\":\"\",\"evidence\":[\"...\"]},\"deviation\":{\"level\":\"none|minor|major\",\"invalidated_plan_refs\":[\"...\"],\"reason\":\"...\"},\"reason\":\"...\"}。不要输出故事正文、完整 Markdown 或额外解释。\n")
+	writeBlock(&sb, "事件运行态（source: Director metadata, bounded）", in.EventRuntime)
+	writeBlock(&sb, "本轮事件机会（source: deterministic cadence, bounded）", in.EventOpportunity)
+	if strings.TrimSpace(in.DirectorEventCatalog) != "" {
+		writeBlock(&sb, "可选事件卡紧凑索引（source: explicitly selected event packages, bounded）", in.DirectorEventCatalog)
+	}
+	sb.WriteString("\n完成观察和必要文件编辑后，只输出 JSON：{\"mode\":\"keep|patch|replan\",\"triggers\":[\"...\"],\"scene_transition\":{\"kind\":\"none|exit|enter|replace\",\"from\":\"\",\"to\":\"\",\"evidence\":[\"...\"]},\"deviation\":{\"level\":\"none|minor|major\",\"invalidated_plan_refs\":[\"...\"],\"reason\":\"...\"},\"reason\":\"...\",\"event_decision\":{\"mode\":\"none|seed|advance|payoff|resolve|abandon\",\"event_ref\":\"package/card\",\"summary\":\"...\",\"reason\":\"...\",\"evidence_turn_ids\":[\"...\"]}}。event_decision 必须按本轮事件机会规则省略或填写。不要输出故事正文、完整 Markdown 或额外解释。\n")
 	return sb.String()
 }
 

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Activity, ArrowRight, Sparkles, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { ActorStateField, ActorStateSchemaSnapshot, ActorTraitInstance, Snapshot, TurnEvent } from '../../types'
+import { ActorTabs } from './ActorTabs'
 import { StateValue } from './shared'
 
 type ActorEntry = [string, Record<string, unknown>]
@@ -57,18 +57,11 @@ export function StateView({ snapshot, stateFacts, syncError }: { snapshot: Snaps
                 <span className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--nova-text-faint)]">{t('memoryPanel.actorCue')}</span>
                 <span className="text-[10px] text-[var(--nova-text-faint)]">{t('memoryPanel.actorCount', { count: actors.length })}</span>
               </div>
-              <Select value={selectedActorId} onValueChange={setSelectedActorId}>
-                <SelectTrigger size="sm" aria-label={t('memoryPanel.actorCue')} className="w-full min-w-0">
-                  <SelectValue placeholder={t('memoryPanel.actorCue')} />
-                </SelectTrigger>
-                <SelectContent position="popper" align="start">
-                  <SelectGroup>
-                    {actors.map(([actorId, actor]) => (
-                      <SelectItem key={actorId} value={actorId}>{actorName(actorId, actor)}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              <ActorTabs
+                actors={actors.map(([actorId, actor]) => ({ id: actorId, name: actorName(actorId, actor) }))}
+                value={selectedActorId}
+                onValueChange={setSelectedActorId}
+              />
             </div>
 
             {selectedActor ? <ActorStateSheet actorId={selectedActor[0]} actor={selectedActor[1]} schema={snapshot?.actor_state_schema} /> : null}
@@ -112,11 +105,7 @@ function ActorStateSheet({ actorId, actor, schema }: { actorId: string; actor: R
     : []
 
   return (
-    <article className="relative min-w-0 pt-3">
-      <div className="min-w-0 border-b border-[var(--nova-border)] pb-2">
-        <h4 className="director-console__display truncate text-base font-semibold leading-6 text-[var(--nova-text)]">{name}</h4>
-      </div>
-
+    <article aria-label={name} className="relative min-w-0 pt-2">
       {traits.length > 0 ? (
         <div className="border-b border-[var(--nova-border)] py-2.5">
           <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nova-text-faint)]">{t('memoryPanel.actorTraits')}</div>

@@ -34,11 +34,11 @@ export const STORY_DIRECTOR_PACING_OPTIONS = [
   { value: 'wave', labelKey: 'settingPanel.storyDirector.strategy.pacing.wave', descriptionKey: 'settingPanel.storyDirector.strategy.pacing.waveDesc' },
   { value: 'goal-pressure-payoff', labelKey: 'settingPanel.storyDirector.strategy.pacing.goalPressurePayoff', descriptionKey: 'settingPanel.storyDirector.strategy.pacing.goalPressurePayoffDesc' },
 ] as const
-export const STORY_DIRECTOR_RANDOM_RATE_OPTIONS = [
-  { value: '0', rate: 0, labelKey: 'settingPanel.storyDirector.strategy.random.off', descriptionKey: 'settingPanel.storyDirector.strategy.random.offDesc' },
-  { value: '0.08', rate: 0.08, labelKey: 'settingPanel.storyDirector.strategy.random.low', descriptionKey: 'settingPanel.storyDirector.strategy.random.lowDesc' },
-  { value: '0.15', rate: 0.15, labelKey: 'settingPanel.storyDirector.strategy.random.medium', descriptionKey: 'settingPanel.storyDirector.strategy.random.mediumDesc' },
-  { value: '0.3', rate: 0.3, labelKey: 'settingPanel.storyDirector.strategy.random.high', descriptionKey: 'settingPanel.storyDirector.strategy.random.highDesc' },
+export const STORY_DIRECTOR_EVENT_FREQUENCY_OPTIONS = [
+	{ value: 'off', labelKey: 'settingPanel.storyDirector.strategy.eventFrequency.off', descriptionKey: 'settingPanel.storyDirector.strategy.eventFrequency.offDesc' },
+	{ value: 'sparse', labelKey: 'settingPanel.storyDirector.strategy.eventFrequency.sparse', descriptionKey: 'settingPanel.storyDirector.strategy.eventFrequency.sparseDesc' },
+	{ value: 'balanced', labelKey: 'settingPanel.storyDirector.strategy.eventFrequency.balanced', descriptionKey: 'settingPanel.storyDirector.strategy.eventFrequency.balancedDesc' },
+	{ value: 'frequent', labelKey: 'settingPanel.storyDirector.strategy.eventFrequency.frequent', descriptionKey: 'settingPanel.storyDirector.strategy.eventFrequency.frequentDesc' },
 ] as const
 export const STORY_DIRECTOR_AGENT_MODE_OPTIONS = [
   { value: 'triggered', labelKey: 'settingPanel.storyDirector.strategy.agentMode.triggered', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.triggeredDesc' },

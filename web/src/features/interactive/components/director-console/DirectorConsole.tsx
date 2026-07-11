@@ -151,12 +151,12 @@ export function DirectorConsole({
     return () => { cancelled = true }
   }, [branchId, directorRevealed, storyId, t])
 
-  const rebuildDirector = async () => {
+	const rebuildDirector = async (resetEvents = false) => {
     if (!storyId || rebuilding) return
     setRebuilding(true)
     setDirectorError('')
     try {
-      const plan = await rebuildInteractiveDirector(storyId, branchId)
+		const plan = await rebuildInteractiveDirector(storyId, branchId, { resetEvents })
       setDirectorPlan(plan)
       setDraftDocs(plan.docs)
       onRevealDirector()
@@ -191,12 +191,12 @@ export function DirectorConsole({
     }
   }
 
-  const runDirectorPlan = async () => {
+	const runDirectorPlan = async (forceEventEvaluation = false) => {
     if (!storyId || retryingDirector) return
     setRetryingDirector(true)
     setDirectorError('')
     try {
-      const status = await runInteractiveDirector(storyId, branchId)
+		const status = await runInteractiveDirector(storyId, branchId, { forceEventEvaluation })
       setManualDirectorStatus(status)
       await onSnapshotRefresh?.()
     } catch (err) {
@@ -312,7 +312,9 @@ export function DirectorConsole({
               rebuilding={rebuilding}
               saving={savingPlan}
               onSave={() => void saveDirectorPlan()}
-              onRebuild={() => void rebuildDirector()}
+				onRebuild={() => void rebuildDirector()}
+				onEvaluateEvent={() => void runDirectorPlan(true)}
+				onResetEvents={() => void rebuildDirector(true)}
               hasRuleAudit={hasRuleAudit}
               ruleResolution={ruleResolution}
               terminalOutcome={terminalOutcome}

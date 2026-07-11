@@ -19,6 +19,7 @@ const editor = {
   'editor.chapterWords': '本章：{{count}} 字',
   'editor.bookWords': '全书：{{count}} 字',
   'editor.updatedAt': '更新：{{time}}',
+  'editor.currentLine': '行 {{line}}',
   'editor.selectedWords': '已选：{{count}} 字',
   'editor.unknownTime': '未知',
   'editor.lineHeight': '行间距',

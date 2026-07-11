@@ -155,7 +155,6 @@ export function newTellerDraft(t?: PresetDraftTranslator): Partial<Teller> {
     id,
     name: presetDraftText(t, 'settingPanel.presetDraft.teller.name', '自定义叙事风格'),
     description: presetDraftText(t, 'settingPanel.presetDraft.teller.description', '新的叙事风格'),
-    random_event_rate: 0.15,
     style_refs: [],
     style_rules: [],
     context_policy: {
@@ -207,7 +206,7 @@ export function newStoryDirectorDraft(t?: PresetDraftTranslator): Partial<StoryD
       mainline_strength: 'balanced',
       failure_policy: 'consequence',
       pacing_curve: 'goal-pressure-payoff',
-      random_event_rate: 0.15,
+			event_frequency: 'balanced',
       director_agent_mode: 'triggered',
       rule_state_consumption_mode: 'hybrid_auto',
       rule_visibility_mode: 'audit_only',

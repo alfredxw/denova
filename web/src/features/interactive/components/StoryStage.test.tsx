@@ -79,9 +79,7 @@ describe('StoryStage TurnResult choices', () => {
 		)
 
 		expect(screen.queryByText('绕到钟楼背面')).not.toBeInTheDocument()
-		expect(screen.getByText('找到观察角度')).toBeInTheDocument()
-		expect(screen.getByText('发现钟楼上的可疑反光')).toBeInTheDocument()
-		expect(screen.getByLabelText('当前故事态势')).toHaveTextContent('记忆整理中')
+		expect(screen.queryByLabelText('当前故事态势')).not.toBeInTheDocument()
 		await user.click(screen.getByRole('button', { name: '获取行动选择' }))
 		expect(await screen.findByText('绕到钟楼背面')).toBeInTheDocument()
 	})

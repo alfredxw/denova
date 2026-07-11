@@ -235,6 +235,7 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	if runPlan {
 		plan, err := conversation.store.CompleteDirectorPlanRun(conversation.storyID, turn.BranchID, token, turn.ID, strings.TrimSpace(output))
 		if err != nil {
+			markInteractiveDirectorFailed(conversation, turn, err)
 			errs = append(errs, fmt.Errorf("完成导演规划运行失败: %w", err))
 		} else {
 			result.Plan = plan

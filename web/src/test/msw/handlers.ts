@@ -121,7 +121,7 @@ export const handlers = [
           id: 'classic',
           name: '经典导演',
           description: '平衡叙事',
-          random_event_rate: 0.15,
+			event_frequency: 'balanced',
           tags: ['通用'],
           custom: false,
         },

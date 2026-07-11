@@ -23,7 +23,6 @@ import { isEditableTarget } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
-import { formatLocaleNumber } from '@/i18n'
 
 interface MarkdownEditorProps {
   fileName: string | null
@@ -38,6 +37,7 @@ interface MarkdownEditorProps {
   onGenerateIllustration?: (chapterPath: string) => void
   generateIllustrationDisabled?: boolean
   illustrationInsertSignal?: { illustration: ChapterIllustration; nonce: number } | null
+  onLineChange?: (line: number) => void
 }
 
 interface EditorSearchIntent {
@@ -207,6 +207,7 @@ export function MarkdownEditor({
   onGenerateIllustration,
   generateIllustrationDisabled = false,
   illustrationInsertSignal,
+  onLineChange,
 }: MarkdownEditorProps) {
   const { t } = useTranslation()
   const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null)
@@ -376,6 +377,7 @@ export function MarkdownEditor({
       editor.commands.setContent(content, { emitUpdate: false, contentType: 'markdown' })
     }
     updateCharacterStats(editor, setSelectedCharacters)
+    onLineChange?.(getLineNumber(editor.state.doc, editor.state.selection.head))
     updateSearch(searchStateRef.current.query, 0)
 
     // 切换文件后：等待 DOM 渲染完成再恢复位置并显示
@@ -386,13 +388,16 @@ export function MarkdownEditor({
         scrollEl.style.visibility = ''
       })
     }
-  }, [content, editor, fileName, updateSearch])
+  }, [content, editor, fileName, onLineChange, updateSearch])
 
-  // 监听 TipTap 内容和选区变化，实时更新选区字数。
+  // 监听 TipTap 内容和选区变化，实时更新选区字数与光标行号。
   useEffect(() => {
     if (!editor) return
 
-    const updateStats = () => updateCharacterStats(editor, setSelectedCharacters)
+    const updateStats = () => {
+      updateCharacterStats(editor, setSelectedCharacters)
+      onLineChange?.(getLineNumber(editor.state.doc, editor.state.selection.head))
+    }
     updateStats()
     editor.on('update', updateStats)
     editor.on('selectionUpdate', updateStats)
@@ -400,7 +405,7 @@ export function MarkdownEditor({
       editor.off('update', updateStats)
       editor.off('selectionUpdate', updateStats)
     }
-  }, [editor])
+  }, [editor, onLineChange])
 
   // 保存编辑器设置
   useEffect(() => {
@@ -604,7 +609,9 @@ export function MarkdownEditor({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // 当焦点在 chat 输入框等 textarea/input 时，不拦截快捷键
-      const inCurrentEditor = e.target instanceof globalThis.Node && editor?.view.dom.contains(e.target)
+      const inCurrentEditor = Boolean(
+        editor && !editor.isDestroyed && e.target instanceof globalThis.Node && editor.view.dom.contains(e.target),
+      )
       if (isEditableTarget(e.target) && !inCurrentEditor) return
 
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
@@ -614,7 +621,7 @@ export function MarkdownEditor({
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [])
+  }, [editor])
 
   /** 引用当前选区到 Chat */
   const quoteCurrentSelection = useCallback(() => {
@@ -632,7 +639,9 @@ export function MarkdownEditor({
   // Cmd+Shift+L 快捷键：引用选区到 Chat
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const inCurrentEditor = e.target instanceof globalThis.Node && editor?.view.dom.contains(e.target)
+      const inCurrentEditor = Boolean(
+        editor && !editor.isDestroyed && e.target instanceof globalThis.Node && editor.view.dom.contains(e.target),
+      )
       if (isEditableTarget(e.target) && !inCurrentEditor) return
 
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
@@ -821,12 +830,6 @@ export function MarkdownEditor({
         {/* 选区浮动工具条 */}
         {editor && selectedCharacters > 0 && onQuoteSelection && (
           <SelectionToolbar editor={editor} onQuote={quoteCurrentSelection} />
-        )}
-      </div>
-      <div className="nova-editor-statusbar flex h-7 shrink-0 items-center gap-4 border-t px-3 text-[11px] text-[var(--nova-text-faint)]">
-        {chapterSummary && <span>{t('editor.updatedAt', { time: chapterSummary.updated_at || t('editor.unknownTime') })}</span>}
-        {selectedCharacters > 0 && (
-          <span className="text-[var(--nova-text-muted)]">{t('editor.selectedWords', { count: formatNumber(selectedCharacters) })}</span>
         )}
       </div>
     </div>
@@ -1110,10 +1113,6 @@ function updateCharacterStats(
 
 function countTextCharacters(text: string) {
   return Array.from(text.replace(/\s/g, '')).length
-}
-
-function formatNumber(value: number) {
-  return formatLocaleNumber(value)
 }
 
 /** 创建编辑器搜索高亮扩展，使用 ProseMirror Decoration 标记匹配项。 */

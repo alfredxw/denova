@@ -521,7 +521,7 @@ describe('SettingPanel', () => {
     expect(screen.getByText('平衡牵引')).toBeInTheDocument()
     expect(screen.getByText('在自由行动和长期主线之间保持平衡，适合作为通用默认。')).toBeInTheDocument()
     expect(screen.getByText('可逆失败')).toBeInTheDocument()
-    expect(screen.getByText('中等扰动')).toBeInTheDocument()
+		expect(screen.getByText('均衡')).toBeInTheDocument()
     expect(screen.queryByText('balanced')).not.toBeInTheDocument()
 
     const mainlineField = screen.getByText('主线强度').closest('label') as HTMLElement
@@ -536,9 +536,9 @@ describe('SettingPanel', () => {
     await user.click(within(pacingField).getByRole('combobox'))
     await user.click(screen.getByRole('option', { name: /波峰波谷/ }))
 
-    const randomField = screen.getByText('随机事件率').closest('label') as HTMLElement
-    await user.click(within(randomField).getByRole('combobox'))
-    await user.click(screen.getByRole('option', { name: /高扰动/ }))
+		const eventFrequencyField = screen.getByText('事件机会频率').closest('label') as HTMLElement
+		await user.click(within(eventFrequencyField).getByRole('combobox'))
+		await user.click(screen.getByRole('option', { name: /频繁/ }))
     await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
@@ -547,7 +547,7 @@ describe('SettingPanel', () => {
       mainline_strength: 'strong_arc',
       failure_policy: 'fail_forward',
       pacing_curve: 'wave',
-      random_event_rate: 0.3,
+			event_frequency: 'frequent',
     })
   })
 
@@ -1068,7 +1068,6 @@ function teller(id: string, name: string): Teller {
     id,
     name,
     description: `${name} description`,
-    random_event_rate: 0.15,
     style_refs: [],
     style_rules: [],
     context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' },

@@ -113,8 +113,6 @@ function EventCardDetails({
         <Field label={t('settingPanel.presetConfig.typeName')}><Input className={inputClassName} value={item.type_name || ''} onChange={(event) => onPatch({ type_name: event.target.value })} /></Field>
         <Field label={t('settingPanel.orchestration.category')}><Input className={inputClassName} value={item.category || ''} onChange={(event) => onPatch({ category: event.target.value })} /></Field>
         <Field label={t('settingPanel.field.tags')}><Input className={inputClassName} value={joinListInput(item.tags)} onChange={(event) => onPatch({ tags: splitListInput(event.target.value) })} /></Field>
-        <Field label={t('settingPanel.presetConfig.weight')}><Input className={inputClassName} inputMode="decimal" value={String(item.weight ?? '')} onChange={(event) => onPatch({ weight: parseNumberInput(event.target.value) })} /></Field>
-        <Field label={t('settingPanel.presetConfig.cooldown')}><Input className={inputClassName} inputMode="numeric" value={String(item.cooldown_turns ?? '')} onChange={(event) => onPatch({ cooldown_turns: parseIntegerInput(event.target.value) })} /></Field>
         <Field label={t('settingPanel.presetConfig.intensity')}><Input className={inputClassName} value={item.intensity || ''} onChange={(event) => onPatch({ intensity: event.target.value })} /></Field>
         <SwitchField label={t('settingPanel.field.enabled')} checked={item.enabled !== false} onChange={(enabled) => onPatch({ enabled })} />
       </div>

@@ -52,7 +52,7 @@ type storyDirectorWriteInput struct {
 type storyDirectorWriteOperation struct {
 	Op       string                    `json:"op" jsonschema:"description=操作类型：create/update/delete"`
 	ID       string                    `json:"id" jsonschema:"description=目标故事导演 ID；update/delete 必填"`
-	Director interactive.StoryDirector `json:"director" jsonschema:"description=create/update 使用的完整故事导演配置；module_refs 保存叙事风格、多个事件包、TRPG 检定、状态系统（actor_state）、Story Memory Structure 和图像方案引用，并用 *_disabled 显式关闭某个模块；事件包使用 event_package_ids；TRPG 检定使用 rule_system_id 选择一个 DM 检定风格资源；状态系统使用 actor_state_id，状态模板可表示故事上下文、主角、重要角色、敌人、怪物、世界、故事倒计时、势力、基地或副本等 Actor；词条库属于状态系统 actor_state.trait_pools，模板通过 trait_rules 声明可用池和 draw_count，禁止写 opening_selector、opening_selector_id、initial_state_ops 或词条 StateOp；记忆结构使用 memory_structure_id 和 memory_structure_disabled，只定义叙事承接 schema，不负责状态管理；TRPG rule_templates 只作为兼容容器，资源内只使用 rule_templates[0]，检定固定 d20，可配置 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id；strategy 建议使用枚举 mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，random_event_rate=0/0.08/0.15/0.3，rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only，branch_planning_turns 默认 5；strategy.planning_templates.plan 可配置单份 director.md Markdown 模板且必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略和输出协议"`
+	Director interactive.StoryDirector `json:"director" jsonschema:"description=create/update 使用的完整故事导演配置；module_refs 保存叙事风格、多个事件包、TRPG 检定、状态系统（actor_state）、Story Memory Structure 和图像方案引用，并用 *_disabled 显式关闭某个模块；事件包使用 event_package_ids；TRPG 检定使用 rule_system_id 选择一个 DM 检定风格资源；状态系统使用 actor_state_id，状态模板可表示故事上下文、主角、重要角色、敌人、怪物、世界、故事倒计时、势力、基地或副本等 Actor；词条库属于状态系统 actor_state.trait_pools，模板通过 trait_rules 声明可用池和 draw_count，禁止写 opening_selector、opening_selector_id、initial_state_ops 或词条 StateOp；记忆结构使用 memory_structure_id 和 memory_structure_disabled，只定义叙事承接 schema，不负责状态管理；TRPG rule_templates 只作为兼容容器，资源内只使用 rule_templates[0]，检定固定 d20，可配置 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id；strategy 建议使用枚举 mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，event_frequency=off/sparse/balanced/frequent，rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only，branch_planning_turns 默认 5；strategy.planning_templates.plan 可配置单份 director.md Markdown 模板且必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略和输出协议"`
 }
 
 type eventPackageWriteInput struct {
@@ -779,7 +779,7 @@ func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 				storyDirectorStrategyLabel("mainline", director.Strategy.MainlineStrength),
 				storyDirectorStrategyLabel("failure", director.Strategy.FailurePolicy),
 				storyDirectorStrategyLabel("pacing", director.Strategy.PacingCurve),
-				storyDirectorRandomRateLabel(director.Strategy.RandomEventRate),
+				storyDirectorEventFrequencyLabel(director.Strategy.EventFrequency),
 				boolLabel(!director.ModuleRefs.NarrativeStyleDisabled, "on:"+director.ModuleRefs.NarrativeStyleID, "off:"+director.ModuleRefs.NarrativeStyleID),
 				boolLabel(!director.ModuleRefs.EventPackagesDisabled, "on:"+strings.Join(director.ModuleRefs.EventPackageIDs, ","), "off:"+strings.Join(director.ModuleRefs.EventPackageIDs, ",")),
 				boolLabel(!director.ModuleRefs.RuleSystemDisabled, "on:"+director.ModuleRefs.RuleSystemID, "off:"+director.ModuleRefs.RuleSystemID),
@@ -804,7 +804,7 @@ func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_story_directors", "按故事导演 ID 批量读取完整配置。故事导演是游戏模式独占模块；module_refs 决定引用哪些模块，event_package_ids 可引用多个事件包，rule_system_id 引用一个 TRPG 检定资源，actor_state_id 引用状态系统。状态系统的 trait_pools 是通用词条库，模板 trait_rules 决定各类 Actor 创建时从哪些池抽取多少词条；故事导演不再拥有 opening_selector 或 initial_state_ops。memory_structure_id 引用 Story Memory Structure 预设，*_disabled=true 表示对应模块关闭且保留原 ID 以便重新启用。TRPG rule_templates 只作为兼容容器，资源内只使用 rule_templates[0]，检定固定 d20，支持 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，random_event_rate=0/0.08/0.15/0.3，rule_state_consumption_mode=hybrid_auto/director_only，rule_visibility_mode=audit_only/public_roll；branch_planning_turns 控制最近分支规划回合数；planning_templates.plan 是单份 director.md Markdown 模板；strategy.prompt_markdown 是纯 Markdown 高级策略提示，最多 64KB。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_story_directors", "按故事导演 ID 批量读取完整配置。故事导演是游戏模式独占模块；module_refs 决定引用哪些模块，event_package_ids 可引用多个事件包，rule_system_id 引用一个 TRPG 检定资源，actor_state_id 引用状态系统。状态系统的 trait_pools 是通用词条库，模板 trait_rules 决定各类 Actor 创建时从哪些池抽取多少词条；故事导演不再拥有 opening_selector 或 initial_state_ops。memory_structure_id 引用 Story Memory Structure 预设，*_disabled=true 表示对应模块关闭且保留原 ID 以便重新启用。TRPG rule_templates 只作为兼容容器，资源内只使用 rule_templates[0]，检定固定 d20，支持 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，event_frequency=off/sparse/balanced/frequent，rule_state_consumption_mode=hybrid_auto/director_only，rule_visibility_mode=audit_only/public_roll；branch_planning_turns 控制最近分支规划回合数；planning_templates.plan 是单份 director.md Markdown 模板；strategy.prompt_markdown 是纯 Markdown 高级策略提示，最多 64KB。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法读取故事导演")
@@ -827,7 +827,7 @@ func newReadStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_story_directors", "批量创建、更新或删除故事导演配置。故事导演通过 module_refs 可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统、Story Memory Structure 和图像方案；用 narrative_style_disabled、event_packages_disabled、rule_system_disabled、actor_state_disabled、memory_structure_disabled、image_preset_disabled 关闭模块，关闭时保留对应 ID。不要写 opening_selector、opening_selector_id、opening_selector_disabled 或 initial_state_ops；Actor 词条库和模板抽取规则通过 write_actor_states 更新。事件包引用写 event_package_ids；TRPG 检定引用写 rule_system_id；带 state_bindings 的 TRPG 检定资源必须配置 actor_state_id；状态系统引用写 actor_state_id；记忆结构引用写 memory_structure_id。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，random_event_rate=0/0.08/0.15/0.3，rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only；branch_planning_turns 默认 5；planning_templates.plan 可写单份 director.md Markdown 模板并必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略、工具权限和输出协议。删除内置故事导演会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input storyDirectorWriteInput) (string, error) {
+	return utils.InferTool("write_story_directors", "批量创建、更新或删除故事导演配置。故事导演通过 module_refs 可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统、Story Memory Structure 和图像方案；用 narrative_style_disabled、event_packages_disabled、rule_system_disabled、actor_state_disabled、memory_structure_disabled、image_preset_disabled 关闭模块，关闭时保留对应 ID。不要写 opening_selector、opening_selector_id、opening_selector_disabled 或 initial_state_ops；Actor 词条库和模板抽取规则通过 write_actor_states 更新。事件包引用写 event_package_ids；TRPG 检定引用写 rule_system_id；带 state_bindings 的 TRPG 检定资源必须配置 actor_state_id；状态系统引用写 actor_state_id；记忆结构引用写 memory_structure_id。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，event_frequency=off/sparse/balanced/frequent，rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only；branch_planning_turns 默认 5；planning_templates.plan 可写单份 director.md Markdown 模板并必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略、工具权限和输出协议。删除内置故事导演会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input storyDirectorWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入故事导演")
@@ -1205,13 +1205,13 @@ func storyDirectorStrategyLabel(kind, value string) string {
 	}
 }
 
-func storyDirectorRandomRateLabel(rate float64) string {
-	switch {
-	case rate <= 0:
+func storyDirectorEventFrequencyLabel(frequency string) string {
+	switch frequency {
+	case interactive.EventFrequencyOff:
 		return "关闭扰动"
-	case rate <= 0.08:
+	case interactive.EventFrequencySparse:
 		return "低扰动"
-	case rate <= 0.15:
+	case interactive.EventFrequencyBalanced:
 		return "中等扰动"
 	default:
 		return "高扰动"

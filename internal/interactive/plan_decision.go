@@ -18,6 +18,7 @@ type PlanDecision struct {
 	Deviation       PlanDecisionDeviation  `json:"deviation,omitempty"`
 	Reason          string                 `json:"reason,omitempty"`
 	BaseRevision    string                 `json:"base_revision,omitempty"`
+	EventDecision   *EventDecision         `json:"event_decision,omitempty"`
 }
 
 type PlanDecisionTransition struct {
@@ -58,5 +59,9 @@ func normalizePlanDecision(decision PlanDecision) PlanDecision {
 	decision.Deviation.Reason = trimBytes(decision.Deviation.Reason, maxTurnBriefTextBytes)
 	decision.Reason = trimBytes(decision.Reason, maxTurnBriefTextBytes)
 	decision.BaseRevision = trimBytes(decision.BaseRevision, 128)
+	if decision.EventDecision != nil {
+		normalized := normalizeEventDecision(*decision.EventDecision)
+		decision.EventDecision = &normalized
+	}
 	return decision
 }

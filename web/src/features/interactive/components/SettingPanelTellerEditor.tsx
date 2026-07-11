@@ -18,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import { getStyleReferences, readStyleReferenceFile, saveStyleReference, updateStyleReferenceFile } from '../api'
 import type { StyleReference, StyleReferenceFileDocument, StyleRule, Teller, TellerPromptSlot } from '../types'
-import { PresetEmptyState, PresetField, PresetMetadataPanel } from './preset-config/PresetEditorChrome'
+import { PresetEmptyState, PresetMetadataPanel } from './preset-config/PresetEditorChrome'
 
 const TELLER_TARGET_OPTIONS = [{ value: 'system' }, { value: 'turn_context' }, { value: 'state_memory' }] as const
 
@@ -35,8 +35,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
   const { t } = useTranslation()
   const activeSlot = draft?.slots?.find((slot) => slot.id === activeSlotId) || draft?.slots?.[0] || null
   const [targetPickerOpen, setTargetPickerOpen] = useState(false)
-  const [randomEventRateInput, setRandomEventRateInput] = useState(() => formatRandomEventRate(draft?.random_event_rate))
-  const [styleReferences, setStyleReferences] = useState<StyleReference[]>([])
+	const [styleReferences, setStyleReferences] = useState<StyleReference[]>([])
 
   const refreshStyleReferences = async () => {
     if (!workspace) {
@@ -61,10 +60,6 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
   useEffect(() => {
     setTargetPickerOpen(false)
   }, [activeSlotId])
-
-  useEffect(() => {
-    setRandomEventRateInput(formatRandomEventRate(draft?.random_event_rate))
-  }, [draft?.id])
 
   const updateSlotById = (slotId: string, patch: Partial<TellerPromptSlot>) => {
     if (!draft) return
@@ -100,15 +95,6 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
     setActiveSlotId(nextSlots[0]?.id || '')
   }
 
-  const updateRandomEventRate = (value: string) => {
-    setRandomEventRateInput(value)
-    if (!draft || !isDecimalInput(value)) return
-    setDraft({
-      ...draft,
-      random_event_rate: parseDecimalInput(value),
-    })
-  }
-
   if (!draft) {
     return <PresetEmptyState title={t('settingPanel.editor.noTellerSelected')} description={t('settingPanel.editor.noTellerSelectedDesc')} />
   }
@@ -125,18 +111,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
         hint={editHint}
         onNameChange={(name) => setDraft({ ...draft, name })}
         onDescriptionChange={(description) => setDraft({ ...draft, description })}
-        extra={(
-          <PresetField className="preset-metadata-extra" label={t('settingPanel.field.randomEventRate')}>
-          <Input
-            className="nova-field h-9 min-w-0 text-xs shadow-none"
-            aria-label={t('settingPanel.field.randomEventRate')}
-            inputMode="decimal"
-            value={randomEventRateInput}
-            onChange={(event) => updateRandomEventRate(event.target.value)}
-          />
-          </PresetField>
-        )}
-      />
+	/>
 
       <div data-testid="teller-content-scroll" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
         <section className="shrink-0 border-b border-[var(--preset-line)] bg-[var(--preset-surface)] p-3 sm:p-4">
@@ -267,21 +242,6 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
       </div>
     </div>
   )
-}
-
-function formatRandomEventRate(value: number | undefined) {
-  return Number.isFinite(value) ? String(value) : '0'
-}
-
-function isDecimalInput(value: string) {
-  return /^\d*(?:\.\d*)?$/.test(value.trim())
-}
-
-function parseDecimalInput(value: string) {
-  const normalized = value.trim()
-  if (normalized === '' || normalized === '.') return 0
-  const parsed = Number(normalized)
-  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function InteractiveStyleReferencesEditor({ references, refreshReferences, globalRefs, onGlobalRefsChange, rules, onRulesChange }: { references: StyleReference[]; refreshReferences: () => Promise<StyleReference[]>; globalRefs: string[]; onGlobalRefsChange: (refs: string[]) => void; rules: StyleRule[]; onRulesChange: (rules: StyleRule[]) => void }) {

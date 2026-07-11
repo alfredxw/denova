@@ -36,7 +36,7 @@ interface CommandPaletteProps {
   onOpenVersions: () => void
   onOpenSearch: () => void
   onContinueWriting: () => void
-  onClosePanels: () => void
+  onToggleRightPanel: () => void
 }
 
 /** 工作台命令面板，集中承载全局快捷操作，不直接调用业务 API。 */
@@ -49,7 +49,7 @@ export function CommandPalette({
   onOpenVersions,
   onOpenSearch,
   onContinueWriting,
-  onClosePanels,
+  onToggleRightPanel,
 }: CommandPaletteProps) {
   const { t } = useTranslation()
   const actions: CommandAction[] = [
@@ -88,11 +88,11 @@ export function CommandPalette({
       onSelect: onContinueWriting,
     },
     {
-      id: 'close',
-      label: t('command.closePanels'),
-      shortcut: 'Esc',
+      id: 'toggle-right-panel',
+      label: t('command.toggleRightPanel'),
+      shortcut: '⌘⌥B / CtrlAltB',
       icon: <X className="h-4 w-4" />,
-      onSelect: onClosePanels,
+      onSelect: onToggleRightPanel,
     },
   ]
 

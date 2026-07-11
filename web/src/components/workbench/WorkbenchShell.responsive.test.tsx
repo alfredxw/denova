@@ -10,7 +10,7 @@ vi.mock('@/hooks/useIsMobile', () => ({
 }))
 
 vi.mock('@/components/layout/workspace-layout', () => ({
-  WorkspaceLayout: ({ topBar, activityBar, main }: { topBar: ReactNode; activityBar: ReactNode; main: ReactNode }) => <section data-testid="desktop-shell">{topBar}{activityBar}{main}</section>,
+  WorkspaceLayout: ({ topBar, activityBar, main, statusBar }: { topBar: ReactNode; activityBar: ReactNode; main: ReactNode; statusBar: ReactNode }) => <section data-testid="desktop-shell">{topBar}{activityBar}{main}{statusBar}</section>,
 }))
 
 vi.mock('@/components/layout/workspace-mobile-layout', () => ({
@@ -94,6 +94,20 @@ describe('WorkbenchShell responsive main content', () => {
     rerender(<WorkbenchShell {...props} />)
     expect(screen.queryByRole('button', { name: /故事记忆|Story Memory/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /剧情|Story/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+
+  it('shows editor updated time and line in the global bottom status bar', () => {
+    render(<WorkbenchShell {...workbenchProps(<div />)}
+      mode="ide"
+      currentChapter={{
+        path: 'chapters/ch01.md', file_name: 'ch01.md', display_title: '第一章', index: 1,
+        words: 100, status: 'draft', confirmed: false, updated_at: '2026-07-11 22:00',
+        volume: '', volume_path: '',
+      }}
+      editorLine={54}
+    />)
+
+    expect(screen.getByText(/更新：2026-07-11 22:00 · 行 54|Updated: 2026-07-11 22:00 · Line 54/)).toBeInTheDocument()
   })
 })
 

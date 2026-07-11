@@ -19,6 +19,7 @@ const editor = {
   'editor.chapterWords': 'Chapter: {{count}} words',
   'editor.bookWords': 'Book: {{count}} words',
   'editor.updatedAt': 'Updated: {{time}}',
+  'editor.currentLine': 'Line {{line}}',
   'editor.selectedWords': 'Selected: {{count}} words',
   'editor.unknownTime': 'Unknown',
   'editor.lineHeight': 'Line Height',

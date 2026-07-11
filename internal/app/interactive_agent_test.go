@@ -68,7 +68,6 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 	for _, want := range []string{
 		"导演本轮上下文规则",
-		"导演随机事件率",
 		"[本轮动态上下文]",
 		"800 个中文字",
 		"最高篇幅约束",
@@ -82,6 +81,9 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		if !strings.Contains(history[2].Content, want) {
 			t.Fatalf("history[2] should include %q: %#v", want, history[2])
 		}
+	}
+	if strings.Contains(history[2].Content, "随机事件率") {
+		t.Fatalf("story prose prompt should not receive event probability controls: %#v", history[2])
 	}
 	for _, forbidden := range []string{"经典叙事者", "林川：谨慎的幸存者", "世界已进入黄昏末日。"} {
 		if strings.Contains(history[2].Content, forbidden) {
@@ -394,9 +396,14 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"可用事件类型目录", "外门考核打脸", "触发场景", "事件回收 / 后果"} {
+	for _, want := range []string{"本轮事件机会", "cadence_not_due", "事件运行态"} {
 		if !strings.Contains(directorInstruction, want) {
-			t.Fatalf("director instruction should retain event card catalog %q:\n%s", want, directorInstruction)
+			t.Fatalf("director instruction should include deterministic event context %q:\n%s", want, directorInstruction)
+		}
+	}
+	for _, forbidden := range []string{"外门考核打脸", "事件回收 / 后果", "可选事件卡紧凑索引"} {
+		if strings.Contains(directorInstruction, forbidden) {
+			t.Fatalf("director instruction should not inject event cards before an opportunity is due %q:\n%s", forbidden, directorInstruction)
 		}
 	}
 }
@@ -427,11 +434,11 @@ func TestInteractiveDirectorEventCatalogIncludesTellerEventCards(t *testing.T) {
 			Content: "规则",
 		}},
 	}
-	director := interactive.StoryDirectorFromTellerOrchestration(teller.ID, teller.Name, teller.Description, teller.RandomEventRate, *teller.Orchestration)
+	director := interactive.StoryDirectorFromTellerOrchestration(teller.ID, teller.Name, teller.Description, *teller.Orchestration)
 	catalog := interactiveDirectorEventCatalog(director)
 	found := false
 	for _, event := range catalog {
-		if event.ID == "academy_trial" {
+		if event.ID == "academy-pack/academy_trial" {
 			found = true
 			if !strings.Contains(event.Template, "外门考核") || event.Category != "学院" {
 				t.Fatalf("event card catalog entry mismatch: %#v", event)

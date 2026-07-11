@@ -191,7 +191,6 @@ func TestActorStateModuleMigratesOpeningSelectorIntoTraitLibrary(t *testing.T) {
 					ID:      "clear-mind",
 					Name:    "澄心",
 					Summary: "开局精神状态更稳定。",
-					Weight:  1,
 					Ops: []StateOp{{
 						Op:    "set",
 						Path:  "actors.protagonist.state.current.mental_status",
@@ -507,7 +506,7 @@ func TestParseLegacyRuleSystemKeepsSingleCheck(t *testing.T) {
 	}
 }
 
-func TestDirectorEventCatalogPrioritizesConfiguredEventCardsBeforeDefaults(t *testing.T) {
+func TestDirectorEventCatalogUsesOnlyExplicitConfiguredEventCards(t *testing.T) {
 	module := builtinGenreEventPackageModule(
 		"test-pack",
 		"测试事件包",
@@ -524,16 +523,17 @@ func TestDirectorEventCatalogPrioritizesConfiguredEventCardsBeforeDefaults(t *te
 
 	catalog := DirectorEventCatalogFromStoryDirector(director)
 	packCards := module.Events
-	if len(catalog) != maxTurnBriefListItems {
-		t.Fatalf("catalog should still be filled to the bounded default size, got %d: %#v", len(catalog), catalog)
+	if len(catalog) != len(packCards) {
+		t.Fatalf("catalog should contain exactly the selected package cards, got %d: %#v", len(catalog), catalog)
 	}
 	for i, card := range packCards {
-		if catalog[i].ID != card.ID {
-			t.Fatalf("configured event cards should be first, index %d got %s want %s in %#v", i, catalog[i].ID, card.ID, catalog)
+		wantRef := module.ID + "/" + card.ID
+		if catalog[i].ID != wantRef {
+			t.Fatalf("configured event card refs should be namespaced, index %d got %s want %s in %#v", i, catalog[i].ID, wantRef, catalog)
 		}
 	}
-	if !directorEventQueued(catalog, "face_slap") {
-		t.Fatalf("default templates should fill remaining catalog slots: %#v", catalog)
+	if directorEventQueued(catalog, "face_slap") {
+		t.Fatalf("unselected default templates must not leak into catalog: %#v", catalog)
 	}
 }
 

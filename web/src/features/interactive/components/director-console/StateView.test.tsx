@@ -1,6 +1,6 @@
-import { render, screen, within } from '@testing-library/react'
+import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { StateView } from './StateView'
 
 describe('StateView', () => {
@@ -48,9 +48,8 @@ describe('StateView', () => {
       />,
     )
 
-    const actorCard = screen.getByRole('heading', { name: '林风' }).closest('article')
-    expect(actorCard).not.toBeNull()
-    const card = within(actorCard as HTMLElement)
+    const actorCard = screen.getByRole('article', { name: '林风' })
+    const card = within(actorCard)
     expect(card.queryByText('主角')).not.toBeInTheDocument()
     expect(card.queryByText(/修行者/)).not.toBeInTheDocument()
     expect(card.getByText('来自失落纪元且尚未完全觉醒的古老血脉')).toHaveAttribute('title', '一条足够长、用于验证窄状态卡截断展示的词条说明。')
@@ -58,13 +57,13 @@ describe('StateView', () => {
     expect(card.getByText(/青石镇客栈/)).toBeInTheDocument()
 		expect(card.getByText('身体状态')).toBeInTheDocument()
 		expect(card.getByText('旧玉佩')).toBeInTheDocument()
-		expect((actorCard as HTMLElement).querySelector('pre')).not.toBeInTheDocument()
+		expect(actorCard.querySelector('pre')).not.toBeInTheDocument()
 		expect(card.queryByText('raw_internal_key')).not.toBeInTheDocument()
 		expect(card.queryByText('不得展示')).not.toBeInTheDocument()
     expect(screen.queryByText('actors')).not.toBeInTheDocument()
   })
 
-  it('prioritizes the protagonist and switches the visible Actor sheet through the Actor select', async () => {
+  it('prioritizes the protagonist and switches the visible Actor sheet through tabs', async () => {
     render(
       <StateView
         snapshot={{ story_id: 'story', branch_id: 'main', turns: [], state: {} }}
@@ -78,18 +77,17 @@ describe('StateView', () => {
       />,
     )
 
-    const actorSelect = screen.getByRole('combobox', { name: '当前镜头角色' })
-    expect(actorSelect).toHaveTextContent('林风')
-    expect(screen.getByRole('heading', { name: '林风' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: '沈凝' })).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '林风' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('article', { name: '林风' })).toBeInTheDocument()
+    expect(screen.queryByRole('article', { name: '沈凝' })).not.toBeInTheDocument()
 
-    await userEvent.click(actorSelect)
-    await userEvent.click(screen.getByRole('option', { name: '沈凝' }))
-    expect(screen.getByRole('heading', { name: '沈凝' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: '沈凝' }))
+    expect(screen.getByRole('tab', { name: '沈凝' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('article', { name: '沈凝' })).toBeInTheDocument()
     expect(screen.getByText('观望')).toBeInTheDocument()
   })
 
-  it('uses the standard full-width Select without a custom Actor tab scroller', () => {
+  it('uses a full-width Actor tab list without repeating the selected Actor heading', () => {
     render(
       <StateView
         snapshot={{ story_id: 'story', branch_id: 'main', turns: [], state: {} }}
@@ -101,9 +99,48 @@ describe('StateView', () => {
       />,
     )
 
-    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
-    expect(screen.queryAllByRole('tab')).toHaveLength(0)
-    expect(screen.getByRole('combobox', { name: '当前镜头角色' })).toHaveClass('w-full', 'min-w-0')
+    expect(screen.getByRole('tablist', { name: '当前镜头角色' })).toBeInTheDocument()
+    expect(screen.getAllByRole('tab')).toHaveLength(3)
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: '林风' })).not.toBeInTheDocument()
+  })
+
+  it('moves tabs that do not fit into More and promotes the selected Actor into the visible tabs', async () => {
+    let resizeCallback: ResizeObserverCallback | undefined
+    class ResizeObserverHarness {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', ResizeObserverHarness)
+
+    try {
+      render(
+        <StateView
+          snapshot={{ story_id: 'story', branch_id: 'main', turns: [], state: {} }}
+          stateFacts={[['actors', {
+            protagonist: { name: '林风', role: 'protagonist', state: { stance: '迎战' } },
+            supporting: { name: '沈凝', role: 'supporting', state: { stance: '观望' } },
+            opponent: { name: '顾临渊', role: 'opponent', state: { stance: '敌对' } },
+            observer: { name: '极长名字的旁观角色', role: 'supporting', state: { stance: '旁观' } },
+          }]]}
+        />,
+      )
+
+      act(() => resizeCallback?.([{ contentRect: { width: 240 } } as ResizeObserverEntry], {} as ResizeObserver))
+      expect(screen.getAllByRole('tab')).toHaveLength(2)
+
+      await userEvent.click(screen.getByRole('button', { name: '选择更多角色' }))
+      await userEvent.click(screen.getByRole('menuitem', { name: '顾临渊' }))
+
+      expect(screen.getByRole('tab', { name: '顾临渊' })).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByRole('article', { name: '顾临渊' })).toHaveTextContent('敌对')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('does not fall back to raw state keys when a frozen template has no visible fields', () => {

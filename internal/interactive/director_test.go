@@ -1,10 +1,195 @@
 package interactive
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
 )
+
+func TestDirectorEventCadenceIntervals(t *testing.T) {
+	turns := make([]TurnEvent, 6)
+	for i := range turns {
+		turns[i].ID = "turn-" + string(rune('1'+i))
+	}
+	for _, test := range []struct {
+		frequency string
+		dueAt     int
+	}{
+		{frequency: EventFrequencySparse, dueAt: 6},
+		{frequency: EventFrequencyBalanced, dueAt: 4},
+		{frequency: EventFrequencyFrequent, dueAt: 2},
+	} {
+		before := directorEventOpportunity(DirectorEventRuntime{}, turns[:test.dueAt-1], test.frequency, true, false)
+		due := directorEventOpportunity(DirectorEventRuntime{}, turns[:test.dueAt], test.frequency, true, false)
+		if before.Due || !due.Due || due.Kind != "new" {
+			t.Fatalf("unexpected cadence for %s: before=%#v due=%#v", test.frequency, before, due)
+		}
+	}
+	if opportunity := directorEventOpportunity(DirectorEventRuntime{}, turns, EventFrequencyOff, true, false); opportunity.Due {
+		t.Fatalf("off frequency should not create opportunities: %#v", opportunity)
+	}
+}
+
+func TestDirectorEventDecisionLifecycleValidation(t *testing.T) {
+	turns := []TurnEvent{{ID: "turn-1"}, {ID: "turn-2"}, {ID: "turn-3"}, {ID: "turn-4"}}
+	catalog := []DirectorEvent{{ID: "pack/card", Name: "事件卡", Enabled: true}}
+	newOpportunity := EventOpportunity{Due: true, Kind: "new"}
+	runtime, err := applyDirectorEventDecision(DirectorEventRuntime{}, &EventDecision{Mode: EventDecisionNone}, newOpportunity, "turn-4", turns, catalog)
+	if err != nil || runtime.Active != nil || runtime.LastOpportunityTurnID != "turn-4" {
+		t.Fatalf("none should consume the opportunity without activating an event: runtime=%#v err=%v", runtime, err)
+	}
+	runtime, err = applyDirectorEventDecision(DirectorEventRuntime{}, &EventDecision{Mode: EventDecisionSeed, EventRef: "pack/card", Summary: "开始铺垫"}, newOpportunity, "turn-4", turns, catalog)
+	if err != nil || runtime.Active == nil || runtime.Active.Stage != EventDecisionSeed {
+		t.Fatalf("seed should activate an explicitly selected card: runtime=%#v err=%v", runtime, err)
+	}
+	activeOpportunity := EventOpportunity{Due: true, Kind: "active", ActiveEventRef: "pack/card"}
+	if _, err := applyDirectorEventDecision(runtime, &EventDecision{Mode: EventDecisionSeed, EventRef: "pack/card"}, activeOpportunity, "turn-4", turns, catalog); err == nil {
+		t.Fatal("an active event must prevent seeding a second event")
+	}
+	if _, err := applyDirectorEventDecision(runtime, &EventDecision{Mode: EventDecisionAdvance, EventRef: "pack/card"}, activeOpportunity, "turn-4", turns, catalog); err == nil {
+		t.Fatal("advance must require evidence from the active turn path")
+	}
+	advanced, err := applyDirectorEventDecision(runtime, &EventDecision{Mode: EventDecisionAdvance, EventRef: "pack/card", Summary: "冲突升级", EvidenceTurnIDs: []string{"turn-4"}}, activeOpportunity, "turn-4b", append(turns, TurnEvent{ID: "turn-4b"}), catalog)
+	if err != nil || advanced.Active == nil || advanced.Active.Stage != EventDecisionAdvance {
+		t.Fatalf("advance with valid evidence should update the active event: runtime=%#v err=%v", advanced, err)
+	}
+	resolved, err := applyDirectorEventDecision(advanced, &EventDecision{Mode: EventDecisionResolve, EventRef: "pack/card", EvidenceTurnIDs: []string{"turn-4b"}}, activeOpportunity, "turn-5", append(turns, TurnEvent{ID: "turn-4b"}, TurnEvent{ID: "turn-5"}), catalog)
+	if err != nil || resolved.Active != nil {
+		t.Fatalf("resolve should close the active event: runtime=%#v err=%v", resolved, err)
+	}
+}
+
+func TestDirectorEventRuntimeIsIdempotentBranchScopedAndRewindSafe(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "事件运行态", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turns := make([]TurnEvent, 0, 4)
+	for i := 0; i < 4; i++ {
+		turn, _, appendErr := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{BranchID: "main", User: "行动", Narrative: "结果"})
+		if appendErr != nil {
+			t.Fatal(appendErr)
+		}
+		turns = append(turns, turn)
+	}
+	token, err := store.DirectorPlanRunToken(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkDirectorPlanRunStarted(story.ID, "main", token, turns[3].ID); err != nil {
+		t.Fatal(err)
+	}
+	status, err := store.DirectorPlanStatus(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !status.EventOpportunity.Due || status.EventOpportunity.Kind != "new" {
+		t.Fatalf("fourth balanced turn should create a new opportunity: %#v", status.EventOpportunity)
+	}
+	catalog := DirectorEventCatalogFromStoryDirector(DefaultStoryDirector())
+	if len(catalog) == 0 {
+		t.Fatal("default director should explicitly select at least one event card")
+	}
+	decision := PlanDecision{Mode: PlanDecisionKeep, EventDecision: &EventDecision{Mode: EventDecisionSeed, EventRef: catalog[0].ID, Summary: "事件已埋设"}}
+	output, _ := json.Marshal(decision)
+	completed, err := store.CompleteDirectorPlanRun(story.ID, "main", token, turns[3].ID, string(output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.Metadata.EventRuntime.Active == nil || len(completed.Metadata.EventRuntime.RecentDecisions) != 1 {
+		t.Fatalf("seed should create one active event record: %#v", completed.Metadata.EventRuntime)
+	}
+	if _, err := store.CompleteDirectorPlanRun(story.ID, "main", token, turns[3].ID, string(output)); err != nil {
+		t.Fatal(err)
+	}
+	retried, err := store.DirectorPlan(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(retried.Metadata.EventRuntime.RecentDecisions) != 1 {
+		t.Fatalf("retry must be idempotent: %#v", retried.Metadata.EventRuntime)
+	}
+	branch, err := store.CreateBranch(story.ID, CreateBranchRequest{ParentEventID: turns[3].ID, Title: "事件分支"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	branchPlan, err := store.DirectorPlan(story.ID, branch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if branchPlan.Metadata.EventRuntime.Active == nil {
+		t.Fatalf("branch should inherit event runtime valid at its fork point: %#v", branchPlan.Metadata.EventRuntime)
+	}
+	rebuilt, err := store.RebuildDirectorPlan(story.ID, RebuildDirectorPlanRequest{BranchID: branch.ID}, DirectorPlanSeed{Templates: DefaultStoryDirectorPlanningTemplates()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rebuilt.Metadata.EventRuntime.Active == nil {
+		t.Fatalf("rebuild should preserve valid event runtime by default: %#v", rebuilt.Metadata.EventRuntime)
+	}
+	reset, err := store.RebuildDirectorPlan(story.ID, RebuildDirectorPlanRequest{BranchID: branch.ID, ResetEvents: true}, DirectorPlanSeed{Templates: DefaultStoryDirectorPlanningTemplates()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reset.Metadata.EventRuntime.Active != nil || len(reset.Metadata.EventRuntime.RecentDecisions) != 0 {
+		t.Fatalf("explicit rebuild reset should clear event runtime: %#v", reset.Metadata.EventRuntime)
+	}
+	if err := store.RewindToTurnParent(story.ID, RewindTurnRequest{BranchID: "main", TurnID: turns[3].ID}); err != nil {
+		t.Fatal(err)
+	}
+	rewound, err := store.DirectorPlan(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rewound.Metadata.EventRuntime.Active != nil || len(rewound.Metadata.EventRuntime.RecentDecisions) != 0 {
+		t.Fatalf("rewind should remove decisions whose evidence turn left the active path: %#v", rewound.Metadata.EventRuntime)
+	}
+	docs := rewound.Docs
+	docs.Plan += "\n\n手动更新：回退后的路线。"
+	updated, err := store.UpdateDirectorPlan(story.ID, UpdateDirectorPlanRequest{BranchID: "main", Docs: docs, BaseRevision: rewound.Metadata.Revision})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Metadata.EventRuntime.Active != nil || len(updated.Metadata.EventRuntime.RecentDecisions) != 0 {
+		t.Fatalf("manual update must persist the rewind-reconciled runtime: %#v", updated.Metadata.EventRuntime)
+	}
+}
+
+func TestDirectorPlanIgnoresOutOfOrderCompletion(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "并发导演", StoryTellerID: "classic"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{BranchID: "main", User: "第一步", Narrative: "第一步结果"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{BranchID: "main", User: "第二步", Narrative: "第二步结果"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := store.DirectorPlanRunToken(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkDirectorPlanRunStarted(story.ID, "main", token, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.MarkDirectorPlanRunStarted(story.ID, "main", token, second.ID); err != nil {
+		t.Fatal(err)
+	}
+	output, _ := json.Marshal(PlanDecision{Mode: PlanDecisionKeep})
+	completed, err := store.CompleteDirectorPlanRun(story.ID, "main", token, first.ID, string(output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if completed.Metadata.LastRun == nil || completed.Metadata.LastRun.Status != DirectorPlanStatusRunning || completed.Metadata.LastRun.SourceTurnID != second.ID {
+		t.Fatalf("older completion must not replace the newer run: %#v", completed.Metadata.LastRun)
+	}
+}
 
 func TestCreateStorySeedsDirectorPlanDocs(t *testing.T) {
 	store := NewStore(t.TempDir())

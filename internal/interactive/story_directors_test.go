@@ -8,6 +8,21 @@ import (
 	"unicode/utf8"
 )
 
+func TestStoryDirectorLegacyRandomRateMigratesAndIsNotPersisted(t *testing.T) {
+	rate := 0.10
+	director := normalizeStoryDirector(StoryDirector{ID: "legacy-rate", Name: "旧概率", Strategy: StoryDirectorStrategy{Enabled: true, LegacyRandomEventRate: &rate}})
+	if director.Strategy.EventFrequency != EventFrequencySparse || director.Strategy.LegacyRandomEventRate != nil {
+		t.Fatalf("legacy random rate should migrate to sparse frequency: %#v", director.Strategy)
+	}
+	data, err := json.Marshal(director)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "random_event_rate") {
+		t.Fatalf("normalized director should not persist legacy probability field: %s", data)
+	}
+}
+
 func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	library := NewStoryDirectorLibrary(t.TempDir())
 
@@ -31,7 +46,7 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 		Description: "用于测试",
 		Strategy: StoryDirectorStrategy{
 			Enabled:             true,
-			RandomEventRate:     2,
+			EventFrequency:      EventFrequencyFrequent,
 			DirectorAgentMode:   "unknown",
 			BranchPlanningTurns: 99,
 		},
@@ -63,7 +78,7 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
-	if !created.Custom || created.Strategy.RandomEventRate != 1 || created.Strategy.DirectorAgentMode != DirectorAgentModeTriggered || created.Strategy.BranchPlanningTurns != 12 {
+	if !created.Custom || created.Strategy.EventFrequency != EventFrequencyFrequent || created.Strategy.DirectorAgentMode != DirectorAgentModeTriggered || created.Strategy.BranchPlanningTurns != 12 {
 		t.Fatalf("custom director should be marked and strategy should be normalized: %#v", created)
 	}
 	if created.ModuleRefs.EventPackagesDisabled || created.ModuleRefs.RuleSystemDisabled || created.ModuleRefs.OpeningSelectorDisabled {
@@ -245,11 +260,11 @@ func TestStoryDirectorLibraryMigratesLegacyCustomTellerOrchestration(t *testing.
 		t.Fatalf("create preexisting director failed: %v", err)
 	}
 	if _, err := tellers.Create(Teller{
-		ID:              "legacy-style",
-		Name:            "旧风格",
-		RandomEventRate: 0.42,
-		Orchestration:   legacyOrchestrationForTest(),
-		Slots:           []TellerPromptSlot{testTellerSlot()},
+		ID:                    "legacy-style",
+		Name:                  "旧风格",
+		LegacyRandomEventRate: floatPtr(0.42),
+		Orchestration:         legacyOrchestrationForTest(),
+		Slots:                 []TellerPromptSlot{testTellerSlot()},
 	}); err != nil {
 		t.Fatalf("create legacy teller failed: %v", err)
 	}
@@ -269,7 +284,7 @@ func TestStoryDirectorLibraryMigratesLegacyCustomTellerOrchestration(t *testing.
 	if err != nil {
 		t.Fatalf("legacy teller orchestration should migrate: %v", err)
 	}
-	if migrated.Name != "旧风格 故事导演" || migrated.Strategy.RandomEventRate != 0.42 {
+	if migrated.Name != "旧风格 故事导演" || migrated.Strategy.EventFrequency != EventFrequencyFrequent {
 		t.Fatalf("unexpected migrated metadata: %#v", migrated)
 	}
 	if len(migrated.ModuleRefs.EventPackageIDs) == 0 || migrated.ModuleRefs.RuleSystemID == "" || migrated.ModuleRefs.ActorStateID == "" {
@@ -329,7 +344,6 @@ func legacyOrchestrationForTest() *TellerOrchestrationConfig {
 				TypeName:            "反转",
 				DescriptionMarkdown: "误会后反转。",
 				Enabled:             true,
-				Weight:              2,
 			}},
 		}},
 		RuleTemplates: []RuleCheck{{

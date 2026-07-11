@@ -1778,8 +1778,6 @@ func eventCardFromDirectorEvent(event DirectorEvent, fallbackID string) TellerEv
 		Enabled:             event.Enabled,
 		Category:            event.Category,
 		Tags:                event.CompatibleGenres,
-		Weight:              event.Weight,
-		CooldownTurns:       event.CooldownTurns,
 		Intensity:           event.Intensity,
 	}
 }

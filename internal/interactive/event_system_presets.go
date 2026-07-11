@@ -32,8 +32,6 @@ type genreEventCardPreset struct {
 	Guardrail  string
 	Intensity  string
 	Tags       []string
-	Weight     float64
-	Cooldown   int
 }
 
 func builtinEventPackageModules() []EventPackageModule {
@@ -110,8 +108,6 @@ func builtinGenreEventCard(card genreEventCardPreset) TellerEventCard {
 		Enabled:             true,
 		Category:            card.Category,
 		Tags:                card.Tags,
-		Weight:              card.Weight,
-		CooldownTurns:       card.Cooldown,
 		Intensity:           card.Intensity,
 	}
 }
@@ -154,8 +150,6 @@ func xuanhuanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励可以是临时战力、传承片段或身份线索；代价是消耗、失控风险、血脉敌人的注意。",
 			Intensity:  "high",
 			Tags:       []string{"玄幻", "血脉", "成长"},
-			Weight:     1.3,
-			Cooldown:   5,
 		},
 		{
 			ID:         "xuanhuan-clan-pressure",
@@ -167,8 +161,6 @@ func xuanhuanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是名望、资源、保护或话语权；代价是敌意升级、亲情裂痕或暴露底牌。",
 			Intensity:  "medium",
 			Tags:       []string{"玄幻", "家族", "冲突"},
-			Weight:     1.1,
-			Cooldown:   3,
 		},
 		{
 			ID:         "xuanhuan-secret-realm-contest",
@@ -180,8 +172,6 @@ func xuanhuanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是功法、材料、情报或盟友；代价是伤势、消耗、结仇或秘境诅咒。",
 			Intensity:  "high",
 			Tags:       []string{"玄幻", "秘境", "竞争"},
-			Weight:     1.2,
-			Cooldown:   6,
 		},
 		{
 			ID:         "xuanhuan-genius-ranking",
@@ -193,8 +183,6 @@ func xuanhuanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是声望、邀约和资源优先权；代价是被针对、被试探或行动自由下降。",
 			Intensity:  "medium",
 			Tags:       []string{"玄幻", "排行", "名望"},
-			Weight:     1,
-			Cooldown:   4,
 		},
 		{
 			ID:         "xuanhuan-ancient-inheritance",
@@ -206,8 +194,6 @@ func xuanhuanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是功法、知识或身份背书；代价是承诺、因果、敌人或修炼隐患。",
 			Intensity:  "high",
 			Tags:       []string{"玄幻", "传承", "试炼"},
-			Weight:     1,
-			Cooldown:   7,
 		},
 		{
 			ID:         "xuanhuan-auction-gamble",
@@ -219,8 +205,6 @@ func xuanhuanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是稀缺资源或情报；代价是财力消耗、暴露财富、欠债或招惹强者。",
 			Intensity:  "medium",
 			Tags:       []string{"玄幻", "交易", "资源"},
-			Weight:     0.9,
-			Cooldown:   4,
 		},
 		{
 			ID:         "xuanhuan-beast-tide",
@@ -232,8 +216,6 @@ func xuanhuanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是功勋、材料或民望；代价是伤势、资源消耗、守护对象风险。",
 			Intensity:  "high",
 			Tags:       []string{"玄幻", "妖兽", "灾变"},
-			Weight:     0.8,
-			Cooldown:   6,
 		},
 	}
 }
@@ -250,8 +232,6 @@ func xiuxianEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是境界、术法或感知提升；代价是灵力亏空、雷劫痕迹、心魔苗头或资源消耗。",
 			Intensity:  "high",
 			Tags:       []string{"修仙", "境界", "突破"},
-			Weight:     1.2,
-			Cooldown:   6,
 		},
 		{
 			ID:         "xiuxian-heart-demon",
@@ -263,8 +243,6 @@ func xiuxianEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是心境稳固、术法领悟或自我认识；代价是短期失控、关系伤害或道心裂痕。",
 			Intensity:  "high",
 			Tags:       []string{"修仙", "心魔", "道心"},
-			Weight:     1,
-			Cooldown:   7,
 		},
 		{
 			ID:         "xiuxian-sect-mission",
@@ -276,8 +254,6 @@ func xiuxianEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是贡献点、师承信任或资源；代价是卷入派系、耽误私事或承担失败责任。",
 			Intensity:  "medium",
 			Tags:       []string{"修仙", "宗门", "任务"},
-			Weight:     1.2,
-			Cooldown:   3,
 		},
 		{
 			ID:         "xiuxian-alchemy-opportunity",
@@ -289,8 +265,6 @@ func xiuxianEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是丹药、药材、人脉或修复伤势；代价是失败损耗、丹毒、欠债或引来争抢。",
 			Intensity:  "medium",
 			Tags:       []string{"修仙", "丹药", "资源"},
-			Weight:     1,
-			Cooldown:   4,
 		},
 		{
 			ID:         "xiuxian-dharma-treasure-recognition",
@@ -302,8 +276,6 @@ func xiuxianEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是新能力或防护；代价是灵力供养、因果牵连、暴露宝物或被器灵试探。",
 			Intensity:  "medium",
 			Tags:       []string{"修仙", "法宝", "因果"},
-			Weight:     0.9,
-			Cooldown:   5,
 		},
 		{
 			ID:         "xiuxian-oath-karma",
@@ -315,8 +287,6 @@ func xiuxianEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是信任、资源或临时同盟；代价是行动受限、因果债或违约惩罚。",
 			Intensity:  "medium",
 			Tags:       []string{"修仙", "因果", "交易"},
-			Weight:     0.8,
-			Cooldown:   5,
 		},
 		{
 			ID:         "xiuxian-tribulation-warning",
@@ -328,8 +298,6 @@ func xiuxianEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是突破、淬体或威慑；代价是重伤、环境破坏、旁人受牵连或根基受损。",
 			Intensity:  "high",
 			Tags:       []string{"修仙", "天劫", "倒计时"},
-			Weight:     0.7,
-			Cooldown:   8,
 		},
 		{
 			ID:         "xiuxian-immortal-clue",
@@ -341,8 +309,6 @@ func xiuxianEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是方向、秘闻或高阶坐标；代价是被上层势力注意、认知冲击或路线分歧。",
 			Intensity:  "medium",
 			Tags:       []string{"修仙", "飞升", "主线"},
-			Weight:     0.7,
-			Cooldown:   8,
 		},
 	}
 }
@@ -359,8 +325,6 @@ func apocalypseEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是续航和主动权；代价是时间、风险、道德负担或队伍关系恶化。",
 			Intensity:  "medium",
 			Tags:       []string{"末世", "资源", "生存"},
-			Weight:     1.3,
-			Cooldown:   2,
 		},
 		{
 			ID:         "apocalypse-safe-zone-entry",
@@ -372,8 +336,6 @@ func apocalypseEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是庇护、医疗、情报或交易；代价是自由受限、资源缴纳、政治站队。",
 			Intensity:  "medium",
 			Tags:       []string{"末世", "基地", "派系"},
-			Weight:     1.1,
-			Cooldown:   4,
 		},
 		{
 			ID:         "apocalypse-infected-teammate",
@@ -386,8 +348,6 @@ func apocalypseEventCards() []genreEventCardPreset {
 			Guardrail:  "不要把感染直接写成必死；除非已有规则或玩家选择导致，应保留治疗、拖延或代价交换空间。",
 			Intensity:  "high",
 			Tags:       []string{"末世", "感染", "队伍"},
-			Weight:     0.9,
-			Cooldown:   6,
 		},
 		{
 			ID:         "apocalypse-mutant-horde",
@@ -399,8 +359,6 @@ func apocalypseEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是样本、地盘、声望或安全窗口；代价是弹药、伤亡、设施损坏。",
 			Intensity:  "high",
 			Tags:       []string{"末世", "尸潮", "战斗"},
-			Weight:     1,
-			Cooldown:   5,
 		},
 		{
 			ID:         "apocalypse-hostile-survivors",
@@ -412,8 +370,6 @@ func apocalypseEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是资源、地盘或情报；代价是结仇、伤亡、声誉下降或复仇伏笔。",
 			Intensity:  "medium",
 			Tags:       []string{"末世", "幸存者", "冲突"},
-			Weight:     1.1,
-			Cooldown:   3,
 		},
 		{
 			ID:         "apocalypse-power-restart",
@@ -425,8 +381,6 @@ func apocalypseEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是照明、通讯、医疗或生产能力；代价是燃料、零件、引怪或被人定位。",
 			Intensity:  "medium",
 			Tags:       []string{"末世", "设施", "建设"},
-			Weight:     0.9,
-			Cooldown:   4,
 		},
 		{
 			ID:         "apocalypse-moral-tradeoff",
@@ -438,8 +392,6 @@ func apocalypseEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是资源、时间或人心；代价是道德债、信任裂缝、创伤或外部敌意。",
 			Intensity:  "high",
 			Tags:       []string{"末世", "道德", "抉择"},
-			Weight:     0.8,
-			Cooldown:   5,
 		},
 		{
 			ID:         "apocalypse-extreme-weather",
@@ -451,8 +403,6 @@ func apocalypseEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是掩护、意外通道或敌人削弱；代价是疾病、装备损耗、行程延误。",
 			Intensity:  "medium",
 			Tags:       []string{"末世", "天气", "环境"},
-			Weight:     0.8,
-			Cooldown:   4,
 		},
 	}
 }
@@ -469,8 +419,6 @@ func westernFantasyEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是金币、名声、线索或通行权；代价是卷入地方冲突、违约风险。",
 			Intensity:  "medium",
 			Tags:       []string{"西幻", "委托", "城镇"},
-			Weight:     1.2,
-			Cooldown:   3,
 		},
 		{
 			ID:         "western-dungeon-delving",
@@ -482,8 +430,6 @@ func westernFantasyEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是宝物、经验、秘密或救援对象；代价是伤势、法术位、补给和诅咒。",
 			Intensity:  "high",
 			Tags:       []string{"西幻", "地下城", "探索"},
-			Weight:     1.2,
-			Cooldown:   5,
 		},
 		{
 			ID:         "western-oracle-church",
@@ -495,8 +441,6 @@ func westernFantasyEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是治疗、庇护、神术或合法性；代价是誓言、审查、敌对教派关注。",
 			Intensity:  "medium",
 			Tags:       []string{"西幻", "教会", "神谕"},
-			Weight:     0.9,
-			Cooldown:   5,
 		},
 		{
 			ID:         "western-royal-intrigue",
@@ -508,8 +452,6 @@ func westernFantasyEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是封赏、情报或通行权；代价是政治敌人、名誉风险或被当作棋子。",
 			Intensity:  "medium",
 			Tags:       []string{"西幻", "王国", "阴谋"},
-			Weight:     0.9,
-			Cooldown:   4,
 		},
 		{
 			ID:         "western-dragon-shadow",
@@ -521,8 +463,6 @@ func westernFantasyEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是龙财宝、盟约或威望；代价是毁灭风险、恐慌、巨额准备成本。",
 			Intensity:  "high",
 			Tags:       []string{"西幻", "龙", "大事件"},
-			Weight:     0.7,
-			Cooldown:   8,
 		},
 		{
 			ID:         "western-magic-school",
@@ -534,8 +474,6 @@ func westernFantasyEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是法术、资源、导师信任；代价是处分、实验后遗症或学院敌意。",
 			Intensity:  "medium",
 			Tags:       []string{"西幻", "魔法", "学院"},
-			Weight:     1,
-			Cooldown:   4,
 		},
 		{
 			ID:         "western-ancestral-curse",
@@ -547,8 +485,6 @@ func westernFantasyEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是解除威胁、获得秘密或净化物品；代价是时间压力、牺牲或新债务。",
 			Intensity:  "high",
 			Tags:       []string{"西幻", "诅咒", "调查"},
-			Weight:     0.9,
-			Cooldown:   5,
 		},
 		{
 			ID:         "western-ancestry-alliance",
@@ -560,8 +496,6 @@ func westernFantasyEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是盟友、工艺、路径或情报；代价是遵守习俗、卷入旧战或牺牲利益。",
 			Intensity:  "medium",
 			Tags:       []string{"西幻", "异族", "盟约"},
-			Weight:     0.8,
-			Cooldown:   4,
 		},
 	}
 }
@@ -578,8 +512,6 @@ func urbanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是晋升、收入、人脉或作品成果；代价是时间、名誉风险、职场敌人。",
 			Intensity:  "medium",
 			Tags:       []string{"都市", "职场", "成长"},
-			Weight:     1.2,
-			Cooldown:   3,
 		},
 		{
 			ID:         "urban-business-rivalry",
@@ -591,8 +523,6 @@ func urbanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是利润、市场、资源或股权；代价是债务、被收购压力、合规风险。",
 			Intensity:  "medium",
 			Tags:       []string{"都市", "商业", "竞争"},
-			Weight:     1,
-			Cooldown:   4,
 		},
 		{
 			ID:         "urban-family-pressure",
@@ -604,8 +534,6 @@ func urbanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是支持、和解或家庭资源；代价是负担、误解、牺牲个人机会。",
 			Intensity:  "medium",
 			Tags:       []string{"都市", "家庭", "关系"},
-			Weight:     1,
-			Cooldown:   3,
 		},
 		{
 			ID:         "urban-public-opinion",
@@ -617,8 +545,6 @@ func urbanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是名声、流量或清白；代价是隐私暴露、二次伤害、关系破裂。",
 			Intensity:  "high",
 			Tags:       []string{"都市", "舆论", "反转"},
-			Weight:     0.9,
-			Cooldown:   5,
 		},
 		{
 			ID:         "urban-old-acquaintance",
@@ -630,8 +556,6 @@ func urbanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是线索、人脉、情感推进；代价是旧伤复发、误会、现实冲突。",
 			Intensity:  "medium",
 			Tags:       []string{"都市", "旧识", "情感"},
-			Weight:     0.9,
-			Cooldown:   3,
 		},
 		{
 			ID:         "urban-case-commission",
@@ -643,8 +567,6 @@ func urbanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是报酬、真相、人脉或正义感；代价是危险、得罪人、法律风险。",
 			Intensity:  "medium",
 			Tags:       []string{"都市", "案件", "调查"},
-			Weight:     0.9,
-			Cooldown:   4,
 		},
 		{
 			ID:         "urban-skill-breakthrough",
@@ -656,8 +578,6 @@ func urbanEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是能力、作品、认可或收入；代价是疲劳、机会成本、被模仿或嫉妒。",
 			Intensity:  "medium",
 			Tags:       []string{"都市", "技能", "成长"},
-			Weight:     1,
-			Cooldown:   4,
 		},
 	}
 }
@@ -674,8 +594,6 @@ func trpgEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是经验、金币、线索或盟友；代价是时间、危险、阵营牵连。",
 			Intensity:  "medium",
 			Tags:       []string{"TRPG", "任务", "钩子"},
-			Weight:     1.2,
-			Cooldown:   2,
 		},
 		{
 			ID:         "trpg-investigation-clue",
@@ -687,8 +605,6 @@ func trpgEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是真相进展、优势或避免危险；代价是时间流逝、暴露、误判。",
 			Intensity:  "medium",
 			Tags:       []string{"TRPG", "调查", "线索"},
-			Weight:     1.2,
-			Cooldown:   1,
 		},
 		{
 			ID:         "trpg-social-check",
@@ -701,8 +617,6 @@ func trpgEventCards() []genreEventCardPreset {
 			Guardrail:  "不要把高检定写成精神控制；成功也应尊重 NPC 的利益和底线。",
 			Intensity:  "medium",
 			Tags:       []string{"TRPG", "社交", "检定"},
-			Weight:     1,
-			Cooldown:   1,
 		},
 		{
 			ID:         "trpg-combat-encounter",
@@ -714,8 +628,6 @@ func trpgEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是战利品、通路、威慑或保护对象；代价是伤害、资源消耗、增援。",
 			Intensity:  "high",
 			Tags:       []string{"TRPG", "战斗", "遭遇"},
-			Weight:     1,
-			Cooldown:   2,
 		},
 		{
 			ID:         "trpg-random-encounter",
@@ -727,8 +639,6 @@ func trpgEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是发现、补给、传闻或捷径；代价是消耗、延误、伤害或暴露。",
 			Intensity:  "medium",
 			Tags:       []string{"TRPG", "随机", "旅行"},
-			Weight:     0.9,
-			Cooldown:   2,
 		},
 		{
 			ID:         "trpg-faction-reputation",
@@ -740,8 +650,6 @@ func trpgEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是资源、庇护、情报或身份；代价是敌对阵营追杀、限制或政治负担。",
 			Intensity:  "medium",
 			Tags:       []string{"TRPG", "派系", "声望"},
-			Weight:     0.9,
-			Cooldown:   3,
 		},
 		{
 			ID:         "trpg-rest-and-resource",
@@ -753,8 +661,6 @@ func trpgEventCards() []genreEventCardPreset {
 			RewardCost: "奖励是恢复、制作、计划和关系推进；代价是时间流逝、随机遭遇、目标变化。",
 			Intensity:  "low",
 			Tags:       []string{"TRPG", "休整", "资源"},
-			Weight:     0.9,
-			Cooldown:   1,
 		},
 		{
 			ID:         "trpg-fail-forward",
@@ -767,8 +673,6 @@ func trpgEventCards() []genreEventCardPreset {
 			Guardrail:  "不要用失败前进抹消失败；必须让代价在后续回合继续可见。",
 			Intensity:  "medium",
 			Tags:       []string{"TRPG", "失败", "裁定"},
-			Weight:     1,
-			Cooldown:   1,
 		},
 	}
 }

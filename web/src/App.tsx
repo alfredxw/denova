@@ -661,12 +661,12 @@ function App() {
     onOpenSearch: handleOpenGlobalSearch,
     onGenerate: continueWriting,
     onOpenDiff: handleOpenVersions,
-    onEscape: () => {
-      if (commandOpen) {
-        setCommandOpen(false)
+    onToggleRightPanel: () => {
+      if (mode === 'interactive') {
+        setInteractiveRightVisible((value) => !value)
         return
       }
-      if (rightPanel) handleSetRightPanel(null)
+      if (mode === 'ide') handleSetRightPanel(rightPanel ? null : 'ai')
     },
   })
 
@@ -768,8 +768,12 @@ function App() {
         onOpenVersions={handleOpenVersions}
         onOpenSearch={handleOpenGlobalSearch}
         onContinueWriting={continueWriting}
-        onClosePanels={() => {
-          handleSetRightPanel(null)
+        onToggleRightPanel={() => {
+          if (mode === 'interactive') {
+            setInteractiveRightVisible((value) => !value)
+            return
+          }
+          if (mode === 'ide') handleSetRightPanel(rightPanel ? null : 'ai')
         }}
       />
       <CharacterCardImportDialog

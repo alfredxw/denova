@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	tellerVersion                  = 6
+	tellerVersion                  = 7
 	MaxStyleRefsPerRule            = 12
 	MaxStyleContentChars           = 8000
 	MaxEventCardDescriptionChars   = 8000
@@ -31,23 +31,23 @@ type TellerLibrary struct {
 var ErrTellerRevisionConflict = errors.New("叙事风格已被其他操作更新，请重新加载后再保存")
 
 type Teller struct {
-	Version           int                        `json:"version"`
-	ID                string                     `json:"id"`
-	Name              string                     `json:"name"`
-	Description       string                     `json:"description"`
-	RandomEventRate   float64                    `json:"random_event_rate"`
-	StyleRefs         []string                   `json:"style_refs,omitempty"`
-	StyleRules        []StyleRule                `json:"style_rules,omitempty"`
-	Orchestration     *TellerOrchestrationConfig `json:"orchestration,omitempty"`
-	ContextPolicy     TellerContextPolicy        `json:"context_policy"`
-	Slots             []TellerPromptSlot         `json:"slots"`
-	Path              string                     `json:"path,omitempty"`
-	Custom            bool                       `json:"custom"`
-	BuiltinOverridden bool                       `json:"builtin_overridden,omitempty"`
-	Invalid           bool                       `json:"invalid,omitempty"`
-	Error             string                     `json:"error,omitempty"`
-	CreatedAt         string                     `json:"created_at,omitempty"`
-	UpdatedAt         string                     `json:"updated_at,omitempty"`
+	Version               int                        `json:"version"`
+	ID                    string                     `json:"id"`
+	Name                  string                     `json:"name"`
+	Description           string                     `json:"description"`
+	LegacyRandomEventRate *float64                   `json:"random_event_rate,omitempty" jsonschema:"-"`
+	StyleRefs             []string                   `json:"style_refs,omitempty"`
+	StyleRules            []StyleRule                `json:"style_rules,omitempty"`
+	Orchestration         *TellerOrchestrationConfig `json:"orchestration,omitempty"`
+	ContextPolicy         TellerContextPolicy        `json:"context_policy"`
+	Slots                 []TellerPromptSlot         `json:"slots"`
+	Path                  string                     `json:"path,omitempty"`
+	Custom                bool                       `json:"custom"`
+	BuiltinOverridden     bool                       `json:"builtin_overridden,omitempty"`
+	Invalid               bool                       `json:"invalid,omitempty"`
+	Error                 string                     `json:"error,omitempty"`
+	CreatedAt             string                     `json:"created_at,omitempty"`
+	UpdatedAt             string                     `json:"updated_at,omitempty"`
 }
 
 type TellerContextPolicy struct {
@@ -72,6 +72,7 @@ type TellerOrchestrationConfig struct {
 	MainlineStrength string               `json:"mainline_strength,omitempty"`
 	FailurePolicy    string               `json:"failure_policy,omitempty"`
 	PacingCurve      string               `json:"pacing_curve,omitempty"`
+	EventFrequency   string               `json:"event_frequency,omitempty"`
 	EventPackages    []TellerEventPackage `json:"event_packages,omitempty"`
 	CustomEvents     []DirectorEvent      `json:"custom_events,omitempty"`
 	RuleTemplates    []RuleCheck          `json:"rule_templates,omitempty"`
@@ -95,8 +96,6 @@ type TellerEventCard struct {
 	Enabled             bool     `json:"enabled"`
 	Category            string   `json:"category,omitempty"`
 	Tags                []string `json:"tags,omitempty"`
-	Weight              float64  `json:"weight,omitempty"`
-	CooldownTurns       int      `json:"cooldown_turns,omitempty"`
 	Intensity           string   `json:"intensity,omitempty"`
 }
 
@@ -392,7 +391,16 @@ func normalizeTeller(teller Teller) Teller {
 	teller.Description = strings.TrimSpace(teller.Description)
 	teller.StyleRefs = normalizeStyleRefs(teller.StyleRefs, MaxStyleRefsPerRule)
 	teller.StyleRules = normalizeStyleRules(teller.StyleRules)
+	legacyRate := teller.LegacyRandomEventRate
+	legacyFrequencyUnset := teller.Orchestration == nil || strings.TrimSpace(teller.Orchestration.EventFrequency) == ""
 	teller.Orchestration = normalizeTellerOrchestrationPointer(teller.Orchestration)
+	if legacyRate != nil && teller.Orchestration != nil && legacyFrequencyUnset {
+		teller.Orchestration.EventFrequency = eventFrequencyFromLegacyRate(*legacyRate)
+	}
+	if teller.Orchestration != nil {
+		teller.Orchestration.EventFrequency = normalizeEventFrequency(teller.Orchestration.EventFrequency)
+	}
+	teller.LegacyRandomEventRate = nil
 	teller.ContextPolicy = normalizeContextPolicy(teller.ContextPolicy)
 	teller.Slots = normalizePromptSlots(teller.Slots)
 	return teller
@@ -450,6 +458,7 @@ func DefaultTellerOrchestrationConfig() TellerOrchestrationConfig {
 		MainlineStrength: "soft_guidance",
 		FailurePolicy:    "reversible",
 		PacingCurve:      "progressive",
+		EventFrequency:   DefaultEventFrequency,
 		EventPackages: []TellerEventPackage{{
 			ID:      "webnovel_core",
 			Name:    "爽文核心事件包",
@@ -489,8 +498,6 @@ func defaultTellerEventCards() []TellerEventCard {
 			DescriptionMarkdown: defaultTellerEventCardMarkdown(event),
 			Enabled:             true,
 			Category:            event.Category,
-			Weight:              event.Weight,
-			CooldownTurns:       event.CooldownTurns,
 			Intensity:           event.Intensity,
 		})
 	}
@@ -533,6 +540,7 @@ func normalizeTellerOrchestrationPointer(config *TellerOrchestrationConfig) *Tel
 	normalized.MainlineStrength = normalizeOrchestrationOption(normalized.MainlineStrength, "soft_guidance")
 	normalized.FailurePolicy = normalizeOrchestrationOption(normalized.FailurePolicy, "reversible")
 	normalized.PacingCurve = normalizeOrchestrationOption(normalized.PacingCurve, "progressive")
+	normalized.EventFrequency = normalizeEventFrequency(normalized.EventFrequency)
 	normalized.EventPackages = normalizeTellerEventPackages(normalized.EventPackages)
 	normalized.CustomEvents = normalizeDirectorEvents(normalized.CustomEvents)
 	normalized.RuleTemplates = normalizeRuleChecks(normalized.RuleTemplates)
@@ -614,12 +622,6 @@ func normalizeTellerEventCards(events []TellerEventCard, packageID string) []Tel
 			event.Category = event.TypeName
 		}
 		event.Tags = normalizeStringListLimit(event.Tags, maxTurnBriefListItems)
-		if event.Weight <= 0 {
-			event.Weight = 1
-		}
-		if event.CooldownTurns < 0 {
-			event.CooldownTurns = 0
-		}
 		event.Intensity = strings.TrimSpace(event.Intensity)
 		if event.Intensity == "" {
 			event.Intensity = "medium"
@@ -784,8 +786,6 @@ func directorEventFromTellerEventCard(card TellerEventCard) DirectorEvent {
 		PublicSummary:           summary,
 		Template:                card.DescriptionMarkdown,
 		NormalizedTrigger:       firstNonEmpty(card.Category, card.TypeName, card.ID),
-		Weight:                  card.Weight,
-		CooldownTurns:           card.CooldownTurns,
 		Intensity:               card.Intensity,
 		CompatibleGenres:        card.Tags,
 		UserConfigured:          true,
@@ -966,12 +966,14 @@ var builtinTellers = map[string]Teller{
 }
 
 func builtinTeller(id, name, description string, randomEventRate float64, slots []TellerPromptSlot) Teller {
+	orchestration := DefaultTellerOrchestrationConfig()
+	orchestration.EventFrequency = eventFrequencyFromLegacyRate(randomEventRate)
 	return normalizeTeller(Teller{
-		Version:         tellerVersion,
-		ID:              id,
-		Name:            name,
-		Description:     description,
-		RandomEventRate: randomEventRate,
+		Version:       tellerVersion,
+		ID:            id,
+		Name:          name,
+		Description:   description,
+		Orchestration: &orchestration,
 		ContextPolicy: TellerContextPolicy{
 			Creator:      "always",
 			Lore:         "relevant",
