@@ -98,11 +98,21 @@ xattr -dr com.apple.quarantine denova
 
 需要 Go 1.26+、Node.js 20+ 和 pnpm。
 
+macOS 和 Linux 用户运行下方命令。
+
 ```bash
 git clone https://github.com/alfredxw/denova.git
 cd denova
 corepack enable
 ./bootstrap.sh
+```
+
+Windows 用户运行下方命令。
+
+```bash
+git clone https://github.com/alfredxw/denova.git
+cd denova
+powershell -ExecutionPolicy Bypass -File bootstrap.ps1
 ```
 
 默认地址：

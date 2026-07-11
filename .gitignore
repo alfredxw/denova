@@ -20,8 +20,18 @@ plan.md
 docs/
 .worktrees/
 .pnpm-store/
-.DS_Store
 .denova
 .nova
 prd
 .playwright-cli/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

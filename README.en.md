@@ -185,6 +185,12 @@ Allow LAN devices to access the frontend dev server:
 ./bootstrap.sh fe --lan
 ```
 
+Start on Windows
+
+```bash
+powershell -ExecutionPolicy Bypass -File bootstrap.ps1
+```
+
 ## Donate QR Code
 
 > Buy the author a coffee and help cover the monthly AI iteration cost.
