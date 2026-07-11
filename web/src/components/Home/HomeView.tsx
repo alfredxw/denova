@@ -335,10 +335,6 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                                   : 'border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)]'
                               }`}
                             >
-                              {isCurrent && (
-                                <div className="absolute left-0 top-0 bottom-0 w-[4px] bg-[var(--nova-accent)]" />
-                              )}
-                              <div className="pointer-events-none absolute inset-x-0 bottom-0 hidden h-3 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] sm:block" />
                               <button
                                 type="button"
                                 className="flex h-full w-full min-w-0 flex-col items-center px-2 py-2 text-center sm:min-h-[232px] sm:items-stretch sm:px-3 sm:py-3 sm:text-left"
@@ -352,8 +348,8 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
                                 />
                                 <div className="flex min-w-0 flex-1 flex-col self-stretch">
                                   <div className="line-clamp-2 text-xs font-semibold leading-4 text-[var(--nova-text)] sm:text-sm sm:leading-5">{book.name || t('home.unnamedBook')}</div>
-                                  {book.author && <div className="hidden truncate text-[11px] text-[var(--nova-text-muted)] sm:mt-2 sm:block">{book.author}</div>}
-                                  <div className="mt-auto hidden truncate pt-4 text-[10px] text-[var(--nova-text-faint)] sm:block">{book.path}</div>
+                                  <div className="hidden truncate text-[11px] text-[var(--nova-text-muted)] sm:mt-2 sm:block">{book.author ? book.author : 'No Author' }</div>
+                                  <div className="mt-auto hidden truncate pt-2 text-[10px] text-[var(--nova-text-faint)] sm:block">{book.path}</div>
                                 </div>
                               </button>
                               <div className="absolute right-2 top-2 z-10 flex shrink-0 items-center gap-0.5">
