@@ -1,0 +1,52 @@
+CHANGELOG.md
+  s_6cd514d0e42340::t_22f8be4a51367f 27-28
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_6cd514d0e42340::t_47d64146c2ee3a 1153
+web/src/features/interactive/components/SettingPanelTellerEditor.tsx
+  s_6cd514d0e42340::t_fbbeda53dcbd52 143
+web/src/features/interactive/components/preset-config/PresetTabsList.test.tsx
+  s_6cd514d0e42340::t_0528e39befead4 75-77,80,102
+web/src/features/interactive/components/preset-config/PresetTabsList.tsx
+  s_6cd514d0e42340::t_c1a4628348346e 50-51,69,112-113,115,125-126,128,139,146,148-149
+web/src/features/interactive/components/preset-config/TRPGSystemVisualEditor.test.tsx
+  s_6cd514d0e42340::t_b5f1bfcf75e4f7 52-53
+web/src/features/interactive/components/preset-config/TRPGSystemVisualEditor.tsx
+  s_6cd514d0e42340::t_c72b50cb58902e 76,158,162
+web/src/features/interactive/components/preset-config/actor-state-explorer/ActorStateExplorer.test.tsx
+  s_6cd514d0e42340::t_77ffd61a5905ae 65-66,76,78
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/PoolDetailEditor.tsx
+  s_6cd514d0e42340::t_3ba7997e184e9f 175,177-178
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/TemplateDetailEditor.tsx
+  s_6cd514d0e42340::t_32a23d648b5cad 291,293-294
+web/src/features/interactive/components/preset-config/actor-state-explorer/shared/InlineItemRow.tsx
+  s_6cd514d0e42340::t_2465df85749ed6 46,48-49,58,62
+web/src/features/interactive/components/preset-config/actor-state-explorer/tree/StateTreeGroupHeader.tsx
+  s_6cd514d0e42340::t_ca733f908ae375 31,43,48,91
+web/src/features/interactive/components/preset-config/actor-state-explorer/tree/StateTreeNode.tsx
+  s_6cd514d0e42340::t_95baf6a608ecdd 63,130,150,152,161,176,182,210,225
+web/src/index.css
+  s_6cd514d0e42340::t_5e9549be2f36a4 361-366,411-416
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "798c430c72ff491754bed65f9e02c3f6a8afb192",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_6cd514d0e42340": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5197-8b48-7f41-a50b-0685becbdc39",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
