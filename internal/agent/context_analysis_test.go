@@ -137,7 +137,7 @@ func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T
 	}
 	for _, part := range analysis.ContextMessages {
 		switch {
-		case part.Title == "资料库导演上下文" && strings.Contains(part.Source, "lore index") && strings.Contains(part.Content, "沈凝"):
+		case part.Title == "资料库导演上下文" && strings.Contains(part.Source, "lore-context.md") && strings.Contains(part.Content, "沈凝"):
 			sawLore = true
 		case part.Title == "本回合 TurnResult / RuleResolution / StateDelta 审计 JSON" && strings.Contains(part.Source, "committed turn") && strings.Contains(part.Content, "turn-1"):
 			sawTurnAudit = true

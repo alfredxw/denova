@@ -561,15 +561,20 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       group: t('settings.group.interactive'),
       title: t('settings.section.interactive'),
       children: activeLayer === 'workspace' ? (
-        <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}
-             placeholder={placeholderFor('interactive_stage_line_height')}
-             step={0.05}
-             onChange={(v) => setField('interactive_stage_line_height', v)} />
+        <>
+          <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}
+               placeholder={placeholderFor('interactive_stage_line_height')}
+               step={0.05}
+               onChange={(v) => setField('interactive_stage_line_height', v)} />
+          <Num label={t('settings.interactive.ruleLoreLimitKB')} value={draft.interactive_rule_lore_limit_kb ?? null}
+               placeholder={placeholderFor('interactive_rule_lore_limit_kb')}
+               min={1}
+               max={1024}
+               onChange={(v) => setField('interactive_rule_lore_limit_kb', v)} />
+          <p className="text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.interactive.ruleLoreLimitHelp')}</p>
+        </>
       ) : (
-        <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}
-             placeholder={placeholderFor('interactive_stage_line_height')}
-             step={0.05}
-             onChange={(v) => setField('interactive_stage_line_height', v)} />
+        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.interactive.workspaceOnly')}</div>
       ),
     },
   ]

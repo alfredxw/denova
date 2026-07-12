@@ -13,13 +13,15 @@ import (
 )
 
 type readLoreItemsInput struct {
-	IDs []string `json:"ids" jsonschema:"description=资料库条目 ID 列表"`
+	IDs   []string `json:"ids,omitempty" jsonschema:"description=资料库条目 ID 列表；优先使用 names 按唯一名称读取"`
+	Names []string `json:"names,omitempty" jsonschema:"description=资料库条目唯一名称列表；Director 和创作 Agent 优先使用名称读取"`
 }
 
 type listLoreItemsInput struct {
-	Query string `json:"query,omitempty" jsonschema:"description=可选关键词；会搜索 ID、名称、类型、标签、关键词、简介和正文，但只返回索引，不返回正文"`
-	Type  string `json:"type,omitempty" jsonschema:"description=可选资料类型过滤：character/world/location/faction/rule/item/other"`
-	Limit int    `json:"limit,omitempty" jsonschema:"description=可选返回上限；仅 query 或 type 过滤时生效，默认 20，最大 50"`
+	Query  string `json:"query,omitempty" jsonschema:"description=可选关键词；会搜索 ID、名称、类型、标签、关键词、简介和正文，但只返回索引，不返回正文"`
+	Type   string `json:"type,omitempty" jsonschema:"description=可选资料类型过滤：character/world/location/faction/rule/item/other"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"description=可选返回上限；仅 query 或 type 过滤时生效，默认 20，最大 50"`
+	Offset int    `json:"offset,omitempty" jsonschema:"description=分页起点，默认 0；根据返回的下一页 offset 继续读取，直到审阅全部名称与简介"`
 }
 
 type writeLoreItemsInput struct {
@@ -48,7 +50,14 @@ func newLoreTools(workspace string, allowWrite bool) ([]tool.BaseTool, error) {
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法读取资料库")
 		}
-		items, err := book.NewLoreStore(workspace).ReadMany(input.IDs)
+		store := book.NewLoreStore(workspace)
+		var items []book.LoreItem
+		var err error
+		if len(input.Names) > 0 {
+			items, err = store.ReadManyNames(input.Names)
+		} else {
+			items, err = store.ReadMany(input.IDs)
+		}
 		if err != nil {
 			return "", err
 		}
@@ -67,15 +76,17 @@ func newLoreTools(workspace string, allowWrite bool) ([]tool.BaseTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	listTool, err := utils.InferTool("list_lore_items", "列出资料库轻量索引。空参数返回全量极简索引（ID、名称、简介）；可传 query/type/limit 检索相关条目，搜索 ID、名称、类型、标签、关键词、简介和正文，但只返回索引和匹配来源；根据索引判断需要正文时再调用 read_lore_items。", func(ctx context.Context, input listLoreItemsInput) (string, error) {
+	listTool, err := utils.InferTool("list_lore_items", "分页列出资料库名称与简介目录。默认每页 20 条，最大 50 条；用返回的下一页 offset 继续审阅。可传 query/type 缩小范围，搜索 ID、名称、类型、标签、关键词、简介和正文，但只返回索引和匹配来源；选中条目后用 read_lore_items 的 names 读取正文。", func(ctx context.Context, input listLoreItemsInput) (string, error) {
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法列出资料库")
 		}
 		index, err := book.NewLoreStore(workspace).LoreIndexMarkdown(book.LoreIndexOptions{
-			Query: input.Query,
-			Type:  input.Type,
-			Limit: input.Limit,
+			Query:    input.Query,
+			Type:     input.Type,
+			Limit:    input.Limit,
+			Offset:   input.Offset,
+			Paginate: true,
 		})
 		if err != nil {
 			return "", err

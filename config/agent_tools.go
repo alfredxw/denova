@@ -95,7 +95,7 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			FileWrite:        on,
 			ShellExecute:     off,
 			Skills:           off,
-			LoreRead:         off,
+			LoreRead:         on,
 			LoreWrite:        off,
 			Todo:             off,
 			WebSearch:        off,

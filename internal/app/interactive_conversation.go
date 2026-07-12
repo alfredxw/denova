@@ -87,9 +87,9 @@ func (c *interactiveConversation) directorTaskHint() string {
 	case "memory_update":
 		return "memory_update：只根据已提交的 TurnResult、StateDelta 和最终正文维护 Story Memory；不得写 Actor State 或 director.md。"
 	case "director_plan_update":
-		return "director_plan_update：观察已提交事实并判断 keep、patch 或 replan；只维护当前分支 director.md，不得写 Story Memory 或 Actor State。"
+		return "director_plan_update：观察已提交事实并判断 keep、patch 或 replan；只维护当前分支 director.md 与 lore-context.md，不得写 Story Memory 或 Actor State。"
 	default:
-		return "director_plan_update：观察已提交事实并判断 keep、patch 或 replan；只维护当前分支 director.md，不得写 Story Memory 或 Actor State。"
+		return "director_plan_update：观察已提交事实并判断 keep、patch 或 replan；只维护当前分支 director.md 与 lore-context.md，不得写 Story Memory 或 Actor State。"
 	}
 }
 
@@ -112,8 +112,14 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		storyMemory = ""
 	}
 	directorPlanVisible := ""
+	directorPlan := interactive.DirectorPlan{}
 	if storyCtx.Snapshot.DirectorPlan != nil {
-		directorPlanVisible = interactive.DirectorPlanVisibleContext(*storyCtx.Snapshot.DirectorPlan, interactiveStoryRuntimeContextBytes)
+		directorPlan = *storyCtx.Snapshot.DirectorPlan
+		directorPlanVisible = interactive.DirectorPlanVisibleContext(directorPlan, interactiveStoryRuntimeContextBytes)
+	}
+	loreRuntime, err := buildInteractiveStoryLoreContext(c.workspace, directorPlan, agentMessage, c.cfg)
+	if err != nil {
+		return nil, err
 	}
 	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, interactiveStoryRuntimeContextBytes)
 	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, interactiveStoryRuntimeContextBytes)
@@ -131,6 +137,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		ActorState:                  actorStateRuntime,
 		StoryDirectorStrategyPrompt: strategyPrompt,
 		PreviousTurnsSummary:        turnMemory.PreviousSummary,
+		LoreContext:                 loreRuntime,
 	})
 	history := make([]*schema.Message, 0, len(turnMemory.Turns)*2+3)
 	if storyCtx.Snapshot.ContextCompaction != nil && strings.TrimSpace(storyCtx.Snapshot.ContextCompaction.Summary) != "" {
@@ -143,7 +150,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	}
 	history = agent.ApplyToolResultContextPolicyForConversation(history, c.ToolResultContextPolicy())
 	history = append(history, schema.UserMessage(prompts.InteractiveStoryTurnInstruction(agentMessage, tellerTurnContextPrompt, runtimeContext)))
-	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, storyMemory, directorPlanVisible, ruleSummary, strategyPrompt, turnMemory, agentMessage)
+	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, storyMemory, directorPlanVisible, loreRuntime, ruleSummary, strategyPrompt, turnMemory, agentMessage)
 	c.mu.Lock()
 	c.lastSources = sourceSummary
 	c.mu.Unlock()
@@ -902,7 +909,6 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 	}
 	storyDirector := storyDirectorForSnapshot(c.storyDirector(storyCtx.Meta.StoryDirectorID), storyCtx.Meta.ActorStateSchema)
 	strategyPrompt := interactive.StoryDirectorStrategyPromptMarkdown(storyDirector)
-	loreContext := c.directorLoreContext(turn)
 	turnMemory := buildInteractiveModelVisibleTurnMemory(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
 	turnHistory := formatInteractiveTurnMemoryHistory(turnMemory, storyCtx.Snapshot.ContextCompaction, "（暂无历史回合，请基于本回合审计更新导演计划。）")
 	directorPlan := interactive.DirectorPlan{}
@@ -910,6 +916,10 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		directorPlan = *storyCtx.Snapshot.DirectorPlan
 	} else if plan, err := c.store.DirectorPlan(c.storyID, storyCtx.Snapshot.BranchID); err == nil {
 		directorPlan = plan
+	}
+	loreContext, err := buildInteractiveDirectorLoreContext(c.workspace, directorPlan, turn, c.cfg)
+	if err != nil {
+		return "", err
 	}
 	actorStateSnapshot := map[string]any{}
 	if actors, ok := storyCtx.Snapshot.State["actors"]; ok {
@@ -1233,155 +1243,6 @@ func interactiveStoryTellerSystemInput(teller interactive.Teller, styleRules ...
 	}
 }
 
-func (c *interactiveConversation) directorLoreContext(turn interactive.TurnEvent) string {
-	if c.workspace == "" {
-		return ""
-	}
-	store := book.NewLoreStore(c.workspace)
-	var sb strings.Builder
-	index, err := store.LoreIndexMarkdown(book.LoreIndexOptions{
-		Limit:    50,
-		MaxBytes: interactiveDirectorLoreIndexBytes,
-	})
-	if err != nil {
-		log.Printf("[interactive-director-agent] load lore index failed workspace=%s err=%v", c.workspace, err)
-	} else {
-		appendDirectorLoreContextSection(&sb, "## 资料库索引（source: lore/items.json, bounded）", index)
-	}
-	items, err := store.List()
-	if err != nil {
-		log.Printf("[interactive-director-agent] load lore items failed workspace=%s err=%v", c.workspace, err)
-		return boundedText(sb.String(), interactiveDirectorLoreContextBytes)
-	}
-	selected := selectDirectorLoreItems(items, turn)
-	if len(selected) > 0 {
-		var full strings.Builder
-		full.WriteString("以下条目优先供导演规划重要角色、势力、规则、地点和当前回合相关设定；不要把未列出的资料库内容当作不存在。\n\n")
-		for _, item := range selected {
-			full.WriteString(formatDirectorLoreItem(item))
-			full.WriteString("\n\n")
-		}
-		appendDirectorLoreContextSection(&sb, "## 重点资料正文（source: lore/items.json, bounded）", boundedText(full.String(), interactiveDirectorLoreItemsBytes))
-	}
-	return boundedText(sb.String(), interactiveDirectorLoreContextBytes)
-}
-
-func appendDirectorLoreContextSection(sb *strings.Builder, title, content string) {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return
-	}
-	if sb.Len() > 0 {
-		sb.WriteString("\n\n")
-	}
-	sb.WriteString(title)
-	sb.WriteString("\n\n")
-	sb.WriteString(content)
-}
-
-func selectDirectorLoreItems(items []book.LoreItem, turn interactive.TurnEvent) []book.LoreItem {
-	const maxItems = 12
-	selected := make([]book.LoreItem, 0, maxItems)
-	seen := make(map[string]bool, maxItems)
-	add := func(item book.LoreItem) {
-		if len(selected) >= maxItems || strings.TrimSpace(item.ID) == "" || seen[item.ID] {
-			return
-		}
-		seen[item.ID] = true
-		selected = append(selected, item)
-	}
-	for _, item := range items {
-		if isDirectorPriorityLoreItem(item) {
-			add(item)
-		}
-	}
-	for _, item := range items {
-		if loreItemRelevantToDirectorTurn(item, turn) {
-			add(item)
-		}
-	}
-	return selected
-}
-
-func isDirectorPriorityLoreItem(item book.LoreItem) bool {
-	switch item.Type {
-	case "character", "faction", "rule", "location":
-	default:
-		return false
-	}
-	return item.Importance == "major" || item.Importance == "important" || item.LoadMode == book.LoreLoadModeResident
-}
-
-func loreItemRelevantToDirectorTurn(item book.LoreItem, turn interactive.TurnEvent) bool {
-	haystack := strings.ToLower(turn.User + "\n" + turn.Narrative)
-	if strings.TrimSpace(haystack) == "" {
-		return false
-	}
-	probes := append([]string{item.ID, item.Name}, item.Tags...)
-	probes = append(probes, item.Keywords...)
-	for _, probe := range probes {
-		probe = strings.ToLower(strings.TrimSpace(probe))
-		if len([]rune(probe)) < 2 {
-			continue
-		}
-		if strings.Contains(haystack, probe) {
-			return true
-		}
-	}
-	return false
-}
-
-func formatDirectorLoreItem(item book.LoreItem) string {
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "### %s（%s / %s）\n", strings.TrimSpace(item.Name), directorLoreTypeLabel(item.Type), directorLoreImportanceLabel(item.Importance))
-	if strings.TrimSpace(item.ID) != "" {
-		fmt.Fprintf(&sb, "ID：%s\n", strings.TrimSpace(item.ID))
-	}
-	if len(item.Tags) > 0 {
-		fmt.Fprintf(&sb, "标签：%s\n", strings.Join(item.Tags, "、"))
-	}
-	if strings.TrimSpace(item.BriefDescription) != "" {
-		fmt.Fprintf(&sb, "简介：%s\n", strings.TrimSpace(item.BriefDescription))
-	}
-	if content := strings.TrimSpace(item.Content); content != "" {
-		sb.WriteString("\n正文摘录：\n")
-		sb.WriteString(boundedText(content, interactiveDirectorLoreItemBytes))
-	}
-	return strings.TrimSpace(sb.String())
-}
-
-func directorLoreTypeLabel(value string) string {
-	switch value {
-	case "character":
-		return "角色"
-	case "world":
-		return "世界观"
-	case "location":
-		return "地点"
-	case "faction":
-		return "势力"
-	case "rule":
-		return "规则"
-	case "item":
-		return "物品"
-	default:
-		return "其他"
-	}
-}
-
-func directorLoreImportanceLabel(value string) string {
-	switch value {
-	case "major":
-		return "核心"
-	case "important":
-		return "重要"
-	case "minor":
-		return "次要"
-	default:
-		return "未标注"
-	}
-}
-
 func (c *interactiveConversation) MarkInterrupted(userMessage, assistantContent, reason string) error {
 	log.Printf("[interactive-agent] interruption ignored story_id=%s branch_id=%s reason=%s", c.storyID, c.branchID, reason)
 	return nil
@@ -1412,10 +1273,6 @@ type interactiveTurnMemory struct {
 const (
 	interactiveStoryRuntimeContextBytes = 16 * 1024
 	interactiveDirectorContextBytes     = interactive.DirectorContextMaxBytes
-	interactiveDirectorLoreContextBytes = 4 * 1024
-	interactiveDirectorLoreIndexBytes   = 2 * 1024
-	interactiveDirectorLoreItemsBytes   = 3 * 1024
-	interactiveDirectorLoreItemBytes    = 2 * 1024
 )
 
 func buildInteractiveTurnMemory(turns []interactive.TurnEvent) interactiveTurnMemory {
@@ -1499,7 +1356,7 @@ func formatInteractiveTurnMemoryHistory(turnMemory interactiveTurnMemory, compac
 	return result
 }
 
-func interactiveStorySourceSummary(title, origin string, teller interactive.Teller, storyMemory, directorPlanVisible, ruleSummary, strategyPrompt string, turnMemory interactiveTurnMemory, userAction string) string {
+func interactiveStorySourceSummary(title, origin string, teller interactive.Teller, storyMemory, directorPlanVisible, loreContext, ruleSummary, strategyPrompt string, turnMemory interactiveTurnMemory, userAction string) string {
 	parts := []interactiveContextSource{
 		{Source: "互动故事", Title: "故事标题", Content: title},
 		{Source: "互动故事", Title: "开端", Content: origin},
@@ -1510,6 +1367,9 @@ func interactiveStorySourceSummary(title, origin string, teller interactive.Tell
 	}
 	if strings.TrimSpace(directorPlanVisible) != "" {
 		parts = append(parts, interactiveContextSource{Source: "DirectorPlan", Title: "后台导演规划可读区", Content: directorPlanVisible, Note: "bounded"})
+	}
+	if strings.TrimSpace(loreContext) != "" {
+		parts = append(parts, interactiveContextSource{Source: "LoreContext", Title: "规则与当前资料工作集", Content: loreContext, Note: "bounded"})
 	}
 	if strings.TrimSpace(ruleSummary) != "" {
 		parts = append(parts, interactiveContextSource{Source: "StoryDirector", Title: "故事导演规则清单", Content: ruleSummary, Note: "bounded"})

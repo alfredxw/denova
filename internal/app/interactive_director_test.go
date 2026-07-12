@@ -63,7 +63,7 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	directorGenerator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
 		close(started)
 		<-release
-		if !strings.Contains(instruction, "director.md") || strings.Contains(instruction, "mainline.md") || len(toolContext.DirectorPlanAllowedPaths) != 1 {
+		if !strings.Contains(instruction, "director.md") || !strings.Contains(instruction, "lore-context.md") || strings.Contains(instruction, "mainline.md") || len(toolContext.DirectorPlanAllowedPaths) != 2 {
 			t.Fatalf("director should receive plan paths and guard context: paths=%#v\n%s", toolContext.DirectorPlanAllowedPaths, instruction)
 		}
 		if toolContext.DisplayConversation == nil {
@@ -92,7 +92,7 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runningStatus.Blocking || runningStatus.StartReady || runningStatus.CompletedDocs != 0 || runningStatus.PlannedDocs != 1 {
+	if runningStatus.Blocking || runningStatus.StartReady || runningStatus.CompletedDocs != 0 || runningStatus.PlannedDocs != 2 {
 		t.Fatalf("initial director run should expose non-blocking progress: %#v", runningStatus)
 	}
 	releaseOnce.Do(func() { close(release) })
@@ -110,7 +110,7 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	if snapshot.DirectorPlan == nil || !strings.Contains(snapshot.DirectorPlan.Docs.Plan, "公开比试制造质疑") {
 		t.Fatalf("director plan should include file update: %#v", snapshot.DirectorPlan)
 	}
-	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusReady || !snapshot.DirectorPlanStatus.StartReady || snapshot.DirectorPlanStatus.Blocking || snapshot.DirectorPlanStatus.CompletedDocs != 1 {
+	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusReady || !snapshot.DirectorPlanStatus.StartReady || snapshot.DirectorPlanStatus.Blocking || snapshot.DirectorPlanStatus.CompletedDocs != 2 {
 		t.Fatalf("completed director run should unblock the story start: %#v", snapshot.DirectorPlanStatus)
 	}
 }
@@ -285,10 +285,14 @@ func TestInteractiveDirectorMaintenanceKeepsMemoryWhenDirectorPlanValidationFail
 			}
 			return "已整理故事记忆", nil
 		}
-		if len(toolContext.DirectorPlanAllowedPaths) != 1 {
+		if len(toolContext.DirectorPlanAllowedPaths) != 2 {
 			return "", errors.New("missing director path")
 		}
-		if err := os.WriteFile(toolContext.DirectorPlanAllowedPaths[0], []byte("# 缺少固定标题\n\n这份规划不合法。\n"), 0o644); err != nil {
+		planPath := directorDocumentPathForTest(toolContext.DirectorPlanAllowedPaths, "director.md")
+		if planPath == "" {
+			return "", errors.New("missing director.md path")
+		}
+		if err := os.WriteFile(planPath, []byte("# 缺少固定标题\n\n这份规划不合法。\n"), 0o644); err != nil {
 			return "", err
 		}
 		return "记忆已写入，导演规划校验失败", nil
@@ -446,13 +450,27 @@ func TestAnalyzeInteractiveDirectorContextUsesCurrentDirectorInputs(t *testing.T
 }
 
 func writeDirectorPlanDocsForTest(paths []string, docs interactive.DirectorPlanDocs) error {
-	if len(paths) != 1 {
-		return errors.New("expected one director plan path")
+	if len(paths) != 2 {
+		return errors.New("expected director.md and lore-context.md paths")
 	}
-	if err := os.WriteFile(paths[0], []byte(strings.TrimSpace(docs.Plan)+"\n"), 0o644); err != nil {
+	planPath := directorDocumentPathForTest(paths, "director.md")
+	lorePath := directorDocumentPathForTest(paths, "lore-context.md")
+	if planPath == "" || lorePath == "" {
+		return errors.New("director document path missing")
+	}
+	if err := os.WriteFile(planPath, []byte(strings.TrimSpace(docs.Plan)+"\n"), 0o644); err != nil {
 		return err
 	}
-	return nil
+	return os.WriteFile(lorePath, []byte(strings.TrimSpace(docs.LoreContext)+"\n"), 0o644)
+}
+
+func directorDocumentPathForTest(paths []string, name string) string {
+	for _, path := range paths {
+		if strings.HasSuffix(path, "/"+name) {
+			return path
+		}
+	}
+	return ""
 }
 
 func applyDirectorMemoryForTest(toolContext agent.InteractiveStoryToolContext) error {

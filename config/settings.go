@@ -92,6 +92,7 @@ type Settings struct {
 	// 游戏模式
 	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
+	InteractiveRuleLoreLimitKB *int     `toml:"interactive_rule_lore_limit_kb,omitempty" json:"interactive_rule_lore_limit_kb,omitempty"`
 }
 
 func boolPtr(v bool) *bool        { return &v }
@@ -100,12 +101,14 @@ func floatPtr(v float64) *float64 { return &v }
 func stringPtr(v string) *string  { return &v }
 
 const (
-	DefaultWritingSkillName        = "novel-lite"
-	DefaultAgentIdleTimeoutSeconds = 0
-	DefaultAgentToolResultLimitKB  = 0
-	DefaultTraceCaptureLevel       = "summary"
-	DefaultTraceExporter           = "local"
-	DefaultTraceRetentionRuns      = 100
+	DefaultWritingSkillName           = "novel-lite"
+	DefaultAgentIdleTimeoutSeconds    = 0
+	DefaultAgentToolResultLimitKB     = 0
+	DefaultTraceCaptureLevel          = "summary"
+	DefaultTraceExporter              = "local"
+	DefaultTraceRetentionRuns         = 100
+	DefaultInteractiveRuleLoreLimitKB = 32
+	MaxInteractiveRuleLoreLimitKB     = 1024
 )
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
@@ -167,6 +170,7 @@ func DefaultSettings() Settings {
 		WritingSkillDefault:        DefaultWritingSkillName,
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
+		InteractiveRuleLoreLimitKB: intPtr(DefaultInteractiveRuleLoreLimitKB),
 	}
 }
 
@@ -335,6 +339,16 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.InteractiveStageLineHeight != nil {
 		out.InteractiveStageLineHeight = child.InteractiveStageLineHeight
+	}
+	if child.InteractiveRuleLoreLimitKB != nil {
+		value := *child.InteractiveRuleLoreLimitKB
+		if value <= 0 {
+			value = DefaultInteractiveRuleLoreLimitKB
+		}
+		if value > MaxInteractiveRuleLoreLimitKB {
+			value = MaxInteractiveRuleLoreLimitKB
+		}
+		out.InteractiveRuleLoreLimitKB = intPtr(value)
 	}
 	return out
 }
@@ -574,6 +588,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.DefaultImageAPIProfileID = strings.TrimSpace(s.DefaultImageAPIProfileID)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
+	s.InteractiveRuleLoreLimitKB = normalizeInteractiveRuleLoreLimitKB(s.InteractiveRuleLoreLimitKB)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
 	if defaultProfile, ok := defaultModelProfile(s.ModelProfiles); ok {
@@ -614,6 +629,28 @@ func normalizeAgentToolResultLimitKB(limit *int) *int {
 		return nil
 	}
 	return limit
+}
+
+func normalizeInteractiveRuleLoreLimitKB(limit *int) *int {
+	if limit == nil {
+		return nil
+	}
+	value := *limit
+	if value <= 0 {
+		value = DefaultInteractiveRuleLoreLimitKB
+	}
+	if value > MaxInteractiveRuleLoreLimitKB {
+		value = MaxInteractiveRuleLoreLimitKB
+	}
+	return intPtr(value)
+}
+
+func interactiveRuleLoreLimitKB(limit *int) int {
+	normalized := normalizeInteractiveRuleLoreLimitKB(limit)
+	if normalized == nil {
+		return DefaultInteractiveRuleLoreLimitKB
+	}
+	return *normalized
 }
 
 func normalizeContextWindowTokens(tokens *int) *int {

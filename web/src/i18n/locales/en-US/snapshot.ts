@@ -33,6 +33,8 @@ const snapshot = {
   'snapshot.director.docs': 'Plan Docs',
   'snapshot.director.branchPlanningTurns': 'Branch Turns',
   'snapshot.director.plan': 'director.md',
+  'snapshot.director.documentEmpty': 'This document is empty',
+  'snapshot.director.loreContext': 'lore-context.md · Branch lore set',
   'snapshot.ruleAudit.title': 'Rule Audit',
   'snapshot.ruleAudit.intent': 'Intent',
   'snapshot.ruleAudit.difficulty': 'Difficulty',

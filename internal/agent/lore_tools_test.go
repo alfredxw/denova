@@ -77,4 +77,15 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	if strings.Contains(queryOutput, "档案柜线索只存在于正文") {
 		t.Fatalf("query list_lore_items should not include full content:\n%s", queryOutput)
 	}
+	readTool, ok := byName["read_lore_items"].(tool.InvokableTool)
+	if !ok {
+		t.Fatalf("read_lore_items should be invokable: %T", byName["read_lore_items"])
+	}
+	readOutput, err := readTool.InvokableRun(context.Background(), `{"names":["林川"]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(readOutput, "完整正文不应出现在索引里") {
+		t.Fatalf("read_lore_items should resolve unique names:\n%s", readOutput)
+	}
 }

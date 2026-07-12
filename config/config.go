@@ -64,6 +64,7 @@ type Config struct {
 	VersionAgentEnabled         bool                         `toml:"-"`
 	VersionAgentCharThreshold   int                          `toml:"-"`
 	InteractiveReplyTargetChars int                          `toml:"-"`
+	InteractiveRuleLoreLimitKB  int                          `toml:"-"`
 	ResumeLastWorkspace         bool                         `toml:"-"`
 	UpdateCheckEnabled          bool                         `toml:"-"`
 }
@@ -126,6 +127,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		VersionAgentEnabled:         settingsBool(s.VersionAgentEnabled, true),
 		VersionAgentCharThreshold:   settingsInt(s.VersionAgentCharThreshold, 3000),
 		InteractiveReplyTargetChars: 2000,
+		InteractiveRuleLoreLimitKB:  interactiveRuleLoreLimitKB(s.InteractiveRuleLoreLimitKB),
 		ResumeLastWorkspace:         true,
 		UpdateCheckEnabled:          settingsBool(s.UpdateCheckEnabled, true),
 	}
@@ -220,6 +222,9 @@ func settingsFromConfig(cfg *Config) Settings {
 		VolumeDirFormat:          cfg.VolumeDirFormat,
 		IDEImagePresetID:         cfg.IDEImagePresetID,
 		WritingSkillDefault:      cfg.WritingSkillDefault,
+	}
+	if cfg.InteractiveRuleLoreLimitKB > 0 {
+		settings.InteractiveRuleLoreLimitKB = &cfg.InteractiveRuleLoreLimitKB
 	}
 	if cfg.HideChapterBodyLiveOutput {
 		settings.HideChapterBodyLiveOutput = &cfg.HideChapterBodyLiveOutput
@@ -322,6 +327,7 @@ func Load() *Config {
 			VersionAgentEnabled:         settingsBool(d.VersionAgentEnabled, true),
 			VersionAgentCharThreshold:   settingsInt(d.VersionAgentCharThreshold, 3000),
 			InteractiveReplyTargetChars: 2000,
+			InteractiveRuleLoreLimitKB:  interactiveRuleLoreLimitKB(d.InteractiveRuleLoreLimitKB),
 			ResumeLastWorkspace:         true,
 			UpdateCheckEnabled:          settingsBool(d.UpdateCheckEnabled, true),
 		}

@@ -505,17 +505,24 @@ func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...Interactiv
 
 func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...InteractiveStoryToolContext) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
 	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-		_ = cfg
-		_ = settings
+		var tools []tool.BaseTool
+		if cfg != nil && settings.LoreRead {
+			loreTools, err := newLoreTools(cfg.Workspace, false)
+			if err != nil {
+				return nil, err
+			}
+			tools = append(tools, loreTools...)
+		}
 		if len(toolContexts) == 0 {
-			return nil, nil
+			return tools, nil
 		}
 		ctx := toolContexts[0]
 		switch strings.TrimSpace(ctx.MaintenanceTask) {
 		case "memory_update":
 			return newInteractiveStoryMemoryPatchTools(ctx)
 		case "director_plan_update":
-			return newInteractiveEventTools(ctx)
+			eventTools, err := newInteractiveEventTools(ctx)
+			return append(tools, eventTools...), err
 		default:
 			// Compatibility for explicit callers that have not selected a phase:
 			// expose only the derived-memory writer, never Actor State mutation.

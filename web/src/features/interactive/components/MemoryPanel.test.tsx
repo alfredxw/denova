@@ -229,6 +229,8 @@ describe('MemoryPanel', () => {
     await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes('/director?branch=main'))).toBe(true))
     expect(screen.getByText('导演节拍表')).toBeInTheDocument()
     expect(screen.getByTestId('director-plan-markdown')).toBeInTheDocument()
+    expect(screen.getByTestId('director-lore-context-markdown')).toBeInTheDocument()
+    expect(screen.getByText(/沈凝/)).toBeInTheDocument()
     expect(screen.getByText(/公开压力升高/)).toBeInTheDocument()
     expect(screen.queryByDisplayValue(/公开压力升高/)).not.toBeInTheDocument()
     expect(screen.queryByText('write_file')).not.toBeInTheDocument()
@@ -642,9 +644,10 @@ function contextAnalysisPart(input: Partial<{
   }
 }
 
-function directorPlan(overrides: Partial<{ plan: string; last_run: Record<string, unknown> }> = {}) {
+function directorPlan(overrides: Partial<{ plan: string; loreContext: string; last_run: Record<string, unknown> }> = {}) {
   const docs = {
     plan: overrides.plan || '# 导演规划 / Director Plan\n\n## 正文Agent可读 / Prose-agent visible\n\n### 阶段钩子与阅读欲望 / Stage Hook and Reader Desire\n外门逆袭\n\n### 当前场景与行动空间 / Current Scene and Action Space\n公开压力升高，同门质疑逼近。\n\n### 最近分支安排 / Near Branch Arrangements\n观察、对话、调查都成立。\n\n## 后台导演私密 / Director private\n\n### 伏笔与回收 / Foreshadowing and Payoff\n隐藏反转',
+    lore_context: overrides.loreContext || '# 分支资料上下文\n\n## 当前角色\n\n- [[沈凝]]：当前见证者\n\n## 候场角色\n\n- [[戒律长老]]：规则破坏时入场',
   }
   return {
     story_id: 'story-1',
@@ -660,6 +663,7 @@ function directorPlan(overrides: Partial<{ plan: string; last_run: Record<string
       updated_at: '2026-06-19T06:00:00Z',
       docs: {
         plan: { path: '/tmp/director.md', bytes: docs.plan.length, hash: 'h1' },
+        lore_context: { path: '/tmp/lore-context.md', bytes: docs.lore_context.length, hash: 'h2' },
       },
       last_run: overrides.last_run || { status: 'failed', summary: '后台导演更新失败，已保留本回合正文。', error: 'director unavailable' },
     },

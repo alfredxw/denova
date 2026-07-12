@@ -1,6 +1,8 @@
 package book
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -117,6 +119,8 @@ type LoreIndexOptions struct {
 	Query           string
 	Type            string
 	Limit           int
+	Offset          int
+	Paginate        bool
 	MaxBytes        int
 	ExcludeResident bool
 	OmitTitle       bool
@@ -152,6 +156,22 @@ func (s *LoreStore) List() ([]LoreItem, error) {
 
 func (s *LoreStore) ListAll() ([]LoreItem, error) {
 	return s.list(true)
+}
+
+// Revision identifies the current enabled lore catalog for incremental
+// Director review. It changes when a name, summary, body or enabled state
+// changes, without exposing the full collection to metadata consumers.
+func (s *LoreStore) Revision() (string, error) {
+	items, err := s.List()
+	if err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(items)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:12]), nil
 }
 
 func (s *LoreStore) list(includeDisabled bool) ([]LoreItem, error) {
@@ -208,6 +228,9 @@ func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
 	if item.Name == "" {
 		return LoreItem{}, errors.New("资料名称不能为空")
 	}
+	if err := validateLoreReferenceName(item.Name); err != nil {
+		return LoreItem{}, err
+	}
 	if loreItemNameIndex(collection.Items, item.Name, "") >= 0 {
 		return LoreItem{}, fmt.Errorf("资料名称已存在: %s", item.Name)
 	}
@@ -237,6 +260,7 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 		if input.BaseRevision != "" && collection.Items[i].UpdatedAt != input.BaseRevision {
 			return LoreItem{}, ErrLoreRevisionConflict
 		}
+		previous := collection.Items[i]
 		updated := normalizeLoreItem(LoreItem{
 			ID:               id,
 			Enabled:          loreInputEnabled(input.Enabled, collection.Items[i].Enabled),
@@ -255,11 +279,34 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 		if updated.Name == "" {
 			return LoreItem{}, errors.New("资料名称不能为空")
 		}
+		if err := validateLoreReferenceName(updated.Name); err != nil {
+			return LoreItem{}, err
+		}
 		if loreItemNameIndex(collection.Items, updated.Name, id) >= 0 {
 			return LoreItem{}, fmt.Errorf("资料名称已存在: %s", updated.Name)
 		}
+		if !updated.Enabled && previous.Enabled {
+			paths, err := loreReferencePaths(s.workspace, previous.Name)
+			if err != nil {
+				return LoreItem{}, err
+			}
+			if len(paths) > 0 {
+				return LoreItem{}, fmt.Errorf("资料 %s 正被 %d 个互动分支引用，请先从 lore-context.md 移除后再禁用", previous.Name, len(paths))
+			}
+		}
+		rewrites, err := prepareLoreReferenceRewrites(s.workspace, previous.Name, updated.Name)
+		if err != nil {
+			return LoreItem{}, err
+		}
 		collection.Items[i] = updated
 		if err := s.save(collection); err != nil {
+			return LoreItem{}, err
+		}
+		if err := applyLoreReferenceRewrites(rewrites); err != nil {
+			collection.Items[i] = previous
+			if rollbackErr := s.save(collection); rollbackErr != nil {
+				log.Printf("[lore-reference] rollback lore item failed id=%s err=%v", id, rollbackErr)
+			}
 			return LoreItem{}, err
 		}
 		return updated, nil
@@ -275,6 +322,19 @@ func (s *LoreStore) Delete(id string) error {
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return err
+	}
+	for _, item := range collection.Items {
+		if item.ID != id {
+			continue
+		}
+		paths, refErr := loreReferencePaths(s.workspace, item.Name)
+		if refErr != nil {
+			return refErr
+		}
+		if len(paths) > 0 {
+			return fmt.Errorf("资料 %s 正被 %d 个互动分支引用，请先从 lore-context.md 移除后再删除", item.Name, len(paths))
+		}
+		break
 	}
 	next := make([]LoreItem, 0, len(collection.Items))
 	found := false
@@ -490,6 +550,39 @@ func (s *LoreStore) ReadMany(ids []string) ([]LoreItem, error) {
 			return nil, fmt.Errorf("资料不存在: %s", id)
 		}
 		result = append(result, item)
+	}
+	return result, nil
+}
+
+// ReadManyNames resolves user-facing unique lore names in request order.
+func (s *LoreStore) ReadManyNames(names []string) ([]LoreItem, error) {
+	if len(names) == 0 {
+		return nil, errors.New("资料名称列表不能为空")
+	}
+	items, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	byName := make(map[string]LoreItem, len(items))
+	for _, item := range items {
+		byName[loreNameKey(item.Name)] = item
+	}
+	result := make([]LoreItem, 0, len(names))
+	seen := map[string]bool{}
+	for _, name := range names {
+		key := loreNameKey(name)
+		if key == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		item, ok := byName[key]
+		if !ok {
+			return nil, fmt.Errorf("资料不存在: %s", strings.TrimSpace(name))
+		}
+		result = append(result, item)
+	}
+	if len(result) == 0 {
+		return nil, errors.New("资料名称列表不能为空")
 	}
 	return result, nil
 }
@@ -1127,9 +1220,9 @@ type loreIndexEntry struct {
 func filterLoreIndexEntries(items []LoreItem, options LoreIndexOptions) ([]loreIndexEntry, int) {
 	query := strings.TrimSpace(options.Query)
 	itemType := normalizeOptionalLoreType(options.Type)
-	shouldLimit := query != "" || itemType != ""
+	shouldLimit := options.Paginate || query != "" || itemType != ""
 	limit := normalizeLoreIndexLimit(options.Limit)
-	entries := make([]loreIndexEntry, 0, len(items))
+	matched := make([]loreIndexEntry, 0, len(items))
 	total := 0
 	for _, item := range items {
 		if options.ExcludeResident && item.LoadMode == LoreLoadModeResident {
@@ -1143,15 +1236,23 @@ func filterLoreIndexEntries(items []LoreItem, options LoreIndexOptions) ([]loreI
 			continue
 		}
 		total++
-		if shouldLimit && len(entries) >= limit {
-			continue
-		}
-		entries = append(entries, loreIndexEntry{Item: item, MatchSources: matchSources})
+		matched = append(matched, loreIndexEntry{Item: item, MatchSources: matchSources})
 	}
 	if !shouldLimit {
-		total = len(entries)
+		return matched, len(matched)
 	}
-	return entries, total
+	offset := options.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(matched) {
+		return nil, total
+	}
+	end := offset + limit
+	if end > len(matched) {
+		end = len(matched)
+	}
+	return matched[offset:end], total
 }
 
 func normalizeLoreIndexLimit(limit int) int {
@@ -1218,10 +1319,14 @@ func writeLoreIndexHeader(sb *strings.Builder, total, returned int, options Lore
 		sb.WriteString("资料库暂无条目。\n")
 		return
 	}
-	if query != "" || itemType != "" {
-		fmt.Fprintf(sb, "匹配 %d 条资料，返回 %d 条。", total, returned)
-		if total > returned {
-			fmt.Fprintf(sb, " 还有 %d 条未返回；请缩小 query 或提高 limit（最大 %d）。", total-returned, LoreIndexMaxQueryLimit)
+	if options.Paginate || query != "" || itemType != "" {
+		offset := options.Offset
+		if offset < 0 {
+			offset = 0
+		}
+		fmt.Fprintf(sb, "匹配 %d 条资料，本页返回 %d 条（offset=%d）。", total, returned, offset)
+		if total > offset+returned {
+			fmt.Fprintf(sb, " 下一页使用 offset=%d；每页最大 %d。", offset+returned, LoreIndexMaxQueryLimit)
 		}
 		sb.WriteString("\n\n")
 		return

@@ -204,7 +204,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	var status interactive.DirectorPlanStatus
 	decodeResponse(t, statusResp.Body.Bytes(), &status)
-	if status.Status != interactive.DirectorPlanStatusWaitingOpening || status.Blocking || status.StartReady || status.CompletedDocs != 0 || status.PlannedDocs != 1 {
+	if status.Status != interactive.DirectorPlanStatusWaitingOpening || status.Blocking || status.StartReady || status.CompletedDocs != 0 || status.PlannedDocs != 2 {
 		t.Fatalf("initial director status mismatch: %#v", status)
 	}
 
@@ -214,7 +214,8 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	type directorResponse struct {
 		Docs struct {
-			Plan string `json:"plan"`
+			Plan        string `json:"plan"`
+			LoreContext string `json:"lore_context"`
 		} `json:"docs"`
 		Metadata struct {
 			Revision string `json:"revision"`

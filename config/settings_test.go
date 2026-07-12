@@ -46,6 +46,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.InteractiveStageLineHeight == nil || *s.InteractiveStageLineHeight != 1.78 {
 		t.Fatalf("InteractiveStageLineHeight default")
 	}
+	if s.InteractiveRuleLoreLimitKB == nil || *s.InteractiveRuleLoreLimitKB != DefaultInteractiveRuleLoreLimitKB {
+		t.Fatalf("InteractiveRuleLoreLimitKB default")
+	}
 	if s.ChapterFilenameFormat != "ch{order:05}-{chapter}-{title}.md" {
 		t.Fatalf("ChapterFilenameFormat default: %s", s.ChapterFilenameFormat)
 	}
@@ -143,6 +146,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		IDEImagePresetID:           "realistic",
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
+		InteractiveRuleLoreLimitKB: intPtr(DefaultInteractiveRuleLoreLimitKB),
 	}
 	child := Settings{
 		OpenAIModel:                "c-model", // override
@@ -170,6 +174,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		RemoteAccessPasswordHash:   "$2a$10$hash",
 		InteractiveStageFontSize:   intPtr(18),
 		InteractiveStageLineHeight: floatPtr(1.95),
+		InteractiveRuleLoreLimitKB: intPtr(MaxInteractiveRuleLoreLimitKB + 1),
 	}
 	out := Merge(parent, child)
 	if out.OpenAIBaseURL != "https://parent" {
@@ -243,6 +248,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.InteractiveStageLineHeight == nil || *out.InteractiveStageLineHeight != 1.95 {
 		t.Fatalf("InteractiveStageLineHeight should override parent")
+	}
+	if out.InteractiveRuleLoreLimitKB == nil || *out.InteractiveRuleLoreLimitKB != MaxInteractiveRuleLoreLimitKB {
+		t.Fatalf("InteractiveRuleLoreLimitKB should clamp to max")
 	}
 }
 

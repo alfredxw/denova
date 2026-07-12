@@ -1,9 +1,9 @@
-import type { DirectorPlanDocs } from '../../types'
+import type { DirectorPlanningTemplates } from '../../types'
 
 export const STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT = 64 * 1024
 export const STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT = 64 * 1024
 export const STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK = 5
-export const EMPTY_DIRECTOR_PLANNING_TEMPLATES: DirectorPlanDocs = { plan: '' }
+export const EMPTY_DIRECTOR_PLANNING_TEMPLATES: DirectorPlanningTemplates = { plan: '' }
 export const DIRECTOR_PLAN_REQUIRED_HEADINGS = [
   '## 正文Agent可读',
   '## 后台导演私密',

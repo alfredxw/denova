@@ -221,7 +221,7 @@ interface StoryDirectorStrategy {
   rule_visibility_mode?: 'audit_only' | 'public_roll' | string
 	state_schema_adaptation_mode?: 'auto' | 'off' | string
   branch_planning_turns?: number
-  planning_templates?: DirectorPlanDocs
+  planning_templates?: DirectorPlanningTemplates
   prompt_markdown?: string
 }
 
@@ -622,10 +622,16 @@ interface DirectorEvent {
 
 export interface DirectorPlanDocs {
   plan: string
+  lore_context: string
+}
+
+export interface DirectorPlanningTemplates {
+  plan: string
 }
 
 interface DirectorPlanVisibleDocs {
   plan?: string
+  lore_context?: string
 }
 
 interface DirectorPlanDocInfo {
@@ -733,6 +739,7 @@ export interface DirectorPlanMetadata {
   docs?: Record<string, DirectorPlanDocInfo>
 	last_run?: DirectorPlanRunStatus
 	event_runtime?: DirectorEventRuntime
+	lore_revision?: string
 }
 
 export interface DirectorPlan {

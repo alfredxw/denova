@@ -112,9 +112,15 @@ export function PlanView({
         <div className="p-3">
           {draftDocs ? (
             editing ? (
-              <DirectorPlanTextarea label={t('snapshot.director.plan')} value={draftDocs.plan} onChange={(value) => onDraftDocsChange({ ...draftDocs, plan: value })} />
+              <div className="space-y-4">
+                <DirectorPlanTextarea label={t('snapshot.director.plan')} value={draftDocs.plan} onChange={(value) => onDraftDocsChange({ ...draftDocs, plan: value })} />
+                <DirectorPlanTextarea label={t('snapshot.director.loreContext')} value={draftDocs.lore_context || ''} onChange={(value) => onDraftDocsChange({ ...draftDocs, lore_context: value })} />
+              </div>
             ) : (
-              <DirectorPlanMarkdown content={draftDocs.plan} />
+              <div className="space-y-4">
+                <DirectorDocumentPreview title={t('snapshot.director.plan')} content={draftDocs.plan} testId="director-plan-markdown" />
+                <DirectorDocumentPreview title={t('snapshot.director.loreContext')} content={draftDocs.lore_context || ''} testId="director-lore-context-markdown" />
+              </div>
             )
           ) : (
             <div className="flex min-h-[220px] items-center justify-center rounded-[10px] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs text-[var(--nova-text-muted)]">{t('memoryPanel.directorEmpty')}</div>
@@ -215,17 +221,19 @@ function DirectorSpoilerGate({ onReveal }: { onReveal: () => void }) {
   )
 }
 
-function DirectorPlanMarkdown({ content }: { content: string }) {
+function DirectorDocumentPreview({ title, content, testId }: { title: string; content: string; testId: string }) {
   const { t } = useTranslation()
-  if (!content.trim()) {
-    return (
-      <div className="flex min-h-[180px] items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs text-[var(--nova-text-muted)]">{t('memoryPanel.plan.empty')}</div>
-    )
-  }
   return (
-    <div data-testid="director-plan-markdown" className="director-plan-sheet max-h-[min(62vh,640px)] overflow-y-auto rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-4 text-xs leading-5 text-[var(--nova-text)]">
-      <MarkdownRenderer content={content} components={directorMarkdownComponents} />
-    </div>
+    <section>
+      <h4 className="mb-1.5 text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--nova-text-faint)]">{title}</h4>
+      <div data-testid={testId} className="director-plan-sheet max-h-[min(62vh,640px)] overflow-y-auto rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-4 text-xs leading-5 text-[var(--nova-text)]">
+        {content.trim() ? (
+          <MarkdownRenderer content={content} components={directorMarkdownComponents} />
+        ) : (
+          <div className="flex min-h-[148px] items-center justify-center text-center text-[var(--nova-text-muted)]">{t('snapshot.director.documentEmpty')}</div>
+        )}
+      </div>
+    </section>
   )
 }
 

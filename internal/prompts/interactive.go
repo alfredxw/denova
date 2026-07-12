@@ -30,6 +30,7 @@ type InteractiveStoryPromptInput struct {
 	ActorState                  string
 	StoryDirectorStrategyPrompt string
 	PreviousTurnsSummary        string
+	LoreContext                 string
 }
 
 type InteractiveDirectorPromptInput struct {
@@ -153,6 +154,9 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	sb.WriteString("\n## 召回说明\n")
 	sb.WriteString("资料库正文不在本段上下文中预注入；需要时请通过 list_lore_items（可带 query）/read_lore_items 主动召回。\n")
 	sb.WriteString("故事记忆仅提供当前分支的有界摘要；若本轮需要更细的长期事实，请通过 list_interactive_memories/read_interactive_memories 主动召回。\n\n")
+	if strings.TrimSpace(in.LoreContext) != "" {
+		writeBlock(&sb, "规则与当前资料工作集（source: rule lore + lore-context.md, bounded）", in.LoreContext)
+	}
 	if strings.TrimSpace(in.LongTermMemory) != "" {
 		writeBlock(&sb, "当前分支故事记忆", in.LongTermMemory)
 	}
@@ -224,14 +228,15 @@ func InteractiveStoryTurnInstruction(message, turnContext, runtimeContext string
 func BuildInteractiveDirectorSystemInstruction() string {
 	return strings.Join([]string{
 		"你是 Denova 游戏模式的后台导演 Agent。",
-		"你负责在前台互动 Agent 完成本回合正文、TurnResult 和 StateDelta 原子落盘后，观察本轮是否需要 keep、patch 或 replan，并只维护当前分支的导演 Markdown 规划 director.md。",
+		"你负责在前台互动 Agent 完成本回合正文、TurnResult 和 StateDelta 原子落盘后，观察本轮是否需要 keep、patch 或 replan，并维护当前分支的 director.md 与 lore-context.md。",
 		"你不负责续写本回合剧情，不能改写本回合正文，也不能替用户选择下一步行动。",
 		"Actor State 由 Game Agent TurnResult、RuleResolution 和后端 State Reducer 负责；Story Memory 由 Memory Recorder 负责。你不得写 Actor State 或 Story Memory。",
 		"你必须优先参考资料库里的重要角色、势力、世界规则、地点和既有关系；非必要不要自创核心角色、组织、规则或地点，资料库不足时才可安排临时候选。",
 		"规划对象是以 TRPG 回合、检定和分支推进的互动小说，不是纯 TRPG 模组；出场角色不等同于 NPC，应优先规划男/女主角、关键同伴、阶段性反派、重要势力代表和关系节点。",
 		"剧情节奏要高信息密度、网文式可读：每个可玩回合至少推进一个有效信息点、角色关系变化、压力升级、收益/代价或新悬念，避免连续空转、低信息量氛围描写和无关细节。",
-		"你只能使用 read_file、write_file、edit_file 访问调用方列出的 director.md；不得使用状态、记忆、shell、删除、移动、资料库写入或任意 workspace 写入工具。",
+		"你只能使用 read_file、write_file、edit_file 访问调用方列出的 director.md 与 lore-context.md，可使用 list_lore_items/read_lore_items 分页审阅资料库，并可读取事件卡；不得写资料库、状态、记忆或其他 workspace 文件。",
 		"director.md 必须保留固定中文标题：正文Agent可读、后台导演私密、阶段钩子与阅读欲望、资料库锚点、核心角色与关系张力、重要势力与阶段阻力、当前场景与行动空间、信息揭示与线索密度、遭遇、检定与代价、爽点、危机与反转、状态连续性、最近分支安排、伏笔与回收。",
+		"lore-context.md 是当前分支资料工作集，只使用 [[资料名称]] 引用，不复制资料正文；当前区段自动提供给正文 Agent，候场与暂离场区段仅供后台导演。规则类资料由后端全量加载，不写入此文件。",
 		"正文 Agent 和快捷选择只能看到“正文Agent可读”区；“后台导演私密”区只能服务后台规划，不能泄露给玩家正文。",
 		"完成观察和必要文件编辑后，只输出 PlanDecision JSON，不要输出故事正文、完整 Markdown 或额外解释。",
 	}, "\n")
@@ -303,9 +308,16 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	sb.WriteString("- replan：只有场景目标被替换、多个计划前提失效、关键角色/势力/终局事实发生不可逆变化或计划缺失时使用。\n")
 	sb.WriteString("- 你只能读取已提交的 Actor State 和 Story Memory 作为规划输入，不得写入它们。\n\n")
 	sb.WriteString("## 文件操作要求\n")
-	sb.WriteString("- 先用 read_file 读取 director.md，确认当前内容和固定标题，再用 edit_file 或 write_file 更新。\n")
-	sb.WriteString("- 只能修改调用方列出的 director.md；metadata.json 由后端维护，不能读写。\n")
+	sb.WriteString("- 先用 read_file 分别读取 director.md 和 lore-context.md，确认当前内容和固定标题，再用 edit_file 或 write_file 更新。\n")
+	sb.WriteString("- 只能修改调用方列出的两个规划文件；metadata.json 由后端维护，不能读写。\n")
 	sb.WriteString("- director.md 同时承载大方向、当前事件和最近分支安排，但内容组织要围绕互动小说的角色、关系、势力压力、信息揭示、检定代价和阅读钩子。\n\n")
+	sb.WriteString("## 资料工作集要求\n")
+	sb.WriteString("- lore-context.md 只写资料引用和一句当前用途，不复制资料正文，不重复 director.md 的剧情计划。\n")
+	sb.WriteString("- 首次建立工作集或 replan 时，用 list_lore_items 从 offset=0 开始分页审阅全部启用资料的名称和简介，直到没有下一页；名称和简介只用于初筛。\n")
+	sb.WriteString("- 决定引用某项资料前，用 read_lore_items 的 names 完整读取当前、候场资料及其简介中提到的关键关联角色，避免凭简介虚构既有关系。\n")
+	sb.WriteString("- 当前背景与地点、当前势力、当前角色、当前物品与其他设定会自动完整加载给正文 Agent；候场和暂离场只供你规划。只把近期确实需要的资料放入当前区段。\n")
+	sb.WriteString("- 玩家或 Game Agent 临时召回了工作集外资料时，判断它应保持临时、进入候场、进入当前或转为暂离场。\n")
+	sb.WriteString("- 资料引用必须使用唯一名称语法 [[资料名称]]；规则类资料由系统自动全量加载，不要写入 lore-context.md。\n\n")
 	sb.WriteString("## 固定标题\n")
 	sb.WriteString("- director.md 必须保留：正文Agent可读；后台导演私密；阶段钩子与阅读欲望；资料库锚点；核心角色与关系张力；重要势力与阶段阻力；当前场景与行动空间；信息揭示与线索密度；遭遇、检定与代价；爽点、危机与反转；状态连续性；最近分支安排；伏笔与回收。\n\n")
 	sb.WriteString("## 更新原则\n")
@@ -323,7 +335,7 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	sb.WriteString("- kind=active 时观察当前活跃事件：没有变化就省略 event_decision；有事实证据时可 advance、payoff、resolve 或 abandon。advance/payoff/resolve 必须引用当前分支真实的 evidence_turn_ids。\n")
 	sb.WriteString("- 第一版每个分支最多一个活跃事件；事件运行态由后端写入 metadata.json，不要把它伪造到 Story Memory 或 Actor State。\n")
 	sb.WriteString("- 如果本回合出现终局、重大失败或用户偏离主线，要承接为分支状态和后续代价，而不是强行圆回原主线。\n")
-	sb.WriteString("- 保存后的 director.md 必须包含全部固定标题，且不超过后端字节上限。\n\n")
+	sb.WriteString("- 保存后的两个文件必须包含各自全部固定标题，且不超过后端字节和当前资料正文预算。\n\n")
 	writeBlock(&sb, "故事标题", in.Title)
 	writeBlock(&sb, "开局设定", in.Origin)
 	writeBlock(&sb, "叙事风格 ID", in.StoryTellerID)
@@ -335,7 +347,7 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	writeBlock(&sb, "允许读写的导演规划文件路径（source: backend guard）", in.DirectorPlanPaths)
 	writeBlock(&sb, "当前导演规划文档快照（source: DirectorPlan docs, bounded）", in.DirectorPlanDocs)
 	writeBlock(&sb, "导演规划模板要求（source: StoryDirector.strategy.planning_templates, bounded）", in.PlanningTemplates)
-	writeBlock(&sb, "资料库导演上下文（source: lore index and bounded relevant entries）", in.LoreContext)
+	writeBlock(&sb, "资料库导演上下文（source: rules, lore-context.md, paged catalog and committed recalls）", in.LoreContext)
 	writeBlock(&sb, "本回合 TurnResult / RuleResolution / StateDelta 审计 JSON（source: committed turn, bounded）", in.TurnAuditJSON)
 	writeBlock(&sb, "近期剧情历史（source: current branch turns, bounded）", in.TurnHistory)
 	writeBlock(&sb, "当前分支故事记忆（source: story memory, bounded）", firstNonEmpty(in.StoryMemory, in.StoryMemorySummary))

@@ -9,10 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"denova/internal/book"
 )
 
 const (
-	DirectorPlanDocPlan = "plan"
+	DirectorPlanDocPlan        = "plan"
+	DirectorPlanDocLoreContext = "lore_context"
 
 	DirectorPlanStatusWaitingOpening = "waiting_opening"
 	DirectorPlanStatusRunning        = "running"
@@ -67,11 +70,13 @@ type DirectorPlanSeed struct {
 }
 
 type DirectorPlanDocs struct {
-	Plan string `json:"plan"`
+	Plan        string `json:"plan"`
+	LoreContext string `json:"lore_context"`
 }
 
 type DirectorPlanVisibleDocs struct {
-	Plan string `json:"plan,omitempty"`
+	Plan        string `json:"plan,omitempty"`
+	LoreContext string `json:"lore_context,omitempty"`
 }
 
 type DirectorPlanDocInfo struct {
@@ -108,6 +113,7 @@ type DirectorPlanMetadata struct {
 	Docs                map[string]DirectorPlanDocInfo `json:"docs,omitempty"`
 	LastRun             *DirectorPlanRunStatus         `json:"last_run,omitempty"`
 	EventRuntime        DirectorEventRuntime           `json:"event_runtime,omitempty"`
+	LoreRevision        string                         `json:"lore_revision,omitempty"`
 }
 
 type DirectorPlan struct {
@@ -340,11 +346,15 @@ func (s *Store) UpdateDirectorPlan(storyID string, req UpdateDirectorPlanRequest
 	if err := validateDirectorPlanDocs(req.Docs); err != nil {
 		return DirectorPlan{}, err
 	}
+	if err := s.validateDirectorLoreContext(req.Docs.LoreContext); err != nil {
+		return DirectorPlan{}, err
+	}
 	if err := s.writeDirectorPlanDocsLocked(storyID, branchID, req.Docs); err != nil {
 		return DirectorPlan{}, err
 	}
 	metadata := s.buildDirectorPlanMetadataLocked(storyID, branchID, NormalizeBranchPlanningTurns(current.Metadata.BranchPlanningTurns), strings.TrimSpace(req.Source), "")
 	metadata.EventRuntime = current.Metadata.EventRuntime
+	metadata.LoreRevision = current.Metadata.LoreRevision
 	metadata.LastRun = &DirectorPlanRunStatus{
 		Status:        DirectorPlanStatusReady,
 		Summary:       firstNonEmpty(strings.TrimSpace(req.Summary), "导演规划已手动更新。"),
@@ -430,6 +440,11 @@ func (s *Store) MarkDirectorPlanRunStarted(storyID, branchID string, token Direc
 	if err != nil {
 		return err
 	}
+	// The two Markdown documents can be changed by safe external migrations
+	// such as a lore-name rename. Synchronize the persisted revision to the
+	// run token before claiming this run; API edits during the run still update
+	// metadata and therefore retain the existing conflict protection.
+	metadata.Revision = token.Revision
 	previous := metadata.LastRun
 	startReady := directorPlanRunStartReady(previous)
 	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
@@ -510,6 +525,24 @@ func (s *Store) CompleteDirectorPlanRun(storyID, branchID string, token Director
 		}
 		return DirectorPlan{}, err
 	}
+	if err := s.validateDirectorLoreContext(plan.Docs.LoreContext); err != nil {
+		startReady := directorPlanRunStartReady(storedMetadata.LastRun)
+		plan.Metadata.LastRun = &DirectorPlanRunStatus{
+			Status:        DirectorPlanStatusFailed,
+			Summary:       "后台导演写入的资料工作集未通过校验。",
+			Error:         err.Error(),
+			SourceTurnID:  sourceTurnID,
+			UpdatedAt:     now,
+			PlannedDocs:   len(requiredDirectorPlanDocKinds()),
+			CompletedDocs: directorPlanCompletedDocs(plan.Docs, token.Hashes),
+			StartReady:    startReady,
+			Blocking:      false,
+		}
+		if writeErr := s.writeDirectorPlanMetadataLocked(storyID, branchID, plan.Metadata); writeErr != nil {
+			return DirectorPlan{}, writeErr
+		}
+		return DirectorPlan{}, err
+	}
 	meta, lines, err := s.readStoryLocked(storyID)
 	if err != nil {
 		return DirectorPlan{}, err
@@ -530,6 +563,7 @@ func (s *Store) CompleteDirectorPlanRun(storyID, branchID string, token Director
 	}
 	storedMetadata.EventRuntime = eventRuntime
 	if decision.Mode == PlanDecisionKeep && directorPlanHashesEqual(token.Hashes, directorPlanHashes(plan.Docs)) {
+		storedMetadata.LoreRevision, _ = book.NewLoreStore(s.root).Revision()
 		storedMetadata.LastRun = &DirectorPlanRunStatus{
 			Status:           DirectorPlanStatusReady,
 			Summary:          firstNonEmpty(decision.Reason, "后台导演确认当前计划继续有效。"),
@@ -553,6 +587,7 @@ func (s *Store) CompleteDirectorPlanRun(storyID, branchID string, token Director
 	}
 	plan.Metadata = s.buildDirectorPlanMetadataLocked(storyID, branchID, NormalizeBranchPlanningTurns(plan.Metadata.BranchPlanningTurns), "interactive_director", sourceTurnID)
 	plan.Metadata.EventRuntime = eventRuntime
+	plan.Metadata.LoreRevision, _ = book.NewLoreStore(s.root).Revision()
 	plan.Metadata.LastRun = &DirectorPlanRunStatus{
 		Status:           DirectorPlanStatusReady,
 		Summary:          firstNonEmpty(decision.Reason, strings.TrimSpace(summary), "后台导演已更新导演规划。"),
@@ -625,7 +660,7 @@ func (s *Store) MarkDirectorPlanRunSkipped(storyID, branchID, sourceTurnID, reas
 
 func (s *Store) seedDirectorPlanLocked(storyID, branchID string, meta StoryMeta, seed DirectorPlanSeed) error {
 	templates := NormalizeStoryDirectorPlanningTemplates(seed.Templates)
-	docs := DirectorPlanDocs{Plan: renderDirectorPlanTemplate(templates.Plan, meta, branchID, seed)}
+	docs := DirectorPlanDocs{Plan: renderDirectorPlanTemplate(templates.Plan, meta, branchID, seed), LoreContext: defaultDirectorLoreContextDocument()}
 	if err := validateDirectorPlanDocs(docs); err != nil {
 		return err
 	}
@@ -654,7 +689,10 @@ func (s *Store) cloneDirectorPlanForBranchLocked(storyID, fromBranchID, branchID
 		return err
 	}
 	note := fmt.Sprintf("\n\n> 分支说明：本规划从 `%s` 分支创建，当前分支为 `%s`（%s）。用户选择优先，后续后台导演应按本分支独立刷新。\n", fromBranchID, branchID, strings.TrimSpace(title))
-	docs := DirectorPlanDocs{Plan: trimBytes(parent.Docs.Plan+note, maxDirectorPlanDocBytes)}
+	docs := DirectorPlanDocs{
+		Plan:        trimBytes(parent.Docs.Plan+note, maxDirectorPlanDocBytes),
+		LoreContext: parent.Docs.LoreContext,
+	}
 	if err := validateDirectorPlanDocs(docs); err != nil {
 		return err
 	}
@@ -663,6 +701,7 @@ func (s *Store) cloneDirectorPlanForBranchLocked(storyID, fromBranchID, branchID
 	}
 	metadata := s.buildDirectorPlanMetadataLocked(storyID, branchID, NormalizeBranchPlanningTurns(parent.Metadata.BranchPlanningTurns), "branch_seed", "")
 	metadata.EventRuntime = parent.Metadata.EventRuntime
+	metadata.LoreRevision = parent.Metadata.LoreRevision
 	metadata.LastRun = &DirectorPlanRunStatus{
 		Status:        DirectorPlanStatusReady,
 		Summary:       "新分支已继承并独立保存导演规划。",
@@ -716,7 +755,8 @@ func (s *Store) readDirectorPlanLocked(storyID, branchID string) (DirectorPlan, 
 		BranchID: branchID,
 		Docs:     docs,
 		VisibleDocs: DirectorPlanVisibleDocs{
-			Plan: ExtractDirectorPlanVisibleSection(docs.Plan),
+			Plan:        ExtractDirectorPlanVisibleSection(docs.Plan),
+			LoreContext: ExtractDirectorLoreContextActiveSection(docs.LoreContext),
 		},
 		Metadata: metadata,
 	}, nil
@@ -727,7 +767,16 @@ func (s *Store) readDirectorPlanDocsLocked(storyID, branchID string) (DirectorPl
 	if err != nil {
 		return DirectorPlanDocs{}, err
 	}
-	return DirectorPlanDocs{Plan: string(data)}, nil
+	loreContext, loreErr := os.ReadFile(filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorLoreContextFile))
+	if os.IsNotExist(loreErr) {
+		loreContext = []byte(defaultDirectorLoreContextDocument())
+		if writeErr := os.WriteFile(filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorLoreContextFile), append(loreContext, '\n'), 0o644); writeErr != nil {
+			return DirectorPlanDocs{}, writeErr
+		}
+	} else if loreErr != nil {
+		return DirectorPlanDocs{}, loreErr
+	}
+	return DirectorPlanDocs{Plan: string(data), LoreContext: string(loreContext)}, nil
 }
 
 func (s *Store) writeDirectorPlanDocsLocked(storyID, branchID string, docs DirectorPlanDocs) error {
@@ -735,7 +784,10 @@ func (s *Store) writeDirectorPlanDocsLocked(storyID, branchID string, docs Direc
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, directorPlanFile), []byte(strings.TrimSpace(docs.Plan)+"\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir, directorPlanFile), []byte(strings.TrimSpace(docs.Plan)+"\n"), 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, directorLoreContextFile), []byte(strings.TrimSpace(docs.LoreContext)+"\n"), 0o644)
 }
 
 func (s *Store) readDirectorPlanMetadataLocked(storyID, branchID string) (DirectorPlanMetadata, error) {
@@ -792,7 +844,10 @@ func (s *Store) buildDirectorPlanMetadataLocked(storyID, branchID string, branch
 }
 
 func validateDirectorPlanDocs(docs DirectorPlanDocs) error {
-	return validateDirectorPlanDoc(DirectorPlanDocPlan, docs.Plan)
+	if err := validateDirectorPlanDoc(DirectorPlanDocPlan, docs.Plan); err != nil {
+		return err
+	}
+	return validateDirectorLoreContextDoc(docs.LoreContext)
 }
 
 func validateDirectorPlanDoc(kind, content string) error {
@@ -834,6 +889,29 @@ func DirectorPlanVisibleContext(plan DirectorPlan, limitBytes int) string {
 	var sb strings.Builder
 	writeDirectorPlanContextBlock(&sb, "导演规划", plan.VisibleDocs.Plan)
 	return strings.TrimSpace(trimBytes(sb.String(), limitBytes))
+}
+
+// ExtractDirectorLoreContextActiveSection keeps the human-readable active
+// sections while excluding candidate and offstage casting notes from the Game
+// Agent. Full lore bodies are resolved separately by the app layer.
+func ExtractDirectorLoreContextActiveSection(content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	var sb strings.Builder
+	section := ""
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "## ") {
+			section = strings.TrimSpace(strings.TrimPrefix(trimmed, "## "))
+		}
+		if activeDirectorLoreContextSections[section] {
+			sb.WriteString(line)
+			sb.WriteString("\n")
+		}
+	}
+	return strings.TrimSpace(trimBytes(sb.String(), directorPlanVisibleBytes))
 }
 
 func DirectorPlanStatusFromPlan(plan DirectorPlan, hasTurns bool) DirectorPlanStatus {
@@ -940,31 +1018,36 @@ func (s *Store) directorPlanBranchDir(storyID, branchID string) string {
 }
 
 func (s *Store) DirectorPlanAllowedPaths(storyID, branchID string) []string {
-	return []string{filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorPlanFile)}
+	return []string{
+		filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorPlanFile),
+		filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorLoreContextFile),
+	}
 }
 
 func directorPlanDocInfos(dir string, docs DirectorPlanDocs) map[string]DirectorPlanDocInfo {
 	return map[string]DirectorPlanDocInfo{
-		DirectorPlanDocPlan: directorPlanDocInfo(filepath.Join(dir, directorPlanFile), docs.Plan),
+		DirectorPlanDocPlan:        directorPlanDocInfo(filepath.Join(dir, directorPlanFile), docs.Plan, ExtractDirectorPlanVisibleSection(docs.Plan)),
+		DirectorPlanDocLoreContext: directorPlanDocInfo(filepath.Join(dir, directorLoreContextFile), docs.LoreContext, ExtractDirectorLoreContextActiveSection(docs.LoreContext)),
 	}
 }
 
-func directorPlanDocInfo(path, content string) DirectorPlanDocInfo {
-	return DirectorPlanDocInfo{Path: filepath.ToSlash(path), Bytes: len([]byte(content)), Hash: textHash(content), VisibleBytes: len([]byte(ExtractDirectorPlanVisibleSection(content)))}
+func directorPlanDocInfo(path, content, visible string) DirectorPlanDocInfo {
+	return DirectorPlanDocInfo{Path: filepath.ToSlash(path), Bytes: len([]byte(content)), Hash: textHash(content), VisibleBytes: len([]byte(visible))}
 }
 
 func directorPlanHashes(docs DirectorPlanDocs) map[string]string {
 	return map[string]string{
-		DirectorPlanDocPlan: textHash(docs.Plan),
+		DirectorPlanDocPlan:        textHash(docs.Plan),
+		DirectorPlanDocLoreContext: textHash(docs.LoreContext),
 	}
 }
 
 func directorPlanRevision(docs DirectorPlanDocs, updatedAt string) string {
-	return textHash(strings.Join([]string{docs.Plan, updatedAt}, "\n---director-plan---\n"))
+	return textHash(strings.Join([]string{docs.Plan, docs.LoreContext, updatedAt}, "\n---director-plan---\n"))
 }
 
 func requiredDirectorPlanDocKinds() []string {
-	return []string{DirectorPlanDocPlan}
+	return []string{DirectorPlanDocPlan, DirectorPlanDocLoreContext}
 }
 
 func directorPlanRunStartReady(run *DirectorPlanRunStatus) bool {
