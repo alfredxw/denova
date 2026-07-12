@@ -1,0 +1,62 @@
+CHANGELOG.md
+  s_f8ddcac4644c29::t_e4d39dc7476f57 41-44
+go.mod
+  s_f8ddcac4644c29::t_d1f69e1fe03161 15
+go.sum
+  s_f8ddcac4644c29::t_f411d4d66427ff 140-141,232,240-241,247-248,252-253,255-256,260-262,267,274,276-277,282-283,287,289-291,295-297,300
+internal/agent/lore_tools.go
+  s_f8ddcac4644c29::t_b53cf08dc8a371 8,22-26,50,81,86-88,90-92,134-161
+internal/agent/lore_tools_test.go
+  s_f8ddcac4644c29::t_b0d1a38481a7fd 5,54-72,88,92,94,98-109
+internal/app/interactive_agent_test.go
+  s_f8ddcac4644c29::t_e509f0de367724 576,607
+internal/app/interactive_conversation_test.go
+  s_f8ddcac4644c29::t_f4b93ecd266b7a 165
+internal/book/character_card.go
+  s_e880a379ba58be::t_e4f691a458f670 610,620-621,640-641,680,686,691,701-709
+internal/book/character_card_sanitize.go
+  s_f8ddcac4644c29::t_747ec35f47347d 10-12,14-19
+internal/book/character_card_test.go
+  s_e880a379ba58be::t_fa8c55267d4136 95-96,310-311,314-315,322-328
+internal/book/lore_test.go
+  s_f8ddcac4644c29::t_e1cb86df37019a 171,176-188,190,194-213,216,220-266,268-269
+internal/interactive/story_test.go
+  s_f8ddcac4644c29::t_cc555b32389cd7 771,794
+internal/prompts/interactive.go
+  s_f8ddcac4644c29::t_47b8d178903075 119,155
+internal/prompts/system.go
+  s_f8ddcac4644c29::t_8275d968f1c92f 148,180
+skills/lore/SKILL.md
+  s_f8ddcac4644c29::t_1d124b872fec2f 13,28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c4749467262789229082272792d862b0e440d12f",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_e880a379ba58be": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f54f8-18a0-7cc0-9748-17266f02d16d",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_f8ddcac4644c29": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5659-0251-7103-a523-648a51299e38",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
