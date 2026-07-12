@@ -9,13 +9,13 @@ import (
 	"denova/internal/interactive"
 )
 
-func TestInteractiveStoryAutomaticallyLoadsRulesAndActiveLoreOnly(t *testing.T) {
+func TestInteractiveStoryLoadsAllResidentLoreAndActiveOnDemandLore(t *testing.T) {
 	workspace := t.TempDir()
 	lore := book.NewLoreStore(workspace)
 	for _, input := range []book.LoreItemInput{
-		{ID: "rule", Type: "rule", Name: "公开比试规则", Content: "公开比试禁止场外偷袭。"},
+		{ID: "rule", Type: "world", Name: "公开比试规则", LoadMode: book.LoreLoadModeResident, Content: "公开比试禁止场外偷袭。"},
 		{ID: "active", Type: "character", Name: "沈凝", Content: "沈凝不会无证据帮助任何人。"},
-		{ID: "candidate", Type: "character", Name: "戒律长老", Content: "戒律长老掌握隐藏裁决权。"},
+		{ID: "candidate", Type: "character", Name: "戒律长老", Keywords: []string{"演武场"}, Content: "戒律长老掌握隐藏裁决权。"},
 	} {
 		if _, err := lore.Create(input); err != nil {
 			t.Fatal(err)
@@ -40,14 +40,15 @@ func TestInteractiveStoryAutomaticallyLoadsRulesAndActiveLoreOnly(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !strings.Contains(messages[0].Content, "公开比试禁止场外偷袭") {
+		t.Fatalf("resident lore should be a stable leading message:\n%s", messages[0].Content)
+	}
 	instruction := messages[len(messages)-1].Content
-	for _, want := range []string{"公开比试禁止场外偷袭", "沈凝不会无证据帮助任何人"} {
-		if !strings.Contains(instruction, want) {
-			t.Fatalf("interactive story instruction missing %q:\n%s", want, instruction)
-		}
+	if !strings.Contains(instruction, "沈凝不会无证据帮助任何人") {
+		t.Fatalf("active on-demand lore missing from instruction:\n%s", instruction)
 	}
 	if strings.Contains(instruction, "戒律长老掌握隐藏裁决权") {
-		t.Fatalf("candidate lore must stay Director-private:\n%s", instruction)
+		t.Fatalf("keyword matches must not auto-inject on-demand lore:\n%s", instruction)
 	}
 }
 

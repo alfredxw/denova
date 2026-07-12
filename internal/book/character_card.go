@@ -3,6 +3,7 @@ package book
 import (
 	"bytes"
 	"compress/zlib"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -10,9 +11,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 	"unicode"
 
 	"denova/internal/workspacepath"
@@ -20,6 +19,7 @@ import (
 
 const tavernCardCoverPath = "assets/image/cover.png"
 const interactiveOpeningPresetPath = "setting/interactive-openings.json"
+const maxTavernResidentLoreLimitKB = 1024
 
 var pngSignature = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 
@@ -39,28 +39,68 @@ type CharacterCardImportResult struct {
 	BookMeta             *BookMeta                        `json:"book_meta,omitempty"`
 	Compatibility        CharacterCardCompatibilityReport `json:"compatibility"`
 	Message              string                           `json:"message"`
+	ResidentLoreBytes    int                              `json:"resident_lore_bytes"`
+	RequiredLimitKB      int                              `json:"required_resident_lore_limit_kb"`
 }
 
 // CharacterCardPreview 描述酒馆角色卡预览信息，解析但不写入 workspace。
 type CharacterCardPreview struct {
-	Name                 string                           `json:"name"`
-	EntryCount           int                              `json:"entry_count"`
-	Tags                 []string                         `json:"tags"`
-	OpeningPresetCount   int                              `json:"opening_preset_count"`
-	UserPlaceholderFound bool                             `json:"user_placeholder_found"`
-	WillImportCover      bool                             `json:"will_import_cover"`
-	Compatibility        CharacterCardCompatibilityReport `json:"compatibility"`
+	Name                   string                           `json:"name"`
+	EntryCount             int                              `json:"entry_count"`
+	Tags                   []string                         `json:"tags"`
+	OpeningPresetCount     int                              `json:"opening_preset_count"`
+	UserPlaceholderFound   bool                             `json:"user_placeholder_found"`
+	WillImportCover        bool                             `json:"will_import_cover"`
+	Compatibility          CharacterCardCompatibilityReport `json:"compatibility"`
+	EnabledEntryCount      int                              `json:"enabled_entry_count"`
+	DisabledEntryCount     int                              `json:"disabled_entry_count"`
+	ResidentEntryCount     int                              `json:"resident_entry_count"`
+	ResidentEntryBytes     int                              `json:"resident_entry_bytes"`
+	ResidentLoreBytes      int                              `json:"resident_lore_bytes"`
+	AutoEntryCount         int                              `json:"auto_entry_count"`
+	RemovedRuntimeCount    int                              `json:"removed_runtime_entry_count"`
+	SanitizedMixedCount    int                              `json:"sanitized_mixed_entry_count"`
+	OpeningTruncatedCount  int                              `json:"opening_truncated_count"`
+	CurrentResidentBytes   int                              `json:"current_resident_lore_bytes"`
+	ResidentLoreLimitKB    int                              `json:"resident_lore_limit_kb"`
+	MaxResidentLoreLimitKB int                              `json:"max_resident_lore_limit_kb"`
+	RequiredCurrentKB      int                              `json:"required_current_resident_lore_limit_kb"`
+	RequiredNewBookKB      int                              `json:"required_new_book_resident_lore_limit_kb"`
 }
 
-// CharacterCardCompatibilityReport describes how Nova maps Tavern card fields.
+// CharacterCardCompatibilityReport reports Denova capabilities rather than
+// exposing Tavern's runtime field vocabulary to users.
 type CharacterCardCompatibilityReport struct {
-	ImportedFields    []string `json:"imported_fields"`
-	DowngradedFields  []string `json:"downgraded_fields"`
-	UnsupportedFields []string `json:"unsupported_fields"`
+	Capabilities        []string `json:"capabilities"`
+	SanitizedRuntime    []string `json:"sanitized_runtime"`
+	DiscardedExtensions []string `json:"discarded_extensions"`
+	Warnings            []string `json:"warnings"`
+	IgnoredLoadingRules bool     `json:"ignored_loading_rules"`
 }
 
 type CharacterCardImportOptions struct {
-	UserCharacterName string
+	UserCharacterName   string
+	ResidentLoreLimitKB int
+}
+
+// ResidentLoreLimitError means the import is valid but needs explicit user
+// confirmation to raise the stable resident-context budget.
+type ResidentLoreLimitError struct {
+	CurrentKB  int
+	RequiredKB int
+}
+
+func (e *ResidentLoreLimitError) Error() string {
+	return fmt.Sprintf("常驻资料需要 %d KB，当前上限为 %d KB；请显式确认提升常驻资料上限", e.RequiredKB, e.CurrentKB)
+}
+
+type ResidentLoreMaxLimitError struct {
+	RequiredKB int
+	MaximumKB  int
+}
+
+func (e *ResidentLoreMaxLimitError) Error() string {
+	return fmt.Sprintf("常驻资料需要 %d KB，超过最大上限 %d KB", e.RequiredKB, e.MaximumKB)
 }
 
 type tavernCard struct {
@@ -110,16 +150,27 @@ type tavernCharacterBook struct {
 }
 
 type tavernBookEntry struct {
-	ID             int      `json:"id"`
-	Keys           []string `json:"keys"`
-	SecondaryKeys  []string `json:"secondary_keys"`
-	Comment        string   `json:"comment"`
-	Content        string   `json:"content"`
-	Constant       bool     `json:"constant"`
-	Selective      bool     `json:"selective"`
-	Enabled        *bool    `json:"enabled"`
-	Position       any      `json:"position"`
-	InsertionOrder int      `json:"insertion_order"`
+	ID                  int      `json:"id"`
+	Keys                []string `json:"keys"`
+	SecondaryKeys       []string `json:"secondary_keys"`
+	Comment             string   `json:"comment"`
+	Content             string   `json:"content"`
+	Constant            bool     `json:"constant"`
+	Selective           bool     `json:"selective"`
+	Enabled             *bool    `json:"enabled"`
+	Position            any      `json:"position"`
+	InsertionOrder      int      `json:"insertion_order"`
+	SelectiveLogic      any      `json:"selectiveLogic"`
+	Probability         any      `json:"probability"`
+	UseProbability      bool     `json:"useProbability"`
+	Group               string   `json:"group"`
+	Depth               any      `json:"depth"`
+	Role                any      `json:"role"`
+	PreventRecursion    bool     `json:"preventRecursion"`
+	DelayUntilRecursion bool     `json:"delayUntilRecursion"`
+	Sticky              any      `json:"sticky"`
+	Cooldown            any      `json:"cooldown"`
+	Vectorized          any      `json:"vectorized"`
 }
 
 type normalizedTavernCard struct {
@@ -147,6 +198,7 @@ type normalizedTavernCard struct {
 	CharacterBook           *tavernCharacterBook
 	IsPNG                   bool
 	HasUserPlaceholder      bool
+	Warnings                []string
 }
 
 type pngTextChunk struct {
@@ -161,23 +213,48 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte, opts .
 		return CharacterCardImportResult{}, err
 	}
 	options := mergeCharacterCardImportOptions(opts...)
-	coverPath, err := s.importTavernCardCover(card, data)
+	snapshots, err := snapshotCharacterCardImportFiles(s.workspace)
 	if err != nil {
 		return CharacterCardImportResult{}, err
 	}
-	openingCount, err := s.importTavernCardOpeningPresets(card)
-	if err != nil {
-		return CharacterCardImportResult{}, err
+	rollback := func(cause error) (CharacterCardImportResult, error) {
+		if rollbackErr := restoreCharacterCardImportFiles(snapshots); rollbackErr != nil {
+			return CharacterCardImportResult{}, fmt.Errorf("%w；回滚导入文件失败: %v", cause, rollbackErr)
+		}
+		return CharacterCardImportResult{}, cause
 	}
 	loreStore := NewLoreStore(s.workspace)
 	existingItems, err := loreStore.ListAll()
 	if err != nil {
-		return CharacterCardImportResult{}, err
+		return rollback(err)
 	}
-	ops := buildTavernCardLoreOperations(card, filename, time.Now(), coverPath, options.UserCharacterName, newLoreNameAllocator(existingItems))
+	coverPath := ""
+	if card.IsPNG {
+		coverPath = tavernCardCoverPath
+	}
+	ops, importStats := buildTavernCardLoreOperations(card, filename, coverPath, options.UserCharacterName, newLoreNameAllocator(existingItems))
+	existingResidentBytes, err := loreStore.ResidentContentBytes()
+	if err != nil {
+		return rollback(err)
+	}
+	requiredKB := bytesToKB(existingResidentBytes + importStats.ResidentLoreBytes)
+	if requiredKB > maxTavernResidentLoreLimitKB {
+		return rollback(&ResidentLoreMaxLimitError{RequiredKB: requiredKB, MaximumKB: maxTavernResidentLoreLimitKB})
+	}
+	if options.ResidentLoreLimitKB > 0 && requiredKB > options.ResidentLoreLimitKB {
+		return rollback(&ResidentLoreLimitError{CurrentKB: options.ResidentLoreLimitKB, RequiredKB: requiredKB})
+	}
+	coverPath, err = s.importTavernCardCover(card, data)
+	if err != nil {
+		return rollback(err)
+	}
+	openingCount, err := s.importTavernCardOpeningPresets(card)
+	if err != nil {
+		return rollback(err)
+	}
 	applyResult, err := loreStore.ApplyOperations(fmt.Sprintf("导入酒馆角色卡「%s」", card.Name), ops)
 	if err != nil {
-		return CharacterCardImportResult{}, err
+		return rollback(err)
 	}
 
 	itemIDs := make([]string, 0, len(applyResult.Created))
@@ -197,7 +274,10 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte, opts .
 		UserCharacterName:    tavernUserCharacterName(card, options.UserCharacterName),
 		Compatibility:        tavernCardCompatibility(card),
 		Message:              fmt.Sprintf("已导入酒馆角色卡「%s」到互动资料库", card.Name),
+		ResidentLoreBytes:    importStats.ResidentLoreBytes,
+		RequiredLimitKB:      requiredKB,
 	}
+	result.Compatibility.Warnings = append(result.Compatibility.Warnings, importStats.Warnings...)
 	return result, nil
 }
 
@@ -206,14 +286,24 @@ func PreviewTavernCharacterCard(filename string, data []byte) (CharacterCardPrev
 	if err != nil {
 		return CharacterCardPreview{}, err
 	}
+	_, stats := buildTavernCardLoreOperations(card, filename, "", "玩家角色", newLoreNameAllocator(nil))
 	return CharacterCardPreview{
-		Name:                 card.Name,
-		EntryCount:           characterBookEntryCount(card.CharacterBook),
-		Tags:                 tavernCardTags(card.Tags...),
-		OpeningPresetCount:   tavernCardOpeningPresetCount(card),
-		UserPlaceholderFound: card.HasUserPlaceholder,
-		WillImportCover:      card.IsPNG,
-		Compatibility:        tavernCardCompatibility(card),
+		Name:                  card.Name,
+		EntryCount:            characterBookEntryCount(card.CharacterBook),
+		Tags:                  tavernCardTags(card.Tags...),
+		OpeningPresetCount:    tavernCardOpeningPresetCount(card),
+		UserPlaceholderFound:  card.HasUserPlaceholder,
+		WillImportCover:       card.IsPNG,
+		Compatibility:         tavernCardCompatibility(card),
+		EnabledEntryCount:     stats.EnabledEntryCount,
+		DisabledEntryCount:    stats.DisabledEntryCount,
+		ResidentEntryCount:    stats.ResidentEntryCount,
+		ResidentEntryBytes:    stats.ResidentEntryBytes,
+		ResidentLoreBytes:     stats.ResidentLoreBytes,
+		AutoEntryCount:        stats.AutoEntryCount,
+		RemovedRuntimeCount:   stats.RemovedRuntimeCount,
+		SanitizedMixedCount:   stats.SanitizedMixedCount,
+		OpeningTruncatedCount: tavernCardOpeningTruncatedCount(card),
 	}, nil
 }
 
@@ -223,14 +313,16 @@ func parseTavernCharacterCard(filename string, data []byte) (normalizedTavernCar
 	}
 
 	var rawJSON []byte
+	var parseWarnings []string
 	ext := strings.ToLower(filepath.Ext(filename))
 	switch {
 	case bytes.HasPrefix(data, pngSignature) || ext == ".png":
-		payload, err := extractTavernPayloadFromPNG(data)
+		payload, warnings, err := extractTavernPayloadFromPNG(data)
 		if err != nil {
 			return normalizedTavernCard{}, err
 		}
 		rawJSON = payload
+		parseWarnings = warnings
 	case ext == ".json" || bytes.HasPrefix(bytes.TrimSpace(data), []byte("{")):
 		rawJSON = bytes.TrimSpace(data)
 	default:
@@ -245,26 +337,55 @@ func parseTavernCharacterCard(filename string, data []byte) (normalizedTavernCar
 		return normalizedTavernCard{}, errors.New("角色卡缺少 name 字段")
 	}
 	card.IsPNG = bytes.HasPrefix(data, pngSignature) || ext == ".png"
+	card.Warnings = append(card.Warnings, parseWarnings...)
 	card.HasUserPlaceholder = tavernCardContainsUserPlaceholder(card)
 	return card, nil
 }
 
-func extractTavernPayloadFromPNG(data []byte) ([]byte, error) {
+func extractTavernPayloadFromPNG(data []byte) ([]byte, []string, error) {
 	chunks, err := extractPNGTextChunks(data)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	encoded := map[string]string{}
 	for _, chunk := range chunks {
-		if chunk.Keyword != "chara" {
+		if chunk.Keyword != "chara" && chunk.Keyword != "ccv3" {
 			continue
 		}
-		payload, err := decodeTavernTextPayload(chunk.Text)
-		if err != nil {
-			return nil, fmt.Errorf("解析 PNG 角色卡元数据失败: %w", err)
-		}
-		return payload, nil
+		encoded[chunk.Keyword] = chunk.Text
 	}
-	return nil, errors.New("PNG 中未找到酒馆角色卡 chara 元数据")
+	if text, ok := encoded["ccv3"]; ok {
+		payload, err := decodeTavernTextPayload(text)
+		if err != nil {
+			return nil, nil, fmt.Errorf("解析 PNG 角色卡 ccv3 元数据失败: %w", err)
+		}
+		warnings := []string{}
+		if legacyText, exists := encoded["chara"]; exists {
+			legacy, legacyErr := decodeTavernTextPayload(legacyText)
+			if legacyErr != nil || !jsonPayloadEqual(payload, legacy) {
+				warnings = append(warnings, "ccv3_conflict")
+			}
+		}
+		return payload, warnings, nil
+	}
+	if text, ok := encoded["chara"]; ok {
+		payload, err := decodeTavernTextPayload(text)
+		if err != nil {
+			return nil, nil, fmt.Errorf("解析 PNG 角色卡 chara 元数据失败: %w", err)
+		}
+		return payload, nil, nil
+	}
+	return nil, nil, errors.New("PNG 中未找到酒馆角色卡 ccv3 或 chara 元数据")
+}
+
+func jsonPayloadEqual(left, right []byte) bool {
+	var a, b any
+	if json.Unmarshal(left, &a) == nil && json.Unmarshal(right, &b) == nil {
+		leftJSON, _ := json.Marshal(a)
+		rightJSON, _ := json.Marshal(b)
+		return bytes.Equal(leftJSON, rightJSON)
+	}
+	return bytes.Equal(bytes.TrimSpace(left), bytes.TrimSpace(right))
 }
 
 func extractPNGTextChunks(data []byte) ([]pngTextChunk, error) {
@@ -467,26 +588,45 @@ func decodeTavernCardJSON(data []byte) (normalizedTavernCard, error) {
 	return card, nil
 }
 
-func buildTavernCardLoreOperations(card normalizedTavernCard, source string, importedAt time.Time, coverPath, userCharacterName string, names *loreNameAllocator) []LoreOperation {
+type tavernImportStats struct {
+	EnabledEntryCount   int
+	DisabledEntryCount  int
+	ResidentEntryCount  int
+	ResidentEntryBytes  int
+	ResidentLoreBytes   int
+	AutoEntryCount      int
+	RemovedRuntimeCount int
+	SanitizedMixedCount int
+	Warnings            []string
+}
+
+func buildTavernCardLoreOperations(card normalizedTavernCard, source, coverPath, userCharacterName string, names *loreNameAllocator) ([]LoreOperation, tavernImportStats) {
 	if names == nil {
 		names = newLoreNameAllocator(nil)
 	}
+	stats := tavernImportStats{}
 	cardLoreName := names.Claim(card.Name)
+	cardContent := renderTavernCardLoreContent(card, coverPath)
 	ops := []LoreOperation{
 		{
 			Op: "create",
 			Item: LoreItemInput{
-				Enabled:    loreEnabledPtr(true),
-				Type:       "character",
-				Name:       cardLoreName,
-				Importance: "major",
-				Tags:       tavernCardTags(append([]string{"酒馆角色卡", card.Name}, card.Tags...)...),
-				Content:    renderTavernCardLoreContent(card, source, importedAt, coverPath),
+				Enabled:          loreEnabledPtr(true),
+				Type:             "character",
+				Name:             cardLoreName,
+				Importance:       "major",
+				Tags:             tavernCardTags(append([]string{"酒馆角色卡", card.Name}, card.Tags...)...),
+				BriefDescription: naturalLanguageBrief(cardContent),
+				LoadMode:         LoreLoadModeResident,
+				Content:          cardContent,
+				Provenance:       tavernLoreProvenance("tavern_character_card", source, "character", card),
 			},
 		},
 	}
+	stats.ResidentLoreBytes += len([]byte(cardContent))
 	if card.HasUserPlaceholder {
 		name := names.Claim(tavernUserCharacterName(card, userCharacterName))
+		content := renderTavernUserPlaceholderLoreContent(card, name)
 		ops = append(ops, LoreOperation{
 			Op: "create",
 			Item: LoreItemInput{
@@ -495,71 +635,67 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source string, imp
 				Name:             name,
 				Importance:       "major",
 				Tags:             tavernCardTags("酒馆角色卡", "{{user}}", "玩家角色"),
-				BriefDescription: fmt.Sprintf("角色 %s。代表 Tavern 角色卡中的 {{user}} 占位符，可改名或补充为实际主角。上下文出现玩家角色相关内容时，一定要参考本项详情。", name),
-				Content:          renderTavernUserPlaceholderLoreContent(card, source, name),
+				BriefDescription: naturalLanguageBrief(content),
+				LoadMode:         LoreLoadModeResident,
+				Content:          content,
+				Provenance:       tavernLoreProvenance("tavern_character_card", source, "user", card),
 			},
 		})
+		stats.ResidentLoreBytes += len([]byte(content))
 	}
 	if card.CharacterBook == nil {
-		return ops
+		return ops, stats
 	}
 	for i, entry := range card.CharacterBook.Entries {
-		title := names.Claim(tavernBookEntryTitle(entry, i))
-		content := renderTavernBookEntryLoreContent(card.CharacterBook, entry, source)
-		if strings.TrimSpace(content) == "" {
+		if entry.Enabled != nil && !*entry.Enabled {
+			stats.DisabledEntryCount++
+		} else {
+			stats.EnabledEntryCount++
+		}
+		sanitized := sanitizeTavernBookEntry(entry)
+		if sanitized.Removed {
+			stats.RemovedRuntimeCount++
 			continue
 		}
+		if sanitized.MixedCleaned {
+			stats.SanitizedMixedCount++
+		}
+		title := names.Claim(tavernBookEntryTitle(entry, i))
+		content := sanitized.Content
+		loadMode := LoreLoadModeAuto
+		if entry.Constant {
+			loadMode = LoreLoadModeResident
+			stats.ResidentEntryCount++
+			if entry.Enabled == nil || *entry.Enabled {
+				stats.ResidentLoreBytes += len([]byte(content))
+				stats.ResidentEntryBytes += len([]byte(content))
+			}
+		} else {
+			stats.AutoEntryCount++
+		}
+		keywords := tavernCardTags(append(append([]string{}, entry.Keys...), entry.SecondaryKeys...)...)
 		tags := tavernCardTags("酒馆世界书", card.Name)
-		tags = append(tags, entry.Keys...)
 		ops = append(ops, LoreOperation{
 			Op: "create",
 			Item: LoreItemInput{
-				Enabled:    tavernBookEntryEnabled(entry),
-				Type:       "world",
-				Name:       title,
-				Importance: "important",
-				Tags:       tags,
-				Content:    content,
+				Enabled:          tavernBookEntryEnabled(entry),
+				Type:             inferTavernLoreType(title, content),
+				Name:             title,
+				Importance:       "important",
+				Tags:             tags,
+				Keywords:         keywords,
+				BriefDescription: naturalLanguageBrief(content),
+				LoadMode:         loadMode,
+				Content:          content,
+				Provenance:       tavernLoreProvenance("tavern_worldbook_entry", source, tavernEntryRecordID(entry, i), entry),
 			},
 		})
 	}
-	return ops
+	return ops, stats
 }
 
-func renderTavernCardLoreContent(card normalizedTavernCard, source string, importedAt time.Time, coverPath string) string {
+func renderTavernCardLoreContent(card normalizedTavernCard, coverPath string) string {
 	var sb strings.Builder
-	sb.WriteString("- 来源文件：")
-	sb.WriteString(source)
-	sb.WriteString("\n")
-	sb.WriteString("- 导入时间：")
-	sb.WriteString(importedAt.Format(time.RFC3339))
-	sb.WriteString("\n")
-	if card.Spec != "" || card.SpecVersion != "" {
-		sb.WriteString("- 格式：")
-		sb.WriteString(strings.TrimSpace(card.Spec + " " + card.SpecVersion))
-		sb.WriteString("\n")
-	}
-	if len(card.Tags) > 0 {
-		sb.WriteString("- 标签：")
-		sb.WriteString(strings.Join(card.Tags, "、"))
-		sb.WriteString("\n")
-	}
-	if card.Creator != "" {
-		sb.WriteString("- 创建者：")
-		sb.WriteString(card.Creator)
-		sb.WriteString("\n")
-	}
-	if card.CharacterVersion != "" {
-		sb.WriteString("- 角色卡版本：")
-		sb.WriteString(card.CharacterVersion)
-		sb.WriteString("\n")
-	}
-	if coverPath != "" {
-		sb.WriteString("- 封面图：")
-		sb.WriteString(coverPath)
-		sb.WriteString("\n")
-	}
-	sb.WriteString("\n")
 	if coverPath != "" {
 		sb.WriteString("![")
 		sb.WriteString(card.Name)
@@ -568,40 +704,37 @@ func renderTavernCardLoreContent(card normalizedTavernCard, source string, impor
 		sb.WriteString(")\n\n")
 	}
 
-	writeMarkdownSection(&sb, "角色描述", card.Description)
-	writeMarkdownSection(&sb, "性格", card.Personality)
-	writeMarkdownSection(&sb, "场景", card.Scenario)
-	writeMarkdownSection(&sb, "对话示例", card.MesExample)
-	writeMarkdownSection(&sb, "作者备注", card.CreatorNotes)
-	writeMarkdownSection(&sb, "创建者备注", card.CreatorComment)
-	writeMarkdownSection(&sb, "系统提示", card.SystemPrompt)
-	writeMarkdownSection(&sb, "历史后置提示", card.PostHistoryInstructions)
-
-	if card.CharacterBook != nil {
-		sb.WriteString("### 附带世界书\n\n")
-		if strings.TrimSpace(card.CharacterBook.Name) != "" {
-			sb.WriteString("- 世界书名称：")
-			sb.WriteString(strings.TrimSpace(card.CharacterBook.Name))
-			sb.WriteString("\n")
-		}
-		sb.WriteString("- 条目数：")
-		sb.WriteString(strconv.Itoa(characterBookEntryCount(card.CharacterBook)))
-		sb.WriteString("\n\n")
-	}
+	writeMarkdownSection(&sb, "角色描述", sanitizeTavernNaturalLanguage(card.Description))
+	writeMarkdownSection(&sb, "性格", sanitizeTavernNaturalLanguage(card.Personality))
+	writeMarkdownSection(&sb, "场景", sanitizeTavernNaturalLanguage(card.Scenario))
+	writeMarkdownSection(&sb, "对话示例", sanitizeTavernNaturalLanguage(card.MesExample))
+	writeMarkdownSection(&sb, "作者备注", sanitizeTavernRuntimeProneField(card.CreatorNotes))
+	writeMarkdownSection(&sb, "创建者备注", sanitizeTavernRuntimeProneField(card.CreatorComment))
+	writeMarkdownSection(&sb, "系统提示", sanitizeTavernRuntimeProneField(card.SystemPrompt))
+	writeMarkdownSection(&sb, "历史后置提示", sanitizeTavernRuntimeProneField(card.PostHistoryInstructions))
 	return strings.TrimSpace(sb.String())
 }
 
-func renderTavernUserPlaceholderLoreContent(card normalizedTavernCard, source, name string) string {
+func renderTavernUserPlaceholderLoreContent(card normalizedTavernCard, name string) string {
 	var sb strings.Builder
-	sb.WriteString("- 来源文件：")
-	sb.WriteString(source)
-	sb.WriteString("\n")
-	sb.WriteString("- 关联角色卡：")
-	sb.WriteString(card.Name)
-	sb.WriteString("\n\n")
 	sb.WriteString(name)
-	sb.WriteString(" 代表 Tavern 酒馆角色卡中的 `{{user}}` 占位符。请在这里补充玩家角色的姓名、身份、和角色卡主角的关系、可见设定，以及互动中应保持稳定的个人事实。\n")
+	sb.WriteString(" 是与 ")
+	sb.WriteString(card.Name)
+	sb.WriteString(" 互动的玩家角色。请补充姓名、身份、关系与需要保持稳定的个人事实。\n")
 	return strings.TrimSpace(sb.String())
+}
+
+func tavernEntryRecordID(entry tavernBookEntry, index int) string {
+	if entry.ID != 0 {
+		return fmt.Sprintf("%d", entry.ID)
+	}
+	return fmt.Sprintf("entry-%d", index+1)
+}
+
+func tavernLoreProvenance(kind, source, recordID string, record any) *LoreProvenance {
+	data, _ := json.Marshal(record)
+	sum := sha256.Sum256(data)
+	return &LoreProvenance{Kind: kind, SourceName: source, SourceRecordID: recordID, SourceHash: fmt.Sprintf("%x", sum[:])}
 }
 
 func writeMarkdownSection(sb *strings.Builder, title, content string) {
@@ -614,45 +747,6 @@ func writeMarkdownSection(sb *strings.Builder, title, content string) {
 	sb.WriteString("\n\n")
 	sb.WriteString(content)
 	sb.WriteString("\n\n")
-}
-
-func renderTavernBookEntryLoreContent(book *tavernCharacterBook, entry tavernBookEntry, source string) string {
-	content := normalizeCardText(entry.Content)
-	if content == "" && len(entry.Keys) == 0 && len(entry.SecondaryKeys) == 0 && strings.TrimSpace(entry.Comment) == "" {
-		return ""
-	}
-	var sb strings.Builder
-	sb.WriteString("- 来源文件：")
-	sb.WriteString(source)
-	sb.WriteString("\n")
-	if book != nil && strings.TrimSpace(book.Name) != "" {
-		sb.WriteString("- 世界书名称：")
-		sb.WriteString(strings.TrimSpace(book.Name))
-		sb.WriteString("\n")
-	}
-	if len(entry.Keys) > 0 {
-		sb.WriteString("- 关键词：")
-		sb.WriteString(strings.Join(entry.Keys, "、"))
-		sb.WriteString("\n")
-	}
-	if len(entry.SecondaryKeys) > 0 {
-		sb.WriteString("- 次级关键词：")
-		sb.WriteString(strings.Join(entry.SecondaryKeys, "、"))
-		sb.WriteString("\n")
-	}
-	sb.WriteString("- 启用：")
-	if entry.Enabled == nil {
-		sb.WriteString("未声明")
-	} else if *entry.Enabled {
-		sb.WriteString("是")
-	} else {
-		sb.WriteString("否")
-	}
-	sb.WriteString("\n\n")
-	if content != "" {
-		sb.WriteString(content)
-	}
-	return strings.TrimSpace(sb.String())
 }
 
 func tavernBookEntryTitle(entry tavernBookEntry, index int) string {
@@ -701,8 +795,18 @@ func mergeCharacterCardImportOptions(opts ...CharacterCardImportOptions) Charact
 		if name := strings.TrimSpace(opt.UserCharacterName); name != "" {
 			merged.UserCharacterName = name
 		}
+		if opt.ResidentLoreLimitKB > 0 {
+			merged.ResidentLoreLimitKB = opt.ResidentLoreLimitKB
+		}
 	}
 	return merged
+}
+
+func bytesToKB(value int) int {
+	if value <= 0 {
+		return 0
+	}
+	return (value + 1023) / 1024
 }
 
 func tavernUserCharacterName(card normalizedTavernCard, name string) string {

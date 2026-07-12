@@ -98,7 +98,8 @@ func TestAppUpdateWorkspaceSettingsPersists(t *testing.T) {
 		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
 		workspace: ws,
 	}
-	in := config.Settings{OpenAIModel: "ws-model"}
+	residentLimit := 64
+	in := config.Settings{OpenAIModel: "ws-model", ResidentLoreLimitKB: &residentLimit}
 	if _, err := a.UpdateWorkspaceSettings(in); err != nil {
 		t.Fatal(err)
 	}
@@ -108,6 +109,9 @@ func TestAppUpdateWorkspaceSettingsPersists(t *testing.T) {
 	}
 	if out.OpenAIModel != "ws-model" {
 		t.Fatalf("workspace model not persisted: %s", out.OpenAIModel)
+	}
+	if out.ResidentLoreLimitKB == nil || *out.ResidentLoreLimitKB != residentLimit || a.cfg.ResidentLoreLimitKB != residentLimit {
+		t.Fatalf("resident lore limit should persist and update runtime: file=%#v runtime=%d", out.ResidentLoreLimitKB, a.cfg.ResidentLoreLimitKB)
 	}
 }
 

@@ -76,6 +76,7 @@ function App() {
   const [characterCardTargetMode, setCharacterCardTargetMode] = useState<CharacterCardTargetMode>('new_book')
   const [characterCardBookTitle, setCharacterCardBookTitle] = useState('')
   const [characterCardUserName, setCharacterCardUserName] = useState('')
+  const [characterCardRaiseResidentLimit, setCharacterCardRaiseResidentLimit] = useState(false)
   const [characterCardPreviewing, setCharacterCardPreviewing] = useState(false)
   const [characterCardImporting, setCharacterCardImporting] = useState(false)
   const [characterCardError, setCharacterCardError] = useState('')
@@ -426,6 +427,7 @@ function App() {
     setCharacterCardTargetMode('new_book')
     setCharacterCardBookTitle('')
     setCharacterCardUserName('')
+    setCharacterCardRaiseResidentLimit(false)
     setCharacterCardPreviewing(false)
     setCharacterCardImporting(false)
     setCharacterCardError('')
@@ -451,6 +453,7 @@ function App() {
     setCharacterCardTargetMode('new_book')
     setCharacterCardBookTitle('')
     setCharacterCardUserName('')
+    setCharacterCardRaiseResidentLimit(false)
     setCharacterCardError('')
     setCharacterCardPreviewing(true)
     try {
@@ -484,6 +487,7 @@ function App() {
         targetMode: characterCardTargetMode,
         bookTitle: characterCardTargetMode === 'new_book' ? characterCardBookTitle.trim() : undefined,
         userCharacterName: characterCardPreview?.user_placeholder_found ? characterCardUserName.trim() : undefined,
+        raiseResidentLoreLimit: characterCardRaiseResidentLimit,
       })
       toast.success(result.message || t('importCard.importSuccess', { name: result.name }))
       if (characterCardTargetMode === 'new_book') {
@@ -506,7 +510,7 @@ function App() {
     } finally {
       setCharacterCardImporting(false)
     }
-  }, [characterCardBookTitle, characterCardFile, characterCardPreview?.user_placeholder_found, characterCardTargetMode, characterCardUserName, notifyVersionChange, refresh, refreshAll, resetCharacterCardImport, setMode, t, workspace])
+  }, [characterCardBookTitle, characterCardFile, characterCardPreview?.user_placeholder_found, characterCardRaiseResidentLimit, characterCardTargetMode, characterCardUserName, notifyVersionChange, refresh, refreshAll, resetCharacterCardImport, setMode, t, workspace])
 
   const handleActivateTab = useCallback((tab: Tab) => {
     const key = tabKey(tab)
@@ -786,6 +790,7 @@ function App() {
         targetMode={characterCardTargetMode}
         bookTitle={characterCardBookTitle}
         userCharacterName={characterCardUserName}
+        raiseResidentLoreLimit={characterCardRaiseResidentLimit}
         previewing={characterCardPreviewing}
         importing={characterCardImporting}
         error={characterCardError}
@@ -795,6 +800,7 @@ function App() {
         onTargetModeChange={setCharacterCardTargetMode}
         onBookTitleChange={setCharacterCardBookTitle}
         onUserCharacterNameChange={setCharacterCardUserName}
+        onRaiseResidentLoreLimitChange={setCharacterCardRaiseResidentLimit}
         onImport={handleCharacterCardImport}
       />
       <RemoteAccessLogin />

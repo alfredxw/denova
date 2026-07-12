@@ -35,34 +35,46 @@ const (
 
 // LoreItem 是用户可编辑的作品资料条目。固定字段只负责索引和展示，正文继续使用 Markdown。
 type LoreItem struct {
-	ID               string         `json:"id"`
-	Enabled          bool           `json:"enabled"`
-	Type             string         `json:"type"`
-	Name             string         `json:"name"`
-	Importance       string         `json:"importance"`
-	Tags             []string       `json:"tags"`
-	BriefDescription string         `json:"brief_description"`
-	Keywords         []string       `json:"keywords"`
-	LoadMode         string         `json:"load_mode"`
-	Content          string         `json:"content"`
-	CreatedAt        string         `json:"created_at"`
-	UpdatedAt        string         `json:"updated_at"`
-	Image            *LoreItemImage `json:"image,omitempty"`
+	ID               string          `json:"id"`
+	Enabled          bool            `json:"enabled"`
+	Type             string          `json:"type"`
+	Name             string          `json:"name"`
+	Importance       string          `json:"importance"`
+	Tags             []string        `json:"tags"`
+	BriefDescription string          `json:"brief_description"`
+	Keywords         []string        `json:"keywords"`
+	LoadMode         string          `json:"load_mode"`
+	Content          string          `json:"content"`
+	CreatedAt        string          `json:"created_at"`
+	UpdatedAt        string          `json:"updated_at"`
+	Image            *LoreItemImage  `json:"image,omitempty"`
+	Provenance       *LoreProvenance `json:"provenance,omitempty"`
 }
 
 type LoreItemInput struct {
-	ID               string         `json:"id"`
-	Enabled          *bool          `json:"enabled,omitempty"`
-	Type             string         `json:"type"`
-	Name             string         `json:"name"`
-	Importance       string         `json:"importance"`
-	Tags             []string       `json:"tags"`
-	BriefDescription string         `json:"brief_description"`
-	Keywords         []string       `json:"keywords"`
-	LoadMode         string         `json:"load_mode"`
-	Content          string         `json:"content"`
-	Image            *LoreItemImage `json:"image,omitempty"`
-	BaseRevision     string         `json:"base_revision,omitempty"`
+	ID               string          `json:"id"`
+	Enabled          *bool           `json:"enabled,omitempty"`
+	Type             string          `json:"type"`
+	Name             string          `json:"name"`
+	Importance       string          `json:"importance"`
+	Tags             []string        `json:"tags"`
+	BriefDescription string          `json:"brief_description"`
+	Keywords         []string        `json:"keywords"`
+	LoadMode         string          `json:"load_mode"`
+	Content          string          `json:"content"`
+	Image            *LoreItemImage  `json:"image,omitempty"`
+	Provenance       *LoreProvenance `json:"provenance,omitempty"`
+	BaseRevision     string          `json:"base_revision,omitempty"`
+}
+
+// LoreProvenance records an item's external origin without exposing it in
+// model-visible lore markdown. It is intentionally generic so future importers
+// can use the same storage boundary.
+type LoreProvenance struct {
+	Kind           string `json:"kind"`
+	SourceName     string `json:"source_name"`
+	SourceRecordID string `json:"source_record_id"`
+	SourceHash     string `json:"source_hash"`
 }
 
 // LoreItemImage is the current visual asset attached to a lore item.
@@ -221,6 +233,7 @@ func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
 		CreatedAt:        now,
 		UpdatedAt:        now,
 		Image:            input.Image,
+		Provenance:       input.Provenance,
 	})
 	if item.ID == "" {
 		item.ID = newUniqueLoreID(collection.Items, item.Name, item.Type)
@@ -275,6 +288,7 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 			CreatedAt:        collection.Items[i].CreatedAt,
 			UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
 			Image:            firstLoreImage(input.Image, collection.Items[i].Image),
+			Provenance:       collection.Items[i].Provenance,
 		})
 		if updated.Name == "" {
 			return LoreItem{}, errors.New("资料名称不能为空")
@@ -381,6 +395,7 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 				CreatedAt:        now,
 				UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
 				Image:            op.Item.Image,
+				Provenance:       op.Item.Provenance,
 			})
 			if item.Name == "" {
 				return LoreApplyResult{}, errors.New("创建资料时名称不能为空")
@@ -419,6 +434,7 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 				CreatedAt:        next[idx].CreatedAt,
 				UpdatedAt:        time.Now().UTC().Format(time.RFC3339Nano),
 				Image:            firstLoreImage(op.Item.Image, next[idx].Image),
+				Provenance:       next[idx].Provenance,
 			})
 			if op.Item.Tags == nil {
 				updated.Tags = append([]string(nil), next[idx].Tags...)
@@ -633,6 +649,7 @@ func (s *LoreStore) ResidentContextMarkdown() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	var sb strings.Builder
 	totalChars := 0
 	for _, item := range items {
@@ -655,6 +672,22 @@ func (s *LoreStore) ResidentContextMarkdown() (string, error) {
 		log.Printf("[lore-context] resident context too long chars=%d threshold=%d", totalChars, LoreResidentTotalWarningChars)
 	}
 	return strings.TrimSpace(sb.String()), nil
+}
+
+// ResidentContentBytes returns the exact UTF-8 size of enabled resident lore
+// bodies. Import budget checks use the same body set as model context assembly.
+func (s *LoreStore) ResidentContentBytes() (int, error) {
+	items, err := s.List()
+	if err != nil {
+		return 0, err
+	}
+	total := 0
+	for _, item := range items {
+		if item.LoadMode == LoreLoadModeResident {
+			total += len([]byte(strings.TrimSpace(item.Content)))
+		}
+	}
+	return total, nil
 }
 
 func (s *LoreStore) IndexMarkdown() (string, error) {
@@ -826,7 +859,24 @@ func normalizeLoreItem(item LoreItem) LoreItem {
 		item.BriefDescription = defaultLoreBriefDescription(item)
 	}
 	item.Image = normalizeLoreItemImage(item.Image)
+	item.Provenance = normalizeLoreProvenance(item.Provenance)
 	return item
+}
+
+func normalizeLoreProvenance(value *LoreProvenance) *LoreProvenance {
+	if value == nil {
+		return nil
+	}
+	normalized := &LoreProvenance{
+		Kind:           strings.TrimSpace(value.Kind),
+		SourceName:     strings.TrimSpace(value.SourceName),
+		SourceRecordID: strings.TrimSpace(value.SourceRecordID),
+		SourceHash:     strings.TrimSpace(value.SourceHash),
+	}
+	if normalized.Kind == "" && normalized.SourceName == "" && normalized.SourceRecordID == "" && normalized.SourceHash == "" {
+		return nil
+	}
+	return normalized
 }
 
 func firstLoreImage(value, fallback *LoreItemImage) *LoreItemImage {

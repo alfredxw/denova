@@ -46,8 +46,8 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.InteractiveStageLineHeight == nil || *s.InteractiveStageLineHeight != 1.78 {
 		t.Fatalf("InteractiveStageLineHeight default")
 	}
-	if s.InteractiveRuleLoreLimitKB == nil || *s.InteractiveRuleLoreLimitKB != DefaultInteractiveRuleLoreLimitKB {
-		t.Fatalf("InteractiveRuleLoreLimitKB default")
+	if s.ResidentLoreLimitKB == nil || *s.ResidentLoreLimitKB != DefaultResidentLoreLimitKB {
+		t.Fatalf("ResidentLoreLimitKB default")
 	}
 	if s.ChapterFilenameFormat != "ch{order:05}-{chapter}-{title}.md" {
 		t.Fatalf("ChapterFilenameFormat default: %s", s.ChapterFilenameFormat)
@@ -146,7 +146,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		IDEImagePresetID:           "realistic",
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
-		InteractiveRuleLoreLimitKB: intPtr(DefaultInteractiveRuleLoreLimitKB),
+		ResidentLoreLimitKB:        intPtr(DefaultResidentLoreLimitKB),
 	}
 	child := Settings{
 		OpenAIModel:                "c-model", // override
@@ -174,7 +174,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		RemoteAccessPasswordHash:   "$2a$10$hash",
 		InteractiveStageFontSize:   intPtr(18),
 		InteractiveStageLineHeight: floatPtr(1.95),
-		InteractiveRuleLoreLimitKB: intPtr(MaxInteractiveRuleLoreLimitKB + 1),
+		ResidentLoreLimitKB:        intPtr(MaxResidentLoreLimitKB + 1),
 	}
 	out := Merge(parent, child)
 	if out.OpenAIBaseURL != "https://parent" {
@@ -249,8 +249,20 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	if out.InteractiveStageLineHeight == nil || *out.InteractiveStageLineHeight != 1.95 {
 		t.Fatalf("InteractiveStageLineHeight should override parent")
 	}
-	if out.InteractiveRuleLoreLimitKB == nil || *out.InteractiveRuleLoreLimitKB != MaxInteractiveRuleLoreLimitKB {
-		t.Fatalf("InteractiveRuleLoreLimitKB should clamp to max")
+	if out.ResidentLoreLimitKB == nil || *out.ResidentLoreLimitKB != MaxResidentLoreLimitKB {
+		t.Fatalf("ResidentLoreLimitKB should clamp to max")
+	}
+}
+
+func TestLegacyInteractiveRuleLoreLimitMigratesToResidentLimit(t *testing.T) {
+	legacy := 64
+	out := Merge(DefaultSettings(), Settings{InteractiveRuleLoreLimitKB: &legacy})
+	if out.ResidentLoreLimitKB == nil || *out.ResidentLoreLimitKB != legacy {
+		t.Fatalf("legacy limit should migrate: %#v", out)
+	}
+	prepared := sanitizeEditableSettings(Settings{InteractiveRuleLoreLimitKB: &legacy})
+	if prepared.ResidentLoreLimitKB == nil || *prepared.ResidentLoreLimitKB != legacy || prepared.InteractiveRuleLoreLimitKB != nil {
+		t.Fatalf("subsequent writes should use resident_lore_limit_kb: %#v", prepared)
 	}
 }
 

@@ -121,6 +121,17 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	if err != nil {
 		return nil, err
 	}
+	residentLore, err := book.NewLoreStore(c.workspace).ResidentContextMarkdown()
+	if err != nil {
+		return nil, fmt.Errorf("读取常驻资料失败: %w", err)
+	}
+	residentContentBytes, err := book.NewLoreStore(c.workspace).ResidentContentBytes()
+	if err != nil {
+		return nil, fmt.Errorf("读取常驻资料预算失败: %w", err)
+	}
+	if residentContentBytes > residentLoreLimitBytes(c.cfg) {
+		return nil, fmt.Errorf("常驻资料合计超过 %d KB；请缩短常驻正文、改为按需资料或提高常驻资料上限", residentLoreLimitBytes(c.cfg)/1024)
+	}
 	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, interactiveStoryRuntimeContextBytes)
 	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, interactiveStoryRuntimeContextBytes)
 	strategyPrompt := interactive.StoryDirectorStrategyPromptMarkdown(storyDirector)
@@ -139,7 +150,10 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		PreviousTurnsSummary:        turnMemory.PreviousSummary,
 		LoreContext:                 loreRuntime,
 	})
-	history := make([]*schema.Message, 0, len(turnMemory.Turns)*2+3)
+	history := make([]*schema.Message, 0, len(turnMemory.Turns)*2+4)
+	if residentLore != "" {
+		history = append(history, schema.UserMessage(agentcontext.StandaloneMessage("常驻资料库", residentLore, "source: enabled resident lore; stable leading context")))
+	}
 	if storyCtx.Snapshot.ContextCompaction != nil && strings.TrimSpace(storyCtx.Snapshot.ContextCompaction.Summary) != "" {
 		history = append(history, agent.NewContextCompactionSummaryMessage(storyCtx.Snapshot.ContextCompaction.Epoch, storyCtx.Snapshot.ContextCompaction.Summary))
 	}
@@ -150,7 +164,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	}
 	history = agent.ApplyToolResultContextPolicyForConversation(history, c.ToolResultContextPolicy())
 	history = append(history, schema.UserMessage(prompts.InteractiveStoryTurnInstruction(agentMessage, tellerTurnContextPrompt, runtimeContext)))
-	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, storyMemory, directorPlanVisible, loreRuntime, ruleSummary, strategyPrompt, turnMemory, agentMessage)
+	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, storyMemory, directorPlanVisible, joinLoreContextSections(residentLore, loreRuntime), ruleSummary, strategyPrompt, turnMemory, agentMessage)
 	c.mu.Lock()
 	c.lastSources = sourceSummary
 	c.mu.Unlock()

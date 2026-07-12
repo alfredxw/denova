@@ -64,7 +64,7 @@ type Config struct {
 	VersionAgentEnabled         bool                         `toml:"-"`
 	VersionAgentCharThreshold   int                          `toml:"-"`
 	InteractiveReplyTargetChars int                          `toml:"-"`
-	InteractiveRuleLoreLimitKB  int                          `toml:"-"`
+	ResidentLoreLimitKB         int                          `toml:"-"`
 	ResumeLastWorkspace         bool                         `toml:"-"`
 	UpdateCheckEnabled          bool                         `toml:"-"`
 }
@@ -127,7 +127,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		VersionAgentEnabled:         settingsBool(s.VersionAgentEnabled, true),
 		VersionAgentCharThreshold:   settingsInt(s.VersionAgentCharThreshold, 3000),
 		InteractiveReplyTargetChars: 2000,
-		InteractiveRuleLoreLimitKB:  interactiveRuleLoreLimitKB(s.InteractiveRuleLoreLimitKB),
+		ResidentLoreLimitKB:         residentLoreLimitKB(s.ResidentLoreLimitKB),
 		ResumeLastWorkspace:         true,
 		UpdateCheckEnabled:          settingsBool(s.UpdateCheckEnabled, true),
 	}
@@ -223,8 +223,8 @@ func settingsFromConfig(cfg *Config) Settings {
 		IDEImagePresetID:         cfg.IDEImagePresetID,
 		WritingSkillDefault:      cfg.WritingSkillDefault,
 	}
-	if cfg.InteractiveRuleLoreLimitKB > 0 {
-		settings.InteractiveRuleLoreLimitKB = &cfg.InteractiveRuleLoreLimitKB
+	if cfg.ResidentLoreLimitKB > 0 {
+		settings.ResidentLoreLimitKB = &cfg.ResidentLoreLimitKB
 	}
 	if cfg.HideChapterBodyLiveOutput {
 		settings.HideChapterBodyLiveOutput = &cfg.HideChapterBodyLiveOutput
@@ -327,7 +327,7 @@ func Load() *Config {
 			VersionAgentEnabled:         settingsBool(d.VersionAgentEnabled, true),
 			VersionAgentCharThreshold:   settingsInt(d.VersionAgentCharThreshold, 3000),
 			InteractiveReplyTargetChars: 2000,
-			InteractiveRuleLoreLimitKB:  interactiveRuleLoreLimitKB(d.InteractiveRuleLoreLimitKB),
+			ResidentLoreLimitKB:         residentLoreLimitKB(d.ResidentLoreLimitKB),
 			ResumeLastWorkspace:         true,
 			UpdateCheckEnabled:          settingsBool(d.UpdateCheckEnabled, true),
 		}

@@ -51,20 +51,23 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(history) != 3 {
-		t.Fatalf("history length = %d, want 3", len(history))
+	if len(history) != 4 {
+		t.Fatalf("history length = %d, want 4", len(history))
 	}
-	if history[0].Role != schema.User || history[0].Content != "我推开酒馆的门" {
+	if history[0].Role != schema.User || !strings.Contains(history[0].Content, "常驻资料库") || !strings.Contains(history[0].Content, "林川：谨慎的幸存者") || !strings.Contains(history[0].Content, "世界已进入黄昏末日") {
+		t.Fatalf("history[0] should be stable resident lore: %#v", history[0])
+	}
+	if history[1].Role != schema.User || history[1].Content != "我推开酒馆的门" {
 		t.Fatalf("history[0] mismatch: %#v", history[0])
 	}
-	if strings.Contains(history[0].Content, "故事记忆") || strings.Contains(history[0].Content, "最高篇幅约束") {
-		t.Fatalf("history[0] should remain plain story history, got: %#v", history[0])
+	if strings.Contains(history[1].Content, "故事记忆") || strings.Contains(history[1].Content, "最高篇幅约束") {
+		t.Fatalf("history[1] should remain plain story history, got: %#v", history[1])
 	}
-	if history[1].Role != schema.Assistant || history[1].Content != "门后传来低沉的风声。" {
-		t.Fatalf("history[1] mismatch: %#v", history[1])
-	}
-	if history[2].Role != schema.User || !strings.Contains(history[2].Content, "我点燃火把") {
+	if history[2].Role != schema.Assistant || history[2].Content != "门后传来低沉的风声。" {
 		t.Fatalf("history[2] mismatch: %#v", history[2])
+	}
+	if history[3].Role != schema.User || !strings.Contains(history[3].Content, "我点燃火把") {
+		t.Fatalf("history[3] mismatch: %#v", history[3])
 	}
 	for _, want := range []string{
 		"导演本轮上下文规则",
@@ -78,21 +81,21 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"source: director.md visible section",
 		"bounded",
 	} {
-		if !strings.Contains(history[2].Content, want) {
-			t.Fatalf("history[2] should include %q: %#v", want, history[2])
+		if !strings.Contains(history[3].Content, want) {
+			t.Fatalf("history[3] should include %q: %#v", want, history[3])
 		}
 	}
-	if strings.Contains(history[2].Content, "随机事件率") {
+	if strings.Contains(history[3].Content, "随机事件率") {
 		t.Fatalf("story prose prompt should not receive event probability controls: %#v", history[2])
 	}
 	for _, forbidden := range []string{"经典叙事者", "林川：谨慎的幸存者", "世界已进入黄昏末日。"} {
-		if strings.Contains(history[2].Content, forbidden) {
-			t.Fatalf("history[2] should not include %q: %#v", forbidden, history[2])
+		if strings.Contains(history[3].Content, forbidden) {
+			t.Fatalf("history[3] should not include %q: %#v", forbidden, history[3])
 		}
 	}
 	for _, forbidden := range []string{"末日开端", "主角醒来发现世界已末日"} {
-		if strings.Contains(history[2].Content, forbidden) {
-			t.Fatalf("history[2] should keep story metadata out of the turn instruction %q: %#v", forbidden, history[2])
+		if strings.Contains(history[3].Content, forbidden) {
+			t.Fatalf("history[3] should keep story metadata out of the turn instruction %q: %#v", forbidden, history[3])
 		}
 	}
 	sources := conversation.ContextSourceSummary()

@@ -8,11 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 游戏模式：流式回复正常结束、请求报错或用户中断后，消息底部现在都会显示复制操作；未落盘的失败/中断回合也会显示重试操作，并使用原始玩家输入重新发起请求。
+- Game Mode: Message actions now expose Copy after normal stream completion, request errors, and user interruptions. Failed or interrupted turns that were not persisted also expose Retry and resend the original player input.
 - WebUI：修复裸 `Esc` 会全局隐藏右侧 AI 栏、与输入法取消候选或重输冲突的问题；写作与游戏模式统一改用 VS Code 风格的 `Ctrl+Alt+B`（macOS 为 `⌘⌥B`）切换右侧栏，并清理模式切换后已销毁编辑器遗留的按键监听错误。
 - WebUI: Fixed bare `Esc` globally hiding the right AI sidebar and conflicting with IME candidate cancellation or re-entry. Writing and Game modes now use the VS Code-style `Ctrl+Alt+B` (`⌘⌥B` on macOS) to toggle the right sidebar, and stale keyboard listeners no longer access a destroyed editor after mode changes.
 
 ### Added
 
+- 书籍管理：酒馆角色卡导入升级为 Denova 原生创作资产迁移。PNG 优先读取 `ccv3`、回退 `chara`；世界书条目会清洗脚本、MVU/ZOD、变量块、状态栏和 HTML 运行时，只保留角色、世界、地点、势力、规则与物品资料。主/次关键词合并为搜索别名，不参与自动触发；来源以模型不可见的 `provenance` 保存。导入预览新增启用/禁用、常驻/按需、运行时清洗、扩展丢弃、有效开场和常驻字节预算统计。
+- Books: Tavern character-card import now migrates into native Denova creative assets. PNG imports prefer `ccv3` and fall back to `chara`; world-book entries remove scripts, MVU/ZOD, variable blocks, status bars, and HTML runtime content while retaining character, world, location, faction, rule, and item lore. Primary and secondary keys merge into search aliases without automatic triggering, and origins are stored as model-invisible `provenance`. Preview now reports enabled/disabled and resident/on-demand lore, runtime cleanup, discarded extensions, usable openings, and resident-byte budgets.
+- WebUI：角色卡导入超出常驻资料预算时必须显式确认提升上限；上限修改与导入按同一事务处理，失败会回滚配置、资料、封面和开场，新建书失败会清理空工作区。开场只保留纯文本叙事，最多 4,000 字并报告截断；HTML 首页、正则触发标记、定制提示和占坑标题不会导入。
+- WebUI: Character-card imports that exceed the resident-lore budget now require explicit confirmation to raise the limit. The setting change and import share one transaction: failures restore settings, lore, cover, and openings, and failed new-book imports remove the empty workspace. Openings keep narrative text only, cap at 4,000 characters with truncation reporting, and discard HTML home screens, regex trigger markers, customized prompts, and placeholder-only titles.
 - 游戏模式：故事导演新增分支级 `lore-context.md` 资料工作集，与 `director.md` 同步创建、校验、分支继承和版本冲突保护。Director 通过唯一名称 `[[资料名称]]` 分配当前、候场和暂离场资料；Game Agent 自动完整加载全部启用规则、当前引用和玩家直接点名的临时资料，候场与暂离场资料保持导演私密。资料目录改为可分页审阅，Director 可按名称读取正文，并会在资料库 revision 变化或本回合临时召回资料时重新判断是否晋升角色。资料重命名会同步改写工作集引用，被引用资料不能直接禁用或删除。
 - Game Mode: Added branch-scoped `lore-context.md` working sets alongside `director.md`, with synchronized creation, validation, branch inheritance, and revision-conflict protection. Directors assign active, candidate, and offstage lore through unique-name `[[Lore Name]]` references. The Game Agent automatically loads every enabled rule, active references, and temporary lore explicitly named by the player, while candidate and offstage entries remain Director-private. Lore catalogs are now pageable, Directors can read bodies by name, and lore revision changes or committed temporary recalls trigger casting review. Lore renames rewrite working-set references, while referenced entries cannot be disabled or deleted directly.
 - WebUI：导演控制台在剧透确认后分别展示和编辑 `director.md` 与 `lore-context.md`，游戏模式工作区设置新增“全局规则资料上限”；规则总量超限时明确报错，不再静默截断或遗漏后排规则。
@@ -32,6 +38,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Agent：写作与游戏模式现在统一加载全部 `enabled && load_mode=resident` 资料，并按 Lore ID 生成稳定的前置上下文；按需资料只通过 Director 工作集、唯一名称或 `list_lore_items` / `read_lore_items` 工具读取，不再进行每轮关键词扫描。常驻资料配置从 `interactive_rule_lore_limit_kb` 迁移为工作区级 `resident_lore_limit_kb`（默认 32 KB，最大 1024 KB），旧键读取后会在后续保存时写为新键。
+- Agent: Writing and Game modes now load every `enabled && load_mode=resident` item through a Lore-ID-sorted stable leading context. On-demand lore is read only through the Director working set, an exact unique name, or `list_lore_items` / `read_lore_items`, with no per-turn keyword scan. The resident-lore setting migrates from `interactive_rule_lore_limit_kb` to workspace-level `resident_lore_limit_kb` (32 KB default, 1024 KB maximum); legacy values are read and saved back under the new key.
+- Beta API：角色卡兼容性预览从酒馆字段清单改为 Denova 能力、清洗统计和常驻预算；不再输出旧 `imported_fields` / `downgraded_fields` / `unsupported_fields` 结构。酒馆 selective logic、position/order/depth/role、概率、分组、递归、sticky/cooldown 与 vectorized 加载语义均被忽略。
+- Beta API: Character-card compatibility previews now expose Denova capabilities, cleanup statistics, and resident budgets instead of the old `imported_fields` / `downgraded_fields` / `unsupported_fields` structure. Tavern selective logic, position/order/depth/role, probability, grouping, recursion, sticky/cooldown, and vectorized loading semantics are ignored.
 - WebUI：方案预设中的注入规则、事件卡、记忆结构与状态系统列表统一为轻量高密度样式，移除选中项左侧高亮边，缩小拖拽手柄和行高，并用中性底色与细描边表达选中状态；状态结构树新增低对比层级导线与更紧凑的缩进，TRPG 检定流程导航改为容器响应网格，不再在窄区域产生横向滚动。
 - WebUI: Preset injection rules, event cards, memory structures, and actor-state lists now share a lighter, denser style with no bright selected-edge stripe, smaller drag handles and row heights, and neutral selected surfaces. The actor-state tree adds subtle hierarchy guides and tighter indentation, while TRPG workflow navigation now uses a container-responsive grid instead of horizontal scrolling in narrow spaces.
 - WebUI：“书籍设定”默认 Pin 扩展为大纲、规则、进度、灵感和状态，并自动迁移仍使用旧三项默认值的工作区；快捷标签从固定两列改为按内容宽度自适应换行，在保持舒适间距的同时提升侧栏信息密度。

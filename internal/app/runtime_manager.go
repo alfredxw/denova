@@ -758,6 +758,16 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.VersionAgentCharThreshold != nil {
 		cfg.VersionAgentCharThreshold = appSettingsInt(settings.VersionAgentCharThreshold, 3000)
 	}
+	residentLimit := settings.ResidentLoreLimitKB
+	if residentLimit == nil {
+		residentLimit = settings.InteractiveRuleLoreLimitKB
+	}
+	if residentLimit != nil {
+		cfg.ResidentLoreLimitKB = appSettingsInt(residentLimit, config.DefaultResidentLoreLimitKB)
+		if cfg.ResidentLoreLimitKB > config.MaxResidentLoreLimitKB {
+			cfg.ResidentLoreLimitKB = config.MaxResidentLoreLimitKB
+		}
+	}
 }
 
 func syncRuntimeDiagnostics(cfg *config.Config) {
