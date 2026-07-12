@@ -15,6 +15,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/lithammer/fuzzysearch/fuzzy"
+
 	"denova/internal/workspacepath"
 )
 
@@ -28,9 +30,12 @@ const (
 	LoreResidentItemWarningChars  = 8000
 	LoreResidentTotalWarningChars = 40000
 
-	LoreIndexDefaultMaxBytes   = 64 * 1024
-	LoreIndexDefaultQueryLimit = 20
-	LoreIndexMaxQueryLimit     = 50
+	LoreIndexDefaultMaxBytes = 64 * 1024
+	LoreIndexDefaultLimit    = 10
+	LoreIndexMaxLimit        = 50
+
+	LoreIndexMatchAny = "any"
+	LoreIndexMatchAll = "all"
 )
 
 // LoreItem 是用户可编辑的作品资料条目。固定字段只负责索引和展示，正文继续使用 Markdown。
@@ -124,12 +129,12 @@ type loreNameAllocator struct {
 	used map[string]bool
 }
 
-// LoreIndexOptions controls model-visible lore index rendering.
-// Empty options render a compact all-item index; query/type options render a
-// narrower searchable view without including full lore content.
+// LoreIndexOptions controls model-visible lore index rendering. Keywords are
+// matched independently; Match selects OR (any) or AND (all) semantics.
 type LoreIndexOptions struct {
-	Query           string
-	Type            string
+	Keywords        []string
+	Match           string
+	Types           []string
 	Limit           int
 	Offset          int
 	Paginate        bool
@@ -637,11 +642,11 @@ func (s *LoreStore) LoreIndexMarkdown(options LoreIndexOptions) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	entries, total := filterLoreIndexEntries(items, options)
+	entries, matchedTotal, libraryTotal := filterLoreIndexEntries(items, options)
 	if len(entries) == 0 && options.OmitTitle {
 		return "", nil
 	}
-	return renderLoreIndexMarkdown(entries, total, options), nil
+	return renderLoreIndexMarkdown(entries, matchedTotal, libraryTotal, options), nil
 }
 
 func (s *LoreStore) ResidentContextMarkdown() (string, error) {
@@ -1264,58 +1269,240 @@ func formatLoreItemMarkdown(item LoreItem, includeContent bool) string {
 
 type loreIndexEntry struct {
 	Item         LoreItem
+	MatchedTerms []string
 	MatchSources []string
+	Score        int
 }
 
-func filterLoreIndexEntries(items []LoreItem, options LoreIndexOptions) ([]loreIndexEntry, int) {
-	query := strings.TrimSpace(options.Query)
-	itemType := normalizeOptionalLoreType(options.Type)
-	shouldLimit := options.Paginate || query != "" || itemType != ""
+func filterLoreIndexEntries(items []LoreItem, options LoreIndexOptions) ([]loreIndexEntry, int, int) {
+	keywords := normalizeLoreIndexKeywords(options.Keywords)
+	types := normalizeLoreIndexTypes(options.Types)
+	match := normalizeLoreIndexMatch(options.Match)
+	shouldLimit := options.Paginate || len(keywords) > 0 || len(types) > 0
 	limit := normalizeLoreIndexLimit(options.Limit)
 	matched := make([]loreIndexEntry, 0, len(items))
-	total := 0
+	libraryTotal := 0
 	for _, item := range items {
 		if options.ExcludeResident && item.LoadMode == LoreLoadModeResident {
 			continue
 		}
-		if itemType != "" && item.Type != itemType {
+		libraryTotal++
+		if len(types) > 0 && !types[item.Type] {
 			continue
 		}
-		matchSources := loreItemMatchSources(item, query)
-		if query != "" && len(matchSources) == 0 {
+		entry := matchLoreIndexEntry(item, keywords)
+		if len(keywords) > 0 && !loreIndexEntrySatisfies(entry, len(keywords), match) {
 			continue
 		}
-		total++
-		matched = append(matched, loreIndexEntry{Item: item, MatchSources: matchSources})
+		matched = append(matched, entry)
 	}
+	sortLoreIndexEntries(matched, len(keywords) > 0)
+	matchedTotal := len(matched)
 	if !shouldLimit {
-		return matched, len(matched)
+		return matched, matchedTotal, libraryTotal
 	}
 	offset := options.Offset
 	if offset < 0 {
 		offset = 0
 	}
 	if offset >= len(matched) {
-		return nil, total
+		return nil, matchedTotal, libraryTotal
 	}
 	end := offset + limit
 	if end > len(matched) {
 		end = len(matched)
 	}
-	return matched[offset:end], total
+	return matched[offset:end], matchedTotal, libraryTotal
+}
+
+func normalizeLoreIndexKeywords(keywords []string) []string {
+	result := make([]string, 0, len(keywords))
+	seen := map[string]bool{}
+	for _, keyword := range keywords {
+		keyword = normalizeLoreSearchText(keyword)
+		if keyword == "" || seen[keyword] {
+			continue
+		}
+		seen[keyword] = true
+		result = append(result, keyword)
+	}
+	return result
+}
+
+func normalizeLoreIndexTypes(types []string) map[string]bool {
+	result := map[string]bool{}
+	for _, itemType := range types {
+		itemType = strings.TrimSpace(itemType)
+		if itemType != "" {
+			result[normalizeLoreType(itemType)] = true
+		}
+	}
+	return result
+}
+
+func normalizeLoreIndexMatch(match string) string {
+	if strings.EqualFold(strings.TrimSpace(match), LoreIndexMatchAll) {
+		return LoreIndexMatchAll
+	}
+	return LoreIndexMatchAny
+}
+
+func normalizeLoreSearchText(value string) string {
+	return strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(value)), " "))
+}
+
+func matchLoreIndexEntry(item LoreItem, keywords []string) loreIndexEntry {
+	entry := loreIndexEntry{Item: item}
+	for _, keyword := range keywords {
+		score, sources := matchLoreIndexTerm(item, keyword)
+		if score <= 0 {
+			continue
+		}
+		entry.MatchedTerms = append(entry.MatchedTerms, keyword)
+		entry.Score += score
+		for _, source := range sources {
+			entry.MatchSources = appendUniqueString(entry.MatchSources, source)
+		}
+	}
+	return entry
+}
+
+func matchLoreIndexTerm(item LoreItem, keyword string) (int, []string) {
+	bestScore := 0
+	sources := []string{}
+	recordMatch := func(label string, weight int) {
+		if weight > bestScore {
+			bestScore = weight
+			sources = []string{label}
+			return
+		}
+		if weight == bestScore {
+			sources = appendUniqueString(sources, label)
+		}
+	}
+	matchContains := func(label string, weight int, values ...string) {
+		if bestScore > weight {
+			return
+		}
+		for _, value := range values {
+			if strings.Contains(normalizeLoreSearchText(value), keyword) {
+				recordMatch(label, weight)
+				return
+			}
+		}
+	}
+	matchFuzzy := func(label string, weight int, values ...string) {
+		if bestScore > weight {
+			return
+		}
+		for index, value := range values {
+			if index >= 32 {
+				return
+			}
+			normalized := normalizeLoreSearchText(value)
+			if strings.Contains(normalized, keyword) {
+				continue
+			}
+			if loreShortMetadataFuzzyMatch(keyword, normalized) {
+				recordMatch(label, weight)
+				return
+			}
+		}
+	}
+
+	matchContains("ID", 120, item.ID)
+	matchContains("名称", 115, item.Name)
+	matchContains("关键词", 105, item.Keywords...)
+	matchContains("标签", 95, item.Tags...)
+	matchFuzzy("模糊名称", 85, item.Name)
+	matchFuzzy("模糊关键词", 75, item.Keywords...)
+	matchFuzzy("模糊标签", 65, item.Tags...)
+	matchContains("简介", 60, item.BriefDescription)
+	matchContains("正文", 40, item.Content)
+	return bestScore, sources
+}
+
+func loreShortMetadataFuzzyMatch(keyword, candidate string) bool {
+	keywordRunes := utf8.RuneCountInString(keyword)
+	candidateRunes := utf8.RuneCountInString(candidate)
+	if keywordRunes < 3 || candidateRunes < 3 || keywordRunes > 48 || candidateRunes > 48 {
+		return false
+	}
+	maxDistance := 1
+	if keywordRunes >= 8 {
+		maxDistance = 2
+	}
+	if keywordRunes >= 16 {
+		maxDistance = 3
+	}
+	keywordChars := []rune(keyword)
+	candidateChars := []rune(candidate)
+	minWindow := keywordRunes - maxDistance
+	if minWindow < 3 {
+		minWindow = 3
+	}
+	maxWindow := keywordRunes + maxDistance
+	if maxWindow > candidateRunes {
+		maxWindow = candidateRunes
+	}
+	for width := minWindow; width <= maxWindow; width++ {
+		for start := 0; start+width <= candidateRunes; start++ {
+			if fuzzy.LevenshteinDistance(string(keywordChars), string(candidateChars[start:start+width])) <= maxDistance {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func loreIndexEntrySatisfies(entry loreIndexEntry, keywordCount int, match string) bool {
+	if match == LoreIndexMatchAll {
+		return len(entry.MatchedTerms) == keywordCount
+	}
+	return len(entry.MatchedTerms) > 0
+}
+
+func sortLoreIndexEntries(entries []loreIndexEntry, ranked bool) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		if ranked && entries[i].Score != entries[j].Score {
+			return entries[i].Score > entries[j].Score
+		}
+		if ranked && len(entries[i].MatchedTerms) != len(entries[j].MatchedTerms) {
+			return len(entries[i].MatchedTerms) > len(entries[j].MatchedTerms)
+		}
+		if rankI, rankJ := loreImportanceRank(entries[i].Item.Importance), loreImportanceRank(entries[j].Item.Importance); rankI != rankJ {
+			return rankI < rankJ
+		}
+		if entries[i].Item.Type != entries[j].Item.Type {
+			return entries[i].Item.Type < entries[j].Item.Type
+		}
+		if entries[i].Item.Name != entries[j].Item.Name {
+			return entries[i].Item.Name < entries[j].Item.Name
+		}
+		return entries[i].Item.ID < entries[j].Item.ID
+	})
+}
+
+func appendUniqueString(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func normalizeLoreIndexLimit(limit int) int {
 	if limit <= 0 {
-		return LoreIndexDefaultQueryLimit
+		return LoreIndexDefaultLimit
 	}
-	if limit > LoreIndexMaxQueryLimit {
-		return LoreIndexMaxQueryLimit
+	if limit > LoreIndexMaxLimit {
+		return LoreIndexMaxLimit
 	}
 	return limit
 }
 
-func renderLoreIndexMarkdown(entries []loreIndexEntry, total int, options LoreIndexOptions) string {
+func renderLoreIndexMarkdown(entries []loreIndexEntry, matchedTotal, libraryTotal int, options LoreIndexOptions) string {
 	maxBytes := options.MaxBytes
 	if maxBytes <= 0 {
 		maxBytes = LoreIndexDefaultMaxBytes
@@ -1330,21 +1517,21 @@ func renderLoreIndexMarkdown(entries []loreIndexEntry, total int, options LoreIn
 		hint       string
 	}{
 		{briefRunes: 180},
-		{briefRunes: 72, hint: "（索引已压缩：简介已截断；需要具体设定时请用 query 缩小范围，再调用 read_lore_items 读取正文。）"},
-		{nameOnly: true, hint: "（索引过大，已降级为仅 ID 和名称；需要具体设定时请用 query 细查，再调用 read_lore_items 读取正文。）"},
+		{briefRunes: 72, hint: "（索引已压缩：简介已截断；可用 keywords/types 缩小范围，再调用 read_lore_items 读取正文。）"},
+		{nameOnly: true, hint: "（索引过大，已降级为仅 ID 和名称；可用 keywords/types 细查，再调用 read_lore_items 读取正文。）"},
 	}
 	for _, candidate := range candidates {
-		out := renderLoreIndexCandidate(entries, total, options, candidate.briefRunes, candidate.nameOnly, candidate.hint)
+		out := renderLoreIndexCandidate(entries, matchedTotal, libraryTotal, options, candidate.briefRunes, candidate.nameOnly, candidate.hint)
 		if len([]byte(out)) <= maxBytes {
 			return strings.TrimSpace(out)
 		}
 	}
-	return renderBoundedLoreNameIndex(entries, total, options, maxBytes)
+	return renderBoundedLoreNameIndex(entries, matchedTotal, libraryTotal, options, maxBytes)
 }
 
-func renderLoreIndexCandidate(entries []loreIndexEntry, total int, options LoreIndexOptions, briefRunes int, nameOnly bool, hint string) string {
+func renderLoreIndexCandidate(entries []loreIndexEntry, matchedTotal, libraryTotal int, options LoreIndexOptions, briefRunes int, nameOnly bool, hint string) string {
 	var sb strings.Builder
-	writeLoreIndexHeader(&sb, total, len(entries), options)
+	writeLoreIndexHeader(&sb, matchedTotal, libraryTotal, len(entries), options)
 	if hint != "" {
 		sb.WriteString(hint)
 		sb.WriteString("\n\n")
@@ -1355,28 +1542,31 @@ func renderLoreIndexCandidate(entries []loreIndexEntry, total int, options LoreI
 	return strings.TrimSpace(sb.String())
 }
 
-func writeLoreIndexHeader(sb *strings.Builder, total, returned int, options LoreIndexOptions) {
+func writeLoreIndexHeader(sb *strings.Builder, matchedTotal, libraryTotal, returned int, options LoreIndexOptions) {
 	if !options.OmitTitle {
 		sb.WriteString("# 资料库索引\n\n")
 	}
-	query := strings.TrimSpace(options.Query)
-	itemType := normalizeOptionalLoreType(options.Type)
-	if total == 0 {
-		if query != "" || itemType != "" {
-			sb.WriteString("未找到匹配资料库条目。\n")
-			return
-		}
-		sb.WriteString("资料库暂无条目。\n")
+	filtered := len(normalizeLoreIndexKeywords(options.Keywords)) > 0 || len(normalizeLoreIndexTypes(options.Types)) > 0
+	if libraryTotal == 0 {
+		sb.WriteString("资料库暂无启用条目。\n")
 		return
 	}
-	if options.Paginate || query != "" || itemType != "" {
+	if filtered && matchedTotal == 0 {
+		fmt.Fprintf(sb, "资料库共有 %d 条启用资料；本次检索匹配 0 条。未命中不代表资料库为空，可调整 keywords/types 或使用空参数浏览目录。\n", libraryTotal)
+		return
+	}
+	if options.Paginate || filtered {
 		offset := options.Offset
 		if offset < 0 {
 			offset = 0
 		}
-		fmt.Fprintf(sb, "匹配 %d 条资料，本页返回 %d 条（offset=%d）。", total, returned, offset)
-		if total > offset+returned {
-			fmt.Fprintf(sb, " 下一页使用 offset=%d；每页最大 %d。", offset+returned, LoreIndexMaxQueryLimit)
+		if filtered {
+			fmt.Fprintf(sb, "资料库共有 %d 条启用资料；本次匹配 %d 条，本页返回 %d 条（offset=%d）。", libraryTotal, matchedTotal, returned, offset)
+		} else {
+			fmt.Fprintf(sb, "资料库共有 %d 条启用资料；本页返回 %d 条（offset=%d）。", libraryTotal, returned, offset)
+		}
+		if matchedTotal > offset+returned {
+			fmt.Fprintf(sb, " 下一页使用 offset=%d；每页最大 %d。", offset+returned, LoreIndexMaxLimit)
 		}
 		sb.WriteString("\n\n")
 		return
@@ -1385,7 +1575,7 @@ func writeLoreIndexHeader(sb *strings.Builder, total, returned int, options Lore
 	if options.ExcludeResident {
 		scope = "非驻留资料"
 	}
-	fmt.Fprintf(sb, "共 %d 条%s。默认索引只含 ID、名称和简介；需要正文时调用 read_lore_items。\n\n", total, scope)
+	fmt.Fprintf(sb, "共 %d 条%s。默认索引只含 ID、名称和简介；需要正文时调用 read_lore_items。\n\n", matchedTotal, scope)
 }
 
 func formatCompactLoreIndexEntry(entry loreIndexEntry, briefRunes int, nameOnly bool) string {
@@ -1399,8 +1589,14 @@ func formatCompactLoreIndexEntry(entry loreIndexEntry, briefRunes int, nameOnly 
 	if brief != "" {
 		fmt.Fprintf(&sb, "  简介: %s\n", brief)
 	}
+	if len(item.Keywords) > 0 {
+		fmt.Fprintf(&sb, "  关键词: %s\n", compactLoreBrief(strings.Join(item.Keywords, "、"), 120))
+	}
+	if len(entry.MatchedTerms) > 0 {
+		fmt.Fprintf(&sb, "  匹配词: %s\n", strings.Join(entry.MatchedTerms, "、"))
+	}
 	if len(entry.MatchSources) > 0 {
-		fmt.Fprintf(&sb, "  匹配: %s\n", strings.Join(entry.MatchSources, "、"))
+		fmt.Fprintf(&sb, "  匹配来源: %s\n", strings.Join(entry.MatchSources, "、"))
 	}
 	return sb.String()
 }
@@ -1419,10 +1615,10 @@ func compactLoreBrief(brief string, limit int) string {
 	return truncateRunes(brief, limit-3) + "..."
 }
 
-func renderBoundedLoreNameIndex(entries []loreIndexEntry, total int, options LoreIndexOptions, maxBytes int) string {
+func renderBoundedLoreNameIndex(entries []loreIndexEntry, matchedTotal, libraryTotal int, options LoreIndexOptions, maxBytes int) string {
 	var sb strings.Builder
-	writeLoreIndexHeader(&sb, total, len(entries), options)
-	hint := fmt.Sprintf("（索引预算不足，以下仅展示能放入预算的 ID 和名称；未显示条目请用 list_lore_items 带 query 细查，limit 最大 %d。）\n\n", LoreIndexMaxQueryLimit)
+	writeLoreIndexHeader(&sb, matchedTotal, libraryTotal, len(entries), options)
+	hint := fmt.Sprintf("（索引预算不足，以下仅展示能放入预算的 ID 和名称；未显示条目请用 keywords/types 细查，limit 最大 %d。）\n\n", LoreIndexMaxLimit)
 	appendLoreContextPart(&sb, hint, maxBytes)
 	omitted := 0
 	for idx, entry := range entries {
@@ -1434,7 +1630,7 @@ func renderBoundedLoreNameIndex(entries []loreIndexEntry, total int, options Lor
 		sb.WriteString(line)
 	}
 	if omitted > 0 {
-		notice := fmt.Sprintf("\n（还有 %d 条资料因索引预算未显示；请使用 query 细查。）\n", omitted)
+		notice := fmt.Sprintf("\n（还有 %d 条资料因索引预算未显示；请使用 keywords/types 细查。）\n", omitted)
 		if sb.Len()+len([]byte(notice)) <= maxBytes {
 			sb.WriteString(notice)
 		}
@@ -1454,6 +1650,9 @@ func formatLoreItemIndexMarkdown(item LoreItem) string {
 	}
 	if item.BriefDescription != "" {
 		fmt.Fprintf(&sb, "  简介: %s\n", item.BriefDescription)
+	}
+	if len(item.Keywords) > 0 {
+		fmt.Fprintf(&sb, "  关键词: %s\n", strings.Join(item.Keywords, "、"))
 	}
 	sb.WriteString("\n")
 	return sb.String()

@@ -162,7 +162,7 @@ func TestInteractiveConversationModelContextMessagesEnterNextTurnWithoutThinking
 		Type: "function",
 		Function: schema.FunctionCall{
 			Name:      "list_lore_items",
-			Arguments: `{"query":"门"}`,
+			Arguments: `{"keywords":["门"]}`,
 		},
 	}})); err != nil {
 		t.Fatal(err)

@@ -7,16 +7,16 @@ import (
 )
 
 var (
-	cardHTMLCommentPattern  = regexp.MustCompile(`(?s)<!--.*?-->`)
-	cardScriptPattern       = regexp.MustCompile(`(?is)<(?:script|style)\b[^>]*>.*?</(?:script|style)>`)
-	cardRuntimeBlockPattern = regexp.MustCompile(`(?is)<(?:UpdateVariable|JSONPatch|variables?|state|statusbar|initvar)\b[^>]*>.*?</(?:UpdateVariable|JSONPatch|variables?|state|statusbar|initvar)>`)
+	cardHTMLCommentPattern        = regexp.MustCompile(`(?s)<!--.*?-->`)
+	cardScriptPattern             = regexp.MustCompile(`(?is)<(?:script|style)\b[^>]*>.*?</(?:script|style)>`)
+	cardRuntimeBlockPattern       = regexp.MustCompile(`(?is)<(?:UpdateVariable|JSONPatch|variables?|state|statusbar|initvar)\b[^>]*>.*?</(?:UpdateVariable|JSONPatch|variables?|state|statusbar|initvar)>`)
 	cardRuntimeSelfClosingPattern = regexp.MustCompile(`(?is)<(?:UpdateVariable|JSONPatch|StatusPlaceHolderImpl)\b[^>]*/>`)
-	cardTemplatePattern     = regexp.MustCompile(`(?s)<%.*?%>`)
-	cardStatusPattern       = regexp.MustCompile(`(?is)<StatusPlaceHolderImpl\s*/?>`)
-	cardCodeFencePattern    = regexp.MustCompile("(?is)```(?:json|javascript|js|typescript|ts|html|css)?\\s*.*?```")
-	cardTagPattern          = regexp.MustCompile(`(?s)<[^>]+>`)
-	cardGameTextPattern     = regexp.MustCompile(`(?is)<gametxt\b[^>]*>(.*?)</gametxt>`)
-	cardOnlyTitlePattern    = regexp.MustCompile(`^\s*(?:[【\[《].{1,80}[】\]》]|#{1,3}\s*.{1,80})\s*$`)
+	cardTemplatePattern           = regexp.MustCompile(`(?s)<%.*?%>`)
+	cardStatusPattern             = regexp.MustCompile(`(?is)<StatusPlaceHolderImpl\s*/?>`)
+	cardCodeFencePattern          = regexp.MustCompile("(?is)```(?:json|javascript|js|typescript|ts|html|css)?\\s*.*?```")
+	cardTagPattern                = regexp.MustCompile(`(?s)<[^>]+>`)
+	cardGameTextPattern           = regexp.MustCompile(`(?is)<gametxt\b[^>]*>(.*?)</gametxt>`)
+	cardOnlyTitlePattern          = regexp.MustCompile(`^\s*(?:[【\[《].{1,80}[】\]》]|#{1,3}\s*.{1,80})\s*$`)
 )
 
 type sanitizedTavernEntry struct {
@@ -131,26 +131,6 @@ func sanitizeTavernOpening(value string) (string, bool) {
 		return cleaned, false
 	}
 	return string(runes[:4000]), true
-}
-
-func naturalLanguageBrief(content string) string {
-	content = sanitizeTavernNaturalLanguage(content)
-	for _, paragraph := range strings.Split(content, "\n\n") {
-		paragraph = strings.TrimSpace(paragraph)
-		if cardOnlyTitlePattern.MatchString(paragraph) {
-			continue
-		}
-		paragraph = strings.TrimSpace(strings.TrimLeft(paragraph, "#*- "))
-		if paragraph == "" || strings.HasPrefix(paragraph, "![") {
-			continue
-		}
-		runes := []rune(paragraph)
-		if len(runes) > 240 {
-			paragraph = string(runes[:240])
-		}
-		return strings.TrimSpace(paragraph)
-	}
-	return ""
 }
 
 func inferTavernLoreType(title, content string) string {

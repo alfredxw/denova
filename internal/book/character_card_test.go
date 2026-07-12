@@ -92,8 +92,8 @@ func TestServiceImportTavernCharacterCardCreatesLoreItems(t *testing.T) {
 	if items[0].Type != "character" || items[0].Name != "柳云" {
 		t.Fatalf("角色资料条目不符合预期: %#v", items[0])
 	}
-	if items[0].BriefDescription != "负责整理情报" {
-		t.Fatalf("角色简介应来自首个自然语言段落: %#v", items[0])
+	if strings.Contains(items[0].BriefDescription, "负责整理情报") || !strings.Contains(items[0].BriefDescription, "角色「柳云」") {
+		t.Fatalf("导入简介应是检索提示，不应截取角色正文: %#v", items[0])
 	}
 }
 
@@ -307,15 +307,24 @@ func TestTavernWorldbookIsNormalizedWithoutLoadingEngine(t *testing.T) {
 	if location.Provenance == nil || location.Provenance.SourceRecordID != "7" || location.Provenance.SourceHash == "" {
 		t.Fatalf("应记录模型不可见来源: %#v", location.Provenance)
 	}
-	if strings.Contains(location.Content, "来源文件") || len([]rune(location.BriefDescription)) > 240 {
+	if strings.Contains(location.Content, "来源文件") || len([]rune(location.BriefDescription)) > 240 ||
+		strings.Contains(location.BriefDescription, "常年下雨") || !strings.Contains(location.BriefDescription, "搜索关键词：旧港、港口、雨夜") {
 		t.Fatalf("正文不应混入来源元数据且简介应有界: %#v", location)
 	}
-	modelContext, err := NewLoreStore(workspace).ProgressiveContextMarkdown()
+	store := NewLoreStore(workspace)
+	modelContext, err := store.ProgressiveContextMarkdown()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(modelContext, "card.json") || strings.Contains(modelContext, location.Provenance.SourceHash) {
 		t.Fatalf("provenance 不得进入模型上下文:\n%s", modelContext)
+	}
+	searchIndex, err := store.LoreIndexMarkdown(LoreIndexOptions{Keywords: []string{"旧港"}, Match: LoreIndexMatchAny})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(searchIndex, "关键词: 旧港、港口、雨夜") {
+		t.Fatalf("资料索引应直接展示搜索关键词:\n%s", searchIndex)
 	}
 }
 

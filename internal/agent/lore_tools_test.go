@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -50,6 +51,25 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	if !ok {
 		t.Fatalf("list_lore_items should be invokable: %T", byName["list_lore_items"])
 	}
+	listInfo, err := byName["list_lore_items"].Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemaJSON, err := json.Marshal(listInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemaText := string(schemaJSON)
+	for _, want := range []string{"keywords", "match", "types", "limit", "offset"} {
+		if !strings.Contains(schemaText, want) {
+			t.Fatalf("list_lore_items schema missing %q: %s", want, schemaText)
+		}
+	}
+	for _, removed := range []string{`\"query\"`, `\"type\"`} {
+		if strings.Contains(schemaText, removed) {
+			t.Fatalf("list_lore_items schema should remove legacy field %s: %s", removed, schemaText)
+		}
+	}
 	output, err := listTool.InvokableRun(context.Background(), `{}`)
 	if err != nil {
 		t.Fatal(err)
@@ -65,17 +85,28 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 		}
 	}
 
-	queryOutput, err := listTool.InvokableRun(context.Background(), `{"query":"档案柜"}`)
+	queryOutput, err := listTool.InvokableRun(context.Background(), `{"keywords":["无关词","档案柜"],"match":"any","types":["character"],"limit":5}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"id: hero", "名称: 林川", "匹配: 正文"} {
+	for _, want := range []string{"id: hero", "名称: 林川", "匹配词: 档案柜", "匹配来源: 正文"} {
 		if !strings.Contains(queryOutput, want) {
-			t.Fatalf("query list_lore_items output missing %q:\n%s", want, queryOutput)
+			t.Fatalf("keyword list_lore_items output missing %q:\n%s", want, queryOutput)
 		}
 	}
 	if strings.Contains(queryOutput, "档案柜线索只存在于正文") {
-		t.Fatalf("query list_lore_items should not include full content:\n%s", queryOutput)
+		t.Fatalf("keyword list_lore_items should not include full content:\n%s", queryOutput)
+	}
+	for _, args := range []string{
+		`{"match":"some"}`,
+		`{"types":["unknown"]}`,
+		`{"limit":51}`,
+		`{"offset":-1}`,
+		`{"keywords":["1","2","3","4","5","6","7","8","9"]}`,
+	} {
+		if _, err := listTool.InvokableRun(context.Background(), args); err == nil {
+			t.Fatalf("list_lore_items should reject invalid args: %s", args)
+		}
 	}
 	readTool, ok := byName["read_lore_items"].(tool.InvokableTool)
 	if !ok {

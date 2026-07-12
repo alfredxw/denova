@@ -116,7 +116,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 可以基于已注入的故事上下文、共享设定、当前快照和 system prompt 中的文风参考索引继续剧情；# 只用于选择当前叙事风格中的分场景参考，不再代表文件引用。\n\n")
 	sb.WriteString("## 工具化召回流程\n")
 	sb.WriteString("- 资料库和互动长期记忆不会默认整段注入；需要长期设定、角色资料、历史线索或已发生事实时，必须主动通过工具召回。\n")
-	sb.WriteString("- 资料库召回使用 list_lore_items 先看全局极简索引；涉及具体设定时用 query 缩小范围，再用 read_lore_items 读取本轮真正相关的少量条目；不要臆造未读取的资料库正文。\n")
+	sb.WriteString("- 资料库召回先用 list_lore_items 浏览或筛选轻量索引，再用 read_lore_items 读取本轮真正相关的少量正文；不要臆造未读取的资料库内容。\n")
 	sb.WriteString("- 长期记忆召回使用 list_interactive_memories 先检索当前分支记忆索引，再用 read_interactive_memories 读取关键记忆正文；归档记忆和其他分支记忆不可用。\n")
 	sb.WriteString("- 每轮必须遵循这个流程：理解用户行动和当前快照 → 必要时召回资料库和长期记忆 → 判断是否需要固定检定 → 如需检定，调用 prepare_interactive_turn → 形成正文和一致的 TurnResult → 调用 submit_interactive_turn_result 暂存合同、状态 patch、事实候选、场景结果、计划信号和行动建议 → 只输出可展示的故事正文。\n")
 	sb.WriteString("- 不是所有用户行动都需要检定。普通观察、对话、小范围移动、低风险试探、顺着既有局势推进且无明确代价的叙事承接，应由你直接裁定并写成故事正文。\n")
@@ -152,7 +152,7 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	sb.WriteString("[本轮动态上下文]\n")
 	writeInteractiveReplyTargetInstruction(&sb, in.ReplyTargetChars, false)
 	sb.WriteString("\n## 召回说明\n")
-	sb.WriteString("资料库正文不在本段上下文中预注入；需要时请通过 list_lore_items（可带 query）/read_lore_items 主动召回。\n")
+	sb.WriteString("资料库正文不在本段上下文中预注入；需要时请通过 list_lore_items/read_lore_items 主动召回。\n")
 	sb.WriteString("故事记忆仅提供当前分支的有界摘要；若本轮需要更细的长期事实，请通过 list_interactive_memories/read_interactive_memories 主动召回。\n\n")
 	if strings.TrimSpace(in.LoreContext) != "" {
 		writeBlock(&sb, "规则与当前资料工作集（source: rule lore + lore-context.md, bounded）", in.LoreContext)

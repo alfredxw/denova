@@ -607,6 +607,7 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source, coverPath,
 	stats := tavernImportStats{}
 	cardLoreName := names.Claim(card.Name)
 	cardContent := renderTavernCardLoreContent(card, coverPath)
+	cardKeywords := tavernCardTags(card.Tags...)
 	ops := []LoreOperation{
 		{
 			Op: "create",
@@ -616,7 +617,8 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source, coverPath,
 				Name:             cardLoreName,
 				Importance:       "major",
 				Tags:             tavernCardTags(append([]string{"酒馆角色卡", card.Name}, card.Tags...)...),
-				BriefDescription: naturalLanguageBrief(cardContent),
+				BriefDescription: tavernLoreSearchBrief("character", cardLoreName, cardKeywords),
+				Keywords:         cardKeywords,
 				LoadMode:         LoreLoadModeResident,
 				Content:          cardContent,
 				Provenance:       tavernLoreProvenance("tavern_character_card", source, "character", card),
@@ -635,7 +637,8 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source, coverPath,
 				Name:             name,
 				Importance:       "major",
 				Tags:             tavernCardTags("酒馆角色卡", "{{user}}", "玩家角色"),
-				BriefDescription: naturalLanguageBrief(content),
+				BriefDescription: tavernLoreSearchBrief("character", name, []string{"{{user}}", card.Name}),
+				Keywords:         tavernCardTags("{{user}}", card.Name),
 				LoadMode:         LoreLoadModeResident,
 				Content:          content,
 				Provenance:       tavernLoreProvenance("tavern_character_card", source, "user", card),
@@ -674,17 +677,18 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source, coverPath,
 			stats.AutoEntryCount++
 		}
 		keywords := tavernCardTags(append(append([]string{}, entry.Keys...), entry.SecondaryKeys...)...)
+		itemType := inferTavernLoreType(title, content)
 		tags := tavernCardTags("酒馆世界书", card.Name)
 		ops = append(ops, LoreOperation{
 			Op: "create",
 			Item: LoreItemInput{
 				Enabled:          tavernBookEntryEnabled(entry),
-				Type:             inferTavernLoreType(title, content),
+				Type:             itemType,
 				Name:             title,
 				Importance:       "important",
 				Tags:             tags,
 				Keywords:         keywords,
-				BriefDescription: naturalLanguageBrief(content),
+				BriefDescription: tavernLoreSearchBrief(itemType, title, keywords),
 				LoadMode:         loadMode,
 				Content:          content,
 				Provenance:       tavernLoreProvenance("tavern_worldbook_entry", source, tavernEntryRecordID(entry, i), entry),
@@ -692,6 +696,15 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source, coverPath,
 		})
 	}
 	return ops, stats
+}
+
+func tavernLoreSearchBrief(itemType, name string, keywords []string) string {
+	subject := fmt.Sprintf("%s「%s」", loreTypeLabel(itemType), strings.TrimSpace(name))
+	keywords = tavernCardTags(keywords...)
+	if len(keywords) == 0 {
+		return subject + "；无额外搜索关键词，可按名称读取正文。"
+	}
+	return truncateRunes(subject+"；搜索关键词："+strings.Join(keywords, "、")+"。", 240)
 }
 
 func renderTavernCardLoreContent(card normalizedTavernCard, coverPath string) string {

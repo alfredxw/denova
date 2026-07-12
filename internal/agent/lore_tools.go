@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
@@ -18,10 +19,11 @@ type readLoreItemsInput struct {
 }
 
 type listLoreItemsInput struct {
-	Query  string `json:"query,omitempty" jsonschema:"description=可选关键词；会搜索 ID、名称、类型、标签、关键词、简介和正文，但只返回索引，不返回正文"`
-	Type   string `json:"type,omitempty" jsonschema:"description=可选资料类型过滤：character/world/location/faction/rule/item/other"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"description=可选返回上限；仅 query 或 type 过滤时生效，默认 20，最大 50"`
-	Offset int    `json:"offset,omitempty" jsonschema:"description=分页起点，默认 0；根据返回的下一页 offset 继续读取，直到审阅全部名称与简介"`
+	Keywords []string `json:"keywords,omitempty" jsonschema_description:"可选检索词数组，每项独立匹配 ID、名称、别名、标签、简介和正文；最多 8 项，不要把多个关键词拼成一个字符串。"`
+	Match    string   `json:"match,omitempty" jsonschema:"enum=any,enum=all" jsonschema_description:"多关键词关系：any 表示命中任意关键词（OR，默认），all 表示命中全部关键词（AND）。"`
+	Types    []string `json:"types,omitempty" jsonschema_description:"可选资料类型数组：character/world/location/faction/rule/item/other。"`
+	Limit    int      `json:"limit,omitempty" jsonschema_description:"本页返回数量，默认 10，最大 50。"`
+	Offset   int      `json:"offset,omitempty" jsonschema_description:"分页起点，默认 0；根据返回的下一页 offset 继续读取。"`
 }
 
 type writeLoreItemsInput struct {
@@ -45,7 +47,7 @@ type writeLoreItemInput struct {
 
 func newLoreTools(workspace string, allowWrite bool) ([]tool.BaseTool, error) {
 	workspace = strings.TrimSpace(workspace)
-	readTool, err := utils.InferTool("read_lore_items", "按资料库条目 ID 列表批量读取完整资料正文。用于根据资料库索引判断本轮涉及多个自动加载条目后，一次读取相关完整设定。", func(ctx context.Context, input readLoreItemsInput) (string, error) {
+	readTool, err := utils.InferTool("read_lore_items", "按资料库条目 ID 或唯一名称批量读取完整正文。只读取本轮已经确认相关的少量条目。", func(ctx context.Context, input readLoreItemsInput) (string, error) {
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法读取资料库")
@@ -76,14 +78,18 @@ func newLoreTools(workspace string, allowWrite bool) ([]tool.BaseTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	listTool, err := utils.InferTool("list_lore_items", "分页列出资料库名称与简介目录。默认每页 20 条，最大 50 条；用返回的下一页 offset 继续审阅。可传 query/type 缩小范围，搜索 ID、名称、类型、标签、关键词、简介和正文，但只返回索引和匹配来源；选中条目后用 read_lore_items 的 names 读取正文。", func(ctx context.Context, input listLoreItemsInput) (string, error) {
+	listTool, err := utils.InferTool("list_lore_items", "分页列出或检索启用的资料库目录，只返回索引，不返回正文。keywords 为空时浏览全部条目；多个 keywords 默认按 any（OR）召回，也可用 all（AND）；后端自动对名称、别名和标签做模糊匹配并按相关度排序。确认条目后用 read_lore_items 读取正文。", func(ctx context.Context, input listLoreItemsInput) (string, error) {
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法列出资料库")
 		}
+		if err := validateListLoreItemsInput(input); err != nil {
+			return "", err
+		}
 		index, err := book.NewLoreStore(workspace).LoreIndexMarkdown(book.LoreIndexOptions{
-			Query:    input.Query,
-			Type:     input.Type,
+			Keywords: input.Keywords,
+			Match:    input.Match,
+			Types:    input.Types,
 			Limit:    input.Limit,
 			Offset:   input.Offset,
 			Paginate: true,
@@ -123,6 +129,34 @@ func newLoreTools(workspace string, allowWrite bool) ([]tool.BaseTool, error) {
 		return nil, err
 	}
 	return append(tools, writeTool), nil
+}
+
+func validateListLoreItemsInput(input listLoreItemsInput) error {
+	if len(input.Keywords) > 8 {
+		return fmt.Errorf("keywords 最多 8 项")
+	}
+	for _, keyword := range input.Keywords {
+		if utf8.RuneCountInString(strings.TrimSpace(keyword)) > 64 {
+			return fmt.Errorf("单个 keyword 最多 64 个字符")
+		}
+	}
+	match := strings.TrimSpace(input.Match)
+	if match != "" && match != book.LoreIndexMatchAny && match != book.LoreIndexMatchAll {
+		return fmt.Errorf("match 只能是 any 或 all")
+	}
+	validTypes := map[string]bool{"character": true, "world": true, "location": true, "faction": true, "rule": true, "item": true, "other": true}
+	for _, itemType := range input.Types {
+		if !validTypes[strings.TrimSpace(itemType)] {
+			return fmt.Errorf("无效资料类型: %s", strings.TrimSpace(itemType))
+		}
+	}
+	if input.Limit < 0 || input.Limit > book.LoreIndexMaxLimit {
+		return fmt.Errorf("limit 必须在 1 到 %d 之间；省略时默认 %d", book.LoreIndexMaxLimit, book.LoreIndexDefaultLimit)
+	}
+	if input.Offset < 0 {
+		return fmt.Errorf("offset 不能小于 0")
+	}
+	return nil
 }
 
 func buildWriteLoreOperations(store *book.LoreStore, input writeLoreItemsInput) ([]book.LoreOperation, error) {

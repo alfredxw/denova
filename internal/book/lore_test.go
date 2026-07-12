@@ -168,29 +168,105 @@ func TestLoreStoreCompactIndexOmitsHeavyFieldsAndDisabledItems(t *testing.T) {
 	}
 }
 
-func TestLoreStoreCompactIndexQueryMatchesMetadataAndContentWithoutLeakingContent(t *testing.T) {
+func TestLoreStoreCompactIndexMatchesMultipleKeywordsWithAnyAndAll(t *testing.T) {
 	store := NewLoreStore(t.TempDir())
 	if _, err := store.Create(LoreItemInput{ID: "archive", Type: "location", Name: "旧档案室", Importance: "important", LoadMode: LoreLoadModeAuto, Keywords: []string{"档案柜"}, BriefDescription: "地点 旧档案室。只有尘封档案。上下文出现相关内容时，一定要参考本项详情。", Content: "暗门后藏着完整原文线索。"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := store.Create(LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", LoadMode: LoreLoadModeAuto, Tags: []string{"主角"}, BriefDescription: "角色 林川。故事开场时抵达旧城。", Content: "林川不了解档案柜。"}); err != nil {
+		t.Fatal(err)
+	}
 
-	keywordIndex, err := store.LoreIndexMarkdown(LoreIndexOptions{Query: "档案柜"})
+	anyIndex, err := store.LoreIndexMarkdown(LoreIndexOptions{Keywords: []string{"主角", "完整原文"}, Match: LoreIndexMatchAny})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(keywordIndex, "id: archive") || !strings.Contains(keywordIndex, "匹配: 关键词") {
-		t.Fatalf("keyword query should return match source:\n%s", keywordIndex)
+	for _, id := range []string{"archive", "hero"} {
+		if !strings.Contains(anyIndex, "id: "+id) {
+			t.Fatalf("any keyword match should return %s:\n%s", id, anyIndex)
+		}
 	}
 
-	contentIndex, err := store.LoreIndexMarkdown(LoreIndexOptions{Query: "完整原文"})
+	allIndex, err := store.LoreIndexMarkdown(LoreIndexOptions{Keywords: []string{"档案柜", "完整原文"}, Match: LoreIndexMatchAll})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(contentIndex, "id: archive") || !strings.Contains(contentIndex, "匹配: 正文") {
-		t.Fatalf("content query should return content match source:\n%s", contentIndex)
+	if !strings.Contains(allIndex, "id: archive") || strings.Contains(allIndex, "id: hero") {
+		t.Fatalf("all keyword match should require every keyword:\n%s", allIndex)
 	}
-	if strings.Contains(contentIndex, "暗门后藏着完整原文线索") {
-		t.Fatalf("query index should not leak full content:\n%s", contentIndex)
+	if !strings.Contains(allIndex, "匹配词: 档案柜、完整原文") || !strings.Contains(allIndex, "匹配来源: 关键词、正文") {
+		t.Fatalf("keyword result should explain matched terms and fields:\n%s", allIndex)
+	}
+	if strings.Contains(allIndex, "暗门后藏着完整原文线索") {
+		t.Fatalf("keyword index should not leak full content:\n%s", allIndex)
+	}
+}
+
+func TestLoreStoreCompactIndexFuzzyMatchesShortMetadataAndRanksExactFirst(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	for _, input := range []LoreItemInput{
+		{ID: "exact", Type: "location", Name: "旧档案时", Importance: "minor", LoadMode: LoreLoadModeAuto, BriefDescription: "名称完全命中。", Content: "正文"},
+		{ID: "fuzzy", Type: "location", Name: "旧档案室据点", Importance: "major", LoadMode: LoreLoadModeAuto, BriefDescription: "名称片段有一个错字也可召回。", Content: "正文"},
+	} {
+		if _, err := store.Create(input); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	index, err := store.LoreIndexMarkdown(LoreIndexOptions{Keywords: []string{"旧档案时"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Index(index, "id: exact") > strings.Index(index, "id: fuzzy") {
+		t.Fatalf("exact name match should rank before fuzzy match:\n%s", index)
+	}
+	if !strings.Contains(index, "匹配来源: 模糊名称") {
+		t.Fatalf("fuzzy match should expose its source:\n%s", index)
+	}
+}
+
+func TestLoreStoreCompactIndexPaginatesWithDefaultAndExplicitLimits(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	for i := 0; i < 12; i++ {
+		id := fmt.Sprintf("item_%02d", i)
+		if _, err := store.Create(LoreItemInput{ID: id, Type: "other", Name: "资料" + id, LoadMode: LoreLoadModeAuto, Content: "正文"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	first, err := store.LoreIndexMarkdown(LoreIndexOptions{Paginate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(first, "- id:") != LoreIndexDefaultLimit || !strings.Contains(first, "下一页使用 offset=10") {
+		t.Fatalf("default page should return %d entries and the next offset:\n%s", LoreIndexDefaultLimit, first)
+	}
+	second, err := store.LoreIndexMarkdown(LoreIndexOptions{Paginate: true, Offset: 10, Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(second, "- id:") != 2 || strings.Contains(second, "下一页使用") {
+		t.Fatalf("explicit final page should return the remaining two entries:\n%s", second)
+	}
+}
+
+func TestLoreStoreCompactIndexNoMatchDoesNotClaimLibraryIsEmpty(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	if _, err := store.Create(LoreItemInput{ID: "hero", Type: "character", Name: "林川", LoadMode: LoreLoadModeAuto, Content: "主角设定"}); err != nil {
+		t.Fatal(err)
+	}
+
+	index, err := store.LoreIndexMarkdown(LoreIndexOptions{Keywords: []string{"不存在的资料"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"资料库共有 1 条启用资料", "本次检索匹配 0 条", "未命中不代表资料库为空"} {
+		if !strings.Contains(index, want) {
+			t.Fatalf("no-match result missing %q:\n%s", want, index)
+		}
+	}
+	if strings.Contains(index, "资料库暂无") {
+		t.Fatalf("no-match result must not claim the library is empty:\n%s", index)
 	}
 }
 

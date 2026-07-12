@@ -573,7 +573,7 @@ func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-1", Role: "tool_call", Name: "list_lore_items", Content: "list_lore_items", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.AppendDisplayToolArgs("call-1", "list_lore_items", `{"query":"档案室"}`); err != nil {
+	if err := conversation.AppendDisplayToolArgs("call-1", "list_lore_items", `{"keywords":["档案室"]}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := conversation.UpdateDisplayToolResult("call-1", "list_lore_items", "success", "找到档案室设定"); err != nil {
@@ -604,7 +604,7 @@ func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {
 	if events[0].Role != "thinking" || events[1].Name != "list_lore_items" || events[2].Role != "thinking" || events[3].Name != "apply_story_memory_patches" {
 		t.Fatalf("display events order mismatch: %#v", events)
 	}
-	if events[1].Args != `{"query":"档案室"}` || events[1].Result != "找到档案室设定" || events[1].Status != "success" {
+	if events[1].Args != `{"keywords":["档案室"]}` || events[1].Result != "找到档案室设定" || events[1].Status != "success" {
 		t.Fatalf("first tool event details mismatch: %#v", events[1])
 	}
 	if events[3].Args == "" || events[3].Result != "已写入 1 条记忆" || events[3].Status != "success" {

@@ -768,7 +768,7 @@ func TestAppendTurnWithStatePersistsDisplayEventTimelineDetails(t *testing.T) {
 		Narrative: "档案柜里露出一张潮湿的地图。",
 		DisplayEvents: []DisplayEvent{
 			{Role: "thinking", Content: "先确认可用线索。"},
-			{ID: "call-1", Role: "tool_call", Name: "list_lore_items", Args: `{"query":"档案柜"}`, Status: "success", Result: "找到 2 条资料"},
+			{ID: "call-1", Role: "tool_call", Name: "list_lore_items", Args: `{"keywords":["档案柜"]}`, Status: "success", Result: "找到 2 条资料"},
 			{Role: "thinking", Content: "基于资料继续判断下一步。"},
 			{ID: "call-2", Role: "tool_call", Name: "apply_story_memory_patches", Args: `{"patches":[{"table":"plot_summary"}]}`, Status: "success", Result: "已写入 1 条记忆"},
 		},
@@ -791,7 +791,7 @@ func TestAppendTurnWithStatePersistsDisplayEventTimelineDetails(t *testing.T) {
 			t.Fatalf("event[%d].role = %q, want %q; events=%#v", i, events[i].Role, want, events)
 		}
 	}
-	if events[1].Args != `{"query":"档案柜"}` || events[1].Result != "找到 2 条资料" {
+	if events[1].Args != `{"keywords":["档案柜"]}` || events[1].Result != "找到 2 条资料" {
 		t.Fatalf("first tool details not persisted: %#v", events[1])
 	}
 	if events[3].Args == "" || events[3].Result != "已写入 1 条记忆" {

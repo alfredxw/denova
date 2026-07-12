@@ -10,7 +10,7 @@ agent: ide,config_manager,interactive_story
 
 ## 工具顺序
 
-1. `list_lore_items`：先看索引。空参数返回全量极简索引；需要筛选时使用 `query`、`type`、`limit`。索引只用于判断相关性，不当作完整设定。
+1. `list_lore_items`：先看索引。空参数分页浏览全部启用资料；需要筛选时使用 `keywords`、`match`、`types` 和 `limit`。索引只用于判断相关性，不当作完整设定。
 2. `read_lore_items`：只读取本轮需要的少量 ID。不要无界读取全部正文。
 3. `write_lore_items`：只在当前 Agent 拥有该工具，且作者要求保存或长期设定确实变化时使用。互动叙事 Agent 默认只读，不要承诺已写入。
 
@@ -25,7 +25,7 @@ agent: ide,config_manager,interactive_story
 `list_lore_items` 按关键词或类型检索：
 
 ```json
-{"query":"林川 火光","type":"character","limit":10}
+{"keywords":["林川","火光"],"match":"any","types":["character"],"limit":10}
 ```
 
 `read_lore_items` 批量读取正文：
