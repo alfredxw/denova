@@ -133,16 +133,17 @@ func (f *ActorStateField) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-const ActorStateSchemaVersion = 2
+const ActorStateSchemaVersion = 3
 
 // ActorStateSchemaSnapshot is the story-local state contract. It is frozen at
 // story creation so edits to reusable state modules affect only new stories.
 type ActorStateSchemaSnapshot struct {
-	Version              int                           `json:"version"`
-	System               StoryDirectorActorStateSystem `json:"system"`
-	TRPGSystem           StoryDirectorTRPGSystem       `json:"trpg_system,omitempty"`
-	LegacyFieldPaths     map[string]map[string]string  `json:"legacy_field_paths,omitempty"`
-	LegacyActorTemplates map[string]string             `json:"legacy_actor_templates,omitempty"`
+	Version              int                               `json:"version"`
+	System               StoryDirectorActorStateSystem     `json:"system"`
+	TRPGSystem           StoryDirectorTRPGSystem           `json:"trpg_system,omitempty"`
+	Adaptation           *ActorStateSchemaAdaptationRecord `json:"adaptation,omitempty"`
+	LegacyFieldPaths     map[string]map[string]string      `json:"legacy_field_paths,omitempty"`
+	LegacyActorTemplates map[string]string                 `json:"legacy_actor_templates,omitempty"`
 }
 
 // ActorStateOp is the v2 field-level reducer input. FieldID is an exact key,

@@ -15,7 +15,7 @@ interface StoryPickerProps {
   tellers: Teller[]
   storyDirectors?: StoryDirector[]
   onSelect: (storyId: string) => void
-  onCreate: (input: StoryCreateInput) => void
+  onCreate: (input: StoryCreateInput) => void | Promise<void>
   onDelete: (storyId: string) => void
   layout?: 'inline' | 'sidebar'
 }
@@ -32,6 +32,8 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
   const [selectedTraitsByPool, setSelectedTraitsByPool] = useState<Record<string, string[]>>({})
   const [openingRolling, setOpeningRolling] = useState(false)
   const [openingRollError, setOpeningRollError] = useState('')
+  const [storyCreating, setStoryCreating] = useState(false)
+  const [storyCreateError, setStoryCreateError] = useState('')
   const defaultDirector = selectedDirectorId || storyDirectors[0]?.id || 'default'
   const selectedDirector = storyDirectors.find((director) => director.id === defaultDirector) || storyDirectors[0] || null
   const directorNarrativeStyleEnabled = selectedDirector?.module_refs?.narrative_style_disabled !== true
@@ -63,6 +65,8 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
     setSelectedTraitsByPool({})
     setOpeningRolling(false)
     setOpeningRollError('')
+    setStoryCreating(false)
+    setStoryCreateError('')
     setCreating(false)
   }
 
@@ -85,8 +89,12 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
     }
   }
 
-  const submit = () => {
-    onCreate({
+  const submit = async () => {
+    if (storyCreating) return
+    setStoryCreating(true)
+    setStoryCreateError('')
+    try {
+      await onCreate({
       title: title.trim() || suggestedTitle,
       origin: origin.trim(),
       story_teller_id: defaultTeller,
@@ -100,8 +108,12 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
       initial_trait_rolls: traitRoll || hasTraitSelections
         ? [{ actor_id: 'protagonist', seed: traitRoll?.seed || 0, selections: traitSelections }]
         : undefined,
-    })
-    closeCreate()
+      })
+      closeCreate()
+    } catch (error) {
+      setStoryCreateError(error instanceof Error ? error.message : t('storyPicker.createFailed'))
+      setStoryCreating(false)
+    }
   }
 
   const toggleOpeningTrait = (poolId: string, traitId: string, drawCount: number) => {
@@ -288,12 +300,14 @@ export function StoryPicker({ stories, currentStoryId, tellers, storyDirectors =
           )}
           {hasTraitSelections ? <div className="mt-2 text-[11px] text-[var(--nova-text-faint)]">{t('storyPicker.openingBuilder.selected', { count: traitSelections.reduce((sum, selection) => sum + (selection.trait_ids?.length || 0), 0) })}</div> : null}
         </div>
+        {storyCreateError ? <div className="mb-2 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1 text-[11px] text-[var(--nova-danger)]">{storyCreateError}</div> : null}
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="xs" onClick={closeCreate}>
+          <Button variant="ghost" size="xs" disabled={storyCreating} onClick={closeCreate}>
             {t('common.cancel')}
           </Button>
-          <Button size="xs" onClick={submit}>
-            {t('common.create')}
+          <Button size="xs" disabled={storyCreating} onClick={() => void submit()}>
+            {storyCreating ? <RefreshCw className="mr-1 h-3 w-3 animate-spin" /> : null}
+            {storyCreating ? t('storyPicker.adaptingStateSchema') : t('common.create')}
           </Button>
         </div>
       </PopoverContent>

@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 游戏模式：新故事创建前新增状态结构初始化 Director。它会基于有界的标题、故事起源、开局、故事导演策略、所选状态预设和 TRPG State Binding，输出模板/字段/初始 Actor 差异；后端校验基础模板、字段类型、默认值、词条池与全部 TRPG 引用后，将结果和适配审计一起冻结为故事专属 Actor State schema。关系群像、修仙成长、TRPG 数值和合法成年题材等状态维度由具体设定综合决定，不按题材关键词硬编码。
+- Game Mode: Added a state-schema initialization Director before new-story creation. From bounded title, origin, opening, Story Director strategy, selected State System preset, and TRPG State Bindings, it proposes template/field/initial-Actor diffs. The backend validates foundational templates, field types, defaults, trait pools, and every TRPG reference before freezing the result and its audit as the story-specific Actor State schema. Relationship ensembles, cultivation progression, TRPG numbers, and lawful adult-theme dimensions are inferred from the actual setup rather than hard-coded genre keywords.
+- WebUI：故事导演策略新增双语“开局状态结构适配”配置，默认 `auto`，可切换为 `off` 直接使用原始预设；创建故事期间展示状态适配等待态和错误。初始化失败会原子终止创建，不会留下半成品故事。这项 beta 行为变更会让默认新故事创建多一次 Director 模型请求。
+- WebUI: Story Director strategy now includes bilingual Opening State Schema Adaptation settings, defaulting to `auto` with `off` available to freeze the preset as-is. Story creation shows an adaptation progress state and errors. Initialization failure aborts creation atomically without leaving a partial story. This beta behavior adds one Director model request to default new-story creation.
 - WebUI：写作模式“书籍设定”改为工作区级可自定义快捷入口；默认 Pin 大纲、规则、进度、灵感和状态，支持从动态发现的非章节 Markdown 中搜索、Pin/取消 Pin，并在管理面板拖拽排序，不再固定快捷项与折叠项数量。
 - WebUI: Writing mode Book Settings are now workspace-specific customizable shortcuts. Outline, Rules, Progress, Ideas, and State are pinned by default; users can search dynamically discovered non-chapter Markdown files, pin or unpin them, and drag to reorder them without fixed shortcut or overflow counts.
 - 游戏模式：完成事件编排 V2。故事导演以 `off / sparse / balanced / frequent` 的确定性事件机会频率替代软提示概率；Director 在同一次 `PlanDecision` 中审计 `none / seed / advance / payoff / resolve / abandon`，分支级活动事件与有界决策历史保存在 Director metadata，支持重试幂等、分支继承、回退重建、手动强制评估和显式重置。

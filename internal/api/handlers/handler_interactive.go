@@ -31,7 +31,7 @@ func (h *Handlers) HandleInteractiveStoryCreate(ctx context.Context, c *app.Requ
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
-	story, err := h.app.CreateInteractiveStory(body)
+	story, err := h.app.CreateInteractiveStoryContext(ctx, body)
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return

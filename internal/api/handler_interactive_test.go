@@ -270,7 +270,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 }
 
-func TestInteractiveStoryCreateDoesNotRunInitialDirector(t *testing.T) {
+func TestInteractiveStoryCreateRollsBackWhenStateSchemaInitializationFails(t *testing.T) {
 	application := newTestApplication(t)
 	calls := 0
 	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
@@ -285,11 +285,11 @@ func TestInteractiveStoryCreateDoesNotRunInitialDirector(t *testing.T) {
 		"origin":          "主角准备出发",
 		"story_teller_id": "classic",
 	})
-	if createResp.Code != http.StatusOK {
-		t.Fatalf("create story should not run initial director status=%d body=%s", createResp.Code, createResp.Body.String())
+	if createResp.Code != http.StatusBadRequest {
+		t.Fatalf("create story should fail when state schema initialization fails status=%d body=%s", createResp.Code, createResp.Body.String())
 	}
-	if calls != 0 {
-		t.Fatalf("director generator should not run during story creation, calls=%d", calls)
+	if calls != 1 {
+		t.Fatalf("state schema initializer should run once during story creation, calls=%d", calls)
 	}
 
 	listResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories", nil)
@@ -302,17 +302,122 @@ func TestInteractiveStoryCreateDoesNotRunInitialDirector(t *testing.T) {
 		} `json:"stories"`
 	}
 	decodeResponse(t, listResp.Body.Bytes(), &list)
-	if len(list.Stories) != 1 || list.Stories[0].ID == "" {
-		t.Fatalf("story should be committed after creation without director run: %#v", list)
+	if len(list.Stories) != 0 {
+		t.Fatalf("failed schema initialization must not persist a partial story: %#v", list)
 	}
-	statusResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+list.Stories[0].ID+"/director/status", nil)
-	if statusResp.Code != http.StatusOK {
-		t.Fatalf("director status after create = %d body=%s", statusResp.Code, statusResp.Body.String())
+}
+
+func TestInteractiveStoryCreateAdaptsAndFreezesStoryStateSchema(t *testing.T) {
+	application := newTestApplication(t)
+	var instruction string
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, input string) (string, error) {
+		if toolContext.MaintenanceTask != "state_schema_initialization" {
+			return "测试后台导演完成。", nil
+		}
+		instruction = input
+		return `{
+			"summary":"为修仙群像与关系玩法补充长期可计算状态",
+			"template_ops":[
+				{"op":"fields","template_id":"protagonist","field_ops":[
+					{"op":"add","field":{"name":"境界","type":"string","default":"炼气一层","visibility":"visible","description":"主角当前修行境界","order":110}},
+					{"op":"add","field":{"name":"修为进度","type":"number","default":0,"min":0,"max":100,"visibility":"visible","description":"突破前的修为积累","order":120}},
+					{"op":"add","field":{"name":"法宝","type":"list","default":[],"visibility":"visible","order":130}},
+					{"op":"add","field":{"name":"功法","type":"list","default":[],"visibility":"visible","order":140}}
+				]},
+				{"op":"fields","template_id":"important_character","field_ops":[
+					{"op":"add","field":{"name":"好感度","type":"number","default":0,"min":-100,"max":100,"visibility":"spoiler","order":110}},
+					{"op":"add","field":{"name":"关系阶段","type":"enum","default":"陌生","options":["陌生","熟悉","暧昧","恋人"],"visibility":"spoiler","order":120}}
+				]}
+			],
+			"initial_actor_ops":[]
+		}`, nil
+	})
+	t.Cleanup(restoreDirector)
+	server := NewServer(application, "0")
+
+	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]string{
+		"title":           "青云问情录",
+		"origin":          "主角踏入修仙宗门，将与多名已经成年的重要角色发展不同关系，并通过修炼和法宝探索秘境。",
+		"story_teller_id": "classic",
+	})
+	if createResp.Code != http.StatusOK {
+		t.Fatalf("create adapted story status=%d body=%s", createResp.Code, createResp.Body.String())
 	}
-	var status interactive.DirectorPlanStatus
-	decodeResponse(t, statusResp.Body.Bytes(), &status)
-	if status.Status != interactive.DirectorPlanStatusWaitingOpening || status.Blocking {
-		t.Fatalf("created story should wait for opening before director run: %#v", status)
+	if !strings.Contains(instruction, "青云问情录") || !strings.Contains(instruction, "state_preset") || !strings.Contains(instruction, "max_prompt_bytes") {
+		t.Fatalf("initializer instruction must contain bounded sourced context: %s", instruction)
+	}
+	var created interactive.StorySummary
+	decodeResponse(t, createResp.Body.Bytes(), &created)
+	snapshotResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+created.ID+"/snapshot", nil)
+	if snapshotResp.Code != http.StatusOK {
+		t.Fatalf("snapshot status=%d body=%s", snapshotResp.Code, snapshotResp.Body.String())
+	}
+	var snapshot interactive.Snapshot
+	decodeResponse(t, snapshotResp.Body.Bytes(), &snapshot)
+	if snapshot.ActorStateSchema == nil || snapshot.ActorStateSchema.Version != interactive.ActorStateSchemaVersion || snapshot.ActorStateSchema.Adaptation == nil {
+		t.Fatalf("adapted schema audit missing: %#v", snapshot.ActorStateSchema)
+	}
+	if snapshot.ActorStateSchema.Adaptation.FieldOps != 6 || snapshot.ActorStateSchema.Adaptation.Source != "director_agent" {
+		t.Fatalf("adaptation audit mismatch: %#v", snapshot.ActorStateSchema.Adaptation)
+	}
+	templateFields := map[string]map[string]bool{}
+	for _, template := range snapshot.ActorStateSchema.System.Templates {
+		templateFields[template.ID] = map[string]bool{}
+		for _, field := range template.Fields {
+			templateFields[template.ID][field.Name] = true
+		}
+	}
+	for _, fieldID := range []string{"境界", "修为进度", "法宝", "功法"} {
+		if !templateFields["protagonist"][fieldID] {
+			t.Fatalf("protagonist schema missing %s: %#v", fieldID, templateFields["protagonist"])
+		}
+	}
+	for _, fieldID := range []string{"好感度", "关系阶段"} {
+		if !templateFields["important_character"][fieldID] {
+			t.Fatalf("important character schema missing %s: %#v", fieldID, templateFields["important_character"])
+		}
+	}
+	actors, _ := snapshot.State["actors"].(map[string]any)
+	protagonist, _ := actors["protagonist"].(map[string]any)
+	state, _ := protagonist["state"].(map[string]any)
+	if state["境界"] != "炼气一层" || state["修为进度"] != float64(0) {
+		t.Fatalf("adapted defaults must materialize with initial actor state: %#v", state)
+	}
+}
+
+func TestInteractiveStoryCreateCanDisableStateSchemaAdaptation(t *testing.T) {
+	application := newTestApplication(t)
+	director, err := application.CreateStoryDirector(interactive.StoryDirector{
+		ID:         "preset-only-director",
+		Name:       "直接使用预设",
+		ModuleRefs: interactive.DefaultStoryDirectorModuleRefs(),
+		Strategy: interactive.StoryDirectorStrategy{
+			Enabled:                   true,
+			StateSchemaAdaptationMode: interactive.StateSchemaAdaptationModeOff,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+		calls++
+		return "", errors.New("state schema initializer must stay disabled")
+	})
+	t.Cleanup(restoreDirector)
+	server := NewServer(application, "0")
+
+	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]string{
+		"title":             "原始预设故事",
+		"origin":            "直接使用状态预设。",
+		"story_teller_id":   "classic",
+		"story_director_id": director.ID,
+	})
+	if createResp.Code != http.StatusOK {
+		t.Fatalf("create preset-only story status=%d body=%s", createResp.Code, createResp.Body.String())
+	}
+	if calls != 0 {
+		t.Fatalf("disabled state schema adaptation must not call Director, calls=%d", calls)
 	}
 }
 

@@ -36,6 +36,15 @@ func TestInteractivePromptsSkipLegacyCharacterAndWorldFallback(t *testing.T) {
 	}
 }
 
+func TestInteractiveStateSchemaAdapterSystemInstructionCoversSemanticAdaptation(t *testing.T) {
+	system := BuildInteractiveStateSchemaAdapterSystemInstruction()
+	for _, want := range []string{"最小但充分", "好感", "境界", "TRPG", "生命", "合法成年", "不得只按题材关键词", "protagonist", "story_context", "template_ops", "只输出一个 JSON object"} {
+		if !strings.Contains(system, want) {
+			t.Fatalf("state schema adapter prompt missing %q:\n%s", want, system)
+		}
+	}
+}
+
 func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
 	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{
 		ReplyTargetChars: 600,

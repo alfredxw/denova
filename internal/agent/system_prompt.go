@@ -92,9 +92,10 @@ func outputProtocolForAgent(agentKind string) string {
 		}, "\n")
 	case config.AgentKindInteractiveDirector:
 		return strings.Join([]string{
+			"- 当前调用为 state_schema_initialization 时，不得调用工具，只能输出故事创建前的状态 schema 差异 JSON；后端负责校验、应用和冻结。",
 			"- 当前调用为 director_plan_update 时，只能维护当前分支 director.md，并只输出 PlanDecision JSON。",
 			"- 当前调用为 memory_update 时，只能通过 apply_story_memory_patches 维护 Story Memory，完成后输出一句简短摘要。",
-			"- 两种阶段都不得续写剧情或写入 Actor State。",
+			"- 三个阶段都不得续写剧情或直接写入 Actor State。",
 		}, "\n")
 	case config.AgentKindVersionSummary:
 		return "- 必须只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"
@@ -138,7 +139,8 @@ func agentRuntimeContract(agentKind string) string {
 		}, "\n")
 	case config.AgentKindInteractiveDirector:
 		return strings.Join([]string{
-			"- 后台维护分为两个互斥阶段：memory_update 只整理 Story Memory，director_plan_update 只观察并维护当前分支 director.md；必须以调用方实际提供的工具和任务说明为准。",
+			"- Director 有三个互斥阶段：state_schema_initialization 只在故事创建前提出状态结构差异，memory_update 只整理 Story Memory，director_plan_update 只观察并维护当前分支 director.md；必须以调用方实际提供的工具和任务说明为准。",
+			"- state_schema_initialization 不提供写工具，不得写入任何故事或工作区数据；只能输出有界 JSON 差异，由后端验证后冻结为故事 schema。",
 			"- Actor State 已由 Game Agent 的 TurnResult、RuleResolution 和后端 State Reducer 原子提交；任何阶段都不得再次写入、覆盖或修正 Actor State。",
 			"- memory_update 只能使用 apply_story_memory_patches，Turn、TurnResult 和 StateDelta 是事实真源，Story Memory 只是可重建的派生索引。",
 			"- director_plan_update 只能使用受限 read_file、write_file、edit_file 维护当前分支 director.md，并输出 keep、patch 或 replan 的 PlanDecision JSON；不得写 Story Memory。",

@@ -322,7 +322,10 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 		t.Fatal(err)
 	}
 	t.Cleanup(application.Close)
-	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
+		if toolContext.MaintenanceTask == "state_schema_initialization" {
+			return `{"summary":"测试保持预设状态结构","template_ops":[],"initial_actor_ops":[]}`, nil
+		}
 		return "测试初始化导演规划完成。", nil
 	})
 	t.Cleanup(restoreDirector)

@@ -219,6 +219,7 @@ interface StoryDirectorStrategy {
   director_agent_mode?: 'triggered' | 'every_turn' | 'off' | string
   rule_state_consumption_mode?: 'hybrid_auto' | 'director_only' | string
   rule_visibility_mode?: 'audit_only' | 'public_roll' | string
+	state_schema_adaptation_mode?: 'auto' | 'off' | string
   branch_planning_turns?: number
   planning_templates?: DirectorPlanDocs
   prompt_markdown?: string
@@ -1025,8 +1026,17 @@ export interface ActorStateSchemaSnapshot {
   version: number
   system: StoryDirectorActorStateSystem
 	trpg_system?: StoryDirectorTRPGSystem
+	adaptation?: ActorStateSchemaAdaptationRecord
   legacy_field_paths?: Record<string, Record<string, string>>
   legacy_actor_templates?: Record<string, string>
+}
+
+export interface ActorStateSchemaAdaptationRecord {
+	source: string
+	summary?: string
+	template_ops?: number
+	field_ops?: number
+	initial_actor_ops?: number
 }
 
 interface ContextCompactionEvent {

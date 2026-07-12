@@ -3,6 +3,8 @@ const storyPicker = {
   'storyPicker.placeholder': 'Choose Story',
   'storyPicker.empty': 'No stories',
   'storyPicker.create': 'Create Story',
+  'storyPicker.adaptingStateSchema': 'Adapting State Schema',
+  'storyPicker.createFailed': 'Failed to create story',
   'storyPicker.originPlaceholder': 'Opening description',
   'storyPicker.narrativeStyle': 'Narrative Style',
   'storyPicker.storyDirector': 'Story Director',

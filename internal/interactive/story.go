@@ -130,6 +130,10 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	}
 	if !actorStateEmpty(actorState) {
 		meta.ActorStateSchema = FreezeActorStateSchemaWithRules(actorState, trpgSystem, len(req.InitialStateOps) > 0)
+		if meta.ActorStateSchema != nil && req.ActorStateAdaptation != nil {
+			record := *req.ActorStateAdaptation
+			meta.ActorStateSchema.Adaptation = &record
+		}
 	}
 	initialStateOps := normalizeStateOps(req.InitialStateOps)
 	generatedOps := []StateOp(nil)

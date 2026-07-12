@@ -3,6 +3,8 @@ const storyPicker = {
   'storyPicker.placeholder': '选择故事线',
   'storyPicker.empty': '暂无故事线',
   'storyPicker.create': '创建故事线',
+  'storyPicker.adaptingStateSchema': '正在适配状态结构',
+  'storyPicker.createFailed': '创建故事失败',
   'storyPicker.originPlaceholder': '开端描述',
   'storyPicker.narrativeStyle': '叙事风格',
   'storyPicker.storyDirector': '故事导演',

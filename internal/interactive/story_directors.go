@@ -30,6 +30,9 @@ const (
 	EventFrequencyBalanced              = "balanced"
 	EventFrequencyFrequent              = "frequent"
 	DefaultEventFrequency               = EventFrequencyBalanced
+	DefaultStateSchemaAdaptationMode    = StateSchemaAdaptationModeAuto
+	StateSchemaAdaptationModeAuto       = "auto"
+	StateSchemaAdaptationModeOff        = "off"
 )
 
 var ErrStoryDirectorRevisionConflict = errors.New("故事导演已被其他操作更新，请重新加载后再保存")
@@ -62,18 +65,19 @@ type StoryDirector struct {
 }
 
 type StoryDirectorStrategy struct {
-	Enabled                  bool                           `json:"enabled"`
-	MainlineStrength         string                         `json:"mainline_strength,omitempty"`
-	FailurePolicy            string                         `json:"failure_policy,omitempty"`
-	PacingCurve              string                         `json:"pacing_curve,omitempty"`
-	EventFrequency           string                         `json:"event_frequency,omitempty"`
-	LegacyRandomEventRate    *float64                       `json:"random_event_rate,omitempty" jsonschema:"-"`
-	DirectorAgentMode        string                         `json:"director_agent_mode,omitempty"`
-	RuleStateConsumptionMode string                         `json:"rule_state_consumption_mode,omitempty"`
-	RuleVisibilityMode       string                         `json:"rule_visibility_mode,omitempty"`
-	PromptMarkdown           string                         `json:"prompt_markdown,omitempty"`
-	BranchPlanningTurns      int                            `json:"branch_planning_turns,omitempty"`
-	PlanningTemplates        StoryDirectorPlanningTemplates `json:"planning_templates,omitempty"`
+	Enabled                   bool                           `json:"enabled"`
+	MainlineStrength          string                         `json:"mainline_strength,omitempty"`
+	FailurePolicy             string                         `json:"failure_policy,omitempty"`
+	PacingCurve               string                         `json:"pacing_curve,omitempty"`
+	EventFrequency            string                         `json:"event_frequency,omitempty"`
+	LegacyRandomEventRate     *float64                       `json:"random_event_rate,omitempty" jsonschema:"-"`
+	DirectorAgentMode         string                         `json:"director_agent_mode,omitempty"`
+	RuleStateConsumptionMode  string                         `json:"rule_state_consumption_mode,omitempty"`
+	RuleVisibilityMode        string                         `json:"rule_visibility_mode,omitempty"`
+	StateSchemaAdaptationMode string                         `json:"state_schema_adaptation_mode,omitempty"`
+	PromptMarkdown            string                         `json:"prompt_markdown,omitempty"`
+	BranchPlanningTurns       int                            `json:"branch_planning_turns,omitempty"`
+	PlanningTemplates         StoryDirectorPlanningTemplates `json:"planning_templates,omitempty"`
 }
 
 type StoryDirectorEventSystem struct {
@@ -681,10 +685,22 @@ func normalizeStoryDirectorStrategy(strategy StoryDirectorStrategy) StoryDirecto
 	strategy.DirectorAgentMode = normalizeDirectorAgentMode(strategy.DirectorAgentMode)
 	strategy.RuleStateConsumptionMode = normalizeRuleStateConsumptionMode(strategy.RuleStateConsumptionMode)
 	strategy.RuleVisibilityMode = normalizeRuleVisibilityMode(strategy.RuleVisibilityMode)
+	strategy.StateSchemaAdaptationMode = normalizeStateSchemaAdaptationMode(strategy.StateSchemaAdaptationMode)
 	strategy.PromptMarkdown = trimBytes(strategy.PromptMarkdown, MaxStoryDirectorStrategyPromptBytes)
 	strategy.BranchPlanningTurns = NormalizeBranchPlanningTurns(strategy.BranchPlanningTurns)
 	strategy.PlanningTemplates = NormalizeStoryDirectorPlanningTemplates(strategy.PlanningTemplates)
 	return strategy
+}
+
+func normalizeStateSchemaAdaptationMode(mode string) string {
+	switch strings.TrimSpace(mode) {
+	case StateSchemaAdaptationModeOff:
+		return StateSchemaAdaptationModeOff
+	case StateSchemaAdaptationModeAuto, "":
+		return StateSchemaAdaptationModeAuto
+	default:
+		return StateSchemaAdaptationModeAuto
+	}
 }
 
 func normalizeEventFrequency(value string) string {
@@ -853,28 +869,30 @@ func ActorStateSchemaContext(system StoryDirectorActorStateSystem, limitBytes in
 }
 
 type storyDirectorStructuredStrategy struct {
-	Enabled                  bool   `json:"enabled"`
-	MainlineStrength         string `json:"mainline_strength,omitempty"`
-	FailurePolicy            string `json:"failure_policy,omitempty"`
-	PacingCurve              string `json:"pacing_curve,omitempty"`
-	EventFrequency           string `json:"event_frequency,omitempty"`
-	DirectorAgentMode        string `json:"director_agent_mode,omitempty"`
-	RuleStateConsumptionMode string `json:"rule_state_consumption_mode,omitempty"`
-	RuleVisibilityMode       string `json:"rule_visibility_mode,omitempty"`
-	BranchPlanningTurns      int    `json:"branch_planning_turns,omitempty"`
+	Enabled                   bool   `json:"enabled"`
+	MainlineStrength          string `json:"mainline_strength,omitempty"`
+	FailurePolicy             string `json:"failure_policy,omitempty"`
+	PacingCurve               string `json:"pacing_curve,omitempty"`
+	EventFrequency            string `json:"event_frequency,omitempty"`
+	DirectorAgentMode         string `json:"director_agent_mode,omitempty"`
+	RuleStateConsumptionMode  string `json:"rule_state_consumption_mode,omitempty"`
+	RuleVisibilityMode        string `json:"rule_visibility_mode,omitempty"`
+	StateSchemaAdaptationMode string `json:"state_schema_adaptation_mode,omitempty"`
+	BranchPlanningTurns       int    `json:"branch_planning_turns,omitempty"`
 }
 
 func storyDirectorStructuredStrategySummary(strategy StoryDirectorStrategy) storyDirectorStructuredStrategy {
 	return storyDirectorStructuredStrategy{
-		Enabled:                  strategy.Enabled,
-		MainlineStrength:         strategy.MainlineStrength,
-		FailurePolicy:            strategy.FailurePolicy,
-		PacingCurve:              strategy.PacingCurve,
-		EventFrequency:           strategy.EventFrequency,
-		DirectorAgentMode:        strategy.DirectorAgentMode,
-		RuleStateConsumptionMode: strategy.RuleStateConsumptionMode,
-		RuleVisibilityMode:       strategy.RuleVisibilityMode,
-		BranchPlanningTurns:      strategy.BranchPlanningTurns,
+		Enabled:                   strategy.Enabled,
+		MainlineStrength:          strategy.MainlineStrength,
+		FailurePolicy:             strategy.FailurePolicy,
+		PacingCurve:               strategy.PacingCurve,
+		EventFrequency:            strategy.EventFrequency,
+		DirectorAgentMode:         strategy.DirectorAgentMode,
+		RuleStateConsumptionMode:  strategy.RuleStateConsumptionMode,
+		RuleVisibilityMode:        strategy.RuleVisibilityMode,
+		StateSchemaAdaptationMode: strategy.StateSchemaAdaptationMode,
+		BranchPlanningTurns:       strategy.BranchPlanningTurns,
 	}
 }
 

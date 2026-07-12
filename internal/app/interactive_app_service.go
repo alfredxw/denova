@@ -56,16 +56,28 @@ func (s *InteractiveAppService) InteractiveStories() (interactive.Index, error) 
 }
 
 func (a *App) CreateInteractiveStory(req interactive.CreateStoryRequest) (interactive.StorySummary, error) {
-	return a.interactiveService().CreateInteractiveStory(req)
+	return a.interactiveService().CreateInteractiveStoryContext(context.Background(), req)
 }
 
 func (s *InteractiveAppService) CreateInteractiveStory(req interactive.CreateStoryRequest) (interactive.StorySummary, error) {
+	return s.CreateInteractiveStoryContext(context.Background(), req)
+}
+
+func (a *App) CreateInteractiveStoryContext(ctx context.Context, req interactive.CreateStoryRequest) (interactive.StorySummary, error) {
+	return a.interactiveService().CreateInteractiveStoryContext(ctx, req)
+}
+
+func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Context, req interactive.CreateStoryRequest) (interactive.StorySummary, error) {
 	store := s.store()
 	if store == nil {
 		return interactive.StorySummary{}, ErrNoWorkspace
 	}
 	var err error
 	req, err = s.withStoryDirectorDefaults(req)
+	if err != nil {
+		return interactive.StorySummary{}, err
+	}
+	req, err = s.adaptStoryStateSchema(ctx, req)
 	if err != nil {
 		return interactive.StorySummary{}, err
 	}

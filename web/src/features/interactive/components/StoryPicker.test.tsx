@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoryPicker } from './StoryPicker'
 import type { StoryDirector } from '../types'
@@ -278,6 +278,32 @@ describe('StoryPicker', () => {
         selections: [{ pool_id: 'talent', trait_ids: ['hidden-bloodline'] }],
       }],
     }))
+  })
+
+  it('shows schema adaptation progress and keeps creation errors in the form', async () => {
+    let rejectCreate: ((error: Error) => void) | undefined
+    const onCreate = vi.fn(() => new Promise<void>((_resolve, reject) => {
+      rejectCreate = reject
+    }))
+    render(
+      <StoryPicker
+        stories={[]}
+        currentStoryId=""
+        tellers={[classicTeller()]}
+        storyDirectors={[classicStoryDirector()]}
+        onSelect={vi.fn()}
+        onCreate={onCreate}
+        onDelete={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '新建' }))
+    fireEvent.click(screen.getByRole('button', { name: '创建' }))
+
+    expect(await screen.findByRole('button', { name: '正在适配状态结构' })).toBeDisabled()
+    await act(async () => rejectCreate?.(new Error('状态结构校验失败')))
+    expect(await screen.findByText('状态结构校验失败')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '创建' })).toBeEnabled()
   })
 })
 
