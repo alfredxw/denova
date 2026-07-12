@@ -1,0 +1,102 @@
+CHANGELOG.md
+  s_ff9207b0ee7dc7::t_4a2bfe86ff4b63 16-19
+config/agent_tools.go
+  s_ff9207b0ee7dc7::t_8f4d1a5ac7fdc8 98
+config/agent_tools_test.go
+  s_ff9207b0ee7dc7::t_851c118eae29f4 55-56
+config/config.go
+  s_ff9207b0ee7dc7::t_45d85491a0e7cc 67,130,226-228,330
+config/settings.go
+  s_ff9207b0ee7dc7::t_fbf3acebe69741 95,104-111,173,343-352,591,634-655
+config/settings_test.go
+  s_ff9207b0ee7dc7::t_999a34910f0a3d 49-51,149,177,252-254
+internal/agent/builder.go
+  s_ff9207b0ee7dc7::t_85c968d22bc509 508-515,517,524-525
+internal/agent/context_analysis_test.go
+  s_ff9207b0ee7dc7::t_87e485045fd269 140
+internal/agent/lore_tools.go
+  s_ff9207b0ee7dc7::t_e405925842c62d 16-17,21-24,53-60,79,85-89
+internal/agent/lore_tools_test.go
+  s_ff9207b0ee7dc7::t_aa7c89d044c1dd 80-90
+internal/agent/middleware.go
+  s_ff9207b0ee7dc7::t_132ffdf25dca29 94,108
+internal/api/handler_interactive_test.go
+  s_ff9207b0ee7dc7::t_4f799fd84369bc 207,217-218
+internal/app/interactive_agent_test.go
+  s_ff9207b0ee7dc7::t_2153e3043a7345 165-166
+internal/app/interactive_conversation.go
+  s_ff9207b0ee7dc7::t_3834c8710bff52 90,92,115,117-122,140,153,920-923,1359,1371-1373
+internal/app/interactive_director_test.go
+  s_e880a379ba58be::t_f44ec753d3f30f 66,95,113,288,291-295,453-459,461,464-473
+internal/app/interactive_lore_context.go
+  s_ff9207b0ee7dc7::t_6bd5ff72b08c3c 1-222
+internal/app/interactive_lore_context_test.go
+  s_ff9207b0ee7dc7::t_e602c4f61867e5 1-82
+internal/book/lore.go
+  s_ff9207b0ee7dc7::t_46611a58cbd27c 4-5,122-123,161-176,231-233,263,282-284,288-300,305-311,326-338,557-589,1223,1225,1239,1242-1246,1248-1255,1322-1329
+internal/book/lore_references.go
+  s_ff9207b0ee7dc7::t_b9ac7d91bccece 1-84
+internal/book/lore_references_test.go
+  s_ff9207b0ee7dc7::t_e56627b4d028cd 1-38
+internal/interactive/director_lore_context.go
+  s_ff9207b0ee7dc7::t_5937217b6dc5a9 1-214
+internal/interactive/director_lore_context_test.go
+  s_ff9207b0ee7dc7::t_b68c4af145af85 1-45
+internal/interactive/director_plan.go
+  s_ff9207b0ee7dc7::t_7b9a2c8fdad867 12-13,17-18,73-74,78-79,116,349-351,357,443-447,528-545,566,590,663,692-695,704,758-759,770-779,787-790,847-850,894-916,1021-1024,1029-1030,1034-1035,1040-1041,1046,1050
+internal/interactive/director_test.go
+  s_ff9207b0ee7dc7::t_8f1e9b8de76b6a 227-228
+internal/prompts/interactive.go
+  s_ff9207b0ee7dc7::t_c7b4ac3b8b6754 33,157-159,231,237,239,311-312,314-320,338,350
+web/src/features/interactive/components/MemoryPanel.test.tsx
+  s_ff9207b0ee7dc7::t_2f86d63f6fb2a8 232-233,647,650,666
+web/src/features/interactive/components/director-console/PlanView.tsx
+  s_ff9207b0ee7dc7::t_2733089ea44015 115-118,120-123,224,227-236
+web/src/features/interactive/components/story-director/constants.ts
+  s_ff9207b0ee7dc7::t_368e1c03503da1 1,6
+web/src/features/interactive/types.ts
+  s_ff9207b0ee7dc7::t_617c96c41f57f5 224,625-629,634,742
+web/src/features/settings/SettingsView.tsx
+  s_ff9207b0ee7dc7::t_72944b806142a0 564-575,577
+web/src/features/settings/types.ts
+  s_ff9207b0ee7dc7::t_7d314fad9f67b1 60
+web/src/i18n/locales/en-US/settings.ts
+  s_ff9207b0ee7dc7::t_d874617574daf7 97-98
+web/src/i18n/locales/en-US/snapshot.ts
+  s_ff9207b0ee7dc7::t_8637449eb264e5 36-37
+web/src/i18n/locales/zh-CN/settings.ts
+  s_ff9207b0ee7dc7::t_a4f353ff252252 97-98
+web/src/i18n/locales/zh-CN/snapshot.ts
+  s_ff9207b0ee7dc7::t_bdb117fda7bf65 36-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b00da288f69441d470344e64380c13951b3abc0c",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_e880a379ba58be": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f54f8-18a0-7cc0-9748-17266f02d16d",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_ff9207b0ee7dc7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f54c5-17f1-7712-91f8-c5cdcc87a760",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
