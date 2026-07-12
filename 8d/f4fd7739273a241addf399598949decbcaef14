@@ -1,0 +1,84 @@
+CHANGELOG.md
+  s_ec1ceba353538c::t_fa0b5011ef873b 16-19
+README.en.md
+  s_ec1ceba353538c::t_f7a37f226d8d00 69
+README.md
+  s_ec1ceba353538c::t_61aaeb8a7c9d9c 69
+internal/agent/config_manager_tools.go
+  s_ec1ceba353538c::t_70f5f5fb3da68b 55,598,807,830
+internal/agent/interactive_state_schema.go
+  s_ec1ceba353538c::t_d043d9244c99a4 1-35
+internal/agent/prompt.go
+  s_ec1ceba353538c::t_800b3f4a263220 714
+internal/agent/system_prompt.go
+  s_ec1ceba353538c::t_f9bf0c301c4ecd 95,98,142-143
+internal/agent/system_prompt_test.go
+  s_ec1ceba353538c::t_18899e70f793df 89
+internal/api/handler_interactive_test.go
+  s_ec1ceba353538c::t_f5c7a22b6621a6 273,288-289,291-292,305-306,308-344,346-420
+internal/api/handler_session_test.go
+  s_ec1ceba353538c::t_e947a36b25fe5d 325-328
+internal/api/handlers/handler_interactive.go
+  s_ec1ceba353538c::t_44bcc35f1f16c5 34
+internal/app/interactive_app_service.go
+  s_ec1ceba353538c::t_1d9e41c4e9d6cb 59,63-70,80-83
+internal/interactive/actor_state.go
+  s_ec1ceba353538c::t_ba065226ed1821 136,141-146
+internal/interactive/state_schema_adaptation_test.go
+  s_ec1ceba353538c::t_ad2d689a538969 1-142
+internal/interactive/story.go
+  s_ec1ceba353538c::t_7e94815858bc99 133-136
+internal/interactive/story_directors.go
+  s_ec1ceba353538c::t_70493fb89a5301 33-35,68-80,688,695-705,872-881,886-895
+internal/interactive/story_directors_test.go
+  s_ec1ceba353538c::t_7e26357e6b06b9 39,42-44,245
+internal/interactive/story_types.go
+  s_ec1ceba353538c::t_25989afe41b73f 10-22
+internal/prompts/interactive.go
+  s_ec1ceba353538c::t_ad0a930f50c471 240-260
+internal/prompts/interactive_test.go
+  s_ec1ceba353538c::t_53f7a83aab1324 39-47
+web/src/features/interactive/components/StoryPicker.test.tsx
+  s_ec1ceba353538c::t_79581ade631fa2 1,282-307
+web/src/features/interactive/components/StoryPicker.tsx
+  s_ec1ceba353538c::t_34b6b0b1d10505 18,35-36,68-69,92-97,111-116,303,305,308-310
+web/src/features/interactive/components/setting-panel/presetResources.ts
+  s_ec1ceba353538c::t_6bf461508c1fec 211
+web/src/features/interactive/components/story-director/StoryDirectorEditor.tsx
+  s_ec1ceba353538c::t_aea4302bc26e9e 11,183-189
+web/src/features/interactive/components/story-director/constants.ts
+  s_ec1ceba353538c::t_d3c75486879b19 48-51
+web/src/features/interactive/types.ts
+  s_ec1ceba353538c::t_7664e01d2bf483 222,1029,1034-1041
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_ec1ceba353538c::t_c5ac8dbf7d729c 518,572-575
+web/src/i18n/locales/en-US/storyPicker.ts
+  s_ec1ceba353538c::t_2b515dac6d1684 6-7
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_ec1ceba353538c::t_de288220574054 518,572-575
+web/src/i18n/locales/zh-CN/storyPicker.ts
+  s_ec1ceba353538c::t_780b545b190a55 6-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8df4fd7739273a241addf399598949decbcaef14",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_ec1ceba353538c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f51c5-be76-7720-a063-4818785f3bd6",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
