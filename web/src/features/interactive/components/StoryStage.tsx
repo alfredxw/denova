@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { Activity, Archive, BarChart3, BookOpen, Check, ChevronDown, ChevronUp, Command as CommandIcon, Compass, ImagePlus, List, Loader2, PanelRight, Pencil, Plus, RefreshCw, ScrollText, Send, SlidersHorizontal, Sparkles, Square, X } from 'lucide-react'
+import { Activity, Archive, BarChart3, Check, ChevronDown, ChevronUp, Command as CommandIcon, Compass, ImagePlus, List, Loader2, PanelRight, Pencil, Plus, RefreshCw, ScrollText, Send, SlidersHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -30,10 +28,13 @@ import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveCont
 import { createInteractiveNarrativeFilter, sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
-import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
+import { buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 import type { ImagePreset, InteractiveTurnPersistedEvent, RuleResolution, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
+import { NewStorySetupPanel } from './NewStorySetupPanel'
+import { StoryOpeningPanel } from './StoryOpeningPanel'
 import { StoryDirectorPicker } from './StoryDirectorPicker'
+import { ReplyTargetCharsControl } from './ReplyTargetCharsControl'
 import { TurnNavigator, type TurnNavigationItem } from './TurnNavigator'
 import { isDirectorDisplayEvent } from './director-console/utils'
 import { useIsMobile } from '@/hooks/useIsMobile'
@@ -56,7 +57,8 @@ interface StoryStageProps {
   bookOpeningPresets?: BookOpeningPreset[]
   sceneMemoryVisible?: boolean
   onStorySelect?: (storyId: string) => void
-  onStoryCreate?: (input: StoryCreateInput) => void
+  onStoryCreate?: (input: StoryCreateInput) => void | Promise<void>
+  onStorySetupUpdate?: (input: StoryCreateInput) => void | Promise<void>
   onStoryDelete?: (storyId: string) => void
   onDirectorChange?: (directorId: string) => void
   onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
@@ -85,7 +87,7 @@ type LiveTurnRenderKeys = {
   assistant: string
 }
 
-export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleSceneMemory, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
+export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleSceneMemory, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const keyboardInset = useKeyboardInset()
@@ -128,6 +130,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const [generatingImageTurnId, setGeneratingImageTurnId] = useState<string | null>(null)
   const [customOpeningText, setCustomOpeningText] = useState('')
   const [selectedBookOpeningPresetId, setSelectedBookOpeningPresetId] = useState('')
+  const [creatingStory, setCreatingStory] = useState(false)
+  const [editingStorySetup, setEditingStorySetup] = useState(false)
   const [directorRetrying, setDirectorRetrying] = useState(false)
   const [directorRetryError, setDirectorRetryError] = useState('')
   const [contextAnalysisOpen, setContextAnalysisOpen] = useState(false)
@@ -1069,9 +1073,9 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   const stageControls = (
     <>
-      <StoryPicker stories={stories} currentStoryId={storyId} tellers={tellers} storyDirectors={storyDirectors} onSelect={onStorySelect} onCreate={onStoryCreate} onDelete={onStoryDelete} />
-      <StoryDirectorPicker story={story} storyDirectors={storyDirectors} onChange={onDirectorChange} />
-      <ReplyTargetCharsControl story={story} onChange={onReplyTargetCharsChange} />
+      <StoryPicker stories={stories} currentStoryId={storyId} onSelect={(id) => { setCreatingStory(false); setEditingStorySetup(false); onStorySelect(id) }} onCreate={() => { setEditingStorySetup(false); setCreatingStory(true) }} onDelete={onStoryDelete} />
+      {isMobile ? <StoryDirectorPicker story={story} storyDirectors={storyDirectors} onChange={onDirectorChange} /> : null}
+      {isMobile ? <ReplyTargetCharsControl story={story} onChange={onReplyTargetCharsChange} /> : null}
       {onToggleSceneMemory && (
         <Button type="button" variant="outline" size="sm" className={`h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] hover:bg-[var(--nova-hover)] ${sceneMemoryVisible ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} onClick={onToggleSceneMemory} aria-label={sceneMemoryVisible ? t('storyStage.hideSceneMemory') : t('storyStage.showSceneMemory')} title={sceneMemoryVisible ? t('storyStage.hideSceneMemory') : t('storyStage.showSceneMemory')}>
           <PanelRight className="h-3.5 w-3.5" />
@@ -1117,7 +1121,22 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         <div className="nova-story-stage-content flex min-h-0 flex-1 overflow-hidden bg-[var(--nova-surface-2)]">
           <TurnNavigator items={turnNavigationItems} activeAnchorId={activeTurnAnchorId} onSelect={handleTurnNavigationSelect} />
           <section className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
-            {snapshotLoading && messages.length === 0 && !streaming ? (
+            {creatingStory ? (
+              <NewStorySetupPanel
+                stories={stories}
+                tellers={tellers}
+                directors={storyDirectors}
+                imagePresets={imagePresets}
+                story={editingStorySetup ? story : undefined}
+                onCancel={() => { setCreatingStory(false); setEditingStorySetup(false) }}
+                onCreate={async (input) => {
+                  if (editingStorySetup) await onStorySetupUpdate(input)
+                  else await onStoryCreate(input)
+                  setCreatingStory(false)
+                  setEditingStorySetup(false)
+                }}
+              />
+            ) : snapshotLoading && messages.length === 0 && !streaming ? (
               <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 text-center text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div className="flex max-w-md flex-col items-center gap-3">
                   <RefreshCw className="h-4 w-4 animate-spin text-[var(--nova-text-muted)]" />
@@ -1125,63 +1144,24 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 </div>
               </div>
             ) : messages.length === 0 && !streaming ? (
-              <div className="m-5 flex min-h-0 flex-1 items-center justify-center rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-6 text-center text-sm text-[var(--nova-text-faint)] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <div className="flex w-full max-w-xl flex-col items-center gap-3">
-                  <Sparkles className="h-4 w-4 text-[var(--nova-text-muted)]" />
-                  <div className="space-y-1">
-                    <div className="text-sm font-medium text-[var(--nova-text)]">{t('storyStage.opening.emptyTitle')}</div>
-                    <div className="text-xs leading-5 text-[var(--nova-text-faint)]">{t('storyStage.opening.emptyDescription')}</div>
-                  </div>
-                  {loreEmpty && onRequestLoreInit ? (
-                    <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-center">
-                      <div className="text-xs font-medium text-[var(--nova-text)]">{t('loreInit.interactiveTitle')}</div>
-                      <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('loreInit.interactiveDescription')}</div>
-                      <button type="button" className="nova-nav-item mt-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1.5 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" onClick={onRequestLoreInit}>
-                        {t('loreInit.openAgent')}
-                      </button>
-                    </div>
-                  ) : null}
-                  <div className="w-full space-y-2">
-                    <Textarea autoResize className="nova-field min-h-24 resize-none text-xs" placeholder={t('storyStage.opening.customPlaceholder')} value={customOpeningText} onChange={(event) => setCustomOpeningText(event.target.value)} />
-                    <div className="flex w-full min-w-0 flex-wrap items-center justify-center gap-2">
-                      <Button type="button" size="sm" className="gap-1.5" disabled={!storyId || streaming} onClick={startAIOpening}>
-                        <Sparkles data-icon="inline-start" />
-                        {t('storyStage.opening.startAI')}
-                      </Button>
-                      {onOpenDirectorConfig ? (
-                        <Button type="button" variant="outline" size="sm" className="gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={onOpenDirectorConfig}>
-                          <SlidersHorizontal data-icon="inline-start" />
-                          {t('storyStage.opening.configureDirector')}
-                        </Button>
-                      ) : null}
-                      <Button type="button" variant="outline" size="sm" className="gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || streaming || !customOpeningText.trim()} onClick={startOpening}>
-                        <Pencil data-icon="inline-start" />
-                        {t('storyStage.opening.startCustom')}
-                      </Button>
-                      <div className="flex min-w-0 max-w-full flex-wrap items-center justify-center gap-1 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1">
-                        <Select disabled={!storyId || streaming || availableBookOpeningPresets.length === 0} value={selectedBookOpeningPreset?.id || ''} onValueChange={setSelectedBookOpeningPresetId}>
-                          <SelectTrigger size="sm" aria-label={t('storyStage.opening.bookPresetSelect')} className="min-w-0 max-w-full border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs text-[var(--nova-text)] hover:bg-[var(--nova-hover)] sm:w-48">
-                            <SelectValue placeholder={t('storyStage.opening.noBookPreset')} />
-                          </SelectTrigger>
-                          <SelectContent className="border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)]">
-                            <SelectGroup>
-                              {availableBookOpeningPresets.map((preset) => (
-                                <SelectItem key={preset.id} value={preset.id} className="text-xs focus:bg-[var(--nova-hover)] focus:text-[var(--nova-text)]">
-                                  {preset.title || t('storyStage.opening.bookPresetUntitled')}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                        <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || streaming || !selectedBookOpeningPreset} onClick={startBookPresetOpening} title={selectedBookOpeningPreset ? selectedBookOpeningPreset.title || t('storyStage.opening.bookPresetUntitled') : t('storyStage.opening.bookPresetMissing')}>
-                          <BookOpen data-icon="inline-start" />
-                          {selectedBookOpeningPreset ? t('storyStage.opening.startBookPreset') : t('storyStage.opening.noBookPreset')}
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <StoryOpeningPanel
+                story={story}
+                storyId={storyId}
+                streaming={streaming}
+                presets={availableBookOpeningPresets}
+                selectedPreset={selectedBookOpeningPreset}
+                customText={customOpeningText}
+                bottomInset={inputFloatHeight}
+                loreEmpty={loreEmpty}
+                onSelectPreset={setSelectedBookOpeningPresetId}
+                onCustomTextChange={setCustomOpeningText}
+                onStartAI={startAIOpening}
+                onStartPreset={startBookPresetOpening}
+                onStartCustom={startOpening}
+                onConfigureDirector={onOpenDirectorConfig}
+                onRequestLoreInit={onRequestLoreInit}
+                onBackToSetup={() => { setEditingStorySetup(true); setCreatingStory(true) }}
+              />
             ) : (
               <MessageList
                 messages={agentMessages}
@@ -1219,7 +1199,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           </section>
         </div>
       </div>
-      <div ref={inputFloatRef} style={{ bottom: keyboardInset }} className="nova-story-input-float pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3">
+      {!creatingStory ? <div ref={inputFloatRef} style={{ bottom: keyboardInset }} className="nova-story-input-float pointer-events-none absolute inset-x-0 bottom-0 z-20 p-3">
         <div className="pointer-events-auto mx-auto max-w-5xl">
           {editingTurn && !streaming ? (
             <div className="mb-3 flex min-w-0 items-center gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-muted)]">
@@ -1523,7 +1503,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             </DialogContent>
           </Dialog>
         </div>
-      </div>
+      </div> : null}
     </main>
   )
 
@@ -1838,84 +1818,6 @@ function readStreamBool(value: unknown) {
   if (typeof value === 'boolean') return value
   if (typeof value === 'string') return value === 'true'
   return false
-}
-
-function ReplyTargetCharsControl({ story, onChange }: { story?: StorySummary; onChange?: (replyTargetChars: number) => void | Promise<void> }) {
-  const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState(String(normalizeReplyTargetChars(story?.reply_target_chars)))
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-  const currentValue = normalizeReplyTargetChars(story?.reply_target_chars)
-
-  useEffect(() => {
-    if (!open) {
-      setDraft(String(currentValue))
-      setError('')
-    }
-  }, [currentValue, open])
-
-  const save = async () => {
-    const nextValue = Number(draft)
-    if (!Number.isFinite(nextValue) || nextValue <= 0) {
-      setError(t('storyStage.replyTarget.invalid'))
-      return
-    }
-    setSaving(true)
-    setError('')
-    try {
-      await onChange?.(Math.floor(nextValue))
-      setOpen(false)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('storyStage.replyTarget.saveFailed'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button type="button" variant="outline" size="sm" disabled={!story || !onChange} className="h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" aria-label={t('storyStage.replyTarget.open')}>
-          <Pencil className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
-          {t('storyStage.replyTarget.compact', { count: currentValue })}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={6} className="nova-panel w-64 border border-[var(--nova-border)] p-3 text-[var(--nova-text)] shadow-[var(--nova-shadow)]">
-        <div className="mb-2 text-xs font-medium">{t('storyStage.replyTarget.title')}</div>
-        <Input
-          className="nova-field text-xs"
-          type="number"
-          min={1}
-          value={draft}
-          onChange={(event) => {
-            setDraft(event.target.value)
-            setError('')
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              void save()
-            }
-          }}
-        />
-        {error && <div className="mt-2 text-[11px] leading-4 text-[var(--nova-danger)]">{error}</div>}
-        <div className="mt-3 flex justify-end gap-2">
-          <Button variant="ghost" size="xs" onClick={() => setOpen(false)}>
-            {t('common.cancel')}
-          </Button>
-          <Button size="xs" disabled={saving} onClick={() => void save()}>
-            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            {t('common.save')}
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-function normalizeReplyTargetChars(value?: number) {
-  return value && value > 0 ? value : DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS
 }
 
 function InteractiveImageSettingsMenu({ story, disabled, onChange }: { story?: StorySummary; disabled?: boolean; onChange?: (settings: StoryImageSettings) => void | Promise<void> }) {

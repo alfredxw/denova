@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import type { ChatMessage } from '@/lib/api'
 import { chatMessagesToAgentUIMessages } from '@/lib/agent-legacy-message'
 import type { AgentUIMessage } from '@/lib/agent-ui'
-import type { DirectorPlanMetadata, TurnDisplayEvent } from '../../types'
+import type { DirectorPlanMetadata, StateSchemaInitializationStatus, TurnDisplayEvent } from '../../types'
 import type { DirectorStatusLike } from './types'
 import { directorPlanTotals, directorStatusFallback, directorStatusLabel, displayEventToChatMessage, formatBytes, formatShortDate } from './utils'
 
@@ -15,6 +15,7 @@ export function DirectorRunView({
   hasDirectorRun,
   directorStatus,
   directorMetadata,
+  stateSchemaInitialization,
   directorDisplayEvents,
   loading,
   retrying,
@@ -35,6 +36,7 @@ export function DirectorRunView({
   hasDirectorRun: boolean
   directorStatus?: DirectorStatusLike
   directorMetadata?: DirectorPlanMetadata
+  stateSchemaInitialization?: StateSchemaInitializationStatus
   directorDisplayEvents: TurnDisplayEvent[]
   loading: boolean
   retrying: boolean
@@ -53,6 +55,7 @@ export function DirectorRunView({
 }) {
   return (
     <div className="space-y-3">
+      {stateSchemaInitialization ? <StateSchemaRunStage status={stateSchemaInitialization} /> : null}
       {hasDirectorRun ? (
         <DirectorRunStatusCard
           status={directorStatus}
@@ -83,6 +86,22 @@ export function DirectorRunView({
         onAbortGenerate={onAbortGenerate}
       />
     </div>
+  )
+}
+
+function StateSchemaRunStage({ status }: { status: StateSchemaInitializationStatus }) {
+  const { t } = useTranslation()
+  const running = status.status === 'running'
+  const failed = status.status === 'failed'
+  return (
+    <section className="rounded-[10px] border border-[var(--nova-border)] bg-[var(--director-panel)] px-3 py-2.5">
+      <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
+        {running ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--director-brass)]" /> : failed ? <AlertCircle className="h-3.5 w-3.5 text-[var(--nova-danger)]" /> : <CheckCircle2 className="h-3.5 w-3.5 text-[var(--director-live)]" />}
+        <span>{t('memoryPanel.run.stateSchemaStage')}</span>
+        <span className="ml-auto font-mono text-[9px] uppercase text-[var(--nova-text-faint)]">{t(`memoryPanel.stateSchema.status.${status.status}`, { defaultValue: status.status })}</span>
+      </div>
+      <p className="mt-1 text-[10px] leading-4 text-[var(--nova-text-faint)]">{status.summary || status.error || t(`memoryPanel.stateSchema.description.${status.status}`, { defaultValue: status.status })}</p>
+    </section>
   )
 }
 

@@ -16,23 +16,24 @@ const (
 	storyDirectorVersion   = 4
 	DefaultStoryDirectorID = "default"
 
-	maxStoryDirectorRules               = 64
-	MaxStoryDirectorStrategyPromptBytes = DirectorContextMaxBytes
-	DefaultDirectorAgentMode            = DirectorAgentModeTriggered
-	DirectorAgentModeTriggered          = "triggered"
-	DirectorAgentModeEveryTurn          = "every_turn"
-	DirectorAgentModeOff                = "off"
-	DefaultRuleVisibilityMode           = RuleVisibilityModeAuditOnly
-	RuleVisibilityModeAuditOnly         = "audit_only"
-	RuleVisibilityModePublicRoll        = "public_roll"
-	EventFrequencyOff                   = "off"
-	EventFrequencySparse                = "sparse"
-	EventFrequencyBalanced              = "balanced"
-	EventFrequencyFrequent              = "frequent"
-	DefaultEventFrequency               = EventFrequencyBalanced
-	DefaultStateSchemaAdaptationMode    = StateSchemaAdaptationModeAuto
-	StateSchemaAdaptationModeAuto       = "auto"
-	StateSchemaAdaptationModeOff        = "off"
+	maxStoryDirectorRules                 = 64
+	MaxStoryDirectorStrategyPromptBytes   = DirectorContextMaxBytes
+	DefaultDirectorAgentMode              = DirectorAgentModeTriggered
+	DirectorAgentModeTriggered            = "triggered"
+	DirectorAgentModeEveryTurn            = "every_turn"
+	DirectorAgentModeOff                  = "off"
+	DefaultRuleVisibilityMode             = RuleVisibilityModeAuditOnly
+	RuleVisibilityModeAuditOnly           = "audit_only"
+	RuleVisibilityModePublicRoll          = "public_roll"
+	EventFrequencyOff                     = "off"
+	EventFrequencySparse                  = "sparse"
+	EventFrequencyBalanced                = "balanced"
+	EventFrequencyFrequent                = "frequent"
+	DefaultEventFrequency                 = EventFrequencyBalanced
+	DefaultStateSchemaAdaptationMode      = StateSchemaAdaptationModeAfterOpening
+	StateSchemaAdaptationModeAfterOpening = "after_opening"
+	StateSchemaAdaptationModeAuto         = "auto"
+	StateSchemaAdaptationModeOff          = "off"
 )
 
 var ErrStoryDirectorRevisionConflict = errors.New("故事导演已被其他操作更新，请重新加载后再保存")
@@ -696,10 +697,10 @@ func normalizeStateSchemaAdaptationMode(mode string) string {
 	switch strings.TrimSpace(mode) {
 	case StateSchemaAdaptationModeOff:
 		return StateSchemaAdaptationModeOff
-	case StateSchemaAdaptationModeAuto, "":
-		return StateSchemaAdaptationModeAuto
+	case StateSchemaAdaptationModeAfterOpening, StateSchemaAdaptationModeAuto, "":
+		return StateSchemaAdaptationModeAfterOpening
 	default:
-		return StateSchemaAdaptationModeAuto
+		return StateSchemaAdaptationModeAfterOpening
 	}
 }
 

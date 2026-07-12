@@ -25,27 +25,28 @@ import (
 )
 
 type interactiveConversation struct {
-	store                *interactive.Store
-	novaDir              string
-	workspace            string
-	cfg                  *config.Config
-	storyID              string
-	branchID             string
-	user                 string
-	replyTargetChars     int
-	directorTask         string
-	mu                   sync.Mutex
-	lastTurn             *interactive.TurnEvent
-	lastStateReady       bool
-	lastSources          string
-	assistantMetadata    session.MessageMetadata
-	displayEvents        []interactive.DisplayEvent
-	modelContextMessages []interactive.ModelContextMessage
-	ruleResolution       *interactive.RuleResolution
-	turnResult           *interactive.TurnResult
-	baseParentID         *string
-	directorTasks        *workspaceDirectorTaskGroup
-	directorGenerator    interactiveDirectorGenerator
+	store                   *interactive.Store
+	novaDir                 string
+	workspace               string
+	cfg                     *config.Config
+	storyID                 string
+	branchID                string
+	user                    string
+	replyTargetChars        int
+	directorTask            string
+	mu                      sync.Mutex
+	lastTurn                *interactive.TurnEvent
+	lastStateReady          bool
+	lastSources             string
+	assistantMetadata       session.MessageMetadata
+	displayEvents           []interactive.DisplayEvent
+	modelContextMessages    []interactive.ModelContextMessage
+	ruleResolution          *interactive.RuleResolution
+	turnResult              *interactive.TurnResult
+	baseParentID            *string
+	directorTasks           *workspaceDirectorTaskGroup
+	directorGenerator       interactiveDirectorGenerator
+	customDirectorGenerator bool
 }
 
 type interactiveDirectorGenerator func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error)
@@ -59,6 +60,7 @@ func (c *interactiveConversation) bindDirectorRuntime(tasks *workspaceDirectorTa
 		c.directorTasks = tasks
 		if len(generators) > 0 && generators[0] != nil {
 			c.directorGenerator = generators[0]
+			c.customDirectorGenerator = true
 		}
 	}
 	return c
@@ -84,6 +86,8 @@ func (c *interactiveConversation) directorTaskHint() string {
 		return ""
 	}
 	switch strings.TrimSpace(c.directorTask) {
+	case interactiveDirectorTaskOpeningPlan:
+		return "opening_plan：在首个 Game Agent 回合前建立 director.md 与 lore-context.md；基于开局设定和资料名称目录完成初始选角、场景与分支规划。"
 	case "memory_update":
 		return "memory_update：只根据已提交的 TurnResult、StateDelta 和最终正文维护 Story Memory；不得写 Actor State 或 director.md。"
 	case "director_plan_update":
@@ -103,7 +107,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		return nil, err
 	}
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
-	storyDirector := storyDirectorForSnapshot(c.storyDirector(storyCtx.Meta.StoryDirectorID), storyCtx.Meta.ActorStateSchema)
+	storyDirector := storyDirectorForSnapshot(c.storyDirectorForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
 	tellerTurnContextPrompt := teller.PromptForTargets("turn_context")
 	turnMemory := buildInteractiveModelVisibleTurnMemory(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
 	storyMemory, err := c.store.StoryMemoryContextSummary(c.storyID, storyCtx.Snapshot.BranchID, interactiveStoryRuntimeContextBytes)
@@ -117,7 +121,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		directorPlan = *storyCtx.Snapshot.DirectorPlan
 		directorPlanVisible = interactive.DirectorPlanVisibleContext(directorPlan, interactiveStoryRuntimeContextBytes)
 	}
-	loreRuntime, err := buildInteractiveStoryLoreContext(c.workspace, directorPlan, agentMessage, c.cfg)
+	loreRuntime, err := buildInteractiveStoryLoreContext(c.workspace, directorPlan, agentMessage)
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +133,8 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	if err != nil {
 		return nil, fmt.Errorf("读取常驻资料预算失败: %w", err)
 	}
-	if residentContentBytes > residentLoreLimitBytes(c.cfg) {
-		return nil, fmt.Errorf("常驻资料合计超过 %d KB；请缩短常驻正文、改为按需资料或提高常驻资料上限", residentLoreLimitBytes(c.cfg)/1024)
+	if residentContentBytes > book.ResidentLoreSafetyMaxBytes {
+		return nil, fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentContentBytes+1023)/1024)
 	}
 	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, interactiveStoryRuntimeContextBytes)
 	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, interactiveStoryRuntimeContextBytes)
@@ -212,7 +216,7 @@ func (c *interactiveConversation) PrepareInteractiveTurn(ctx context.Context, re
 		return interactive.RuleResolution{}, ctx.Err()
 	default:
 	}
-	storyDirector := storyDirectorForSnapshot(c.storyDirector(storyCtx.Meta.StoryDirectorID), storyCtx.Meta.ActorStateSchema)
+	storyDirector := storyDirectorForSnapshot(c.storyDirectorForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
 	resolution, err := interactive.ResolveTurnRulesWithDirector(c.storyID, storyCtx.Snapshot.BranchID, storyCtx.Snapshot.State, storyDirector, request)
 	if err != nil {
 		return interactive.RuleResolution{}, err
@@ -250,7 +254,7 @@ func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, result i
 		if storyCtx.Meta.ActorStateSchema != nil {
 			actorState = storyCtx.Meta.ActorStateSchema.System
 		} else {
-			actorState = c.storyDirector(storyCtx.Meta.StoryDirectorID).ActorState
+			actorState = c.storyDirectorForMeta(storyCtx.Meta).ActorState
 		}
 		if _, err := interactive.ValidateActorStatePatchesAgainstState(actorState, storyCtx.Snapshot.State, result.ActorStatePatches, ""); err != nil {
 			return interactive.TurnResult{}, fmt.Errorf("Actor 状态更新校验失败，可修正参数后重试 submit_interactive_turn_result: %w", err)
@@ -921,7 +925,7 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		log.Printf("[interactive-director-agent] load story memory failed story_id=%s branch_id=%s err=%v", c.storyID, storyCtx.Snapshot.BranchID, err)
 		storyMemory = ""
 	}
-	storyDirector := storyDirectorForSnapshot(c.storyDirector(storyCtx.Meta.StoryDirectorID), storyCtx.Meta.ActorStateSchema)
+	storyDirector := storyDirectorForSnapshot(c.storyDirectorForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
 	strategyPrompt := interactive.StoryDirectorStrategyPromptMarkdown(storyDirector)
 	turnMemory := buildInteractiveModelVisibleTurnMemory(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
 	turnHistory := formatInteractiveTurnMemoryHistory(turnMemory, storyCtx.Snapshot.ContextCompaction, "（暂无历史回合，请基于本回合审计更新导演计划。）")
@@ -931,7 +935,7 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 	} else if plan, err := c.store.DirectorPlan(c.storyID, storyCtx.Snapshot.BranchID); err == nil {
 		directorPlan = plan
 	}
-	loreContext, err := buildInteractiveDirectorLoreContext(c.workspace, directorPlan, turn, c.cfg)
+	loreContext, err := buildInteractiveDirectorLoreContext(c.workspace, directorPlan, turn, c.directorTask)
 	if err != nil {
 		return "", err
 	}
@@ -940,9 +944,13 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		actorStateSnapshot = map[string]any{"actors": actors}
 	}
 	allowedPaths := c.store.DirectorPlanAllowedPaths(c.storyID, storyCtx.Snapshot.BranchID)
-	budget := newDirectorContextBudget(c.cfg, interactiveDirectorTaskDirectorPlanUpdate)
+	openingInitialization := strings.TrimSpace(c.directorTask) == interactiveDirectorTaskOpeningPlan
+	budget := newDirectorContextBudget(c.cfg, c.directorTask)
 	title := budget.take("story.title", storyCtx.Meta.Title, 512)
-	turnAudit := budget.take("turn.audit", boundedJSON(interactiveDirectorTurnAudit(turn), interactiveDirectorContextBytes), interactiveDirectorContextBytes)
+	turnAudit := ""
+	if !openingInitialization {
+		turnAudit = budget.take("turn.audit", boundedJSON(interactiveDirectorTurnAudit(turn), interactiveDirectorContextBytes), interactiveDirectorContextBytes)
+	}
 	planDocs := budget.take("director_plan.docs", boundedJSON(directorPlan.Docs, interactiveDirectorContextBytes), interactiveDirectorContextBytes)
 	actorState := budget.take("actor_state.snapshot", boundedJSON(actorStateSnapshot, interactiveDirectorContextBytes), interactiveDirectorContextBytes)
 	actorStateSchema := budget.take("actor_state.schema", interactive.ActorStateSchemaContext(storyDirector.ActorState, interactiveDirectorContextBytes), interactiveDirectorContextBytes)
@@ -953,6 +961,10 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 	planningTemplates := budget.take("director.strategy.templates", boundedJSON(storyDirector.Strategy.PlanningTemplates, interactiveDirectorContextBytes), interactiveDirectorContextBytes)
 	planningSummary := budget.take("director.planning_summary", interactive.StoryDirectorPlanningSummary(storyDirector, interactiveDirectorContextBytes), interactiveDirectorContextBytes)
 	strategyContext := budget.take("director.strategy.prompt", strategyPrompt, interactiveDirectorContextBytes)
+	openingContext := ""
+	if openingInitialization {
+		openingContext = budget.take("story.opening_input", turn.User, 4*1024)
+	}
 	eventOpportunity, eventRuntime, eventIndex, eventErr := c.store.DirectorEventContext(c.storyID, storyCtx.Snapshot.BranchID, turn.ID)
 	if eventErr != nil {
 		return "", fmt.Errorf("读取事件编排上下文失败: %w", eventErr)
@@ -964,6 +976,8 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 	instruction := prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{
 		Title:                       title,
 		Origin:                      origin,
+		OpeningContext:              openingContext,
+		OpeningInitialization:       openingInitialization,
 		StoryTellerID:               budget.take("story.teller_id", storyCtx.Meta.StoryTellerID, 128),
 		StoryDirectorID:             budget.take("story.director_id", storyCtx.Meta.StoryDirectorID, 128),
 		BranchID:                    budget.take("story.branch_id", storyCtx.Snapshot.BranchID, 128),
@@ -997,7 +1011,7 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		len(allowedPaths),
 		"none",
 		interactivePartSummary(loreContext),
-		interactivePartSummary(boundedJSON(interactiveDirectorTurnAudit(turn), interactiveDirectorContextBytes)),
+		interactivePartSummary(turnAudit),
 		interactivePartSummary(storyMemory),
 		"not_injected",
 		interactivePartSummary(boundedJSON(actorStateSnapshot, interactiveDirectorContextBytes)),
@@ -1129,6 +1143,9 @@ func newDirectorContextBudget(cfg *config.Config, task string) *directorContextB
 	thresholdTokens := int(float64(window) * threshold)
 	systemPrompt := prompts.BuildInteractiveDirectorSystemInstruction()
 	emptyPrompt := prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{})
+	if task == interactiveDirectorTaskOpeningPlan {
+		emptyPrompt = prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{OpeningInitialization: true})
+	}
 	if task == interactiveDirectorTaskMemoryUpdate {
 		systemPrompt = prompts.BuildInteractiveMemoryRecorderSystemInstruction()
 		emptyPrompt = prompts.InteractiveMemoryRecorderInstruction(prompts.InteractiveMemoryRecorderPromptInput{})
@@ -1196,6 +1213,20 @@ func (c *interactiveConversation) teller(tellerID string) interactive.Teller {
 
 func (c *interactiveConversation) storyDirector(directorID string) interactive.StoryDirector {
 	return loadStoryDirector(c.novaDir, directorID)
+}
+
+func (c *interactiveConversation) storyDirectorForMeta(meta interactive.StoryMeta) interactive.StoryDirector {
+	return loadStoryDirectorForMeta(c.novaDir, meta)
+}
+
+func loadStoryDirectorForMeta(novaDir string, meta interactive.StoryMeta) interactive.StoryDirector {
+	director := loadStoryDirector(novaDir, meta.StoryDirectorID)
+	if meta.ModuleRefs == nil {
+		return director
+	}
+	director.ModuleRefs = interactive.NormalizeStoryDirectorModuleRefs(*meta.ModuleRefs)
+	director.ResolvedSnapshot = interactive.StoryDirectorResolvedSnapshot{}
+	return interactive.ResolveStoryDirectorModules(novaDir, director)
 }
 
 func storyDirectorForSnapshot(director interactive.StoryDirector, snapshot *interactive.ActorStateSchemaSnapshot) interactive.StoryDirector {

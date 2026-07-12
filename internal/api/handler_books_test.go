@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/png"
@@ -15,8 +16,52 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/common/ut"
 
+	"denova/internal/book"
 	"denova/internal/bookcover"
 )
+
+func TestCharacterCardImportAsNewBookAboveRecommendation(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	card, err := json.Marshal(map[string]any{
+		"data": map[string]any{
+			"name":        "五十 KB 角色卡",
+			"description": "角色设定",
+			"character_book": map[string]any{"entries": []any{map[string]any{
+				"id": 1, "comment": "规则：长设定", "content": strings.Repeat("常驻设定", 5000), "constant": true, "enabled": true,
+			}}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, contentType := characterCardImportBody(t, card, map[string]string{"target_mode": "new_book", "book_title": "五十 KB 新书"})
+	resp := ut.PerformRequest(
+		server.engine.Engine,
+		http.MethodPost,
+		"/api/workspace/import-character-card",
+		&ut.Body{Body: bytes.NewReader(body), Len: len(body)},
+		ut.Header{Key: "Content-Type", Value: contentType},
+	)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("import status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	var result struct {
+		Workspace string `json:"workspace"`
+		ItemCount int    `json:"item_count"`
+	}
+	decodeResponse(t, resp.Body.Bytes(), &result)
+	if result.Workspace == "" || result.ItemCount == 0 {
+		t.Fatalf("new-book import result mismatch: %#v", result)
+	}
+	residentBytes, err := book.NewLoreStore(result.Workspace).ResidentContentBytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if residentBytes <= book.ResidentLoreWarningBytes {
+		t.Fatalf("fixture should exceed warning recommendation: %d", residentBytes)
+	}
+}
 
 func TestBookCoverUploadAPI(t *testing.T) {
 	application := newTestApplication(t)
@@ -122,6 +167,28 @@ func bookCoverUploadBody(t *testing.T, path string, data []byte) ([]byte, string
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatalf("关闭 multipart writer 失败: %v", err)
+	}
+	return body.Bytes(), writer.FormDataContentType()
+}
+
+func characterCardImportBody(t *testing.T, data []byte, fields map[string]string) ([]byte, string) {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	part, err := writer.CreateFormFile("file", "card.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write(data); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
 	}
 	return body.Bytes(), writer.FormDataContentType()
 }

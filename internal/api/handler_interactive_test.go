@@ -271,7 +271,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 }
 
-func TestInteractiveStoryCreateRollsBackWhenStateSchemaInitializationFails(t *testing.T) {
+func TestInteractiveStoryKeepsOpeningAndPresetWhenAsyncStateSchemaInitializationFails(t *testing.T) {
 	application := newTestApplication(t)
 	calls := 0
 	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
@@ -286,25 +286,24 @@ func TestInteractiveStoryCreateRollsBackWhenStateSchemaInitializationFails(t *te
 		"origin":          "主角准备出发",
 		"story_teller_id": "classic",
 	})
-	if createResp.Code != http.StatusBadRequest {
-		t.Fatalf("create story should fail when state schema initialization fails status=%d body=%s", createResp.Code, createResp.Body.String())
+	if createResp.Code != http.StatusOK {
+		t.Fatalf("create story should not wait for state schema initialization status=%d body=%s", createResp.Code, createResp.Body.String())
 	}
-	if calls != 1 {
-		t.Fatalf("state schema initializer should run once during story creation, calls=%d", calls)
+	if calls != 0 {
+		t.Fatalf("state schema initializer must not run during story creation, calls=%d", calls)
 	}
-
-	listResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories", nil)
-	if listResp.Code != http.StatusOK {
-		t.Fatalf("list stories status = %d body=%s", listResp.Code, listResp.Body.String())
+	var created interactive.StorySummary
+	decodeResponse(t, createResp.Body.Bytes(), &created)
+	if _, err := application.AppendInteractiveTurn(created.ID, "main", "出发", "主角走入晨雾。"); err != nil {
+		t.Fatal(err)
 	}
-	var list struct {
-		Stories []struct {
-			ID string `json:"id"`
-		} `json:"stories"`
+	runResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/state-schema/run", nil)
+	if runResp.Code != http.StatusAccepted {
+		t.Fatalf("retry state schema status=%d body=%s", runResp.Code, runResp.Body.String())
 	}
-	decodeResponse(t, listResp.Body.Bytes(), &list)
-	if len(list.Stories) != 0 {
-		t.Fatalf("failed schema initialization must not persist a partial story: %#v", list)
+	snapshot := waitForStateSchemaStatusAPI(t, server, created.ID, interactive.StateSchemaInitializationFailed)
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.Narrative != "主角走入晨雾。" || snapshot.ActorStateSchema == nil || snapshot.ActorStateSchema.Revision != 1 {
+		t.Fatalf("failed adaptation must preserve opening and preset schema: %#v", snapshot)
 	}
 }
 
@@ -344,18 +343,29 @@ func TestInteractiveStoryCreateAdaptsAndFreezesStoryStateSchema(t *testing.T) {
 	if createResp.Code != http.StatusOK {
 		t.Fatalf("create adapted story status=%d body=%s", createResp.Code, createResp.Body.String())
 	}
-	if !strings.Contains(instruction, "青云问情录") || !strings.Contains(instruction, "state_preset") || !strings.Contains(instruction, "max_prompt_bytes") {
-		t.Fatalf("initializer instruction must contain bounded sourced context: %s", instruction)
+	if instruction != "" {
+		t.Fatalf("story creation must not invoke state schema Director: %s", instruction)
 	}
 	var created interactive.StorySummary
 	decodeResponse(t, createResp.Body.Bytes(), &created)
-	snapshotResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+created.ID+"/snapshot", nil)
-	if snapshotResp.Code != http.StatusOK {
-		t.Fatalf("snapshot status=%d body=%s", snapshotResp.Code, snapshotResp.Body.String())
+	initialResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+created.ID+"/snapshot", nil)
+	var initial interactive.Snapshot
+	decodeResponse(t, initialResp.Body.Bytes(), &initial)
+	if initial.ActorStateSchema == nil || initial.ActorStateSchema.Revision != 1 || initial.ActorStateSchema.Adaptation != nil || initial.StateSchemaInitialization == nil || initial.StateSchemaInitialization.Status != interactive.StateSchemaInitializationWaitingOpening {
+		t.Fatalf("new story must expose revision 1 while waiting for opening: %#v", initial)
 	}
-	var snapshot interactive.Snapshot
-	decodeResponse(t, snapshotResp.Body.Bytes(), &snapshot)
-	if snapshot.ActorStateSchema == nil || snapshot.ActorStateSchema.Version != interactive.ActorStateSchemaVersion || snapshot.ActorStateSchema.Adaptation == nil {
+	if _, err := application.AppendInteractiveTurn(created.ID, "main", "踏入宗门", "山门在云海间开启，沈凝站在执事身后观察新弟子。"); err != nil {
+		t.Fatal(err)
+	}
+	runResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/state-schema/run", nil)
+	if runResp.Code != http.StatusAccepted {
+		t.Fatalf("run state schema status=%d body=%s", runResp.Code, runResp.Body.String())
+	}
+	snapshot := waitForStateSchemaStatusAPI(t, server, created.ID, interactive.StateSchemaInitializationReady)
+	if !strings.Contains(instruction, "青云问情录") || !strings.Contains(instruction, "山门在云海间开启") || !strings.Contains(instruction, "state_preset") || !strings.Contains(instruction, "max_prompt_bytes") {
+		t.Fatalf("initializer instruction must contain bounded opening context: %s", instruction)
+	}
+	if snapshot.ActorStateSchema == nil || snapshot.ActorStateSchema.Version != interactive.ActorStateSchemaVersion || snapshot.ActorStateSchema.Revision != 2 || snapshot.ActorStateSchema.Adaptation == nil {
 		t.Fatalf("adapted schema audit missing: %#v", snapshot.ActorStateSchema)
 	}
 	if snapshot.ActorStateSchema.Adaptation.FieldOps != 6 || snapshot.ActorStateSchema.Adaptation.Source != "director_agent" {
@@ -775,6 +785,28 @@ func waitForDirectorStatusAPI(t *testing.T, server *Server, storyID, status stri
 		select {
 		case <-t.Context().Done():
 			t.Fatalf("director status did not reach %q before test cancellation: %#v", status, current)
+		case <-ticker.C:
+		}
+	}
+}
+
+func waitForStateSchemaStatusAPI(t *testing.T, server *Server, storyID, status string) interactive.Snapshot {
+	t.Helper()
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+	var snapshot interactive.Snapshot
+	for {
+		resp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+storyID+"/snapshot?branch=main", nil)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("state schema status polling = %d body=%s", resp.Code, resp.Body.String())
+		}
+		decodeResponse(t, resp.Body.Bytes(), &snapshot)
+		if snapshot.StateSchemaInitialization != nil && snapshot.StateSchemaInitialization.Status == status {
+			return snapshot
+		}
+		select {
+		case <-t.Context().Done():
+			t.Fatalf("state schema status did not reach %q before test cancellation: %#v", status, snapshot.StateSchemaInitialization)
 		case <-ticker.C:
 		}
 	}

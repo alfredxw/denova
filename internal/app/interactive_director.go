@@ -18,6 +18,8 @@ const (
 	interactiveDirectorTaskTurnMaintenance    = "turn_maintenance"
 	interactiveDirectorTaskMemoryUpdate       = "memory_update"
 	interactiveDirectorTaskDirectorPlanUpdate = "director_plan_update"
+	interactiveDirectorTaskOpeningPlan        = "opening_plan"
+	interactiveDirectorOpeningSourceID        = "story_opening"
 )
 
 type interactiveDirectorMaintenanceResult struct {
@@ -25,7 +27,7 @@ type interactiveDirectorMaintenanceResult struct {
 	AppliedStoryMemoryPatches int
 }
 
-func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) <-chan struct{} {
+func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, runPlan bool) <-chan struct{} {
 	tasks := directorTasksForConversation(conversation)
 	done, started := tasks.GoKeyed(interactiveMaintenanceKey(conversation, turn.BranchID), func(ctx context.Context) {
 		defer func() {
@@ -42,6 +44,9 @@ func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.Sta
 
 		if conversation == nil || conversation.store == nil || cfg == nil {
 			return
+		}
+		if err := runInteractiveStateSchemaInitialization(ctx, cfg, state, conversation, turn, sessionStore); err != nil {
+			log.Printf("[interactive-state-schema] initialization failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
 		}
 		shouldRecordMemory, _, err := conversation.store.ShouldGenerateStoryMemory(conversation.storyID, turn.BranchID)
 		if err != nil {
@@ -60,6 +65,9 @@ func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.Sta
 				log.Printf("[interactive-memory-recorder] maintenance failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
 			}
 		}
+		if !runPlan {
+			return
+		}
 		conversation.withDirectorTask(interactiveDirectorTaskDirectorPlanUpdate)
 		if _, err := runInteractiveDirectorMaintenance(ctx, cfg, state, conversation, turn, sessionStore, interactiveDirectorTaskDirectorPlanUpdate); err != nil {
 			log.Printf("[interactive-director-agent] plan maintenance failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
@@ -67,6 +75,76 @@ func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.Sta
 	})
 	if !started {
 		markInteractiveDirectorMaintenanceFailed(conversation, turn, context.Canceled)
+	}
+	return done
+}
+
+func prepareInteractiveDirectorBeforeOpening(ctx context.Context, cfg *config.Config, state *book.State, conversation *interactiveConversation, openingMessage string, sessionStore *session.Store) (bool, error) {
+	if conversation == nil || conversation.store == nil || cfg == nil {
+		return false, fmt.Errorf("互动导演开局规划上下文不完整")
+	}
+	storyCtx, err := conversation.store.StoryContext(conversation.storyID, conversation.branchID)
+	if err != nil {
+		return false, err
+	}
+	if len(storyCtx.Snapshot.Turns) > 0 {
+		return false, nil
+	}
+	status, err := conversation.store.DirectorPlanStatus(conversation.storyID, storyCtx.Snapshot.BranchID)
+	if err != nil {
+		return false, err
+	}
+	if status.StartReady {
+		return true, nil
+	}
+	openingContext := firstNonEmptyApp(
+		openingMessage,
+		storyCtx.Meta.Opening.CustomText,
+		storyCtx.Meta.Opening.PresetText,
+		storyCtx.Meta.Origin,
+		storyCtx.Meta.Title,
+	)
+	turn := interactive.TurnEvent{
+		V:        1,
+		Type:     "director_opening",
+		ID:       interactiveDirectorOpeningSourceID,
+		BranchID: storyCtx.Snapshot.BranchID,
+		User:     openingContext,
+	}
+	conversation.withDirectorTask(interactiveDirectorTaskOpeningPlan)
+	if _, err := runInteractiveDirectorMaintenance(ctx, cfg, state, conversation, turn, sessionStore, interactiveDirectorTaskOpeningPlan); err != nil {
+		return true, err
+	}
+	status, err = conversation.store.DirectorPlanStatus(conversation.storyID, storyCtx.Snapshot.BranchID)
+	if err != nil {
+		return true, err
+	}
+	if !status.StartReady {
+		return true, fmt.Errorf("开局导演规划未完成: %s", status.Status)
+	}
+	return true, nil
+}
+
+func openingTurnNeedsImmediateDirectorPlan(turn interactive.TurnEvent) bool {
+	return turn.TurnResult != nil && strings.TrimSpace(turn.TurnResult.PlanSignals.DeviationLevel) == "major"
+}
+
+func startInteractiveStateSchemaTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) <-chan struct{} {
+	tasks := directorTasksForConversation(conversation)
+	done, started := tasks.GoKeyed(interactiveMaintenanceKey(conversation, turn.BranchID), func(ctx context.Context) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				err := fmt.Errorf("状态结构初始化异常中断: %v", recovered)
+				log.Printf("[interactive-state-schema] panic recovered story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
+				_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
+			}
+		}()
+		if err := runInteractiveStateSchemaInitialization(ctx, cfg, state, conversation, turn, sessionStore); err != nil {
+			log.Printf("[interactive-state-schema] manual initialization failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
+		}
+	})
+	if !started {
+		_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, context.Canceled)
 	}
 	return done
 }
@@ -133,6 +211,11 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	if task == "" {
 		task = interactiveDirectorTaskTurnMaintenance
 	}
+	switch task {
+	case interactiveDirectorTaskTurnMaintenance, interactiveDirectorTaskMemoryUpdate, interactiveDirectorTaskDirectorPlanUpdate, interactiveDirectorTaskOpeningPlan:
+	default:
+		return interactiveDirectorMaintenanceResult{}, fmt.Errorf("未知互动导演任务: %s", task)
+	}
 	if task == interactiveDirectorTaskTurnMaintenance {
 		memoryResult, memoryErr := runInteractiveDirectorMaintenance(ctx, cfg, state, conversation.withDirectorTask(interactiveDirectorTaskMemoryUpdate), turn, sessionStore, interactiveDirectorTaskMemoryUpdate)
 		planResult, planErr := runInteractiveDirectorMaintenance(ctx, cfg, state, conversation.withDirectorTask(interactiveDirectorTaskDirectorPlanUpdate), turn, sessionStore, interactiveDirectorTaskDirectorPlanUpdate, prestartedTokens...)
@@ -141,13 +224,13 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 			AppliedStoryMemoryPatches: memoryResult.AppliedStoryMemoryPatches,
 		}, errors.Join(memoryErr, planErr)
 	}
-	runMemory := task != interactiveDirectorTaskDirectorPlanUpdate
-	runPlan := task != interactiveDirectorTaskMemoryUpdate
+	runMemory := task == interactiveDirectorTaskMemoryUpdate
+	runPlan := task == interactiveDirectorTaskDirectorPlanUpdate || task == interactiveDirectorTaskOpeningPlan
 	storyCtx, err := conversation.store.StoryContext(conversation.storyID, turn.BranchID)
 	if err != nil {
 		return interactiveDirectorMaintenanceResult{}, err
 	}
-	director := conversation.storyDirector(storyCtx.Meta.StoryDirectorID)
+	director := conversation.storyDirectorForMeta(storyCtx.Meta)
 	decision := shouldRunInteractiveDirectorAgent(director.Strategy)
 	if runPlan && !decision.ShouldRun {
 		if err := conversation.store.MarkDirectorPlanRunSkipped(conversation.storyID, turn.BranchID, turn.ID, decision.Reason); err != nil {
@@ -175,13 +258,6 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 		allowedPaths = conversation.store.DirectorPlanAllowedPaths(conversation.storyID, turn.BranchID)
 	}
 	effectiveTask := task
-	if runMemory && !runPlan {
-		effectiveTask = interactiveDirectorTaskMemoryUpdate
-	} else if runPlan && !runMemory {
-		effectiveTask = interactiveDirectorTaskDirectorPlanUpdate
-	} else if runMemory && runPlan {
-		effectiveTask = interactiveDirectorTaskTurnMaintenance
-	}
 	log.Printf("[interactive-director-agent] maintenance begin story_id=%s branch_id=%s turn_id=%s task=%s effective_task=%s memory=%t plan=%t revision=%s allowed_paths=%d", conversation.storyID, turn.BranchID, turn.ID, task, effectiveTask, runMemory, runPlan, token.Revision, len(allowedPaths))
 	conversation.withDirectorTask(effectiveTask)
 	instruction, err := conversation.BuildDirectorInstruction(turn)

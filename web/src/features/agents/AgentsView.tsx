@@ -317,12 +317,18 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
             </div>
             <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
               <AgentHeader agent={selected} />
-              <AgentModelSection
-                value={modelValue}
-                inherited={inheritedModel}
-                profiles={profileOptions}
-                onChange={setAgentModel}
-              />
+              {activeLayer === 'user' ? (
+                <AgentModelSection
+                  value={modelValue}
+                  inherited={inheritedModel}
+                  profiles={profileOptions}
+                  onChange={setAgentModel}
+                />
+              ) : (
+                <section className="border-b border-[var(--nova-border)] pb-5 text-xs text-[var(--nova-text-muted)]">
+                  {t('agents.model.userScoped')}
+                </section>
+              )}
               <AgentPromptSection
                 value={promptValue}
                 inherited={inheritedPrompt}

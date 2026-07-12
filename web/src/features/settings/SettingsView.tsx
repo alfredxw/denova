@@ -446,16 +446,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Text label={t('settings.agent.writingSkillDefault')} value={draft.writing_skill_default}
                 placeholder={placeholderFor('writing_skill_default')}
                 onChange={(v) => setField('writing_skill_default', v)} />
-          {activeLayer === 'workspace' && (
-            <>
-              <Num label={t('settings.agent.residentLoreLimitKB')} value={draft.resident_lore_limit_kb ?? null}
-                   placeholder={placeholderFor('resident_lore_limit_kb')}
-                   min={1}
-                   max={1024}
-                   onChange={(v) => setField('resident_lore_limit_kb', v)} />
-              <p className="text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.agent.residentLoreLimitHelp')}</p>
-            </>
-          )}
         </>
       ),
     },

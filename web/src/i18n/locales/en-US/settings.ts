@@ -94,8 +94,6 @@ const settings = {
   'settings.ide.hideNovelChapterBodyInLiveOutputHelp': 'When enabled, chapter body is hidden from the Agent stream. Files are still written normally.',
   'settings.ide.maxOpenTabs': 'Max Open Tabs',
   'settings.interactive.lineHeight': 'Story Stage Line Height',
-  'settings.agent.residentLoreLimitKB': 'Resident Lore Limit (KB)',
-  'settings.agent.residentLoreLimitHelp': 'Shared by writing and game modes. Limits stable lore bodies with enabled and load_mode=resident, up to 1024 KB.',
   'settings.interactive.workspaceOnly': 'Game Mode settings are saved per book. Switch to workspace config to edit them.',
   'settings.model.modelProfiles': 'Language Models',
   'settings.model.profileBaseUrlPlaceholder': 'Base URL',

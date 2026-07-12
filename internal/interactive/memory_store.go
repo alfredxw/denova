@@ -57,6 +57,11 @@ func (s *Store) storyMemoryStructuresForStoryLocked(meta StoryMeta, book interac
 		log.Printf("[interactive-memory] fallback to story-local memory structures story_id=%s director_id=%s error=%v", meta.StoryID, directorID, err)
 		return book.Structures, source
 	}
+	if meta.ModuleRefs != nil {
+		director.ModuleRefs = NormalizeStoryDirectorModuleRefs(*meta.ModuleRefs)
+		director.ResolvedSnapshot = StoryDirectorResolvedSnapshot{}
+		director = ResolveStoryDirectorModules(s.novaDir, director)
+	}
 	refs := NormalizeStoryDirectorModuleRefs(director.ModuleRefs)
 	source = storyMemoryStructureSource{
 		ID:       firstNonEmptyString(refs.MemoryStructureID, DefaultStoryMemoryStructureModuleID),

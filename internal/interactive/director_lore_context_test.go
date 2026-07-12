@@ -21,7 +21,7 @@ func TestParseDirectorLoreContextReferencesSeparatesActiveCandidateAndOffstage(t
 	}
 }
 
-func TestUpdateDirectorPlanValidatesNameReferences(t *testing.T) {
+func TestUpdateDirectorPlanIgnoresUnavailableNameReferences(t *testing.T) {
 	workspace := t.TempDir()
 	store := NewStore(workspace)
 	story, err := store.CreateStory(CreateStoryRequest{Title: "引用校验"})
@@ -32,14 +32,17 @@ func TestUpdateDirectorPlanValidatesNameReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan.Docs.LoreContext = strings.Replace(plan.Docs.LoreContext, "## 当前角色\n", "## 当前角色\n\n- [[不存在的人]]\n", 1)
-	if _, err := store.UpdateDirectorPlan(story.ID, UpdateDirectorPlanRequest{BranchID: "main", Docs: plan.Docs, BaseRevision: plan.Metadata.Revision}); err == nil || !strings.Contains(err.Error(), "不存在或未启用") {
-		t.Fatalf("expected missing lore reference validation, got %v", err)
-	}
-	if _, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{ID: "known", Type: "character", Name: "不存在的人", Content: "已补入资料库"}); err != nil {
+	disabled := false
+	if _, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{ID: "disabled", Enabled: &disabled, Type: "character", Name: "未启用的人", Content: "不会加载"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.UpdateDirectorPlan(story.ID, UpdateDirectorPlanRequest{BranchID: "main", Docs: plan.Docs, BaseRevision: plan.Metadata.Revision}); err != nil {
-		t.Fatalf("valid unique name reference should save: %v", err)
+	plan.Docs.LoreContext = strings.Replace(plan.Docs.LoreContext, "## 当前角色\n", "## 当前角色\n\n- [[不存在的人]]\n- [[未启用的人]]\n", 1)
+	plan.Docs.LoreContext = strings.Replace(plan.Docs.LoreContext, "## 候场角色\n", "## 候场角色\n\n- [[不存在的人]]\n", 1)
+	updated, err := store.UpdateDirectorPlan(story.ID, UpdateDirectorPlanRequest{BranchID: "main", Docs: plan.Docs, BaseRevision: plan.Metadata.Revision})
+	if err != nil {
+		t.Fatalf("unavailable lore references should be ignored: %v", err)
+	}
+	if !strings.Contains(updated.Docs.LoreContext, "[[不存在的人]]") || !strings.Contains(updated.Docs.LoreContext, "[[未启用的人]]") {
+		t.Fatalf("ignored references should remain in the Director workset for later correction:\n%s", updated.Docs.LoreContext)
 	}
 }

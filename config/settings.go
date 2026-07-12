@@ -88,10 +88,6 @@ type Settings struct {
 	IDEStoryTellerID        string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
 	IDEImagePresetID        string `toml:"ide_image_preset_id,omitempty" json:"ide_image_preset_id,omitempty"`
 	WritingSkillDefault     string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
-	ResidentLoreLimitKB     *int   `toml:"resident_lore_limit_kb,omitempty" json:"resident_lore_limit_kb,omitempty"`
-	// InteractiveRuleLoreLimitKB is read only as a migration fallback. New
-	// settings are persisted through ResidentLoreLimitKB.
-	InteractiveRuleLoreLimitKB *int `toml:"interactive_rule_lore_limit_kb,omitempty" json:"interactive_rule_lore_limit_kb,omitempty"`
 
 	// 游戏模式
 	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
@@ -110,8 +106,6 @@ const (
 	DefaultTraceCaptureLevel       = "summary"
 	DefaultTraceExporter           = "local"
 	DefaultTraceRetentionRuns      = 100
-	DefaultResidentLoreLimitKB     = 32
-	MaxResidentLoreLimitKB         = 1024
 )
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
@@ -173,7 +167,6 @@ func DefaultSettings() Settings {
 		WritingSkillDefault:        DefaultWritingSkillName,
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
-		ResidentLoreLimitKB:        intPtr(DefaultResidentLoreLimitKB),
 	}
 }
 
@@ -343,20 +336,6 @@ func Merge(parent, child Settings) Settings {
 	if child.InteractiveStageLineHeight != nil {
 		out.InteractiveStageLineHeight = child.InteractiveStageLineHeight
 	}
-	residentLimit := child.ResidentLoreLimitKB
-	if residentLimit == nil {
-		residentLimit = child.InteractiveRuleLoreLimitKB
-	}
-	if residentLimit != nil {
-		value := *residentLimit
-		if value <= 0 {
-			value = DefaultResidentLoreLimitKB
-		}
-		if value > MaxResidentLoreLimitKB {
-			value = MaxResidentLoreLimitKB
-		}
-		out.ResidentLoreLimitKB = intPtr(value)
-	}
 	return out
 }
 
@@ -524,6 +503,9 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		ws.TraceCaptureLevel = ""
 		ws.TraceExporter = ""
 		ws.TraceRetentionRuns = nil
+		// Agent model selection is user-scoped. Keep legacy workspace values on
+		// disk for compatibility, but do not let switching books change models.
+		ws.AgentModels = AgentModelSettings{}
 	}
 	def := DefaultSettings()
 	def.DenovaDir = novaDir
@@ -595,11 +577,6 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.DefaultImageAPIProfileID = strings.TrimSpace(s.DefaultImageAPIProfileID)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
-	if s.ResidentLoreLimitKB == nil {
-		s.ResidentLoreLimitKB = s.InteractiveRuleLoreLimitKB
-	}
-	s.ResidentLoreLimitKB = normalizeResidentLoreLimitKB(s.ResidentLoreLimitKB)
-	s.InteractiveRuleLoreLimitKB = nil
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
 	if defaultProfile, ok := defaultModelProfile(s.ModelProfiles); ok {
@@ -640,28 +617,6 @@ func normalizeAgentToolResultLimitKB(limit *int) *int {
 		return nil
 	}
 	return limit
-}
-
-func normalizeResidentLoreLimitKB(limit *int) *int {
-	if limit == nil {
-		return nil
-	}
-	value := *limit
-	if value <= 0 {
-		value = DefaultResidentLoreLimitKB
-	}
-	if value > MaxResidentLoreLimitKB {
-		value = MaxResidentLoreLimitKB
-	}
-	return intPtr(value)
-}
-
-func residentLoreLimitKB(limit *int) int {
-	normalized := normalizeResidentLoreLimitKB(limit)
-	if normalized == nil {
-		return DefaultResidentLoreLimitKB
-	}
-	return *normalized
 }
 
 func normalizeContextWindowTokens(tokens *int) *int {

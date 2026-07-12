@@ -8,6 +8,7 @@ export interface StorySummary {
   origin: string
   story_teller_id: string
   story_director_id: string
+  module_refs?: StoryDirectorModuleRefs
   reply_target_chars: number
   image_settings?: StoryImageSettings
   opening: StoryOpeningConfig
@@ -219,7 +220,7 @@ interface StoryDirectorStrategy {
   director_agent_mode?: 'triggered' | 'every_turn' | 'off' | string
   rule_state_consumption_mode?: 'hybrid_auto' | 'director_only' | string
   rule_visibility_mode?: 'audit_only' | 'public_roll' | string
-	state_schema_adaptation_mode?: 'auto' | 'off' | string
+	state_schema_adaptation_mode?: 'after_opening' | 'off' | string
   branch_planning_turns?: number
   planning_templates?: DirectorPlanningTemplates
   prompt_markdown?: string
@@ -1026,11 +1027,13 @@ export interface Snapshot {
   director_plan_status?: DirectorPlanStatus
   state: Record<string, unknown>
   actor_state_schema?: ActorStateSchemaSnapshot
+	state_schema_initialization?: StateSchemaInitializationStatus
   graph?: StoryGraph
 }
 
 export interface ActorStateSchemaSnapshot {
   version: number
+	revision: number
   system: StoryDirectorActorStateSystem
 	trpg_system?: StoryDirectorTRPGSystem
 	adaptation?: ActorStateSchemaAdaptationRecord
@@ -1041,9 +1044,38 @@ export interface ActorStateSchemaSnapshot {
 export interface ActorStateSchemaAdaptationRecord {
 	source: string
 	summary?: string
+	source_turn_id?: string
 	template_ops?: number
 	field_ops?: number
 	initial_actor_ops?: number
+	actor_ops?: number
+	changes?: ActorStateSchemaAdaptationChange[]
+	warnings?: string[]
+}
+
+export interface ActorStateSchemaAdaptationChange {
+	kind: 'template' | 'field' | 'actor' | string
+	op: 'add' | 'replace' | 'remove' | string
+	template_id?: string
+	field_id?: string
+	target_id?: string
+	actor_id?: string
+	reason?: string
+}
+
+export interface StateSchemaInitializationStatus {
+	mode: 'after_opening' | 'off' | string
+	status: 'waiting_opening' | 'running' | 'ready' | 'failed' | 'skipped' | string
+	source_turn_id?: string
+	base_revision?: number
+	target_revision?: number
+	summary?: string
+	error?: string
+	changes?: ActorStateSchemaAdaptationChange[]
+	warnings?: string[]
+	started_at?: string
+	completed_at?: string
+	updated_at?: string
 }
 
 interface ContextCompactionEvent {

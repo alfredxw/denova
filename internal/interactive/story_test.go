@@ -69,6 +69,56 @@ func TestCreateStoryPersistsCustomReplyTargetChars(t *testing.T) {
 	}
 }
 
+func TestCreateStoryPersistsStoryModuleOverrides(t *testing.T) {
+	store := NewStore(t.TempDir())
+	refs := StoryDirectorModuleRefs{
+		NarrativeStyleID:      "noir",
+		RuleSystemID:          "light-rules",
+		ActorStateID:          "detective-state",
+		MemoryStructureID:     "case-memory",
+		EventPackageIDs:       []string{"city-events"},
+		ImagePresetID:         "film-noir",
+		EventPackagesDisabled: false,
+	}
+	story, err := store.CreateStory(CreateStoryRequest{Title: "雾都", StoryDirectorID: "default", ModuleRefs: &refs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs.EventPackageIDs[0] = "mutated"
+	if story.ModuleRefs == nil || story.ModuleRefs.MemoryStructureID != "case-memory" || story.ModuleRefs.EventPackageIDs[0] != "city-events" {
+		t.Fatalf("story module refs not persisted independently: %#v", story.ModuleRefs)
+	}
+	ctx, err := store.StoryContext(story.ID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ctx.Meta.ModuleRefs == nil || ctx.Meta.ModuleRefs.ActorStateID != "detective-state" {
+		t.Fatalf("story meta module refs missing: %#v", ctx.Meta.ModuleRefs)
+	}
+}
+
+func TestUpdateStorySetupPersistsOriginAndModuleOverrides(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "旧标题", StoryDirectorID: "default"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	origin := "新的故事简介"
+	refs := StoryDirectorModuleRefs{NarrativeStyleID: "noir", RuleSystemID: "mystery"}
+	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{
+		Title:           "新标题",
+		Origin:          &origin,
+		StoryDirectorID: "default",
+		ModuleRefs:      &refs,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Origin != origin || updated.ModuleRefs == nil || updated.ModuleRefs.RuleSystemID != "mystery" {
+		t.Fatalf("updated setup not persisted: %#v", updated)
+	}
+}
+
 func TestCreateStoryPersistsOpeningConfig(t *testing.T) {
 	store := NewStore(t.TempDir())
 

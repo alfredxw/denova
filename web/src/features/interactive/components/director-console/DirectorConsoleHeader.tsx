@@ -1,7 +1,10 @@
 import { Clapperboard } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import type { StoryDirector, StorySummary } from '../../types'
+import { ReplyTargetCharsControl } from '../ReplyTargetCharsControl'
+import { StoryDirectorPicker } from '../StoryDirectorPicker'
 
-export function DirectorConsoleHeader({ branchId, turnCount }: { branchId: string; turnCount: number }) {
+export function DirectorConsoleHeader({ branchId, turnCount, story, storyDirectors, onDirectorChange, onReplyTargetCharsChange }: { branchId: string; turnCount: number; story?: StorySummary; storyDirectors: StoryDirector[]; onDirectorChange?: (directorId: string) => void; onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void> }) {
   const { t } = useTranslation()
   return (
     <header className="shrink-0 border-b border-[var(--nova-border)] bg-[color-mix(in_srgb,var(--director-canvas)_92%,transparent)] px-4 pb-3 pt-4 backdrop-blur-xl">
@@ -18,6 +21,13 @@ export function DirectorConsoleHeader({ branchId, turnCount }: { branchId: strin
             <span aria-hidden="true">/</span>
             <span className="shrink-0">{t('memoryPanel.turnCount', { count: turnCount })}</span>
           </div>
+        </div>
+      </div>
+      <div className="mt-3 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.78fr)] gap-2 border-t border-[var(--nova-border-soft)] pt-3">
+        <StoryDirectorPicker story={story} storyDirectors={storyDirectors} onChange={onDirectorChange || (() => undefined)} layout="sidebar" />
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <span className="shrink-0 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('storyPicker.replyTargetChars')}</span>
+          <ReplyTargetCharsControl story={story} onChange={onReplyTargetCharsChange} layout="console" />
         </div>
       </div>
     </header>

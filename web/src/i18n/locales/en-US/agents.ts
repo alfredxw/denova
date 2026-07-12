@@ -51,6 +51,7 @@ const agents = {
   'agents.tool.agentConfigWrite.title': 'Write Agent Config',
   'agents.tool.agentConfigWrite.subtitle': 'write_agent_configs',
   'agents.section.model': 'Model and Thinking',
+  'agents.model.userScoped': 'Model and thinking settings are user-scoped. Switch to User Settings to edit them.',
   'agents.section.systemPrompt': 'System Prompt',
   'agents.section.tools': 'Tool Capabilities',
   'agents.section.skills': 'Skill Availability',

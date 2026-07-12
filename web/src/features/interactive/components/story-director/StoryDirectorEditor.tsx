@@ -182,8 +182,8 @@ export function StoryDirectorEditor({
             />
             <StrategySelect
               label={t('settingPanel.storyDirector.stateSchemaAdaptation')}
-              value={draft.strategy?.state_schema_adaptation_mode || ''}
-              fallbackValue="auto"
+              value={draft.strategy?.state_schema_adaptation_mode === 'auto' ? 'after_opening' : draft.strategy?.state_schema_adaptation_mode || ''}
+              fallbackValue="after_opening"
               options={STORY_DIRECTOR_STATE_SCHEMA_ADAPTATION_OPTIONS}
               onChange={(state_schema_adaptation_mode) => updateStrategy({ state_schema_adaptation_mode })}
             />

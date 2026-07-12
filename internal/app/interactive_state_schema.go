@@ -12,6 +12,7 @@ import (
 	"denova/internal/agent"
 	"denova/internal/book"
 	"denova/internal/interactive"
+	"denova/internal/session"
 )
 
 const maxInteractiveStateSchemaPromptBytes = 32 * 1024
@@ -40,6 +41,12 @@ type stateSchemaAdaptationSources struct {
 	DirectorStrategy     string `json:"director_strategy,omitempty"`
 	CreativeBrief        string `json:"creative_brief,omitempty"`
 	LoreIndex            string `json:"lore_index,omitempty"`
+	OpeningTurnID        string `json:"opening_turn_id,omitempty"`
+	OpeningUserAction    string `json:"opening_user_action,omitempty"`
+	OpeningNarrative     string `json:"opening_narrative,omitempty"`
+	OpeningTurnBrief     string `json:"opening_turn_brief,omitempty"`
+	OpeningTurnResult    string `json:"opening_turn_result,omitempty"`
+	CurrentActorIndex    string `json:"current_actor_index,omitempty"`
 }
 
 type stateSchemaAdaptationPreset struct {
@@ -69,62 +76,89 @@ type stateSchemaAdaptationRule struct {
 	StateBindings []interactive.RuleStateBinding `json:"state_bindings,omitempty"`
 }
 
-func (s *InteractiveAppService) adaptStoryStateSchema(ctx context.Context, req interactive.CreateStoryRequest) (interactive.CreateStoryRequest, error) {
-	if req.ActorState == nil || len(req.ActorState.Templates) == 0 {
-		return req, nil
+func runInteractiveStateSchemaInitialization(ctx context.Context, cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) error {
+	if conversation == nil || conversation.store == nil || cfg == nil {
+		return fmt.Errorf("状态结构初始化上下文不完整")
 	}
-	cfg := s.cfg()
-	if cfg == nil || strings.TrimSpace(cfg.NovaDir) == "" {
-		return req, nil
+	status, claimed, err := conversation.store.ClaimStateSchemaInitialization(conversation.storyID, turn.ID)
+	if err != nil || !claimed {
+		return err
 	}
-	director, err := interactive.NewStoryDirectorLibrary(cfg.NovaDir).Get(req.StoryDirectorID)
+	storyCtx, err := conversation.store.StoryContext(conversation.storyID, turn.BranchID)
 	if err != nil {
-		return req, fmt.Errorf("读取故事导演以初始化状态结构失败: %w", err)
+		_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
+		return err
 	}
-	if director.Strategy.StateSchemaAdaptationMode == interactive.StateSchemaAdaptationModeOff {
-		return req, nil
+	if storyCtx.Meta.ActorStateSchema == nil {
+		err = fmt.Errorf("故事状态结构不存在")
+		_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
+		return err
 	}
-	s.app.mu.RLock()
-	state := s.app.bookState
-	s.app.mu.RUnlock()
-	instruction, err := buildStateSchemaAdaptationInstruction(req, director, state)
+	director := conversation.storyDirectorForMeta(storyCtx.Meta)
+	director.ActorState = storyCtx.Meta.ActorStateSchema.System
+	director.TRPGSystem = storyCtx.Meta.ActorStateSchema.TRPGSystem
+	req := interactive.CreateStoryRequest{
+		Title:           storyCtx.Meta.Title,
+		Origin:          storyCtx.Meta.Origin,
+		StoryTellerID:   storyCtx.Meta.StoryTellerID,
+		StoryDirectorID: storyCtx.Meta.StoryDirectorID,
+		Opening:         storyCtx.Meta.Opening,
+		ActorState:      &director.ActorState,
+		TRPGSystem:      &director.TRPGSystem,
+	}
+	instruction, err := buildStateSchemaAdaptationInstructionAfterOpening(req, director, state, &turn, storyCtx.Snapshot.State)
 	if err != nil {
-		return req, err
+		_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
+		return err
 	}
-	generator := s.app.interactiveDirectorGenerator()
-	if generator == nil {
-		generator = generateInteractiveStateSchema
+	log.Printf("[interactive-state-schema] initialization begin story_id=%s branch_id=%s turn_id=%s base_revision=%d target_revision=%d", conversation.storyID, turn.BranchID, turn.ID, status.BaseRevision, status.TargetRevision)
+	generator := interactiveDirectorGenerator(generateInteractiveStateSchema)
+	if conversation.customDirectorGenerator && conversation.directorGenerator != nil {
+		generator = conversation.directorGenerator
 	}
-	output, err := generator(ctx, cfg, state, agent.InteractiveStoryToolContext{MaintenanceTask: "state_schema_initialization"}, instruction)
+	output, err := generator(ctx, cfg, state, agent.InteractiveStoryToolContext{
+		Store:               conversation.store,
+		StoryID:             conversation.storyID,
+		BranchID:            turn.BranchID,
+		TurnID:              turn.ID,
+		MaintenanceTask:     "state_schema_initialization",
+		DisplayConversation: conversation,
+	}, instruction)
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err != nil {
-		return req, fmt.Errorf("初始化故事状态结构失败: %w", err)
+		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
+		_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
+		return fmt.Errorf("生成故事状态结构适配失败: %w", err)
 	}
+	persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, output)
 	adaptation, err := interactive.ParseActorStateSchemaAdaptation(output)
 	if err != nil {
-		return req, fmt.Errorf("初始化故事状态结构失败: %w", err)
+		_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
+		return err
 	}
-	trpgSystem := director.TRPGSystem
-	if req.TRPGSystem != nil {
-		trpgSystem = *req.TRPGSystem
-	}
-	system, record, err := interactive.ApplyActorStateSchemaAdaptation(*req.ActorState, trpgSystem, adaptation)
+	completed, err := conversation.store.ApplyStateSchemaInitialization(conversation.storyID, turn.BranchID, turn.ID, adaptation)
 	if err != nil {
-		return req, fmt.Errorf("初始化故事状态结构校验失败: %w", err)
+		_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
+		return err
 	}
-	req.ActorState = &system
-	req.ActorStateAdaptation = &record
-	log.Printf("[interactive-state-schema] adapted story title=%q director_id=%s template_ops=%d field_ops=%d initial_actor_ops=%d summary=%q", req.Title, req.StoryDirectorID, record.TemplateOps, record.FieldOps, record.InitialActorOps, record.Summary)
-	return req, nil
+	log.Printf("[interactive-state-schema] initialization done story_id=%s branch_id=%s turn_id=%s revision=%d changes=%d warnings=%d summary=%q", conversation.storyID, turn.BranchID, turn.ID, completed.TargetRevision, len(completed.Changes), len(completed.Warnings), completed.Summary)
+	return nil
 }
 
 func buildStateSchemaAdaptationInstruction(req interactive.CreateStoryRequest, director interactive.StoryDirector, state *book.State) (string, error) {
+	return buildStateSchemaAdaptationInstructionAfterOpening(req, director, state, nil, nil)
+}
+
+func buildStateSchemaAdaptationInstructionAfterOpening(req interactive.CreateStoryRequest, director interactive.StoryDirector, state *book.State, turn *interactive.TurnEvent, currentState map[string]any) (string, error) {
 	creativeBrief, loreIndex := stateSchemaAdaptationWorkspaceContext(state)
 	trpgSystem := director.TRPGSystem
 	if req.TRPGSystem != nil {
 		trpgSystem = *req.TRPGSystem
 	}
 	prompt := stateSchemaAdaptationPrompt{
-		Task: "基于故事设定对状态预设执行创建前适配，输出最小且充分的 schema diff。",
+		Task: "基于已落盘首轮正文与故事设定对状态预设执行一次性适配，输出最小且充分的 schema diff。",
 		Sources: stateSchemaAdaptationSources{
 			StoryTitle:           trimStateSchemaPromptText(req.Title, 256),
 			StoryOrigin:          trimStateSchemaPromptText(req.Origin, 4000),
@@ -145,6 +179,16 @@ func buildStateSchemaAdaptationInstruction(req interactive.CreateStoryRequest, d
 			"max_field_ops":         64,
 			"max_initial_actor_ops": 64,
 		},
+	}
+	if turn != nil {
+		prompt.Sources.OpeningTurnID = trimStateSchemaPromptText(turn.ID, 128)
+		prompt.Sources.OpeningUserAction = trimStateSchemaPromptText(turn.User, 1200)
+		prompt.Sources.OpeningNarrative = trimStateSchemaPromptText(turn.Narrative, 6000)
+		prompt.Sources.OpeningTurnBrief = compactStateSchemaTurnValue(turn.TurnBrief, 3000)
+		prompt.Sources.OpeningTurnResult = compactStateSchemaTurnValue(turn.TurnResult, 3000)
+		if req.ActorState != nil {
+			prompt.Sources.CurrentActorIndex = trimStateSchemaPromptText(interactive.ActorStateRuntimeContext(*req.ActorState, currentState, 6*1024), 6000)
+		}
 	}
 	data, err := json.Marshal(prompt)
 	if err != nil {
@@ -172,6 +216,17 @@ func buildStateSchemaAdaptationInstruction(req interactive.CreateStoryRequest, d
 		return "", fmt.Errorf("状态结构初始化上下文超过上限: %d > %d bytes", len(data)+len(stateSchemaAdaptationInstructionPrefix), maxInteractiveStateSchemaPromptBytes)
 	}
 	return stateSchemaAdaptationInstructionPrefix + string(data), nil
+}
+
+func compactStateSchemaTurnValue(value any, maxRunes int) string {
+	if value == nil {
+		return ""
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return ""
+	}
+	return trimStateSchemaPromptText(string(data), maxRunes)
 }
 
 func stateSchemaAdaptationWorkspaceContext(state *book.State) (string, string) {

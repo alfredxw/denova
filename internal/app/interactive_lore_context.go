@@ -5,18 +5,17 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/config"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
 
 const (
 	interactiveResolvedLoreContextMaxBytes   = 48 * 1024
-	interactiveDirectorLoreCatalogMaxBytes   = 16 * 1024
+	interactiveDirectorLoreRosterMaxBytes    = 8 * 1024
 	interactiveTemporaryLoreRecallMaxEntries = 16
 )
 
-func buildInteractiveStoryLoreContext(workspace string, plan interactive.DirectorPlan, userAction string, configs ...*config.Config) (string, error) {
+func buildInteractiveStoryLoreContext(workspace string, plan interactive.DirectorPlan, userAction string) (string, error) {
 	items, err := book.NewLoreStore(workspace).List()
 	if err != nil {
 		return "", fmt.Errorf("读取互动故事资料库失败: %w", err)
@@ -48,7 +47,7 @@ func buildInteractiveStoryLoreContext(workspace string, plan interactive.Directo
 	return selectedContext, nil
 }
 
-func buildInteractiveDirectorLoreContext(workspace string, plan interactive.DirectorPlan, turn interactive.TurnEvent, configs ...*config.Config) (string, error) {
+func buildInteractiveDirectorLoreContext(workspace string, plan interactive.DirectorPlan, turn interactive.TurnEvent, task string) (string, error) {
 	store := book.NewLoreStore(workspace)
 	items, err := store.List()
 	if err != nil {
@@ -63,11 +62,10 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	for _, item := range residentItems {
 		residentBodyBytes += len([]byte(strings.TrimSpace(item.Content)))
 	}
-	residentLimit := residentLoreLimitBytes(configs...)
-	if residentBodyBytes > residentLimit {
-		return "", fmt.Errorf("常驻资料正文合计超过 %d KB；请缩短正文、改为按需资料或提高常驻资料上限", residentLimit/1024)
+	if residentBodyBytes > book.ResidentLoreSafetyMaxBytes {
+		return "", fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentBodyBytes+1023)/1024)
 	}
-	residentContext, err := formatBoundedCompleteLoreSection("常驻资料（source: enabled resident lore, complete）", residentItems, residentLimit+len(residentItems)*1024+1024)
+	residentContext, err := formatBoundedCompleteLoreSection("常驻资料（source: enabled resident lore, complete）", residentItems, book.ResidentLoreSafetyMaxBytes+len(residentItems)*1024+1024)
 	if err != nil {
 		return "", err
 	}
@@ -83,38 +81,40 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	if err != nil {
 		return "", err
 	}
-	catalog, err := store.LoreIndexMarkdown(book.LoreIndexOptions{Limit: 50, Paginate: true, MaxBytes: interactiveDirectorLoreCatalogMaxBytes, ExcludeResident: true})
-	if err != nil {
-		return "", fmt.Errorf("生成资料库目录失败: %w", err)
-	}
 	workset := strings.TrimSpace(plan.Docs.LoreContext)
 	if workset != "" {
 		workset = "## 分支资料工作集（source: lore-context.md）\n\n" + workset
 	}
-	if catalog != "" {
-		catalog = "## 全库名称与简介目录首批（source: lore/items.json, paged）\n\n" + catalog
+	roster := ""
+	if shouldInjectDirectorLoreRoster(task, plan.Metadata.LoreRevision, currentRevision, turn) {
+		roster, err = store.LoreNameRosterMarkdown(interactiveDirectorLoreRosterMaxBytes, true)
+		if err != nil {
+			return "", fmt.Errorf("生成资料名称目录失败: %w", err)
+		}
+		if roster != "" {
+			roster = "## 非驻留资料名称目录（source: lore/items.json, revision-bound, bounded）\n\n" + roster
+		}
 	}
 	temporary := formatTemporaryLoreRecalls(items, turn.ModelContextMessages)
 	reviewStatus := "## 资料库审阅状态（source: lore revision）\n\n"
 	if strings.TrimSpace(plan.Metadata.LoreRevision) == "" {
-		reviewStatus += "这是当前分支首次资料审阅。请从 offset=0 开始分页审阅全部名称与简介，再设计当前和候场引用。"
+		reviewStatus += "这是当前分支首次资料审阅。名称目录已作为有界发现索引提供；选择候选后再按需读取简介或正文。"
 	} else if plan.Metadata.LoreRevision != currentRevision {
-		reviewStatus += fmt.Sprintf("资料库已变化（上次：%s，当前：%s）。请重新分页检查新增或修改后的候选资料。", plan.Metadata.LoreRevision, currentRevision)
+		reviewStatus += fmt.Sprintf("资料库已变化（上次：%s，当前：%s）。名称目录已刷新，请重新判断新增或修改后的候选资料。", plan.Metadata.LoreRevision, currentRevision)
 	} else {
 		reviewStatus += "资料库自上次 Director 完成审阅后没有变化；仅在 replan、场景切换或角色功能空缺时重新扩展候选。"
 	}
-	return joinLoreContextSections(residentContext, reviewStatus, workset, activeContext, catalog, temporary), nil
+	return joinLoreContextSections(residentContext, reviewStatus, roster, workset, activeContext, temporary), nil
 }
 
-func residentLoreLimitBytes(configs ...*config.Config) int {
-	limitKB := config.DefaultResidentLoreLimitKB
-	if len(configs) > 0 && configs[0] != nil && configs[0].ResidentLoreLimitKB > 0 {
-		limitKB = configs[0].ResidentLoreLimitKB
+func shouldInjectDirectorLoreRoster(task, reviewedRevision, currentRevision string, turn interactive.TurnEvent) bool {
+	if strings.TrimSpace(task) == interactiveDirectorTaskOpeningPlan {
+		return true
 	}
-	if limitKB > config.MaxResidentLoreLimitKB {
-		limitKB = config.MaxResidentLoreLimitKB
+	if strings.TrimSpace(reviewedRevision) == "" || reviewedRevision != currentRevision {
+		return true
 	}
-	return limitKB * 1024
+	return turn.TurnResult != nil && strings.TrimSpace(turn.TurnResult.PlanSignals.DeviationLevel) == "major"
 }
 
 func loreItemsOfLoadMode(items []book.LoreItem, loadMode string) []book.LoreItem {

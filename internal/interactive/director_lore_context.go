@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"fmt"
+	"log"
 	"strings"
 
 	"denova/internal/book"
@@ -160,41 +161,49 @@ func (s *Store) validateDirectorLoreContext(content string) error {
 	for _, name := range refs.All() {
 		item, ok := byName[strings.ToLower(name)]
 		if !ok {
-			return fmt.Errorf("导演资料工作集引用了不存在或未启用的资料: %s", name)
+			log.Printf("[director-lore-context] ignoring unavailable lore reference name=%q source=lore-context.md location=internal/interactive/director_lore_context.go", name)
+			continue
 		}
 		if item.Type == "rule" {
 			return fmt.Errorf("规则类资料由系统全量加载，不应写入 lore-context.md: %s", name)
 		}
 	}
-	activeNames := loreNameSet(refs.Active)
+	activeNames := make(map[string]bool, len(refs.Active))
+	for _, name := range refs.Active {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if _, ok := byName[key]; ok {
+			activeNames[key] = true
+		}
+	}
 	for _, name := range append(append([]string{}, refs.Candidates...), refs.Offstage...) {
-		if activeNames[strings.ToLower(name)] {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if _, ok := byName[key]; ok && activeNames[key] {
 			return fmt.Errorf("同一资料不能同时处于当前和候场/暂离场区段: %s", name)
 		}
 	}
-	candidateNames := loreNameSet(refs.Candidates)
+	candidateNames := make(map[string]bool, len(refs.Candidates))
+	for _, name := range refs.Candidates {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if _, ok := byName[key]; ok {
+			candidateNames[key] = true
+		}
+	}
 	for _, name := range refs.Offstage {
-		if candidateNames[strings.ToLower(name)] {
+		key := strings.ToLower(strings.TrimSpace(name))
+		if _, ok := byName[key]; ok && candidateNames[key] {
 			return fmt.Errorf("同一角色不能同时处于候场和暂离场区段: %s", name)
 		}
 	}
 	activeBytes := 0
 	for _, name := range refs.Active {
-		item := byName[strings.ToLower(name)]
-		activeBytes += len([]byte(item.Content))
+		if item, ok := byName[strings.ToLower(strings.TrimSpace(name))]; ok {
+			activeBytes += len([]byte(item.Content))
+		}
 	}
 	if activeBytes > DirectorLoreActiveContextMaxBytes {
 		return fmt.Errorf("当前资料正文合计 %d bytes，超过自动加载上限 %d bytes；请减少当前引用并把未登场角色移到候场或暂离场", activeBytes, DirectorLoreActiveContextMaxBytes)
 	}
 	return nil
-}
-
-func loreNameSet(names []string) map[string]bool {
-	result := make(map[string]bool, len(names))
-	for _, name := range names {
-		result[strings.ToLower(strings.TrimSpace(name))] = true
-	}
-	return result
 }
 
 func validateDirectorLoreContextDoc(content string) error {

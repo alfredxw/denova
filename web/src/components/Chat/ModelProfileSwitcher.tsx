@@ -8,7 +8,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu'
-import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
+import { fetchSettings, updateUserSettings } from '@/features/settings/api'
 import type { AgentModelOverride, LayeredSettings, ModelProfileSettings, Settings } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
@@ -115,8 +115,8 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
     setError(null)
     try {
       const latest = await fetchSettings()
-      const nextWorkspace = withAgentModelProfile(latest.workspace, agentKey, profileID)
-      const saved = await updateWorkspaceSettings(nextWorkspace)
+      const nextUser = withAgentModelProfile(latest.user, agentKey, profileID)
+      const saved = await updateUserSettings(nextUser, latest.revisions?.user)
       setSettings(saved)
       window.dispatchEvent(new CustomEvent('nova:settings-updated'))
     } catch (err) {

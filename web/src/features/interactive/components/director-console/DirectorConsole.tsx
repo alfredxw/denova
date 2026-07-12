@@ -4,7 +4,7 @@ import { ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import type { ContextAnalysis } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { analyzeInteractiveDirectorContext, getInteractiveDirector, rebuildInteractiveDirector, rerollInteractiveRuleResolution, runInteractiveDirector, updateInteractiveDirector } from '../../api'
-import type { DirectorPlan, DirectorPlanDocs, DirectorPlanStatus, Snapshot, StoryMemoryRecord, StoryMemoryStructure } from '../../types'
+import type { DirectorPlan, DirectorPlanDocs, DirectorPlanStatus, Snapshot, StoryDirector, StoryMemoryRecord, StoryMemoryStructure, StorySummary } from '../../types'
 import { ConsoleTabs } from './ConsoleTabs'
 import { DirectorConsoleHeader } from './DirectorConsoleHeader'
 import { DirectorRunView } from './DirectorRunView'
@@ -16,6 +16,10 @@ import { extractDirectorDisplayEvents, isMissingDirectorPlanError, stateEntries 
 
 export interface DirectorConsoleProps {
   storyId?: string
+  story?: StorySummary
+  storyDirectors?: StoryDirector[]
+  onDirectorChange?: (directorId: string) => void
+  onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
   branchId: string
   snapshot: Snapshot | null
   loading: boolean
@@ -48,6 +52,10 @@ export interface DirectorConsoleProps {
 
 export function DirectorConsole({
   storyId,
+  story,
+  storyDirectors = [],
+  onDirectorChange,
+  onReplyTargetCharsChange,
   branchId,
   snapshot,
   loading,
@@ -253,7 +261,7 @@ export function DirectorConsole({
 
   return (
     <aside className="director-console flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--director-canvas)] text-[var(--nova-text)]">
-      <DirectorConsoleHeader branchId={branchId} turnCount={(snapshot?.turns || []).length || (snapshot?.current_turn ? 1 : 0)} />
+      <DirectorConsoleHeader branchId={branchId} turnCount={(snapshot?.turns || []).length || (snapshot?.current_turn ? 1 : 0)} story={story} storyDirectors={storyDirectors} onDirectorChange={onDirectorChange} onReplyTargetCharsChange={onReplyTargetCharsChange} />
       <ConsoleTabs activeTab={activeTab} onChange={onTabChange} stateCount={actorCount} memoryCount={filteredRecords.length} />
       {activeTab === 'plan' && directorError ? <div className="mx-4 mt-3 rounded-[10px] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-5 text-[var(--nova-danger)]">{directorError}</div> : null}
       <div className="min-h-0 flex-1 overflow-hidden px-4 py-4">
@@ -264,6 +272,7 @@ export function DirectorConsole({
               hasDirectorRun={hasDirectorRun}
               directorStatus={directorStatus}
               directorMetadata={directorMetadata}
+              stateSchemaInitialization={snapshot?.state_schema_initialization}
               loading={loading || planLoading || retryingDirector}
               retrying={retryingDirector}
               contextAnalysisLoading={contextAnalysisLoading}
@@ -281,7 +290,7 @@ export function DirectorConsole({
               onAnalyze={openDirectorContextAnalysis}
             />
           ) : activeTab === 'state' ? (
-            <StateView snapshot={snapshot} stateFacts={stateFacts} syncStatus={stateStatus} syncError={stateError} />
+            <StateView storyId={storyId} snapshot={snapshot} stateFacts={stateFacts} syncStatus={stateStatus} syncError={stateError} onSnapshotRefresh={onSnapshotRefresh} />
           ) : activeTab === 'memory' ? (
             <MemoryView
 				loadError={memoryError}

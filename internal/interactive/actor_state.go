@@ -138,12 +138,22 @@ const ActorStateSchemaVersion = 3
 // ActorStateSchemaSnapshot is the story-local state contract. It is frozen at
 // story creation so edits to reusable state modules affect only new stories.
 type ActorStateSchemaSnapshot struct {
-	Version              int                               `json:"version"`
-	System               StoryDirectorActorStateSystem     `json:"system"`
-	TRPGSystem           StoryDirectorTRPGSystem           `json:"trpg_system,omitempty"`
-	Adaptation           *ActorStateSchemaAdaptationRecord `json:"adaptation,omitempty"`
-	LegacyFieldPaths     map[string]map[string]string      `json:"legacy_field_paths,omitempty"`
-	LegacyActorTemplates map[string]string                 `json:"legacy_actor_templates,omitempty"`
+	Version              int                                   `json:"version"`
+	Revision             int                                   `json:"revision"`
+	System               StoryDirectorActorStateSystem         `json:"system"`
+	TRPGSystem           StoryDirectorTRPGSystem               `json:"trpg_system,omitempty"`
+	Adaptation           *ActorStateSchemaAdaptationRecord     `json:"adaptation,omitempty"`
+	LegacyFieldPaths     map[string]map[string]string          `json:"legacy_field_paths,omitempty"`
+	LegacyActorTemplates map[string]string                     `json:"legacy_actor_templates,omitempty"`
+	FieldMigrations      map[string][]ActorStateFieldMigration `json:"field_migrations,omitempty"`
+}
+
+// ActorStateFieldMigration keeps historical state replayable after a story-
+// local field rename or type change.
+type ActorStateFieldMigration struct {
+	From  string          `json:"from"`
+	To    string          `json:"to"`
+	Field ActorStateField `json:"field"`
 }
 
 // ActorStateOp is the v2 field-level reducer input. FieldID is an exact key,
@@ -459,11 +469,30 @@ func applyLegacyActorStateAliases(state map[string]any, snapshot *ActorStateSche
 				continue
 			}
 			if value := getPathExact(fields, legacyPath); value != nil {
+				if migration, ok := actorStateFieldMigrationFor(snapshot, templateID, legacyPath, fieldID); ok {
+					if converted, convertedOK := coerceActorStateFieldValue(value, migration.Field); convertedOK {
+						value = converted
+					} else {
+						value = migration.Field.Default
+					}
+				}
 				fields[fieldID] = value
 			}
 		}
 		actors[actorID] = actor
 	}
+}
+
+func actorStateFieldMigrationFor(snapshot *ActorStateSchemaSnapshot, templateID, from, to string) (ActorStateFieldMigration, bool) {
+	if snapshot == nil {
+		return ActorStateFieldMigration{}, false
+	}
+	for _, migration := range snapshot.FieldMigrations[templateID] {
+		if normalizeActorStateFieldName(migration.From) == normalizeActorStateFieldName(from) && normalizeActorStateFieldName(migration.To) == normalizeActorStateFieldName(to) {
+			return migration, true
+		}
+	}
+	return ActorStateFieldMigration{}, false
 }
 
 // enrichLegacyActorStateSchema preserves state that no longer has a matching
@@ -613,7 +642,7 @@ func FreezeActorStateSchemaWithRules(system StoryDirectorActorStateSystem, trpg 
 	if len(legacy) == 0 {
 		legacy = nil
 	}
-	return &ActorStateSchemaSnapshot{Version: ActorStateSchemaVersion, System: system, TRPGSystem: normalizeFrozenTRPGSystem(trpg), LegacyFieldPaths: legacy}
+	return &ActorStateSchemaSnapshot{Version: ActorStateSchemaVersion, Revision: 1, System: system, TRPGSystem: normalizeFrozenTRPGSystem(trpg), LegacyFieldPaths: legacy}
 }
 
 func actorStateSystemFromSnapshot(snapshot *ActorStateSchemaSnapshot, fallback StoryDirectorActorStateSystem) StoryDirectorActorStateSystem {
@@ -631,6 +660,9 @@ func normalizeActorStateSchemaSnapshot(snapshot *ActorStateSchemaSnapshot) *Acto
 	if next.Version <= 0 {
 		next.Version = ActorStateSchemaVersion
 	}
+	if next.Revision <= 0 {
+		next.Revision = 1
+	}
 	next.System = normalizeActorStateSystem(next.System)
 	next.TRPGSystem = normalizeFrozenTRPGSystem(next.TRPGSystem)
 	for templateIndex := range next.System.Templates {
@@ -640,6 +672,16 @@ func normalizeActorStateSchemaSnapshot(snapshot *ActorStateSchemaSnapshot) *Acto
 			field.Path = ""
 			field.LegacyPath = ""
 		}
+	}
+	for templateID, migrations := range next.FieldMigrations {
+		for index := range migrations {
+			migrations[index].From = normalizeActorStateFieldName(migrations[index].From)
+			migrations[index].To = normalizeActorStateFieldName(migrations[index].To)
+			if normalized := normalizeActorStateFields([]ActorStateField{migrations[index].Field}); len(normalized) == 1 {
+				migrations[index].Field = normalized[0]
+			}
+		}
+		next.FieldMigrations[templateID] = migrations
 	}
 	return &next
 }

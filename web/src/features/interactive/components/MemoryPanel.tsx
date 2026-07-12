@@ -3,13 +3,17 @@ import { useTranslation } from 'react-i18next'
 import { useAgentSSEUIMessageStream } from '@/hooks/useAgentSSEUIMessageStream'
 import { createAgentDataMessage, createAgentTextMessage } from '@/hooks/useAgentUIMessageStream'
 import { generateStoryMemoryStream, getStoryMemory } from '../api'
-import type { Snapshot, StoryMemoryState } from '../types'
+import type { Snapshot, StoryDirector, StoryMemoryState, StorySummary } from '../types'
 import { DirectorConsole } from './director-console/DirectorConsole'
 import { allStructuresId, type ConsoleTab } from './director-console/types'
 import { readNumber, storyMemoryEnabled, storyMemorySearchText } from './director-console/utils'
 
 interface MemoryPanelProps {
   storyId?: string
+  story?: StorySummary
+  storyDirectors?: StoryDirector[]
+  onDirectorChange?: (directorId: string) => void
+  onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
   branchId?: string
   snapshot: Snapshot | null
   loading?: boolean
@@ -18,7 +22,7 @@ interface MemoryPanelProps {
   onSnapshotRefresh?: () => void | Promise<unknown>
 }
 
-export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refreshKey, onOpenMemoryManager, onSnapshotRefresh }: MemoryPanelProps) {
+export function MemoryPanel({ storyId, story, storyDirectors = [], onDirectorChange, onReplyTargetCharsChange, branchId, snapshot, loading = false, refreshKey, onOpenMemoryManager, onSnapshotRefresh }: MemoryPanelProps) {
   const { t } = useTranslation()
   const [memory, setMemory] = useState<StoryMemoryState | null>(null)
   const [memoryLoading, setMemoryLoading] = useState(false)
@@ -121,6 +125,10 @@ export function MemoryPanel({ storyId, branchId, snapshot, loading = false, refr
   return (
     <DirectorConsole
       storyId={storyId}
+      story={story}
+      storyDirectors={storyDirectors}
+      onDirectorChange={onDirectorChange}
+      onReplyTargetCharsChange={onReplyTargetCharsChange}
       branchId={effectiveBranchId}
       snapshot={snapshot}
       loading={loading}

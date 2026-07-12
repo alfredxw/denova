@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { createRef, useState } from 'react'
+import { createRef } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import type { CharacterCardPreview } from '@/lib/api'
 import { CharacterCardImportDialog } from './CharacterCardImportDialog'
@@ -20,11 +20,8 @@ const preview: CharacterCardPreview = {
   removed_runtime_entry_count: 11,
   sanitized_mixed_entry_count: 73,
   opening_truncated_count: 0,
-  current_resident_lore_bytes: 0,
-  resident_lore_limit_kb: 32,
-  max_resident_lore_limit_kb: 1024,
-  required_current_resident_lore_limit_kb: 107,
-  required_new_book_resident_lore_limit_kb: 107,
+  resident_lore_warning: true,
+  resident_lore_warning_threshold_kb: 32,
   compatibility: {
     capabilities: ['character_lore', 'resident_lore', 'on_demand_lore', 'narrative_openings'],
     sanitized_runtime: ['worldbook_runtime'],
@@ -34,8 +31,7 @@ const preview: CharacterCardPreview = {
   },
 }
 
-function Harness({ cardPreview = preview }: { cardPreview?: CharacterCardPreview }) {
-  const [raiseLimit, setRaiseLimit] = useState(false)
+function Harness({ cardPreview = preview, onImport = vi.fn() }: { cardPreview?: CharacterCardPreview; onImport?: () => void }) {
   return (
     <CharacterCardImportDialog
       open
@@ -47,7 +43,6 @@ function Harness({ cardPreview = preview }: { cardPreview?: CharacterCardPreview
       targetMode="new_book"
       bookTitle="命定之诗"
       userCharacterName=""
-      raiseResidentLoreLimit={raiseLimit}
       previewing={false}
       importing={false}
       error=""
@@ -57,31 +52,25 @@ function Harness({ cardPreview = preview }: { cardPreview?: CharacterCardPreview
       onTargetModeChange={vi.fn()}
       onBookTitleChange={vi.fn()}
       onUserCharacterNameChange={vi.fn()}
-      onRaiseResidentLoreLimitChange={setRaiseLimit}
-      onImport={vi.fn()}
+      onImport={onImport}
     />
   )
 }
 
 describe('CharacterCardImportDialog', () => {
-  it('shows native import stats and requires explicit resident budget confirmation', () => {
-    render(<Harness />)
+  it('shows a non-blocking resident lore warning and imports normally', () => {
+    const onImport = vi.fn()
+    render(<Harness onImport={onImport} />)
 
     expect(screen.getByText('启用 326 项')).toBeInTheDocument()
     expect(screen.getByText('常驻 85 项 / 已启用 96 KB')).toBeInTheDocument()
     expect(screen.getByText('酒馆专属加载条件已忽略；关键词仅保留用于资料搜索。')).toBeInTheDocument()
 
+    expect(screen.getByText('常驻资料约 107 KB，超过 32 KB 建议值。导入不会受阻；如需减少上下文占用，可在导入后将部分资料改为按需加载。')).toBeInTheDocument()
     const importButton = screen.getByRole('button', { name: '导入' })
-    expect(importButton).toBeDisabled()
-    fireEvent.click(screen.getByRole('checkbox'))
     expect(importButton).toBeEnabled()
+    fireEvent.click(importButton)
+    expect(onImport).toHaveBeenCalledOnce()
   })
 
-  it('rejects a card whose resident lore exceeds the hard maximum', () => {
-    render(<Harness cardPreview={{ ...preview, required_new_book_resident_lore_limit_kb: 1025 }} />)
-
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
-    expect(screen.getByText('常驻资料需要 1025 KB，超过最大上限 1024 KB，无法导入。')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '导入' })).toBeDisabled()
-  })
 })

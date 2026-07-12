@@ -27,8 +27,11 @@ const (
 	LoreLoadModeAuto     = "auto"
 	LoreLoadModeManual   = "manual"
 
-	LoreResidentItemWarningChars  = 8000
-	LoreResidentTotalWarningChars = 40000
+	// ResidentLoreWarningBytes is guidance only and never blocks persistence.
+	ResidentLoreWarningBytes = 32 * 1024
+	// ResidentLoreSafetyMaxBytes bounds model-visible context assembly without
+	// limiting what users may import or store in the lore library.
+	ResidentLoreSafetyMaxBytes = 1024 * 1024
 
 	LoreIndexDefaultMaxBytes = 64 * 1024
 	LoreIndexDefaultLimit    = 10
@@ -649,6 +652,73 @@ func (s *LoreStore) LoreIndexMarkdown(options LoreIndexOptions) (string, error) 
 	return renderLoreIndexMarkdown(entries, matchedTotal, libraryTotal, options), nil
 }
 
+// LoreNameRosterMarkdown returns a compact, deterministic discovery roster.
+// It intentionally excludes briefs and bodies so callers can expose many
+// names without treating every lore item as active model context.
+func (s *LoreStore) LoreNameRosterMarkdown(maxBytes int, excludeResident bool) (string, error) {
+	items, err := s.List()
+	if err != nil {
+		return "", err
+	}
+	filtered := make([]LoreItem, 0, len(items))
+	for _, item := range items {
+		if excludeResident && item.LoadMode == LoreLoadModeResident {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	sort.SliceStable(filtered, func(i, j int) bool {
+		if rankI, rankJ := loreImportanceRank(filtered[i].Importance), loreImportanceRank(filtered[j].Importance); rankI != rankJ {
+			return rankI < rankJ
+		}
+		if filtered[i].Type != filtered[j].Type {
+			return filtered[i].Type < filtered[j].Type
+		}
+		if filtered[i].Name != filtered[j].Name {
+			return filtered[i].Name < filtered[j].Name
+		}
+		return filtered[i].ID < filtered[j].ID
+	})
+	if maxBytes <= 0 || maxBytes > LoreIndexDefaultMaxBytes {
+		maxBytes = LoreIndexDefaultMaxBytes
+	}
+	header := fmt.Sprintf("# 资料名称目录\n\n共 %d 条启用资料。目录只用于发现候选；需要简介或正文时使用 list_lore_items / read_lore_items。\n\n", len(filtered))
+	lines := make([]string, 0, len(filtered))
+	for _, item := range filtered {
+		name := strings.Join(strings.Fields(strings.TrimSpace(item.Name)), " ")
+		lines = append(lines, fmt.Sprintf("- [%s/%s] %s\n", item.Type, item.Importance, name))
+	}
+	full := header + strings.Join(lines, "")
+	if len([]byte(full)) <= maxBytes {
+		return strings.TrimSpace(full), nil
+	}
+
+	shortHeader := fmt.Sprintf("# 资料名称目录\n\n共 %d 条。\n", len(filtered))
+	var sb strings.Builder
+	sb.WriteString(shortHeader)
+	kept := 0
+	for index, line := range lines {
+		omitted := len(lines) - index
+		notice := fmt.Sprintf("省略 %d 条；使用 list_lore_items 继续浏览。\n", omitted)
+		if sb.Len()+len([]byte(line))+len([]byte(notice)) > maxBytes {
+			break
+		}
+		sb.WriteString(line)
+		kept++
+	}
+	omitted := len(lines) - kept
+	if omitted > 0 {
+		notice := fmt.Sprintf("省略 %d 条；使用 list_lore_items 继续浏览。\n", omitted)
+		if sb.Len()+len([]byte(notice)) <= maxBytes {
+			sb.WriteString(notice)
+		} else {
+			fallback := fmt.Sprintf("共%d条，省略%d条；用 list_lore_items。", len(lines), omitted)
+			return strings.TrimSpace(truncateStringBytes(fallback, maxBytes)), nil
+		}
+	}
+	return strings.TrimSpace(sb.String()), nil
+}
+
 func (s *LoreStore) ResidentContextMarkdown() (string, error) {
 	items, err := s.List()
 	if err != nil {
@@ -656,7 +726,6 @@ func (s *LoreStore) ResidentContextMarkdown() (string, error) {
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].ID < items[j].ID })
 	var sb strings.Builder
-	totalChars := 0
 	for _, item := range items {
 		if item.LoadMode != LoreLoadModeResident {
 			continue
@@ -665,22 +734,14 @@ func (s *LoreStore) ResidentContextMarkdown() (string, error) {
 		if content == "" {
 			continue
 		}
-		chars := utf8.RuneCountInString(content)
-		totalChars += chars
-		if chars > LoreResidentItemWarningChars {
-			log.Printf("[lore-context] resident item too long id=%s name=%s chars=%d threshold=%d", item.ID, item.Name, chars, LoreResidentItemWarningChars)
-		}
 		sb.WriteString(formatLoreItemMarkdown(item, true))
 		sb.WriteString("\n\n")
-	}
-	if totalChars > LoreResidentTotalWarningChars {
-		log.Printf("[lore-context] resident context too long chars=%d threshold=%d", totalChars, LoreResidentTotalWarningChars)
 	}
 	return strings.TrimSpace(sb.String()), nil
 }
 
 // ResidentContentBytes returns the exact UTF-8 size of enabled resident lore
-// bodies. Import budget checks use the same body set as model context assembly.
+// bodies for UI guidance and model-context safety checks.
 func (s *LoreStore) ResidentContentBytes() (int, error) {
 	items, err := s.List()
 	if err != nil {

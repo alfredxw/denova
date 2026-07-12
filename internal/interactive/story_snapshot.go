@@ -15,7 +15,7 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 		return Snapshot{}, fmt.Errorf("分支不存在: %s", branchID)
 	}
 	state := initialStoryState()
-	snapshot := Snapshot{StoryID: storyID, BranchID: branchID, State: state, ActorStateSchema: meta.ActorStateSchema}
+	snapshot := Snapshot{StoryID: storyID, BranchID: branchID, State: state, ActorStateSchema: meta.ActorStateSchema, StateSchemaInitialization: meta.StateSchemaInitialization}
 	eventsByID := eventsByID(lines)
 	path, pathSet := eventPath(branch.Head, eventsByID)
 	turnVersions := buildTurnVersionIndex(lines)

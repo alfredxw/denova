@@ -105,6 +105,15 @@ func (g *workspaceDirectorTaskGroup) WaitKey(ctx context.Context, key string) er
 	}
 }
 
+func (g *workspaceDirectorTaskGroup) HasKey(key string) bool {
+	if g == nil || key == "" {
+		return false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.tails[key] != nil
+}
+
 func (g *workspaceDirectorTaskGroup) Close() {
 	if g == nil {
 		return

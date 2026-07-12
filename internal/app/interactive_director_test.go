@@ -115,6 +115,87 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	}
 }
 
+func TestPrepareInteractiveDirectorBeforeOpeningBuildsLoreWorksetForFirstGameTurn(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	for _, input := range []book.LoreItemInput{
+		{ID: "witness", Type: "character", Name: "沈凝", Importance: "major", LoadMode: book.LoreLoadModeAuto, Content: "沈凝不会无证据帮助任何人。"},
+		{ID: "faction", Type: "faction", Name: "戒律堂", Importance: "important", LoadMode: book.LoreLoadModeAuto, Content: "戒律堂控制公开比试秩序。"},
+	} {
+		if _, err := book.NewLoreStore(workspace).Create(input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "开局预规划", Origin: "主角报名公开比试"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{Workspace: workspace}
+	conversation := newInteractiveConversation(store, "", workspace, story.ID, "main", "我报名公开比试", story.ReplyTargetChars, cfg)
+	generated := 0
+	conversation.directorGenerator = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
+		generated++
+		if toolContext.MaintenanceTask != interactiveDirectorTaskOpeningPlan || toolContext.TurnID != interactiveDirectorOpeningSourceID {
+			t.Fatalf("unexpected opening tool context: %#v", toolContext)
+		}
+		for _, want := range []string{"开局正文生成前", "资料名称目录", "沈凝", "戒律堂", "我报名公开比试"} {
+			if !strings.Contains(instruction, want) {
+				t.Fatalf("opening director instruction missing %q:\n%s", want, instruction)
+			}
+		}
+		plan, err := toolContext.Store.DirectorPlan(toolContext.StoryID, toolContext.BranchID)
+		if err != nil {
+			return "", err
+		}
+		docs := plan.Docs
+		docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "公开比试开局围绕沈凝见证与戒律堂秩序展开。", 1)
+		docs.LoreContext = strings.Replace(docs.LoreContext, "## 当前角色\n", "## 当前角色\n\n- [[沈凝]]：开局见证者\n", 1)
+		if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
+			return "", err
+		}
+		return `{"mode":"replan","triggers":["story_opening"],"reason":"开局资料工作集已建立"}`, nil
+	}
+
+	prepared, err := prepareInteractiveDirectorBeforeOpening(context.Background(), cfg, book.NewState(workspace), conversation, "我报名公开比试", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prepared || generated != 1 {
+		t.Fatalf("opening director should run exactly once: prepared=%v generated=%d", prepared, generated)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Turns) != 0 || snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusReady || snapshot.DirectorPlanStatus.SourceTurnID != interactiveDirectorOpeningSourceID {
+		t.Fatalf("opening director should finish before the first turn: %#v", snapshot.DirectorPlanStatus)
+	}
+	messages, err := conversation.PrepareMessages("", "我报名公开比试")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(messages[len(messages)-1].Content, "沈凝不会无证据帮助任何人") {
+		t.Fatalf("first Game Agent turn should receive the prepared active lore:\n%s", messages[len(messages)-1].Content)
+	}
+
+	prepared, err = prepareInteractiveDirectorBeforeOpening(context.Background(), cfg, book.NewState(workspace), conversation, "我报名公开比试", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prepared || generated != 1 {
+		t.Fatalf("prepared opening should be reused without another model call: prepared=%v generated=%d", prepared, generated)
+	}
+}
+
+func TestOpeningTurnOnlyRequestsImmediateDirectorReplanForMajorDeviation(t *testing.T) {
+	if openingTurnNeedsImmediateDirectorPlan(interactive.TurnEvent{TurnResult: &interactive.TurnResult{PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"}}}) {
+		t.Fatal("aligned opening should reuse the precomputed plan")
+	}
+	if !openingTurnNeedsImmediateDirectorPlan(interactive.TurnEvent{TurnResult: &interactive.TurnResult{PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "major"}}}) {
+		t.Fatal("major opening deviation should request an immediate plan update")
+	}
+}
+
 func TestInteractiveDirectorMaintenanceSeparatesMemoryAndDirectorPlan(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)

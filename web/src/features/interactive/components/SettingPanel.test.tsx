@@ -918,6 +918,18 @@ describe('SettingPanel', () => {
     )
   })
 
+  it('warns without blocking when resident lore exceeds 32 KB', async () => {
+    const user = userEvent.setup()
+    const item = { ...loreItem('resident-rules', '常驻规则', 'rule'), load_mode: 'resident' as const, content: 'x'.repeat(33 * 1024) }
+    vi.mocked(getLoreItems).mockResolvedValue([item])
+
+    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+
+    await user.click(await screen.findByRole('button', { name: /常驻规则/ }))
+    expect(screen.getByText('当前常驻资料约 33 KB，超过 32 KB 建议值；不会阻止保存或使用。')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '保存' })).toBeEnabled()
+  })
+
   it('confirms lore deletion with an in-app dialog', async () => {
     const user = userEvent.setup()
     const item = loreItem('lin-chuan', '林川')

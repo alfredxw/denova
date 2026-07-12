@@ -3,7 +3,6 @@ package book
 import (
 	"encoding/base64"
 	"encoding/binary"
-	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -365,40 +364,23 @@ func TestPNGPrefersCCV3AndWarnsOnConflict(t *testing.T) {
 	}
 }
 
-func TestCharacterCardImportRequiresExplicitResidentBudgetIncrease(t *testing.T) {
+func TestCharacterCardImportAboveRecommendationWarnsButSucceeds(t *testing.T) {
 	workspace := t.TempDir()
-	content := strings.Repeat("常驻设定", 500)
+	content := strings.Repeat("常驻设定", 5000)
 	raw := []byte(`{"data":{"name":"预算测试","description":"角色","character_book":{"entries":[{"id":1,"comment":"规则：长设定","content":` + strconv.Quote(content) + `,"constant":true,"enabled":true}]}}}`)
-	service := NewService(workspace)
-	_, err := service.ImportTavernCharacterCard("budget.json", raw, CharacterCardImportOptions{ResidentLoreLimitKB: 1})
-	var limitErr *ResidentLoreLimitError
-	if !errors.As(err, &limitErr) || limitErr.RequiredKB <= limitErr.CurrentKB {
-		t.Fatalf("应要求显式提升预算: %v", err)
-	}
-	items, listErr := NewLoreStore(workspace).List()
-	if listErr != nil {
-		t.Fatal(listErr)
-	}
-	if len(items) != 0 {
-		t.Fatalf("预算拒绝后不得写入资料: %#v", items)
-	}
-	result, err := service.ImportTavernCharacterCard("budget.json", raw, CharacterCardImportOptions{ResidentLoreLimitKB: limitErr.RequiredKB})
+	preview, err := PreviewTavernCharacterCard("budget.json", raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.RequiredLimitKB != limitErr.RequiredKB {
-		t.Fatalf("预算结果不一致: %#v", result)
+	if !preview.ResidentLoreWarning || preview.ResidentLoreWarningKB != 32 {
+		t.Fatalf("超过建议值时应只提示: %#v", preview)
 	}
-}
-
-func TestCharacterCardImportRejectsResidentLoreAboveHardMaximum(t *testing.T) {
-	workspace := t.TempDir()
-	content := strings.Repeat("x", (maxTavernResidentLoreLimitKB+1)*1024)
-	raw := []byte(`{"data":{"name":"超限测试","description":"角色","character_book":{"entries":[{"id":1,"comment":"规则：长设定","content":` + strconv.Quote(content) + `,"constant":true,"enabled":true}]}}}`)
-	_, err := NewService(workspace).ImportTavernCharacterCard("too-large.json", raw, CharacterCardImportOptions{ResidentLoreLimitKB: maxTavernResidentLoreLimitKB})
-	var maxErr *ResidentLoreMaxLimitError
-	if !errors.As(err, &maxErr) || maxErr.RequiredKB <= maxErr.MaximumKB {
-		t.Fatalf("应拒绝超过硬上限的常驻资料: %v", err)
+	result, err := NewService(workspace).ImportTavernCharacterCard("budget.json", raw)
+	if err != nil {
+		t.Fatalf("超过建议值不得阻止导入: %v", err)
+	}
+	if result.ItemCount == 0 {
+		t.Fatalf("应写入资料: %#v", result)
 	}
 }
 

@@ -19,7 +19,6 @@ import (
 
 const tavernCardCoverPath = "assets/image/cover.png"
 const interactiveOpeningPresetPath = "setting/interactive-openings.json"
-const maxTavernResidentLoreLimitKB = 1024
 
 var pngSignature = []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'}
 
@@ -40,32 +39,28 @@ type CharacterCardImportResult struct {
 	Compatibility        CharacterCardCompatibilityReport `json:"compatibility"`
 	Message              string                           `json:"message"`
 	ResidentLoreBytes    int                              `json:"resident_lore_bytes"`
-	RequiredLimitKB      int                              `json:"required_resident_lore_limit_kb"`
 }
 
 // CharacterCardPreview 描述酒馆角色卡预览信息，解析但不写入 workspace。
 type CharacterCardPreview struct {
-	Name                   string                           `json:"name"`
-	EntryCount             int                              `json:"entry_count"`
-	Tags                   []string                         `json:"tags"`
-	OpeningPresetCount     int                              `json:"opening_preset_count"`
-	UserPlaceholderFound   bool                             `json:"user_placeholder_found"`
-	WillImportCover        bool                             `json:"will_import_cover"`
-	Compatibility          CharacterCardCompatibilityReport `json:"compatibility"`
-	EnabledEntryCount      int                              `json:"enabled_entry_count"`
-	DisabledEntryCount     int                              `json:"disabled_entry_count"`
-	ResidentEntryCount     int                              `json:"resident_entry_count"`
-	ResidentEntryBytes     int                              `json:"resident_entry_bytes"`
-	ResidentLoreBytes      int                              `json:"resident_lore_bytes"`
-	AutoEntryCount         int                              `json:"auto_entry_count"`
-	RemovedRuntimeCount    int                              `json:"removed_runtime_entry_count"`
-	SanitizedMixedCount    int                              `json:"sanitized_mixed_entry_count"`
-	OpeningTruncatedCount  int                              `json:"opening_truncated_count"`
-	CurrentResidentBytes   int                              `json:"current_resident_lore_bytes"`
-	ResidentLoreLimitKB    int                              `json:"resident_lore_limit_kb"`
-	MaxResidentLoreLimitKB int                              `json:"max_resident_lore_limit_kb"`
-	RequiredCurrentKB      int                              `json:"required_current_resident_lore_limit_kb"`
-	RequiredNewBookKB      int                              `json:"required_new_book_resident_lore_limit_kb"`
+	Name                  string                           `json:"name"`
+	EntryCount            int                              `json:"entry_count"`
+	Tags                  []string                         `json:"tags"`
+	OpeningPresetCount    int                              `json:"opening_preset_count"`
+	UserPlaceholderFound  bool                             `json:"user_placeholder_found"`
+	WillImportCover       bool                             `json:"will_import_cover"`
+	Compatibility         CharacterCardCompatibilityReport `json:"compatibility"`
+	EnabledEntryCount     int                              `json:"enabled_entry_count"`
+	DisabledEntryCount    int                              `json:"disabled_entry_count"`
+	ResidentEntryCount    int                              `json:"resident_entry_count"`
+	ResidentEntryBytes    int                              `json:"resident_entry_bytes"`
+	ResidentLoreBytes     int                              `json:"resident_lore_bytes"`
+	AutoEntryCount        int                              `json:"auto_entry_count"`
+	RemovedRuntimeCount   int                              `json:"removed_runtime_entry_count"`
+	SanitizedMixedCount   int                              `json:"sanitized_mixed_entry_count"`
+	OpeningTruncatedCount int                              `json:"opening_truncated_count"`
+	ResidentLoreWarning   bool                             `json:"resident_lore_warning"`
+	ResidentLoreWarningKB int                              `json:"resident_lore_warning_threshold_kb"`
 }
 
 // CharacterCardCompatibilityReport reports Denova capabilities rather than
@@ -79,28 +74,7 @@ type CharacterCardCompatibilityReport struct {
 }
 
 type CharacterCardImportOptions struct {
-	UserCharacterName   string
-	ResidentLoreLimitKB int
-}
-
-// ResidentLoreLimitError means the import is valid but needs explicit user
-// confirmation to raise the stable resident-context budget.
-type ResidentLoreLimitError struct {
-	CurrentKB  int
-	RequiredKB int
-}
-
-func (e *ResidentLoreLimitError) Error() string {
-	return fmt.Sprintf("常驻资料需要 %d KB，当前上限为 %d KB；请显式确认提升常驻资料上限", e.RequiredKB, e.CurrentKB)
-}
-
-type ResidentLoreMaxLimitError struct {
-	RequiredKB int
-	MaximumKB  int
-}
-
-func (e *ResidentLoreMaxLimitError) Error() string {
-	return fmt.Sprintf("常驻资料需要 %d KB，超过最大上限 %d KB", e.RequiredKB, e.MaximumKB)
+	UserCharacterName string
 }
 
 type tavernCard struct {
@@ -233,17 +207,6 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte, opts .
 		coverPath = tavernCardCoverPath
 	}
 	ops, importStats := buildTavernCardLoreOperations(card, filename, coverPath, options.UserCharacterName, newLoreNameAllocator(existingItems))
-	existingResidentBytes, err := loreStore.ResidentContentBytes()
-	if err != nil {
-		return rollback(err)
-	}
-	requiredKB := bytesToKB(existingResidentBytes + importStats.ResidentLoreBytes)
-	if requiredKB > maxTavernResidentLoreLimitKB {
-		return rollback(&ResidentLoreMaxLimitError{RequiredKB: requiredKB, MaximumKB: maxTavernResidentLoreLimitKB})
-	}
-	if options.ResidentLoreLimitKB > 0 && requiredKB > options.ResidentLoreLimitKB {
-		return rollback(&ResidentLoreLimitError{CurrentKB: options.ResidentLoreLimitKB, RequiredKB: requiredKB})
-	}
 	coverPath, err = s.importTavernCardCover(card, data)
 	if err != nil {
 		return rollback(err)
@@ -275,7 +238,6 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte, opts .
 		Compatibility:        tavernCardCompatibility(card),
 		Message:              fmt.Sprintf("已导入酒馆角色卡「%s」到互动资料库", card.Name),
 		ResidentLoreBytes:    importStats.ResidentLoreBytes,
-		RequiredLimitKB:      requiredKB,
 	}
 	result.Compatibility.Warnings = append(result.Compatibility.Warnings, importStats.Warnings...)
 	return result, nil
@@ -304,6 +266,8 @@ func PreviewTavernCharacterCard(filename string, data []byte) (CharacterCardPrev
 		RemovedRuntimeCount:   stats.RemovedRuntimeCount,
 		SanitizedMixedCount:   stats.SanitizedMixedCount,
 		OpeningTruncatedCount: tavernCardOpeningTruncatedCount(card),
+		ResidentLoreWarning:   stats.ResidentLoreBytes > ResidentLoreWarningBytes,
+		ResidentLoreWarningKB: bytesToKB(ResidentLoreWarningBytes),
 	}, nil
 }
 
@@ -807,9 +771,6 @@ func mergeCharacterCardImportOptions(opts ...CharacterCardImportOptions) Charact
 	for _, opt := range opts {
 		if name := strings.TrimSpace(opt.UserCharacterName); name != "" {
 			merged.UserCharacterName = name
-		}
-		if opt.ResidentLoreLimitKB > 0 {
-			merged.ResidentLoreLimitKB = opt.ResidentLoreLimitKB
 		}
 	}
 	return merged

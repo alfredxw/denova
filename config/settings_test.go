@@ -46,9 +46,6 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.InteractiveStageLineHeight == nil || *s.InteractiveStageLineHeight != 1.78 {
 		t.Fatalf("InteractiveStageLineHeight default")
 	}
-	if s.ResidentLoreLimitKB == nil || *s.ResidentLoreLimitKB != DefaultResidentLoreLimitKB {
-		t.Fatalf("ResidentLoreLimitKB default")
-	}
 	if s.ChapterFilenameFormat != "ch{order:05}-{chapter}-{title}.md" {
 		t.Fatalf("ChapterFilenameFormat default: %s", s.ChapterFilenameFormat)
 	}
@@ -146,7 +143,6 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		IDEImagePresetID:           "realistic",
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
-		ResidentLoreLimitKB:        intPtr(DefaultResidentLoreLimitKB),
 	}
 	child := Settings{
 		OpenAIModel:                "c-model", // override
@@ -174,7 +170,6 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		RemoteAccessPasswordHash:   "$2a$10$hash",
 		InteractiveStageFontSize:   intPtr(18),
 		InteractiveStageLineHeight: floatPtr(1.95),
-		ResidentLoreLimitKB:        intPtr(MaxResidentLoreLimitKB + 1),
 	}
 	out := Merge(parent, child)
 	if out.OpenAIBaseURL != "https://parent" {
@@ -248,21 +243,6 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.InteractiveStageLineHeight == nil || *out.InteractiveStageLineHeight != 1.95 {
 		t.Fatalf("InteractiveStageLineHeight should override parent")
-	}
-	if out.ResidentLoreLimitKB == nil || *out.ResidentLoreLimitKB != MaxResidentLoreLimitKB {
-		t.Fatalf("ResidentLoreLimitKB should clamp to max")
-	}
-}
-
-func TestLegacyInteractiveRuleLoreLimitMigratesToResidentLimit(t *testing.T) {
-	legacy := 64
-	out := Merge(DefaultSettings(), Settings{InteractiveRuleLoreLimitKB: &legacy})
-	if out.ResidentLoreLimitKB == nil || *out.ResidentLoreLimitKB != legacy {
-		t.Fatalf("legacy limit should migrate: %#v", out)
-	}
-	prepared := sanitizeEditableSettings(Settings{InteractiveRuleLoreLimitKB: &legacy})
-	if prepared.ResidentLoreLimitKB == nil || *prepared.ResidentLoreLimitKB != legacy || prepared.InteractiveRuleLoreLimitKB != nil {
-		t.Fatalf("subsequent writes should use resident_lore_limit_kb: %#v", prepared)
 	}
 }
 
@@ -629,6 +609,35 @@ func TestLoadLayeredIgnoresStartupPortsFromWorkspaceLayer(t *testing.T) {
 	}
 	if !strings.HasSuffix(layered.Access.LocalURL, ":18080") || !strings.HasSuffix(layered.Access.LANURL, ":18080") {
 		t.Fatalf("access URLs should use backend_port: %+v", layered.Access)
+	}
+}
+
+func TestLoadLayeredIgnoresAgentModelsFromWorkspaceLayer(t *testing.T) {
+	home := t.TempDir()
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, ".nova"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSettingsFile(filepath.Join(home, "config.toml"), Settings{
+		AgentModels: AgentModelSettings{InteractiveStory: AgentModelOverride{ProfileID: "user-model"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteSettingsFile(filepath.Join(ws, ".nova", "config.toml"), Settings{
+		AgentModels: AgentModelSettings{InteractiveStory: AgentModelOverride{ProfileID: "workspace-model"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	layered, err := LoadLayered(home, ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layered.Workspace.AgentModels.InteractiveStory.ProfileID != "" {
+		t.Fatalf("workspace agent model should be filtered: %#v", layered.Workspace.AgentModels)
+	}
+	if layered.Effective.AgentModels.InteractiveStory.ProfileID != "user-model" {
+		t.Fatalf("user agent model should remain effective: %#v", layered.Effective.AgentModels)
 	}
 }
 

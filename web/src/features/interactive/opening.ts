@@ -1,11 +1,12 @@
 import type { TFunction } from 'i18next'
-import type { InitialActorTraitRoll, StoryImageSettings, StoryOpeningConfig, StorySummary } from './types'
+import type { InitialActorTraitRoll, StoryDirectorModuleRefs, StoryImageSettings, StoryOpeningConfig, StorySummary } from './types'
 
 export interface StoryCreateInput {
   title: string
   origin: string
   story_teller_id: string
   story_director_id: string
+  module_refs?: StoryDirectorModuleRefs
   reply_target_chars: number
   image_settings?: StoryImageSettings
   opening?: StoryOpeningConfig

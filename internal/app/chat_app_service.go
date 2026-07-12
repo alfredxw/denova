@@ -447,12 +447,8 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 	if err != nil {
 		return ideChatRuntime{}, req, fmt.Errorf("读取常驻资料预算失败: %w", err)
 	}
-	limitKB := runtime.cfg.ResidentLoreLimitKB
-	if limitKB <= 0 {
-		limitKB = config.DefaultResidentLoreLimitKB
-	}
-	if residentBytes > limitKB*1024 {
-		return ideChatRuntime{}, req, fmt.Errorf("常驻资料正文为 %d KB，超过当前上限 %d KB；请缩短正文、改为按需资料或提高常驻资料上限", (residentBytes+1023)/1024, limitKB)
+	if residentBytes > book.ResidentLoreSafetyMaxBytes {
+		return ideChatRuntime{}, req, fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentBytes+1023)/1024)
 	}
 	return runtime, req, nil
 }

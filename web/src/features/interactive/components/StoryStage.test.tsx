@@ -895,7 +895,7 @@ describe('StoryStage interactive image rendering', () => {
 })
 
 describe('StoryStage opening panel', () => {
-  it('starts the current book preset from the book preset button', async () => {
+  it('shows preset content in its tab and starts the selected preset', async () => {
     const user = userEvent.setup()
     sendInteractiveMessageMock.mockResolvedValue(interactiveStream([
       { event: 'done', data: '{}' },
@@ -914,7 +914,9 @@ describe('StoryStage opening panel', () => {
       />,
     )
 
-    expect(screen.getByPlaceholderText('写下你想使用的开局。生成时会作为有界来源传给游戏 Agent。')).toHaveValue('')
+    expect(screen.getByRole('tab', { name: /AI 编排/ })).toHaveAttribute('data-state', 'active')
+    await user.click(screen.getByRole('tab', { name: /书籍预设/ }))
+    expect(screen.getAllByText('青石镇的雨刚刚停。').length).toBeGreaterThan(0)
     await user.click(screen.getByRole('button', { name: '使用书籍预设' }))
 
     await waitFor(() => {
@@ -949,8 +951,9 @@ describe('StoryStage opening panel', () => {
       />,
     )
 
-    await user.click(screen.getByRole('combobox', { name: '选择书籍预设' }))
-    await user.click(await screen.findByRole('option', { name: '雪夜开场' }))
+    await user.click(screen.getByRole('tab', { name: /书籍预设/ }))
+    await user.click(screen.getByRole('option', { name: '选择书籍预设：雪夜开场' }))
+    expect(screen.getAllByText('雪夜里，山门外只剩一盏灯。').length).toBeGreaterThan(0)
     await user.click(screen.getByRole('button', { name: '使用书籍预设' }))
 
     await waitFor(() => {
@@ -961,6 +964,29 @@ describe('StoryStage opening panel', () => {
         message: expect.stringContaining('书籍预设开场白：雪夜里，山门外只剩一盏灯。'),
       }))
     })
+  })
+
+  it('keeps custom opening input inside the custom tab', async () => {
+    const user = userEvent.setup()
+    render(
+      <StoryStage
+        workspace="/tmp/book"
+        stories={[story()]}
+        story={story()}
+        tellers={[]}
+        storyId="story-1"
+        branchId="main"
+        snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [], state: {} }}
+        onDone={() => {}}
+      />,
+    )
+
+    expect(screen.queryByPlaceholderText('写下你想使用的开局。生成时会作为有界来源传给游戏 Agent。')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: '自定义' }))
+    const input = screen.getByPlaceholderText('写下你想使用的开局。生成时会作为有界来源传给游戏 Agent。')
+    await user.type(input, '山门外传来三声钟响。')
+    expect(screen.getByText('10 字')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '使用自定义开局' })).toBeEnabled()
   })
 })
 

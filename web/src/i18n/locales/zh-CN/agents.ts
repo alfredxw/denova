@@ -51,6 +51,7 @@ const agents = {
   'agents.tool.agentConfigWrite.title': '写入 Agent 配置',
   'agents.tool.agentConfigWrite.subtitle': 'write_agent_configs',
   'agents.section.model': '模型与思考',
+  'agents.model.userScoped': '模型与思考配置统一为用户级配置，请切换到“用户配置”后编辑。',
   'agents.section.systemPrompt': '系统提示',
   'agents.section.tools': '工具能力',
   'agents.section.skills': 'Skills 可用范围',

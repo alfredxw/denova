@@ -367,7 +367,6 @@ export interface CharacterCardImportResult {
   book_meta?: BookMeta
   message: string
   resident_lore_bytes: number
-  required_resident_lore_limit_kb: number
 }
 
 export interface CharacterCardPreview {
@@ -387,11 +386,8 @@ export interface CharacterCardPreview {
   removed_runtime_entry_count: number
   sanitized_mixed_entry_count: number
   opening_truncated_count: number
-  current_resident_lore_bytes: number
-  resident_lore_limit_kb: number
-  max_resident_lore_limit_kb: number
-  required_current_resident_lore_limit_kb: number
-  required_new_book_resident_lore_limit_kb: number
+  resident_lore_warning: boolean
+  resident_lore_warning_threshold_kb: number
 }
 
 interface CharacterCardCompatibilityReport {

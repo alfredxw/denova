@@ -84,6 +84,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		Origin:           strings.TrimSpace(req.Origin),
 		StoryTellerID:    strings.TrimSpace(req.StoryTellerID),
 		StoryDirectorID:  NormalizeStoryDirectorID(req.StoryDirectorID),
+		ModuleRefs:       cloneStoryDirectorModuleRefs(req.ModuleRefs),
 		ReplyTargetChars: normalizeStoryReplyTargetChars(req.ReplyTargetChars),
 		Opening:          normalizeStoryOpeningConfig(req.Opening),
 		ImageSettings:    normalizeStoryImageSettings(req.ImageSettings),
@@ -106,6 +107,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		Origin:           story.Origin,
 		StoryTellerID:    story.StoryTellerID,
 		StoryDirectorID:  story.StoryDirectorID,
+		ModuleRefs:       cloneStoryDirectorModuleRefs(story.ModuleRefs),
 		ReplyTargetChars: story.ReplyTargetChars,
 		Opening:          story.Opening,
 		ImageSettings:    story.ImageSettings,
@@ -115,6 +117,14 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		},
 		CreatedAt: now,
 		UpdatedAt: now,
+	}
+	if req.StateSchemaInitialization != nil {
+		initialization := *req.StateSchemaInitialization
+		initialization.UpdatedAt = now
+		if initialization.Status == StateSchemaInitializationSkipped {
+			initialization.CompletedAt = now
+		}
+		meta.StateSchemaInitialization = &initialization
 	}
 	actorState := StoryDirectorActorStateSystem{}
 	trpgSystem := StoryDirectorTRPGSystem{}
@@ -199,11 +209,17 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	if title := strings.TrimSpace(req.Title); title != "" {
 		meta.Title = title
 	}
+	if req.Origin != nil {
+		meta.Origin = strings.TrimSpace(*req.Origin)
+	}
 	if tellerID := strings.TrimSpace(req.StoryTellerID); tellerID != "" {
 		meta.StoryTellerID = tellerID
 	}
 	if directorID := NormalizeStoryDirectorID(req.StoryDirectorID); directorID != "" {
 		meta.StoryDirectorID = directorID
+		meta.ModuleRefs = cloneStoryDirectorModuleRefs(req.ModuleRefs)
+	} else if req.ModuleRefs != nil {
+		meta.ModuleRefs = cloneStoryDirectorModuleRefs(req.ModuleRefs)
 	}
 	if req.ReplyTargetChars != nil {
 		if *req.ReplyTargetChars <= 0 {
@@ -228,8 +244,10 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	for i := range index.Stories {
 		if index.Stories[i].ID == storyID {
 			index.Stories[i].Title = meta.Title
+			index.Stories[i].Origin = meta.Origin
 			index.Stories[i].StoryTellerID = meta.StoryTellerID
 			index.Stories[i].StoryDirectorID = normalizedStoryDirectorID(meta.StoryDirectorID)
+			index.Stories[i].ModuleRefs = cloneStoryDirectorModuleRefs(meta.ModuleRefs)
 			index.Stories[i].ReplyTargetChars = meta.ReplyTargetChars
 			index.Stories[i].Opening = meta.Opening
 			index.Stories[i].ImageSettings = meta.ImageSettings
@@ -629,6 +647,9 @@ func (s *Store) RewindToTurnParent(storyID string, req RewindTurnRequest) error 
 	if err != nil {
 		return err
 	}
+	if err := rejectMutationDuringStateSchemaInitialization(meta); err != nil {
+		return err
+	}
 	branchID := req.BranchID
 	if branchID == "" {
 		branchID = meta.CurrentBranch
@@ -673,6 +694,9 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 	}
 	meta, lines, err := s.readStoryLocked(storyID)
 	if err != nil {
+		return err
+	}
+	if err := rejectMutationDuringStateSchemaInitialization(meta); err != nil {
 		return err
 	}
 	branchID := req.BranchID
@@ -892,6 +916,9 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 	if err != nil {
 		return RuleResolution{}, err
 	}
+	if err := rejectMutationDuringStateSchemaInitialization(meta); err != nil {
+		return RuleResolution{}, err
+	}
 	branchID, branch, err := resolveBranch(meta, req.BranchID)
 	if err != nil {
 		return RuleResolution{}, err
@@ -987,6 +1014,9 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 
 	meta, lines, err := s.readStoryLocked(storyID)
 	if err != nil {
+		return BranchSummary{}, err
+	}
+	if err := rejectMutationDuringStateSchemaInitialization(meta); err != nil {
 		return BranchSummary{}, err
 	}
 	parentID := strings.TrimSpace(req.ParentEventID)
@@ -1287,6 +1317,7 @@ func normalizeStorySummary(story StorySummary) StorySummary {
 	story.ReplyTargetChars = normalizeStoryReplyTargetChars(story.ReplyTargetChars)
 	story.Opening = normalizeStoryOpeningConfig(story.Opening)
 	story.ImageSettings = normalizeStoryImageSettings(story.ImageSettings)
+	story.ModuleRefs = cloneStoryDirectorModuleRefs(story.ModuleRefs)
 	return story
 }
 
@@ -1296,7 +1327,17 @@ func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	meta.Opening = normalizeStoryOpeningConfig(meta.Opening)
 	meta.ImageSettings = normalizeStoryImageSettings(meta.ImageSettings)
 	meta.ActorStateSchema = normalizeActorStateSchemaSnapshot(meta.ActorStateSchema)
+	meta.ModuleRefs = cloneStoryDirectorModuleRefs(meta.ModuleRefs)
 	return meta
+}
+
+func cloneStoryDirectorModuleRefs(refs *StoryDirectorModuleRefs) *StoryDirectorModuleRefs {
+	if refs == nil {
+		return nil
+	}
+	cloned := NormalizeStoryDirectorModuleRefs(*refs)
+	cloned.EventPackageIDs = append([]string(nil), cloned.EventPackageIDs...)
+	return &cloned
 }
 
 func normalizedStoryDirectorID(id string) string {

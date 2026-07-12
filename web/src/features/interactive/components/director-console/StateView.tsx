@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { ActorStateField, ActorStateSchemaSnapshot, ActorTraitInstance, Snapshot, TurnEvent } from '../../types'
 import { ActorTabs } from './ActorTabs'
 import { StateValue } from './shared'
+import { StateSchemaOverview } from './StateSchemaOverview'
 
 type ActorEntry = [string, Record<string, unknown>]
 type StateChange = {
@@ -15,7 +16,7 @@ type StateChange = {
   reason?: string
 }
 
-export function StateView({ snapshot, stateFacts, syncError }: { snapshot: Snapshot | null; stateFacts: Array<[string, unknown]>; syncStatus?: string; syncError?: string }) {
+export function StateView({ storyId, snapshot, stateFacts, syncError, onSnapshotRefresh }: { storyId?: string; snapshot: Snapshot | null; stateFacts: Array<[string, unknown]>; syncStatus?: string; syncError?: string; onSnapshotRefresh?: () => void | Promise<unknown> }) {
   const { t } = useTranslation()
   const turn = snapshot?.current_turn
   const stateObjects = useMemo(() => actorEntries(stateFacts), [stateFacts])
@@ -41,6 +42,7 @@ export function StateView({ snapshot, stateFacts, syncError }: { snapshot: Snaps
 
   return (
     <div className="min-w-0 space-y-5">
+      <StateSchemaOverview storyId={storyId} schema={snapshot?.actor_state_schema} initialization={snapshot?.state_schema_initialization} onRefresh={onSnapshotRefresh} />
       <section className="min-w-0">
         {turn?.state_error || syncError ? (
           <div className="mb-3 rounded-[10px] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-5 text-[var(--nova-danger)]">

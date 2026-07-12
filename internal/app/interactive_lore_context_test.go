@@ -73,11 +73,69 @@ func TestDirectorReceivesCommittedTemporaryLoreRecallForPromotion(t *testing.T) 
 			Arguments: `{"names":["洛青衣"]}`,
 		}}},
 	}}}
-	context, err := buildInteractiveDirectorLoreContext(workspace, plan, turn)
+	context, err := buildInteractiveDirectorLoreContext(workspace, plan, turn, interactiveDirectorTaskDirectorPlanUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(context, "[[洛青衣]]") || !strings.Contains(context, "临时读取") || !strings.Contains(context, "首次资料审阅") {
 		t.Fatalf("director lore context should expose temporary recall and revision state:\n%s", context)
+	}
+}
+
+func TestDirectorLoreRosterIsInjectedOnlyForOpeningRevisionChangesOrMajorDeviation(t *testing.T) {
+	workspace := t.TempDir()
+	lore := book.NewLoreStore(workspace)
+	for _, input := range []book.LoreItemInput{
+		{ID: "resident", Type: "rule", Name: "常驻规则", Importance: "major", LoadMode: book.LoreLoadModeResident, Content: "常驻正文"},
+		{ID: "hero", Type: "character", Name: "沈凝", Importance: "major", LoadMode: book.LoreLoadModeAuto, Content: "沈凝正文"},
+		{ID: "faction", Type: "faction", Name: "戒律堂", Importance: "important", LoadMode: book.LoreLoadModeAuto, Content: "戒律堂正文"},
+	} {
+		if _, err := lore.Create(input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "目录注入"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := store.DirectorPlan(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	opening, err := buildInteractiveDirectorLoreContext(workspace, plan, interactive.TurnEvent{}, interactiveDirectorTaskOpeningPlan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"资料名称目录", "[character/major] 沈凝", "[faction/important] 戒律堂"} {
+		if !strings.Contains(opening, want) {
+			t.Fatalf("opening roster missing %q:\n%s", want, opening)
+		}
+	}
+	if strings.Contains(opening, "[rule/major] 常驻规则") || strings.Contains(opening, "沈凝正文") {
+		t.Fatalf("opening roster should exclude resident names and all bodies:\n%s", opening)
+	}
+
+	currentRevision, err := lore.Revision()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.Metadata.LoreRevision = currentRevision
+	regular, err := buildInteractiveDirectorLoreContext(workspace, plan, interactive.TurnEvent{}, interactiveDirectorTaskDirectorPlanUpdate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(regular, "资料名称目录") {
+		t.Fatalf("ordinary patch should not repeat the full roster:\n%s", regular)
+	}
+
+	majorTurn := interactive.TurnEvent{TurnResult: &interactive.TurnResult{PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "major"}}}
+	major, err := buildInteractiveDirectorLoreContext(workspace, plan, majorTurn, interactiveDirectorTaskDirectorPlanUpdate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(major, "资料名称目录") {
+		t.Fatalf("major deviation should restore the roster:\n%s", major)
 	}
 }

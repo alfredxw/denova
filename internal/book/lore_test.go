@@ -1,8 +1,10 @@
 package book
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -112,6 +114,29 @@ func TestResidentContextIsStableAndSortedByLoreID(t *testing.T) {
 	}
 	if first != second || strings.Index(first, "A正文") > strings.Index(first, "Z正文") || strings.Contains(first, "不应注入") {
 		t.Fatalf("常驻上下文必须按 ID 稳定且排除按需资料:\n%s", first)
+	}
+}
+
+func TestResidentContextDoesNotLogRepeatedSizeWarnings(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	if _, err := store.Create(LoreItemInput{
+		ID: "large-resident", Type: "rule", Name: "大型常驻资料",
+		LoadMode: LoreLoadModeResident, Content: strings.Repeat("常驻规则", 5000),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var logs bytes.Buffer
+	previousWriter := log.Writer()
+	log.SetOutput(&logs)
+	t.Cleanup(func() { log.SetOutput(previousWriter) })
+	for range 3 {
+		if _, err := store.ResidentContextMarkdown(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if strings.Contains(logs.String(), "[lore-context]") {
+		t.Fatalf("稳定的常驻资料不应在上下文热路径重复打印大小 warning:\n%s", logs.String())
 	}
 }
 
@@ -247,6 +272,42 @@ func TestLoreStoreCompactIndexPaginatesWithDefaultAndExplicitLimits(t *testing.T
 	}
 	if strings.Count(second, "- id:") != 2 || strings.Contains(second, "下一页使用") {
 		t.Fatalf("explicit final page should return the remaining two entries:\n%s", second)
+	}
+}
+
+func TestLoreStoreNameRosterIsBoundedAndOmitsResidentBodies(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	for _, input := range []LoreItemInput{
+		{ID: "resident", Type: "rule", Name: "常驻规则", Importance: "major", LoadMode: LoreLoadModeResident, Content: "不应重复进入名称目录"},
+		{ID: "hero", Type: "character", Name: "林川", Importance: "major", LoadMode: LoreLoadModeAuto, BriefDescription: "不应注入简介", Content: "不应注入正文"},
+		{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: LoreLoadModeAuto, Content: "不应注入正文"},
+	} {
+		if _, err := store.Create(input); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	roster, err := store.LoreNameRosterMarkdown(1024, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"资料名称目录", "共 2 条", "[character/major] 林川", "[location/important] 黄泉酒馆"} {
+		if !strings.Contains(roster, want) {
+			t.Fatalf("name roster missing %q:\n%s", want, roster)
+		}
+	}
+	for _, forbidden := range []string{"常驻规则", "不应注入简介", "不应注入正文"} {
+		if strings.Contains(roster, forbidden) {
+			t.Fatalf("name roster should omit %q:\n%s", forbidden, roster)
+		}
+	}
+
+	bounded, err := store.LoreNameRosterMarkdown(128, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len([]byte(bounded)) > 128 || !strings.Contains(bounded, "省略") || !strings.Contains(bounded, "list_lore_items") {
+		t.Fatalf("bounded roster should explain omitted names within its byte limit:\n%s", bounded)
 	}
 }
 

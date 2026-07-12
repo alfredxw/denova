@@ -18,7 +18,6 @@ interface CharacterCardImportDialogProps {
   targetMode: CharacterCardTargetMode
   bookTitle: string
   userCharacterName: string
-  raiseResidentLoreLimit: boolean
   previewing: boolean
   importing: boolean
   error: string
@@ -28,7 +27,6 @@ interface CharacterCardImportDialogProps {
   onTargetModeChange: (mode: CharacterCardTargetMode) => void
   onBookTitleChange: (title: string) => void
   onUserCharacterNameChange: (name: string) => void
-  onRaiseResidentLoreLimitChange: (checked: boolean) => void
   onImport: () => void | Promise<void>
 }
 
@@ -42,7 +40,6 @@ export function CharacterCardImportDialog({
   targetMode,
   bookTitle,
   userCharacterName,
-  raiseResidentLoreLimit,
   previewing,
   importing,
   error,
@@ -52,16 +49,10 @@ export function CharacterCardImportDialog({
   onTargetModeChange,
   onBookTitleChange,
   onUserCharacterNameChange,
-  onRaiseResidentLoreLimitChange,
   onImport,
 }: CharacterCardImportDialogProps) {
   const { t } = useTranslation()
   const hasSelectedFile = Boolean(file)
-  const requiredResidentLimit = preview
-    ? (targetMode === 'current' ? preview.required_current_resident_lore_limit_kb : preview.required_new_book_resident_lore_limit_kb)
-    : 0
-  const needsResidentLimitIncrease = Boolean(preview && requiredResidentLimit > preview.resident_lore_limit_kb)
-  const exceedsResidentLimit = Boolean(preview && requiredResidentLimit > preview.max_resident_lore_limit_kb)
 
   return (
     <>
@@ -178,22 +169,12 @@ export function CharacterCardImportDialog({
               </div>
             )}
 
-            {needsResidentLimitIncrease && !exceedsResidentLimit && (
-              <label className="flex cursor-pointer items-start gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-warning)]/25 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] leading-4 text-[var(--nova-text-muted)]">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-3.5 w-3.5 accent-[var(--nova-accent)]"
-                  checked={raiseResidentLoreLimit}
-                  onChange={(event) => onRaiseResidentLoreLimitChange(event.target.checked)}
-                  disabled={importing}
-                />
-                <span>{t('importCard.raiseResidentLimit', { current: preview?.resident_lore_limit_kb ?? 0, required: requiredResidentLimit })}</span>
-              </label>
-            )}
-
-            {exceedsResidentLimit && preview && (
-              <div className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-[11px] text-[var(--nova-danger)]">
-                {t('importCard.residentLimitTooLarge', { required: requiredResidentLimit, maximum: preview.max_resident_lore_limit_kb })}
+            {preview?.resident_lore_warning && (
+              <div className="rounded-[var(--nova-radius)] border border-[var(--nova-warning)]/25 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] leading-4 text-[var(--nova-text-muted)]">
+                {t('importCard.residentWarning', {
+                  size: Math.ceil(preview.resident_lore_bytes / 1024),
+                  threshold: preview.resident_lore_warning_threshold_kb,
+                })}
               </div>
             )}
 
@@ -219,7 +200,7 @@ export function CharacterCardImportDialog({
               size="xs"
               className="border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]"
               onClick={onImport}
-              disabled={!file || !preview || previewing || importing || exceedsResidentLimit || (needsResidentLimitIncrease && !raiseResidentLoreLimit)}
+              disabled={!file || !preview || previewing || importing}
             >
               {importing ? t('importCard.importing') : t('importCard.import')}
             </Button>

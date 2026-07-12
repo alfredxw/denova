@@ -77,10 +77,6 @@ func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Contex
 	if err != nil {
 		return interactive.StorySummary{}, err
 	}
-	req, err = s.adaptStoryStateSchema(ctx, req)
-	if err != nil {
-		return interactive.StorySummary{}, err
-	}
 	story, err := store.CreateStory(req)
 	if err != nil {
 		return interactive.StorySummary{}, err
@@ -124,6 +120,13 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 		log.Printf("[interactive-director] load story director failed story_director_id=%s err=%v", directorID, err)
 		return req, nil
 	}
+	if req.ModuleRefs != nil {
+		director.ModuleRefs = interactive.NormalizeStoryDirectorModuleRefs(*req.ModuleRefs)
+		director.ResolvedSnapshot = interactive.StoryDirectorResolvedSnapshot{}
+		director = interactive.ResolveStoryDirectorModules(cfg.NovaDir, director)
+		normalized := interactive.NormalizeStoryDirectorModuleRefs(director.ModuleRefs)
+		req.ModuleRefs = &normalized
+	}
 	if interactive.StoryDirectorNarrativeStyleEnabled(director) && strings.TrimSpace(req.StoryTellerID) == "" && strings.TrimSpace(director.ModuleRefs.NarrativeStyleID) != "" {
 		req.StoryTellerID = strings.TrimSpace(director.ModuleRefs.NarrativeStyleID)
 	}
@@ -147,6 +150,17 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 	}
 	req.ActorState = &director.ActorState
 	req.TRPGSystem = &director.TRPGSystem
+	mode := director.Strategy.StateSchemaAdaptationMode
+	status := interactive.StateSchemaInitializationWaitingOpening
+	if mode == interactive.StateSchemaAdaptationModeOff || len(director.ActorState.Templates) == 0 {
+		mode = interactive.StateSchemaAdaptationModeOff
+		status = interactive.StateSchemaInitializationSkipped
+	}
+	req.StateSchemaInitialization = &interactive.StateSchemaInitializationStatus{
+		Mode:         mode,
+		Status:       status,
+		BaseRevision: 1,
+	}
 	if req.DirectorPlanSeed.OpeningSummary == "" {
 		req.DirectorPlanSeed.OpeningSummary = openingSummaryFromStateOps(req.InitialStateOps)
 	}
@@ -203,11 +217,88 @@ func (a *App) InteractiveSnapshot(storyID, branchID string) (interactive.Snapsho
 }
 
 func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (interactive.Snapshot, error) {
-	store := s.store()
+	a := s.app
+	a.mu.RLock()
+	store := a.interactive
+	cfg := a.cfg
+	workspace := a.workspace
+	bookState := a.bookState
+	sessionStore := a.sessionStore
+	a.mu.RUnlock()
 	if store == nil {
 		return interactive.Snapshot{}, ErrNoWorkspace
 	}
-	return store.Snapshot(storyID, branchID)
+	snapshot, err := store.Snapshot(storyID, branchID)
+	if err != nil || cfg == nil || bookState == nil || snapshot.CurrentTurn == nil || snapshot.StateSchemaInitialization == nil {
+		return snapshot, err
+	}
+	status := snapshot.StateSchemaInitialization.Status
+	if status != interactive.StateSchemaInitializationRunning {
+		return snapshot, nil
+	}
+	runtimeCfg := *cfg
+	runtimeCfg.Workspace = workspace
+	turn := *snapshot.CurrentTurn
+	conversation := newInteractiveConversation(store, runtimeCfg.NovaDir, workspace, storyID, snapshot.BranchID, turn.User, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg).bindDirectorRuntime(a.directorTasksForWorkspace(workspace), a.interactiveDirectorGenerator())
+	tasks := directorTasksForConversation(conversation)
+	key := interactiveMaintenanceKey(conversation, snapshot.BranchID)
+	if tasks.HasKey(key) {
+		return snapshot, nil
+	}
+	if _, resumeErr := store.ResumeInterruptedStateSchemaInitialization(storyID); resumeErr != nil {
+		log.Printf("[interactive-state-schema] resume state reset failed story_id=%s branch_id=%s err=%v", storyID, snapshot.BranchID, resumeErr)
+		return snapshot, nil
+	}
+	log.Printf("[interactive-state-schema] resume interrupted initialization story_id=%s branch_id=%s turn_id=%s", storyID, snapshot.BranchID, turn.ID)
+	startInteractiveStateSchemaTask(&runtimeCfg, bookState, conversation, turn, sessionStore)
+	return snapshot, nil
+}
+
+func (a *App) RetryInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
+	return a.interactiveService().RetryInteractiveStateSchema(storyID)
+}
+
+func (s *InteractiveAppService) RetryInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
+	a := s.app
+	a.mu.RLock()
+	store := a.interactive
+	cfg := a.cfg
+	workspace := a.workspace
+	bookState := a.bookState
+	sessionStore := a.sessionStore
+	a.mu.RUnlock()
+	if store == nil || cfg == nil || bookState == nil {
+		return interactive.StateSchemaInitializationStatus{}, ErrNoWorkspace
+	}
+	status, err := store.ResetStateSchemaInitialization(storyID)
+	if err != nil {
+		return status, err
+	}
+	storyCtx, err := store.StoryContext(storyID, "")
+	if err != nil {
+		return status, err
+	}
+	if storyCtx.Snapshot.CurrentTurn == nil {
+		return status, fmt.Errorf("首轮正文尚未完成，状态结构将在首轮落盘后自动适配")
+	}
+	runtimeCfg := *cfg
+	runtimeCfg.Workspace = workspace
+	turn := *storyCtx.Snapshot.CurrentTurn
+	conversation := newInteractiveConversation(store, runtimeCfg.NovaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg).bindDirectorRuntime(a.directorTasksForWorkspace(workspace), a.interactiveDirectorGenerator())
+	startInteractiveStateSchemaTask(&runtimeCfg, bookState, conversation, turn, sessionStore)
+	return status, nil
+}
+
+func (a *App) SkipInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
+	return a.interactiveService().SkipInteractiveStateSchema(storyID)
+}
+
+func (s *InteractiveAppService) SkipInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.StateSchemaInitializationStatus{}, ErrNoWorkspace
+	}
+	return store.SkipStateSchemaInitialization(storyID)
 }
 
 func (a *App) RerollInteractiveRuleResolution(storyID, resolutionID string, req interactive.RuleResolutionRerollRequest) (interactive.RuleResolution, error) {
@@ -270,11 +361,9 @@ func (s *InteractiveAppService) RebuildInteractiveDirectorPlan(storyID string, r
 	seed := interactive.DirectorPlanSeed{Templates: interactive.DefaultStoryDirectorPlanningTemplates(), BranchPlanningTurns: 5, Source: firstNonEmptyApp(req.Source, "manual_rebuild")}
 	if cfg := s.cfg(); cfg != nil && cfg.NovaDir != "" {
 		if storyCtx, err := store.StoryContext(storyID, req.BranchID); err == nil {
-			if director, err := interactive.NewStoryDirectorLibrary(cfg.NovaDir).Get(storyCtx.Meta.StoryDirectorID); err == nil {
+			if director := loadStoryDirectorForMeta(cfg.NovaDir, storyCtx.Meta); director.ID != "" {
 				seed.Templates = director.Strategy.PlanningTemplates
 				seed.BranchPlanningTurns = director.Strategy.BranchPlanningTurns
-			} else {
-				log.Printf("[interactive-director] load story director for rebuild failed story_id=%s story_director_id=%s err=%v", storyID, storyCtx.Meta.StoryDirectorID, err)
 			}
 		} else {
 			log.Printf("[interactive-director] load story context for rebuild failed story_id=%s branch_id=%s err=%v", storyID, req.BranchID, err)
@@ -316,7 +405,7 @@ func (s *InteractiveAppService) RunInteractiveDirectorPlan(storyID string, req i
 		return interactive.DirectorPlanStatus{}, fmt.Errorf("开局尚未完成，无法运行导演规划")
 	}
 	turn := *storyCtx.Snapshot.CurrentTurn
-	director := loadStoryDirector(novaDir, storyCtx.Meta.StoryDirectorID)
+	director := loadStoryDirectorForMeta(novaDir, storyCtx.Meta)
 	decision := shouldRunInteractiveDirectorAgent(director.Strategy)
 	if !decision.ShouldRun {
 		if err := store.MarkDirectorPlanRunSkipped(storyID, storyCtx.Snapshot.BranchID, turn.ID, decision.Reason); err != nil {
@@ -945,7 +1034,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 				emitInteractiveTurnPersisted(store, storyID, conversation, emit)
 				if turn, _, ok := conversation.LastTurnForState(); ok {
 					log.Printf("[interactive-director-agent] maintenance scheduled story_id=%s branch_id=%s turn_id=%s", storyID, turn.BranchID, turn.ID)
-					startInteractiveDirectorMaintenanceTask(&runtimeCfg, state, conversation, turn, sessionStore)
+					startInteractiveDirectorMaintenanceTask(&runtimeCfg, state, conversation, turn, sessionStore, true)
 					maintenanceScheduled = true
 				}
 			}
@@ -963,7 +1052,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 		}, interactiveEmit)
 		if turn, _, ok := conversation.LastTurnForState(); ok && ctx.Err() == nil && !maintenanceScheduled {
 			log.Printf("[interactive-director-agent] maintenance scheduled after run story_id=%s branch_id=%s turn_id=%s", storyID, turn.BranchID, turn.ID)
-			startInteractiveDirectorMaintenanceTask(&runtimeCfg, state, conversation, turn, sessionStore)
+			startInteractiveDirectorMaintenanceTask(&runtimeCfg, state, conversation, turn, sessionStore, true)
 		}
 		log.Printf("[interactive-agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})

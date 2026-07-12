@@ -57,7 +57,6 @@ export interface Settings {
   writing_skill_default?: string
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
-  resident_lore_limit_kb?: number | null
 }
 
 export interface ModelProfileSettings {

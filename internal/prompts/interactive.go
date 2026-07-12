@@ -36,6 +36,8 @@ type InteractiveStoryPromptInput struct {
 type InteractiveDirectorPromptInput struct {
 	Title                       string
 	Origin                      string
+	OpeningContext              string
+	OpeningInitialization       bool
 	StoryTellerID               string
 	StoryDirectorID             string
 	BranchID                    string
@@ -228,7 +230,7 @@ func InteractiveStoryTurnInstruction(message, turnContext, runtimeContext string
 func BuildInteractiveDirectorSystemInstruction() string {
 	return strings.Join([]string{
 		"你是 Denova 游戏模式的后台导演 Agent。",
-		"你负责在前台互动 Agent 完成本回合正文、TurnResult 和 StateDelta 原子落盘后，观察本轮是否需要 keep、patch 或 replan，并维护当前分支的 director.md 与 lore-context.md。",
+		"你负责在首个前台互动回合前建立初始 director.md 与 lore-context.md，并在后续回合落盘后观察是否需要 keep、patch 或 replan。",
 		"你不负责续写本回合剧情，不能改写本回合正文，也不能替用户选择下一步行动。",
 		"Actor State 由 Game Agent TurnResult、RuleResolution 和后端 State Reducer 负责；Story Memory 由 Memory Recorder 负责。你不得写 Actor State 或 Story Memory。",
 		"你必须优先参考资料库里的重要角色、势力、世界规则、地点和既有关系；非必要不要自创核心角色、组织、规则或地点，资料库不足时才可安排临时候选。",
@@ -243,23 +245,23 @@ func BuildInteractiveDirectorSystemInstruction() string {
 }
 
 // BuildInteractiveStateSchemaAdapterSystemInstruction defines the bounded
-// story-creation task that turns a reusable State System into one story's
-// frozen schema. It is intentionally separate from after-turn director.md
+// after-opening task that turns a reusable State System into one story's
+// frozen schema. It is intentionally separate from director.md
 // maintenance so tool permissions and output protocols cannot be confused.
 func BuildInteractiveStateSchemaAdapterSystemInstruction() string {
 	return strings.Join([]string{
 		"你是 Denova 游戏模式的故事状态结构初始化 Director。",
-		"你的唯一任务是在故事创建前，根据有明确来源且有大小上限的故事设定、所选状态预设和 TRPG State Binding，输出一份最小但充分的状态 schema 差异。",
+		"你的唯一任务是在首轮正文原子落盘后，根据有明确来源且有大小上限的真实开局、故事设定、当前 Actor 索引、所选状态预设和 TRPG State Binding，输出一份最小但充分的状态 schema 差异。",
 		"综合判断故事真正需要长期追踪、会影响后续承接、选择、资源结算或规则检定的维度，不得只按题材关键词套固定字段清单。",
 		"恋爱或后宫题材可按实际设定追踪重要角色对主角的好感、信任、关系阶段、承诺或边界；修仙题材可追踪境界、修为资源、功法、法宝、能力、伤势与突破条件；TRPG 题材应保留或补充会参与检定与数值计算的 number 属性、等级、生命、法术或职业资源；成人题材仅在设定明确涉及合法成年角色时，按剧情必要性追踪亲密边界、欲望或相关特质，不要无依据添加露骨字段。",
 		"区分结构化状态与故事记忆：一次性场景细节、普通对话、未来计划、叙事摘要和无需计算的流水不要成为状态字段。避免同义重复、过度追踪和万能 object 字段；需要参与计算或检定的维度优先使用有上下界的 number、bool 或 enum。",
-		"protagonist 与 story_context 是运行时基础模板，不得删除；protagonist 与 story 两个基础初始 Actor 不得删除。其他预设模板或字段可在确有理由时删除。未在故事设定中明确出现的具体人物，不要擅自创建初始 Actor；应优先调整可供未来人物创建的模板。",
+		"protagonist 与 story_context 是运行时基础模板，不得删除；protagonist 与 story 两个基础初始 Actor 不得删除。其他预设模板或字段可在确有理由时删除。未在故事设定或已落盘首轮中明确出现的具体人物，不要擅自创建初始 Actor；应优先调整可供未来人物创建的模板。",
 		"TRPG State Binding 已引用的模板和字段不得删除、改名或改成非 number 类型；如故事不需要某项规则，应由用户在导演配置中关闭，而不是由本任务暗中破坏绑定。",
-		"template_ops.op 只能是 add、remove、fields。fields 下的 field_ops.op 只能是 add、replace、remove。initial_actor_ops.op 只能是 add、replace、remove。replace 必须提供完整新字段或完整新 Actor。字段 name 同时是故事内 field_id。",
-		"删除仍被初始 Actor 使用的模板时，必须同时输出对应 initial_actor_ops remove 或 replace；删除初始 Actor 覆盖值引用的字段时，必须 replace 该 Actor 并清理对应 state。",
-		"最多输出 64 个模板操作、64 个字段操作和 64 个初始 Actor 操作。没有必要变更时输出空数组。每项 reason 简洁说明与故事设定的对应关系。",
+		"template_ops.op 只能是 add、remove、fields。fields 下的 field_ops.op 只能是 add、replace、remove。initial_actor_ops 和 actor_ops 的 op 只能是 add、replace、remove。replace 必须提供完整新字段或完整新 Actor。字段 name 同时是故事内 field_id。",
+		"删除仍被初始 Actor 使用的模板时，必须同时输出对应 initial_actor_ops remove 或 replace；删除首轮已物化动态 Actor 使用的模板时，必须同时输出对应 actor_ops remove 或 replace；删除 Actor 覆盖值引用的字段时，必须 replace 该 Actor 并清理对应 state。",
+		"最多输出 64 个模板操作、64 个字段操作、64 个初始 Actor 操作和 64 个运行时 Actor 操作。没有必要变更时输出空数组。每项 reason 简洁说明与真实开局的对应关系。",
 		"只输出一个 JSON object，不要输出 Markdown、代码围栏、解释或故事正文。JSON 结构：",
-		`{"summary":"本次适配摘要","template_ops":[{"op":"fields","template_id":"protagonist","reason":"...","field_ops":[{"op":"add","field":{"name":"字段名","type":"number|string|bool|enum|object|list","default":0,"min":0,"max":100,"options":[],"visibility":"visible|spoiler|hidden","description":"...","update_instruction":"...","order":100},"reason":"..."}]}],"initial_actor_ops":[{"op":"add","actor":{"id":"稳定英文ID","name":"角色名","template_id":"模板ID","role":"角色职责","description":"...","state":{}},"reason":"仅当开局设定已明确该对象"}]}`,
+		`{"summary":"本次适配摘要","template_ops":[{"op":"fields","template_id":"protagonist","reason":"...","field_ops":[{"op":"add","field":{"name":"字段名","type":"number|string|bool|enum|object|list","default":0,"min":0,"max":100,"options":[],"visibility":"visible|spoiler|hidden","description":"...","update_instruction":"...","order":100},"reason":"..."}]}],"initial_actor_ops":[],"actor_ops":[{"op":"replace","actor_id":"首轮已存在ActorID","actor":{"id":"同一ActorID","name":"角色名","template_id":"目标模板ID","role":"角色职责","description":"...","state":{}},"reason":"模板迁移依据"}]}`,
 	}, "\n")
 }
 
@@ -293,7 +295,11 @@ func InteractiveMemoryRecorderInstruction(in InteractiveMemoryRecorderPromptInpu
 
 func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	var sb strings.Builder
-	sb.WriteString("请根据本回合已落盘的审计数据，完成当前分支后台维护。\n\n")
+	if in.OpeningInitialization {
+		sb.WriteString("请在开局正文生成前，根据有明确来源的故事设定、初始状态和资料目录建立当前分支的第一版导演规划与资料工作集。\n\n")
+	} else {
+		sb.WriteString("请根据本回合已落盘的审计数据，完成当前分支后台维护。\n\n")
+	}
 	sb.WriteString("## 本次任务\n")
 	taskHint := strings.TrimSpace(in.TaskHint)
 	if taskHint == "" {
@@ -302,10 +308,15 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	sb.WriteString(taskHint)
 	sb.WriteString("\n\n")
 	sb.WriteString("## 计划决策协议\n")
-	sb.WriteString("- 先根据 TurnResult.plan_signals、最终正文、RuleResolution、当前状态和现有计划判断 mode：keep、patch 或 replan。\n")
-	sb.WriteString("- keep：当前计划仍有效，不得编辑 director.md。\n")
-	sb.WriteString("- patch：只局部更新当前场景、最近节拍、NPC 意图或伏笔状态，保留仍有效的长期主线。\n")
-	sb.WriteString("- replan：只有场景目标被替换、多个计划前提失效、关键角色/势力/终局事实发生不可逆变化或计划缺失时使用。\n")
+	if in.OpeningInitialization {
+		sb.WriteString("- 当前尚无已落盘正文；必须根据开局输入建立第一版计划，mode 使用 replan，不得声称存在未提供的历史事实。\n")
+		sb.WriteString("- 先确定开局场景、近期目标、当前与候场角色/势力、信息揭示、风险代价和可玩行动空间，再更新两个规划文件。\n")
+	} else {
+		sb.WriteString("- 先根据 TurnResult.plan_signals、最终正文、RuleResolution、当前状态和现有计划判断 mode：keep、patch 或 replan。\n")
+		sb.WriteString("- keep：当前计划仍有效，不得编辑 director.md。\n")
+		sb.WriteString("- patch：只局部更新当前场景、最近节拍、NPC 意图或伏笔状态，保留仍有效的长期主线。\n")
+		sb.WriteString("- replan：只有场景目标被替换、多个计划前提失效、关键角色/势力/终局事实发生不可逆变化或计划缺失时使用。\n")
+	}
 	sb.WriteString("- 你只能读取已提交的 Actor State 和 Story Memory 作为规划输入，不得写入它们。\n\n")
 	sb.WriteString("## 文件操作要求\n")
 	sb.WriteString("- 先用 read_file 分别读取 director.md 和 lore-context.md，确认当前内容和固定标题，再用 edit_file 或 write_file 更新。\n")
@@ -313,7 +324,7 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	sb.WriteString("- director.md 同时承载大方向、当前事件和最近分支安排，但内容组织要围绕互动小说的角色、关系、势力压力、信息揭示、检定代价和阅读钩子。\n\n")
 	sb.WriteString("## 资料工作集要求\n")
 	sb.WriteString("- lore-context.md 只写资料引用和一句当前用途，不复制资料正文，不重复 director.md 的剧情计划。\n")
-	sb.WriteString("- 首次建立工作集或 replan 时，用 list_lore_items 从 offset=0 开始分页审阅全部启用资料的名称和简介，直到没有下一页；名称和简介只用于初筛。\n")
+	sb.WriteString("- 首次建立工作集、资料库变化或明确 replan 时，优先使用已注入的有界资料名称目录发现候选；目录发生截断或需要按语义缩小范围时，再用 list_lore_items 浏览或筛选。\n")
 	sb.WriteString("- 决定引用某项资料前，用 read_lore_items 的 names 完整读取当前、候场资料及其简介中提到的关键关联角色，避免凭简介虚构既有关系。\n")
 	sb.WriteString("- 当前背景与地点、当前势力、当前角色、当前物品与其他设定会自动完整加载给正文 Agent；候场和暂离场只供你规划。只把近期确实需要的资料放入当前区段。\n")
 	sb.WriteString("- 玩家或 Game Agent 临时召回了工作集外资料时，判断它应保持临时、进入候场、进入当前或转为暂离场。\n")
@@ -338,6 +349,7 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	sb.WriteString("- 保存后的两个文件必须包含各自全部固定标题，且不超过后端字节和当前资料正文预算。\n\n")
 	writeBlock(&sb, "故事标题", in.Title)
 	writeBlock(&sb, "开局设定", in.Origin)
+	writeBlock(&sb, "本次开局输入（source: first Game Agent request, bounded）", in.OpeningContext)
 	writeBlock(&sb, "叙事风格 ID", in.StoryTellerID)
 	writeBlock(&sb, "故事导演 ID", in.StoryDirectorID)
 	writeBlock(&sb, "当前分支", in.BranchID)
@@ -347,7 +359,7 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	writeBlock(&sb, "允许读写的导演规划文件路径（source: backend guard）", in.DirectorPlanPaths)
 	writeBlock(&sb, "当前导演规划文档快照（source: DirectorPlan docs, bounded）", in.DirectorPlanDocs)
 	writeBlock(&sb, "导演规划模板要求（source: StoryDirector.strategy.planning_templates, bounded）", in.PlanningTemplates)
-	writeBlock(&sb, "资料库导演上下文（source: rules, lore-context.md, paged catalog and committed recalls）", in.LoreContext)
+	writeBlock(&sb, "资料库导演上下文（source: resident lore, revision-bound name roster, lore-context.md and committed recalls）", in.LoreContext)
 	writeBlock(&sb, "本回合 TurnResult / RuleResolution / StateDelta 审计 JSON（source: committed turn, bounded）", in.TurnAuditJSON)
 	writeBlock(&sb, "近期剧情历史（source: current branch turns, bounded）", in.TurnHistory)
 	writeBlock(&sb, "当前分支故事记忆（source: story memory, bounded）", firstNonEmpty(in.StoryMemory, in.StoryMemorySummary))

@@ -46,8 +46,7 @@ const LOAD_MODE_OPTIONS = [
   { value: 'auto' },
   { value: 'manual' },
 ] as const
-const LORE_RESIDENT_ITEM_WARNING_CHARS = 8000
-const LORE_RESIDENT_TOTAL_WARNING_CHARS = 40000
+const LORE_RESIDENT_TOTAL_WARNING_BYTES = 32 * 1024
 const IMAGE_PRESET_PROMPT_LIMIT = 4000
 const IMAGE_PRESET_TARGET_OPTIONS = [{ value: 'agent_system' }, { value: 'tool_request' }] as const
 const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'actor-state', 'memory-structure']
@@ -1298,7 +1297,7 @@ function imagePresetTargetDetail(target: ImagePresetTarget, t: (key: string) => 
 export function LoreEditor({
   draft,
   tagDraft,
-  residentTotalChars,
+  residentTotalBytes,
   imagePresets,
   imagePresetId,
   imageInstruction,
@@ -1313,7 +1312,7 @@ export function LoreEditor({
 }: {
   draft: LoreItem | null
   tagDraft: string
-  residentTotalChars: number
+  residentTotalBytes: number
   imagePresets: ImagePreset[]
   imagePresetId: string
   imageInstruction: string
@@ -1332,8 +1331,7 @@ export function LoreEditor({
     return <EmptyState title={t('settingPanel.editor.noLoreSelected')} description={t('settingPanel.editor.noLoreSelectedDesc')} />
   }
 
-  const residentItemChars = draft.enabled !== false && draft.load_mode === 'resident' ? (draft.content || '').length : 0
-  const residentWarning = draft.enabled !== false && draft.load_mode === 'resident' && (residentItemChars > LORE_RESIDENT_ITEM_WARNING_CHARS || residentTotalChars > LORE_RESIDENT_TOTAL_WARNING_CHARS)
+  const residentWarning = draft.enabled !== false && draft.load_mode === 'resident' && residentTotalBytes > LORE_RESIDENT_TOTAL_WARNING_BYTES
   const imagePath = draft.image?.image_path || ''
   const imageSrc = imagePath ? workspaceAssetURL(imagePath) : ''
   const hasImage = Boolean(imageSrc)
@@ -1418,7 +1416,11 @@ export function LoreEditor({
           </Field>
           <div className="text-[11px] leading-5 text-[var(--nova-text-faint)]">
             {draft.load_mode === 'resident' ? t('settingPanel.lore.residentDesc') : loadModeDescription(draft.load_mode, t)}
-            {residentWarning ? <span className="ml-2 text-[var(--nova-danger)]">{t('settingPanel.lore.residentWarning')}</span> : null}
+            {residentWarning ? (
+              <span className="ml-2 text-[var(--nova-warning)]">
+                {t('settingPanel.lore.residentWarning', { size: Math.ceil(residentTotalBytes / 1024), threshold: LORE_RESIDENT_TOTAL_WARNING_BYTES / 1024 })}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>

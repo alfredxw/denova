@@ -11,6 +11,7 @@ describe('StateView', () => {
 				story_id: 'story', branch_id: 'main', turns: [], state: {},
 				actor_state_schema: {
 					version: 2,
+					revision: 1,
 					system: { templates: [{ id: 'cultivator', name: '修行者', fields: [
 						{ name: '身体状态', type: 'number', order: 10 },
 						{ name: '当前处境', type: 'string', order: 20 },
@@ -153,6 +154,7 @@ describe('StateView', () => {
           state: {},
           actor_state_schema: {
             version: 2,
+            revision: 1,
             system: { templates: [{ id: 'secret_actor', name: '秘密角色', fields: [{ name: '导演秘密', type: 'string', visibility: 'hidden' }] }] },
           },
         }}

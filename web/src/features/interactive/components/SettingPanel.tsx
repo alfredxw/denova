@@ -24,6 +24,7 @@ import { EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS } from './set
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
 const LORE_CONFIG_AGENT_ENTRY_ID = '__config_manager_lore__'
+const UTF8_ENCODER = new TextEncoder()
 
 export type SettingPanelMode = 'lore' | 'creator' | 'teller'
 
@@ -670,7 +671,7 @@ function LoreSettingPanel({
                 ) : activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID ? (
                   <OpeningPresetEditor presets={openingPresets} activeId={activeOpeningPresetId} setActiveId={setActiveOpeningPresetId} setPresets={setOpeningPresets} onSave={handleSave} />
                 ) : (
-                  <LoreEditor draft={draft} tagDraft={tagDraft} residentTotalChars={items.filter((item) => item.enabled !== false && item.load_mode === 'resident' && item.id !== draft?.id).reduce((total, item) => total + (item.content || '').length, draft?.enabled !== false && draft?.load_mode === 'resident' ? (draft.content || '').length : 0)} imagePresets={imagePresets} imagePresetId={selectedLoreImagePresetId()} imageInstruction={loreImageInstruction} imageGenerating={loreImageGeneratingId === draft?.id} setDraft={setDraft} setTagDraft={setTagDraft} onImagePresetChange={setActiveImagePresetId} setImageInstruction={setLoreImageInstruction} onGenerateImage={() => void handleGenerateLoreImage()} onClearImage={() => void handleClearLoreImage()} onSave={handleSave} />
+                  <LoreEditor draft={draft} tagDraft={tagDraft} residentTotalBytes={items.filter((item) => item.enabled !== false && item.load_mode === 'resident' && item.id !== draft?.id).reduce((total, item) => total + UTF8_ENCODER.encode((item.content || '').trim()).length, draft?.enabled !== false && draft?.load_mode === 'resident' ? UTF8_ENCODER.encode((draft.content || '').trim()).length : 0)} imagePresets={imagePresets} imagePresetId={selectedLoreImagePresetId()} imageInstruction={loreImageInstruction} imageGenerating={loreImageGeneratingId === draft?.id} setDraft={setDraft} setTagDraft={setTagDraft} onImagePresetChange={setActiveImagePresetId} setImageInstruction={setLoreImageInstruction} onGenerateImage={() => void handleGenerateLoreImage()} onClearImage={() => void handleClearLoreImage()} onSave={handleSave} />
                 )}
               </>
             ) : (

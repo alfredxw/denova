@@ -165,8 +165,11 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 			t.Fatalf("director instruction should include maintenance guidance %q: %s", want, directorInstruction)
 		}
 	}
-	if !strings.Contains(directorInstruction, "黄泉酒馆据点索引") || !strings.Contains(directorInstruction, "list_lore_items") {
-		t.Fatalf("director instruction should include the paged lore catalog and retrieval workflow: %s", directorInstruction)
+	if !strings.Contains(directorInstruction, "黄泉酒馆") || !strings.Contains(directorInstruction, "list_lore_items") {
+		t.Fatalf("director instruction should include the bounded lore-name roster and retrieval workflow: %s", directorInstruction)
+	}
+	if strings.Contains(directorInstruction, "黄泉酒馆据点索引") || strings.Contains(directorInstruction, "黄泉酒馆完整设定") {
+		t.Fatalf("director lore-name roster should not preload briefs or bodies: %s", directorInstruction)
 	}
 	for _, want := range []string{
 		"当前分支故事记忆",
