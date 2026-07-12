@@ -91,6 +91,30 @@ func TestLoreStoreDisabledItemsStayEditableButLeaveModelContext(t *testing.T) {
 	}
 }
 
+func TestResidentContextIsStableAndSortedByLoreID(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	for _, input := range []LoreItemInput{
+		{ID: "z-last", Type: "world", Name: "先创建但后排序", LoadMode: LoreLoadModeResident, Content: "Z正文"},
+		{ID: "a-first", Type: "location", Name: "后创建但先排序", LoadMode: LoreLoadModeResident, Content: "A正文"},
+		{ID: "auto", Type: "world", Name: "按需资料", LoadMode: LoreLoadModeAuto, Content: "不应注入"},
+	} {
+		if _, err := store.Create(input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := store.ResidentContextMarkdown()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.ResidentContextMarkdown()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second || strings.Index(first, "A正文") > strings.Index(first, "Z正文") || strings.Contains(first, "不应注入") {
+		t.Fatalf("常驻上下文必须按 ID 稳定且排除按需资料:\n%s", first)
+	}
+}
+
 func TestLoreStoreProgressiveContextSplitsResidentAndIndex(t *testing.T) {
 	store := NewLoreStore(t.TempDir())
 	if _, err := store.Create(LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", LoadMode: LoreLoadModeResident, Content: "主角完整正文"}); err != nil {

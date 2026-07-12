@@ -573,7 +573,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     currentLiveTurnRenderKeysRef.current = liveTurnRenderKeys
     setStageLiveMessages([{ role: 'user', content: message, render_key: liveTurnRenderKeys.user, navigation_turn_id: liveTurnNavigationAnchorId }])
     currentCompactionMessageIdRef.current = null
-    updateStageRun({ rewindTurnId: nextRewindTurnId || undefined })
+    updateStageRun({ rewindTurnId: nextRewindTurnId || undefined, retryMessage: message })
     liveStageKeyRef.current = stageKey
     setStageStreaming(true)
     const abortController = new AbortController()
@@ -711,7 +711,11 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             collapseNonNarrativeMessages()
             if (text) appendAssistantMessage(text)
             finishLiveMessages()
-            setStageActivityContent(t('storyStage.activity.aborted'))
+            setStageLiveMessages((prev) => [
+              ...prev,
+              { role: 'error', content: t('storyStage.activity.aborted') },
+            ])
+            setStageActivityContent('')
             break
           }
         }
@@ -726,18 +730,18 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       }
       if (finishedNormally) await maybeGenerateAutoImage(nextSnapshot)
     } catch (error) {
-      if (!isAbortError(error)) {
-        flushLiveMessageBuffer()
-        finishLiveMessages()
-        setStageActivityContent('')
-        setStageLiveMessages((prev) => [
-          ...prev,
-          {
-            role: 'error',
-            content: error instanceof Error ? error.message : t('storyStage.activity.runFailed'),
-          },
-        ])
-      }
+      flushLiveMessageBuffer()
+      finishLiveMessages()
+      setStageActivityContent('')
+      setStageLiveMessages((prev) => [
+        ...prev,
+        {
+          role: 'error',
+          content: isAbortError(error)
+            ? t('storyStage.activity.aborted')
+            : error instanceof Error ? error.message : t('storyStage.activity.runFailed'),
+        },
+      ])
     } finally {
       setStageStreaming(false)
       stageAbortControllers.delete(stageKey)
@@ -841,7 +845,12 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   }
 
   const regenerateMessage = (message: ChatMessage) => {
-    if (!message.turn_id || streaming) return
+    if (streaming) return
+    if (!message.turn_id) {
+      const source = stageRun.retryMessage || [...liveMessages].reverse().find((item) => item.role === 'user')?.content || ''
+      if (source.trim()) void send({ message: source })
+      return
+    }
     const source = turnsById.get(message.turn_id)?.user || message.content || ''
     void send({ message: source, rewindTurnId: message.turn_id })
   }

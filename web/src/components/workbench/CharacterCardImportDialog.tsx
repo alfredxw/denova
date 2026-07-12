@@ -18,6 +18,7 @@ interface CharacterCardImportDialogProps {
   targetMode: CharacterCardTargetMode
   bookTitle: string
   userCharacterName: string
+  raiseResidentLoreLimit: boolean
   previewing: boolean
   importing: boolean
   error: string
@@ -27,6 +28,7 @@ interface CharacterCardImportDialogProps {
   onTargetModeChange: (mode: CharacterCardTargetMode) => void
   onBookTitleChange: (title: string) => void
   onUserCharacterNameChange: (name: string) => void
+  onRaiseResidentLoreLimitChange: (checked: boolean) => void
   onImport: () => void | Promise<void>
 }
 
@@ -40,6 +42,7 @@ export function CharacterCardImportDialog({
   targetMode,
   bookTitle,
   userCharacterName,
+  raiseResidentLoreLimit,
   previewing,
   importing,
   error,
@@ -49,10 +52,16 @@ export function CharacterCardImportDialog({
   onTargetModeChange,
   onBookTitleChange,
   onUserCharacterNameChange,
+  onRaiseResidentLoreLimitChange,
   onImport,
 }: CharacterCardImportDialogProps) {
   const { t } = useTranslation()
   const hasSelectedFile = Boolean(file)
+  const requiredResidentLimit = preview
+    ? (targetMode === 'current' ? preview.required_current_resident_lore_limit_kb : preview.required_new_book_resident_lore_limit_kb)
+    : 0
+  const needsResidentLimitIncrease = Boolean(preview && requiredResidentLimit > preview.resident_lore_limit_kb)
+  const exceedsResidentLimit = Boolean(preview && requiredResidentLimit > preview.max_resident_lore_limit_kb)
 
   return (
     <>
@@ -97,8 +106,14 @@ export function CharacterCardImportDialog({
               <div className="space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
                 <div className="truncate text-sm font-medium text-[var(--nova-text)]">{preview.name}</div>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">
-                  <span>{t('importCard.entryCount', { count: preview.entry_count })}</span>
+                  <span>{t('importCard.enabledCount', { count: preview.enabled_entry_count })}</span>
+                  <span>{t('importCard.disabledCount', { count: preview.disabled_entry_count })}</span>
+                  <span>{t('importCard.residentCount', { count: preview.resident_entry_count, size: Math.ceil(preview.resident_entry_bytes / 1024) })}</span>
+                  <span>{t('importCard.autoCount', { count: preview.auto_entry_count })}</span>
                   <span>{t('importCard.openingPresetCount', { count: preview.opening_preset_count })}</span>
+                  {preview.opening_truncated_count > 0 && <span>{t('importCard.openingTruncatedCount', { count: preview.opening_truncated_count })}</span>}
+                  {preview.removed_runtime_entry_count > 0 && <span>{t('importCard.removedRuntimeCount', { count: preview.removed_runtime_entry_count })}</span>}
+                  {preview.sanitized_mixed_entry_count > 0 && <span>{t('importCard.sanitizedMixedCount', { count: preview.sanitized_mixed_entry_count })}</span>}
                   {preview.will_import_cover && <span>{t('importCard.willImportCover')}</span>}
                   {preview.user_placeholder_found && <span>{t('importCard.willImportUser')}</span>}
                   {preview.tags?.map((tag) => (
@@ -163,6 +178,25 @@ export function CharacterCardImportDialog({
               </div>
             )}
 
+            {needsResidentLimitIncrease && !exceedsResidentLimit && (
+              <label className="flex cursor-pointer items-start gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-warning)]/25 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] leading-4 text-[var(--nova-text-muted)]">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-3.5 w-3.5 accent-[var(--nova-accent)]"
+                  checked={raiseResidentLoreLimit}
+                  onChange={(event) => onRaiseResidentLoreLimitChange(event.target.checked)}
+                  disabled={importing}
+                />
+                <span>{t('importCard.raiseResidentLimit', { current: preview?.resident_lore_limit_kb ?? 0, required: requiredResidentLimit })}</span>
+              </label>
+            )}
+
+            {exceedsResidentLimit && preview && (
+              <div className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-[11px] text-[var(--nova-danger)]">
+                {t('importCard.residentLimitTooLarge', { required: requiredResidentLimit, maximum: preview.max_resident_lore_limit_kb })}
+              </div>
+            )}
+
             {error && (
               <div className="rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-[var(--nova-danger)]">
                 {error}
@@ -185,7 +219,7 @@ export function CharacterCardImportDialog({
               size="xs"
               className="border border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)] hover:bg-[var(--nova-hover)]"
               onClick={onImport}
-              disabled={!file || !preview || previewing || importing}
+              disabled={!file || !preview || previewing || importing || exceedsResidentLimit || (needsResidentLimitIncrease && !raiseResidentLoreLimit)}
             >
               {importing ? t('importCard.importing') : t('importCard.import')}
             </Button>
@@ -199,11 +233,12 @@ export function CharacterCardImportDialog({
 function CompatibilityReport({ preview }: { preview: CharacterCardPreview }) {
   const { t } = useTranslation()
   const groups = [
-    { key: 'imported', fields: preview.compatibility?.imported_fields || [] },
-    { key: 'downgraded', fields: preview.compatibility?.downgraded_fields || [] },
-    { key: 'unsupported', fields: preview.compatibility?.unsupported_fields || [] },
+    { key: 'capabilities', fields: preview.compatibility?.capabilities || [] },
+    { key: 'sanitized', fields: preview.compatibility?.sanitized_runtime || [] },
+    { key: 'discarded', fields: preview.compatibility?.discarded_extensions || [] },
   ].filter((group) => group.fields.length > 0)
-  if (groups.length === 0) return null
+  const warnings = preview.compatibility?.warnings || []
+  if (groups.length === 0 && warnings.length === 0 && !preview.compatibility?.ignored_loading_rules) return null
   return (
     <div className="space-y-1 border-t border-[var(--nova-border)] pt-2 text-[11px] leading-5">
       {groups.map((group) => (
@@ -214,6 +249,10 @@ function CompatibilityReport({ preview }: { preview: CharacterCardPreview }) {
           </span>
         </div>
       ))}
+      {preview.compatibility?.ignored_loading_rules && (
+        <div className="text-[var(--nova-text-faint)]">{t('importCard.compat.ignoredLoadingRules')}</div>
+      )}
+      {warnings.map((warning) => <div key={warning} className="text-[var(--nova-warning)]">{t(`importCard.compat.warning.${warning}`, { defaultValue: warning })}</div>)}
     </div>
   )
 }

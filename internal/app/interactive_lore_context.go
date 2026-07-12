@@ -22,25 +22,20 @@ func buildInteractiveStoryLoreContext(workspace string, plan interactive.Directo
 		return "", fmt.Errorf("读取互动故事资料库失败: %w", err)
 	}
 	byName := loreItemsByName(items)
-	rules := loreItemsOfType(items, "rule")
-	ruleContext, err := formatBoundedCompleteLoreSection("全局规则（source: enabled rule lore, complete）", rules, interactiveRuleLoreLimitBytes(configs...))
-	if err != nil {
-		return "", err
-	}
 
 	refs := interactive.ParseDirectorLoreContextReferences(plan.Docs.LoreContext)
 	selected := make([]book.LoreItem, 0, len(refs.Active))
 	seen := map[string]bool{}
 	for _, name := range refs.Active {
 		item, ok := byName[strings.ToLower(strings.TrimSpace(name))]
-		if !ok || item.Type == "rule" {
+		if !ok || item.LoadMode == book.LoreLoadModeResident {
 			continue
 		}
 		selected = append(selected, item)
 		seen[item.ID] = true
 	}
 	for _, item := range items {
-		if seen[item.ID] || item.Type == "rule" || !loreItemMentionedByName(item, userAction) {
+		if seen[item.ID] || item.LoadMode == book.LoreLoadModeResident || !loreItemMentionedByName(item, userAction) {
 			continue
 		}
 		selected = append(selected, item)
@@ -50,7 +45,7 @@ func buildInteractiveStoryLoreContext(workspace string, plan interactive.Directo
 	if err != nil {
 		return "", err
 	}
-	return joinLoreContextSections(ruleContext, selectedContext), nil
+	return selectedContext, nil
 }
 
 func buildInteractiveDirectorLoreContext(workspace string, plan interactive.DirectorPlan, turn interactive.TurnEvent, configs ...*config.Config) (string, error) {
@@ -63,7 +58,16 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	if err != nil {
 		return "", fmt.Errorf("读取资料库 revision 失败: %w", err)
 	}
-	ruleContext, err := formatBoundedCompleteLoreSection("全局规则（source: enabled rule lore, complete）", loreItemsOfType(items, "rule"), interactiveRuleLoreLimitBytes(configs...))
+	residentItems := loreItemsOfLoadMode(items, book.LoreLoadModeResident)
+	residentBodyBytes := 0
+	for _, item := range residentItems {
+		residentBodyBytes += len([]byte(strings.TrimSpace(item.Content)))
+	}
+	residentLimit := residentLoreLimitBytes(configs...)
+	if residentBodyBytes > residentLimit {
+		return "", fmt.Errorf("常驻资料正文合计超过 %d KB；请缩短正文、改为按需资料或提高常驻资料上限", residentLimit/1024)
+	}
+	residentContext, err := formatBoundedCompleteLoreSection("常驻资料（source: enabled resident lore, complete）", residentItems, residentLimit+len(residentItems)*1024+1024)
 	if err != nil {
 		return "", err
 	}
@@ -71,7 +75,7 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	refs := interactive.ParseDirectorLoreContextReferences(plan.Docs.LoreContext)
 	active := make([]book.LoreItem, 0, len(refs.Active))
 	for _, name := range refs.Active {
-		if item, ok := byName[strings.ToLower(strings.TrimSpace(name))]; ok && item.Type != "rule" {
+		if item, ok := byName[strings.ToLower(strings.TrimSpace(name))]; ok && item.LoadMode != book.LoreLoadModeResident {
 			active = append(active, item)
 		}
 	}
@@ -79,7 +83,7 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	if err != nil {
 		return "", err
 	}
-	catalog, err := store.LoreIndexMarkdown(book.LoreIndexOptions{Limit: 50, Paginate: true, MaxBytes: interactiveDirectorLoreCatalogMaxBytes})
+	catalog, err := store.LoreIndexMarkdown(book.LoreIndexOptions{Limit: 50, Paginate: true, MaxBytes: interactiveDirectorLoreCatalogMaxBytes, ExcludeResident: true})
 	if err != nil {
 		return "", fmt.Errorf("生成资料库目录失败: %w", err)
 	}
@@ -99,18 +103,28 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	} else {
 		reviewStatus += "资料库自上次 Director 完成审阅后没有变化；仅在 replan、场景切换或角色功能空缺时重新扩展候选。"
 	}
-	return joinLoreContextSections(ruleContext, reviewStatus, workset, activeContext, catalog, temporary), nil
+	return joinLoreContextSections(residentContext, reviewStatus, workset, activeContext, catalog, temporary), nil
 }
 
-func interactiveRuleLoreLimitBytes(configs ...*config.Config) int {
-	limitKB := config.DefaultInteractiveRuleLoreLimitKB
-	if len(configs) > 0 && configs[0] != nil && configs[0].InteractiveRuleLoreLimitKB > 0 {
-		limitKB = configs[0].InteractiveRuleLoreLimitKB
+func residentLoreLimitBytes(configs ...*config.Config) int {
+	limitKB := config.DefaultResidentLoreLimitKB
+	if len(configs) > 0 && configs[0] != nil && configs[0].ResidentLoreLimitKB > 0 {
+		limitKB = configs[0].ResidentLoreLimitKB
 	}
-	if limitKB > config.MaxInteractiveRuleLoreLimitKB {
-		limitKB = config.MaxInteractiveRuleLoreLimitKB
+	if limitKB > config.MaxResidentLoreLimitKB {
+		limitKB = config.MaxResidentLoreLimitKB
 	}
 	return limitKB * 1024
+}
+
+func loreItemsOfLoadMode(items []book.LoreItem, loadMode string) []book.LoreItem {
+	result := []book.LoreItem{}
+	for _, item := range items {
+		if item.LoadMode == loadMode {
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 func formatBoundedCompleteLoreSection(title string, items []book.LoreItem, maxBytes int) (string, error) {

@@ -113,6 +113,18 @@ describe('MessageItem', () => {
     expect(screen.queryByRole('button', { name: '重新生成这一轮' })).not.toBeInTheDocument()
   })
 
+  it('错误消息结束后展示复制和重试操作', () => {
+    render(
+      <MessageItem
+        message={{ role: 'error', content: '[NodeRunError] 400 Bad Request', streaming: false }}
+        onRegenerate={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '复制消息' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '重新生成这一轮' })).toBeInTheDocument()
+  })
+
   it('流式 user 消息没有编辑权限时也能复制并保留与后续内容的间隔', () => {
     const { container } = render(<MessageItem message={{ role: 'user', content: '继续', streaming: false }} />)
 

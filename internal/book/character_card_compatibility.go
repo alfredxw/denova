@@ -1,6 +1,9 @@
 package book
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 func tavernCardContainsUserPlaceholder(card normalizedTavernCard) bool {
 	if strings.Contains(tavernCardSearchText(
@@ -42,84 +45,63 @@ func tavernCardSearchText(values ...string) string {
 }
 
 func tavernCardCompatibility(card normalizedTavernCard) CharacterCardCompatibilityReport {
-	var report CharacterCardCompatibilityReport
-	report.ImportedFields = addCompatibilityFields(report.ImportedFields, "name")
-	if strings.TrimSpace(card.Description) != "" {
-		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "description")
+	report := CharacterCardCompatibilityReport{
+		Capabilities: []string{"character_lore"},
+		Warnings:     append([]string(nil), card.Warnings...),
 	}
-	if strings.TrimSpace(card.Personality) != "" {
-		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "personality")
-	}
-	if strings.TrimSpace(card.Scenario) != "" {
-		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "scenario")
-	}
-	if strings.TrimSpace(card.MesExample) != "" {
-		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "mes_example")
-	}
-	if strings.TrimSpace(card.CreatorNotes) != "" || strings.TrimSpace(card.CreatorComment) != "" {
-		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "creator_notes")
-	}
-	if strings.TrimSpace(card.SystemPrompt) != "" {
-		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "system_prompt")
-	}
-	if strings.TrimSpace(card.PostHistoryInstructions) != "" {
-		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "post_history_instructions")
-	}
-	if len(card.Tags) > 0 {
-		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "tags")
-	}
-	if characterBookEntryCount(card.CharacterBook) > 0 {
-		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "character_book")
-	}
-	if tavernCardHasEntryEnabled(card) {
-		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "entry_enabled")
-	}
-	if card.IsPNG {
-		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "png_cover")
-	}
-	if card.HasUserPlaceholder {
-		report.ImportedFields = addCompatibilityFields(report.ImportedFields, "user_placeholder")
-	}
-	if strings.TrimSpace(card.FirstMes) != "" {
-		report.DowngradedFields = addCompatibilityFields(report.DowngradedFields, "first_mes")
-	}
-	if len(card.AlternateGreetings) > 0 {
-		report.DowngradedFields = addCompatibilityFields(report.DowngradedFields, "alternate_greetings")
-	}
-	if strings.TrimSpace(card.Creator) != "" {
-		report.DowngradedFields = addCompatibilityFields(report.DowngradedFields, "creator")
-	}
-	if strings.TrimSpace(card.CharacterVersion) != "" {
-		report.DowngradedFields = addCompatibilityFields(report.DowngradedFields, "character_version")
-	}
-	if card.Avatar != "" {
-		report.UnsupportedFields = addCompatibilityFields(report.UnsupportedFields, "avatar")
-	}
-	if card.Talkativeness != nil {
-		report.UnsupportedFields = addCompatibilityFields(report.UnsupportedFields, "talkativeness")
-	}
-	if card.Fav != nil {
-		report.UnsupportedFields = addCompatibilityFields(report.UnsupportedFields, "fav")
-	}
-	if card.CreateDate != nil {
-		report.UnsupportedFields = addCompatibilityFields(report.UnsupportedFields, "create_date")
-	}
-	if len(card.Extensions) > 0 {
-		report.UnsupportedFields = addCompatibilityFields(report.UnsupportedFields, "extensions")
-	}
-	return report
-}
-
-func tavernCardHasEntryEnabled(card normalizedTavernCard) bool {
-	if card.CharacterBook == nil {
-		return false
-	}
-	for _, entry := range card.CharacterBook.Entries {
-		if entry.Enabled != nil {
-			return true
+	if card.CharacterBook != nil {
+		for _, entry := range card.CharacterBook.Entries {
+			if entry.Selective || entry.Position != nil || entry.InsertionOrder != 0 || len(entry.SecondaryKeys) > 0 ||
+				entry.SelectiveLogic != nil || entry.Probability != nil || entry.UseProbability || strings.TrimSpace(entry.Group) != "" ||
+				entry.Depth != nil || entry.Role != nil || entry.PreventRecursion || entry.DelayUntilRecursion || entry.Sticky != nil ||
+				entry.Cooldown != nil || entry.Vectorized != nil {
+				report.IgnoredLoadingRules = true
+			}
+			sanitized := sanitizeTavernBookEntry(entry)
+			if sanitized.Removed || sanitized.MixedCleaned {
+				report.SanitizedRuntime = addCompatibilityFields(report.SanitizedRuntime, "worldbook_runtime")
+			}
+			if sanitized.Removed {
+				continue
+			}
+			if entry.Constant {
+				report.Capabilities = addCompatibilityFields(report.Capabilities, "resident_lore")
+			} else {
+				report.Capabilities = addCompatibilityFields(report.Capabilities, "on_demand_lore")
+			}
+			if entry.Enabled != nil && !*entry.Enabled {
+				report.Capabilities = addCompatibilityFields(report.Capabilities, "disabled_lore")
+			}
 		}
 	}
-	return false
+	if tavernCardOpeningPresetCount(card) > 0 {
+		report.Capabilities = addCompatibilityFields(report.Capabilities, "narrative_openings")
+	}
+	if card.IsPNG {
+		report.Capabilities = addCompatibilityFields(report.Capabilities, "cover")
+	}
+	if card.HasUserPlaceholder {
+		report.Capabilities = addCompatibilityFields(report.Capabilities, "player_character")
+	}
+	for key := range card.Extensions {
+		lower := strings.ToLower(key)
+		summary := "unknown"
+		switch {
+		case strings.Contains(lower, "regex"):
+			summary = "regex"
+		case strings.Contains(lower, "mvu") || strings.Contains(lower, "zod"):
+			summary = "mvu"
+		case strings.Contains(lower, "helper"):
+			summary = "helper"
+		case strings.Contains(lower, "xiaobaix"):
+			summary = "workshop"
+		}
+		report.DiscardedExtensions = addCompatibilityFields(report.DiscardedExtensions, summary)
+	}
+	if len(report.DiscardedExtensions) > 0 {
+		sort.Strings(report.DiscardedExtensions)
+	}
+	return report
 }
 
 func addCompatibilityFields(fields []string, values ...string) []string {

@@ -11,6 +11,7 @@ export interface StoryStageRunState {
   activityContent: string
   liveMessages: ChatMessage[]
   rewindTurnId?: string
+  retryMessage?: string
 }
 
 interface InteractiveStore {

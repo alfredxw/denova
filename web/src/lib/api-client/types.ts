@@ -366,6 +366,8 @@ export interface CharacterCardImportResult {
   workspace?: string
   book_meta?: BookMeta
   message: string
+  resident_lore_bytes: number
+  required_resident_lore_limit_kb: number
 }
 
 export interface CharacterCardPreview {
@@ -376,12 +378,28 @@ export interface CharacterCardPreview {
   user_placeholder_found: boolean
   will_import_cover: boolean
   compatibility: CharacterCardCompatibilityReport
+  enabled_entry_count: number
+  disabled_entry_count: number
+  resident_entry_count: number
+  resident_entry_bytes: number
+  resident_lore_bytes: number
+  auto_entry_count: number
+  removed_runtime_entry_count: number
+  sanitized_mixed_entry_count: number
+  opening_truncated_count: number
+  current_resident_lore_bytes: number
+  resident_lore_limit_kb: number
+  max_resident_lore_limit_kb: number
+  required_current_resident_lore_limit_kb: number
+  required_new_book_resident_lore_limit_kb: number
 }
 
 interface CharacterCardCompatibilityReport {
-  imported_fields: string[]
-  downgraded_fields: string[]
-  unsupported_fields: string[]
+  capabilities: string[]
+  sanitized_runtime: string[]
+  discarded_extensions: string[]
+  warnings: string[]
+  ignored_loading_rules: boolean
 }
 
 interface NovelImportChapter {
@@ -527,6 +545,12 @@ export interface LoreItem {
   created_at: string
   updated_at: string
   image?: LoreItemImage
+  provenance?: {
+    kind: string
+    source_name: string
+    source_record_id: string
+    source_hash: string
+  }
 }
 
 interface LoreItemImage {
@@ -629,7 +653,7 @@ export interface SkillInstallResult {
   installed: SkillSummary[]
 }
 
-export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at'>
+export type LoreItemInput = Omit<LoreItem, 'created_at' | 'updated_at' | 'provenance'>
 
 type AutomationScope = 'user' | 'workspace'
 type AutomationTemplate = 'memory_consolidation' | 'review' | 'continue_writing' | 'custom_prompt'

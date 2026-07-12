@@ -443,6 +443,34 @@ describe('StoryStage composer', () => {
 })
 
 describe('StoryStage streaming rendering', () => {
+	it('retries an unpersisted failed turn with the original player input', async () => {
+		const user = userEvent.setup()
+		const firstStream = controllableInteractiveStream()
+		const retryStream = controllableInteractiveStream()
+		sendInteractiveMessageMock
+			.mockResolvedValueOnce(firstStream.readable)
+			.mockResolvedValueOnce(retryStream.readable)
+
+		try {
+			render(<StoryStageHarness onDone={vi.fn().mockResolvedValue(undefined)} />)
+			await user.type(screen.getByPlaceholderText('你要做什么？'), '推开石门')
+			await user.click(screen.getByRole('button', { name: '发送' }))
+			await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalledTimes(1))
+
+			act(() => {
+				firstStream.enqueue({ event: 'error', data: JSON.stringify({ message: '[NodeRunError] 400 Bad Request' }) })
+				firstStream.close()
+			})
+
+			await user.click(await screen.findByRole('button', { name: '重新生成这一轮' }))
+			await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalledTimes(2))
+			expect(sendInteractiveMessageMock.mock.calls[1][0]).toMatchObject({ message: '推开石门' })
+		} finally {
+			firstStream.close()
+			retryStream.close()
+		}
+	})
+
 	it('discards optimistic narrative when done arrives without persistence confirmation', async () => {
 		const user = userEvent.setup()
 		const stream = controllableInteractiveStream()

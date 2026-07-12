@@ -88,11 +88,14 @@ type Settings struct {
 	IDEStoryTellerID        string `toml:"ide_story_teller_id,omitempty" json:"ide_story_teller_id,omitempty"`
 	IDEImagePresetID        string `toml:"ide_image_preset_id,omitempty" json:"ide_image_preset_id,omitempty"`
 	WritingSkillDefault     string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
+	ResidentLoreLimitKB     *int   `toml:"resident_lore_limit_kb,omitempty" json:"resident_lore_limit_kb,omitempty"`
+	// InteractiveRuleLoreLimitKB is read only as a migration fallback. New
+	// settings are persisted through ResidentLoreLimitKB.
+	InteractiveRuleLoreLimitKB *int `toml:"interactive_rule_lore_limit_kb,omitempty" json:"interactive_rule_lore_limit_kb,omitempty"`
 
 	// 游戏模式
 	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
-	InteractiveRuleLoreLimitKB *int     `toml:"interactive_rule_lore_limit_kb,omitempty" json:"interactive_rule_lore_limit_kb,omitempty"`
 }
 
 func boolPtr(v bool) *bool        { return &v }
@@ -101,14 +104,14 @@ func floatPtr(v float64) *float64 { return &v }
 func stringPtr(v string) *string  { return &v }
 
 const (
-	DefaultWritingSkillName           = "novel-lite"
-	DefaultAgentIdleTimeoutSeconds    = 0
-	DefaultAgentToolResultLimitKB     = 0
-	DefaultTraceCaptureLevel          = "summary"
-	DefaultTraceExporter              = "local"
-	DefaultTraceRetentionRuns         = 100
-	DefaultInteractiveRuleLoreLimitKB = 32
-	MaxInteractiveRuleLoreLimitKB     = 1024
+	DefaultWritingSkillName        = "novel-lite"
+	DefaultAgentIdleTimeoutSeconds = 0
+	DefaultAgentToolResultLimitKB  = 0
+	DefaultTraceCaptureLevel       = "summary"
+	DefaultTraceExporter           = "local"
+	DefaultTraceRetentionRuns      = 100
+	DefaultResidentLoreLimitKB     = 32
+	MaxResidentLoreLimitKB         = 1024
 )
 
 // DefaultSettings 返回内置默认配置（最低优先级）。
@@ -170,7 +173,7 @@ func DefaultSettings() Settings {
 		WritingSkillDefault:        DefaultWritingSkillName,
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
-		InteractiveRuleLoreLimitKB: intPtr(DefaultInteractiveRuleLoreLimitKB),
+		ResidentLoreLimitKB:        intPtr(DefaultResidentLoreLimitKB),
 	}
 }
 
@@ -340,15 +343,19 @@ func Merge(parent, child Settings) Settings {
 	if child.InteractiveStageLineHeight != nil {
 		out.InteractiveStageLineHeight = child.InteractiveStageLineHeight
 	}
-	if child.InteractiveRuleLoreLimitKB != nil {
-		value := *child.InteractiveRuleLoreLimitKB
+	residentLimit := child.ResidentLoreLimitKB
+	if residentLimit == nil {
+		residentLimit = child.InteractiveRuleLoreLimitKB
+	}
+	if residentLimit != nil {
+		value := *residentLimit
 		if value <= 0 {
-			value = DefaultInteractiveRuleLoreLimitKB
+			value = DefaultResidentLoreLimitKB
 		}
-		if value > MaxInteractiveRuleLoreLimitKB {
-			value = MaxInteractiveRuleLoreLimitKB
+		if value > MaxResidentLoreLimitKB {
+			value = MaxResidentLoreLimitKB
 		}
-		out.InteractiveRuleLoreLimitKB = intPtr(value)
+		out.ResidentLoreLimitKB = intPtr(value)
 	}
 	return out
 }
@@ -588,7 +595,11 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.DefaultImageAPIProfileID = strings.TrimSpace(s.DefaultImageAPIProfileID)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
-	s.InteractiveRuleLoreLimitKB = normalizeInteractiveRuleLoreLimitKB(s.InteractiveRuleLoreLimitKB)
+	if s.ResidentLoreLimitKB == nil {
+		s.ResidentLoreLimitKB = s.InteractiveRuleLoreLimitKB
+	}
+	s.ResidentLoreLimitKB = normalizeResidentLoreLimitKB(s.ResidentLoreLimitKB)
+	s.InteractiveRuleLoreLimitKB = nil
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
 	if defaultProfile, ok := defaultModelProfile(s.ModelProfiles); ok {
@@ -631,24 +642,24 @@ func normalizeAgentToolResultLimitKB(limit *int) *int {
 	return limit
 }
 
-func normalizeInteractiveRuleLoreLimitKB(limit *int) *int {
+func normalizeResidentLoreLimitKB(limit *int) *int {
 	if limit == nil {
 		return nil
 	}
 	value := *limit
 	if value <= 0 {
-		value = DefaultInteractiveRuleLoreLimitKB
+		value = DefaultResidentLoreLimitKB
 	}
-	if value > MaxInteractiveRuleLoreLimitKB {
-		value = MaxInteractiveRuleLoreLimitKB
+	if value > MaxResidentLoreLimitKB {
+		value = MaxResidentLoreLimitKB
 	}
 	return intPtr(value)
 }
 
-func interactiveRuleLoreLimitKB(limit *int) int {
-	normalized := normalizeInteractiveRuleLoreLimitKB(limit)
+func residentLoreLimitKB(limit *int) int {
+	normalized := normalizeResidentLoreLimitKB(limit)
 	if normalized == nil {
-		return DefaultInteractiveRuleLoreLimitKB
+		return DefaultResidentLoreLimitKB
 	}
 	return *normalized
 }

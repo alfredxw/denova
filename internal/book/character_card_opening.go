@@ -22,6 +22,61 @@ type openingPreset struct {
 	Content string `json:"content"`
 }
 
+type characterCardFileSnapshot struct {
+	path    string
+	data    []byte
+	existed bool
+}
+
+func snapshotCharacterCardImportFiles(workspace string) ([]characterCardFileSnapshot, error) {
+	relPaths := []string{tavernCardCoverPath, interactiveOpeningPresetPath, loreItemsRelPath(workspace)}
+	snapshots := make([]characterCardFileSnapshot, 0, len(relPaths))
+	for _, relPath := range relPaths {
+		absPath := ""
+		if relPath == loreItemsRelPath(workspace) {
+			absPath = NewLoreStore(workspace).itemsPath()
+		} else {
+			var err error
+			absPath, err = SafePath(workspace, relPath)
+			if err != nil {
+				return nil, err
+			}
+		}
+		data, err := os.ReadFile(absPath)
+		if errors.Is(err, os.ErrNotExist) {
+			snapshots = append(snapshots, characterCardFileSnapshot{path: absPath})
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("读取导入事务快照失败: %w", err)
+		}
+		snapshots = append(snapshots, characterCardFileSnapshot{path: absPath, data: data, existed: true})
+	}
+	return snapshots, nil
+}
+
+func restoreCharacterCardImportFiles(snapshots []characterCardFileSnapshot) error {
+	var firstErr error
+	for _, snapshot := range snapshots {
+		if !snapshot.existed {
+			if err := os.Remove(snapshot.path); err != nil && !errors.Is(err, os.ErrNotExist) && firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(snapshot.path), 0o755); err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		if err := os.WriteFile(snapshot.path, snapshot.data, 0o644); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 func (s *Service) importTavernCardCover(card normalizedTavernCard, data []byte) (string, error) {
 	if !card.IsPNG {
 		return "", nil
@@ -111,7 +166,7 @@ func tavernCardOpeningPresets(card normalizedTavernCard) []openingPreset {
 		baseID = "tavern-card"
 	}
 	presets := make([]openingPreset, 0, 1+len(card.AlternateGreetings))
-	if text := truncateTavernOpeningText(card.FirstMes); text != "" {
+	if text, _ := sanitizeTavernOpening(card.FirstMes); text != "" {
 		presets = append(presets, openingPreset{
 			ID:      baseID + "-main",
 			Title:   card.Name + " · 主开场白",
@@ -119,7 +174,7 @@ func tavernCardOpeningPresets(card normalizedTavernCard) []openingPreset {
 		})
 	}
 	for i, greeting := range card.AlternateGreetings {
-		text := truncateTavernOpeningText(greeting)
+		text, _ := sanitizeTavernOpening(greeting)
 		if text == "" {
 			continue
 		}
@@ -162,6 +217,16 @@ func tavernCardOpeningPresetCount(card normalizedTavernCard) int {
 	return len(tavernCardOpeningPresets(card))
 }
 
+func tavernCardOpeningTruncatedCount(card normalizedTavernCard) int {
+	count := 0
+	for _, value := range append([]string{card.FirstMes}, card.AlternateGreetings...) {
+		if text, truncated := sanitizeTavernOpening(value); text != "" && truncated {
+			count++
+		}
+	}
+	return count
+}
+
 func openingPresetPath(count int) string {
 	if count == 0 {
 		return ""
@@ -170,15 +235,8 @@ func openingPresetPath(count int) string {
 }
 
 func truncateTavernOpeningText(text string) string {
-	text = normalizeCardText(text)
-	if text == "" {
-		return ""
-	}
-	runes := []rune(text)
-	if len(runes) <= 4000 {
-		return text
-	}
-	return string(runes[:4000])
+	text, _ = sanitizeTavernOpening(text)
+	return text
 }
 
 func truncateTavernOpeningTitle(text string) string {
