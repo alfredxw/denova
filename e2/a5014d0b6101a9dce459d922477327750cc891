@@ -1,0 +1,28 @@
+CHANGELOG.md
+  s_9afe1f2564b5f5::t_161be39bc377c1 11-12
+web/src/features/interactive/components/StoryOpeningPanel.tsx
+  s_9afe1f2564b5f5::t_7ce88e3b4223ae 73-74,209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e2a5014d0b6101a9dce459d922477327750cc891",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_9afe1f2564b5f5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5726-da09-7001-bdb9-d45d97771d0c",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
