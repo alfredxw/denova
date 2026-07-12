@@ -70,8 +70,8 @@ export function StoryOpeningPanel({
           {onBackToSetup ? <Button type="button" variant="ghost" size="sm" className="self-start gap-1.5 text-[var(--nova-text-muted)] sm:self-auto" onClick={onBackToSetup}><ArrowLeft className="h-3.5 w-3.5" />{t('storyStage.opening.backToSetup')}</Button> : null}
         </header>
 
-        <Tabs defaultValue="ai" className="overflow-hidden rounded-[calc(var(--nova-radius)+4px)] border border-[var(--nova-border)] bg-[var(--nova-surface)] shadow-[0_18px_50px_rgba(0,0,0,0.14)]">
-          <TabsList variant="line" className="grid h-auto w-full grid-cols-3 gap-0 rounded-none border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0">
+        <Tabs defaultValue="ai" className="gap-0 overflow-hidden rounded-[calc(var(--nova-radius)+4px)] border border-[var(--nova-border)] bg-[var(--nova-surface)] shadow-[0_18px_50px_rgba(0,0,0,0.14)]">
+          <TabsList className="grid h-11 w-full grid-cols-3 gap-0 rounded-none border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 group-data-horizontal/tabs:h-11">
             <OpeningTab value="ai" icon={<Sparkles />} label={t('storyStage.opening.tabAI')} />
             <OpeningTab value="preset" icon={<BookOpen />} label={t('storyStage.opening.tabPreset')} count={presets.length} />
             <OpeningTab value="custom" icon={<Pencil />} label={t('storyStage.opening.tabCustom')} />
@@ -206,7 +206,7 @@ export function StoryOpeningPanel({
 
 function OpeningTab({ value, icon, label, count }: { value: string; icon: ReactNode; label: string; count?: number }) {
   return (
-    <TabsTrigger value={value} className="h-11 min-w-0 rounded-none px-2 text-xs data-active:bg-[var(--nova-surface)] sm:px-4">
+    <TabsTrigger value={value} className="h-11 min-w-0 rounded-none border-0 border-b-2 border-b-transparent px-2 text-xs shadow-none after:hidden data-active:border-b-[var(--nova-accent)] data-active:bg-[var(--nova-active)] data-active:shadow-none sm:px-4">
       <span className="flex min-w-0 items-center justify-center gap-1.5">
         <span className="flex h-4 w-4 items-center justify-center [&_svg]:h-4 [&_svg]:w-4">{icon}</span>
         <span className="truncate text-center">{label}</span>

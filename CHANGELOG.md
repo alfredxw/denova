@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 游戏模式：开场方式 Tabs 改回 shadcn/Radix 的按钮选中态，移除与列表分隔线错位的伪元素激活线和根节点间隙；选中背景与底部边框现在都严格位于对应 Tab 单元格内。
+- Game Mode: Opening-method tabs now use the shadcn/Radix button selected state. The pseudo-element indicator and root gap that drifted away from the list divider are removed, keeping the selected background and bottom border inside the matching tab cell.
 - 游戏模式：开场方式的三个 Tab 现在分别按各自实际可见内容居中，书籍预设计数紧跟文案且不再向其他 Tab 注入空白占位；开场阶段新增“返回上一步”，可重新编辑故事名称、简介、导演、字数和故事级模块配置，再回到开场选择。
 - Game Mode: Each opening-method tab now centers its own visible content; the book-preset count stays beside its label without injecting phantom spacing into other tabs. The opening stage adds Back to Setup so story name, brief, director, reply length, and story-level modules can be edited before returning to opening selection.
 - Agent：写作与游戏剧情等快捷模型选择器现在统一保存到用户级配置；工作区级 `agent_models` 不再生效或被新写入，切换书籍不会改变 Agent 模型。Agents 页在工作区层明确引导到用户配置编辑模型与思考参数。
