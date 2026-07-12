@@ -49,6 +49,8 @@ describe('TRPGSystemVisualEditor', () => {
     )
 
     expect(container.querySelector('.trpg-system-workspace > div')).toHaveClass('shrink-0')
+    expect(screen.getByRole('tablist')).toHaveClass('grid', 'trpg-workflow-tabs', '!h-auto', 'overflow-x-clip')
+    expect(screen.getByRole('tablist')).not.toHaveClass('overflow-x-auto')
     expect(screen.getByRole('tab', { name: /何时检定/ })).toHaveAttribute('data-state', 'active')
     expect(screen.getByRole('tabpanel')).toHaveTextContent('行动存在风险和有意义的失败后果。')
     const trigger = screen.getByRole('textbox', { name: '触发条件' })

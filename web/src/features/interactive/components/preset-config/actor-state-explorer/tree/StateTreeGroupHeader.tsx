@@ -28,7 +28,7 @@ export function StateTreeGroupHeader({
   indentLevel = 0,
 }: StateTreeGroupHeaderProps) {
   const { t } = useTranslation()
-  const paddingLeft = 6 + indentLevel * 12
+  const paddingLeft = 2
   const childrenId = `${nodeId}-children`
 
   return (
@@ -40,12 +40,12 @@ export function StateTreeGroupHeader({
       className="min-w-0 max-w-full overflow-hidden"
     >
       <div
-        className="group flex min-h-9 w-full min-w-0 max-w-full items-center gap-1 overflow-hidden rounded-[10px] pr-2 transition-colors duration-200 hover:bg-[var(--nova-hover)] focus-within:bg-[var(--nova-hover)]"
+        className="group flex min-h-8 w-full min-w-0 max-w-full items-center gap-1 overflow-hidden rounded-[8px] pr-1.5 transition-colors duration-150 hover:bg-[var(--nova-hover)] focus-within:bg-[var(--nova-hover)]"
         style={{ paddingLeft }}
       >
         <button
           type="button"
-          className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-surface)] hover:text-[var(--nova-text)] focus-visible:text-[var(--nova-text)]"
+          className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-surface)] hover:text-[var(--nova-text)] focus-visible:text-[var(--nova-text)]"
           onClick={onToggle}
           aria-label={expanded ? t('settingPanel.actorState.explorer.collapse') : t('settingPanel.actorState.explorer.expand')}
           aria-expanded={expanded}
@@ -88,7 +88,7 @@ export function StateTreeGroupHeader({
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="ml-1 size-8 shrink-0 rounded-full text-[var(--nova-text-faint)] opacity-0 transition-opacity duration-200 hover:bg-[var(--nova-surface)] hover:text-[var(--nova-text)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
+            className="ml-1 size-6 shrink-0 rounded-[6px] text-[var(--nova-text-faint)] opacity-0 transition-opacity duration-150 hover:bg-[var(--nova-surface)] hover:text-[var(--nova-text)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
             onClick={(e) => {
               e.stopPropagation()
               onAdd()

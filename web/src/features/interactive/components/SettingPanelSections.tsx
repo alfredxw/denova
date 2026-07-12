@@ -1150,7 +1150,7 @@ export function ImagePresetEditor({
           <ScrollArea className="min-h-0 flex-1">
             <div className="p-2">
               {slots.map((slot) => (
-                <div key={slot.id} className={`mb-1 flex min-h-12 w-full items-center gap-2 rounded-[11px] border px-3 py-2 text-xs transition ${activeSlot?.id === slot.id ? 'border-[var(--preset-signal)]/35 bg-[var(--preset-signal-soft)] text-[var(--nova-text)] shadow-[inset_3px_0_0_var(--preset-signal)]' : 'border-transparent text-[var(--nova-text-muted)] hover:border-[var(--preset-line)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}>
+                <div key={slot.id} className={`mb-0.5 flex min-h-10 w-full items-center gap-2 rounded-[9px] border px-2.5 py-1.5 text-xs transition ${activeSlot?.id === slot.id ? 'border-[var(--preset-line)] bg-[var(--nova-active)] text-[var(--nova-text)]' : 'border-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}>
                   <button type="button" onClick={() => setActiveSlotId(slot.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
                     <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
                     <span className="min-w-0 flex-1">

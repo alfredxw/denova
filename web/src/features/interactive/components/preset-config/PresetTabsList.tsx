@@ -47,8 +47,8 @@ export function PresetTabsList<T>({ items, activeId, getId, getTitle, getSubtitl
   }
 
   return (
-    <aside className={cn('flex min-h-0 flex-col overflow-hidden rounded-[14px] border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)]', layout === 'rail' && 'h-full')}>
-      <div className="flex min-h-12 items-center justify-between gap-2 border-b border-[var(--nova-border)] px-3 py-2.5">
+    <aside className={cn('flex min-h-0 flex-col overflow-hidden rounded-[12px] border border-[var(--nova-border-soft)] bg-transparent', layout === 'rail' && 'h-full')}>
+      <div className="flex min-h-10 items-center justify-between gap-2 border-b border-[var(--nova-border-soft)] px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <span className="truncate text-xs font-semibold text-[var(--nova-text)]">{emptyLabel}</span>
           <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{items.length}</span>
@@ -66,7 +66,7 @@ export function PresetTabsList<T>({ items, activeId, getId, getTitle, getSubtitl
           <Tabs value={activeId} onValueChange={onActiveIdChange} orientation="vertical" activationMode="automatic" className="min-h-0 gap-0">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragCancel={() => setDraggingId(null)} onDragEnd={handleDragEnd}>
               <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-                <TabsList variant="line" aria-label={emptyLabel} className="flex h-auto w-full flex-col items-stretch justify-start gap-1 rounded-none bg-transparent p-2">
+                <TabsList variant="line" aria-label={emptyLabel} className="flex h-auto w-full flex-col items-stretch justify-start gap-0.5 rounded-none bg-transparent p-1.5">
                   {entries.map((entry) => (
                     <PresetTabsListItem key={entry.id} id={entry.id} title={entry.title} subtitle={entry.subtitle} active={entry.id === activeId} testIdPrefix={testIdPrefix} dragLabel={t('settingPanel.presetConfig.dragItem', { name: entry.title })} />
                   ))}
@@ -109,10 +109,10 @@ function PresetTabsListItem({
 
   return (
     <div ref={setNodeRef} style={style} className={cn(presetTabsListItemClassName(active), isDragging && 'opacity-35')} data-testid={`${testIdPrefix}-item-${id}`}>
-      <button ref={setActivatorNodeRef} type="button" className="nova-nav-item flex size-8 shrink-0 items-center justify-center rounded-[9px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" aria-label={dragLabel} onClick={(event) => event.stopPropagation()} {...attributes} {...listeners}>
-        <GripVertical className="size-3.5" />
+      <button ref={setActivatorNodeRef} type="button" className="flex size-5 shrink-0 cursor-grab items-center justify-center rounded text-[var(--nova-text-faint)] opacity-45 transition-[opacity,color,background] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] hover:opacity-100 focus-visible:opacity-100 active:cursor-grabbing" aria-label={dragLabel} onClick={(event) => event.stopPropagation()} {...attributes} {...listeners}>
+        <GripVertical className="size-3" />
       </button>
-      <TabsTrigger value={id} className="h-auto min-h-10 min-w-0 flex-1 justify-start rounded-[10px] border-0 bg-transparent px-2 py-1.5 text-left text-xs font-normal text-inherit shadow-none whitespace-normal transition-none after:hidden data-active:bg-transparent data-active:text-inherit dark:data-active:bg-transparent dark:data-active:text-inherit" data-testid={`${testIdPrefix}-trigger-${id}`}>
+      <TabsTrigger value={id} className="h-auto min-h-9 min-w-0 flex-1 justify-start rounded-[8px] border-0 bg-transparent px-1.5 py-1 text-left text-xs font-normal text-inherit shadow-none whitespace-normal transition-none after:hidden data-active:bg-transparent data-active:text-inherit dark:data-active:bg-transparent dark:data-active:text-inherit" data-testid={`${testIdPrefix}-trigger-${id}`}>
         <PresetTabsListItemText title={title} subtitle={subtitle} />
       </TabsTrigger>
     </div>
@@ -122,10 +122,10 @@ function PresetTabsListItem({
 function PresetTabsListItemContent({ title, subtitle, active, overlay = false }: { title: string; subtitle: string; active: boolean; overlay?: boolean }) {
   return (
     <div className={cn(presetTabsListItemClassName(active), overlay && 'w-[280px] shadow-[0_18px_45px_rgba(0,0,0,0.22)] ring-1 ring-[var(--nova-accent)]/25')}>
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-full text-[var(--nova-text-faint)]">
-        <GripVertical className="size-3.5" />
+      <div className="flex size-5 shrink-0 items-center justify-center text-[var(--nova-text-faint)]">
+        <GripVertical className="size-3" />
       </div>
-      <div className="min-w-0 flex-1 px-2 py-1.5">
+      <div className="min-w-0 flex-1 px-1.5 py-1">
         <PresetTabsListItemText title={title} subtitle={subtitle} />
       </div>
     </div>
@@ -136,16 +136,16 @@ function PresetTabsListItemText({ title, subtitle }: { title: string; subtitle: 
   return (
     <span className="block min-w-0 flex-1">
       <span className="block truncate font-semibold">{title}</span>
-      {subtitle ? <span className="mt-0.5 block truncate text-[11px] text-[var(--nova-text-faint)]">{subtitle}</span> : null}
+      {subtitle ? <span className="mt-px block truncate text-[10px] leading-4 text-[var(--nova-text-faint)]">{subtitle}</span> : null}
     </span>
   )
 }
 
 function presetTabsListItemClassName(active: boolean) {
   return cn(
-    'group flex min-h-14 items-center gap-1.5 rounded-[12px] px-1.5 py-1.5 text-xs transition-colors',
+    'group flex min-h-11 items-center gap-0.5 rounded-[9px] px-1.5 py-1 text-xs transition-colors',
     active
-      ? 'bg-[var(--nova-surface)] text-[var(--nova-text)] shadow-[inset_0_0_0_1px_var(--nova-border),inset_3px_0_0_var(--nova-accent)]'
-      : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] hover:shadow-[inset_0_0_0_1px_var(--nova-border-soft)]',
+      ? 'bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_0_0_0_1px_var(--nova-border)]'
+      : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
   )
 }

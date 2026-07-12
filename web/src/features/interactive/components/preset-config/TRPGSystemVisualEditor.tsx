@@ -73,7 +73,7 @@ export function TRPGSystemVisualEditor({
         <p className="max-w-[76ch] text-[11px] leading-4 text-[var(--nova-text-faint)]">
           {t('settingPanel.trpgRule.singleConfigDesc')}
         </p>
-        <TabsList variant="line" className="h-auto w-full justify-start gap-1 overflow-x-auto rounded-none border-b border-[var(--nova-border)] bg-transparent p-0">
+        <TabsList variant="line" className="trpg-workflow-tabs grid !h-auto w-full grid-cols-[repeat(auto-fit,minmax(min(100%,10rem),1fr))] items-stretch gap-1 overflow-x-clip rounded-none border-b border-[var(--nova-border)] bg-transparent p-0">
           <WorkflowTab value="when" icon={Dice5} label={t('settingPanel.trpgRule.flow.when')} description={t('settingPanel.trpgRule.flow.whenDesc')} />
           <WorkflowTab value="outcome" icon={Scale} label={t('settingPanel.trpgRule.flow.outcome')} description={t('settingPanel.trpgRule.flow.outcomeDesc')} />
           <WorkflowTab value="state" icon={Database} label={t('settingPanel.trpgRule.flow.state')} description={t('settingPanel.trpgRule.flow.stateDesc')} />
@@ -155,11 +155,11 @@ export function TRPGSystemVisualEditor({
 
 function WorkflowTab({ value, icon: Icon, label, description }: { value: string; icon: typeof Dice5; label: string; description: string }) {
   return (
-    <TabsTrigger value={value} className="h-auto min-w-fit flex-none justify-start gap-2 rounded-none px-2.5 py-2 text-left after:bottom-0">
+    <TabsTrigger value={value} className="h-auto min-w-0 w-full justify-start gap-2 rounded-[8px_8px_0_0] px-2.5 py-2 text-left after:bottom-0">
       <Icon data-icon="inline-start" />
       <span className="flex min-w-0 flex-col items-start">
         <span className="text-xs font-semibold">{label}</span>
-        <span className="max-w-64 truncate text-[10px] font-normal text-[var(--nova-text-faint)]">{description}</span>
+        <span className="trpg-workflow-tab-description line-clamp-2 text-[10px] font-normal leading-4 text-[var(--nova-text-faint)]">{description}</span>
       </span>
     </TabsTrigger>
   )

@@ -60,7 +60,7 @@ export function StateTreeNode({
           addLabel={getGroupAddLabel(node.kind, t)}
           indentLevel={indentLevel}
         >
-          <div className="mt-0.5 min-w-0 max-w-full overflow-hidden">
+          <div className="state-tree-branch mt-px min-w-0 max-w-full overflow-hidden">
             {node.children.map((child) => (
               <StateTreeNode
                 key={child.id}
@@ -127,7 +127,7 @@ function TreeItem({
   const hasChildren = node.children.length > 0
   const expanded = expandedIds.has(node.id)
   const Icon = KIND_ICONS[node.kind] || FileSpreadsheet
-  const paddingLeft = 6 + indentLevel * 12
+  const paddingLeft = 2
   const isField = node.kind === 'field'
   const childrenId = `${node.id}-children`
 
@@ -147,9 +147,9 @@ function TreeItem({
     >
       <div
         className={cn(
-          'group flex min-h-9 w-full min-w-0 max-w-full items-center gap-1 overflow-hidden rounded-[10px] pr-2 transition-colors duration-200 focus-within:bg-[var(--nova-hover)]',
+          'group flex min-h-8 w-full min-w-0 max-w-full items-center gap-1 overflow-hidden rounded-[8px] pr-1.5 transition-colors duration-150 focus-within:bg-[var(--nova-hover)]',
           isSelected
-            ? 'bg-[var(--nova-surface)] text-[var(--nova-text)] shadow-[inset_3px_0_0_var(--nova-accent),inset_0_0_0_1px_var(--nova-border)]'
+            ? 'bg-[var(--nova-active)] text-[var(--nova-text)] shadow-[inset_0_0_0_1px_var(--nova-border)]'
             : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
         )}
         style={{ paddingLeft }}
@@ -158,7 +158,7 @@ function TreeItem({
         {hasChildren ? (
           <button
             type="button"
-            className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-surface)] hover:text-[var(--nova-text)] focus-visible:text-[var(--nova-text)]"
+            className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[var(--nova-text-faint)] transition-colors hover:bg-[var(--nova-surface)] hover:text-[var(--nova-text)] focus-visible:text-[var(--nova-text)]"
             onClick={(e) => {
               e.stopPropagation()
               onToggleExpanded(node.id)
@@ -173,14 +173,13 @@ function TreeItem({
 
         {/* Icon */}
         <Icon className={cn(
-          'h-3.5 w-3.5 shrink-0',
-          isSelected ? 'text-[var(--nova-accent)]' : 'text-[var(--nova-text-faint)]',
+          'h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]',
         )} />
 
         {/* Label + subtitle */}
         <button
           type="button"
-          className="flex min-w-0 flex-1 flex-col items-start py-1.5 text-left"
+          className="flex min-w-0 flex-1 flex-col items-start py-1 text-left"
           onClick={() => onSelect(node.id)}
           title={node.subtitle ? `${node.label}\n${node.subtitle}` : node.label}
         >
@@ -208,7 +207,7 @@ function TreeItem({
         {addHandler ? (
           <button
             type="button"
-            className="flex size-8 shrink-0 items-center justify-center rounded-full text-[var(--nova-text-faint)] opacity-0 transition-opacity duration-200 hover:bg-[var(--nova-surface)] hover:text-[var(--nova-text)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
+            className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-[var(--nova-text-faint)] opacity-0 transition-opacity duration-150 hover:bg-[var(--nova-surface)] hover:text-[var(--nova-text)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
             onClick={(e) => {
               e.stopPropagation()
               addHandler()
@@ -223,7 +222,7 @@ function TreeItem({
 
       {/* Children */}
       {hasChildren && expanded ? (
-        <div id={childrenId} role="group" className="mt-0.5 min-w-0 max-w-full overflow-hidden">
+        <div id={childrenId} role="group" className="state-tree-branch mt-px min-w-0 max-w-full overflow-hidden">
           {node.children.map((child) => (
             <StateTreeNode
               key={child.id}

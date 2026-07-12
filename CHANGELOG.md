@@ -24,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- WebUI：方案预设中的注入规则、事件卡、记忆结构与状态系统列表统一为轻量高密度样式，移除选中项左侧高亮边，缩小拖拽手柄和行高，并用中性底色与细描边表达选中状态；状态结构树新增低对比层级导线与更紧凑的缩进，TRPG 检定流程导航改为容器响应网格，不再在窄区域产生横向滚动。
+- WebUI: Preset injection rules, event cards, memory structures, and actor-state lists now share a lighter, denser style with no bright selected-edge stripe, smaller drag handles and row heights, and neutral selected surfaces. The actor-state tree adds subtle hierarchy guides and tighter indentation, while TRPG workflow navigation now uses a container-responsive grid instead of horizontal scrolling in narrow spaces.
 - WebUI：“书籍设定”默认 Pin 扩展为大纲、规则、进度、灵感和状态，并自动迁移仍使用旧三项默认值的工作区；快捷标签从固定两列改为按内容宽度自适应换行，在保持舒适间距的同时提升侧栏信息密度。
 - WebUI: Book Settings now pins Outline, Rules, Progress, Ideas, and State by default and migrates workspaces still using the legacy three-item default. Shortcut chips now wrap by content width instead of using a fixed two-column grid, increasing sidebar density without cramped spacing.
 - WebUI：写作侧栏“章节组细纲”在没有细纲时收敛为单行空状态；存在细纲时默认展开并支持整组折叠，折叠后保留数量，新生成第一份细纲时自动展开一次。

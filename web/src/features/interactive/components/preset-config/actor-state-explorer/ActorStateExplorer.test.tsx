@@ -62,6 +62,8 @@ describe('ActorStateExplorer', () => {
     expect(templateItem).toHaveAttribute('aria-expanded', 'true')
     expect(templateItem).toHaveAttribute('aria-level', '2')
     expect(templateItem).toHaveAttribute('tabindex', '0')
+    expect(templateItem.querySelector(':scope > div')?.className).not.toContain('inset_3px_0_0')
+    expect(container.querySelector('.state-tree-branch')).toBeInTheDocument()
     const fieldItem = screen.getByRole('treeitem', { name: '身体状态' })
     expect(fieldItem).toHaveAttribute('aria-level', '3')
 
@@ -71,9 +73,9 @@ describe('ActorStateExplorer', () => {
     expect(fieldItem).toHaveFocus()
 
     const addTemplate = screen.getByRole('button', { name: /新增状态表模板|Add State Table Template/ })
-    expect(addTemplate).toHaveClass('size-8', 'group-focus-within:opacity-100', 'focus-visible:opacity-100', '[@media(pointer:coarse)]:opacity-100')
+    expect(addTemplate).toHaveClass('size-6', 'group-focus-within:opacity-100', 'focus-visible:opacity-100', '[@media(pointer:coarse)]:opacity-100')
     const collapseButton = screen.getAllByRole('button', { name: /^(折叠|Collapse)$/ })[0]
-    expect(collapseButton).toHaveClass('size-8')
+    expect(collapseButton).toHaveClass('size-6')
     expect(collapseButton).toHaveAttribute('aria-expanded', 'true')
   })
 

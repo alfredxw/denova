@@ -172,10 +172,10 @@ function TraitInlineRow({
       exit={{ opacity: 0, y: -4 }}
       transition={{ duration: 0.15, ease: novaEase }}
       className={cn(
-        'group flex cursor-pointer items-center gap-2.5 rounded-[12px] border px-3 py-2.5 transition-colors',
+        'group flex min-h-10 cursor-pointer items-center gap-2 rounded-[9px] border px-2.5 py-1.5 transition-colors',
         selected
-          ? 'border-[var(--nova-accent)]/40 bg-[var(--nova-surface)] shadow-[inset_2px_0_0_var(--nova-accent)]'
-          : 'border-[var(--nova-border)] bg-[var(--nova-surface)] hover:border-[var(--nova-accent)]/20 hover:bg-[var(--nova-hover)]',
+          ? 'border-[var(--nova-border)] bg-[var(--nova-active)]'
+          : 'border-transparent bg-transparent hover:bg-[var(--nova-hover)]',
       )}
       onClick={onClick}
     >

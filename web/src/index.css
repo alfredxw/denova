@@ -358,6 +358,12 @@
   }
 }
 
+@container preset-config-editor (max-width: 540px) {
+  .trpg-workflow-tab-description {
+    display: none;
+  }
+}
+
 :is(.image-preset-editor, .teller-editor) {
   container-name: preset-rule-editor;
   container-type: inline-size;
@@ -400,6 +406,12 @@
   container-name: actor-state-editor;
   container-type: inline-size;
   position: relative;
+}
+
+.state-tree-branch {
+  margin-left: 0.75rem;
+  padding-left: 0.25rem;
+  border-left: 1px solid var(--nova-border-soft);
 }
 
 .actor-state-explorer-layout {

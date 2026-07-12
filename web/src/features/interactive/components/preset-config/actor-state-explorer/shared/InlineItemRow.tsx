@@ -43,10 +43,10 @@ export function InlineItemRow({
       exit={{ opacity: 0, y: -4 }}
       transition={{ duration: 0.15, ease: novaEase }}
       className={cn(
-        'group relative flex cursor-pointer items-center gap-2 rounded-[12px] border px-2.5 py-2 transition-colors',
+        'group relative flex min-h-10 cursor-pointer items-center gap-1.5 rounded-[9px] border px-2 py-1.5 transition-colors',
         selected
-          ? 'border-[var(--nova-accent)]/40 bg-[var(--nova-surface)] shadow-[inset_2px_0_0_var(--nova-accent)]'
-          : 'border-[var(--nova-border)] bg-[var(--nova-surface)] hover:border-[var(--nova-accent)]/20 hover:bg-[var(--nova-hover)]',
+          ? 'border-[var(--nova-border)] bg-[var(--nova-active)]'
+          : 'border-transparent bg-transparent hover:bg-[var(--nova-hover)]',
         isDragging && 'opacity-50',
         className,
       )}
@@ -55,11 +55,11 @@ export function InlineItemRow({
       <button
         type="button"
         ref={onDragHandleRef as unknown as React.Ref<HTMLButtonElement>}
-        className="flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100"
+        className="flex size-5 shrink-0 cursor-grab items-center justify-center rounded text-[var(--nova-text-faint)] opacity-35 transition-opacity hover:bg-[var(--nova-hover)] group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 active:cursor-grabbing [@media(pointer:coarse)]:opacity-100"
         aria-label={t('settingPanel.actorState.explorer.drag')}
         {...(dragHandleProps ?? {})}
       >
-        <GripVertical className="h-3.5 w-3.5" />
+        <GripVertical className="h-3 w-3" />
       </button>
 
       <div className="min-w-0 flex-1">{children}</div>

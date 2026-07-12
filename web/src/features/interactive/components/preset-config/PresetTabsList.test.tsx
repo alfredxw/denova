@@ -72,9 +72,12 @@ describe('PresetTabsList', () => {
     const user = userEvent.setup()
     const { onActiveIdChange } = renderPresetTabsList()
 
-    await user.click(screen.getByRole('button', { name: '拖动 主角状态' }))
+    const dragHandle = screen.getByRole('button', { name: '拖动 主角状态' })
+    expect(dragHandle).toHaveClass('size-5')
+    await user.click(dragHandle)
 
     expect(onActiveIdChange).not.toHaveBeenCalled()
+    expect(screen.getByTestId('preset-tabs-list-item-protagonist').className).not.toContain('inset_3px_0_0')
   })
 
   it('computes the drag-end order without changing the active id', () => {
@@ -96,7 +99,7 @@ describe('PresetTabsList', () => {
     const { container } = renderPresetTabsList({ layout: 'rail' })
     const rail = container.querySelector('aside')
 
-    expect(rail).toHaveClass('h-full', 'min-h-0', 'rounded-[14px]')
+    expect(rail).toHaveClass('h-full', 'min-h-0', 'rounded-[12px]')
     expect(rail?.className).not.toMatch(/sticky|100vh|max-h/)
   })
 })
