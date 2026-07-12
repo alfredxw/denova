@@ -1,0 +1,104 @@
+CHANGELOG.md
+  s_2c8730255b27a8::t_994d927ee777c5 11-12,18-21,41-44
+config/config.go
+  s_e880a379ba58be::t_48c7cb30b29faf 67,130,226-227,330
+config/settings.go
+  s_e880a379ba58be::t_ee2046b5c6f8e2 91-94,107-114,176,346-351,353,355-356,358,598-602,645,651,653-654,659-660,662
+config/settings_test.go
+  s_e880a379ba58be::t_93ddb784ef7b11 49-50,149,177,252-265
+internal/api/handlers/handler_character_card.go
+  s_e880a379ba58be::t_ca0c49cbd79a88 6,9,15,33-46,94,104-111,113,124-133,136,141,160-172,175-178,185-238
+internal/app/chat_app_service.go
+  s_e880a379ba58be::t_6c5bb770a07cc0 446-456
+internal/app/interactive_agent_test.go
+  s_e880a379ba58be::t_a048cf682ab321 54-55,57-58,60-61,63-64,66,69-71,84-85,88,92-93,97-98
+internal/app/interactive_conversation.go
+  s_e880a379ba58be::t_b827569ff33a5e 124-134,153-156,167
+internal/app/interactive_lore_context.go
+  s_e880a379ba58be::t_3944c6cbd7ca5f 31,38,48,61-70,78,86,106,109-112,114-115,120-129
+internal/app/interactive_lore_context_test.go
+  s_e880a379ba58be::t_0a0efd3d07638f 12,16,18,43-45,47-48,51
+internal/app/runtime_manager.go
+  s_e880a379ba58be::t_713d0fc2fef394 761-770
+internal/app/settings_test.go
+  s_e880a379ba58be::t_3b5100bb489266 101-102,113-115
+internal/book/character_card.go
+  s_e880a379ba58be::t_8f4ec43d152dc4 6,22,42-43,48-72,74-78,82-103,153-173,201,216,220-224,229-253,257,277-278,280,289,291-306,316,320,325,340,345,348,350,352,355-372,374,376-386,388,591-603,607,609,614-622,626,629,638-641,644,647,650-657,660-676,681-690,694,697,707-714,718,721-723,727-739,798-800,805-811
+internal/book/character_card_compatibility.go
+  s_e880a379ba58be::t_72e17817f5b746 3-6,48-75,77-78,81,84-99,101-102
+internal/book/character_card_opening.go
+  s_e880a379ba58be::t_9e21b79862de73 25-79,169,177,220-229,238-239
+internal/book/character_card_sanitize.go
+  s_e880a379ba58be::t_2c06b7ea231306 1-200
+internal/book/character_card_test.go
+  s_e880a379ba58be::t_38b94d1df43cfd 6,9,95-97,238-240,263-265,270-395
+internal/book/lore.go
+  s_e880a379ba58be::t_f57822e1deac07 38-51,55-77,236,291,398,437,652,677-692,862,866-881
+internal/book/lore_test.go
+  s_e880a379ba58be::t_4af3beb41af727 94-117
+internal/i18n/i18n.go
+  s_e880a379ba58be::t_eaec9c8a5ad1ae 119-121,213-215
+web/src/App.tsx
+  s_e880a379ba58be::t_8715c7880c8694 79,430,456,490,513,793,803
+web/src/components/Chat/MessageItem.test.tsx
+  s_2c8730255b27a8::t_2b682e22afc882 116-127
+web/src/components/Chat/MessageItem.tsx
+  s_2c8730255b27a8::t_df2c3b768a31c1 54,176-181
+web/src/components/workbench/CharacterCardImportDialog.test.tsx
+  s_e880a379ba58be::t_4f5216acadeba4 1-87
+web/src/components/workbench/CharacterCardImportDialog.tsx
+  s_e880a379ba58be::t_b1ce23b1763aed 21,31,45,55,60-64,109-112,114-116,181-199,222,236-238,240-241,252-255
+web/src/features/interactive/components/StoryStage.test.tsx
+  s_2c8730255b27a8::t_26d03027e52c61 446-473
+web/src/features/interactive/components/StoryStage.tsx
+  s_2c8730255b27a8::t_14c10342604c7d 576,714-718,733-744,848-853
+web/src/features/interactive/stores/interactive-store.ts
+  s_2c8730255b27a8::t_d8ca88c9e7d00c 14
+web/src/features/settings/SettingsView.tsx
+  s_e880a379ba58be::t_c2dc340ad989af 449-458
+web/src/features/settings/types.ts
+  s_e880a379ba58be::t_d1fa57c3e4cb98 60
+web/src/i18n/locales/en-US/importCard.ts
+  s_e880a379ba58be::t_2796231b3688f0 8-13,15,21-38,68-69
+web/src/i18n/locales/en-US/settings.ts
+  s_e880a379ba58be::t_39b2d70951dfc8 97-98
+web/src/i18n/locales/zh-CN/importCard.ts
+  s_e880a379ba58be::t_dc04b9166397a1 8-13,15,21-38,68-69
+web/src/i18n/locales/zh-CN/settings.ts
+  s_e880a379ba58be::t_39bc6906f9048e 97-98
+web/src/lib/api-client/types.ts
+  s_e880a379ba58be::t_28cedac5f68d67 369-370,381-394,398-402,548-553,656
+web/src/lib/api-client/workspace.ts
+  s_e880a379ba58be::t_8bf3b63ebc6681 120,127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "77728c8a8d9f58523e370698306651a03ed63b54",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_2c8730255b27a8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5651-16ab-7510-bbc2-885afa091572",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_e880a379ba58be": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f54f8-18a0-7cc0-9748-17266f02d16d",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
