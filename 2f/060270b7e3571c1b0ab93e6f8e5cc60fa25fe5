@@ -1,0 +1,114 @@
+CHANGELOG.md
+  s_3f174dd5369ca5::t_fad0b88560b96e 11-16
+internal/agent/builder.go
+  s_3f174dd5369ca5::t_9f9f826f48858c 22,81-82,512-515,517-526,535,539-541
+internal/agent/interactive_memory_tools.go
+  s_3f174dd5369ca5::t_8accee381b3d99 24-33
+internal/agent/interactive_state_schema_tools.go
+  s_3f174dd5369ca5::t_9beb242cafe655 5,8-9,11,14-16,18-32,34,36
+internal/agent/lore_tools.go
+  s_3f174dd5369ca5::t_953fc317950a5e 8,23-28,50-113,115-118,124-126,148-152,166-172,230-235
+internal/agent/lore_tools_test.go
+  s_3f174dd5369ca5::t_976d221861753d 123-233
+internal/agent/middleware.go
+  s_3f174dd5369ca5::t_50b9e0c86f877b 93-100
+internal/agent/middleware_test.go
+  s_3f174dd5369ca5::t_b03804499ca103 137-173
+internal/agent/system_prompt.go
+  s_3f174dd5369ca5::t_dd1085438e3e0e 95,142-143
+internal/api/handler_interactive_test.go
+  s_3f174dd5369ca5::t_87b0533f00005f 313-316,321-353,394-396,420-427
+internal/api/handler_session_test.go
+  s_3f174dd5369ca5::t_b01908098bbcff 18,326,328-338
+internal/api/handlers/handler_interactive.go
+  s_3f174dd5369ca5::t_a95ae5fd5a72fe 90-98
+internal/api/routes.go
+  s_3f174dd5369ca5::t_fbed0b687a5fa0 68
+internal/app/interactive_app_service.go
+  s_3f174dd5369ca5::t_b5cd4f03e02fe0 262-275,287,301-303
+internal/app/interactive_state_schema.go
+  s_3f174dd5369ca5::t_d6e6df2e06e487 8,10,21,24-25,46-47,83-88,119-124,134-136,144-183,194-198,202-215,229-236,242,252-254,259-265,317,319,322-323,325-340,342
+internal/app/interactive_state_schema_async_test.go
+  s_3f174dd5369ca5::t_5d4bf88b10bbcd 5-6,41,47-70,100-280
+internal/app/interactive_state_schema_test.go
+  s_3f174dd5369ca5::t_f3d21d9081864c 4,8,10,36-50,83-118
+internal/book/lore.go
+  s_3f174dd5369ca5::t_120272c23ca017 141,656-673,1360,1362,1374-1376,1402-1412,1644
+internal/interactive/state_schema_adaptation.go
+  s_3f174dd5369ca5::t_d9e49198f60d4f 19-21,60-61,72-83,101-116
+internal/interactive/state_schema_initialization.go
+  s_3f174dd5369ca5::t_1eff2e555dc98e 8,128-175,235-245,275-282,288-293,295-304,307,309-312,317-320,324-327,330-332
+internal/interactive/state_schema_initialization_test.go
+  s_3f174dd5369ca5::t_8c3c52c7c1aa89 147-202
+internal/interactive/state_schema_proposal.go
+  s_3f174dd5369ca5::t_976d03537b01af 1-203
+internal/interactive/state_schema_proposal_test.go
+  s_3f174dd5369ca5::t_54df3dd2fed03c 1-68
+internal/prompts/interactive.go
+  s_3f174dd5369ca5::t_20a38a43228bb9 247-250,253-256,264-268
+internal/prompts/interactive_test.go
+  s_3f174dd5369ca5::t_db1a2a777ac0f1 41-56,61-63
+web/src/features/interactive/api.ts
+  s_3f174dd5369ca5::t_49eb6f4bdd15d0 68-71
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_a53df2f5f4e714::t_bb0ad734ce5069 895-897,906-935
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_a53df2f5f4e714::t_de91646f8af59b 1387,1414,1422-1431,1502,1504-1507
+web/src/features/interactive/components/director-console/StateSchemaOverview.test.tsx
+  s_3f174dd5369ca5::t_80891ee537d413 6,11,18,37-43,54-57,71-86
+web/src/features/interactive/components/director-console/StateSchemaOverview.tsx
+  s_3f174dd5369ca5::t_bcff8bd3ad456e 2,5-6,8,12,16,19,25,35-42,69-77,84-122,208-219
+web/src/features/interactive/components/director-console/StateView.test.tsx
+  s_3f174dd5369ca5::t_5e0783edc75a85 168-190
+web/src/features/interactive/components/director-console/StateView.tsx
+  s_3f174dd5369ca5::t_4827999f0c65ab 45
+web/src/features/interactive/types.ts
+  s_3f174dd5369ca5::t_2c8ce919623e86 1048,1053-1054,1059-1075,1089,1095-1097
+web/src/i18n/locales/en-US/memoryPanel.ts
+  s_3f174dd5369ca5::t_0a658e26650666 172-173,180-192
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_9961c91bf0c8db::t_adf78d6936947f 337
+web/src/i18n/locales/zh-CN/memoryPanel.ts
+  s_3f174dd5369ca5::t_88c6fffc3d1ce9 172-173,180-192
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_9961c91bf0c8db::t_b7cfd7119665d8 337
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2f060270b7e3571c1b0ab93e6f8e5cc60fa25fe5",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_3f174dd5369ca5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5a4d-4466-7202-ba60-663723cee565",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_9961c91bf0c8db": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5a18-3d85-7c51-8a21-decd89f8993d",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_a53df2f5f4e714": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f576b-df62-75f0-b1a4-6f88ef6cc030",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
