@@ -7,6 +7,7 @@ import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { CharacterCount } from '@tiptap/extension-character-count'
 import Image from '@tiptap/extension-image'
+import { TableKit } from '@tiptap/extension-table'
 import { Markdown } from '@tiptap/markdown'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection as PmTextSelection } from '@tiptap/pm/state'
@@ -283,6 +284,11 @@ export function MarkdownEditor({
       searchExtension,
       dialogueHighlightExtension,
       workspaceImageExtension,
+      TableKit.configure({
+        table: {
+          resizable: false,
+        },
+      }),
       Markdown.configure({
         markedOptions: {
           gfm: true,
