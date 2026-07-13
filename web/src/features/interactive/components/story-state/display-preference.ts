@@ -1,6 +1,7 @@
 export const STORY_STATE_DISPLAY_STORAGE_KEY = 'nova.interactive.storyStateDisplay.v1'
 export const OPEN_DIRECTOR_STATE_EVENT = 'nova:interactive-open-director-state'
 
+/** Sets the main-stage default for each new turn; manual open/close state remains local to that turn. */
 export type StoryStateDisplayPreference = 'expanded' | 'collapsed' | 'director-only'
 
 export const DEFAULT_STORY_STATE_DISPLAY: StoryStateDisplayPreference = 'collapsed'

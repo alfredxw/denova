@@ -24,8 +24,6 @@ import {
 } from './model'
 
 const WORLD_STATE_TAB = '__world_state__'
-const COMPACT_FIELD_LIMIT = 3
-const COMPACT_METRIC_LIMIT = 6
 
 type ActorFieldEntry = ReturnType<typeof actorFieldEntries>[number]
 type BoundedNumericFieldEntry = ActorFieldEntry & {
@@ -45,19 +43,25 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
   const model = useMemo(() => buildStoryStateModel(snapshot), [snapshot])
   const actorTabs = useMemo(() => model.actors.map(([actorId, actor]) => ({ id: actorId, name: actorName(actorId, actor) })), [model.actors])
   const [selectedTab, setSelectedTab] = useState(actorTabs[0]?.id || WORLD_STATE_TAB)
-  const [collapsed, setCollapsed] = useState(false)
+  const opensByDefault = displayPreference === 'expanded'
+  const turnKey = `${snapshot?.story_id || ''}:${snapshot?.branch_id || ''}:${snapshot?.current_turn?.id || ''}`
+  const [open, setOpen] = useState(opensByDefault)
 
   useEffect(() => {
     if (selectedTab === WORLD_STATE_TAB || actorTabs.some((actor) => actor.id === selectedTab)) return
     setSelectedTab(actorTabs[0]?.id || WORLD_STATE_TAB)
   }, [actorTabs, selectedTab])
 
+  useEffect(() => {
+    setOpen(opensByDefault)
+  }, [opensByDefault, turnKey])
+
   if (!model.hasState || displayPreference === 'director-only') return null
 
-  const expanded = displayPreference === 'expanded'
+  const collapsed = !open
 
   return (
-    <Collapsible open={!collapsed} onOpenChange={(open) => setCollapsed(!open)} asChild>
+    <Collapsible open={open} onOpenChange={setOpen} asChild>
       <section
         aria-label={t('storyStage.state.current')}
         className="story-state-ledger mt-3 overflow-hidden rounded-xl border border-[var(--nova-border)] bg-[var(--story-state-canvas)]"
@@ -104,7 +108,6 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
                   actor={actor}
                   snapshot={snapshot}
                   changes={model.changes.filter((change) => change.actorId === actorId)}
-                  expanded={expanded}
                 />
               </TabsContent>
             ))}
@@ -112,7 +115,6 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
               <WorldLedger
                 facts={model.worldFacts}
                 changes={model.changes.filter((change) => !change.actorId)}
-                expanded={expanded}
               />
             </TabsContent>
           </Tabs>
@@ -187,27 +189,21 @@ function StateEntityTabs({ actors }: { actors: Array<{ id: string; name: string 
   )
 }
 
-function ActorLedger({ actor, snapshot, changes, expanded }: { actor: Record<string, unknown>; snapshot: Snapshot | null; changes: StoryStateChange[]; expanded: boolean }) {
+function ActorLedger({ actor, snapshot, changes }: { actor: Record<string, unknown>; snapshot: Snapshot | null; changes: StoryStateChange[] }) {
   const { t } = useTranslation()
   const template = actorTemplate(actor, snapshot?.actor_state_schema)
   const fields = actorFieldEntries(actor, template?.fields)
   const traits = visibleActorTraits(actor)
   const metricFields = fields.filter(isBoundedNumericFieldEntry)
   const detailFields = fields.filter((entry) => !isBoundedNumericFieldEntry(entry))
-  const visibleMetrics = expanded
-    ? metricFields
-    : compactEntries(metricFields, ({ field }) => actorFieldChanges(changes, field).length > 0, COMPACT_METRIC_LIMIT)
-  const visibleDetails = expanded
-    ? detailFields
-    : compactEntries(detailFields, ({ field }) => actorFieldChanges(changes, field).length > 0, COMPACT_FIELD_LIMIT)
 
   return (
     <div>
       {traits.length > 0 ? <ActorTraits traits={traits} /> : null}
-      {visibleMetrics.length > 0 ? <NumericStateMetrics entries={visibleMetrics} changes={changes} /> : null}
-      {visibleDetails.length > 0 ? (
+      {metricFields.length > 0 ? <NumericStateMetrics entries={metricFields} changes={changes} /> : null}
+      {detailFields.length > 0 ? (
         <div className="story-state-ledger__field-grid grid">
-          {visibleDetails.map(({ field, value }) => (
+          {detailFields.map(({ field, value }) => (
             <StateField
               key={field.id || field.path || field.name}
               label={field.name}
@@ -215,12 +211,11 @@ function ActorLedger({ actor, snapshot, changes, expanded }: { actor: Record<str
               fieldPath={actorFieldPaths(field)[0] || field.name}
               numeric={typeof value === 'number'}
               changes={actorFieldChanges(changes, field)}
-              compact={!expanded}
             />
           ))}
         </div>
       ) : null}
-      {visibleMetrics.length === 0 && visibleDetails.length === 0 ? <StateSectionEmpty label={t('storyStage.state.actorEmpty')} /> : null}
+      {metricFields.length === 0 && detailFields.length === 0 ? <StateSectionEmpty label={t('storyStage.state.actorEmpty')} /> : null}
     </div>
   )
 }
@@ -285,17 +280,14 @@ function ActorTraits({ traits }: { traits: ReturnType<typeof visibleActorTraits>
   )
 }
 
-function WorldLedger({ facts, changes, expanded }: { facts: Array<[string, unknown]>; changes: StoryStateChange[]; expanded: boolean }) {
+function WorldLedger({ facts, changes }: { facts: Array<[string, unknown]>; changes: StoryStateChange[] }) {
   const { t } = useTranslation()
-  const visibleFacts = expanded
-    ? facts
-    : compactEntries(facts, ([key]) => worldFieldChanges(changes, key).length > 0, COMPACT_FIELD_LIMIT)
 
-  if (visibleFacts.length === 0) return <StateSectionEmpty label={t('storyStage.state.worldEmpty')} />
+  if (facts.length === 0) return <StateSectionEmpty label={t('storyStage.state.worldEmpty')} />
 
   return (
     <div className="story-state-ledger__field-grid grid">
-      {visibleFacts.map(([key, value]) => (
+      {facts.map(([key, value]) => (
         <StateField
           key={key}
           label={humanizeStateKey(key)}
@@ -303,24 +295,20 @@ function WorldLedger({ facts, changes, expanded }: { facts: Array<[string, unkno
           fieldPath={key}
           numeric={typeof value === 'number'}
           changes={worldFieldChanges(changes, key)}
-          compact={!expanded}
         />
       ))}
     </div>
   )
 }
 
-function StateField({ label, value, fieldPath, numeric, changes, compact }: { label: string; value: unknown; fieldPath: string; numeric: boolean; changes: StoryStateChange[]; compact: boolean }) {
+function StateField({ label, value, fieldPath, numeric, changes }: { label: string; value: unknown; fieldPath: string; numeric: boolean; changes: StoryStateChange[] }) {
   return (
     <section
       data-state-field
-      className={cn(
-        'min-w-0 bg-[var(--story-state-panel)] px-3 transition-colors hover:bg-[var(--story-state-field-hover)]',
-        compact ? 'min-h-13 py-2' : 'min-h-15 py-2',
-      )}
+      className="min-h-15 min-w-0 bg-[var(--story-state-panel)] px-3 py-2 transition-colors hover:bg-[var(--story-state-field-hover)]"
     >
       <h4 className="mb-0.5 truncate text-[10px] font-medium text-[var(--nova-text-faint)]" title={label}>{label}</h4>
-      <div title={compact ? valueTitle(value) : undefined} className={cn(compact && 'line-clamp-2')}>
+      <div>
         <StateValue value={value} />
       </div>
       <InlineFieldChanges changes={changes} fieldPath={fieldPath} numeric={numeric} />
@@ -365,16 +353,6 @@ function StateSectionEmpty({ label }: { label: string }) {
       </EmptyHeader>
     </Empty>
   )
-}
-
-function compactEntries<T>(entries: T[], hasChange: (entry: T) => boolean, limit: number) {
-  if (entries.length <= limit) return entries
-  const selected = new Set(entries.filter(hasChange).slice(0, limit))
-  for (const entry of entries) {
-    if (selected.size >= limit) break
-    selected.add(entry)
-  }
-  return entries.filter((entry) => selected.has(entry))
 }
 
 function isBoundedNumericFieldEntry(entry: ActorFieldEntry): entry is BoundedNumericFieldEntry {
@@ -473,13 +451,4 @@ function turnStatusLabel(snapshot: Snapshot | null, t: ReturnType<typeof useTran
   if (snapshot?.current_turn?.state_status === 'pending') return t('storyStage.state.syncing', { turn })
   if (snapshot?.current_turn?.state_status === 'failed') return t('storyStage.state.failed', { turn })
   return t('storyStage.state.updatedTurn', { turn })
-}
-
-function valueTitle(value: unknown): string | undefined {
-  if (value === null || value === undefined || value === '') return undefined
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value)
-  if (Array.isArray(value) && value.every((item) => item === null || ['string', 'number', 'boolean'].includes(typeof item))) {
-    return value.map((item) => item === null ? '' : String(item)).filter(Boolean).join('、')
-  }
-  return undefined
 }

@@ -124,7 +124,8 @@ describe('StoryStage TurnResult choices', () => {
 })
 
 describe('StoryStage current state ledger', () => {
-  it('places the committed state after the latest prose with World State as a peer tab', () => {
+  it('places the collapsed state after the latest prose and reveals World State as a peer tab on demand', async () => {
+    const user = userEvent.setup()
     const turn: TurnEvent = {
       id: 'turn-state',
       parent_id: null,
@@ -153,6 +154,8 @@ describe('StoryStage current state ledger', () => {
     const prose = screen.getByText('远山压着一线沉云。')
     const state = screen.getByRole('region', { name: '当前状态' })
     expect(prose.compareDocumentPosition(state) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(state).queryByRole('tab', { name: '世界状态' })).not.toBeInTheDocument()
+    await user.click(within(state).getByRole('button', { name: '展开状态面板' }))
     expect(within(state).getByRole('tab', { name: '世界状态' })).toHaveAttribute('aria-selected', 'true')
     expect(within(state).getByText('暴雨将至')).toBeInTheDocument()
   })

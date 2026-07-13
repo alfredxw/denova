@@ -14,11 +14,11 @@ function visibleText(text: string) {
 }
 
 describe('StoryStateLedger', () => {
-  it('keeps Actor and World State as peer tabs in the collapsed stage summary', async () => {
+  it('keeps Actor and World State as peer tabs when the stage panel is open', async () => {
     render(
       <StoryStateLedger
         snapshot={storyStateSnapshot()}
-        displayPreference="collapsed"
+        displayPreference="expanded"
         onDisplayPreferenceChange={() => undefined}
       />,
     )
@@ -111,8 +111,8 @@ describe('StoryStateLedger', () => {
     expect(within(vitalityMetric as HTMLElement).getByText('-3')).toBeInTheDocument()
   })
 
-  it('keeps one fixed-height header while the Radix Collapsible content opens and closes', async () => {
-    render(
+  it('uses the collapsed preference as a single-line default and preserves manual expansion during the same turn', async () => {
+    const { rerender } = render(
       <StoryStateLedger
         snapshot={storyStateSnapshot()}
         displayPreference="collapsed"
@@ -123,15 +123,85 @@ describe('StoryStateLedger', () => {
     const region = screen.getByRole('region', { name: '当前状态' })
     const header = region.querySelector('header')
     expect(header).toHaveClass('h-11')
-
-    await userEvent.click(screen.getByRole('button', { name: '折叠状态面板' }))
+    expect(region).toHaveAttribute('data-state', 'closed')
     expect(screen.queryByRole('tablist', { name: '当前状态对象' })).not.toBeInTheDocument()
-    expect(region.querySelector('header')).toBe(header)
-    expect(region.querySelector('header')).toHaveClass('h-11')
 
     await userEvent.click(screen.getByRole('button', { name: '展开状态面板' }))
     expect(screen.getByRole('tablist', { name: '当前状态对象' })).toBeInTheDocument()
     expect(region.querySelector('header')).toBe(header)
+
+    const sameTurnSnapshot = storyStateSnapshot()
+    if (sameTurnSnapshot.current_turn) sameTurnSnapshot.current_turn.state_status = 'pending'
+    rerender(
+      <StoryStateLedger
+        snapshot={sameTurnSnapshot}
+        displayPreference="collapsed"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+    expect(screen.getByRole('tablist', { name: '当前状态对象' })).toBeInTheDocument()
+
+    rerender(
+      <StoryStateLedger
+        snapshot={storyStateSnapshot('turn-2')}
+        displayPreference="collapsed"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+    expect(screen.queryByRole('tablist', { name: '当前状态对象' })).not.toBeInTheDocument()
+    expect(region.querySelector('header')).toBe(header)
+  })
+
+  it('restores the expanded default only when a new turn begins', async () => {
+    const { rerender } = render(
+      <StoryStateLedger
+        snapshot={storyStateSnapshot()}
+        displayPreference="expanded"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+
+    expect(screen.getByRole('tablist', { name: '当前状态对象' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '折叠状态面板' }))
+    expect(screen.queryByRole('tablist', { name: '当前状态对象' })).not.toBeInTheDocument()
+
+    rerender(
+      <StoryStateLedger
+        snapshot={storyStateSnapshot()}
+        displayPreference="expanded"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+    expect(screen.queryByRole('tablist', { name: '当前状态对象' })).not.toBeInTheDocument()
+
+    rerender(
+      <StoryStateLedger
+        snapshot={storyStateSnapshot('turn-2')}
+        displayPreference="expanded"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+    expect(screen.getByRole('tablist', { name: '当前状态对象' })).toBeInTheDocument()
+  })
+
+  it('applies a changed default to the current panel immediately', () => {
+    const { rerender } = render(
+      <StoryStateLedger
+        snapshot={storyStateSnapshot()}
+        displayPreference="collapsed"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+
+    expect(screen.queryByRole('tablist', { name: '当前状态对象' })).not.toBeInTheDocument()
+    rerender(
+      <StoryStateLedger
+        snapshot={storyStateSnapshot()}
+        displayPreference="expanded"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+    expect(screen.getByRole('tablist', { name: '当前状态对象' })).toBeInTheDocument()
   })
 
   it('can hide the stage ledger while keeping the same snapshot available to the Director Console', () => {
@@ -157,14 +227,16 @@ describe('StoryStateLedger', () => {
     )
 
     await userEvent.click(screen.getByRole('button', { name: '状态显示偏好' }))
-    await userEvent.click(screen.getByText('展开'))
+    expect(screen.getByText('默认折叠')).toBeInTheDocument()
+    expect(screen.getByText('仅导演台')).toBeInTheDocument()
+    await userEvent.click(screen.getByText('默认展开'))
     expect(onChange).toHaveBeenCalledWith('expanded')
   })
 })
 
-function storyStateSnapshot(): Snapshot {
+function storyStateSnapshot(turnId = 'turn-1'): Snapshot {
   const turn: TurnEvent = {
-    id: 'turn-1',
+    id: turnId,
     parent_id: null,
     branch_id: 'main',
     ts: '2026-07-13T00:00:00Z',
