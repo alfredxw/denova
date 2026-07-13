@@ -1,0 +1,30 @@
+CHANGELOG.md
+  s_3b77c4dce4d3d9::t_0d1d2a9e0295c5 13-14
+web/src/components/workbench/BookSettingsShortcuts.test.tsx
+  s_3b77c4dce4d3d9::t_e87bf9ae139723 35
+web/src/components/workbench/BookSettingsShortcuts.tsx
+  s_3b77c4dce4d3d9::t_c920d6b8ac3aed 140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "412092a4cda017f78286110ab15b632d28c9194b",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_3b77c4dce4d3d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f591e-a9a9-70d0-ab75-ae9137c3af24",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
