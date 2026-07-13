@@ -1,0 +1,72 @@
+CHANGELOG.md
+  s_3b77c4dce4d3d9::t_290053aef534ba 11-18
+internal/agent/chat_display.go
+  s_a53df2f5f4e714::t_cbd0e3f8b2f91c 103
+internal/agent/chat_display_test.go
+  s_a53df2f5f4e714::t_09102f56d7c37c 63-87
+internal/agent/chat_stream.go
+  s_a53df2f5f4e714::t_928335d8642cf9 15-18,30-32,56-63,70-72,75-79,149-157,186-196
+internal/agent/chat_stream_test.go
+  s_a53df2f5f4e714::t_816800a3a54c86 1-59
+web/src/components/workbench/BookSettingsShortcuts.test.tsx
+  s_3b77c4dce4d3d9::t_3be0780e58168c 69-96
+web/src/components/workbench/BookSettingsShortcuts.tsx
+  s_3b77c4dce4d3d9::t_3daac6472565a9 5,22,33,45,50,54,58,77-85,124-125,145,147,158-169,178,188,206-215,218,220-221,223
+web/src/components/workbench/ModeRouter.tsx
+  s_3b77c4dce4d3d9::t_785a11f04ee9f8 403,738,749,784
+web/src/features/interactive/components/NewStorySetupPanel.test.tsx
+  s_3b77c4dce4d3d9::t_7a75b95c584a21 2-3,6-14,22-61
+web/src/features/interactive/components/NewStorySetupPanel.tsx
+  s_3b77c4dce4d3d9::t_0db30488b69845 1-3,8-10,12,24-29,43,45-55,96-101,106-109,126-133,137-141,145-195
+web/src/features/interactive/components/StoryStage.test.tsx
+  s_a53df2f5f4e714::t_d2a26fc200737d 574-609
+web/src/features/interactive/components/StoryStage.tsx
+  s_a53df2f5f4e714::t_3b12e063040a90 627-633
+web/src/i18n/locales/en-US/planning.ts
+  s_3b77c4dce4d3d9::t_4a3bdde5f6ee3b 11-14
+web/src/i18n/locales/en-US/storyPicker.ts
+  s_9afe1f2564b5f5::t_f61f8879dc747a 12-13
+web/src/i18n/locales/zh-CN/planning.ts
+  s_3b77c4dce4d3d9::t_c7ef368163e9a4 11-14
+web/src/i18n/locales/zh-CN/storyPicker.ts
+  s_9afe1f2564b5f5::t_49297d1823b335 12-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "74fc9feee72b4667179abe29cd2a0154a9427e41",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_3b77c4dce4d3d9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f591e-a9a9-70d0-ab75-ae9137c3af24",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_9afe1f2564b5f5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5726-da09-7001-bdb9-d45d97771d0c",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_a53df2f5f4e714": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f576b-df62-75f0-b1a4-6f88ef6cc030",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
