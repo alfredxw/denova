@@ -1,0 +1,60 @@
+CHANGELOG.md
+  s_a53df2f5f4e714::t_60260e823fc06d 11-16,23-24,44-45
+internal/agent/chat.go
+  s_a53df2f5f4e714::t_e2c2ce7f998553 497,525
+internal/agent/chat_stream.go
+  s_a53df2f5f4e714::t_ab92b2f4cc3ce2 22,70-74,79-81,179,192,246-253
+internal/agent/chat_stream_test.go
+  s_a53df2f5f4e714::t_759cf0663bc4f4 35,53-120
+internal/agent/conversation.go
+  s_a53df2f5f4e714::t_bff3bb916ee4ab 31-36
+internal/agent/plan_protocol_test.go
+  s_a53df2f5f4e714::t_6ac8be59ca7ced 155
+internal/agent/subagent_test.go
+  s_a53df2f5f4e714::t_66116601dbb27d 254,265
+internal/app/interactive_conversation.go
+  s_a53df2f5f4e714::t_09c586a5da86cd 270-278
+internal/app/interactive_conversation_test.go
+  s_a53df2f5f4e714::t_abc73aeb96ef5b 37-39,61-63
+web/src/components/Chat/AgentMessageList.test.tsx
+  s_a53df2f5f4e714::t_32b263b63172b0 17-50
+web/src/components/Chat/AgentMessageList.tsx
+  s_a53df2f5f4e714::t_fac00f085a90f8 89-92
+web/src/components/ui/dialog.test.tsx
+  s_a53df2f5f4e714::t_5ccb3c069ae6dc 21-33
+web/src/components/ui/dialog.tsx
+  s_a53df2f5f4e714::t_054becdce57089 70
+web/src/components/ui/input-group.tsx
+  s_a53df2f5f4e714::t_34a5cdec898177 7,100-115,120
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_a53df2f5f4e714::t_5e6d3b140eaa09 869-880,944-977
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_a53df2f5f4e714::t_660609d5508815 6,8,11,13,58,104-110,112,131-136,141-164,201,237,242-252,1386-1394,1397-1492,1494,1496-1506,1510,1525,1763,1767-1768,1807
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_a53df2f5f4e714::t_3a412950229c43 352-359
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_a53df2f5f4e714::t_02dde3909b4ed0 352-359
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "de4a7ff7ce377a753e3e41ef883791fd69f275f6",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_a53df2f5f4e714": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f576b-df62-75f0-b1a4-6f88ef6cc030",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
