@@ -400,6 +400,7 @@ export function ModeRouter(props: ModeRouterProps) {
             chapterPlans={summary?.chapter_plans || []}
             selectedFile={selectedFile}
             onSelectFile={onSelectFile}
+            onRequestBookSettingCreate={(item) => requestSkillsAgent(t('planning.bookSettingCreatePrompt', item))}
             onSetChapterConfirmed={onSetChapterConfirmed}
           />
         ) : sidebarView === 'search' ? (
@@ -734,6 +735,7 @@ function ChapterOutline({
   chapterPlans,
   selectedFile,
   onSelectFile,
+  onRequestBookSettingCreate,
   onSetChapterConfirmed,
 }: {
   workspace: string
@@ -744,6 +746,7 @@ function ChapterOutline({
   chapterPlans: DocumentPreview[]
   selectedFile: string | null
   onSelectFile: (path: string) => void | Promise<void>
+  onRequestBookSettingCreate: (item: { path: string; title: string }) => void
   onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
 }) {
   const { t } = useTranslation()
@@ -778,7 +781,7 @@ function ChapterOutline({
 
   return (
     <div className="space-y-3">
-      <BookSettingsShortcuts workspace={workspace} tree={tree} outline={outline} ideas={ideas} chapterPlans={chapterPlans} selectedFile={selectedFile} onSelectFile={onSelectFile} />
+      <BookSettingsShortcuts workspace={workspace} tree={tree} outline={outline} ideas={ideas} chapterPlans={chapterPlans} selectedFile={selectedFile} onSelectFile={onSelectFile} onRequestCreate={onRequestBookSettingCreate} />
 
       <section className="space-y-1.5">
         {chapterPlans.length > 0 ? (

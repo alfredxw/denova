@@ -571,6 +571,42 @@ describe('StoryStage streaming rendering', () => {
     }
   })
 
+  it('moves a streamed tool preamble from narrative into thinking immediately', async () => {
+    const user = userEvent.setup()
+    const stream = controllableInteractiveStream()
+
+    try {
+      sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+      render(<StoryStageHarness />)
+
+      await user.type(screen.getByPlaceholderText('你要做什么？'), '继续前进')
+      await user.click(screen.getByRole('button', { name: '发送' }))
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
+
+      act(() => {
+        stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '我先检查资料，再开始写正文。' }) })
+      })
+      await waitFor(() => {
+        const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
+        expect(liveMessages.some((message) => message.role === 'assistant' && message.streaming_target_content === '我先检查资料，再开始写正文。')).toBe(true)
+      })
+      expect(screen.queryByRole('button', { name: /思考过程/ })).not.toBeInTheDocument()
+
+      act(() => {
+        stream.enqueue({ event: 'interactive_content_reclassified', data: JSON.stringify({ content: '我先检查资料，再开始写正文。' }) })
+        stream.enqueue({ event: 'tool_call', data: JSON.stringify({ id: 'call-lore', name: 'list_lore_items', args: '{}' }) })
+      })
+
+      const trace = await screen.findByRole('button', { name: /思考过程.*1 次工具调用/ })
+      expect(trace).toBeInTheDocument()
+      expect(screen.getAllByText('我先检查资料，再开始写正文。')).toHaveLength(1)
+      const liveMessages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
+      expect(liveMessages.some((message) => message.role === 'assistant' && (message.streaming_target_content || message.content))).toBe(false)
+    } finally {
+      stream.close()
+    }
+  })
+
   it('groups live thinking and tool calls into one trace block and collapses them after completion', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()

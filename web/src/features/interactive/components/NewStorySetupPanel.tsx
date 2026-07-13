@@ -1,11 +1,15 @@
-import { Boxes, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Brain, ChevronDown, Image, Loader2, Package, Scale, Sparkles, UserRound } from 'lucide-react'
+import type { ElementType } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { getActorStates, getEventPackages, getRuleSystems, getStoryMemoryStructures } from '../api'
 import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, type StoryCreateInput } from '../opening'
-import type { ImagePreset, StoryDirector, StoryDirectorModuleRefs, StorySummary, Teller } from '../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryMemoryStructureModule, StorySummary, Teller } from '../types'
 
 interface NewStorySetupPanelProps {
   stories: StorySummary[]
@@ -17,12 +21,12 @@ interface NewStorySetupPanelProps {
   onCreate: (input: StoryCreateInput) => void | Promise<void>
 }
 
-const moduleFields: Array<{ id: keyof StoryDirectorModuleRefs; disabled: keyof StoryDirectorModuleRefs; label: string }> = [
-  { id: 'narrative_style_id', disabled: 'narrative_style_disabled', label: 'narrativeStyle' },
-  { id: 'rule_system_id', disabled: 'rule_system_disabled', label: 'ruleSystem' },
-  { id: 'actor_state_id', disabled: 'actor_state_disabled', label: 'actorState' },
-  { id: 'memory_structure_id', disabled: 'memory_structure_disabled', label: 'memoryStructure' },
-  { id: 'image_preset_id', disabled: 'image_preset_disabled', label: 'imagePreset' },
+const moduleFields: Array<{ id: keyof StoryDirectorModuleRefs; disabled: keyof StoryDirectorModuleRefs; label: string; icon: ElementType }> = [
+  { id: 'narrative_style_id', disabled: 'narrative_style_disabled', label: 'narrativeStyle', icon: Sparkles },
+  { id: 'rule_system_id', disabled: 'rule_system_disabled', label: 'ruleSystem', icon: Scale },
+  { id: 'actor_state_id', disabled: 'actor_state_disabled', label: 'actorState', icon: UserRound },
+  { id: 'memory_structure_id', disabled: 'memory_structure_disabled', label: 'memoryStructure', icon: Brain },
+  { id: 'image_preset_id', disabled: 'image_preset_disabled', label: 'imagePreset', icon: Image },
 ]
 
 export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, story, onCancel, onCreate }: NewStorySetupPanelProps) {
@@ -34,11 +38,21 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
   const [directorId, setDirectorId] = useState(initialDirector?.id || 'default')
   const [replyTargetChars, setReplyTargetChars] = useState(String(story?.reply_target_chars || DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS))
   const [moduleRefs, setModuleRefs] = useState<StoryDirectorModuleRefs>(() => ({ ...(story?.module_refs || initialDirector?.module_refs || {}) }))
-  const [customizing, setCustomizing] = useState(false)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
+  const [moduleCatalog, setModuleCatalog] = useState<DirectorModuleCatalog>({ eventPackages: [], ruleSystems: [], actorStates: [], memoryStructures: [] })
   const director = directors.find((item) => item.id === directorId) || defaultDirector
-  const moduleOptions = useMemo(() => collectModuleOptions(directors, tellers, imagePresets), [directors, imagePresets, tellers])
+  const moduleOptions = useMemo(() => collectModuleOptions(directors, tellers, imagePresets, moduleCatalog), [directors, imagePresets, moduleCatalog, tellers])
+
+  useEffect(() => {
+    let cancelled = false
+    void Promise.all([getEventPackages(), getRuleSystems(), getActorStates(), getStoryMemoryStructures()])
+      .then(([eventPackages, ruleSystems, actorStates, memoryStructures]) => {
+        if (!cancelled) setModuleCatalog({ eventPackages, ruleSystems, actorStates, memoryStructures })
+      })
+      .catch((reason) => console.error('[new-story-setup] 加载导演模块方案预设失败', reason))
+    return () => { cancelled = true }
+  }, [])
 
   const selectDirector = (id: string) => {
     const next = directors.find((item) => item.id === id)
@@ -79,22 +93,21 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
           <Field label={t('storyPicker.setup.name')}><Input value={title} maxLength={80} onChange={(event) => setTitle(event.target.value)} className="nova-field" /></Field>
           <Field label={t('storyPicker.setup.brief')} hint={t('storyPicker.setup.briefHint')}><Textarea autoResize value={origin} maxLength={4000} onChange={(event) => setOrigin(event.target.value)} className="nova-field min-h-28 resize-y" placeholder={t('storyPicker.originPlaceholder')} /></Field>
           <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
-            <Field label={t('storyPicker.storyDirector')}><select className="nova-field h-10 w-full rounded-[var(--nova-radius)] px-3 text-sm" value={directorId} onChange={(event) => selectDirector(event.target.value)}>{directors.map((item) => <option key={item.id} value={item.id}>{item.name || item.id}</option>)}</select></Field>
+            <Field label={t('storyPicker.storyDirector')}>
+              <Select value={directorId} onValueChange={selectDirector}>
+                <SelectTrigger className="nova-field h-10 w-full text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent position="popper" className="nova-panel border text-[var(--nova-text)]">{directors.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || item.id}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
             <Field label={t('storyPicker.replyTargetChars')}><Input type="number" min={1} value={replyTargetChars} onChange={(event) => setReplyTargetChars(event.target.value)} className="nova-field" /></Field>
           </div>
 
           <section className="border-t border-[var(--nova-border)] pt-5">
-            <div className="flex items-start justify-between gap-4">
-              <div><h3 className="text-sm font-medium text-[var(--nova-text)]">{t('storyPicker.setup.modules')}</h3><p className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('storyPicker.setup.modulesHint', { director: director?.name || directorId })}</p></div>
-              <Button type="button" variant="ghost" size="xs" className="shrink-0 gap-1.5" onClick={() => setCustomizing((value) => !value)}><Boxes className="h-3.5 w-3.5" />{t('storyPicker.setup.customize')}{customizing ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}</Button>
+            <div><h3 className="text-sm font-medium text-[var(--nova-text)]">{t('storyPicker.setup.modules')}</h3><p className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('storyPicker.setup.modulesHint', { director: director?.name || directorId })}</p></div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {moduleFields.map((field) => <ModuleSelectCard key={field.label} field={field} refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleOptions[field.id]} onChange={setModuleRefs} t={t} />)}
+              <EventPackagesCard refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleCatalog.eventPackages.map(moduleOption)} onChange={setModuleRefs} t={t} />
             </div>
-            <div className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-              {moduleFields.map((field) => <ModuleItem key={field.label} label={t(`storyPicker.setup.module.${field.label}`)} value={moduleLabel(moduleRefs, field, moduleOptions, t)} />)}
-              <ModuleItem label={t('storyPicker.setup.module.eventPackages')} value={moduleRefs.event_packages_disabled ? t('storyPicker.setup.disabled') : moduleRefs.event_package_ids?.join(', ') || t('storyPicker.setup.default')} />
-            </div>
-            {customizing ? <div className="mt-4 grid gap-3 border-t border-[var(--nova-border-soft)] pt-4 sm:grid-cols-2">{moduleFields.map((field) => (
-              <label key={field.label} className="text-[11px] text-[var(--nova-text-faint)]"><span className="mb-1 block">{t(`storyPicker.setup.module.${field.label}`)}</span><select className="nova-field h-9 w-full rounded-[var(--nova-radius)] px-2 text-xs" value={moduleRefs[field.disabled] ? '__disabled' : String(moduleRefs[field.id] || '')} onChange={(event) => setModuleRefs((current) => ({ ...current, [field.disabled]: event.target.value === '__disabled', [field.id]: event.target.value === '__disabled' ? current[field.id] : event.target.value }))}><option value="">{t('storyPicker.setup.default')}</option><option value="__disabled">{t('storyPicker.setup.disabled')}</option>{moduleOptions[field.id].map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
-            ))}</div> : null}
           </section>
         </div>
 
@@ -106,18 +119,77 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) { return <label className="block text-xs text-[var(--nova-text-muted)]"><span className="mb-1.5 block font-medium text-[var(--nova-text)]">{label}</span>{children}{hint ? <span className="mt-1 block text-[11px] leading-5 text-[var(--nova-text-faint)]">{hint}</span> : null}</label> }
-function ModuleItem({ label, value }: { label: string; value: string }) { return <div className="min-w-0 border-l border-[var(--nova-border)] pl-3"><div className="text-[10px] text-[var(--nova-text-faint)]">{label}</div><div className="mt-0.5 truncate text-xs text-[var(--nova-text-muted)]" title={value}>{value}</div></div> }
 function normalizeReplyTargetChars(value: string) { const parsed = Number(value); return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS }
 function defaultStoryTitle(stories: StorySummary[], t: (key: string, options?: Record<string, unknown>) => string) { return stories.length === 0 ? t('storyPicker.firstTitle') : t('storyPicker.numberedTitle', { number: stories.length + 1 }) }
 
 type ModuleOptionMap = Record<keyof StoryDirectorModuleRefs, Array<{ id: string; label: string }>>
-function collectModuleOptions(directors: StoryDirector[], tellers: Teller[], imagePresets: ImagePreset[]): ModuleOptionMap {
+interface DirectorModuleCatalog {
+  eventPackages: EventPackageModule[]
+  ruleSystems: RuleSystemModule[]
+  actorStates: ActorStateModule[]
+  memoryStructures: StoryMemoryStructureModule[]
+}
+
+function collectModuleOptions(directors: StoryDirector[], tellers: Teller[], imagePresets: ImagePreset[], catalog: DirectorModuleCatalog): ModuleOptionMap {
   const map = {} as ModuleOptionMap
   const keys: Array<keyof StoryDirectorModuleRefs> = ['narrative_style_id', 'rule_system_id', 'actor_state_id', 'memory_structure_id', 'image_preset_id']
   keys.forEach((key) => { map[key] = [] })
-  map.narrative_style_id = tellers.map((item) => ({ id: item.id, label: item.name || item.id }))
-  map.image_preset_id = imagePresets.map((item) => ({ id: item.id, label: item.name || item.id }))
+  map.narrative_style_id = tellers.map(moduleOption)
+  map.rule_system_id = catalog.ruleSystems.map(moduleOption)
+  map.actor_state_id = catalog.actorStates.map(moduleOption)
+  map.memory_structure_id = catalog.memoryStructures.map(moduleOption)
+  map.image_preset_id = imagePresets.map(moduleOption)
   for (const director of directors) for (const key of ['rule_system_id', 'actor_state_id', 'memory_structure_id'] as const) { const id = director.module_refs?.[key]; if (typeof id === 'string' && id && !map[key].some((item) => item.id === id)) map[key].push({ id, label: id }) }
   return map
 }
-function moduleLabel(refs: StoryDirectorModuleRefs, field: (typeof moduleFields)[number], options: ModuleOptionMap, t: (key: string) => string) { if (refs[field.disabled]) return t('storyPicker.setup.disabled'); const id = refs[field.id]; if (typeof id !== 'string' || !id) return t('storyPicker.setup.default'); return options[field.id].find((item) => item.id === id)?.label || id }
+
+function moduleOption(item: { id: string; name: string }) { return { id: item.id, label: item.name || item.id } }
+
+function ModuleSelectCard({ field, refs, directorRefs, options, onChange, t }: { field: (typeof moduleFields)[number]; refs: StoryDirectorModuleRefs; directorRefs: StoryDirectorModuleRefs; options: Array<{ id: string; label: string }>; onChange: React.Dispatch<React.SetStateAction<StoryDirectorModuleRefs>>; t: (key: string, options?: Record<string, unknown>) => string }) {
+  const Icon = field.icon
+  const currentID = typeof refs[field.id] === 'string' ? String(refs[field.id]) : ''
+  const directorID = typeof directorRefs[field.id] === 'string' ? String(directorRefs[field.id]) : ''
+  const value = refs[field.disabled] ? '__disabled' : currentID === directorID ? '__default' : currentID || '__default'
+  const label = t(`storyPicker.setup.module.${field.label}`)
+  const visibleOptions = [...options]
+  for (const id of [directorID, currentID]) if (id && !visibleOptions.some((option) => option.id === id)) visibleOptions.push({ id, label: id })
+  const directorLabel = visibleOptions.find((option) => option.id === directorID)?.label || directorID || t('storyPicker.setup.default')
+  return (
+    <div className="min-w-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3 transition-colors focus-within:border-[var(--nova-field-focus-border)]">
+      <div className="mb-2 flex items-center gap-2 text-[11px] font-medium text-[var(--nova-text-muted)]"><Icon className="h-3.5 w-3.5 text-[var(--nova-accent)]" /><span>{label}</span></div>
+      <Select value={value} onValueChange={(next) => onChange((current) => next === '__default' ? { ...current, [field.disabled]: Boolean(directorRefs[field.disabled]), [field.id]: directorID } : next === '__disabled' ? { ...current, [field.disabled]: true } : { ...current, [field.disabled]: false, [field.id]: next })}>
+        <SelectTrigger size="sm" aria-label={label} className="nova-field h-8 w-full border-transparent bg-[var(--nova-surface)] px-2 text-xs"><SelectValue /></SelectTrigger>
+        <SelectContent position="popper" className="nova-panel border text-[var(--nova-text)]">
+          <SelectItem value="__default">{t('storyPicker.setup.defaultWithValue', { value: directorLabel })}</SelectItem>
+          <SelectItem value="__disabled">{t('storyPicker.setup.disabled')}</SelectItem>
+          {visibleOptions.map((option) => <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
+
+function EventPackagesCard({ refs, directorRefs, options, onChange, t }: { refs: StoryDirectorModuleRefs; directorRefs: StoryDirectorModuleRefs; options: Array<{ id: string; label: string }>; onChange: React.Dispatch<React.SetStateAction<StoryDirectorModuleRefs>>; t: (key: string, options?: Record<string, unknown>) => string }) {
+  const selected = refs.event_package_ids || []
+  const available = [...options]
+  for (const id of [...(directorRefs.event_package_ids || []), ...selected]) if (!available.some((option) => option.id === id)) available.push({ id, label: id })
+  const inherited = !refs.event_packages_disabled && arraysEqual(selected, directorRefs.event_package_ids || [])
+  const selectedLabel = selected.map((id) => available.find((option) => option.id === id)?.label || id).join(', ') || t('storyPicker.setup.none')
+  const label = refs.event_packages_disabled ? t('storyPicker.setup.disabled') : inherited ? t('storyPicker.setup.defaultWithValue', { value: selectedLabel }) : selectedLabel
+  return (
+    <div className="min-w-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3 transition-colors focus-within:border-[var(--nova-field-focus-border)]">
+      <div className="mb-2 flex items-center gap-2 text-[11px] font-medium text-[var(--nova-text-muted)]"><Package className="h-3.5 w-3.5 text-[var(--nova-accent)]" /><span>{t('storyPicker.setup.module.eventPackages')}</span></div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild><Button type="button" variant="outline" size="sm" aria-label={t('storyPicker.setup.module.eventPackages')} className="nova-field h-8 w-full justify-between border-transparent bg-[var(--nova-surface)] px-2 text-xs font-normal"><span className="min-w-0 truncate">{label}</span><ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" /></Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="nova-panel w-64 border text-[var(--nova-text)]">
+          <DropdownMenuItem onSelect={() => onChange((current) => ({ ...current, event_packages_disabled: Boolean(directorRefs.event_packages_disabled), event_package_ids: [...(directorRefs.event_package_ids || [])] }))}>{t('storyPicker.setup.default')}</DropdownMenuItem>
+          <DropdownMenuCheckboxItem checked={Boolean(refs.event_packages_disabled)} onCheckedChange={(checked) => onChange((current) => ({ ...current, event_packages_disabled: checked === true }))}>{t('storyPicker.setup.disabled')}</DropdownMenuCheckboxItem>
+          {available.length ? <DropdownMenuSeparator /> : null}
+          {available.map((option) => <DropdownMenuCheckboxItem key={option.id} checked={!refs.event_packages_disabled && selected.includes(option.id)} onCheckedChange={(checked) => onChange((current) => ({ ...current, event_packages_disabled: false, event_package_ids: checked ? Array.from(new Set([...(current.event_package_ids || []), option.id])) : (current.event_package_ids || []).filter((item) => item !== option.id) }))}>{option.label}</DropdownMenuCheckboxItem>)}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+function arraysEqual(a: string[], b: string[]) { return a.length === b.length && a.every((value, index) => value === b[index]) }

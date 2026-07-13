@@ -60,6 +60,31 @@ func TestDisplayRecorderKeepsWriteFileContentArgs(t *testing.T) {
 	}
 }
 
+func TestDisplayRecorderPersistsReclassifiedInteractiveContentAsThinking(t *testing.T) {
+	appender := &displayRecorderTestAppender{}
+	recorder := &displayEventRecorder{
+		appender:       appender,
+		pendingToolIDs: map[string]string{},
+	}
+
+	recorder.Record(Event{Type: "interactive_content_reclassified", Data: map[string]interface{}{
+		"agent_kind": AgentKindInteractiveStory,
+		"content":    "我先检查资料，再开始写正文。",
+	}})
+	recorder.Record(Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": AgentKindInteractiveStory,
+		"id":         "call-lore",
+		"name":       "list_lore_items",
+	}})
+
+	if len(appender.events) != 2 {
+		t.Fatalf("events = %#v", appender.events)
+	}
+	if appender.events[0].Role != "thinking" || appender.events[0].Content != "我先检查资料，再开始写正文。" {
+		t.Fatalf("reclassified content was not persisted as thinking: %#v", appender.events[0])
+	}
+}
+
 func TestDisplayRecorderAppendsStreamingWriteFileContent(t *testing.T) {
 	appender := &displayRecorderTestAppender{}
 	recorder := &displayEventRecorder{
