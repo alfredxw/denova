@@ -1,0 +1,88 @@
+CHANGELOG.md
+  s_7ee26851291c27::t_648f301741d37a 11-14,79-82
+internal/agent/builder.go
+  s_65ab9979d7c5c6::t_3c9cafbe89266d 59-64,72,74,150,201,405,409-435
+internal/agent/chat.go
+  s_7ee26851291c27::t_4d6820d839a4f3 20,415-418,503-506
+internal/agent/chat_stream.go
+  s_65ab9979d7c5c6::t_9f0543e8f3c150 40-43
+internal/agent/chat_stream_test.go
+  s_65ab9979d7c5c6::t_919b8352621a24 121-151
+internal/agent/context_limit_policy_test.go
+  s_7ee26851291c27::t_d776f8b783a334 1-36
+internal/agent/interactive_director.go
+  s_7ee26851291c27::t_4430d036627c2d 17,23,78
+internal/agent/interactive_memory_tools.go
+  s_65ab9979d7c5c6::t_af08c78acd4bdd 38-39,242,246,250
+internal/agent/interactive_memory_tools_test.go
+  s_65ab9979d7c5c6::t_8d69725fa17de9 241,246,272,277-306
+internal/agent/interactive_turn_protocol.go
+  s_65ab9979d7c5c6::t_5d1ceed82a43f3 1-124
+internal/agent/interactive_turn_protocol_integration_test.go
+  s_65ab9979d7c5c6::t_ed54b599ef9056 1-191
+internal/agent/interactive_turn_protocol_test.go
+  s_65ab9979d7c5c6::t_25bea6013801ee 1-86
+internal/agent/system_prompt.go
+  s_65ab9979d7c5c6::t_63a33d7dd4f82d 127
+internal/app/config_manager_resource_skills.go
+  s_7ee26851291c27::t_1e27282ce7c80e 15-16
+internal/app/context_limit_policy_test.go
+  s_7ee26851291c27::t_40a0012ef5798a 1-27
+internal/app/interactive_agent_test.go
+  s_65ab9979d7c5c6::t_63f6df8e1a8777 927,932-934
+internal/app/interactive_app_service.go
+  s_65ab9979d7c5c6::t_767345c6a0d638 1004
+internal/app/interactive_conversation.go
+  s_7ee26851291c27::t_f19cfe8f13e869 45,232,234,238,241-244,248-250,252-261,263,265,267-274,283,555,884-903,1352
+internal/app/interactive_conversation_test.go
+  s_65ab9979d7c5c6::t_b061c5b0c55f54 15,36-37,48-53,55-64,69-74
+internal/app/interactive_lore_context.go
+  s_7ee26851291c27::t_98cf9ba977b85d 13
+internal/app/interactive_state_schema.go
+  s_7ee26851291c27::t_d57c9e92fd02c6 20
+internal/app/interactive_turn_protocol.go
+  s_65ab9979d7c5c6::t_77cf585b7ba3cb 1-54
+internal/interactive/director_lore_context.go
+  s_7ee26851291c27::t_70d0cf95281405 17
+internal/interactive/director_plan.go
+  s_7ee26851291c27::t_552adfd6aa06b1 33-36
+internal/interactive/state_schema_proposal.go
+  s_7ee26851291c27::t_40f06d5f96256c 14-15
+internal/interactive/turn_submission.go
+  s_65ab9979d7c5c6::t_cae033ca497af8 1-251
+internal/interactive/turn_submission_test.go
+  s_65ab9979d7c5c6::t_0ebe34aab9b5ee 1-109
+internal/prompts/interactive.go
+  s_65ab9979d7c5c6::t_9754c732eba10d 134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d7aadb8013cd24df4e34182b796140f615fa531f",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_65ab9979d7c5c6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5a80-67b0-70c0-903b-9a649cbe2629",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_7ee26851291c27": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5af1-3b17-7cb1-a4c6-e6f57361a63d",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
