@@ -1,0 +1,91 @@
+AGENTS.md
+  h_beed6209b76699 27 gitai:{"mixed_line_ranges":[{"Single":27}],"operations":[]}
+README.en.md
+  s_8ac8e15845db66::t_9edff7a9e2a5f1 79-80
+README.md
+  s_8ac8e15845db66::t_e59f616a365a44 79-80
+web/src/components/Chat/AgentMessageList.test.tsx
+  s_4b067811ce7c41::t_d1601e46dd7736 17-34
+web/src/components/Chat/AgentMessageList.tsx
+  s_4b067811ce7c41::t_19090889fdd764 2,37-38,82,85,107-108,126-127,255-263,420,450
+web/src/components/ui/dropdown-menu.tsx
+  s_bcf10a135a9111::t_423bab0c0b0142 45-50,168
+web/src/components/ui/empty.tsx
+  s_bcf10a135a9111::t_7dfdaedf208148 1-104
+web/src/features/interactive/components/InteractiveLayout.tsx
+  s_4b067811ce7c41::t_6784ac0491b7f3 16-21,53,237-250,307,321-322,350,369
+web/src/features/interactive/components/MemoryPanel.tsx
+  s_4b067811ce7c41::t_2d8571137342e5 10,22-23,28,50-55,147-149,174-175
+web/src/features/interactive/components/StoryStage.test.tsx
+  s_4b067811ce7c41::t_5eddaad9fe97f9 126-160
+web/src/features/interactive/components/StoryStage.tsx
+  s_4b067811ce7c41::t_59c50ddc5acf2e 40-42,62,73-74,96,100,1188-1196,2036-2037
+web/src/features/interactive/components/director-console/DirectorConsole.tsx
+  s_4b067811ce7c41::t_1e9371c110d904 16,31-32,69-70,298
+web/src/features/interactive/components/director-console/StateView.tsx
+  s_4b067811ce7c41::t_ffa559e3062aa7 4-17,22,25,40-46,104,106,178,231
+web/src/features/interactive/components/story-state/StateDisplayPreferenceMenu.tsx
+  s_bcf10a135a9111::t_a57adf12641af5 1-45
+web/src/features/interactive/components/story-state/display-preference.test.ts
+  s_4b067811ce7c41::t_8e417b6d803601 1-22
+web/src/features/interactive/components/story-state/display-preference.ts
+  s_4b067811ce7c41::t_2905ef3877c76f 1-30
+web/src/features/interactive/components/story-state/model.ts
+  s_bcf10a135a9111::t_60e9309d97904c 1-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0eb73b09b59c3ad60520d320fb7fb62ad6eaf176",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_4b067811ce7c41": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5af3-589e-7d32-a423-9aa49d0d56ba",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_8ac8e15845db66": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5bd4-9cf0-7252-bf57-d54185e9ab1c",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_bcf10a135a9111": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5c14-8ef3-7d30-8d33-c81dba69e654",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {
+    "AGENTS.md": [
+      {
+        "hash": "h_beed6209b76699",
+        "line_ranges": [
+          {
+            "Single": 27
+          }
+        ],
+        "mixed_line_ranges": [
+          {
+            "Single": 27
+          }
+        ],
+        "operations": []
+      }
+    ]
+  },
+  "remote_transcripts": {}
+}
