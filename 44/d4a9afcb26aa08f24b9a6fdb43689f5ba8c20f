@@ -1,0 +1,46 @@
+CHANGELOG.md
+  s_3f032830305643::t_96f6e17eee1a36 79-80
+web/src/features/interactive/components/StoryStage.test.tsx
+  s_3f032830305643::t_b5f1a8213a749f 127-128,157-158
+web/src/features/interactive/components/story-state/StoryStateLedger.test.tsx
+  s_bcf10a135a9111::t_6ccbb7c3b371a1 17,21,114-115,126,132-204,230-232,237,239
+web/src/features/interactive/components/story-state/StoryStateLedger.tsx
+  s_bcf10a135a9111::t_2440307127f3eb 46-48,55-58,61,64,192,203-204,206,218,283,286,290,304,308,311
+web/src/features/interactive/components/story-state/display-preference.ts
+  s_bcf10a135a9111::t_ce91efa4f3752b 4
+web/src/i18n/locales/en-US/storyStage.ts
+  s_bcf10a135a9111::t_e58842114dfa5a 36-39
+web/src/i18n/locales/zh-CN/storyStage.ts
+  s_bcf10a135a9111::t_7fdaffadf14a4c 36-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "44d4a9afcb26aa08f24b9a6fdb43689f5ba8c20f",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_3f032830305643": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5c5c-1072-72c3-b051-3514fc76a67e",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_bcf10a135a9111": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5c14-8ef3-7d30-8d33-c81dba69e654",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
