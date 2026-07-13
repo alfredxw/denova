@@ -7,6 +7,7 @@ import type { Snapshot, StoryDirector, StoryMemoryState, StorySummary } from '..
 import { DirectorConsole } from './director-console/DirectorConsole'
 import { allStructuresId, type ConsoleTab } from './director-console/types'
 import { readNumber, storyMemoryEnabled, storyMemorySearchText } from './director-console/utils'
+import { DEFAULT_STORY_STATE_DISPLAY, OPEN_DIRECTOR_STATE_EVENT, type StoryStateDisplayPreference } from './story-state/display-preference'
 
 interface MemoryPanelProps {
   storyId?: string
@@ -18,11 +19,13 @@ interface MemoryPanelProps {
   snapshot: Snapshot | null
   loading?: boolean
   refreshKey?: string | number
+  stateDisplayPreference?: StoryStateDisplayPreference
+  onStateDisplayPreferenceChange?: (value: StoryStateDisplayPreference) => void
   onOpenMemoryManager?: () => void
   onSnapshotRefresh?: () => void | Promise<unknown>
 }
 
-export function MemoryPanel({ storyId, story, storyDirectors = [], onDirectorChange, onReplyTargetCharsChange, branchId, snapshot, loading = false, refreshKey, onOpenMemoryManager, onSnapshotRefresh }: MemoryPanelProps) {
+export function MemoryPanel({ storyId, story, storyDirectors = [], onDirectorChange, onReplyTargetCharsChange, branchId, snapshot, loading = false, refreshKey, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onOpenMemoryManager, onSnapshotRefresh }: MemoryPanelProps) {
   const { t } = useTranslation()
   const [memory, setMemory] = useState<StoryMemoryState | null>(null)
   const [memoryLoading, setMemoryLoading] = useState(false)
@@ -43,6 +46,12 @@ export function MemoryPanel({ storyId, story, storyDirectors = [], onDirectorCha
     setActiveTab('state')
     setDirectorRevealed(false)
   }, [effectiveBranchId, storyId])
+
+  useEffect(() => {
+    const openState = () => setActiveTab('state')
+    window.addEventListener(OPEN_DIRECTOR_STATE_EVENT, openState)
+    return () => window.removeEventListener(OPEN_DIRECTOR_STATE_EVENT, openState)
+  }, [])
 
   const loadMemory = useCallback(async () => {
     if (!storyId) {
@@ -135,7 +144,9 @@ export function MemoryPanel({ storyId, story, storyDirectors = [], onDirectorCha
       memoryLoading={memoryLoading}
       memoryError={error}
 		stateStatus={stateStatus}
-		stateError={stateError}
+      stateError={stateError}
+		stateDisplayPreference={stateDisplayPreference}
+		onStateDisplayPreferenceChange={onStateDisplayPreferenceChange}
 		memoryStatus={memoryStatus}
 		memorySyncError={memorySyncError}
       activeTab={activeTab}
@@ -160,3 +171,5 @@ export function MemoryPanel({ storyId, story, storyDirectors = [], onDirectorCha
     />
   )
 }
+
+function noopStateDisplayPreferenceChange(_value: StoryStateDisplayPreference) {}

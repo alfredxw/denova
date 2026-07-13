@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
@@ -34,6 +34,8 @@ interface MessageListProps {
   scrollResetKey?: string
   bottomPaddingClassName?: string
   bottomPaddingPx?: number
+  afterContent?: ReactNode
+  afterContentKey?: string
   messageStyle?: CSSProperties
   collapseTraceBeforeAssistant?: boolean
   onEditMessage?: (view: AgentMessageView) => void
@@ -77,9 +79,10 @@ const MESSAGE_LIST_COMPONENTS: Components<AgentChatListItem, MessageListVirtuoso
 interface MessageListVirtuosoContext {
   bottomPaddingClassName: string
   bottomPaddingPx?: number
+  afterContent?: ReactNode
 }
 
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, afterContentKey, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const lastVisibleTurnAnchorRef = useRef('')
@@ -101,8 +104,8 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
     [collapseTraceBeforeAssistant, isStreaming, onOpenSubAgentSession, views, visibleActivityContent],
   )
   const scrollContentKey = useMemo(
-    () => buildMessageListScrollKey(listItems, bottomPaddingPx),
-    [bottomPaddingPx, listItems],
+    () => buildMessageListScrollKey(listItems, bottomPaddingPx, afterContent ? afterContentKey || 'after-content' : ''),
+    [afterContent, afterContentKey, bottomPaddingPx, listItems],
   )
   const resolveMessageScroller = useCallback(
     () => containerRef.current?.querySelector<HTMLElement>('.nova-chat-canvas') || null,
@@ -120,8 +123,8 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
   )
   const lastPlanCardAnchorKeyRef = useRef<string | null>(null)
   const virtuosoContext = useMemo<MessageListVirtuosoContext>(
-    () => ({ bottomPaddingClassName, bottomPaddingPx }),
-    [bottomPaddingClassName, bottomPaddingPx],
+    () => ({ bottomPaddingClassName, bottomPaddingPx, afterContent }),
+    [afterContent, bottomPaddingClassName, bottomPaddingPx],
   )
   const scrollButtonBottomOffset = typeof bottomPaddingPx === 'number' ? Math.max(24, bottomPaddingPx + 12) : 24
   const anchorLatestPlanCardBottom = useCallback(() => {
@@ -249,12 +252,15 @@ function MessageListHeader() {
 function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>) {
   const hasMeasuredPadding = typeof context.bottomPaddingPx === 'number'
   return (
-    <div
-      aria-hidden="true"
-      data-nova-chat-bottom-spacer
-      className={hasMeasuredPadding ? 'shrink-0' : `shrink-0 ${context.bottomPaddingClassName}`}
-      style={hasMeasuredPadding ? { height: context.bottomPaddingPx } : undefined}
-    />
+    <>
+      {context.afterContent ? <div data-nova-chat-after-content className="px-3 pb-4 sm:px-6">{context.afterContent}</div> : null}
+      <div
+        aria-hidden="true"
+        data-nova-chat-bottom-spacer
+        className={hasMeasuredPadding ? 'shrink-0' : `shrink-0 ${context.bottomPaddingClassName}`}
+        style={hasMeasuredPadding ? { height: context.bottomPaddingPx } : undefined}
+      />
+    </>
   )
 }
 
@@ -411,7 +417,7 @@ function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, c
   return items
 }
 
-function buildMessageListScrollKey(items: AgentChatListItem[], bottomPaddingPx?: number) {
+function buildMessageListScrollKey(items: AgentChatListItem[], bottomPaddingPx?: number, afterContentKey = '') {
   const itemKey = items.map((item) => {
     if (item.kind === 'message') {
       const view = item.view
@@ -441,6 +447,7 @@ function buildMessageListScrollKey(items: AgentChatListItem[], bottomPaddingPx?:
   }).join('|')
   return [
     typeof bottomPaddingPx === 'number' ? Math.round(bottomPaddingPx) : '',
+    afterContentKey,
     itemKey,
   ].join('|')
 }

@@ -2166,6 +2166,73 @@ html[data-nova-motion="off"] *::after {
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Story state ledger: current committed state placed after the latest prose. */
+.story-state-ledger {
+  --story-state-canvas: var(--nova-surface);
+  --story-state-panel: var(--nova-surface);
+  --story-state-field-hover: var(--nova-surface-2);
+  --story-state-positive: var(--nova-success);
+  --story-state-positive-soft: var(--nova-success-bg);
+  --story-state-negative: var(--nova-danger);
+  --story-state-negative-soft: var(--nova-danger-bg);
+  --story-state-pending: var(--nova-warning);
+  --story-state-pending-soft: var(--nova-warning-bg);
+  --story-state-meter: var(--nova-text-muted);
+  container-name: story-state-ledger;
+  container-type: inline-size;
+  background: var(--story-state-canvas);
+  font-family: var(--nova-ui-font-family);
+}
+
+.story-state-ledger__tabs-scroll {
+  scrollbar-width: none;
+}
+
+.story-state-ledger__tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.story-state-ledger__director-label {
+  display: none;
+}
+
+.story-state-ledger__metric-grid,
+.story-state-ledger__field-grid {
+  gap: 1px;
+  background: var(--nova-border-soft);
+}
+
+.story-state-ledger__metric-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid var(--nova-border-soft);
+}
+
+.story-state-ledger__metric-progress [data-slot='progress-indicator'] {
+  background: var(--story-state-meter);
+}
+
+@container story-state-ledger (max-width: 380px) {
+  .story-state-ledger__metric-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container story-state-ledger (min-width: 560px) {
+  .story-state-ledger__director-label {
+    display: inline;
+  }
+}
+
+@container story-state-ledger (min-width: 620px) {
+  .story-state-ledger__metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .story-state-ledger__field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Director Console: a story continuity desk, scoped to the resizable game sidebar. */
 .director-console {
   --director-canvas: #070707;
@@ -2236,6 +2303,9 @@ html[data-nova-motion="off"] *::after {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .story-state-ledger *,
+  .story-state-ledger *::before,
+  .story-state-ledger *::after,
   .director-console *,
   .director-console *::before,
   .director-console *::after {

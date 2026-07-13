@@ -24,6 +24,7 @@
 - 发布release时需要同步更新 README.md + README.en.md 内容，与项目功能保持一致、
 - 不允许存在单项运行超过1s的低效测试
 - Pull Request Title 以及 Commit Message 需要是英文，不能是中文
+- 不允许把你自己创建的md文档放在项目根目录下，只能放在 docs 目录下，除非用户自己指定其他目录
 
 # 代码注意事项
 - goroutine 都需要 recover，避免 panic 导致整个服务崩溃

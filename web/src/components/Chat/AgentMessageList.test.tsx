@@ -14,6 +14,24 @@ function renderMessageList(ui: ReactElement) {
 }
 
 describe('Agent MessageList', () => {
+  it('renders optional stage content after the latest message and before the composer spacer', () => {
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={agentTurnMessages()}
+        afterContent={<section data-testid="stage-state">当前状态台</section>}
+        afterContentKey="turn-2:collapsed"
+        bottomPaddingPx={120}
+      />,
+    )
+
+    const prose = screen.getByText('第一轮剧情')
+    const state = screen.getByTestId('stage-state')
+    expect(prose.compareDocumentPosition(state) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(state.closest('[data-nova-chat-after-content]')?.nextElementSibling).toHaveAttribute('data-nova-chat-bottom-spacer')
+  })
+
   it('有可见流式 thinking 时不再追加会被动态内容推动的活动卡片', () => {
     renderMessageList(
       <MessageList

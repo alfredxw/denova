@@ -123,6 +123,41 @@ describe('StoryStage TurnResult choices', () => {
 
 })
 
+describe('StoryStage current state ledger', () => {
+  it('places the committed state after the latest prose with World State as a peer tab', () => {
+    const turn: TurnEvent = {
+      id: 'turn-state',
+      parent_id: null,
+      branch_id: 'main',
+      ts: '2026-07-13T00:00:00Z',
+      user: '观察天色',
+      narrative: '远山压着一线沉云。',
+      state_status: 'ready',
+    }
+    render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+        <StoryStage
+          workspace="/tmp/book"
+          stories={[story()]}
+          story={story()}
+          tellers={[]}
+          storyId="story-1"
+          branchId="main"
+          snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [turn], current_turn: turn, state: { scene: { weather: '暴雨将至' } } }}
+          stateDisplayPreference="collapsed"
+          onDone={() => undefined}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    const prose = screen.getByText('远山压着一线沉云。')
+    const state = screen.getByRole('region', { name: '当前状态' })
+    expect(prose.compareDocumentPosition(state) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(within(state).getByRole('tab', { name: '世界状态' })).toHaveAttribute('aria-selected', 'true')
+    expect(within(state).getByText('暴雨将至')).toBeInTheDocument()
+  })
+})
+
 describe('StoryStage composer', () => {
   it('keeps the game input single-line and does not expose Plan Mode controls', async () => {
     render(<StoryStageHarness />)

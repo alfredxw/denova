@@ -13,6 +13,12 @@ import { SettingPanel, type SettingPanelMode } from './SettingPanel'
 import { StoryPicker } from './StoryPicker'
 import { StoryMemoryView } from './StoryMemoryView'
 import { StoryStage } from './StoryStage'
+import {
+  OPEN_DIRECTOR_STATE_EVENT,
+  readStoryStateDisplayPreference,
+  writeStoryStateDisplayPreference,
+  type StoryStateDisplayPreference,
+} from './story-state/display-preference'
 import { novaEase, panelPresence, subtlePresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
@@ -44,6 +50,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
   const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false)
   const [mobileSnapshotOpen, setMobileSnapshotOpen] = useState(false)
+  const [storyStateDisplayPreference, setStoryStateDisplayPreference] = useState(readStoryStateDisplayPreference)
   const [bookOpeningPresets, setBookOpeningPresets] = useState<BookOpeningPreset[]>([])
   const [presetFocus, setPresetFocus] = useState<{ nonce: number; kind: 'memory-structure'; id?: string } | undefined>()
 
@@ -227,6 +234,20 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
     await reloadStories()
   }
 
+  const handleStoryStateDisplayPreferenceChange = useCallback((value: StoryStateDisplayPreference) => {
+    setStoryStateDisplayPreference(value)
+    writeStoryStateDisplayPreference(value)
+  }, [])
+
+  const openDirectorState = useCallback(() => {
+    window.dispatchEvent(new Event(OPEN_DIRECTOR_STATE_EVENT))
+    if (isMobile) {
+      setMobileSnapshotOpen(true)
+      return
+    }
+    if (!rightPanelVisible) onToggleRightPanel?.()
+  }, [isMobile, onToggleRightPanel, rightPanelVisible])
+
   const handleTurnPersisted = useCallback((event: InteractiveTurnPersistedEvent) => {
     return applyTurnPersisted(event) || undefined
   }, [applyTurnPersisted])
@@ -283,6 +304,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
       loreEmpty={loreEmpty}
       bookOpeningPresets={bookOpeningPresets}
       sceneMemoryVisible={sceneMemoryVisible}
+      stateDisplayPreference={storyStateDisplayPreference}
       onStorySelect={setCurrentStoryId}
       onStoryCreate={handleCreateStory}
       onStorySetupUpdate={handleStorySetupUpdate}
@@ -296,6 +318,8 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
         setMobileSnapshotOpen(false)
       }}
       onToggleSceneMemory={isMobile ? () => setMobileSnapshotOpen((open) => !open) : onToggleRightPanel}
+      onOpenDirectorState={openDirectorState}
+      onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange}
       onTurnPersisted={handleTurnPersisted}
       onDone={handleStoryStageDone}
     />
@@ -323,7 +347,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
                     title: t('memoryPanel.title'),
                     side: 'right',
                     icon: <Brain className="h-4 w-4" />,
-                    content: <MemoryPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} refreshKey={`${displaySnapshot?.current_turn?.id || ''}:${displaySnapshot?.current_turn?.memory_status || ''}:${displaySnapshot?.current_turn?.state_status || ''}`} onOpenMemoryManager={openMemoryManager} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />,
+                    content: <MemoryPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} refreshKey={`${displaySnapshot?.current_turn?.id || ''}:${displaySnapshot?.current_turn?.memory_status || ''}:${displaySnapshot?.current_turn?.state_status || ''}`} stateDisplayPreference={storyStateDisplayPreference} onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange} onOpenMemoryManager={openMemoryManager} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />,
                   }]}
                   closeLabel={t('common.close')}
                   openPaneId={mobileSnapshotOpen ? 'scene-memory' : null}
@@ -342,7 +366,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
                       <InteractiveResizeHandle direction="vertical" label={t('interactiveLayout.resizeSceneMemory')} />
                       <Panel id="snapshot" defaultSize="320px" minSize="180px" maxSize="45%" className="min-w-0">
                         <motion.div className="h-full min-h-0" variants={subtlePresence} initial="initial" animate="animate" transition={{ duration: 0.16, ease: novaEase }}>
-                          <MemoryPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} refreshKey={`${displaySnapshot?.current_turn?.id || ''}:${displaySnapshot?.current_turn?.memory_status || ''}:${displaySnapshot?.current_turn?.state_status || ''}`} onOpenMemoryManager={openMemoryManager} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />
+                          <MemoryPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} refreshKey={`${displaySnapshot?.current_turn?.id || ''}:${displaySnapshot?.current_turn?.memory_status || ''}:${displaySnapshot?.current_turn?.state_status || ''}`} stateDisplayPreference={storyStateDisplayPreference} onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange} onOpenMemoryManager={openMemoryManager} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />
                         </motion.div>
                       </Panel>
                     </>

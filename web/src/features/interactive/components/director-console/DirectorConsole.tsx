@@ -13,6 +13,7 @@ import { PlanView } from './PlanView'
 import { StateView } from './StateView'
 import type { ConsoleTab } from './types'
 import { extractDirectorDisplayEvents, isMissingDirectorPlanError, stateEntries } from './utils'
+import type { StoryStateDisplayPreference } from '../story-state/display-preference'
 
 export interface DirectorConsoleProps {
   storyId?: string
@@ -27,6 +28,8 @@ export interface DirectorConsoleProps {
   memoryError: string
 	stateStatus?: string
 	stateError?: string
+	stateDisplayPreference: StoryStateDisplayPreference
+	onStateDisplayPreferenceChange: (value: StoryStateDisplayPreference) => void
 	memoryStatus?: string
 	memorySyncError?: string
   activeTab: ConsoleTab
@@ -63,6 +66,8 @@ export function DirectorConsole({
   memoryError,
 	stateStatus,
 	stateError,
+	stateDisplayPreference,
+	onStateDisplayPreferenceChange,
 	memoryStatus,
 	memorySyncError,
   activeTab,
@@ -290,7 +295,7 @@ export function DirectorConsole({
               onAnalyze={openDirectorContextAnalysis}
             />
           ) : activeTab === 'state' ? (
-            <StateView storyId={storyId} snapshot={snapshot} stateFacts={stateFacts} syncStatus={stateStatus} syncError={stateError} onSnapshotRefresh={onSnapshotRefresh} />
+            <StateView storyId={storyId} snapshot={snapshot} stateFacts={stateFacts} syncStatus={stateStatus} syncError={stateError} displayPreference={stateDisplayPreference} onDisplayPreferenceChange={onStateDisplayPreferenceChange} onSnapshotRefresh={onSnapshotRefresh} />
           ) : activeTab === 'memory' ? (
             <MemoryView
 				loadError={memoryError}

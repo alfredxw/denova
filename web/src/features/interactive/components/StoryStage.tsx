@@ -37,6 +37,9 @@ import { StoryDirectorPicker } from './StoryDirectorPicker'
 import { ReplyTargetCharsControl } from './ReplyTargetCharsControl'
 import { TurnNavigator, type TurnNavigationItem } from './TurnNavigator'
 import { isDirectorDisplayEvent } from './director-console/utils'
+import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from './story-state/display-preference'
+import { StoryStateLedger } from './story-state/StoryStateLedger'
+import { buildStoryStateModel } from './story-state/model'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -56,6 +59,7 @@ interface StoryStageProps {
   loreEmpty?: boolean
   bookOpeningPresets?: BookOpeningPreset[]
   sceneMemoryVisible?: boolean
+  stateDisplayPreference?: StoryStateDisplayPreference
   onStorySelect?: (storyId: string) => void
   onStoryCreate?: (input: StoryCreateInput) => void | Promise<void>
   onStorySetupUpdate?: (input: StoryCreateInput) => void | Promise<void>
@@ -66,6 +70,8 @@ interface StoryStageProps {
   onRequestLoreInit?: () => void
   onOpenDirectorConfig?: () => void
   onToggleSceneMemory?: () => void
+  onOpenDirectorState?: () => void
+  onStateDisplayPreferenceChange?: (value: StoryStateDisplayPreference) => void
   onTurnPersisted?: (event: InteractiveTurnPersistedEvent) => Snapshot | void
   onDone: (options?: { silent?: boolean }) => void | Promise<Snapshot | void>
 }
@@ -87,10 +93,11 @@ type LiveTurnRenderKeys = {
   assistant: string
 }
 
-export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleSceneMemory, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
+export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleSceneMemory, onOpenDirectorState, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const keyboardInset = useKeyboardInset()
+  const storyStateModel = useMemo(() => buildStoryStateModel(snapshot), [snapshot])
   const [input, setInput] = useState('')
   const [stageControlsOpen, setStageControlsOpen] = useState(false)
   const [styleScenes, setStyleScenes] = useState<string[]>([])
@@ -1178,6 +1185,15 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 scrollResetKey={scrollResetKey}
                 bottomPaddingClassName="pb-36"
                 bottomPaddingPx={messageListBottomPadding}
+                afterContent={!streaming && storyStateModel.hasState && stateDisplayPreference !== 'director-only' ? (
+                  <StoryStateLedger
+                    snapshot={snapshot}
+                    displayPreference={stateDisplayPreference}
+                    onDisplayPreferenceChange={onStateDisplayPreferenceChange}
+                    onOpenDirectorState={onOpenDirectorState}
+                  />
+                ) : undefined}
+                afterContentKey={`${snapshot?.current_turn?.id || ''}:${snapshot?.current_turn?.state_status || ''}:${stateDisplayPreference}`}
                 messageStyle={stageTextStyle}
                 collapseTraceBeforeAssistant
                 turnScrollRequest={turnScrollRequest}
@@ -2016,6 +2032,8 @@ function imageSettingsSummary(settings: StoryImageSettings, t: (key: string, opt
 }
 
 function noop() {}
+
+function noopStateDisplayPreferenceChange(_value: StoryStateDisplayPreference) {}
 
 function noopTurnPersisted() {
   return undefined
