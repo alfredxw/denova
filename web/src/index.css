@@ -1765,6 +1765,32 @@ html[data-nova-motion="off"] *::after {
   margin: 0.6em 0;
 }
 
+.editor-content .tiptap table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.8em 0;
+  table-layout: fixed;
+  text-indent: 0;
+}
+
+.editor-content .tiptap th,
+.editor-content .tiptap td {
+  border: 1px solid color-mix(in srgb, var(--nova-editor-accent, #303238) 76%, transparent);
+  padding: 0.4em 0.55em;
+  vertical-align: top;
+}
+
+.editor-content .tiptap th {
+  background: color-mix(in srgb, var(--nova-editor-accent, #303238) 64%, transparent);
+  font-weight: 700;
+}
+
+.editor-content .tiptap th p,
+.editor-content .tiptap td p {
+  margin: 0;
+  text-indent: 0;
+}
+
 .editor-content .tiptap strong {
   font-weight: 700;
 }

@@ -55,6 +55,7 @@ const tiptapMock = vi.hoisted(() => {
     editor,
     chainApi,
     handlers,
+    useEditorOptions: null as unknown,
     markdown: '',
     text: '',
     emit(event: string) {
@@ -62,6 +63,7 @@ const tiptapMock = vi.hoisted(() => {
     },
     reset() {
       handlers.clear()
+      this.useEditorOptions = null
       this.markdown = ''
       this.text = ''
       editor.state.selection = { from: 0, to: 0, head: 0, empty: true }
@@ -73,13 +75,17 @@ const tiptapMock = vi.hoisted(() => {
 
 vi.mock('@tiptap/react', () => ({
   EditorContent: () => <div data-testid="editor-content" />,
-  useEditor: () => tiptapMock.editor,
+  useEditor: (options: unknown) => {
+    tiptapMock.useEditorOptions = options
+    return tiptapMock.editor
+  },
 }))
 
 vi.mock('@tiptap/starter-kit', () => ({ default: { configure: () => ({}) } }))
 vi.mock('@tiptap/extension-character-count', () => ({ CharacterCount: { configure: () => ({}) } }))
 vi.mock('@tiptap/extension-placeholder', () => ({ default: { configure: () => ({}) } }))
 vi.mock('@tiptap/extension-image', () => ({ default: { extend: () => ({ configure: () => ({}) }) } }))
+vi.mock('@tiptap/extension-table', () => ({ TableKit: { configure: vi.fn((options) => ({ name: 'tableKit', options })) } }))
 vi.mock('@tiptap/markdown', () => ({ Markdown: { configure: () => ({}) } }))
 vi.mock('sonner', () => ({ toast: toastMock }))
 
@@ -156,6 +162,26 @@ describe('MarkdownEditor', () => {
 
     expect(onLineChange).toHaveBeenLastCalledWith(3)
     expect(document.querySelector('.nova-editor-statusbar')).not.toBeInTheDocument()
+  })
+
+  it('注册 TipTap table 扩展以展示 GFM Markdown 表格', () => {
+    render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content={'| 角色 | 状态 |\n| --- | --- |\n| 阿宁 | 待命 |'}
+        onSave={vi.fn()}
+      />,
+    )
+
+    const options = tiptapMock.useEditorOptions as { extensions?: Array<{ name?: string; options?: unknown }> }
+    expect(options.extensions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'tableKit',
+          options: { table: { resizable: false } },
+        }),
+      ]),
+    )
   })
 
   it('默认对白高亮跟随编辑器背景主题变化，手动颜色优先', async () => {
