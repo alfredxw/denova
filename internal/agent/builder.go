@@ -56,6 +56,12 @@ func Build(ctx context.Context, cfg *config.Config, state *book.State, teller ID
 }
 
 func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...InteractiveStoryToolContext) (adk.Agent, error) {
+	handlers := []adk.ChatModelAgentMiddleware{newInteractiveStoryToolMiddleware()}
+	var outputGuard func(context.Context, *adk.RetryContext) *adk.RetryDecision
+	if len(toolContexts) > 0 && toolContexts[0].TurnResultReady != nil {
+		handlers = append(handlers, newInteractiveTurnProtocolMiddleware(toolContexts[0].TurnResultReady))
+		outputGuard = newInteractiveCompletionGuard(toolContexts[0].TurnResultReady)
+	}
 	return buildDeepAgent(ctx, cfg, deepAgentSpec{
 		Kind:              config.AgentKindInteractiveStory,
 		Name:              "DenovaInteractiveStoryAgent",
@@ -63,8 +69,9 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 		Instruction:       BuildInteractiveStoryInstruction(cfg, state, teller),
 		EnableSkills:      true,
 		DisableWriteTodos: true,
-		ExtraHandlers:     []adk.ChatModelAgentMiddleware{newInteractiveStoryToolMiddleware()},
+		ExtraHandlers:     handlers,
 		ExtraToolsFactory: interactiveStoryToolsFactory(cfg, toolContexts...),
+		ModelOutputGuard:  outputGuard,
 	})
 }
 
@@ -140,6 +147,7 @@ type deepAgentSpec struct {
 	ExtraHandlers     []adk.ChatModelAgentMiddleware
 	ExtraTools        []tool.BaseTool
 	ExtraToolsFactory func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error)
+	ModelOutputGuard  func(context.Context, *adk.RetryContext) *adk.RetryDecision
 }
 
 func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec) (adk.Agent, error) {
@@ -190,14 +198,7 @@ func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec)
 				UnknownToolsHandler: handleUnknownTool,
 			},
 		},
-		ModelRetryConfig: &adk.ModelRetryConfig{
-			MaxRetries: configModelMaxRetries(cfg),
-			IsRetryAble: func(_ context.Context, err error) bool {
-				return strings.Contains(err.Error(), "429") ||
-					strings.Contains(err.Error(), "Too Many Requests") ||
-					strings.Contains(err.Error(), "qpm limit")
-			},
-		},
+		ModelRetryConfig: modelRetryConfig(cfg, spec.ModelOutputGuard),
 	})
 }
 
@@ -401,15 +402,35 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent dee
 				UnknownToolsHandler: handleUnknownTool,
 			},
 		},
-		ModelRetryConfig: &adk.ModelRetryConfig{
-			MaxRetries: configModelMaxRetries(cfg),
-			IsRetryAble: func(_ context.Context, err error) bool {
-				return strings.Contains(err.Error(), "429") ||
-					strings.Contains(err.Error(), "Too Many Requests") ||
-					strings.Contains(err.Error(), "qpm limit")
-			},
-		},
+		ModelRetryConfig: modelRetryConfig(cfg, nil),
 	})
+}
+
+func modelRetryConfig(cfg *config.Config, outputGuard func(context.Context, *adk.RetryContext) *adk.RetryDecision) *adk.ModelRetryConfig {
+	retryConfig := &adk.ModelRetryConfig{
+		MaxRetries:  configModelMaxRetries(cfg),
+		IsRetryAble: isTransientModelError,
+	}
+	if outputGuard == nil {
+		return retryConfig
+	}
+	retryConfig.IsRetryAble = nil
+	retryConfig.ShouldRetry = func(ctx context.Context, retryCtx *adk.RetryContext) *adk.RetryDecision {
+		if retryCtx != nil && retryCtx.Err != nil {
+			return &adk.RetryDecision{Retry: isTransientModelError(ctx, retryCtx.Err)}
+		}
+		return outputGuard(ctx, retryCtx)
+	}
+	return retryConfig
+}
+
+func isTransientModelError(_ context.Context, err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "429") ||
+		strings.Contains(err.Error(), "Too Many Requests") ||
+		strings.Contains(err.Error(), "qpm limit")
 }
 
 func buildSubAgentInstruction(parent deepAgentSpec, sub config.SubAgentConfig) string {

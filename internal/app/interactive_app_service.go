@@ -1001,6 +1001,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 		BranchID:         storyCtx.Snapshot.BranchID,
 		PrepareTurn:      conversation.PrepareInteractiveTurn,
 		SubmitTurnResult: conversation.SubmitTurnResult,
+		TurnResultReady:  conversation.InteractiveNarrativeReady,
 	})
 	if err != nil {
 		log.Printf("[interactive-agent-task] 刷新互动故事 Agent Runner 失败 workspace=%s err=%v", workspace, err)

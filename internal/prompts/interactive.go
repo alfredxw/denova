@@ -131,7 +131,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- outcomes.state_changes 只写本次检定直接导致、可由状态系统消费的数值变化；线索、场景事实、NPC 态度描述和短期叙事后果交给正文与后台导演，不要伪造成数值状态。\n")
 	sb.WriteString("- prepare_interactive_turn 参数协议：difficulty 必须使用 very_easy/easy/normal/hard/very_hard；rule 可省略，若提供只能使用 template=dice_check、roll_mode=normal/advantage/disadvantage；工具只使用固定 d20，不要传其他骰子；不要使用 medium 或 moderate。\n")
 	sb.WriteString("- submit_interactive_turn_result 每回合必须调用一次，即使本轮没有检定、状态变化或长期事实；没有变化时传空数组，但 contract 必须写清玩家意图和场景目标。actor_state_patches 只写正文确定建立的非规则状态，不能重复 RuleResolution 已消费的数值变化；fact_candidates 只写已发生事实，禁止写未来计划。\n")
-	sb.WriteString("- actor_state_patches.state 的键只能使用本故事冻结 schema 中的 field_id（状态名称原文）；禁止构造点路径、拼音或英文别名。工具报错时按返回的合法字段修正并重试。\n")
+	sb.WriteString("- actor_state_patches.state 的键应使用本故事冻结 schema 中的 field_id（状态名称原文）；禁止构造点路径、拼音或英文别名。工具返回 accepted=false 时按 diagnostics 修正并重试；accepted=true 时即使包含 warning 也不要重复提交。模板外的额外字段会被忽略，但已知字段类型、枚举、Actor 和模板约束仍严格校验。\n")
 	sb.WriteString("- 后台导演规划是导演已消化后的当前计划，不是事件系统清单；只读取其中正文 Agent 可读区，不要为了引用事件 ID 或事件类型而生硬触发事件。\n")
 	sb.WriteString("- 如果工具不可用或召回失败，用已注入的快照和历史上下文继续生成，不要在正文中暴露工具错误或技术细节。\n\n")
 	sb.WriteString("## 互动主持人原则\n")

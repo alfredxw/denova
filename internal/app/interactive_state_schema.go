@@ -17,7 +17,7 @@ import (
 	"denova/internal/session"
 )
 
-const maxInteractiveStateSchemaPromptBytes = 32 * 1024
+const maxInteractiveStateSchemaPromptBytes = interactive.DirectorContextMaxBytes
 const maxStateSchemaResidentLoreRosterBytes = 8 * 1024
 const stateSchemaAdaptationInstructionPrefix = "以下 JSON 是本次唯一可用的有界上下文，每个片段均标明来源字段；不要假设未提供的故事设定。\n"
 

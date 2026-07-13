@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	maxReferenceFileBytes  = 80 * 1024
+	maxReferenceFileBytes  = 128 * 1024
 	maxReferenceTotalBytes = 200 * 1024
 )
 
@@ -412,6 +412,10 @@ func (r *Runtime) Run(
 			break
 		}
 		if event.Err != nil {
+			if reason, retrying := interactiveCompletionRetryFromError(event.Err); retrying {
+				runLogger.Info("interactive_completion_retry", slog.String("code", reason.Code), slog.Int("generated_bytes", fullContent.Len()))
+				continue
+			}
 			runLogger.Error("run_interrupted", slog.String("reason", "runner_error"), slog.Any("error", event.Err), slog.Int("generated_bytes", fullContent.Len()))
 			flushPlanProtocolParser(planParser, &fullContent, emit)
 			discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
@@ -496,6 +500,10 @@ func (r *Runtime) Run(
 		if mv.IsStreaming && mv.MessageStream != nil {
 			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, options.ToolResultMaxBytes, eventMeta, interactiveNarrativeReady(conversation, eventMeta), planParser, emit)
 			if streamErr != nil {
+				if reason, retrying := interactiveCompletionRetryFromError(streamErr); retrying {
+					runLogger.Info("interactive_completion_retry", slog.String("code", reason.Code), slog.Int("generated_bytes", fullContent.Len()))
+					continue
+				}
 				flushPlanProtocolParser(planParser, &fullContent, emit)
 				discardPlanAssistantContentIfNeeded(req.PlanMode, planParser, &fullContent, &fullThinking)
 				generated, persistErr := appendAssistantIfAny(conversation, &fullContent, &fullThinking, assistantMetadata)

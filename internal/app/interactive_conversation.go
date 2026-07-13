@@ -42,7 +42,7 @@ type interactiveConversation struct {
 	displayEvents           []interactive.DisplayEvent
 	modelContextMessages    []interactive.ModelContextMessage
 	ruleResolution          *interactive.RuleResolution
-	turnResult              *interactive.TurnResult
+	turnProtocol            interactiveTurnProtocol
 	baseParentID            *string
 	directorTasks           *workspaceDirectorTaskGroup
 	directorGenerator       interactiveDirectorGenerator
@@ -229,42 +229,49 @@ func (c *interactiveConversation) PrepareInteractiveTurn(ctx context.Context, re
 
 // SubmitTurnResult stages the Game Agent's structured outcome. Nothing is
 // persisted until the final narrative is accepted and committed atomically.
-func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, result interactive.TurnResult) (interactive.TurnResult, error) {
+func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, result interactive.TurnResult) (interactive.TurnSubmissionReceipt, error) {
 	if c == nil || c.store == nil {
-		return interactive.TurnResult{}, fmt.Errorf("互动故事不存在")
+		return interactive.TurnSubmissionReceipt{}, fmt.Errorf("互动故事不存在")
 	}
 	select {
 	case <-ctx.Done():
-		return interactive.TurnResult{}, ctx.Err()
+		return interactive.TurnSubmissionReceipt{}, ctx.Err()
 	default:
 	}
-	result = interactive.NormalizeTurnResult(result)
+	if c.InteractiveNarrativeReady() {
+		log.Printf("[interactive-agent] ignored duplicate turn result before validation story_id=%s branch_id=%s", c.storyID, c.branchID)
+		return interactiveTurnResultAlreadyAcceptedReceipt(), nil
+	}
 	if strings.TrimSpace(result.Contract.PlayerIntent) == "" {
 		result.Contract.PlayerIntent = strings.TrimSpace(c.user)
 	}
-	if err := interactive.ValidateTurnResult(result); err != nil {
-		return interactive.TurnResult{}, err
+	storyCtx, err := c.store.StoryContext(c.storyID, c.branchID)
+	if err != nil {
+		return interactive.TurnSubmissionReceipt{}, err
 	}
-	if len(result.ActorStatePatches) > 0 {
-		storyCtx, err := c.store.StoryContext(c.storyID, c.branchID)
-		if err != nil {
-			return interactive.TurnResult{}, err
-		}
-		actorState := interactive.StoryDirectorActorStateSystem{}
-		if storyCtx.Meta.ActorStateSchema != nil {
-			actorState = storyCtx.Meta.ActorStateSchema.System
-		} else {
-			actorState = c.storyDirectorForMeta(storyCtx.Meta).ActorState
-		}
-		if _, err := interactive.ValidateActorStatePatchesAgainstState(actorState, storyCtx.Snapshot.State, result.ActorStatePatches, ""); err != nil {
-			return interactive.TurnResult{}, fmt.Errorf("Actor 状态更新校验失败，可修正参数后重试 submit_interactive_turn_result: %w", err)
-		}
+	actorState := interactive.StoryDirectorActorStateSystem{}
+	if storyCtx.Meta.ActorStateSchema != nil {
+		actorState = storyCtx.Meta.ActorStateSchema.System
+	} else {
+		actorState = c.storyDirectorForMeta(storyCtx.Meta).ActorState
 	}
+	prepared, receipt := interactive.PrepareTurnSubmission(actorState, storyCtx.Snapshot.State, result)
+	if !receipt.Accepted {
+		log.Printf("[interactive-agent] rejected turn result story_id=%s branch_id=%s retryable=%t diagnostics=%q", c.storyID, c.branchID, receipt.Retryable, interactiveTurnSubmissionDiagnosticSummary(receipt.Diagnostics))
+		return receipt, nil
+	}
+
 	c.mu.Lock()
-	c.turnResult = &result
+	staged := c.turnProtocol.submit(prepared)
 	c.mu.Unlock()
-	log.Printf("[interactive-agent] staged turn result story_id=%s branch_id=%s state_patches=%d facts=%d choices=%d scene_status=%s deviation=%s", c.storyID, c.branchID, len(result.ActorStatePatches), len(result.FactCandidates), len(result.Choices), result.SceneResult.Status, result.PlanSignals.DeviationLevel)
-	return result, nil
+	if !staged {
+		receipt = interactiveTurnResultAlreadyAcceptedReceipt()
+		log.Printf("[interactive-agent] ignored duplicate accepted turn result story_id=%s branch_id=%s", c.storyID, c.branchID)
+		return receipt, nil
+	}
+	stagedResult := prepared.TurnResult()
+	log.Printf("[interactive-agent] staged turn result story_id=%s branch_id=%s state_patches=%d facts=%d choices=%d scene_status=%s deviation=%s warnings=%d", c.storyID, c.branchID, len(stagedResult.ActorStatePatches), len(stagedResult.FactCandidates), len(stagedResult.Choices), stagedResult.SceneResult.Status, stagedResult.PlanSignals.DeviationLevel, len(receipt.Diagnostics))
+	return receipt, nil
 }
 
 func (c *interactiveConversation) InteractiveNarrativeReady() bool {
@@ -273,7 +280,7 @@ func (c *interactiveConversation) InteractiveNarrativeReady() bool {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.turnResult != nil
+	return c.turnProtocol.narrativeReady()
 }
 
 func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, input agent.ContextCompactionInput) ([]*schema.Message, agent.ContextCompactionResult, error) {
@@ -545,6 +552,7 @@ func (c *interactiveConversation) AppendAssistantWithMetadata(content, thinking 
 		c.mu.Lock()
 		c.lastTurn = &turn
 		c.lastStateReady = turn.StateStatus == "ready"
+		c.turnProtocol.markCommitted()
 		c.mu.Unlock()
 	}
 	return err
@@ -873,11 +881,27 @@ func (c *interactiveConversation) ruleResolutionSnapshot() *interactive.RuleReso
 func (c *interactiveConversation) turnResultSnapshot() *interactive.TurnResult {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.turnResult == nil {
-		return nil
+	return c.turnProtocol.turnResult()
+}
+
+func interactiveTurnSubmissionDiagnosticSummary(diagnostics []interactive.TurnSubmissionDiagnostic) string {
+	parts := make([]string, 0, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		parts = append(parts, strings.Join([]string{diagnostic.Code, diagnostic.ActorID, diagnostic.Field, diagnostic.Message}, ":"))
 	}
-	result := interactive.NormalizeTurnResult(*c.turnResult)
-	return &result
+	return strings.Join(parts, "; ")
+}
+
+func interactiveTurnResultAlreadyAcceptedReceipt() interactive.TurnSubmissionReceipt {
+	return interactive.TurnSubmissionReceipt{
+		Accepted:  true,
+		Retryable: false,
+		Diagnostics: []interactive.TurnSubmissionDiagnostic{{
+			Code:     "turn_result_already_accepted",
+			Severity: "warning",
+			Message:  "本回合已有被接受的 TurnResult，已保留首次提交；无需重试。 / The first accepted TurnResult was retained; do not retry.",
+		}},
+	}
 }
 
 func (c *interactiveConversation) baseParentIDSnapshot() *string {
@@ -1325,7 +1349,7 @@ type interactiveTurnMemory struct {
 }
 
 const (
-	interactiveStoryRuntimeContextBytes = 16 * 1024
+	interactiveStoryRuntimeContextBytes = interactive.DirectorContextMaxBytes
 	interactiveDirectorContextBytes     = interactive.DirectorContextMaxBytes
 )
 

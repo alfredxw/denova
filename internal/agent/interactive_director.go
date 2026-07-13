@@ -14,11 +14,13 @@ import (
 
 	"denova/config"
 	"denova/internal/book"
+	"denova/internal/interactive"
 	"denova/internal/prompts"
 	"denova/internal/session"
 )
 
 const interactiveDirectorAgentLabel = "interactive-director-agent"
+const interactiveDirectorToolResultMaxBytes = interactive.DirectorContextMaxBytes
 
 const (
 	directorPlanHiddenNotice = "chapter_body_hidden"
@@ -73,7 +75,7 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, cfg *config.Confi
 	NewChatService().RunWithOptions(ctx, runner, conversation, bookService, ChatRequest{Message: instruction}, RunOptions{
 		AgentKind:          config.AgentKindInteractiveDirector,
 		Workspace:          cfg.Workspace,
-		ToolResultMaxBytes: 16 * 1024,
+		ToolResultMaxBytes: interactiveDirectorToolResultMaxBytes,
 	}, func(event Event) {
 		if event.Type != "error" {
 			return

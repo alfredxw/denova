@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	configManagerResourceSkillMaxBytes      = 12 * 1024
-	configManagerResourceSkillMaxTotalBytes = 32 * 1024
+	configManagerResourceSkillMaxBytes      = 128 * 1024
+	configManagerResourceSkillMaxTotalBytes = 3 * configManagerResourceSkillMaxBytes
 
 	configManagerAutomationSkill    = "automation-config"
 	configManagerStoryMemorySkill   = "story-memory-config"

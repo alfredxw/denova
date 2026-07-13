@@ -238,12 +238,12 @@ func TestSubmitInteractiveTurnResultToolStagesStructuredOutcome(t *testing.T) {
 	}
 	called := false
 	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
-		SubmitTurnResult: func(_ context.Context, input interactive.TurnResult) (interactive.TurnResult, error) {
+		SubmitTurnResult: func(_ context.Context, input interactive.TurnResult) (interactive.TurnSubmissionReceipt, error) {
 			called = true
 			if input.Contract.SceneGoal != want.Contract.SceneGoal {
 				t.Fatalf("unexpected turn result: %#v", input)
 			}
-			return input, nil
+			return interactive.TurnSubmissionReceipt{Accepted: true}, nil
 		},
 	})
 	if err != nil {
@@ -269,8 +269,38 @@ func TestSubmitInteractiveTurnResultToolStagesStructuredOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !called || !strings.Contains(result, "确认药味来源") {
+	if !called || !strings.Contains(result, `"accepted": true`) || strings.Contains(result, "确认药味来源") {
 		t.Fatalf("submit callback/result mismatch: called=%v result=%s", called, result)
+	}
+}
+
+func TestSubmitInteractiveTurnResultToolReturnsCorrectionReceiptWithoutToolError(t *testing.T) {
+	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
+		SubmitTurnResult: func(_ context.Context, _ interactive.TurnResult) (interactive.TurnSubmissionReceipt, error) {
+			return interactive.TurnSubmissionReceipt{
+				Accepted:  false,
+				Retryable: true,
+				Diagnostics: []interactive.TurnSubmissionDiagnostic{{
+					Code:     interactive.TurnSubmissionDiagnosticActorStateInvalid,
+					Severity: "error",
+					Message:  "生命值必须是 number",
+				}},
+			}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	submit, ok := tools[0].(tool.InvokableTool)
+	if !ok {
+		t.Fatalf("submit tool is not invokable: %#v", tools[0])
+	}
+	result, err := submit.InvokableRun(context.Background(), `{"contract":{"player_intent":"休息"},"choices":["继续休息","观察四周"]}`)
+	if err != nil {
+		t.Fatalf("model-correctable validation must not become a tool error: %v", err)
+	}
+	if !strings.Contains(result, `"accepted": false`) || !strings.Contains(result, `"retryable": true`) || !strings.Contains(result, "生命值必须是 number") {
+		t.Fatalf("unexpected correction receipt: %s", result)
 	}
 }
 

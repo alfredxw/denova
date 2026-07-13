@@ -35,7 +35,8 @@ type InteractiveStoryToolContext struct {
 	// agents. It must not receive final assistant text as model-visible context.
 	DisplayConversation Conversation
 	PrepareTurn         func(context.Context, interactive.TurnCheckRequest) (interactive.RuleResolution, error)
-	SubmitTurnResult    func(context.Context, interactive.TurnResult) (interactive.TurnResult, error)
+	SubmitTurnResult    func(context.Context, interactive.TurnResult) (interactive.TurnSubmissionReceipt, error)
+	TurnResultReady     func() bool
 }
 
 type listInteractiveMemoriesInput struct {
@@ -238,15 +239,15 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 		desc := strings.Join([]string{
 			"在输出故事正文前提交本回合的隐藏 TurnResult。每一回合都必须调用一次，无论是否执行了固定检定；本工具只暂存结构化结果，正文成功完成后才由后端与 Turn、RuleResolution 和 StateDelta 原子提交。",
 			"contract 记录玩家意图、场景目标、1-3 个节拍、NPC 主动意图、揭示、代价、连续性约束和选择维度。actor_state_patches 只声明正文已经确定的非规则状态变化；RuleResolution 已产生的数值变化不得重复。fact_candidates 只记录已经发生的事实，禁止写未来计划。scene_result 和 plan_signals 用于后台 Memory Recorder 与 Director。choices 提供 2-4 个与正文结尾一致的下一步行动建议。",
-			"actor_state_patches.state 的键必须直接使用本故事冻结状态 schema 提供的 field_id（通常是中文名称），不要构造路径、拼音或英文别名。工具会当场校验 Actor、模板、字段、类型和枚举；报错后根据返回的合法字段修正并重试。",
+			"actor_state_patches.state 的键应直接使用本故事冻结状态 schema 提供的 field_id（通常是中文名称），不要构造路径、拼音或英文别名。工具会返回结构化回执：accepted=false 时按 diagnostics 修正后重试；accepted=true 时立即继续正文，即使 diagnostics 含 warning 也不要重试。明确不属于模板的额外字段会被安全忽略，已知字段的类型、枚举、Actor 和模板约束仍严格校验。",
 			"调用完成后，最终回复仍然只能输出玩家可见的故事正文，不得泄露 TurnResult、JSON、工具结果或状态补丁。",
 		}, "\n")
 		submitTool, err := utils.InferTool("submit_interactive_turn_result", desc, func(callCtx context.Context, input interactive.TurnResult) (string, error) {
-			result, err := ctx.SubmitTurnResult(callCtx, input)
+			receipt, err := ctx.SubmitTurnResult(callCtx, input)
 			if err != nil {
 				return "", err
 			}
-			data, err := json.MarshalIndent(result, "", "  ")
+			data, err := json.MarshalIndent(receipt, "", "  ")
 			if err != nil {
 				return "", err
 			}

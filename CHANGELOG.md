@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 游戏模式：Game Agent 漏调 `submit_interactive_turn_result` 时，后端会在同一次模型运行的 thinking 阶段注入有来源、硬上限且不进入会话历史的修正反馈，并自动重试，不再等到最终持久化才报错。TurnResult 提交改为 `collecting → submitted → committed` 状态机；首次接受后隐藏工具并锁定结果，避免重复提交覆盖。
+- Game Mode: When the Game Agent omits `submit_interactive_turn_result`, the backend now injects sourced, hard-bounded, non-persistent correction feedback during the same model run's thinking phase and retries before final persistence. TurnResult submission now follows a `collecting → submitted → committed` state machine; the first accepted result is locked and tools are hidden to prevent replacement by duplicate submissions.
+- 游戏模式：`submit_interactive_turn_result` 对冻结模板外的额外 Actor State 字段改为安全丢弃并返回 `accepted=true` warning；已知字段的类型、枚举、Actor 与模板约束仍严格校验，并以 `accepted=false` diagnostics 让 Agent 定向修正。持久化层继续执行完整严格校验。
+- Game Mode: `submit_interactive_turn_result` now safely drops extra Actor State fields outside the frozen template and returns an `accepted=true` warning. Known-field types, enums, Actor identity, and template constraints remain strict and return `accepted=false` diagnostics for targeted correction, while persistence retains full strict validation.
 - 资料库：资料编辑器保留固定标题栏，右侧基础信息与正文改为共用单一滚动区；正文随内容增长且不再截获滚轮，鼠标停在正文上也能自由滚动整个右侧。无当前图片时使用 28px 单行工具栏，核心属性在移动端压缩为两列、中屏收敛为两行、宽屏合并为一行，标签与简介在中大屏并排，减少元数据区的纵向占用。
 - Lore: The lore editor keeps its fixed header while metadata and body now share one right-side scroll area. The body grows with its content and no longer traps the wheel, so the whole panel remains scrollable while the pointer is over the body. Empty current-image states use a 28px utility row; core properties use two columns on mobile, two rows on medium screens, and one row on wide screens, while Tags and Brief sit side by side on medium and larger screens to reduce metadata height.
 - 游戏模式：状态结构适配改为 Story Director 的显式审查任务。Director 会从有界常驻资料目录按需读取正文，为资料、开局、TurnResult 与 TRPG 规则逐项提交带来源、目标类型和数值范围的覆盖结论；未实际读取的资料引用、用通用对象掩盖数值规则以及无审计的空差异都会被后端拒绝。资料 revision 在审查期间变化时也不会应用过期提案。
@@ -72,6 +76,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Agent：移除完整内容路径中不必要的 128 KB 以下硬限制。显式文件引用、Config Manager 资源 Skill、游戏运行时与 Director 上下文、当前资料正文、状态结构审查 Prompt 和资料工具结果现在至少支持 128 KB；Director 总 Prompt 仍按模型上下文窗口动态预算，索引、历史保留和 UI 预览继续使用独立有界策略。
+- Agent: Removed unnecessary sub-128 KB hard caps from complete-content paths. Explicit file references, Config Manager resource Skills, game runtime and Director context, active lore bodies, state-schema review prompts, and lore tool results now support at least 128 KB. Total Director prompts remain dynamically budgeted against the model context window, while indexes, retained history, and UI previews keep their separate bounded policies.
+- Beta Agent 协议：`submit_interactive_turn_result` 的工具结果不再回显完整 TurnResult，改为有界的 `{accepted, retryable, diagnostics}` 回执；依赖旧回显结构的自定义 Game Agent 提示需要同步更新。
+- Beta Agent Protocol: `submit_interactive_turn_result` no longer echoes the full TurnResult and instead returns a bounded `{accepted, retryable, diagnostics}` receipt. Custom Game Agent prompts that depend on the old echoed shape must be updated.
 - 游戏模式：桌面端故事舞台顶部栏只保留故事线导航、新建与导演台开关；故事导演选择和每轮目标字数移入右侧导演控制台头部，使运行参数与导演状态集中管理。移动端仍在“舞台操作”中保留这两个入口，避免导演台关闭时无法调整。
 - Game Mode: The desktop story-stage header now keeps only story navigation, New, and the Director Console toggle. Story Director and per-turn target length move into the Director Console header so runtime controls live with director state. Mobile keeps both controls in Stage Actions so they remain accessible when the console is hidden.
 - 游戏模式：新故事线开场页重构为“AI 编排 / 书籍预设 / 自定义”三个 Tab，每个来源只展示对应输入与主操作；书籍预设由下拉列表改为标题与正文摘要卡片、完整正文预览和明确选中状态，空预设与窄区域布局同步优化。

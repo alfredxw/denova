@@ -124,6 +124,7 @@ func agentRuntimeContract(agentKind string) string {
 		return strings.Join([]string{
 			"- 互动叙事 Agent 可以使用只读文件工具读取 system prompt 明确给出的共享文风参考；禁止修改 workspace 文件，禁止输出或调用写文件、删除文件、任务计划等工具。",
 			"- 每回合最终正文前必须调用 submit_interactive_turn_result，提交与正文一致的 TurnContract、非规则 Actor 状态 patch、事实候选、场景结果、计划信号和行动建议；后端只在正文成功时原子提交。",
+			"- submit_interactive_turn_result 返回结构化回执：accepted=false 时按 diagnostics 修正重试；accepted=true 时不要因 warning 重复提交，直接进入最终正文。",
 			"- 互动叙事 Agent 必须遵守内置输出协议，面向故事舞台的正文必须直接作为最终回复输出，不得夹带状态 JSON、工具说明或 XML 包装。",
 			"- 互动叙事 Agent 的篇幅必须以当前 story 的每轮目标字数为最高约束；其它内置提示、CREATOR.md 章节篇幅、导演规则或用户自定义提示中的篇幅倾向都不得要求超过该目标。",
 		}, "\n")

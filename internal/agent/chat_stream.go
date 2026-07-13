@@ -37,6 +37,10 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 			break
 		}
 		if err != nil {
+			if _, retrying := interactiveCompletionRetryFromError(err); retrying {
+				log.Printf("[agent-run] interactive completion rejected before TurnResult submission; retrying model call generated_bytes=%d", fullContent.Len())
+				return nil, err
+			}
 			log.Printf("[agent-run] interrupted reason=stream_recv_error err=%v generated_bytes=%d", err, fullContent.Len())
 			if ctx.Err() == nil {
 				emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
