@@ -3,11 +3,14 @@ import { BookMarked, Bot, Building2, ChevronDown, ChevronsDownUp, ChevronsUpDown
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isSaveShortcut } from '@/lib/keyboard'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
@@ -52,6 +55,7 @@ const IMAGE_PRESET_TARGET_OPTIONS = [{ value: 'agent_system' }, { value: 'tool_r
 const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'actor-state', 'memory-structure']
 type ImagePresetTarget = ImagePresetSlot['target']
 type LoreType = LoreItem['type']
+type LoreLoadModeFilter = 'all' | 'resident' | 'on_demand'
 interface KnowledgeSection {
   id: string
   labelKey: string
@@ -97,8 +101,15 @@ export function LoreDirectory({
 }) {
   const { t } = useTranslation()
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
+  const [loadModeFilter, setLoadModeFilter] = useState<LoreLoadModeFilter>('all')
+  const loadModeFilterLabel = loadModeFilter === 'resident'
+    ? t('settingPanel.lore.loadModeFilter.resident')
+    : loadModeFilter === 'on_demand'
+      ? t('settingPanel.lore.loadModeFilter.onDemand')
+      : t('settingPanel.lore.loadModeFilter.all')
+  const loadModeFilterAriaLabel = `${t('settingPanel.lore.loadModeFilter')}: ${loadModeFilterLabel}`
   const sections = KNOWLEDGE_SECTIONS
-    .map((section) => ({ section, entries: sectionItems(items, section, query) }))
+    .map((section) => ({ section, entries: sectionItems(items, section, query, loadModeFilter) }))
     .sort((a, b) => {
       if (a.entries.length === 0 && b.entries.length > 0) return 1
       if (a.entries.length > 0 && b.entries.length === 0) return -1
@@ -117,15 +128,40 @@ export function LoreDirectory({
     <>
       <div className="border-b border-[var(--nova-border)] p-2">
         <div className="flex items-center gap-2">
-          <div className="nova-field flex h-8 min-w-0 flex-1 items-center gap-2 rounded-[var(--nova-radius)] px-2 text-xs text-[var(--nova-text-faint)]">
-            <Search className="h-3.5 w-3.5" />
-            <input
-              className="min-w-0 flex-1 bg-transparent text-[var(--nova-text-muted)] outline-none placeholder:text-[var(--nova-text-faint)]"
+          <InputGroup className="nova-field min-w-0 flex-1 border-0">
+            <InputGroupAddon>
+              <Search />
+            </InputGroupAddon>
+            <InputGroupInput
+              className="px-1 text-xs text-[var(--nova-text-muted)] placeholder:text-[var(--nova-text-faint)]"
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
               placeholder={t('settingPanel.searchLore')}
             />
-          </div>
+            <InputGroupAddon align="inline-end" className="pr-1">
+              <Select value={loadModeFilter} onValueChange={(value) => setLoadModeFilter(value as LoreLoadModeFilter)}>
+                <SelectTrigger
+                  size="sm"
+                  className={cn(
+                    'size-7 justify-center border-0 p-0 shadow-none [&>svg:last-child]:hidden',
+                    loadModeFilter !== 'all' && 'bg-muted text-foreground',
+                  )}
+                  aria-label={loadModeFilterAriaLabel}
+                  title={loadModeFilterAriaLabel}
+                >
+                  <SlidersHorizontal />
+                  <span className="sr-only">{loadModeFilterLabel}</span>
+                </SelectTrigger>
+                <SelectContent position="popper" align="end">
+                  <SelectGroup>
+                    <SelectItem value="all">{t('settingPanel.lore.loadModeFilter.all')}</SelectItem>
+                    <SelectItem value="resident">{t('settingPanel.lore.loadModeFilter.resident')}</SelectItem>
+                    <SelectItem value="on_demand">{t('settingPanel.lore.loadModeFilter.onDemand')}</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </InputGroupAddon>
+          </InputGroup>
           <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || items.length === 0} onClick={onBatchGenerate} aria-label={t('settingPanel.loreImage.batchOpen')} title={t('settingPanel.loreImage.batchOpen')}>
             <Images className="h-3.5 w-3.5" />
           </Button>
@@ -162,7 +198,7 @@ export function LoreDirectory({
         </button>
       </div>
       <ScrollArea className="min-h-0 flex-1">
-        <div className="p-2">
+        <div className="w-0 min-w-full p-2">
           {sections.map(({ section, entries }) => {
             const Icon = section.icon
             const collapsed = isCollapsed(section, entries)
@@ -198,13 +234,22 @@ export function LoreDirectory({
                         key={item.id}
                         type="button"
                         onClick={() => onSelect(item.id)}
-                        className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition ${
+                        className={`relative flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition ${
                           activeId === item.id ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
                         } ${item.enabled === false ? 'opacity-50' : ''}`}
                       >
                         <LoreItemThumb item={item} />
-                        <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                        {item.enabled === false ? <span className="shrink-0 text-[10px] text-[var(--nova-text-faint)]">{t('settingPanel.disabled')}</span> : null}
+                        <span className="min-w-0 flex-1 truncate pr-20">{item.name}</span>
+                        <span className="absolute right-2 flex items-center gap-1">
+                          <Badge
+                            variant={item.load_mode === 'resident' ? 'secondary' : 'outline'}
+                            title={loreLoadModeLabel(item.load_mode, t)}
+                            aria-label={loreLoadModeLabel(item.load_mode, t)}
+                          >
+                            {item.load_mode === 'resident' ? t('settingPanel.lore.loadModeBadge.resident') : t('settingPanel.lore.loadModeBadge.onDemand')}
+                          </Badge>
+                          {item.enabled === false ? <span className="text-[10px] text-[var(--nova-text-faint)]">{t('settingPanel.disabled')}</span> : null}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -1338,107 +1383,131 @@ export function LoreEditor({
   const validImagePresets = imagePresets.filter((preset) => !preset.invalid)
   const selectedImagePresetId = imagePresetId || validImagePresets[0]?.id || 'game-cg'
   const openGenerateLabel = imagePath ? t('settingPanel.loreImage.openRegenerate') : t('settingPanel.loreImage.openGenerate')
-  const topGridClassName = `grid shrink-0 items-stretch gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-4 ${
-    hasImage ? 'lg:grid-cols-[15rem_minmax(0,1fr)] 2xl:grid-cols-[18rem_minmax(0,1fr)]' : 'lg:grid-cols-[12rem_minmax(0,1fr)] 2xl:grid-cols-[14rem_minmax(0,1fr)]'
-  }`
-  const imageColumnClassName = hasImage ? 'grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-1.5' : 'grid content-start gap-1.5'
+  const topGridClassName = cn(
+    'grid shrink-0 items-stretch gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3',
+    hasImage && 'lg:grid-cols-[15rem_minmax(0,1fr)] 2xl:grid-cols-[18rem_minmax(0,1fr)]',
+  )
+  const imageAction = (
+    <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={imageGenerating} onClick={() => setImageDialogOpen(true)} aria-label={openGenerateLabel} title={openGenerateLabel}>
+      {imageGenerating ? <Loader2 className="animate-spin" /> : <Sparkles />}
+    </Button>
+  )
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto md:overflow-hidden">
-      <div className={topGridClassName}>
-        <div className={imageColumnClassName}>
-          <div className="flex min-w-0 items-center justify-between gap-2">
-            <span className="text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.loreImage.current')}</span>
-            <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={imageGenerating} onClick={() => setImageDialogOpen(true)} aria-label={openGenerateLabel} title={openGenerateLabel}>
-              {imageGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            </Button>
-          </div>
-          <LoreImageCompactControl
-            imageSrc={imageSrc}
-            title={draft.name || t('settingPanel.loreImage.current')}
-            alt={draft.image?.alt_text || draft.name}
-          />
-        </div>
-        <div className="grid min-w-0 gap-3">
-          <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-[minmax(220px,1fr)_120px_150px_150px_170px]">
-            <Field label={t('settingPanel.field.name')}>
-              <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
-            </Field>
-            <BooleanSwitchField label={t('settingPanel.field.enabled')} checked={draft.enabled ?? true} onCheckedChange={(enabled) => setDraft({ ...draft, enabled })} />
-            <Field label={t('settingPanel.field.type')}>
-              <Select value={draft.type} onValueChange={(value) => setDraft({ ...draft, type: value as LoreItem['type'] })}>
-                <SelectTrigger size="sm" className={selectClassName}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                  {TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{loreTypeLabel(option.value, t)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label={t('settingPanel.field.importance')}>
-              <Select value={draft.importance} onValueChange={(value) => setDraft({ ...draft, importance: value as LoreItem['importance'] })}>
-                <SelectTrigger size="sm" className={selectClassName}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                  {IMPORTANCE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{loreImportanceLabel(option.value, t)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label={t('settingPanel.field.loadMode')}>
-              <Select value={draft.load_mode || 'auto'} onValueChange={(value) => setDraft({ ...draft, load_mode: value as LoreItem['load_mode'] })}>
-                <SelectTrigger size="sm" className={selectClassName}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                  {LOAD_MODE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>{loreLoadModeLabel(option.value, t)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          </div>
-          <Field label={t('settingPanel.field.tags')}>
-            <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
-          </Field>
-          <Field label={t('settingPanel.field.brief')}>
-            <Textarea
-              autoResize
-              className="nova-field min-h-[4.5rem] resize-y text-xs leading-5 shadow-none focus-visible:ring-0"
-              value={draft.brief_description || ''}
-              onChange={(event) => setDraft({ ...draft, brief_description: event.target.value })}
-              placeholder={t('settingPanel.placeholder.brief')}
-            />
-          </Field>
-          <div className="text-[11px] leading-5 text-[var(--nova-text-faint)]">
-            {draft.load_mode === 'resident' ? t('settingPanel.lore.residentDesc') : loadModeDescription(draft.load_mode, t)}
-            {residentWarning ? (
-              <span className="ml-2 text-[var(--nova-warning)]">
-                {t('settingPanel.lore.residentWarning', { size: Math.ceil(residentTotalBytes / 1024), threshold: LORE_RESIDENT_TOTAL_WARNING_BYTES / 1024 })}
-              </span>
+    <>
+      <ScrollArea className="min-h-0 flex-1" role="region" aria-label={t('settingPanel.lore.editorScrollArea')}>
+        <div className="flex min-h-full min-w-0 flex-col">
+          <div className={topGridClassName}>
+            {hasImage ? (
+              <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-1.5">
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.loreImage.current')}</span>
+                  {imageAction}
+                </div>
+                <LoreImageCompactControl
+                  imageSrc={imageSrc}
+                  title={draft.name || t('settingPanel.loreImage.current')}
+                  alt={draft.image?.alt_text || draft.name}
+                />
+              </div>
             ) : null}
+            <div className="grid min-w-0 gap-2" role="group" aria-label={t('settingPanel.lore.metadata')}>
+              {!hasImage ? (
+                <div className="flex min-h-7 min-w-0 items-center gap-2">
+                  <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.loreImage.current')}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-[var(--nova-text-faint)]">{t('settingPanel.loreImage.empty')}</span>
+                  {imageAction}
+                </div>
+              ) : null}
+              <div className="grid min-w-0 gap-2 md:grid-cols-3">
+                <Field label={t('settingPanel.field.name')} className="md:col-span-2">
+                  <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+                </Field>
+                <BooleanSwitchField label={t('settingPanel.field.enabled')} checked={draft.enabled ?? true} onCheckedChange={(enabled) => setDraft({ ...draft, enabled })} />
+                <Field label={t('settingPanel.field.type')}>
+                  <Select value={draft.type} onValueChange={(value) => setDraft({ ...draft, type: value as LoreItem['type'] })}>
+                    <SelectTrigger size="sm" className={selectClassName}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="nova-panel border text-[var(--nova-text)]">
+                      <SelectGroup>
+                        {TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{loreTypeLabel(option.value, t)}</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label={t('settingPanel.field.importance')}>
+                  <Select value={draft.importance} onValueChange={(value) => setDraft({ ...draft, importance: value as LoreItem['importance'] })}>
+                    <SelectTrigger size="sm" className={selectClassName}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="nova-panel border text-[var(--nova-text)]">
+                      <SelectGroup>
+                        {IMPORTANCE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{loreImportanceLabel(option.value, t)}</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label={t('settingPanel.field.loadMode')}>
+                  <Select value={draft.load_mode || 'auto'} onValueChange={(value) => setDraft({ ...draft, load_mode: value as LoreItem['load_mode'] })}>
+                    <SelectTrigger size="sm" className={selectClassName}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="nova-panel border text-[var(--nova-text)]">
+                      <SelectGroup>
+                        {LOAD_MODE_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>{loreLoadModeLabel(option.value, t)}</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </Field>
+              </div>
+              <div data-slot="lore-secondary-fields" className="grid min-w-0 items-start gap-2 md:grid-cols-[minmax(10rem,0.8fr)_minmax(0,1.2fr)]">
+                <Field label={t('settingPanel.field.tags')}>
+                  <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
+                </Field>
+                <Field label={t('settingPanel.field.brief')}>
+                  <Textarea
+                    autoResize
+                    className="nova-field min-h-14 resize-y text-xs leading-5 shadow-none focus-visible:ring-0"
+                    value={draft.brief_description || ''}
+                    onChange={(event) => setDraft({ ...draft, brief_description: event.target.value })}
+                    placeholder={t('settingPanel.placeholder.brief')}
+                  />
+                </Field>
+              </div>
+              <div className="min-w-0 text-[11px] leading-4 text-[var(--nova-text-faint)]">
+                {draft.load_mode === 'resident' ? t('settingPanel.lore.residentDesc') : loadModeDescription(draft.load_mode, t)}
+                {residentWarning ? (
+                  <span className="ml-2 text-[var(--nova-warning)]">
+                    {t('settingPanel.lore.residentWarning', { size: Math.ceil(residentTotalBytes / 1024), threshold: LORE_RESIDENT_TOTAL_WARNING_BYTES / 1024 })}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <div className="min-h-[420px] flex-1 p-4">
+            <Textarea
+              autoResize={false}
+              className="nova-field h-full min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
+              value={draft.content || ''}
+              onChange={(event) => setDraft({ ...draft, content: event.target.value })}
+              onKeyDown={(event) => {
+                if (isSaveShortcut(event)) {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onSave()
+                }
+              }}
+            />
           </div>
         </div>
-      </div>
-      <div className="min-h-[420px] flex-1 p-4 md:min-h-0">
-        <Textarea
-          autoResize={false}
-          className="nova-field h-full min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
-          value={draft.content || ''}
-          onChange={(event) => setDraft({ ...draft, content: event.target.value })}
-          onKeyDown={(event) => {
-            if (isSaveShortcut(event)) {
-              event.preventDefault()
-              event.stopPropagation()
-              onSave()
-            }
-          }}
-        />
-      </div>
+      </ScrollArea>
       <LoreImageGenerateDialog
         open={imageDialogOpen}
         itemName={draft.name || t('settingPanel.loreImage.current')}
@@ -1453,7 +1522,7 @@ export function LoreEditor({
         onGenerateImage={onGenerateImage}
         onClearImage={onClearImage}
       />
-    </div>
+    </>
   )
 }
 
@@ -1467,14 +1536,6 @@ function LoreImageCompactControl({
   alt: string
 }) {
   const { t } = useTranslation()
-
-  if (!imageSrc) {
-    return (
-      <div className="flex min-h-14 min-w-0 items-center justify-center rounded-lg border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs text-[var(--nova-text-faint)]">
-        {t('settingPanel.loreImage.empty')}
-      </div>
-    )
-  }
 
   return (
     <div className="flex h-full min-h-48 min-w-0 overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface-2)]">
@@ -1699,10 +1760,12 @@ export function OpeningPresetEditor({
   )
 }
 
-function sectionItems(items: LoreItem[], section: KnowledgeSection, query = '') {
+function sectionItems(items: LoreItem[], section: KnowledgeSection, query = '', loadModeFilter: LoreLoadModeFilter = 'all') {
   const normalizedQuery = query.trim().toLowerCase()
   return items.filter((item) => {
     if (!section.types.includes(item.type)) return false
+    if (loadModeFilter === 'resident' && item.load_mode !== 'resident') return false
+    if (loadModeFilter === 'on_demand' && item.load_mode === 'resident') return false
     const tags = item.tags || []
     if (section.tag && !tags.includes(section.tag)) return false
     if (section.excludeTag && tags.includes(section.excludeTag)) return false
@@ -1741,7 +1804,7 @@ function loadModeDescription(loadMode: LoreItem['load_mode'] | undefined, t: (ke
 
 function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
   return (
-    <label className={`grid gap-1.5 ${className}`}>
+    <label className={cn('grid min-w-0 gap-1.5', className)}>
       <span className="text-[11px] text-[var(--nova-text-faint)]">{label}</span>
       {children}
     </label>

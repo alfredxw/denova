@@ -251,7 +251,7 @@ func TestSubAgentStreamingDoesNotAppendParentAssistantContent(t *testing.T) {
 	var fullContent, fullThinking strings.Builder
 	var events []Event
 	meta := agentEventMetadata{AgentName: "researcher", RootAgentName: "DenovaAgent", RunPath: []string{"DenovaAgent", "researcher"}, SubAgent: true}
-	processNonStreamingEvent(&adk.MessageVariant{Message: schema.AssistantMessage("sub draft", nil)}, &fullContent, &fullThinking, 0, meta, nil, func(ev Event) {
+	processNonStreamingEvent(&adk.MessageVariant{Message: schema.AssistantMessage("sub draft", nil)}, &fullContent, &fullThinking, 0, meta, true, nil, func(ev Event) {
 		events = append(events, ev)
 	})
 	if fullContent.Len() != 0 || fullThinking.Len() != 0 {
@@ -262,7 +262,7 @@ func TestSubAgentStreamingDoesNotAppendParentAssistantContent(t *testing.T) {
 	}
 
 	rootMeta := agentEventMetadata{AgentName: "DenovaAgent", RootAgentName: "DenovaAgent", RunPath: []string{"DenovaAgent"}}
-	processNonStreamingEvent(&adk.MessageVariant{Message: schema.AssistantMessage("root final", nil)}, &fullContent, &fullThinking, 0, rootMeta, nil, func(Event) {})
+	processNonStreamingEvent(&adk.MessageVariant{Message: schema.AssistantMessage("root final", nil)}, &fullContent, &fullThinking, 0, rootMeta, true, nil, func(Event) {})
 	if got := fullContent.String(); got != "root final" {
 		t.Fatalf("root output should append to parent builder, got %q", got)
 	}

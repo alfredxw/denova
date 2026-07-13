@@ -8,14 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 资料库：资料编辑器改为固定标题栏、正文区域独立滚动，低高度窗口下可访问完整表单和正文；无当前图片时改为 28px 单行工具栏，核心属性收敛为两行，标签与简介在中大屏并排、窄屏自动回落单列，减少元数据区的纵向占用。
+- Lore: The lore editor now keeps its header fixed while the form and content scroll independently. Empty current-image states use a 28px utility row, core properties collapse into two rows, and Tags plus Brief share a responsive row on medium and larger screens while stacking on narrow screens, substantially reducing metadata height.
+- WebUI：共用弹窗现在使用可收缩的单列网格，长说明、资料列表及表单控件会随弹窗宽度换行或收缩，不再把搜索框、选择框和输入框撑出弹窗右侧；写作与游戏模式统一生效。
+- WebUI: Shared dialogs now use a shrinkable single-column grid, so long descriptions, lore lists, and form controls wrap or contract to the dialog width instead of pushing search, select, and input fields past the right edge in either Writing or Game mode.
+- 对话渲染：流式 thinking 或工具追踪已出现后，不再同时保留独立的“正在思考…”活动卡片；动态追踪内容增长时只更新同一行，避免活动卡先被向下挤压、再被底部自动跟随拉回造成持续抖动。连接阶段尚无真实输出时仍保留状态卡。
+- Chat Rendering: Once streaming reasoning or tool trace content is visible, the separate Thinking activity card is removed. Dynamic trace growth now updates a single row instead of pushing the activity card down before bottom-follow restores it, eliminating repeated jitter while preserving the card during connection before real output arrives.
 - 写作模式：书籍设定快捷入口现在会先确认 Markdown 文件真实存在；缺失的大纲、规则、进度、灵感或状态不再打开空白故障 Tab，而是在侧栏显示具体路径和创作 Agent 指引，并可一键预填“先讨论、不要创建空白占位文件”的创建请求。
 - Writing Mode: Book Setting shortcuts now verify that the Markdown file exists. Missing outline, rules, progress, ideas, or state files no longer open a broken blank tab; the sidebar shows the missing path and a Creation Agent action that prefills a discuss-first, no-empty-placeholder request.
 - 写作模式：书籍设定快捷标签改为自适应等宽网格，完整行会均分侧栏宽度，最后一行不足时保留空列，避免标签全部左贴后在右侧留下不规则空白。
 - Writing Mode: Book Setting shortcuts now use an adaptive equal-width grid. Full rows distribute evenly across the sidebar, while incomplete final rows retain empty columns instead of leaving irregular right-side space.
 - 游戏模式：新建故事线的导演模块选择现在与方案预设共用事件包、规则系统、状态系统和记忆结构资源列表，继承值和候选项显示预设名称，不再退化为 `default` 等内部 ID。
 - Game Mode: New-story director module selectors now use the same event-package, rule-system, actor-state, and memory-structure catalogs as Presets. Inherited values and choices show preset names instead of falling back to internal IDs such as `default`.
-- 游戏模式：修复模型在工具调用前输出的准备性文字被流式展示并落盘为剧情正文的问题；这类临时正文会在工具调用出现时立即回收为 thinking，最终故事正文不再与思考内容粘连。
-- Game Mode: Fixed preparatory model text emitted before a tool call being streamed and persisted as story prose. Provisional prose is now reclassified as thinking as soon as the tool call appears, keeping the final narrative separate from reasoning.
+- 游戏模式：修复模型准备性文字被流式展示并落盘为剧情正文的问题；隐藏 TurnResult 成功提交前的输出现在从首个增量起直接进入 thinking，提交后的最终故事正文才开始流式展示；工具调用后的回收机制仅作为异常兜底，思考与正文不再发生可见跳转或粘连。
+- Game Mode: Fixed preparatory model text being streamed and persisted as story prose. Output now enters thinking from its first delta until the hidden TurnResult is staged, and final story prose starts streaming only afterward. Tool-triggered reclassification remains an exceptional fallback, eliminating visible jumps and reasoning/prose concatenation.
 - 游戏模式：新建故事线的导演模块区移除重复的“摘要 + 展开编辑器”，改为六个常驻可编辑模块卡片；导演与单选模块使用 shadcn/Radix Select，事件包使用 Radix 多选菜单，当前值同时承担展示和编辑入口。
 - Game Mode: New-story director modules no longer duplicate a summary and expanded editor. Six persistent editable module cards now serve as both display and edit controls; Director and single-value modules use shadcn/Radix Select, while event packages use a Radix multi-select menu.
 - 游戏模式：开场方式 Tabs 改回 shadcn/Radix 的按钮选中态，移除与列表分隔线错位的伪元素激活线和根节点间隙；选中背景与底部边框现在都严格位于对应 Tab 单元格内。
@@ -35,6 +41,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 资料库：目录搜索框内新增紧凑的“全部 / 常驻 / 按需”加载策略筛选；每个资料条目显示常驻或按需状态，按需标记悬浮时仍会提示简介自动匹配或手动引用的具体策略，便于在长资料列表中快速检查上下文加载方式。
+- Lore: Added a compact All / Resident / On-demand load-strategy filter inside the directory search field. Every item shows its resident or on-demand status, while hovering an on-demand badge still reveals whether it uses automatic brief matching or manual references.
 - 游戏模式：新建故事线改为故事舞台内的两阶段流程。第一阶段可配置名称、故事简介、导演、每轮目标字数，并预览或按故事覆盖导演加载的叙事、事件、规则、角色状态、记忆和图像模块；确认后才创建空故事并进入开场方式选择，取消不会留下占位故事。
 - Game Mode: New story creation is now a two-stage flow inside the story stage. The setup stage configures the name, story brief, director, reply length, and previews or overrides narrative, event, rule, actor-state, memory, and image modules for that story. The empty story is created only after confirmation before opening selection, so cancellation leaves no placeholder story.
 - 书籍管理：酒馆角色卡导入升级为 Denova 原生创作资产迁移。PNG 优先读取 `ccv3`、回退 `chara`；世界书条目会清洗脚本、MVU/ZOD、变量块、状态栏和 HTML 运行时，只保留角色、世界、地点、势力、规则与物品资料。主/次关键词合并为搜索别名，不参与自动触发；来源以模型不可见的 `provenance` 保存。导入预览新增启用/禁用、常驻/按需、运行时清洗、扩展丢弃、有效开场和常驻字节预算统计。

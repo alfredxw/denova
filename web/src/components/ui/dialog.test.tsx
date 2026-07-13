@@ -18,6 +18,19 @@ describe('dialog primitives', () => {
     expect(dialog.className).not.toContain('max-w-sm')
   })
 
+  it('keeps long dialog content inside the adaptive width', () => {
+    render(
+      <Dialog open>
+        <DialogContent showCloseButton={false} aria-describedby={undefined}>
+          <DialogTitle>Dialog title</DialogTitle>
+          <div>Long dialog content</div>
+        </DialogContent>
+      </Dialog>,
+    )
+
+    expect(screen.getByRole('dialog')).toHaveClass('grid-cols-[minmax(0,1fr)]')
+  })
+
   it('allows explicit dialog widths to override the adaptive default', () => {
     render(
       <Dialog open>

@@ -14,6 +14,40 @@ function renderMessageList(ui: ReactElement) {
 }
 
 describe('Agent MessageList', () => {
+  it('有可见流式 thinking 时不再追加会被动态内容推动的活动卡片', () => {
+    renderMessageList(
+      <MessageList
+        isStreaming
+        activityContent="正在思考…"
+        collapseTraceBeforeAssistant
+        messages={[
+          {
+            id: 'assistant-thinking',
+            role: 'assistant',
+            parts: [
+              { type: 'reasoning', text: '正在分析当前剧情。', state: 'streaming' },
+            ],
+          },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(screen.getByText('正在分析当前剧情。')).toBeInTheDocument()
+    expect(screen.queryByText('正在思考…')).not.toBeInTheDocument()
+  })
+
+  it('尚无真实流式内容时继续显示连接活动卡片', () => {
+    renderMessageList(
+      <MessageList
+        isStreaming
+        activityContent="正在连接…"
+        messages={[]}
+      />,
+    )
+
+    expect(screen.getByText('正在连接…')).toBeInTheDocument()
+  })
+
   it('直接渲染 AgentUIMessage parts 并上报 turn anchor', async () => {
     const handleVisibleTurnAnchorChange = vi.fn()
     renderMessageList(

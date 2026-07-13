@@ -28,6 +28,12 @@ type ContextSourceReporter interface {
 	ContextSourceSummary() string
 }
 
+// InteractiveNarrativeReadinessReporter marks the protocol boundary after a
+// Game Agent has successfully staged its hidden TurnResult and may emit prose.
+type InteractiveNarrativeReadinessReporter interface {
+	InteractiveNarrativeReady() bool
+}
+
 type SessionConversation struct {
 	session             *session.Session
 	cfg                 *config.Config

@@ -34,6 +34,9 @@ func TestSubmitTurnResultValidatesFrozenActorStateImmediately(t *testing.T) {
 		t.Fatal(err)
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "休息", 800, &config.Config{})
+	if conversation.InteractiveNarrativeReady() {
+		t.Fatal("narrative must stay closed before TurnResult is staged")
+	}
 	base := interactive.TurnResult{
 		Contract:    interactive.TurnContract{PlayerIntent: "休息"},
 		SceneResult: interactive.TurnSceneResult{Status: "continued"},
@@ -54,6 +57,9 @@ func TestSubmitTurnResultValidatesFrozenActorStateImmediately(t *testing.T) {
 	valid.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{"当前身体/精神 状态": "安定"}}}
 	if _, err := conversation.SubmitTurnResult(context.Background(), valid); err != nil {
 		t.Fatalf("valid localized field ID should be staged: %v", err)
+	}
+	if !conversation.InteractiveNarrativeReady() {
+		t.Fatal("narrative must open immediately after TurnResult is staged")
 	}
 	if err := conversation.AppendAssistantWithThinking("主角平复了呼吸。", ""); err != nil {
 		t.Fatalf("validated result and narrative should commit atomically: %v", err)

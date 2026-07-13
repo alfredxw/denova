@@ -866,7 +866,18 @@ describe('SettingPanel', () => {
     render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
 
     await user.click(await screen.findByRole('button', { name: /林川/ }))
-    expect(screen.getByText('暂无图片')).toBeInTheDocument()
+    const emptyImage = screen.getByText('暂无图片')
+    const emptyImageRow = emptyImage.parentElement
+    expect(emptyImageRow).not.toBeNull()
+    expect(screen.getByText('当前图片').parentElement).toBe(emptyImageRow)
+    expect(screen.getByRole('button', { name: '打开图片生成' }).parentElement).toBe(emptyImageRow)
+    const metadataGroup = screen.getByRole('group', { name: '资料元数据' })
+    expect(metadataGroup).toContainElement(emptyImage)
+    expect(screen.getByRole('region', { name: '资料编辑区' })).toContainElement(metadataGroup)
+
+    const secondaryFields = within(metadataGroup).getByRole('textbox', { name: '标签' }).closest('[data-slot="lore-secondary-fields"]')
+    expect(secondaryFields).not.toBeNull()
+    expect(secondaryFields).toContainElement(within(metadataGroup).getByRole('textbox', { name: '简介' }))
     await user.click(screen.getByRole('button', { name: '打开图片生成' }))
 
     const generateDialog = await screen.findByRole('dialog', { name: '生成图片' })
@@ -928,6 +939,40 @@ describe('SettingPanel', () => {
     await user.click(await screen.findByRole('button', { name: /常驻规则/ }))
     expect(screen.getByText('当前常驻资料约 33 KB，超过 32 KB 建议值；不会阻止保存或使用。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '保存' })).toBeEnabled()
+  })
+
+  it('filters lore by load strategy and labels each directory item', async () => {
+    const user = userEvent.setup()
+    const resident = { ...loreItem('resident', '常驻人物'), load_mode: 'resident' as const }
+    const automatic = loreItem('automatic', '自动人物')
+    const manual = { ...loreItem('manual', '手动人物'), load_mode: 'manual' as const }
+    vi.mocked(getLoreItems).mockResolvedValue([resident, automatic, manual])
+
+    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+
+    const residentButton = await screen.findByRole('button', { name: /常驻人物/ })
+    expect(within(residentButton).getByText('常驻')).toBeInTheDocument()
+    expect(within(screen.getByRole('button', { name: /自动人物/ })).getByText('按需')).toHaveAttribute('title', '简介自动匹配')
+    expect(within(screen.getByRole('button', { name: /手动人物/ })).getByText('按需')).toHaveAttribute('title', '手动引用')
+
+    const loadModeFilter = screen.getByRole('combobox', { name: /按加载策略筛选/ })
+    const searchGroup = loadModeFilter.closest('[data-slot="input-group"]')
+    expect(searchGroup).not.toBeNull()
+    expect(within(searchGroup as HTMLElement).getByPlaceholderText('搜索资料')).toBeInTheDocument()
+
+    await user.click(loadModeFilter)
+    await user.click(screen.getByRole('option', { name: '常驻' }))
+
+    expect(screen.getByRole('button', { name: /常驻人物/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /自动人物/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /手动人物/ })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('combobox', { name: /按加载策略筛选/ }))
+    await user.click(screen.getByRole('option', { name: '按需' }))
+
+    expect(screen.queryByRole('button', { name: /常驻人物/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /自动人物/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /手动人物/ })).toBeInTheDocument()
   })
 
   it('confirms lore deletion with an in-app dialog', async () => {

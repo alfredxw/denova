@@ -267,6 +267,15 @@ func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, result i
 	return result, nil
 }
 
+func (c *interactiveConversation) InteractiveNarrativeReady() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.turnResult != nil
+}
+
 func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, input agent.ContextCompactionInput) ([]*schema.Message, agent.ContextCompactionResult, error) {
 	if c == nil || c.store == nil {
 		return input.Messages, agent.ContextCompactionResult{}, fmt.Errorf("互动故事不存在")

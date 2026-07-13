@@ -86,7 +86,10 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
   const lastTurnScrollRequestIdRef = useRef<number | null>(null)
   const views = useMemo(() => buildAgentMessageViews(messages), [messages])
   const hasRunningContextCompaction = views.some((view) => view.kind === 'context-compaction' && view.status === 'running')
-  const visibleActivityContent = hasRunningContextCompaction ? '' : activityContent
+  const hasActiveTrace = views.some((view) => isAgentTraceView(view) && (view.streaming || view.status === 'running'))
+  // 真实 thinking / tool 行已经承担进度展示；保留额外 activity 行会在 trace 增高时
+  // 先被文档流推走、再被底部锁定拉回，产生持续抖动。
+  const visibleActivityContent = hasRunningContextCompaction || hasActiveTrace ? '' : activityContent
   const listItems = useMemo(
     () => buildAgentChatListItems({
       views,

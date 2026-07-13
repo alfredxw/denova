@@ -19,7 +19,7 @@ const interactiveContentReclassifiedEvent = "interactive_content_reclassified"
 // processStreamingEvent 处理流式助手消息，输出领域事件。
 // 工具调用在流中一检测到名称就立即 emit，让前端尽早展示 running 卡片。
 // 参数在流中逐帧 emit tool_args_delta，调用方可在对外传输前按展示策略过滤。
-func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, toolResultMaxBytes int, meta agentEventMetadata, planParser *planProtocolParser, emit func(Event)) (*schema.Message, error) {
+func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, toolResultMaxBytes int, meta agentEventMetadata, narrativeReady bool, planParser *planProtocolParser, emit func(Event)) (*schema.Message, error) {
 	mv.MessageStream.SetAutomaticClose()
 	defer mv.MessageStream.Close()
 	var accumulatedToolCalls []schema.ToolCall
@@ -67,12 +67,18 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 				content = planParser.Push(frame.Content)
 			}
 			if content != "" {
-				if isInteractiveRoot {
+				if isInteractiveRoot && !narrativeReady {
+					if fullThinking != nil {
+						fullThinking.WriteString(content)
+					}
+				} else if isInteractiveRoot {
 					interactiveContent.WriteString(content)
 				} else if !meta.SubAgent {
 					fullContent.WriteString(content)
 				}
-				if interactiveContentReclassified {
+				if isInteractiveRoot && !narrativeReady {
+					emit(Event{Type: "thinking", Data: meta.appendTo(map[string]interface{}{"content": content})})
+				} else if interactiveContentReclassified {
 					emit(Event{Type: "thinking", Data: meta.appendTo(map[string]interface{}{"content": content})})
 				} else {
 					emit(Event{Type: "chunk", Data: meta.appendTo(map[string]interface{}{"content": content})})
@@ -170,7 +176,7 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 }
 
 // processNonStreamingEvent 处理非流式助手消息，输出领域事件。
-func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, toolResultMaxBytes int, meta agentEventMetadata, planParser *planProtocolParser, emit func(Event)) {
+func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, toolResultMaxBytes int, meta agentEventMetadata, narrativeReady bool, planParser *planProtocolParser, emit func(Event)) {
 	if mv.Message.ReasoningContent != "" {
 		if fullThinking != nil && !meta.SubAgent {
 			fullThinking.WriteString(mv.Message.ReasoningContent)
@@ -183,7 +189,7 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 			content = planParser.Push(mv.Message.Content)
 		}
 		if content != "" {
-			isInteractiveToolPreamble := meta.AgentKind == AgentKindInteractiveStory && !meta.SubAgent && len(mv.Message.ToolCalls) > 0
+			isInteractiveToolPreamble := meta.AgentKind == AgentKindInteractiveStory && !meta.SubAgent && (!narrativeReady || len(mv.Message.ToolCalls) > 0)
 			if isInteractiveToolPreamble {
 				if fullThinking != nil {
 					fullThinking.WriteString(content)
@@ -235,6 +241,14 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 		}
 		emit(Event{Type: "tool_call", Data: data})
 	}
+}
+
+func interactiveNarrativeReady(conversation Conversation, meta agentEventMetadata) bool {
+	if meta.AgentKind != AgentKindInteractiveStory || meta.SubAgent {
+		return true
+	}
+	reporter, ok := conversation.(InteractiveNarrativeReadinessReporter)
+	return ok && reporter.InteractiveNarrativeReady()
 }
 
 func filterPlanProtocolToolCalls(calls []schema.ToolCall) []schema.ToolCall {
