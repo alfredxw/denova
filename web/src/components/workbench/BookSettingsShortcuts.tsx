@@ -137,7 +137,7 @@ export function BookSettingsShortcuts({
         </Popover>
       </div>
       {pinnedItems.length > 0 ? (
-        <div className="flex flex-wrap gap-1">
+        <div data-testid="book-setting-shortcuts" className="grid grid-cols-[repeat(auto-fill,minmax(4rem,1fr))] gap-1">
           {pinnedItems.map((item) => (
             <button
               key={item.path}

@@ -32,6 +32,7 @@ describe('BookSettingsShortcuts', () => {
     expect(screen.getByRole('button', { name: '进度' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '灵感' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '状态' })).toBeInTheDocument()
+    expect(screen.getByTestId('book-setting-shortcuts')).toHaveClass('grid-cols-[repeat(auto-fill,minmax(4rem,1fr))]')
     expect(screen.queryByRole('button', { name: '人物关系' })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '管理' }))
