@@ -624,6 +624,13 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
             setStageActivityContent(t('storyStage.activity.thinking'))
             break
           }
+          case 'interactive_content_reclassified': {
+            const data = JSON.parse(value.data)
+            resetAssistantMessage()
+            appendThinkingMessage(data.content || '', streamMetadataFromPayload(data))
+            setStageActivityContent(t('storyStage.activity.thinking'))
+            break
+          }
           case 'tool_call': {
             const data = JSON.parse(value.data)
             flushLiveMessageBuffer()

@@ -66,4 +66,32 @@ describe('BookSettingsShortcuts', () => {
     expect(screen.getByRole('button', { name: '灵感' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '状态' })).toBeInTheDocument()
   })
+
+  it('缺失的设定文件不打开空 Tab，并提示通过创作 Agent 创建', async () => {
+    const user = userEvent.setup()
+    const onSelectFile = vi.fn()
+    const onRequestCreate = vi.fn()
+    render(
+      <BookSettingsShortcuts
+        workspace="/books/demo"
+        tree={[{ name: 'CREATOR.md', type: 'file' }]}
+        chapterPlans={[]}
+        selectedFile={null}
+        onSelectFile={onSelectFile}
+        onRequestCreate={onRequestCreate}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '大纲' }))
+    expect(onSelectFile).not.toHaveBeenCalled()
+    expect(screen.getByRole('status')).toHaveTextContent('大纲还没有创建')
+    expect(screen.getByRole('status')).toHaveTextContent('setting/outline.md')
+    expect(screen.getByRole('status')).toHaveTextContent('创作 Agent')
+    await user.click(screen.getByRole('button', { name: '和创作 Agent 对话' }))
+    expect(onRequestCreate).toHaveBeenCalledWith(expect.objectContaining({ path: 'setting/outline.md', title: '大纲' }))
+
+    await user.click(screen.getByRole('button', { name: '规则' }))
+    expect(onSelectFile).toHaveBeenCalledWith('CREATOR.md')
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
 })

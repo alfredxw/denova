@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 写作模式：书籍设定快捷入口现在会先确认 Markdown 文件真实存在；缺失的大纲、规则、进度、灵感或状态不再打开空白故障 Tab，而是在侧栏显示具体路径和创作 Agent 指引，并可一键预填“先讨论、不要创建空白占位文件”的创建请求。
+- Writing Mode: Book Setting shortcuts now verify that the Markdown file exists. Missing outline, rules, progress, ideas, or state files no longer open a broken blank tab; the sidebar shows the missing path and a Creation Agent action that prefills a discuss-first, no-empty-placeholder request.
+- 游戏模式：新建故事线的导演模块选择现在与方案预设共用事件包、规则系统、状态系统和记忆结构资源列表，继承值和候选项显示预设名称，不再退化为 `default` 等内部 ID。
+- Game Mode: New-story director module selectors now use the same event-package, rule-system, actor-state, and memory-structure catalogs as Presets. Inherited values and choices show preset names instead of falling back to internal IDs such as `default`.
+- 游戏模式：修复模型在工具调用前输出的准备性文字被流式展示并落盘为剧情正文的问题；这类临时正文会在工具调用出现时立即回收为 thinking，最终故事正文不再与思考内容粘连。
+- Game Mode: Fixed preparatory model text emitted before a tool call being streamed and persisted as story prose. Provisional prose is now reclassified as thinking as soon as the tool call appears, keeping the final narrative separate from reasoning.
+- 游戏模式：新建故事线的导演模块区移除重复的“摘要 + 展开编辑器”，改为六个常驻可编辑模块卡片；导演与单选模块使用 shadcn/Radix Select，事件包使用 Radix 多选菜单，当前值同时承担展示和编辑入口。
+- Game Mode: New-story director modules no longer duplicate a summary and expanded editor. Six persistent editable module cards now serve as both display and edit controls; Director and single-value modules use shadcn/Radix Select, while event packages use a Radix multi-select menu.
 - 游戏模式：开场方式 Tabs 改回 shadcn/Radix 的按钮选中态，移除与列表分隔线错位的伪元素激活线和根节点间隙；选中背景与底部边框现在都严格位于对应 Tab 单元格内。
 - Game Mode: Opening-method tabs now use the shadcn/Radix button selected state. The pseudo-element indicator and root gap that drifted away from the list divider are removed, keeping the selected background and bottom border inside the matching tab cell.
 - 游戏模式：开场方式的三个 Tab 现在分别按各自实际可见内容居中，书籍预设计数紧跟文案且不再向其他 Tab 注入空白占位；开场阶段新增“返回上一步”，可重新编辑故事名称、简介、导演、字数和故事级模块配置，再回到开场选择。

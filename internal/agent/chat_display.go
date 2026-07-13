@@ -100,7 +100,7 @@ func (r *displayEventRecorder) Record(ev Event) {
 		return
 	}
 	switch ev.Type {
-	case "thinking":
+	case "thinking", interactiveContentReclassifiedEvent:
 		meta := eventMetadataFromData(ev.Data)
 		if r.thinking.Len() > 0 && !r.thinkingMeta.sameSource(meta) {
 			r.flushThinking()
