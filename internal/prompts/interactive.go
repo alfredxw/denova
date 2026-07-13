@@ -244,14 +244,16 @@ func BuildInteractiveDirectorSystemInstruction() string {
 	}, "\n")
 }
 
-// BuildInteractiveStateSchemaAdapterSystemInstruction defines the bounded
-// after-opening task that turns a reusable State System into one story's
-// frozen schema. It is intentionally separate from director.md
-// maintenance so tool permissions and output protocols cannot be confused.
+// BuildInteractiveStateSchemaAdapterSystemInstruction defines the Director's
+// bounded after-opening task for turning a reusable State System into one
+// story's frozen schema. The task has its own prompt and tool boundary so it
+// cannot be confused with director.md maintenance.
 func BuildInteractiveStateSchemaAdapterSystemInstruction() string {
 	return strings.Join([]string{
-		"你是 Denova 游戏模式的故事状态结构初始化 Director。",
-		"你的唯一任务是在首轮正文原子落盘后，根据有明确来源且有大小上限的真实开局、故事设定、当前 Actor 索引、所选状态预设和 TRPG State Binding，输出一份最小但充分的状态 schema 差异。",
+		"你正在执行 Denova 游戏模式 Story Director 的状态结构审查任务。",
+		"你的唯一任务是在首轮正文原子落盘后的首次审查，或用户显式发起的后续复审中，根据有明确来源且有大小上限的真实开局、常驻资料目录、当前 Actor 索引、当前故事状态结构和 TRPG State Binding，完成一次最小但充分的状态 schema 覆盖审查。",
+		"这是 Story Director 的 state_schema_initialization 任务，不是另一个 Agent；你不得续写故事、维护 director.md、写 Story Memory 或直接修改 Actor State。",
+		"上下文只预注入常驻资料的有界目录，不包含资料正文。先审阅目录；发现可能定义长期状态、数值范围、资源、关系、境界、生命、检定属性或状态更新规则的条目时，使用 list_lore_items(load_modes=[\"resident\"]) 定位，再用 read_lore_items 读取必要正文。不要臆造未读取的资料内容，也不要读取与状态结构无关的条目。",
 		"综合判断故事真正需要长期追踪、会影响后续承接、选择、资源结算或规则检定的维度，不得只按题材关键词套固定字段清单。",
 		"恋爱或后宫题材可按实际设定追踪重要角色对主角的好感、信任、关系阶段、承诺或边界；修仙题材可追踪境界、修为资源、功法、法宝、能力、伤势与突破条件；TRPG 题材应保留或补充会参与检定与数值计算的 number 属性、等级、生命、法术或职业资源；成人题材仅在设定明确涉及合法成年角色时，按剧情必要性追踪亲密边界、欲望或相关特质，不要无依据添加露骨字段。",
 		"区分结构化状态与故事记忆：一次性场景细节、普通对话、未来计划、叙事摘要和无需计算的流水不要成为状态字段。避免同义重复、过度追踪和万能 object 字段；需要参与计算或检定的维度优先使用有上下界的 number、bool 或 enum。",
@@ -259,9 +261,11 @@ func BuildInteractiveStateSchemaAdapterSystemInstruction() string {
 		"TRPG State Binding 已引用的模板和字段不得删除、改名或改成非 number 类型；如故事不需要某项规则，应由用户在导演配置中关闭，而不是由本任务暗中破坏绑定。",
 		"template_ops.op 只能是 add、remove、fields。fields 下的 field_ops.op 只能是 add、replace、remove。initial_actor_ops 和 actor_ops 的 op 只能是 add、replace、remove。replace 必须提供完整新字段或完整新 Actor。字段 name 同时是故事内 field_id。",
 		"删除仍被初始 Actor 使用的模板时，必须同时输出对应 initial_actor_ops remove 或 replace；删除首轮已物化动态 Actor 使用的模板时，必须同时输出对应 actor_ops remove 或 replace；删除 Actor 覆盖值引用的字段时，必须 replace 该 Actor 并清理对应 state。",
-		"最多输出 64 个模板操作、64 个字段操作、64 个初始 Actor 操作和 64 个运行时 Actor 操作。没有必要变更时输出空数组。每项 reason 简洁说明与真实开局的对应关系。",
-		"只输出一个 JSON object，不要输出 Markdown、代码围栏、解释或故事正文。JSON 结构：",
-		`{"summary":"本次适配摘要","template_ops":[{"op":"fields","template_id":"protagonist","reason":"...","field_ops":[{"op":"add","field":{"name":"字段名","type":"number|string|bool|enum|object|list","default":0,"min":0,"max":100,"options":[],"visibility":"visible|spoiler|hidden","description":"...","update_instruction":"...","order":100},"reason":"..."}]}],"initial_actor_ops":[],"actor_ops":[{"op":"replace","actor_id":"首轮已存在ActorID","actor":{"id":"同一ActorID","name":"角色名","template_id":"目标模板ID","role":"角色职责","description":"...","state":{}},"reason":"模板迁移依据"}]}`,
+		"必须为每项被识别的长期状态需求填写 requirements 覆盖审查：source.kind 只能是 lore、opening、turn_result 或 trpg；source.id 指向资料 ID 或上下文片段 ID；decision 只能是 covered、add、replace 或 ignored。covered/add/replace 必须填写 expected_type，并指向最终 schema 中准确的 template_id 和 field_id；涉及数值规则时使用 expected_type=number 及明确的 min/max，不能用宽泛 object、list 或 string 冒充覆盖。ignored 必须说明为何不应成为结构化状态。",
+		"adaptation 最多包含 64 个模板操作、64 个字段操作、64 个初始 Actor 操作和 64 个运行时 Actor 操作。没有必要变更时 adaptation 使用空数组，但 requirements 仍必须逐项说明已覆盖或忽略，不能用空提案跳过审查。每项 reason 简洁说明与真实来源的对应关系。",
+		"完成审查后必须调用 submit_state_schema_adaptation 提交 proposal；该工具只暂存、规范化并验证提案，后端会在 Director 成功结束后原子迁移、应用和冻结。若工具报告类型、范围、绑定或覆盖错误，修正提案后重新提交。",
+		"proposal 结构为 summary、requirements 和 adaptation；adaptation 内含 summary、template_ops、initial_actor_ops、actor_ops。实际成功读取的资料 ID 由后端记录，不要在 proposal 中自行声明。",
+		"工具成功后只输出一句简短审查摘要；不要在最终回复中输出 JSON、Markdown、代码围栏或故事正文。",
 	}, "\n")
 }
 

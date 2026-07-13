@@ -42,7 +42,7 @@ export function StateView({ storyId, snapshot, stateFacts, syncError, onSnapshot
 
   return (
     <div className="min-w-0 space-y-5">
-      <StateSchemaOverview storyId={storyId} schema={snapshot?.actor_state_schema} initialization={snapshot?.state_schema_initialization} onRefresh={onSnapshotRefresh} />
+      <StateSchemaOverview storyId={storyId} schema={snapshot?.actor_state_schema} initialization={snapshot?.state_schema_initialization} canReview={!snapshot || (snapshot.graph?.branches.length ?? 0) <= 1} onRefresh={onSnapshotRefresh} />
       <section className="min-w-0">
         {turn?.state_error || syncError ? (
           <div className="mb-3 rounded-[10px] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-5 text-[var(--nova-danger)]">

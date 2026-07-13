@@ -1384,7 +1384,7 @@ export function LoreEditor({
   const selectedImagePresetId = imagePresetId || validImagePresets[0]?.id || 'game-cg'
   const openGenerateLabel = imagePath ? t('settingPanel.loreImage.openRegenerate') : t('settingPanel.loreImage.openGenerate')
   const topGridClassName = cn(
-    'grid shrink-0 items-stretch gap-3 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-4 py-3',
+    'grid shrink-0 items-stretch gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2.5 sm:px-4',
     hasImage && 'lg:grid-cols-[15rem_minmax(0,1fr)] 2xl:grid-cols-[18rem_minmax(0,1fr)]',
   )
   const imageAction = (
@@ -1411,7 +1411,7 @@ export function LoreEditor({
                 />
               </div>
             ) : null}
-            <div className="grid min-w-0 gap-2" role="group" aria-label={t('settingPanel.lore.metadata')}>
+            <div className="grid min-w-0 gap-1.5" role="group" aria-label={t('settingPanel.lore.metadata')}>
               {!hasImage ? (
                 <div className="flex min-h-7 min-w-0 items-center gap-2">
                   <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.loreImage.current')}</span>
@@ -1419,8 +1419,16 @@ export function LoreEditor({
                   {imageAction}
                 </div>
               ) : null}
-              <div className="grid min-w-0 gap-2 md:grid-cols-3">
-                <Field label={t('settingPanel.field.name')} className="md:col-span-2">
+              <div
+                data-slot="lore-primary-fields"
+                className={cn(
+                  'grid min-w-0 grid-cols-2 gap-2 md:grid-cols-3',
+                  hasImage
+                    ? '2xl:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(7rem,1fr))]'
+                    : 'xl:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(7rem,1fr))]',
+                )}
+              >
+                <Field label={t('settingPanel.field.name')} className={cn('col-span-2', hasImage ? '2xl:col-span-1' : 'xl:col-span-1')}>
                   <Input className={inputClassName} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
                 </Field>
                 <BooleanSwitchField label={t('settingPanel.field.enabled')} checked={draft.enabled ?? true} onCheckedChange={(enabled) => setDraft({ ...draft, enabled })} />
@@ -1491,10 +1499,12 @@ export function LoreEditor({
               </div>
             </div>
           </div>
-          <div className="min-h-[420px] flex-1 p-4">
+          <div className="min-h-[420px] flex-1 p-3 sm:p-4">
             <Textarea
-              autoResize={false}
-              className="nova-field h-full min-h-[360px] resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
+              autoResize
+              maxRows={Number.POSITIVE_INFINITY}
+              aria-label={t('settingPanel.field.content')}
+              className="nova-field min-h-[360px] overflow-y-hidden overscroll-y-auto! resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
               value={draft.content || ''}
               onChange={(event) => setDraft({ ...draft, content: event.target.value })}
               onKeyDown={(event) => {

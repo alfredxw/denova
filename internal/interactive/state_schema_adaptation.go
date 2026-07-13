@@ -16,9 +16,9 @@ const (
 	StateSchemaInitializationSkipped        = "skipped"
 )
 
-// ActorStateSchemaAdaptation is a bounded, opening-only diff over a reusable
-// State System. The backend migrates already materialized opening state before
-// freezing the next story-local schema revision.
+// ActorStateSchemaAdaptation is a bounded story-local diff over a reusable
+// State System. It is proposed after the opening or during an explicit later
+// review; the backend migrates materialized state before freezing the result.
 type ActorStateSchemaAdaptation struct {
 	Summary         string                           `json:"summary,omitempty"`
 	TemplateOps     []ActorStateTemplateSchemaOp     `json:"template_ops,omitempty"`
@@ -57,8 +57,8 @@ type ActorStateInitialActorSchemaOp struct {
 	Reason  string                 `json:"reason,omitempty"`
 }
 
-// ActorStateRuntimeSchemaOp migrates an Actor already materialized by the
-// opening turn. It does not change the reusable initial-Actor definitions.
+// ActorStateRuntimeSchemaOp migrates an Actor already materialized in the
+// story. It does not change the reusable initial-Actor definitions.
 type ActorStateRuntimeSchemaOp struct {
 	Op      string                 `json:"op"`
 	ActorID string                 `json:"actor_id,omitempty"`
@@ -69,15 +69,18 @@ type ActorStateRuntimeSchemaOp struct {
 // ActorStateSchemaAdaptationRecord is persisted with the frozen story schema
 // so the customized contract has an explicit source and a compact audit trail.
 type ActorStateSchemaAdaptationRecord struct {
-	Source          string                             `json:"source"`
-	Summary         string                             `json:"summary,omitempty"`
-	SourceTurnID    string                             `json:"source_turn_id,omitempty"`
-	TemplateOps     int                                `json:"template_ops,omitempty"`
-	FieldOps        int                                `json:"field_ops,omitempty"`
-	InitialActorOps int                                `json:"initial_actor_ops,omitempty"`
-	ActorOps        int                                `json:"actor_ops,omitempty"`
-	Changes         []ActorStateSchemaAdaptationChange `json:"changes,omitempty"`
-	Warnings        []string                           `json:"warnings,omitempty"`
+	Source          string                              `json:"source"`
+	Summary         string                              `json:"summary,omitempty"`
+	SourceTurnID    string                              `json:"source_turn_id,omitempty"`
+	LoreRevision    string                              `json:"lore_revision,omitempty"`
+	TemplateOps     int                                 `json:"template_ops,omitempty"`
+	FieldOps        int                                 `json:"field_ops,omitempty"`
+	InitialActorOps int                                 `json:"initial_actor_ops,omitempty"`
+	ActorOps        int                                 `json:"actor_ops,omitempty"`
+	ReviewedLoreIDs []string                            `json:"reviewed_lore_ids,omitempty"`
+	Requirements    []ActorStateSchemaRequirementReview `json:"requirements,omitempty"`
+	Changes         []ActorStateSchemaAdaptationChange  `json:"changes,omitempty"`
+	Warnings        []string                            `json:"warnings,omitempty"`
 }
 
 // ActorStateSchemaAdaptationChange is a bounded user-visible audit item for
@@ -95,18 +98,22 @@ type ActorStateSchemaAdaptationChange struct {
 // StateSchemaInitializationStatus is story-global because all branches share
 // one frozen Actor State contract.
 type StateSchemaInitializationStatus struct {
-	Mode           string                             `json:"mode"`
-	Status         string                             `json:"status"`
-	SourceTurnID   string                             `json:"source_turn_id,omitempty"`
-	BaseRevision   int                                `json:"base_revision,omitempty"`
-	TargetRevision int                                `json:"target_revision,omitempty"`
-	Summary        string                             `json:"summary,omitempty"`
-	Error          string                             `json:"error,omitempty"`
-	Changes        []ActorStateSchemaAdaptationChange `json:"changes,omitempty"`
-	Warnings       []string                           `json:"warnings,omitempty"`
-	StartedAt      string                             `json:"started_at,omitempty"`
-	CompletedAt    string                             `json:"completed_at,omitempty"`
-	UpdatedAt      string                             `json:"updated_at,omitempty"`
+	Mode            string                              `json:"mode"`
+	Status          string                              `json:"status"`
+	Outcome         string                              `json:"outcome,omitempty"`
+	SourceTurnID    string                              `json:"source_turn_id,omitempty"`
+	BaseRevision    int                                 `json:"base_revision,omitempty"`
+	TargetRevision  int                                 `json:"target_revision,omitempty"`
+	Summary         string                              `json:"summary,omitempty"`
+	Error           string                              `json:"error,omitempty"`
+	LoreRevision    string                              `json:"lore_revision,omitempty"`
+	ReviewedLoreIDs []string                            `json:"reviewed_lore_ids,omitempty"`
+	Requirements    []ActorStateSchemaRequirementReview `json:"requirements,omitempty"`
+	Changes         []ActorStateSchemaAdaptationChange  `json:"changes,omitempty"`
+	Warnings        []string                            `json:"warnings,omitempty"`
+	StartedAt       string                              `json:"started_at,omitempty"`
+	CompletedAt     string                              `json:"completed_at,omitempty"`
+	UpdatedAt       string                              `json:"updated_at,omitempty"`
 }
 
 func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation, error) {

@@ -19,6 +19,7 @@ import (
 	"denova/config"
 	agenttools "denova/internal/agent/tools"
 	"denova/internal/book"
+	"denova/internal/interactive"
 	"denova/internal/prompts"
 	"denova/internal/providercompat"
 	novaskills "denova/internal/skills"
@@ -77,6 +78,8 @@ func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *bo
 	systemInstruction := prompts.BuildInteractiveDirectorSystemInstruction()
 	if maintenanceTask == "memory_update" {
 		systemInstruction = prompts.BuildInteractiveMemoryRecorderSystemInstruction()
+	} else if maintenanceTask == "state_schema_initialization" {
+		systemInstruction = prompts.BuildInteractiveStateSchemaAdapterSystemInstruction()
 	}
 	return buildDeepAgent(ctx, cfg, deepAgentSpec{
 		Kind:              config.AgentKindInteractiveDirector,
@@ -506,8 +509,21 @@ func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...Interactiv
 func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...InteractiveStoryToolContext) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
 	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
 		var tools []tool.BaseTool
+		var storyToolContext InteractiveStoryToolContext
+		if len(toolContexts) > 0 {
+			storyToolContext = toolContexts[0]
+		}
 		if cfg != nil && settings.LoreRead {
-			loreTools, err := newLoreTools(cfg.Workspace, false)
+			var options []loreToolsOptions
+			if strings.TrimSpace(storyToolContext.MaintenanceTask) == "state_schema_initialization" {
+				options = append(options, loreToolsOptions{ReadPolicy: &loreReadPolicy{
+					MaxItemsPerCall: interactive.StateSchemaLoreReadMaxItemsPerCall,
+					MaxResultBytes:  interactive.StateSchemaLoreReadMaxResultBytes,
+					MaxTotalBytes:   interactive.StateSchemaLoreReadMaxTotalBytes,
+					OnRead:          storyToolContext.OnLoreItemsRead,
+				}})
+			}
+			loreTools, err := newLoreTools(cfg.Workspace, false, options...)
 			if err != nil {
 				return nil, err
 			}
@@ -516,10 +532,13 @@ func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...Interac
 		if len(toolContexts) == 0 {
 			return tools, nil
 		}
-		ctx := toolContexts[0]
+		ctx := storyToolContext
 		switch strings.TrimSpace(ctx.MaintenanceTask) {
 		case "memory_update":
 			return newInteractiveStoryMemoryPatchTools(ctx)
+		case "state_schema_initialization":
+			stateSchemaTools, err := newInteractiveStateSchemaTools(ctx)
+			return append(tools, stateSchemaTools...), err
 		case "director_plan_update":
 			eventTools, err := newInteractiveEventTools(ctx)
 			return append(tools, eventTools...), err

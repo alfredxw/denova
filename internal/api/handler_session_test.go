@@ -15,6 +15,7 @@ import (
 	"denova/internal/api/agentui"
 	runtimeapp "denova/internal/app"
 	"denova/internal/book"
+	"denova/internal/interactive"
 	"denova/internal/session"
 )
 
@@ -322,9 +323,19 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 		t.Fatal(err)
 	}
 	t.Cleanup(application.Close)
-	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(callCtx context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
 		if toolContext.MaintenanceTask == "state_schema_initialization" {
-			return `{"summary":"测试保持预设状态结构","template_ops":[],"initial_actor_ops":[]}`, nil
+			_, err := toolContext.SubmitStateSchemaProposal(callCtx, interactive.ActorStateSchemaProposal{
+				Summary: "测试保持预设状态结构",
+				Requirements: []interactive.ActorStateSchemaRequirementReview{{
+					Source:      interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "test-opening"},
+					Requirement: "测试已审阅开局且不需要新增结构化状态",
+					Decision:    "ignored",
+					Reason:      "测试开局没有建立长期状态规则",
+				}},
+				Adaptation: interactive.ActorStateSchemaAdaptation{},
+			})
+			return "测试状态结构审查完成。", err
 		}
 		return "测试初始化导演规划完成。", nil
 	})

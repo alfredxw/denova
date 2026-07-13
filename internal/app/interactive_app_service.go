@@ -259,6 +259,20 @@ func (a *App) RetryInteractiveStateSchema(storyID string) (interactive.StateSche
 }
 
 func (s *InteractiveAppService) RetryInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
+	return s.startInteractiveStateSchemaReview(storyID, (*interactive.Store).ResetStateSchemaInitialization)
+}
+
+func (a *App) ReviewInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
+	return a.interactiveService().ReviewInteractiveStateSchema(storyID)
+}
+
+func (s *InteractiveAppService) ReviewInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
+	return s.startInteractiveStateSchemaReview(storyID, (*interactive.Store).ReopenStateSchemaReview)
+}
+
+type stateSchemaReviewPreparer func(*interactive.Store, string) (interactive.StateSchemaInitializationStatus, error)
+
+func (s *InteractiveAppService) startInteractiveStateSchemaReview(storyID string, prepare stateSchemaReviewPreparer) (interactive.StateSchemaInitializationStatus, error) {
 	a := s.app
 	a.mu.RLock()
 	store := a.interactive
@@ -270,7 +284,7 @@ func (s *InteractiveAppService) RetryInteractiveStateSchema(storyID string) (int
 	if store == nil || cfg == nil || bookState == nil {
 		return interactive.StateSchemaInitializationStatus{}, ErrNoWorkspace
 	}
-	status, err := store.ResetStateSchemaInitialization(storyID)
+	status, err := prepare(store, storyID)
 	if err != nil {
 		return status, err
 	}
@@ -284,6 +298,9 @@ func (s *InteractiveAppService) RetryInteractiveStateSchema(storyID string) (int
 	runtimeCfg := *cfg
 	runtimeCfg.Workspace = workspace
 	turn := *storyCtx.Snapshot.CurrentTurn
+	if len(storyCtx.Snapshot.Turns) > 0 {
+		turn = storyCtx.Snapshot.Turns[0]
+	}
 	conversation := newInteractiveConversation(store, runtimeCfg.NovaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg).bindDirectorRuntime(a.directorTasksForWorkspace(workspace), a.interactiveDirectorGenerator())
 	startInteractiveStateSchemaTask(&runtimeCfg, bookState, conversation, turn, sessionStore)
 	return status, nil

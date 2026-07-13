@@ -892,12 +892,45 @@ describe('SettingPanel', () => {
     })
 
     expect(await screen.findByRole('img', { name: '林川' })).toHaveAttribute('src', '/api/workspace/asset?path=assets%2Flore%2Fimages%2Flin-chuan%2F20260101000000%2Fimage.png')
+    const primaryFieldsWithImage = within(metadataGroup).getByRole('textbox', { name: '名称' }).closest('[data-slot="lore-primary-fields"]')
+    expect(primaryFieldsWithImage).toHaveClass('2xl:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(7rem,1fr))]')
+    expect(primaryFieldsWithImage).not.toHaveClass('xl:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(7rem,1fr))]')
     expect(screen.queryByText('已有图片')).not.toBeInTheDocument()
     expect(screen.queryByText('assets/lore/images/lin-chuan/20260101000000/image.png')).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '放大查看资料图片' }))
 
     const previewDialog = screen.getByRole('dialog', { name: '林川' })
     expect(within(previewDialog).getByTestId('image-preview-viewport')).toBeInTheDocument()
+  })
+
+  it('keeps the lore body in the unified editor scroller instead of creating a nested scroll trap', async () => {
+    const user = userEvent.setup()
+    const item = {
+      ...loreItem('long-lore', '长正文资料'),
+      content: '正文段落\n'.repeat(80),
+    }
+    vi.mocked(getLoreItems).mockResolvedValue([item])
+
+    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
+
+    await user.click(await screen.findByRole('button', { name: /长正文资料/ }))
+    const editor = screen.getByRole('region', { name: '资料编辑区' })
+    const content = within(editor).getByRole('textbox', { name: '正文' }) as HTMLTextAreaElement
+    Object.defineProperty(content, 'scrollHeight', { configurable: true, value: 1200 })
+    const editedContent = `${item.content}新增段落`
+
+    fireEvent.input(content, { target: { value: editedContent } })
+
+    expect(editor).toContainElement(content)
+    expect(within(editor).getByRole('textbox', { name: '名称' }).closest('[data-slot="lore-primary-fields"]')).toHaveClass(
+      'grid-cols-2',
+      'md:grid-cols-3',
+      'xl:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(7rem,1fr))]',
+    )
+    expect(content).toHaveClass('overflow-y-hidden', 'overscroll-y-auto!')
+    expect(content).not.toHaveClass('h-full')
+    expect(content.style.height).toBe('1200px')
+    expect(content.style.overflowY).toBe('hidden')
   })
 
   it('saves lore item enabled status from a switch', async () => {

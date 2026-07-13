@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -19,11 +20,12 @@ type readLoreItemsInput struct {
 }
 
 type listLoreItemsInput struct {
-	Keywords []string `json:"keywords,omitempty" jsonschema_description:"可选检索词数组，每项独立匹配 ID、名称、别名、标签、简介和正文；最多 8 项，不要把多个关键词拼成一个字符串。"`
-	Match    string   `json:"match,omitempty" jsonschema:"enum=any,enum=all" jsonschema_description:"多关键词关系：any 表示命中任意关键词（OR，默认），all 表示命中全部关键词（AND）。"`
-	Types    []string `json:"types,omitempty" jsonschema_description:"可选资料类型数组：character/world/location/faction/rule/item/other。"`
-	Limit    int      `json:"limit,omitempty" jsonschema_description:"本页返回数量，默认 10，最大 50。"`
-	Offset   int      `json:"offset,omitempty" jsonschema_description:"分页起点，默认 0；根据返回的下一页 offset 继续读取。"`
+	Keywords  []string `json:"keywords,omitempty" jsonschema_description:"可选检索词数组，每项独立匹配 ID、名称、别名、标签、简介和正文；最多 8 项，不要把多个关键词拼成一个字符串。"`
+	Match     string   `json:"match,omitempty" jsonschema:"enum=any,enum=all" jsonschema_description:"多关键词关系：any 表示命中任意关键词（OR，默认），all 表示命中全部关键词（AND）。"`
+	Types     []string `json:"types,omitempty" jsonschema_description:"可选资料类型数组：character/world/location/faction/rule/item/other。"`
+	LoadModes []string `json:"load_modes,omitempty" jsonschema_description:"可选加载策略数组：resident/auto/manual；状态结构审查优先使用 resident。"`
+	Limit     int      `json:"limit,omitempty" jsonschema_description:"本页返回数量，默认 10，最大 50。"`
+	Offset    int      `json:"offset,omitempty" jsonschema_description:"分页起点，默认 0；根据返回的下一页 offset 继续读取。"`
 }
 
 type writeLoreItemsInput struct {
@@ -45,12 +47,82 @@ type writeLoreItemInput struct {
 	Content          string   `json:"content" jsonschema:"description=中文 Markdown 正文，记录长期稳定设定、核心关系、能力体系和需要追踪的设定事实；每章后的当前位置、伤势、心理、目标等当前状态写入 setting/character-states.md，不写入资料库"`
 }
 
-func newLoreTools(workspace string, allowWrite bool) ([]tool.BaseTool, error) {
+type loreToolsOptions struct {
+	ReadPolicy *loreReadPolicy
+}
+
+// loreReadPolicy bounds task-specific model context and observes only lore
+// bodies that were successfully returned to the model.
+type loreReadPolicy struct {
+	MaxItemsPerCall int
+	MaxResultBytes  int
+	MaxTotalBytes   int
+	OnRead          func([]string)
+
+	mu        sync.Mutex
+	usedBytes int
+}
+
+func (p *loreReadPolicy) validateBatch(input readLoreItemsInput) error {
+	if p == nil || p.MaxItemsPerCall <= 0 {
+		return nil
+	}
+	count := len(input.IDs)
+	if len(input.Names) > 0 {
+		count = len(input.Names)
+	}
+	if count > p.MaxItemsPerCall {
+		return fmt.Errorf("单次最多读取 %d 个资料条目，当前请求 %d 个", p.MaxItemsPerCall, count)
+	}
+	return nil
+}
+
+func (p *loreReadPolicy) accept(output string, items []book.LoreItem) error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	resultBytes := len(output)
+	if p.MaxResultBytes > 0 && resultBytes > p.MaxResultBytes {
+		p.mu.Unlock()
+		return fmt.Errorf("资料正文结果超过单次上下文上限: %d > %d bytes；请减少条目或拆分过长资料", resultBytes, p.MaxResultBytes)
+	}
+	if p.MaxTotalBytes > 0 && p.usedBytes+resultBytes > p.MaxTotalBytes {
+		usedBytes := p.usedBytes
+		p.mu.Unlock()
+		return fmt.Errorf("资料正文累计超过本任务上下文上限: %d + %d > %d bytes", usedBytes, resultBytes, p.MaxTotalBytes)
+	}
+	p.usedBytes += resultBytes
+	p.mu.Unlock()
+
+	if p.OnRead == nil {
+		return nil
+	}
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		if id := strings.TrimSpace(item.ID); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) > 0 {
+		p.OnRead(ids)
+	}
+	return nil
+}
+
+func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions) ([]tool.BaseTool, error) {
 	workspace = strings.TrimSpace(workspace)
+	var readPolicy *loreReadPolicy
+	if len(options) > 0 {
+		readPolicy = options[0].ReadPolicy
+	}
 	readTool, err := utils.InferTool("read_lore_items", "按资料库条目 ID 或唯一名称批量读取完整正文。只读取本轮已经确认相关的少量条目。", func(ctx context.Context, input readLoreItemsInput) (string, error) {
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法读取资料库")
+		}
+		if err := readPolicy.validateBatch(input); err != nil {
+			return "", err
 		}
 		store := book.NewLoreStore(workspace)
 		var items []book.LoreItem
@@ -73,7 +145,11 @@ func newLoreTools(workspace string, allowWrite bool) ([]tool.BaseTool, error) {
 			fmt.Fprintln(&sb, formatLoreReference(item))
 			fmt.Fprintln(&sb)
 		}
-		return strings.TrimSpace(sb.String()), nil
+		output := strings.TrimSpace(sb.String())
+		if err := readPolicy.accept(output, items); err != nil {
+			return "", err
+		}
+		return output, nil
 	})
 	if err != nil {
 		return nil, err
@@ -87,12 +163,13 @@ func newLoreTools(workspace string, allowWrite bool) ([]tool.BaseTool, error) {
 			return "", err
 		}
 		index, err := book.NewLoreStore(workspace).LoreIndexMarkdown(book.LoreIndexOptions{
-			Keywords: input.Keywords,
-			Match:    input.Match,
-			Types:    input.Types,
-			Limit:    input.Limit,
-			Offset:   input.Offset,
-			Paginate: true,
+			Keywords:  input.Keywords,
+			Match:     input.Match,
+			Types:     input.Types,
+			LoadModes: input.LoadModes,
+			Limit:     input.Limit,
+			Offset:    input.Offset,
+			Paginate:  true,
 		})
 		if err != nil {
 			return "", err
@@ -148,6 +225,12 @@ func validateListLoreItemsInput(input listLoreItemsInput) error {
 	for _, itemType := range input.Types {
 		if !validTypes[strings.TrimSpace(itemType)] {
 			return fmt.Errorf("无效资料类型: %s", strings.TrimSpace(itemType))
+		}
+	}
+	validLoadModes := map[string]bool{book.LoreLoadModeResident: true, book.LoreLoadModeAuto: true, book.LoreLoadModeManual: true}
+	for _, loadMode := range input.LoadModes {
+		if !validLoadModes[strings.TrimSpace(loadMode)] {
+			return fmt.Errorf("无效资料加载策略: %s", strings.TrimSpace(loadMode))
 		}
 	}
 	if input.Limit < 0 || input.Limit > book.LoreIndexMaxLimit {

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	"denova/config"
@@ -16,10 +18,11 @@ import (
 )
 
 const maxInteractiveStateSchemaPromptBytes = 32 * 1024
+const maxStateSchemaResidentLoreRosterBytes = 8 * 1024
 const stateSchemaAdaptationInstructionPrefix = "以下 JSON 是本次唯一可用的有界上下文，每个片段均标明来源字段；不要假设未提供的故事设定。\n"
 
-func generateInteractiveStateSchema(ctx context.Context, cfg *config.Config, _ *book.State, _ agent.InteractiveStoryToolContext, instruction string) (string, error) {
-	return agent.GenerateInteractiveStateSchemaAdaptation(ctx, cfg, instruction)
+func generateInteractiveStateSchema(ctx context.Context, cfg *config.Config, state *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
+	return agent.GenerateInteractiveDirectorWithTools(ctx, cfg, state, toolContext, instruction)
 }
 
 type stateSchemaAdaptationPrompt struct {
@@ -40,7 +43,8 @@ type stateSchemaAdaptationSources struct {
 	StoryDirectorSummary string `json:"story_director_summary,omitempty"`
 	DirectorStrategy     string `json:"director_strategy,omitempty"`
 	CreativeBrief        string `json:"creative_brief,omitempty"`
-	LoreIndex            string `json:"lore_index,omitempty"`
+	ResidentLoreRoster   string `json:"resident_lore_roster,omitempty"`
+	LoreRevision         string `json:"lore_revision,omitempty"`
 	OpeningTurnID        string `json:"opening_turn_id,omitempty"`
 	OpeningUserAction    string `json:"opening_user_action,omitempty"`
 	OpeningNarrative     string `json:"opening_narrative,omitempty"`
@@ -76,6 +80,12 @@ type stateSchemaAdaptationRule struct {
 	StateBindings []interactive.RuleStateBinding `json:"state_bindings,omitempty"`
 }
 
+type stateSchemaAdaptationWorkspaceSources struct {
+	CreativeBrief      string
+	ResidentLoreRoster string
+	LoreRevision       string
+}
+
 func runInteractiveStateSchemaInitialization(ctx context.Context, cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) error {
 	if conversation == nil || conversation.store == nil || cfg == nil {
 		return fmt.Errorf("状态结构初始化上下文不完整")
@@ -106,7 +116,12 @@ func runInteractiveStateSchemaInitialization(ctx context.Context, cfg *config.Co
 		ActorState:      &director.ActorState,
 		TRPGSystem:      &director.TRPGSystem,
 	}
-	instruction, err := buildStateSchemaAdaptationInstructionAfterOpening(req, director, state, &turn, storyCtx.Snapshot.State)
+	workspaceSources, err := stateSchemaAdaptationWorkspaceContext(state)
+	if err != nil {
+		_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
+		return err
+	}
+	instruction, err := buildStateSchemaAdaptationInstructionAfterOpeningWithSources(req, director, &turn, storyCtx.Snapshot.State, workspaceSources)
 	if err != nil {
 		_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
 		return err
@@ -116,6 +131,9 @@ func runInteractiveStateSchemaInitialization(ctx context.Context, cfg *config.Co
 	if conversation.customDirectorGenerator && conversation.directorGenerator != nil {
 		generator = conversation.directorGenerator
 	}
+	var submittedProposal *interactive.ActorStateSchemaProposal
+	var reviewMu sync.Mutex
+	reviewedLoreIDs := map[string]bool{}
 	output, err := generator(ctx, cfg, state, agent.InteractiveStoryToolContext{
 		Store:               conversation.store,
 		StoryID:             conversation.storyID,
@@ -123,6 +141,46 @@ func runInteractiveStateSchemaInitialization(ctx context.Context, cfg *config.Co
 		TurnID:              turn.ID,
 		MaintenanceTask:     "state_schema_initialization",
 		DisplayConversation: conversation,
+		OnLoreItemsRead: func(ids []string) {
+			reviewMu.Lock()
+			defer reviewMu.Unlock()
+			for _, id := range ids {
+				if id = strings.TrimSpace(id); id != "" {
+					reviewedLoreIDs[id] = true
+				}
+			}
+		},
+		SubmitStateSchemaProposal: func(_ context.Context, proposal interactive.ActorStateSchemaProposal) (interactive.ActorStateSchemaProposalPreview, error) {
+			reviewMu.Lock()
+			defer reviewMu.Unlock()
+			// A later failed attempt must not leave an older valid proposal staged.
+			submittedProposal = nil
+			// The backend derives reviewed IDs from successful read_lore_items
+			// results; model-supplied claims are never trusted as audit evidence.
+			proposal.ReviewedLoreIDs = nil
+			normalized, preview, validateErr := interactive.ValidateActorStateSchemaProposal(storyCtx.Meta.ActorStateSchema.System, storyCtx.Meta.ActorStateSchema.TRPGSystem, proposal)
+			if validateErr != nil {
+				return interactive.ActorStateSchemaProposalPreview{}, validateErr
+			}
+			actualReviewedLoreIDs := make([]string, 0, len(reviewedLoreIDs))
+			for id := range reviewedLoreIDs {
+				actualReviewedLoreIDs = append(actualReviewedLoreIDs, id)
+			}
+			sort.Strings(actualReviewedLoreIDs)
+			actualReviewed := make(map[string]bool, len(actualReviewedLoreIDs))
+			for _, id := range actualReviewedLoreIDs {
+				actualReviewed[id] = true
+			}
+			for _, requirement := range normalized.Requirements {
+				if requirement.Source.Kind == "lore" && !actualReviewed[requirement.Source.ID] {
+					return interactive.ActorStateSchemaProposalPreview{}, fmt.Errorf("状态需求引用了未通过 read_lore_items 读取的资料: %s", requirement.Source.ID)
+				}
+			}
+			normalized.ReviewedLoreIDs = actualReviewedLoreIDs
+			normalized.SourceLoreRevision = workspaceSources.LoreRevision
+			submittedProposal = &normalized
+			return preview, nil
+		},
 	}, instruction)
 	if err == nil {
 		err = ctx.Err()
@@ -133,12 +191,28 @@ func runInteractiveStateSchemaInitialization(ctx context.Context, cfg *config.Co
 		return fmt.Errorf("生成故事状态结构适配失败: %w", err)
 	}
 	persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, output)
-	adaptation, err := interactive.ParseActorStateSchemaAdaptation(output)
-	if err != nil {
+	reviewMu.Lock()
+	proposalToApply := submittedProposal
+	reviewMu.Unlock()
+	if proposalToApply == nil {
+		err = fmt.Errorf("状态结构 Director 未通过 submit_state_schema_adaptation 提交提案")
 		_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
 		return err
 	}
-	completed, err := conversation.store.ApplyStateSchemaInitialization(conversation.storyID, turn.BranchID, turn.ID, adaptation)
+	if workspaceSources.LoreRevision != "" {
+		currentLoreRevision, revisionErr := stateSchemaLoreRevision(state)
+		if revisionErr != nil {
+			err = fmt.Errorf("读取状态结构审查后的资料库 revision 失败: %w", revisionErr)
+			_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
+			return err
+		}
+		if currentLoreRevision != workspaceSources.LoreRevision {
+			err = fmt.Errorf("资料库在状态结构审查期间发生变化，请重新审查: expected=%s current=%s", workspaceSources.LoreRevision, currentLoreRevision)
+			_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
+			return err
+		}
+	}
+	completed, err := conversation.store.ApplyStateSchemaProposal(conversation.storyID, turn.BranchID, turn.ID, *proposalToApply)
 	if err != nil {
 		_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
 		return err
@@ -152,13 +226,20 @@ func buildStateSchemaAdaptationInstruction(req interactive.CreateStoryRequest, d
 }
 
 func buildStateSchemaAdaptationInstructionAfterOpening(req interactive.CreateStoryRequest, director interactive.StoryDirector, state *book.State, turn *interactive.TurnEvent, currentState map[string]any) (string, error) {
-	creativeBrief, loreIndex := stateSchemaAdaptationWorkspaceContext(state)
+	workspaceSources, err := stateSchemaAdaptationWorkspaceContext(state)
+	if err != nil {
+		return "", err
+	}
+	return buildStateSchemaAdaptationInstructionAfterOpeningWithSources(req, director, turn, currentState, workspaceSources)
+}
+
+func buildStateSchemaAdaptationInstructionAfterOpeningWithSources(req interactive.CreateStoryRequest, director interactive.StoryDirector, turn *interactive.TurnEvent, currentState map[string]any, workspaceSources stateSchemaAdaptationWorkspaceSources) (string, error) {
 	trpgSystem := director.TRPGSystem
 	if req.TRPGSystem != nil {
 		trpgSystem = *req.TRPGSystem
 	}
 	prompt := stateSchemaAdaptationPrompt{
-		Task: "基于已落盘首轮正文与故事设定对状态预设执行一次性适配，输出最小且充分的 schema diff。",
+		Task: "基于已落盘首轮正文、当前 Actor 状态、常驻资料与规则绑定完成覆盖审查，并通过 submit_state_schema_adaptation 提交最小且充分的提案。",
 		Sources: stateSchemaAdaptationSources{
 			StoryTitle:           trimStateSchemaPromptText(req.Title, 256),
 			StoryOrigin:          trimStateSchemaPromptText(req.Origin, 4000),
@@ -168,16 +249,20 @@ func buildStateSchemaAdaptationInstructionAfterOpening(req interactive.CreateSto
 			StoryDirectorName:    trimStateSchemaPromptText(director.Name, 256),
 			StoryDirectorSummary: trimStateSchemaPromptText(director.Description, 1000),
 			DirectorStrategy:     trimStateSchemaPromptText(director.Strategy.PromptMarkdown, 4000),
-			CreativeBrief:        creativeBrief,
-			LoreIndex:            loreIndex,
+			CreativeBrief:        workspaceSources.CreativeBrief,
+			ResidentLoreRoster:   workspaceSources.ResidentLoreRoster,
+			LoreRevision:         workspaceSources.LoreRevision,
 		},
 		StatePreset:  compactStateSchemaAdaptationPreset(*req.ActorState),
 		TRPGBindings: compactStateSchemaAdaptationRules(trpgSystem),
 		Limits: map[string]int{
-			"max_prompt_bytes":      maxInteractiveStateSchemaPromptBytes,
-			"max_template_ops":      64,
-			"max_field_ops":         64,
-			"max_initial_actor_ops": 64,
+			"max_prompt_bytes":             maxInteractiveStateSchemaPromptBytes,
+			"max_template_ops":             64,
+			"max_field_ops":                64,
+			"max_initial_actor_ops":        64,
+			"max_lore_read_items_per_call": interactive.StateSchemaLoreReadMaxItemsPerCall,
+			"max_lore_read_result_bytes":   interactive.StateSchemaLoreReadMaxResultBytes,
+			"max_lore_read_total_bytes":    interactive.StateSchemaLoreReadMaxTotalBytes,
 		},
 	}
 	if turn != nil {
@@ -229,17 +314,32 @@ func compactStateSchemaTurnValue(value any, maxRunes int) string {
 	return trimStateSchemaPromptText(string(data), maxRunes)
 }
 
-func stateSchemaAdaptationWorkspaceContext(state *book.State) (string, string) {
+func stateSchemaAdaptationWorkspaceContext(state *book.State) (stateSchemaAdaptationWorkspaceSources, error) {
 	if state == nil || strings.TrimSpace(state.Workspace()) == "" {
-		return "", ""
+		return stateSchemaAdaptationWorkspaceSources{}, nil
 	}
 	creativeBrief := trimStateSchemaPromptText(state.IdeasContext(), 2000)
-	loreIndex, err := book.NewLoreStore(state.Workspace()).LoreIndexMarkdown(book.LoreIndexOptions{Limit: 50, MaxBytes: 2 * 1024})
+	store := book.NewLoreStore(state.Workspace())
+	loreIndex, err := store.ResidentLoreIndexMarkdown(maxStateSchemaResidentLoreRosterBytes)
 	if err != nil {
-		log.Printf("[interactive-state-schema] load bounded lore index failed workspace=%s err=%v", state.Workspace(), err)
-		return creativeBrief, ""
+		return stateSchemaAdaptationWorkspaceSources{}, fmt.Errorf("读取状态结构审查的常驻资料库目录失败 workspace=%s: %w", state.Workspace(), err)
 	}
-	return creativeBrief, trimStateSchemaPromptText(loreIndex, 2000)
+	loreRevision, err := store.Revision()
+	if err != nil {
+		return stateSchemaAdaptationWorkspaceSources{}, fmt.Errorf("读取状态结构审查的资料库 revision 失败 workspace=%s: %w", state.Workspace(), err)
+	}
+	return stateSchemaAdaptationWorkspaceSources{
+		CreativeBrief:      creativeBrief,
+		ResidentLoreRoster: trimStateSchemaPromptText(loreIndex, maxStateSchemaResidentLoreRosterBytes),
+		LoreRevision:       strings.TrimSpace(loreRevision),
+	}, nil
+}
+
+func stateSchemaLoreRevision(state *book.State) (string, error) {
+	if state == nil || strings.TrimSpace(state.Workspace()) == "" {
+		return "", nil
+	}
+	return book.NewLoreStore(state.Workspace()).Revision()
 }
 
 func compactStateSchemaAdaptationPreset(system interactive.StoryDirectorActorStateSystem) stateSchemaAdaptationPreset {

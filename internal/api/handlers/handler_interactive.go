@@ -93,6 +93,15 @@ func (h *Handlers) HandleInteractiveStateSchemaRun(ctx context.Context, c *app.R
 	writeJSON(c, consts.StatusAccepted, status)
 }
 
+func (h *Handlers) HandleInteractiveStateSchemaReview(ctx context.Context, c *app.RequestContext) {
+	status, err := h.app.ReviewInteractiveStateSchema(c.Param("id"))
+	if err != nil {
+		writeError(c, consts.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusAccepted, status)
+}
+
 func (h *Handlers) HandleInteractiveStateSchemaSkip(ctx context.Context, c *app.RequestContext) {
 	status, err := h.app.SkipInteractiveStateSchema(c.Param("id"))
 	if err != nil {

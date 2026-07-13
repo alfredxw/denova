@@ -334,6 +334,7 @@ const settingPanel = {
   'settingPanel.field.loadMode': 'Load Strategy',
   'settingPanel.field.tags': 'Tags',
   'settingPanel.field.brief': 'Brief',
+  'settingPanel.field.content': 'Content',
   'settingPanel.field.description': 'Description',
 	'settingPanel.storyDirector.eventFrequency': 'Event Opportunity Frequency',
   'settingPanel.field.ruleName': 'Rule Name',

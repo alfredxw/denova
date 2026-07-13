@@ -138,6 +138,7 @@ type LoreIndexOptions struct {
 	Keywords        []string
 	Match           string
 	Types           []string
+	LoadModes       []string
 	Limit           int
 	Offset          int
 	Paginate        bool
@@ -650,6 +651,24 @@ func (s *LoreStore) LoreIndexMarkdown(options LoreIndexOptions) (string, error) 
 		return "", nil
 	}
 	return renderLoreIndexMarkdown(entries, matchedTotal, libraryTotal, options), nil
+}
+
+// ResidentLoreIndexMarkdown returns a bounded discovery index containing only
+// enabled resident lore. Bodies stay behind read_lore_items so specialized
+// agents can review relevant rules without injecting the complete library.
+func (s *LoreStore) ResidentLoreIndexMarkdown(maxBytes int) (string, error) {
+	items, err := s.List()
+	if err != nil {
+		return "", err
+	}
+	entries := make([]loreIndexEntry, 0, len(items))
+	for _, item := range items {
+		if item.LoadMode == LoreLoadModeResident {
+			entries = append(entries, loreIndexEntry{Item: item})
+		}
+	}
+	sortLoreIndexEntries(entries, false)
+	return renderLoreIndexMarkdown(entries, len(entries), len(entries), LoreIndexOptions{MaxBytes: maxBytes}), nil
 }
 
 // LoreNameRosterMarkdown returns a compact, deterministic discovery roster.
@@ -1338,8 +1357,9 @@ type loreIndexEntry struct {
 func filterLoreIndexEntries(items []LoreItem, options LoreIndexOptions) ([]loreIndexEntry, int, int) {
 	keywords := normalizeLoreIndexKeywords(options.Keywords)
 	types := normalizeLoreIndexTypes(options.Types)
+	loadModes := normalizeLoreIndexLoadModes(options.LoadModes)
 	match := normalizeLoreIndexMatch(options.Match)
-	shouldLimit := options.Paginate || len(keywords) > 0 || len(types) > 0
+	shouldLimit := options.Paginate || len(keywords) > 0 || len(types) > 0 || len(loadModes) > 0
 	limit := normalizeLoreIndexLimit(options.Limit)
 	matched := make([]loreIndexEntry, 0, len(items))
 	libraryTotal := 0
@@ -1349,6 +1369,9 @@ func filterLoreIndexEntries(items []LoreItem, options LoreIndexOptions) ([]loreI
 		}
 		libraryTotal++
 		if len(types) > 0 && !types[item.Type] {
+			continue
+		}
+		if len(loadModes) > 0 && !loadModes[item.LoadMode] {
 			continue
 		}
 		entry := matchLoreIndexEntry(item, keywords)
@@ -1374,6 +1397,17 @@ func filterLoreIndexEntries(items []LoreItem, options LoreIndexOptions) ([]loreI
 		end = len(matched)
 	}
 	return matched[offset:end], matchedTotal, libraryTotal
+}
+
+func normalizeLoreIndexLoadModes(values []string) map[string]bool {
+	result := map[string]bool{}
+	for _, value := range values {
+		switch value = strings.TrimSpace(value); value {
+		case LoreLoadModeResident, LoreLoadModeAuto, LoreLoadModeManual:
+			result[value] = true
+		}
+	}
+	return result
 }
 
 func normalizeLoreIndexKeywords(keywords []string) []string {
@@ -1607,7 +1641,7 @@ func writeLoreIndexHeader(sb *strings.Builder, matchedTotal, libraryTotal, retur
 	if !options.OmitTitle {
 		sb.WriteString("# 资料库索引\n\n")
 	}
-	filtered := len(normalizeLoreIndexKeywords(options.Keywords)) > 0 || len(normalizeLoreIndexTypes(options.Types)) > 0
+	filtered := len(normalizeLoreIndexKeywords(options.Keywords)) > 0 || len(normalizeLoreIndexTypes(options.Types)) > 0 || len(normalizeLoreIndexLoadModes(options.LoadModes)) > 0
 	if libraryTotal == 0 {
 		sb.WriteString("资料库暂无启用条目。\n")
 		return

@@ -334,6 +334,7 @@ const settingPanel = {
   'settingPanel.field.loadMode': '加载策略',
   'settingPanel.field.tags': '标签',
   'settingPanel.field.brief': '简介',
+  'settingPanel.field.content': '正文',
   'settingPanel.field.description': '描述',
 	'settingPanel.storyDirector.eventFrequency': '事件机会频率',
   'settingPanel.field.ruleName': '规则名称',

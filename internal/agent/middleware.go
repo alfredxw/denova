@@ -90,6 +90,14 @@ func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name,
 		}
 		return fmt.Sprintf("[tool error] Memory Recorder 只能使用 apply_story_memory_patches，拒绝工具: %s", name)
 	}
+	if m != nil && m.task == "state_schema_initialization" {
+		switch name {
+		case "list_lore_items", "read_lore_items", "submit_state_schema_adaptation":
+			return ""
+		default:
+			return fmt.Sprintf("[tool error] 状态结构审查只能使用 list_lore_items、read_lore_items 和 submit_state_schema_adaptation，拒绝工具: %s", name)
+		}
+	}
 	switch name {
 	case "read_event_cards", "list_lore_items", "read_lore_items":
 		return ""

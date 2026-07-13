@@ -120,3 +120,114 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 		t.Fatalf("read_lore_items should resolve unique names:\n%s", readOutput)
 	}
 }
+
+func TestListLoreItemsFiltersByResidentLoadMode(t *testing.T) {
+	workspace := t.TempDir()
+	store := book.NewLoreStore(workspace)
+	for _, input := range []book.LoreItemInput{
+		{ID: "resident-rule", Type: "rule", Name: "常驻数值规则", Importance: "major", LoadMode: book.LoreLoadModeResident, BriefDescription: "定义数值状态。", Content: "生命为 0-100。"},
+		{ID: "auto-place", Type: "location", Name: "按需地点", Importance: "major", LoadMode: book.LoreLoadModeAuto, BriefDescription: "进入地点时读取。", Content: "地点正文。"},
+	} {
+		if _, err := store.Create(input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tools, err := newLoreTools(workspace, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var listTool tool.InvokableTool
+	for _, candidate := range tools {
+		info, err := candidate.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Name == "list_lore_items" {
+			listTool, _ = candidate.(tool.InvokableTool)
+		}
+	}
+	if listTool == nil {
+		t.Fatal("list_lore_items tool missing")
+	}
+	output, err := listTool.InvokableRun(context.Background(), `{"load_modes":["resident"],"limit":50}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output, "常驻数值规则") || strings.Contains(output, "按需地点") {
+		t.Fatalf("resident load-mode filter mismatch:\n%s", output)
+	}
+}
+
+func TestLoreReadPolicyTracksVisibleItemsAndEnforcesHardBounds(t *testing.T) {
+	workspace := t.TempDir()
+	store := book.NewLoreStore(workspace)
+	for _, input := range []book.LoreItemInput{
+		{ID: "rule-a", Type: "rule", Name: "规则甲", LoadMode: book.LoreLoadModeResident, Content: "甲规则正文。"},
+		{ID: "rule-b", Type: "rule", Name: "规则乙", LoadMode: book.LoreLoadModeResident, Content: "乙规则正文。"},
+		{ID: "rule-c", Type: "rule", Name: "规则丙", LoadMode: book.LoreLoadModeResident, Content: "丙规则正文。"},
+	} {
+		if _, err := store.Create(input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var reviewed []string
+	tools, err := newLoreTools(workspace, false, loreToolsOptions{ReadPolicy: &loreReadPolicy{
+		MaxItemsPerCall: 2,
+		MaxResultBytes:  4 * 1024,
+		MaxTotalBytes:   8 * 1024,
+		OnRead: func(ids []string) {
+			reviewed = append(reviewed, ids...)
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var readTool tool.InvokableTool
+	for _, candidate := range tools {
+		info, err := candidate.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Name == "read_lore_items" {
+			readTool, _ = candidate.(tool.InvokableTool)
+		}
+	}
+	if readTool == nil {
+		t.Fatal("read_lore_items tool missing")
+	}
+	if _, err := readTool.InvokableRun(context.Background(), `{"ids":["rule-a","rule-b","rule-c"]}`); err == nil {
+		t.Fatal("state-schema lore reads must reject oversized batches")
+	}
+	output, err := readTool.InvokableRun(context.Background(), `{"ids":["rule-a","rule-b"]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output, "甲规则正文") || !strings.Contains(output, "乙规则正文") || strings.Join(reviewed, ",") != "rule-a,rule-b" {
+		t.Fatalf("visible lore reads should be tracked by returned IDs: reviewed=%v output=%s", reviewed, output)
+	}
+
+	reviewed = nil
+	boundedTools, err := newLoreTools(workspace, false, loreToolsOptions{ReadPolicy: &loreReadPolicy{
+		MaxItemsPerCall: 1,
+		MaxResultBytes:  1,
+		MaxTotalBytes:   1,
+		OnRead: func(ids []string) {
+			reviewed = append(reviewed, ids...)
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range boundedTools {
+		info, _ := candidate.Info(context.Background())
+		if info.Name != "read_lore_items" {
+			continue
+		}
+		if _, err := candidate.(tool.InvokableTool).InvokableRun(context.Background(), `{"ids":["rule-a"]}`); err == nil {
+			t.Fatal("read result exceeding the context budget must be rejected")
+		}
+	}
+	if len(reviewed) != 0 {
+		t.Fatalf("rejected lore content must not be recorded as model-reviewed: %v", reviewed)
+	}
+}

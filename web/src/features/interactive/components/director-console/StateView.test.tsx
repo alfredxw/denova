@@ -165,4 +165,27 @@ describe('StateView', () => {
     expect(screen.queryByText('导演秘密')).not.toBeInTheDocument()
     expect(screen.queryByText('不得泄露')).not.toBeInTheDocument()
   })
+
+  it('disables schema re-review when the snapshot graph has multiple branches', () => {
+    render(
+      <StateView
+        storyId="story"
+        snapshot={{
+          story_id: 'story', branch_id: 'main', turns: [], state: {},
+          state_schema_initialization: { mode: 'after_opening', status: 'ready' },
+          graph: {
+            nodes: [],
+            branches: [
+              { id: 'main', head: 'turn-1', created_at: '2026-07-13T00:00:00Z', current: true },
+              { id: 'branch-2', head: 'turn-1', from: 'main', created_at: '2026-07-13T00:00:01Z', current: false },
+            ],
+          },
+        }}
+        stateFacts={[]}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: '重新审查' })).toBeDisabled()
+    expect(screen.getByText('当前故事已有多个分支，暂不能安全迁移共享状态结构。')).toBeInTheDocument()
+  })
 })

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -124,6 +125,54 @@ func (s *Store) ResetStateSchemaInitialization(storyID string) (StateSchemaIniti
 	return status, nil
 }
 
+// ReopenStateSchemaReview explicitly starts a new Director review from the
+// currently frozen story schema. The previous schema and its adaptation audit
+// remain available until the new proposal is successfully applied.
+func (s *Store) ReopenStateSchemaReview(storyID string) (StateSchemaInitializationStatus, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return StateSchemaInitializationStatus{}, err
+	}
+	if meta.StateSchemaInitialization == nil || meta.StateSchemaInitialization.Mode == StateSchemaAdaptationModeOff {
+		return StateSchemaInitializationStatus{}, fmt.Errorf("当前故事已固定使用原始状态预设")
+	}
+	status := *meta.StateSchemaInitialization
+	if status.Status == StateSchemaInitializationRunning {
+		return status, fmt.Errorf("状态结构审查正在运行")
+	}
+	if status.Status != StateSchemaInitializationReady {
+		return status, fmt.Errorf("状态结构尚未完成首次审查，请先重试当前任务")
+	}
+	if len(meta.Branches) != 1 {
+		return status, fmt.Errorf("故事已有多个分支，无法安全地重新审查共享状态结构")
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	baseRevision := actorStateSchemaRevision(meta.ActorStateSchema)
+	status.Status = StateSchemaInitializationWaitingOpening
+	status.Outcome = ""
+	status.SourceTurnID = ""
+	status.BaseRevision = baseRevision
+	status.TargetRevision = baseRevision + 1
+	status.Summary = ""
+	status.Error = ""
+	status.LoreRevision = ""
+	status.ReviewedLoreIDs = nil
+	status.Requirements = nil
+	status.Changes = nil
+	status.Warnings = nil
+	status.StartedAt = ""
+	status.CompletedAt = ""
+	status.UpdatedAt = now
+	meta.StateSchemaInitialization = &status
+	meta.UpdatedAt = now
+	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
+		return StateSchemaInitializationStatus{}, err
+	}
+	return status, nil
+}
+
 func (s *Store) ResumeInterruptedStateSchemaInitialization(storyID string) (StateSchemaInitializationStatus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -183,6 +232,17 @@ func (s *Store) SkipStateSchemaInitialization(storyID string) (StateSchemaInitia
 }
 
 func (s *Store) ApplyStateSchemaInitialization(storyID, branchID, sourceTurnID string, adaptation ActorStateSchemaAdaptation) (StateSchemaInitializationStatus, error) {
+	return s.applyStateSchemaInitialization(storyID, branchID, sourceTurnID, adaptation, nil)
+}
+
+// ApplyStateSchemaProposal validates and applies the Director's sourced schema
+// review. Unlike the legacy diff-only entry point, it preserves coverage audit
+// and does not advance the schema revision when the contract is unchanged.
+func (s *Store) ApplyStateSchemaProposal(storyID, branchID, sourceTurnID string, proposal ActorStateSchemaProposal) (StateSchemaInitializationStatus, error) {
+	return s.applyStateSchemaInitialization(storyID, branchID, sourceTurnID, proposal.Adaptation, &proposal)
+}
+
+func (s *Store) applyStateSchemaInitialization(storyID, branchID, sourceTurnID string, adaptation ActorStateSchemaAdaptation, proposal *ActorStateSchemaProposal) (StateSchemaInitializationStatus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	meta, lines, err := s.readStoryLocked(storyID)
@@ -212,29 +272,64 @@ func (s *Store) ApplyStateSchemaInitialization(storyID, branchID, sourceTurnID s
 	path, _ := eventPath(branch.Head, eventsByID(lines))
 	state := stateFromPath(path)
 	applyLegacyActorStateAliases(state, meta.ActorStateSchema)
+	if proposal != nil {
+		normalized, _, err := ValidateActorStateSchemaProposal(meta.ActorStateSchema.System, meta.ActorStateSchema.TRPGSystem, *proposal)
+		if err != nil {
+			return status, err
+		}
+		proposal = &normalized
+		adaptation = normalized.Adaptation
+	}
 	targetSystem, record, err := ApplyActorStateSchemaAdaptation(meta.ActorStateSchema.System, meta.ActorStateSchema.TRPGSystem, adaptation)
 	if err != nil {
 		return status, err
 	}
 	record.SourceTurnID = sourceTurnID
+	if proposal != nil {
+		record.Summary = firstNonEmptyString(proposal.Summary, record.Summary)
+		record.LoreRevision = strings.TrimSpace(proposal.SourceLoreRevision)
+		record.ReviewedLoreIDs = append([]string(nil), proposal.ReviewedLoreIDs...)
+		record.Requirements = append([]ActorStateSchemaRequirementReview(nil), proposal.Requirements...)
+	}
 	record.Changes = stateSchemaAdaptationChanges(adaptation)
-	ops, actorOps, aliases, warnings, err := buildStateSchemaMigration(meta.ActorStateSchema.System, targetSystem, state, adaptation, sourceTurnID)
-	if err != nil {
-		return status, err
+	schemaChanged := !reflect.DeepEqual(normalizeActorStateSystem(meta.ActorStateSchema.System), normalizeActorStateSystem(targetSystem))
+	var ops []StateOp
+	var actorOps []ActorStateOp
+	aliases := map[string]map[string]string{}
+	var warnings []string
+	if schemaChanged || len(adaptation.ActorOps) > 0 {
+		ops, actorOps, aliases, warnings, err = buildStateSchemaMigration(meta.ActorStateSchema.System, targetSystem, state, adaptation, sourceTurnID)
+		if err != nil {
+			return status, err
+		}
 	}
 	record.Warnings = warnings
+	stateChanged := schemaChanged || len(ops) > 0 || len(actorOps) > 0
 	target := FreezeActorStateSchemaWithRules(targetSystem, meta.ActorStateSchema.TRPGSystem, false)
+	status.TargetRevision = status.BaseRevision
+	if schemaChanged {
+		status.TargetRevision = status.BaseRevision + 1
+	}
 	target.Revision = status.TargetRevision
 	target.Adaptation = &record
 	target.LegacyFieldPaths = mergeLegacyFieldAliases(meta.ActorStateSchema.LegacyFieldPaths, aliases)
 	target.FieldMigrations = mergeActorStateFieldMigrations(meta.ActorStateSchema.FieldMigrations, stateSchemaFieldMigrations(adaptation))
-	if err := s.backupStoryBeforeStateSchemaMigration(storyID); err != nil {
-		return status, err
+	if stateChanged {
+		if err := s.backupStoryBeforeStateSchemaMigration(storyID); err != nil {
+			return status, err
+		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	status.Status = StateSchemaInitializationReady
+	status.Outcome = "unchanged"
+	if stateChanged {
+		status.Outcome = "changed"
+	}
 	status.Summary = record.Summary
 	status.Error = ""
+	status.LoreRevision = record.LoreRevision
+	status.ReviewedLoreIDs = append([]string(nil), record.ReviewedLoreIDs...)
+	status.Requirements = append([]ActorStateSchemaRequirementReview(nil), record.Requirements...)
 	status.Changes = record.Changes
 	status.Warnings = warnings
 	status.CompletedAt = now

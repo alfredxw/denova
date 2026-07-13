@@ -1045,12 +1045,32 @@ export interface ActorStateSchemaAdaptationRecord {
 	source: string
 	summary?: string
 	source_turn_id?: string
+	lore_revision?: string
 	template_ops?: number
 	field_ops?: number
 	initial_actor_ops?: number
 	actor_ops?: number
+	reviewed_lore_ids?: string[]
+	requirements?: ActorStateSchemaRequirementReview[]
 	changes?: ActorStateSchemaAdaptationChange[]
 	warnings?: string[]
+}
+
+export interface ActorStateSchemaRequirementSource {
+	kind: 'lore' | 'opening' | 'turn_result' | 'trpg' | string
+	id: string
+}
+
+export interface ActorStateSchemaRequirementReview {
+	source: ActorStateSchemaRequirementSource
+	requirement: string
+	expected_type?: string
+	min?: number
+	max?: number
+	decision: 'covered' | 'add' | 'replace' | 'ignored' | string
+	template_id?: string
+	field_id?: string
+	reason?: string
 }
 
 export interface ActorStateSchemaAdaptationChange {
@@ -1066,11 +1086,15 @@ export interface ActorStateSchemaAdaptationChange {
 export interface StateSchemaInitializationStatus {
 	mode: 'after_opening' | 'off' | string
 	status: 'waiting_opening' | 'running' | 'ready' | 'failed' | 'skipped' | string
+	outcome?: 'changed' | 'unchanged' | string
 	source_turn_id?: string
 	base_revision?: number
 	target_revision?: number
 	summary?: string
 	error?: string
+	lore_revision?: string
+	reviewed_lore_ids?: string[]
+	requirements?: ActorStateSchemaRequirementReview[]
 	changes?: ActorStateSchemaAdaptationChange[]
 	warnings?: string[]
 	started_at?: string

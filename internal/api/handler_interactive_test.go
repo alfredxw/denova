@@ -310,27 +310,47 @@ func TestInteractiveStoryKeepsOpeningAndPresetWhenAsyncStateSchemaInitialization
 func TestInteractiveStoryCreateAdaptsAndFreezesStoryStateSchema(t *testing.T) {
 	application := newTestApplication(t)
 	var instruction string
-	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, input string) (string, error) {
+	schemaRuns := 0
+	minProgress, maxProgress := 0.0, 100.0
+	minFavor, maxFavor := -100.0, 100.0
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(callCtx context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, input string) (string, error) {
 		if toolContext.MaintenanceTask != "state_schema_initialization" {
 			return "测试后台导演完成。", nil
 		}
 		instruction = input
-		return `{
-			"summary":"为修仙群像与关系玩法补充长期可计算状态",
-			"template_ops":[
-				{"op":"fields","template_id":"protagonist","field_ops":[
-					{"op":"add","field":{"name":"境界","type":"string","default":"炼气一层","visibility":"visible","description":"主角当前修行境界","order":110}},
-					{"op":"add","field":{"name":"修为进度","type":"number","default":0,"min":0,"max":100,"visibility":"visible","description":"突破前的修为积累","order":120}},
-					{"op":"add","field":{"name":"法宝","type":"list","default":[],"visibility":"visible","order":130}},
-					{"op":"add","field":{"name":"功法","type":"list","default":[],"visibility":"visible","order":140}}
-				]},
-				{"op":"fields","template_id":"important_character","field_ops":[
-					{"op":"add","field":{"name":"好感度","type":"number","default":0,"min":-100,"max":100,"visibility":"spoiler","order":110}},
-					{"op":"add","field":{"name":"关系阶段","type":"enum","default":"陌生","options":["陌生","熟悉","暧昧","恋人"],"visibility":"spoiler","order":120}}
-				]}
-			],
-			"initial_actor_ops":[]
-		}`, nil
+		schemaRuns++
+		proposal := interactive.ActorStateSchemaProposal{
+			Summary: "为修仙群像与关系玩法补充长期可计算状态",
+			Requirements: []interactive.ActorStateSchemaRequirementReview{
+				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "长期追踪主角修行境界", ExpectedType: "string", Decision: "add", TemplateID: "protagonist", FieldID: "境界", Reason: "故事明确采用修仙成长玩法"},
+				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "以 0 到 100 的数值追踪突破进度", ExpectedType: "number", Min: &minProgress, Max: &maxProgress, Decision: "add", TemplateID: "protagonist", FieldID: "修为进度", Reason: "修炼需要可计算进度"},
+				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "长期记录主角持有法宝", ExpectedType: "list", Decision: "add", TemplateID: "protagonist", FieldID: "法宝", Reason: "法宝会影响秘境探索"},
+				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "长期记录主角掌握功法", ExpectedType: "list", Decision: "add", TemplateID: "protagonist", FieldID: "功法", Reason: "功法会影响修炼与检定"},
+				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "以 -100 到 100 的数值追踪重要角色好感", ExpectedType: "number", Min: &minFavor, Max: &maxFavor, Decision: "add", TemplateID: "important_character", FieldID: "好感度", Reason: "故事明确包含成年角色关系玩法"},
+				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "追踪重要角色关系阶段", ExpectedType: "enum", Decision: "add", TemplateID: "important_character", FieldID: "关系阶段", Reason: "关系阶段影响后续选择"},
+			},
+			Adaptation: interactive.ActorStateSchemaAdaptation{TemplateOps: []interactive.ActorStateTemplateSchemaOp{
+				{Op: "fields", TemplateID: "protagonist", FieldOps: []interactive.ActorStateFieldSchemaOp{
+					{Op: "add", Field: interactive.ActorStateField{Name: "境界", Type: "string", Default: "炼气一层", Visibility: "visible", Description: "主角当前修行境界", Order: 110}},
+					{Op: "add", Field: interactive.ActorStateField{Name: "修为进度", Type: "number", Default: 0, Min: &minProgress, Max: &maxProgress, Visibility: "visible", Description: "突破前的修为积累", Order: 120}},
+					{Op: "add", Field: interactive.ActorStateField{Name: "法宝", Type: "list", Default: []any{}, Visibility: "visible", Order: 130}},
+					{Op: "add", Field: interactive.ActorStateField{Name: "功法", Type: "list", Default: []any{}, Visibility: "visible", Order: 140}},
+				}},
+				{Op: "fields", TemplateID: "important_character", FieldOps: []interactive.ActorStateFieldSchemaOp{
+					{Op: "add", Field: interactive.ActorStateField{Name: "好感度", Type: "number", Default: 0, Min: &minFavor, Max: &maxFavor, Visibility: "spoiler", Order: 110}},
+					{Op: "add", Field: interactive.ActorStateField{Name: "关系阶段", Type: "enum", Default: "陌生", Options: []string{"陌生", "熟悉", "暧昧", "恋人"}, Visibility: "spoiler", Order: 120}},
+				}},
+			}},
+		}
+		if schemaRuns > 1 {
+			proposal.Summary = "复审确认现有结构已完整覆盖"
+			proposal.Adaptation = interactive.ActorStateSchemaAdaptation{}
+			for index := range proposal.Requirements {
+				proposal.Requirements[index].Decision = "covered"
+			}
+		}
+		_, err := toolContext.SubmitStateSchemaProposal(callCtx, proposal)
+		return "状态结构提案已提交。", err
 	})
 	t.Cleanup(restoreDirector)
 	server := NewServer(application, "0")
@@ -371,6 +391,9 @@ func TestInteractiveStoryCreateAdaptsAndFreezesStoryStateSchema(t *testing.T) {
 	if snapshot.ActorStateSchema.Adaptation.FieldOps != 6 || snapshot.ActorStateSchema.Adaptation.Source != "director_agent" {
 		t.Fatalf("adaptation audit mismatch: %#v", snapshot.ActorStateSchema.Adaptation)
 	}
+	if len(snapshot.StateSchemaInitialization.Requirements) != 6 || snapshot.StateSchemaInitialization.Outcome != "changed" {
+		t.Fatalf("state schema coverage audit mismatch: %#v", snapshot.StateSchemaInitialization)
+	}
 	templateFields := map[string]map[string]bool{}
 	for _, template := range snapshot.ActorStateSchema.System.Templates {
 		templateFields[template.ID] = map[string]bool{}
@@ -393,6 +416,14 @@ func TestInteractiveStoryCreateAdaptsAndFreezesStoryStateSchema(t *testing.T) {
 	state, _ := protagonist["state"].(map[string]any)
 	if state["境界"] != "炼气一层" || state["修为进度"] != float64(0) {
 		t.Fatalf("adapted defaults must materialize with initial actor state: %#v", state)
+	}
+	reviewResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/state-schema/review", nil)
+	if reviewResp.Code != http.StatusAccepted {
+		t.Fatalf("manual state schema review status=%d body=%s", reviewResp.Code, reviewResp.Body.String())
+	}
+	reviewed := waitForStateSchemaStatusAPI(t, server, created.ID, interactive.StateSchemaInitializationReady)
+	if reviewed.ActorStateSchema == nil || reviewed.ActorStateSchema.Revision != 2 || reviewed.StateSchemaInitialization == nil || reviewed.StateSchemaInitialization.Outcome != "unchanged" || schemaRuns != 2 {
+		t.Fatalf("manual re-review should keep an unchanged schema revision: runs=%d snapshot=%#v", schemaRuns, reviewed.StateSchemaInitialization)
 	}
 }
 

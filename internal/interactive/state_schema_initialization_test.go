@@ -144,3 +144,59 @@ func TestStateSchemaInitializationFailureAndSkipKeepRevisionOne(t *testing.T) {
 		t.Fatalf("failed adaptation must preserve revision one and opening: %#v", snapshot)
 	}
 }
+
+func TestApplyUnchangedStateSchemaProposalKeepsRevisionAndStoresReview(t *testing.T) {
+	workspace := t.TempDir()
+	novaDir := filepath.Join(workspace, ".denova")
+	store := NewStoreWithNovaDir(workspace, novaDir)
+	minValue, maxValue := 0.0, 100.0
+	base := StoryDirectorActorStateSystem{
+		Templates:     []ActorStateTemplate{{ID: "protagonist", Name: "主角", Fields: []ActorStateField{{Name: "生命", Type: "number", Default: 100, Min: &minValue, Max: &maxValue}}}},
+		InitialActors: []ActorStateInitialActor{{ID: "protagonist", Name: "主角", TemplateID: "protagonist"}},
+	}
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title: "无需变更", ActorState: &base,
+		StateSchemaInitialization: &StateSchemaInitializationStatus{Mode: StateSchemaAdaptationModeAfterOpening, Status: StateSchemaInitializationWaitingOpening, BaseRevision: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{BranchID: "main", User: "检查状态", Narrative: "主角确认身体无恙。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, claimed, err := store.ClaimStateSchemaInitialization(story.ID, turn.ID); err != nil || !claimed {
+		t.Fatalf("claim initialization: claimed=%v err=%v", claimed, err)
+	}
+	status, err := store.ApplyStateSchemaProposal(story.ID, "main", turn.ID, ActorStateSchemaProposal{
+		Summary: "现有生命字段完整覆盖规则",
+		Requirements: []ActorStateSchemaRequirementReview{{
+			Source: ActorStateSchemaRequirementSource{Kind: "lore", ID: "生命规则"}, Requirement: "生命为 0-100",
+			ExpectedType: "number", Min: &minValue, Max: &maxValue, Decision: "covered", TemplateID: "protagonist", FieldID: "生命",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Status != StateSchemaInitializationReady || status.TargetRevision != 1 || status.Outcome != "unchanged" || len(status.Requirements) != 1 {
+		t.Fatalf("unchanged review status mismatch: %#v", status)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.ActorStateSchema == nil || snapshot.ActorStateSchema.Revision != 1 || snapshot.ActorStateSchema.Adaptation == nil || len(snapshot.ActorStateSchema.Adaptation.Requirements) != 1 {
+		t.Fatalf("unchanged review must preserve schema revision and audit coverage: %#v", snapshot.ActorStateSchema)
+	}
+	backups, err := filepath.Glob(filepath.Join(novaDir, "backups", "state-schema-adaptation", "*", "story-"+story.ID+".jsonl"))
+	if err != nil || len(backups) != 0 {
+		t.Fatalf("unchanged review must not create a migration backup: paths=%#v err=%v", backups, err)
+	}
+	reopened, err := store.ReopenStateSchemaReview(story.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Status != StateSchemaInitializationWaitingOpening || reopened.BaseRevision != 1 || reopened.Outcome != "" || reopened.Summary != "" || len(reopened.Requirements) != 0 {
+		t.Fatalf("manual re-review should start from the current schema and clear the previous run status: %#v", reopened)
+	}
+}

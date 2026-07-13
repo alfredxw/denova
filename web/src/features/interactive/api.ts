@@ -65,6 +65,10 @@ export function retryInteractiveStateSchema(storyId: string): Promise<StateSchem
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/state-schema/run`, { method: 'POST' })
 }
 
+export function reviewInteractiveStateSchema(storyId: string): Promise<StateSchemaInitializationStatus> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/state-schema/review`, { method: 'POST' })
+}
+
 export function skipInteractiveStateSchema(storyId: string): Promise<StateSchemaInitializationStatus> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/state-schema/skip`, { method: 'POST' })
 }

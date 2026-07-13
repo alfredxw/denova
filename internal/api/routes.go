@@ -65,6 +65,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.DELETE("/interactive/stories/:id", apiHandlers.HandleInteractiveStoryDelete)
 		api.GET("/interactive/stories/:id/snapshot", apiHandlers.HandleInteractiveSnapshot)
 		api.POST("/interactive/stories/:id/state-schema/run", apiHandlers.HandleInteractiveStateSchemaRun)
+		api.POST("/interactive/stories/:id/state-schema/review", apiHandlers.HandleInteractiveStateSchemaReview)
 		api.POST("/interactive/stories/:id/state-schema/skip", apiHandlers.HandleInteractiveStateSchemaSkip)
 		api.POST("/interactive/stories/:id/rules/resolutions/:resolution_id/reroll", apiHandlers.HandleInteractiveRuleResolutionReroll)
 		api.GET("/interactive/stories/:id/director", apiHandlers.HandleInteractiveDirector)

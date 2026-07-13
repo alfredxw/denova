@@ -21,14 +21,16 @@ const (
 // interactive story run. The story and branch are fixed by the backend; the
 // model never supplies them.
 type InteractiveStoryToolContext struct {
-	Store                    *interactive.Store
-	StoryID                  string
-	BranchID                 string
-	TurnID                   string
-	MaintenanceTask          string
-	DirectorPlanAllowedPaths []string
-	OnStoryMemoryApplied     func(applied int)
-	OnStateMaintenanceFailed func(error)
+	Store                     *interactive.Store
+	StoryID                   string
+	BranchID                  string
+	TurnID                    string
+	MaintenanceTask           string
+	DirectorPlanAllowedPaths  []string
+	OnStoryMemoryApplied      func(applied int)
+	OnStateMaintenanceFailed  func(error)
+	OnLoreItemsRead           func([]string)
+	SubmitStateSchemaProposal func(context.Context, interactive.ActorStateSchemaProposal) (interactive.ActorStateSchemaProposalPreview, error)
 	// DisplayConversation receives display-only progress for background helper
 	// agents. It must not receive final assistant text as model-visible context.
 	DisplayConversation Conversation

@@ -8,8 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- 资料库：资料编辑器改为固定标题栏、正文区域独立滚动，低高度窗口下可访问完整表单和正文；无当前图片时改为 28px 单行工具栏，核心属性收敛为两行，标签与简介在中大屏并排、窄屏自动回落单列，减少元数据区的纵向占用。
-- Lore: The lore editor now keeps its header fixed while the form and content scroll independently. Empty current-image states use a 28px utility row, core properties collapse into two rows, and Tags plus Brief share a responsive row on medium and larger screens while stacking on narrow screens, substantially reducing metadata height.
+- 资料库：资料编辑器保留固定标题栏，右侧基础信息与正文改为共用单一滚动区；正文随内容增长且不再截获滚轮，鼠标停在正文上也能自由滚动整个右侧。无当前图片时使用 28px 单行工具栏，核心属性在移动端压缩为两列、中屏收敛为两行、宽屏合并为一行，标签与简介在中大屏并排，减少元数据区的纵向占用。
+- Lore: The lore editor keeps its fixed header while metadata and body now share one right-side scroll area. The body grows with its content and no longer traps the wheel, so the whole panel remains scrollable while the pointer is over the body. Empty current-image states use a 28px utility row; core properties use two columns on mobile, two rows on medium screens, and one row on wide screens, while Tags and Brief sit side by side on medium and larger screens to reduce metadata height.
+- 游戏模式：状态结构适配改为 Story Director 的显式审查任务。Director 会从有界常驻资料目录按需读取正文，为资料、开局、TurnResult 与 TRPG 规则逐项提交带来源、目标类型和数值范围的覆盖结论；未实际读取的资料引用、用通用对象掩盖数值规则以及无审计的空差异都会被后端拒绝。资料 revision 在审查期间变化时也不会应用过期提案。
+- Game Mode: State-schema adaptation is now an explicit Story Director review task. The Director reads bodies on demand from a bounded resident-lore roster and submits sourced coverage decisions for lore, opening, TurnResult, and TRPG requirements, including target types and numeric ranges. The backend rejects unread lore claims, generic-object coverage of numeric rules, unaudited empty diffs, and proposals made stale by a lore revision change.
+- 游戏模式：导演台新增状态结构覆盖审计与“重新审查”，无结构变化的有效审查不会再创建备份或抬升 schema revision。兼容性说明：既有故事不会自动复审，需要手动触发；共享同一 schema 的多分支故事暂不允许复审，避免对分支状态进行含糊迁移。
+- Game Mode: The Director Console now exposes the state-schema coverage audit and an explicit Re-review action. A valid review with no structural change no longer creates a backup or increments the schema revision. Compatibility note: existing stories are not re-reviewed automatically and require the manual action; multi-branch stories sharing one schema cannot currently be re-reviewed to avoid ambiguous branch-state migration.
 - WebUI：共用弹窗现在使用可收缩的单列网格，长说明、资料列表及表单控件会随弹窗宽度换行或收缩，不再把搜索框、选择框和输入框撑出弹窗右侧；写作与游戏模式统一生效。
 - WebUI: Shared dialogs now use a shrinkable single-column grid, so long descriptions, lore lists, and form controls wrap or contract to the dialog width instead of pushing search, select, and input fields past the right edge in either Writing or Game mode.
 - 对话渲染：流式 thinking 或工具追踪已出现后，不再同时保留独立的“正在思考…”活动卡片；动态追踪内容增长时只更新同一行，避免活动卡先被向下挤压、再被底部自动跟随拉回造成持续抖动。连接阶段尚无真实输出时仍保留状态卡。
