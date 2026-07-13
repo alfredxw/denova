@@ -30,9 +30,10 @@ const (
 	defaultBranchPlanningTurns = 5
 )
 
-// DirectorContextMaxBytes is the hard ceiling for a single director-related
-// context fragment. Callers may and should use smaller budgets.
-const DirectorContextMaxBytes = 64 * 1024
+// DirectorContextMaxBytes is the hard ceiling for a complete director-related
+// context fragment. Total prompt assembly remains bounded by the model-aware
+// context budget.
+const DirectorContextMaxBytes = 128 * 1024
 
 const (
 	maxDirectorPlanDocBytes  = DirectorContextMaxBytes

@@ -12,7 +12,7 @@ import (
 	"denova/internal/session"
 )
 
-func TestSubmitTurnResultValidatesFrozenActorStateImmediately(t *testing.T) {
+func TestSubmitTurnResultToleratesUnknownFrozenActorStateFields(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)
 	actorState := interactive.StoryDirectorActorStateSystem{
@@ -33,8 +33,8 @@ func TestSubmitTurnResultValidatesFrozenActorStateImmediately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "休息", 800, &config.Config{})
-	if conversation.InteractiveNarrativeReady() {
+	invalidConversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "休息", 800, &config.Config{})
+	if invalidConversation.InteractiveNarrativeReady() {
 		t.Fatal("narrative must stay closed before TurnResult is staged")
 	}
 	base := interactive.TurnResult{
@@ -43,23 +43,34 @@ func TestSubmitTurnResultValidatesFrozenActorStateImmediately(t *testing.T) {
 		PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"},
 		Choices:     []string{"继续休息", "检查当前状态"},
 	}
-	unknown := base
-	unknown.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{"body.status": "良好"}}}
-	if _, err := conversation.SubmitTurnResult(context.Background(), unknown); err == nil || !strings.Contains(err.Error(), "合法状态名称") {
-		t.Fatalf("unknown field should fail at tool invocation with allowed names, err=%v", err)
-	}
 	wrongType := base
 	wrongType.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{"生命值": "很多"}}}
-	if _, err := conversation.SubmitTurnResult(context.Background(), wrongType); err == nil || !strings.Contains(err.Error(), "生命值") {
-		t.Fatalf("wrong field type should fail at tool invocation, err=%v", err)
+	receipt, err := invalidConversation.SubmitTurnResult(context.Background(), wrongType)
+	if err != nil || receipt.Accepted || !receipt.Retryable || len(receipt.Diagnostics) != 1 || !strings.Contains(receipt.Diagnostics[0].Message, "生命值") {
+		t.Fatalf("wrong field type should return model-correctable feedback: receipt=%#v err=%v", receipt, err)
 	}
-	valid := base
-	valid.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{"当前身体/精神 状态": "安定"}}}
-	if _, err := conversation.SubmitTurnResult(context.Background(), valid); err != nil {
-		t.Fatalf("valid localized field ID should be staged: %v", err)
+	if invalidConversation.InteractiveNarrativeReady() {
+		t.Fatal("rejected submission must not open the narrative phase")
+	}
+
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "休息", 800, &config.Config{})
+	withUnknownExtra := base
+	withUnknownExtra.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{
+		"当前身体/精神 状态":  "安定",
+		"body.status": "良好",
+	}}}
+	receipt, err = conversation.SubmitTurnResult(context.Background(), withUnknownExtra)
+	if err != nil || !receipt.Accepted || receipt.Retryable || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != interactive.TurnSubmissionDiagnosticUnknownActorStateField {
+		t.Fatalf("unknown extra field should be dropped with an accepted warning: receipt=%#v err=%v", receipt, err)
 	}
 	if !conversation.InteractiveNarrativeReady() {
 		t.Fatal("narrative must open immediately after TurnResult is staged")
+	}
+	replacement := base
+	replacement.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{"当前身体/精神 状态": "躁动"}}}
+	receipt, err = conversation.SubmitTurnResult(context.Background(), replacement)
+	if err != nil || !receipt.Accepted || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != "turn_result_already_accepted" {
+		t.Fatalf("duplicate accepted result should be idempotent: receipt=%#v err=%v", receipt, err)
 	}
 	if err := conversation.AppendAssistantWithThinking("主角平复了呼吸。", ""); err != nil {
 		t.Fatalf("validated result and narrative should commit atomically: %v", err)

@@ -11,8 +11,8 @@ const maxActorStateSchemaRequirementReviews = 64
 
 const (
 	StateSchemaLoreReadMaxItemsPerCall = 4
-	StateSchemaLoreReadMaxResultBytes  = 12 * 1024
-	StateSchemaLoreReadMaxTotalBytes   = 24 * 1024
+	StateSchemaLoreReadMaxResultBytes  = DirectorContextMaxBytes
+	StateSchemaLoreReadMaxTotalBytes   = 2 * StateSchemaLoreReadMaxResultBytes
 )
 
 // ActorStateSchemaProposal is the Director-owned, backend-validated review

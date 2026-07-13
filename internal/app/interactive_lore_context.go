@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	interactiveResolvedLoreContextMaxBytes   = 48 * 1024
+	interactiveResolvedLoreContextMaxBytes   = interactive.DirectorContextMaxBytes
 	interactiveDirectorLoreRosterMaxBytes    = 8 * 1024
 	interactiveTemporaryLoreRecallMaxEntries = 16
 )

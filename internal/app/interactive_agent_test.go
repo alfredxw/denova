@@ -924,12 +924,13 @@ func TestParseInteractiveAssistantOutput(t *testing.T) {
 
 func submitTestTurnResult(t *testing.T, conversation *interactiveConversation, intent, goal string) {
 	t.Helper()
-	if _, err := conversation.SubmitTurnResult(context.Background(), interactive.TurnResult{
+	receipt, err := conversation.SubmitTurnResult(context.Background(), interactive.TurnResult{
 		Contract:    interactive.TurnContract{PlayerIntent: intent, SceneGoal: goal},
 		SceneResult: interactive.TurnSceneResult{Status: "continued", Summary: goal},
 		PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"},
 		Choices:     []string{"继续当前行动", "观察周围变化"},
-	}); err != nil {
-		t.Fatalf("SubmitTurnResult failed: %v", err)
+	})
+	if err != nil || !receipt.Accepted {
+		t.Fatalf("SubmitTurnResult failed: receipt=%#v err=%v", receipt, err)
 	}
 }

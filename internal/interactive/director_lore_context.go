@@ -14,7 +14,7 @@ const (
 	// DirectorLoreActiveContextMaxBytes bounds the complete lore bodies selected
 	// for automatic Game Agent loading. Candidates and offstage references are
 	// not part of this budget because only the Director sees them.
-	DirectorLoreActiveContextMaxBytes = 32 * 1024
+	DirectorLoreActiveContextMaxBytes = DirectorContextMaxBytes
 )
 
 var requiredDirectorLoreContextHeadings = []string{
