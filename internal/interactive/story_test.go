@@ -34,6 +34,9 @@ func TestCreateStoryInitializesIndexAndStoryFile(t *testing.T) {
 	if story.ReplyTargetChars != DefaultStoryReplyTargetChars || index.Stories[0].ReplyTargetChars != DefaultStoryReplyTargetChars {
 		t.Fatalf("reply target chars = story:%d index:%d, want %d", story.ReplyTargetChars, index.Stories[0].ReplyTargetChars, DefaultStoryReplyTargetChars)
 	}
+	if story.ChoiceCount != DefaultStoryChoiceCount || index.Stories[0].ChoiceCount != DefaultStoryChoiceCount {
+		t.Fatalf("choice count = story:%d index:%d, want %d", story.ChoiceCount, index.Stories[0].ChoiceCount, DefaultStoryChoiceCount)
+	}
 
 	storyFile := filepath.Join(store.Root(), "interactive", "story", "story-"+story.ID+".jsonl")
 	data, err := os.ReadFile(storyFile)
@@ -44,6 +47,30 @@ func TestCreateStoryInitializesIndexAndStoryFile(t *testing.T) {
 	assertContains(t, string(data), `"current_branch":"main"`)
 	assertContains(t, string(data), `"story_teller_id":"grimdark"`)
 	assertContains(t, string(data), fmt.Sprintf(`"reply_target_chars":%d`, DefaultStoryReplyTargetChars))
+	assertContains(t, string(data), fmt.Sprintf(`"choice_count":%d`, DefaultStoryChoiceCount))
+}
+
+func TestCreateAndUpdateStoryChoiceCount(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "七选一", ChoiceCount: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if story.ChoiceCount != 7 {
+		t.Fatalf("choice count = %d, want 7", story.ChoiceCount)
+	}
+	choiceCount := 3
+	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{ChoiceCount: &choiceCount})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.ChoiceCount != 3 {
+		t.Fatalf("updated choice count = %d, want 3", updated.ChoiceCount)
+	}
+	invalid := MaxStoryChoiceCount + 1
+	if _, err := store.UpdateStory(story.ID, UpdateStoryRequest{ChoiceCount: &invalid}); err == nil {
+		t.Fatal("choice count above the configured range should fail")
+	}
 }
 
 func TestCreateStoryPersistsCustomReplyTargetChars(t *testing.T) {

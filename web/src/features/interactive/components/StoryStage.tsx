@@ -496,8 +496,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     () =>
       (snapshot?.current_turn?.turn_result?.choices || snapshot?.current_turn?.hot_state?.choices || [])
         .map((choice) => choice.trim())
-        .filter(Boolean)
-        .slice(0, 4),
+        .filter(Boolean),
     [snapshot?.current_turn?.hot_state?.choices, snapshot?.current_turn?.turn_result?.choices],
   )
   const directorPlanStatus = snapshot?.director_plan_status

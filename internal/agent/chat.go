@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -376,6 +377,15 @@ func (r *Runtime) Run(
 	runCtx, cancelRun := context.WithCancel(contextWithCompactionController(ContextWithRunObserver(traceCtx, observer), conversation))
 	defer cancelRun()
 	runOptions := []adk.AgentRunOption{}
+	if options.AgentKind == AgentKindInteractiveStory {
+		cancelOption, cancelAgent := adk.WithCancel()
+		runCtx = withInteractiveTurnCancel(runCtx, cancelAgent)
+		runOptions = append(runOptions, cancelOption)
+	} else if isInteractiveDirectorPlanRun(options.AgentKind, options.MaintenanceTask) {
+		cancelOption, cancelAgent := adk.WithCancel()
+		runCtx = withInteractiveDirectorPlanCancel(runCtx, cancelAgent)
+		runOptions = append(runOptions, cancelOption)
+	}
 	if checkpointID != "" {
 		runOptions = append(runOptions, adk.WithCheckPointID(checkpointID))
 	}
@@ -435,6 +445,20 @@ func (r *Runtime) Run(
 			break
 		}
 		if event.Err != nil {
+			if interactiveTurnCompletedByCancel(event.Err, options.AgentKind, conversation, fullContent.Len()) {
+				if err := removeCheckpoint(options.Workspace, options.AgentKind, checkpointID); err != nil {
+					runLogger.Warn("interactive_completion_checkpoint_cleanup_failed", slog.String("checkpoint_id", checkpointID), slog.Any("error", err))
+				}
+				runLogger.Info("interactive_turn_completed_after_submission", slog.Int("generated_bytes", fullContent.Len()))
+				break
+			}
+			if interactiveDirectorPlanCompletedByCancel(event.Err, options.AgentKind, options.MaintenanceTask) {
+				if err := removeCheckpoint(options.Workspace, options.AgentKind, checkpointID); err != nil {
+					runLogger.Warn("interactive_director_completion_checkpoint_cleanup_failed", slog.String("checkpoint_id", checkpointID), slog.Any("error", err))
+				}
+				runLogger.Info("interactive_director_plan_completed_after_submission")
+				break
+			}
 			if reason, retrying := interactiveCompletionRetryFromError(event.Err); retrying {
 				runLogger.Info("interactive_completion_retry", slog.String("code", reason.Code), slog.Int("generated_bytes", fullContent.Len()))
 				continue
@@ -613,4 +637,16 @@ func (r *Runtime) Run(
 		"status":          "success",
 	}})
 	emit(Event{Type: "done", Data: map[string]string{}})
+}
+
+func interactiveTurnCompletedByCancel(err error, agentKind string, conversation Conversation, generatedBytes int) bool {
+	if err == nil || agentKind != AgentKindInteractiveStory || generatedBytes == 0 {
+		return false
+	}
+	reporter, ok := conversation.(InteractiveNarrativeReadinessReporter)
+	if !ok || !reporter.InteractiveNarrativeReady() {
+		return false
+	}
+	var cancelErr *adk.CancelError
+	return errors.As(err, &cancelErr) && cancelErr.Info != nil && cancelErr.Info.Mode&adk.CancelAfterToolCalls != 0
 }

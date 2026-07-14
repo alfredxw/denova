@@ -328,14 +328,14 @@ func TestBuiltinInteractiveDirectorPromptUsesMaintenanceToolContract(t *testing.
 		"State Reducer",
 		"Memory Recorder",
 		"director.md",
-		"PlanDecision",
-		"只能使用 read_file、write_file、edit_file",
+		"submit_director_plan_update",
+		"keep 不带文档",
 	} {
 		if !strings.Contains(got, required) {
 			t.Fatalf("builtin interactive director prompt missing %q:\n%s", required, got)
 		}
 	}
-	for _, legacy := range []string{"互动记忆 Agent", "字段包括 state_ops", "apply_actor_state_patch"} {
+	for _, legacy := range []string{"互动记忆 Agent", "字段包括 state_ops", "apply_actor_state_patch", "只能使用 read_file、write_file、edit_file"} {
 		if strings.Contains(got, legacy) {
 			t.Fatalf("builtin interactive director prompt should not contain legacy contract %q:\n%s", legacy, got)
 		}

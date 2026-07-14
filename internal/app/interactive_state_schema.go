@@ -19,7 +19,7 @@ import (
 
 const maxInteractiveStateSchemaPromptBytes = interactive.DirectorContextMaxBytes
 const maxInteractiveStateSchemaResidentLoreContextBytes = book.ResidentLoreSafetyMaxBytes + interactive.DirectorContextMaxBytes
-const stateSchemaAdaptationInstructionPrefix = "以下 JSON 是本次有界动态上下文；完整常驻资料由独立稳定前缀提供。每个片段均标明来源字段；不要假设未提供的故事设定。\n"
+const stateSchemaAdaptationInstructionPrefix = "以下 JSON 是本次动态上下文；current_actor_state 是不截断的完整当前 Actor 快照，其他动态片段有界；完整常驻资料由独立稳定前缀提供。每个片段均标明来源字段；不要假设未提供的故事设定。\n"
 
 const (
 	stateSchemaStoryOriginSourceID = "story-origin"
@@ -58,7 +58,12 @@ type stateSchemaAdaptationSources struct {
 	OpeningTurnBrief          string                        `json:"opening_turn_brief,omitempty"`
 	OpeningTurnResult         string                        `json:"opening_turn_result,omitempty"`
 	OpeningTurnResultSourceID string                        `json:"opening_turn_result_source_id,omitempty"`
-	CurrentActorIndex         string                        `json:"current_actor_index,omitempty"`
+	CurrentActorState         *stateSchemaCurrentActorState `json:"current_actor_state,omitempty"`
+}
+
+type stateSchemaCurrentActorState struct {
+	Source map[string]string `json:"source"`
+	Actors map[string]any    `json:"actors"`
 }
 
 type stateSchemaResidentLoreSource struct {
@@ -169,7 +174,7 @@ func runInteractiveStateSchemaInitialization(ctx context.Context, cfg *config.Co
 		}
 		return interactive.ActorStateSchemaBatchAudit{
 			ReviewedLoreIDs: ids, OpeningSourceIDs: openingSourceIDs, TurnResultSourceIDs: turnResultSourceIDs,
-			TRPGSourceIDs: trpgSourceIDs, SourceLoreRevision: workspaceSources.LoreRevision,
+			TRPGSourceIDs: trpgSourceIDs, SourceLoreRevision: workspaceSources.LoreRevision, CurrentState: storyCtx.Snapshot.State,
 		}
 	}
 	submitBatchLocked := func(batch interactive.ActorStateSchemaBatch) interactive.ActorStateSchemaBatchResult {
@@ -268,6 +273,40 @@ func runInteractiveStateSchemaInitialization(ctx context.Context, cfg *config.Co
 			for index := range proposal.Requirements {
 				if strings.TrimSpace(proposal.Requirements[index].EvidenceKind) == "" {
 					proposal.Requirements[index].EvidenceKind = "confirmed"
+				}
+				if strings.TrimSpace(proposal.Requirements[index].ValuePolicy) != "" {
+					continue
+				}
+				proposal.Requirements[index].ValuePolicy = interactive.ActorStateSchemaValuePolicySchemaOnly
+				for _, op := range proposal.Adaptation.InitialActorOps {
+					actorID := strings.TrimSpace(firstNonEmptyApp(op.ActorID, op.Actor.ID))
+					value, exists := op.Actor.State[proposal.Requirements[index].FieldID]
+					if !exists || value == nil {
+						continue
+					}
+					proposal.Requirements[index].ValuePolicy = interactive.ActorStateSchemaValuePolicyInitialize
+					proposal.Requirements[index].ActorID = actorID
+					break
+				}
+				if proposal.Requirements[index].ValuePolicy == interactive.ActorStateSchemaValuePolicyInitialize {
+					continue
+				}
+				for _, op := range proposal.Adaptation.ActorOps {
+					actorID := strings.TrimSpace(op.ActorID)
+					valueMatches := op.Op == "set" && strings.TrimSpace(op.FieldID) == strings.TrimSpace(proposal.Requirements[index].FieldID) && op.Value != nil
+					if !valueMatches {
+						value, exists := op.Actor.State[proposal.Requirements[index].FieldID]
+						valueMatches = exists && value != nil
+						if actorID == "" {
+							actorID = strings.TrimSpace(op.Actor.ID)
+						}
+					}
+					if !valueMatches {
+						continue
+					}
+					proposal.Requirements[index].ValuePolicy = interactive.ActorStateSchemaValuePolicyInitialize
+					proposal.Requirements[index].ActorID = actorID
+					break
 				}
 			}
 			legacyProposalIndex++
@@ -373,7 +412,7 @@ func buildStateSchemaAdaptationInstructionAfterOpeningWithSources(req interactiv
 		StatePreset:  compactStateSchemaAdaptationPreset(*req.ActorState),
 		TRPGBindings: compactStateSchemaAdaptationRules(trpgSystem),
 		Limits: map[string]int{
-			"max_prompt_bytes":             maxInteractiveStateSchemaPromptBytes,
+			"max_non_state_prompt_bytes":   maxInteractiveStateSchemaPromptBytes,
 			"max_template_ops":             64,
 			"max_field_ops":                64,
 			"max_initial_actor_ops":        64,
@@ -394,9 +433,18 @@ func buildStateSchemaAdaptationInstructionAfterOpeningWithSources(req interactiv
 			prompt.Sources.OpeningTurnResultSourceID = trimStateSchemaPromptText(turn.ID, 128)
 		}
 		if req.ActorState != nil {
-			prompt.Sources.CurrentActorIndex = trimStateSchemaPromptText(interactive.ActorStateRuntimeContext(*req.ActorState, currentState, 6*1024), 6000)
+			actors, _ := currentState["actors"].(map[string]any)
+			if actors == nil {
+				actors = map[string]any{}
+			}
+			prompt.Sources.CurrentActorState = &stateSchemaCurrentActorState{
+				Source: map[string]string{"kind": "actor_state_snapshot", "schema": "story_frozen_actor_state"},
+				Actors: actors,
+			}
 		}
 	}
+	currentActorState := prompt.Sources.CurrentActorState
+	prompt.Sources.CurrentActorState = nil
 	data, err := json.Marshal(prompt)
 	if err != nil {
 		return "", fmt.Errorf("序列化状态结构初始化上下文失败: %w", err)
@@ -421,6 +469,11 @@ func buildStateSchemaAdaptationInstructionAfterOpeningWithSources(req interactiv
 	}
 	if len(data) > maxPayloadBytes {
 		return "", fmt.Errorf("状态结构初始化上下文超过上限: %d > %d bytes", len(data)+len(stateSchemaAdaptationInstructionPrefix), maxInteractiveStateSchemaPromptBytes)
+	}
+	prompt.Sources.CurrentActorState = currentActorState
+	data, err = json.Marshal(prompt)
+	if err != nil {
+		return "", fmt.Errorf("序列化完整 Actor 状态快照失败: %w", err)
 	}
 	return stateSchemaAdaptationInstructionPrefix + string(data), nil
 }

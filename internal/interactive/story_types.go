@@ -13,6 +13,7 @@ type CreateStoryRequest struct {
 	StoryDirectorID           string                            `json:"story_director_id,omitempty"`
 	ModuleRefs                *StoryDirectorModuleRefs          `json:"module_refs,omitempty"`
 	ReplyTargetChars          int                               `json:"reply_target_chars"`
+	ChoiceCount               int                               `json:"choice_count"`
 	Opening                   StoryOpeningConfig                `json:"opening,omitempty"`
 	ImageSettings             StoryImageSettings                `json:"image_settings,omitempty"`
 	InitialTraitRolls         []InitialActorTraitRoll           `json:"initial_trait_rolls,omitempty"`
@@ -94,6 +95,7 @@ type UpdateStoryRequest struct {
 	StoryDirectorID  string                   `json:"story_director_id,omitempty"`
 	ModuleRefs       *StoryDirectorModuleRefs `json:"module_refs,omitempty"`
 	ReplyTargetChars *int                     `json:"reply_target_chars,omitempty"`
+	ChoiceCount      *int                     `json:"choice_count,omitempty"`
 	Opening          *StoryOpeningConfig      `json:"opening,omitempty"`
 	ImageSettings    *StoryImageSettings      `json:"image_settings,omitempty"`
 }
@@ -116,6 +118,7 @@ type StorySummary struct {
 	StoryDirectorID  string                   `json:"story_director_id"`
 	ModuleRefs       *StoryDirectorModuleRefs `json:"module_refs,omitempty"`
 	ReplyTargetChars int                      `json:"reply_target_chars"`
+	ChoiceCount      int                      `json:"choice_count"`
 	Opening          StoryOpeningConfig       `json:"opening"`
 	ImageSettings    StoryImageSettings       `json:"image_settings"`
 	CreatedAt        string                   `json:"created_at"`
@@ -165,6 +168,7 @@ type StoryMeta struct {
 	StoryDirectorID           string                           `json:"story_director_id,omitempty"`
 	ModuleRefs                *StoryDirectorModuleRefs         `json:"module_refs,omitempty"`
 	ReplyTargetChars          int                              `json:"reply_target_chars"`
+	ChoiceCount               int                              `json:"choice_count"`
 	Opening                   StoryOpeningConfig               `json:"opening"`
 	ImageSettings             StoryImageSettings               `json:"image_settings"`
 	ActorStateSchema          *ActorStateSchemaSnapshot        `json:"actor_state_schema,omitempty"`

@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -63,8 +62,8 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	directorGenerator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
 		close(started)
 		<-release
-		if !strings.Contains(instruction, "director.md") || !strings.Contains(instruction, "lore-context.md") || strings.Contains(instruction, "mainline.md") || len(toolContext.DirectorPlanAllowedPaths) != 2 {
-			t.Fatalf("director should receive plan paths and guard context: paths=%#v\n%s", toolContext.DirectorPlanAllowedPaths, instruction)
+		if !strings.Contains(instruction, "director.md") || !strings.Contains(instruction, "lore-context.md") || strings.Contains(instruction, "mainline.md") {
+			t.Fatalf("director should receive both complete plan documents:\n%s", instruction)
 		}
 		if toolContext.DisplayConversation == nil {
 			t.Fatalf("director should receive display conversation for background progress")
@@ -78,10 +77,10 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 		}
 		docs := plan.Docs
 		docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "公开比试制造质疑与反证机会。", 1)
-		if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
+		if err := submitDirectorPlanForTest(toolContext, interactive.PlanDecision{Mode: interactive.PlanDecisionPatch, Triggers: []string{"public_challenge"}, Reason: "导演安排公开反转"}, &docs); err != nil {
 			return "", err
 		}
-		return "已完成导演规划。\n```json\n{\"mode\":\"patch\",\"triggers\":[\"public_challenge\"],\"reason\":\"导演安排公开反转\"}\n```", nil
+		return "已完成导演规划。", nil
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
 	conversation.directorGenerator = directorGenerator
@@ -150,10 +149,10 @@ func TestPrepareInteractiveDirectorBeforeOpeningBuildsLoreWorksetForFirstGameTur
 		docs := plan.Docs
 		docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "公开比试开局围绕沈凝见证与戒律堂秩序展开。", 1)
 		docs.LoreContext = strings.Replace(docs.LoreContext, "## 当前角色\n", "## 当前角色\n\n- [[沈凝]]：开局见证者\n", 1)
-		if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
+		if err := submitDirectorPlanForTest(toolContext, interactive.PlanDecision{Mode: interactive.PlanDecisionReplan, Triggers: []string{"story_opening"}, Reason: "开局资料工作集已建立"}, &docs); err != nil {
 			return "", err
 		}
-		return `{"mode":"replan","triggers":["story_opening"],"reason":"开局资料工作集已建立"}`, nil
+		return "开局资料工作集已建立。", nil
 	}
 
 	prepared, err := prepareInteractiveDirectorBeforeOpening(context.Background(), cfg, book.NewState(workspace), conversation, "我报名公开比试", nil)
@@ -184,15 +183,6 @@ func TestPrepareInteractiveDirectorBeforeOpeningBuildsLoreWorksetForFirstGameTur
 	}
 	if !prepared || generated != 1 {
 		t.Fatalf("prepared opening should be reused without another model call: prepared=%v generated=%d", prepared, generated)
-	}
-}
-
-func TestOpeningTurnOnlyRequestsImmediateDirectorReplanForMajorDeviation(t *testing.T) {
-	if openingTurnNeedsImmediateDirectorPlan(interactive.TurnEvent{TurnResult: &interactive.TurnResult{PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"}}}) {
-		t.Fatal("aligned opening should reuse the precomputed plan")
-	}
-	if !openingTurnNeedsImmediateDirectorPlan(interactive.TurnEvent{TurnResult: &interactive.TurnResult{PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "major"}}}) {
-		t.Fatal("major opening deviation should request an immediate plan update")
 	}
 }
 
@@ -228,9 +218,6 @@ func TestInteractiveDirectorMaintenanceSeparatesMemoryAndDirectorPlan(t *testing
 					t.Fatalf("memory instruction missing %q:\n%s", want, instruction)
 				}
 			}
-			if len(toolContext.DirectorPlanAllowedPaths) != 0 {
-				t.Fatalf("memory recorder should not receive director paths: %#v", toolContext.DirectorPlanAllowedPaths)
-			}
 			if err := applyDirectorMemoryForTest(toolContext); err != nil {
 				return "", err
 			}
@@ -247,10 +234,10 @@ func TestInteractiveDirectorMaintenanceSeparatesMemoryAndDirectorPlan(t *testing
 			}
 			docs := plan.Docs
 			docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "钟楼盯梢者成为下一轮可调查压力点。", 1)
-			if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
+			if err := submitDirectorPlanForTest(toolContext, interactive.PlanDecision{Mode: interactive.PlanDecisionPatch, Triggers: []string{"new_clue"}, Reason: "钟楼威胁成为新的调查压力点"}, &docs); err != nil {
 				return "", err
 			}
-			return `{"mode":"patch","triggers":["new_clue"],"reason":"钟楼威胁成为新的调查压力点"}`, nil
+			return "已更新钟楼威胁。", nil
 		default:
 			return "", errors.New("unexpected maintenance task: " + toolContext.MaintenanceTask)
 		}
@@ -317,10 +304,10 @@ func TestInteractiveDirectorMaintenanceKeepsDirectorReadyWhenMemoryToolFails(t *
 		}
 		docs := plan.Docs
 		docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "钟楼反光作为下一轮调查入口。", 1)
-		if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
+		if err := submitDirectorPlanForTest(toolContext, interactive.PlanDecision{Mode: interactive.PlanDecisionPatch, Triggers: []string{"new_clue"}, Reason: "反光成为调查入口"}, &docs); err != nil {
 			return "", err
 		}
-		return `{"mode":"patch","triggers":["new_clue"],"reason":"反光成为调查入口"}`, nil
+		return "已更新调查入口。", nil
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
 	conversation.directorGenerator = directorGenerator
@@ -366,21 +353,20 @@ func TestInteractiveDirectorMaintenanceKeepsMemoryWhenDirectorPlanValidationFail
 			}
 			return "已整理故事记忆", nil
 		}
-		if len(toolContext.DirectorPlanAllowedPaths) != 2 {
-			return "", errors.New("missing director path")
-		}
-		planPath := directorDocumentPathForTest(toolContext.DirectorPlanAllowedPaths, "director.md")
-		if planPath == "" {
-			return "", errors.New("missing director.md path")
-		}
-		if err := os.WriteFile(planPath, []byte("# 缺少固定标题\n\n这份规划不合法。\n"), 0o644); err != nil {
+		plan, err := toolContext.Store.DirectorPlan(toolContext.StoryID, toolContext.BranchID)
+		if err != nil {
 			return "", err
 		}
-		return `{"mode":"patch","reason":"记忆已写入，导演规划文档待校验"}`, nil
+		docs := plan.Docs
+		docs.Plan = "# 缺少固定标题\n\n这份规划不合法。\n"
+		if err := submitDirectorPlanForTest(toolContext, interactive.PlanDecision{Mode: interactive.PlanDecisionPatch, Reason: "记忆已写入，导演规划文档待校验"}, &docs); err != nil {
+			return "", err
+		}
+		return "不应成功", nil
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
 	conversation.directorGenerator = directorGenerator
-	if _, err := runInteractiveDirectorMaintenance(context.Background(), &config.Config{}, book.NewState(workspace), conversation, turn, nil, interactiveDirectorTaskTurnMaintenance); err == nil || !strings.Contains(err.Error(), "完成导演规划运行失败") {
+	if _, err := runInteractiveDirectorMaintenance(context.Background(), &config.Config{}, book.NewState(workspace), conversation, turn, nil, interactiveDirectorTaskTurnMaintenance); err == nil || !strings.Contains(err.Error(), "缺少必填标题") {
 		t.Fatalf("maintenance should report director validation failure, got %v", err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -448,10 +434,10 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 		}
 		docs := plan.Docs
 		docs.Plan += "\n\n失败后重试成功，准备继续推进。"
-		if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
+		if err := submitDirectorPlanForTest(toolContext, interactive.PlanDecision{Mode: interactive.PlanDecisionPatch, Reason: "失败后重试成功"}, &docs); err != nil {
 			return "", err
 		}
-		return `{"mode":"patch","reason":"失败后重试成功"}`, nil
+		return "失败后重试成功。", nil
 	}
 	done = startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
 	<-done
@@ -530,28 +516,12 @@ func TestAnalyzeInteractiveDirectorContextUsesCurrentDirectorInputs(t *testing.T
 	}
 }
 
-func writeDirectorPlanDocsForTest(paths []string, docs interactive.DirectorPlanDocs) error {
-	if len(paths) != 2 {
-		return errors.New("expected director.md and lore-context.md paths")
+func submitDirectorPlanForTest(toolContext agent.InteractiveStoryToolContext, decision interactive.PlanDecision, docs *interactive.DirectorPlanDocs) error {
+	if toolContext.SubmitDirectorPlanUpdate == nil {
+		return errors.New("submit director plan callback missing")
 	}
-	planPath := directorDocumentPathForTest(paths, "director.md")
-	lorePath := directorDocumentPathForTest(paths, "lore-context.md")
-	if planPath == "" || lorePath == "" {
-		return errors.New("director document path missing")
-	}
-	if err := os.WriteFile(planPath, []byte(strings.TrimSpace(docs.Plan)+"\n"), 0o644); err != nil {
-		return err
-	}
-	return os.WriteFile(lorePath, []byte(strings.TrimSpace(docs.LoreContext)+"\n"), 0o644)
-}
-
-func directorDocumentPathForTest(paths []string, name string) string {
-	for _, path := range paths {
-		if strings.HasSuffix(path, "/"+name) {
-			return path
-		}
-	}
-	return ""
+	_, err := toolContext.SubmitDirectorPlanUpdate(context.Background(), interactive.DirectorPlanUpdateSubmission{Decision: decision, Docs: docs})
+	return err
 }
 
 func applyDirectorMemoryForTest(toolContext agent.InteractiveStoryToolContext) error {
@@ -574,22 +544,9 @@ func applyDirectorMemoryForTest(toolContext agent.InteractiveStoryToolContext) e
 }
 
 func committedTurnResultForTest(playerIntent, sceneGoal, fact string) *interactive.TurnResult {
-	result := &interactive.TurnResult{
-		Contract: interactive.TurnContract{PlayerIntent: playerIntent, SceneGoal: sceneGoal},
-		Choices:  []string{"继续推进", "观察周围"},
-		SceneResult: interactive.TurnSceneResult{
-			Status:  "continued",
-			Summary: fact,
-		},
+	_, _, _ = playerIntent, sceneGoal, fact
+	return &interactive.TurnResult{
+		StateUpdates: []interactive.StateUpdate{},
+		Choices:      []string{"继续推进", "观察周围", "询问同伴", "检查状态", "暂时等待"},
 	}
-	if strings.TrimSpace(fact) != "" {
-		result.FactCandidates = []interactive.StoryFactCandidate{{
-			Kind:       "plot",
-			Subject:    "当前场景",
-			Fact:       fact,
-			Visibility: "player_known",
-			Importance: "medium",
-		}}
-	}
-	return result
 }

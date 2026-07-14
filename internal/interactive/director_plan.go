@@ -1018,13 +1018,6 @@ func (s *Store) directorPlanBranchDir(storyID, branchID string) string {
 	return filepath.Join(s.root, "interactive", "stories", storyID, "director", branchID)
 }
 
-func (s *Store) DirectorPlanAllowedPaths(storyID, branchID string) []string {
-	return []string{
-		filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorPlanFile),
-		filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorLoreContextFile),
-	}
-}
-
 func directorPlanDocInfos(dir string, docs DirectorPlanDocs) map[string]DirectorPlanDocInfo {
 	return map[string]DirectorPlanDocInfo{
 		DirectorPlanDocPlan:        directorPlanDocInfo(filepath.Join(dir, directorPlanFile), docs.Plan, ExtractDirectorPlanVisibleSection(docs.Plan)),

@@ -10,6 +10,13 @@ import (
 const maxActorStateSchemaRequirementReviews = 64
 
 const (
+	ActorStateSchemaValuePolicySchemaOnly = "schema_only"
+	ActorStateSchemaValuePolicyPreserve   = "preserve"
+	ActorStateSchemaValuePolicyInitialize = "initialize"
+	ActorStateSchemaValuePolicyDefer      = "defer"
+)
+
+const (
 	StateSchemaLoreReadMaxItemsPerCall = 4
 	StateSchemaLoreReadMaxResultBytes  = DirectorContextMaxBytes
 	StateSchemaLoreReadMaxTotalBytes   = 2 * StateSchemaLoreReadMaxResultBytes
@@ -46,7 +53,11 @@ type ActorStateSchemaRequirementReview struct {
 	Requirement string                            `json:"requirement"`
 	// EvidenceKind preserves whether the requirement or proposed initial value
 	// is explicitly confirmed, reasonably inferred, or a rules-level default.
-	EvidenceKind string   `json:"evidence_kind,omitempty"`
+	EvidenceKind string `json:"evidence_kind,omitempty"`
+	// ValuePolicy makes Actor value handling explicit instead of treating a
+	// sourced schema requirement as if it had also initialized runtime state.
+	ValuePolicy  string   `json:"value_policy" jsonschema:"description=该需求的 Actor 值策略：schema_only 仅审查结构；preserve 校验并保留已有值；initialize 必须在同一 item 用字段级 actor_ops set 落值；defer 明确延后且必须说明理由"`
+	ActorID      string   `json:"actor_id,omitempty" jsonschema:"description=value_policy 为 preserve、initialize 或 defer 时对应的稳定 actor_id；schema_only 时省略"`
 	ExpectedType string   `json:"expected_type,omitempty"`
 	Min          *float64 `json:"min,omitempty"`
 	Max          *float64 `json:"max,omitempty"`
@@ -125,6 +136,8 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		review.Source.ID = strings.TrimSpace(review.Source.ID)
 		review.Requirement = trimBytes(review.Requirement, maxTurnBriefTextBytes)
 		review.EvidenceKind = strings.TrimSpace(review.EvidenceKind)
+		review.ValuePolicy = strings.TrimSpace(review.ValuePolicy)
+		review.ActorID = normalizeActorStateID(review.ActorID)
 		review.ExpectedType = strings.TrimSpace(review.ExpectedType)
 		review.Decision = strings.TrimSpace(review.Decision)
 		review.TemplateID = normalizeActorStateID(review.TemplateID)
@@ -146,7 +159,25 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		default:
 			return fmt.Errorf("状态需求 evidence_kind 无效: %s", review.EvidenceKind)
 		}
+		switch review.ValuePolicy {
+		case ActorStateSchemaValuePolicySchemaOnly:
+			if review.ActorID != "" {
+				return fmt.Errorf("schema_only 状态需求不能指定 actor_id: source=%s actor=%s", review.Source.ID, review.ActorID)
+			}
+		case ActorStateSchemaValuePolicyPreserve, ActorStateSchemaValuePolicyInitialize, ActorStateSchemaValuePolicyDefer:
+			if review.ActorID == "" {
+				return fmt.Errorf("状态需求 value_policy=%s 时必须指定 actor_id: source=%s", review.ValuePolicy, review.Source.ID)
+			}
+			if review.ValuePolicy == ActorStateSchemaValuePolicyDefer && review.Reason == "" {
+				return fmt.Errorf("延后 Actor 状态初始化必须说明理由: source=%s actor=%s", review.Source.ID, review.ActorID)
+			}
+		default:
+			return fmt.Errorf("状态需求 value_policy 无效: %s", review.ValuePolicy)
+		}
 		if review.Decision == "ignored" {
+			if review.ValuePolicy != ActorStateSchemaValuePolicySchemaOnly {
+				return fmt.Errorf("ignored 状态需求只能使用 value_policy=schema_only: source=%s", review.Source.ID)
+			}
 			if review.Reason == "" {
 				return fmt.Errorf("忽略状态需求必须说明理由: source=%s", review.Source.ID)
 			}

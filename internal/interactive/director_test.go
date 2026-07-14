@@ -2,7 +2,6 @@ package interactive
 
 import (
 	"encoding/json"
-	"os"
 	"strings"
 	"testing"
 )
@@ -222,15 +221,6 @@ func TestCreateStorySeedsDirectorPlanDocs(t *testing.T) {
 	}
 	if strings.Contains(plan.VisibleDocs.Plan, "后台导演私密") {
 		t.Fatalf("visible docs must exclude private section:\n%s", plan.VisibleDocs.Plan)
-	}
-	paths := store.DirectorPlanAllowedPaths(story.ID, "main")
-	if len(paths) != 2 || !strings.HasSuffix(paths[0], "director.md") || !strings.HasSuffix(paths[1], "lore-context.md") {
-		t.Fatalf("director should expose director.md and lore-context.md paths: %#v", paths)
-	}
-	for _, path := range store.DirectorPlanAllowedPaths(story.ID, "main") {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("director plan path should exist %s: %v", path, err)
-		}
 	}
 }
 

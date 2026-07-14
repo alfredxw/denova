@@ -39,7 +39,7 @@ func main() {
 	flag.StringVar(&port, "port", port, "HTTP 服务端口")
 	flag.StringVar(&frontendPort, "frontend-port", frontendPort, "前端开发服务端口")
 	flag.BoolVar(&dev, "dev", false, "开发模式：同时启动 Vite 前端 dev server")
-	flag.BoolVar(&devMode, "dev-mode", false, "开发启动模式：由 bootstrap.sh 传入，开启开发诊断能力")
+	flag.BoolVar(&devMode, "dev-mode", false, "开发启动模式：由 scripts/bootstrap.sh 传入，开启开发诊断能力")
 	flag.BoolVar(&noOpen, "no-open", false, "启动服务后不自动打开浏览器")
 	flag.Parse()
 

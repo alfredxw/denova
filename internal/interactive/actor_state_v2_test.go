@@ -144,12 +144,9 @@ func TestStoryFreezesChineseActorStateFieldIDs(t *testing.T) {
 		User:      "查看能力",
 		Narrative: "主角确认了道渊的存在。",
 		TurnResult: &TurnResult{
-			Contract: TurnContract{PlayerIntent: "查看能力", SceneGoal: "确认能力"},
-			Choices:  []string{"继续检查道渊", "询问身边的人"},
-			ActorStatePatches: []ActorStatePatch{{
-				ActorID: "protagonist",
-				State:   map[string]any{"当前可用能力": []any{"道渊"}},
-				Reason:  "正文确认主角能够使用道渊。",
+			Choices: testTurnChoices(),
+			StateUpdates: []StateUpdate{{
+				Op: TurnStateUpdateReplace, Path: "/protagonist/当前可用能力", Value: []any{"道渊"},
 			}},
 		},
 	})
@@ -216,9 +213,8 @@ func TestActorStateFieldIDSupportsPunctuationWithoutPaths(t *testing.T) {
 		User:      "坚持",
 		Narrative: "主角稳住了心神。",
 		TurnResult: &TurnResult{
-			Contract:          TurnContract{PlayerIntent: "坚持", SceneGoal: "稳定心神"},
-			Choices:           []string{"继续向前", "原地调息"},
-			ActorStatePatches: []ActorStatePatch{{ActorID: "protagonist", State: map[string]any{fieldID: "镇定"}}},
+			Choices:      testTurnChoices(),
+			StateUpdates: []StateUpdate{{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{"protagonist", fieldID}), Value: "镇定"}},
 		},
 	})
 	if err != nil {
@@ -283,12 +279,8 @@ func TestLegacyActorStatePathReplaysIntoFrozenFieldID(t *testing.T) {
 		User:      "掌握新能力",
 		Narrative: "主角在旧能力之上掌握了新能力。",
 		TurnResult: &TurnResult{
-			Contract: TurnContract{PlayerIntent: "掌握新能力", SceneGoal: "更新能力状态"},
-			Choices:  []string{"尝试新能力", "检查状态变化"},
-			ActorStatePatches: []ActorStatePatch{{
-				ActorID: "protagonist",
-				State:   map[string]any{"当前可用能力": []any{"旧能力", "新能力"}},
-			}},
+			Choices:      testTurnChoices(),
+			StateUpdates: []StateUpdate{{Op: TurnStateUpdateReplace, Path: "/protagonist/当前可用能力", Value: []any{"旧能力", "新能力"}}},
 		},
 	})
 	if err != nil {

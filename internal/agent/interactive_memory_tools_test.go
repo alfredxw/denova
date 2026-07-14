@@ -221,6 +221,17 @@ func TestPrepareInteractiveTurnToolUsesRuleResolutionCallback(t *testing.T) {
 	if info.Name != "prepare_interactive_turn" {
 		t.Fatalf("tool name = %s", info.Name)
 	}
+	params, err := info.ParamsOneOf.ToJSONSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	paramsJSON, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(paramsJSON), "state_changes") {
+		t.Fatalf("prepare_interactive_turn must not accept model-authored outcome state changes: %s", paramsJSON)
+	}
 	output, err := tools[0].(tool.InvokableTool).InvokableRun(context.Background(), `{"action":"强闯秘境","intent":"冒险","challenge":"秘境入口禁制","cost":"失败会受伤","state":"禁制正在收束","difficulty":"normal","outcomes":{"critical_success":{"result":"大成功"},"success":{"result":"成功"},"failure":{"result":"强闯失败"},"critical_failure":{"result":"大失败"}}}`)
 	if err != nil {
 		t.Fatal(err)
@@ -230,20 +241,31 @@ func TestPrepareInteractiveTurnToolUsesRuleResolutionCallback(t *testing.T) {
 	}
 }
 
-func TestSubmitInteractiveTurnResultToolStagesStructuredOutcome(t *testing.T) {
+func TestInteractiveTurnSubmissionToolsStageModulesIndependently(t *testing.T) {
 	want := interactive.TurnResult{
-		Contract:       interactive.TurnContract{PlayerIntent: "调查丹炉", SceneGoal: "确认药味来源"},
-		FactCandidates: []interactive.StoryFactCandidate{{Kind: "clue", Subject: "丹炉", Fact: "药味中混有陌生灵气", Visibility: "player_known", Importance: "high"}},
-		Choices:        []string{"检查炉灰", "询问苏灿灿"},
+		StateUpdates: []interactive.StateUpdate{{Op: "replace", Path: "/story/当前事件", Value: "调查丹炉"}},
+		Choices:      []string{"检查炉灰", "询问苏灿灿", "辨认药味", "查看炉火", "退出丹房"},
 	}
-	called := false
+	called := 0
+	patchAccepted := false
+	choicesAccepted := false
 	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
-		SubmitTurnResult: func(_ context.Context, input interactive.TurnResult) (interactive.TurnSubmissionReceipt, error) {
-			called = true
-			if input.Contract.SceneGoal != want.Contract.SceneGoal {
+		SubmitTurnResult: func(_ context.Context, input interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error) {
+			called++
+			if input.StateUpdates != nil {
+				patchAccepted = len(*input.StateUpdates) == 1
+			}
+			if input.Choices != nil {
+				choicesAccepted = len(*input.Choices) == 5
+			}
+			if len(input.Diagnostics) > 0 {
 				t.Fatalf("unexpected turn result: %#v", input)
 			}
-			return interactive.TurnSubmissionReceipt{Accepted: true}, nil
+			ready := patchAccepted && choicesAccepted
+			return interactive.TurnSubmissionReceipt{Ready: ready, ModuleStatus: interactive.TurnSubmissionModuleStatus{
+				ActorStatePatches: map[bool]string{true: "accepted", false: "missing"}[patchAccepted],
+				Choices:           map[bool]string{true: "accepted", false: "missing"}[choicesAccepted],
+			}}, nil
 		},
 	})
 	if err != nil {
@@ -257,42 +279,77 @@ func TestSubmitInteractiveTurnResultToolStagesStructuredOutcome(t *testing.T) {
 		}
 		byName[info.Name] = item
 	}
-	submit, ok := byName["submit_interactive_turn_result"].(tool.InvokableTool)
+	patchTool, ok := byName[interactiveActorStatePatchesToolName].(tool.InvokableTool)
 	if !ok {
-		t.Fatalf("submit_interactive_turn_result missing: %#v", byName)
+		t.Fatalf("submit_actor_state_patches missing: %#v", byName)
 	}
-	submitInfo, err := byName["submit_interactive_turn_result"].Info(context.Background())
+	choicesTool, ok := byName[interactiveChoicesToolName].(tool.InvokableTool)
+	if !ok {
+		t.Fatalf("submit_choices missing: %#v", byName)
+	}
+	patchInfo, err := byName[interactiveActorStatePatchesToolName].Info(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{`actor_id="story"`, "story_context", "每回合", "当前事件", "当前详细地点", "scene_result"} {
-		if !strings.Contains(submitInfo.Desc, required) {
-			t.Fatalf("submit tool description should require story context field %q:\n%s", required, submitInfo.Desc)
+	for _, required := range []string{"patches", "story_context", "/story/当前事件", "/story/当前详细地点"} {
+		if !strings.Contains(patchInfo.Desc, required) {
+			t.Fatalf("patch tool description should require story context field %q:\n%s", required, patchInfo.Desc)
 		}
 	}
-	payload, err := json.Marshal(want)
+	patchPayload, err := json.Marshal(map[string]any{"patches": want.StateUpdates})
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := submit.InvokableRun(context.Background(), string(payload))
+	patchResult, err := patchTool.InvokableRun(context.Background(), string(patchPayload))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !called || !strings.Contains(result, `"accepted": true`) || strings.Contains(result, "确认药味来源") {
-		t.Fatalf("submit callback/result mismatch: called=%v result=%s", called, result)
+	choicePayload, err := json.Marshal(map[string]any{"choices": want.Choices})
+	if err != nil {
+		t.Fatal(err)
+	}
+	choiceResult, err := choicesTool.InvokableRun(context.Background(), string(choicePayload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called != 2 || !strings.Contains(patchResult, `"ready": false`) || !strings.Contains(choiceResult, `"ready": true`) || strings.Contains(choiceResult, "调查丹炉") {
+		t.Fatalf("module callbacks/result mismatch: called=%d patch=%s choices=%s", called, patchResult, choiceResult)
+	}
+	if patchInfo.ParamsOneOf == nil {
+		t.Fatal("patch tool should expose parameter schema")
+	}
+	params, err := patchInfo.ParamsOneOf.ToJSONSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemaData, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{`"replace"`, `"delta"`, `"create"`} {
+		if !strings.Contains(string(schemaData), value) {
+			t.Fatalf("submit schema missing state op enum %s: %s", value, schemaData)
+		}
 	}
 }
 
-func TestSubmitInteractiveTurnResultToolReturnsCorrectionReceiptWithoutToolError(t *testing.T) {
+func TestSubmitActorStatePatchesReturnsCorrectionReceiptWithoutToolError(t *testing.T) {
 	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
-		SubmitTurnResult: func(_ context.Context, _ interactive.TurnResult) (interactive.TurnSubmissionReceipt, error) {
+		SubmitTurnResult: func(_ context.Context, _ interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error) {
 			return interactive.TurnSubmissionReceipt{
-				Accepted:  false,
-				Retryable: true,
+				Ready: false,
+				ModuleStatus: interactive.TurnSubmissionModuleStatus{
+					ActorStatePatches: interactive.TurnSubmissionModuleRejected,
+					Choices:           interactive.TurnSubmissionModuleAccepted,
+				},
+				RetryModules: []string{interactive.TurnSubmissionModuleStateUpdates},
 				Diagnostics: []interactive.TurnSubmissionDiagnostic{{
-					Code:     interactive.TurnSubmissionDiagnosticActorStateInvalid,
-					Severity: "error",
-					Message:  "生命值必须是 number",
+					Module:    interactive.TurnSubmissionModuleStateUpdates,
+					Code:      "actor_state_invalid",
+					Severity:  "error",
+					Retryable: true,
+					MessageZH: "生命值必须是 number",
+					MessageEN: "HP must be a number.",
 				}},
 			}, nil
 		},
@@ -304,11 +361,11 @@ func TestSubmitInteractiveTurnResultToolReturnsCorrectionReceiptWithoutToolError
 	if !ok {
 		t.Fatalf("submit tool is not invokable: %#v", tools[0])
 	}
-	result, err := submit.InvokableRun(context.Background(), `{"contract":{"player_intent":"休息"},"choices":["继续休息","观察四周"]}`)
+	result, err := submit.InvokableRun(context.Background(), `{"patches":[{"op":"replace","path":"/protagonist/生命值","value":"很多"}]}`)
 	if err != nil {
 		t.Fatalf("model-correctable validation must not become a tool error: %v", err)
 	}
-	if !strings.Contains(result, `"accepted": false`) || !strings.Contains(result, `"retryable": true`) || !strings.Contains(result, "生命值必须是 number") {
+	if !strings.Contains(result, `"ready": false`) || !strings.Contains(result, `"retry_modules"`) || !strings.Contains(result, "生命值必须是 number") {
 		t.Fatalf("unexpected correction receipt: %s", result)
 	}
 }
@@ -359,13 +416,13 @@ func TestPrepareInteractiveTurnToolSchemaDocumentsEnums(t *testing.T) {
 		`"advantage"`,
 		`"disadvantage"`,
 		`用户行为`,
-		`四档后果`,
+		`"critical_success"`,
 	} {
 		if !strings.Contains(schemaText, want) {
 			t.Fatalf("prepare_interactive_turn schema missing %q:\n%s", want, schemaText)
 		}
 	}
-	if !strings.Contains(info.Desc, "difficulty") || !strings.Contains(info.Desc, "very_easy/easy/normal/hard/very_hard") || !strings.Contains(info.Desc, "固定 d20") || !strings.Contains(info.Desc, "正数更难") || !strings.Contains(info.Desc, "difficulty_guidance") || !strings.Contains(info.Desc, "state_effect_guidance") || !strings.Contains(info.Desc, "must_check_examples") || !strings.Contains(info.Desc, "skip_check_examples") || !strings.Contains(info.Desc, "state_bindings") {
+	if !strings.Contains(info.Desc, "difficulty") || !strings.Contains(info.Desc, "very_easy/easy/normal/hard/very_hard") || !strings.Contains(info.Desc, "固定 d20") || !strings.Contains(info.Desc, "正数更难") || !strings.Contains(info.Desc, "difficulty_guidance") || !strings.Contains(info.Desc, "must_check_examples") || !strings.Contains(info.Desc, "skip_check_examples") || !strings.Contains(info.Desc, "state_bindings") {
 		t.Fatalf("prepare_interactive_turn description should spell out enum protocol:\n%s", info.Desc)
 	}
 }

@@ -86,7 +86,7 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 		workset = "## 分支资料工作集（source: lore-context.md）\n\n" + workset
 	}
 	roster := ""
-	if shouldInjectDirectorLoreRoster(task, plan.Metadata.LoreRevision, currentRevision, turn) {
+	if shouldInjectDirectorLoreRoster(task, plan.Metadata.LoreRevision, currentRevision) {
 		roster, err = store.LoreNameRosterMarkdown(interactiveDirectorLoreRosterMaxBytes, true)
 		if err != nil {
 			return "", fmt.Errorf("生成资料名称目录失败: %w", err)
@@ -107,14 +107,14 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	return joinLoreContextSections(residentContext, reviewStatus, roster, workset, activeContext, temporary), nil
 }
 
-func shouldInjectDirectorLoreRoster(task, reviewedRevision, currentRevision string, turn interactive.TurnEvent) bool {
+func shouldInjectDirectorLoreRoster(task, reviewedRevision, currentRevision string) bool {
 	if strings.TrimSpace(task) == interactiveDirectorTaskOpeningPlan {
 		return true
 	}
 	if strings.TrimSpace(reviewedRevision) == "" || reviewedRevision != currentRevision {
 		return true
 	}
-	return turn.TurnResult != nil && strings.TrimSpace(turn.TurnResult.PlanSignals.DeviationLevel) == "major"
+	return false
 }
 
 func loreItemsOfLoadMode(items []book.LoreItem, loadMode string) []book.LoreItem {

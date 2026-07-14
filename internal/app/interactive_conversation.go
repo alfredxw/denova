@@ -157,6 +157,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		StoryDirectorID:             storyCtx.Meta.StoryDirectorID,
 		BranchID:                    storyCtx.Snapshot.BranchID,
 		ReplyTargetChars:            c.replyTargetChars,
+		ChoiceCount:                 storyCtx.Meta.ChoiceCount,
 		LongTermMemory:              storyMemory,
 		DirectorPlanVisible:         directorPlanVisible,
 		StoryDirectorRules:          ruleSummary,
@@ -291,7 +292,7 @@ func (c *interactiveConversation) PrepareInteractiveTurn(ctx context.Context, re
 
 // SubmitTurnResult stages the Game Agent's structured outcome. Nothing is
 // persisted until the final narrative is accepted and committed atomically.
-func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, result interactive.TurnResult) (interactive.TurnSubmissionReceipt, error) {
+func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, input interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error) {
 	if c == nil || c.store == nil {
 		return interactive.TurnSubmissionReceipt{}, fmt.Errorf("互动故事不存在")
 	}
@@ -304,9 +305,6 @@ func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, result i
 		log.Printf("[interactive-agent] ignored duplicate turn result before validation story_id=%s branch_id=%s", c.storyID, c.branchID)
 		return interactiveTurnResultAlreadyAcceptedReceipt(), nil
 	}
-	if strings.TrimSpace(result.Contract.PlayerIntent) == "" {
-		result.Contract.PlayerIntent = strings.TrimSpace(c.user)
-	}
 	storyCtx, err := c.store.StoryContext(c.storyID, c.branchID)
 	if err != nil {
 		return interactive.TurnSubmissionReceipt{}, err
@@ -317,22 +315,25 @@ func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, result i
 	} else {
 		actorState = c.storyDirectorForMeta(storyCtx.Meta).ActorState
 	}
-	prepared, receipt := interactive.PrepareTurnSubmission(actorState, storyCtx.Snapshot.State, result)
-	if !receipt.Accepted {
-		log.Printf("[interactive-agent] rejected turn result story_id=%s branch_id=%s retryable=%t diagnostics=%q", c.storyID, c.branchID, receipt.Retryable, interactiveTurnSubmissionDiagnosticSummary(receipt.Diagnostics))
-		return receipt, nil
-	}
-
+	director := c.storyDirectorForMeta(storyCtx.Meta)
 	c.mu.Lock()
-	staged := c.turnProtocol.submit(prepared)
+	current := c.turnProtocol.draft()
+	prepared, receipt := interactive.PrepareTurnSubmission(interactive.TurnSubmissionContext{
+		ActorState:               actorState,
+		CurrentState:             storyCtx.Snapshot.State,
+		ChoiceCount:              storyCtx.Meta.ChoiceCount,
+		RuleResolution:           c.ruleResolution,
+		RuleStateConsumptionMode: director.Strategy.RuleStateConsumptionMode,
+	}, current, input)
+	staged := c.turnProtocol.update(prepared)
 	c.mu.Unlock()
 	if !staged {
 		receipt = interactiveTurnResultAlreadyAcceptedReceipt()
-		log.Printf("[interactive-agent] ignored duplicate accepted turn result story_id=%s branch_id=%s", c.storyID, c.branchID)
+		log.Printf("[interactive-agent] ignored turn result update after protocol lock story_id=%s branch_id=%s", c.storyID, c.branchID)
 		return receipt, nil
 	}
 	stagedResult := prepared.TurnResult()
-	log.Printf("[interactive-agent] staged turn result story_id=%s branch_id=%s state_patches=%d facts=%d choices=%d scene_status=%s deviation=%s warnings=%d", c.storyID, c.branchID, len(stagedResult.ActorStatePatches), len(stagedResult.FactCandidates), len(stagedResult.Choices), stagedResult.SceneResult.Status, stagedResult.PlanSignals.DeviationLevel, len(receipt.Diagnostics))
+	log.Printf("[interactive-agent] updated turn result draft story_id=%s branch_id=%s ready=%t state_updates=%d choices=%d patches_status=%s choices_status=%s diagnostics=%q", c.storyID, c.branchID, receipt.Ready, len(stagedResult.StateUpdates), len(stagedResult.Choices), receipt.ModuleStatus.ActorStatePatches, receipt.ModuleStatus.Choices, interactiveTurnSubmissionDiagnosticSummary(receipt.Diagnostics))
 	return receipt, nil
 }
 
@@ -597,7 +598,7 @@ func (c *interactiveConversation) AppendAssistantWithMetadata(content, thinking 
 	assistantMetadata := c.assistantMetadataSnapshot()
 	turnResult := c.turnResultSnapshot()
 	if turnResult == nil {
-		return fmt.Errorf("互动回合缺少 submit_interactive_turn_result，已拒绝写入不完整状态")
+		return fmt.Errorf("互动回合的 actor_state_patches 或 choices 尚未完整提交，已拒绝写入不完整状态")
 	}
 	turn, _, err := c.store.AppendTurnWithState(c.storyID, interactive.AppendTurnWithStateRequest{
 		BranchID:             c.branchID,
@@ -952,19 +953,25 @@ func (c *interactiveConversation) turnResultSnapshot() *interactive.TurnResult {
 func interactiveTurnSubmissionDiagnosticSummary(diagnostics []interactive.TurnSubmissionDiagnostic) string {
 	parts := make([]string, 0, len(diagnostics))
 	for _, diagnostic := range diagnostics {
-		parts = append(parts, strings.Join([]string{diagnostic.Code, diagnostic.ActorID, diagnostic.Field, diagnostic.Message}, ":"))
+		parts = append(parts, strings.Join([]string{diagnostic.Module, diagnostic.Code, diagnostic.Path, diagnostic.MessageZH}, ":"))
 	}
 	return strings.Join(parts, "; ")
 }
 
 func interactiveTurnResultAlreadyAcceptedReceipt() interactive.TurnSubmissionReceipt {
 	return interactive.TurnSubmissionReceipt{
-		Accepted:  true,
-		Retryable: false,
+		Ready: true,
+		ModuleStatus: interactive.TurnSubmissionModuleStatus{
+			ActorStatePatches: interactive.TurnSubmissionModuleAccepted,
+			Choices:           interactive.TurnSubmissionModuleAccepted,
+		},
 		Diagnostics: []interactive.TurnSubmissionDiagnostic{{
-			Code:     "turn_result_already_accepted",
-			Severity: "warning",
-			Message:  "本回合已有被接受的 TurnResult，已保留首次提交；无需重试。 / The first accepted TurnResult was retained; do not retry.",
+			Module:    "submission",
+			Code:      "turn_result_already_accepted",
+			Severity:  "warning",
+			Retryable: false,
+			MessageZH: "本回合已有完整 TurnResult，已保留首次接受的模块；无需重试。",
+			MessageEN: "This turn already has a complete TurnResult; the first accepted modules were retained.",
 		}},
 	}
 }
@@ -1041,7 +1048,6 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 	if actors, ok := storyCtx.Snapshot.State["actors"]; ok {
 		actorStateSnapshot = map[string]any{"actors": actors}
 	}
-	allowedPaths := c.store.DirectorPlanAllowedPaths(c.storyID, storyCtx.Snapshot.BranchID)
 	openingInitialization := strings.TrimSpace(c.directorTask) == interactiveDirectorTaskOpeningPlan
 	budget := newDirectorContextBudget(c.cfg, c.directorTask)
 	title := budget.take("story.title", storyCtx.Meta.Title, 512)
@@ -1080,7 +1086,6 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		StoryDirectorID:             budget.take("story.director_id", storyCtx.Meta.StoryDirectorID, 128),
 		BranchID:                    budget.take("story.branch_id", storyCtx.Snapshot.BranchID, 128),
 		TaskHint:                    budget.take("director.task", c.directorTaskHint(), 1024),
-		DirectorPlanPaths:           budget.take("director_plan.paths", strings.Join(allowedPaths, "\n"), 2*1024),
 		DirectorPlanDocs:            planDocs,
 		PlanningTemplates:           planningTemplates,
 		BranchPlanningTurns:         storyDirector.Strategy.BranchPlanningTurns,
@@ -1099,14 +1104,13 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 	})
 	log.Printf("[interactive-director-agent] context budget story_id=%s branch_id=%s turn_id=%s instruction_bytes=%d model_window_tokens=%d threshold_tokens=%d source_budget_tokens=%d fragments=%s", c.storyID, storyCtx.Snapshot.BranchID, turn.ID, len(instruction), budget.contextWindowTokens, budget.thresholdTokens, budget.initialTokens, budget.trace())
 	log.Printf(
-		"[interactive-director-agent] context composition story_id=%s branch_id=%s turn_id=%s teller_id=%s story_director_id=%s director_plan=%s allowed_paths=%d teller_memory_rules=%s lore=%s turn_audit=%s story_memory=%s story_memory_schema=%s actor_state=%s history=%s instruction=%s",
+		"[interactive-director-agent] context composition story_id=%s branch_id=%s turn_id=%s teller_id=%s story_director_id=%s director_plan=%s teller_memory_rules=%s lore=%s turn_audit=%s story_memory=%s story_memory_schema=%s actor_state=%s history=%s instruction=%s",
 		c.storyID,
 		storyCtx.Snapshot.BranchID,
 		turn.ID,
 		storyCtx.Meta.StoryTellerID,
 		storyCtx.Meta.StoryDirectorID,
 		interactivePartSummary(boundedJSON(directorPlan.Docs, interactiveDirectorContextBytes)),
-		len(allowedPaths),
 		"none",
 		interactivePartSummary(loreContext),
 		interactivePartSummary(turnAudit),

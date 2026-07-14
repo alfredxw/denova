@@ -106,7 +106,7 @@ xattr -dr com.apple.quarantine denova
 git clone https://github.com/alfredxw/denova.git
 cd denova
 corepack enable
-./bootstrap.sh
+./scripts/bootstrap.sh
 ```
 
 默认地址：
@@ -173,20 +173,26 @@ denova.example.com {
 启动前后端：
 
 ```bash
-./bootstrap.sh
+./scripts/bootstrap.sh
 ```
 
 分开启动前端或后端：
 
 ```bash
-./bootstrap.sh fe
-./bootstrap.sh be
+./scripts/bootstrap.sh fe
+./scripts/bootstrap.sh be
+```
+
+停止当前仓库中运行的 Denova 后端并以前台方式重启：
+
+```bash
+./scripts/restart-backend.sh
 ```
 
 允许局域网设备访问前端开发服务：
 
 ```bash
-./bootstrap.sh fe --lan
+./scripts/bootstrap.sh fe --lan
 ```
 
 ## 赞助项目

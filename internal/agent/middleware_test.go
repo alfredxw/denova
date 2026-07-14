@@ -79,7 +79,7 @@ func TestInteractiveStoryToolMiddlewareAllowsReadTools(t *testing.T) {
 }
 
 func TestInteractiveDirectorPlanFileMiddlewareBlocksStateAndMemoryTools(t *testing.T) {
-	middleware := newInteractiveDirectorPlanFileMiddleware([]string{"/tmp/story/director/main/director.md"})
+	middleware := newInteractiveDirectorPlanFileMiddleware()
 	for _, name := range []string{"apply_actor_state_patch", "apply_story_memory_patches"} {
 		called := false
 		endpoint, err := middleware.WrapInvokableToolCall(
@@ -103,8 +103,43 @@ func TestInteractiveDirectorPlanFileMiddlewareBlocksStateAndMemoryTools(t *testi
 	}
 }
 
+func TestInteractiveDirectorPlanMiddlewareAllowsStructuredSubmitAndBlocksFiles(t *testing.T) {
+	middleware := newInteractiveDirectorPlanFileMiddleware()
+	for _, tc := range []struct {
+		name    string
+		allowed bool
+	}{
+		{name: submitDirectorPlanUpdateToolName, allowed: true},
+		{name: "read_file", allowed: false},
+		{name: "write_file", allowed: false},
+	} {
+		called := false
+		endpoint, err := middleware.WrapInvokableToolCall(
+			context.Background(),
+			func(context.Context, string, ...tool.Option) (string, error) {
+				called = true
+				return "ok", nil
+			},
+			&adk.ToolContext{Name: tc.name},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := endpoint(context.Background(), `{}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tc.allowed && (!called || result != "ok") {
+			t.Fatalf("%s should pass through, called=%v result=%s", tc.name, called, result)
+		}
+		if !tc.allowed && (called || !strings.Contains(result, submitDirectorPlanUpdateToolName)) {
+			t.Fatalf("%s should be blocked in favor of structured submit, called=%v result=%s", tc.name, called, result)
+		}
+	}
+}
+
 func TestInteractiveMemoryRecorderMiddlewareAllowsMemoryToolOnly(t *testing.T) {
-	middleware := newInteractiveDirectorPlanFileMiddleware(nil, "memory_update")
+	middleware := newInteractiveDirectorPlanFileMiddleware("memory_update")
 	for _, tc := range []struct {
 		name    string
 		allowed bool
@@ -139,7 +174,7 @@ func TestInteractiveMemoryRecorderMiddlewareAllowsMemoryToolOnly(t *testing.T) {
 }
 
 func TestInteractiveStateSchemaMiddlewareAllowsReviewToolsOnly(t *testing.T) {
-	middleware := newInteractiveDirectorPlanFileMiddleware(nil, "state_schema_initialization")
+	middleware := newInteractiveDirectorPlanFileMiddleware("state_schema_initialization")
 	for _, tc := range []struct {
 		name    string
 		allowed bool
@@ -176,7 +211,7 @@ func TestInteractiveStateSchemaMiddlewareAllowsReviewToolsOnly(t *testing.T) {
 }
 
 func TestInteractiveDirectorPlanFileMiddlewareBlocksUnauthorizedTools(t *testing.T) {
-	middleware := newInteractiveDirectorPlanFileMiddleware([]string{"/tmp/story/director/main/director.md"})
+	middleware := newInteractiveDirectorPlanFileMiddleware()
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),

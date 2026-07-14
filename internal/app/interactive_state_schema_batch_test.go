@@ -55,6 +55,7 @@ func TestStateSchemaBatchAccumulatesWithoutMutatingStoryUntilFinalizeRunComplete
 				Requirements: []interactive.ActorStateSchemaRequirementReview{{
 					Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: turn.ID}, Requirement: "承接主角当前状态",
 					EvidenceKind: "confirmed", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态",
+					ValuePolicy: interactive.ActorStateSchemaValuePolicyPreserve, ActorID: "protagonist",
 				}},
 			}},
 		})
@@ -69,12 +70,16 @@ func TestStateSchemaBatchAccumulatesWithoutMutatingStoryUntilFinalizeRunComplete
 				Requirements: []interactive.ActorStateSchemaRequirementReview{{
 					Source: interactive.ActorStateSchemaRequirementSource{Kind: "lore", ID: "life-rule"}, Requirement: "生命独立参与结算",
 					EvidenceKind: "confirmed", ExpectedType: "number", Min: &minLife, Max: &maxLife, Decision: "add", TemplateID: "protagonist", FieldID: "生命",
+					ValuePolicy: interactive.ActorStateSchemaValuePolicyInitialize, ActorID: "protagonist",
 				}},
-				Adaptation: interactive.ActorStateSchemaAdaptation{TemplateOps: []interactive.ActorStateTemplateSchemaOp{{
-					Op: "fields", TemplateID: "protagonist", FieldOps: []interactive.ActorStateFieldSchemaOp{{
-						Op: "add", Field: interactive.ActorStateField{Name: "生命", Type: "number", Min: &minLife, Max: &maxLife, Visibility: "visible"}, Reason: "常驻生命规则要求独立结算",
+				Adaptation: interactive.ActorStateSchemaAdaptation{
+					TemplateOps: []interactive.ActorStateTemplateSchemaOp{{
+						Op: "fields", TemplateID: "protagonist", FieldOps: []interactive.ActorStateFieldSchemaOp{{
+							Op: "add", Field: interactive.ActorStateField{Name: "生命", Type: "number", Min: &minLife, Max: &maxLife, Visibility: "visible"}, Reason: "常驻生命规则要求独立结算",
+						}},
 					}},
-				}}},
+					ActorOps: []interactive.ActorStateRuntimeSchemaOp{{Op: "set", ActorID: "protagonist", FieldID: "生命", Value: 73}},
+				},
 			}},
 			Finalize: true,
 		})
@@ -89,6 +94,16 @@ func TestStateSchemaBatchAccumulatesWithoutMutatingStoryUntilFinalizeRunComplete
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{}).bindDirectorRuntime(newWorkspaceDirectorTaskGroup(), generator)
 	<-startInteractiveDirectorMaintenanceTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil, false)
 	assertStateSchemaRevision(t, store, story.ID, 2, interactive.StateSchemaInitializationReady)
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actors, _ := snapshot.State["actors"].(map[string]any)
+	actor, _ := actors["protagonist"].(map[string]any)
+	state, _ := actor["state"].(map[string]any)
+	if state["生命"] != float64(73) {
+		t.Fatalf("schema migration must initialize the declared actor field atomically: %#v", state)
+	}
 }
 
 func assertStateSchemaRevision(t *testing.T, store *interactive.Store, storyID string, revision int, status string) {

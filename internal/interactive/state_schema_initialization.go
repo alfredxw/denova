@@ -45,7 +45,10 @@ func (s *Store) ClaimStateSchemaInitialization(storyID, sourceTurnID string) (St
 		return StateSchemaInitializationStatus{Mode: StateSchemaAdaptationModeOff, Status: StateSchemaInitializationSkipped}, false, nil
 	}
 	status := *meta.StateSchemaInitialization
-	if status.Status == StateSchemaInitializationReady || status.Status == StateSchemaInitializationSkipped || status.Status == StateSchemaInitializationRunning {
+	// Only a waiting task may be claimed automatically. Failed tasks retain
+	// their diagnostics until ResetStateSchemaInitialization is explicitly
+	// requested, so an expensive broken review cannot restart every turn.
+	if status.Status != StateSchemaInitializationWaitingOpening {
 		return status, false, nil
 	}
 	sourceTurnID = strings.TrimSpace(sourceTurnID)
@@ -367,43 +370,11 @@ func actorStateSchemaRevision(snapshot *ActorStateSchemaSnapshot) int {
 	return snapshot.Revision
 }
 
-func stateSchemaAdaptationChanges(adaptation ActorStateSchemaAdaptation) []ActorStateSchemaAdaptationChange {
-	changes := make([]ActorStateSchemaAdaptationChange, 0, maxActorStateSchemaAdaptationOps)
-	for _, templateOp := range adaptation.TemplateOps {
-		if len(templateOp.FieldOps) == 0 {
-			targetID := templateOp.Template.ID
-			changes = append(changes, ActorStateSchemaAdaptationChange{Kind: "template", Op: templateOp.Op, TemplateID: firstNonEmptyString(templateOp.TemplateID, targetID), TargetID: targetID, Reason: templateOp.Reason})
-		}
-		for _, fieldOp := range templateOp.FieldOps {
-			changes = append(changes, ActorStateSchemaAdaptationChange{Kind: "field", Op: fieldOp.Op, TemplateID: templateOp.TemplateID, FieldID: fieldOp.FieldID, TargetID: actorStateFieldID(fieldOp.Field), Reason: fieldOp.Reason})
-		}
-	}
-	for _, actorOp := range adaptation.InitialActorOps {
-		changes = append(changes, ActorStateSchemaAdaptationChange{Kind: "actor", Op: actorOp.Op, ActorID: firstNonEmptyString(actorOp.ActorID, actorOp.Actor.ID), TargetID: actorOp.Actor.TemplateID, Reason: actorOp.Reason, ValueSource: actorOp.ValueSource})
-	}
-	for _, actorOp := range adaptation.ActorOps {
-		changes = append(changes, ActorStateSchemaAdaptationChange{Kind: "actor", Op: actorOp.Op, ActorID: firstNonEmptyString(actorOp.ActorID, actorOp.Actor.ID), TargetID: actorOp.Actor.TemplateID, Reason: actorOp.Reason, ValueSource: actorOp.ValueSource})
-	}
-	if len(changes) > maxActorStateSchemaAdaptationOps {
-		changes = changes[:maxActorStateSchemaAdaptationOps]
-	}
-	return changes
-}
-
 func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state map[string]any, adaptation ActorStateSchemaAdaptation, sourceTurnID string) ([]StateOp, []ActorStateOp, map[string]map[string]string, []string, error) {
 	rawActors, _ := state[actorStateRoot].(map[string]any)
-	actorChanges := map[string]ActorStateInitialActorSchemaOp{}
-	for _, op := range adaptation.InitialActorOps {
-		actorID := firstNonEmptyString(op.ActorID, op.Actor.ID)
-		if actorID != "" {
-			actorChanges[actorID] = op
-		}
-	}
-	for _, op := range adaptation.ActorOps {
-		actorID := firstNonEmptyString(op.ActorID, op.Actor.ID)
-		if actorID != "" {
-			actorChanges[actorID] = ActorStateInitialActorSchemaOp{Op: op.Op, ActorID: actorID, Actor: op.Actor, Reason: op.Reason, ValueSource: op.ValueSource}
-		}
+	actorChanges, actorFieldChanges, err := splitStateSchemaActorChanges(adaptation)
+	if err != nil {
+		return nil, nil, nil, nil, err
 	}
 	fieldSources := map[string]map[string]string{}
 	aliases := map[string]map[string]string{}
@@ -434,6 +405,7 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 	var ops []StateOp
 	var actorOps []ActorStateOp
 	var warnings []string
+	schemaChanged := !reflect.DeepEqual(normalizeActorStateSystem(base), normalizeActorStateSystem(target))
 	handledActors := map[string]bool{}
 	for actorID, actorChange := range actorChanges {
 		valueSourceID := stateSchemaActorValueSourceID(actorChange.ValueSource)
@@ -510,11 +482,29 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 		if targetTemplate.ID == "" {
 			return nil, nil, nil, nil, fmt.Errorf("模板 %s 已删除，但 Actor %s 没有迁移或删除操作", templateID, actorID)
 		}
+		fieldChanges := actorFieldChanges[actorID]
+		if !schemaChanged && len(fieldChanges) == 0 {
+			continue
+		}
 		values, _ := actor["state"].(map[string]any)
 		if values == nil {
 			values = map[string]any{}
 		}
-		migratedValues, cleanupOps, migrationWarnings, err := resolveStateSchemaActorValues(actorID, baseTemplate, targetTemplate, values, nil, fieldSources[templateID])
+		fieldIDs := sortedStateSchemaActorFieldChangeIDs(fieldChanges)
+		if !schemaChanged {
+			fieldOps, err := buildStateSchemaActorFieldInitializationOps(targetTemplate, actorID, fieldIDs, fieldChanges, sourceTurnID)
+			if err != nil {
+				return nil, nil, nil, nil, err
+			}
+			actorOps = append(actorOps, fieldOps...)
+			handledActors[actorID] = true
+			continue
+		}
+		explicitValues := map[string]any{}
+		for _, fieldID := range fieldIDs {
+			explicitValues[fieldID] = fieldChanges[fieldID].Value
+		}
+		migratedValues, cleanupOps, migrationWarnings, err := resolveStateSchemaActorValues(actorID, baseTemplate, targetTemplate, values, explicitValues, fieldSources[templateID])
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -522,21 +512,21 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
+		applyStateSchemaActorFieldProvenance(valueOps, fieldChanges)
 		actorOps = append(actorOps, valueOps...)
 		actorOps = append(actorOps, cleanupOps...)
 		warnings = append(warnings, migrationWarnings...)
+		handledActors[actorID] = true
+	}
+	for actorID := range actorFieldChanges {
+		if !handledActors[actorID] {
+			return nil, nil, nil, nil, fmt.Errorf("Actor 字段初始化目标不存在: %s", actorID)
+		}
 	}
 	if len(warnings) > maxActorStateSchemaAdaptationOps {
 		warnings = warnings[:maxActorStateSchemaAdaptationOps]
 	}
 	return ops, actorOps, aliases, warnings, nil
-}
-
-func stateSchemaActorValueSourceID(source *ActorStateSchemaActorValueSource) string {
-	if source == nil {
-		return ""
-	}
-	return trimBytes(strings.TrimSpace(source.SourceID), 128)
 }
 
 // resolveStateSchemaActorValues carries existing runtime values into a target

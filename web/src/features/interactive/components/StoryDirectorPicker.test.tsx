@@ -60,6 +60,7 @@ function story(storyDirectorId: string) {
     origin: '',
     story_teller_id: 'classic',
     story_director_id: storyDirectorId,
+    choice_count: 5,
     reply_target_chars: 900,
     opening: { mode: 'ai' as const },
     created_at: '',

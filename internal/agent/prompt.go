@@ -401,6 +401,7 @@ func buildInteractiveStoryBuiltinInstruction(cfg *config.Config, state *book.Sta
 		CreatorPrompt:           creator,
 		Workspace:               workspace,
 		ReplyTargetChars:        replyTargetChars,
+		ChoiceCount:             teller.ChoiceCount,
 		StoryTellerID:           teller.StoryTellerID,
 		StoryTellerName:         teller.StoryTellerName,
 		StoryTellerDescription:  teller.StoryTellerDescription,

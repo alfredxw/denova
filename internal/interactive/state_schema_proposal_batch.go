@@ -42,6 +42,7 @@ type ActorStateSchemaBatchAudit struct {
 	TurnResultSourceIDs []string
 	TRPGSourceIDs       []string
 	SourceLoreRevision  string
+	CurrentState        map[string]any
 }
 
 // ActorStateSchemaBatchAccepted describes one item accepted in this call.
@@ -219,7 +220,7 @@ func (d *ActorStateSchemaBatchDraft) Submit(batch ActorStateSchemaBatch, audit A
 				madeProgress = true
 				continue
 			}
-			if issue := validateActorStateSchemaBatchActorValueVisibility(candidate.item.ItemID, normalizedItem.Adaptation, targetSystem, path); issue != nil {
+			if issue := validateActorStateSchemaBatchActorValueVisibility(candidate.item.ItemID, normalizedItem, targetSystem, path); issue != nil {
 				result.Rejected = append(result.Rejected, *issue)
 				madeProgress = true
 				continue
@@ -326,7 +327,11 @@ func actorStateSchemaProposalFromBatchItem(item ActorStateSchemaBatchItem) Actor
 	}
 	for index := range adaptation.ActorOps {
 		adaptation.ActorOps[index].ValueSource = nil
-		if hasValueSource {
+		if adaptation.ActorOps[index].Op == "set" {
+			if source, ok := actorStateSchemaBatchActorFieldValueSource(item, adaptation.ActorOps[index].ActorID, adaptation.ActorOps[index].FieldID); ok {
+				adaptation.ActorOps[index].ValueSource = &source
+			}
+		} else if hasValueSource {
 			source := valueSource
 			adaptation.ActorOps[index].ValueSource = &source
 		}
@@ -406,6 +411,8 @@ func actorStateSchemaBatchItemFingerprint(item ActorStateSchemaBatchItem) string
 func actorStateSchemaBatchValidationCode(err error) string {
 	message := err.Error()
 	switch {
+	case strings.Contains(message, "秘密或剧透"):
+		return "inferred_secret_value"
 	case strings.Contains(message, "expected_type"):
 		return "invalid_expected_type"
 	case strings.Contains(message, "来源"):
@@ -423,6 +430,18 @@ func actorStateSchemaBatchValidationCode(err error) string {
 
 func actorStateSchemaBatchValidationPath(basePath string, item ActorStateSchemaBatchItem, err error) string {
 	message := err.Error()
+	if strings.Contains(message, "秘密或剧透") {
+		for opIndex, op := range item.Adaptation.ActorOps {
+			if op.Op == "set" && strings.Contains(message, "field="+normalizeActorStateFieldName(op.FieldID)) {
+				return fmt.Sprintf("%s.adaptation.actor_ops[%d].value", basePath, opIndex)
+			}
+			for fieldID := range op.Actor.State {
+				if strings.Contains(message, "field="+normalizeActorStateFieldName(fieldID)) {
+					return fmt.Sprintf("%s.adaptation.actor_ops[%d].actor.state.%s", basePath, opIndex, fieldID)
+				}
+			}
+		}
+	}
 	for index, requirement := range item.Requirements {
 		if strings.Contains(message, "source="+strings.TrimSpace(requirement.Source.ID)) {
 			return fmt.Sprintf("%s.requirements[%d]", basePath, index)

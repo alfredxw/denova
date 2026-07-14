@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -84,6 +85,59 @@ func TestBuildStateSchemaMigrationExplicitValueOverridesExistingOnce(t *testing.
 	}
 	if len(lifeSets) != 1 || lifeSets[0].Value != float64(61) {
 		t.Fatalf("an explicit non-null replacement must override the current/default value exactly once: %#v", actorOps)
+	}
+}
+
+func TestBuildStateSchemaMigrationAppliesFieldLevelActorInitialization(t *testing.T) {
+	base := StoryDirectorActorStateSystem{
+		Templates: []ActorStateTemplate{{
+			ID: DefaultActorID, Fields: []ActorStateField{{Name: "当前资源", Type: "object"}},
+		}},
+		InitialActors: []ActorStateInitialActor{{ID: DefaultActorID, TemplateID: DefaultActorID}},
+	}
+	target := base
+	target.Templates = append([]ActorStateTemplate(nil), base.Templates...)
+	target.Templates[0].Fields = append([]ActorStateField(nil), base.Templates[0].Fields...)
+	target.Templates[0].Fields = append(target.Templates[0].Fields, ActorStateField{Name: "境界", Type: "string", Visibility: "visible"})
+	state := map[string]any{actorStateRoot: map[string]any{
+		DefaultActorID: map[string]any{
+			"id": DefaultActorID, "template_id": DefaultActorID,
+			"state": map[string]any{"当前资源": map[string]any{"下品灵石": float64(3)}},
+		},
+	}}
+	source := &ActorStateSchemaActorValueSource{
+		SourceID: "state_schema_batch:protagonist-realm", ItemID: "protagonist-realm",
+		Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, EvidenceKind: "confirmed",
+	}
+	adaptation := ActorStateSchemaAdaptation{
+		TemplateOps: []ActorStateTemplateSchemaOp{{
+			Op: "fields", TemplateID: DefaultActorID,
+			FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "境界", Type: "string", Visibility: "visible"}}},
+		}},
+		ActorOps: []ActorStateRuntimeSchemaOp{{
+			Op: "set", ActorID: DefaultActorID, FieldID: "境界", Value: "筑基初期", Reason: "开局正文明确", ValueSource: source,
+		}},
+	}
+
+	_, actorOps, _, _, err := buildStateSchemaMigration(base, target, state, adaptation, "opening-turn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sets := map[string]ActorStateOp{}
+	for _, op := range actorOps {
+		if op.Op != "set" || op.ActorID != DefaultActorID {
+			continue
+		}
+		if _, exists := sets[op.FieldID]; exists {
+			t.Fatalf("field-level initialization must not duplicate migration sets: %#v", actorOps)
+		}
+		sets[op.FieldID] = op
+	}
+	if got := sets["境界"]; got.Value != "筑基初期" || got.SourceID != source.SourceID {
+		t.Fatalf("field-level initialization was not materialized with provenance: %#v", actorOps)
+	}
+	if got := sets["当前资源"].Value; got == nil {
+		t.Fatalf("existing state must survive the same schema migration: %#v", actorOps)
 	}
 }
 
@@ -310,6 +364,38 @@ func TestStateSchemaInitializationFailureAndSkipKeepRevisionOne(t *testing.T) {
 	}
 }
 
+func TestFailedStateSchemaInitializationRequiresExplicitResetBeforeRetry(t *testing.T) {
+	workspace := t.TempDir()
+	store := NewStoreWithNovaDir(workspace, filepath.Join(workspace, ".denova"))
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title: "显式重试", StateSchemaInitialization: &StateSchemaInitializationStatus{
+			Mode: StateSchemaAdaptationModeAfterOpening, Status: StateSchemaInitializationWaitingOpening, BaseRevision: 1,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{BranchID: "main", User: "出发", Narrative: "主角离开营地。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, claimed, err := store.ClaimStateSchemaInitialization(story.ID, turn.ID); err != nil || !claimed {
+		t.Fatalf("first claim failed: claimed=%t err=%v", claimed, err)
+	}
+	if err := store.MarkStateSchemaInitializationFailed(story.ID, turn.ID, fmt.Errorf("模型连接断开")); err != nil {
+		t.Fatal(err)
+	}
+	if status, claimed, err := store.ClaimStateSchemaInitialization(story.ID, turn.ID); err != nil || claimed || status.Status != StateSchemaInitializationFailed {
+		t.Fatalf("failed task must not auto-retry: status=%#v claimed=%t err=%v", status, claimed, err)
+	}
+	if _, err := store.ResetStateSchemaInitialization(story.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, claimed, err := store.ClaimStateSchemaInitialization(story.ID, turn.ID); err != nil || !claimed {
+		t.Fatalf("explicit reset should make the task claimable: claimed=%t err=%v", claimed, err)
+	}
+}
+
 func TestApplyUnchangedStateSchemaProposalKeepsRevisionAndStoresReview(t *testing.T) {
 	workspace := t.TempDir()
 	novaDir := filepath.Join(workspace, ".denova")
@@ -337,7 +423,7 @@ func TestApplyUnchangedStateSchemaProposalKeepsRevisionAndStoresReview(t *testin
 		Summary: "现有生命字段完整覆盖规则", ReviewedLoreIDs: []string{"生命规则"},
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "lore", ID: "生命规则"}, Requirement: "生命为 0-100",
-			ExpectedType: "number", Min: &minValue, Max: &maxValue, Decision: "covered", TemplateID: "protagonist", FieldID: "生命",
+			ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "number", Min: &minValue, Max: &maxValue, Decision: "covered", TemplateID: "protagonist", FieldID: "生命",
 		}},
 	})
 	if err != nil {

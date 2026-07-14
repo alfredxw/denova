@@ -107,7 +107,6 @@ func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T
 		StoryTellerID:        "classic",
 		StoryDirectorID:      "default",
 		BranchID:             "main",
-		DirectorPlanPaths:    "/tmp/director.md",
 		DirectorPlanDocs:     `{"plan":"# 正文Agent可读"}`,
 		LoreContext:          "角色 沈凝。外门比试关键见证者。",
 		TurnAuditJSON:        `{"turn_id":"turn-1","user_action":"报名比试"}`,
@@ -129,9 +128,9 @@ func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T
 	if analysis.MessageCount != 1 {
 		t.Fatalf("director analysis should estimate the single user instruction message, got %d", analysis.MessageCount)
 	}
-	var sawOutputProtocol, sawLore, sawTurnAudit, sawPlanPath bool
+	var sawOutputProtocol, sawLore, sawTurnAudit, sawPlanDocs bool
 	for _, part := range analysis.SystemPromptParts {
-		if part.ID == "output_protocol" && strings.Contains(part.Content, "director.md") {
+		if part.ID == "output_protocol" && strings.Contains(part.Content, submitDirectorPlanUpdateToolName) {
 			sawOutputProtocol = true
 		}
 	}
@@ -141,12 +140,12 @@ func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T
 			sawLore = true
 		case part.Title == "本回合 TurnResult / RuleResolution / StateDelta 审计 JSON" && strings.Contains(part.Source, "committed turn") && strings.Contains(part.Content, "turn-1"):
 			sawTurnAudit = true
-		case part.Title == "允许读写的导演规划文件路径" && strings.Contains(part.Source, "backend guard") && strings.Contains(part.Content, "director.md"):
-			sawPlanPath = true
+		case part.Title == "当前导演规划文档快照" && strings.Contains(part.Source, "DirectorPlan docs") && strings.Contains(part.Content, "正文Agent可读"):
+			sawPlanDocs = true
 		}
 	}
-	if !sawOutputProtocol || !sawLore || !sawTurnAudit || !sawPlanPath {
-		t.Fatalf("director analysis missing expected parts output=%v lore=%v audit=%v planPath=%v parts=%#v", sawOutputProtocol, sawLore, sawTurnAudit, sawPlanPath, analysis.ContextMessages)
+	if !sawOutputProtocol || !sawLore || !sawTurnAudit || !sawPlanDocs {
+		t.Fatalf("director analysis missing expected parts output=%v lore=%v audit=%v planDocs=%v parts=%#v", sawOutputProtocol, sawLore, sawTurnAudit, sawPlanDocs, analysis.ContextMessages)
 	}
 }
 

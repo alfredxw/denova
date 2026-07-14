@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
+	"github.com/cloudwego/eino/schema"
 
 	"denova/internal/interactive"
 )
@@ -31,11 +33,11 @@ type InteractiveStoryToolContext struct {
 	StableContextTitle       string
 	StableContext            string
 	StableContextMaxBytes    int
-	DirectorPlanAllowedPaths []string
 	OnStoryMemoryApplied     func(applied int)
 	OnStateMaintenanceFailed func(error)
 	OnLoreItemsRead          func([]string)
 	SubmitStateSchemaBatch   func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
+	SubmitDirectorPlanUpdate func(context.Context, interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error)
 	// SubmitStateSchemaProposal remains available to in-process integrations
 	// during the Batch transition. The model-facing tool uses Batch only.
 	SubmitStateSchemaProposal func(context.Context, interactive.ActorStateSchemaProposal) (interactive.ActorStateSchemaProposalPreview, error)
@@ -43,7 +45,7 @@ type InteractiveStoryToolContext struct {
 	// agents. It must not receive final assistant text as model-visible context.
 	DisplayConversation Conversation
 	PrepareTurn         func(context.Context, interactive.TurnCheckRequest) (interactive.RuleResolution, error)
-	SubmitTurnResult    func(context.Context, interactive.TurnResult) (interactive.TurnSubmissionReceipt, error)
+	SubmitTurnResult    func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)
 	TurnResultReady     func() bool
 }
 
@@ -96,6 +98,46 @@ type storyMemoryPatchToolOutput struct {
 	AppliedRecords int    `json:"applied_records"`
 	BranchID       string `json:"branch_id"`
 	TurnID         string `json:"turn_id"`
+}
+
+// interactiveTurnCheckToolInput deliberately omits model-authored
+// outcomes.state_changes. Deterministic State Bindings produce rule state
+// changes; all remaining state mutations are submitted after the narrative.
+type interactiveTurnCheckToolInput struct {
+	Action       string                            `json:"action" jsonschema_description:"用户行为：本回合玩家实际尝试做什么。"`
+	Intent       string                            `json:"intent" jsonschema_description:"行动意图：玩家希望通过本行动达成的目标。"`
+	Challenge    string                            `json:"challenge" jsonschema_description:"检定挑战：需要 d20 固定裁定的风险、阻碍或冲突。"`
+	Cost         string                            `json:"cost" jsonschema_description:"潜在代价：失败、暴露、资源消耗或关系损失等后果。"`
+	State        string                            `json:"state" jsonschema_description:"只写与本次检定直接相关的可见状态、资源、位置、关系或限制。"`
+	Adjudication interactive.TurnCheckAdjudication `json:"adjudication,omitempty"`
+	Rule         interactive.TurnCheckRule         `json:"rule,omitempty"`
+	Bonuses      []interactive.TurnCheckBonus      `json:"bonuses,omitempty"`
+	Difficulty   string                            `json:"difficulty" jsonschema:"enum=very_easy,enum=easy,enum=normal,enum=hard,enum=very_hard"`
+	Outcomes     interactiveTurnCheckToolOutcomes  `json:"outcomes"`
+}
+
+type interactiveTurnCheckToolOutcomes struct {
+	CriticalSuccess interactiveTurnCheckToolOutcome `json:"critical_success"`
+	Success         interactiveTurnCheckToolOutcome `json:"success"`
+	Failure         interactiveTurnCheckToolOutcome `json:"failure"`
+	CriticalFailure interactiveTurnCheckToolOutcome `json:"critical_failure"`
+}
+
+type interactiveTurnCheckToolOutcome struct {
+	Result string `json:"result" jsonschema_description:"命中该档位时必须遵守的最终后果，用于指导正文。"`
+}
+
+func (input interactiveTurnCheckToolInput) request() interactive.TurnCheckRequest {
+	return interactive.TurnCheckRequest{
+		Action: input.Action, Intent: input.Intent, Challenge: input.Challenge, Cost: input.Cost, State: input.State,
+		Adjudication: input.Adjudication, Rule: input.Rule, Bonuses: input.Bonuses, Difficulty: input.Difficulty,
+		Outcomes: interactive.TurnCheckOutcomes{
+			CriticalSuccess: interactive.TurnCheckOutcome{Result: input.Outcomes.CriticalSuccess.Result},
+			Success:         interactive.TurnCheckOutcome{Result: input.Outcomes.Success.Result},
+			Failure:         interactive.TurnCheckOutcome{Result: input.Outcomes.Failure.Result},
+			CriticalFailure: interactive.TurnCheckOutcome{Result: input.Outcomes.CriticalFailure.Result},
+		},
+	}
 }
 
 func newInteractiveMemoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
@@ -218,17 +260,17 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 	if ctx.PrepareTurn == nil && ctx.SubmitTurnResult == nil {
 		return nil, nil
 	}
-	tools := make([]tool.BaseTool, 0, 2)
+	tools := make([]tool.BaseTool, 0, 3)
 	if ctx.PrepareTurn != nil {
 		desc := strings.Join([]string{
 			"执行本回合一次固定 d20 规则检定。Interactive Agent 负责填写用户行为、意图、挑战、消耗、当前状态说明、投前裁定依据、运行时加成来源和值、难度等级，以及大成功/成功/失败/大失败四档后果；本工具负责掷骰、应用优势或劣势、计算目标、判定结果，并返回命中的最终后果。",
 			"参数协议：difficulty 必须是 very_easy/easy/normal/hard/very_hard；普通难度使用 normal，不要使用 medium/moderate。adjudication 必须说明为什么需要检定、stakes、难度依据、优势/劣势依据；引用状态时使用 state_refs 的 actor_id + field_id。rule 可省略；如提供，template 只能是 dice_check，roll_mode 只能是 normal/advantage/disadvantage，modifier 是模板难度修正值且正数更难；来自 TRPG 模板时填写 template_id、label、failure_policy。",
-			"若本轮上下文提供了 TRPG 检定配置，请先用配置里的 trigger、must_check_examples、skip_check_examples 判断是否检定，用 difficulty_guidance 判断 difficulty/bonuses，用 state_effect_guidance 设计 outcomes.state_changes；state_changes 只写本次检定直接导致的可计算数值变化，叙事线索和短期事实留给后台导演维护。",
-			"若配置提供 state_bindings，请选择 binding_id，并填写 actor_id 与必要的 target_actor_id；binding 中的 modifiers 和 outcome_state_changes 会由工具自动读取 Actor State 并计算，不要重复手算进 bonuses 或 outcomes.state_changes；narrative_state_refs 只用于帮助你在投骰前写好四档 outcomes.*.result。",
-			`最小示例：{"action":"撬锁","intent":"潜入仓库","challenge":"巡逻逼近时开锁","cost":"失败会消耗体力并暴露","state":"主角有简易工具，体力尚可。","adjudication":{"reason":"开锁有时间压力且失败会改变警戒状态。","stakes":"失败会消耗体力并让巡逻靠近。","difficulty_reason":"旧锁简单但附近有人巡逻，维持普通难度。","roll_mode_reason":"工具合适但环境紧张，正常投骰。","state_refs":[{"actor_id":"protagonist","field_id":"体力"}]},"rule":{"template_id":"dm-osr-player-skill","label":"OSR 型 DM：玩家技巧优先","failure_policy":"blocked","modifier":0},"bonuses":[{"kind":"equipment","reason":"有简易开锁工具","value":2}],"difficulty":"normal","outcomes":{"critical_success":{"result":"无声开锁并发现额外线索。"},"success":{"result":"开锁成功但耗时。"},"failure":{"result":"没能打开，巡逻更近。","state_changes":[{"actor_id":"protagonist","field_id":"体力","change":-1,"reason":"紧张尝试消耗体力。"}]},"critical_failure":{"result":"工具折断并惊动巡逻。","state_changes":[{"actor_id":"protagonist","field_id":"体力","change":-2,"reason":"强行操作导致明显体力消耗。"}]}}}`,
+			"若本轮上下文提供了 TRPG 检定配置，请先用 trigger、must_check_examples、skip_check_examples 判断是否检定，再用 difficulty_guidance 判断 difficulty/bonuses。四档 outcomes 只描述叙事后果，不提交状态操作。",
+			"若配置提供 state_bindings，请选择 binding_id，并填写 actor_id 与必要的 target_actor_id；binding 中的 modifiers 和 outcome_state_changes 会由工具自动读取 Actor State 并计算，不要重复手算。narrative_state_refs 只用于帮助你投前写好四档 outcomes.*.result。",
+			`最小示例：{"action":"撬锁","intent":"潜入仓库","challenge":"巡逻逼近时开锁","cost":"失败会暴露行踪","state":"主角有简易工具。","adjudication":{"reason":"开锁有时间压力且失败会改变警戒状态。","stakes":"失败会让巡逻靠近。","difficulty_reason":"旧锁简单但附近有人巡逻，维持普通难度。","roll_mode_reason":"工具合适但环境紧张，正常投骰。","state_refs":[{"actor_id":"protagonist","field_id":"体力"}]},"rule":{"template_id":"dm-osr-player-skill","label":"OSR 型 DM：玩家技巧优先","failure_policy":"blocked","modifier":0},"bonuses":[{"kind":"equipment","reason":"有简易开锁工具","value":2}],"difficulty":"normal","outcomes":{"critical_success":{"result":"无声开锁并发现额外线索。"},"success":{"result":"开锁成功但耗时。"},"failure":{"result":"没能打开，巡逻更近。"},"critical_failure":{"result":"工具折断并惊动巡逻。"}}}`,
 		}, "\n")
-		prepareTool, err := utils.InferTool("prepare_interactive_turn", desc, func(callCtx context.Context, input interactive.TurnCheckRequest) (string, error) {
-			resolution, err := ctx.PrepareTurn(callCtx, input)
+		prepareTool, err := utils.InferTool("prepare_interactive_turn", desc, func(callCtx context.Context, input interactiveTurnCheckToolInput) (string, error) {
+			resolution, err := ctx.PrepareTurn(callCtx, input.request())
 			if err != nil {
 				return "", err
 			}
@@ -244,30 +286,78 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 		tools = append(tools, prepareTool)
 	}
 	if ctx.SubmitTurnResult != nil {
-		desc := strings.Join([]string{
-			"在输出故事正文前提交本回合的隐藏 TurnResult。每一回合都必须调用一次，无论是否执行了固定检定；本工具只暂存结构化结果，正文成功完成后才由后端与 Turn、RuleResolution 和 StateDelta 原子提交。",
-			"contract 记录玩家意图、场景目标、1-3 个节拍、NPC 主动意图、揭示、代价、连续性约束和选择维度。actor_state_patches 只声明正文已经确定的非规则状态变化；RuleResolution 已产生的数值变化不得重复。fact_candidates 只记录已经发生的事实，禁止写未来计划。scene_result 和 plan_signals 用于后台 Memory Recorder 与 Director。choices 提供 2-4 个与正文结尾一致的下一步行动建议。",
-			"story_context 是每回合必须维护的基础状态对象：actor_state_patches 必须包含 actor_id=\"story\" 的补丁，并至少写入本轮结束后的“当前事件”。“当前详细地点”尚未初始化，或 scene_result 表示场景切换时，还必须将它同步为 scene_result 的当前场景或下一场景。其余 story_context 字段只按正文已经确定的事实更新；没有依据时保留已有值，禁止用空值覆盖，也不要只把世界状态写进 fact_candidates 或 scene_result。",
-			"actor_state_patches.state 的键应直接使用本故事冻结状态 schema 提供的 field_id（通常是中文名称），不要构造路径、拼音或英文别名。工具会返回结构化回执：accepted=false 时按 diagnostics 修正后重试；accepted=true 时立即继续正文，即使 diagnostics 含 warning 也不要重试。明确不属于模板的额外字段会被安全忽略，已知字段的类型、枚举、Actor 和模板约束仍严格校验。",
-			"调用完成后，最终回复仍然只能输出玩家可见的故事正文，不得泄露 TurnResult、JSON、工具结果或状态补丁。",
+		patchDesc := strings.Join([]string{
+			"在完整玩家可见正文已经输出后，独立提交本回合 Actor 状态 patch。参数只有 patches；故事、分支、当前状态与配置由后端绑定。工具返回 ready、module_status、diagnostics 和 retry_modules；已 accepted 的模块会保留。",
+			"patches 是原子操作数组，只能使用 replace、delta、create。路径是 JSON Pointer：第一段必须是当前上下文中列出的稳定 actor_id，第二段必须是冻结 schema 的 field_id；展示名称不能代替 actor_id。replace 设置字段或 object 子路径，delta 只增减已有数值，create 只在 /<actor_id> 根路径创建 Actor。不要重复 RuleResolution 已消费的字段。",
+			"story_context 每回合至少 replace /story/当前事件；当前详细地点尚未初始化或正文确定地点变化时，同时 replace /story/当前详细地点。没有变化的其他字段不要写空值。",
 		}, "\n")
-		submitTool, err := utils.InferTool("submit_interactive_turn_result", desc, func(callCtx context.Context, input interactive.TurnResult) (string, error) {
-			receipt, err := ctx.SubmitTurnResult(callCtx, input)
-			if err != nil {
-				return "", err
-			}
-			data, err := json.MarshalIndent(receipt, "", "  ")
-			if err != nil {
-				return "", err
-			}
-			return string(data), nil
-		})
+		patchTool, err := newSubmitTurnModuleTool(interactiveActorStatePatchesToolName, patchDesc, submitActorStatePatchesToolSchema{}, interactive.DecodeActorStatePatchesSubmissionInput, ctx.SubmitTurnResult)
 		if err != nil {
 			return nil, err
 		}
-		tools = append(tools, submitTool)
+		choiceDesc := strings.Join([]string{
+			"在完整玩家可见正文已经输出后，独立提交本回合下一步行动建议。参数只有 choices；必须与已输出正文结尾一致，并提供当前故事配置要求的恰好数量个不同建议。",
+			"只有 prepare_interactive_turn 返回 terminal_candidate 的终局回合才提交空数组。工具返回 ready=false 时只调用 retry_modules 指定的工具；ready=true 后立即结束，不要重复或改写正文。",
+		}, "\n")
+		choiceTool, err := newSubmitTurnModuleTool(interactiveChoicesToolName, choiceDesc, submitChoicesToolSchema{}, interactive.DecodeChoicesSubmissionInput, ctx.SubmitTurnResult)
+		if err != nil {
+			return nil, err
+		}
+		tools = append(tools, patchTool, choiceTool)
 	}
 	return tools, nil
+}
+
+type submitActorStatePatchesToolSchema struct {
+	Patches []interactive.StateUpdate `json:"patches" jsonschema:"description=本轮原子 Actor 状态 patch"`
+}
+
+type submitChoicesToolSchema struct {
+	Choices []string `json:"choices" jsonschema:"description=当前故事配置数量的不同下一步行动建议；仅 RuleResolution 已声明 terminal_candidate 时为空数组"`
+}
+
+type submitTurnModuleTool struct {
+	info   *schema.ToolInfo
+	decode func(string) interactive.TurnSubmissionInput
+	submit func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)
+}
+
+func newSubmitTurnModuleTool(name, description string, input any, decode func(string) interactive.TurnSubmissionInput, submit func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)) (tool.InvokableTool, error) {
+	var info *schema.ToolInfo
+	var err error
+	switch input.(type) {
+	case submitActorStatePatchesToolSchema:
+		info, err = utils.GoStruct2ToolInfo[submitActorStatePatchesToolSchema](name, description)
+	case submitChoicesToolSchema:
+		info, err = utils.GoStruct2ToolInfo[submitChoicesToolSchema](name, description)
+	default:
+		return nil, fmt.Errorf("未知互动回合提交模块: %s", name)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &submitTurnModuleTool{info: info, decode: decode, submit: submit}, nil
+}
+
+func (t *submitTurnModuleTool) Info(context.Context) (*schema.ToolInfo, error) {
+	return t.info, nil
+}
+
+func (t *submitTurnModuleTool) InvokableRun(ctx context.Context, argumentsInJSON string, _ ...tool.Option) (string, error) {
+	input := t.decode(argumentsInJSON)
+	receipt, err := t.submit(ctx, input)
+	if err != nil {
+		return "", err
+	}
+	if receipt.Ready {
+		requested := requestInteractiveTurnCompletion(ctx)
+		log.Printf("[interactive-turn] accepted all result modules completion_requested=%t", requested)
+	}
+	data, err := json.MarshalIndent(receipt, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 func normalizeInteractiveMemoryToolLimit(value, fallback, max int) int {

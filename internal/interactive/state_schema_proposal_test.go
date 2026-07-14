@@ -25,6 +25,7 @@ func TestValidateActorStateSchemaProposalRejectsGenericCoverageForNumericRule(t 
 		ReviewedLoreIDs: []string{"具体数值"},
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "lore", ID: "具体数值"}, Requirement: "灵力必须独立按 0-100 结算",
+			ValuePolicy:  ActorStateSchemaValuePolicySchemaOnly,
 			ExpectedType: "number", Min: &minValue, Max: &maxValue, Decision: "covered", TemplateID: "protagonist", FieldID: "当前资源",
 		}},
 	}
@@ -43,7 +44,8 @@ func TestValidateActorStateSchemaProposalRejectsUntypedCoverage(t *testing.T) {
 		ReviewedLoreIDs: []string{"具体数值"},
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "lore", ID: "具体数值"}, Requirement: "灵力需要独立结算",
-			Decision: "covered", TemplateID: "protagonist", FieldID: "当前资源",
+			ValuePolicy: ActorStateSchemaValuePolicySchemaOnly,
+			Decision:    "covered", TemplateID: "protagonist", FieldID: "当前资源",
 		}},
 	}
 	_, _, err := ValidateActorStateSchemaProposal(base, StoryDirectorTRPGSystem{}, proposal)
@@ -58,7 +60,7 @@ func TestValidateActorStateSchemaProposalRejectsUnreviewedLoreAtStoreBoundary(t 
 	}}}
 	proposal := ActorStateSchemaProposal{Requirements: []ActorStateSchemaRequirementReview{{
 		Source: ActorStateSchemaRequirementSource{Kind: "lore", ID: "model-invented"}, Requirement: "长期状态",
-		EvidenceKind: "confirmed", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态",
+		EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态",
 	}}}
 	if _, _, err := ValidateActorStateSchemaProposal(base, StoryDirectorTRPGSystem{}, proposal); err == nil || !strings.Contains(err.Error(), "未经后端确认审阅") {
 		t.Fatalf("store validation must not promote a model-supplied Lore ID to reviewed: %v", err)
@@ -71,6 +73,7 @@ func TestValidateActorStateSchemaProposalAcceptsRequirementAddedWithNewTemplate(
 		Summary: "新增关系角色模板",
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "重要角色需要好感度",
+			ValuePolicy:  ActorStateSchemaValuePolicySchemaOnly,
 			ExpectedType: "number", Min: &minValue, Max: &maxValue, Decision: "add", TemplateID: "important_character", FieldID: "好感度",
 		}},
 		Adaptation: ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{
@@ -89,7 +92,7 @@ func TestValidateActorStateSchemaProposalRejectsInferredSpoilerField(t *testing.
 	proposal := ActorStateSchemaProposal{
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "主角隐藏身世",
-			EvidenceKind: "inferred", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "隐藏身世",
+			EvidenceKind: "inferred", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "隐藏身世",
 		}},
 	}
 	if _, _, err := ValidateActorStateSchemaProposal(base, StoryDirectorTRPGSystem{}, proposal); err == nil || !strings.Contains(err.Error(), "秘密或剧透") {
@@ -118,13 +121,14 @@ func TestValidateActorStateSchemaProposalValidatesRuntimeActorOps(t *testing.T) 
 		{name: "unknown state field", op: ActorStateRuntimeSchemaOp{Op: "add", ActorID: "guide", Actor: ActorStateInitialActor{ID: "guide", TemplateID: "npc", State: map[string]any{"秘密": "未知"}}}, want: "字段不在模板中"},
 		{name: "nil state value", op: ActorStateRuntimeSchemaOp{Op: "add", ActorID: "guide", Actor: ActorStateInitialActor{ID: "guide", TemplateID: "npc", State: map[string]any{"态度": nil}}}, want: "状态值不能为空"},
 		{name: "invalid state value", op: ActorStateRuntimeSchemaOp{Op: "add", ActorID: "guide", Actor: ActorStateInitialActor{ID: "guide", TemplateID: DefaultActorID, State: map[string]any{"生命": "很多"}}}, want: "必须是 number"},
+		{name: "set with whole actor payload", op: ActorStateRuntimeSchemaOp{Op: "set", ActorID: "guide", FieldID: "态度", Value: "警觉", Actor: ActorStateInitialActor{ID: "guide", TemplateID: "npc"}}, want: "字段级 set 不接受 actor 对象"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			proposal := ActorStateSchemaProposal{
 				Requirements: []ActorStateSchemaRequirementReview{{
 					Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "turn-1"}, Requirement: "持续追踪状态",
-					EvidenceKind: "confirmed", ExpectedType: "string", Decision: "covered", TemplateID: DefaultActorID, FieldID: "状态",
+					EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "string", Decision: "covered", TemplateID: DefaultActorID, FieldID: "状态",
 				}},
 				Adaptation: ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{test.op}},
 			}

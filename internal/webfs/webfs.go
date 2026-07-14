@@ -2,7 +2,7 @@
 // serve it without a web/ directory on disk.
 //
 // Build with the "embedweb" tag (after the frontend has been built and copied
-// to ./dist, which build.sh does) to embed the assets:
+// to ./dist, which scripts/build.sh does) to embed the assets:
 //
 //	pnpm --dir web build && cp -r web/dist internal/webfs/dist && go build -tags embedweb ./cmd/denova
 //

@@ -55,7 +55,7 @@ vi.mock('./StoryStage', () => ({
   StoryStage: (props: {
     stories: StorySummary[]
     storyId: string
-    onStoryCreate: (input: { title: string; origin?: string; story_teller_id: string; story_director_id?: string; reply_target_chars?: number }) => Promise<void>
+    onStoryCreate: (input: { title: string; origin?: string; story_teller_id: string; story_director_id?: string; choice_count: number; reply_target_chars?: number }) => Promise<void>
     onDirectorChange: (directorId: string) => Promise<void>
   }) => (
     <div data-testid="story-stage-probe" data-story-id={props.storyId}>
@@ -66,6 +66,7 @@ vi.mock('./StoryStage', () => ({
           origin: '',
           story_teller_id: 'classic',
           story_director_id: 'default',
+          choice_count: 5,
           reply_target_chars: 2000,
         })}
       >
@@ -201,6 +202,7 @@ function story(id: string, title: string): StorySummary {
     origin: '',
     story_teller_id: 'classic',
     story_director_id: 'default',
+    choice_count: 5,
     reply_target_chars: 2000,
     opening: { mode: 'ai' },
     created_at: '2026-07-04T00:00:00Z',

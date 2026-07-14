@@ -76,10 +76,8 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 }
 
 func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...InteractiveStoryToolContext) (adk.Agent, error) {
-	var allowedPaths []string
 	maintenanceTask := ""
 	if len(toolContexts) > 0 {
-		allowedPaths = toolContexts[0].DirectorPlanAllowedPaths
 		maintenanceTask = toolContexts[0].MaintenanceTask
 	}
 	systemInstruction := prompts.BuildInteractiveDirectorSystemInstruction()
@@ -95,7 +93,7 @@ func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *bo
 		Instruction:       protectedSystemInstruction(cfg, config.AgentKindInteractiveDirector, systemInstruction),
 		EnableSkills:      false,
 		DisableWriteTodos: true,
-		ExtraHandlers:     []adk.ChatModelAgentMiddleware{newInteractiveDirectorPlanFileMiddleware(allowedPaths, maintenanceTask)},
+		ExtraHandlers:     []adk.ChatModelAgentMiddleware{newInteractiveDirectorPlanFileMiddleware(maintenanceTask)},
 		ExtraToolsFactory: interactiveDirectorToolsFactory(cfg, toolContexts...),
 	})
 }
@@ -560,9 +558,13 @@ func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...Interac
 		case "state_schema_initialization":
 			stateSchemaTools, err := newInteractiveStateSchemaTools(ctx)
 			return append(tools, stateSchemaTools...), err
-		case "director_plan_update":
+		case "director_plan_update", "opening_plan":
 			eventTools, err := newInteractiveEventTools(ctx)
-			return append(tools, eventTools...), err
+			if err != nil {
+				return nil, err
+			}
+			planTools, err := newInteractiveDirectorPlanTools(ctx)
+			return append(append(tools, eventTools...), planTools...), err
 		default:
 			// Compatibility for explicit callers that have not selected a phase:
 			// expose only the derived-memory writer, never Actor State mutation.

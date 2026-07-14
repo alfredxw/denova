@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 
 	"denova/config"
 	"denova/internal/agent"
@@ -30,7 +31,8 @@ type interactiveDirectorMaintenanceResult struct {
 
 func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, runPlan bool) <-chan struct{} {
 	tasks := directorTasksForConversation(conversation)
-	done, started := tasks.GoKeyed(interactiveMaintenanceKey(conversation, turn.BranchID), func(ctx context.Context) {
+	schemaDone := startInteractiveStateSchemaTask(cfg, state, conversation, turn, sessionStore)
+	done, started := tasks.GoKeyed(interactiveDerivedMaintenanceKey(conversation, turn.BranchID), func(ctx context.Context) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				err := fmt.Errorf("互动后台导演 Agent 异常中断: %v", recovered)
@@ -46,8 +48,10 @@ func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.Sta
 		if conversation == nil || conversation.store == nil || cfg == nil {
 			return
 		}
-		if err := runInteractiveStateSchemaInitialization(ctx, cfg, state, conversation, turn, sessionStore); err != nil {
-			log.Printf("[interactive-state-schema] initialization failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
+		select {
+		case <-schemaDone:
+		case <-ctx.Done():
+			return
 		}
 		shouldRecordMemory, _, err := conversation.store.ShouldGenerateStoryMemory(conversation.storyID, turn.BranchID)
 		if err != nil {
@@ -126,13 +130,9 @@ func prepareInteractiveDirectorBeforeOpening(ctx context.Context, cfg *config.Co
 	return true, nil
 }
 
-func openingTurnNeedsImmediateDirectorPlan(turn interactive.TurnEvent) bool {
-	return turn.TurnResult != nil && strings.TrimSpace(turn.TurnResult.PlanSignals.DeviationLevel) == "major"
-}
-
 func startInteractiveStateSchemaTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) <-chan struct{} {
 	tasks := directorTasksForConversation(conversation)
-	done, started := tasks.GoKeyed(interactiveMaintenanceKey(conversation, turn.BranchID), func(ctx context.Context) {
+	done, started := tasks.GoKeyed(interactiveStateSchemaMaintenanceKey(conversation, turn.BranchID), func(ctx context.Context) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				err := fmt.Errorf("状态结构初始化异常中断: %v", recovered)
@@ -152,7 +152,7 @@ func startInteractiveStateSchemaTask(cfg *config.Config, state *book.State, conv
 
 func startInteractiveDirectorTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, prestartedTokens ...interactive.DirectorPlanRunToken) <-chan struct{} {
 	tasks := directorTasksForConversation(conversation)
-	done, started := tasks.GoKeyed(interactiveMaintenanceKey(conversation, turn.BranchID), func(ctx context.Context) {
+	done, started := tasks.GoKeyed(interactiveDerivedMaintenanceKey(conversation, turn.BranchID), func(ctx context.Context) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				err := fmt.Errorf("互动导演 Agent 异常中断: %v", recovered)
@@ -180,12 +180,20 @@ func startInteractiveDirectorTask(cfg *config.Config, state *book.State, convers
 	return done
 }
 
-func interactiveMaintenanceKey(conversation *interactiveConversation, branchID string) string {
+func interactiveBranchMaintenanceKey(conversation *interactiveConversation, branchID, lane string) string {
 	storyID := ""
 	if conversation != nil {
 		storyID = strings.TrimSpace(conversation.storyID)
 	}
-	return storyID + ":" + strings.TrimSpace(branchID)
+	return storyID + ":" + strings.TrimSpace(branchID) + ":" + lane
+}
+
+func interactiveStateSchemaMaintenanceKey(conversation *interactiveConversation, branchID string) string {
+	return interactiveBranchMaintenanceKey(conversation, branchID, "state_schema")
+}
+
+func interactiveDerivedMaintenanceKey(conversation *interactiveConversation, branchID string) string {
+	return interactiveBranchMaintenanceKey(conversation, branchID, "derived")
 }
 
 func directorTasksForConversation(conversation *interactiveConversation) *workspaceDirectorTaskGroup {
@@ -243,7 +251,6 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 		}
 	}
 	var token interactive.DirectorPlanRunToken
-	var allowedPaths []string
 	if runPlan {
 		if len(prestartedTokens) > 0 && prestartedTokens[0].Revision != "" {
 			token = prestartedTokens[0]
@@ -256,10 +263,9 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 				return interactiveDirectorMaintenanceResult{}, fmt.Errorf("标记导演规划运行状态失败: %w", err)
 			}
 		}
-		allowedPaths = conversation.store.DirectorPlanAllowedPaths(conversation.storyID, turn.BranchID)
 	}
 	effectiveTask := task
-	log.Printf("[interactive-director-agent] maintenance begin story_id=%s branch_id=%s turn_id=%s task=%s effective_task=%s memory=%t plan=%t revision=%s allowed_paths=%d", conversation.storyID, turn.BranchID, turn.ID, task, effectiveTask, runMemory, runPlan, token.Revision, len(allowedPaths))
+	log.Printf("[interactive-director-agent] maintenance begin story_id=%s branch_id=%s turn_id=%s task=%s effective_task=%s memory=%t plan=%t revision=%s", conversation.storyID, turn.BranchID, turn.ID, task, effectiveTask, runMemory, runPlan, token.Revision)
 	conversation.withDirectorTask(effectiveTask)
 	instruction, err := conversation.BuildDirectorInstruction(turn)
 	if err != nil {
@@ -267,18 +273,20 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	}
 	result := interactiveDirectorMaintenanceResult{}
 	var memoryMaintenanceErr error
+	var planSubmissionMu sync.Mutex
+	var submittedPlanDecision interactive.PlanDecision
+	planSubmitted := false
 	generator := conversation.directorGenerator
 	if generator == nil {
 		generator = generateInteractiveDirector
 	}
 	output, err := generator(ctx, cfg, state, agent.InteractiveStoryToolContext{
-		Store:                    conversation.store,
-		StoryID:                  conversation.storyID,
-		BranchID:                 turn.BranchID,
-		TurnID:                   turn.ID,
-		MaintenanceTask:          effectiveTask,
-		DirectorPlanAllowedPaths: allowedPaths,
-		DisplayConversation:      conversation,
+		Store:               conversation.store,
+		StoryID:             conversation.storyID,
+		BranchID:            turn.BranchID,
+		TurnID:              turn.ID,
+		MaintenanceTask:     effectiveTask,
+		DisplayConversation: conversation,
 		OnStoryMemoryApplied: func(applied int) {
 			result.AppliedStoryMemoryPatches += applied
 		},
@@ -286,6 +294,26 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 			if err != nil {
 				memoryMaintenanceErr = errors.Join(memoryMaintenanceErr, err)
 			}
+		},
+		SubmitDirectorPlanUpdate: func(callCtx context.Context, submission interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error) {
+			if !runPlan {
+				return interactive.DirectorPlanUpdateReceipt{}, fmt.Errorf("当前维护阶段不允许提交导演规划")
+			}
+			if err := callCtx.Err(); err != nil {
+				return interactive.DirectorPlanUpdateReceipt{}, err
+			}
+			planSubmissionMu.Lock()
+			defer planSubmissionMu.Unlock()
+			if planSubmitted {
+				return interactive.DirectorPlanUpdateReceipt{}, fmt.Errorf("本次导演运行已经接受过一次提交")
+			}
+			receipt, err := conversation.store.StageDirectorPlanRunUpdate(conversation.storyID, turn.BranchID, token, turn.ID, submission)
+			if err != nil {
+				return interactive.DirectorPlanUpdateReceipt{}, err
+			}
+			planSubmitted = true
+			submittedPlanDecision = receipt.Decision
+			return receipt, nil
 		},
 	}, instruction)
 	if err == nil {
@@ -309,9 +337,12 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	}
 	persistedOutput := output
 	if runPlan {
-		decision, parseErr := interactive.ParsePlanDecisionJSON(output)
-		if parseErr != nil {
-			err = fmt.Errorf("导演规划结果不是有效的 PlanDecision JSON: %w", parseErr)
+		planSubmissionMu.Lock()
+		decision := submittedPlanDecision
+		submitted := planSubmitted
+		planSubmissionMu.Unlock()
+		if !submitted {
+			err = fmt.Errorf("导演规划未调用 submit_director_plan_update 提交结构化结果")
 			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
 			markInteractiveDirectorFailed(conversation, turn, err)
 			return result, err

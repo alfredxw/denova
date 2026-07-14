@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { getActorStates, getEventPackages, getRuleSystems, getStoryMemoryStructures } from '../api'
-import { DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, type StoryCreateInput } from '../opening'
+import { DEFAULT_INTERACTIVE_CHOICE_COUNT, DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, MAX_INTERACTIVE_CHOICE_COUNT, MIN_INTERACTIVE_CHOICE_COUNT, type StoryCreateInput } from '../opening'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryMemoryStructureModule, StorySummary, Teller } from '../types'
 
 interface NewStorySetupPanelProps {
@@ -37,6 +37,7 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
   const [origin, setOrigin] = useState(story?.origin || '')
   const [directorId, setDirectorId] = useState(initialDirector?.id || 'default')
   const [replyTargetChars, setReplyTargetChars] = useState(String(story?.reply_target_chars || DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS))
+  const [choiceCount, setChoiceCount] = useState(String(story?.choice_count || DEFAULT_INTERACTIVE_CHOICE_COUNT))
   const [moduleRefs, setModuleRefs] = useState<StoryDirectorModuleRefs>(() => ({ ...(story?.module_refs || initialDirector?.module_refs || {}) }))
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
@@ -65,12 +66,15 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
     setError('')
     try {
       const tellerID = moduleRefs.narrative_style_disabled ? 'classic' : moduleRefs.narrative_style_id || tellers[0]?.id || 'classic'
+      const normalizedChoiceCount = parseChoiceCount(choiceCount)
+      if (normalizedChoiceCount === null) throw new Error(t('storyPicker.choiceCountError'))
       await onCreate({
         title: title.trim() || defaultStoryTitle(stories, t),
         origin: origin.trim(),
         story_teller_id: tellerID,
         story_director_id: directorId,
         reply_target_chars: normalizeReplyTargetChars(replyTargetChars),
+        choice_count: normalizedChoiceCount,
         module_refs: moduleRefs,
         image_settings: { mode: 'manual', interval_turns: 3, preset_id: moduleRefs.image_preset_id || 'game-cg' },
       })
@@ -92,14 +96,17 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
         <div className="space-y-5">
           <Field label={t('storyPicker.setup.name')}><Input value={title} maxLength={80} onChange={(event) => setTitle(event.target.value)} className="nova-field" /></Field>
           <Field label={t('storyPicker.setup.brief')} hint={t('storyPicker.setup.briefHint')}><Textarea autoResize value={origin} maxLength={4000} onChange={(event) => setOrigin(event.target.value)} className="nova-field min-h-28 resize-y" placeholder={t('storyPicker.originPlaceholder')} /></Field>
-          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
-            <Field label={t('storyPicker.storyDirector')}>
-              <Select value={directorId} onValueChange={selectDirector}>
-                <SelectTrigger className="nova-field h-10 w-full text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent position="popper" className="nova-panel border text-[var(--nova-text)]">{directors.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || item.id}</SelectItem>)}</SelectContent>
-              </Select>
-            </Field>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_10rem_10rem]">
+            <div className="sm:col-span-2 lg:col-span-1">
+              <Field label={t('storyPicker.storyDirector')}>
+                <Select value={directorId} onValueChange={selectDirector}>
+                  <SelectTrigger className="nova-field h-10 w-full text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent position="popper" className="nova-panel border text-[var(--nova-text)]">{directors.map((item) => <SelectItem key={item.id} value={item.id}>{item.name || item.id}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field>
+            </div>
             <Field label={t('storyPicker.replyTargetChars')}><Input type="number" min={1} value={replyTargetChars} onChange={(event) => setReplyTargetChars(event.target.value)} className="nova-field" /></Field>
+            <Field label={t('storyPicker.choiceCount')} hint={t('storyPicker.choiceCountHint')}><Input type="number" min={MIN_INTERACTIVE_CHOICE_COUNT} max={MAX_INTERACTIVE_CHOICE_COUNT} value={choiceCount} onChange={(event) => setChoiceCount(event.target.value)} className="nova-field" /></Field>
           </div>
 
           <section className="border-t border-[var(--nova-border)] pt-5">
@@ -120,6 +127,7 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) { return <label className="block text-xs text-[var(--nova-text-muted)]"><span className="mb-1.5 block font-medium text-[var(--nova-text)]">{label}</span>{children}{hint ? <span className="mt-1 block text-[11px] leading-5 text-[var(--nova-text-faint)]">{hint}</span> : null}</label> }
 function normalizeReplyTargetChars(value: string) { const parsed = Number(value); return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS }
+function parseChoiceCount(value: string) { const parsed = Number(value); return Number.isInteger(parsed) && parsed >= MIN_INTERACTIVE_CHOICE_COUNT && parsed <= MAX_INTERACTIVE_CHOICE_COUNT ? parsed : null }
 function defaultStoryTitle(stories: StorySummary[], t: (key: string, options?: Record<string, unknown>) => string) { return stories.length === 0 ? t('storyPicker.firstTitle') : t('storyPicker.numberedTitle', { number: stories.length + 1 }) }
 
 type ModuleOptionMap = Record<keyof StoryDirectorModuleRefs, Array<{ id: string; label: string }>>

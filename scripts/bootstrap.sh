@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 FRONTEND_BIND_HOST="${DENOVA_FRONTEND_HOST:-${NOVA_FRONTEND_HOST:-}}"
 
 cd "${ROOT_DIR}"
@@ -115,7 +115,7 @@ if [ $# -gt 0 ] && [[ "$1" != --* ]]; then
 fi
 
 usage() {
-    echo "用法: ./bootstrap.sh [all|fe|be] [options]"
+    echo "用法: ./scripts/bootstrap.sh [all|fe|be] [options]"
     echo "  all  - 启动前后端 (默认)"
     echo "  fe   - 仅启动前端 (Vite dev server)"
     echo "  be   - 仅启动后端 (Go server)"

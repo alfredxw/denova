@@ -58,8 +58,7 @@ describe('StoryStage TurnResult choices', () => {
 			state_status: 'ready' as const,
 			memory_status: 'running' as const,
 			turn_result: {
-				contract: { player_intent: '检查钟楼', scene_goal: '确认反光来源' },
-				scene_result: { status: 'continued', scene_id: '旧城钟楼', summary: '发现钟楼上的可疑反光', next_scene_goal: '找到观察角度' },
+				state_updates: [],
 				choices: ['绕到钟楼背面', '询问附近守夜人'],
 			},
 		}
@@ -89,7 +88,7 @@ describe('StoryStage TurnResult choices', () => {
     const stream = controllableInteractiveStream()
     const persisted = persistedTurnEvent()
     persisted.turn.turn_result = {
-      contract: { player_intent: '推门', scene_goal: '确认门外情况' },
+      state_updates: [],
       choices: ['沿墙观察', '询问守夜人'],
     }
     sendInteractiveMessageMock.mockResolvedValue(stream.readable)
@@ -314,7 +313,7 @@ describe('StoryStage composer', () => {
             ts: '2026-06-28T00:00:00Z',
             user: '开局',
             narrative: '雨停了。',
-            turn_result: { contract: { player_intent: '开局', scene_goal: '观察环境' }, choices: ['继续观察', '询问路人'] },
+            turn_result: { state_updates: [], choices: ['继续观察', '询问路人'] },
           }],
           current_turn: {
             id: 'turn-1',
@@ -323,7 +322,7 @@ describe('StoryStage composer', () => {
             ts: '2026-06-28T00:00:00Z',
             user: '开局',
             narrative: '雨停了。',
-            turn_result: { contract: { player_intent: '开局', scene_goal: '观察环境' }, choices: ['继续观察', '询问路人'] },
+            turn_result: { state_updates: [], choices: ['继续观察', '询问路人'] },
           },
           director_plan_status: directorStatus('running', { completed_docs: 1, blocking: true }),
         }}
@@ -1241,6 +1240,7 @@ function story(): StorySummary {
     origin: '',
     story_teller_id: 'classic',
     story_director_id: 'default',
+    choice_count: 5,
     reply_target_chars: 2000,
     image_settings: { mode: 'manual', interval_turns: 3 },
     opening: { mode: 'ai' },

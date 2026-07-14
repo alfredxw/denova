@@ -12,7 +12,7 @@ import (
 	"denova/internal/session"
 )
 
-func TestSubmitTurnResultToleratesUnknownFrozenActorStateFields(t *testing.T) {
+func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)
 	actorState := interactive.StoryDirectorActorStateSystem{
@@ -37,16 +37,9 @@ func TestSubmitTurnResultToleratesUnknownFrozenActorStateFields(t *testing.T) {
 	if invalidConversation.InteractiveNarrativeReady() {
 		t.Fatal("narrative must stay closed before TurnResult is staged")
 	}
-	base := interactive.TurnResult{
-		Contract:    interactive.TurnContract{PlayerIntent: "休息"},
-		SceneResult: interactive.TurnSceneResult{Status: "continued"},
-		PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"},
-		Choices:     []string{"继续休息", "检查当前状态"},
-	}
-	wrongType := base
-	wrongType.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{"生命值": "很多"}}}
+	wrongType := testTurnSubmissionInput([]interactive.StateUpdate{{Op: "replace", Path: "/protagonist/生命值", Value: "很多"}}, true)
 	receipt, err := invalidConversation.SubmitTurnResult(context.Background(), wrongType)
-	if err != nil || receipt.Accepted || !receipt.Retryable || len(receipt.Diagnostics) != 1 || !strings.Contains(receipt.Diagnostics[0].Message, "生命值") {
+	if err != nil || receipt.Ready || receipt.ModuleStatus.ActorStatePatches != interactive.TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted || len(receipt.Diagnostics) != 1 || !strings.Contains(receipt.Diagnostics[0].MessageZH, "生命值") {
 		t.Fatalf("wrong field type should return model-correctable feedback: receipt=%#v err=%v", receipt, err)
 	}
 	if invalidConversation.InteractiveNarrativeReady() {
@@ -54,22 +47,27 @@ func TestSubmitTurnResultToleratesUnknownFrozenActorStateFields(t *testing.T) {
 	}
 
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "休息", 800, &config.Config{})
-	withUnknownExtra := base
-	withUnknownExtra.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{
-		"当前身体/精神 状态":  "安定",
-		"body.status": "良好",
-	}}}
-	receipt, err = conversation.SubmitTurnResult(context.Background(), withUnknownExtra)
-	if err != nil || !receipt.Accepted || receipt.Retryable || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != interactive.TurnSubmissionDiagnosticUnknownActorStateField {
-		t.Fatalf("unknown extra field should be dropped with an accepted warning: receipt=%#v err=%v", receipt, err)
+	withUnknownField := testTurnSubmissionInput([]interactive.StateUpdate{
+		{Op: "replace", Path: "/protagonist/当前身体~1精神 状态", Value: "安定"},
+		{Op: "replace", Path: "/protagonist/body.status", Value: "良好"},
+	}, true)
+	receipt, err = conversation.SubmitTurnResult(context.Background(), withUnknownField)
+	if err != nil || receipt.Ready || receipt.ModuleStatus.ActorStatePatches != interactive.TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != "state_field_not_found" {
+		t.Fatalf("unknown state path should reject only state_updates: receipt=%#v err=%v", receipt, err)
+	}
+	if conversation.InteractiveNarrativeReady() {
+		t.Fatal("narrative must remain closed while state_updates needs retry")
+	}
+	replacement := testTurnSubmissionInput([]interactive.StateUpdate{{Op: "replace", Path: "/protagonist/当前身体~1精神 状态", Value: "安定"}}, false)
+	receipt, err = conversation.SubmitTurnResult(context.Background(), replacement)
+	if err != nil || !receipt.Ready || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted {
+		t.Fatalf("state-only retry should retain accepted choices: receipt=%#v err=%v", receipt, err)
 	}
 	if !conversation.InteractiveNarrativeReady() {
-		t.Fatal("narrative must open immediately after TurnResult is staged")
+		t.Fatal("narrative must open after both modules are accepted")
 	}
-	replacement := base
-	replacement.ActorStatePatches = []interactive.ActorStatePatch{{ActorID: "protagonist", State: map[string]any{"当前身体/精神 状态": "躁动"}}}
 	receipt, err = conversation.SubmitTurnResult(context.Background(), replacement)
-	if err != nil || !receipt.Accepted || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != "turn_result_already_accepted" {
+	if err != nil || !receipt.Ready || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != "turn_result_already_accepted" {
 		t.Fatalf("duplicate accepted result should be idempotent: receipt=%#v err=%v", receipt, err)
 	}
 	if err := conversation.AppendAssistantWithThinking("主角平复了呼吸。", ""); err != nil {
@@ -95,50 +93,37 @@ func TestSubmitTurnResultRequiresAndCommitsStoryContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := interactive.TurnResult{
-		Contract:    interactive.TurnContract{PlayerIntent: "进入酒馆", SceneGoal: "确认酒馆内的局势"},
-		SceneResult: interactive.TurnSceneResult{Status: "continued"},
-		PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"},
-		Choices:     []string{"观察堂内客人", "询问掌柜"},
-	}
+	result := testTurnSubmissionInput([]interactive.StateUpdate{}, true)
 
 	missing := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "进入酒馆", 800, &config.Config{})
 	receipt, err := missing.SubmitTurnResult(context.Background(), result)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.Accepted || !receipt.Retryable || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != interactive.TurnSubmissionDiagnosticStoryContextRequired {
+	if receipt.Ready || receipt.ModuleStatus.ActorStatePatches != interactive.TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != interactive.TurnSubmissionDiagnosticStoryContextRequired {
 		t.Fatalf("missing story context should request a corrected TurnResult: %#v", receipt)
 	}
 	if missing.InteractiveNarrativeReady() {
 		t.Fatal("narrative must remain closed until story context is submitted")
 	}
 
-	eventOnly := result
-	eventOnly.ActorStatePatches = []interactive.ActorStatePatch{{
-		ActorID: interactive.DefaultStoryContextActorID,
-		State:   map[string]any{"当前事件": "主角进入黄泉酒馆并观察堂内局势"},
-	}}
+	eventOnly := testTurnSubmissionInput([]interactive.StateUpdate{{Op: "replace", Path: "/story/当前事件", Value: "主角进入黄泉酒馆并观察堂内局势"}}, true)
 	withoutLocation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "进入酒馆", 800, &config.Config{})
 	receipt, err = withoutLocation.SubmitTurnResult(context.Background(), eventOnly)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.Accepted || !receipt.Retryable || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != interactive.TurnSubmissionDiagnosticStoryContextRequired || receipt.Diagnostics[0].Field != "当前详细地点" {
+	if receipt.Ready || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != interactive.TurnSubmissionDiagnosticStoryContextRequired || receipt.Diagnostics[0].Path != "/story/当前详细地点" {
 		t.Fatalf("uninitialized story context should require a current location even without scene_id: %#v", receipt)
 	}
 
-	result.ActorStatePatches = []interactive.ActorStatePatch{{
-		ActorID: interactive.DefaultStoryContextActorID,
-		State: map[string]any{
-			"当前详细地点": "黄泉酒馆",
-			"当前事件":   "主角进入黄泉酒馆并观察堂内局势",
-		},
-		Reason: "同步本回合结束后的场景与事件。",
-	}}
+	result = testTurnSubmissionInput([]interactive.StateUpdate{
+		{Op: "replace", Path: "/story/当前详细地点", Value: "黄泉酒馆"},
+		{Op: "replace", Path: "/story/当前事件", Value: "主角进入黄泉酒馆并观察堂内局势"},
+	}, true)
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "进入酒馆", 800, &config.Config{})
 	receipt, err = conversation.SubmitTurnResult(context.Background(), result)
-	if err != nil || !receipt.Accepted || receipt.Retryable {
+	if err != nil || !receipt.Ready {
 		t.Fatalf("complete story context should be accepted: receipt=%#v err=%v", receipt, err)
 	}
 	if err := conversation.AppendAssistantWithThinking("主角推门走进黄泉酒馆。", ""); err != nil {
@@ -155,6 +140,15 @@ func TestSubmitTurnResultRequiresAndCommitsStoryContext(t *testing.T) {
 	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.Narrative != "主角推门走进黄泉酒馆。" || storyState["当前详细地点"] != "黄泉酒馆" || storyState["当前事件"] != "主角进入黄泉酒馆并观察堂内局势" {
 		t.Fatalf("narrative and story context must survive the same commit: turn=%#v state=%#v", snapshot.CurrentTurn, storyState)
 	}
+}
+
+func testTurnSubmissionInput(updates []interactive.StateUpdate, includeChoices bool) interactive.TurnSubmissionInput {
+	input := interactive.TurnSubmissionInput{StateUpdates: &updates}
+	if includeChoices {
+		choices := []string{"继续当前行动", "观察周围变化", "询问在场人物", "检查自身状态", "暂时等待"}
+		input.Choices = &choices
+	}
+	return input
 }
 
 func TestDirectorContextBudgetFollowsModelWindowAndCapsEachSource(t *testing.T) {

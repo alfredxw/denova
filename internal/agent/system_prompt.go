@@ -93,9 +93,9 @@ func outputProtocolForAgent(agentKind string) string {
 	case config.AgentKindInteractiveDirector:
 		return strings.Join([]string{
 			"- 当前调用为 state_schema_initialization 时，只能使用资料库只读工具审阅必要设定，并通过 submit_state_schema_adaptation 增量暂存有来源的状态 schema Batch；只重试 rejected/blocked 项，finalize 成功后最终回复一句简短摘要。",
-			"- 当前调用为 director_plan_update 时，只能维护当前分支 director.md，并只输出 PlanDecision JSON。",
+			"- 当前调用为 director_plan_update 或 opening_plan 时，必须通过一次 submit_director_plan_update 提交决策；keep 不带文档，patch/replan 同时提交两份完整规划文档。该工具是任务终止点，接受后立即结束，不再生成摘要。",
 			"- 当前调用为 memory_update 时，只能通过 apply_story_memory_patches 维护 Story Memory，完成后输出一句简短摘要。",
-			"- 三个阶段都不得续写剧情或直接写入 Actor State。",
+			"- 三个阶段都不得续写剧情或绕过各自工具直接写入 Actor State；state_schema_initialization 的 actor_ops 只是待后端原子迁移的 Batch 提案，finalize 前不生效。",
 		}, "\n")
 	case config.AgentKindVersionSummary:
 		return "- 必须只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。"
@@ -123,8 +123,8 @@ func agentRuntimeContract(agentKind string) string {
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
 			"- 互动叙事 Agent 可以使用只读文件工具读取 system prompt 明确给出的共享文风参考；禁止修改 workspace 文件，禁止输出或调用写文件、删除文件、任务计划等工具。",
-			"- 每回合最终正文前必须调用 submit_interactive_turn_result，提交与正文一致的 TurnContract、非规则 Actor 状态 patch、事实候选、场景结果、计划信号和行动建议；后端只在正文成功时原子提交。",
-			"- submit_interactive_turn_result 返回结构化回执：accepted=false 时按 diagnostics 修正重试；accepted=true 时不要因 warning 重复提交，直接进入最终正文。",
+			"- 每回合先直接输出完整的玩家可见正文，再分别调用 submit_actor_state_patches 与 submit_choices；两个工具独立解析和接收，后端只在两者都成功时编译 StateDelta，并把首个正文候选与状态原子落盘。",
+			"- 提交工具按模块返回结构化回执：ready=false 时只调用 retry_modules 指定的失败或缺失工具；ready=true 后立即结束本回合，不得重复输出或改写正文。",
 			"- 互动叙事 Agent 必须遵守内置输出协议，面向故事舞台的正文必须直接作为最终回复输出，不得夹带状态 JSON、工具说明或 XML 包装。",
 			"- 互动叙事 Agent 的篇幅必须以当前 story 的每轮目标字数为最高约束；其它内置提示、CREATOR.md 章节篇幅、导演规则或用户自定义提示中的篇幅倾向都不得要求超过该目标。",
 		}, "\n")
@@ -142,9 +142,9 @@ func agentRuntimeContract(agentKind string) string {
 		return strings.Join([]string{
 			"- Director 有三个互斥阶段：state_schema_initialization 在首轮正文落盘后或用户显式复审时提交状态结构覆盖提案，memory_update 只整理 Story Memory，director_plan_update 只观察并维护当前分支 director.md；必须以调用方实际提供的工具和任务说明为准。",
 			"- state_schema_initialization 只能使用 list_lore_items、read_lore_items 和 submit_state_schema_adaptation；提交工具按稳定 item_id 增量暂存并校验有界 Batch，分别返回 accepted、rejected、blocked，finalize 前不写故事或工作区，后端在任务成功后负责原子迁移、应用和冻结。",
-			"- Actor State 已由 Game Agent 的 TurnResult、RuleResolution 和后端 State Reducer 原子提交；任何阶段都不得再次写入、覆盖或修正 Actor State。",
+			"- state_schema_initialization 可在 Batch actor_ops 中声明有来源的 Actor 初值或迁移值，但 finalize 前不生效且只能由后端原子应用；memory_update 与 director_plan_update 不得写入、覆盖或修正 Actor State。",
 			"- memory_update 只能使用 apply_story_memory_patches，Turn、TurnResult 和 StateDelta 是事实真源，Story Memory 只是可重建的派生索引。",
-			"- director_plan_update 只能使用受限 read_file、write_file、edit_file 维护当前分支 director.md，并输出 keep、patch 或 replan 的 PlanDecision JSON；不得写 Story Memory。",
+			"- director_plan_update 与 opening_plan 不得使用文件工具；当前两份规划快照由后端注入，只能通过一次 submit_director_plan_update 提交。keep 不带文档，patch/replan 同时提交完整 director.md 与 lore-context.md；不得写 Story Memory。",
 			"- 不得续写故事正文、替用户选择行动，也不得使用 shell、todo、资料库写入或任意 workspace 写入。",
 			"- 规划阶段必须优先复用资料库中的重要角色、势力、规则、地点和既有关系，并通过高信息密度的角色关系、势力压力、信息揭示、爽点危机、检定代价和分支安排服务后续互动。",
 			"- 规划阶段必须把可给正文 Agent 读取的信息放在“正文Agent可读”区，把隐藏真相和未来反转放在“后台导演私密”区。",

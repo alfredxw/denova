@@ -96,6 +96,18 @@ func validateActorStateRuntimeSchemaOps(target StoryDirectorActorStateSystem, op
 			}
 			continue
 		}
+		if op.Op == "set" {
+			if normalizeActorStateFieldName(op.FieldID) == "" {
+				return fmt.Errorf("运行时 Actor 字段初始化缺少 field_id: actor=%s", actorID)
+			}
+			if op.Value == nil {
+				return fmt.Errorf("运行时 Actor 字段初始化值不能为空: actor=%s field=%s", actorID, op.FieldID)
+			}
+			if op.Actor.ID != "" || op.Actor.Name != "" || op.Actor.TemplateID != "" || op.Actor.Role != "" || op.Actor.Description != "" || len(op.Actor.State) > 0 {
+				return fmt.Errorf("运行时 Actor 字段级 set 不接受 actor 对象: actor=%s field=%s", actorID, op.FieldID)
+			}
+			continue
+		}
 		if op.Op != "add" && op.Op != "replace" {
 			return fmt.Errorf("运行时 Actor 操作无效: %s", op.Op)
 		}

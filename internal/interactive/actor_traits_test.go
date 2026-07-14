@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -211,8 +212,12 @@ func TestActorStateRuntimeContextFiltersVisibilityAndLibrary(t *testing.T) {
 	if strings.Contains(context, "secret") || strings.Contains(context, "未被抽取的配置词条") {
 		t.Fatalf("hidden traits and the reusable library must stay out of runtime context: %s", context)
 	}
-	if len(context) > 64*1024 || !strings.Contains(context, `"kind": "actor_state_runtime"`) || !strings.Contains(context, `"field_id": "状态"`) {
+	if len(context) > 64*1024 || !strings.Contains(context, `"kind": "actor_state_runtime"`) || !strings.Contains(context, `"field_id": "状态"`) || !strings.Contains(context, `"create_templates"`) || !strings.Contains(context, `"template_id": "protagonist"`) {
 		t.Fatalf("runtime context must be sourced and bounded: bytes=%d context=%s", len(context), context)
+	}
+	bounded := ActorStateRuntimeContext(system, state, 512)
+	if bounded == "" || len(bounded) > 512 || !json.Valid([]byte(bounded)) || !strings.Contains(bounded, `"truncated": true`) {
+		t.Fatalf("small runtime context must remain valid bounded JSON: bytes=%d context=%s", len(bounded), bounded)
 	}
 }
 

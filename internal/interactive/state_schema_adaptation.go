@@ -63,6 +63,8 @@ type ActorStateInitialActorSchemaOp struct {
 type ActorStateRuntimeSchemaOp struct {
 	Op          string                            `json:"op"`
 	ActorID     string                            `json:"actor_id,omitempty"`
+	FieldID     string                            `json:"field_id,omitempty" jsonschema:"description=op=set 时要初始化的冻结 schema field_id"`
+	Value       any                               `json:"value,omitempty" jsonschema:"description=op=set 时写入的非空字段值"`
 	Actor       ActorStateInitialActor            `json:"actor,omitempty"`
 	Reason      string                            `json:"reason,omitempty"`
 	ValueSource *ActorStateSchemaActorValueSource `json:"value_source,omitempty" jsonschema:"-"`
@@ -180,11 +182,12 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		op := &adaptation.ActorOps[index]
 		op.Op = strings.TrimSpace(op.Op)
 		op.ActorID = normalizeActorStateID(op.ActorID)
+		op.FieldID = normalizeActorStateFieldName(op.FieldID)
 		op.Actor.ID = normalizeActorStateID(op.Actor.ID)
 		op.Actor.TemplateID = normalizeActorStateID(op.Actor.TemplateID)
 		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
 		normalizeActorStateSchemaActorValueSource(op.ValueSource)
-		if op.Op != "add" && op.Op != "replace" && op.Op != "remove" {
+		if op.Op != "add" && op.Op != "replace" && op.Op != "remove" && op.Op != "set" {
 			return ActorStateSchemaAdaptation{}, fmt.Errorf("运行时 Actor 操作无效: %s", op.Op)
 		}
 		if firstNonEmptyString(op.ActorID, op.Actor.ID) == "" {

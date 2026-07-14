@@ -14,7 +14,7 @@ export function getInteractiveStories(): Promise<StoryIndex> {
   return requestJSON('/api/interactive/stories')
 }
 
-export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; story_director_id?: string; module_refs?: StoryDirectorModuleRefs; reply_target_chars?: number; image_settings?: StoryImageSettings; opening?: StoryOpeningConfig; initial_trait_rolls?: InitialActorTraitRoll[] }): Promise<StorySummary> {
+export function createInteractiveStory(input: { title: string; origin?: string; story_teller_id: string; story_director_id?: string; module_refs?: StoryDirectorModuleRefs; reply_target_chars?: number; choice_count?: number; image_settings?: StoryImageSettings; opening?: StoryOpeningConfig; initial_trait_rolls?: InitialActorTraitRoll[] }): Promise<StorySummary> {
   return requestJSON('/api/interactive/stories', {
     method: 'POST',
     headers: jsonHeaders,
@@ -39,6 +39,7 @@ export function updateInteractiveStory(
     story_director_id?: string
     module_refs?: StoryDirectorModuleRefs
     reply_target_chars?: number
+    choice_count?: number
     image_settings?: StoryImageSettings
     opening?: StoryOpeningConfig
   },

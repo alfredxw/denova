@@ -331,13 +331,20 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 					Source:      interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: toolContext.TurnID},
 					Requirement: "测试已审阅开局且不需要新增结构化状态",
 					Decision:    "ignored",
+					ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly,
 					Reason:      "测试开局没有建立长期状态规则",
 				}},
 				Adaptation: interactive.ActorStateSchemaAdaptation{},
 			})
 			return "测试状态结构审查完成。", err
 		}
-		return `{"mode":"keep","reason":"测试初始化导演规划完成。"}`, nil
+		if toolContext.MaintenanceTask == "director_plan_update" || toolContext.MaintenanceTask == "opening_plan" {
+			_, err := toolContext.SubmitDirectorPlanUpdate(callCtx, interactive.DirectorPlanUpdateSubmission{
+				Decision: interactive.PlanDecision{Mode: interactive.PlanDecisionKeep, Reason: "测试初始化导演规划完成。"},
+			})
+			return "测试导演规划审查完成。", err
+		}
+		return "测试后台维护完成。", nil
 	})
 	t.Cleanup(restoreDirector)
 	return application

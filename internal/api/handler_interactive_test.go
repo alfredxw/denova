@@ -322,12 +322,12 @@ func TestInteractiveStoryCreateAdaptsAndFreezesStoryStateSchema(t *testing.T) {
 		proposal := interactive.ActorStateSchemaProposal{
 			Summary: "为修仙群像与关系玩法补充长期可计算状态",
 			Requirements: []interactive.ActorStateSchemaRequirementReview{
-				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "长期追踪主角修行境界", ExpectedType: "string", Decision: "add", TemplateID: "protagonist", FieldID: "境界", Reason: "故事明确采用修仙成长玩法"},
-				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "以 0 到 100 的数值追踪突破进度", ExpectedType: "number", Min: &minProgress, Max: &maxProgress, Decision: "add", TemplateID: "protagonist", FieldID: "修为进度", Reason: "修炼需要可计算进度"},
-				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "长期记录主角持有法宝", ExpectedType: "list", Decision: "add", TemplateID: "protagonist", FieldID: "法宝", Reason: "法宝会影响秘境探索"},
-				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "长期记录主角掌握功法", ExpectedType: "list", Decision: "add", TemplateID: "protagonist", FieldID: "功法", Reason: "功法会影响修炼与检定"},
-				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "以 -100 到 100 的数值追踪重要角色好感", ExpectedType: "number", Min: &minFavor, Max: &maxFavor, Decision: "add", TemplateID: "important_character", FieldID: "好感度", Reason: "故事明确包含成年角色关系玩法"},
-				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "追踪重要角色关系阶段", ExpectedType: "enum", Decision: "add", TemplateID: "important_character", FieldID: "关系阶段", Reason: "关系阶段影响后续选择"},
+				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "长期追踪主角修行境界", ExpectedType: "string", Decision: "add", TemplateID: "protagonist", FieldID: "境界", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly, Reason: "故事明确采用修仙成长玩法"},
+				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "以 0 到 100 的数值追踪突破进度", ExpectedType: "number", Min: &minProgress, Max: &maxProgress, Decision: "add", TemplateID: "protagonist", FieldID: "修为进度", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly, Reason: "修炼需要可计算进度"},
+				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "长期记录主角持有法宝", ExpectedType: "list", Decision: "add", TemplateID: "protagonist", FieldID: "法宝", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly, Reason: "法宝会影响秘境探索"},
+				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "长期记录主角掌握功法", ExpectedType: "list", Decision: "add", TemplateID: "protagonist", FieldID: "功法", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly, Reason: "功法会影响修炼与检定"},
+				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "以 -100 到 100 的数值追踪重要角色好感", ExpectedType: "number", Min: &minFavor, Max: &maxFavor, Decision: "add", TemplateID: "important_character", FieldID: "好感度", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly, Reason: "故事明确包含成年角色关系玩法"},
+				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "追踪重要角色关系阶段", ExpectedType: "enum", Decision: "add", TemplateID: "important_character", FieldID: "关系阶段", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly, Reason: "关系阶段影响后续选择"},
 			},
 			Adaptation: interactive.ActorStateSchemaAdaptation{TemplateOps: []interactive.ActorStateTemplateSchemaOp{
 				{Op: "fields", TemplateID: "protagonist", FieldOps: []interactive.ActorStateFieldSchemaOp{
@@ -382,7 +382,7 @@ func TestInteractiveStoryCreateAdaptsAndFreezesStoryStateSchema(t *testing.T) {
 		t.Fatalf("run state schema status=%d body=%s", runResp.Code, runResp.Body.String())
 	}
 	snapshot := waitForStateSchemaStatusAPI(t, server, created.ID, interactive.StateSchemaInitializationReady)
-	if !strings.Contains(instruction, "青云问情录") || !strings.Contains(instruction, "山门在云海间开启") || !strings.Contains(instruction, "state_preset") || !strings.Contains(instruction, "max_prompt_bytes") {
+	if !strings.Contains(instruction, "青云问情录") || !strings.Contains(instruction, "山门在云海间开启") || !strings.Contains(instruction, "state_preset") || !strings.Contains(instruction, "max_non_state_prompt_bytes") {
 		t.Fatalf("initializer instruction must contain bounded opening context: %s", instruction)
 	}
 	if snapshot.ActorStateSchema == nil || snapshot.ActorStateSchema.Version != interactive.ActorStateSchemaVersion || snapshot.ActorStateSchema.Revision != 2 || snapshot.ActorStateSchema.Adaptation == nil {

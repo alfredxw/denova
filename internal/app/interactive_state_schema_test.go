@@ -1,6 +1,8 @@
 package app
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -9,6 +11,92 @@ import (
 	"denova/internal/interactive"
 	"denova/internal/workspacepath"
 )
+
+func TestBuildStateSchemaAdaptationInstructionIncludesFrozenSchemaAndCurrentActorValues(t *testing.T) {
+	stateSystem := interactive.StoryDirectorActorStateSystem{
+		Templates: []interactive.ActorStateTemplate{{
+			ID: "protagonist", Name: "主角", Fields: []interactive.ActorStateField{
+				{Name: "状态", Type: "string", Visibility: "visible"},
+				{Name: "生命", Type: "number", Visibility: "visible"},
+			},
+		}},
+		InitialActors: []interactive.ActorStateInitialActor{{ID: "protagonist", Name: "主角", TemplateID: "protagonist"}},
+	}
+	req := interactive.CreateStoryRequest{Title: "状态上下文", ActorState: &stateSystem}
+	director := interactive.StoryDirector{ID: "director", ActorState: stateSystem}
+	turn := &interactive.TurnEvent{ID: "opening-turn", BranchID: "main", User: "醒来", Narrative: "主角负伤醒来。"}
+	currentState := map[string]any{"actors": map[string]any{
+		"protagonist": map[string]any{
+			"id": "protagonist", "name": "主角", "template_id": "protagonist", "role": "protagonist",
+			"state": map[string]any{"状态": "负伤", "生命": float64(37)},
+		},
+	}}
+	instruction, err := buildStateSchemaAdaptationInstructionAfterOpening(req, director, nil, turn, currentState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(instruction, `"current_actor_state":{`) || strings.Contains(instruction, `"current_actor_state":"`) {
+		t.Fatalf("current Actor snapshot must be a structured JSON object instead of a double-encoded string: %s", instruction)
+	}
+	var prompt stateSchemaAdaptationPrompt
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(instruction, stateSchemaAdaptationInstructionPrefix)), &prompt); err != nil {
+		t.Fatalf("decode bounded state-schema prompt: %v", err)
+	}
+	if len(prompt.StatePreset.Templates) != 1 || len(prompt.StatePreset.Templates[0].Fields) != 2 || prompt.StatePreset.Templates[0].Fields[1].Name != "生命" {
+		t.Fatalf("frozen Actor schema must be supplied to the Director: %#v", prompt.StatePreset)
+	}
+	if prompt.Sources.CurrentActorState == nil {
+		t.Fatal("current Actor snapshot must be supplied to the Director")
+	}
+	actor, _ := prompt.Sources.CurrentActorState.Actors["protagonist"].(map[string]any)
+	actorValues, _ := actor["state"].(map[string]any)
+	if actor["template_id"] != "protagonist" || actorValues["状态"] != "负伤" || actorValues["生命"] != float64(37) {
+		t.Fatalf("current Actor values must be supplied without rewriting: %#v", prompt.Sources.CurrentActorState)
+	}
+}
+
+func TestBuildStateSchemaAdaptationInstructionDoesNotLimitCurrentActorState(t *testing.T) {
+	stateSystem := interactive.StoryDirectorActorStateSystem{Templates: []interactive.ActorStateTemplate{{
+		ID: "character", Name: "角色", Fields: []interactive.ActorStateField{{Name: "记忆", Type: "string", Visibility: "visible"}},
+	}}}
+	req := interactive.CreateStoryRequest{Title: "完整状态上下文", ActorState: &stateSystem}
+	director := interactive.StoryDirector{ID: "director", ActorState: stateSystem}
+	turn := &interactive.TurnEvent{ID: "opening-turn", BranchID: "main", Narrative: "众人到场。"}
+	largeValue := strings.Repeat("x", maxInteractiveStateSchemaPromptBytes+8192)
+	actors := make(map[string]any, 30)
+	for index := 0; index < 30; index++ {
+		actorID := fmt.Sprintf("actor-%02d", index)
+		value := "普通状态"
+		if index == 29 {
+			value = largeValue
+		}
+		actors[actorID] = map[string]any{
+			"id": actorID, "name": actorID, "template_id": "character", "state": map[string]any{"记忆": value},
+		}
+	}
+	instruction, err := buildStateSchemaAdaptationInstructionAfterOpening(req, director, nil, turn, map[string]any{"actors": actors})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(instruction) <= maxInteractiveStateSchemaPromptBytes {
+		t.Fatalf("regression fixture must exceed the non-state prompt budget: %d", len(instruction))
+	}
+	var prompt stateSchemaAdaptationPrompt
+	if err := json.Unmarshal([]byte(strings.TrimPrefix(instruction, stateSchemaAdaptationInstructionPrefix)), &prompt); err != nil {
+		t.Fatalf("decode state-schema prompt: %v", err)
+	}
+	if prompt.Sources.CurrentActorState == nil {
+		t.Fatal("current Actor snapshot must be present")
+	}
+	if len(prompt.Sources.CurrentActorState.Actors) != len(actors) {
+		t.Fatalf("all Actors must be included: got=%d want=%d", len(prompt.Sources.CurrentActorState.Actors), len(actors))
+	}
+	lastActor, _ := prompt.Sources.CurrentActorState.Actors["actor-29"].(map[string]any)
+	lastState, _ := lastActor["state"].(map[string]any)
+	if lastState["记忆"] != largeValue {
+		t.Fatalf("large Actor value was truncated: got=%d want=%d", len(fmt.Sprint(lastState["记忆"])), len(largeValue))
+	}
+}
 
 func TestBuildStateSchemaAdaptationInstructionIsSourcedAndBounded(t *testing.T) {
 	director := interactive.DefaultStoryDirector()
@@ -26,7 +114,7 @@ func TestBuildStateSchemaAdaptationInstructionIsSourcedAndBounded(t *testing.T) 
 	if len(instruction) > maxInteractiveStateSchemaPromptBytes {
 		t.Fatalf("instruction exceeds bounded payload: %d", len(instruction))
 	}
-	for _, want := range []string{"sources", "story_origin", "state_preset", "trpg_bindings", "max_prompt_bytes"} {
+	for _, want := range []string{"sources", "story_origin", "state_preset", "trpg_bindings", "max_non_state_prompt_bytes"} {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("instruction missing sourced section %q: %s", want, instruction)
 		}

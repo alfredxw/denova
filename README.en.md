@@ -106,7 +106,7 @@ Requires Go 1.26.5+, Node.js 20+, and pnpm.
 git clone https://github.com/alfredxw/denova.git
 cd denova
 corepack enable
-./bootstrap.sh
+./scripts/bootstrap.sh
 ```
 
 Default addresses:
@@ -173,20 +173,26 @@ denova.example.com {
 Start both frontend and backend:
 
 ```bash
-./bootstrap.sh
+./scripts/bootstrap.sh
 ```
 
 Start frontend or backend separately:
 
 ```bash
-./bootstrap.sh fe
-./bootstrap.sh be
+./scripts/bootstrap.sh fe
+./scripts/bootstrap.sh be
+```
+
+Stop the Denova backend running from this repository and restart it in the foreground:
+
+```bash
+./scripts/restart-backend.sh
 ```
 
 Allow LAN devices to access the frontend dev server:
 
 ```bash
-./bootstrap.sh fe --lan
+./scripts/bootstrap.sh fe --lan
 ```
 
 ## Donate QR Code

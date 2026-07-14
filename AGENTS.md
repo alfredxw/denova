@@ -75,5 +75,5 @@
 
 # 构建逻辑
 1. 使用 go mod tidy 确保依赖拉下来了
-2. 使用 ./build.sh 构建项目
-3. 使用 ./bootstrap.sh fe/be 启动项目
+2. 使用 ./scripts/build.sh 构建项目
+3. 使用 ./scripts/bootstrap.sh fe/be 启动项目

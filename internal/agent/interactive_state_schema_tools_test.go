@@ -30,16 +30,26 @@ func TestInteractiveStateSchemaToolUsesIncrementalBatchContract(t *testing.T) {
 	if !ok {
 		t.Fatal("state schema tool must be invokable")
 	}
-	output, err := invokable.InvokableRun(context.Background(), `{"summary":"review","items":[{"item_id":"status","requirements":[],"adaptation":{}}],"finalize":true}`)
+	output, err := invokable.InvokableRun(context.Background(), `{"summary":"review","items":[{"item_id":"status","requirements":[{"source":{"kind":"opening","id":"turn-1"},"requirement":"initialize status","evidence_kind":"confirmed","value_policy":"initialize","actor_id":"protagonist","expected_type":"string","decision":"covered","template_id":"protagonist","field_id":"status"}],"adaptation":{"actor_ops":[{"op":"set","actor_id":"protagonist","field_id":"status","value":"ready"}]}}],"finalize":true}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !received.Finalize || len(received.Items) != 1 || received.Items[0].ItemID != "status" {
 		t.Fatalf("tool did not decode Batch input: %#v", received)
 	}
+	requirement := received.Items[0].Requirements[0]
+	actorOp := received.Items[0].Adaptation.ActorOps[0]
+	if requirement.ValuePolicy != interactive.ActorStateSchemaValuePolicyInitialize || requirement.ActorID != "protagonist" || actorOp.Op != "set" || actorOp.FieldID != "status" || actorOp.Value != "ready" {
+		t.Fatalf("tool must decode explicit Actor value initialization: requirement=%#v actor_op=%#v", requirement, actorOp)
+	}
 	info, err := tools[0].Info(context.Background())
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, want := range []string{"value_policy", "actor_ops set", "精确错误路径"} {
+		if !strings.Contains(info.Desc, want) {
+			t.Fatalf("state schema tool description missing %q: %s", want, info.Desc)
+		}
 	}
 	params, err := info.ParamsOneOf.ToJSONSchema()
 	if err != nil {
@@ -51,6 +61,11 @@ func TestInteractiveStateSchemaToolUsesIncrementalBatchContract(t *testing.T) {
 	}
 	if strings.Contains(string(schemaData), "value_source") {
 		t.Fatalf("backend-owned actor provenance must not be exposed in model input schema: %s", schemaData)
+	}
+	for _, property := range []string{`"value_policy"`, `"actor_id"`, `"field_id"`, `"value"`} {
+		if !strings.Contains(string(schemaData), property) {
+			t.Fatalf("model input schema missing Actor value contract property %s: %s", property, schemaData)
+		}
 	}
 	var schemaValue any
 	if err := json.Unmarshal(schemaData, &schemaValue); err != nil {

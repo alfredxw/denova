@@ -130,12 +130,4 @@ func TestDirectorLoreRosterIsInjectedOnlyForOpeningRevisionChangesOrMajorDeviati
 		t.Fatalf("ordinary patch should not repeat the full roster:\n%s", regular)
 	}
 
-	majorTurn := interactive.TurnEvent{TurnResult: &interactive.TurnResult{PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "major"}}}
-	major, err := buildInteractiveDirectorLoreContext(workspace, plan, majorTurn, interactiveDirectorTaskDirectorPlanUpdate)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(major, "资料名称目录") {
-		t.Fatalf("major deviation should restore the roster:\n%s", major)
-	}
 }

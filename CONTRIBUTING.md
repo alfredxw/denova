@@ -9,16 +9,17 @@ Denova requires Go 1.26.5+, Node.js 20+, and pnpm.
 ```bash
 corepack enable
 go mod tidy
-./bootstrap.sh
+./scripts/bootstrap.sh
 ```
 
 Useful local commands:
 
 ```bash
-./bootstrap.sh fe
-./bootstrap.sh be
-./bootstrap.sh fe --lan
-./build.sh
+./scripts/bootstrap.sh fe
+./scripts/bootstrap.sh be
+./scripts/bootstrap.sh fe --lan
+./scripts/restart-backend.sh
+./scripts/build.sh
 ```
 
 If a frontend command is missing, try the project script first, then use `npx` when appropriate. If port `5173` is already occupied by the user's Vite process, do not kill or replace it; use the existing hot-reload page.
@@ -54,7 +55,7 @@ Choose validation based on the risk of the change:
 - Frontend-visible changes should be verified in a browser, including narrow and wide layouts when layout is affected.
 - If the frontend is already running, use the existing hot-reload page instead of restarting it.
 - If backend behavior changes, restarting the backend is acceptable when needed.
-- Run `./build.sh` before release or broad integration changes.
+- Run `./scripts/build.sh` before release or broad integration changes.
 
 When fixing a bug, add a failing test first when practical. If automation is not practical, document the manual verification scope in the change summary.
 

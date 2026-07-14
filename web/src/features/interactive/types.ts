@@ -10,6 +10,7 @@ export interface StorySummary {
   story_director_id: string
   module_refs?: StoryDirectorModuleRefs
   reply_target_chars: number
+  choice_count: number
   image_settings?: StoryImageSettings
   opening: StoryOpeningConfig
   created_at: string
@@ -443,64 +444,9 @@ export interface TurnEvent {
   version_idx?: number
 }
 
-export interface TurnContract {
-  player_intent: string
-  scene_goal: string
-  beats?: string[]
-  npc_intents?: string[]
-  reveals?: string[]
-  costs?: string[]
-  continuity_constraints?: string[]
-  choice_axes?: string[]
-  expected_state_changes?: string[]
-  scene_transition_candidate?: TurnSceneTransition
-  plan_alignment_candidate?: {
-    level?: 'aligned' | 'minor_deviation' | 'major_deviation' | string
-    invalidated_plan_refs?: string[]
-    reason?: string
-  }
-}
-
-export interface TurnSceneTransition {
-  kind?: 'none' | 'exit' | 'enter' | 'replace' | string
-  from?: string
-  to?: string
-  reason?: string
-}
-
 export interface TurnResult {
-  contract: TurnContract
-  actor_state_patches?: Array<{
-    actor_id?: string
-    actor_name?: string
-    template_id?: string
-    state?: Record<string, unknown>
-    reason?: string
-  }>
-  fact_candidates?: Array<{
-    kind?: string
-    subject?: string
-    fact: string
-    visibility?: string
-    importance?: string
-    people?: string[]
-    places?: string[]
-    tags?: string[]
-  }>
-  scene_result?: {
-    status?: 'continued' | 'completed' | 'transitioned' | 'terminal' | string
-    scene_id?: string
-    next_scene_id?: string
-    summary?: string
-    next_scene_goal?: string
-  }
-  plan_signals?: {
-    scene_transition?: TurnSceneTransition
-    deviation_level?: 'none' | 'minor' | 'major' | string
-    invalidated_refs?: string[]
-    reason?: string
-  }
-  choices?: string[]
+  state_updates: Array<{ op: 'replace' | 'delta' | 'create' | string; path: string; value: unknown }>
+  choices: string[]
 }
 
 export interface TurnDisplayEvent {
@@ -1065,6 +1011,8 @@ export interface ActorStateSchemaRequirementReview {
 	source: ActorStateSchemaRequirementSource
 	requirement: string
 	evidence_kind?: 'confirmed' | 'inferred' | 'default' | string
+	value_policy?: 'schema_only' | 'preserve' | 'initialize' | 'defer' | string
+	actor_id?: string
 	expected_type?: string
 	min?: number
 	max?: number
@@ -1075,13 +1023,19 @@ export interface ActorStateSchemaRequirementReview {
 }
 
 export interface ActorStateSchemaAdaptationChange {
-	kind: 'template' | 'field' | 'actor' | string
-	op: 'add' | 'replace' | 'remove' | string
+	kind: 'template' | 'field' | 'actor' | 'actor_field' | string
+	op: 'add' | 'replace' | 'remove' | 'set' | string
 	template_id?: string
 	field_id?: string
 	target_id?: string
 	actor_id?: string
 	reason?: string
+	value_source?: {
+		source_id: string
+		item_id: string
+		source: ActorStateSchemaRequirementSource
+		evidence_kind: string
+	}
 }
 
 export interface StateSchemaInitializationStatus {

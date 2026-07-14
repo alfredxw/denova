@@ -149,6 +149,25 @@ func TestInteractiveStoryToolContextDropsTransientReadFilePreview(t *testing.T) 
 	}
 }
 
+func TestInteractiveStoryToolContextKeepsOnlySemanticReadReceipts(t *testing.T) {
+	messages := []*schema.Message{
+		schema.AssistantMessage("", []schema.ToolCall{
+			{ID: "prepare", Type: "function", Function: schema.FunctionCall{Name: "prepare_interactive_turn", Arguments: `{}`}},
+			{ID: "patches", Type: "function", Function: schema.FunctionCall{Name: "submit_actor_state_patches", Arguments: `{}`}},
+			{ID: "choices", Type: "function", Function: schema.FunctionCall{Name: "submit_choices", Arguments: `{}`}},
+			{ID: "lore", Type: "function", Function: schema.FunctionCall{Name: "read_lore_items", Arguments: `{}`}},
+		}),
+		schema.ToolMessage(`{"outcome":"success"}`, "prepare", schema.WithToolName("prepare_interactive_turn")),
+		schema.ToolMessage(`{"ready":false}`, "patches", schema.WithToolName("submit_actor_state_patches")),
+		schema.ToolMessage(`{"ready":true}`, "choices", schema.WithToolName("submit_choices")),
+		schema.ToolMessage("# 资料库条目\n\n## 酒馆\nID：lore-tavern\n\n秘密正文", "lore", schema.WithToolName("read_lore_items")),
+	}
+	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{AgentKind: config.AgentKindInteractiveStory, Enabled: true, BudgetBytes: 4096, PreviewChars: 1000})
+	if len(filtered) != 2 || len(filtered[0].ToolCalls) != 1 || filtered[0].ToolCalls[0].Function.Name != "read_lore_items" || !strings.Contains(filtered[1].Content, retainedToolReceiptSchema) {
+		t.Fatalf("game cross-turn context should contain only the semantic lore receipt pair: %#v", filtered)
+	}
+}
+
 func TestApplyToolResultContextPolicyPairsByCallIDWhenResultToolNameMissing(t *testing.T) {
 	messages := []*schema.Message{
 		schema.AssistantMessage("", []schema.ToolCall{

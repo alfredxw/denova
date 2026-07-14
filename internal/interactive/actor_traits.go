@@ -660,13 +660,9 @@ func ActorStateRuntimeContext(system StoryDirectorActorStateSystem, state map[st
 			if value != nil {
 				visibleState[fieldID] = value
 			}
-			writableFields = append(writableFields, map[string]any{
-				"field_id":           fieldID,
-				"type":               field.Type,
-				"options":            field.Options,
-				"description":        field.Description,
-				"update_instruction": field.UpdateInstruction,
-			})
+			descriptor := actorStateRuntimeFieldDescriptor(field)
+			descriptor["path"] = formatStateUpdatePath([]string{actorID, fieldID})
+			writableFields = append(writableFields, descriptor)
 		}
 		if len(visibleState) > 0 {
 			entry["state"] = visibleState
@@ -686,16 +682,84 @@ func ActorStateRuntimeContext(system StoryDirectorActorStateSystem, state map[st
 		}
 		actors[actorID] = entry
 	}
+	createTemplates := make([]map[string]any, 0, len(system.Templates))
+	for _, template := range system.Templates {
+		if len(createTemplates) >= maxTurnBriefListItems {
+			break
+		}
+		fields := make([]map[string]any, 0, len(template.Fields))
+		for _, field := range template.Fields {
+			if field.Visibility != "hidden" {
+				fields = append(fields, actorStateRuntimeFieldDescriptor(field))
+			}
+		}
+		entry := map[string]any{
+			"template_id":     template.ID,
+			"name":            template.Name,
+			"writable_fields": fields,
+		}
+		if description := strings.TrimSpace(template.Description); description != "" {
+			entry["description"] = trimBytes(description, maxTurnBriefTextBytes)
+		}
+		if len(template.TraitRules) > 0 {
+			entry["automatic_trait_rules"] = template.TraitRules
+		}
+		createTemplates = append(createTemplates, entry)
+	}
 	payload := map[string]any{
-		"source": map[string]any{"kind": "actor_state_runtime"},
-		"limits": map[string]any{"max_bytes": limitBytes, "max_actors": maxTurnBriefListItems, "max_traits_per_actor": maxActorTraitsPerActor},
-		"actors": actors,
+		"source":           map[string]any{"kind": "actor_state_runtime", "schema": "story_frozen_actor_state"},
+		"limits":           map[string]any{"max_bytes": limitBytes, "max_actors": maxTurnBriefListItems, "max_templates": maxTurnBriefListItems, "max_traits_per_actor": maxActorTraitsPerActor},
+		"actors":           actors,
+		"create_templates": createTemplates,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return ""
 	}
-	return trimBytes(string(data), limitBytes)
+	for len(data) > limitBytes {
+		payload["truncated"] = true
+		if len(createTemplates) > 0 {
+			createTemplates = createTemplates[:len(createTemplates)-1]
+			payload["create_templates"] = createTemplates
+		} else if len(actorIDs) > 0 {
+			last := actorIDs[len(actorIDs)-1]
+			actorIDs = actorIDs[:len(actorIDs)-1]
+			delete(actors, last)
+		} else {
+			return ""
+		}
+		data, err = json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			return ""
+		}
+	}
+	return string(data)
+}
+
+func actorStateRuntimeFieldDescriptor(field ActorStateField) map[string]any {
+	descriptor := map[string]any{
+		"field_id": actorStateFieldID(field),
+		"type":     field.Type,
+	}
+	if field.Default != nil {
+		descriptor["default"] = field.Default
+	}
+	if field.Min != nil {
+		descriptor["min"] = *field.Min
+	}
+	if field.Max != nil {
+		descriptor["max"] = *field.Max
+	}
+	if len(field.Options) > 0 {
+		descriptor["options"] = field.Options
+	}
+	if description := strings.TrimSpace(field.Description); description != "" {
+		descriptor["description"] = description
+	}
+	if instruction := strings.TrimSpace(field.UpdateInstruction); instruction != "" {
+		descriptor["update_instruction"] = instruction
+	}
+	return descriptor
 }
 
 func migrateLegacyOpeningTraits(system StoryDirectorActorStateSystem, legacy StoryDirectorOpeningSelector) (StoryDirectorActorStateSystem, []string) {

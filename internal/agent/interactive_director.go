@@ -96,7 +96,7 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, cfg *config.Confi
 		return "", runErr
 	}
 	output := strings.TrimSpace(conversation.output)
-	if output == "" {
+	if output == "" && !isInteractiveDirectorPlanTask(toolContext.MaintenanceTask) {
 		return "", fmt.Errorf("互动导演 Agent 返回为空")
 	}
 	return output, nil
@@ -462,6 +462,15 @@ func (s *directorToolDisplayState) progressEvent() (session.DisplayEvent, bool) 
 }
 
 func (s *directorToolDisplayState) projectDisplayArgs() (string, bool) {
+	if strings.TrimSpace(s.name) == submitDirectorPlanUpdateToolName {
+		mode, _ := partialDirectorJSONStringField(s.rawArgs, "mode")
+		mode = strings.TrimSpace(mode)
+		if mode == "" {
+			mode = "pending"
+		}
+		encoded, _ := json.Marshal(map[string]string{"mode": mode})
+		return string(encoded), true
+	}
 	preview, ok := directorToolPathArgPreviewFromArgs(s.rawArgs)
 	if !ok || !isDirectorPlanPath(preview.path) {
 		return "", false
@@ -475,6 +484,13 @@ func (s *directorToolDisplayState) syncDecodedGeneratedChars() {
 	}
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(strings.TrimSpace(s.rawArgs)), &payload); err != nil {
+		return
+	}
+	if strings.TrimSpace(s.name) == submitDirectorPlanUpdateToolName {
+		var input submitDirectorPlanUpdateInput
+		if err := json.Unmarshal([]byte(strings.TrimSpace(s.rawArgs)), &input); err == nil && input.Docs != nil {
+			s.generatedChars = utf8.RuneCountInString(input.Docs.Plan) + utf8.RuneCountInString(input.Docs.LoreContext)
+		}
 		return
 	}
 	for _, key := range directorToolGeneratedTextKeys(s.name) {
@@ -665,6 +681,8 @@ func directorToolGeneratedTextKeys(name string) []string {
 	switch strings.TrimSpace(name) {
 	case "edit_file":
 		return []string{"new_string", "content"}
+	case submitDirectorPlanUpdateToolName:
+		return []string{"plan", "lore_context"}
 	default:
 		return []string{"content", "new_string"}
 	}
@@ -698,7 +716,7 @@ func markDirectorPlanInputHidden(event *session.DisplayEvent, generatedChars int
 	if event == nil {
 		return
 	}
-	event.SSEHiddenFields = []string{"content", "new_string", "old_string"}
+	event.SSEHiddenFields = []string{"content", "new_string", "old_string", "plan", "lore_context"}
 	event.SSEHiddenReason = directorPlanHiddenReason
 	event.SSEDisplayNotice = directorPlanHiddenNotice
 	if generatedChars > 0 {
@@ -708,7 +726,7 @@ func markDirectorPlanInputHidden(event *session.DisplayEvent, generatedChars int
 
 func directorPlanWriteTool(name string) bool {
 	switch strings.TrimSpace(name) {
-	case "write_file", "edit_file":
+	case "write_file", "edit_file", submitDirectorPlanUpdateToolName:
 		return true
 	default:
 		return false

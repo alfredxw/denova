@@ -241,7 +241,7 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 	turn := *snapshot.CurrentTurn
 	conversation := newInteractiveConversation(store, runtimeCfg.NovaDir, workspace, storyID, snapshot.BranchID, turn.User, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg).bindDirectorRuntime(a.directorTasksForWorkspace(workspace), a.interactiveDirectorGenerator())
 	tasks := directorTasksForConversation(conversation)
-	key := interactiveMaintenanceKey(conversation, snapshot.BranchID)
+	key := interactiveStateSchemaMaintenanceKey(conversation, snapshot.BranchID)
 	if tasks.HasKey(key) {
 		return snapshot, nil
 	}
@@ -590,7 +590,7 @@ func (s *InteractiveAppService) runStoryMemoryGenerate(ctx context.Context, stor
 	runtimeCfg.Workspace = workspace
 	conversation := newInteractiveConversation(store, runtimeCfg.NovaDir, workspace, storyID, snapshot.BranchID, snapshot.CurrentTurn.User, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg).bindDirectorRuntime(s.app.directorTasksForWorkspace(workspace), s.app.interactiveDirectorGenerator()).withDirectorTask(interactiveDirectorTaskMemoryUpdate)
 	if tasks := directorTasksForConversation(conversation); tasks != nil {
-		if err := tasks.WaitKey(ctx, interactiveMaintenanceKey(conversation, snapshot.BranchID)); err != nil {
+		if err := tasks.WaitKey(ctx, interactiveDerivedMaintenanceKey(conversation, snapshot.BranchID)); err != nil {
 			return interactive.StoryMemoryState{}, 0, fmt.Errorf("等待当前分支后台维护失败: %w", err)
 		}
 	}
@@ -980,6 +980,12 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	}
 	applyRequestLocaleToConfig(&runtimeCfg, locale)
 
+	if migrated, migrateErr := store.EnsureStoryContextFoundation(storyID, branchID); migrateErr != nil {
+		log.Printf("[interactive-agent-task] 补齐 story_context 基础状态失败 story_id=%s branch_id=%s err=%v", storyID, branchID, migrateErr)
+		return nil
+	} else if migrated {
+		log.Printf("[interactive-agent-task] 已确定性补齐 story_context 基础状态 story_id=%s branch_id=%s", storyID, branchID)
+	}
 	storyCtx, err := store.StoryContext(storyID, branchID)
 	if err != nil {
 		log.Printf("[interactive-agent-task] 读取互动故事上下文失败 story_id=%s branch_id=%s err=%v", storyID, branchID, err)
@@ -993,6 +999,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	}
 	log.Printf("[interactive-agent-task] use story settings story_id=%s teller_id=%s target_chars=%d style_rules=%d", storyID, teller.ID, runtimeCfg.InteractiveReplyTargetChars, len(styleRules))
 	tellerSystemInput := interactiveStoryTellerSystemInput(teller, styleRules)
+	tellerSystemInput.ChoiceCount = storyCtx.Meta.ChoiceCount
 	baseParentID := storyCtx.Meta.Branches[storyCtx.Snapshot.BranchID].Head
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg).bindDirectorRuntime(a.directorTasksForWorkspace(workspace), a.interactiveDirectorGenerator()).withBaseParentID(baseParentID)
 	runner, err := buildInteractiveStoryRunner(context.Background(), &runtimeCfg, state, tellerSystemInput, agent.InteractiveStoryToolContext{
@@ -1021,7 +1028,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	}
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_scenes=%d", task.ID(), storyID, branchID, rewindTurnID, len(message), len(styleScenes))
-		maintenanceKey := interactiveMaintenanceKey(conversation, storyCtx.Snapshot.BranchID)
+		maintenanceKey := interactiveStateSchemaMaintenanceKey(conversation, storyCtx.Snapshot.BranchID)
 		if tasks := directorTasksForConversation(conversation); tasks != nil {
 			if err := tasks.WaitKey(ctx, maintenanceKey); err != nil {
 				log.Printf("[interactive-agent-task] wait previous branch maintenance failed story_id=%s branch_id=%s err=%v", storyID, storyCtx.Snapshot.BranchID, err)

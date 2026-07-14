@@ -129,6 +129,9 @@ func validateStoryMeta(meta StoryMeta) error {
 	if meta.ReplyTargetChars <= 0 {
 		return fmt.Errorf("故事单轮目标字数无效: %d", meta.ReplyTargetChars)
 	}
+	if err := validateStoryChoiceCount(meta.ChoiceCount); err != nil {
+		return err
+	}
 	switch meta.ImageSettings.Mode {
 	case StoryImageModeManual, StoryImageModeInterval:
 	default:

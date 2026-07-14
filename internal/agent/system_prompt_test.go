@@ -106,3 +106,12 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 		})
 	}
 }
+
+func TestInteractiveDirectorStateSchemaContractAllowsOnlyStagedActorInitialization(t *testing.T) {
+	instruction := protectedSystemInstruction(&config.Config{}, config.AgentKindInteractiveDirector, "BUILT IN PROMPT")
+	for _, required := range []string{"state_schema_initialization", "Batch actor_ops", "finalize 前不生效", "后端原子应用"} {
+		if !strings.Contains(instruction, required) {
+			t.Fatalf("interactive Director state-schema contract missing %q:\n%s", required, instruction)
+		}
+	}
+}

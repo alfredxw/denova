@@ -278,7 +278,7 @@ func TestInteractiveConversationRejectsAssistantWithoutTurnResult(t *testing.T) 
 		t.Fatal(err)
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", story.ReplyTargetChars, nil)
-	if err := conversation.AppendAssistant("主角向前走去。"); err == nil || !strings.Contains(err.Error(), "submit_interactive_turn_result") {
+	if err := conversation.AppendAssistant("主角向前走去。"); err == nil || !strings.Contains(err.Error(), "actor_state_patches") || !strings.Contains(err.Error(), "choices") {
 		t.Fatalf("assistant without TurnResult should be rejected, got %v", err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -950,12 +950,7 @@ func TestParseInteractiveAssistantOutput(t *testing.T) {
 
 func submitTestTurnResult(t *testing.T, conversation *interactiveConversation, intent, goal string) {
 	t.Helper()
-	result := interactive.TurnResult{
-		Contract:    interactive.TurnContract{PlayerIntent: intent, SceneGoal: goal},
-		SceneResult: interactive.TurnSceneResult{Status: "continued", SceneID: "测试场景", Summary: goal},
-		PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"},
-		Choices:     []string{"继续当前行动", "观察周围变化"},
-	}
+	updates := []interactive.StateUpdate{}
 	storyContext, err := conversation.store.StoryContext(conversation.storyID, conversation.branchID)
 	if err != nil {
 		t.Fatal(err)
@@ -975,17 +970,18 @@ func submitTestTurnResult(t *testing.T, conversation *interactiveConversation, i
 		}
 	}
 	if hasStoryContext {
-		result.ActorStatePatches = []interactive.ActorStatePatch{{
-			ActorID:    interactive.DefaultStoryContextActorID,
-			ActorName:  "故事上下文",
-			TemplateID: interactive.ActorStateStoryContextTemplateID,
-			Role:       "story_context",
-			State:      map[string]any{"当前详细地点": "测试场景", "当前事件": goal},
-			Reason:     "测试夹具维护本回合 story_context。",
-		}}
+		event := strings.TrimSpace(goal)
+		if event == "" {
+			event = strings.TrimSpace(intent)
+		}
+		updates = append(updates,
+			interactive.StateUpdate{Op: "replace", Path: "/story/当前详细地点", Value: "测试场景"},
+			interactive.StateUpdate{Op: "replace", Path: "/story/当前事件", Value: event},
+		)
 	}
-	receipt, err := conversation.SubmitTurnResult(context.Background(), result)
-	if err != nil || !receipt.Accepted {
+	input := testTurnSubmissionInput(updates, true)
+	receipt, err := conversation.SubmitTurnResult(context.Background(), input)
+	if err != nil || !receipt.Ready {
 		t.Fatalf("SubmitTurnResult failed: receipt=%#v err=%v", receipt, err)
 	}
 }

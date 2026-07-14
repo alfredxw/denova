@@ -53,6 +53,11 @@ func TestInteractiveStateSchemaAdapterSystemInstructionCoversSemanticAdaptation(
 		"list_lore_items",
 		"read_lore_items",
 		"submit_state_schema_adaptation",
+		"value_policy",
+		"actor_ops",
+		"语义重复",
+		"字段级 set",
+		"finalize 前不生效",
 	} {
 		if !strings.Contains(system, want) {
 			t.Fatalf("state schema adapter prompt missing %q:\n%s", want, system)
@@ -108,15 +113,36 @@ func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
 	}
 }
 
-func TestInteractiveStoryPromptRequiresStoryContextPatchEveryTurn(t *testing.T) {
+func TestInteractiveStoryPromptRequiresStoryContextUpdateEveryTurn(t *testing.T) {
 	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{})
 	turn := InteractiveStoryTurnInstruction("我推开门", "", "")
 	for name, output := range map[string]string{"system": system, "turn": turn} {
-		for _, want := range []string{`actor_id="story"`, "story_context", "每回合", "当前事件", "当前详细地点", "scene_result"} {
+		for _, want := range []string{"每回合", "patches", "replace /story/当前事件", "/story/当前详细地点"} {
 			if !strings.Contains(output, want) {
 				t.Fatalf("%s prompt should require story context field %q:\n%s", name, want, output)
 			}
 		}
+	}
+	if !strings.Contains(system, "story_context") {
+		t.Fatalf("system prompt should name the story_context template:\n%s", system)
+	}
+}
+
+func TestInteractiveStoryPromptUsesConfiguredChoiceCountAndSimplifiedResult(t *testing.T) {
+	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{ChoiceCount: 7})
+	runtime := InteractiveStoryRuntimeContext(InteractiveStoryPromptInput{ChoiceCount: 7})
+	for name, output := range map[string]string{"system": system, "runtime": runtime} {
+		if !strings.Contains(output, "恰好 7 个") {
+			t.Fatalf("%s prompt should use the story choice count:\n%s", name, output)
+		}
+		for _, forbidden := range []string{"scene_result", "fact_candidates", "plan_signals", "expected_state_changes"} {
+			if strings.Contains(output, forbidden) {
+				t.Fatalf("%s prompt still exposes removed TurnResult field %q:\n%s", name, forbidden, output)
+			}
+		}
+	}
+	if !strings.Contains(system, "submit_actor_state_patches") || !strings.Contains(system, "submit_choices") {
+		t.Fatalf("system prompt should expose the two independent submission tools:\n%s", system)
 	}
 }
 
@@ -196,7 +222,7 @@ func TestInteractiveStoryRuntimeContextIncludesBoundedDirectorPlanVisibleSection
 			t.Fatalf("runtime context should include strategy prompt %q:\n%s", want, output)
 		}
 	}
-	for _, want := range []string{"当前 Actor 状态与词条", "source: Snapshot.State.actors", "bounded", "隐脉"} {
+	for _, want := range []string{"当前 Actor 状态、词条与可创建模板", "source: Snapshot.State.actors + frozen Actor schema", "bounded", "隐脉"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("runtime context should include Actor state %q:\n%s", want, output)
 		}
@@ -210,7 +236,6 @@ func TestInteractiveDirectorPromptEditsDirectorPlanFiles(t *testing.T) {
 		Origin:                      "主角被同门轻视",
 		StoryTellerID:               "classic",
 		BranchID:                    "main",
-		DirectorPlanPaths:           "/tmp/director.md",
 		DirectorPlanDocs:            `{"plan":"## 正文Agent可读"}`,
 		PlanningTemplates:           `{"plan":"# 导演规划"}`,
 		LoreContext:                 "## 资料库索引（source: lore index, bounded）\n- 沈凝 / 重要角色\n- 青岚盟 / 重要势力",
@@ -222,9 +247,14 @@ func TestInteractiveDirectorPromptEditsDirectorPlanFiles(t *testing.T) {
 		DirectorEventCatalog:        `[{"id":"face_slap","category":"打脸"}]`,
 	})
 	for name, output := range map[string]string{"system": system, "instruction": instruction} {
-		for _, want := range []string{"read_file", "write_file", "edit_file", "不负责续写", "RuleResolution", "后台导演私密"} {
+		for _, want := range []string{"submit_director_plan_update", "不负责续写", "RuleResolution", "后台导演私密", "keep", "patch", "replan"} {
 			if !strings.Contains(output, want) {
 				t.Fatalf("%s director prompt should include %q:\n%s", name, want, output)
+			}
+		}
+		for _, forbidden := range []string{"read_file", "write_file", "edit_file"} {
+			if strings.Contains(output, forbidden) {
+				t.Fatalf("%s director prompt should not expose obsolete file tool %q:\n%s", name, forbidden, output)
 			}
 		}
 		if strings.Contains(output, "故事正文\n") {

@@ -56,6 +56,7 @@ func TestOpeningTurnStaysVisibleWhileStateSchemaInitializesBeforeMaintenance(t *
 					Decision:     "add",
 					TemplateID:   "protagonist",
 					FieldID:      "危机压力",
+					ValuePolicy:  interactive.ActorStateSchemaValuePolicySchemaOnly,
 					Reason:       "首轮明确建立持续危机",
 				}},
 				Adaptation: interactive.ActorStateSchemaAdaptation{TemplateOps: []interactive.ActorStateTemplateSchemaOp{{
@@ -146,6 +147,7 @@ func TestStateSchemaInitializationRejectsLoreRevisionChangedDuringDirectorReview
 				Decision:     "covered",
 				TemplateID:   "protagonist",
 				FieldID:      "状态",
+				ValuePolicy:  interactive.ActorStateSchemaValuePolicySchemaOnly,
 			}},
 			Adaptation: interactive.ActorStateSchemaAdaptation{},
 		})
@@ -206,7 +208,7 @@ func TestStateSchemaInitializationRejectsLoreRequirementThatWasNotRead(t *testin
 		_, err := toolContext.SubmitStateSchemaProposal(callCtx, interactive.ActorStateSchemaProposal{
 			Summary: "声称资料已覆盖",
 			Requirements: []interactive.ActorStateSchemaRequirementReview{{
-				Source: interactive.ActorStateSchemaRequirementSource{Kind: "lore", ID: "numeric-rule"}, Requirement: "长期状态规则", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态",
+				Source: interactive.ActorStateSchemaRequirementSource{Kind: "lore", ID: "numeric-rule"}, Requirement: "长期状态规则", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly,
 			}},
 			Adaptation: interactive.ActorStateSchemaAdaptation{},
 		})
@@ -253,7 +255,7 @@ func TestStateSchemaInitializationKeepsFinalizedProposalAfterLaterSubmitFails(t 
 		if _, err := toolContext.SubmitStateSchemaProposal(callCtx, interactive.ActorStateSchemaProposal{
 			Summary: "现有字段已覆盖",
 			Requirements: []interactive.ActorStateSchemaRequirementReview{{
-				Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: turn.ID}, Requirement: "长期追踪主角状态", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态",
+				Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: turn.ID}, Requirement: "长期追踪主角状态", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly,
 			}},
 			Adaptation: interactive.ActorStateSchemaAdaptation{},
 		}); err != nil {

@@ -201,6 +201,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
       story_director_id: input.story_director_id,
       module_refs: input.module_refs,
       reply_target_chars: input.reply_target_chars,
+      choice_count: input.choice_count,
       image_settings: input.image_settings,
     })
     await reloadStories()

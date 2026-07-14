@@ -23,14 +23,22 @@ type retainedToolReceipt struct {
 }
 
 func retainToolContextAcrossTurns(toolName string, policy ToolResultContextPolicy) bool {
-	switch normalizeToolName(toolName) {
+	name := normalizeToolName(toolName)
+	if strings.TrimSpace(policy.AgentKind) == config.AgentKindInteractiveStory {
+		// The next game turn already receives committed TurnResult, StateDelta,
+		// RuleResolution and Actor State. Keep only semantic source receipts that
+		// tell it what can be re-read; all protocol, filesystem and index tools are
+		// transient implementation detail.
+		switch name {
+		case "read_lore_items", "read_interactive_memories":
+			return true
+		default:
+			return false
+		}
+	}
+	switch name {
 	case "list_lore_items", "list_interactive_memories":
 		return false
-	case "read_file":
-		// Game mode only uses read_file for transient style references. General
-		// writing sessions still retain file reads because they may be the sole
-		// source for a later edit.
-		return strings.TrimSpace(policy.AgentKind) != config.AgentKindInteractiveStory
 	default:
 		return true
 	}
