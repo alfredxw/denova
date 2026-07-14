@@ -7,6 +7,35 @@ import (
 	"testing"
 )
 
+func TestBuildNewActorStateOpsEmitsOneSetPerResolvedField(t *testing.T) {
+	template := ActorStateTemplate{
+		ID: "protagonist",
+		Fields: []ActorStateField{
+			{Name: "生命", Type: "number", Default: 100},
+			{Name: "备注", Type: "string"},
+		},
+	}
+	_, actorOps, normalized, err := buildNewActorStateOps(template, "protagonist", "主角", "protagonist", "", map[string]any{
+		"生命": 80,
+		"备注": nil,
+	}, "初始化", "turn-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(actorOps) != 1 {
+		t.Fatalf("defaults and explicit values must resolve before emitting one op per field: %#v", actorOps)
+	}
+	if op := actorOps[0]; op.FieldID != "生命" || op.Value != float64(80) {
+		t.Fatalf("explicit value must replace the default in the single emitted op: %#v", op)
+	}
+	if normalized["生命"] != float64(80) {
+		t.Fatalf("normalized state must keep the explicit override: %#v", normalized)
+	}
+	if _, exists := normalized["备注"]; exists {
+		t.Fatalf("null input must remain omitted instead of becoming a set(null): %#v", normalized)
+	}
+}
+
 func TestRollActorTraitsUsesFixedSelectionsWithoutDuplicates(t *testing.T) {
 	system := actorTraitTestSystem()
 	result, err := RollActorTraits(system, ActorTraitRollRequest{

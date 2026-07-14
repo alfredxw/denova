@@ -22,12 +22,12 @@ export function buildStoryStateModel(snapshot: Snapshot | null): StoryStateModel
   const stateFacts = snapshot
     ? Object.entries(snapshot.state).filter(([, value]) => value !== undefined && value !== null)
     : []
-  const { actors, worldFacts, stateObjects, otherFacts } = splitStoryStateFacts(stateFacts)
+  const { actors, worldFacts } = splitStoryStateFacts(stateFacts)
   return {
     actors,
     worldFacts,
     changes: stateChanges(snapshot?.current_turn?.state_delta),
-    hasState: stateObjects.length > 0 || otherFacts.length > 0,
+    hasState: actors.length > 0 || worldFacts.length > 0,
   }
 }
 
@@ -35,12 +35,14 @@ export function splitStoryStateFacts(stateFacts: Array<[string, unknown]>) {
   const stateObjects = actorEntries(stateFacts)
   const actors = stateObjects.filter(([actorId, actor]) => isActorLike(actorId, actor))
   const otherFacts = stateFacts.filter(([key]) => key !== 'actors')
-  const worldFacts: Array<[string, unknown]> = [
+  const worldFacts = ([
     ...otherFacts,
     ...stateObjects
       .filter(([actorId, actor]) => !isActorLike(actorId, actor))
       .map(([actorId, actor]): [string, unknown] => [actorName(actorId, actor), stateObjectValue(actor)]),
-  ]
+  ] satisfies Array<[string, unknown]>)
+    .map(([key, value]): [string, unknown] => [key, compactStateValue(value)])
+    .filter(([, value]) => value !== undefined)
   return { actors, worldFacts, stateObjects, otherFacts }
 }
 
@@ -144,6 +146,22 @@ function isActorLike(actorId: string, actor: Record<string, unknown>) {
 function stateObjectValue(actor: Record<string, unknown>) {
   if (isRecord(actor.state)) return actor.state
   return Object.fromEntries(Object.entries(actor).filter(([key]) => !['name', 'role', 'template_id', 'traits'].includes(key)))
+}
+
+function compactStateValue(value: unknown): unknown {
+  if (value === undefined || value === null) return undefined
+  if (typeof value === 'string') return value.trim() ? value : undefined
+  if (Array.isArray(value)) {
+    const items = value.map(compactStateValue).filter((item) => item !== undefined)
+    return items.length > 0 ? items : undefined
+  }
+  if (isRecord(value)) {
+    const entries = Object.entries(value)
+      .map(([key, item]): [string, unknown] => [key, compactStateValue(item)])
+      .filter(([, item]) => item !== undefined)
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined
+  }
+  return value
 }
 
 function inferredFieldType(value: unknown) {

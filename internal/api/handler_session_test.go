@@ -328,7 +328,7 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 			_, err := toolContext.SubmitStateSchemaProposal(callCtx, interactive.ActorStateSchemaProposal{
 				Summary: "测试保持预设状态结构",
 				Requirements: []interactive.ActorStateSchemaRequirementReview{{
-					Source:      interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "test-opening"},
+					Source:      interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: toolContext.TurnID},
 					Requirement: "测试已审阅开局且不需要新增结构化状态",
 					Decision:    "ignored",
 					Reason:      "测试开局没有建立长期状态规则",
@@ -337,7 +337,7 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 			})
 			return "测试状态结构审查完成。", err
 		}
-		return "测试初始化导演规划完成。", nil
+		return `{"mode":"keep","reason":"测试初始化导演规划完成。"}`, nil
 	})
 	t.Cleanup(restoreDirector)
 	return application

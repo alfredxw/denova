@@ -63,20 +63,28 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, cfg *config.Confi
 	if err != nil {
 		return "", fmt.Errorf("构建互动导演 Agent 失败: %w", err)
 	}
-	runner := NewRunnerWithOptions(ctx, builtAgent, RunOptions{AgentKind: config.AgentKindInteractiveDirector, Workspace: cfg.Workspace})
+	runOptions := RunOptions{
+		AgentKind:       config.AgentKindInteractiveDirector,
+		StoryID:         toolContext.StoryID,
+		BranchID:        toolContext.BranchID,
+		TurnID:          toolContext.TurnID,
+		MaintenanceTask: toolContext.MaintenanceTask,
+		Workspace:       cfg.Workspace,
+	}
+	runner := NewRunnerWithOptions(ctx, builtAgent, runOptions)
 	conversation := &singleInstructionConversation{
 		instruction:           instruction,
+		stableContextTitle:    toolContext.StableContextTitle,
+		stableContext:         toolContext.StableContext,
+		stableContextMaxBytes: toolContext.StableContextMaxBytes,
 		display:               toolContext.DisplayConversation,
 		hideDirectorToolInput: cfg.HideChapterBodyLiveOutput,
 		directorTools:         map[string]*directorToolDisplayState{},
 	}
 	bookService := book.NewService(state.Workspace())
 	var runErr error
-	NewChatService().RunWithOptions(ctx, runner, conversation, bookService, ChatRequest{Message: instruction}, RunOptions{
-		AgentKind:          config.AgentKindInteractiveDirector,
-		Workspace:          cfg.Workspace,
-		ToolResultMaxBytes: interactiveDirectorToolResultMaxBytes,
-	}, func(event Event) {
+	runOptions.ToolResultMaxBytes = interactiveDirectorToolResultMaxBytes
+	NewChatService().RunWithOptions(ctx, runner, conversation, bookService, ChatRequest{Message: instruction}, runOptions, func(event Event) {
 		if event.Type != "error" {
 			return
 		}
@@ -96,6 +104,9 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, cfg *config.Confi
 
 type singleInstructionConversation struct {
 	instruction           string
+	stableContextTitle    string
+	stableContext         string
+	stableContextMaxBytes int
 	output                string
 	display               Conversation
 	hideDirectorToolInput bool
@@ -103,12 +114,93 @@ type singleInstructionConversation struct {
 	directorTools         map[string]*directorToolDisplayState
 }
 
+const maxSingleInstructionStableContextTitleBytes = 512
+
 func (c *singleInstructionConversation) PrepareMessages(_, agentMessage string) ([]*schema.Message, error) {
 	message := strings.TrimSpace(agentMessage)
 	if message == "" {
 		message = c.instruction
 	}
-	return []*schema.Message{schema.UserMessage(message)}, nil
+	stable := strings.TrimSpace(c.stableContext)
+	if stable == "" {
+		return []*schema.Message{schema.UserMessage(message)}, nil
+	}
+	if c.stableContextMaxBytes <= 0 {
+		return nil, fmt.Errorf("稳定模型上下文缺少大小上限")
+	}
+	if len([]byte(stable)) > c.stableContextMaxBytes {
+		return nil, fmt.Errorf("稳定模型上下文超过上限: %d > %d bytes", len([]byte(stable)), c.stableContextMaxBytes)
+	}
+	title := strings.TrimSpace(c.stableContextTitle)
+	if title == "" {
+		title = "稳定模型上下文"
+	}
+	if len([]byte(title)) > maxSingleInstructionStableContextTitleBytes {
+		return nil, fmt.Errorf("稳定模型上下文标题超过上限: %d > %d bytes", len([]byte(title)), maxSingleInstructionStableContextTitleBytes)
+	}
+	stableMessage := fmt.Sprintf("# %s\n\n%s", title, stable)
+	if len([]byte(stableMessage)) > c.stableContextMaxBytes {
+		return nil, fmt.Errorf("稳定模型上下文最终消息超过上限: %d > %d bytes", len([]byte(stableMessage)), c.stableContextMaxBytes)
+	}
+	return []*schema.Message{
+		schema.UserMessage(stableMessage),
+		schema.UserMessage(message),
+	}, nil
+}
+
+func (c *singleInstructionConversation) ContextSourceSummary() string {
+	if c == nil || strings.TrimSpace(c.stableContext) == "" {
+		return ""
+	}
+	return fmt.Sprintf("stable_context title=%q max_bytes=%d content=%s", strings.TrimSpace(c.stableContextTitle), c.stableContextMaxBytes, promptPartSummary(c.stableContext))
+}
+
+func (c *singleInstructionConversation) ContextLedgerParts() []ContextLedgerPart {
+	if c == nil || strings.TrimSpace(c.stableContext) == "" {
+		return nil
+	}
+	stableMessage := c.stableContextModelMessage()
+	return c.ContextLedgerPartsForMessages([]*schema.Message{schema.UserMessage(stableMessage)})
+}
+
+func (c *singleInstructionConversation) ContextLedgerPartsForMessages(messages []*schema.Message) []ContextLedgerPart {
+	if c == nil || strings.TrimSpace(c.stableContext) == "" {
+		return nil
+	}
+	stableMessage := c.stableContextModelMessage()
+	included := false
+	for _, message := range messages {
+		if message != nil && message.Role == schema.User && strings.TrimSpace(message.Content) == stableMessage {
+			included = true
+			break
+		}
+	}
+	ledger := NewContextLedger(DefaultLoopPolicy().ContextLedger)
+	title := strings.TrimSpace(c.stableContextTitle)
+	if title == "" {
+		title = "稳定模型上下文"
+	}
+	bodyBytes := len([]byte(strings.TrimSpace(c.stableContext)))
+	messageBytes := len([]byte(stableMessage))
+	messageLimit := c.stableContextMaxBytes
+	note := fmt.Sprintf("complete=true; source=enabled resident lore; body_bytes=%d; message_bytes=%d; message_max_bytes=%d; final_message=true", bodyBytes, messageBytes, messageLimit)
+	if !included {
+		note += "; not_present_after_final_compaction"
+	}
+	ledger.AddPart("ResidentLore", title, "stable model prefix", stableMessage, note, included, !included, messageLimit)
+	return ledger.Parts()
+}
+
+func (c *singleInstructionConversation) stableContextModelMessage() string {
+	stable := strings.TrimSpace(c.stableContext)
+	if stable == "" {
+		return ""
+	}
+	title := strings.TrimSpace(c.stableContextTitle)
+	if title == "" {
+		title = "稳定模型上下文"
+	}
+	return fmt.Sprintf("# %s\n\n%s", title, stable)
 }
 
 func (c *singleInstructionConversation) AppendAssistant(content string) error {

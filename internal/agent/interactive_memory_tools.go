@@ -21,15 +21,23 @@ const (
 // interactive story run. The story and branch are fixed by the backend; the
 // model never supplies them.
 type InteractiveStoryToolContext struct {
-	Store                     *interactive.Store
-	StoryID                   string
-	BranchID                  string
-	TurnID                    string
-	MaintenanceTask           string
-	DirectorPlanAllowedPaths  []string
-	OnStoryMemoryApplied      func(applied int)
-	OnStateMaintenanceFailed  func(error)
-	OnLoreItemsRead           func([]string)
+	Store           *interactive.Store
+	StoryID         string
+	BranchID        string
+	TurnID          string
+	MaintenanceTask string
+	// StableContext is a bounded, source-labelled model prefix kept separate
+	// from the changing task instruction so providers can reuse prompt caches.
+	StableContextTitle       string
+	StableContext            string
+	StableContextMaxBytes    int
+	DirectorPlanAllowedPaths []string
+	OnStoryMemoryApplied     func(applied int)
+	OnStateMaintenanceFailed func(error)
+	OnLoreItemsRead          func([]string)
+	SubmitStateSchemaBatch   func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
+	// SubmitStateSchemaProposal remains available to in-process integrations
+	// during the Batch transition. The model-facing tool uses Batch only.
 	SubmitStateSchemaProposal func(context.Context, interactive.ActorStateSchemaProposal) (interactive.ActorStateSchemaProposalPreview, error)
 	// DisplayConversation receives display-only progress for background helper
 	// agents. It must not receive final assistant text as model-visible context.
@@ -239,6 +247,7 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 		desc := strings.Join([]string{
 			"在输出故事正文前提交本回合的隐藏 TurnResult。每一回合都必须调用一次，无论是否执行了固定检定；本工具只暂存结构化结果，正文成功完成后才由后端与 Turn、RuleResolution 和 StateDelta 原子提交。",
 			"contract 记录玩家意图、场景目标、1-3 个节拍、NPC 主动意图、揭示、代价、连续性约束和选择维度。actor_state_patches 只声明正文已经确定的非规则状态变化；RuleResolution 已产生的数值变化不得重复。fact_candidates 只记录已经发生的事实，禁止写未来计划。scene_result 和 plan_signals 用于后台 Memory Recorder 与 Director。choices 提供 2-4 个与正文结尾一致的下一步行动建议。",
+			"story_context 是每回合必须维护的基础状态对象：actor_state_patches 必须包含 actor_id=\"story\" 的补丁，并至少写入本轮结束后的“当前事件”。“当前详细地点”尚未初始化，或 scene_result 表示场景切换时，还必须将它同步为 scene_result 的当前场景或下一场景。其余 story_context 字段只按正文已经确定的事实更新；没有依据时保留已有值，禁止用空值覆盖，也不要只把世界状态写进 fact_candidates 或 scene_result。",
 			"actor_state_patches.state 的键应直接使用本故事冻结状态 schema 提供的 field_id（通常是中文名称），不要构造路径、拼音或英文别名。工具会返回结构化回执：accepted=false 时按 diagnostics 修正后重试；accepted=true 时立即继续正文，即使 diagnostics 含 warning 也不要重试。明确不属于模板的额外字段会被安全忽略，已知字段的类型、枚举、Actor 和模板约束仍严格校验。",
 			"调用完成后，最终回复仍然只能输出玩家可见的故事正文，不得泄露 TurnResult、JSON、工具结果或状态补丁。",
 		}, "\n")

@@ -82,7 +82,31 @@ func storyEventRecordForWrite(event any) (StoryEventRecord, error) {
 	if err != nil {
 		return StoryEventRecord{}, err
 	}
-	return decodeStoryEventRecord(data)
+	record, err := decodeStoryEventRecord(data)
+	if err != nil {
+		return StoryEventRecord{}, err
+	}
+	switch record.Envelope.Type {
+	case StoryEventTypeTurn:
+		var turn TurnEvent
+		if err := mapToStruct(record.Raw, &turn); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if turn.StateDelta != nil {
+			if err := validateStateDeltaForWrite(*turn.StateDelta); err != nil {
+				return StoryEventRecord{}, fmt.Errorf("校验待写入回合状态变化失败: %w", err)
+			}
+		}
+	case StoryEventTypeStateDelta:
+		var delta StateDeltaEvent
+		if err := mapToStruct(record.Raw, &delta); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if err := validateStateDeltaForWrite(StateDelta{SchemaVersion: delta.SchemaVersion, Ops: delta.Ops, ActorOps: delta.ActorOps}); err != nil {
+			return StoryEventRecord{}, fmt.Errorf("校验待写入状态变化事件失败: %w", err)
+		}
+	}
+	return record, nil
 }
 
 func validateStoryMeta(meta StoryMeta) error {
@@ -184,9 +208,6 @@ func validateStateDelta(delta StateDelta) error {
 	if delta.SchemaVersion < 0 || delta.SchemaVersion > stateOpSchemaVersion {
 		return fmt.Errorf("状态变化 schema 版本不支持: %d", delta.SchemaVersion)
 	}
-	if len(delta.Ops) == 0 {
-		return nil
-	}
 	for _, op := range delta.Ops {
 		if err := validateStateOp(op); err != nil {
 			return err
@@ -195,6 +216,23 @@ func validateStateDelta(delta StateDelta) error {
 	for _, op := range delta.ActorOps {
 		if err := validateActorStateOp(op); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func validateStateDeltaForWrite(delta StateDelta) error {
+	if err := validateStateDelta(delta); err != nil {
+		return err
+	}
+	for _, op := range delta.Ops {
+		if strings.TrimSpace(op.Op) == "set" && op.Value == nil {
+			return fmt.Errorf("set 状态操作缺少 value: path=%s", op.Path)
+		}
+	}
+	for _, op := range delta.ActorOps {
+		if strings.TrimSpace(op.Op) == "set" && op.Value == nil {
+			return fmt.Errorf("set Actor 状态操作缺少 value: actor_id=%s field_id=%s", op.ActorID, op.FieldID)
 		}
 	}
 	return nil

@@ -1064,6 +1064,7 @@ export interface ActorStateSchemaRequirementSource {
 export interface ActorStateSchemaRequirementReview {
 	source: ActorStateSchemaRequirementSource
 	requirement: string
+	evidence_kind?: 'confirmed' | 'inferred' | 'default' | string
 	expected_type?: string
 	min?: number
 	max?: number

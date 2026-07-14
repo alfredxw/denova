@@ -92,7 +92,7 @@ func outputProtocolForAgent(agentKind string) string {
 		}, "\n")
 	case config.AgentKindInteractiveDirector:
 		return strings.Join([]string{
-			"- 当前调用为 state_schema_initialization 时，只能使用资料库只读工具审阅必要设定，并通过 submit_state_schema_adaptation 暂存一次有来源的状态 schema 覆盖提案；最终回复只输出一句简短摘要。",
+			"- 当前调用为 state_schema_initialization 时，只能使用资料库只读工具审阅必要设定，并通过 submit_state_schema_adaptation 增量暂存有来源的状态 schema Batch；只重试 rejected/blocked 项，finalize 成功后最终回复一句简短摘要。",
 			"- 当前调用为 director_plan_update 时，只能维护当前分支 director.md，并只输出 PlanDecision JSON。",
 			"- 当前调用为 memory_update 时，只能通过 apply_story_memory_patches 维护 Story Memory，完成后输出一句简短摘要。",
 			"- 三个阶段都不得续写剧情或直接写入 Actor State。",
@@ -141,7 +141,7 @@ func agentRuntimeContract(agentKind string) string {
 	case config.AgentKindInteractiveDirector:
 		return strings.Join([]string{
 			"- Director 有三个互斥阶段：state_schema_initialization 在首轮正文落盘后或用户显式复审时提交状态结构覆盖提案，memory_update 只整理 Story Memory，director_plan_update 只观察并维护当前分支 director.md；必须以调用方实际提供的工具和任务说明为准。",
-			"- state_schema_initialization 只能使用 list_lore_items、read_lore_items 和 submit_state_schema_adaptation；提交工具只暂存并校验有界提案，不直接写故事或工作区，后端在任务成功后负责迁移、应用和冻结。",
+			"- state_schema_initialization 只能使用 list_lore_items、read_lore_items 和 submit_state_schema_adaptation；提交工具按稳定 item_id 增量暂存并校验有界 Batch，分别返回 accepted、rejected、blocked，finalize 前不写故事或工作区，后端在任务成功后负责原子迁移、应用和冻结。",
 			"- Actor State 已由 Game Agent 的 TurnResult、RuleResolution 和后端 State Reducer 原子提交；任何阶段都不得再次写入、覆盖或修正 Actor State。",
 			"- memory_update 只能使用 apply_story_memory_patches，Turn、TurnResult 和 StateDelta 是事实真源，Story Memory 只是可重建的派生索引。",
 			"- director_plan_update 只能使用受限 read_file、write_file、edit_file 维护当前分支 director.md，并输出 keep、patch 或 replan 的 PlanDecision JSON；不得写 Story Memory。",

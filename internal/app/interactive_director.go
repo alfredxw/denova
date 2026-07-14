@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -306,10 +307,28 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 		}
 		return result, fmt.Errorf("生成后台导演维护失败: %w", err)
 	}
-	persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, output)
+	persistedOutput := output
+	if runPlan {
+		decision, parseErr := interactive.ParsePlanDecisionJSON(output)
+		if parseErr != nil {
+			err = fmt.Errorf("导演规划结果不是有效的 PlanDecision JSON: %w", parseErr)
+			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
+			markInteractiveDirectorFailed(conversation, turn, err)
+			return result, err
+		}
+		normalizedOutput, marshalErr := json.Marshal(decision)
+		if marshalErr != nil {
+			err = fmt.Errorf("序列化导演规划决策失败: %w", marshalErr)
+			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
+			markInteractiveDirectorFailed(conversation, turn, err)
+			return result, err
+		}
+		persistedOutput = string(normalizedOutput)
+	}
+	persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, persistedOutput)
 	var errs []error
 	if runPlan {
-		plan, err := conversation.store.CompleteDirectorPlanRun(conversation.storyID, turn.BranchID, token, turn.ID, strings.TrimSpace(output))
+		plan, err := conversation.store.CompleteDirectorPlanRun(conversation.storyID, turn.BranchID, token, turn.ID, persistedOutput)
 		if err != nil {
 			markInteractiveDirectorFailed(conversation, turn, err)
 			errs = append(errs, fmt.Errorf("完成导演规划运行失败: %w", err))
@@ -333,7 +352,7 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	if result.Plan.Metadata.LastRun != nil {
 		status = result.Plan.Metadata.LastRun.Status
 	}
-	log.Printf("[interactive-director-agent] maintenance done story_id=%s branch_id=%s turn_id=%s task=%s effective_task=%s memory_patches=%d director_status=%s summary=%q", conversation.storyID, turn.BranchID, turn.ID, task, effectiveTask, result.AppliedStoryMemoryPatches, status, strings.TrimSpace(output))
+	log.Printf("[interactive-director-agent] maintenance done story_id=%s branch_id=%s turn_id=%s task=%s effective_task=%s memory_patches=%d director_status=%s summary=%q", conversation.storyID, turn.BranchID, turn.ID, task, effectiveTask, result.AppliedStoryMemoryPatches, status, strings.TrimSpace(persistedOutput))
 	return result, nil
 }
 

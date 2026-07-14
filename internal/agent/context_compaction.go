@@ -353,6 +353,12 @@ func isContextCompactionMessage(msg *schema.Message) bool {
 	return msg != nil && strings.HasPrefix(strings.TrimSpace(msg.Content), contextCompactionSummaryPrefix)
 }
 
+// IsContextCompactionSummaryMessage reports whether msg is a model-visible
+// context-memory record produced by Denova's compaction pipeline.
+func IsContextCompactionSummaryMessage(msg *schema.Message) bool {
+	return isContextCompactionMessage(msg)
+}
+
 func compactMessagesForModel(messages []*schema.Message, summary string, epoch, retainedTurns int) []*schema.Message {
 	systemMessages := make([]*schema.Message, 0)
 	contextMessages := make([]*schema.Message, 0, len(messages))

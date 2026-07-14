@@ -28,6 +28,34 @@ type ContextSourceReporter interface {
 	ContextSourceSummary() string
 }
 
+// ContextLedgerReporter exposes bounded metadata for the actual domain context
+// fragments assembled by a Conversation. Full fragment content is never
+// persisted by the runtime.
+type ContextLedgerReporter interface {
+	ContextLedgerParts() []ContextLedgerPart
+}
+
+// FinalContextLedgerReporter rebuilds domain context audit metadata from the
+// exact message list sent to the model after context compaction. Implementers
+// must not retain full message bodies in the returned durable records.
+type FinalContextLedgerReporter interface {
+	ContextLedgerPartsForMessages(messages []*schema.Message) []ContextLedgerPart
+}
+
+// RunTraceMetadata is the bounded interactive identity attached to one run.
+// A Conversation may fill fields such as TurnID only after its final output is
+// committed, so the runtime resolves it again during finish.
+type RunTraceMetadata struct {
+	StoryID         string `json:"story_id,omitempty"`
+	BranchID        string `json:"branch_id,omitempty"`
+	TurnID          string `json:"turn_id,omitempty"`
+	MaintenanceTask string `json:"maintenance_task,omitempty"`
+}
+
+type RunTraceMetadataReporter interface {
+	RunTraceMetadata() RunTraceMetadata
+}
+
 // InteractiveNarrativeReadinessReporter marks the protocol boundary after a
 // Game Agent has successfully staged its hidden TurnResult and may emit prose.
 type InteractiveNarrativeReadinessReporter interface {

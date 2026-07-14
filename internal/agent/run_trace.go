@@ -30,6 +30,10 @@ type RunTraceSummary struct {
 	TaskID               string    `json:"task_id,omitempty"`
 	AgentKind            string    `json:"agent_kind,omitempty"`
 	SessionID            string    `json:"session_id,omitempty"`
+	StoryID              string    `json:"story_id,omitempty"`
+	BranchID             string    `json:"branch_id,omitempty"`
+	TurnID               string    `json:"turn_id,omitempty"`
+	MaintenanceTask      string    `json:"maintenance_task,omitempty"`
 	Phase                string    `json:"phase,omitempty"`
 	ToolCalls            int       `json:"tool_calls,omitempty"`
 	ToolSuccesses        int       `json:"tool_successes,omitempty"`
@@ -211,6 +215,10 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 		summary.TaskID = stringField(record.Data, "task_id")
 		summary.AgentKind = stringField(record.Data, "agent_kind")
 		summary.SessionID = stringField(record.Data, "session_id")
+		summary.StoryID = stringField(record.Data, "story_id")
+		summary.BranchID = stringField(record.Data, "branch_id")
+		summary.TurnID = stringField(record.Data, "turn_id")
+		summary.MaintenanceTask = stringField(record.Data, "maintenance_task")
 		summary.Phase = "created"
 	case "event":
 		summary.Events++
@@ -219,6 +227,19 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 		summary.Phase = "context_ready"
 	case "context_build":
 		summary.Phase = "context_ready"
+	case "run_context":
+		if value := stringField(record.Data, "story_id"); value != "" {
+			summary.StoryID = value
+		}
+		if value := stringField(record.Data, "branch_id"); value != "" {
+			summary.BranchID = value
+		}
+		if value := stringField(record.Data, "turn_id"); value != "" {
+			summary.TurnID = value
+		}
+		if value := stringField(record.Data, "maintenance_task"); value != "" {
+			summary.MaintenanceTask = value
+		}
 	case "llm_call":
 		summary.LLMCalls++
 		runTraceAddLLMTokenUsage(summary, record.Data)

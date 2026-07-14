@@ -11,6 +11,7 @@ import (
 )
 
 type ToolResultContextPolicy struct {
+	AgentKind    string
 	Enabled      bool
 	KeepRecent   int
 	BudgetBytes  int
@@ -20,6 +21,7 @@ type ToolResultContextPolicy struct {
 func resolveToolResultContextPolicy(cfg *config.Config, agentKind string) ToolResultContextPolicy {
 	settings := config.ResolveAgentContext(cfg, agentKind)
 	return ToolResultContextPolicy{
+		AgentKind:    strings.TrimSpace(agentKind),
 		Enabled:      settings.ToolResultRetentionEnabled,
 		KeepRecent:   settings.ToolResultKeepRecent,
 		BudgetBytes:  settings.ToolResultContextBudgetKB * 1024,
@@ -80,7 +82,7 @@ func (r *toolResultContextRecorder) RecordAssistantToolCalls(msg *schema.Message
 }
 
 func (r *toolResultContextRecorder) RecordToolResult(toolName, toolCallID, content string, meta agentEventMetadata) {
-	if r == nil || r.conversation == nil || meta.SubAgent || isPlanProtocolToolName(toolName) {
+	if r == nil || r.conversation == nil || meta.SubAgent || isPlanProtocolToolName(toolName) || !retainToolContextAcrossTurns(toolName, r.policy) {
 		return
 	}
 	msg := schema.ToolMessage(toolResultContextContent(toolName, toolCallID, content, r.policy), toolCallID, schema.WithToolName(toolName))
@@ -99,7 +101,7 @@ func assistantToolContextMessage(msg *schema.Message, policy ToolResultContextPo
 	}
 	calls := make([]schema.ToolCall, 0, len(msg.ToolCalls))
 	for _, call := range msg.ToolCalls {
-		if isPlanProtocolToolName(call.Function.Name) {
+		if isPlanProtocolToolName(call.Function.Name) || !retainToolContextAcrossTurns(call.Function.Name, policy) {
 			continue
 		}
 		next := call
@@ -120,6 +122,7 @@ func assistantToolContextMessage(msg *schema.Message, policy ToolResultContextPo
 
 func toolResultContextContent(toolName, toolCallID, content string, policy ToolResultContextPolicy) string {
 	content = stripToolResultMetadata(content)
+	content = semanticToolResultContextContent(toolName, content, policy)
 	content = strings.TrimRight(content, "\n")
 	if content == "" {
 		content = "(无返回内容)"
@@ -168,6 +171,10 @@ func applyToolResultContextPolicy(messages []*schema.Message, policy ToolResultC
 	if !policy.Enabled {
 		return removeToolContextMessages(messages)
 	}
+	messages = filterSemanticToolContextMessages(messages, policy)
+	if len(messages) == 0 {
+		return messages
+	}
 	toolIndexes := make([]int, 0)
 	for i, msg := range messages {
 		if msg != nil && msg.Role == schema.Tool {
@@ -188,7 +195,7 @@ func applyToolResultContextPolicy(messages []*schema.Message, policy ToolResultC
 		if msg == nil || msg.Role != schema.Tool {
 			continue
 		}
-		msg = sanitizedToolContextMessage(msg)
+		msg = sanitizedToolContextMessage(msg, policy)
 		result[i] = msg
 		size := len(msg.Content)
 		if used+size <= policy.BudgetBytes {
@@ -204,11 +211,11 @@ func applyToolResultContextPolicy(messages []*schema.Message, policy ToolResultC
 	return result
 }
 
-func sanitizedToolContextMessage(msg *schema.Message) *schema.Message {
+func sanitizedToolContextMessage(msg *schema.Message, policy ToolResultContextPolicy) *schema.Message {
 	if msg == nil || msg.Role != schema.Tool {
 		return msg
 	}
-	content := stripToolResultMetadata(msg.Content)
+	content := semanticToolResultContextContent(msg.ToolName, stripToolResultMetadata(msg.Content), policy)
 	if content == msg.Content {
 		return msg
 	}

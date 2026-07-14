@@ -261,6 +261,15 @@ func TestSubmitInteractiveTurnResultToolStagesStructuredOutcome(t *testing.T) {
 	if !ok {
 		t.Fatalf("submit_interactive_turn_result missing: %#v", byName)
 	}
+	submitInfo, err := byName["submit_interactive_turn_result"].Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{`actor_id="story"`, "story_context", "每回合", "当前事件", "当前详细地点", "scene_result"} {
+		if !strings.Contains(submitInfo.Desc, required) {
+			t.Fatalf("submit tool description should require story context field %q:\n%s", required, submitInfo.Desc)
+		}
+	}
 	payload, err := json.Marshal(want)
 	if err != nil {
 		t.Fatal(err)

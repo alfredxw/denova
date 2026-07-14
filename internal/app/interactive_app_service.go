@@ -1061,6 +1061,8 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 		chatService.RunWithOptions(ctx, runner, conversation, bookService, req, agent.RunOptions{
 			AgentKind:           agent.AgentKindInteractiveStory,
 			TaskID:              task.ID(),
+			StoryID:             storyID,
+			BranchID:            conversation.branchID,
 			Workspace:           workspace,
 			Mode:                "interactive",
 			IdleTimeout:         agentIdleTimeout(runtimeCfg),

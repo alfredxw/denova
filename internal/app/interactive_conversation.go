@@ -38,6 +38,9 @@ type interactiveConversation struct {
 	lastTurn                *interactive.TurnEvent
 	lastStateReady          bool
 	lastSources             string
+	lastContextSources      []interactiveContextSource
+	lastContextLedgerParts  []agent.ContextLedgerPart
+	stableLeadingMessage    string
 	assistantMetadata       session.MessageMetadata
 	displayEvents           []interactive.DisplayEvent
 	modelContextMessages    []interactive.ModelContextMessage
@@ -125,16 +128,24 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	if err != nil {
 		return nil, err
 	}
-	residentLore, err := book.NewLoreStore(c.workspace).ResidentContextMarkdown()
+	loreStore := book.NewLoreStore(c.workspace)
+	residentLore, err := loreStore.ResidentContextMarkdown()
 	if err != nil {
 		return nil, fmt.Errorf("读取常驻资料失败: %w", err)
 	}
-	residentContentBytes, err := book.NewLoreStore(c.workspace).ResidentContentBytes()
+	residentContentBytes, err := loreStore.ResidentContentBytes()
 	if err != nil {
 		return nil, fmt.Errorf("读取常驻资料预算失败: %w", err)
 	}
 	if residentContentBytes > book.ResidentLoreSafetyMaxBytes {
 		return nil, fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentContentBytes+1023)/1024)
+	}
+	if len([]byte(residentLore)) > interactiveResidentLoreMessageMaxBytes {
+		return nil, fmt.Errorf("常驻资料模型上下文过大: %d > %d bytes", len([]byte(residentLore)), interactiveResidentLoreMessageMaxBytes)
+	}
+	loreRevision, err := loreStore.Revision()
+	if err != nil {
+		return nil, fmt.Errorf("读取资料库 revision 失败: %w", err)
 	}
 	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, interactiveStoryRuntimeContextBytes)
 	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, interactiveStoryRuntimeContextBytes)
@@ -155,8 +166,13 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		LoreContext:                 loreRuntime,
 	})
 	history := make([]*schema.Message, 0, len(turnMemory.Turns)*2+4)
+	stableLeadingMessage := ""
 	if residentLore != "" {
-		history = append(history, schema.UserMessage(agentcontext.StandaloneMessage("常驻资料库", residentLore, "source: enabled resident lore; stable leading context")))
+		stableLeadingMessage = agentcontext.StandaloneMessage("常驻资料库", residentLore, "source: enabled resident lore; stable leading context")
+		if len([]byte(stableLeadingMessage)) > interactiveResidentLoreMessageMaxBytes {
+			return nil, fmt.Errorf("常驻资料最终模型消息过大: %d > %d bytes", len([]byte(stableLeadingMessage)), interactiveResidentLoreMessageMaxBytes)
+		}
+		history = append(history, schema.UserMessage(stableLeadingMessage))
 	}
 	if storyCtx.Snapshot.ContextCompaction != nil && strings.TrimSpace(storyCtx.Snapshot.ContextCompaction.Summary) != "" {
 		history = append(history, agent.NewContextCompactionSummaryMessage(storyCtx.Snapshot.ContextCompaction.Epoch, storyCtx.Snapshot.ContextCompaction.Summary))
@@ -168,9 +184,14 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	}
 	history = agent.ApplyToolResultContextPolicyForConversation(history, c.ToolResultContextPolicy())
 	history = append(history, schema.UserMessage(prompts.InteractiveStoryTurnInstruction(agentMessage, tellerTurnContextPrompt, runtimeContext)))
-	sourceSummary := interactiveStorySourceSummary(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, storyMemory, directorPlanVisible, joinLoreContextSections(residentLore, loreRuntime), ruleSummary, strategyPrompt, turnMemory, agentMessage)
+	sourceParts := interactiveStoryContextSources(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, storyMemory, directorPlanVisible, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, strategyPrompt, turnMemory, agentMessage)
+	sourceSummary := interactiveContextSourceListSummary(sourceParts)
+	contextLedgerParts := interactiveContextLedgerParts(sourceParts, history, c.ToolResultContextPolicy())
 	c.mu.Lock()
 	c.lastSources = sourceSummary
+	c.lastContextSources = cloneInteractiveContextSources(sourceParts)
+	c.lastContextLedgerParts = contextLedgerParts
+	c.stableLeadingMessage = stableLeadingMessage
 	c.mu.Unlock()
 	log.Printf(
 		"[interactive-agent] context composition story_id=%s branch_id=%s story_title=%s origin=%s teller_id=%s story_director_id=%s teller_slots=%s teller_turn_context=%s story_memory=%s director_plan=%s turns=%d model_turns=%d compressed_turns=%s history=%s turn_instruction=%s sources=%s",
@@ -201,6 +222,47 @@ func (c *interactiveConversation) ContextSourceSummary() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.lastSources
+}
+
+func (c *interactiveConversation) ContextLedgerParts() []agent.ContextLedgerPart {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]agent.ContextLedgerPart(nil), c.lastContextLedgerParts...)
+}
+
+func (c *interactiveConversation) ContextLedgerPartsForMessages(messages []*schema.Message) []agent.ContextLedgerPart {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	sources := cloneInteractiveContextSources(c.lastContextSources)
+	c.mu.Unlock()
+	parts := interactiveContextLedgerParts(sources, messages, c.ToolResultContextPolicy())
+	c.mu.Lock()
+	c.lastContextLedgerParts = append([]agent.ContextLedgerPart(nil), parts...)
+	c.mu.Unlock()
+	return parts
+}
+
+func (c *interactiveConversation) RunTraceMetadata() agent.RunTraceMetadata {
+	if c == nil {
+		return agent.RunTraceMetadata{}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	metadata := agent.RunTraceMetadata{
+		StoryID:         c.storyID,
+		BranchID:        c.branchID,
+		MaintenanceTask: c.directorTask,
+	}
+	if c.lastTurn != nil {
+		metadata.BranchID = c.lastTurn.BranchID
+		metadata.TurnID = c.lastTurn.ID
+	}
+	return metadata
 }
 
 func (c *interactiveConversation) PrepareInteractiveTurn(ctx context.Context, request interactive.TurnCheckRequest) (interactive.RuleResolution, error) {
@@ -308,6 +370,7 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 		input.ReferenceContext = interactiveCompactionReferenceContext(c.store, c.storyID, storyCtx.Snapshot.BranchID)
 	}
 	input.KeepLatestUser = true
+	stableLeadingMessage := c.stableLeadingMessageSnapshot()
 	completionReserve, toolReserve := agent.EstimateContextProjectionReserves(c.cfg, config.AgentKindInteractiveStory, c.replyTargetChars)
 	if input.ReservedCompletionTokens <= 0 {
 		input.ReservedCompletionTokens = completionReserve
@@ -319,6 +382,8 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	if err != nil || !result.Triggered {
 		return newMessages, result, err
 	}
+	newMessages = preserveInteractiveStableLeadingMessage(newMessages, stableLeadingMessage)
+	result = interactiveCompactionResultForMessages(result, newMessages, input.Tools)
 	event := interactive.ContextCompactionEvent{
 		AgentKind:           config.AgentKindInteractiveStory,
 		Epoch:               result.Epoch,
@@ -341,8 +406,8 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	if event.Epoch != result.Epoch {
 		result.Epoch = event.Epoch
 		newMessages = agent.BuildCompactedModelMessages(input.Messages, result.Summary, event.Epoch, result.RetainedTurns)
-		result.TokensAfter = agent.EstimateContextTokens(newMessages, input.Tools)
-		result.MessageCountAfter = len(newMessages)
+		newMessages = preserveInteractiveStableLeadingMessage(newMessages, stableLeadingMessage)
+		result = interactiveCompactionResultForMessages(result, newMessages, input.Tools)
 	}
 	return newMessages, result, nil
 }
@@ -1334,13 +1399,6 @@ func (c *interactiveConversation) ResolveInterruption(id string) error {
 	return nil
 }
 
-type interactiveContextSource struct {
-	Source  string
-	Title   string
-	Content string
-	Note    string
-}
-
 type interactiveTurnMemory struct {
 	PreviousSummary string
 	Turns           []interactive.TurnEvent
@@ -1351,6 +1409,10 @@ type interactiveTurnMemory struct {
 const (
 	interactiveStoryRuntimeContextBytes = interactive.DirectorContextMaxBytes
 	interactiveDirectorContextBytes     = interactive.DirectorContextMaxBytes
+	// The raw resident bodies keep their 1 MiB safety ceiling. This additional
+	// bounded allowance covers deterministic Lore metadata and the standalone
+	// message wrapper while still constraining the exact model-visible fragment.
+	interactiveResidentLoreMessageMaxBytes = book.ResidentLoreSafetyMaxBytes + interactive.DirectorContextMaxBytes
 )
 
 func buildInteractiveTurnMemory(turns []interactive.TurnEvent) interactiveTurnMemory {
@@ -1432,87 +1494,6 @@ func formatInteractiveTurnMemoryHistory(turnMemory interactiveTurnMemory, compac
 		return emptyMessage
 	}
 	return result
-}
-
-func interactiveStorySourceSummary(title, origin string, teller interactive.Teller, storyMemory, directorPlanVisible, loreContext, ruleSummary, strategyPrompt string, turnMemory interactiveTurnMemory, userAction string) string {
-	parts := []interactiveContextSource{
-		{Source: "互动故事", Title: "故事标题", Content: title},
-		{Source: "互动故事", Title: "开端", Content: origin},
-	}
-	parts = append(parts, interactiveTellerSlotSources(teller, "turn_context")...)
-	if strings.TrimSpace(storyMemory) != "" {
-		parts = append(parts, interactiveContextSource{Source: "故事记忆", Title: "当前分支可见故事记忆", Content: storyMemory})
-	}
-	if strings.TrimSpace(directorPlanVisible) != "" {
-		parts = append(parts, interactiveContextSource{Source: "DirectorPlan", Title: "后台导演规划可读区", Content: directorPlanVisible, Note: "bounded"})
-	}
-	if strings.TrimSpace(loreContext) != "" {
-		parts = append(parts, interactiveContextSource{Source: "LoreContext", Title: "规则与当前资料工作集", Content: loreContext, Note: "bounded"})
-	}
-	if strings.TrimSpace(ruleSummary) != "" {
-		parts = append(parts, interactiveContextSource{Source: "StoryDirector", Title: "故事导演规则清单", Content: ruleSummary, Note: "bounded"})
-	}
-	if strings.TrimSpace(strategyPrompt) != "" {
-		parts = append(parts, interactiveContextSource{Source: "StoryDirector.strategy.prompt_markdown", Title: "故事导演 Markdown 策略提示", Content: strategyPrompt, Note: "bounded"})
-	}
-	if strings.TrimSpace(turnMemory.PreviousSummary) != "" {
-		parts = append(parts, interactiveContextSource{Source: "历史回合", Title: fmt.Sprintf("较早 %d 回合压缩摘要", turnMemory.PreviousCount), Content: turnMemory.PreviousSummary, Note: "compressed"})
-	}
-	for i, turn := range turnMemory.Turns {
-		parts = append(parts,
-			interactiveContextSource{Source: "历史回合", Title: fmt.Sprintf("第 %d 回合用户行动", i+1), Content: turn.User},
-			interactiveContextSource{Source: "历史回合", Title: fmt.Sprintf("第 %d 回合剧情", i+1), Content: turn.Narrative},
-		)
-	}
-	parts = append(parts, interactiveContextSource{Source: "本轮行动", Title: "当前用户行动", Content: userAction})
-	return interactiveContextSourceListSummary(parts)
-}
-
-func interactiveTellerSlotSources(teller interactive.Teller, targets ...string) []interactiveContextSource {
-	allowed := make(map[string]bool, len(targets))
-	for _, target := range targets {
-		allowed[target] = true
-	}
-	parts := []interactiveContextSource{}
-	for _, slot := range teller.Slots {
-		if !slot.Enabled || !allowed[slot.Target] || strings.TrimSpace(slot.Content) == "" {
-			continue
-		}
-		parts = append(parts, interactiveContextSource{
-			Source:  "导演注入规则",
-			Title:   fmt.Sprintf("%s（%s）", slot.Name, slot.Target),
-			Content: slot.Content,
-			Note:    "teller=" + teller.ID,
-		})
-	}
-	return parts
-}
-
-func interactiveTellerSlotSummary(teller interactive.Teller, targets ...string) string {
-	sources := interactiveTellerSlotSources(teller, targets...)
-	if len(sources) == 0 {
-		return "count=0"
-	}
-	names := make([]string, 0, len(sources))
-	for _, source := range sources {
-		names = append(names, source.Title)
-	}
-	return fmt.Sprintf("count=%d names=%q", len(names), names)
-}
-
-func interactiveContextSourceListSummary(parts []interactiveContextSource) string {
-	sources := make([]agentcontext.Source, 0, len(parts))
-	for _, part := range parts {
-		sources = append(sources, agentcontext.Source{
-			Source:    part.Source,
-			Title:     part.Title,
-			Content:   part.Content,
-			Placement: agentcontext.PlacementAuditOnly,
-			Included:  true,
-			Note:      part.Note,
-		})
-	}
-	return agentcontext.SourceSummary(sources, agentcontext.DefaultPreviewChars)
 }
 
 func interactiveMessageListSummary(messages []*schema.Message) string {

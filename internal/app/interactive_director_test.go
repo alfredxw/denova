@@ -81,7 +81,7 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 		if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
 			return "", err
 		}
-		return "导演安排公开反转", nil
+		return "已完成导演规划。\n```json\n{\"mode\":\"patch\",\"triggers\":[\"public_challenge\"],\"reason\":\"导演安排公开反转\"}\n```", nil
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
 	conversation.directorGenerator = directorGenerator
@@ -376,7 +376,7 @@ func TestInteractiveDirectorMaintenanceKeepsMemoryWhenDirectorPlanValidationFail
 		if err := os.WriteFile(planPath, []byte("# 缺少固定标题\n\n这份规划不合法。\n"), 0o644); err != nil {
 			return "", err
 		}
-		return "记忆已写入，导演规划校验失败", nil
+		return `{"mode":"patch","reason":"记忆已写入，导演规划文档待校验"}`, nil
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
 	conversation.directorGenerator = directorGenerator
@@ -451,7 +451,7 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 		if err := writeDirectorPlanDocsForTest(toolContext.DirectorPlanAllowedPaths, docs); err != nil {
 			return "", err
 		}
-		return "失败后重试成功", nil
+		return `{"mode":"patch","reason":"失败后重试成功"}`, nil
 	}
 	done = startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
 	<-done
