@@ -100,7 +100,7 @@ xattr -dr com.apple.quarantine denova
 
 ### 从源码运行
 
-需要 Go 1.26.5+、Node.js 20+ 和 pnpm。
+需要 Go 1.26.5+、Node.js 20+、pnpm 和 ripgrep。
 
 ```bash
 git clone https://github.com/alfredxw/denova.git
