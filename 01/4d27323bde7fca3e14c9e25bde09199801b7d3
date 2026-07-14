@@ -1,0 +1,228 @@
+CHANGELOG.md
+  s_3f032830305643::t_d34e9af3f57369 11-22
+internal/agent/chat.go
+  s_1e8ea4bd35f169::t_179d0ad565aa26 156-164,192-197,200-205,239-248,252-268,343-344,349,526-528
+internal/agent/chat_context_audit.go
+  s_0859a7f3149399::t_575a0901a58bec 79-106,116-126
+internal/agent/chat_stream.go
+  s_4e17b079a70ef8::t_87d16e961685a8 42-46,177,185-196
+internal/agent/chat_stream_test.go
+  s_0585fee51e774e::t_988c72d077de90 123-131,137,152-154
+internal/agent/context_analysis.go
+  s_0859a7f3149399::t_2373df1e51d90d 793,809
+internal/agent/context_compaction.go
+  s_1e8ea4bd35f169::t_d9dbc71c6e1067 356-361
+internal/agent/context_ledger.go
+  s_1e8ea4bd35f169::t_7ff17017f2bd35 4,25,31,49-54,64-74,81,87,113,128-130
+internal/agent/conversation.go
+  s_1e8ea4bd35f169::t_3d6a9bfab1a336 31-58
+internal/agent/conversation_test.go
+  s_c891bd6887a3b4::t_47edd015b40528 393-467
+internal/agent/interactive_director.go
+  s_1e8ea4bd35f169::t_1033f9df0432f2 66-74,77-79,86-87,107-109,117-118,124-203
+internal/agent/interactive_director_stable_context_test.go
+  s_1e8ea4bd35f169::t_2f5fbd6efe9497 1-45
+internal/agent/interactive_memory_tools.go
+  s_1e8ea4bd35f169::t_1f66c9147d79a8 24-40,250
+internal/agent/interactive_memory_tools_test.go
+  s_0585fee51e774e::t_27671a8ff63f5b 264-272
+internal/agent/interactive_state_schema_tools.go
+  s_c891bd6887a3b4::t_02c953b5013457 15,20-22,26,28
+internal/agent/interactive_state_schema_tools_test.go
+  s_1e8ea4bd35f169::t_2e33a330515360 1-94
+internal/agent/interactive_turn_protocol.go
+  s_4e17b079a70ef8::t_aaca3079e2eb0a 10,26-27,40-48,51-54,58-73
+internal/agent/interactive_turn_protocol_integration_test.go
+  s_ca948a1ce2f221::t_51331034cea4bd 18,88-93,103-176,178-182,203-207,215,218,220,226,228,230-235,249-254
+internal/agent/interactive_turn_protocol_test.go
+  s_4e17b079a70ef8::t_7e9d78c67c3a57 9,62,72-92,96-111
+internal/agent/loop_ledger_test.go
+  s_0859a7f3149399::t_60fb279155ace2 27,33,112-120,128-135,203,213
+internal/agent/post_run_verifier.go
+  s_0585fee51e774e::t_9f3db015d6b6bc 70,95,98,104-127
+internal/agent/post_run_verifier_test.go
+  s_4e17b079a70ef8::t_0dc7bed078da0b 4-5,27-70
+internal/agent/run_ledger.go
+  s_3f032830305643::t_1a23e3f5ec7b14 85-94
+internal/agent/run_options.go
+  s_4e17b079a70ef8::t_5f57cd779c0d59 24-27,47-50,96-143
+internal/agent/run_options_test.go
+  s_1e8ea4bd35f169::t_92dd20baedf432 3-6,62-88
+internal/agent/run_trace.go
+  s_1e8ea4bd35f169::t_a67293055f8497 33-36,218-221,230-242
+internal/agent/system_prompt.go
+  s_c891bd6887a3b4::t_83d79997d0363e 95,144
+internal/agent/tool_result_context.go
+  s_3f032830305643::t_a3b4c44aad4c8b 14,24,85,104,125,174-177,198,214,218
+internal/agent/tool_result_context_semantic.go
+  s_3f032830305643::t_607153a75ad93f 1-223
+internal/agent/tool_result_context_test.go
+  s_1e8ea4bd35f169::t_6641d843b9c9e7 8-9,45-48,58-59,61-62,107,110,114-207
+internal/api/handler_session_test.go
+  s_3f032830305643::t_a64c5d9c845e5e 331,340
+internal/app/interactive_agent_test.go
+  s_0859a7f3149399::t_bce4090867ce4b 49-50,69,117-132,146,149-152,156,158-163,205,953,955,958-987
+internal/app/interactive_app_service.go
+  s_4e17b079a70ef8::t_cbea2243fb6fbd 1064-1065
+internal/app/interactive_conversation.go
+  s_3f032830305643::t_c77c98d2c62f9d 41-43,131-132,136,143-149,169,171-175,187-189,192-194,227-267,373,385-386,409-410,1412-1415
+internal/app/interactive_conversation_context_ledger.go
+  s_3f032830305643::t_34a81198649418 1-328
+internal/app/interactive_conversation_context_ledger_test.go
+  s_0859a7f3149399::t_aaa9178aff7c7f 1-105
+internal/app/interactive_conversation_test.go
+  s_fccae12a670818::t_8939ae4f34c2f3 90-159,231,273,275-276
+internal/app/interactive_director.go
+  s_3f032830305643::t_042963b779f37b 5,310-328,331,355
+internal/app/interactive_director_test.go
+  s_1e8ea4bd35f169::t_561ae8b5552d41 84,379,454
+internal/app/interactive_state_schema.go
+  s_c891bd6887a3b4::t_591e2c7e6a2ebb 8,21-27,42-69,146-179,181-192,202-224,227-241,243-256,258-259,261-270,273-291,304,306-307,324,351,355,358,364-371,383-384,393-395,428-434,483-492
+internal/app/interactive_state_schema_async_test.go
+  s_c891bd6887a3b4::t_1666c58c4fcce2 179,223,228,274-275
+internal/app/interactive_state_schema_batch_test.go
+  s_c891bd6887a3b4::t_a3b8cd7ae8545b 1-103
+internal/app/interactive_state_schema_context.go
+  s_c891bd6887a3b4::t_170b2eaece55d1 1-99
+internal/app/interactive_state_schema_test.go
+  s_c891bd6887a3b4::t_7d1df617a908f8 84-96,113-121,125,130,139-192
+internal/interactive/actor_traits.go
+  s_0585fee51e774e::t_cb89b76df96e27 402-411,422,425-431,434,436,438,442-449,452
+internal/interactive/actor_traits_test.go
+  s_0585fee51e774e::t_dc0964b81e48be 10-38
+internal/interactive/plan_decision.go
+  s_3f032830305643::t_688b8e9f309b16 5,39-41,43-119
+internal/interactive/plan_decision_test.go
+  s_3f032830305643::t_edd84df8798ed1 3-6,18-55
+internal/interactive/state_schema_adaptation.go
+  s_0859a7f3149399::t_52c0e437a522fa 54-58,64-77,100-107,177,186,197-207,236-238
+internal/interactive/state_schema_adaptation_test.go
+  s_1e8ea4bd35f169::t_76e5e73ffe011b 114-130
+internal/interactive/state_schema_adaptation_validation.go
+  s_1e8ea4bd35f169::t_1bd3cc00c18b91 45-47,87-137
+internal/interactive/state_schema_initialization.go
+  s_0859a7f3149399::t_283bae1f30e736 9,382,385,405,439,442,455-476,482,485-493,496,517-519,521-523,525-527,535-622
+internal/interactive/state_schema_initialization_test.go
+  s_c891bd6887a3b4::t_a88bbe19ddb125 8-144,225-252,337
+internal/interactive/state_schema_proposal.go
+  s_1e8ea4bd35f169::t_310418a35d3411 42-56,123,127,141-147,179-181
+internal/interactive/state_schema_proposal_batch.go
+  s_c891bd6887a3b4::t_09f234f2e0dc3e 1-464
+internal/interactive/state_schema_proposal_batch_test.go
+  s_3f032830305643::t_d859c53ea49c52 1-447
+internal/interactive/state_schema_proposal_batch_validation.go
+  s_c891bd6887a3b4::t_74f40ac5878c1c 1-312
+internal/interactive/state_schema_proposal_test.go
+  s_3f032830305643::t_cd0c7bfb86a83b 24-25,42-43,55-67,84-136
+internal/interactive/story_context_submission.go
+  s_1e8ea4bd35f169::t_6c4f3ee9960b46 1-105
+internal/interactive/story_schema.go
+  s_0585fee51e774e::t_95dca293a15bf2 85-109,224-240
+internal/interactive/story_state.go
+  s_0585fee51e774e::t_4dbc7d61102ae5 5,250-253,296-300,316
+internal/interactive/story_state_integrity_test.go
+  s_0585fee51e774e::t_f0545e741cd9da 1-61
+internal/interactive/turn_submission.go
+  s_3f032830305643::t_e8db1af359053a 13,71-84
+internal/prompts/interactive.go
+  s_c891bd6887a3b4::t_360c0e0bc4e399 134,226,256,258,267-268,270-274
+internal/prompts/interactive_test.go
+  s_fccae12a670818::t_d5ad5940319cf3 111-122
+internal/prompts/state_schema_batch_test.go
+  s_c891bd6887a3b4::t_9dff773e758223 1-22
+web/src/features/interactive/components/director-console/StateSchemaOverview.test.tsx
+  s_ca948a1ce2f221::t_f0bb01eb14c09a 2-3,10-20,34-38,59,73,78-95
+web/src/features/interactive/components/director-console/StateSchemaOverview.tsx
+  s_3f032830305643::t_66879f42edea44 111
+web/src/features/interactive/components/director-console/StateView.tsx
+  s_fccae12a670818::t_2e5b83c9f6b6e7 25,35
+web/src/features/interactive/components/story-state/model.test.ts
+  s_3f032830305643::t_f7c88f8c442a07 1-79
+web/src/features/interactive/components/story-state/model.ts
+  s_3f032830305643::t_713d6f7864b1f0 25,30,38,43-45,151-166
+web/src/features/interactive/types.ts
+  s_3f032830305643::t_2ba51b0f91d7af 1067
+web/src/i18n/locales/en-US/memoryPanel.ts
+  s_3f032830305643::t_27459ca72b38d8 189-191
+web/src/i18n/locales/zh-CN/memoryPanel.ts
+  s_3f032830305643::t_a8c447304e676f 189-191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "014d27323bde7fca3e14c9e25bde09199801b7d3",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_0585fee51e774e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5c84-61d5-7fc3-9ca6-864a8193ca73",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_0859a7f3149399": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5cab-55b3-70c2-8187-0212710ae1af",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_1e8ea4bd35f169": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5c91-9d83-7943-953b-9eb8ed69691c",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_3f032830305643": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5c5c-1072-72c3-b051-3514fc76a67e",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_4e17b079a70ef8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5c84-97a2-7602-a3f8-075573ff7cf3",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_c891bd6887a3b4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5c84-2ecc-7711-beeb-fde3d840497a",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_ca948a1ce2f221": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5c9c-c011-7663-a9b1-e32692289ff8",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_fccae12a670818": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5c71-1139-7133-aba9-d7b3cd83d1e6",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
