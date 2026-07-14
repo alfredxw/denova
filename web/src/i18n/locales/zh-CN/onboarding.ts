@@ -26,7 +26,7 @@ const onboarding = {
   'onboarding.tour.agent.title': '创作 Agent',
   'onboarding.tour.agent.body': '和 AI 对话完成续写、改写、细纲、状态同步和一致性检查。输入框菜单可切换模型、叙事风格和写作 Skill。',
   'onboarding.tour.interactive.title': '游戏模式',
-  'onboarding.tour.interactive.body': '把作品设定转成互动剧情体验，支持剧情、分支路线、资料库、故事记忆和快捷行动选项。',
+  'onboarding.tour.interactive.body': '把作品设定转成互动剧情体验，支持剧情、分支路线、资料库、Actor State 和快捷行动选项。',
   'onboarding.tour.lore.title': '资料库',
   'onboarding.tour.lore.body': '沉淀角色、世界观、规则和长期设定，供写作 Agent 与游戏模式按需读取。',
   'onboarding.tour.teller.title': '方案预设',

@@ -53,9 +53,9 @@ func TestInteractiveImageSystemPromptUsesImagePreset(t *testing.T) {
 	}
 }
 
-func TestInteractiveImageSourceContextUsesSnapshotBranchMemory(t *testing.T) {
+func TestInteractiveImageSourceContextUsesBoundedTurnHistory(t *testing.T) {
 	store := interactive.NewStore(t.TempDir())
-	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "分支图像记忆", StoryTellerID: "classic"})
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "分支图像上下文", StoryTellerID: "classic"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,16 +71,10 @@ func TestInteractiveImageSourceContextUsesSnapshotBranchMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.SaveStoryMemoryRecord(story.ID, interactive.StoryMemoryRecordRequest{
-		BranchID:    branch.ID,
-		StructureID: "plot_summary",
-		Values: map[string]string{
-			"code_index":  "BR0001",
-			"time_span":   "夜晚",
-			"place":       "旧营地",
-			"event":       "分支路径摘要：主角折返回旧营地并发现脚印。",
-			"current_day": "第 1 天",
-		},
+	if _, err := store.AppendTurn(story.ID, interactive.AppendTurnRequest{
+		BranchID:  branch.ID,
+		User:      "折返回旧营地",
+		Narrative: "主角在旧营地发现了一串新鲜脚印。",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -89,8 +83,8 @@ func TestInteractiveImageSourceContextUsesSnapshotBranchMemory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	context := interactiveImageSourceContext(storyCtx.Meta, storyCtx.Snapshot.BranchID, storyCtx.Snapshot.Turns, 0, store)
-	if !strings.Contains(context, "分支路径摘要") {
-		t.Fatalf("source context should use current snapshot branch memory:\n%s", context)
+	context := interactiveImageSourceContext(storyCtx.Meta, storyCtx.Snapshot.Turns, 1)
+	if !strings.Contains(context, "树影吞没了来路") || !strings.Contains(context, "新鲜脚印") {
+		t.Fatalf("source context should use the current branch turn history:\n%s", context)
 	}
 }

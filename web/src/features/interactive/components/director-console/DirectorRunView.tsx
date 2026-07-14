@@ -1,11 +1,10 @@
 import { useMemo, type ReactNode } from 'react'
-import { Activity, AlertCircle, Brain, CheckCircle2, Clock3, Eye, FileText, Loader2, RefreshCw, ScrollText, ShieldAlert, Sparkles, X } from 'lucide-react'
+import { Activity, AlertCircle, CheckCircle2, Clock3, Eye, FileText, Loader2, RefreshCw, ScrollText, ShieldAlert, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MessageList } from '@/components/Chat/MessageList'
 import { Button } from '@/components/ui/button'
 import type { ChatMessage } from '@/lib/api'
 import { chatMessagesToAgentUIMessages } from '@/lib/agent-legacy-message'
-import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { DirectorPlanMetadata, StateSchemaInitializationStatus, TurnDisplayEvent } from '../../types'
 import type { DirectorStatusLike } from './types'
 import { directorPlanTotals, directorStatusFallback, directorStatusLabel, displayEventToChatMessage, formatBytes, formatShortDate } from './utils'
@@ -23,14 +22,9 @@ export function DirectorRunView({
   canAnalyzeDirectorContext,
   directorError,
   processRevealed,
-  generateMessages,
-  generating,
-  generateActivity,
   onRevealProcess,
   onRun,
   onAnalyze,
-  onGenerateMemory,
-  onAbortGenerate,
 }: {
   storyId?: string
   hasDirectorRun: boolean
@@ -44,14 +38,9 @@ export function DirectorRunView({
   canAnalyzeDirectorContext: boolean
   directorError: string
   processRevealed: boolean
-  generateMessages: AgentUIMessage[]
-  generating: boolean
-  generateActivity: string
   onRevealProcess: () => void
   onRun: () => void
   onAnalyze: () => void
-  onGenerateMemory: () => void
-  onAbortGenerate: () => void
 }) {
   return (
     <div className="space-y-3">
@@ -76,14 +65,9 @@ export function DirectorRunView({
         canAnalyzeDirectorContext={canAnalyzeDirectorContext}
         displayEvents={directorDisplayEvents}
         revealed={processRevealed}
-        generateMessages={generateMessages}
-        generating={generating}
-        generateActivity={generateActivity}
         onReveal={onRevealProcess}
         onRun={onRun}
         onAnalyze={onAnalyze}
-        onGenerateMemory={onGenerateMemory}
-        onAbortGenerate={onAbortGenerate}
       />
     </div>
   )
@@ -97,10 +81,10 @@ function StateSchemaRunStage({ status }: { status: StateSchemaInitializationStat
     <section className="rounded-[10px] border border-[var(--nova-border)] bg-[var(--director-panel)] px-3 py-2.5">
       <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
         {running ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--director-brass)]" /> : failed ? <AlertCircle className="h-3.5 w-3.5 text-[var(--nova-danger)]" /> : <CheckCircle2 className="h-3.5 w-3.5 text-[var(--director-live)]" />}
-        <span>{t('memoryPanel.run.stateSchemaStage')}</span>
-        <span className="ml-auto font-mono text-[9px] uppercase text-[var(--nova-text-faint)]">{t(`memoryPanel.stateSchema.status.${status.status}`, { defaultValue: status.status })}</span>
+        <span>{t('directorPanel.run.stateSchemaStage')}</span>
+        <span className="ml-auto font-mono text-[9px] uppercase text-[var(--nova-text-faint)]">{t(`directorPanel.stateSchema.status.${status.status}`, { defaultValue: status.status })}</span>
       </div>
-      <p className="mt-1 text-[10px] leading-4 text-[var(--nova-text-faint)]">{status.summary || status.error || t(`memoryPanel.stateSchema.description.${status.status}`, { defaultValue: status.status })}</p>
+      <p className="mt-1 text-[10px] leading-4 text-[var(--nova-text-faint)]">{status.summary || status.error || t(`directorPanel.stateSchema.description.${status.status}`, { defaultValue: status.status })}</p>
     </section>
   )
 }
@@ -126,7 +110,7 @@ function DirectorRunStatusCard({ status, metadata, loading, error }: { status?: 
                 {statusIcon}
               </span>
               <div className="min-w-0">
-                <h3 className="director-console__display truncate text-base font-semibold text-[var(--nova-text)]">{t('memoryPanel.run.statusTitle')}</h3>
+                <h3 className="director-console__display truncate text-base font-semibold text-[var(--nova-text)]">{t('directorPanel.run.statusTitle')}</h3>
                 <p className="mt-0.5 truncate text-[9px] uppercase tracking-[0.12em] text-[var(--nova-text-faint)]">{directorStatusLabel(status, loading, t)}</p>
               </div>
             </div>
@@ -134,7 +118,7 @@ function DirectorRunStatusCard({ status, metadata, loading, error }: { status?: 
             {status?.decision?.mode ? (
               <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--nova-text-muted)]">
                 <span className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 font-medium text-[var(--nova-text)]">
-                  {t(`memoryPanel.planDecision.${status.decision.mode}`, { defaultValue: status.decision.mode })}
+                  {t(`directorPanel.planDecision.${status.decision.mode}`, { defaultValue: status.decision.mode })}
                 </span>
                 {status.decision.triggers?.slice(0, 3).map((trigger) => (
                   <span key={trigger} className="rounded-full bg-[var(--nova-hover)] px-2 py-0.5">{trigger}</span>
@@ -152,7 +136,7 @@ function DirectorRunStatusCard({ status, metadata, loading, error }: { status?: 
         <div className="director-run-metrics mt-3 grid grid-cols-1 gap-px overflow-hidden rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-border)]">
           <RunMetric icon={<FileText className="h-3.5 w-3.5" />} label={t('snapshot.director.docs')} value={`${totals.completed}/${totals.planned}`} />
           <RunMetric icon={<Clock3 className="h-3.5 w-3.5" />} label={t('snapshot.director.branchPlanningTurns')} value={String(metadata?.branch_planning_turns || 5)} />
-          <RunMetric icon={<Activity className="h-3.5 w-3.5" />} label={t('memoryPanel.run.visibleBytes')} value={`${formatBytes(totals.visibleBytes)} / ${formatBytes(totals.totalBytes)}`} />
+          <RunMetric icon={<Activity className="h-3.5 w-3.5" />} label={t('directorPanel.run.visibleBytes')} value={`${formatBytes(totals.visibleBytes)} / ${formatBytes(totals.totalBytes)}`} />
         </div>
       </div>
     </section>
@@ -169,14 +153,9 @@ function DirectorProcessPanel({
   canAnalyzeDirectorContext,
   displayEvents,
   revealed,
-  generateMessages,
-  generating,
-  generateActivity,
   onReveal,
   onRun,
   onAnalyze,
-  onGenerateMemory,
-  onAbortGenerate,
 }: {
   storyId?: string
   status?: DirectorStatusLike
@@ -187,47 +166,36 @@ function DirectorProcessPanel({
   canAnalyzeDirectorContext: boolean
   displayEvents: TurnDisplayEvent[]
   revealed: boolean
-  generateMessages: AgentUIMessage[]
-  generating: boolean
-  generateActivity: string
   onReveal: () => void
   onRun: () => void
   onAnalyze: () => void
-  onGenerateMemory: () => void
-  onAbortGenerate: () => void
 }) {
   const { t } = useTranslation()
-  const process = useDirectorProcessMessages({ status, metadata, loading, displayEvents, generateMessages, generating, generateActivity })
+  const process = useDirectorProcessMessages({ status, metadata, loading, displayEvents })
   return (
     <section data-testid="director-process-panel" className="rounded-[12px] border border-[var(--nova-border)] bg-[var(--director-panel)] p-3">
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-[var(--nova-text)]">
             <Activity className="h-3.5 w-3.5 shrink-0 text-[var(--director-brass)]" />
-            <span className="director-console__display truncate text-[15px]">{t('memoryPanel.process.title')}</span>
+            <span className="director-console__display truncate text-[15px]">{t('directorPanel.process.title')}</span>
           </div>
-          <p className="mt-1 text-[11px] leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.process.description')}</p>
+          <p className="mt-1 text-[11px] leading-5 text-[var(--nova-text-muted)]">{t('directorPanel.process.description')}</p>
         </div>
       </div>
 
       <div className="director-process-actions mt-3 grid grid-cols-1 gap-2">
         <ProcessActionButton
           icon={retrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-          label={retrying ? t('memoryPanel.directorManualRunning') : t('memoryPanel.directorManualRun')}
+          label={retrying ? t('directorPanel.directorManualRunning') : t('directorPanel.directorManualRun')}
           onClick={onRun}
           disabled={!storyId || retrying}
         />
         <ProcessActionButton
           icon={contextAnalysisLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ScrollText className="h-3.5 w-3.5" />}
-          label={contextAnalysisLoading ? t('chat.contextAnalysis.loading') : t('memoryPanel.directorContextAnalysis')}
+          label={contextAnalysisLoading ? t('chat.contextAnalysis.loading') : t('directorPanel.directorContextAnalysis')}
           onClick={onAnalyze}
           disabled={!canAnalyzeDirectorContext || contextAnalysisLoading}
-        />
-        <ProcessActionButton
-          icon={generating ? <X className="h-3.5 w-3.5" /> : <Brain className="h-3.5 w-3.5" />}
-          label={generating ? t('memoryPanel.abortGenerate') : t('memoryPanel.generate')}
-          onClick={generating ? onAbortGenerate : onGenerateMemory}
-          disabled={!storyId}
         />
       </div>
 
@@ -247,7 +215,7 @@ function DirectorProcessPanel({
             />
           </div>
         ) : (
-          <div className="flex min-h-[180px] items-center justify-center rounded-[10px] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.process.empty')}</div>
+          <div className="flex min-h-[180px] items-center justify-center rounded-[10px] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs leading-5 text-[var(--nova-text-muted)]">{t('directorPanel.process.empty')}</div>
         )}
       </div>
     </section>
@@ -259,17 +227,11 @@ function useDirectorProcessMessages({
   metadata,
   loading,
   displayEvents,
-  generateMessages,
-  generating,
-  generateActivity,
 }: {
   status?: DirectorStatusLike
   metadata?: DirectorPlanMetadata
   loading: boolean
   displayEvents: TurnDisplayEvent[]
-  generateMessages: AgentUIMessage[]
-  generating: boolean
-  generateActivity: string
 }) {
   const { t } = useTranslation()
   return useMemo(() => {
@@ -279,14 +241,14 @@ function useDirectorProcessMessages({
     const totals = directorPlanTotals(status, metadata)
     const summary = status?.error || status?.summary || directorStatusFallback(currentStatus, t)
     const updatedAt = status?.updated_at || metadata?.updated_at || ''
-    const progress = t('memoryPanel.directorChat.planProgress', {
+    const progress = t('directorPanel.directorChat.planProgress', {
       completed: totals.completed,
       planned: totals.planned,
       visible: formatBytes(totals.visibleBytes),
       total: formatBytes(totals.totalBytes),
       turns: metadata?.branch_planning_turns || 5,
     })
-    const meta = updatedAt ? t('memoryPanel.directorChat.updatedAt', { time: formatShortDate(updatedAt) }) : currentStatus || t('snapshot.noRecord')
+    const meta = updatedAt ? t('directorPanel.directorChat.updatedAt', { time: formatShortDate(updatedAt) }) : currentStatus || t('snapshot.noRecord')
     const toolStatus = currentStatus === 'failed' ? 'error' : running ? 'running' : 'success'
     const showFileTool = ['running', 'ready', 'failed', 'conflict'].includes(currentStatus)
     const persistedMessages = displayEvents.map((event, index) => displayEventToChatMessage(event, `director-event-${index}`))
@@ -307,7 +269,7 @@ function useDirectorProcessMessages({
       {
         id: 'director-run-request',
         role: 'user',
-        content: t('memoryPanel.directorChat.request'),
+        content: t('directorPanel.directorChat.request'),
       },
       {
         id: 'director-run-thinking',
@@ -325,20 +287,14 @@ function useDirectorProcessMessages({
         created_at: updatedAt,
       },
     ] : []
-    const messages = generateMessages.length > 0
-      ? [
-          ...chatMessagesToAgentUIMessages(directorMessages),
-          ...chatMessagesToAgentUIMessages([{ id: 'memory-generation-section', role: 'system', content: t('memoryPanel.process.memorySection') }]),
-          ...generateMessages,
-        ]
-      : chatMessagesToAgentUIMessages(directorMessages)
+    const messages = chatMessagesToAgentUIMessages(directorMessages)
     return {
       messages,
-      streaming: running || generating,
-      activityContent: generating ? generateActivity : running ? summary : '',
-      scrollKey: `director-process:${metadata?.revision || ''}:${currentStatus}:${updatedAt}:${generateMessages.length}:${generating ? 'generating' : 'idle'}`,
+      streaming: running,
+      activityContent: running ? summary : '',
+      scrollKey: `director-process:${metadata?.revision || ''}:${currentStatus}:${updatedAt}`,
     }
-  }, [displayEvents, generateActivity, generateMessages, generating, loading, metadata, status, t])
+  }, [displayEvents, loading, metadata, status, t])
 }
 
 function DirectorProcessGate({ onReveal }: { onReveal: () => void }) {
@@ -349,11 +305,11 @@ function DirectorProcessGate({ onReveal }: { onReveal: () => void }) {
         <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--director-panel)] text-[var(--director-brass)]">
           <ShieldAlert className="h-5 w-5" />
         </div>
-        <h3 className="director-console__display mt-3 text-base font-semibold text-[var(--nova-text)]">{t('memoryPanel.process.spoilerTitle')}</h3>
-        <p className="mt-2 text-xs leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.process.spoilerDescription')}</p>
+        <h3 className="director-console__display mt-3 text-base font-semibold text-[var(--nova-text)]">{t('directorPanel.process.spoilerTitle')}</h3>
+        <p className="mt-2 text-xs leading-5 text-[var(--nova-text-muted)]">{t('directorPanel.process.spoilerDescription')}</p>
         <Button type="button" size="sm" variant="outline" className="mt-4 gap-2 rounded-[9px] border-[var(--director-brass)] bg-[color-mix(in_srgb,var(--director-brass)_10%,var(--nova-surface))] text-[var(--nova-text)] hover:bg-[color-mix(in_srgb,var(--director-brass)_16%,var(--nova-surface))]" onClick={onReveal}>
           <Eye className="h-3.5 w-3.5" />
-          {t('memoryPanel.process.reveal')}
+          {t('directorPanel.process.reveal')}
         </Button>
       </div>
     </div>
@@ -395,8 +351,8 @@ function DirectorEmptyState({ error, running }: { error?: string; running?: bool
       <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--director-brass)]">
         {running ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
       </div>
-      <h3 className="director-console__display mt-3 text-base font-semibold text-[var(--nova-text)]">{t('memoryPanel.directorEmpty')}</h3>
-      <p className="mt-2 max-w-[24rem] text-xs leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.directorManualRunHint')}</p>
+      <h3 className="director-console__display mt-3 text-base font-semibold text-[var(--nova-text)]">{t('directorPanel.directorEmpty')}</h3>
+      <p className="mt-2 max-w-[24rem] text-xs leading-5 text-[var(--nova-text-muted)]">{t('directorPanel.directorManualRunHint')}</p>
       {error ? <div className="mt-3 w-full rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{error}</div> : null}
     </section>
   )

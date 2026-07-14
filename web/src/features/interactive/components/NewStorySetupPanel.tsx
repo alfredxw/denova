@@ -1,4 +1,4 @@
-import { Brain, ChevronDown, Image, Loader2, Package, Scale, Sparkles, UserRound } from 'lucide-react'
+import { ChevronDown, Image, Loader2, Package, Scale, Sparkles, UserRound } from 'lucide-react'
 import type { ElementType } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -7,9 +7,9 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { getActorStates, getEventPackages, getRuleSystems, getStoryMemoryStructures } from '../api'
+import { getActorStates, getEventPackages, getRuleSystems } from '../api'
 import { DEFAULT_INTERACTIVE_CHOICE_COUNT, DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, MAX_INTERACTIVE_CHOICE_COUNT, MIN_INTERACTIVE_CHOICE_COUNT, type StoryCreateInput } from '../opening'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryMemoryStructureModule, StorySummary, Teller } from '../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StorySummary, Teller } from '../types'
 
 interface NewStorySetupPanelProps {
   stories: StorySummary[]
@@ -25,7 +25,6 @@ const moduleFields: Array<{ id: keyof StoryDirectorModuleRefs; disabled: keyof S
   { id: 'narrative_style_id', disabled: 'narrative_style_disabled', label: 'narrativeStyle', icon: Sparkles },
   { id: 'rule_system_id', disabled: 'rule_system_disabled', label: 'ruleSystem', icon: Scale },
   { id: 'actor_state_id', disabled: 'actor_state_disabled', label: 'actorState', icon: UserRound },
-  { id: 'memory_structure_id', disabled: 'memory_structure_disabled', label: 'memoryStructure', icon: Brain },
   { id: 'image_preset_id', disabled: 'image_preset_disabled', label: 'imagePreset', icon: Image },
 ]
 
@@ -41,15 +40,15 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
   const [moduleRefs, setModuleRefs] = useState<StoryDirectorModuleRefs>(() => ({ ...(story?.module_refs || initialDirector?.module_refs || {}) }))
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
-  const [moduleCatalog, setModuleCatalog] = useState<DirectorModuleCatalog>({ eventPackages: [], ruleSystems: [], actorStates: [], memoryStructures: [] })
+  const [moduleCatalog, setModuleCatalog] = useState<DirectorModuleCatalog>({ eventPackages: [], ruleSystems: [], actorStates: [] })
   const director = directors.find((item) => item.id === directorId) || defaultDirector
   const moduleOptions = useMemo(() => collectModuleOptions(directors, tellers, imagePresets, moduleCatalog), [directors, imagePresets, moduleCatalog, tellers])
 
   useEffect(() => {
     let cancelled = false
-    void Promise.all([getEventPackages(), getRuleSystems(), getActorStates(), getStoryMemoryStructures()])
-      .then(([eventPackages, ruleSystems, actorStates, memoryStructures]) => {
-        if (!cancelled) setModuleCatalog({ eventPackages, ruleSystems, actorStates, memoryStructures })
+    void Promise.all([getEventPackages(), getRuleSystems(), getActorStates()])
+      .then(([eventPackages, ruleSystems, actorStates]) => {
+        if (!cancelled) setModuleCatalog({ eventPackages, ruleSystems, actorStates })
       })
       .catch((reason) => console.error('[new-story-setup] 加载导演模块方案预设失败', reason))
     return () => { cancelled = true }
@@ -135,19 +134,17 @@ interface DirectorModuleCatalog {
   eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
   actorStates: ActorStateModule[]
-  memoryStructures: StoryMemoryStructureModule[]
 }
 
 function collectModuleOptions(directors: StoryDirector[], tellers: Teller[], imagePresets: ImagePreset[], catalog: DirectorModuleCatalog): ModuleOptionMap {
   const map = {} as ModuleOptionMap
-  const keys: Array<keyof StoryDirectorModuleRefs> = ['narrative_style_id', 'rule_system_id', 'actor_state_id', 'memory_structure_id', 'image_preset_id']
+  const keys: Array<keyof StoryDirectorModuleRefs> = ['narrative_style_id', 'rule_system_id', 'actor_state_id', 'image_preset_id']
   keys.forEach((key) => { map[key] = [] })
   map.narrative_style_id = tellers.map(moduleOption)
   map.rule_system_id = catalog.ruleSystems.map(moduleOption)
   map.actor_state_id = catalog.actorStates.map(moduleOption)
-  map.memory_structure_id = catalog.memoryStructures.map(moduleOption)
   map.image_preset_id = imagePresets.map(moduleOption)
-  for (const director of directors) for (const key of ['rule_system_id', 'actor_state_id', 'memory_structure_id'] as const) { const id = director.module_refs?.[key]; if (typeof id === 'string' && id && !map[key].some((item) => item.id === id)) map[key].push({ id, label: id }) }
+  for (const director of directors) for (const key of ['rule_system_id', 'actor_state_id'] as const) { const id = director.module_refs?.[key]; if (typeof id === 'string' && id && !map[key].some((item) => item.id === id)) map[key].push({ id, label: id }) }
   return map
 }
 

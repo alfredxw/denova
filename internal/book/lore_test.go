@@ -362,38 +362,6 @@ func TestLoreStoreCompactIndexBudgetFallsBackToNameRoster(t *testing.T) {
 	}
 }
 
-func TestLoreStoreStoryMemoryContextIncludesBoundedFullLore(t *testing.T) {
-	store := NewLoreStore(t.TempDir())
-	if _, err := store.Create(LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", LoadMode: LoreLoadModeResident, Content: "主角完整正文"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Create(LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: LoreLoadModeAuto, BriefDescription: "黄泉酒馆索引简介", Content: "据点完整正文"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Create(LoreItemInput{ID: "secret", Type: "rule", Name: "隐藏规则", Importance: "minor", LoadMode: LoreLoadModeManual, BriefDescription: "隐藏规则索引简介", Content: strings.Repeat("隐藏完整正文", 800)}); err != nil {
-		t.Fatal(err)
-	}
-
-	context, err := store.StoryMemoryContextMarkdown(20 * 1024)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(context, "主角完整正文") || !strings.Contains(context, "据点完整正文") || !strings.Contains(context, "隐藏完整正文") {
-		t.Fatalf("story memory context should include full lore while within budget: %s", context)
-	}
-
-	bounded, err := store.StoryMemoryContextMarkdown(1200)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len([]byte(bounded)) > 1200 {
-		t.Fatalf("bounded context bytes = %d, want <= 1200", len([]byte(bounded)))
-	}
-	if !strings.Contains(bounded, "secret") || !strings.Contains(bounded, "隐藏规则") {
-		t.Fatalf("bounded context should retain an index for omitted lore: %s", bounded)
-	}
-}
-
 func TestLoreStoreReadAndSearch(t *testing.T) {
 	store := NewLoreStore(t.TempDir())
 	if _, err := store.Create(LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: LoreLoadModeAuto, Tags: []string{"据点"}, Keywords: []string{"黄泉"}, Content: "据点正文"}); err != nil {

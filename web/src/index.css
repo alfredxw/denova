@@ -2268,16 +2268,6 @@ html[data-nova-motion="off"] *::after {
   scrollbar-width: thin;
 }
 
-.memory-ledger-card::before {
-  position: absolute;
-  inset: 12px auto 12px 0;
-  width: 2px;
-  border-radius: 0 999px 999px 0;
-  background: var(--director-brass);
-  content: '';
-  opacity: 0.74;
-}
-
 .director-plan-sheet {
   scrollbar-color: var(--nova-scrollbar-thumb) transparent;
   scrollbar-width: thin;

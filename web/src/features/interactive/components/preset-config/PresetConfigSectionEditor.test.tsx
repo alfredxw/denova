@@ -64,10 +64,10 @@ function ArraySectionHarness({ onChange, onValidityChange }: {
   const [value, setValue] = useState<Array<{ id: string }>>([{ id: 'initial' }])
   return (
     <PresetConfigSectionEditor
-      sectionId="memory-structure-test"
-      resetKey="memory-structure-test"
-      title="记忆结构"
-      description="编辑记忆结构"
+      sectionId="actor-state-test"
+      resetKey="actor-state-test"
+      title="状态结构"
+      description="编辑状态结构"
       summary={`${value.length}`}
       value={value}
       onChange={(next) => {

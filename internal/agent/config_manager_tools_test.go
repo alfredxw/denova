@@ -19,7 +19,7 @@ func TestConfigManagerToolsExposeStableSchema(t *testing.T) {
 	}
 	names := configManagerToolNameSet(t, tools)
 
-	for _, name := range []string{"list_style_references", "write_style_references", "list_tellers", "read_tellers", "write_tellers", "list_actor_states", "read_actor_states", "write_actor_states", "list_image_presets", "read_image_presets", "write_image_presets", "list_story_memory_structures", "write_story_memory_structures", "list_story_memory_records", "read_story_memory_records", "write_story_memory_records", "list_lore_items", "read_lore_items", "write_lore_items", "list_skills", "read_skills", "write_skills", "list_automations", "read_automations", "write_automations", "list_agent_configs", "write_agent_configs"} {
+	for _, name := range []string{"list_style_references", "write_style_references", "list_tellers", "read_tellers", "write_tellers", "list_actor_states", "read_actor_states", "write_actor_states", "list_image_presets", "read_image_presets", "write_image_presets", "list_lore_items", "read_lore_items", "write_lore_items", "list_skills", "read_skills", "write_skills", "list_automations", "read_automations", "write_automations", "list_agent_configs", "write_agent_configs"} {
 		if !names[name] {
 			t.Fatalf("stable config manager schema should expose %s, names=%v", name, names)
 		}

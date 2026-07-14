@@ -30,14 +30,14 @@ func retainToolContextAcrossTurns(toolName string, policy ToolResultContextPolic
 		// tell it what can be re-read; all protocol, filesystem and index tools are
 		// transient implementation detail.
 		switch name {
-		case "read_lore_items", "read_interactive_memories":
+		case "read_lore_items":
 			return true
 		default:
 			return false
 		}
 	}
 	switch name {
-	case "list_lore_items", "list_interactive_memories":
+	case "list_lore_items", "search_story_history":
 		return false
 	default:
 		return true
@@ -51,8 +51,6 @@ func semanticToolResultContextContent(toolName, content string, _ ToolResultCont
 	switch normalizeToolName(toolName) {
 	case "read_lore_items":
 		return retainedLoreReadReceipt(content)
-	case "read_interactive_memories":
-		return retainedInteractiveMemoryReadReceipt(content)
 	default:
 		return content
 	}
@@ -89,37 +87,6 @@ func retainedLoreReadReceipt(content string) string {
 	if len(receipt.SourceIDs) == 0 {
 		// Do not turn an empty result or tool error into a positive-looking
 		// receipt that claims Lore bodies were available.
-		return content
-	}
-	return marshalRetainedToolReceipt(receipt)
-}
-
-func retainedInteractiveMemoryReadReceipt(content string) string {
-	var payload struct {
-		Source struct {
-			StoryID  string `json:"story_id"`
-			BranchID string `json:"branch_id"`
-			Path     string `json:"path"`
-		} `json:"source"`
-		Memories []struct {
-			ID string `json:"id"`
-		} `json:"memories"`
-	}
-	if err := json.Unmarshal([]byte(content), &payload); err != nil {
-		return content
-	}
-	receipt := retainedToolReceipt{
-		Schema:   retainedToolReceiptSchema,
-		ToolName: "read_interactive_memories",
-		StoryID:  strings.TrimSpace(payload.Source.StoryID),
-		BranchID: strings.TrimSpace(payload.Source.BranchID),
-		Path:     strings.TrimSpace(payload.Source.Path),
-		Note:     "Memory bodies were available during the source turn and are omitted from cross-turn context. Re-read an entry if exact wording is required.",
-	}
-	for _, memory := range payload.Memories {
-		receipt.SourceIDs = appendUniqueRetainedValue(receipt.SourceIDs, memory.ID)
-	}
-	if len(receipt.SourceIDs) == 0 {
 		return content
 	}
 	return marshalRetainedToolReceipt(receipt)

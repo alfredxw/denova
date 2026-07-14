@@ -58,8 +58,8 @@ export function StateView({ storyId, snapshot, stateFacts, syncError, displayPre
           <div className="min-w-0">
             <div className="flex min-w-0 flex-col gap-1.5">
               <div className="flex min-w-0 items-center justify-between gap-2 px-0.5">
-                <span className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--nova-text-faint)]">{t('memoryPanel.actorCue')}</span>
-                <span className="text-[10px] text-[var(--nova-text-faint)]">{t('memoryPanel.actorCount', { count: actors.length })}</span>
+                <span className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--nova-text-faint)]">{t('directorPanel.actorCue')}</span>
+                <span className="text-[10px] text-[var(--nova-text-faint)]">{t('directorPanel.actorCount', { count: actors.length })}</span>
               </div>
               <ActorTabs
                 actors={actors.map(([actorId, actor]) => ({ id: actorId, name: actorName(actorId, actor) }))}
@@ -75,7 +75,7 @@ export function StateView({ storyId, snapshot, stateFacts, syncError, displayPre
 
       {worldFacts.length > 0 ? (
         <section aria-labelledby="director-world-state-title">
-          <SectionHeading id="director-world-state-title" icon={<Sparkles className="h-3.5 w-3.5" />} title={t('memoryPanel.worldState')} hint={t('memoryPanel.worldStateHint')} />
+          <SectionHeading id="director-world-state-title" icon={<Sparkles className="h-3.5 w-3.5" />} title={t('directorPanel.worldState')} hint={t('directorPanel.worldStateHint')} />
           <div className="director-state-grid mt-3 grid grid-cols-1 gap-px overflow-hidden rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-border)]">
             {worldFacts.map(([key, value]) => (
               <StateFact key={key} label={humanizeStateKey(key)} value={value} />
@@ -86,7 +86,7 @@ export function StateView({ storyId, snapshot, stateFacts, syncError, displayPre
 
       {changes.length > 0 ? (
         <section aria-labelledby="director-state-change-title">
-          <SectionHeading id="director-state-change-title" icon={<Activity className="h-3.5 w-3.5" />} title={t('memoryPanel.stateDelta')} hint={t('memoryPanel.stateDeltaHint')} />
+          <SectionHeading id="director-state-change-title" icon={<Activity className="h-3.5 w-3.5" />} title={t('directorPanel.stateDelta')} hint={t('directorPanel.stateDeltaHint')} />
           <ol className="mt-3 space-y-2">
             {changes.map((change) => (
               <StateChangeRow key={change.id} change={change} actorName={change.actorId ? actorNames.get(change.actorId) : undefined} />
@@ -109,7 +109,7 @@ function ActorStateSheet({ actorId, actor, schema }: { actorId: string; actor: R
     <article aria-label={name} className="relative min-w-0 pt-2">
       {traits.length > 0 ? (
         <div className="border-b border-[var(--nova-border)] py-2.5">
-          <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nova-text-faint)]">{t('memoryPanel.actorTraits')}</div>
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nova-text-faint)]">{t('directorPanel.actorTraits')}</div>
           <div className="flex flex-wrap gap-1.5">
             {traits.map((trait) => (
               <span
@@ -126,8 +126,8 @@ function ActorStateSheet({ actorId, actor, schema }: { actorId: string; actor: R
 
       <div className="py-3">
         <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nova-text-faint)]">{t('memoryPanel.actorFields')}</span>
-          <span className="text-[10px] text-[var(--nova-text-faint)]">{t('memoryPanel.fieldCount', { count: fields.length })}</span>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nova-text-faint)]">{t('directorPanel.actorFields')}</span>
+          <span className="text-[10px] text-[var(--nova-text-faint)]">{t('directorPanel.fieldCount', { count: fields.length })}</span>
         </div>
         {fields.length > 0 ? (
           <div className="director-state-grid grid grid-cols-1 gap-px overflow-hidden rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-border)]">
@@ -136,7 +136,7 @@ function ActorStateSheet({ actorId, actor, schema }: { actorId: string; actor: R
             ))}
           </div>
         ) : (
-          <div className="rounded-[10px] border border-dashed border-[var(--nova-border)] px-3 py-7 text-center text-xs text-[var(--nova-text-faint)]">{t('memoryPanel.actorFieldsEmpty')}</div>
+          <div className="rounded-[10px] border border-dashed border-[var(--nova-border)] px-3 py-7 text-center text-xs text-[var(--nova-text-faint)]">{t('directorPanel.actorFieldsEmpty')}</div>
         )}
       </div>
     </article>
@@ -214,17 +214,17 @@ function StateEmpty() {
   return (
     <div className="flex min-h-[220px] flex-col items-center justify-center rounded-[12px] border border-dashed border-[var(--nova-border)] bg-[var(--director-panel)] px-6 text-center">
       <span className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-faint)]"><UserRound className="h-4 w-4" /></span>
-      <p className="mt-3 text-xs font-medium text-[var(--nova-text-muted)]">{t('memoryPanel.stateEmpty')}</p>
-      <p className="mt-1 text-[10px] leading-4 text-[var(--nova-text-faint)]">{t('memoryPanel.stateEmptyHint')}</p>
+      <p className="mt-3 text-xs font-medium text-[var(--nova-text-muted)]">{t('directorPanel.stateEmpty')}</p>
+      <p className="mt-1 text-[10px] leading-4 text-[var(--nova-text-faint)]">{t('directorPanel.stateEmptyHint')}</p>
     </div>
   )
 }
 
 function changeVerb(op: string, t: ReturnType<typeof useTranslation>['t']) {
   const normalized = op.toLowerCase()
-  if (normalized === 'set' || normalized === 'replace') return t('memoryPanel.stateChange.set')
-  if (normalized === 'add' || normalized === 'increment' || normalized === 'append') return t('memoryPanel.stateChange.add')
-  if (normalized === 'remove' || normalized === 'delete' || normalized === 'unset') return t('memoryPanel.stateChange.remove')
+  if (normalized === 'set' || normalized === 'replace') return t('directorPanel.stateChange.set')
+  if (normalized === 'add' || normalized === 'increment' || normalized === 'append') return t('directorPanel.stateChange.add')
+  if (normalized === 'remove' || normalized === 'delete' || normalized === 'unset') return t('directorPanel.stateChange.remove')
   return op
 }
 

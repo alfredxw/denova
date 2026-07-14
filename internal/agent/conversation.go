@@ -179,11 +179,11 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 		result.SkippedReason = skipped
 		return input.Messages, result, nil
 	}
-	source, existingMemory, sourceStart, sourceEnd := c.compactionIncrementalSource(input.KeepLatestUser)
-	if strings.TrimSpace(input.ExistingMemory) != "" {
-		existingMemory = input.ExistingMemory
+	source, existingCheckpoint, sourceStart, sourceEnd := c.compactionIncrementalSource(input.KeepLatestUser)
+	if strings.TrimSpace(input.ExistingCheckpoint) != "" {
+		existingCheckpoint = input.ExistingCheckpoint
 	}
-	if len(source) == 0 && strings.TrimSpace(existingMemory) == "" && strings.TrimSpace(input.ReferenceContext) == "" {
+	if len(source) == 0 && strings.TrimSpace(existingCheckpoint) == "" && strings.TrimSpace(input.ReferenceContext) == "" {
 		result.SkippedReason = "empty_source"
 		return input.Messages, result, nil
 	}
@@ -195,7 +195,7 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	}
 	sourceTokens := EstimateContextTokens(source, nil)
 	emitContextCompactionEvent(input.Emit, phase, "started", result)
-	summary, inputChars, err := summarizeContextForCompaction(ctx, c.cfg, c.agentKind, existingMemory, source, input.ReferenceContext, sourceTokens, policy, func(attempt int, delta string) {
+	summary, inputChars, err := summarizeContextForCompaction(ctx, c.cfg, c.agentKind, existingCheckpoint, source, input.ReferenceContext, sourceTokens, policy, func(attempt int, delta string) {
 		emitContextCompactionDeltaEvent(input.Emit, phase, result, attempt, delta)
 	})
 	if err != nil {
@@ -348,9 +348,9 @@ func (c *SessionConversation) compactionIncrementalSource(keepLatestUser bool) (
 	if sourceStart < 0 {
 		sourceStart = 0
 	}
-	existingMemory := ""
+	existingCheckpoint := ""
 	if compaction, ok := c.session.LatestContextCompaction(c.agentKind); ok {
-		existingMemory = compaction.Summary
+		existingCheckpoint = compaction.Summary
 		if compaction.SourceEndIndex > sourceStart {
 			sourceStart = compaction.SourceEndIndex
 		}
@@ -366,7 +366,7 @@ func (c *SessionConversation) compactionIncrementalSource(keepLatestUser bool) (
 		sourceEnd = sourceStart
 	}
 	source := compactionSourceMessages(applyToolResultContextPolicy(messages[sourceStart:sourceEnd], c.ToolResultContextPolicy()), true)
-	return source, existingMemory, sourceStart, sourceEnd
+	return source, existingCheckpoint, sourceStart, sourceEnd
 }
 
 func compactionSourceMessages(messages []*schema.Message, keepLatestUser bool) []*schema.Message {

@@ -16,7 +16,6 @@ const (
 	configManagerResourceSkillMaxTotalBytes = 3 * configManagerResourceSkillMaxBytes
 
 	configManagerAutomationSkill    = "automation-config"
-	configManagerStoryMemorySkill   = "story-memory-config"
 	configManagerTellerSkill        = "teller-config"
 	configManagerStoryDirectorSkill = "story-director-config"
 	configManagerImagePresetSkill   = "image-preset-config"
@@ -99,9 +98,7 @@ func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
 		add(configManagerLoreSkill)
 	case "automation", "automations":
 		add(configManagerAutomationSkill)
-	case "story_memory", "story-memory", "storymemory", "interactive_memory", "interactive-memory":
-		add(configManagerStoryMemorySkill)
-	case "teller", "tellers", "narrative", "style", "styles", "director", "story_director", "story-director", "story_directors", "story-directors", "actor_state", "actor-state", "actor_states", "actor-states", "memory_structure", "memory-structure", "memory_structures", "memory-structures", "story_memory_structure", "story-memory-structure", "story_memory_structures", "story-memory-structures":
+	case "teller", "tellers", "narrative", "style", "styles", "director", "story_director", "story-director", "story_directors", "story-directors", "actor_state", "actor-state", "actor_states", "actor-states":
 		add(configManagerTellerSkill)
 		add(configManagerStoryDirectorSkill)
 		add(configManagerImagePresetSkill)
@@ -131,15 +128,11 @@ func configManagerResourceSkillNames(req ConfigManagerRequest) []string {
 		add(configManagerAutomationSkill)
 	}
 	switch {
-	case strings.Contains(text, "story_memory") || strings.Contains(text, "story-memory") || strings.Contains(text, "storymemory") || strings.Contains(text, "selected_structure") || strings.Contains(text, "structure_id") || strings.Contains(text, "record_count"):
-		add(configManagerStoryMemorySkill)
-	}
-	switch {
 	case strings.Contains(text, "teller") || strings.Contains(text, "narrative") || strings.Contains(text, "叙事风格"):
 		add(configManagerTellerSkill)
 	}
 	switch {
-	case strings.Contains(text, "story_director") || strings.Contains(text, "write_story_directors") || strings.Contains(text, "event_package") || strings.Contains(text, "event-packages") || strings.Contains(text, "actor_state") || strings.Contains(text, "actor_states") || strings.Contains(text, "memory_structure") || strings.Contains(text, "memory-structure") || strings.Contains(text, "story_memory_structure") || strings.Contains(text, "story-memory-structure") || strings.Contains(text, "故事导演") || strings.Contains(text, "导演策略") || strings.Contains(text, "事件包") || strings.Contains(text, "事件系统") || strings.Contains(text, "状态系统") || strings.Contains(text, "结构化状态") || strings.Contains(text, "记忆结构") || strings.Contains(text, "trpg"):
+	case strings.Contains(text, "story_director") || strings.Contains(text, "write_story_directors") || strings.Contains(text, "event_package") || strings.Contains(text, "event-packages") || strings.Contains(text, "actor_state") || strings.Contains(text, "actor_states") || strings.Contains(text, "故事导演") || strings.Contains(text, "导演策略") || strings.Contains(text, "事件包") || strings.Contains(text, "事件系统") || strings.Contains(text, "状态系统") || strings.Contains(text, "结构化状态") || strings.Contains(text, "trpg"):
 		add(configManagerStoryDirectorSkill)
 	}
 	switch {

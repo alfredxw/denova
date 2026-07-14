@@ -3,8 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { deleteLoreItem, generateLoreItemImage, getLoreItems, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
-import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, createStoryMemoryStructure, deleteActorState, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, deleteStoryMemoryStructurePreset, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStoryMemoryStructures, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector, updateStoryMemoryStructure } from '../api'
-import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller } from '../types'
+import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, deleteActorState, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../api'
+import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { defaultRuleTemplates } from './preset-config/ruleTemplates'
 import { newRuleSystemDraft } from './setting-panel/presetResources'
 import { SettingPanel } from './SettingPanel'
@@ -101,21 +101,18 @@ vi.mock('../api', () => ({
   createInteractiveTeller: vi.fn(),
   createRuleSystem: vi.fn(),
   createStoryDirector: vi.fn(),
-  createStoryMemoryStructure: vi.fn(),
   deleteActorState: vi.fn(),
   deleteEventPackage: vi.fn(),
   deleteImagePreset: vi.fn(),
   deleteInteractiveTeller: vi.fn(),
   deleteRuleSystem: vi.fn(),
   deleteStoryDirector: vi.fn(),
-  deleteStoryMemoryStructurePreset: vi.fn(),
   getActorStates: vi.fn(),
   getEventPackages: vi.fn(),
   getImagePresets: vi.fn(),
   getInteractiveTellers: vi.fn(),
   getRuleSystems: vi.fn(),
   getStoryDirectors: vi.fn(),
-  getStoryMemoryStructures: vi.fn(),
   getStyleReferences: vi.fn(),
   saveStyleReference: vi.fn(),
   updateEventPackage: vi.fn(),
@@ -124,7 +121,6 @@ vi.mock('../api', () => ({
   updateActorState: vi.fn(),
   updateRuleSystem: vi.fn(),
   updateStoryDirector: vi.fn(),
-  updateStoryMemoryStructure: vi.fn(),
 }))
 
 describe('SettingPanel', () => {
@@ -147,10 +143,6 @@ describe('SettingPanel', () => {
     vi.mocked(createStoryDirector).mockReset()
     vi.mocked(updateStoryDirector).mockReset()
     vi.mocked(deleteStoryDirector).mockReset()
-    vi.mocked(getStoryMemoryStructures).mockReset()
-    vi.mocked(createStoryMemoryStructure).mockReset()
-    vi.mocked(updateStoryMemoryStructure).mockReset()
-    vi.mocked(deleteStoryMemoryStructurePreset).mockReset()
     vi.mocked(getActorStates).mockReset()
     vi.mocked(createActorState).mockReset()
     vi.mocked(updateActorState).mockReset()
@@ -170,10 +162,6 @@ describe('SettingPanel', () => {
     vi.mocked(createStoryDirector).mockResolvedValue(storyDirector('default-custom', '默认导演'))
     vi.mocked(updateStoryDirector).mockImplementation(async (id, input) => ({ ...storyDirector(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as StoryDirector)
     vi.mocked(deleteStoryDirector).mockResolvedValue(undefined)
-    vi.mocked(getStoryMemoryStructures).mockResolvedValue([memoryStructure('default', '默认记忆结构')])
-    vi.mocked(createStoryMemoryStructure).mockResolvedValue(memoryStructure('custom-memory', '自定义记忆结构'))
-    vi.mocked(updateStoryMemoryStructure).mockImplementation(async (id, input) => ({ ...memoryStructure(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as StoryMemoryStructureModule)
-    vi.mocked(deleteStoryMemoryStructurePreset).mockResolvedValue(undefined)
     vi.mocked(getActorStates).mockResolvedValue([])
     vi.mocked(deleteActorState).mockResolvedValue(undefined)
     vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
@@ -684,35 +672,6 @@ describe('SettingPanel', () => {
     expect(updateEventPackage).not.toHaveBeenCalled()
   })
 
-  it('edits memory structure metadata in the shared resource identity panel', async () => {
-    const user = userEvent.setup()
-    render(<PresetModeHarness />)
-
-    await user.click(screen.getByRole('button', { name: '展开全部目录' }))
-    await user.click(screen.getByRole('button', { name: /默认记忆结构/ }))
-
-    const metadata = screen.getByTestId('preset-metadata')
-    const nameInput = within(metadata).getByRole('textbox', { name: '名称' })
-    const descriptionInput = within(metadata).getByRole('textbox', { name: '描述' })
-    expect(nameInput).toHaveValue('默认记忆结构')
-    expect(descriptionInput).toHaveValue('默认记忆结构 description')
-    expect(screen.getByText('编辑内置资源会保存为同 ID 覆盖；右上角可恢复内置版本。')).toBeInTheDocument()
-    expect(screen.getByTestId('preset-config-visual-editor')).toHaveClass('preset-config-visual-container')
-    expect(screen.getByTestId('memory-structure-editor')).toHaveClass('preset-visual-editor-shell', 'overflow-hidden')
-
-    await user.clear(nameInput)
-    await user.type(nameInput, '长期记忆结构')
-    await user.clear(descriptionInput)
-    await user.type(descriptionInput, '记录长期承接信息')
-    await user.click(screen.getByRole('button', { name: '保存' }))
-
-    await waitFor(() => expect(updateStoryMemoryStructure).toHaveBeenCalled())
-    expect(updateStoryMemoryStructure).toHaveBeenCalledWith('default', expect.objectContaining({
-      name: '长期记忆结构',
-      description: '记录长期承接信息',
-    }), '', '/workspace')
-  })
-
   it('edits TRPG checks through the focused DM-style visual workflow', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
@@ -1189,7 +1148,6 @@ function storyDirector(id: string, name: string): StoryDirector {
       event_package_ids: ['default'],
       rule_system_id: 'default',
       actor_state_id: 'default',
-      memory_structure_id: 'default',
       image_preset_id: 'game-cg',
     },
     strategy: { enabled: true, mainline_strength: 'balanced' },
@@ -1230,26 +1188,6 @@ const BUILTIN_RULE_SYSTEM_IDS = new Set(['default', 'dm-fail-forward', 'dm-osr-p
 
 function isBuiltinRuleSystemID(id: string) {
   return BUILTIN_RULE_SYSTEM_IDS.has(id)
-}
-
-function memoryStructure(id: string, name: string): StoryMemoryStructureModule {
-  return {
-    version: 1,
-    id,
-    name,
-    description: `${name} description`,
-    structures: [{
-      id: 'plot',
-      name: '剧情纪要',
-      description: '',
-      generation_instruction: '',
-      mode: 'append',
-      enabled: true,
-      fields: [{ id: 'event', name: '事件', enabled: true, order: 10 }],
-      order: 10,
-    }],
-    custom: id !== 'default',
-  }
 }
 
 function loreItem(id: string, name: string, type: LoreItem['type'] = 'character'): LoreItem {

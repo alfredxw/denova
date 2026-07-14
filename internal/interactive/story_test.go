@@ -102,7 +102,6 @@ func TestCreateStoryPersistsStoryModuleOverrides(t *testing.T) {
 		NarrativeStyleID:      "noir",
 		RuleSystemID:          "light-rules",
 		ActorStateID:          "detective-state",
-		MemoryStructureID:     "case-memory",
 		EventPackageIDs:       []string{"city-events"},
 		ImagePresetID:         "film-noir",
 		EventPackagesDisabled: false,
@@ -112,7 +111,7 @@ func TestCreateStoryPersistsStoryModuleOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 	refs.EventPackageIDs[0] = "mutated"
-	if story.ModuleRefs == nil || story.ModuleRefs.MemoryStructureID != "case-memory" || story.ModuleRefs.EventPackageIDs[0] != "city-events" {
+	if story.ModuleRefs == nil || story.ModuleRefs.ActorStateID != "detective-state" || story.ModuleRefs.EventPackageIDs[0] != "city-events" {
 		t.Fatalf("story module refs not persisted independently: %#v", story.ModuleRefs)
 	}
 	ctx, err := store.StoryContext(story.ID, "")
@@ -794,7 +793,6 @@ func newStoreWithStaminaTestDirector(t *testing.T) (*Store, StoryDirector) {
 			NarrativeStyleDisabled:  true,
 			EventPackagesDisabled:   true,
 			RuleSystemDisabled:      true,
-			MemoryStructureDisabled: true,
 			OpeningSelectorDisabled: true,
 			ImagePresetDisabled:     true,
 		},
@@ -847,7 +845,7 @@ func TestAppendTurnWithStatePersistsDisplayEventTimelineDetails(t *testing.T) {
 			{Role: "thinking", Content: "先确认可用线索。"},
 			{ID: "call-1", Role: "tool_call", Name: "list_lore_items", Args: `{"keywords":["档案柜"]}`, Status: "success", Result: "找到 2 条资料"},
 			{Role: "thinking", Content: "基于资料继续判断下一步。"},
-			{ID: "call-2", Role: "tool_call", Name: "apply_story_memory_patches", Args: `{"patches":[{"table":"plot_summary"}]}`, Status: "success", Result: "已写入 1 条记忆"},
+			{ID: "call-2", Role: "tool_call", Name: "search_story_history", Args: `{"keywords":["钟楼"]}`, Status: "success", Result: "找到 1 个历史回合"},
 		},
 	})
 	if err != nil {
@@ -871,7 +869,7 @@ func TestAppendTurnWithStatePersistsDisplayEventTimelineDetails(t *testing.T) {
 	if events[1].Args != `{"keywords":["档案柜"]}` || events[1].Result != "找到 2 条资料" {
 		t.Fatalf("first tool details not persisted: %#v", events[1])
 	}
-	if events[3].Args == "" || events[3].Result != "已写入 1 条记忆" {
+	if events[3].Args == "" || events[3].Result != "找到 1 个历史回合" {
 		t.Fatalf("second tool details not persisted: %#v", events[3])
 	}
 }
@@ -1290,35 +1288,6 @@ func TestBackgroundTurnUpdatesDoNotRewindBranchHead(t *testing.T) {
 		}
 	})
 
-	t.Run("memory ready", func(t *testing.T) {
-		store := NewStore(t.TempDir())
-		story, err := store.CreateStory(CreateStoryRequest{Title: "记忆晚到", StoryTellerID: "classic"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		first, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "第一步", Narrative: "第一段。"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		second, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "第二步", Narrative: "第二段。"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := store.MarkInteractiveMemoryReady(story.ID, "main", first.ID); err != nil {
-			t.Fatal(err)
-		}
-
-		snapshot, err := store.Snapshot(story.ID, "main")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != second.ID {
-			t.Fatalf("late memory update should not rewind branch head: %#v", snapshot.Turns)
-		}
-		if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != second.ID {
-			t.Fatalf("current turn should remain latest after late memory update: %#v", snapshot.CurrentTurn)
-		}
-	})
 }
 
 func TestUpdateAndDeleteStory(t *testing.T) {

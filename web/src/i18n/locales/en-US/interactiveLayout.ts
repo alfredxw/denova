@@ -1,5 +1,5 @@
 const interactiveLayout = {
-  'interactiveLayout.resizeSceneMemory': 'Resize Long-Term Memory',
+  'interactiveLayout.resizeDirectorPanel': 'Resize Director Console',
 } as const
 
 export default interactiveLayout

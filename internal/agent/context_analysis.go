@@ -218,7 +218,7 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 			title = runtimeContexts.StableTitle
 		} else if isContextCompactionMessage(msg) {
 			source = "上下文压缩"
-			title = "模型可见压缩摘要"
+			title = "模型可见历史检查点"
 		} else if i == len(messages)-1 {
 			source = "本轮上下文"
 			if strings.TrimSpace(runtimeContexts.Dynamic) != "" {
@@ -298,7 +298,7 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		switch {
 		case isContextCompactionMessage(msg):
 			source = "上下文压缩"
-			title = "模型可见压缩摘要"
+			title = "模型可见历史检查点"
 			compactionEpoch = parseCompactionEpoch(msg.Content)
 		case i == len(messages)-1:
 			source = "本轮互动指令"

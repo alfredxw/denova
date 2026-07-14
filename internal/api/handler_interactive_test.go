@@ -77,44 +77,6 @@ func TestInteractiveStoriesAndTellersAPI(t *testing.T) {
 	if _, err := application.AppendInteractiveTurn(created.ID, "", "我推开酒馆的门", "门后传来低沉的风声。"); err != nil {
 		t.Fatal(err)
 	}
-	memoryCreateResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/memory", map[string]any{
-		"branch_id":  "main",
-		"title":      "酒馆风声",
-		"summary":    "门后传来低沉风声。",
-		"people":     []string{"主角"},
-		"places":     []string{"酒馆"},
-		"tags":       []string{"线索"},
-		"importance": 4,
-	})
-	if memoryCreateResp.Code != http.StatusOK {
-		t.Fatalf("create memory status = %d body=%s", memoryCreateResp.Code, memoryCreateResp.Body.String())
-	}
-	var memoryEntry struct {
-		ID     string `json:"id"`
-		Title  string `json:"title"`
-		Manual bool   `json:"manual"`
-	}
-	decodeResponse(t, memoryCreateResp.Body.Bytes(), &memoryEntry)
-	if memoryEntry.ID == "" || memoryEntry.Title != "酒馆风声" || !memoryEntry.Manual {
-		t.Fatalf("memory entry mismatch: %#v", memoryEntry)
-	}
-	memoryListResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+created.ID+"/memory?branch=main", nil)
-	if memoryListResp.Code != http.StatusOK {
-		t.Fatalf("list memory status = %d body=%s", memoryListResp.Code, memoryListResp.Body.String())
-	}
-	var memoryList struct {
-		Entries []struct {
-			ID string `json:"id"`
-		} `json:"entries"`
-	}
-	decodeResponse(t, memoryListResp.Body.Bytes(), &memoryList)
-	if len(memoryList.Entries) != 1 || memoryList.Entries[0].ID != memoryEntry.ID {
-		t.Fatalf("memory list mismatch: %#v", memoryList)
-	}
-	archiveResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/memory/"+memoryEntry.ID+"/archive", map[string]bool{"archived": true})
-	if archiveResp.Code != http.StatusOK {
-		t.Fatalf("archive memory status = %d body=%s", archiveResp.Code, archiveResp.Body.String())
-	}
 	snapshotResp = performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+created.ID+"/snapshot", nil)
 	decodeResponse(t, snapshotResp.Body.Bytes(), &snapshot)
 	if len(snapshot.Turns) != 1 {
@@ -489,7 +451,7 @@ func TestInteractiveActorTraitRollAndInitialStateAPI(t *testing.T) {
 		Name: "词条 API 导演",
 		ModuleRefs: interactive.StoryDirectorModuleRefs{
 			NarrativeStyleID: "classic", ActorStateID: actorState.ID,
-			EventPackagesDisabled: true, RuleSystemDisabled: true, MemoryStructureDisabled: true, ImagePresetDisabled: true,
+			EventPackagesDisabled: true, RuleSystemDisabled: true, ImagePresetDisabled: true,
 		},
 		Strategy: interactive.StoryDirectorStrategy{Enabled: false},
 	})
@@ -693,93 +655,6 @@ func TestPresetUpdateRejectsStaleWorkspaceIdentity(t *testing.T) {
 	})
 	if resp.Code != http.StatusConflict {
 		t.Fatalf("stale workspace update status=%d body=%s", resp.Code, resp.Body.String())
-	}
-}
-
-func TestStoryMemoryStructuresPresetAPI(t *testing.T) {
-	application := newTestApplication(t)
-	server := NewServer(application, "0")
-
-	listResp := performJSONRequest(t, server, http.MethodGet, "/api/story-memory-structures", nil)
-	if listResp.Code != http.StatusOK {
-		t.Fatalf("list story memory structures status = %d body=%s", listResp.Code, listResp.Body.String())
-	}
-	var list struct {
-		Items []interactive.StoryMemoryStructureModule `json:"story_memory_structures"`
-	}
-	decodeResponse(t, listResp.Body.Bytes(), &list)
-	if len(list.Items) == 0 || list.Items[0].ID == "" {
-		t.Fatalf("list should include built-in memory structure modules: %#v", list)
-	}
-
-	enabled := true
-	createResp := performJSONRequest(t, server, http.MethodPost, "/api/story-memory-structures", interactive.StoryMemoryStructureModule{
-		ID:   "custom-memory-api",
-		Name: "API 记忆结构",
-		Structures: []interactive.StoryMemoryStructure{{
-			ID:      "quest",
-			Name:    "任务",
-			Mode:    "keyed",
-			Enabled: &enabled,
-			Fields: []interactive.StoryMemoryField{
-				{ID: "name", Name: "名称", Required: true, Order: 10},
-				{ID: "status", Name: "状态", Order: 20},
-			},
-			KeyFieldID: "name",
-			Order:      10,
-		}},
-	})
-	if createResp.Code != http.StatusOK {
-		t.Fatalf("create story memory structure status = %d body=%s", createResp.Code, createResp.Body.String())
-	}
-	var created interactive.StoryMemoryStructureModule
-	decodeResponse(t, createResp.Body.Bytes(), &created)
-	if created.ID != "custom-memory-api" || !created.Custom || len(created.Structures) != 1 {
-		t.Fatalf("created story memory structure mismatch: %#v", created)
-	}
-
-	getResp := performJSONRequest(t, server, http.MethodGet, "/api/story-memory-structures/custom-memory-api", nil)
-	if getResp.Code != http.StatusOK {
-		t.Fatalf("get story memory structure status = %d body=%s", getResp.Code, getResp.Body.String())
-	}
-	var loaded interactive.StoryMemoryStructureModule
-	decodeResponse(t, getResp.Body.Bytes(), &loaded)
-	if loaded.ID != created.ID || loaded.UpdatedAt != created.UpdatedAt {
-		t.Fatalf("loaded story memory structure mismatch: %#v", loaded)
-	}
-
-	conflictResp := performJSONRequest(t, server, http.MethodPatch, "/api/story-memory-structures/custom-memory-api", map[string]any{
-		"id":            "custom-memory-api",
-		"name":          "冲突名称",
-		"structures":    created.Structures,
-		"base_revision": "stale-revision",
-	})
-	if conflictResp.Code != http.StatusConflict {
-		t.Fatalf("stale story memory structure update should conflict, status = %d body=%s", conflictResp.Code, conflictResp.Body.String())
-	}
-
-	updateResp := performJSONRequest(t, server, http.MethodPatch, "/api/story-memory-structures/custom-memory-api", map[string]any{
-		"id":            "custom-memory-api",
-		"name":          "更新后的 API 记忆结构",
-		"structures":    created.Structures,
-		"base_revision": created.UpdatedAt,
-	})
-	if updateResp.Code != http.StatusOK {
-		t.Fatalf("update story memory structure status = %d body=%s", updateResp.Code, updateResp.Body.String())
-	}
-	var updated interactive.StoryMemoryStructureModule
-	decodeResponse(t, updateResp.Body.Bytes(), &updated)
-	if updated.Name != "更新后的 API 记忆结构" || updated.UpdatedAt == created.UpdatedAt {
-		t.Fatalf("updated story memory structure mismatch: %#v", updated)
-	}
-
-	deleteResp := performJSONRequest(t, server, http.MethodDelete, "/api/story-memory-structures/custom-memory-api", nil)
-	if deleteResp.Code != http.StatusOK {
-		t.Fatalf("delete story memory structure status = %d body=%s", deleteResp.Code, deleteResp.Body.String())
-	}
-	missingResp := performJSONRequest(t, server, http.MethodGet, "/api/story-memory-structures/custom-memory-api", nil)
-	if missingResp.Code != http.StatusNotFound {
-		t.Fatalf("deleted story memory structure should be missing, status = %d body=%s", missingResp.Code, missingResp.Body.String())
 	}
 }
 

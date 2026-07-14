@@ -1,19 +1,18 @@
 import type { ReactNode } from 'react'
-import { Activity, Brain, FileText, Gauge } from 'lucide-react'
+import { Activity, FileText, Gauge } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ConsoleTab } from './types'
 
-export function ConsoleTabs({ activeTab, onChange, stateCount, memoryCount }: { activeTab: ConsoleTab; onChange: (tab: ConsoleTab) => void; stateCount: number; memoryCount: number }) {
+export function ConsoleTabs({ activeTab, onChange, stateCount }: { activeTab: ConsoleTab; onChange: (tab: ConsoleTab) => void; stateCount: number }) {
   const { t } = useTranslation()
   const items: Array<{ id: ConsoleTab; label: string; icon: ReactNode; count?: number }> = [
-    { id: 'state', label: t('memoryPanel.consoleTab.state'), icon: <Gauge className="h-3.5 w-3.5" />, count: stateCount },
-    { id: 'memory', label: t('memoryPanel.consoleTab.memory'), icon: <Brain className="h-3.5 w-3.5" />, count: memoryCount },
-    { id: 'plan', label: t('memoryPanel.consoleTab.plan'), icon: <FileText className="h-3.5 w-3.5" /> },
-    { id: 'run', label: t('memoryPanel.consoleTab.run'), icon: <Activity className="h-3.5 w-3.5" /> },
+    { id: 'state', label: t('directorPanel.consoleTab.state'), icon: <Gauge className="h-3.5 w-3.5" />, count: stateCount },
+    { id: 'plan', label: t('directorPanel.consoleTab.plan'), icon: <FileText className="h-3.5 w-3.5" /> },
+    { id: 'run', label: t('directorPanel.consoleTab.run'), icon: <Activity className="h-3.5 w-3.5" /> },
   ]
   return (
-    <nav className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--director-canvas)] px-3" aria-label={t('memoryPanel.consoleTabs')}>
-      <div className="grid grid-cols-4 gap-0">
+    <nav className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--director-canvas)] px-3" aria-label={t('directorPanel.consoleTabs')}>
+      <div className="grid grid-cols-3 gap-0">
         {items.map((item) => (
           <button
             key={item.id}

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryMemoryStructureModule, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, Teller } from '../../types'
 import { PresetMetadataPanel } from '../preset-config/PresetEditorChrome'
 import { BooleanSwitchField } from '../setting-panel/BooleanSwitchField'
 import { DirectorModuleConsole } from './ModuleConsole'
@@ -18,7 +18,6 @@ export function StoryDirectorEditor({
   eventPackages,
   ruleSystems,
   actorStates,
-  memoryStructures,
   imagePresets,
   setDraft,
   onValidityChange,
@@ -28,7 +27,6 @@ export function StoryDirectorEditor({
   eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
   actorStates: ActorStateModule[]
-  memoryStructures: StoryMemoryStructureModule[]
   imagePresets: ImagePreset[]
   setDraft: (draft: StoryDirector | null) => void
   onValidityChange?: (valid: boolean) => void
@@ -117,7 +115,6 @@ export function StoryDirectorEditor({
   const selectedEventCardCount = selectedEventPackages.reduce((total, item) => total + item.cards, 0)
   const selectedRuleSystem = findById(ruleSystems, refs.rule_system_id || 'default')
   const selectedActorState = findById(actorStates, refs.actor_state_id || 'default')
-  const selectedMemoryStructure = findById(memoryStructures, refs.memory_structure_id || 'default')
   const selectedImagePreset = findById(imagePresets, refs.image_preset_id || 'game-cg')
   const selectedTeller = findById(tellers, refs.narrative_style_id || 'classic')
 
@@ -139,15 +136,12 @@ export function StoryDirectorEditor({
           selectedTellerName={selectedTeller?.name || refs.narrative_style_id || 'classic'}
           selectedRuleName={selectedRuleSystem?.name || refs.rule_system_id || 'default'}
           selectedActorStateName={selectedActorState?.name || refs.actor_state_id || 'default'}
-          selectedMemoryStructureCount={selectedMemoryStructure?.structures?.filter((structure) => structure.enabled !== false).length ?? draft.resolved_snapshot?.story_memory_structures?.filter((structure) => structure.enabled !== false).length ?? 0}
-          selectedMemoryStructureTotal={selectedMemoryStructure?.structures?.length ?? draft.resolved_snapshot?.story_memory_structures?.length ?? 0}
           selectedImageName={selectedImagePreset?.name || refs.image_preset_id || 'game-cg'}
           selectedEventCardCount={selectedEventCardCount}
           tellers={tellers}
           eventPackages={eventPackages}
           ruleSystems={ruleSystems}
           actorStates={actorStates}
-          memoryStructures={memoryStructures}
           imagePresets={imagePresets}
           onModuleRefChange={updateModuleRef}
         />

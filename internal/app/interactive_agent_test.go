@@ -60,7 +60,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if history[1].Role != schema.User || history[1].Content != "我推开酒馆的门" {
 		t.Fatalf("history[0] mismatch: %#v", history[0])
 	}
-	if strings.Contains(history[1].Content, "故事记忆") || strings.Contains(history[1].Content, "最高篇幅约束") {
+	if strings.Contains(history[1].Content, "历史 checkpoint") || strings.Contains(history[1].Content, "最高篇幅约束") {
 		t.Fatalf("history[1] should remain plain story history, got: %#v", history[1])
 	}
 	if history[2].Role != schema.Assistant || history[2].Content != "门后传来低沉的风声。" {
@@ -75,8 +75,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"800 个中文字",
 		"最高篇幅约束",
 		"list_lore_items",
-		"list_interactive_memories",
-		"当前分支故事记忆",
+		"search_story_history",
+		"turn_id",
 		"后台导演规划可读区",
 		"source: director.md visible section",
 		"bounded",
@@ -183,7 +183,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 	for _, want := range []string{
 		"keep、patch 或 replan",
-		"不得写入它们",
+		"不得改写历史 Turn 或 Actor State",
 		"资料库优先",
 		"不负责替用户选择下一步行动",
 	} {
@@ -198,7 +198,6 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatalf("director lore-name roster should not preload briefs or bodies: %s", directorInstruction)
 	}
 	for _, want := range []string{
-		"当前分支故事记忆",
 		"近期剧情历史",
 		"本回合 TurnResult / RuleResolution / StateDelta 审计 JSON",
 		"turn_result",
@@ -210,9 +209,6 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		if !strings.Contains(directorInstruction, want) {
 			t.Fatalf("director instruction should include maintenance context %q: %s", want, directorInstruction)
 		}
-	}
-	if strings.Contains(directorInstruction, "故事记忆结构与字段协议") {
-		t.Fatalf("director plan context should not duplicate Memory Recorder schema: %s", directorInstruction)
 	}
 	if strings.Contains(directorInstruction, "经典叙事者") || strings.Contains(directorInstruction, "导演本轮上下文规则") {
 		t.Fatalf("director instruction should not include story-only teller rules: %s", directorInstruction)
@@ -549,7 +545,6 @@ func newInteractiveStoreWithHPTestDirector(t *testing.T, workspace, novaDir stri
 			NarrativeStyleDisabled:  true,
 			EventPackagesDisabled:   true,
 			RuleSystemDisabled:      true,
-			MemoryStructureDisabled: true,
 			OpeningSelectorDisabled: true,
 			ImagePresetDisabled:     true,
 		},
@@ -611,10 +606,10 @@ func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{Role: "thinking", Content: "第二轮基于工具结果继续判断。"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-2", Role: "tool_call", Name: "apply_story_memory_patches", Content: "apply_story_memory_patches", Args: `{"patches":[{"table":"plot_summary"}]}`, Status: "running"}); err != nil {
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-2", Role: "tool_call", Name: "search_story_history", Content: "search_story_history", Args: `{"keywords":["钟楼"]}`, Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.UpdateDisplayToolResult("call-2", "apply_story_memory_patches", "success", "已写入 1 条记忆"); err != nil {
+	if err := conversation.UpdateDisplayToolResult("call-2", "search_story_history", "success", "找到 1 个历史回合"); err != nil {
 		t.Fatal(err)
 	}
 	submitTestTurnResult(t, conversation, "调查档案柜", "找到档案室线索")
@@ -630,13 +625,13 @@ func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {
 	if len(events) != 4 {
 		t.Fatalf("display event count = %d, want 4: %#v", len(events), events)
 	}
-	if events[0].Role != "thinking" || events[1].Name != "list_lore_items" || events[2].Role != "thinking" || events[3].Name != "apply_story_memory_patches" {
+	if events[0].Role != "thinking" || events[1].Name != "list_lore_items" || events[2].Role != "thinking" || events[3].Name != "search_story_history" {
 		t.Fatalf("display events order mismatch: %#v", events)
 	}
 	if events[1].Args != `{"keywords":["档案室"]}` || events[1].Result != "找到档案室设定" || events[1].Status != "success" {
 		t.Fatalf("first tool event details mismatch: %#v", events[1])
 	}
-	if events[3].Args == "" || events[3].Result != "已写入 1 条记忆" || events[3].Status != "success" {
+	if events[3].Args == "" || events[3].Result != "找到 1 个历史回合" || events[3].Status != "success" {
 		t.Fatalf("second tool event details mismatch: %#v", events[3])
 	}
 }
@@ -741,7 +736,7 @@ func TestInteractiveConversationKeepsFullHistoryWithoutSlidingWindow(t *testing.
 	if history[0].Content != "第1次行动" || history[2].Content != "第2次行动" || history[6].Content != "第4次行动" {
 		t.Fatalf("interactive story history should keep the full pre-compaction chain: %#v", history)
 	}
-	if strings.Contains(history[8].Content, "较早") || strings.Contains(history[8].Content, "第1次行动") {
+	if strings.Contains(history[8].Content, "[历史上下文检查点]") || strings.Contains(history[8].Content, "第1次行动") {
 		t.Fatalf("turn instruction should not carry sliding-window summaries or duplicate raw history: %s", history[8].Content)
 	}
 }
@@ -842,7 +837,7 @@ func TestInteractiveTurnMemoryKeepsFullTurnChain(t *testing.T) {
 		{User: "第4次行动", Narrative: "第4段剧情"},
 		{User: "第5次行动", Narrative: "第5段剧情"},
 	}
-	memory := buildInteractiveTurnMemory(turns)
+	memory := buildInteractiveTurnHistory(turns)
 	if len(memory.Turns) != len(turns) {
 		t.Fatalf("turns = %d, want full chain %d", len(memory.Turns), len(turns))
 	}
@@ -854,7 +849,7 @@ func TestInteractiveTurnMemoryKeepsFullTurnChain(t *testing.T) {
 	}
 }
 
-func TestInteractiveTurnMemoryWithCompactionUsesSingleSummaryAndRetainedTail(t *testing.T) {
+func TestInteractiveTurnHistoryWithCompactionUsesSingleCheckpointAndRetainedTail(t *testing.T) {
 	turns := []interactive.TurnEvent{
 		{User: "第1次行动", Narrative: "第1段剧情"},
 		{User: "第2次行动", Narrative: "第2段剧情"},
@@ -866,22 +861,22 @@ func TestInteractiveTurnMemoryWithCompactionUsesSingleSummaryAndRetainedTail(t *
 		Summary:         "压缩摘要：主角已进入旧城。",
 		SourceTurnCount: 3,
 	}
-	memory := buildInteractiveTurnMemoryWithCompaction(turns, compaction, 1)
-	if memory.PreviousSummary != "" {
-		t.Fatalf("previous summary should stay empty when compaction summary is a model message, got %q", memory.PreviousSummary)
+	history := buildInteractiveTurnHistoryWithCompaction(turns, compaction, 1)
+	if history.PreviousSummary != "" {
+		t.Fatalf("previous summary should stay empty when the history checkpoint is a model message, got %q", history.PreviousSummary)
 	}
-	if len(memory.Turns) != 3 ||
-		memory.Turns[0].User != "第3次行动" ||
-		memory.Turns[1].User != "第4次行动" ||
-		memory.Turns[2].User != "第5次行动" {
-		t.Fatalf("retained tail should keep retained source turns plus post-compaction turns: %#v", memory.Turns)
+	if len(history.Turns) != 3 ||
+		history.Turns[0].User != "第3次行动" ||
+		history.Turns[1].User != "第4次行动" ||
+		history.Turns[2].User != "第5次行动" {
+		t.Fatalf("retained tail should keep retained source turns plus post-compaction turns: %#v", history.Turns)
 	}
-	if memory.PreviousCount != 3 || memory.OmittedCount != 3 {
-		t.Fatalf("unexpected compaction counts: %#v", memory)
+	if history.PreviousCount != 3 || history.OmittedCount != 3 {
+		t.Fatalf("unexpected compaction counts: %#v", history)
 	}
 }
 
-func TestInteractiveTurnMemoryWithCompactionRetainsSourceTailImmediatelyAfterCompaction(t *testing.T) {
+func TestInteractiveTurnHistoryWithCompactionRetainsSourceTailImmediatelyAfterCompaction(t *testing.T) {
 	turns := []interactive.TurnEvent{
 		{User: "第1次行动", Narrative: "第1段剧情"},
 		{User: "第2次行动", Narrative: "第2段剧情"},
@@ -891,33 +886,34 @@ func TestInteractiveTurnMemoryWithCompactionRetainsSourceTailImmediatelyAfterCom
 		Summary:         "压缩摘要：主角已进入旧城。",
 		SourceTurnCount: len(turns),
 	}
-	memory := buildInteractiveTurnMemoryWithCompaction(turns, compaction, 2)
-	if memory.PreviousSummary != "" {
-		t.Fatalf("compaction summary should not be duplicated in previous summary: %q", memory.PreviousSummary)
+	history := buildInteractiveTurnHistoryWithCompaction(turns, compaction, 2)
+	if history.PreviousSummary != "" {
+		t.Fatalf("history checkpoint should not be duplicated in previous summary: %q", history.PreviousSummary)
 	}
-	if len(memory.Turns) != 2 || memory.Turns[0].User != "第2次行动" || memory.Turns[1].User != "第3次行动" {
-		t.Fatalf("retained tail should remain available immediately after compaction: %#v", memory.Turns)
+	if len(history.Turns) != 2 || history.Turns[0].User != "第2次行动" || history.Turns[1].User != "第3次行动" {
+		t.Fatalf("retained tail should remain available immediately after compaction: %#v", history.Turns)
 	}
 }
 
 func TestInteractiveCompactionSourceUsesOnlyTurnsAfterPreviousCompaction(t *testing.T) {
 	turns := []interactive.TurnEvent{
-		{User: "已压缩行动1", Narrative: "已压缩剧情1"},
-		{User: "已压缩行动2", Narrative: "已压缩剧情2"},
-		{User: "新增行动3", Narrative: "新增剧情3"},
+		{ID: "turn-1", BranchID: "main", User: "已压缩行动1", Narrative: "已压缩剧情1"},
+		{ID: "turn-2", BranchID: "main", User: "已压缩行动2", Narrative: "已压缩剧情2"},
+		{ID: "turn-3", BranchID: "main", User: "新增行动3", Narrative: "新增剧情3"},
 	}
 	compaction := &interactive.ContextCompactionEvent{
 		Summary:         "旧压缩摘要：前两回合已整理。",
 		SourceTurnCount: 2,
 	}
-	source, existing := interactiveCompactionSource(turns, compaction)
-	if existing != compaction.Summary {
-		t.Fatalf("existing memory = %q", existing)
+	source, checkpoint := interactiveCompactionSource(turns, compaction)
+	if checkpoint != compaction.Summary {
+		t.Fatalf("existing checkpoint = %q", checkpoint)
 	}
 	if len(source) != 2 {
 		t.Fatalf("source len = %d, want user+narrative for one new turn: %#v", len(source), source)
 	}
-	if source[0].Content != "新增行动3" || source[1].Content != "新增剧情3" {
+	if !strings.Contains(source[0].Content, "[source turn_id=turn-3 branch_id=main]") || !strings.HasSuffix(source[0].Content, "新增行动3") ||
+		!strings.Contains(source[1].Content, "[source turn_id=turn-3 branch_id=main]") || !strings.HasSuffix(source[1].Content, "新增剧情3") {
 		t.Fatalf("source should contain only new turn messages: %#v", source)
 	}
 	for _, msg := range source {

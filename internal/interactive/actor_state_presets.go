@@ -171,7 +171,7 @@ func appendStoryContextTemplate(templates []ActorStateTemplate) []ActorStateTemp
 }
 
 func defaultStoryContextTemplate() ActorStateTemplate {
-	return actorStateTemplate(ActorStateStoryContextTemplateID, "默认故事上下文状态表", "记录当前故事线可行动、可检定、可承接的全局时间、地点、场景和压力；这是 Story Memory 旧 current_state 的运行态真源。", commonStoryContextStateFields())
+	return actorStateTemplate(ActorStateStoryContextTemplateID, "默认故事上下文状态表", "记录当前故事线可行动、可检定、可承接的全局时间、地点、场景和压力。", commonStoryContextStateFields())
 }
 
 func defaultActorStateInitialActors() []ActorStateInitialActor {

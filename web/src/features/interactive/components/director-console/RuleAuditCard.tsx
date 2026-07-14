@@ -2,7 +2,7 @@ import { Activity, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import type { RuleResolution, TerminalOutcome } from '../../types'
-import { InfoLine, MemoryChip, StateValue } from './shared'
+import { AuditChip, InfoLine, StateValue } from './shared'
 import { ruleOutcomeClass } from './utils'
 
 export function RuleAuditCard({ ruleResolution, terminalOutcome, error, rerolling, onReroll }: { ruleResolution?: RuleResolution; terminalOutcome?: TerminalOutcome; error?: string; rerolling?: boolean; onReroll: () => void }) {
@@ -28,9 +28,9 @@ export function RuleAuditCard({ ruleResolution, terminalOutcome, error, rerollin
       </div>
       {error ? <div className="mb-2 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{error}</div> : null}
       <div className="flex flex-wrap gap-1.5">
-        <MemoryChip>{ruleRequest?.intent || t('snapshot.noRecord')}</MemoryChip>
-        <MemoryChip>{`${t('snapshot.ruleAudit.difficulty')}: ${ruleRequest?.difficulty || t('snapshot.noRecord')}`}</MemoryChip>
-        <MemoryChip>{`${t('snapshot.ruleAudit.outcome')}: ${ruleResult?.outcome || t('snapshot.noRecord')}`}</MemoryChip>
+        <AuditChip>{ruleRequest?.intent || t('snapshot.noRecord')}</AuditChip>
+        <AuditChip>{`${t('snapshot.ruleAudit.difficulty')}: ${ruleRequest?.difficulty || t('snapshot.noRecord')}`}</AuditChip>
+        <AuditChip>{`${t('snapshot.ruleAudit.outcome')}: ${ruleResult?.outcome || t('snapshot.noRecord')}`}</AuditChip>
       </div>
       {ruleRequest?.challenge || ruleRequest?.cost || ruleRequest?.state ? (
         <div className="mt-2 space-y-1 text-xs leading-5 text-[var(--nova-text-muted)]">

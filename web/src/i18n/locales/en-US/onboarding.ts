@@ -26,7 +26,7 @@ const onboarding = {
   'onboarding.tour.agent.title': 'Writing Agent',
   'onboarding.tour.agent.body': 'Chat with AI for continuation, rewriting, outlines, state sync, and consistency checks. The input menu switches model, narrative preset, and Writing Skill.',
   'onboarding.tour.interactive.title': 'Game Mode',
-  'onboarding.tour.interactive.body': 'Turn your story setting into an interactive fiction experience with story turns, branches, lore, memory, and quick actions.',
+  'onboarding.tour.interactive.body': 'Turn your story setting into an interactive fiction experience with story turns, branches, lore, Actor State, and quick actions.',
   'onboarding.tour.lore.title': 'Lore',
   'onboarding.tour.lore.body': 'Store characters, world rules, systems, and long-term facts so Writing Agent and Game Mode can read them when needed.',
   'onboarding.tour.teller.title': 'Presets',

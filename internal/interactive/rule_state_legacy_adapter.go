@@ -3,7 +3,7 @@ package interactive
 import "encoding/json"
 
 // These decoders are the v1 replay adapter. New JSON only emits structured
-// actor_id + field_id references; old path fields are accepted in memory.
+// actor_id + field_id references; old path fields are accepted while replaying.
 func (value *TurnCheckAdjudication) UnmarshalJSON(data []byte) error {
 	type stored TurnCheckAdjudication
 	var payload struct {

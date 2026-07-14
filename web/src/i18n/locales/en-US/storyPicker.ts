@@ -17,7 +17,6 @@ const storyPicker = {
   'storyPicker.setup.module.eventPackages': 'Event packages',
   'storyPicker.setup.module.ruleSystem': 'Rule system',
   'storyPicker.setup.module.actorState': 'Actor state',
-  'storyPicker.setup.module.memoryStructure': 'Memory structure',
   'storyPicker.setup.module.imagePreset': 'Image preset',
   'storyPicker.label': 'Story',
   'storyPicker.placeholder': 'Choose Story',

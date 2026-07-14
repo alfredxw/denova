@@ -16,7 +16,6 @@ func TestPresetResourcesDropLegacyTopLevelTags(t *testing.T) {
 		{name: "event package", value: &EventPackageModule{}},
 		{name: "rule system", value: &RuleSystemModule{}},
 		{name: "actor state", value: &ActorStateModule{}},
-		{name: "memory structure", value: &StoryMemoryStructureModule{}},
 	}
 
 	for _, test := range tests {

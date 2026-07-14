@@ -26,7 +26,6 @@ describe('StoryDirectorEditor', () => {
         eventPackages={[]}
         ruleSystems={[]}
         actorStates={[]}
-        memoryStructures={[]}
         imagePresets={[]}
         setDraft={vi.fn()}
       />,

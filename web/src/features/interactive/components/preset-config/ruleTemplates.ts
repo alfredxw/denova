@@ -118,7 +118,7 @@ function normalizeNarrativeRefs(value: unknown): RuleNarrativeStateRef[] | undef
     return {
       source: stringOption(source.source, ['actor', 'target', 'scene'], 'actor'),
 			field_id: String(source.field_id || source.field_path || '').normalize('NFKC').trim(),
-      usage: stringOption(source.usage, ['check_decision', 'difficulty', 'outcome_design', 'prose', 'memory'], 'outcome_design'),
+      usage: stringOption(source.usage, ['check_decision', 'difficulty', 'outcome_design', 'prose'], 'outcome_design'),
       guidance: String(source.guidance || ''),
     }
   }).filter(Boolean) as RuleNarrativeStateRef[]

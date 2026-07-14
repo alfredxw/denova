@@ -531,7 +531,6 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		RuleResolution:       normalizeRuleResolutionPointer(req.RuleResolution),
 		TurnResult:           turnResult,
 		TerminalOutcome:      normalizeTerminalOutcomePointer(req.TerminalOutcome),
-		MemoryStatus:         "pending",
 		Flags:                map[string]bool{"pinned": false, "locked": false},
 	}
 	ops := normalizeStateOps(req.Ops)
@@ -909,8 +908,6 @@ func (s *Store) MarkStateFailed(storyID string, req MarkStateFailedRequest) erro
 		}
 		raw["state_status"] = "failed"
 		raw["state_error"] = errText
-		raw["memory_status"] = "failed"
-		raw["memory_error"] = errText
 		updated = true
 		break
 	}

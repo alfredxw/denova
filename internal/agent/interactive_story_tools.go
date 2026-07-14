@@ -14,11 +14,6 @@ import (
 	"denova/internal/interactive"
 )
 
-const (
-	interactiveMemoryToolListLimit    = 24
-	interactiveMemoryToolSummaryLimit = 800
-)
-
 // InteractiveStoryToolContext provides story-scoped read tools for one
 // interactive story run. The story and branch are fixed by the backend; the
 // model never supplies them.
@@ -33,8 +28,6 @@ type InteractiveStoryToolContext struct {
 	StableContextTitle       string
 	StableContext            string
 	StableContextMaxBytes    int
-	OnStoryMemoryApplied     func(applied int)
-	OnStateMaintenanceFailed func(error)
 	OnLoreItemsRead          func([]string)
 	SubmitStateSchemaBatch   func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
 	SubmitDirectorPlanUpdate func(context.Context, interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error)
@@ -49,55 +42,11 @@ type InteractiveStoryToolContext struct {
 	TurnResultReady     func() bool
 }
 
-type listInteractiveMemoriesInput struct {
-	Query  string   `json:"query,omitempty" jsonschema:"description=可选检索词，用当前行动、人物、地点、线索或目标描述相关记忆"`
-	People []string `json:"people,omitempty" jsonschema:"description=可选人物筛选，匹配记忆 people 字段"`
-	Places []string `json:"places,omitempty" jsonschema:"description=可选地点筛选，匹配记忆 places 字段"`
-	Tags   []string `json:"tags,omitempty" jsonschema:"description=可选标签筛选，匹配记忆 tags 字段"`
-	Limit  int      `json:"limit,omitempty" jsonschema:"description=最多返回多少条索引，默认 12，最大 24"`
-}
-
-type readInteractiveMemoriesInput struct {
-	IDs   []string `json:"ids" jsonschema:"description=要读取正文的互动长期记忆 ID 列表；可按需一次读取多个相关记忆"`
-	Query string   `json:"query,omitempty" jsonschema:"description=可选，说明本次读取记忆是为了回答哪类当前行动或线索；用于记录最近召回"`
-}
-
-type applyStoryMemoryPatchesInput struct {
-	Patches []interactive.StoryMemoryPatch `json:"patches" jsonschema:"description=要写入的故事记忆 patch。每条 patch 必须遵守当前注入的 Story Memory schema；op 仅使用 upsert、append、archive、restore。"`
-}
-
-type interactiveMemoryToolOutput struct {
-	Source    interactiveMemoryToolSource `json:"source"`
-	Limits    map[string]int              `json:"limits"`
-	Truncated bool                        `json:"truncated"`
-	Memories  any                         `json:"memories"`
-}
-
-type interactiveMemoryToolSource struct {
-	Kind     string `json:"kind"`
-	StoryID  string `json:"story_id"`
-	BranchID string `json:"branch_id"`
-	Path     string `json:"path"`
-}
-
-type interactiveMemoryIndexItem struct {
-	ID         string   `json:"id"`
-	BranchID   string   `json:"branch_id"`
-	TurnID     string   `json:"turn_id,omitempty"`
-	Title      string   `json:"title"`
-	Summary    string   `json:"summary"`
-	People     []string `json:"people,omitempty"`
-	Places     []string `json:"places,omitempty"`
-	Tags       []string `json:"tags,omitempty"`
-	Importance int      `json:"importance"`
-	Manual     bool     `json:"manual,omitempty"`
-	UpdatedAt  string   `json:"updated_at,omitempty"`
-}
-
-type storyMemoryPatchToolOutput struct {
-	AppliedRecords int    `json:"applied_records"`
-	BranchID       string `json:"branch_id"`
-	TurnID         string `json:"turn_id"`
+type searchStoryHistoryInput struct {
+	Keywords     []string `json:"keywords,omitempty" jsonschema:"description=要检索的人物、地点、物品、线索或事件关键词；最多 8 个。留空时浏览最近回合。"`
+	Match        string   `json:"match,omitempty" jsonschema:"description=关键词匹配方式：any 匹配任一关键词，all 要求全部匹配。默认 any。"`
+	BeforeTurnID string   `json:"before_turn_id,omitempty" jsonschema:"description=只检索该 turn_id 之前的当前分支历史；用于避免把当前回合当作旧事实。"`
+	Limit        int      `json:"limit,omitempty" jsonschema:"description=最多返回多少个历史回合，默认 8，最大 12。"`
 }
 
 // interactiveTurnCheckToolInput deliberately omits model-authored
@@ -140,120 +89,30 @@ func (input interactiveTurnCheckToolInput) request() interactive.TurnCheckReques
 	}
 }
 
-func newInteractiveMemoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
+func newInteractiveHistoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
 	ctx.StoryID = strings.TrimSpace(ctx.StoryID)
 	ctx.BranchID = strings.TrimSpace(ctx.BranchID)
 	if ctx.Store == nil || ctx.StoryID == "" {
 		return nil, nil
 	}
-	listTool, err := utils.InferTool("list_interactive_memories", "列出当前互动故事分支的长期记忆轻量索引。用于根据当前行动、人物、地点、线索或标签判断本轮需要读取哪些历史事实；默认排除归档记忆和其他分支记忆。", func(callCtx context.Context, input listInteractiveMemoriesInput) (string, error) {
+	searchTool, err := utils.InferTool("search_story_history", "检索当前分支已经提交的历史回合。Turn 事件是历史事实真源；结果只返回有界的玩家行动、叙事片段、状态变化和精确 turn_id，可随时从事件日志重建。需要承接较早人物、地点、线索、承诺或因果时使用；不要把检索结果当作当前 Actor State 或未来 Director 计划。", func(callCtx context.Context, input searchStoryHistoryInput) (string, error) {
 		_ = callCtx
-		limit := normalizeInteractiveMemoryToolLimit(input.Limit, 12, interactiveMemoryToolListLimit)
-		entries, err := ctx.Store.VisibleInteractiveMemories(ctx.StoryID, ctx.BranchID, interactiveMemoryToolListLimit)
-		if err != nil {
-			return "", err
-		}
-		filtered := filterInteractiveMemoryToolEntries(entries, input)
-		truncated := len(filtered) > limit
-		if truncated {
-			filtered = filtered[:limit]
-		}
-		items := make([]interactiveMemoryIndexItem, 0, len(filtered))
-		for _, entry := range filtered {
-			items = append(items, interactiveMemoryIndexItem{
-				ID:         entry.ID,
-				BranchID:   entry.BranchID,
-				TurnID:     entry.TurnID,
-				Title:      entry.Title,
-				Summary:    trimInteractiveMemoryToolText(firstNonEmpty(entry.Summary, entry.Content), interactiveMemoryToolSummaryLimit),
-				People:     entry.People,
-				Places:     entry.Places,
-				Tags:       entry.Tags,
-				Importance: entry.Importance,
-				Manual:     entry.Manual,
-				UpdatedAt:  entry.UpdatedAt,
-			})
-		}
-		return marshalInteractiveMemoryToolOutput(interactiveMemoryToolOutput{
-			Source:    interactiveMemoryToolSource{Kind: "interactive_memory_index", StoryID: ctx.StoryID, BranchID: ctx.BranchID, Path: fmt.Sprintf("interactive/memory/story-%s.json", ctx.StoryID)},
-			Limits:    map[string]int{"max_items": interactiveMemoryToolListLimit, "returned_items": len(items), "summary_bytes_per_item": interactiveMemoryToolSummaryLimit},
-			Truncated: truncated,
-			Memories:  items,
+		result, err := ctx.Store.SearchStoryHistory(ctx.StoryID, ctx.BranchID, interactive.StoryHistorySearchRequest{
+			Keywords:     input.Keywords,
+			Match:        input.Match,
+			BeforeTurnID: input.BeforeTurnID,
+			Limit:        input.Limit,
 		})
+		if err != nil {
+			return "", err
+		}
+		data, err := json.MarshalIndent(result, "", "  ")
+		return string(data), err
 	})
 	if err != nil {
 		return nil, err
 	}
-	readTool, err := utils.InferTool("read_interactive_memories", "按 ID 读取当前互动故事分支的长期记忆完整正文。用于在 list_interactive_memories 判断相关后读取关键记忆；归档记忆和其他分支记忆不可读取。", func(callCtx context.Context, input readInteractiveMemoriesInput) (string, error) {
-		_ = callCtx
-		entries, err := ctx.Store.ReadVisibleInteractiveMemories(ctx.StoryID, ctx.BranchID, input.IDs, 0)
-		if err != nil {
-			return "", err
-		}
-		ids := make([]string, 0, len(entries))
-		for _, entry := range entries {
-			ids = append(ids, entry.ID)
-		}
-		if len(ids) > 0 {
-			if err := ctx.Store.RecordInteractiveMemoryRecall(ctx.StoryID, ctx.BranchID, "", input.Query, ids); err != nil {
-				return "", err
-			}
-		}
-		return marshalInteractiveMemoryToolOutput(interactiveMemoryToolOutput{
-			Source:    interactiveMemoryToolSource{Kind: "interactive_memory_entries", StoryID: ctx.StoryID, BranchID: ctx.BranchID, Path: fmt.Sprintf("interactive/memory/story-%s.json", ctx.StoryID)},
-			Limits:    map[string]int{"requested_items": len(input.IDs), "returned_items": len(entries)},
-			Truncated: false,
-			Memories:  entries,
-		})
-	})
-	if err != nil {
-		return nil, err
-	}
-	return []tool.BaseTool{listTool, readTool}, nil
-}
-
-func newInteractiveStoryMemoryPatchTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
-	ctx.StoryID = strings.TrimSpace(ctx.StoryID)
-	ctx.BranchID = strings.TrimSpace(ctx.BranchID)
-	ctx.TurnID = strings.TrimSpace(ctx.TurnID)
-	if ctx.Store == nil || ctx.StoryID == "" || ctx.TurnID == "" {
-		return nil, nil
-	}
-	applyTool, err := utils.InferTool("apply_story_memory_patches", "写入当前互动故事分支的故事记忆 patch。只用于已提交 TurnResult 和正文中成立、后续需要承接的叙事事实；字段、结构、key 和 values 必须来自注入的 Story Memory schema。可计算状态、关系数值、持续状态和规则标记以已提交 StateDelta 为准，不要复制成故事记忆，也不得尝试修改 Actor State。后端会按分支和结构校验，并写入可重建的 story memory 记录。", func(callCtx context.Context, input applyStoryMemoryPatchesInput) (string, error) {
-		_ = callCtx
-		if len(input.Patches) == 0 {
-			err := fmt.Errorf("故事记忆 patch 不能为空")
-			reportStateMaintenanceFailure(ctx, err)
-			return "", err
-		}
-		records, err := ctx.Store.ApplyStoryMemoryPatches(ctx.StoryID, ctx.BranchID, ctx.TurnID, input.Patches)
-		if err != nil {
-			reportStateMaintenanceFailure(ctx, err)
-			return "", err
-		}
-		if ctx.OnStoryMemoryApplied != nil {
-			ctx.OnStoryMemoryApplied(len(records))
-		}
-		data, err := json.MarshalIndent(storyMemoryPatchToolOutput{
-			AppliedRecords: len(records),
-			BranchID:       ctx.BranchID,
-			TurnID:         ctx.TurnID,
-		}, "", "  ")
-		if err != nil {
-			return "", err
-		}
-		return string(data), nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return []tool.BaseTool{applyTool}, nil
-}
-
-func reportStateMaintenanceFailure(ctx InteractiveStoryToolContext, err error) {
-	if ctx.OnStateMaintenanceFailed != nil && err != nil {
-		ctx.OnStateMaintenanceFailed(err)
-	}
+	return []tool.BaseTool{searchTool}, nil
 }
 
 func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
@@ -354,102 +213,6 @@ func (t *submitTurnModuleTool) InvokableRun(ctx context.Context, argumentsInJSON
 		log.Printf("[interactive-turn] accepted all result modules completion_requested=%t", requested)
 	}
 	data, err := json.MarshalIndent(receipt, "", "  ")
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
-}
-
-func normalizeInteractiveMemoryToolLimit(value, fallback, max int) int {
-	if value <= 0 {
-		value = fallback
-	}
-	if value > max {
-		value = max
-	}
-	return value
-}
-
-func filterInteractiveMemoryToolEntries(entries []interactive.InteractiveMemoryEntry, input listInteractiveMemoriesInput) []interactive.InteractiveMemoryEntry {
-	out := make([]interactive.InteractiveMemoryEntry, 0, len(entries))
-	query := strings.ToLower(strings.TrimSpace(input.Query))
-	people := normalizeInteractiveMemoryToolTerms(input.People)
-	places := normalizeInteractiveMemoryToolTerms(input.Places)
-	tags := normalizeInteractiveMemoryToolTerms(input.Tags)
-	for _, entry := range entries {
-		if query != "" && !interactiveMemoryEntryContains(entry, query) {
-			continue
-		}
-		if len(people) > 0 && !interactiveMemoryListIntersects(entry.People, people) {
-			continue
-		}
-		if len(places) > 0 && !interactiveMemoryListIntersects(entry.Places, places) {
-			continue
-		}
-		if len(tags) > 0 && !interactiveMemoryListIntersects(entry.Tags, tags) {
-			continue
-		}
-		out = append(out, entry)
-	}
-	return out
-}
-
-func normalizeInteractiveMemoryToolTerms(values []string) map[string]bool {
-	out := map[string]bool{}
-	for _, value := range values {
-		value = strings.ToLower(strings.TrimSpace(value))
-		if value != "" {
-			out[value] = true
-		}
-	}
-	return out
-}
-
-func interactiveMemoryListIntersects(values []string, terms map[string]bool) bool {
-	for _, value := range values {
-		value = strings.ToLower(strings.TrimSpace(value))
-		if terms[value] {
-			return true
-		}
-	}
-	return false
-}
-
-func interactiveMemoryEntryContains(entry interactive.InteractiveMemoryEntry, query string) bool {
-	haystack := strings.ToLower(strings.Join([]string{
-		entry.ID,
-		entry.Title,
-		entry.Summary,
-		entry.Content,
-		strings.Join(entry.People, " "),
-		strings.Join(entry.Places, " "),
-		strings.Join(entry.Tags, " "),
-	}, " "))
-	for _, term := range strings.Fields(query) {
-		if !strings.Contains(haystack, term) {
-			return false
-		}
-	}
-	return true
-}
-
-func trimInteractiveMemoryToolText(value string, limit int) string {
-	value = strings.TrimSpace(value)
-	if limit <= 0 {
-		if value != "" {
-			return ""
-		}
-		return value
-	}
-	if len(value) <= limit {
-		return value
-	}
-	trimmed, _ := truncateUTF8Bytes(value, limit)
-	return strings.TrimSpace(trimmed)
-}
-
-func marshalInteractiveMemoryToolOutput(output interactiveMemoryToolOutput) (string, error) {
-	data, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
 		return "", err
 	}

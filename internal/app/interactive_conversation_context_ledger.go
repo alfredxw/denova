@@ -72,16 +72,16 @@ func interactiveCompactionResultForMessages(result agent.ContextCompactionResult
 	return result
 }
 
-func interactiveStoryContextSources(title, origin string, teller interactive.Teller, storyMemory, directorPlanVisible, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, strategyPrompt string, turnMemory interactiveTurnMemory, userAction string) []interactiveContextSource {
+func interactiveStoryContextSources(title, origin string, teller interactive.Teller, historyCheckpoint, directorPlanVisible, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, strategyPrompt string, turnHistory interactiveTurnHistory, userAction string) []interactiveContextSource {
 	parts := []interactiveContextSource{
 		{Source: "互动故事", Title: "故事标题", Content: title, Note: "metadata_only", MetadataOnly: true},
 		{Source: "互动故事", Title: "开端", Content: origin, Note: "metadata_only", MetadataOnly: true},
 	}
 	parts = append(parts, interactiveTellerSlotSources(teller, "turn_context")...)
-	if strings.TrimSpace(storyMemory) != "" {
+	if strings.TrimSpace(historyCheckpoint) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "故事记忆", Title: "当前分支可见故事记忆", Content: storyMemory,
-			Note: "bounded", Limit: interactiveStoryRuntimeContextBytes,
+			Source: "HistoryCheckpoint", Title: "当前分支历史上下文 checkpoint", Content: historyCheckpoint,
+			Purpose: "rebuildable context projection", Note: "source=committed turns; bounded", Limit: interactiveStoryRuntimeContextBytes,
 		})
 	}
 	if strings.TrimSpace(directorPlanVisible) != "" {
@@ -128,13 +128,13 @@ func interactiveStoryContextSources(title, origin string, teller interactive.Tel
 			Note: "bounded", Limit: interactiveStoryRuntimeContextBytes,
 		})
 	}
-	if strings.TrimSpace(turnMemory.PreviousSummary) != "" {
+	if strings.TrimSpace(turnHistory.PreviousSummary) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "历史回合", Title: fmt.Sprintf("较早 %d 回合压缩摘要", turnMemory.PreviousCount),
-			Content: turnMemory.PreviousSummary, Note: "compressed", Limit: interactiveStoryRuntimeContextBytes,
+			Source: "历史回合", Title: fmt.Sprintf("较早 %d 回合历史检查点", turnHistory.PreviousCount),
+			Content: turnHistory.PreviousSummary, Note: "compressed", Limit: interactiveStoryRuntimeContextBytes,
 		})
 	}
-	for i, turn := range turnMemory.Turns {
+	for i, turn := range turnHistory.Turns {
 		parts = append(parts,
 			interactiveContextSource{Source: "历史回合", Title: fmt.Sprintf("第 %d 回合用户行动", i+1), Content: turn.User, ExactMessage: true},
 			interactiveContextSource{Source: "历史回合", Title: fmt.Sprintf("第 %d 回合剧情", i+1), Content: turn.Narrative, ExactMessage: true},
@@ -227,7 +227,7 @@ func addFinalInteractiveMessageContextParts(ledger *agent.ContextLedger, message
 		}
 		if agent.IsContextCompactionSummaryMessage(msg) {
 			ledger.AddPart(
-				"ContextCompaction", fmt.Sprintf("模型可见压缩摘要 %d", index+1), "model-visible compacted history",
+				"ContextCompaction", fmt.Sprintf("模型可见历史检查点 %d", index+1), "model-visible history checkpoint",
 				msg.Content, "source=committed context compaction; final_message=true", true, false, interactiveStoryRuntimeContextBytes,
 			)
 		}

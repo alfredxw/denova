@@ -1,6 +1,6 @@
 import type { SSEEvent } from '@/lib/api'
 
-export type InteractiveSubmode = 'story' | 'timeline' | 'memory' | 'lore' | 'creator' | 'teller'
+export type InteractiveSubmode = 'story' | 'timeline' | 'lore' | 'creator' | 'teller'
 
 export interface StorySummary {
   id: string
@@ -107,8 +107,6 @@ export interface StoryDirectorModuleRefs {
   rule_system_disabled?: boolean
   actor_state_id?: string
   actor_state_disabled?: boolean
-  memory_structure_id?: string
-  memory_structure_disabled?: boolean
   image_preset_id?: string
   image_preset_disabled?: boolean
 }
@@ -131,7 +129,6 @@ interface StoryDirectorResolvedSnapshot {
   event_system?: StoryDirectorEventSystem
   trpg_system?: StoryDirectorTRPGSystem
   actor_state?: StoryDirectorActorStateSystem
-  story_memory_structures?: StoryMemoryStructure[]
 }
 
 export interface EventPackageModule {
@@ -172,21 +169,6 @@ export interface ActorStateModule {
   description: string
   actor_state: StoryDirectorActorStateSystem
   migration_warnings?: string[]
-  path?: string
-  custom: boolean
-  builtin_overridden?: boolean
-  invalid?: boolean
-  error?: string
-  created_at?: string
-  updated_at?: string
-}
-
-export interface StoryMemoryStructureModule {
-  version: number
-  id: string
-  name: string
-  description: string
-  structures: StoryMemoryStructure[]
   path?: string
   custom: boolean
   builtin_overridden?: boolean
@@ -414,7 +396,7 @@ interface TellerContextPolicy {
 export interface TellerPromptSlot {
   id: string
   name: string
-  target: 'system' | 'turn_context' | 'state_memory'
+  target: 'system' | 'turn_context'
   enabled: boolean
   content: string
 }
@@ -437,9 +419,6 @@ export interface TurnEvent {
   terminal_outcome?: TerminalOutcome
   state_status?: 'pending' | 'ready' | 'failed'
   state_error?: string
-  memory_entry_id?: string
-  memory_status?: 'pending' | 'running' | 'ready' | 'failed'
-  memory_error?: string
   versions?: TurnVersion[]
   version_idx?: number
 }
@@ -749,7 +728,7 @@ export interface RuleNarrativeStateRef {
   source?: 'actor' | 'target' | 'scene' | string
 	field_id?: string
 	field_path?: string
-  usage?: 'check_decision' | 'difficulty' | 'outcome_design' | 'prose' | 'memory' | string
+  usage?: 'check_decision' | 'difficulty' | 'outcome_design' | 'prose' | string
   guidance?: string
 }
 
@@ -1084,77 +1063,6 @@ interface ContextCompactionRemovalEvent {
   compaction_id?: string
   source_turn_count?: number
   reason?: string
-}
-
-export interface StoryMemorySettings {
-  enabled: boolean
-  auto_interval_turns: number
-}
-
-export interface StoryMemoryField {
-  id: string
-  name: string
-  description?: string
-  generation_instruction?: string
-  enabled?: boolean
-  required?: boolean
-  order: number
-}
-
-export interface StoryMemoryStructure {
-  id: string
-  name: string
-  description?: string
-  generation_instruction?: string
-  mode: 'singleton' | 'keyed' | 'append'
-  key_field_id?: string
-  fields: StoryMemoryField[]
-  enabled?: boolean
-  order: number
-  built_in?: boolean
-  read_only?: boolean
-  derived?: boolean
-  created_at?: string
-  updated_at?: string
-}
-
-export interface StoryMemoryRecord {
-  id: string
-  structure_id: string
-  branch_id: string
-  turn_id?: string
-  anchor_turn_id?: string
-  key?: string
-  values: Record<string, string>
-  archived?: boolean
-  manual?: boolean
-  source?: string
-  inherited_from?: string
-  created_at: string
-  updated_at: string
-}
-
-interface InteractiveMemoryRecall {
-  branch_id: string
-  turn_id?: string
-  query?: string
-  memory_ids: string[]
-  created_at: string
-}
-
-export interface StoryMemoryState {
-  story_id: string
-  branch_id: string
-  settings: StoryMemorySettings
-  structures: StoryMemoryStructure[]
-  memory_structure_id?: string
-  memory_structure_name?: string
-  memory_structure_disabled?: boolean
-  records: StoryMemoryRecord[]
-  recent_recall?: InteractiveMemoryRecall
-  sync_status?: 'pending' | 'ready' | 'failed' | ''
-  sync_error?: string
-  next_auto_in_turns?: number
 }
 
 export interface BranchSummary {

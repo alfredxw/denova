@@ -26,8 +26,7 @@ import storyPicker from './en-US/storyPicker'
 import branchTimeline from './en-US/branchTimeline'
 import storyStage from './en-US/storyStage'
 import snapshot from './en-US/snapshot'
-import memoryPanel from './en-US/memoryPanel'
-import storyMemory from './en-US/storyMemory'
+import directorPanel from './en-US/directorPanel'
 import settings from './en-US/settings'
 import time from './en-US/time'
 import versions from './en-US/versions'
@@ -67,8 +66,7 @@ const enUS = {
   ...branchTimeline,
   ...storyStage,
   ...snapshot,
-  ...memoryPanel,
-  ...storyMemory,
+  ...directorPanel,
   ...settings,
   ...time,
   ...versions,

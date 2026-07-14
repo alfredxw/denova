@@ -200,10 +200,10 @@ describe('interactive-store', () => {
   })
 
   it('remembers the selected top-level interactive page', () => {
-    useInteractiveStore.getState().setSubmode('memory')
+    useInteractiveStore.getState().setSubmode('timeline')
 
-    expect(useInteractiveStore.getState().submode).toBe('memory')
-    expect(window.localStorage.getItem('nova.interactive.submode.v1')).toBe('memory')
+    expect(useInteractiveStore.getState().submode).toBe('timeline')
+    expect(window.localStorage.getItem('nova.interactive.submode.v1')).toBe('timeline')
   })
 
   it('merges a persisted turn by appending it to the active branch snapshot', () => {

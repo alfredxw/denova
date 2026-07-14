@@ -290,7 +290,7 @@ describe('AgentsView', () => {
     render(<AgentsView />)
 
     await screen.findByText('Reviewer')
-    await user.click(screen.getByRole('button', { name: '配置管理 Agent资料库、方案预设、Skills、自动化与故事记忆管理' }))
+    await user.click(screen.getByRole('button', { name: '配置管理 Agent资料库、方案预设、Skills 与自动化管理' }))
 
     await waitFor(() => {
       expect(screen.queryByText('Reviewer')).not.toBeInTheDocument()

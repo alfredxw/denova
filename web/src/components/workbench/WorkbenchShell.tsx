@@ -287,7 +287,7 @@ export function WorkbenchShell({
       id: 'story',
       label: t('workbench.activity.story'),
       onClick: () => openInteractiveSubmode('story'),
-      active: interactiveModeActive && (interactiveSubmode === 'story' || interactiveSubmode === 'memory'),
+      active: interactiveModeActive && interactiveSubmode === 'story',
       icon: <MessageSquareText className="h-4 w-4" />,
     },
     {

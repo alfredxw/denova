@@ -13,17 +13,14 @@ func TestInteractivePromptsSkipLegacyCharacterAndWorldFallback(t *testing.T) {
 			StoryTellerID:    "classic",
 			BranchID:         "main",
 			ReplyTargetChars: 800,
-			LongTermMemory:   "林川仍在黄泉酒馆。",
 		}),
 		"director maintenance": InteractiveDirectorInstruction(InteractiveDirectorPromptInput{
-			Title:             "末日开端",
-			Origin:            "主角醒来发现世界已末日",
-			StoryTellerID:     "classic",
-			BranchID:          "main",
-			StoryMemorySchema: "## important_character",
-			StoryMemory:       "林川仍在黄泉酒馆。",
-			TurnHistory:       "第 1 回合剧情：门后传来低沉的风声。",
-			TurnAuditJSON:     `{"user_action":"我点燃火把","narrative":"火光照亮了墙上的新线索。"}`,
+			Title:         "末日开端",
+			Origin:        "主角醒来发现世界已末日",
+			StoryTellerID: "classic",
+			BranchID:      "main",
+			TurnHistory:   "第 1 回合剧情：门后传来低沉的风声。",
+			TurnAuditJSON: `{"user_action":"我点燃火把","narrative":"火光照亮了墙上的新线索。"}`,
 		}),
 	}
 
@@ -149,21 +146,20 @@ func TestInteractiveStoryPromptUsesConfiguredChoiceCountAndSimplifiedResult(t *t
 func TestInteractiveDirectorPromptReadsCustomActorStateWithoutWritingIt(t *testing.T) {
 	system := BuildInteractiveDirectorSystemInstruction()
 	instruction := InteractiveDirectorInstruction(InteractiveDirectorPromptInput{
-		Title:             "百日终末",
-		Origin:            "世界将在一百天后毁灭",
-		StoryTellerID:     "classic",
-		BranchID:          "main",
-		StoryMemorySchema: "## important_character",
-		ActorStateSchema:  "templates: world_state, heroine_route",
-		TurnHistory:       "第 1 回合剧情：钟声提前响起。",
-		TurnAuditJSON:     `{"narrative":"钟声提前响起。"}`,
+		Title:            "百日终末",
+		Origin:           "世界将在一百天后毁灭",
+		StoryTellerID:    "classic",
+		BranchID:         "main",
+		ActorStateSchema: "templates: world_state, heroine_route",
+		TurnHistory:      "第 1 回合剧情：钟声提前响起。",
+		TurnAuditJSON:    `{"narrative":"钟声提前响起。"}`,
 	})
 	combined := system + "\n" + instruction
 	for _, want := range []string{
 		"world_state",
 		"heroine_route",
 		"只能读取已提交的 Actor State",
-		"不得写入它们",
+		"不得写 Actor State",
 	} {
 		if !strings.Contains(combined, want) {
 			t.Fatalf("director prompt should describe customizable state tables %q:\n%s", want, combined)
@@ -242,7 +238,6 @@ func TestInteractiveDirectorPromptEditsDirectorPlanFiles(t *testing.T) {
 		BranchPlanningTurns:         5,
 		TurnAuditJSON:               `{"turn_brief":{"turn_goal":"公开比试"}}`,
 		TurnHistory:                 "第 1 回合剧情：主角报名。",
-		StoryMemorySummary:          "主角仍被低估。",
 		StoryDirectorStrategyPrompt: "- 伏笔回收前至少给一次可感知征兆。",
 		DirectorEventCatalog:        `[{"id":"face_slap","category":"打脸"}]`,
 	})

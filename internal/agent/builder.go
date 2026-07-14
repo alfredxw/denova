@@ -81,9 +81,7 @@ func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *bo
 		maintenanceTask = toolContexts[0].MaintenanceTask
 	}
 	systemInstruction := prompts.BuildInteractiveDirectorSystemInstruction()
-	if maintenanceTask == "memory_update" {
-		systemInstruction = prompts.BuildInteractiveMemoryRecorderSystemInstruction()
-	} else if maintenanceTask == "state_schema_initialization" {
+	if maintenanceTask == "state_schema_initialization" {
 		systemInstruction = prompts.BuildInteractiveStateSchemaAdapterSystemInstruction()
 	}
 	return buildDeepAgent(ctx, cfg, deepAgentSpec{
@@ -510,11 +508,11 @@ func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...Interactiv
 			tools = append(tools, loreTools...)
 		}
 		if len(toolContexts) > 0 {
-			memoryTools, err := newInteractiveMemoryTools(toolContexts[0])
+			historyTools, err := newInteractiveHistoryTools(toolContexts[0])
 			if err != nil {
 				return nil, err
 			}
-			tools = append(tools, memoryTools...)
+			tools = append(tools, historyTools...)
 			turnTools, err := newInteractiveTurnTools(toolContexts[0])
 			if err != nil {
 				return nil, err
@@ -553,22 +551,24 @@ func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...Interac
 		}
 		ctx := storyToolContext
 		switch strings.TrimSpace(ctx.MaintenanceTask) {
-		case "memory_update":
-			return newInteractiveStoryMemoryPatchTools(ctx)
 		case "state_schema_initialization":
 			stateSchemaTools, err := newInteractiveStateSchemaTools(ctx)
 			return append(tools, stateSchemaTools...), err
 		case "director_plan_update", "opening_plan":
+			historyTools, err := newInteractiveHistoryTools(ctx)
+			if err != nil {
+				return nil, err
+			}
 			eventTools, err := newInteractiveEventTools(ctx)
 			if err != nil {
 				return nil, err
 			}
 			planTools, err := newInteractiveDirectorPlanTools(ctx)
-			return append(append(tools, eventTools...), planTools...), err
+			tools = append(tools, historyTools...)
+			tools = append(tools, eventTools...)
+			return append(tools, planTools...), err
 		default:
-			// Compatibility for explicit callers that have not selected a phase:
-			// expose only the derived-memory writer, never Actor State mutation.
-			return newInteractiveStoryMemoryPatchTools(ctx)
+			return tools, nil
 		}
 	}
 }

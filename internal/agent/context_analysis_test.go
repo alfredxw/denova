@@ -111,7 +111,6 @@ func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T
 		LoreContext:          "角色 沈凝。外门比试关键见证者。",
 		TurnAuditJSON:        `{"turn_id":"turn-1","user_action":"报名比试"}`,
 		TurnHistory:          "用户：我报名参加公开比试",
-		StoryMemorySummary:   "公开比试即将开始。",
 		StoryDirectorPlan:    "mainline_strength: soft_guidance",
 		DirectorEventCatalog: `{"events":[{"id":"face_slap"}]}`,
 	})

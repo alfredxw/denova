@@ -735,7 +735,7 @@ func normalizeRuleBindingRounding(value string) string {
 
 func normalizeRuleNarrativeUsage(value string) string {
 	switch normalizeTurnCheckEnumToken(value) {
-	case "check_decision", "difficulty", "outcome_design", "prose", "memory":
+	case "check_decision", "difficulty", "outcome_design", "prose":
 		return normalizeTurnCheckEnumToken(value)
 	default:
 		return "outcome_design"

@@ -208,8 +208,8 @@ func TestSessionConversationCompactsOnlyMessagesAfterPreviousCompaction(t *testi
 
 	var capturedExisting string
 	var capturedSource []*schema.Message
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, existingMemory string, source []*schema.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
-		capturedExisting = existingMemory
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, existingCheckpoint string, source []*schema.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
+		capturedExisting = existingCheckpoint
 		capturedSource = source
 		return "新压缩摘要：旧目标与新增进展都已合并。", 200, nil
 	}

@@ -55,8 +55,8 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 	if !foundBodyStatus {
 		t.Fatalf("body status op missing: %#v", turn.StateDelta.ActorOps)
 	}
-	if turn.StateStatus != "ready" || turn.MemoryStatus != "pending" {
-		t.Fatalf("turn phase status mismatch: state=%q memory=%q", turn.StateStatus, turn.MemoryStatus)
+	if turn.StateStatus != "ready" {
+		t.Fatalf("turn state status mismatch: %q", turn.StateStatus)
 	}
 	if turn.HotState != nil || len(turn.TurnResult.Choices) != DefaultStoryChoiceCount {
 		t.Fatalf("new turn choices should exist only in turn result: turn_result=%#v hot_state=%#v", turn.TurnResult, turn.HotState)

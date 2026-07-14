@@ -17,7 +17,6 @@ const storyPicker = {
   'storyPicker.setup.module.eventPackages': '事件包',
   'storyPicker.setup.module.ruleSystem': '规则系统',
   'storyPicker.setup.module.actorState': '角色状态',
-  'storyPicker.setup.module.memoryStructure': '记忆结构',
   'storyPicker.setup.module.imagePreset': '图像预设',
   'storyPicker.label': '故事线',
   'storyPicker.placeholder': '选择故事线',

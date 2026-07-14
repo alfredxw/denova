@@ -75,12 +75,6 @@ func (m *interactiveDirectorPlanFileMiddleware) WrapStreamableToolCall(
 
 func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name, _ string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
-	if m != nil && m.task == "memory_update" {
-		if name == "apply_story_memory_patches" {
-			return ""
-		}
-		return fmt.Sprintf("[tool error] Memory Recorder 只能使用 apply_story_memory_patches，拒绝工具: %s", name)
-	}
 	if m != nil && m.task == "state_schema_initialization" {
 		switch name {
 		case "list_lore_items", "read_lore_items", "submit_state_schema_adaptation":
@@ -90,14 +84,14 @@ func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name,
 		}
 	}
 	switch name {
-	case "read_event_cards", "list_lore_items", "read_lore_items", submitDirectorPlanUpdateToolName:
+	case "read_event_cards", "list_lore_items", "read_lore_items", "search_story_history", submitDirectorPlanUpdateToolName:
 		return ""
 	case "read_file", "write_file", "edit_file":
 		return fmt.Sprintf("[tool error] Director 规划文档已在上下文中完整提供；请用 %s 一次提交决策与完整文档，拒绝工具: %s", submitDirectorPlanUpdateToolName, name)
-	case "apply_actor_state_patch", "apply_story_memory_patches":
-		return fmt.Sprintf("[tool error] Director 只维护 ArcPlan，不能写 Actor State 或 Story Memory，拒绝工具: %s", name)
+	case "apply_actor_state_patch":
+		return fmt.Sprintf("[tool error] Director 只维护 ArcPlan，不能写 Actor State，拒绝工具: %s", name)
 	default:
-		return fmt.Sprintf("[tool error] Director 只能使用 %s、资料库只读和事件卡工具，拒绝工具: %s", submitDirectorPlanUpdateToolName, name)
+		return fmt.Sprintf("[tool error] Director 只能使用 %s、历史检索、资料库只读和事件卡工具，拒绝工具: %s", submitDirectorPlanUpdateToolName, name)
 	}
 }
 

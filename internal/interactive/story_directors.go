@@ -239,9 +239,6 @@ func (l *StoryDirectorLibrary) ensureBuiltins() error {
 	if err := NewActorStateLibrary(l.novaDir).ensureBuiltins(); err != nil {
 		return err
 	}
-	if err := NewStoryMemoryStructureLibrary(l.novaDir).ensureBuiltins(); err != nil {
-		return err
-	}
 	if err := os.MkdirAll(l.dir(), 0o755); err != nil {
 		return err
 	}

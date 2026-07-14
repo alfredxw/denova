@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -17,16 +16,13 @@ import (
 )
 
 const (
-	interactiveDirectorTaskTurnMaintenance    = "turn_maintenance"
-	interactiveDirectorTaskMemoryUpdate       = "memory_update"
 	interactiveDirectorTaskDirectorPlanUpdate = "director_plan_update"
 	interactiveDirectorTaskOpeningPlan        = "opening_plan"
 	interactiveDirectorOpeningSourceID        = "story_opening"
 )
 
 type interactiveDirectorMaintenanceResult struct {
-	Plan                      interactive.DirectorPlan
-	AppliedStoryMemoryPatches int
+	Plan interactive.DirectorPlan
 }
 
 func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, runPlan bool) <-chan struct{} {
@@ -52,23 +48,6 @@ func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.Sta
 		case <-schemaDone:
 		case <-ctx.Done():
 			return
-		}
-		shouldRecordMemory, _, err := conversation.store.ShouldGenerateStoryMemory(conversation.storyID, turn.BranchID)
-		if err != nil {
-			markInteractiveMemoryFailed(conversation, turn, err)
-			log.Printf("[interactive-memory-recorder] schedule check failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
-		} else if !shouldRecordMemory {
-			if err := conversation.store.MarkInteractiveMemoryReady(conversation.storyID, turn.BranchID, turn.ID); err != nil {
-				markInteractiveMemoryFailed(conversation, turn, err)
-			}
-		} else if claimed, claimErr := conversation.store.ClaimInteractiveMemoryRun(conversation.storyID, turn.BranchID, turn.ID, false); claimErr != nil {
-			markInteractiveMemoryFailed(conversation, turn, claimErr)
-			log.Printf("[interactive-memory-recorder] claim failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, claimErr)
-		} else if claimed {
-			conversation.withDirectorTask(interactiveDirectorTaskMemoryUpdate)
-			if _, err := runInteractiveDirectorMaintenance(ctx, cfg, state, conversation, turn, sessionStore, interactiveDirectorTaskMemoryUpdate); err != nil {
-				log.Printf("[interactive-memory-recorder] maintenance failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
-			}
 		}
 		if !runPlan {
 			return
@@ -218,23 +197,14 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	}
 	task = strings.TrimSpace(task)
 	if task == "" {
-		task = interactiveDirectorTaskTurnMaintenance
+		task = interactiveDirectorTaskDirectorPlanUpdate
 	}
 	switch task {
-	case interactiveDirectorTaskTurnMaintenance, interactiveDirectorTaskMemoryUpdate, interactiveDirectorTaskDirectorPlanUpdate, interactiveDirectorTaskOpeningPlan:
+	case interactiveDirectorTaskDirectorPlanUpdate, interactiveDirectorTaskOpeningPlan:
 	default:
 		return interactiveDirectorMaintenanceResult{}, fmt.Errorf("未知互动导演任务: %s", task)
 	}
-	if task == interactiveDirectorTaskTurnMaintenance {
-		memoryResult, memoryErr := runInteractiveDirectorMaintenance(ctx, cfg, state, conversation.withDirectorTask(interactiveDirectorTaskMemoryUpdate), turn, sessionStore, interactiveDirectorTaskMemoryUpdate)
-		planResult, planErr := runInteractiveDirectorMaintenance(ctx, cfg, state, conversation.withDirectorTask(interactiveDirectorTaskDirectorPlanUpdate), turn, sessionStore, interactiveDirectorTaskDirectorPlanUpdate, prestartedTokens...)
-		return interactiveDirectorMaintenanceResult{
-			Plan:                      planResult.Plan,
-			AppliedStoryMemoryPatches: memoryResult.AppliedStoryMemoryPatches,
-		}, errors.Join(memoryErr, planErr)
-	}
-	runMemory := task == interactiveDirectorTaskMemoryUpdate
-	runPlan := task == interactiveDirectorTaskDirectorPlanUpdate || task == interactiveDirectorTaskOpeningPlan
+	runPlan := true
 	storyCtx, err := conversation.store.StoryContext(conversation.storyID, turn.BranchID)
 	if err != nil {
 		return interactiveDirectorMaintenanceResult{}, err
@@ -246,9 +216,7 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 			return interactiveDirectorMaintenanceResult{}, err
 		}
 		runPlan = false
-		if !runMemory {
-			return interactiveDirectorMaintenanceResult{}, nil
-		}
+		return interactiveDirectorMaintenanceResult{}, nil
 	}
 	var token interactive.DirectorPlanRunToken
 	if runPlan {
@@ -265,14 +233,13 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 		}
 	}
 	effectiveTask := task
-	log.Printf("[interactive-director-agent] maintenance begin story_id=%s branch_id=%s turn_id=%s task=%s effective_task=%s memory=%t plan=%t revision=%s", conversation.storyID, turn.BranchID, turn.ID, task, effectiveTask, runMemory, runPlan, token.Revision)
+	log.Printf("[interactive-director-agent] maintenance begin story_id=%s branch_id=%s turn_id=%s task=%s revision=%s", conversation.storyID, turn.BranchID, turn.ID, task, token.Revision)
 	conversation.withDirectorTask(effectiveTask)
 	instruction, err := conversation.BuildDirectorInstruction(turn)
 	if err != nil {
 		return interactiveDirectorMaintenanceResult{}, fmt.Errorf("构建后台导演指令失败: %w", err)
 	}
 	result := interactiveDirectorMaintenanceResult{}
-	var memoryMaintenanceErr error
 	var planSubmissionMu sync.Mutex
 	var submittedPlanDecision interactive.PlanDecision
 	planSubmitted := false
@@ -287,14 +254,6 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 		TurnID:              turn.ID,
 		MaintenanceTask:     effectiveTask,
 		DisplayConversation: conversation,
-		OnStoryMemoryApplied: func(applied int) {
-			result.AppliedStoryMemoryPatches += applied
-		},
-		OnStateMaintenanceFailed: func(err error) {
-			if err != nil {
-				memoryMaintenanceErr = errors.Join(memoryMaintenanceErr, err)
-			}
-		},
 		SubmitDirectorPlanUpdate: func(callCtx context.Context, submission interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error) {
 			if !runPlan {
 				return interactive.DirectorPlanUpdateReceipt{}, fmt.Errorf("当前维护阶段不允许提交导演规划")
@@ -321,15 +280,6 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	}
 	if err != nil {
 		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
-		if runMemory {
-			if memoryMaintenanceErr == nil && result.AppliedStoryMemoryPatches > 0 {
-				if readyErr := conversation.store.MarkInteractiveMemoryRunReady(conversation.storyID, turn.BranchID, turn.ID); readyErr != nil {
-					markInteractiveMemoryFailed(conversation, turn, readyErr)
-				}
-			} else {
-				markInteractiveMemoryFailed(conversation, turn, errors.Join(memoryMaintenanceErr, err))
-			}
-		}
 		if runPlan {
 			markInteractiveDirectorFailed(conversation, turn, err)
 		}
@@ -357,33 +307,19 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 		persistedOutput = string(normalizedOutput)
 	}
 	persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, persistedOutput)
-	var errs []error
 	if runPlan {
 		plan, err := conversation.store.CompleteDirectorPlanRun(conversation.storyID, turn.BranchID, token, turn.ID, persistedOutput)
 		if err != nil {
 			markInteractiveDirectorFailed(conversation, turn, err)
-			errs = append(errs, fmt.Errorf("完成导演规划运行失败: %w", err))
-		} else {
-			result.Plan = plan
+			return result, fmt.Errorf("完成导演规划运行失败: %w", err)
 		}
-	}
-	if runMemory {
-		if memoryMaintenanceErr != nil {
-			markInteractiveMemoryFailed(conversation, turn, memoryMaintenanceErr)
-			errs = append(errs, fmt.Errorf("故事记忆或状态系统工具失败: %w", memoryMaintenanceErr))
-		} else if err := conversation.store.MarkInteractiveMemoryRunReady(conversation.storyID, turn.BranchID, turn.ID); err != nil {
-			markInteractiveMemoryFailed(conversation, turn, err)
-			errs = append(errs, fmt.Errorf("标记故事记忆完成失败: %w", err))
-		}
-	}
-	if len(errs) > 0 {
-		return result, errors.Join(errs...)
+		result.Plan = plan
 	}
 	status := ""
 	if result.Plan.Metadata.LastRun != nil {
 		status = result.Plan.Metadata.LastRun.Status
 	}
-	log.Printf("[interactive-director-agent] maintenance done story_id=%s branch_id=%s turn_id=%s task=%s effective_task=%s memory_patches=%d director_status=%s summary=%q", conversation.storyID, turn.BranchID, turn.ID, task, effectiveTask, result.AppliedStoryMemoryPatches, status, strings.TrimSpace(persistedOutput))
+	log.Printf("[interactive-director-agent] maintenance done story_id=%s branch_id=%s turn_id=%s task=%s director_status=%s summary=%q", conversation.storyID, turn.BranchID, turn.ID, task, status, strings.TrimSpace(persistedOutput))
 	return result, nil
 }
 
@@ -396,24 +332,7 @@ func markInteractiveDirectorFailed(conversation *interactiveConversation, turn i
 	}
 }
 
-func markInteractiveMemoryFailed(conversation *interactiveConversation, turn interactive.TurnEvent, err error) {
-	if conversation == nil || conversation.store == nil || err == nil {
-		return
-	}
-	if markErr := conversation.store.MarkInteractiveMemoryFailed(conversation.storyID, interactive.MarkStateFailedRequest{
-		ParentID: turn.ID,
-		BranchID: turn.BranchID,
-		Error:    err.Error(),
-	}); markErr != nil {
-		log.Printf("[interactive-director-agent] mark failed memory failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, markErr)
-	}
-}
-
 func markInteractiveDirectorMaintenanceFailed(conversation *interactiveConversation, turn interactive.TurnEvent, err error) {
-	if conversation != nil && strings.TrimSpace(conversation.directorTask) == interactiveDirectorTaskMemoryUpdate {
-		markInteractiveMemoryFailed(conversation, turn, err)
-		return
-	}
 	markInteractiveDirectorFailed(conversation, turn, err)
 }
 

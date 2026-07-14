@@ -88,14 +88,14 @@ export function PlanView({
               <FileText className="h-3.5 w-3.5" />
             </span>
             <div className="min-w-0">
-              <h3 className="director-console__display truncate text-base font-semibold leading-5 text-[var(--nova-text)]">{t('memoryPanel.planTitle')}</h3>
+              <h3 className="director-console__display truncate text-base font-semibold leading-5 text-[var(--nova-text)]">{t('directorPanel.planTitle')}</h3>
               <p className="mt-1 truncate text-[9px] uppercase tracking-[0.12em] text-[var(--nova-text-faint)]">{directorStatusLabel(directorStatus, loading, t)}</p>
             </div>
           </div>
           <div className="flex shrink-0 flex-wrap justify-end gap-1">
-            <Button type="button" variant="outline" size="xs" aria-label={editing ? t('memoryPanel.plan.preview') : t('memoryPanel.plan.edit')} title={editing ? t('memoryPanel.plan.preview') : t('memoryPanel.plan.edit')} className="h-7 gap-1.5 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] px-2 text-[var(--nova-text-muted)] hover:border-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!draftDocs} onClick={() => setEditing((value) => !value)}>
+            <Button type="button" variant="outline" size="xs" aria-label={editing ? t('directorPanel.plan.preview') : t('directorPanel.plan.edit')} title={editing ? t('directorPanel.plan.preview') : t('directorPanel.plan.edit')} className="h-7 gap-1.5 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] px-2 text-[var(--nova-text-muted)] hover:border-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!draftDocs} onClick={() => setEditing((value) => !value)}>
               {editing ? <Eye className="h-3 w-3" /> : <Edit3 className="h-3 w-3" />}
-              <span className="director-plan-action-label">{editing ? t('memoryPanel.plan.preview') : t('memoryPanel.plan.edit')}</span>
+              <span className="director-plan-action-label">{editing ? t('directorPanel.plan.preview') : t('directorPanel.plan.edit')}</span>
             </Button>
             {editing ? (
               <Button type="button" variant="outline" size="xs" aria-label={saving ? t('common.saving') : t('common.save')} title={saving ? t('common.saving') : t('common.save')} className="h-7 gap-1.5 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] px-2 text-[var(--nova-text-muted)] hover:border-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || !draftDocs || !directorPlan || saving} onClick={onSave}>
@@ -123,7 +123,7 @@ export function PlanView({
               </div>
             )
           ) : (
-            <div className="flex min-h-[220px] items-center justify-center rounded-[10px] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs text-[var(--nova-text-muted)]">{t('memoryPanel.directorEmpty')}</div>
+            <div className="flex min-h-[220px] items-center justify-center rounded-[10px] border border-dashed border-[var(--nova-border)] px-4 text-center text-xs text-[var(--nova-text-muted)]">{t('directorPanel.directorEmpty')}</div>
           )}
         </div>
       </section>
@@ -147,19 +147,19 @@ function EventRuntimeCard({ status, metadata, busy, onEvaluate, onReset }: { sta
 				<div className="flex min-w-0 items-start gap-2.5">
 					<span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-[var(--nova-border)] bg-[var(--director-panel)] text-[var(--director-brass)]"><Activity className="h-3.5 w-3.5" /></span>
 					<div className="min-w-0">
-						<h3 className="director-console__display text-sm font-semibold text-[var(--nova-text)]">{t('memoryPanel.events.title')}</h3>
-						<p className="mt-1 break-all text-[10px] text-[var(--nova-text-faint)]">{active ? active.event_ref : t('memoryPanel.events.noActive')}</p>
+						<h3 className="director-console__display text-sm font-semibold text-[var(--nova-text)]">{t('directorPanel.events.title')}</h3>
+						<p className="mt-1 break-all text-[10px] text-[var(--nova-text-faint)]">{active ? active.event_ref : t('directorPanel.events.noActive')}</p>
 					</div>
 				</div>
 				<div className="flex w-full shrink-0 flex-wrap gap-1 sm:w-auto sm:justify-end">
-					<Button type="button" variant="outline" size="xs" className="h-7 flex-1 gap-1 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] sm:flex-none" disabled={busy} onClick={onEvaluate}><Zap className="h-3 w-3" />{t('memoryPanel.events.evaluate')}</Button>
-					<Button type="button" variant="outline" size="xs" className="h-7 flex-1 gap-1 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] sm:flex-none" disabled={busy} onClick={onReset}><RotateCcw className="h-3 w-3" />{t('memoryPanel.events.reset')}</Button>
+					<Button type="button" variant="outline" size="xs" className="h-7 flex-1 gap-1 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] sm:flex-none" disabled={busy} onClick={onEvaluate}><Zap className="h-3 w-3" />{t('directorPanel.events.evaluate')}</Button>
+					<Button type="button" variant="outline" size="xs" className="h-7 flex-1 gap-1 rounded-[8px] border-[var(--nova-border)] bg-[var(--director-panel)] sm:flex-none" disabled={busy} onClick={onReset}><RotateCcw className="h-3 w-3" />{t('directorPanel.events.reset')}</Button>
 				</div>
 			</div>
 			<div className="grid gap-2 px-3 py-3 text-[11px] leading-5 text-[var(--nova-text-muted)] sm:grid-cols-3">
-				<div><span className="text-[var(--nova-text-faint)]">{t('memoryPanel.events.stage')}：</span>{active?.stage || '-'}</div>
-				<div><span className="text-[var(--nova-text-faint)]">{t('memoryPanel.events.opportunity')}：</span>{opportunity?.kind || 'none'}{opportunity?.due ? ' · due' : ''}</div>
-				<div><span className="text-[var(--nova-text-faint)]">{t('memoryPanel.events.lastDecision')}：</span>{lastDecision?.mode || '-'}</div>
+				<div><span className="text-[var(--nova-text-faint)]">{t('directorPanel.events.stage')}：</span>{active?.stage || '-'}</div>
+				<div><span className="text-[var(--nova-text-faint)]">{t('directorPanel.events.opportunity')}：</span>{opportunity?.kind || 'none'}{opportunity?.due ? ' · due' : ''}</div>
+				<div><span className="text-[var(--nova-text-faint)]">{t('directorPanel.events.lastDecision')}：</span>{lastDecision?.mode || '-'}</div>
 			</div>
 			{active?.summary ? <p className="break-words border-t border-[var(--nova-border)] px-3 py-2 text-xs leading-5 text-[var(--nova-text)]">{active.summary}</p> : null}
 		</section>
@@ -177,8 +177,8 @@ function PlanPublicSummary({ storyId, directorStatus, directorMetadata, loading,
             <FileText className="h-3.5 w-3.5" />
           </span>
           <div className="min-w-0">
-            <h3 className="director-console__display truncate text-base font-semibold leading-5 text-[var(--nova-text)]">{t('memoryPanel.planTitle')}</h3>
-            <p className="mt-1 text-[10px] leading-4 text-[var(--nova-text-faint)]">{t('memoryPanel.planPublicHint')}</p>
+            <h3 className="director-console__display truncate text-base font-semibold leading-5 text-[var(--nova-text)]">{t('directorPanel.planTitle')}</h3>
+            <p className="mt-1 text-[10px] leading-4 text-[var(--nova-text-faint)]">{t('directorPanel.planPublicHint')}</p>
           </div>
         </div>
         <Button type="button" variant="outline" size="xs" aria-label={rebuilding ? t('snapshot.director.rebuilding') : t('snapshot.director.rebuild')} title={rebuilding ? t('snapshot.director.rebuilding') : t('snapshot.director.rebuild')} className="h-7 shrink-0 gap-1.5 rounded-[8px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[var(--nova-text-muted)] hover:border-[var(--director-brass)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" disabled={!storyId || rebuilding} onClick={onRebuild}>
@@ -187,9 +187,9 @@ function PlanPublicSummary({ storyId, directorStatus, directorMetadata, loading,
         </Button>
       </div>
       <div className="grid grid-cols-3 border-t border-[var(--nova-border)] bg-[var(--nova-surface)]">
-        <PlanMetric label={t('memoryPanel.planStatus')} value={directorStatusLabel(directorStatus, loading, t)} />
+        <PlanMetric label={t('directorPanel.planStatus')} value={directorStatusLabel(directorStatus, loading, t)} />
         <PlanMetric label={t('snapshot.director.docs')} value={`${totals.completed}/${totals.planned}`} />
-        <PlanMetric label={t('memoryPanel.run.visibleBytes')} value={formatBytes(totals.visibleBytes)} />
+        <PlanMetric label={t('directorPanel.run.visibleBytes')} value={formatBytes(totals.visibleBytes)} />
       </div>
     </section>
   )
@@ -204,8 +204,8 @@ function DirectorSpoilerGate({ onReveal }: { onReveal: () => void }) {
         <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--director-brass)]">
           <ShieldAlert className="h-5 w-5" />
         </div>
-        <h3 className="director-console__display mt-3 text-base font-semibold text-[var(--nova-text)]">{t('memoryPanel.directorSpoilerTitle')}</h3>
-        <p className="mt-2 text-xs leading-5 text-[var(--nova-text-muted)]">{t('memoryPanel.directorSpoilerDescription')}</p>
+        <h3 className="director-console__display mt-3 text-base font-semibold text-[var(--nova-text)]">{t('directorPanel.directorSpoilerTitle')}</h3>
+        <p className="mt-2 text-xs leading-5 text-[var(--nova-text-muted)]">{t('directorPanel.directorSpoilerDescription')}</p>
         <Button
           type="button"
           size="sm"
@@ -214,7 +214,7 @@ function DirectorSpoilerGate({ onReveal }: { onReveal: () => void }) {
           onClick={onReveal}
         >
           <Eye className="h-3.5 w-3.5" />
-          {t('memoryPanel.directorReveal')}
+          {t('directorPanel.directorReveal')}
         </Button>
       </section>
     </div>

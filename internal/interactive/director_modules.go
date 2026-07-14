@@ -48,8 +48,6 @@ type StoryDirectorModuleRefs struct {
 	RuleSystemDisabled      bool     `json:"rule_system_disabled,omitempty"`
 	ActorStateID            string   `json:"actor_state_id,omitempty"`
 	ActorStateDisabled      bool     `json:"actor_state_disabled,omitempty"`
-	MemoryStructureID       string   `json:"memory_structure_id,omitempty"`
-	MemoryStructureDisabled bool     `json:"memory_structure_disabled,omitempty"`
 	OpeningSelectorID       string   `json:"opening_selector_id,omitempty"`
 	OpeningSelectorDisabled bool     `json:"opening_selector_disabled,omitempty"`
 	ImagePresetID           string   `json:"image_preset_id,omitempty"`
@@ -66,19 +64,18 @@ type StoryDirectorModuleWarning struct {
 // It lets directors and stories keep working when a referenced module is
 // deleted, renamed, or temporarily invalid.
 type StoryDirectorResolvedSnapshot struct {
-	Version               int                           `json:"version"`
-	ResolvedAt            string                        `json:"resolved_at,omitempty"`
-	Status                string                        `json:"status,omitempty"`
-	Warnings              []StoryDirectorModuleWarning  `json:"warnings,omitempty"`
-	ModuleRefs            StoryDirectorModuleRefs       `json:"module_refs"`
-	NarrativeStyleID      string                        `json:"narrative_style_id,omitempty"`
-	ImagePresetID         string                        `json:"image_preset_id,omitempty"`
-	EventPackages         []TellerEventPackage          `json:"event_packages,omitempty"`
-	EventSystem           StoryDirectorEventSystem      `json:"-"`
-	TRPGSystem            StoryDirectorTRPGSystem       `json:"trpg_system,omitempty"`
-	ActorState            StoryDirectorActorStateSystem `json:"actor_state,omitempty"`
-	StoryMemoryStructures []StoryMemoryStructure        `json:"story_memory_structures,omitempty"`
-	OpeningSelector       StoryDirectorOpeningSelector  `json:"opening_selector,omitempty"`
+	Version          int                           `json:"version"`
+	ResolvedAt       string                        `json:"resolved_at,omitempty"`
+	Status           string                        `json:"status,omitempty"`
+	Warnings         []StoryDirectorModuleWarning  `json:"warnings,omitempty"`
+	ModuleRefs       StoryDirectorModuleRefs       `json:"module_refs"`
+	NarrativeStyleID string                        `json:"narrative_style_id,omitempty"`
+	ImagePresetID    string                        `json:"image_preset_id,omitempty"`
+	EventPackages    []TellerEventPackage          `json:"event_packages,omitempty"`
+	EventSystem      StoryDirectorEventSystem      `json:"-"`
+	TRPGSystem       StoryDirectorTRPGSystem       `json:"trpg_system,omitempty"`
+	ActorState       StoryDirectorActorStateSystem `json:"actor_state,omitempty"`
+	OpeningSelector  StoryDirectorOpeningSelector  `json:"opening_selector,omitempty"`
 }
 
 type EventPackageModule struct {
@@ -627,12 +624,11 @@ func (l *OpeningSelectorLibrary) ensureBuiltins() error {
 
 func DefaultStoryDirectorModuleRefs() StoryDirectorModuleRefs {
 	return StoryDirectorModuleRefs{
-		NarrativeStyleID:  "classic",
-		EventPackageIDs:   []string{DefaultEventPackageID},
-		RuleSystemID:      DefaultRuleSystemID,
-		ActorStateID:      DefaultActorStateModuleID,
-		MemoryStructureID: DefaultStoryMemoryStructureModuleID,
-		ImagePresetID:     imagepreset.DefaultID,
+		NarrativeStyleID: "classic",
+		EventPackageIDs:  []string{DefaultEventPackageID},
+		RuleSystemID:     DefaultRuleSystemID,
+		ActorStateID:     DefaultActorStateModuleID,
+		ImagePresetID:    imagepreset.DefaultID,
 	}
 }
 
@@ -642,18 +638,16 @@ func NormalizeStoryDirectorModuleRefs(refs StoryDirectorModuleRefs) StoryDirecto
 		eventPackageIDs = []string{normalizeDirectorModuleID(refs.EventSystemID)}
 	}
 	return StoryDirectorModuleRefs{
-		NarrativeStyleID:        strings.TrimSpace(refs.NarrativeStyleID),
-		NarrativeStyleDisabled:  refs.NarrativeStyleDisabled,
-		EventPackageIDs:         eventPackageIDs,
-		EventPackagesDisabled:   refs.EventPackagesDisabled || refs.EventSystemDisabled,
-		RuleSystemID:            normalizeDirectorModuleID(refs.RuleSystemID),
-		RuleSystemDisabled:      refs.RuleSystemDisabled,
-		ActorStateID:            normalizeDirectorModuleID(refs.ActorStateID),
-		ActorStateDisabled:      refs.ActorStateDisabled,
-		MemoryStructureID:       normalizeDirectorModuleID(refs.MemoryStructureID),
-		MemoryStructureDisabled: refs.MemoryStructureDisabled,
-		ImagePresetID:           imagepreset.NormalizeID(refs.ImagePresetID),
-		ImagePresetDisabled:     refs.ImagePresetDisabled,
+		NarrativeStyleID:       strings.TrimSpace(refs.NarrativeStyleID),
+		NarrativeStyleDisabled: refs.NarrativeStyleDisabled,
+		EventPackageIDs:        eventPackageIDs,
+		EventPackagesDisabled:  refs.EventPackagesDisabled || refs.EventSystemDisabled,
+		RuleSystemID:           normalizeDirectorModuleID(refs.RuleSystemID),
+		RuleSystemDisabled:     refs.RuleSystemDisabled,
+		ActorStateID:           normalizeDirectorModuleID(refs.ActorStateID),
+		ActorStateDisabled:     refs.ActorStateDisabled,
+		ImagePresetID:          imagepreset.NormalizeID(refs.ImagePresetID),
+		ImagePresetDisabled:    refs.ImagePresetDisabled,
 	}
 }
 
@@ -663,13 +657,11 @@ func StoryDirectorModuleRefsEmpty(refs StoryDirectorModuleRefs) bool {
 		len(refs.EventPackageIDs) == 0 &&
 		refs.RuleSystemID == "" &&
 		refs.ActorStateID == "" &&
-		refs.MemoryStructureID == "" &&
 		refs.ImagePresetID == "" &&
 		!refs.NarrativeStyleDisabled &&
 		!refs.EventPackagesDisabled &&
 		!refs.RuleSystemDisabled &&
 		!refs.ActorStateDisabled &&
-		!refs.MemoryStructureDisabled &&
 		!refs.ImagePresetDisabled
 }
 
@@ -681,10 +673,6 @@ func StoryDirectorEventSystemEnabled(director StoryDirector) bool {
 	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).EventPackagesDisabled
 }
 
-func StoryDirectorMemoryStructureEnabled(director StoryDirector) bool {
-	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).MemoryStructureDisabled
-}
-
 func StoryDirectorImagePresetEnabled(director StoryDirector) bool {
 	return !NormalizeStoryDirectorModuleRefs(director.ModuleRefs).ImagePresetDisabled
 }
@@ -694,16 +682,10 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 	refs := NormalizeStoryDirectorModuleRefs(director.ModuleRefs)
 	refs.EventPackageIDs = expandLegacyEventPackageRefs(novaDir, refs.EventPackageIDs)
 	if StoryDirectorModuleRefsEmpty(refs) {
-		if storyDirectorHasEmbeddedModules(director) {
-			refs.MemoryStructureID = DefaultStoryMemoryStructureModuleID
-			director.ModuleRefs = refs
-		} else {
+		if !storyDirectorHasEmbeddedModules(director) {
 			refs = DefaultStoryDirectorModuleRefs()
 			director.ModuleRefs = refs
 		}
-	} else if refs.MemoryStructureID == "" && !refs.MemoryStructureDisabled {
-		refs.MemoryStructureID = DefaultStoryMemoryStructureModuleID
-		director.ModuleRefs = refs
 	}
 	if refs.ActorStateID == "" && !refs.ActorStateDisabled && actorStateEmpty(director.ActorState) && openingSelectorEmpty(director.OpeningSelector) {
 		refs.ActorStateID = DefaultActorStateModuleID
@@ -714,7 +696,6 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 	snapshot := normalizeStoryDirectorResolvedSnapshot(director.ResolvedSnapshot)
 	effective := director
 	effective.ModuleRefs = refs
-	storyMemoryStructures := snapshot.StoryMemoryStructures
 
 	if refs.EventPackagesDisabled {
 		effective.EventPackages = []TellerEventPackage{}
@@ -760,19 +741,6 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 			warnings = append(warnings, moduleWarning("actor_state", refs.ActorStateID, err))
 		}
 	}
-	if refs.MemoryStructureDisabled {
-		storyMemoryStructures = []StoryMemoryStructure{}
-	} else if refs.MemoryStructureID != "" {
-		if module, err := NewStoryMemoryStructureLibrary(novaDir).Get(refs.MemoryStructureID); err == nil {
-			storyMemoryStructures = module.Structures
-		} else if len(snapshot.StoryMemoryStructures) > 0 {
-			storyMemoryStructures = snapshot.StoryMemoryStructures
-			warnings = append(warnings, moduleWarning("story_memory_structure", refs.MemoryStructureID, err))
-		} else {
-			storyMemoryStructures = []StoryMemoryStructure{}
-			warnings = append(warnings, moduleWarning("story_memory_structure", refs.MemoryStructureID, err))
-		}
-	}
 	effective.OpeningSelector = StoryDirectorOpeningSelector{}
 	if !refs.NarrativeStyleDisabled && refs.NarrativeStyleID != "" {
 		if _, err := NewTellerLibrary(novaDir).Get(refs.NarrativeStyleID); err != nil {
@@ -784,28 +752,27 @@ func ResolveStoryDirectorModules(novaDir string, director StoryDirector) StoryDi
 			warnings = append(warnings, moduleWarning("image_preset", refs.ImagePresetID, err))
 		}
 	}
-	effective.ResolvedSnapshot = snapshotFromEffectiveDirector(effective, refs, warnings, storyMemoryStructures)
+	effective.ResolvedSnapshot = snapshotFromEffectiveDirector(effective, refs, warnings)
 	return normalizeStoryDirector(effective)
 }
 
-func snapshotFromEffectiveDirector(director StoryDirector, refs StoryDirectorModuleRefs, warnings []StoryDirectorModuleWarning, storyMemoryStructures []StoryMemoryStructure) StoryDirectorResolvedSnapshot {
+func snapshotFromEffectiveDirector(director StoryDirector, refs StoryDirectorModuleRefs, warnings []StoryDirectorModuleWarning) StoryDirectorResolvedSnapshot {
 	status := "ready"
 	if len(warnings) > 0 {
 		status = "warning"
 	}
 	return normalizeStoryDirectorResolvedSnapshot(StoryDirectorResolvedSnapshot{
-		Version:               storyDirectorModuleVersion,
-		ResolvedAt:            time.Now().UTC().Format(time.RFC3339Nano),
-		Status:                status,
-		Warnings:              warnings,
-		ModuleRefs:            refs,
-		NarrativeStyleID:      refs.NarrativeStyleID,
-		ImagePresetID:         refs.ImagePresetID,
-		EventPackages:         director.EventPackages,
-		TRPGSystem:            director.TRPGSystem,
-		ActorState:            director.ActorState,
-		StoryMemoryStructures: storyMemoryStructures,
-		OpeningSelector:       director.OpeningSelector,
+		Version:          storyDirectorModuleVersion,
+		ResolvedAt:       time.Now().UTC().Format(time.RFC3339Nano),
+		Status:           status,
+		Warnings:         warnings,
+		ModuleRefs:       refs,
+		NarrativeStyleID: refs.NarrativeStyleID,
+		ImagePresetID:    refs.ImagePresetID,
+		EventPackages:    director.EventPackages,
+		TRPGSystem:       director.TRPGSystem,
+		ActorState:       director.ActorState,
+		OpeningSelector:  director.OpeningSelector,
 	})
 }
 
@@ -1231,11 +1198,6 @@ func normalizeStoryDirectorResolvedSnapshot(snapshot StoryDirectorResolvedSnapsh
 		snapshot.ActorState = normalizeActorStateSystem(StoryDirectorActorStateSystem{})
 	} else {
 		snapshot.ActorState = normalizeActorStateSystem(snapshot.ActorState)
-	}
-	if snapshot.ModuleRefs.MemoryStructureDisabled {
-		snapshot.StoryMemoryStructures = []StoryMemoryStructure{}
-	} else {
-		snapshot.StoryMemoryStructures = normalizeStoryMemoryStructuresForModule(snapshot.StoryMemoryStructures)
 	}
 	snapshot.OpeningSelector = normalizeStoryDirectorOpeningSelector(snapshot.OpeningSelector)
 	outWarnings := make([]StoryDirectorModuleWarning, 0, len(snapshot.Warnings))

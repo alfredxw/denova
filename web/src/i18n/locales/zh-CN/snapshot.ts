@@ -1,5 +1,5 @@
 const snapshot = {
-  'snapshot.title': '场景记忆',
+  'snapshot.title': '当前场景',
   'snapshot.subtitle': '当前回合的实时上下文',
   'snapshot.syncing': '同步中',
   'snapshot.syncFailed': '同步失败',

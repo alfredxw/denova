@@ -1,5 +1,5 @@
 const snapshot = {
-  'snapshot.title': 'Scene Memory',
+  'snapshot.title': 'Current Scene',
   'snapshot.subtitle': 'Live context for the current turn',
   'snapshot.syncing': 'Syncing',
   'snapshot.syncFailed': 'Sync failed',

@@ -49,7 +49,7 @@ export function ActorTabs({ actors, value, onValueChange }: { actors: ActorTabIt
   return (
     <div ref={containerRef} className="flex min-w-0 items-center gap-1.5">
       <Tabs value={value} onValueChange={onValueChange} className="min-w-0 flex-1 gap-0">
-        <TabsList variant="line" aria-label={t('memoryPanel.actorCue')} className="flex h-8 w-full min-w-0 justify-start gap-0 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0">
+        <TabsList variant="line" aria-label={t('directorPanel.actorCue')} className="flex h-8 w-full min-w-0 justify-start gap-0 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0">
           {visibleActors.map((actor) => (
             <TabsTrigger
               key={actor.id}
@@ -68,12 +68,12 @@ export function ActorTabs({ actors, value, onValueChange }: { actors: ActorTabIt
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              aria-label={t('memoryPanel.actorMoreLabel')}
-              title={t('memoryPanel.actorMoreLabel')}
+              aria-label={t('directorPanel.actorMoreLabel')}
+              title={t('directorPanel.actorMoreLabel')}
               className="flex h-8 shrink-0 items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[10px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
-              {t('memoryPanel.actorMore')}
+              {t('directorPanel.actorMore')}
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-40 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text)]">

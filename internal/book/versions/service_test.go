@@ -239,7 +239,7 @@ func TestGoGitVersionExcludesInteractiveData(t *testing.T) {
 		t.Fatalf("interactive data should survive version restore: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".nova", "interactive", "memory", "book.json")); err != nil {
-		t.Fatalf("interactive memory should survive version restore: %v", err)
+		t.Fatalf("legacy interactive data should survive version restore: %v", err)
 	}
 
 	writeFile(t, dir, ".nova/interactive/stories/story-2.json", `{"title":"新故事"}`)

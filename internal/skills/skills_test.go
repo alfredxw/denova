@@ -412,7 +412,7 @@ func TestAgentBackendExposesConfigManagerBuiltinSkills(t *testing.T) {
 	builtin := filepath.Join(root, "builtin")
 	workspace := filepath.Join(root, "workspace")
 	writeSkillFileForAgents(t, builtin, "automation-config", "automation-config", "automation config", "config_manager")
-	writeSkillFileForAgents(t, builtin, "story-memory-config", "story-memory-config", "story memory config", "config_manager")
+	writeSkillFileForAgents(t, builtin, "story-director-config", "story-director-config", "story director config", "config_manager")
 	writeSkillFileForAgents(t, builtin, "ide-only", "ide-only", "ide only", "ide")
 	writeSkillFileForAgents(t, workspace, "automation-config", "automation-config", "workspace automation config", "config_manager")
 
@@ -425,7 +425,7 @@ func TestAgentBackendExposesConfigManagerBuiltinSkills(t *testing.T) {
 		t.Fatalf("List() error = %v", err)
 	}
 	got := skillNames(list)
-	if len(got) != 2 || !got["automation-config"] || !got["story-memory-config"] || got["ide-only"] {
+	if len(got) != 2 || !got["automation-config"] || !got["story-director-config"] || got["ide-only"] {
 		t.Fatalf("config_manager skills = %#v", got)
 	}
 	skill, err := backend.Get(ctx, "automation-config")
@@ -444,7 +444,7 @@ func TestAgentBackendExposesConfigManagerBuiltinSkills(t *testing.T) {
 		t.Fatalf("override List() error = %v", err)
 	}
 	overrideGot := skillNames(overrideList)
-	if overrideGot["automation-config"] || !overrideGot["story-memory-config"] {
+	if overrideGot["automation-config"] || !overrideGot["story-director-config"] {
 		t.Fatalf("override config_manager skills = %#v", overrideGot)
 	}
 }

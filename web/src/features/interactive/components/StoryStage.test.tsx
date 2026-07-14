@@ -56,7 +56,6 @@ describe('StoryStage TurnResult choices', () => {
 			user: '检查钟楼',
 			narrative: '钟楼上有反光一闪。',
 			state_status: 'ready' as const,
-			memory_status: 'running' as const,
 			turn_result: {
 				state_updates: [],
 				choices: ['绕到钟楼背面', '询问附近守夜人'],

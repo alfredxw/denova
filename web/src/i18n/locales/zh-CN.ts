@@ -26,8 +26,7 @@ import storyPicker from './zh-CN/storyPicker'
 import branchTimeline from './zh-CN/branchTimeline'
 import storyStage from './zh-CN/storyStage'
 import snapshot from './zh-CN/snapshot'
-import memoryPanel from './zh-CN/memoryPanel'
-import storyMemory from './zh-CN/storyMemory'
+import directorPanel from './zh-CN/directorPanel'
 import settings from './zh-CN/settings'
 import time from './zh-CN/time'
 import versions from './zh-CN/versions'
@@ -67,8 +66,7 @@ const zhCN = {
   ...branchTimeline,
   ...storyStage,
   ...snapshot,
-  ...memoryPanel,
-  ...storyMemory,
+  ...directorPanel,
   ...settings,
   ...time,
   ...versions,

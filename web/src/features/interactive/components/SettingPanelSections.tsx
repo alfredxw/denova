@@ -17,11 +17,11 @@ import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { type LoreItem, workspaceAssetURL } from '@/lib/api'
 import { INTERACTIVE_OPENING_PRESET_ENTRY_ID, newBookOpeningPreset, type BookOpeningPreset } from '../opening'
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../preset-ownership'
-import type { ActorStateModule, EventPackageModule, ImagePreset, ImagePresetSlot, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller, TellerEventPackage } from '../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, ImagePresetSlot, RuleSystemModule, StoryDirector, Teller, TellerEventPackage } from '../types'
 import { PresetConfigSectionEditor } from './preset-config/PresetConfigSectionEditor'
 import { PresetEmptyState, PresetMetadataPanel } from './preset-config/PresetEditorChrome'
 import { normalizeTRPGSystem } from './preset-config/ruleTemplates'
-import { EventPackageVisualEditor, MemoryStructureVisualEditor } from './preset-config/visual-editors'
+import { EventPackageVisualEditor } from './preset-config/visual-editors'
 import { TRPGSystemVisualEditor } from './preset-config/TRPGSystemVisualEditor'
 import { ActorStateExplorer, type ExplorerProps } from './preset-config/actor-state-explorer'
 import { BooleanSwitchField } from './setting-panel/BooleanSwitchField'
@@ -52,7 +52,7 @@ const LOAD_MODE_OPTIONS = [
 const LORE_RESIDENT_TOTAL_WARNING_BYTES = 32 * 1024
 const IMAGE_PRESET_PROMPT_LIMIT = 4000
 const IMAGE_PRESET_TARGET_OPTIONS = [{ value: 'agent_system' }, { value: 'tool_request' }] as const
-const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'actor-state', 'memory-structure']
+const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'actor-state']
 type ImagePresetTarget = ImagePresetSlot['target']
 type LoreType = LoreItem['type']
 type LoreLoadModeFilter = 'all' | 'resident' | 'on_demand'
@@ -306,14 +306,12 @@ export function TellerDirectory({
   eventPackages,
   ruleSystems,
   actorStates,
-  memoryStructures,
   activeTellerId,
   activeStoryDirectorId,
   activeImagePresetId,
   activeEventPackageId,
   activeRuleSystemId,
   activeActorStateId,
-  activeMemoryStructureId,
   saving,
   onSelectTeller,
   onSelectStoryDirector,
@@ -321,14 +319,12 @@ export function TellerDirectory({
   onSelectEventPackage,
   onSelectRuleSystem,
   onSelectActorState,
-  onSelectMemoryStructure,
   onCreateTeller,
   onCreateStoryDirector,
   onCreateImagePreset,
   onCreateEventPackage,
   onCreateRuleSystem,
   onCreateActorState,
-  onCreateMemoryStructure,
   usageMode,
 }: {
   resourceKind: PresetResourceKind
@@ -339,14 +335,12 @@ export function TellerDirectory({
   eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
   actorStates: ActorStateModule[]
-  memoryStructures: StoryMemoryStructureModule[]
   activeTellerId: string
   activeStoryDirectorId: string
   activeImagePresetId: string
   activeEventPackageId: string
   activeRuleSystemId: string
   activeActorStateId: string
-  activeMemoryStructureId: string
   saving: boolean
   onSelectTeller: (id: string) => void
   onSelectStoryDirector: (id: string) => void
@@ -354,14 +348,12 @@ export function TellerDirectory({
   onSelectEventPackage: (id: string) => void
   onSelectRuleSystem: (id: string) => void
   onSelectActorState: (id: string) => void
-  onSelectMemoryStructure: (id: string) => void
   onCreateTeller: () => void
   onCreateStoryDirector: () => void
   onCreateImagePreset: () => void
   onCreateEventPackage: () => void
   onCreateRuleSystem: () => void
   onCreateActorState: () => void
-  onCreateMemoryStructure: () => void
 }) {
   const { t } = useTranslation()
   const [collapsedSections, setCollapsedSections] = useState<Partial<Record<PresetResourceKind, boolean>>>({})
@@ -379,7 +371,6 @@ export function TellerDirectory({
   const filteredEventPackages = filterPresetDirectoryItems(eventPackages, query)
   const filteredRuleSystems = filterPresetDirectoryItems(ruleSystems, query)
   const filteredActorStates = filterPresetDirectoryItems(actorStates, query)
-  const filteredMemoryStructures = filterPresetDirectoryItems(memoryStructures, query)
   const toggleSection = (kind: PresetResourceKind) => {
     setCollapsedSections((current) => ({
       ...current,
@@ -437,11 +428,7 @@ export function TellerDirectory({
       onSelectActorState(actorStates[0].id)
       return
     }
-    if (presetResourceVisibleInMode('memory-structure', usageMode) && memoryStructures[0]) {
-      onSelectMemoryStructure(memoryStructures[0].id)
-      return
-    }
-  }, [actorStates, eventPackages, imagePresets, isConfigAgentActive, memoryStructures, onSelectActorState, onSelectEventPackage, onSelectImagePreset, onSelectMemoryStructure, onSelectRuleSystem, onSelectStoryDirector, onSelectTeller, resourceKind, ruleSystems, storyDirectors, tellers, usageMode])
+  }, [actorStates, eventPackages, imagePresets, isConfigAgentActive, onSelectActorState, onSelectEventPackage, onSelectImagePreset, onSelectRuleSystem, onSelectStoryDirector, onSelectTeller, resourceKind, ruleSystems, storyDirectors, tellers, usageMode])
 
   return (
     <>
@@ -641,32 +628,6 @@ export function TellerDirectory({
                     checks: ruleSystems.filter((rule) => rule.actor_state_id === item.id).length,
                   })}
                   onSelect={() => onSelectActorState(item.id)}
-                />
-              ))}
-            </PresetDirectorySection>
-          ) : null}
-
-          {isVisible('memory-structure') ? (
-            <PresetDirectorySection
-              kind="memory-structure"
-              label={presetKindDirectoryLabel('memory-structure', t)}
-              Icon={Database}
-              count={filteredMemoryStructures.length}
-              createLabel={presetKindCreateLabel('memory-structure', t)}
-              saving={saving}
-              collapsed={isCollapsed('memory-structure')}
-              onToggle={() => toggleSection('memory-structure')}
-              onCreate={onCreateMemoryStructure}
-            >
-              {filteredMemoryStructures.map((item) => (
-                <PresetDirectoryItem
-                  key={item.id}
-                  disabled={saving}
-                  active={!isConfigAgentActive && resourceKind === 'memory-structure' && activeMemoryStructureId === item.id}
-                  Icon={Database}
-                  title={item.name}
-                  summary={`${presetStatusLabel(item, t)} · ${t('settingPanel.memoryStructure.summaryCount', { enabled: enabledMemoryStructureCount(item), total: item.structures?.length || 0 })}`}
-                  onSelect={() => onSelectMemoryStructure(item.id)}
                 />
               ))}
             </PresetDirectorySection>
@@ -976,47 +937,6 @@ export function ActorStateEditor({
   )
 }
 
-export function StoryMemoryStructureEditor({
-  draft,
-  setDraft,
-  onSave,
-  onValidityChange,
-}: {
-  draft: StoryMemoryStructureModule | null
-  setDraft: (draft: StoryMemoryStructureModule | null) => void
-  onSave: () => void
-  onValidityChange?: (valid: boolean) => void
-}) {
-  const { t } = useTranslation()
-
-  if (!draft) {
-    return <PresetEmptyState title={t('settingPanel.editor.noMemoryStructureSelected')} description={t('settingPanel.editor.noMemoryStructureSelectedDesc')} />
-  }
-
-  return (
-    <ModuleEditorShell
-      draft={draft}
-      setDraft={setDraft}
-      metadata="compact"
-      contentClassName="grid min-h-0 flex-1 gap-4 overflow-y-auto p-3 sm:p-4"
-    >
-      <PresetConfigSectionEditor
-        sectionId="story-memory-structure.structures"
-        resetKey={`${draft.id}:structures`}
-        title={t('settingPanel.memoryStructure.title')}
-        description={t('settingPanel.memoryStructure.description')}
-        value={draft.structures || []}
-        summary={t('settingPanel.memoryStructure.summaryCount', { enabled: enabledMemoryStructureCount(draft), total: draft.structures?.length || 0 })}
-        onChange={(structures) => setDraft({ ...draft, structures })}
-        onSave={onSave}
-        onValidityChange={onValidityChange}
-      >
-        {(props) => <MemoryStructureVisualEditor {...props} />}
-      </PresetConfigSectionEditor>
-    </ModuleEditorShell>
-  )
-}
-
 function ModuleEditorShell<T extends { name: string; description: string; custom: boolean; builtin_overridden?: boolean }>({
   draft,
   setDraft,
@@ -1072,17 +992,12 @@ function eventPackageSummaryCount(item: EventPackageModule) {
   return item.events?.length || 0
 }
 
-function enabledMemoryStructureCount(item: Partial<StoryMemoryStructureModule>) {
-  return (item.structures || []).filter((structure) => structure.enabled !== false).length
-}
-
 function presetKindDirectoryLabel(kind: PresetResourceKind, t: (key: string) => string) {
   if (kind === 'image') return t('settingPanel.imagePresetDirectory')
   if (kind === 'director') return t('settingPanel.storyDirectorDirectory')
   if (kind === 'event') return t('settingPanel.eventPackageDirectory')
   if (kind === 'rule') return t('settingPanel.ruleSystemDirectory')
   if (kind === 'actor-state') return t('settingPanel.actorStateDirectory')
-  if (kind === 'memory-structure') return t('settingPanel.memoryStructureDirectory')
   return t('settingPanel.rulePackages')
 }
 
@@ -1092,7 +1007,6 @@ function presetKindCreateLabel(kind: PresetResourceKind, t: (key: string) => str
   if (kind === 'event') return t('settingPanel.newEventPackage')
   if (kind === 'rule') return t('settingPanel.newRuleSystem')
   if (kind === 'actor-state') return t('settingPanel.newActorState')
-  if (kind === 'memory-structure') return t('settingPanel.newMemoryStructure')
   return t('settingPanel.newTeller')
 }
 
