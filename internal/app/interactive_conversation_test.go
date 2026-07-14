@@ -87,6 +87,76 @@ func TestSubmitTurnResultToleratesUnknownFrozenActorStateFields(t *testing.T) {
 	}
 }
 
+func TestSubmitTurnResultRequiresAndCommitsStoryContext(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	actorState := interactive.DefaultActorStateModule().ActorState
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "故事上下文提交", ActorState: &actorState})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := interactive.TurnResult{
+		Contract:    interactive.TurnContract{PlayerIntent: "进入酒馆", SceneGoal: "确认酒馆内的局势"},
+		SceneResult: interactive.TurnSceneResult{Status: "continued"},
+		PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"},
+		Choices:     []string{"观察堂内客人", "询问掌柜"},
+	}
+
+	missing := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "进入酒馆", 800, &config.Config{})
+	receipt, err := missing.SubmitTurnResult(context.Background(), result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Accepted || !receipt.Retryable || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != interactive.TurnSubmissionDiagnosticStoryContextRequired {
+		t.Fatalf("missing story context should request a corrected TurnResult: %#v", receipt)
+	}
+	if missing.InteractiveNarrativeReady() {
+		t.Fatal("narrative must remain closed until story context is submitted")
+	}
+
+	eventOnly := result
+	eventOnly.ActorStatePatches = []interactive.ActorStatePatch{{
+		ActorID: interactive.DefaultStoryContextActorID,
+		State:   map[string]any{"当前事件": "主角进入黄泉酒馆并观察堂内局势"},
+	}}
+	withoutLocation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "进入酒馆", 800, &config.Config{})
+	receipt, err = withoutLocation.SubmitTurnResult(context.Background(), eventOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Accepted || !receipt.Retryable || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != interactive.TurnSubmissionDiagnosticStoryContextRequired || receipt.Diagnostics[0].Field != "当前详细地点" {
+		t.Fatalf("uninitialized story context should require a current location even without scene_id: %#v", receipt)
+	}
+
+	result.ActorStatePatches = []interactive.ActorStatePatch{{
+		ActorID: interactive.DefaultStoryContextActorID,
+		State: map[string]any{
+			"当前详细地点": "黄泉酒馆",
+			"当前事件":   "主角进入黄泉酒馆并观察堂内局势",
+		},
+		Reason: "同步本回合结束后的场景与事件。",
+	}}
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "进入酒馆", 800, &config.Config{})
+	receipt, err = conversation.SubmitTurnResult(context.Background(), result)
+	if err != nil || !receipt.Accepted || receipt.Retryable {
+		t.Fatalf("complete story context should be accepted: receipt=%#v err=%v", receipt, err)
+	}
+	if err := conversation.AppendAssistantWithThinking("主角推门走进黄泉酒馆。", ""); err != nil {
+		t.Fatalf("commit narrative with story context: %v", err)
+	}
+
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	actors, _ := snapshot.State["actors"].(map[string]any)
+	storyActor, _ := actors[interactive.DefaultStoryContextActorID].(map[string]any)
+	storyState, _ := storyActor["state"].(map[string]any)
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.Narrative != "主角推门走进黄泉酒馆。" || storyState["当前详细地点"] != "黄泉酒馆" || storyState["当前事件"] != "主角进入黄泉酒馆并观察堂内局势" {
+		t.Fatalf("narrative and story context must survive the same commit: turn=%#v state=%#v", snapshot.CurrentTurn, storyState)
+	}
+}
+
 func TestDirectorContextBudgetFollowsModelWindowAndCapsEachSource(t *testing.T) {
 	small := newDirectorContextBudget(&config.Config{OpenAIContextWindowTokens: 128000}, interactiveDirectorTaskDirectorPlanUpdate)
 	large := newDirectorContextBudget(&config.Config{OpenAIContextWindowTokens: 400000}, interactiveDirectorTaskDirectorPlanUpdate)
@@ -158,7 +228,7 @@ func TestInteractiveConversationToolResultDoesNotFallbackWhenNameIsAmbiguous(t *
 	}
 }
 
-func TestInteractiveConversationModelContextMessagesEnterNextTurnWithoutThinking(t *testing.T) {
+func TestInteractiveConversationDropsTransientIndexAndThinkingFromNextTurn(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)
 	story, err := store.CreateStory(interactive.CreateStoryRequest{
@@ -198,19 +268,15 @@ func TestInteractiveConversationModelContextMessagesEnterNextTurnWithoutThinking
 		t.Fatal(err)
 	}
 
-	var sawToolCall, sawToolResult bool
 	for _, msg := range messages {
 		if msg.Role == schema.Assistant && len(msg.ToolCalls) == 1 && msg.ToolCalls[0].Function.Name == "list_lore_items" {
-			sawToolCall = true
+			t.Fatalf("transient Lore index call must not enter next-turn context: %#v", msg)
 		}
-		if msg.Role == schema.Tool && msg.ToolName == "list_lore_items" && msg.Content == "找到门的机关设定" {
-			sawToolResult = true
+		if msg.Role == schema.Tool && msg.ToolName == "list_lore_items" {
+			t.Fatalf("transient Lore index result must not enter next-turn context: %#v", msg)
 		}
 		if msg.Content == "隐藏思考" || msg.ReasoningContent == "隐藏思考" {
 			t.Fatalf("raw thinking must not enter model context: %#v", msg)
 		}
-	}
-	if !sawToolCall || !sawToolResult {
-		t.Fatalf("next turn should include retained tool context, sawToolCall=%v sawToolResult=%v messages=%#v", sawToolCall, sawToolResult, messages)
 	}
 }

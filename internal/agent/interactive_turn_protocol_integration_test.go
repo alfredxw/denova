@@ -15,6 +15,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"denova/internal/interactive"
+	"denova/internal/session"
 )
 
 func TestInteractiveTurnProtocolRecoversMissingSubmissionInsideAgentLoop(t *testing.T) {
@@ -84,8 +85,12 @@ func TestInteractiveTurnProtocolRecoversMissingSubmissionInsideAgentLoop(t *test
 	if !sawInternalRetry || !ready.Load() || calls != 3 || final != "石门缓缓开启。" {
 		t.Fatalf("protocol did not recover in one streaming run: retry=%t ready=%t calls=%d final=%q", sawInternalRetry, ready.Load(), calls, final)
 	}
-	if len(toolCounts) != 3 || toolCounts[0] == 0 || toolCounts[1] == 0 || toolCounts[2] != 0 {
-		t.Fatalf("tools should be hidden only after acceptance: %#v", toolCounts)
+	if len(toolCounts) != 3 || toolCounts[0] == 0 || toolCounts[1] == 0 || toolCounts[2] == 0 {
+		t.Fatalf("tool schemas should remain stable across the narrative-only phase: %#v", toolCounts)
+	}
+	toolChoices := chatModel.toolChoicesSnapshot()
+	if len(toolChoices) != 3 || toolChoices[2] != string(schema.ToolChoiceForbidden) {
+		t.Fatalf("accepted TurnResult phase must set tool_choice=none without changing schemas: %#v", toolChoices)
 	}
 	if len(inputs) < 2 || !messageSliceContains(inputs[1], "backend completion guard") {
 		t.Fatalf("retry did not receive bounded protocol feedback: %#v", inputs)
@@ -95,11 +100,86 @@ func TestInteractiveTurnProtocolRecoversMissingSubmissionInsideAgentLoop(t *test
 	}
 }
 
+func TestInteractiveTurnProtocolAccountsRejectedModelCallUsage(t *testing.T) {
+	ctx := context.Background()
+	var ready atomic.Bool
+	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
+		SubmitTurnResult: func(_ context.Context, _ interactive.TurnResult) (interactive.TurnSubmissionReceipt, error) {
+			ready.Store(true)
+			return interactive.TurnSubmissionReceipt{Accepted: true}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatModel := &interactiveTurnProtocolChatModel{}
+	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+		Name:          "interactive-protocol-usage-test",
+		Description:   "test",
+		Instruction:   "test",
+		Model:         chatModel,
+		MaxIterations: 4,
+		Handlers:      []adk.ChatModelAgentMiddleware{newInteractiveTurnProtocolMiddleware(ready.Load)},
+		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{
+			Tools: tools,
+		}},
+		ModelRetryConfig: &adk.ModelRetryConfig{
+			MaxRetries:  1,
+			ShouldRetry: newInteractiveCompletionGuard(ready.Load),
+			BackoffFunc: func(context.Context, int) time.Duration { return time.Nanosecond },
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
+	conversation := &interactiveProtocolConversation{ready: &ready}
+	var usage map[string]any
+	NewRuntime(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "推开石门"}, RunOptions{
+		AgentKind:     AgentKindInteractiveStory,
+		RootAgentName: "interactive-protocol-usage-test",
+	}, func(event Event) {
+		if event.Type == "token_usage" {
+			usage, _ = event.Data.(map[string]any)
+		}
+	})
+
+	calls, toolCounts, inputs := chatModel.snapshot()
+	if conversation.assistant != "石门缓缓开启。" {
+		t.Fatalf("final narrative = %q ready=%t calls=%d tools=%#v inputs=%#v usage=%#v", conversation.assistant, ready.Load(), calls, toolCounts, inputs, usage)
+	}
+	if usage == nil || usage["model_calls"] != 3 || usage["total_tokens"] != 660 {
+		t.Fatalf("usage must include rejected, tool-call, and final model responses: %#v", usage)
+	}
+}
+
+type interactiveProtocolConversation struct {
+	ready     *atomic.Bool
+	assistant string
+}
+
+func (c *interactiveProtocolConversation) PrepareMessages(_, agentMessage string) ([]*schema.Message, error) {
+	return []*schema.Message{schema.UserMessage(agentMessage)}, nil
+}
+func (c *interactiveProtocolConversation) AppendAssistant(content string) error {
+	c.assistant = content
+	return nil
+}
+func (c *interactiveProtocolConversation) MarkInterrupted(_, _, _ string) error { return nil }
+func (c *interactiveProtocolConversation) PendingInterruption() *session.Interruption {
+	return nil
+}
+func (c *interactiveProtocolConversation) ResolveInterruption(string) error { return nil }
+func (c *interactiveProtocolConversation) InteractiveNarrativeReady() bool {
+	return c != nil && c.ready != nil && c.ready.Load()
+}
+
 type interactiveTurnProtocolChatModel struct {
-	mu         sync.Mutex
-	calls      int
-	toolCounts []int
-	inputs     [][]string
+	mu          sync.Mutex
+	calls       int
+	toolCounts  []int
+	toolChoices []string
+	inputs      [][]string
 }
 
 func (m *interactiveTurnProtocolChatModel) Generate(_ context.Context, messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
@@ -120,6 +200,11 @@ func (m *interactiveTurnProtocolChatModel) nextMessage(messages []*schema.Messag
 	m.calls++
 	common := model.GetCommonOptions(&model.Options{}, opts...)
 	m.toolCounts = append(m.toolCounts, len(common.Tools))
+	toolChoice := ""
+	if common.ToolChoice != nil {
+		toolChoice = string(*common.ToolChoice)
+	}
+	m.toolChoices = append(m.toolChoices, toolChoice)
 	input := make([]string, 0, len(messages))
 	for _, message := range messages {
 		if message != nil {
@@ -127,20 +212,27 @@ func (m *interactiveTurnProtocolChatModel) nextMessage(messages []*schema.Messag
 		}
 	}
 	m.inputs = append(m.inputs, input)
+	var message *schema.Message
 	switch m.calls {
 	case 1:
-		return schema.AssistantMessage("门后传来锁链拖地的声音。", nil), nil
+		message = schema.AssistantMessage("门后传来锁链拖地的声音。", nil)
 	case 2:
-		return schema.AssistantMessage("", []schema.ToolCall{{
+		message = schema.AssistantMessage("", []schema.ToolCall{{
 			ID: "call-submit",
 			Function: schema.FunctionCall{
 				Name:      "submit_interactive_turn_result",
 				Arguments: `{"contract":{"player_intent":"推开石门","scene_goal":"进入门后"},"scene_result":{"status":"continued"},"plan_signals":{"deviation_level":"none"},"choices":["进入房间","观察门后"]}`,
 			},
-		}}), nil
+		}})
 	default:
-		return schema.AssistantMessage("石门缓缓开启。", nil), nil
+		message = schema.AssistantMessage("石门缓缓开启。", nil)
 	}
+	message.ResponseMeta = &schema.ResponseMeta{Usage: &schema.TokenUsage{
+		PromptTokens:     m.calls * 100,
+		CompletionTokens: m.calls * 10,
+		TotalTokens:      m.calls * 110,
+	}}
+	return message, nil
 }
 
 func (m *interactiveTurnProtocolChatModel) snapshot() (int, []int, [][]string) {
@@ -152,6 +244,12 @@ func (m *interactiveTurnProtocolChatModel) snapshot() (int, []int, [][]string) {
 		inputs[index] = append([]string(nil), m.inputs[index]...)
 	}
 	return m.calls, toolCounts, inputs
+}
+
+func (m *interactiveTurnProtocolChatModel) toolChoicesSnapshot() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return append([]string(nil), m.toolChoices...)
 }
 
 func messageSliceContains(messages []string, needle string) bool {

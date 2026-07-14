@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -22,8 +23,8 @@ type interactiveCompletionRetryReason struct {
 	Code string `json:"code"`
 }
 
-// interactiveTurnProtocolMiddleware removes every tool after a TurnResult is
-// accepted, making the remaining model phase a narrative-only completion.
+// interactiveTurnProtocolMiddleware keeps the tool schema stable for prompt
+// caching, then switches the accepted TurnResult phase to tool_choice=none.
 type interactiveTurnProtocolMiddleware struct {
 	*adk.BaseChatModelAgentMiddleware
 	ready func() bool
@@ -36,13 +37,38 @@ func newInteractiveTurnProtocolMiddleware(ready func() bool) *interactiveTurnPro
 	}
 }
 
-func (m *interactiveTurnProtocolMiddleware) BeforeModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, _ *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
-	if m == nil || m.ready == nil || !m.ready() || state == nil {
+func (m *interactiveTurnProtocolMiddleware) WrapModel(_ context.Context, wrapped model.BaseChatModel, _ *adk.ModelContext) (model.BaseChatModel, error) {
+	if m == nil || m.ready == nil || !m.ready() {
+		return wrapped, nil
+	}
+	return &interactiveNarrativeOnlyModel{BaseChatModel: wrapped}, nil
+}
+
+func (m *interactiveTurnProtocolMiddleware) AfterModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, _ *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
+	if m == nil || m.ready == nil || !m.ready() || state == nil || len(state.Messages) == 0 {
 		return ctx, state, nil
 	}
-	state.ToolInfos = []*schema.ToolInfo{}
-	state.DeferredToolInfos = []*schema.ToolInfo{}
+	last := state.Messages[len(state.Messages)-1]
+	if last != nil && len(last.ToolCalls) > 0 {
+		return ctx, state, errors.New("TurnResult 已提交，禁止继续调用工具 / tools are forbidden after TurnResult acceptance")
+	}
 	return ctx, state, nil
+}
+
+type interactiveNarrativeOnlyModel struct {
+	model.BaseChatModel
+}
+
+func (m *interactiveNarrativeOnlyModel) Generate(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	narrativeOpts := append([]model.Option(nil), opts...)
+	narrativeOpts = append(narrativeOpts, model.WithToolChoice(schema.ToolChoiceForbidden))
+	return m.BaseChatModel.Generate(ctx, messages, narrativeOpts...)
+}
+
+func (m *interactiveNarrativeOnlyModel) Stream(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	narrativeOpts := append([]model.Option(nil), opts...)
+	narrativeOpts = append(narrativeOpts, model.WithToolChoice(schema.ToolChoiceForbidden))
+	return m.BaseChatModel.Stream(ctx, messages, narrativeOpts...)
 }
 
 // newInteractiveCompletionGuard rejects a final model answer while the hidden

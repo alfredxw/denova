@@ -81,7 +81,19 @@ func TestBuildStateSchemaAdaptationInstructionUsesRequestTRPGOverride(t *testing
 	}
 }
 
-func TestBuildStateSchemaAdaptationInstructionUsesBoundedResidentLoreRoster(t *testing.T) {
+func TestStateSchemaTRPGSourceAllowlistMatchesVisibleBindings(t *testing.T) {
+	system := interactive.StoryDirectorTRPGSystem{RuleTemplates: []interactive.RuleCheck{
+		{ID: "visible", StateBindings: []interactive.RuleStateBinding{{ID: "binding", ActorTemplateID: "protagonist"}}},
+		{ID: "not-in-prompt"},
+	}}
+	rules := compactStateSchemaAdaptationRules(system)
+	ids := stateSchemaAdaptationRuleSourceIDs(rules)
+	if len(rules) != 1 || rules[0].ID != "visible" || len(ids) != 1 || ids[0] != "visible" {
+		t.Fatalf("TRPG source allowlist must derive only from rules visible in dynamic JSON: rules=%#v ids=%#v", rules, ids)
+	}
+}
+
+func TestBuildStateSchemaAdaptationInstructionSeparatesCompleteResidentLoreFromDynamicJSON(t *testing.T) {
 	workspace := t.TempDir()
 	store := book.NewLoreStore(workspace)
 	if _, err := store.Create(book.LoreItemInput{
@@ -98,16 +110,24 @@ func TestBuildStateSchemaAdaptationInstructionUsesBoundedResidentLoreRoster(t *t
 	}
 	director := interactive.DefaultStoryDirector()
 	req := interactive.CreateStoryRequest{Title: "规则感知开场", StoryDirectorID: director.ID, ActorState: &director.ActorState}
-	instruction, err := buildStateSchemaAdaptationInstruction(req, director, book.NewState(workspace))
+	state := book.NewState(workspace)
+	workspaceSources, err := stateSchemaAdaptationWorkspaceContext(state)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"resident_lore_roster", "lore_revision", "具体数值", "numeric-rules"} {
+	if !strings.Contains(workspaceSources.ResidentLore, "RESIDENT_BODY_MUST_BE_READ_BY_TOOL") || strings.Contains(workspaceSources.ResidentLore, "AUTO_BODY") {
+		t.Fatalf("stable resident context must contain every resident body and no on-demand body: %q", workspaceSources.ResidentLore)
+	}
+	instruction, err := buildStateSchemaAdaptationInstruction(req, director, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"lore_revision", "numeric-rules", `"source":"enabled resident lore bodies"`, `"complete":true`, `"max_body_bytes":1048576`, `"ids":["numeric-rules"]`} {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("state schema instruction missing resident discovery value %q: %s", want, instruction)
 		}
 	}
-	for _, unexpected := range []string{"RESIDENT_BODY_MUST_BE_READ_BY_TOOL", "支线地点", "AUTO_BODY"} {
+	for _, unexpected := range []string{"resident_lore_roster", "RESIDENT_BODY_MUST_BE_READ_BY_TOOL", "具体数值", "支线地点", "AUTO_BODY"} {
 		if strings.Contains(instruction, unexpected) {
 			t.Fatalf("state schema instruction leaked non-discovery lore value %q: %s", unexpected, instruction)
 		}
@@ -115,4 +135,58 @@ func TestBuildStateSchemaAdaptationInstructionUsesBoundedResidentLoreRoster(t *t
 	if len(instruction) > maxInteractiveStateSchemaPromptBytes {
 		t.Fatalf("instruction exceeds bounded payload: %d", len(instruction))
 	}
+}
+
+func TestAssembleStateSchemaResidentLoreRejectsRevisionTOCTOU(t *testing.T) {
+	reader := &stateSchemaLoreReaderStub{
+		revisions: []string{"revision-before", "revision-after"},
+		items:     []book.LoreItem{{ID: "rule", LoadMode: book.LoreLoadModeResident, Content: "规则正文"}},
+		resident:  "## 规则\n\n规则正文",
+	}
+	if _, err := assembleStateSchemaResidentLore(reader); err == nil || !strings.Contains(err.Error(), "装配期间发生变化") {
+		t.Fatalf("resident Lore assembly must reject mixed revisions: %v", err)
+	}
+}
+
+func TestAssembleStateSchemaResidentLoreReturnsOneRevisionSnapshot(t *testing.T) {
+	reader := &stateSchemaLoreReaderStub{
+		revisions: []string{"stable-revision", "stable-revision"},
+		items: []book.LoreItem{
+			{ID: "resident", LoadMode: book.LoreLoadModeResident, Content: "常驻正文"},
+			{ID: "empty", LoadMode: book.LoreLoadModeResident},
+			{ID: "auto", LoadMode: book.LoreLoadModeAuto, Content: "按需正文"},
+		},
+		resident: "## 常驻\n\n常驻正文",
+	}
+	snapshot, err := assembleStateSchemaResidentLore(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Revision != "stable-revision" || snapshot.Content != reader.resident || snapshot.BodyBytes != len([]byte("常驻正文")) || len(snapshot.IDs) != 1 || snapshot.IDs[0] != "resident" {
+		t.Fatalf("resident Lore snapshot mixed sources: %#v", snapshot)
+	}
+}
+
+type stateSchemaLoreReaderStub struct {
+	revisions    []string
+	revisionCall int
+	items        []book.LoreItem
+	resident     string
+}
+
+func (r *stateSchemaLoreReaderStub) Revision() (string, error) {
+	index := r.revisionCall
+	if index >= len(r.revisions) {
+		index = len(r.revisions) - 1
+	}
+	r.revisionCall++
+	return r.revisions[index], nil
+}
+
+func (r *stateSchemaLoreReaderStub) List() ([]book.LoreItem, error) {
+	return append([]book.LoreItem(nil), r.items...), nil
+}
+
+func (r *stateSchemaLoreReaderStub) ResidentContextMarkdown() (string, error) {
+	return r.resident, nil
 }

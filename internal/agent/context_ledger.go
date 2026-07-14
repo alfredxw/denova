@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"strconv"
 	"strings"
@@ -21,11 +22,13 @@ type ContextLedgerPart struct {
 	Purpose   string `json:"purpose,omitempty"`
 	Bytes     int    `json:"bytes"`
 	Chars     int    `json:"chars"`
+	Hash      string `json:"hash,omitempty"`
 	Preview   string `json:"preview"`
 	Note      string `json:"note,omitempty"`
 	Included  bool   `json:"included"`
 	Truncated bool   `json:"truncated,omitempty"`
 	Limit     int    `json:"limit,omitempty"`
+	LimitUnit string `json:"limit_unit,omitempty"`
 }
 
 // NewContextLedger creates a context ledger for one Agent turn.
@@ -43,6 +46,12 @@ func (l *ContextLedger) Add(source, title, content, note string) {
 
 // AddPart records one context part. Content is never retained in full.
 func (l *ContextLedger) AddPart(source, title, purpose, content, note string, included, truncated bool, limit int) {
+	l.AddPartWithLimitUnit(source, title, purpose, content, note, included, truncated, limit, "bytes")
+}
+
+// AddPartWithLimitUnit records a part whose hard limit is expressed in an
+// explicit unit. Byte limits remain the default for existing callers.
+func (l *ContextLedger) AddPartWithLimitUnit(source, title, purpose, content, note string, included, truncated bool, limit int, limitUnit string) {
 	if l == nil || !l.policy.Enabled {
 		return
 	}
@@ -52,17 +61,30 @@ func (l *ContextLedger) AddPart(source, title, purpose, content, note string, in
 	if source == "" && title == "" && content == "" {
 		return
 	}
+	hash := ""
+	if content != "" {
+		sum := sha256.Sum256([]byte(content))
+		hash = fmt.Sprintf("sha256:%x", sum[:8])
+	}
+	limitUnit = strings.TrimSpace(limitUnit)
+	if limit <= 0 {
+		limitUnit = ""
+	} else if limitUnit == "" {
+		limitUnit = "bytes"
+	}
 	l.parts = append(l.parts, ContextLedgerPart{
 		Source:    source,
 		Title:     title,
 		Purpose:   strings.TrimSpace(purpose),
 		Bytes:     len(content),
 		Chars:     utf8.RuneCountInString(content),
+		Hash:      hash,
 		Preview:   safeLogPreview(content, l.policy.PreviewChars),
 		Note:      strings.TrimSpace(note),
 		Included:  included,
 		Truncated: truncated,
 		Limit:     limit,
+		LimitUnit: limitUnit,
 	})
 }
 
@@ -88,6 +110,7 @@ func (l *ContextLedger) Summary() string {
 			fmt.Sprintf("title=%q", part.Title),
 			"bytes=" + intString(part.Bytes),
 			"chars=" + intString(part.Chars),
+			"hash=" + strconv.Quote(part.Hash),
 			"preview=" + strconv.Quote(part.Preview),
 			"included=" + ledgerBoolString(part.Included),
 		}
@@ -102,6 +125,9 @@ func (l *ContextLedger) Summary() string {
 		}
 		if part.Limit > 0 {
 			fields = append(fields, "limit="+intString(part.Limit))
+			if part.LimitUnit != "" {
+				fields = append(fields, "limit_unit="+strconv.Quote(part.LimitUnit))
+			}
 		}
 		parts = append(parts, strings.Join(fields, ","))
 	}

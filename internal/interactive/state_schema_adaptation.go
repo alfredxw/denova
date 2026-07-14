@@ -51,19 +51,30 @@ type ActorStateFieldSchemaOp struct {
 // initial state objects. Dynamic actors created after the opening are not part
 // of this initialization contract.
 type ActorStateInitialActorSchemaOp struct {
-	Op      string                 `json:"op"`
-	ActorID string                 `json:"actor_id,omitempty"`
-	Actor   ActorStateInitialActor `json:"actor,omitempty"`
-	Reason  string                 `json:"reason,omitempty"`
+	Op          string                            `json:"op"`
+	ActorID     string                            `json:"actor_id,omitempty"`
+	Actor       ActorStateInitialActor            `json:"actor,omitempty"`
+	Reason      string                            `json:"reason,omitempty"`
+	ValueSource *ActorStateSchemaActorValueSource `json:"value_source,omitempty" jsonschema:"-"`
 }
 
 // ActorStateRuntimeSchemaOp migrates an Actor already materialized in the
 // story. It does not change the reusable initial-Actor definitions.
 type ActorStateRuntimeSchemaOp struct {
-	Op      string                 `json:"op"`
-	ActorID string                 `json:"actor_id,omitempty"`
-	Actor   ActorStateInitialActor `json:"actor,omitempty"`
-	Reason  string                 `json:"reason,omitempty"`
+	Op          string                            `json:"op"`
+	ActorID     string                            `json:"actor_id,omitempty"`
+	Actor       ActorStateInitialActor            `json:"actor,omitempty"`
+	Reason      string                            `json:"reason,omitempty"`
+	ValueSource *ActorStateSchemaActorValueSource `json:"value_source,omitempty" jsonschema:"-"`
+}
+
+// ActorStateSchemaActorValueSource links Actor values produced by a Batch item
+// to the exact requirement evidence persisted in the schema adaptation audit.
+type ActorStateSchemaActorValueSource struct {
+	SourceID     string                            `json:"source_id"`
+	ItemID       string                            `json:"item_id"`
+	Source       ActorStateSchemaRequirementSource `json:"source"`
+	EvidenceKind string                            `json:"evidence_kind"`
 }
 
 // ActorStateSchemaAdaptationRecord is persisted with the frozen story schema
@@ -86,13 +97,14 @@ type ActorStateSchemaAdaptationRecord struct {
 // ActorStateSchemaAdaptationChange is a bounded user-visible audit item for
 // one schema or initial-Actor change proposed by the initialization Director.
 type ActorStateSchemaAdaptationChange struct {
-	Kind       string `json:"kind"`
-	Op         string `json:"op"`
-	TemplateID string `json:"template_id,omitempty"`
-	FieldID    string `json:"field_id,omitempty"`
-	TargetID   string `json:"target_id,omitempty"`
-	ActorID    string `json:"actor_id,omitempty"`
-	Reason     string `json:"reason,omitempty"`
+	Kind        string                            `json:"kind"`
+	Op          string                            `json:"op"`
+	TemplateID  string                            `json:"template_id,omitempty"`
+	FieldID     string                            `json:"field_id,omitempty"`
+	TargetID    string                            `json:"target_id,omitempty"`
+	ActorID     string                            `json:"actor_id,omitempty"`
+	Reason      string                            `json:"reason,omitempty"`
+	ValueSource *ActorStateSchemaActorValueSource `json:"value_source,omitempty"`
 }
 
 // StateSchemaInitializationStatus is story-global because all branches share
@@ -162,6 +174,7 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		op.Op = strings.TrimSpace(op.Op)
 		op.ActorID = normalizeActorStateID(op.ActorID)
 		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
+		normalizeActorStateSchemaActorValueSource(op.ValueSource)
 	}
 	for index := range adaptation.ActorOps {
 		op := &adaptation.ActorOps[index]
@@ -170,6 +183,7 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		op.Actor.ID = normalizeActorStateID(op.Actor.ID)
 		op.Actor.TemplateID = normalizeActorStateID(op.Actor.TemplateID)
 		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
+		normalizeActorStateSchemaActorValueSource(op.ValueSource)
 		if op.Op != "add" && op.Op != "replace" && op.Op != "remove" {
 			return ActorStateSchemaAdaptation{}, fmt.Errorf("运行时 Actor 操作无效: %s", op.Op)
 		}
@@ -178,6 +192,17 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		}
 	}
 	return adaptation, nil
+}
+
+func normalizeActorStateSchemaActorValueSource(source *ActorStateSchemaActorValueSource) {
+	if source == nil {
+		return
+	}
+	source.SourceID = strings.TrimSpace(source.SourceID)
+	source.ItemID = strings.TrimSpace(source.ItemID)
+	source.Source.Kind = strings.TrimSpace(source.Source.Kind)
+	source.Source.ID = strings.TrimSpace(source.Source.ID)
+	source.EvidenceKind = strings.TrimSpace(source.EvidenceKind)
 }
 
 // ApplyActorStateSchemaAdaptation applies a Director-proposed initialization
@@ -206,6 +231,9 @@ func ApplyActorStateSchemaAdaptation(base StoryDirectorActorStateSystem, trpg St
 		return StoryDirectorActorStateSystem{}, ActorStateSchemaAdaptationRecord{}, err
 	}
 	if err := validateActorStateTRPGReferences(system, trpg); err != nil {
+		return StoryDirectorActorStateSystem{}, ActorStateSchemaAdaptationRecord{}, err
+	}
+	if err := validateActorStateRuntimeSchemaOps(system, adaptation.ActorOps); err != nil {
 		return StoryDirectorActorStateSystem{}, ActorStateSchemaAdaptationRecord{}, err
 	}
 	fieldOps := 0

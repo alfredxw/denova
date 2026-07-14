@@ -22,7 +22,7 @@ import { StateSchemaOverview } from './StateSchemaOverview'
 export function StateView({ storyId, snapshot, stateFacts, syncError, displayPreference = 'collapsed', onDisplayPreferenceChange = noopDisplayPreferenceChange, onSnapshotRefresh }: { storyId?: string; snapshot: Snapshot | null; stateFacts: Array<[string, unknown]>; syncStatus?: string; syncError?: string; displayPreference?: StoryStateDisplayPreference; onDisplayPreferenceChange?: (value: StoryStateDisplayPreference) => void; onSnapshotRefresh?: () => void | Promise<unknown> }) {
   const { t } = useTranslation()
   const turn = snapshot?.current_turn
-  const { stateObjects, actors, otherFacts, worldFacts } = useMemo(() => splitStoryStateFacts(stateFacts), [stateFacts])
+  const { actors, worldFacts } = useMemo(() => splitStoryStateFacts(stateFacts), [stateFacts])
   const [selectedActorId, setSelectedActorId] = useState(actors[0]?.[0] || '')
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export function StateView({ storyId, snapshot, stateFacts, syncError, displayPre
 
   const changes = useMemo(() => stateChanges(turn?.state_delta), [turn?.state_delta])
   const actorNames = useMemo(() => new Map(actors.map(([actorId, actor]) => [actorId, actorName(actorId, actor)])), [actors])
-  const hasState = stateObjects.length > 0 || otherFacts.length > 0
+  const hasState = actors.length > 0 || worldFacts.length > 0
   const selectedActor = actors.find(([actorId]) => actorId === selectedActorId)
 
   return (

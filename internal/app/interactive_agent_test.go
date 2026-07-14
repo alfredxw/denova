@@ -46,8 +46,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatal(err)
 	}
 
-	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我点燃火把", story.ReplyTargetChars, nil)
-	history, err := conversation.PrepareMessages("我点燃火把", "我点燃火把")
+	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我在黄泉酒馆点燃火把", story.ReplyTargetChars, nil)
+	history, err := conversation.PrepareMessages("我在黄泉酒馆点燃火把", "我在黄泉酒馆点燃火把")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if history[2].Role != schema.Assistant || history[2].Content != "门后传来低沉的风声。" {
 		t.Fatalf("history[2] mismatch: %#v", history[2])
 	}
-	if history[3].Role != schema.User || !strings.Contains(history[3].Content, "我点燃火把") {
+	if history[3].Role != schema.User || !strings.Contains(history[3].Content, "我在黄泉酒馆点燃火把") {
 		t.Fatalf("history[3] mismatch: %#v", history[3])
 	}
 	for _, want := range []string{
@@ -114,6 +114,22 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 			t.Fatalf("context sources should include %q: %s", want, sources)
 		}
 	}
+	ledgerParts := conversation.ContextLedgerParts()
+	var sawResidentLore, sawActiveLore, sawCurrentAction bool
+	for _, part := range ledgerParts {
+		if part.Source == "ResidentLore" && part.Bytes > 0 && part.Limit > book.ResidentLoreSafetyMaxBytes && part.LimitUnit == "bytes" && strings.Contains(part.Note, "complete=true") && strings.Contains(part.Note, "revision=") && strings.Contains(part.Note, "exact_final_message=true") {
+			sawResidentLore = true
+		}
+		if part.Source == "LoreContext" && part.Title == "当前分支活动资料工作集" && part.Bytes > 0 {
+			sawActiveLore = true
+		}
+		if part.Source == "本轮行动" && part.Title == "当前用户行动" && part.Bytes > 0 {
+			sawCurrentAction = true
+		}
+	}
+	if !sawResidentLore || !sawActiveLore || !sawCurrentAction {
+		t.Fatalf("durable context fragments should distinguish resident lore, active lore, and current action metadata: %#v", ledgerParts)
+	}
 
 	submitTestTurnResult(t, conversation, "点燃火把", "照亮酒馆墙面")
 	if err := conversation.AppendAssistantWithThinking("火光照亮了墙上的新线索。", "先判断现场风险。"); err != nil {
@@ -127,14 +143,24 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatalf("turn count = %d, want 2", len(snapshot.Turns))
 	}
 	last := snapshot.Turns[1]
-	if last.User != "我点燃火把" || last.Narrative != "火光照亮了墙上的新线索。" {
+	if last.User != "我在黄泉酒馆点燃火把" || last.Narrative != "火光照亮了墙上的新线索。" {
 		t.Fatalf("last turn mismatch: %#v", last)
+	}
+	traceMetadata := conversation.RunTraceMetadata()
+	if traceMetadata.StoryID != story.ID || traceMetadata.BranchID != last.BranchID || traceMetadata.TurnID != last.ID {
+		t.Fatalf("committed turn trace metadata mismatch: %#v", traceMetadata)
 	}
 	if last.Thinking != "先判断现场风险。" {
 		t.Fatalf("last thinking = %q, want persisted thinking", last.Thinking)
 	}
+	storyEventCommitted := false
 	if last.StateDelta != nil {
-		t.Fatalf("assistant narrative should not embed state_delta: %#v", last.StateDelta)
+		for _, op := range last.StateDelta.ActorOps {
+			storyEventCommitted = storyEventCommitted || op.ActorID == interactive.DefaultStoryContextActorID && op.FieldID == "当前事件"
+		}
+	}
+	if !storyEventCommitted {
+		t.Fatalf("turn should atomically persist the required story context: %#v", last.StateDelta)
 	}
 	if _, err := store.AppendStateDelta(story.ID, interactive.AppendStateDeltaRequest{
 		ParentID: last.ID,
@@ -176,7 +202,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"近期剧情历史",
 		"本回合 TurnResult / RuleResolution / StateDelta 审计 JSON",
 		"turn_result",
-		"我点燃火把",
+		"我在黄泉酒馆点燃火把",
 		"状态系统 Schema",
 		"当前状态系统快照",
 		"director.md",
@@ -924,12 +950,41 @@ func TestParseInteractiveAssistantOutput(t *testing.T) {
 
 func submitTestTurnResult(t *testing.T, conversation *interactiveConversation, intent, goal string) {
 	t.Helper()
-	receipt, err := conversation.SubmitTurnResult(context.Background(), interactive.TurnResult{
+	result := interactive.TurnResult{
 		Contract:    interactive.TurnContract{PlayerIntent: intent, SceneGoal: goal},
-		SceneResult: interactive.TurnSceneResult{Status: "continued", Summary: goal},
+		SceneResult: interactive.TurnSceneResult{Status: "continued", SceneID: "测试场景", Summary: goal},
 		PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"},
 		Choices:     []string{"继续当前行动", "观察周围变化"},
-	})
+	}
+	storyContext, err := conversation.store.StoryContext(conversation.storyID, conversation.branchID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actors, _ := storyContext.Snapshot.State["actors"].(map[string]any)
+	_, hasStoryContext := actors[interactive.DefaultStoryContextActorID]
+	actorState := conversation.storyDirectorForMeta(storyContext.Meta).ActorState
+	if storyContext.Meta.ActorStateSchema != nil {
+		actorState = storyContext.Meta.ActorStateSchema.System
+	}
+	if !hasStoryContext {
+		for _, actor := range actorState.InitialActors {
+			if actor.ID == interactive.DefaultStoryContextActorID && actor.TemplateID == interactive.ActorStateStoryContextTemplateID {
+				hasStoryContext = true
+				break
+			}
+		}
+	}
+	if hasStoryContext {
+		result.ActorStatePatches = []interactive.ActorStatePatch{{
+			ActorID:    interactive.DefaultStoryContextActorID,
+			ActorName:  "故事上下文",
+			TemplateID: interactive.ActorStateStoryContextTemplateID,
+			Role:       "story_context",
+			State:      map[string]any{"当前详细地点": "测试场景", "当前事件": goal},
+			Reason:     "测试夹具维护本回合 story_context。",
+		}}
+	}
+	receipt, err := conversation.SubmitTurnResult(context.Background(), result)
 	if err != nil || !receipt.Accepted {
 		t.Fatalf("SubmitTurnResult failed: receipt=%#v err=%v", receipt, err)
 	}

@@ -39,7 +39,11 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 		if err != nil {
 			if _, retrying := interactiveCompletionRetryFromError(err); retrying {
 				log.Printf("[agent-run] interactive completion rejected before TurnResult submission; retrying model call generated_bytes=%d", fullContent.Len())
-				return nil, err
+				message, concatErr := concatStreamingChunks(chunks)
+				if concatErr != nil {
+					log.Printf("[agent-run] concat rejected streaming message failed err=%v chunks=%d", concatErr, len(chunks))
+				}
+				return message, err
 			}
 			log.Printf("[agent-run] interrupted reason=stream_recv_error err=%v generated_bytes=%d", err, fullContent.Len())
 			if ctx.Err() == nil {
@@ -170,13 +174,24 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 			planParser.NoteSuccessfulBlock()
 		}
 	}
-	msg, err := schema.ConcatMessages(chunks)
+	msg, err := concatStreamingChunks(chunks)
 	if err != nil {
 		log.Printf("[agent-run] concat streaming message failed err=%v chunks=%d", err, len(chunks))
 		return nil, nil
 	}
-	msg.ToolCalls = filterPlanProtocolToolCalls(msg.ToolCalls)
 	return msg, nil
+}
+
+func concatStreamingChunks(chunks []*schema.Message) (*schema.Message, error) {
+	if len(chunks) == 0 {
+		return nil, nil
+	}
+	message, err := schema.ConcatMessages(chunks)
+	if err != nil {
+		return nil, err
+	}
+	message.ToolCalls = filterPlanProtocolToolCalls(message.ToolCalls)
+	return message, nil
 }
 
 // processNonStreamingEvent 处理非流式助手消息，输出领域事件。

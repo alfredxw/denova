@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -35,16 +36,87 @@ type PlanDecisionDeviation struct {
 }
 
 func ParsePlanDecision(output string) PlanDecision {
-	trimmed := strings.TrimSpace(output)
-	trimmed = strings.TrimPrefix(trimmed, "```json")
-	trimmed = strings.TrimPrefix(trimmed, "```")
-	trimmed = strings.TrimSuffix(trimmed, "```")
-	trimmed = strings.TrimSpace(trimmed)
-	var decision PlanDecision
-	if err := json.Unmarshal([]byte(trimmed), &decision); err != nil {
-		return normalizePlanDecision(PlanDecision{Mode: PlanDecisionPatch, Reason: trimmed})
+	decision, err := ParsePlanDecisionJSON(output)
+	if err != nil {
+		return normalizePlanDecision(PlanDecision{Mode: PlanDecisionPatch, Reason: strings.TrimSpace(output)})
 	}
-	return normalizePlanDecision(decision)
+	return decision
+}
+
+// ParsePlanDecisionJSON extracts and validates one structured PlanDecision from
+// model output. Surrounding narration is tolerated for recovery, but callers
+// should persist only the returned normalized decision.
+func ParsePlanDecisionJSON(output string) (PlanDecision, error) {
+	valid := make([]PlanDecision, 0, 1)
+	for _, candidate := range topLevelJSONObjectCandidates(output) {
+		decoder := json.NewDecoder(strings.NewReader(candidate))
+		decoder.DisallowUnknownFields()
+		var decision PlanDecision
+		if err := decoder.Decode(&decision); err != nil {
+			continue
+		}
+		decision.Mode = strings.TrimSpace(decision.Mode)
+		switch decision.Mode {
+		case PlanDecisionKeep, PlanDecisionPatch, PlanDecisionReplan:
+			valid = append(valid, normalizePlanDecision(decision))
+		}
+	}
+	if len(valid) == 0 {
+		return PlanDecision{}, fmt.Errorf("PlanDecision JSON object not found")
+	}
+	if len(valid) != 1 {
+		return PlanDecision{}, fmt.Errorf("multiple valid PlanDecision JSON objects found: %d", len(valid))
+	}
+	return valid[0], nil
+}
+
+// topLevelJSONObjectCandidates finds complete outer objects while ignoring
+// braces inside JSON strings. Nested objects are deliberately not returned as
+// independent decisions.
+func topLevelJSONObjectCandidates(output string) []string {
+	candidates := make([]string, 0, 1)
+	start := -1
+	depth := 0
+	inString := false
+	escaped := false
+	for i := 0; i < len(output); i++ {
+		ch := output[i]
+		if depth > 0 && inString {
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inString = false
+			}
+			continue
+		}
+		switch ch {
+		case '"':
+			if depth > 0 {
+				inString = true
+			}
+		case '{':
+			if depth == 0 {
+				start = i
+			}
+			depth++
+		case '}':
+			if depth == 0 {
+				continue
+			}
+			depth--
+			if depth == 0 && start >= 0 {
+				candidates = append(candidates, output[start:i+1])
+				start = -1
+			}
+		}
+	}
+	return candidates
 }
 
 func normalizePlanDecision(decision PlanDecision) PlanDecision {

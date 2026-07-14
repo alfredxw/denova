@@ -42,6 +42,9 @@ func validateAdaptedActorStateSystem(system StoryDirectorActorStateSystem, requi
 			return fmt.Errorf("初始 Actor 引用了不存在的状态模板: actor=%s template=%s", actor.ID, actor.TemplateID)
 		}
 		for fieldID, value := range actor.State {
+			if value == nil {
+				return fmt.Errorf("初始 Actor 状态值不能为空: actor=%s template=%s field=%s", actor.ID, actor.TemplateID, fieldID)
+			}
 			field, ok := actorStateFieldByID(template, fieldID)
 			if !ok {
 				return fmt.Errorf("初始 Actor 使用了不存在的状态字段: actor=%s template=%s field=%s", actor.ID, actor.TemplateID, fieldID)
@@ -76,6 +79,57 @@ func validateActorStateAdaptationField(field ActorStateField) error {
 	if field.Default != nil {
 		if _, err := normalizeActorStateValue(field, field.Default); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func validateActorStateRuntimeSchemaOps(target StoryDirectorActorStateSystem, ops []ActorStateRuntimeSchemaOp) error {
+	for index, op := range ops {
+		actorID := normalizeActorStateID(firstNonEmptyString(op.ActorID, op.Actor.ID))
+		if actorID == "" {
+			return fmt.Errorf("运行时 Actor 操作缺少 actor_id: index=%d", index)
+		}
+		if op.Op == "remove" {
+			if actorID == DefaultActorID || actorID == DefaultStoryContextActorID {
+				return fmt.Errorf("故事基础运行时 Actor 不可删除: %s", actorID)
+			}
+			continue
+		}
+		if op.Op != "add" && op.Op != "replace" {
+			return fmt.Errorf("运行时 Actor 操作无效: %s", op.Op)
+		}
+		actor := op.Actor
+		actor.ID = normalizeActorStateID(actor.ID)
+		if actor.ID == "" {
+			return fmt.Errorf("运行时 Actor %s 的 actor.id 不能为空", actorID)
+		}
+		if actor.ID != actorID {
+			return fmt.Errorf("运行时 Actor 操作不可改变 ID: %s -> %s", actorID, actor.ID)
+		}
+		actor.TemplateID = normalizeActorStateID(actor.TemplateID)
+		template := actorStateTemplateByID(target, actor.TemplateID)
+		if template.ID == "" {
+			return fmt.Errorf("运行时 Actor %s 引用的模板不存在: %s", actorID, actor.TemplateID)
+		}
+		if actorID == DefaultActorID && actor.TemplateID != DefaultActorID {
+			return fmt.Errorf("主角运行时 Actor 必须使用 %s 模板", DefaultActorID)
+		}
+		if actorID == DefaultStoryContextActorID && actor.TemplateID != ActorStateStoryContextTemplateID {
+			return fmt.Errorf("故事上下文运行时 Actor 必须使用 %s 模板", ActorStateStoryContextTemplateID)
+		}
+		fields := actorStateFieldsByReference(template)
+		for rawFieldID, value := range actor.State {
+			field, ok := fields[actorStateFieldNameKey(rawFieldID)]
+			if !ok {
+				return fmt.Errorf("运行时 Actor 状态字段不在模板中: actor=%s template=%s field=%s", actorID, template.ID, rawFieldID)
+			}
+			if value == nil {
+				return fmt.Errorf("运行时 Actor 状态值不能为空: actor=%s field=%s", actorID, actorStateFieldID(field))
+			}
+			if _, err := normalizeActorStateValue(field, value); err != nil {
+				return fmt.Errorf("运行时 Actor %s: %w", actorID, err)
+			}
 		}
 	}
 	return nil

@@ -82,12 +82,16 @@ func newRunLedgerWithOptions(workspace string, policy RunLedgerPolicy, options R
 	}
 	ledger := &RunLedger{id: id, path: path, previewChar: policy.PreviewChars, file: file}
 	if err := ledger.Record("run_created", map[string]any{
-		"path":       path,
-		"task_id":    options.TaskID,
-		"agent_kind": options.AgentKind,
-		"session_id": options.SessionID,
-		"workspace":  options.Workspace,
-		"mode":       options.Mode,
+		"path":             path,
+		"task_id":          options.TaskID,
+		"agent_kind":       options.AgentKind,
+		"session_id":       options.SessionID,
+		"story_id":         options.StoryID,
+		"branch_id":        options.BranchID,
+		"turn_id":          options.TurnID,
+		"maintenance_task": options.MaintenanceTask,
+		"workspace":        options.Workspace,
+		"mode":             options.Mode,
 	}); err != nil {
 		_ = file.Close()
 		return nil, err

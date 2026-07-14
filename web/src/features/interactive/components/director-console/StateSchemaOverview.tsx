@@ -108,6 +108,7 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
                 <li key={`${requirement.source.kind}:${requirement.source.id}:${requirement.template_id}:${requirement.field_id}:${index}`} className="min-w-0 rounded-md bg-[var(--nova-surface-2)] px-2.5 py-2 text-[10px] leading-4">
                   <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-[var(--nova-text-faint)]">
                     <span className="rounded bg-[var(--nova-surface-3)] px-1.5 py-0.5 font-medium text-[var(--nova-text-muted)]">{t(`memoryPanel.stateSchema.decision.${requirement.decision}`, { defaultValue: requirement.decision })}</span>
+                    {requirement.evidence_kind ? <span className="rounded border border-[var(--nova-border)] px-1.5 py-0.5">{t(`memoryPanel.stateSchema.evidence.${requirement.evidence_kind}`, { defaultValue: requirement.evidence_kind })}</span> : null}
                     <span className="min-w-0 break-words">{t(`memoryPanel.stateSchema.source.${requirement.source.kind}`, { defaultValue: requirement.source.kind })} · <span className="break-all font-mono">{requirement.source.id}</span></span>
                   </div>
                   <p className="mt-1 break-words text-[var(--nova-text-muted)]">{requirement.requirement}</p>

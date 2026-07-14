@@ -176,7 +176,7 @@ func TestStateSchemaInitializationRejectsLoreRevisionChangedDuringDirectorReview
 func TestStateSchemaInitializationRejectsLoreRequirementThatWasNotRead(t *testing.T) {
 	workspace := t.TempDir()
 	if _, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{
-		ID: "numeric-rule", Type: "rule", Name: "数值规则", LoadMode: book.LoreLoadModeResident, Content: "生命值范围为 0 到 100。",
+		ID: "numeric-rule", Type: "rule", Name: "数值规则", LoadMode: book.LoreLoadModeAuto, Content: "生命值范围为 0 到 100。",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -220,12 +220,12 @@ func TestStateSchemaInitializationRejectsLoreRequirementThatWasNotRead(t *testin
 		t.Fatal(err)
 	}
 	status := snapshot.StateSchemaInitialization
-	if status == nil || status.Status != interactive.StateSchemaInitializationFailed || !strings.Contains(status.Error, "read_lore_items") {
+	if status == nil || status.Status != interactive.StateSchemaInitializationFailed || !strings.Contains(status.Error, "lore_not_reviewed") {
 		t.Fatalf("unread lore requirement should fail review: %#v", status)
 	}
 }
 
-func TestStateSchemaInitializationDoesNotApplyOlderProposalAfterLaterSubmitFails(t *testing.T) {
+func TestStateSchemaInitializationKeepsFinalizedProposalAfterLaterSubmitFails(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStoreWithNovaDir(workspace, t.TempDir())
 	stateSystem := interactive.StoryDirectorActorStateSystem{
@@ -271,8 +271,8 @@ func TestStateSchemaInitializationDoesNotApplyOlderProposalAfterLaterSubmitFails
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.StateSchemaInitialization == nil || snapshot.StateSchemaInitialization.Status != interactive.StateSchemaInitializationFailed {
-		t.Fatalf("later failed submit must invalidate the older staged proposal: %#v", snapshot.StateSchemaInitialization)
+	if snapshot.StateSchemaInitialization == nil || snapshot.StateSchemaInitialization.Status != interactive.StateSchemaInitializationReady {
+		t.Fatalf("later failed submit must preserve the finalized proposal: %#v", snapshot.StateSchemaInitialization)
 	}
 	if snapshot.ActorStateSchema == nil || snapshot.ActorStateSchema.Revision != 1 {
 		t.Fatalf("older proposal must not be applied after a later submit failure: %#v", snapshot.ActorStateSchema)

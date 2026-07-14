@@ -12,20 +12,20 @@ import (
 )
 
 func newInteractiveStateSchemaTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
-	if ctx.SubmitStateSchemaProposal == nil {
+	if ctx.SubmitStateSchemaBatch == nil {
 		return nil, nil
 	}
 	submitTool, err := utils.InferTool(
 		"submit_state_schema_adaptation",
-		"提交首轮后或用户显式复审时的状态结构审查提案。必须列出有明确来源的长期状态需求及其覆盖、添加、替换或忽略决策；工具只暂存并校验提案，不直接写 Actor State，最终迁移由后端原子完成。即使无需修改 schema 也必须调用一次。",
-		func(callCtx context.Context, input interactive.ActorStateSchemaProposal) (string, error) {
-			preview, err := ctx.SubmitStateSchemaProposal(callCtx, input)
+		"增量提交首轮后或用户显式复审时的状态结构 Batch。每个 item 使用稳定 item_id，自包含来源化 requirement 与对应最小 diff；工具分别返回 accepted、rejected、blocked，重试时只发送失败或阻塞项。finalize 成功前不修改故事，最终迁移由后端原子完成。",
+		func(callCtx context.Context, input interactive.ActorStateSchemaBatch) (string, error) {
+			result, err := ctx.SubmitStateSchemaBatch(callCtx, input)
 			if err != nil {
 				return "", err
 			}
-			data, err := json.MarshalIndent(preview, "", "  ")
+			data, err := json.MarshalIndent(result, "", "  ")
 			if err != nil {
-				return "", fmt.Errorf("序列化状态结构提案预览失败: %w", err)
+				return "", fmt.Errorf("序列化状态结构 Batch 结果失败: %w", err)
 			}
 			return string(data), nil
 		},

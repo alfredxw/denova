@@ -10,6 +10,7 @@ const (
 	TurnSubmissionDiagnosticTurnResultInvalid      = "turn_result_invalid"
 	TurnSubmissionDiagnosticUnknownActorStateField = "unknown_actor_state_field"
 	TurnSubmissionDiagnosticActorStateInvalid      = "actor_state_invalid"
+	TurnSubmissionDiagnosticStoryContextRequired   = "story_context_required"
 
 	turnSubmissionSeverityWarning = "warning"
 	turnSubmissionSeverityError   = "error"
@@ -67,6 +68,20 @@ func PrepareTurnSubmission(system StoryDirectorActorStateSystem, currentState ma
 	system = normalizeActorStateSystem(system)
 	patches, diagnostics, diagnosticsTruncated := sanitizeTurnSubmissionActorStatePatches(system, currentState, result.ActorStatePatches)
 	result.ActorStatePatches = patches
+	if diagnostic := storyContextSubmissionDiagnostic(system, currentState, result); diagnostic != nil {
+		receipt := TurnSubmissionReceipt{
+			Accepted:    false,
+			Retryable:   true,
+			Diagnostics: []TurnSubmissionDiagnostic{*diagnostic},
+		}
+		remaining := maxTurnSubmissionDiagnostics - len(receipt.Diagnostics)
+		if remaining > len(diagnostics) {
+			remaining = len(diagnostics)
+		}
+		receipt.Diagnostics = append(receipt.Diagnostics, diagnostics[:remaining]...)
+		receipt.DiagnosticsTruncated = diagnosticsTruncated || remaining < len(diagnostics)
+		return nil, receipt
+	}
 	if len(patches) > 0 {
 		if _, err := ValidateActorStatePatchesAgainstState(system, currentState, patches, ""); err != nil {
 			receipt := rejectedTurnSubmission(TurnSubmissionDiagnosticActorStateInvalid, err)

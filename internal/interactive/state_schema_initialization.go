@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -378,10 +379,10 @@ func stateSchemaAdaptationChanges(adaptation ActorStateSchemaAdaptation) []Actor
 		}
 	}
 	for _, actorOp := range adaptation.InitialActorOps {
-		changes = append(changes, ActorStateSchemaAdaptationChange{Kind: "actor", Op: actorOp.Op, ActorID: firstNonEmptyString(actorOp.ActorID, actorOp.Actor.ID), TargetID: actorOp.Actor.TemplateID, Reason: actorOp.Reason})
+		changes = append(changes, ActorStateSchemaAdaptationChange{Kind: "actor", Op: actorOp.Op, ActorID: firstNonEmptyString(actorOp.ActorID, actorOp.Actor.ID), TargetID: actorOp.Actor.TemplateID, Reason: actorOp.Reason, ValueSource: actorOp.ValueSource})
 	}
 	for _, actorOp := range adaptation.ActorOps {
-		changes = append(changes, ActorStateSchemaAdaptationChange{Kind: "actor", Op: actorOp.Op, ActorID: firstNonEmptyString(actorOp.ActorID, actorOp.Actor.ID), TargetID: actorOp.Actor.TemplateID, Reason: actorOp.Reason})
+		changes = append(changes, ActorStateSchemaAdaptationChange{Kind: "actor", Op: actorOp.Op, ActorID: firstNonEmptyString(actorOp.ActorID, actorOp.Actor.ID), TargetID: actorOp.Actor.TemplateID, Reason: actorOp.Reason, ValueSource: actorOp.ValueSource})
 	}
 	if len(changes) > maxActorStateSchemaAdaptationOps {
 		changes = changes[:maxActorStateSchemaAdaptationOps]
@@ -401,7 +402,7 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 	for _, op := range adaptation.ActorOps {
 		actorID := firstNonEmptyString(op.ActorID, op.Actor.ID)
 		if actorID != "" {
-			actorChanges[actorID] = ActorStateInitialActorSchemaOp{Op: op.Op, ActorID: actorID, Actor: op.Actor, Reason: op.Reason}
+			actorChanges[actorID] = ActorStateInitialActorSchemaOp{Op: op.Op, ActorID: actorID, Actor: op.Actor, Reason: op.Reason, ValueSource: op.ValueSource}
 		}
 	}
 	fieldSources := map[string]map[string]string{}
@@ -435,9 +436,10 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 	var warnings []string
 	handledActors := map[string]bool{}
 	for actorID, actorChange := range actorChanges {
+		valueSourceID := stateSchemaActorValueSourceID(actorChange.ValueSource)
 		if actorChange.Op == "remove" {
 			if _, exists := rawActors[actorID]; exists {
-				ops = append(ops, StateOp{Op: "unset", Path: actorStateRoot + "." + actorID, Reason: actorChange.Reason})
+				ops = append(ops, StateOp{Op: "unset", Path: actorStateRoot + "." + actorID, Reason: actorChange.Reason, SourceID: valueSourceID})
 			}
 			handledActors[actorID] = true
 			continue
@@ -450,17 +452,48 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 		if template.ID == "" {
 			return nil, nil, nil, nil, fmt.Errorf("Actor %s 的目标模板不存在: %s", actorID, actor.TemplateID)
 		}
-		baseOps, baseActorOps, _, err := buildNewActorStateOps(template, actorID, actor.Name, actor.Role, actor.Description, actor.State, "状态结构适配", sourceTurnID)
+		current, _ := rawActors[actorID].(map[string]any)
+		actorState := actor.State
+		var cleanupOps []ActorStateOp
+		var err error
+		if current != nil {
+			currentTemplateID := normalizeActorStateID(fmt.Sprint(current["template_id"]))
+			baseTemplate := actorStateTemplateByID(base, currentTemplateID)
+			currentValues, _ := current["state"].(map[string]any)
+			var migrationWarnings []string
+			actorState, cleanupOps, migrationWarnings, err = resolveStateSchemaActorValues(actorID, baseTemplate, template, currentValues, actor.State, fieldSources[template.ID])
+			if err != nil {
+				return nil, nil, nil, nil, err
+			}
+			warnings = append(warnings, migrationWarnings...)
+			currentName, _ := current["name"].(string)
+			currentRole, _ := current["role"].(string)
+			currentDescription, _ := current["description"].(string)
+			actor.Name = firstNonEmptyString(actor.Name, currentName)
+			actor.Role = firstNonEmptyString(actor.Role, currentRole)
+			actor.Description = firstNonEmptyString(actor.Description, currentDescription)
+		}
+		baseOps, baseActorOps, _, err := buildNewActorStateOps(template, actorID, actor.Name, actor.Role, actor.Description, actorState, "状态结构适配", sourceTurnID)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
 		if current, ok := rawActors[actorID].(map[string]any); ok {
 			if traits := current["traits"]; traits != nil {
-				baseOps = append(baseOps, StateOp{Op: "set", Path: actorStateActorPath(actorID, "traits"), Value: traits})
+				baseOps = append(baseOps, StateOp{Op: "set", Path: actorStateActorPath(actorID, "traits"), Value: traits, SourceID: valueSourceID})
 			}
+		}
+		for index := range baseOps {
+			baseOps[index].SourceID = valueSourceID
+		}
+		for index := range baseActorOps {
+			baseActorOps[index].SourceID = valueSourceID
+		}
+		for index := range cleanupOps {
+			cleanupOps[index].SourceID = valueSourceID
 		}
 		ops = append(ops, baseOps...)
 		actorOps = append(actorOps, baseActorOps...)
+		actorOps = append(actorOps, cleanupOps...)
 		handledActors[actorID] = true
 	}
 	for actorID, rawActor := range rawActors {
@@ -481,42 +514,110 @@ func buildStateSchemaMigration(base, target StoryDirectorActorStateSystem, state
 		if values == nil {
 			values = map[string]any{}
 		}
-		targetIDs := map[string]bool{}
-		for _, field := range targetTemplate.Fields {
-			targetID := actorStateFieldID(field)
-			targetIDs[targetID] = true
-			sourceID := targetID
-			if source := fieldSources[templateID][targetID]; source != "" {
-				sourceID = source
-			}
-			value, exists := values[sourceID]
-			if !exists {
-				value = field.Default
-			}
-			converted, convertedOK := coerceActorStateFieldValue(value, field)
-			if !convertedOK {
-				converted, _ = coerceActorStateFieldValue(field.Default, field)
-				warnings = append(warnings, fmt.Sprintf("Actor %s 的字段 %s 无法转换为 %s，已使用新默认值", actorID, targetID, field.Type))
-			}
-			actorOps = append(actorOps, ActorStateOp{Op: "set", ActorID: actorID, FieldID: targetID, Value: converted, Reason: "状态结构适配"})
-			if sourceID != targetID {
-				actorOps = append(actorOps, ActorStateOp{Op: "unset", ActorID: actorID, FieldID: sourceID, Reason: "字段已迁移到 " + targetID})
-			}
+		migratedValues, cleanupOps, migrationWarnings, err := resolveStateSchemaActorValues(actorID, baseTemplate, targetTemplate, values, nil, fieldSources[templateID])
+		if err != nil {
+			return nil, nil, nil, nil, err
 		}
-		for _, field := range baseTemplate.Fields {
-			fieldID := actorStateFieldID(field)
-			if targetIDs[fieldID] || aliases[templateID][fieldID] != "" {
-				continue
-			}
-			if _, exists := values[fieldID]; exists {
-				actorOps = append(actorOps, ActorStateOp{Op: "unset", ActorID: actorID, FieldID: fieldID, Reason: "字段已从故事状态结构移除"})
-			}
+		valueOps, _, err := buildActorStateValueOps(targetTemplate, actorID, migratedValues, "状态结构适配", sourceTurnID)
+		if err != nil {
+			return nil, nil, nil, nil, err
 		}
+		actorOps = append(actorOps, valueOps...)
+		actorOps = append(actorOps, cleanupOps...)
+		warnings = append(warnings, migrationWarnings...)
 	}
 	if len(warnings) > maxActorStateSchemaAdaptationOps {
 		warnings = warnings[:maxActorStateSchemaAdaptationOps]
 	}
 	return ops, actorOps, aliases, warnings, nil
+}
+
+func stateSchemaActorValueSourceID(source *ActorStateSchemaActorValueSource) string {
+	if source == nil {
+		return ""
+	}
+	return trimBytes(strings.TrimSpace(source.SourceID), 128)
+}
+
+// resolveStateSchemaActorValues carries existing runtime values into a target
+// template. Explicit non-null values win; defaults only fill genuinely absent
+// fields. Cleanup operations remain ordered after the replacement sets.
+func resolveStateSchemaActorValues(actorID string, baseTemplate, targetTemplate ActorStateTemplate, current, explicit map[string]any, fieldSources map[string]string) (map[string]any, []ActorStateOp, []string, error) {
+	if current == nil {
+		current = map[string]any{}
+	}
+	explicitValues := map[string]any{}
+	fieldByReference := actorStateFieldsByReference(targetTemplate)
+	explicitKeys := make([]string, 0, len(explicit))
+	for key := range explicit {
+		explicitKeys = append(explicitKeys, key)
+	}
+	sort.Strings(explicitKeys)
+	for _, rawKey := range explicitKeys {
+		value := explicit[rawKey]
+		if value == nil {
+			continue
+		}
+		key := strings.TrimSpace(rawKey)
+		field, ok := fieldByReference[actorStateFieldNameKey(key)]
+		if !ok {
+			return nil, nil, nil, fmt.Errorf("Actor 状态字段不在目标模板中: actor=%s template=%s field=%s", actorID, targetTemplate.ID, key)
+		}
+		normalized, err := normalizeActorStateValue(field, value)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		explicitValues[actorStateFieldID(field)] = normalized
+	}
+
+	values := map[string]any{}
+	targetIDs := map[string]bool{}
+	migratedSourceIDs := map[string]bool{}
+	for _, sourceID := range fieldSources {
+		migratedSourceIDs[sourceID] = true
+	}
+	cleanupOps := []ActorStateOp{}
+	for _, field := range targetTemplate.Fields {
+		targetID := actorStateFieldID(field)
+		targetIDs[targetID] = true
+		sourceID := firstNonEmptyString(fieldSources[targetID], targetID)
+		value, exists := explicitValues[targetID]
+		if !exists {
+			value, exists = current[sourceID]
+			if exists && value == nil {
+				exists = false
+			}
+		}
+		if !exists && sourceID != targetID {
+			value, exists = current[targetID]
+			if exists && value == nil {
+				exists = false
+			}
+		}
+		if !exists {
+			continue
+		}
+		converted, ok := coerceActorStateFieldValue(value, field)
+		if !ok || converted == nil {
+			return nil, nil, nil, fmt.Errorf("Actor %s 的现有字段 %s 无法转换为 %s；请提供显式非空迁移值", actorID, targetID, field.Type)
+		}
+		values[targetID] = converted
+		if sourceID != targetID {
+			if _, sourceExists := current[sourceID]; sourceExists {
+				cleanupOps = append(cleanupOps, ActorStateOp{Op: "unset", ActorID: actorID, FieldID: sourceID, Reason: "字段已迁移到 " + targetID})
+			}
+		}
+	}
+	for _, field := range baseTemplate.Fields {
+		fieldID := actorStateFieldID(field)
+		if targetIDs[fieldID] || migratedSourceIDs[fieldID] {
+			continue
+		}
+		if _, exists := current[fieldID]; exists {
+			cleanupOps = append(cleanupOps, ActorStateOp{Op: "unset", ActorID: actorID, FieldID: fieldID, Reason: "字段已从故事状态结构移除"})
+		}
+	}
+	return values, cleanupOps, nil, nil
 }
 
 func coerceActorStateFieldValue(value any, field ActorStateField) (any, bool) {

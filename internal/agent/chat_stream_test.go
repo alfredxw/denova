@@ -120,13 +120,21 @@ func TestProcessStreamingEventStreamsInteractiveNarrativeAfterTurnResult(t *test
 
 func TestProcessStreamingEventKeepsInteractiveCompletionRetryInternal(t *testing.T) {
 	reader, writer := schema.Pipe[*schema.Message](2)
-	writer.Send(&schema.Message{Role: schema.Assistant, Content: "门后传来锁链拖地的声音。"}, nil)
+	writer.Send(&schema.Message{
+		Role:    schema.Assistant,
+		Content: "门后传来锁链拖地的声音。",
+		ResponseMeta: &schema.ResponseMeta{Usage: &schema.TokenUsage{
+			PromptTokens:     120,
+			CompletionTokens: 12,
+			TotalTokens:      132,
+		}},
+	}, nil)
 	writer.Send(nil, interactiveRetryErrorForTest{reason: interactiveCompletionRetryReason{Code: interactiveCompletionRetryCode}})
 
 	var content strings.Builder
 	var thinking strings.Builder
 	var events []Event
-	_, err := processStreamingEvent(
+	message, err := processStreamingEvent(
 		context.Background(),
 		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: schema.Assistant},
 		&content,
@@ -140,6 +148,9 @@ func TestProcessStreamingEventKeepsInteractiveCompletionRetryInternal(t *testing
 	)
 	if _, retrying := interactiveCompletionRetryFromError(err); !retrying {
 		t.Fatalf("expected internal protocol retry, got %v", err)
+	}
+	if message == nil || message.ResponseMeta == nil || message.ResponseMeta.Usage == nil || message.ResponseMeta.Usage.TotalTokens != 132 {
+		t.Fatalf("rejected model response must retain usage for accounting: %#v", message)
 	}
 	if content.Len() != 0 || thinking.String() != "门后传来锁链拖地的声音。" {
 		t.Fatalf("rejected candidate classification mismatch: content=%q thinking=%q", content.String(), thinking.String())

@@ -111,6 +111,23 @@ func TestApplyActorStateSchemaAdaptationProtectsRuntimeFoundation(t *testing.T) 
 	if err == nil || !strings.Contains(err.Error(), "不可删除") {
 		t.Fatalf("expected protected actor error, got %v", err)
 	}
+	for _, actorID := range []string{DefaultActorID, DefaultStoryContextActorID} {
+		_, _, err = ApplyActorStateSchemaAdaptation(defaultActorStateSystem(), StoryDirectorTRPGSystem{}, ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{{Op: "remove", ActorID: actorID}}})
+		if err == nil || !strings.Contains(err.Error(), "基础运行时 Actor 不可删除") {
+			t.Fatalf("expected protected runtime actor error for %s, got %v", actorID, err)
+		}
+	}
+}
+
+func TestApplyActorStateSchemaAdaptationRejectsNullInitialActorValue(t *testing.T) {
+	base := defaultActorStateSystem()
+	_, _, err := ApplyActorStateSchemaAdaptation(base, StoryDirectorTRPGSystem{}, ActorStateSchemaAdaptation{InitialActorOps: []ActorStateInitialActorSchemaOp{{
+		Op: "replace", ActorID: DefaultActorID,
+		Actor: ActorStateInitialActor{ID: DefaultActorID, Name: "主角", TemplateID: DefaultActorID, Role: "protagonist", State: map[string]any{"生命": nil}},
+	}}})
+	if err == nil || !strings.Contains(err.Error(), "状态值不能为空") {
+		t.Fatalf("initial Actor JSON null must be rejected instead of frozen: %v", err)
+	}
 }
 
 func TestApplyActorStateSchemaAdaptationRemovesUnusedTemplateAndInitialActorTogether(t *testing.T) {

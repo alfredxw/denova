@@ -399,35 +399,57 @@ func buildNewActorStateOps(template ActorStateTemplate, actorID, name, role, des
 	if strings.TrimSpace(description) != "" {
 		ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(actorID, "description"), Value: trimBytes(description, maxTurnBriefTextBytes), Reason: reason, SourceTurnID: sourceTurnID})
 	}
+	actorOps, normalizedState, err := buildActorStateValueOps(template, actorID, state, reason, sourceTurnID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return normalizeStateOps(ops), actorOps, normalizedState, nil
+}
+
+// buildActorStateValueOps resolves defaults and explicit values before
+// emitting operations so each Actor field is initialized at most once.
+func buildActorStateValueOps(template ActorStateTemplate, actorID string, state map[string]any, reason, sourceTurnID string) ([]ActorStateOp, map[string]any, error) {
 	fieldByReference := actorStateFieldsByReference(template)
-	actorOps := []ActorStateOp{}
 	normalizedState := map[string]any{}
 	for _, field := range template.Fields {
 		fieldID := actorStateFieldID(field)
 		if field.Default != nil {
-			actorOps = append(actorOps, ActorStateOp{Op: "set", ActorID: actorID, FieldID: fieldID, Value: field.Default, Reason: reason, SourceTurnID: sourceTurnID})
 			normalizedState[fieldID] = field.Default
 		}
 	}
 	keys := make([]string, 0, len(state))
 	for key := range state {
-		keys = append(keys, strings.TrimSpace(key))
+		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	for _, key := range keys {
+	for _, rawKey := range keys {
+		key := strings.TrimSpace(rawKey)
+		// A JSON null is an omitted value, not an instruction to erase a
+		// default or materialize a null-valued field.
+		if state[rawKey] == nil {
+			continue
+		}
 		field, ok := fieldByReference[actorStateFieldNameKey(key)]
 		if !ok {
-			return nil, nil, nil, fmt.Errorf("Actor 状态字段不在模板中: actor=%s template=%s field=%s", actorID, template.ID, key)
+			return nil, nil, fmt.Errorf("Actor 状态字段不在模板中: actor=%s template=%s field=%s", actorID, template.ID, key)
 		}
-		value, err := normalizeActorStateValue(field, state[key])
+		value, err := normalizeActorStateValue(field, state[rawKey])
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		fieldID := actorStateFieldID(field)
 		normalizedState[fieldID] = value
+	}
+	actorOps := make([]ActorStateOp, 0, len(normalizedState))
+	for _, field := range template.Fields {
+		fieldID := actorStateFieldID(field)
+		value, exists := normalizedState[fieldID]
+		if !exists || value == nil {
+			continue
+		}
 		actorOps = append(actorOps, ActorStateOp{Op: "set", ActorID: actorID, FieldID: fieldID, Value: value, Reason: reason, SourceTurnID: sourceTurnID})
 	}
-	return normalizeStateOps(ops), normalizeActorStateOps(actorOps), normalizedState, nil
+	return normalizeActorStateOps(actorOps), normalizedState, nil
 }
 
 func actorTraitInstancesFromState(state map[string]any, actorID string) []ActorTraitInstance {

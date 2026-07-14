@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -58,7 +59,7 @@ func TestInteractiveCompletionGuardAcceptsToolCallsAndSubmittedNarrative(t *test
 	}
 }
 
-func TestInteractiveTurnProtocolMiddlewareHidesToolsAfterSubmission(t *testing.T) {
+func TestInteractiveTurnProtocolMiddlewareKeepsStableToolsAndForbidsCallsAfterSubmission(t *testing.T) {
 	ready := false
 	middleware := newInteractiveTurnProtocolMiddleware(func() bool { return ready })
 	state := &adk.ChatModelAgentState{ToolInfos: []*schema.ToolInfo{{Name: "submit_interactive_turn_result"}}}
@@ -68,9 +69,44 @@ func TestInteractiveTurnProtocolMiddlewareHidesToolsAfterSubmission(t *testing.T
 	}
 	ready = true
 	_, state, err = middleware.BeforeModelRewriteState(context.Background(), state, &adk.ModelContext{})
-	if err != nil || state.ToolInfos == nil || len(state.ToolInfos) != 0 {
-		t.Fatalf("submitted phase should expose an explicit empty tool list: state=%#v err=%v", state, err)
+	if err != nil || len(state.ToolInfos) != 1 {
+		t.Fatalf("submitted phase should keep the stable tool schema: state=%#v err=%v", state, err)
 	}
+
+	base := &interactiveProtocolOptionModel{}
+	wrapped, err := middleware.WrapModel(context.Background(), base, &adk.ModelContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wrapped.Generate(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if base.toolChoice == nil || *base.toolChoice != schema.ToolChoiceForbidden {
+		t.Fatalf("submitted phase must forbid further tool calls while retaining schemas: %#v", base.toolChoice)
+	}
+	state.Messages = append(state.Messages, schema.AssistantMessage("", []schema.ToolCall{{
+		ID:       "unexpected-call",
+		Function: schema.FunctionCall{Name: "read_file", Arguments: `{}`},
+	}}))
+	if _, _, err := middleware.AfterModelRewriteState(context.Background(), state, &adk.ModelContext{}); err == nil {
+		t.Fatal("backend guard must reject a provider that ignores tool_choice=none")
+	}
+}
+
+type interactiveProtocolOptionModel struct {
+	toolChoice *schema.ToolChoice
+}
+
+func (m *interactiveProtocolOptionModel) Generate(_ context.Context, _ []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	common := model.GetCommonOptions(&model.Options{}, opts...)
+	m.toolChoice = common.ToolChoice
+	return schema.AssistantMessage("正文", nil), nil
+}
+
+func (m *interactiveProtocolOptionModel) Stream(_ context.Context, _ []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	common := model.GetCommonOptions(&model.Options{}, opts...)
+	m.toolChoice = common.ToolChoice
+	return schema.StreamReaderFromArray([]*schema.Message{schema.AssistantMessage("正文", nil)}), nil
 }
 
 type interactiveRetryErrorForTest struct {

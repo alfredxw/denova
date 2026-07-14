@@ -108,6 +108,18 @@ func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
 	}
 }
 
+func TestInteractiveStoryPromptRequiresStoryContextPatchEveryTurn(t *testing.T) {
+	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{})
+	turn := InteractiveStoryTurnInstruction("我推开门", "", "")
+	for name, output := range map[string]string{"system": system, "turn": turn} {
+		for _, want := range []string{`actor_id="story"`, "story_context", "每回合", "当前事件", "当前详细地点", "scene_result"} {
+			if !strings.Contains(output, want) {
+				t.Fatalf("%s prompt should require story context field %q:\n%s", name, want, output)
+			}
+		}
+	}
+}
+
 func TestInteractiveDirectorPromptReadsCustomActorStateWithoutWritingIt(t *testing.T) {
 	system := BuildInteractiveDirectorSystemInstruction()
 	instruction := InteractiveDirectorInstruction(InteractiveDirectorPromptInput{

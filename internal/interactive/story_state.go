@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -246,6 +247,10 @@ func applyStateOp(state map[string]any, op StateOp) {
 	op.Path = canonicalStatePath(op.Path)
 	switch op.Op {
 	case "set":
+		if op.Value == nil {
+			log.Printf("[interactive-state] skip legacy set operation without value path=%q location=internal/interactive/story_state.go", op.Path)
+			return
+		}
 		setPath(state, op.Path, op.Value)
 	case "merge":
 		current, _ := getPath(state, op.Path).(map[string]any)
@@ -288,6 +293,11 @@ func applyActorStateOp(state map[string]any, op ActorStateOp) {
 	if actorID == "" || fieldID == "" {
 		return
 	}
+	opName := strings.TrimSpace(op.Op)
+	if opName == "set" && op.Value == nil {
+		log.Printf("[interactive-state] skip legacy Actor set operation without value actor_id=%q field_id=%q location=internal/interactive/story_state.go", actorID, fieldID)
+		return
+	}
 	actors, _ := state[actorStateRoot].(map[string]any)
 	if actors == nil {
 		actors = map[string]any{}
@@ -303,7 +313,7 @@ func applyActorStateOp(state map[string]any, op ActorStateOp) {
 		fields = map[string]any{}
 		actor["state"] = fields
 	}
-	switch strings.TrimSpace(op.Op) {
+	switch opName {
 	case "set":
 		fields[fieldID] = op.Value
 	case "inc":

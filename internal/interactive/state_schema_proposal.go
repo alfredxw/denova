@@ -39,15 +39,21 @@ type ActorStateSchemaRequirementSource struct {
 // ActorStateSchemaRequirementReview explains whether one sourced requirement
 // is already covered, requires a schema operation, or is intentionally ignored.
 type ActorStateSchemaRequirementReview struct {
-	Source       ActorStateSchemaRequirementSource `json:"source"`
-	Requirement  string                            `json:"requirement"`
-	ExpectedType string                            `json:"expected_type,omitempty"`
-	Min          *float64                          `json:"min,omitempty"`
-	Max          *float64                          `json:"max,omitempty"`
-	Decision     string                            `json:"decision"`
-	TemplateID   string                            `json:"template_id,omitempty"`
-	FieldID      string                            `json:"field_id,omitempty"`
-	Reason       string                            `json:"reason,omitempty"`
+	// ItemID is injected by the Batch backend and links this audit record to
+	// Actor value provenance. Model-supplied values are overwritten.
+	ItemID      string                            `json:"item_id,omitempty" jsonschema:"-"`
+	Source      ActorStateSchemaRequirementSource `json:"source"`
+	Requirement string                            `json:"requirement"`
+	// EvidenceKind preserves whether the requirement or proposed initial value
+	// is explicitly confirmed, reasonably inferred, or a rules-level default.
+	EvidenceKind string   `json:"evidence_kind,omitempty"`
+	ExpectedType string   `json:"expected_type,omitempty"`
+	Min          *float64 `json:"min,omitempty"`
+	Max          *float64 `json:"max,omitempty"`
+	Decision     string   `json:"decision"`
+	TemplateID   string   `json:"template_id,omitempty"`
+	FieldID      string   `json:"field_id,omitempty"`
+	Reason       string   `json:"reason,omitempty"`
 }
 
 // ActorStateSchemaProposalPreview is returned to the Director after validating
@@ -114,9 +120,11 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 	}
 	for index := range proposal.Requirements {
 		review := &proposal.Requirements[index]
+		review.ItemID = strings.TrimSpace(review.ItemID)
 		review.Source.Kind = strings.TrimSpace(review.Source.Kind)
 		review.Source.ID = strings.TrimSpace(review.Source.ID)
 		review.Requirement = trimBytes(review.Requirement, maxTurnBriefTextBytes)
+		review.EvidenceKind = strings.TrimSpace(review.EvidenceKind)
 		review.ExpectedType = strings.TrimSpace(review.ExpectedType)
 		review.Decision = strings.TrimSpace(review.Decision)
 		review.TemplateID = normalizeActorStateID(review.TemplateID)
@@ -130,8 +138,13 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		if review.Source.ID == "" || review.Requirement == "" {
 			return fmt.Errorf("状态需求覆盖审查缺少来源或需求说明")
 		}
-		if review.Source.Kind == "lore" {
-			reviewedLore[review.Source.ID] = true
+		if review.Source.Kind == "lore" && !reviewedLore[review.Source.ID] {
+			return fmt.Errorf("状态需求引用了未经后端确认审阅的资料: %s", review.Source.ID)
+		}
+		switch review.EvidenceKind {
+		case "", "confirmed", "inferred", "default":
+		default:
+			return fmt.Errorf("状态需求 evidence_kind 无效: %s", review.EvidenceKind)
 		}
 		if review.Decision == "ignored" {
 			if review.Reason == "" {
@@ -162,6 +175,9 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		}
 		if review.ExpectedType != "" && field.Type != review.ExpectedType {
 			return fmt.Errorf("状态需求字段类型不匹配: template=%s field=%s expected=%s actual=%s", review.TemplateID, review.FieldID, review.ExpectedType, field.Type)
+		}
+		if review.EvidenceKind == "inferred" && (field.Visibility == "spoiler" || field.Visibility == "hidden") {
+			return fmt.Errorf("推测信息不能填充秘密或剧透状态字段: template=%s field=%s visibility=%s", review.TemplateID, review.FieldID, field.Visibility)
 		}
 		if review.Min != nil && (field.Min == nil || *field.Min != *review.Min) {
 			return fmt.Errorf("状态需求字段 min 不匹配: template=%s field=%s", review.TemplateID, review.FieldID)

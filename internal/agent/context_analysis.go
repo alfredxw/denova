@@ -790,7 +790,7 @@ func composeAgentInput(req ChatRequest, pending *session.Interruption, bookServi
 	}
 	if req.PlanMode {
 		agentMessage = appendPlanModeInstruction(agentMessage)
-		contextLog.add("注入规则", "规划模式", "[规划模式] 请先提问或制定可审阅计划，不要直接进入执行。", "")
+		contextLog.add("注入规则", "规划模式", prompts.PlanMode(""), "")
 	}
 	if strings.TrimSpace(req.WritingSkill) != "" {
 		agentMessage = appendWritingSkillLoadHint(agentMessage, req.WritingSkill, contextLog)
@@ -806,7 +806,7 @@ func composeAgentInput(req ChatRequest, pending *session.Interruption, bookServi
 		contextLog.addSelections(req.Selections)
 	}
 	agentMessage = appendContextBoundaryInstruction(agentMessage)
-	contextLog.add("注入规则", "上下文边界", "[上下文边界] 当前用户请求是“这次要做什么”", "")
+	contextLog.add("注入规则", "上下文边界", prompts.ContextBoundary(""), "")
 	return agentInputComposition{
 		OriginalMessage:    originalMessage,
 		Request:            req,
