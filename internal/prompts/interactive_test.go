@@ -204,11 +204,11 @@ func TestInteractiveStoryPromptRequiresGlobalStyleReferenceRead(t *testing.T) {
 func TestInteractiveStoryRuntimeContextIncludesBoundedDirectorPlanVisibleSections(t *testing.T) {
 	output := InteractiveStoryRuntimeContext(InteractiveStoryPromptInput{
 		ReplyTargetChars:            800,
-		DirectorPlanVisible:         "## 正文Agent可读\n\n### 阶段钩子与阅读欲望\n外门逆袭\n\n### 信息揭示与线索密度\n学院比拼压力",
+		DirectorPlanVisible:         "# 正文 Agent 简报\n\n## 当前目标与可见钩子\n外门逆袭\n\n## 已公开信息与可发现线索\n学院比拼压力",
 		ActorState:                  `{"source":{"path":"Snapshot.State.actors"},"actors":{"protagonist":{"traits":[{"name":"隐脉"}]}}}`,
 		StoryDirectorStrategyPrompt: "- 避免连续两回合使用同类型突发事件。",
 	})
-	for _, want := range []string{"后台导演规划可读区", "source: director.md visible section", "bounded", "外门逆袭", "学院比拼压力"} {
+	for _, want := range []string{"正文 Agent 简报", "source: agent-brief.md", "bounded", "外门逆袭", "学院比拼压力"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("runtime context should include %q:\n%s", want, output)
 		}
@@ -232,8 +232,8 @@ func TestInteractiveDirectorPromptEditsDirectorPlanFiles(t *testing.T) {
 		Origin:                      "主角被同门轻视",
 		StoryTellerID:               "classic",
 		BranchID:                    "main",
-		DirectorPlanDocs:            `{"plan":"## 正文Agent可读"}`,
-		PlanningTemplates:           `{"plan":"# 导演规划"}`,
+		DirectorPlanDocs:            "## 文件：director.md\n\n# 导演私密规划\n\n## 文件：agent-brief.md\n\n# 正文 Agent 简报\n\n## 文件：lore-context.md\n\n# 分支资料工作集",
+		PlanningTemplates:           `{"plan":"# 导演私密规划","agent_brief":"# 正文 Agent 简报"}`,
 		LoreContext:                 "## 资料库索引（source: lore index, bounded）\n- 沈凝 / 重要角色\n- 青岚盟 / 重要势力",
 		BranchPlanningTurns:         5,
 		TurnAuditJSON:               `{"turn_brief":{"turn_goal":"公开比试"}}`,
@@ -242,7 +242,7 @@ func TestInteractiveDirectorPromptEditsDirectorPlanFiles(t *testing.T) {
 		DirectorEventCatalog:        `[{"id":"face_slap","category":"打脸"}]`,
 	})
 	for name, output := range map[string]string{"system": system, "instruction": instruction} {
-		for _, want := range []string{"submit_director_plan_update", "不负责续写", "RuleResolution", "后台导演私密", "keep", "patch", "replan"} {
+		for _, want := range []string{"submit_director_plan_update", "不负责续写", "RuleResolution", "agent-brief.md", "keep", "patch", "replan"} {
 			if !strings.Contains(output, want) {
 				t.Fatalf("%s director prompt should include %q:\n%s", name, want, output)
 			}
@@ -256,7 +256,7 @@ func TestInteractiveDirectorPromptEditsDirectorPlanFiles(t *testing.T) {
 			t.Fatalf("%s director prompt should not ask for story prose:\n%s", name, output)
 		}
 	}
-	for _, want := range []string{"director.md", "资料库导演上下文", "资料库优先", "核心角色", "信息密度", "阶段钩子", "沈凝", "青岚盟", "打脸", "事件目录", "template"} {
+	for _, want := range []string{"director.md", "agent-brief.md", "lore-context.md", "资料库导演上下文", "资料库优先", "核心角色", "信息密度", "阶段目标与隐藏钩子", "沈凝", "青岚盟", "打脸", "事件目录", "template"} {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("director instruction should include %q:\n%s", want, instruction)
 		}

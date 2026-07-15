@@ -329,12 +329,35 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 }
 
 func BuildInteractiveDirectorContextAnalysis(cfg *config.Config, instruction string) (ContextAnalysis, error) {
+	return BuildInteractiveDirectorContextAnalysisWithStableContext(cfg, "", "", 0, instruction)
+}
+
+// BuildInteractiveDirectorContextAnalysisWithStableContext mirrors the exact
+// two-message layout used by the tool-enabled Director when resident Lore is
+// present, rather than hiding that stable prefix from context diagnostics.
+func BuildInteractiveDirectorContextAnalysisWithStableContext(cfg *config.Config, stableTitle, stableContext string, stableMaxBytes int, instruction string) (ContextAnalysis, error) {
 	systemPrompt, systemParts := buildInteractiveDirectorSystemPromptAnalysis(cfg)
-	messages := []*schema.Message{schema.UserMessage(instruction)}
-	contextMessages := buildInteractiveDirectorInstructionContextParts(instruction)
-	if len(contextMessages) == 0 {
-		contextMessages = append(contextMessages, contextAnalysisPartFromMessage("message_1", "本轮导演指令", "后台导演规划指令", messages[0]))
+	conversation := &singleInstructionConversation{
+		instruction:           instruction,
+		stableContextTitle:    stableTitle,
+		stableContext:         stableContext,
+		stableContextMaxBytes: stableMaxBytes,
 	}
+	messages, err := conversation.PrepareMessages("", instruction)
+	if err != nil {
+		return ContextAnalysis{}, err
+	}
+	contextMessages := make([]ContextAnalysisPart, 0, len(messages)+8)
+	if len(messages) > 1 {
+		part := contextAnalysisPartFromMessage("resident_lore", "enabled resident lore", strings.TrimSpace(stableTitle), messages[0])
+		part.Note = fmt.Sprintf("stable_model_prefix; complete=true; max_bytes=%d", stableMaxBytes)
+		contextMessages = append(contextMessages, part)
+	}
+	instructionParts := buildInteractiveDirectorInstructionContextParts(instruction)
+	if len(instructionParts) == 0 {
+		instructionParts = append(instructionParts, contextAnalysisPartFromMessage("director_instruction", "本轮导演指令", "后台导演规划指令", messages[len(messages)-1]))
+	}
+	contextMessages = append(contextMessages, instructionParts...)
 	usage := analyzeContextUsage(cfg, config.AgentKindInteractiveDirector, systemPrompt, messages, 1024)
 	return ContextAnalysis{
 		AgentKind:                config.AgentKindInteractiveDirector,

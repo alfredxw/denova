@@ -22,8 +22,8 @@ export default defineConfig({
     rolldownOptions: {
       output: {
         codeSplitting: {
+          // Keep size caps on individual groups: a global cap can split tightly coupled SDKs into cyclic chunks.
           minSize: 20 * 1024,
-          maxSize: 450 * 1024,
           groups: [
             { name: 'shiki', test: /node_modules[\\/](?:shiki|@shikijs)[\\/]/, priority: 40 },
             { name: 'monaco', test: /node_modules[\\/](?:monaco-editor|@monaco-editor)[\\/]/, priority: 30 },

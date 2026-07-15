@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { BookMarked, Bot, Building2, ChevronDown, ChevronsDownUp, ChevronsUpDown, Compass, Database, Dice5, FileText, Folder, Images, Library, Loader2, MapPin, Plus, ScrollText, Search, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
+import { BookMarked, Bot, Building2, ChevronDown, ChevronsDownUp, ChevronsUpDown, Compass, Database, Dice5, FileText, Folder, Images, Library, Loader2, MapPin, Plus, ScrollText, Search, SlidersHorizontal, Sparkles, Tags, Trash2, UserRound } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { isSaveShortcut } from '@/lib/keyboard'
@@ -89,6 +89,7 @@ export function LoreDirectory({
   onSelect,
   onCreate,
   onBatchGenerate,
+  onClassify,
 }: {
   items: LoreItem[]
   activeId: string
@@ -98,6 +99,7 @@ export function LoreDirectory({
   onSelect: (id: string) => void
   onCreate: (section: KnowledgeSection) => void
   onBatchGenerate: () => void
+  onClassify: () => void
 }) {
   const { t } = useTranslation()
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
@@ -164,6 +166,9 @@ export function LoreDirectory({
           </InputGroup>
           <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || items.length === 0} onClick={onBatchGenerate} aria-label={t('settingPanel.loreImage.batchOpen')} title={t('settingPanel.loreImage.batchOpen')}>
             <Images className="h-3.5 w-3.5" />
+          </Button>
+          <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || items.length === 0} onClick={onClassify} aria-label={t('settingPanel.loreClassification.open')} title={t('settingPanel.loreClassification.open')}>
+            <Tags className="h-3.5 w-3.5" />
           </Button>
         </div>
         <button

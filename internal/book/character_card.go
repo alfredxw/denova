@@ -39,6 +39,9 @@ type CharacterCardImportResult struct {
 	Compatibility        CharacterCardCompatibilityReport `json:"compatibility"`
 	Message              string                           `json:"message"`
 	ResidentLoreBytes    int                              `json:"resident_lore_bytes"`
+	ClassificationMode   string                           `json:"classification_mode"`
+	ClassificationCounts map[string]int                   `json:"classification_counts"`
+	UncertainTypeCount   int                              `json:"uncertain_type_count"`
 }
 
 // CharacterCardPreview 描述酒馆角色卡预览信息，解析但不写入 workspace。
@@ -61,6 +64,9 @@ type CharacterCardPreview struct {
 	OpeningTruncatedCount int                              `json:"opening_truncated_count"`
 	ResidentLoreWarning   bool                             `json:"resident_lore_warning"`
 	ResidentLoreWarningKB int                              `json:"resident_lore_warning_threshold_kb"`
+	ClassificationMode    string                           `json:"classification_mode"`
+	ClassificationCounts  map[string]int                   `json:"classification_counts"`
+	UncertainTypeCount    int                              `json:"uncertain_type_count"`
 }
 
 // CharacterCardCompatibilityReport reports Denova capabilities rather than
@@ -74,7 +80,9 @@ type CharacterCardCompatibilityReport struct {
 }
 
 type CharacterCardImportOptions struct {
-	UserCharacterName string
+	UserCharacterName  string
+	ClassificationMode string
+	ClassifyLore       LoreSemanticClassifier
 }
 
 type tavernCard struct {
@@ -187,6 +195,25 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte, opts .
 		return CharacterCardImportResult{}, err
 	}
 	options := mergeCharacterCardImportOptions(opts...)
+	loreStore := NewLoreStore(s.workspace)
+	existingItems, err := loreStore.ListAll()
+	if err != nil {
+		return CharacterCardImportResult{}, err
+	}
+	coverPath := ""
+	if card.IsPNG {
+		coverPath = tavernCardCoverPath
+	}
+	ops, importStats := buildTavernCardLoreOperations(card, filename, coverPath, options.UserCharacterName, newLoreNameAllocator(existingItems))
+	importStats.ClassificationMode = normalizeLoreClassificationMode(options.ClassificationMode)
+	if importStats.ClassificationMode == LoreClassificationModeSemantic && options.ClassifyLore != nil {
+		if err := applySemanticTavernLoreClassification(ops, &importStats, options.ClassifyLore); err != nil {
+			importStats.Warnings = append(importStats.Warnings, "语义资料分类失败，已保留名称优先的本地分类结果："+err.Error())
+		}
+	}
+	// Semantic classification can be slow and performs no local writes. Take
+	// the rollback snapshot only after it finishes so a later rollback cannot
+	// overwrite user edits made while the model request was running.
 	snapshots, err := snapshotCharacterCardImportFiles(s.workspace)
 	if err != nil {
 		return CharacterCardImportResult{}, err
@@ -197,16 +224,6 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte, opts .
 		}
 		return CharacterCardImportResult{}, cause
 	}
-	loreStore := NewLoreStore(s.workspace)
-	existingItems, err := loreStore.ListAll()
-	if err != nil {
-		return rollback(err)
-	}
-	coverPath := ""
-	if card.IsPNG {
-		coverPath = tavernCardCoverPath
-	}
-	ops, importStats := buildTavernCardLoreOperations(card, filename, coverPath, options.UserCharacterName, newLoreNameAllocator(existingItems))
 	coverPath, err = s.importTavernCardCover(card, data)
 	if err != nil {
 		return rollback(err)
@@ -238,6 +255,9 @@ func (s *Service) ImportTavernCharacterCard(filename string, data []byte, opts .
 		Compatibility:        tavernCardCompatibility(card),
 		Message:              fmt.Sprintf("已导入酒馆角色卡「%s」到互动资料库", card.Name),
 		ResidentLoreBytes:    importStats.ResidentLoreBytes,
+		ClassificationMode:   importStats.ClassificationMode,
+		ClassificationCounts: cloneLoreTypeCounts(importStats.ClassificationCounts),
+		UncertainTypeCount:   importStats.UncertainTypeCount,
 	}
 	result.Compatibility.Warnings = append(result.Compatibility.Warnings, importStats.Warnings...)
 	return result, nil
@@ -268,6 +288,9 @@ func PreviewTavernCharacterCard(filename string, data []byte) (CharacterCardPrev
 		OpeningTruncatedCount: tavernCardOpeningTruncatedCount(card),
 		ResidentLoreWarning:   stats.ResidentLoreBytes > ResidentLoreWarningBytes,
 		ResidentLoreWarningKB: bytesToKB(ResidentLoreWarningBytes),
+		ClassificationMode:    LoreClassificationModeHeuristic,
+		ClassificationCounts:  cloneLoreTypeCounts(stats.ClassificationCounts),
+		UncertainTypeCount:    stats.UncertainTypeCount,
 	}, nil
 }
 
@@ -553,22 +576,26 @@ func decodeTavernCardJSON(data []byte) (normalizedTavernCard, error) {
 }
 
 type tavernImportStats struct {
-	EnabledEntryCount   int
-	DisabledEntryCount  int
-	ResidentEntryCount  int
-	ResidentEntryBytes  int
-	ResidentLoreBytes   int
-	AutoEntryCount      int
-	RemovedRuntimeCount int
-	SanitizedMixedCount int
-	Warnings            []string
+	EnabledEntryCount    int
+	DisabledEntryCount   int
+	ResidentEntryCount   int
+	ResidentEntryBytes   int
+	ResidentLoreBytes    int
+	AutoEntryCount       int
+	RemovedRuntimeCount  int
+	SanitizedMixedCount  int
+	Warnings             []string
+	ClassificationMode   string
+	ClassificationCounts map[string]int
+	UncertainTypeCount   int
+	UncertainOpIndexes   []int
 }
 
 func buildTavernCardLoreOperations(card normalizedTavernCard, source, coverPath, userCharacterName string, names *loreNameAllocator) ([]LoreOperation, tavernImportStats) {
 	if names == nil {
 		names = newLoreNameAllocator(nil)
 	}
-	stats := tavernImportStats{}
+	stats := tavernImportStats{ClassificationMode: LoreClassificationModeHeuristic, ClassificationCounts: map[string]int{}}
 	cardLoreName := names.Claim(card.Name)
 	cardContent := renderTavernCardLoreContent(card, coverPath)
 	cardKeywords := tavernCardTags(card.Tags...)
@@ -578,6 +605,7 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source, coverPath,
 			Item: LoreItemInput{
 				Enabled:          loreEnabledPtr(true),
 				Type:             "character",
+				TypeSource:       LoreTypeSourceHeuristic,
 				Name:             cardLoreName,
 				Importance:       "major",
 				Tags:             tavernCardTags(append([]string{"酒馆角色卡", card.Name}, card.Tags...)...),
@@ -598,6 +626,7 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source, coverPath,
 			Item: LoreItemInput{
 				Enabled:          loreEnabledPtr(true),
 				Type:             "character",
+				TypeSource:       LoreTypeSourceHeuristic,
 				Name:             name,
 				Importance:       "major",
 				Tags:             tavernCardTags("酒馆角色卡", "{{user}}", "玩家角色"),
@@ -641,13 +670,17 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source, coverPath,
 			stats.AutoEntryCount++
 		}
 		keywords := tavernCardTags(append(append([]string{}, entry.Keys...), entry.SecondaryKeys...)...)
-		itemType := inferTavernLoreType(title, content)
+		suggestion := ClassifyLoreItemHeuristic(LoreClassificationInput{
+			Name: title, Tags: []string{"酒馆世界书", card.Name}, Keywords: keywords, Content: content,
+		})
+		itemType := suggestion.Type
 		tags := tavernCardTags("酒馆世界书", card.Name)
 		ops = append(ops, LoreOperation{
 			Op: "create",
 			Item: LoreItemInput{
 				Enabled:          tavernBookEntryEnabled(entry),
 				Type:             itemType,
+				TypeSource:       LoreTypeSourceHeuristic,
 				Name:             title,
 				Importance:       "important",
 				Tags:             tags,
@@ -658,6 +691,11 @@ func buildTavernCardLoreOperations(card normalizedTavernCard, source, coverPath,
 				Provenance:       tavernLoreProvenance("tavern_worldbook_entry", source, tavernEntryRecordID(entry, i), entry),
 			},
 		})
+		stats.ClassificationCounts[itemType]++
+		if suggestion.Confidence != LoreClassificationConfidenceHigh {
+			stats.UncertainTypeCount++
+			stats.UncertainOpIndexes = append(stats.UncertainOpIndexes, len(ops)-1)
+		}
 	}
 	return ops, stats
 }
@@ -772,7 +810,14 @@ func mergeCharacterCardImportOptions(opts ...CharacterCardImportOptions) Charact
 		if name := strings.TrimSpace(opt.UserCharacterName); name != "" {
 			merged.UserCharacterName = name
 		}
+		if mode := strings.TrimSpace(opt.ClassificationMode); mode != "" {
+			merged.ClassificationMode = mode
+		}
+		if opt.ClassifyLore != nil {
+			merged.ClassifyLore = opt.ClassifyLore
+		}
 	}
+	merged.ClassificationMode = normalizeLoreClassificationMode(merged.ClassificationMode)
 	return merged
 }
 

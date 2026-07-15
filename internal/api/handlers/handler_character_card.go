@@ -72,10 +72,18 @@ func (h *Handlers) HandleWorkspaceImportCharacterCard(ctx context.Context, c *ap
 	if targetMode == "" {
 		targetMode = "current"
 	}
-	importOptions := book.CharacterCardImportOptions{
-		UserCharacterName: strings.TrimSpace(string(c.FormValue("user_character_name"))),
+	classificationMode := strings.TrimSpace(string(c.FormValue("lore_classification")))
+	if classificationMode == "" {
+		classificationMode = book.LoreClassificationModeSemantic
 	}
-	log.Printf("[api] 导入酒馆角色卡 filename=%q size=%d workspace=%q target_mode=%q", filename, len(data), h.app.Workspace(), targetMode)
+	importOptions := book.CharacterCardImportOptions{
+		UserCharacterName:  strings.TrimSpace(string(c.FormValue("user_character_name"))),
+		ClassificationMode: classificationMode,
+		ClassifyLore: func(inputs []book.LoreClassificationInput) ([]book.LoreClassificationSuggestion, error) {
+			return h.app.ClassifyLoreItems(ctx, inputs)
+		},
+	}
+	log.Printf("[api] 导入酒馆角色卡 filename=%q size=%d workspace=%q target_mode=%q lore_classification=%q", filename, len(data), h.app.Workspace(), targetMode, classificationMode)
 
 	var result book.CharacterCardImportResult
 	var err error

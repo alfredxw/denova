@@ -20,7 +20,7 @@ import (
 	"denova/internal/workspacepath"
 )
 
-const loreItemsVersion = 1
+const loreItemsVersion = 2
 
 const (
 	LoreLoadModeResident = "resident"
@@ -39,6 +39,11 @@ const (
 
 	LoreIndexMatchAny = "any"
 	LoreIndexMatchAll = "all"
+
+	LoreTypeSourceHeuristic = "heuristic"
+	LoreTypeSourceSemantic  = "semantic"
+	LoreTypeSourceManual    = "manual"
+	LoreTypeSourceLegacy    = "legacy"
 )
 
 // LoreItem 是用户可编辑的作品资料条目。固定字段只负责索引和展示，正文继续使用 Markdown。
@@ -46,6 +51,7 @@ type LoreItem struct {
 	ID               string          `json:"id"`
 	Enabled          bool            `json:"enabled"`
 	Type             string          `json:"type"`
+	TypeSource       string          `json:"type_source"`
 	Name             string          `json:"name"`
 	Importance       string          `json:"importance"`
 	Tags             []string        `json:"tags"`
@@ -63,6 +69,7 @@ type LoreItemInput struct {
 	ID               string          `json:"id"`
 	Enabled          *bool           `json:"enabled,omitempty"`
 	Type             string          `json:"type"`
+	TypeSource       string          `json:"type_source,omitempty"`
 	Name             string          `json:"name"`
 	Importance       string          `json:"importance"`
 	Tags             []string        `json:"tags"`
@@ -232,6 +239,7 @@ func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
 		ID:               input.ID,
 		Enabled:          loreInputEnabled(input.Enabled, true),
 		Type:             input.Type,
+		TypeSource:       firstNonEmptyLoreValue(input.TypeSource, LoreTypeSourceManual),
 		Name:             input.Name,
 		Importance:       input.Importance,
 		Tags:             input.Tags,
@@ -283,10 +291,15 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 			return LoreItem{}, ErrLoreRevisionConflict
 		}
 		previous := collection.Items[i]
+		typeSource := previous.TypeSource
+		if normalizeLoreType(input.Type) != previous.Type {
+			typeSource = LoreTypeSourceManual
+		}
 		updated := normalizeLoreItem(LoreItem{
 			ID:               id,
 			Enabled:          loreInputEnabled(input.Enabled, collection.Items[i].Enabled),
 			Type:             input.Type,
+			TypeSource:       typeSource,
 			Name:             input.Name,
 			Importance:       input.Importance,
 			Tags:             input.Tags,
@@ -394,6 +407,7 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 				ID:               op.Item.ID,
 				Enabled:          loreInputEnabled(op.Item.Enabled, true),
 				Type:             op.Item.Type,
+				TypeSource:       firstNonEmptyLoreValue(op.Item.TypeSource, LoreTypeSourceManual),
 				Name:             op.Item.Name,
 				Importance:       op.Item.Importance,
 				Tags:             op.Item.Tags,
@@ -429,10 +443,16 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 			if idx < 0 {
 				return LoreApplyResult{}, fmt.Errorf("资料不存在: %s", id)
 			}
+			typeName := firstNonEmptyLoreValue(op.Item.Type, next[idx].Type)
+			typeSource := next[idx].TypeSource
+			if normalizeLoreType(typeName) != next[idx].Type {
+				typeSource = LoreTypeSourceManual
+			}
 			updated := normalizeLoreItem(LoreItem{
 				ID:               id,
 				Enabled:          loreInputEnabled(op.Item.Enabled, next[idx].Enabled),
-				Type:             firstNonEmptyLoreValue(op.Item.Type, next[idx].Type),
+				Type:             typeName,
+				TypeSource:       typeSource,
 				Name:             firstNonEmptyLoreValue(op.Item.Name, next[idx].Name),
 				Importance:       firstNonEmptyLoreValue(op.Item.Importance, next[idx].Importance),
 				Tags:             op.Item.Tags,
@@ -675,67 +695,11 @@ func (s *LoreStore) ResidentLoreIndexMarkdown(maxBytes int) (string, error) {
 // It intentionally excludes briefs and bodies so callers can expose many
 // names without treating every lore item as active model context.
 func (s *LoreStore) LoreNameRosterMarkdown(maxBytes int, excludeResident bool) (string, error) {
-	items, err := s.List()
-	if err != nil {
-		return "", err
-	}
-	filtered := make([]LoreItem, 0, len(items))
-	for _, item := range items {
-		if excludeResident && item.LoadMode == LoreLoadModeResident {
-			continue
-		}
-		filtered = append(filtered, item)
-	}
-	sort.SliceStable(filtered, func(i, j int) bool {
-		if rankI, rankJ := loreImportanceRank(filtered[i].Importance), loreImportanceRank(filtered[j].Importance); rankI != rankJ {
-			return rankI < rankJ
-		}
-		if filtered[i].Type != filtered[j].Type {
-			return filtered[i].Type < filtered[j].Type
-		}
-		if filtered[i].Name != filtered[j].Name {
-			return filtered[i].Name < filtered[j].Name
-		}
-		return filtered[i].ID < filtered[j].ID
+	return s.LoreNameCatalogMarkdown(LoreNameCatalogOptions{
+		MaxBytes:        maxBytes,
+		ExcludeResident: excludeResident,
+		OmitWhenEmpty:   true,
 	})
-	if maxBytes <= 0 || maxBytes > LoreIndexDefaultMaxBytes {
-		maxBytes = LoreIndexDefaultMaxBytes
-	}
-	header := fmt.Sprintf("# 资料名称目录\n\n共 %d 条启用资料。目录只用于发现候选；需要简介或正文时使用 list_lore_items / read_lore_items。\n\n", len(filtered))
-	lines := make([]string, 0, len(filtered))
-	for _, item := range filtered {
-		name := strings.Join(strings.Fields(strings.TrimSpace(item.Name)), " ")
-		lines = append(lines, fmt.Sprintf("- [%s/%s] %s\n", item.Type, item.Importance, name))
-	}
-	full := header + strings.Join(lines, "")
-	if len([]byte(full)) <= maxBytes {
-		return strings.TrimSpace(full), nil
-	}
-
-	shortHeader := fmt.Sprintf("# 资料名称目录\n\n共 %d 条。\n", len(filtered))
-	var sb strings.Builder
-	sb.WriteString(shortHeader)
-	kept := 0
-	for index, line := range lines {
-		omitted := len(lines) - index
-		notice := fmt.Sprintf("省略 %d 条；使用 list_lore_items 继续浏览。\n", omitted)
-		if sb.Len()+len([]byte(line))+len([]byte(notice)) > maxBytes {
-			break
-		}
-		sb.WriteString(line)
-		kept++
-	}
-	omitted := len(lines) - kept
-	if omitted > 0 {
-		notice := fmt.Sprintf("省略 %d 条；使用 list_lore_items 继续浏览。\n", omitted)
-		if sb.Len()+len([]byte(notice)) <= maxBytes {
-			sb.WriteString(notice)
-		} else {
-			fallback := fmt.Sprintf("共%d条，省略%d条；用 list_lore_items。", len(lines), omitted)
-			return strings.TrimSpace(truncateStringBytes(fallback, maxBytes)), nil
-		}
-	}
-	return strings.TrimSpace(sb.String()), nil
 }
 
 func (s *LoreStore) ResidentContextMarkdown() (string, error) {
@@ -784,7 +748,11 @@ func (s *LoreStore) ProgressiveContextMarkdown() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	index, err := s.IndexMarkdown()
+	catalog, err := s.LoreNameCatalogMarkdown(LoreNameCatalogOptions{
+		MaxBytes:        LoreIndexDefaultMaxBytes,
+		ExcludeResident: true,
+		OmitWhenEmpty:   true,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -794,9 +762,9 @@ func (s *LoreStore) ProgressiveContextMarkdown() (string, error) {
 		sb.WriteString(resident)
 		sb.WriteString("\n\n")
 	}
-	if index != "" {
-		sb.WriteString("## 资料库索引\n\n")
-		sb.WriteString(index)
+	if catalog != "" {
+		sb.WriteString("## 按需资料名称目录（source: lore/items.json, max 64 KiB）\n\n")
+		sb.WriteString(strings.TrimSpace(strings.TrimPrefix(catalog, "# 资料名称目录")))
 		sb.WriteString("\n\n")
 	}
 	return strings.TrimSpace(sb.String()), nil
@@ -867,6 +835,7 @@ func normalizeLoreItems(items []LoreItem) []LoreItem {
 func normalizeLoreItem(item LoreItem) LoreItem {
 	item.ID = normalizeLoreID(item.ID)
 	item.Type = normalizeLoreType(item.Type)
+	item.TypeSource = normalizeLoreTypeSource(item.TypeSource)
 	item.Name = strings.TrimSpace(item.Name)
 	item.Importance = normalizeLoreImportance(item.Importance)
 	item.LoadMode = normalizeLoreLoadMode(item.LoadMode, item.Importance)
@@ -880,6 +849,15 @@ func normalizeLoreItem(item LoreItem) LoreItem {
 	item.Image = normalizeLoreItemImage(item.Image)
 	item.Provenance = normalizeLoreProvenance(item.Provenance)
 	return item
+}
+
+func normalizeLoreTypeSource(value string) string {
+	switch strings.TrimSpace(value) {
+	case LoreTypeSourceHeuristic, LoreTypeSourceSemantic, LoreTypeSourceManual, LoreTypeSourceLegacy:
+		return strings.TrimSpace(value)
+	default:
+		return LoreTypeSourceLegacy
+	}
 }
 
 func normalizeLoreProvenance(value *LoreProvenance) *LoreProvenance {

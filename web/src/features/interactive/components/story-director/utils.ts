@@ -1,5 +1,5 @@
 import type { StoryDirector, StoryDirectorActorStateSystem, StoryDirectorModuleRefs, StoryDirectorTRPGSystem, TellerEventPackage } from '../../types'
-import { DIRECTOR_PLAN_REQUIRED_HEADINGS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT } from './constants'
+import { DIRECTOR_PRIVATE_PLAN_REQUIRED_HEADINGS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT } from './constants'
 
 export function parseDecimalInput(value: string) {
   const parsed = Number(value)
@@ -12,12 +12,12 @@ export function normalizeBranchPlanningTurns(value: string) {
   return Math.min(12, Math.max(1, Math.round(parsed)))
 }
 
-export function validateDirectorPlanningTemplate(value: string) {
+export function validateDirectorPlanningTemplate(value: string, requiredHeadings: readonly string[] = DIRECTOR_PRIVATE_PLAN_REQUIRED_HEADINGS) {
   const bytes = utf8ByteLength(value || '')
   if (!String(value || '').trim()) {
     return { bytes, missingHeadings: [], valid: true }
   }
-  const missingHeadings = DIRECTOR_PLAN_REQUIRED_HEADINGS.filter((heading) => !String(value || '').includes(heading))
+  const missingHeadings = requiredHeadings.filter((heading) => !String(value || '').includes(heading))
   return {
     bytes,
     missingHeadings,

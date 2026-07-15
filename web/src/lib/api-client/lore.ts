@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
-import type { LoreImagesGenerateRequest, LoreItem, LoreItemImageGenerateRequest, LoreItemInput, SSEEvent } from './types'
+import type { LoreClassificationApplyRequest, LoreClassificationPreview, LoreClassificationPreviewRequest, LoreImagesGenerateRequest, LoreItem, LoreItemImageGenerateRequest, LoreItemInput, LoreTypeApplyResult, SSEEvent } from './types'
 
 export async function getLoreItems(): Promise<LoreItem[]> {
   const data = await requestJSON<{ items: LoreItem[] }>('/api/lore/items')
@@ -24,6 +24,22 @@ export async function updateLoreItem(id: string, item: Partial<LoreItemInput>, b
 
 export async function deleteLoreItem(id: string): Promise<void> {
   await requestJSON(`/api/lore/items/${encodeURIComponent(id)}`, { method: 'DELETE' })
+}
+
+export async function previewLoreClassification(input: LoreClassificationPreviewRequest = {}): Promise<LoreClassificationPreview> {
+  return requestJSON('/api/lore/classification/preview', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
+}
+
+export async function applyLoreClassification(input: LoreClassificationApplyRequest): Promise<LoreTypeApplyResult> {
+  return requestJSON('/api/lore/classification/apply', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(input),
+  })
 }
 
 export async function generateLoreItemImage(id: string, input: LoreItemImageGenerateRequest = {}): Promise<LoreItem> {

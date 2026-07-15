@@ -108,6 +108,46 @@ func TestSeparateSubmissionToolsIsolateMalformedJSON(t *testing.T) {
 	}
 }
 
+func TestChoicesSubmissionCarriesOptionalDirectorUpdateHint(t *testing.T) {
+	system, state := turnSubmissionTestState()
+	updates := []StateUpdate{}
+	choicesInput := DecodeChoicesSubmissionInput(`{"choices":["左路","右路","检查地图","询问同伴","原地观察"],"director_update":{"needed":true,"reason":"玩家公开了足以推翻当前阶段前提的证据"}}`)
+	if choicesInput.Choices == nil || choicesInput.DirectorUpdate == nil || !choicesInput.DirectorUpdate.Needed {
+		t.Fatalf("material Director hint was not decoded: %#v", choicesInput)
+	}
+	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{
+		ActorState: system, CurrentState: state, ChoiceCount: 5,
+	}, nil, TurnSubmissionInput{StateUpdates: &updates})
+	if receipt.ModuleStatus.ActorStatePatches != TurnSubmissionModuleAccepted {
+		t.Fatalf("state module was not staged first: %#v", receipt)
+	}
+	prepared, receipt = PrepareTurnSubmission(TurnSubmissionContext{
+		ActorState: system, CurrentState: state, ChoiceCount: 5,
+	}, prepared, choicesInput)
+	result := prepared.TurnResult()
+	if !receipt.Ready || result.DirectorUpdate == nil || result.DirectorUpdate.Reason != "玩家公开了足以推翻当前阶段前提的证据" {
+		t.Fatalf("Director hint did not survive module staging: receipt=%#v result=%#v", receipt, result)
+	}
+
+	routine := DecodeChoicesSubmissionInput(`{"choices":["左路","右路","检查地图","询问同伴","原地观察"]}`)
+	prepared, receipt = PrepareTurnSubmission(TurnSubmissionContext{
+		ActorState: system, CurrentState: state, ChoiceCount: 5,
+	}, nil, TurnSubmissionInput{StateUpdates: &updates})
+	prepared, receipt = PrepareTurnSubmission(TurnSubmissionContext{
+		ActorState: system, CurrentState: state, ChoiceCount: 5,
+	}, prepared, routine)
+	if !receipt.Ready || prepared.TurnResult().DirectorUpdate != nil {
+		t.Fatalf("routine choices should omit the Director hint: %#v", prepared.TurnResult())
+	}
+}
+
+func TestChoicesSubmissionRejectsUnexplainedDirectorUpdateHint(t *testing.T) {
+	input := DecodeChoicesSubmissionInput(`{"choices":["左路","右路","检查地图","询问同伴","原地观察"],"director_update":{"needed":true}}`)
+	if input.Choices != nil || input.DirectorUpdate != nil || len(input.Diagnostics) != 1 || input.Diagnostics[0].Module != TurnSubmissionModuleChoices {
+		t.Fatalf("an unexplained material hint should retry only choices: %#v", input)
+	}
+}
+
 func TestDecodeTurnSubmissionInputRejectsUnexpectedTopLevelShapeAsWhole(t *testing.T) {
 	input := DecodeTurnSubmissionInput(`{"state_updates":[],"choices":[],"contract":{}}`)
 	if !input.Fatal || input.StateUpdates != nil || input.Choices != nil {

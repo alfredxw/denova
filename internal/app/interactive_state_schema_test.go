@@ -231,7 +231,7 @@ func TestAssembleStateSchemaResidentLoreRejectsRevisionTOCTOU(t *testing.T) {
 		items:     []book.LoreItem{{ID: "rule", LoadMode: book.LoreLoadModeResident, Content: "规则正文"}},
 		resident:  "## 规则\n\n规则正文",
 	}
-	if _, err := assembleStateSchemaResidentLore(reader); err == nil || !strings.Contains(err.Error(), "装配期间发生变化") {
+	if _, err := assembleResidentLore(reader); err == nil || !strings.Contains(err.Error(), "装配期间发生变化") {
 		t.Fatalf("resident Lore assembly must reject mixed revisions: %v", err)
 	}
 }
@@ -246,7 +246,7 @@ func TestAssembleStateSchemaResidentLoreReturnsOneRevisionSnapshot(t *testing.T)
 		},
 		resident: "## 常驻\n\n常驻正文",
 	}
-	snapshot, err := assembleStateSchemaResidentLore(reader)
+	snapshot, err := assembleResidentLore(reader)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -20,9 +20,8 @@ func TestInteractiveDirectorPlanSubmissionTerminatesAgentRun(t *testing.T) {
 		SubmitDirectorPlanUpdate: func(_ context.Context, submission interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error) {
 			submissions.Add(1)
 			return interactive.DirectorPlanUpdateReceipt{
-				Accepted: true,
-				Mode:     submission.Decision.Mode,
-				Decision: submission.Decision,
+				Finalized: true,
+				Decision:  submission.Decision,
 			}, nil
 		},
 	})
@@ -34,7 +33,7 @@ func TestInteractiveDirectorPlanSubmissionTerminatesAgentRun(t *testing.T) {
 			ID: "call-director-plan",
 			Function: schema.FunctionCall{
 				Name:      submitDirectorPlanUpdateToolName,
-				Arguments: `{"decision":{"mode":"keep","reason":"当前规划仍然有效"}}`,
+				Arguments: `{"decision":{"mode":"keep","reason":"当前规划仍然有效"},"updates":[],"finalize":true}`,
 			},
 		}}),
 		schema.AssistantMessage("不应在结构化提交后再次调用模型。", nil),

@@ -166,7 +166,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	var status interactive.DirectorPlanStatus
 	decodeResponse(t, statusResp.Body.Bytes(), &status)
-	if status.Status != interactive.DirectorPlanStatusWaitingOpening || status.Blocking || status.StartReady || status.CompletedDocs != 0 || status.PlannedDocs != 2 {
+	if status.Status != interactive.DirectorPlanStatusWaitingOpening || status.Blocking || status.StartReady || status.CompletedDocs != 0 || status.PlannedDocs != 3 {
 		t.Fatalf("initial director status mismatch: %#v", status)
 	}
 
@@ -177,6 +177,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	type directorResponse struct {
 		Docs struct {
 			Plan        string `json:"plan"`
+			AgentBrief  string `json:"agent_brief"`
 			LoreContext string `json:"lore_context"`
 		} `json:"docs"`
 		Metadata struct {
@@ -188,7 +189,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	var director directorResponse
 	decodeResponse(t, getResp.Body.Bytes(), &director)
-	if director.Metadata.LastRun.Status != interactive.DirectorPlanStatusWaitingOpening || !strings.Contains(director.Docs.Plan, "正文Agent可读") {
+	if director.Metadata.LastRun.Status != interactive.DirectorPlanStatusWaitingOpening || !strings.Contains(director.Docs.Plan, "阶段目标与隐藏钩子") || !strings.Contains(director.Docs.AgentBrief, "当前目标与可见钩子") {
 		t.Fatalf("default director plan mismatch: %#v", director)
 	}
 
@@ -213,7 +214,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 	director = directorResponse{}
 	decodeResponse(t, rebuildResp.Body.Bytes(), &director)
-	if !strings.Contains(director.Docs.Plan, "正文Agent可读") || director.Metadata.LastRun.Status != "ready" {
+	if !strings.Contains(director.Docs.Plan, "阶段目标与隐藏钩子") || !strings.Contains(director.Docs.AgentBrief, "当前目标与可见钩子") || director.Metadata.LastRun.Status != "ready" {
 		t.Fatalf("rebuilt director plan mismatch: %#v", director)
 	}
 
@@ -638,11 +639,12 @@ func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
 	}
 	var rebuilt struct {
 		Docs struct {
-			Plan string `json:"plan"`
+			Plan       string `json:"plan"`
+			AgentBrief string `json:"agent_brief"`
 		} `json:"docs"`
 	}
 	decodeResponse(t, rebuildResp.Body.Bytes(), &rebuilt)
-	if !strings.Contains(rebuilt.Docs.Plan, "正文Agent可读") {
+	if !strings.Contains(rebuilt.Docs.Plan, "阶段目标与隐藏钩子") || !strings.Contains(rebuilt.Docs.AgentBrief, "当前目标与可见钩子") {
 		t.Fatalf("rebuilt detached director should return plan docs: %#v", rebuilt)
 	}
 }

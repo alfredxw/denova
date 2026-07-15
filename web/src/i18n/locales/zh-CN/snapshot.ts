@@ -33,6 +33,7 @@ const snapshot = {
   'snapshot.director.docs': '规划文档',
   'snapshot.director.branchPlanningTurns': '分支回合',
   'snapshot.director.plan': 'director.md',
+  'snapshot.director.agentBrief': 'agent-brief.md · 正文 Agent 简报',
   'snapshot.director.documentEmpty': '该文档暂无内容',
   'snapshot.director.loreContext': 'lore-context.md · 分支资料工作集',
   'snapshot.ruleAudit.title': '规则审计',

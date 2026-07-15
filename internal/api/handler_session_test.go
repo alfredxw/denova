@@ -341,6 +341,7 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 		if toolContext.MaintenanceTask == "director_plan_update" || toolContext.MaintenanceTask == "opening_plan" {
 			_, err := toolContext.SubmitDirectorPlanUpdate(callCtx, interactive.DirectorPlanUpdateSubmission{
 				Decision: interactive.PlanDecision{Mode: interactive.PlanDecisionKeep, Reason: "测试初始化导演规划完成。"},
+				Finalize: true,
 			})
 			return "测试导演规划审查完成。", err
 		}

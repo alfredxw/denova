@@ -107,7 +107,7 @@ func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T
 		StoryTellerID:        "classic",
 		StoryDirectorID:      "default",
 		BranchID:             "main",
-		DirectorPlanDocs:     `{"plan":"# 正文Agent可读"}`,
+		DirectorPlanDocs:     "## 文件：agent-brief.md\n\n# 正文 Agent 简报",
 		LoreContext:          "角色 沈凝。外门比试关键见证者。",
 		TurnAuditJSON:        `{"turn_id":"turn-1","user_action":"报名比试"}`,
 		TurnHistory:          "用户：我报名参加公开比试",
@@ -139,12 +139,31 @@ func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T
 			sawLore = true
 		case part.Title == "本回合 TurnResult / RuleResolution / StateDelta 审计 JSON" && strings.Contains(part.Source, "committed turn") && strings.Contains(part.Content, "turn-1"):
 			sawTurnAudit = true
-		case part.Title == "当前导演规划文档快照" && strings.Contains(part.Source, "DirectorPlan docs") && strings.Contains(part.Content, "正文Agent可读"):
+		case part.Title == "文件：agent-brief.md" && strings.Contains(part.Content, "正文 Agent 简报"):
 			sawPlanDocs = true
 		}
 	}
 	if !sawOutputProtocol || !sawLore || !sawTurnAudit || !sawPlanDocs {
 		t.Fatalf("director analysis missing expected parts output=%v lore=%v audit=%v planDocs=%v parts=%#v", sawOutputProtocol, sawLore, sawTurnAudit, sawPlanDocs, analysis.ContextMessages)
+	}
+}
+
+func TestInteractiveDirectorContextAnalysisIncludesStableResidentLoreMessage(t *testing.T) {
+	analysis, err := BuildInteractiveDirectorContextAnalysisWithStableContext(
+		&config.Config{OpenAIContextWindowTokens: 128000},
+		"完整常驻资料（complete=true）",
+		"## [[公开比试规则]]\n\n禁止场外偷袭。",
+		1024,
+		prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{Title: "外门逆袭"}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analysis.MessageCount != 2 {
+		t.Fatalf("stable resident Lore plus the task instruction should be two exact model messages, got %d", analysis.MessageCount)
+	}
+	if len(analysis.ContextMessages) == 0 || analysis.ContextMessages[0].ID != "resident_lore" || !strings.Contains(analysis.ContextMessages[0].Content, "禁止场外偷袭") || !strings.Contains(analysis.ContextMessages[0].Note, "max_bytes=1024") {
+		t.Fatalf("stable resident Lore should be explicit in diagnostics: %#v", analysis.ContextMessages)
 	}
 }
 

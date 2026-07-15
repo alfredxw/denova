@@ -87,7 +87,7 @@ func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name,
 	case "read_event_cards", "list_lore_items", "read_lore_items", "search_story_history", submitDirectorPlanUpdateToolName:
 		return ""
 	case "read_file", "write_file", "edit_file":
-		return fmt.Sprintf("[tool error] Director 规划文档已在上下文中完整提供；请用 %s 一次提交决策与完整文档，拒绝工具: %s", submitDirectorPlanUpdateToolName, name)
+		return fmt.Sprintf("[tool error] Director 规划文档已在上下文中完整提供；请用 %s 提交带 base_hash 的 Markdown Patch，拒绝工具: %s", submitDirectorPlanUpdateToolName, name)
 	case "apply_actor_state_patch":
 		return fmt.Sprintf("[tool error] Director 只维护 ArcPlan，不能写 Actor State，拒绝工具: %s", name)
 	default:

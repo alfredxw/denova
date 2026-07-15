@@ -152,8 +152,8 @@ func testTurnSubmissionInput(updates []interactive.StateUpdate, includeChoices b
 }
 
 func TestDirectorContextBudgetFollowsModelWindowAndCapsEachSource(t *testing.T) {
-	small := newDirectorContextBudget(&config.Config{OpenAIContextWindowTokens: 128000}, interactiveDirectorTaskDirectorPlanUpdate)
-	large := newDirectorContextBudget(&config.Config{OpenAIContextWindowTokens: 400000}, interactiveDirectorTaskDirectorPlanUpdate)
+	small := newDirectorContextBudget(&config.Config{OpenAIContextWindowTokens: 128000}, interactiveDirectorTaskDirectorPlanUpdate, interactiveDirectorStableContext{})
+	large := newDirectorContextBudget(&config.Config{OpenAIContextWindowTokens: 400000}, interactiveDirectorTaskDirectorPlanUpdate, interactiveDirectorStableContext{})
 	if small.thresholdTokens != 115200 || large.thresholdTokens != 360000 {
 		t.Fatalf("threshold tokens should follow the configured 90%% model window: small=%d large=%d", small.thresholdTokens, large.thresholdTokens)
 	}

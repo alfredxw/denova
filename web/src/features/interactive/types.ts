@@ -426,6 +426,7 @@ export interface TurnEvent {
 export interface TurnResult {
   state_updates: Array<{ op: 'replace' | 'delta' | 'create' | string; path: string; value: unknown }>
   choices: string[]
+  director_update?: { needed: boolean; reason?: string }
 }
 
 export interface TurnDisplayEvent {
@@ -548,15 +549,17 @@ interface DirectorEvent {
 
 export interface DirectorPlanDocs {
   plan: string
+  agent_brief: string
   lore_context: string
 }
 
 export interface DirectorPlanningTemplates {
   plan: string
+  agent_brief: string
 }
 
 interface DirectorPlanVisibleDocs {
-  plan?: string
+  agent_brief?: string
   lore_context?: string
 }
 

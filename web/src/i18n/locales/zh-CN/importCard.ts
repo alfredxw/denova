@@ -18,6 +18,8 @@ const importCard = {
   'importCard.defaultUserCharacterName': '玩家角色',
   'importCard.userCharacterName': '{{user}} 角色名',
   'importCard.userCharacterHint': '卡片包含 {{user}} 占位符，导入时会用这个名字创建玩家角色资料。',
+  'importCard.semanticClassification': '智能整理资料类型',
+  'importCard.semanticClassificationHint': '将语义分析用于 {{count}} 个名称无法确定类型的条目；关闭后仅使用本地名称规则。',
   'importCard.compat.capabilities': '沉淀能力',
   'importCard.compat.sanitized': '已清洗运行时',
   'importCard.compat.discarded': '已丢弃扩展',

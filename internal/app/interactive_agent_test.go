@@ -77,8 +77,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"list_lore_items",
 		"search_story_history",
 		"turn_id",
-		"后台导演规划可读区",
-		"source: director.md visible section",
+		"正文 Agent 简报",
+		"source: agent-brief.md",
 		"bounded",
 	} {
 		if !strings.Contains(history[3].Content, want) {
@@ -92,6 +92,9 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		if strings.Contains(history[3].Content, forbidden) {
 			t.Fatalf("history[3] should not include %q: %#v", forbidden, history[3])
 		}
+	}
+	if strings.Contains(history[3].Content, "维护当前阶段的隐藏真相、阶段高潮") {
+		t.Fatalf("Game Agent model input must not contain private director.md content: %#v", history[3])
 	}
 	for _, forbidden := range []string{"末日开端", "主角醒来发现世界已末日"} {
 		if strings.Contains(history[3].Content, forbidden) {
@@ -108,7 +111,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"导演注入规则",
 		"本轮上下文",
 		"DirectorPlan",
-		"后台导演规划可读区",
+		"正文 Agent 简报",
 	} {
 		if !strings.Contains(sources, want) {
 			t.Fatalf("context sources should include %q: %s", want, sources)
@@ -391,7 +394,7 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	docs := plan.Docs
-	docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "公开压力升高，同门质疑逼近；玩家可以反证、迂回或调查。", 1)
+	docs.AgentBrief = strings.Replace(docs.AgentBrief, "说明当前场景、主角处境、直接目标，以及可观察、对话、调查、冒险、交易或保守应对的空间。", "公开压力升高，同门质疑逼近；玩家可以反证、迂回或调查。", 1)
 	if _, err := store.UpdateDirectorPlan(story.ID, interactive.UpdateDirectorPlanRequest{BranchID: "main", Docs: docs, BaseRevision: plan.Metadata.Revision}); err != nil {
 		t.Fatal(err)
 	}
@@ -409,7 +412,7 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnInstruction := history[len(history)-1].Content
-	for _, want := range []string{"后台导演规划可读区", "公开压力升高", "同门质疑"} {
+	for _, want := range []string{"正文 Agent 简报", "公开压力升高", "同门质疑"} {
 		if !strings.Contains(turnInstruction, want) {
 			t.Fatalf("interactive turn instruction should include translated director plan %q:\n%s", want, turnInstruction)
 		}

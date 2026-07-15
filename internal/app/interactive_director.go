@@ -232,28 +232,47 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 			}
 		}
 	}
+	baselinePlan, err := conversation.store.DirectorPlan(conversation.storyID, turn.BranchID)
+	if err != nil {
+		return interactiveDirectorMaintenanceResult{}, fmt.Errorf("读取导演规划 Patch 基线失败: %w", err)
+	}
+	planDraft := interactive.NewDirectorPlanUpdateDraft(baselinePlan.Docs, token)
 	effectiveTask := task
 	log.Printf("[interactive-director-agent] maintenance begin story_id=%s branch_id=%s turn_id=%s task=%s revision=%s", conversation.storyID, turn.BranchID, turn.ID, task, token.Revision)
 	conversation.withDirectorTask(effectiveTask)
-	instruction, err := conversation.BuildDirectorInstruction(turn)
+	stableContext, instruction, err := conversation.buildDirectorModelInput(turn)
 	if err != nil {
 		return interactiveDirectorMaintenanceResult{}, fmt.Errorf("构建后台导演指令失败: %w", err)
 	}
+	loreSourceRevision := stableContext.Revision
 	result := interactiveDirectorMaintenanceResult{}
 	var planSubmissionMu sync.Mutex
 	var submittedPlanDecision interactive.PlanDecision
-	planSubmitted := false
+	planFinalized := false
+	reviewedLoreIDs := map[string]bool{}
 	generator := conversation.directorGenerator
 	if generator == nil {
 		generator = generateInteractiveDirector
 	}
 	output, err := generator(ctx, cfg, state, agent.InteractiveStoryToolContext{
-		Store:               conversation.store,
-		StoryID:             conversation.storyID,
-		BranchID:            turn.BranchID,
-		TurnID:              turn.ID,
-		MaintenanceTask:     effectiveTask,
-		DisplayConversation: conversation,
+		Store:                 conversation.store,
+		StoryID:               conversation.storyID,
+		BranchID:              turn.BranchID,
+		TurnID:                turn.ID,
+		MaintenanceTask:       effectiveTask,
+		StableContextTitle:    stableContext.Title,
+		StableContext:         stableContext.Content,
+		StableContextMaxBytes: stableContext.MaxBytes,
+		DisplayConversation:   conversation,
+		OnLoreItemsRead: func(ids []string) {
+			planSubmissionMu.Lock()
+			defer planSubmissionMu.Unlock()
+			for _, id := range ids {
+				if id = strings.TrimSpace(id); id != "" {
+					reviewedLoreIDs[id] = true
+				}
+			}
+		},
 		SubmitDirectorPlanUpdate: func(callCtx context.Context, submission interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error) {
 			if !runPlan {
 				return interactive.DirectorPlanUpdateReceipt{}, fmt.Errorf("当前维护阶段不允许提交导演规划")
@@ -263,15 +282,19 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 			}
 			planSubmissionMu.Lock()
 			defer planSubmissionMu.Unlock()
-			if planSubmitted {
-				return interactive.DirectorPlanUpdateReceipt{}, fmt.Errorf("本次导演运行已经接受过一次提交")
+			submission.SourceLoreRevision = loreSourceRevision
+			submission.ReviewedLoreIDs = make([]string, 0, len(reviewedLoreIDs))
+			for id := range reviewedLoreIDs {
+				submission.ReviewedLoreIDs = append(submission.ReviewedLoreIDs, id)
 			}
-			receipt, err := conversation.store.StageDirectorPlanRunUpdate(conversation.storyID, turn.BranchID, token, turn.ID, submission)
+			receipt, err := conversation.store.StageDirectorPlanRunUpdate(conversation.storyID, turn.BranchID, token, turn.ID, planDraft, submission)
 			if err != nil {
 				return interactive.DirectorPlanUpdateReceipt{}, err
 			}
-			planSubmitted = true
-			submittedPlanDecision = receipt.Decision
+			if receipt.Finalized {
+				planFinalized = true
+				submittedPlanDecision = receipt.Decision
+			}
 			return receipt, nil
 		},
 	}, instruction)
@@ -289,10 +312,10 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	if runPlan {
 		planSubmissionMu.Lock()
 		decision := submittedPlanDecision
-		submitted := planSubmitted
+		finalized := planFinalized
 		planSubmissionMu.Unlock()
-		if !submitted {
-			err = fmt.Errorf("导演规划未调用 submit_director_plan_update 提交结构化结果")
+		if !finalized {
+			err = fmt.Errorf("导演规划未通过 submit_director_plan_update finalize Patch 草稿")
 			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
 			markInteractiveDirectorFailed(conversation, turn, err)
 			return result, err
@@ -308,7 +331,13 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	}
 	persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, persistedOutput)
 	if runPlan {
-		plan, err := conversation.store.CompleteDirectorPlanRun(conversation.storyID, turn.BranchID, token, turn.ID, persistedOutput)
+		finalDocs, finalized := planDraft.FinalDocs()
+		if !finalized {
+			err = fmt.Errorf("导演规划 Patch 草稿尚未 finalize")
+			markInteractiveDirectorFailed(conversation, turn, err)
+			return result, err
+		}
+		plan, err := conversation.store.CompleteDirectorPlanRunWithDocs(conversation.storyID, turn.BranchID, token, turn.ID, persistedOutput, finalDocs)
 		if err != nil {
 			markInteractiveDirectorFailed(conversation, turn, err)
 			return result, fmt.Errorf("完成导演规划运行失败: %w", err)
@@ -345,6 +374,26 @@ func shouldRunInteractiveDirectorAgent(strategy interactive.StoryDirectorStrateg
 		return interactive.DirectorAgentScheduleDecision{Reason: "mode_off"}
 	}
 	return interactive.DirectorAgentScheduleDecision{ShouldRun: true, Reason: "after_persisted_turn"}
+}
+
+// shouldScheduleInteractiveDirectorAfterTurn is the low-cost gate for normal
+// Game turns. The already-running Game Agent reports material planning impact;
+// the Director is not started merely to decide that the plan can be kept.
+func shouldScheduleInteractiveDirectorAfterTurn(strategy interactive.StoryDirectorStrategy, turn interactive.TurnEvent) interactive.DirectorAgentScheduleDecision {
+	strategy = interactive.NormalizeStoryDirectorStrategy(strategy)
+	if !strategy.Enabled {
+		return interactive.DirectorAgentScheduleDecision{Reason: "disabled"}
+	}
+	switch strategy.DirectorAgentMode {
+	case interactive.DirectorAgentModeOff:
+		return interactive.DirectorAgentScheduleDecision{Reason: "mode_off"}
+	case interactive.DirectorAgentModeEveryTurn:
+		return interactive.DirectorAgentScheduleDecision{ShouldRun: true, Reason: "every_turn"}
+	}
+	if turn.TurnResult == nil || turn.TurnResult.DirectorUpdate == nil || !turn.TurnResult.DirectorUpdate.Needed {
+		return interactive.DirectorAgentScheduleDecision{Reason: "no_material_update"}
+	}
+	return interactive.DirectorAgentScheduleDecision{ShouldRun: true, Reason: "game_agent_update"}
 }
 
 func firstNonEmptyApp(values ...string) string {

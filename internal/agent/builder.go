@@ -532,13 +532,18 @@ func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...Interac
 		}
 		if cfg != nil && settings.LoreRead {
 			var options []loreToolsOptions
-			if strings.TrimSpace(storyToolContext.MaintenanceTask) == "state_schema_initialization" {
+			switch strings.TrimSpace(storyToolContext.MaintenanceTask) {
+			case "state_schema_initialization":
 				options = append(options, loreToolsOptions{ReadPolicy: &loreReadPolicy{
 					MaxItemsPerCall: interactive.StateSchemaLoreReadMaxItemsPerCall,
 					MaxResultBytes:  interactive.StateSchemaLoreReadMaxResultBytes,
 					MaxTotalBytes:   interactive.StateSchemaLoreReadMaxTotalBytes,
 					OnRead:          storyToolContext.OnLoreItemsRead,
 				}})
+			case "director_plan_update", "opening_plan":
+				policy := defaultLoreReadPolicy()
+				policy.OnRead = storyToolContext.OnLoreItemsRead
+				options = append(options, loreToolsOptions{ReadPolicy: policy})
 			}
 			loreTools, err := newLoreTools(cfg.Workspace, false, options...)
 			if err != nil {

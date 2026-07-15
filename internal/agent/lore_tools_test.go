@@ -60,7 +60,7 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 		t.Fatal(err)
 	}
 	schemaText := string(schemaJSON)
-	for _, want := range []string{"keywords", "match", "types", "limit", "offset"} {
+	for _, want := range []string{"keywords", "match", "types", "detail", "limit", "offset"} {
 		if !strings.Contains(schemaText, want) {
 			t.Fatalf("list_lore_items schema missing %q: %s", want, schemaText)
 		}
@@ -74,12 +74,12 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"# 资料库索引", "id: hero", "名称: 林川", "简介: 角色 林川。"} {
+	for _, want := range []string{"# 资料名称目录", "source: lore/items.json", "total: 1", "shown: 1", "next_offset: null", "[character/major] 林川"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("list_lore_items output missing %q:\n%s", want, output)
 		}
 	}
-	for _, unexpected := range []string{"类型: character", "标签: 主角、火光", "完整正文不应出现在索引里", "档案柜线索只存在于正文"} {
+	for _, unexpected := range []string{"简介: 角色 林川。", "标签: 主角、火光", "完整正文不应出现在索引里", "档案柜线索只存在于正文"} {
 		if strings.Contains(output, unexpected) {
 			t.Fatalf("list_lore_items should not include %q:\n%s", unexpected, output)
 		}
@@ -97,9 +97,18 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	if strings.Contains(queryOutput, "档案柜线索只存在于正文") {
 		t.Fatalf("keyword list_lore_items should not include full content:\n%s", queryOutput)
 	}
+	fullOutput, err := listTool.InvokableRun(context.Background(), `{"keywords":["档案柜"],"detail":"full","limit":5}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(fullOutput, "档案柜线索只存在于正文") {
+		t.Fatalf("detail=full should return complete bodies in one call:\n%s", fullOutput)
+	}
 	for _, args := range []string{
 		`{"match":"some"}`,
 		`{"types":["unknown"]}`,
+		`{"detail":"unknown"}`,
+		`{"detail":"full"}`,
 		`{"limit":51}`,
 		`{"offset":-1}`,
 		`{"keywords":["1","2","3","4","5","6","7","8","9"]}`,

@@ -32,12 +32,16 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 				},
 			}},
 			Choices: testTurnChoices(),
+			DirectorUpdate: &DirectorUpdateHint{
+				Needed: true,
+				Reason: "主角接受关键角色帮助，公开关系与阶段调查方向发生变化",
+			},
 		},
 	})
 	if err != nil {
 		t.Fatalf("AppendTurnWithState failed: %v", err)
 	}
-	if turn.TurnResult == nil || len(turn.TurnResult.StateUpdates) != 1 || turn.TurnResult.StateUpdates[0].Path != "/protagonist" {
+	if turn.TurnResult == nil || len(turn.TurnResult.StateUpdates) != 1 || turn.TurnResult.StateUpdates[0].Path != "/protagonist" || turn.TurnResult.DirectorUpdate == nil || !turn.TurnResult.DirectorUpdate.Needed {
 		t.Fatalf("turn result not persisted: %#v", turn.TurnResult)
 	}
 	if delta == nil || turn.StateDelta == nil || len(turn.StateDelta.ActorOps) == 0 {
@@ -104,6 +108,21 @@ func TestNormalizeTurnResultKeepsDistinctChoices(t *testing.T) {
 	result := NormalizeTurnResult(TurnResult{Choices: []string{" Ａ ", "a", "B", "C", "D", "E"}})
 	if got := result.Choices; len(got) != 5 || strings.Join(got, ",") != "Ａ,B,C,D,E" {
 		t.Fatalf("normalized choices = %#v", got)
+	}
+}
+
+func TestNormalizeTurnResultOmitsRoutineDirectorHintAndValidatesMaterialReason(t *testing.T) {
+	routine := NormalizeTurnResult(TurnResult{DirectorUpdate: &DirectorUpdateHint{Needed: false, Reason: "普通承接"}})
+	if routine.DirectorUpdate != nil {
+		t.Fatalf("needed=false should normalize to omission: %#v", routine.DirectorUpdate)
+	}
+	material := TurnResult{Choices: testTurnChoices(), DirectorUpdate: &DirectorUpdateHint{Needed: true}}
+	if err := ValidateTurnResult(material); err == nil || !strings.Contains(err.Error(), "reason") {
+		t.Fatalf("material Director hint without evidence reason should fail: %v", err)
+	}
+	material.DirectorUpdate.Reason = "阶段目标已经完成"
+	if err := ValidateTurnResult(material); err != nil {
+		t.Fatalf("bounded material Director hint should pass: %v", err)
 	}
 }
 

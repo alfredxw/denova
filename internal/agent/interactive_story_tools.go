@@ -155,7 +155,8 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 			return nil, err
 		}
 		choiceDesc := strings.Join([]string{
-			"在完整玩家可见正文已经输出后，独立提交本回合下一步行动建议。参数只有 choices；必须与已输出正文结尾一致，并提供当前故事配置要求的恰好数量个不同建议。",
+			"在完整玩家可见正文已经输出后，独立提交本回合下一步行动建议。choices 必须与已输出正文结尾一致，并提供当前故事配置要求的恰好数量个不同建议。",
+			"director_update 是可选的低频导演更新提示。普通承接、同一场景内的小变化、常规资源消耗或既定冲突推进必须省略。只有当前目标或阶段改变、关键关系/势力发生重大变化、重要秘密揭示、不可逆结果，或现有简报已经无法指导下一回合时才设置 needed=true，并只说明已发生事实；不要替 Director 决定 patch/replan 或具体文件。",
 			"只有 prepare_interactive_turn 返回 terminal_candidate 的终局回合才提交空数组。工具返回 ready=false 时只调用 retry_modules 指定的工具；ready=true 后立即结束，不要重复或改写正文。",
 		}, "\n")
 		choiceTool, err := newSubmitTurnModuleTool(interactiveChoicesToolName, choiceDesc, submitChoicesToolSchema{}, interactive.DecodeChoicesSubmissionInput, ctx.SubmitTurnResult)
@@ -172,7 +173,8 @@ type submitActorStatePatchesToolSchema struct {
 }
 
 type submitChoicesToolSchema struct {
-	Choices []string `json:"choices" jsonschema:"description=当前故事配置数量的不同下一步行动建议；仅 RuleResolution 已声明 terminal_candidate 时为空数组"`
+	Choices        []string                        `json:"choices" jsonschema:"description=当前故事配置数量的不同下一步行动建议；仅 RuleResolution 已声明 terminal_candidate 时为空数组"`
+	DirectorUpdate *interactive.DirectorUpdateHint `json:"director_update,omitempty" jsonschema:"description=仅在本轮已发生事实让后续规划发生实质变化时提交；普通回合必须省略"`
 }
 
 type submitTurnModuleTool struct {

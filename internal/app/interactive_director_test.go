@@ -29,8 +29,14 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 		Type:             "character",
 		Name:             "沈凝",
 		Importance:       "major",
+		LoadMode:         book.LoreLoadModeAuto,
 		BriefDescription: "角色 沈凝。外门比试的关键见证者，与主角关系存在转折空间。上下文出现相关内容时，一定要参考本项详情。",
 		Content:          "沈凝表面冷淡，实际在暗中调查外门资源分配不公。她不会无故帮助主角，但会被公开证据和胆识触动。",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := book.NewLoreStore(workspace).Create(book.LoreItemInput{
+		ID: "contest-rule", Type: "rule", Name: "公开比试规则", LoadMode: book.LoreLoadModeResident, Content: "公开比试禁止场外偷袭。",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -62,8 +68,14 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	directorGenerator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
 		close(started)
 		<-release
-		if !strings.Contains(instruction, "director.md") || !strings.Contains(instruction, "lore-context.md") || strings.Contains(instruction, "mainline.md") {
-			t.Fatalf("director should receive both complete plan documents:\n%s", instruction)
+		if !strings.Contains(toolContext.StableContextTitle, "complete=true") || !strings.Contains(toolContext.StableContext, "公开比试禁止场外偷袭") || toolContext.StableContextMaxBytes < len([]byte(toolContext.StableContext)) {
+			t.Fatalf("director should receive complete resident Lore as a bounded stable prefix: %#v", toolContext)
+		}
+		if strings.Contains(instruction, "公开比试禁止场外偷袭") {
+			t.Fatalf("dynamic Director instruction must not duplicate resident Lore bodies:\n%s", instruction)
+		}
+		if !strings.Contains(instruction, "director.md") || !strings.Contains(instruction, "agent-brief.md") || !strings.Contains(instruction, "lore-context.md") || strings.Contains(instruction, "mainline.md") {
+			t.Fatalf("director should receive all three complete plan documents:\n%s", instruction)
 		}
 		if toolContext.DisplayConversation == nil {
 			t.Fatalf("director should receive display conversation for background progress")
@@ -76,7 +88,7 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 			return "", err
 		}
 		docs := plan.Docs
-		docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "公开比试制造质疑与反证机会。", 1)
+		docs.AgentBrief = strings.Replace(docs.AgentBrief, "说明当前场景、主角处境、直接目标，以及可观察、对话、调查、冒险、交易或保守应对的空间。", "公开比试制造质疑与反证机会。", 1)
 		if err := submitDirectorPlanForTest(toolContext, interactive.PlanDecision{Mode: interactive.PlanDecisionPatch, Triggers: []string{"public_challenge"}, Reason: "导演安排公开反转"}, &docs); err != nil {
 			return "", err
 		}
@@ -91,7 +103,7 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runningStatus.Blocking || runningStatus.StartReady || runningStatus.CompletedDocs != 0 || runningStatus.PlannedDocs != 2 {
+	if runningStatus.Blocking || runningStatus.StartReady || runningStatus.CompletedDocs != 0 || runningStatus.PlannedDocs != 3 {
 		t.Fatalf("initial director run should expose non-blocking progress: %#v", runningStatus)
 	}
 	releaseOnce.Do(func() { close(release) })
@@ -106,10 +118,10 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != turn.ID {
 		t.Fatalf("turn should remain current after director update: %#v", snapshot.CurrentTurn)
 	}
-	if snapshot.DirectorPlan == nil || !strings.Contains(snapshot.DirectorPlan.Docs.Plan, "公开比试制造质疑") {
-		t.Fatalf("director plan should include file update: %#v", snapshot.DirectorPlan)
+	if snapshot.DirectorPlan == nil || !strings.Contains(snapshot.DirectorPlan.Docs.AgentBrief, "公开比试制造质疑") {
+		t.Fatalf("agent brief should include file update: %#v", snapshot.DirectorPlan)
 	}
-	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusReady || !snapshot.DirectorPlanStatus.StartReady || snapshot.DirectorPlanStatus.Blocking || snapshot.DirectorPlanStatus.CompletedDocs != 2 {
+	if snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusReady || !snapshot.DirectorPlanStatus.StartReady || snapshot.DirectorPlanStatus.Blocking || snapshot.DirectorPlanStatus.CompletedDocs != 3 {
 		t.Fatalf("completed director run should unblock the story start: %#v", snapshot.DirectorPlanStatus)
 	}
 }
@@ -147,8 +159,12 @@ func TestPrepareInteractiveDirectorBeforeOpeningBuildsLoreWorksetForFirstGameTur
 			return "", err
 		}
 		docs := plan.Docs
-		docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "公开比试开局围绕沈凝见证与戒律堂秩序展开。", 1)
-		docs.LoreContext = strings.Replace(docs.LoreContext, "## 当前角色\n", "## 当前角色\n\n- [[沈凝]]：开局见证者\n", 1)
+		docs.Plan = strings.Replace(docs.Plan, "维护当前阶段的隐藏真相、阶段高潮、反转条件与阅读钩子投放顺序，保证每个可玩回合都能产生有效推进。", "开局阶段围绕公开比试秩序、见证者立场与资源分配证据安排高潮和反转。", 1)
+		docs.AgentBrief = strings.Replace(docs.AgentBrief, "说明当前场景、主角处境、直接目标，以及可观察、对话、调查、冒险、交易或保守应对的空间。", "公开比试开局围绕沈凝见证与戒律堂秩序展开。", 1)
+		docs.LoreContext = strings.Replace(docs.LoreContext, "## 当前\n", "## 当前\n\n- [[沈凝]]：开局见证者\n", 1)
+		if toolContext.OnLoreItemsRead != nil {
+			toolContext.OnLoreItemsRead([]string{"witness"})
+		}
 		if err := submitDirectorPlanForTest(toolContext, interactive.PlanDecision{Mode: interactive.PlanDecisionReplan, Triggers: []string{"story_opening"}, Reason: "开局资料工作集已建立"}, &docs); err != nil {
 			return "", err
 		}
@@ -312,7 +328,7 @@ func TestAnalyzeInteractiveDirectorContextUsesCurrentDirectorInputs(t *testing.T
 		if part.Title == "本回合 TurnResult / RuleResolution / StateDelta 审计 JSON" && strings.Contains(part.Content, turn.ID) {
 			sawTurnAudit = true
 		}
-		if part.Title == "当前导演规划文档快照" && strings.Contains(part.Content, "正文Agent可读") {
+		if (part.Title == "当前导演规划文档快照" && strings.Contains(part.Content, "agent-brief.md")) || strings.Contains(part.Title, "agent-brief.md") {
 			sawDirectorPlan = true
 		}
 	}
@@ -321,12 +337,70 @@ func TestAnalyzeInteractiveDirectorContextUsesCurrentDirectorInputs(t *testing.T
 	}
 }
 
+func TestShouldScheduleInteractiveDirectorAfterTurnUsesGameSignal(t *testing.T) {
+	triggered := interactive.StoryDirectorStrategy{Enabled: true, DirectorAgentMode: interactive.DirectorAgentModeTriggered}
+	routine := interactive.TurnEvent{TurnResult: committedTurnResultForTest("观察", "确认环境", "门后传来风声")}
+	if decision := shouldScheduleInteractiveDirectorAfterTurn(triggered, routine); decision.ShouldRun || decision.Reason != "no_material_update" {
+		t.Fatalf("routine triggered-mode turn should not start Director: %#v", decision)
+	}
+	material := routine
+	material.TurnResult.DirectorUpdate = &interactive.DirectorUpdateHint{Needed: true, Reason: "玩家推翻了阶段前提"}
+	if decision := shouldScheduleInteractiveDirectorAfterTurn(triggered, material); !decision.ShouldRun || decision.Reason != "game_agent_update" {
+		t.Fatalf("material Game signal should start Director: %#v", decision)
+	}
+	everyTurn := triggered
+	everyTurn.DirectorAgentMode = interactive.DirectorAgentModeEveryTurn
+	if decision := shouldScheduleInteractiveDirectorAfterTurn(everyTurn, routine); !decision.ShouldRun || decision.Reason != "every_turn" {
+		t.Fatalf("every-turn mode should remain explicitly high-frequency: %#v", decision)
+	}
+	off := triggered
+	off.DirectorAgentMode = interactive.DirectorAgentModeOff
+	if decision := shouldScheduleInteractiveDirectorAfterTurn(off, material); decision.ShouldRun || decision.Reason != "mode_off" {
+		t.Fatalf("off mode must ignore Game hints: %#v", decision)
+	}
+	disabled := triggered
+	disabled.Enabled = false
+	if decision := shouldScheduleInteractiveDirectorAfterTurn(disabled, material); decision.ShouldRun || decision.Reason != "disabled" {
+		t.Fatalf("disabled Director must ignore Game hints: %#v", decision)
+	}
+}
+
 func submitDirectorPlanForTest(toolContext agent.InteractiveStoryToolContext, decision interactive.PlanDecision, docs *interactive.DirectorPlanDocs) error {
 	if toolContext.SubmitDirectorPlanUpdate == nil {
 		return errors.New("submit director plan callback missing")
 	}
-	_, err := toolContext.SubmitDirectorPlanUpdate(context.Background(), interactive.DirectorPlanUpdateSubmission{Decision: decision, Docs: docs})
-	return err
+	if docs == nil {
+		return errors.New("director plan docs missing")
+	}
+	baseline, err := toolContext.Store.DirectorPlan(toolContext.StoryID, toolContext.BranchID)
+	if err != nil {
+		return err
+	}
+	updates := make([]interactive.DirectorPlanDocumentUpdate, 0, 3)
+	appendDocument := func(document, kind, before, after string) {
+		if strings.TrimSpace(before) == strings.TrimSpace(after) {
+			return
+		}
+		updates = append(updates, interactive.DirectorPlanDocumentUpdate{
+			Document: document,
+			BaseHash: baseline.Metadata.Docs[kind].Hash,
+			Edits: []interactive.DirectorMarkdownEdit{{
+				Op:      interactive.DirectorMarkdownEditReplaceDocument,
+				Content: after,
+			}},
+		})
+	}
+	appendDocument(interactive.DirectorDocumentPlan, interactive.DirectorPlanDocPlan, baseline.Docs.Plan, docs.Plan)
+	appendDocument(interactive.DirectorDocumentAgentBrief, interactive.DirectorPlanDocAgentBrief, baseline.Docs.AgentBrief, docs.AgentBrief)
+	appendDocument(interactive.DirectorDocumentLoreContext, interactive.DirectorPlanDocLoreContext, baseline.Docs.LoreContext, docs.LoreContext)
+	receipt, err := toolContext.SubmitDirectorPlanUpdate(context.Background(), interactive.DirectorPlanUpdateSubmission{Decision: decision, Updates: updates, Finalize: true})
+	if err != nil {
+		return err
+	}
+	if !receipt.Finalized {
+		return errors.New("director plan test patch was not finalized")
+	}
+	return nil
 }
 
 func committedTurnResultForTest(playerIntent, sceneGoal, fact string) *interactive.TurnResult {

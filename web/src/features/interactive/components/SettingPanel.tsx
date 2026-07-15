@@ -18,6 +18,7 @@ import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVE
 import type { PresetUsageMode } from '../preset-ownership'
 import type { ImagePreset, StoryDirector, Teller } from '../types'
 import { CreatorDirectory, CreatorEditor, LoreDirectory, LoreEditor, OpeningPresetEditor } from './SettingPanelSections'
+import { LoreClassificationDialog } from './LoreClassificationDialog'
 import { PresetSettingsPanel } from './setting-panel/PresetSettingsPanel'
 import { EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS } from './setting-panel/presetResources'
 
@@ -169,6 +170,7 @@ function LoreSettingPanel({
   const [loreImageInstruction, setLoreImageInstruction] = useState('')
   const [loreImageGeneratingId, setLoreImageGeneratingId] = useState('')
   const [loreImageBatchOpen, setLoreImageBatchOpen] = useState(false)
+  const [loreClassificationOpen, setLoreClassificationOpen] = useState(false)
   const [loreImageBatchSelectedIds, setLoreImageBatchSelectedIds] = useState<string[]>([])
   const [loreImageBatchQuery, setLoreImageBatchQuery] = useState('')
   const [loreImageBatchType, setLoreImageBatchType] = useState<LoreType | 'all'>('all')
@@ -598,7 +600,7 @@ function LoreSettingPanel({
         <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.directoryHint')}</div>
       </div>
 
-      {activeMode === 'lore' ? <LoreDirectory items={items} activeId={activeId} query={query} saving={saving} onQueryChange={setQuery} onSelect={handleSelectLore} onCreate={(section) => void handleCreateLore(section)} onBatchGenerate={handleOpenLoreImageBatch} /> : <CreatorDirectory />}
+      {activeMode === 'lore' ? <LoreDirectory items={items} activeId={activeId} query={query} saving={saving} onQueryChange={setQuery} onSelect={handleSelectLore} onCreate={(section) => void handleCreateLore(section)} onBatchGenerate={handleOpenLoreImageBatch} onClassify={() => setLoreClassificationOpen(true)} /> : <CreatorDirectory />}
     </div>
   )
 
@@ -677,6 +679,16 @@ function LoreSettingPanel({
           </main>
         )}
       </AdaptiveSurface>
+      <LoreClassificationDialog
+        open={loreClassificationOpen}
+        onOpenChange={setLoreClassificationOpen}
+        onApplied={(nextItems) => {
+          setItems(nextItems)
+          const selectedItem = nextItems.find((item) => item.id === activeId)
+          if (selectedItem) mergeSavedLoreItem(selectedItem)
+          notifyLoreUpdated(selectedItem ? [selectedItem.id] : [])
+        }}
+      />
       <LoreImageBatchDialog
         open={loreImageBatchOpen}
         items={items}

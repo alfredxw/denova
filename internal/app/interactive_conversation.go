@@ -90,11 +90,11 @@ func (c *interactiveConversation) directorTaskHint() string {
 	}
 	switch strings.TrimSpace(c.directorTask) {
 	case interactiveDirectorTaskOpeningPlan:
-		return "opening_plan：在首个 Game Agent 回合前建立 director.md 与 lore-context.md；基于开局设定和资料名称目录完成初始选角、场景与分支规划。"
+		return "opening_plan：在首个 Game Agent 回合前建立 director.md、agent-brief.md 与 lore-context.md；基于开局设定和资料名称目录完成初始选角、场景与分支规划。"
 	case "director_plan_update":
-		return "director_plan_update：观察已提交事实并判断 keep、patch 或 replan；只维护当前分支 director.md 与 lore-context.md，不得改写历史 Turn 或 Actor State。"
+		return "director_plan_update：Game Agent 已提示本回合对后续规划有实质影响；判断 keep、patch 或 replan。普通更新默认只 Patch agent-brief.md，只有重大偏差才修改 director.md，只有资料工作集变化才修改 lore-context.md。"
 	default:
-		return "director_plan_update：观察已提交事实并判断 keep、patch 或 replan；只维护当前分支 director.md 与 lore-context.md，不得改写历史 Turn 或 Actor State。"
+		return "director_plan_update：观察已提交事实并判断 keep、patch 或 replan；只 Patch 实际变化的导演 Markdown 文件，不得改写历史 Turn 或 Actor State。"
 	}
 }
 
@@ -1006,6 +1006,30 @@ func (c *interactiveConversation) LastTurnForState() (interactive.TurnEvent, boo
 }
 
 func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.TurnEvent) (string, error) {
+	_, instruction, err := c.buildDirectorModelInput(turn)
+	return instruction, err
+}
+
+func (c *interactiveConversation) buildDirectorModelInput(turn interactive.TurnEvent) (interactiveDirectorStableContext, string, error) {
+	stableContext, err := buildInteractiveDirectorStableContext(c.workspace)
+	if err != nil {
+		return interactiveDirectorStableContext{}, "", err
+	}
+	instruction, err := c.buildDirectorInstruction(turn, stableContext)
+	if err != nil {
+		return interactiveDirectorStableContext{}, "", err
+	}
+	assembledRevision, err := book.NewLoreStore(c.workspace).Revision()
+	if err != nil {
+		return interactiveDirectorStableContext{}, "", fmt.Errorf("读取导演资料库装配后 revision 失败: %w", err)
+	}
+	if strings.TrimSpace(assembledRevision) != strings.TrimSpace(stableContext.Revision) {
+		return interactiveDirectorStableContext{}, "", fmt.Errorf("资料库在导演上下文装配期间发生变化: stable=%s dynamic=%s", strings.TrimSpace(stableContext.Revision), strings.TrimSpace(assembledRevision))
+	}
+	return stableContext, instruction, nil
+}
+
+func (c *interactiveConversation) buildDirectorInstruction(turn interactive.TurnEvent, stableContext interactiveDirectorStableContext) (string, error) {
 	if c == nil || c.store == nil {
 		return "", fmt.Errorf("互动故事不存在")
 	}
@@ -1023,7 +1047,7 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 	} else if plan, err := c.store.DirectorPlan(c.storyID, storyCtx.Snapshot.BranchID); err == nil {
 		directorPlan = plan
 	}
-	loreContext, err := buildInteractiveDirectorLoreContext(c.workspace, directorPlan, turn, c.directorTask)
+	loreContext, err := buildInteractiveDirectorLoreContext(c.workspace, directorPlan, turn)
 	if err != nil {
 		return "", err
 	}
@@ -1032,13 +1056,14 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		actorStateSnapshot = map[string]any{"actors": actors}
 	}
 	openingInitialization := strings.TrimSpace(c.directorTask) == interactiveDirectorTaskOpeningPlan
-	budget := newDirectorContextBudget(c.cfg, c.directorTask)
+	budget := newDirectorContextBudget(c.cfg, c.directorTask, stableContext)
 	title := budget.take("story.title", storyCtx.Meta.Title, 512)
 	turnAudit := ""
 	if !openingInitialization {
 		turnAudit = budget.take("turn.audit", boundedJSON(interactiveDirectorTurnAudit(turn), interactiveDirectorContextBytes), interactiveDirectorContextBytes)
 	}
-	planDocs := budget.take("director_plan.docs", boundedJSON(directorPlan.Docs, interactiveDirectorContextBytes), interactiveDirectorContextBytes)
+	planDocsMarkdown := formatDirectorDocumentsContext(directorPlan.Docs, directorPlan.Metadata.Docs)
+	planDocs := budget.take("director_plan.docs", planDocsMarkdown, interactiveDirectorContextBytes)
 	actorState := budget.take("actor_state.snapshot", boundedJSON(actorStateSnapshot, interactiveDirectorContextBytes), interactiveDirectorContextBytes)
 	actorStateSchema := budget.take("actor_state.schema", interactive.ActorStateSchemaContext(storyDirector.ActorState, interactiveDirectorContextBytes), interactiveDirectorContextBytes)
 	lore := budget.take("lore.relevant", loreContext, interactiveDirectorContextBytes)
@@ -1082,7 +1107,7 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		EventOpportunity:            budget.take("director.event_opportunity", boundedJSON(eventOpportunity, 4*1024), 4*1024),
 		EventRuntime:                budget.take("director.event_runtime", boundedJSON(eventRuntime, 8*1024), 8*1024),
 	})
-	log.Printf("[interactive-director-agent] context budget story_id=%s branch_id=%s turn_id=%s instruction_bytes=%d model_window_tokens=%d threshold_tokens=%d source_budget_tokens=%d fragments=%s", c.storyID, storyCtx.Snapshot.BranchID, turn.ID, len(instruction), budget.contextWindowTokens, budget.thresholdTokens, budget.initialTokens, budget.trace())
+	log.Printf("[interactive-director-agent] context budget story_id=%s branch_id=%s turn_id=%s instruction_bytes=%d stable_bytes=%d model_window_tokens=%d threshold_tokens=%d source_budget_tokens=%d fragments=%s", c.storyID, storyCtx.Snapshot.BranchID, turn.ID, len(instruction), len([]byte(stableContext.Content)), budget.contextWindowTokens, budget.thresholdTokens, budget.initialTokens, budget.trace())
 	log.Printf(
 		"[interactive-director-agent] context composition story_id=%s branch_id=%s turn_id=%s teller_id=%s story_director_id=%s director_plan=%s lore=%s turn_audit=%s actor_state=%s history=%s instruction=%s",
 		c.storyID,
@@ -1090,7 +1115,7 @@ func (c *interactiveConversation) BuildDirectorInstruction(turn interactive.Turn
 		turn.ID,
 		storyCtx.Meta.StoryTellerID,
 		storyCtx.Meta.StoryDirectorID,
-		interactivePartSummary(boundedJSON(directorPlan.Docs, interactiveDirectorContextBytes)),
+		interactivePartSummary(planDocsMarkdown),
 		interactivePartSummary(loreContext),
 		interactivePartSummary(turnAudit),
 		interactivePartSummary(boundedJSON(actorStateSnapshot, interactiveDirectorContextBytes)),
@@ -1148,7 +1173,7 @@ type directorContextBudget struct {
 	parts               []string
 }
 
-func newDirectorContextBudget(cfg *config.Config, task string) *directorContextBudget {
+func newDirectorContextBudget(cfg *config.Config, task string, stableContext interactiveDirectorStableContext) *directorContextBudget {
 	model := config.ResolveAgentModel(cfg, config.AgentKindInteractiveDirector)
 	window := model.ContextWindowTokens
 	if window <= 0 {
@@ -1166,10 +1191,18 @@ func newDirectorContextBudget(cfg *config.Config, task string) *directorContextB
 		emptyPrompt = prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{OpeningInitialization: true})
 	}
 	customPrompt := config.ResolveAgentPrompt(cfg, config.AgentKindInteractiveDirector).SystemPrompt
-	overheadTokens := agent.EstimateContextTokens([]*schema.Message{
+	overheadMessages := []*schema.Message{
 		schema.SystemMessage(systemPrompt + "\n" + customPrompt),
 		schema.UserMessage(emptyPrompt),
-	}, nil)
+	}
+	if stable := strings.TrimSpace(stableContext.Content); stable != "" {
+		title := strings.TrimSpace(stableContext.Title)
+		if title == "" {
+			title = "稳定模型上下文"
+		}
+		overheadMessages = append(overheadMessages, schema.UserMessage(fmt.Sprintf("# %s\n\n%s", title, stable)))
+	}
+	overheadTokens := agent.EstimateContextTokens(overheadMessages, nil)
 	completionReserve, toolReserve := agent.EstimateContextProjectionReserves(cfg, config.AgentKindInteractiveDirector, 1024)
 	toolSchemaAndRuntimeHeadroom := max(2048, window/100)
 	available := max(0, thresholdTokens-overheadTokens-completionReserve-toolReserve-toolSchemaAndRuntimeHeadroom)

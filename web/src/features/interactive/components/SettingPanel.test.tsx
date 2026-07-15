@@ -586,41 +586,58 @@ describe('SettingPanel', () => {
     const template = [
       '# 自定义导演规划',
       '',
-      '## 正文Agent可读',
-      '### 阶段钩子与阅读欲望',
+      '## 阶段目标与隐藏钩子',
       '钩子',
-      '### 资料库锚点',
+      '## 资料库锚点',
       '资料库角色与势力',
-      '### 核心角色与关系张力',
+      '## 选角覆盖',
+      '标准场景',
+      '## 核心角色与关系张力',
       '核心角色',
-      '### 重要势力与阶段阻力',
+      '## 重要势力与阶段阻力',
       '势力阻力',
-      '### 当前场景与行动空间',
+      '## 当前场景幕后信息',
       '行动空间',
-      '### 信息揭示与线索密度',
+      '## 信息揭示与线索密度',
       '线索密度',
-      '### 遭遇、检定与代价',
+      '## 遭遇、检定与代价',
       '检定代价',
-      '### 爽点、危机与反转',
+      '## 爽点、危机与反转',
       '爽点反转',
-      '### 状态连续性',
+      '## 状态连续性',
       '状态',
-      '### 最近分支安排',
+      '## 最近分支安排',
       '最近分支',
-      '### 伏笔与回收',
+      '## 伏笔与回收',
       '伏笔',
-      '',
-      '## 后台导演私密',
-      '隐藏推进安排',
+    ].join('\n')
+    const agentBriefTemplate = [
+      '# 自定义正文 Agent 简报',
+      '## 当前目标与可见钩子',
+      '目标',
+      '## 当前场景与行动空间',
+      '场景',
+      '## 当前角色与可见关系',
+      '角色',
+      '## 已公开信息与可发现线索',
+      '线索',
+      '## 遭遇、检定与可见代价',
+      '代价',
+      '## 状态连续性',
+      '状态',
+      '## 最近分支承接',
+      '承接',
     ].join('\n')
     const planTemplateField = screen.getByRole('textbox', { name: /director\.md 模板/ })
     expect(planTemplateField).toHaveClass('min-h-[calc(20*1.25rem+1rem)]')
     fireEvent.change(planTemplateField, { target: { value: template } })
+    fireEvent.change(screen.getByRole('textbox', { name: /agent-brief\.md 模板/ }), { target: { value: agentBriefTemplate } })
 
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
     const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
     expect(payload.strategy?.planning_templates?.plan).toBe(template)
+    expect(payload.strategy?.planning_templates?.agent_brief).toBe(agentBriefTemplate)
   })
 
   it('saves advanced Markdown strategy prompt for story directors', async () => {
@@ -1195,6 +1212,7 @@ function loreItem(id: string, name: string, type: LoreItem['type'] = 'character'
     id,
     enabled: true,
     type,
+    type_source: 'manual',
     name,
     importance: 'important',
     load_mode: 'auto',

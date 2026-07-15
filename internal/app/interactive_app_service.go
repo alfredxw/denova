@@ -609,12 +609,12 @@ func (s *InteractiveAppService) AnalyzeInteractiveDirectorContext(storyID, branc
 		return agent.ContextAnalysis{}, err
 	}
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg).bindDirectorRuntime(a.directorTasksForWorkspace(workspace), a.interactiveDirectorGenerator())
-	instruction, err := conversation.BuildDirectorInstruction(turn)
+	stableContext, instruction, err := conversation.buildDirectorModelInput(turn)
 	if err != nil {
 		return agent.ContextAnalysis{}, err
 	}
 	log.Printf("[interactive-director-analysis] built context story_id=%s branch_id=%s turn_id=%s instruction=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, interactivePartSummary(instruction))
-	return agent.BuildInteractiveDirectorContextAnalysis(&runtimeCfg, instruction)
+	return agent.BuildInteractiveDirectorContextAnalysisWithStableContext(&runtimeCfg, stableContext.Title, stableContext.Content, stableContext.MaxBytes, instruction)
 }
 
 func interactiveDirectorAnalysisTurn(snapshot interactive.Snapshot, turnID string) (interactive.TurnEvent, error) {
@@ -822,14 +822,19 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 		}
 		persistedEmitted := false
 		maintenanceScheduled := false
+		scheduleMaintenance := func(turn interactive.TurnEvent) {
+			director := conversation.storyDirectorForMeta(storyCtx.Meta)
+			decision := shouldScheduleInteractiveDirectorAfterTurn(director.Strategy, turn)
+			log.Printf("[interactive-director-agent] maintenance decision story_id=%s branch_id=%s turn_id=%s run_plan=%t reason=%s", storyID, turn.BranchID, turn.ID, decision.ShouldRun, decision.Reason)
+			startInteractiveDirectorMaintenanceTask(&runtimeCfg, state, conversation, turn, sessionStore, decision.ShouldRun)
+			maintenanceScheduled = true
+		}
 		interactiveEmit := func(event agent.Event) {
 			if event.Type == "done" && !persistedEmitted && ctx.Err() == nil {
 				persistedEmitted = true
 				emitInteractiveTurnPersisted(store, storyID, conversation, emit)
 				if turn, _, ok := conversation.LastTurnForState(); ok {
-					log.Printf("[interactive-director-agent] maintenance scheduled story_id=%s branch_id=%s turn_id=%s", storyID, turn.BranchID, turn.ID)
-					startInteractiveDirectorMaintenanceTask(&runtimeCfg, state, conversation, turn, sessionStore, true)
-					maintenanceScheduled = true
+					scheduleMaintenance(turn)
 				}
 			}
 			emit(event)
@@ -847,8 +852,7 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 			OnMutationsVerified: a.automationMutationCallback("interactive_agent_post_run"),
 		}, interactiveEmit)
 		if turn, _, ok := conversation.LastTurnForState(); ok && ctx.Err() == nil && !maintenanceScheduled {
-			log.Printf("[interactive-director-agent] maintenance scheduled after run story_id=%s branch_id=%s turn_id=%s", storyID, turn.BranchID, turn.ID)
-			startInteractiveDirectorMaintenanceTask(&runtimeCfg, state, conversation, turn, sessionStore, true)
+			scheduleMaintenance(turn)
 		}
 		log.Printf("[interactive-agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})

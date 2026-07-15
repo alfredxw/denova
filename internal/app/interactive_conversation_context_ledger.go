@@ -86,8 +86,8 @@ func interactiveStoryContextSources(title, origin string, teller interactive.Tel
 	}
 	if strings.TrimSpace(directorPlanVisible) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "DirectorPlan", Title: "后台导演规划可读区", Content: directorPlanVisible,
-			Note: "bounded", Limit: interactiveStoryRuntimeContextBytes,
+			Source: "DirectorPlan", Title: "正文 Agent 简报", Content: directorPlanVisible,
+			Note: "source=agent-brief.md; bounded", Limit: interactiveStoryRuntimeContextBytes,
 		})
 	}
 	if strings.TrimSpace(residentLore) != "" {

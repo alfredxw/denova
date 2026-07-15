@@ -104,7 +104,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 可以基于已注入的故事上下文、共享设定、当前快照和 system prompt 中的文风参考索引继续剧情；# 只用于选择当前叙事风格中的分场景参考，不再代表文件引用。\n\n")
 	sb.WriteString("## 工具化召回流程\n")
 	sb.WriteString("- 资料库正文和较早历史不会默认整段注入；需要长期设定或角色资料时读取资料库，需要既往线索或已发生事实时检索当前分支 Turn 历史。\n")
-	sb.WriteString("- 资料库召回先用 list_lore_items 浏览或筛选轻量索引，再用 read_lore_items 读取本轮真正相关的少量正文；不要臆造未读取的资料库内容。\n")
+	sb.WriteString("- 上下文已提供有界资料名称目录；已知唯一名称时可直接用 read_lore_items 读取正文，无需先 list。需要按语义筛选时可用 list_lore_items，detail=full 能在同一次调用返回筛选结果正文；不要臆造未读取的资料库内容。\n")
 	sb.WriteString("- 历史事实召回使用 search_story_history 检索当前分支已提交 Turn；每条结果都带 turn_id 来源。Turn 是历史事实真源，Actor State 是当前投影，director.md 是未来计划，资料库是稳定设定，不得混用。\n")
 	sb.WriteString("- 每轮必须遵循这个流程：理解用户行动和当前快照 → 必要时读取资料库或检索历史 Turn → 判断是否需要固定检定 → 如需检定，调用 prepare_interactive_turn → 形成正文和一致的状态变化 → 直接输出完整故事正文 → 分别调用 submit_actor_state_patches 与 submit_choices → 两个模块都成功后立即结束。\n")
 	sb.WriteString("- 不是所有用户行动都需要检定。普通观察、对话、小范围移动、低风险试探、顺着既有局势推进且无明确代价的叙事承接，应由你直接裁定并写成故事正文。\n")
@@ -117,6 +117,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- prepare_interactive_turn 的 outcomes 每档只填写 result，不接收 state_changes；State Binding 的确定性变化由后端计算，其余变化统一在正文之后通过 Actor 状态 patch 提交。\n")
 	sb.WriteString("- prepare_interactive_turn 参数协议：difficulty 必须使用 very_easy/easy/normal/hard/very_hard；rule 可省略，若提供只能使用 template=dice_check、roll_mode=normal/advantage/disadvantage；工具只使用固定 d20，不要传其他骰子；不要使用 medium 或 moderate。\n")
 	sb.WriteString("- submit_actor_state_patches 与 submit_choices 每回合都必须在正文输出完成后分别调用；它们使用彼此独立的 JSON 参数，任一工具的 JSON 错误不会丢弃另一模块。ready=false 时只调用 retry_modules 指定的工具，已经 accepted 的模块不要重复提交；ready=true 后立即结束本回合。\n")
+	sb.WriteString("- submit_choices 可选携带 director_update。默认省略：普通承接、同一场景内的小变化、常规资源消耗和既定冲突推进不需要后台导演。只有当前目标/阶段改变、关键关系或势力重大变化、重要秘密揭示、不可逆结果，或现有简报已无法指导下一回合时才设置 needed=true，并只说明已发生事实；patch/replan 与修改文件由 Director 决定。\n")
 	sb.WriteString("- submit_actor_state_patches.patches 只能使用 replace、delta、create。path 是 JSON Pointer：第一段使用当前 Actor 状态上下文列出的稳定 actor_id，第二段使用冻结 schema 的 field_id；禁止用角色展示名称代替 actor_id。replace 设置字段或 object 子路径，delta 只增减已有数值且不能把缺失值当作 0，create 只用于 /<actor_id>。不能重复 RuleResolution 已消费的字段。\n")
 	sb.WriteString("- story_context 是每回合必须维护的基础状态对象：patches 至少 replace /story/当前事件；当前详细地点尚未初始化或正文确定地点变化时，同时 replace /story/当前详细地点。其余字段只按正文已经确定的事实更新；没有依据时保留现值，禁止用空值覆盖。\n")
 	sb.WriteString(fmt.Sprintf("- 非终局回合 choices 必须提供恰好 %d 个文本不同、行动方向也不同且与正文结尾一致的建议；只有 prepare_interactive_turn 返回 terminal_candidate 的终局回合才提交空数组。\n", normalizeInteractiveChoiceCount(in.ChoiceCount)))
@@ -143,13 +144,13 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	writeInteractiveReplyTargetInstruction(&sb, in.ReplyTargetChars, false)
 	sb.WriteString(fmt.Sprintf("本故事每个非终局回合必须生成恰好 %d 个不同的 choices。\n", normalizeInteractiveChoiceCount(in.ChoiceCount)))
 	sb.WriteString("\n## 召回说明\n")
-	sb.WriteString("资料库正文不在本段上下文中预注入；需要时请通过 list_lore_items/read_lore_items 主动召回。\n")
+	sb.WriteString("完整常驻资料已作为独立稳定上下文提供，lore-context.md 当前区段的按需正文在下方提供；只有工作集外资料需通过名称目录、list_lore_items 或 read_lore_items 召回。\n")
 	sb.WriteString("较早历史由有界上下文 checkpoint 承接；若本轮依赖具体旧事实，请通过 search_story_history 检索当前分支 Turn，并以返回的 turn_id 为来源。\n\n")
 	if strings.TrimSpace(in.LoreContext) != "" {
 		writeBlock(&sb, "规则与当前资料工作集（source: rule lore + lore-context.md, bounded）", in.LoreContext)
 	}
 	if strings.TrimSpace(in.DirectorPlanVisible) != "" {
-		writeBlock(&sb, "后台导演规划可读区（source: director.md visible section, bounded）", in.DirectorPlanVisible)
+		writeBlock(&sb, "正文 Agent 简报（source: agent-brief.md, bounded）", in.DirectorPlanVisible)
 	}
 	if strings.TrimSpace(in.StoryDirectorRules) != "" {
 		writeBlock(&sb, "故事导演规则清单（source: StoryDirector, bounded）", in.StoryDirectorRules)
@@ -207,7 +208,7 @@ func InteractiveStoryTurnInstruction(message, turnContext, runtimeContext string
 不是所有用户行动都需要检定；普通观察、对话、小范围移动、低风险试探和无明确代价的叙事承接，应由你直接裁定并写正文。
 只有当本回合存在明确风险、资源/关系/数值变化、当前 TRPG 检定配置命中、失败等级、不可逆后果或终局候选，需要固定规则裁定时，才调用 prepare_interactive_turn；工具只负责固定 d20、优势/劣势检定和四档后果选择，不负责替你理解剧情或选择事件。
 调用 prepare_interactive_turn 时，先参考当前 TRPG 检定配置中的 trigger、must_check_examples、skip_check_examples、difficulty_guidance 和 state_effect_guidance 判断是否检定、difficulty/bonuses 与四档 outcomes.*.result；outcomes 不接收 state_changes。skip_check_examples 命中时优先直接裁定，must_check_examples 命中时优先固定检定。若当前规则提供 state_bindings，投骰前选择 binding_id，并填写 actor_id 与必要的 target_actor_id；modifiers 与 outcome_state_changes 会按 field_id 自动读取状态计算，narrative_state_refs 用于帮助你写四档后果。必须填写 adjudication 说明检定理由、stakes、难度依据和优势/劣势依据；状态引用一律使用 actor_id + field_id；difficulty 必须使用 very_easy/easy/normal/hard/very_hard；普通难度使用 normal，不要使用 medium 或 moderate；rule 可省略，若提供只能是 template=dice_check、roll_mode=normal/advantage/disadvantage。
-先直接输出完整正文，再分别调用 submit_actor_state_patches 和 submit_choices。patches 使用 replace/delta/create 与以稳定 actor_id 开头的 JSON Pointer；每回合至少 replace /story/当前事件，首次初始化或地点变化时同步 /story/当前详细地点，不得重复 RuleResolution 已消费的字段。非终局回合 choices 必须给出当前故事配置数量的不同建议；仅 prepare_interactive_turn 返回 terminal_candidate 的终局回合使用空数组。两个工具彼此独立解析；ready=false 时只调用 retry_modules 指定的工具，ready=true 后立即结束，不得重复输出正文。不得把 TurnResult、工具结果或状态 JSON 写进正文。
+先直接输出完整正文，再分别调用 submit_actor_state_patches 和 submit_choices。patches 使用 replace/delta/create 与以稳定 actor_id 开头的 JSON Pointer；每回合至少 replace /story/当前事件，首次初始化或地点变化时同步 /story/当前详细地点，不得重复 RuleResolution 已消费的字段。非终局回合 choices 必须给出当前故事配置数量的不同建议；仅 prepare_interactive_turn 返回 terminal_candidate 的终局回合使用空数组。submit_choices 的 director_update 默认省略，只有本轮已发生事实让目标、阶段、关键关系/势力、重大线索或规划前提发生实质变化时才设置 needed=true。两个工具彼此独立解析；ready=false 时只调用 retry_modules 指定的工具，ready=true 后立即结束，不得重复输出正文。不得把 TurnResult、工具结果或状态 JSON 写进正文。
 长期设定和角色资料通过 list_lore_items/read_lore_items 按需读取；如果本轮行动明显依赖既往线索、旧承诺或分支内已发生事实，使用 search_story_history 检索 Turn，并以返回的 turn_id 为来源。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
 其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。%s`, strings.TrimSpace(message), turnBlock, contextBlock)
@@ -216,17 +217,17 @@ func InteractiveStoryTurnInstruction(message, turnContext, runtimeContext string
 func BuildInteractiveDirectorSystemInstruction() string {
 	return strings.Join([]string{
 		"你是 Denova 游戏模式的后台导演 Agent。",
-		"你负责在首个前台互动回合前建立初始 director.md 与 lore-context.md，并在后续回合落盘后观察是否需要 keep、patch 或 replan。",
+		"你负责在首个前台互动回合前建立 director.md、agent-brief.md 与 lore-context.md，并在后续回合落盘后观察是否需要 keep、patch 或 replan。",
 		"你不负责续写本回合剧情，不能改写本回合正文，也不能替用户选择下一步行动。",
 		"Turn（含 RuleResolution 与 StateDelta）是已发生事实真源，Actor State 是当前投影，director.md 是未来计划，资料库是稳定设定。你只能读取已提交的 Actor State，不得写 Actor State 或改写历史 Turn；需要较早证据时使用 search_story_history。",
 		"你必须优先参考资料库里的重要角色、势力、世界规则、地点和既有关系；非必要不要自创核心角色、组织、规则或地点，资料库不足时才可安排临时候选。",
 		"规划对象是以 TRPG 回合、检定和分支推进的互动小说，不是纯 TRPG 模组；出场角色不等同于 NPC，应优先规划男/女主角、关键同伴、阶段性反派、重要势力代表和关系节点。",
 		"剧情节奏要高信息密度、网文式可读：每个可玩回合至少推进一个有效信息点、角色关系变化、压力升级、收益/代价或新悬念，避免连续空转、低信息量氛围描写和无关细节。",
-		"当前 director.md 与 lore-context.md 已作为有来源、有上限的完整快照注入。你不得再用文件工具读写它们；可使用 list_lore_items/read_lore_items 分页审阅资料库，并可读取事件卡。",
-		"director.md 必须保留固定中文标题：正文Agent可读、后台导演私密、阶段钩子与阅读欲望、资料库锚点、核心角色与关系张力、重要势力与阶段阻力、当前场景与行动空间、信息揭示与线索密度、遭遇、检定与代价、爽点、危机与反转、状态连续性、最近分支安排、伏笔与回收。",
-		"lore-context.md 是当前分支资料工作集，只使用 [[资料名称]] 引用，不复制资料正文；当前区段自动提供给正文 Agent，候场与暂离场区段仅供后台导演。规则类资料由后端全量加载，不写入此文件。",
-		"正文 Agent 和快捷选择只能看到“正文Agent可读”区；“后台导演私密”区只能服务后台规划，不能泄露给玩家正文。",
-		"完成观察后必须且只能调用一次 submit_director_plan_update：keep 只提交 decision；patch/replan 在同一次调用中提交 decision 与两份完整文档。该工具是本任务终止点；接受后立即结束，不要再输出摘要、JSON、完整 Markdown 或故事正文。",
+		"当前三份导演 Markdown 已作为有来源、有上限的完整快照注入。你不得再用文件工具读写它们；可用资料工具审阅候选，并可读取事件卡。",
+		"director.md 只保存后台私密规划；agent-brief.md 只保存正文 Agent 可见事实与裁定边界。不得把隐藏真相、未来答案或幕后动机写入 agent-brief.md。",
+		"lore-context.md 是当前分支资料工作集，只使用 [[资料名称]] 引用，不复制资料正文；二级标题固定为 当前、候场、暂离场，资料类型用自由三级标题组织。当前区段自动提供给正文 Agent，候场与暂离场仅供后台导演。",
+		"每轮都会注入最多 64 KiB 的资料名称目录。已知唯一名称时直接 read_lore_items；语义筛选时使用 list_lore_items，必要时 detail=full 一次读取正文。新增当前/候场引用前必须真实读过相应资料正文。",
+		"使用 submit_director_plan_update 增量提交 Markdown Patch：keep 使用空 updates 并 finalize=true；patch/replan 只提交实际变化的文件与 section。文件会独立 accepted/rejected，后续只重试 retry_documents；finalize 成功后立即结束，不要再输出摘要、JSON、完整 Markdown 或故事正文。",
 	}, "\n")
 }
 
@@ -271,35 +272,39 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	sb.WriteString("## 本次任务\n")
 	taskHint := strings.TrimSpace(in.TaskHint)
 	if taskHint == "" {
-		taskHint = "director_plan_update：观察已提交事实并判断 keep、patch 或 replan；只维护当前分支 director.md。"
+		taskHint = "director_plan_update：观察已提交事实并判断 keep、patch 或 replan；只维护当前分支三份导演文档。"
 	}
 	sb.WriteString(taskHint)
 	sb.WriteString("\n\n")
 	sb.WriteString("## 计划决策协议\n")
 	if in.OpeningInitialization {
 		sb.WriteString("- 当前尚无已落盘正文；必须根据开局输入建立第一版计划，mode 使用 replan，不得声称存在未提供的历史事实。\n")
-		sb.WriteString("- 先确定开局场景、近期目标、当前与候场角色/势力、信息揭示、风险代价和可玩行动空间，再更新两个规划文件。\n")
+		sb.WriteString("- 先确定开局场景、近期目标、当前与候场角色/势力、信息揭示、风险代价和可玩行动空间，再更新三份规划文件。\n")
 	} else {
 		sb.WriteString("- 先根据最终正文、RuleResolution、StateDelta、当前状态和现有计划判断 mode：keep、patch 或 replan。\n")
 		sb.WriteString("- keep：当前计划仍有效，不得编辑 director.md。\n")
-		sb.WriteString("- patch：只局部更新当前场景、最近节拍、NPC 意图或伏笔状态，保留仍有效的长期主线。\n")
+		sb.WriteString("- patch：默认只更新 agent-brief.md，让下一回合可见指导跟上已发生事实；保留仍有效的阶段计划。\n")
 		sb.WriteString("- replan：只有场景目标被替换、多个计划前提失效、关键角色/势力/终局事实发生不可逆变化或计划缺失时使用。\n")
 	}
 	sb.WriteString("- 已发生事实以 Turn 为准，当前值以 Actor State 为准；需要较早证据时使用 search_story_history。不得改写历史 Turn 或 Actor State。\n\n")
 	sb.WriteString("## 结构化提交要求\n")
 	sb.WriteString("- 当前导演规划文档快照就是本轮完整基线，不要再调用文件工具读取或编辑。\n")
-	sb.WriteString("- 必须且只能调用一次 submit_director_plan_update；后端绑定当前分支和 revision，并整体校验两份文档。\n")
-	sb.WriteString("- keep 只提交 decision 且省略 docs；patch/replan 必须在同一次调用中提交 docs.plan 与 docs.lore_context 的完整最终内容，不能只给 diff 或其中一份。\n")
-	sb.WriteString("- director.md 同时承载大方向、当前事件和最近分支安排，但内容组织要围绕互动小说的角色、关系、势力压力、信息揭示、检定代价和阅读钩子。\n\n")
+	sb.WriteString("- 每个文件快照都给出 base_hash。updates 只提交实际变化的文件，优先用 replace_section；replace_text 必须精确匹配一次，replace_document 只用于开局、显式重建或无法安全局部编辑的真正 replan。\n")
+	sb.WriteString("- 文件独立校验并暂存在本轮草稿；工具返回 accepted、rejected 与 retry_documents。重试只发送失败文件，已经 accepted 的文件不要重传；finalize 成功前不修改工作区，成功后后端原子发布。\n")
+	sb.WriteString("- keep 使用空 updates 与 finalize=true。patch 至少更新一个文件；普通推进默认只 patch agent-brief.md。replan 必须更新 director.md 与 agent-brief.md，lore-context.md 仍然按需。\n")
+	sb.WriteString("- director.md 只承载阶段级后台方向、隐藏信息和选角推理；正常推进不要把它当回合日志。agent-brief.md 承载下一回合正文 Agent 可安全使用的可见事实、行动空间与裁定边界。\n")
+	sb.WriteString("- 只有阶段规划前提失效、阶段结束或重大不可逆偏差时才修改 director.md；只有当前/候场/暂离场资料集合确实变化时才修改 lore-context.md。\n\n")
 	sb.WriteString("## 资料工作集要求\n")
 	sb.WriteString("- lore-context.md 只写资料引用和一句当前用途，不复制资料正文，不重复 director.md 的剧情计划。\n")
-	sb.WriteString("- 首次建立工作集、资料库变化或明确 replan 时，优先使用已注入的有界资料名称目录发现候选；目录发生截断或需要按语义缩小范围时，再用 list_lore_items 浏览或筛选。\n")
-	sb.WriteString("- 决定引用某项资料前，用 read_lore_items 的 names 完整读取当前、候场资料及其简介中提到的关键关联角色，避免凭简介虚构既有关系。\n")
-	sb.WriteString("- 当前背景与地点、当前势力、当前角色、当前物品与其他设定会自动完整加载给正文 Agent；候场和暂离场只供你规划。只把近期确实需要的资料放入当前区段。\n")
+	sb.WriteString("- 每轮都已注入最多 64 KiB 的资料名称目录。先从真实 name 发现候选；目录分页时用 next_offset 继续，按语义缩小时再用 list_lore_items。\n")
+	sb.WriteString("- 已知唯一名称时直接用 read_lore_items；需要筛选并同时读取正文时用 list_lore_items 的 detail=full。新增当前或候场引用前，必须完整读取该资料及必要的关键关联角色，避免凭名称或简介虚构关系。\n")
+	sb.WriteString("- lore-context.md 的二级标题固定为 当前、候场、暂离场；角色、势力、地点、物品等只作为可自由调整的三级标题。当前区段会自动完整加载给正文 Agent，候场和暂离场只供你规划。\n")
 	sb.WriteString("- 玩家或 Game Agent 临时召回了工作集外资料时，判断它应保持临时、进入候场、进入当前或转为暂离场。\n")
-	sb.WriteString("- 资料引用必须使用唯一名称语法 [[资料名称]]；规则类资料由系统自动全量加载，不要写入 lore-context.md。\n\n")
+	sb.WriteString("- 资料引用必须使用唯一名称语法 [[资料名称]]；常驻资料已由系统完整加载，不要重复写入 lore-context.md。按需规则与其他按需资料一样，确实需要时可放入当前区段。\n\n")
 	sb.WriteString("## 固定标题\n")
-	sb.WriteString("- director.md 必须保留：正文Agent可读；后台导演私密；阶段钩子与阅读欲望；资料库锚点；核心角色与关系张力；重要势力与阶段阻力；当前场景与行动空间；信息揭示与线索密度；遭遇、检定与代价；爽点、危机与反转；状态连续性；最近分支安排；伏笔与回收。\n\n")
+	sb.WriteString("- director.md 必须保留：阶段目标与隐藏钩子；资料库锚点；选角覆盖；核心角色与关系张力；重要势力与阶段阻力；当前场景幕后信息；信息揭示与线索密度；遭遇、检定与代价；爽点、危机与反转；状态连续性；最近分支安排；伏笔与回收。\n")
+	sb.WriteString("- agent-brief.md 必须保留：当前目标与可见钩子；当前场景与行动空间；当前角色与可见关系；已公开信息与可发现线索；遭遇、检定与可见代价；状态连续性；最近分支承接。\n")
+	sb.WriteString("- lore-context.md 必须保留二级标题：当前；候场；暂离场。\n\n")
 	sb.WriteString("## 更新原则\n")
 	sb.WriteString("- 你不负责续写本回合剧情、不负责改写正文、不负责替用户选择下一步行动；只维护后台导演规划。\n")
 	sb.WriteString("- 规划要服务后续互动 Agent：通过重要角色、关系张力、势力阻力、信息揭示、遭遇检定、收益代价和状态连续性管理互动流程。\n")
@@ -307,15 +312,15 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	sb.WriteString("- 重要角色优先：出场角色不等同于 NPC，应优先安排男/女主角、关键同伴、阶段性反派、重要势力代表和关系节点；普通 NPC 只有承担信息、冲突、选择代价或节奏功能时才出现。\n")
 	sb.WriteString("- 高信息密度：最近安排要让用户每个可玩回合都体验到有效信息、关系变化、压力升级、收益/代价或新悬念，避免连续空转和纯氛围描写。\n")
 	sb.WriteString("- 兼顾用户自由选择：给主线牵引和合理后续安排，但不要锁死唯一解，不要替用户做下一步选择。\n")
-	sb.WriteString("- “正文Agent可读”区只放本轮后正文 Agent 可使用的信息；不得放会剧透关键真相、幕后动机或未来答案的内容。\n")
-	sb.WriteString("- “后台导演私密”区可保存隐藏真相、长期反转、未公开角色动机、备用代价和伏笔回收条件。\n")
+	sb.WriteString("- agent-brief.md 只放本轮后正文 Agent 可使用的信息；不得放会剧透关键真相、幕后动机或未来答案的内容。director.md 可保存这些后台私密信息。\n")
+	sb.WriteString("- 在 director.md 的“选角覆盖”中标明场景规模和已审阅候选。亲密场景建议当前 1–3 / 候场 2–4，标准场景建议当前 2–5 / 候场 4–8，群像场景建议当前 4–8 / 候场 6–12；低于建议不是错误，但必须说明为何不存在关系、信息或冲突功能空缺。\n")
 	sb.WriteString("- 事件目录只是规划输入；不要做强制/禁用队列，事件要融入当前设定、角色关系、冲突源和 RuleResolution 结果。\n")
 	sb.WriteString("- EventOpportunity.due=false 时不得输出 event_decision；due=true 且 kind=new 时必须输出 event_decision，并且 mode 只能是 none 或 seed。\n")
 	sb.WriteString("- kind=new 时目录只提供 event_ref 索引；需要卡片细节时调用 read_event_cards，一次最多读取 8 张。只能 seed 当前目录中的 event_ref。\n")
 	sb.WriteString("- kind=active 时观察当前活跃事件：没有变化就省略 event_decision；有事实证据时可 advance、payoff、resolve 或 abandon。advance/payoff/resolve 必须引用当前分支真实的 evidence_turn_ids。\n")
 	sb.WriteString("- 第一版每个分支最多一个活跃事件；事件运行态由后端写入 metadata.json，不要把它伪造成历史 Turn 或 Actor State。\n")
 	sb.WriteString("- 如果本回合出现终局、重大失败或用户偏离主线，要承接为分支状态和后续代价，而不是强行圆回原主线。\n")
-	sb.WriteString("- 保存后的两个文件必须包含各自全部固定标题，且不超过后端字节和当前资料正文预算。\n\n")
+	sb.WriteString("- 保存后的三份文件必须包含各自全部固定标题，且不超过后端字节和当前资料正文预算。\n\n")
 	writeBlock(&sb, "故事标题", in.Title)
 	writeBlock(&sb, "开局设定", in.Origin)
 	writeBlock(&sb, "本次开局输入（source: first Game Agent request, bounded）", in.OpeningContext)
@@ -341,7 +346,7 @@ func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	if strings.TrimSpace(in.DirectorEventCatalog) != "" {
 		writeBlock(&sb, "可选事件卡紧凑索引（source: explicitly selected event packages, bounded）", in.DirectorEventCatalog)
 	}
-	sb.WriteString("\n完成观察后，按本轮事件机会规则把 event_decision 省略或填写在 decision 中，并调用一次 submit_director_plan_update。该工具是本任务终止点；接受后立即结束，不要再输出摘要、JSON、完整 Markdown 或故事正文。\n")
+	sb.WriteString("\n完成观察后，按本轮事件机会规则把 event_decision 省略或填写在 decision 中，并通过 submit_director_plan_update 增量提交。只重试 rejected 文件，finalize 成功后立即结束，不要再输出摘要、JSON、完整 Markdown 或故事正文。\n")
 	return sb.String()
 }
 

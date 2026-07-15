@@ -463,12 +463,20 @@ func (s *directorToolDisplayState) progressEvent() (session.DisplayEvent, bool) 
 
 func (s *directorToolDisplayState) projectDisplayArgs() (string, bool) {
 	if strings.TrimSpace(s.name) == submitDirectorPlanUpdateToolName {
-		mode, _ := partialDirectorJSONStringField(s.rawArgs, "mode")
-		mode = strings.TrimSpace(mode)
+		input := submitDirectorPlanUpdateInput{}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(s.rawArgs)), &input); err != nil {
+			encoded, _ := json.Marshal(map[string]string{"mode": "pending"})
+			return string(encoded), true
+		}
+		mode := strings.TrimSpace(string(input.Decision.Mode))
 		if mode == "" {
 			mode = "pending"
 		}
-		encoded, _ := json.Marshal(map[string]string{"mode": mode})
+		encoded, _ := json.Marshal(map[string]any{
+			"mode":      mode,
+			"documents": len(input.Updates),
+			"finalize":  input.Finalize,
+		})
 		return string(encoded), true
 	}
 	preview, ok := directorToolPathArgPreviewFromArgs(s.rawArgs)
@@ -488,8 +496,14 @@ func (s *directorToolDisplayState) syncDecodedGeneratedChars() {
 	}
 	if strings.TrimSpace(s.name) == submitDirectorPlanUpdateToolName {
 		var input submitDirectorPlanUpdateInput
-		if err := json.Unmarshal([]byte(strings.TrimSpace(s.rawArgs)), &input); err == nil && input.Docs != nil {
-			s.generatedChars = utf8.RuneCountInString(input.Docs.Plan) + utf8.RuneCountInString(input.Docs.LoreContext)
+		if err := json.Unmarshal([]byte(strings.TrimSpace(s.rawArgs)), &input); err == nil {
+			total := 0
+			for _, update := range input.Updates {
+				for _, edit := range update.Edits {
+					total += utf8.RuneCountInString(edit.Content)
+				}
+			}
+			s.generatedChars = total
 		}
 		return
 	}
@@ -682,7 +696,7 @@ func directorToolGeneratedTextKeys(name string) []string {
 	case "edit_file":
 		return []string{"new_string", "content"}
 	case submitDirectorPlanUpdateToolName:
-		return []string{"plan", "lore_context"}
+		return []string{"plan", "agent_brief", "lore_context"}
 	default:
 		return []string{"content", "new_string"}
 	}
@@ -716,7 +730,7 @@ func markDirectorPlanInputHidden(event *session.DisplayEvent, generatedChars int
 	if event == nil {
 		return
 	}
-	event.SSEHiddenFields = []string{"content", "new_string", "old_string", "plan", "lore_context"}
+	event.SSEHiddenFields = []string{"content", "new_string", "old_string", "plan", "agent_brief", "lore_context"}
 	event.SSEHiddenReason = directorPlanHiddenReason
 	event.SSEDisplayNotice = directorPlanHiddenNotice
 	if generatedChars > 0 {
@@ -738,5 +752,10 @@ func isDirectorPlanPath(path string) bool {
 	for strings.HasSuffix(normalized, "/") {
 		normalized = strings.TrimSuffix(normalized, "/")
 	}
-	return normalized == "director.md" || strings.HasSuffix(normalized, "/director.md")
+	for _, name := range []string{"director.md", "agent-brief.md", "lore-context.md"} {
+		if normalized == name || strings.HasSuffix(normalized, "/"+name) {
+			return true
+		}
+	}
+	return false
 }

@@ -329,7 +329,9 @@ func TestBuiltinInteractiveDirectorPromptUsesMaintenanceToolContract(t *testing.
 		"turn_id",
 		"director.md",
 		"submit_director_plan_update",
-		"keep 不带文档",
+		"keep 使用空 updates",
+		"普通更新默认只改 agent-brief.md",
+		"只重试 retry_documents",
 	} {
 		if !strings.Contains(got, required) {
 			t.Fatalf("builtin interactive director prompt missing %q:\n%s", required, got)

@@ -10,12 +10,18 @@ import (
 	"denova/internal/interactive"
 )
 
-func TestInteractiveDirectorPlanToolSubmitsOneStructuredPayload(t *testing.T) {
+func TestInteractiveDirectorPlanToolSubmitsMarkdownPatchPayload(t *testing.T) {
 	var received interactive.DirectorPlanUpdateSubmission
 	tools, err := newInteractiveDirectorPlanTools(InteractiveStoryToolContext{
 		SubmitDirectorPlanUpdate: func(_ context.Context, submission interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error) {
 			received = submission
-			return interactive.DirectorPlanUpdateReceipt{Accepted: true, Mode: submission.Decision.Mode, DocsUpdated: submission.Docs != nil, Decision: submission.Decision}, nil
+			return interactive.DirectorPlanUpdateReceipt{
+				Accepted:          []interactive.DirectorPlanDocumentAcceptance{{Document: interactive.DirectorDocumentAgentBrief, Hash: "next-hash"}},
+				AcceptedDocuments: []string{interactive.DirectorDocumentAgentBrief},
+				ChangedDocuments:  []string{interactive.DirectorDocumentAgentBrief},
+				Finalized:         true,
+				Decision:          submission.Decision,
+			}, nil
 		},
 	})
 	if err != nil || len(tools) != 1 {
@@ -32,14 +38,14 @@ func TestInteractiveDirectorPlanToolSubmitsOneStructuredPayload(t *testing.T) {
 	if !ok {
 		t.Fatal("director plan tool must be invokable")
 	}
-	output, err := invokable.InvokableRun(context.Background(), `{"decision":{"mode":"patch","reason":"场景变化"},"docs":{"plan":"完整规划","lore_context":"完整资料工作集"}}`)
+	output, err := invokable.InvokableRun(context.Background(), `{"decision":{"mode":"patch","reason":"场景变化"},"updates":[{"document":"agent-brief.md","base_hash":"brief-hash","edits":[{"op":"replace_section","heading":"状态连续性","content":"抵达门前。"}]}],"finalize":true}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if received.Decision.Mode != interactive.PlanDecisionPatch || received.Docs == nil || received.Docs.Plan != "完整规划" || received.Docs.LoreContext != "完整资料工作集" {
+	if received.Decision.Mode != interactive.PlanDecisionPatch || !received.Finalize || len(received.Updates) != 1 || received.Updates[0].Document != interactive.DirectorDocumentAgentBrief || received.Updates[0].BaseHash != "brief-hash" {
 		t.Fatalf("unexpected submission: %#v", received)
 	}
-	if !strings.Contains(output, `"accepted":true`) || !strings.Contains(output, `"docs_updated":true`) {
+	if !strings.Contains(output, `"finalized":true`) || !strings.Contains(output, `"changed_documents":["agent-brief.md"]`) {
 		t.Fatalf("unexpected receipt: %s", output)
 	}
 }
