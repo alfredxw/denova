@@ -165,6 +165,19 @@ func normalizeActorStateFieldName(value string) string {
 	return strings.TrimSpace(norm.NFKC.String(value))
 }
 
+// validateActorStateFieldName keeps field identity distinct from the JSON
+// Pointer segments used by turn state updates.
+func validateActorStateFieldName(value string) error {
+	fieldID := normalizeActorStateFieldName(value)
+	if fieldID == "" {
+		return fmt.Errorf("状态字段名称不能为空 / State field name cannot be empty")
+	}
+	if strings.Contains(fieldID, "/") {
+		return fmt.Errorf("状态字段名称不能包含路径分隔符“/” / State field name cannot contain the path separator “/”: %s", fieldID)
+	}
+	return nil
+}
+
 func actorStateFieldID(field ActorStateField) string {
 	return normalizeActorStateFieldName(firstNonEmptyString(field.Name, field.ID, field.Path))
 }
@@ -660,8 +673,8 @@ func validateActorStateSystem(system StoryDirectorActorStateSystem) error {
 		seen := map[string]string{}
 		for _, field := range template.Fields {
 			fieldID := actorStateFieldID(field)
-			if fieldID == "" {
-				return fmt.Errorf("Actor 状态模板 %s 存在空状态名称", template.ID)
+			if err := validateActorStateFieldName(fieldID); err != nil {
+				return fmt.Errorf("Actor 状态模板 %s: %w", template.ID, err)
 			}
 			key := actorStateFieldNameKey(fieldID)
 			if previous, ok := seen[key]; ok {

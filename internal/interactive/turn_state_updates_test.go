@@ -60,8 +60,8 @@ func TestCompileTurnStateUpdatesRejectsMissingDeltaTargetAndOverlappingPaths(t *
 	}
 }
 
-func TestCompileTurnStateUpdatesUsesEscapedFieldIDs(t *testing.T) {
-	fieldID := "精神/意志~状态"
+func TestCompileTurnStateUpdatesUsesEscapedTildeInFieldIDs(t *testing.T) {
+	fieldID := "精神~状态"
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{ID: "protagonist", Fields: []ActorStateField{{Name: fieldID, Type: "string", Visibility: "visible"}}}}}
 	state := map[string]any{"actors": map[string]any{"protagonist": map[string]any{"id": "protagonist", "template_id": "protagonist", "state": map[string]any{fieldID: "动摇"}}}}
 	path := formatStateUpdatePath([]string{"protagonist", fieldID})

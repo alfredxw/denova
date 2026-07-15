@@ -20,13 +20,13 @@ func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t
 			ID:   "protagonist",
 			Name: "主角",
 			Fields: []interactive.ActorStateField{
-				{Name: "当前身体/精神 状态", Type: "string", Order: 10},
+				{Name: "当前身体与精神 状态", Type: "string", Order: 10},
 				{Name: "生命值", Type: "number", Order: 20},
 			},
 		}},
 		InitialActors: []interactive.ActorStateInitialActor{{
 			ID: "protagonist", Name: "主角", TemplateID: "protagonist",
-			State: map[string]any{"当前身体/精神 状态": "正常", "生命值": 10},
+			State: map[string]any{"当前身体与精神 状态": "正常", "生命值": 10},
 		}},
 	}
 	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "即时校验", ActorState: &actorState})
@@ -48,7 +48,7 @@ func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t
 
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "休息", 800, &config.Config{})
 	withUnknownField := testTurnSubmissionInput([]interactive.StateUpdate{
-		{Op: "replace", Path: "/protagonist/当前身体~1精神 状态", Value: "安定"},
+		{Op: "replace", Path: "/protagonist/当前身体与精神 状态", Value: "安定"},
 		{Op: "replace", Path: "/protagonist/body.status", Value: "良好"},
 	}, true)
 	receipt, err = conversation.SubmitTurnResult(context.Background(), withUnknownField)
@@ -58,7 +58,7 @@ func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t
 	if conversation.InteractiveNarrativeReady() {
 		t.Fatal("narrative must remain closed while state_updates needs retry")
 	}
-	replacement := testTurnSubmissionInput([]interactive.StateUpdate{{Op: "replace", Path: "/protagonist/当前身体~1精神 状态", Value: "安定"}}, false)
+	replacement := testTurnSubmissionInput([]interactive.StateUpdate{{Op: "replace", Path: "/protagonist/当前身体与精神 状态", Value: "安定"}}, false)
 	receipt, err = conversation.SubmitTurnResult(context.Background(), replacement)
 	if err != nil || !receipt.Ready || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted {
 		t.Fatalf("state-only retry should retain accepted choices: receipt=%#v err=%v", receipt, err)
@@ -80,7 +80,7 @@ func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t
 	actors, _ := snapshot.State["actors"].(map[string]any)
 	actor, _ := actors["protagonist"].(map[string]any)
 	state, _ := actor["state"].(map[string]any)
-	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.Narrative != "主角平复了呼吸。" || state["当前身体/精神 状态"] != "安定" {
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.Narrative != "主角平复了呼吸。" || state["当前身体与精神 状态"] != "安定" {
 		t.Fatalf("narrative and actor state must survive the same commit: turn=%#v state=%#v", snapshot.CurrentTurn, state)
 	}
 }

@@ -9,7 +9,7 @@ import (
 )
 
 func TestStructuredRuleStateChangeUsesExactFieldID(t *testing.T) {
-	fieldID := "体力/行动.值"
+	fieldID := "体力与行动.值"
 	system := normalizeActorStateSystem(StoryDirectorActorStateSystem{
 		Templates:     []ActorStateTemplate{{ID: "protagonist", Fields: []ActorStateField{{Name: fieldID, Type: "number", Default: 5.0}}}},
 		InitialActors: []ActorStateInitialActor{{ID: "protagonist", TemplateID: "protagonist", State: map[string]any{fieldID: 5.0}}},
@@ -37,7 +37,7 @@ func TestStructuredRuleStateChangeUsesExactFieldID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), `"path"`) || !strings.Contains(string(data), `"field_id":"体力/行动.值"`) {
+	if strings.Contains(string(data), `"path"`) || !strings.Contains(string(data), `"field_id":"体力与行动.值"`) {
 		t.Fatalf("new rule interface must not emit paths: %s", data)
 	}
 }
@@ -194,8 +194,8 @@ func TestStoryFreezesChineseActorStateFieldIDs(t *testing.T) {
 	}
 }
 
-func TestActorStateFieldIDSupportsPunctuationWithoutPaths(t *testing.T) {
-	fieldID := "精神/意志.状态"
+func TestActorStateFieldIDSupportsNonPathPunctuation(t *testing.T) {
+	fieldID := "精神与意志.状态"
 	system := StoryDirectorActorStateSystem{
 		Templates: []ActorStateTemplate{{
 			ID:     "protagonist",
@@ -226,6 +226,59 @@ func TestActorStateFieldIDSupportsPunctuationWithoutPaths(t *testing.T) {
 	}
 	if got := actorStateFieldValue(snapshot.State, "protagonist", fieldID); got != "镇定" {
 		t.Fatalf("punctuated field id should be an exact map key, got %#v state=%#v", got, snapshot.State)
+	}
+}
+
+func TestActorStateRejectsPathSeparatorInFieldNames(t *testing.T) {
+	for _, fieldID := range []string{"精神/意志状态", "精神／意志状态"} {
+		t.Run(fieldID, func(t *testing.T) {
+			_, err := NewActorStateLibrary(t.TempDir()).Create(ActorStateModule{
+				ID:   "invalid-field-name",
+				Name: "非法字段名",
+				ActorState: StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
+					ID:     "protagonist",
+					Name:   "主角",
+					Fields: []ActorStateField{{Name: fieldID, Type: "string"}},
+				}}},
+			})
+			if err == nil || !strings.Contains(err.Error(), "路径分隔符") {
+				t.Fatalf("field name %q should reject the path separator, got %v", fieldID, err)
+			}
+		})
+	}
+}
+
+func TestCreateStoryRejectsPathSeparatorInActorStateFieldNames(t *testing.T) {
+	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
+		ID:     "protagonist",
+		Name:   "主角",
+		Fields: []ActorStateField{{Name: "当前精神/意志状态", Type: "string"}},
+	}}}
+	_, err := NewStore(t.TempDir()).CreateStory(CreateStoryRequest{Title: "非法状态字段", ActorState: &system})
+	if err == nil || !strings.Contains(err.Error(), "路径分隔符") {
+		t.Fatalf("story creation must reject slash-delimited field names, got %v", err)
+	}
+}
+
+func TestBuiltinActorStateFieldNamesExcludePathSeparator(t *testing.T) {
+	systems := []struct {
+		name   string
+		system StoryDirectorActorStateSystem
+	}{{name: "default", system: defaultActorStateSystem()}}
+	for _, module := range builtinActorStateModules() {
+		systems = append(systems, struct {
+			name   string
+			system StoryDirectorActorStateSystem
+		}{name: module.ID, system: module.ActorState})
+	}
+	for _, item := range systems {
+		for _, template := range item.system.Templates {
+			for _, field := range template.Fields {
+				if strings.Contains(normalizeActorStateFieldName(field.Name), "/") {
+					t.Fatalf("built-in state system %s template %s contains path separator in field %q", item.name, template.ID, field.Name)
+				}
+			}
+		}
 	}
 }
 

@@ -58,8 +58,8 @@ func validateAdaptedActorStateSystem(system StoryDirectorActorStateSystem, requi
 }
 
 func validateActorStateAdaptationField(field ActorStateField) error {
-	if normalizeActorStateFieldName(field.Name) == "" {
-		return fmt.Errorf("状态字段缺少 name")
+	if err := validateActorStateFieldName(field.Name); err != nil {
+		return err
 	}
 	switch strings.TrimSpace(field.Type) {
 	case "number", "string", "bool", "enum", "object", "list":

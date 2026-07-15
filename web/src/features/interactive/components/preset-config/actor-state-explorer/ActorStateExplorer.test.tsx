@@ -31,6 +31,33 @@ describe('ActorStateExplorer', () => {
 		expect(screen.queryByText(/^路径$|^Path$/)).not.toBeInTheDocument()
 	})
 
+	it('rejects path separators in field names and explains the constraint', async () => {
+		const user = userEvent.setup()
+		const onValidityChange = vi.fn()
+		render(
+			<ActorStateExplorer
+				value={{
+					templates: [{
+						id: 'protagonist',
+						name: '主角状态',
+						fields: [{ name: '当前精神/意志状态', type: 'string' }],
+					}],
+					initial_actors: [],
+					trait_pools: [],
+				}}
+				onChange={vi.fn()}
+				onValidityChange={onValidityChange}
+			/>,
+		)
+
+		await waitFor(() => expect(onValidityChange).toHaveBeenLastCalledWith(false))
+		const fieldItem = screen.getByRole('treeitem', { name: '当前精神/意志状态' })
+		await user.click(within(fieldItem).getByTitle(/^当前精神\/意志状态/))
+		const input = await screen.findByDisplayValue('当前精神/意志状态')
+		expect(input).toHaveAttribute('aria-invalid', 'true')
+		expect(screen.getByRole('alert')).toHaveTextContent(/路径分隔符.*\/|path separator.*\//i)
+	})
+
   it('uses compact standalone sizing and exposes the state navigator as a tree', async () => {
     const user = userEvent.setup()
     const { container } = render(
