@@ -161,9 +161,8 @@ func (s *WorkspaceRuntimeManager) UpdateBookInfo(path string, title, author, des
 	if title != "" {
 		meta.Title = title
 	}
-	if author != "" {
-		meta.Author = author
-	}
+	// author 允许设为空字符串（清除作者），所以总是更新。
+	meta.Author = author
 	// description 允许设为空字符串（清除简介），所以总是更新。
 	meta.Description = description
 	return s.app.bookMetaStore.Write(absPath, meta)
