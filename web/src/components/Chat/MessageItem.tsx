@@ -1,6 +1,6 @@
 import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { Activity, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, ClipboardCheck, ClipboardList, Clock3, Copy, Dice5, FileText, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw, Send, X } from 'lucide-react'
+import { Activity, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, ClipboardCheck, ClipboardList, Copy, Dice5, FileText, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw, Send, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { MarkdownRenderer, type MarkdownRendererComponents } from '@/components/common/MarkdownRenderer'
@@ -19,6 +19,7 @@ import { Message as AIMessage, MessageContent as AIMessageContent } from '@/comp
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning'
 import { Plan, PlanContent, PlanHeader } from '@/components/ai-elements/plan'
 import { Tool, ToolContent } from '@/components/ai-elements/tool'
+import { Shimmer } from '@/components/ai-elements/shimmer'
 
 interface MessageItemProps {
   message: ChatMessage
@@ -515,31 +516,11 @@ function AgentSourceBadge({ message, compact = false }: { message: ChatMessage; 
   )
 }
 
-/** 工具执行中的轻量状态卡片 */
-export function ToolActivityBlock({ content }: { content: string }) {
-  const { t } = useTranslation()
-  const activity = parseActivityContent(content, t)
-
+/** Agent 运行中、尚无具体消息时的轻量活动提示。 */
+export function AgentActivityShimmer({ content }: { content: string }) {
   return (
-    <div className="flex justify-start">
-      <div className="w-full rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2.5 text-xs shadow-[var(--nova-shadow)]">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
-            <Clock3 className="h-3.5 w-3.5 animate-pulse" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2 text-[var(--nova-text)]">
-              <span className="font-medium">{activity.title}</span>
-              {activity.toolName && (
-                <code className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-muted)]">
-                  {activity.toolName}
-                </code>
-              )}
-            </div>
-            {activity.detail && <div className="mt-1 truncate text-[var(--nova-text-faint)]">{activity.detail}</div>}
-          </div>
-        </div>
-      </div>
+    <div className="flex justify-start px-1 py-1" role="status" aria-live="polite">
+      <Shimmer as="span" className="text-sm font-medium">{content}</Shimmer>
     </div>
   )
 }
@@ -1439,33 +1420,6 @@ function formatTaskDelegationArgs(args: string) {
   }
 }
 
-function parseActivityContent(content: string, t: (key: string) => string) {
-  const toolMatch = content.match(/^正在执行工具：([^\n]+)(?:\n([\s\S]*))?$/)
-  if (toolMatch) {
-    const args = formatMaybeJSON((toolMatch[2] || '').trim())
-    return {
-      title: t('chat.tool.runningTitle'),
-      toolName: toolMatch[1].trim(),
-      detail: buildToolArgSummary(args) || t('chat.tool.waitingResult'),
-    }
-  }
-
-  const doneMatch = content.match(/^工具执行完成：?([\s\S]*)$/)
-  if (doneMatch) {
-    return {
-      title: t('chat.tool.resultDone'),
-      toolName: '',
-      detail: buildPreview(doneMatch[1] || '', 120),
-    }
-  }
-
-  return {
-    title: content,
-    toolName: '',
-    detail: '',
-  }
-}
-
 function formatMaybeJSON(value: string) {
   if (!value) return ''
   try {
@@ -1542,13 +1496,8 @@ function extractStreamingContent(rawArgs: string): string {
 function StreamingPlaceholder() {
   const { t } = useTranslation()
   return (
-    <div className="flex items-center gap-2 py-1 text-sm text-[var(--nova-text-muted)]">
-      <span className="flex gap-1">
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--nova-text-muted)] [animation-delay:-0.3s]" />
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--nova-text-muted)] [animation-delay:-0.15s]" />
-        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--nova-text-muted)]" />
-      </span>
-      <span>{t('chat.activity.thinking')}</span>
+    <div className="py-1" role="status" aria-live="polite">
+      <Shimmer as="span" className="text-sm font-medium">{t('chat.activity.thinking')}</Shimmer>
     </div>
   )
 }

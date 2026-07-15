@@ -301,7 +301,6 @@ const chat = {
   'chat.tokenUsage.columns.calls': 'Calls',
   'chat.tokenUsage.columns.bytes': 'Bytes',
   'chat.tokenUsage.columns.run': 'Run ID',
-  'chat.activity.connecting': 'Connecting to AI Agent...',
   'chat.activity.thinking': 'Thinking...',
   'chat.activity.compacting': 'Compressing context...',
   'chat.activity.compacted': 'Context compressed. Continuing...',

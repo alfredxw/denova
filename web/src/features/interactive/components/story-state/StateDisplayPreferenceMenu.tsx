@@ -5,7 +5,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
 import { cn } from '@/lib/utils'
 import type { StoryStateDisplayPreference } from './display-preference'
 
-const DISPLAY_OPTIONS: StoryStateDisplayPreference[] = ['expanded', 'collapsed', 'director-only']
+const DISPLAY_OPTIONS: StoryStateDisplayPreference[] = ['preview', 'expanded', 'collapsed', 'director-only']
 
 export function StateDisplayPreferenceMenu({ value, onChange, compact = false }: { value: StoryStateDisplayPreference; onChange: (value: StoryStateDisplayPreference) => void; compact?: boolean }) {
   const { t } = useTranslation()

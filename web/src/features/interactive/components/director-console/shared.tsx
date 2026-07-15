@@ -49,9 +49,9 @@ export function StateValue({ value }: { value: unknown }) {
     const simple = value.every((item) => item === null || ['string', 'number', 'boolean'].includes(typeof item))
     if (simple) {
       return (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex min-w-0 flex-wrap gap-1.5">
           {value.map((item, index) => (
-            <span key={`${String(item)}-${index}`} className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 text-[11px] text-[var(--nova-text-muted)]">
+            <span key={`${String(item)}-${index}`} className="max-w-full min-w-0 whitespace-normal break-words rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 text-[11px] leading-4 text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">
               {item === null ? '—' : String(item)}
             </span>
           ))}

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- 游戏模式主舞台的“当前状态”改为摘要优先的自适应布局：数值指标会填满不完整末行，短字段与长文本分层排列，储物袋、功法、器物和故事上下文等结构化对象按字段进入可切换的二级 Tab，同一时间只展示一项，减少空白和纵向占用；宽窄屏及浅深色主题保持一致。
+- Game Mode's main-stage Current State now uses an adaptive, summary-first layout: numeric metrics fill incomplete final rows, compact facts and long-form text use separate flows, and structured objects such as Inventory, Techniques, Artifacts, and Story Context become switchable field-level sub-tabs that show one section at a time, reducing whitespace and vertical length across narrow/wide viewports and light/dark themes.
+
+### Fixed
+
+- 方案预设检测到无效 JSON 时会区分普通配置与旧版内置覆盖：后者提供明确说明和手动“恢复内置”操作，但不会自动修改或回退用户数据。
+- Presets with invalid JSON now distinguish ordinary edits from older built-in overrides. Overrides offer an explicit manual restore action without automatically changing or rolling back user data.
+
 ## [v0.2.0] - 2026-07-15
 
 ### Brief

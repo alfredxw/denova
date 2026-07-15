@@ -575,7 +575,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     setShowSkillCommands(false)
     setSkillCommandQuery(null)
     setActiveSkillCommandIndex(0)
-    setStageActivityContent(t('storyStage.activity.connecting'))
+    setStageActivityContent(t('storyStage.activity.thinking'))
     flushLiveMessageBuffer()
     liveToolKeyToMessageIdRef.current = {}
     nonNarrativeLiveMessageStreamingRef.current = false
