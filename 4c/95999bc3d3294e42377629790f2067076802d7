@@ -1,0 +1,216 @@
+AGENTS.md
+  h_beed6209b76699 49
+CHANGELOG.md
+  s_39264a84684445::t_5fd53f4f93a652 11-20
+internal/agent/builder.go
+  s_160600cce51cab::t_6fea17d8ef4d0f 535-536,543-546
+internal/agent/context_analysis.go
+  s_160600cce51cab::t_9e3b40b2f56c7a 332-338,340-358,360
+internal/agent/context_analysis_test.go
+  s_160600cce51cab::t_eb8d5c52d41b75 110,142,151-169
+internal/agent/interactive_director.go
+  s_39264a84684445::t_f2bc2e271cf2bc 466-471,475-479,499-506,699,733,755-760
+internal/agent/interactive_director_protocol_integration_test.go
+  s_39264a84684445::t_d7e796dcd11594 23-24,36
+internal/agent/interactive_director_tools.go
+  s_39264a84684445::t_4a22e7e32fe9fb 18-20,27-28,36,38
+internal/agent/interactive_director_tools_test.go
+  s_39264a84684445::t_919e9d4d7d2ad4 13,18-24,41,45,48
+internal/agent/interactive_story_tools.go
+  s_39264a84684445::t_4a12ac6c147825 158-159,176-177
+internal/agent/lore_tools.go
+  s_160600cce51cab::t_9fb5d6a4d5de3d 27-28,67-80,82-92,141-144,163,172,180-191,199-214,283-289,293-310
+internal/agent/lore_tools_test.go
+  s_160600cce51cab::t_48f6e91cb40ae2 63,77,82,100-106,110-111
+internal/agent/middleware.go
+  s_39264a84684445::t_762295ab8fed4d 90
+internal/agent/prompt_test.go
+  s_39264a84684445::t_cf7da4b0736f47 332-334
+internal/agent/system_prompt.go
+  s_39264a84684445::t_58c5d47b97448e 96,125,135,142,146,149
+internal/agent/system_prompt_test.go
+  s_160600cce51cab::t_4f5a61951bf782 89
+internal/agent/tool_agent_lore_classification.go
+  s_160600cce51cab::t_600e7cb57782d2 1-145
+internal/api/handler_interactive_test.go
+  s_160600cce51cab::t_e36fa55f2e44ae 169,180,192,217,642-643,647
+internal/api/handler_lore_classification_test.go
+  s_160600cce51cab::t_0899de8d73cf91 1-51
+internal/api/handler_session_test.go
+  s_39264a84684445::t_b2f1f8e05fd9f2 344
+internal/api/handlers/handler_character_card.go
+  s_160600cce51cab::t_22ba77eba66b89 75-78,80-84,86
+internal/api/handlers/handler_lore.go
+  s_160600cce51cab::t_e7a3f3fdb585bf 76-113
+internal/api/routes.go
+  s_160600cce51cab::t_a740ddebb45d91 55-56
+internal/app/interactive_agent_test.go
+  s_160600cce51cab::t_b7f02012924c6e 80-81,96-98,114,397,415
+internal/app/interactive_app_service.go
+  s_39264a84684445::t_ee01ce8a4af228 612,617,825-831,837,855
+internal/app/interactive_conversation.go
+  s_39264a84684445::t_4504febf847cb6 93,95,97,1009-1032,1050,1059,1065-1066,1110,1118,1176,1194,1197-1205
+internal/app/interactive_conversation_context_ledger.go
+  s_160600cce51cab::t_ad0566f13c07bc 89-90
+internal/app/interactive_conversation_test.go
+  s_160600cce51cab::t_b5bbd08bfa1757 155-156
+internal/app/interactive_director.go
+  s_39264a84684445::t_a09074c6144562 235-239,243,247,251-252,258-275,285-288,290,294-297,315,317-318,334-340,379-398
+internal/app/interactive_director_documents.go
+  s_39264a84684445::t_8291d23d64c51c 1-33
+internal/app/interactive_director_test.go
+  s_39264a84684445::t_ee6e94efc89bd1 32,38-42,71-78,91,106,121-122,124,162-167,331,340-367,372-403
+internal/app/interactive_lore_context.go
+  s_160600cce51cab::t_12158f3ba4c8b7 13,17-47,80,82,84,86,88,106-118,127,129,200,202-204,206-207,210-211,213-233,236-237,245-286
+internal/app/interactive_lore_context_test.go
+  s_160600cce51cab::t_31c6994e418790 33-34,69-87,96-122,144,153-161,169,173-174
+internal/app/interactive_resident_lore.go
+  s_160600cce51cab::t_2e7a8cbbae907a 1-76
+internal/app/interactive_state_schema_context.go
+  s_160600cce51cab::t_7a13d3f4935498 26,30-31
+internal/app/interactive_state_schema_test.go
+  s_160600cce51cab::t_a2fe81e8ebc2cd 234,249
+internal/app/lore_classification.go
+  s_160600cce51cab::t_01ac37218ee338 1-168
+internal/app/tool_agent.go
+  s_160600cce51cab::t_775e822b08ba0a 5,10,26-41
+internal/book/character_card.go
+  s_160600cce51cab::t_f3f1d6bd1836d6 42-44,67-69,83-85,198-216,258-260,291-293,579-591,598,608,629,673-676,683,694-698,813-818,820
+internal/book/character_card_classification.go
+  s_160600cce51cab::t_d299a79dc9b6d1 1-103
+internal/book/character_card_sanitize.go
+  s_160600cce51cab::t_0dd36f9e37081c 137
+internal/book/character_card_test.go
+  s_160600cce51cab::t_353ac0c5ea48cf 303-304,330-418
+internal/book/lore.go
+  s_160600cce51cab::t_8e5f46399a00af 23,42-46,54,72,242,294-297,302,410,446-450,454-455,698-701,751-755,765-767,838,854-862
+internal/book/lore_catalog.go
+  s_160600cce51cab::t_e8073dbac7069a 1-166
+internal/book/lore_classification.go
+  s_160600cce51cab::t_047ebdd47073fc 1-141
+internal/book/lore_classification_apply.go
+  s_160600cce51cab::t_64b6de32efdc4f 1-91
+internal/book/lore_test.go
+  s_160600cce51cab::t_9e8d786b197084 5,155-159,168-172,318-356
+internal/interactive/director_lore_context.go
+  s_160600cce51cab::t_d024c9d04ea465 21-23,27,40,42,44,46,48,50,52,54,56,58,60,62,64,66-68,72,89,91,162-163,212-230,232
+internal/interactive/director_lore_context_test.go
+  s_160600cce51cab::t_d0047c25337498 11-13,39-40,49-88
+internal/interactive/director_lore_grounding.go
+  s_160600cce51cab::t_a0847439102555 1-67
+internal/interactive/director_plan.go
+  s_39264a84684445::t_114aa86aaec6e2 18,29,46-47,62,67,164-166,169,360,393-403,438-444,523-528,545-549,609-613,644,709,717-721,725-730,733,737,797-799,811-816,844,976-977,989,995,999
+internal/interactive/director_plan_migration.go
+  s_39264a84684445::t_59f6c2a502bc24 1-408
+internal/interactive/director_plan_migration_test.go
+  s_160600cce51cab::t_31d8c65f43a08f 1-161
+internal/interactive/director_plan_patch.go
+  s_39264a84684445::t_73197d2755a904 1-246
+internal/interactive/director_plan_submission.go
+  s_39264a84684445::t_efbb0b536d336e 6-7,10-13,15-33,36-37,39-45,48-55,57-60,67,70,73-162,164-168,170-171,175-180,182-209,212-214,216-219,221-224,226-228,230-275,278-279,281-287
+internal/interactive/director_plan_submission_test.go
+  s_39264a84684445::t_98ab6bb0843362 4,7-9,12-25,44-83,88,91,95-116,118-127,131-132,136-157,161-167,171-270,273-284,286-288,290-291,293-296,298-299,301-332
+internal/interactive/director_plan_templates.go
+  s_160600cce51cab::t_1bff116fcb5913 1-98
+internal/interactive/director_test.go
+  s_160600cce51cab::t_0176c1b0f37d58 219-221,225-226,326,332,335,353-356,367-368,370-371
+internal/interactive/turn_result.go
+  s_39264a84684445::t_27c8240b8f7602 17-18,29-37,41-43,49,78-80,93-122
+internal/interactive/turn_result_test.go
+  s_39264a84684445::t_d92071ba89b2b7 35-38,44,114-128
+internal/interactive/turn_submission.go
+  s_39264a84684445::t_5dd358c1af82de 17-19,79-83,109-111,135,159-165,189-192,194-228,234-254,325,340-342
+internal/interactive/turn_submission_test.go
+  s_39264a84684445::t_ff88590d3aff9d 111-150
+internal/prompts/interactive.go
+  s_39264a84684445::t_517ebcd3ac2796 107,120,147,153,211,220,226-230,275,282,286,292-296,299-301,303,305-307,315-316,323,349
+internal/prompts/interactive_test.go
+  s_160600cce51cab::t_7372ea5d8a1611 207,211,235-236,245,259
+internal/prompts/system.go
+  s_160600cce51cab::t_3fffacd3519c7a 148-149,180,203
+web/src/App.tsx
+  s_160600cce51cab::t_62640272ea0d9a 79,428,489,512,792,802
+web/src/components/workbench/CharacterCardImportDialog.test.tsx
+  s_160600cce51cab::t_d9a975fddc3861 25-27,49,59,73
+web/src/components/workbench/CharacterCardImportDialog.tsx
+  s_160600cce51cab::t_4e53f3423d0677 7,22,32,46,56,123-139
+web/src/features/interactive/components/LoreClassificationDialog.test.tsx
+  s_160600cce51cab::t_9cfa5d1d104da5 1-64
+web/src/features/interactive/components/LoreClassificationDialog.tsx
+  s_160600cce51cab::t_edc05719f4d4af 1-190
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_160600cce51cab::t_f4153ea1f8371f 589,591,593-595,597,599,601,603,605,607,609,611,613-629,634,640,1215
+web/src/features/interactive/components/SettingPanel.tsx
+  s_160600cce51cab::t_c3c886e44953da 21,173,603,682-691
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_160600cce51cab::t_be9bc8d90b8d02 2,92,102,170-172
+web/src/features/interactive/components/director-console/PlanView.tsx
+  s_160600cce51cab::t_11531e5e488d0d 24-26,46-48,81-84,117,123,140-168
+web/src/features/interactive/components/story-director/StoryDirectorEditor.tsx
+  s_160600cce51cab::t_72a049afbf4640 11,44,46-47,84-85,279-282
+web/src/features/interactive/components/story-director/constants.ts
+  s_160600cce51cab::t_131c5ac1dac84d 6-28
+web/src/features/interactive/components/story-director/utils.ts
+  s_160600cce51cab::t_a53e2ccab6b59a 2,15,20
+web/src/features/interactive/types.ts
+  s_39264a84684445::t_d4f431611fc0c0 429,552,558,562
+web/src/i18n/locales/en-US/importCard.ts
+  s_160600cce51cab::t_1926a4f4e81e13 21-22
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_39264a84684445::t_1444e41568cbdc 339-358,527,535,538,540,570,579,581
+web/src/i18n/locales/en-US/snapshot.ts
+  s_160600cce51cab::t_06bc5fdb6c91cf 36
+web/src/i18n/locales/zh-CN/importCard.ts
+  s_160600cce51cab::t_32b59c45eaf2d6 21-22
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_39264a84684445::t_e0971cf831f395 339-358,527,535,538,540,570,579,581
+web/src/i18n/locales/zh-CN/snapshot.ts
+  s_160600cce51cab::t_d72b275215d0ba 36
+web/src/lib/api-client/lore.ts
+  s_160600cce51cab::t_7a3a0b6b51fa23 2,29-44
+web/src/lib/api-client/types.ts
+  s_160600cce51cab::t_fa525136ef7c68 370-372,394-396,540,559-595
+web/src/lib/api-client/workspace.ts
+  s_160600cce51cab::t_7ef34fe8d2a938 120,127
+web/vite.config.ts
+  s_f45f9a2af40b44::t_af660aa3ef0581 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4c95999bc3d3294e42377629790f2067076802d7",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_160600cce51cab": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6133-332b-72f2-84f4-ee2b3cdd2196",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_39264a84684445": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6479-c79c-7372-8687-b13baf073d12",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_f45f9a2af40b44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6464-2af6-7333-a7ba-5796094f0c2b",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
