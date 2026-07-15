@@ -1,0 +1,200 @@
+.github/ISSUE_TEMPLATE/bug_report.yml
+  s_b025ad26b6fe2c::t_bf962f471f1db2 18
+CHANGELOG.md
+  s_b025ad26b6fe2c::t_e0e0644e988592 9,11,13-16,20-33,37-48,52-75
+README.en.md
+  s_b025ad26b6fe2c::t_7500dca358965e 21
+README.md
+  s_b025ad26b6fe2c::t_116c728b5e0754 21
+config/config.go
+  s_b025ad26b6fe2c::t_b0174eb365d064 357
+config/config_test.go
+  s_b025ad26b6fe2c::t_6856c61dcb6b37 153,169-170,172-173,294,310-311,313-314
+config/settings.go
+  s_b025ad26b6fe2c::t_75b234d986e13e 105,482,620-622
+config/settings_test.go
+  s_b025ad26b6fe2c::t_1ceeb79749a78c 437,448-449
+internal/agent/builder.go
+  s_b025ad26b6fe2c::t_6fb8b0875ae471 660
+internal/agent/config_manager_tools.go
+  s_b025ad26b6fe2c::t_63736618875f1d 33,55,66,77,373,396,460,483,570,659,682
+internal/agent/loop_ledger_test.go
+  s_b025ad26b6fe2c::t_331f682168a601 38,48,58-69
+internal/agent/middleware_test.go
+  s_b025ad26b6fe2c::t_ce548b1a3e852c 279
+internal/agent/prompt.go
+  s_b025ad26b6fe2c::t_f24033c84bddb5 715
+internal/agent/tool_result_policy.go
+  s_b025ad26b6fe2c::t_a3e8771fc9d512 48
+internal/agent/web_search_test.go
+  s_b025ad26b6fe2c::t_54243a5ae7e741 5,43-44,46-47
+internal/api/handler_interactive_test.go
+  s_b025ad26b6fe2c::t_cb5d78c22a5ea0 315-329,606-615
+internal/api/handler_session_test.go
+  s_b025ad26b6fe2c::t_695b592c93fa5a 7,329,331-340,342,344-347
+internal/app/context_limit_policy_test.go
+  s_b025ad26b6fe2c::t_75a5151644ed0c 16-18
+internal/app/interactive_agent_test.go
+  s_b025ad26b6fe2c::t_af74bd08fbb3a2 358-371,376,444-450,452-457,485,536-538,562-576
+internal/app/interactive_state_schema.go
+  s_b025ad26b6fe2c::t_d5a044ff891b44 20-22,24,351-361,384-392,398,417,422-425
+internal/app/interactive_state_schema_async_test.go
+  s_b025ad26b6fe2c::t_82902d682cd808 47-48,50,55,68-70,142,147,155-159,213,216,219-223,263,266,269-271,273-274,293-305
+internal/app/interactive_state_schema_test.go
+  s_b025ad26b6fe2c::t_84961780fc77a4 58,65,81,84-86,102-122,138,247
+internal/app/runtime_manager.go
+  s_b025ad26b6fe2c::t_debd2b819c8785 812,820
+internal/app/settings_test.go
+  s_b025ad26b6fe2c::t_b5b3339fa4f25b 229,237-238
+internal/book/lore.go
+  s_b025ad26b6fe2c::t_1d18559ea08891 14,136-137,161-162,182-191,246-248,298-300,377-379,417-419,572-574,802-814,832,838-840,847-886
+internal/book/lore_classification_apply.go
+  s_b025ad26b6fe2c::t_57a7fcf42ee44e 37-39
+internal/book/lore_test.go
+  s_b025ad26b6fe2c::t_34eb438dd7f631 12,16-63
+internal/interactive/actor_state.go
+  s_b025ad26b6fe2c::t_0b24be879cb76e 81-83,187-188,237-238,249,275-277,300-301,317,786,809
+internal/interactive/actor_traits.go
+  s_b025ad26b6fe2c::t_0024ee27cb4691 14,49-50,61,72-73,98-99,377,599-600,623,664,679,688
+internal/interactive/actor_traits_test.go
+  s_b025ad26b6fe2c::t_ebc8c57fcef95d 69,75,199,205,226-235
+internal/interactive/director.go
+  s_b025ad26b6fe2c::t_e3a83bff88ddc6 68,92
+internal/interactive/director_events.go
+  s_b025ad26b6fe2c::t_4111e826b25e34 72-75
+internal/interactive/director_modules.go
+  s_b025ad26b6fe2c::t_6ae681420724d8 30-32,38-47,429-430,458,470-471,473,574,892,907,1139
+internal/interactive/director_modules_test.go
+  s_b025ad26b6fe2c::t_4ee0b711f42f89 158,162-163,389-393,450-459
+internal/interactive/director_plan.go
+  s_b025ad26b6fe2c::t_5a4f1c6bb613c5 357,433-437
+internal/interactive/director_test.go
+  s_b025ad26b6fe2c::t_ebd048948e329a 314
+internal/interactive/orchestration.go
+  s_b025ad26b6fe2c::t_ebfba3669566ca 15-17,108-112,147-168,217,227-228,246-250,291,336,453,459-462,468-469,486-487,503-504,537,548,558,684-686,689-690,710,712,714,716,808-809,818-822,824-827,829-831,853,867
+internal/interactive/orchestration_test.go
+  s_b025ad26b6fe2c::t_47e47cddaaadcd 17,76,81-82,98,190-192,219,228-231,233-237,260-263,270-272,296-297,300,306,309-310,323-327,330-336,375,395-396,401
+internal/interactive/plan_decision.go
+  s_b025ad26b6fe2c::t_0967b9015873cd 116,120,122-124
+internal/interactive/plan_decision_test.go
+  s_b025ad26b6fe2c::t_863805f9428d15 8-12
+internal/interactive/rule_state_binding.go
+  s_b025ad26b6fe2c::t_34a87405a112c1 110,178-179,203-204,211,224-225,243-244,264-265,342-343,364-365
+internal/interactive/rule_state_consumption.go
+  s_b025ad26b6fe2c::t_b57ae41e1b4a4c 186-187
+internal/interactive/state_schema_adaptation.go
+  s_b025ad26b6fe2c::t_29c4dc1d234fae 147,162,168,178,188,248,278-279,414-415
+internal/interactive/state_schema_initialization.go
+  s_b025ad26b6fe2c::t_03825ca0f1fac1 94,239,241,244,274-276,278-279,285-288
+internal/interactive/state_schema_initialization_test.go
+  s_b025ad26b6fe2c::t_a2278574b2875e 199,237,239-253,351-356,438
+internal/interactive/state_schema_proposal.go
+  s_b025ad26b6fe2c::t_c85e2fdeb65b21 56,83,137,145,158
+internal/interactive/state_schema_proposal_batch.go
+  s_b025ad26b6fe2c::t_1609d67eb9b03e 119,309,345,348,359
+internal/interactive/state_schema_proposal_test.go
+  s_b025ad26b6fe2c::t_8213547d32da54 18-30,41,61,91
+internal/interactive/story.go
+  s_b025ad26b6fe2c::t_52eef0bd0fa76d 1293
+internal/interactive/story_context_submission.go
+  s_b025ad26b6fe2c::t_31c2f2b38990cf 78
+internal/interactive/story_directors.go
+  s_b025ad26b6fe2c::t_fd0030299862ba 233,236,238,279,361,365,400,456
+internal/interactive/story_directors_test.go
+  s_b025ad26b6fe2c::t_360e372bebb5e2 12-13,22,32-34,50-56,60,67-85,92-93,120-122
+internal/interactive/story_state.go
+  s_b025ad26b6fe2c::t_a8463452175625 340
+internal/interactive/story_test.go
+  s_b025ad26b6fe2c::t_811477ac8ee6e9 648,696-697,734,791-794
+internal/interactive/tellers.go
+  s_b025ad26b6fe2c::t_9268c97a7a26a7 34-48,480-481,534,577-578,584,768,772,776,780,786,788-791
+internal/interactive/tellers_test.go
+  s_b025ad26b6fe2c::t_5cfd418df234c0 255,277,279-287,289-309,311,314-315,318-323,326,335-340,342-347,351-352
+internal/interactive/turn_result.go
+  s_b025ad26b6fe2c::t_a6b67bd2cb0316 70-71
+internal/interactive/turn_state_updates.go
+  s_b025ad26b6fe2c::t_8a5bb027c9a124 10,55,57,59,61
+internal/interactive/turn_submission.go
+  s_b025ad26b6fe2c::t_847f919c26f945 15-16,18,72-73,231,236,240,248,251,258,270,289,291-293,366,368-369,376,435,438
+internal/interactive/turn_submission_test.go
+  s_b025ad26b6fe2c::t_f2cb336645ab3c 53,86
+internal/prompts/interactive_test.go
+  s_b025ad26b6fe2c::t_f4e6b8fa46e5da 239
+npm/.gitignore
+  s_b025ad26b6fe2c::t_ac2477e44eb083 4
+npm/package.json
+  s_b025ad26b6fe2c::t_c0b986a24ec927 3,21
+scripts/build-github-release.sh
+  s_b025ad26b6fe2c::t_12181b0d84e562 59-133,140,144,146-152,178,208
+scripts/build-npm-package.mjs
+  s_b025ad26b6fe2c::t_23ab81326632e1 32,41
+skills/story-director-config/SKILL.md
+  s_b025ad26b6fe2c::t_b87f8a05067e17 27,31,34,37,84,86
+skills/teller-config/SKILL.md
+  s_b025ad26b6fe2c::t_007dd6e7e9e122 19
+web/package.json
+  s_b025ad26b6fe2c::t_45412bf69633bd 4
+web/src/components/Chat/MessageItem.tsx
+  s_b025ad26b6fe2c::t_eba7d7cafdc39c 239-240
+web/src/features/interactive/components/InteractiveLayout.test.tsx
+  s_b025ad26b6fe2c::t_9b1a204273a087 215-217
+web/src/features/interactive/components/SettingPanelSections.tsx
+  s_b025ad26b6fe2c::t_1a63e2bb32cfb3 888,982-983
+web/src/features/interactive/components/SnapshotPanel.test.tsx
+  s_b025ad26b6fe2c::t_dd7d6d814f0dc7 48,50-51,56,71,78,85
+web/src/features/interactive/components/StoryDirectorPicker.test.tsx
+  s_b025ad26b6fe2c::t_d5ca6a2301b946 49-51
+web/src/features/interactive/components/StoryStage.test.tsx
+  s_b025ad26b6fe2c::t_8c17f3326dd2f3 245,1262-1264,1295,1312
+web/src/features/interactive/components/StoryStage.tsx
+  s_b025ad26b6fe2c::t_200a7bb2d14f93 2054,2077-2078,2082
+web/src/features/interactive/components/director-console/StateSchemaOverview.test.tsx
+  s_b025ad26b6fe2c::t_25b4d57f4d1b10 77
+web/src/features/interactive/components/director-console/StateSchemaOverview.tsx
+  s_b025ad26b6fe2c::t_54d6422535c275 111
+web/src/features/interactive/components/preset-config/TRPGSystemVisualEditor.tsx
+  s_b025ad26b6fe2c::t_9a49ff207ec870 307,313,322,335
+web/src/features/interactive/components/preset-config/ruleTemplates.ts
+  s_b025ad26b6fe2c::t_a64ddd779a49d5 96-97,100,120,148-149,152,176-177,180
+web/src/features/interactive/components/setting-panel/presetResources.ts
+  s_b025ad26b6fe2c::t_1f41289208b2a6 89-92,96-99
+web/src/features/interactive/components/story-director/StoryDirectorEditor.test.tsx
+  s_b025ad26b6fe2c::t_5cfe92b81c3a61 7,10-11,15,18,33
+web/src/features/interactive/components/story-director/utils.ts
+  s_b025ad26b6fe2c::t_cc7f3540b4cb58 46-47,74
+web/src/features/interactive/types.ts
+  s_b025ad26b6fe2c::t_02db1c06551c2d 180,184,351,629,641,653,668,711-712,730-731,741,773,778-779,869
+web/src/features/settings/SettingsView.tsx
+  s_b025ad26b6fe2c::t_ac6e0d8243058f 439-441
+web/src/i18n/locales/en-US/settings.ts
+  s_b025ad26b6fe2c::t_e8e4f5f5ab3c06 7
+web/src/i18n/locales/zh-CN/settings.ts
+  s_b025ad26b6fe2c::t_e7397257c5fee5 7
+web/src/lib/agent-message-view.ts
+  s_b025ad26b6fe2c::t_50e3362b85764c 471-474
+web/src/lib/api-client/types.ts
+  s_b025ad26b6fe2c::t_1fde3d26c4c538 88-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "dc027ad43bfe1f4e6a708fbd1e465a836324f9bb",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_b025ad26b6fe2c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f652b-cdf9-7803-8463-a18ecdad7911",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
