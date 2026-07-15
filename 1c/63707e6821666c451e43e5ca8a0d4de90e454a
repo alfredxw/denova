@@ -1,0 +1,37 @@
+CHANGELOG.md
+  s_7d231d8df07088::t_07da863e6544a0 11-12
+web/src/features/interactive/components/story-state/StateDisplayPreferenceMenu.tsx
+  s_7d231d8df07088::t_047a5568ab82fc 8
+web/src/features/interactive/components/story-state/StoryStateLedger.test.tsx
+  s_7d231d8df07088::t_e40d27c64c847a 1,3-4,17-23,36,48,104-154,175-223,329,340
+web/src/features/interactive/components/story-state/StoryStateLedger.tsx
+  s_7d231d8df07088::t_f2df5fb14d8de0 1,28-36,42-52,67-71,79-102,106-107,110-114,117,154-211,259,290-303,309,318,337-339,351,380-401,403-436,440-441,445-449,451-455,462-477
+web/src/features/interactive/components/story-state/display-preference.test.ts
+  s_7d231d8df07088::t_639c6691e1487f 12,15
+web/src/features/interactive/components/story-state/display-preference.ts
+  s_7d231d8df07088::t_b5b985e209d476 4-5,7,30
+web/src/i18n/locales/en-US/storyStage.ts
+  s_7d231d8df07088::t_8227af3019ed7f 20-21,31,39-40,42
+web/src/i18n/locales/zh-CN/storyStage.ts
+  s_7d231d8df07088::t_8377c965865ae2 20-21,31,39-40,42
+web/src/index.css
+  s_7d231d8df07088::t_72e139ddd512dd 2181-2182,2193-2200,2209-2247,2249,2253-2264,2266,2278-2279,2282-2283,2287
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1c63707e6821666c451e43e5ca8a0d4de90e454a",
+  "prompts": {},
+  "sessions": {
+    "s_7d231d8df07088": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f65f6-16f7-75b3-9ed8-4801560b93a0",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
