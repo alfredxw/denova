@@ -59,7 +59,7 @@ export function useAgentChat(options: ChatOptions = {}) {
   })
   const messages = useMemo(() => normalizeAgentUIMessages(uiMessages), [uiMessages])
   const isStreaming = status === 'submitted' || status === 'streaming'
-  const activityContent = status === 'submitted' ? t('chat.activity.connecting') : ''
+  const activityContent = status === 'submitted' ? t('chat.activity.thinking') : ''
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [activeSessionId, setActiveSessionId] = useState('')
   const [references, setReferences] = useState<string[]>([])

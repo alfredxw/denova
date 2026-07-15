@@ -54,16 +54,18 @@ describe('Agent MessageList', () => {
     expect(screen.queryByText('正在思考…')).not.toBeInTheDocument()
   })
 
-  it('尚无真实流式内容时继续显示连接活动卡片', () => {
+  it('尚无真实流式内容时直接以 Shimmer 显示思考状态', () => {
     renderMessageList(
       <MessageList
         isStreaming
-        activityContent="正在连接…"
+        activityContent="思考中..."
         messages={[]}
       />,
     )
 
-    expect(screen.getByText('正在连接…')).toBeInTheDocument()
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('思考中...')
+    expect(status.querySelector('.bg-clip-text')).toBeInTheDocument()
   })
 
   it('直接渲染 AgentUIMessage parts 并上报 turn anchor', async () => {

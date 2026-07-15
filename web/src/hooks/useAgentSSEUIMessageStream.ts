@@ -54,7 +54,7 @@ export function useAgentSSEUIMessageStream(options: AgentSSEUIMessageStreamOptio
     reasoningSegmentIDRef.current = ''
     toolInputsRef.current = {}
     setIsStreaming(true)
-    setActivityContent(t('chat.activity.connecting'))
+    setActivityContent(t('chat.activity.thinking'))
     try {
       const reader = stream.getReader()
       while (true) {

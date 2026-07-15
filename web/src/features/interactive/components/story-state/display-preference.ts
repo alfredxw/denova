@@ -1,10 +1,10 @@
 export const STORY_STATE_DISPLAY_STORAGE_KEY = 'nova.interactive.storyStateDisplay.v1'
 export const OPEN_DIRECTOR_STATE_EVENT = 'nova:interactive-open-director-state'
 
-/** Sets the main-stage default for each new turn; manual open/close state remains local to that turn. */
-export type StoryStateDisplayPreference = 'expanded' | 'collapsed' | 'director-only'
+/** Sets the main-stage default for each new turn; manual panel state remains local to that turn. */
+export type StoryStateDisplayPreference = 'preview' | 'expanded' | 'collapsed' | 'director-only'
 
-export const DEFAULT_STORY_STATE_DISPLAY: StoryStateDisplayPreference = 'collapsed'
+export const DEFAULT_STORY_STATE_DISPLAY: StoryStateDisplayPreference = 'preview'
 
 export function readStoryStateDisplayPreference(): StoryStateDisplayPreference {
   if (typeof window === 'undefined') return DEFAULT_STORY_STATE_DISPLAY
@@ -27,5 +27,5 @@ export function writeStoryStateDisplayPreference(value: StoryStateDisplayPrefere
 }
 
 function isStoryStateDisplayPreference(value: string | null): value is StoryStateDisplayPreference {
-  return value === 'expanded' || value === 'collapsed' || value === 'director-only'
+  return value === 'preview' || value === 'expanded' || value === 'collapsed' || value === 'director-only'
 }

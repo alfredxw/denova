@@ -24,7 +24,7 @@ import { buildSubAgentProgressMessage } from './subagent-session'
 import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock, type ScrollElementBottomIntoViewOptions } from './useVirtuosoBottomLock'
 import { ScrollToBottomButton } from './ScrollToBottomButton'
 import { AgentMessageItem } from './AgentMessageItem'
-import { MessageItem, ToolActivityBlock } from './MessageItem'
+import { AgentActivityShimmer, MessageItem } from './MessageItem'
 
 interface MessageListProps {
   messages: AgentUIMessage[]
@@ -311,7 +311,7 @@ function AgentChatListRow({ item, isStreaming, highlightDialogue, messageStyle, 
           </div>
         </div>
       ) : item.kind === 'activity' ? (
-        <ToolActivityBlock content={item.content} />
+        <AgentActivityShimmer content={item.content} />
       ) : item.kind === 'clear' ? (
         <ContextClearDivider createdAt={item.createdAt} />
       ) : item.kind === 'trace' ? (

@@ -40,6 +40,7 @@ interface AutosavedListEntry {
 
 const actionButtonClassName = 'gap-1.5 border-[var(--preset-line)] bg-[var(--preset-raised)] text-[var(--nova-text-muted)] shadow-none hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const iconActionClassName = 'border-[var(--preset-line)] bg-transparent text-[var(--nova-text-muted)] shadow-none hover:border-[var(--nova-danger-border)] hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]'
+const PRESET_CONFIG_INVALID_TOAST_ID = 'preset-config-invalid'
 
 export function PresetSettingsPanel({
   workspace,
@@ -584,9 +585,29 @@ export function PresetSettingsPanel({
     return tellerAutosave
   }
 
+  const showInvalidPresetConfigNotice = () => {
+    const canRestoreBuiltin = currentPresetBuiltinOverridden(presetResourceKind, presetDrafts)
+    console.warn('[preset-settings] 无效 JSON 阻止保存或切换配置', {
+      kind: presetResourceKind,
+      builtinOverride: canRestoreBuiltin,
+    })
+    toast.error(t('settingPanel.presetConfig.invalidTitle'), {
+      id: PRESET_CONFIG_INVALID_TOAST_ID,
+      description: t(canRestoreBuiltin
+        ? 'settingPanel.presetConfig.invalidBuiltinDescription'
+        : 'settingPanel.presetConfig.invalidDescription'),
+      action: canRestoreBuiltin
+        ? {
+            label: t('settingPanel.restoreBuiltin'),
+            onClick: () => void handleRestoreBuiltinPreset(),
+          }
+        : undefined,
+    })
+  }
+
   const canLeavePresetResource = () => {
     if (isPresetConfigResourceKind(presetResourceKind) && !presetConfigValidRef.current) {
-      toast.error(t('settingPanel.presetConfig.invalidBlock'))
+      showInvalidPresetConfigNotice()
       return false
     }
     return true
@@ -774,7 +795,7 @@ export function PresetSettingsPanel({
     }
   }
 
-  const handleRestoreBuiltinPreset = async () => {
+  async function handleRestoreBuiltinPreset() {
     if (!currentPresetBuiltinOverridden(presetResourceKind, presetDrafts)) return
     setSaving(true)
     try {
@@ -798,6 +819,7 @@ export function PresetSettingsPanel({
         await deleteInteractiveTeller(tellerDraft.id)
         await refreshTellers(tellerDraft.id)
       }
+      toast.dismiss(PRESET_CONFIG_INVALID_TOAST_ID)
       toast.success(t('settingPanel.restoreBuiltinDone'))
     } catch (err) {
       toast.error((err as Error).message || t('settingPanel.restoreBuiltinFailed'))
@@ -808,7 +830,7 @@ export function PresetSettingsPanel({
 
   const handleSave = async () => {
     if (isPresetConfigResourceKind(presetResourceKind) && !presetConfigValidRef.current) {
-      toast.error(t('settingPanel.presetConfig.invalidBlock'))
+      showInvalidPresetConfigNotice()
       return
     }
     setSaving(true)

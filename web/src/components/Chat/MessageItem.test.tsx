@@ -47,6 +47,14 @@ describe('MessageItem', () => {
     expect(screen.getByText('cmd')).toBeInTheDocument()
   })
 
+  it('流式 assistant 尚无正文时以 Shimmer 显示思考状态', () => {
+    render(<MessageItem message={{ role: 'assistant', content: '', streaming: true }} />)
+
+    const status = screen.getByRole('status')
+    expect(status).toHaveTextContent('思考中...')
+    expect(status.querySelector('.bg-clip-text')).toBeInTheDocument()
+  })
+
   it('流式 assistant 新增正文先预留目标高度，提升为 content 后才显示新文字', () => {
     const { container, rerender } = render(<MessageItem message={{ role: 'assistant', content: '第一行内容', streaming: true }} />)
 

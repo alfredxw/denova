@@ -2,8 +2,9 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { toast, type Action } from 'sonner'
 import { deleteLoreItem, generateLoreItemImage, getLoreItems, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
-import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, deleteActorState, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../api'
+import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../api'
 import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { defaultRuleTemplates } from './preset-config/ruleTemplates'
 import { newRuleSystemDraft } from './setting-panel/presetResources'
@@ -63,6 +64,16 @@ vi.mock('@monaco-editor/react', () => ({
 
 vi.mock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'dark' }),
+}))
+
+vi.mock('sonner', () => ({
+  toast: {
+    dismiss: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
 }))
 
 vi.mock('@/components/Chat/ConfigManagerChat', () => ({
@@ -148,12 +159,16 @@ describe('SettingPanel', () => {
     vi.mocked(updateActorState).mockReset()
     vi.mocked(deleteActorState).mockReset()
     vi.mocked(getEventPackages).mockReset()
+    vi.mocked(deleteEventPackage).mockReset()
     vi.mocked(updateEventPackage).mockReset()
     vi.mocked(getRuleSystems).mockReset()
     vi.mocked(updateRuleSystem).mockReset()
     vi.mocked(getStyleReferences).mockReset()
     vi.mocked(updateImagePreset).mockReset()
     vi.mocked(deleteImagePreset).mockReset()
+    vi.mocked(toast.dismiss).mockReset()
+    vi.mocked(toast.error).mockReset()
+    vi.mocked(toast.success).mockReset()
     vi.mocked(getLoreItems).mockResolvedValue([])
     vi.mocked(getInteractiveTellers).mockResolvedValue([teller('classic', '经典叙事'), teller('slow-burn', '慢热叙事')])
     vi.mocked(updateInteractiveTeller).mockImplementation(async (id, input) => ({ ...teller(id, input.name || id), ...input, id, custom: id !== 'classic', builtin_overridden: id === 'classic', updated_at: '2026-01-01T00:00:01Z' }) as Teller)
@@ -168,6 +183,7 @@ describe('SettingPanel', () => {
     vi.mocked(updateImagePreset).mockImplementation(async (id, input) => ({ ...imagePreset(id, input.name || id), ...input, id, custom: id !== 'game-cg', builtin_overridden: id === 'game-cg', updated_at: '2026-01-01T00:00:01Z' }) as ImagePreset)
     vi.mocked(deleteImagePreset).mockResolvedValue(undefined)
     vi.mocked(getEventPackages).mockResolvedValue([eventPackage('default', '默认事件包')])
+    vi.mocked(deleteEventPackage).mockResolvedValue(undefined)
     vi.mocked(updateEventPackage).mockImplementation(async (id, input) => ({ ...eventPackage(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as EventPackageModule)
     vi.mocked(getRuleSystems).mockResolvedValue([
       ruleSystem('default', '均衡 DM 检定'),
@@ -687,6 +703,52 @@ describe('SettingPanel', () => {
     expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '均衡 DM 检定' })).not.toBeInTheDocument()
     expect(updateEventPackage).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith(
+      '当前配置包含无效 JSON',
+      expect.objectContaining({
+        description: '请修复 JSON 后再保存或切换配置。',
+        action: undefined,
+      }),
+    )
+  })
+
+  it('offers a manual built-in restore for invalid JSON from an old override', async () => {
+    const user = userEvent.setup()
+    const overridden = {
+      ...eventPackage('default', '默认事件包'),
+      builtin_overridden: true,
+    }
+    vi.mocked(getEventPackages)
+      .mockResolvedValueOnce([overridden])
+      .mockResolvedValue([eventPackage('default', '默认事件包')])
+    render(<PresetModeHarness />)
+
+    await user.click(screen.getByRole('button', { name: '事件包' }))
+    await user.click(await screen.findByRole('button', { name: /默认事件包/ }))
+    await user.click(screen.getByRole('button', { name: 'JSON' }))
+    fireEvent.change(screen.getByTestId('monaco-json-editor'), { target: { value: '{' } })
+
+    await user.click(screen.getByRole('button', { name: 'TRPG 检定' }))
+    await user.click(await screen.findByRole('button', { name: /均衡 DM 检定/ }))
+
+    expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
+    expect(deleteEventPackage).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith(
+      '当前配置包含无效 JSON',
+      expect.objectContaining({
+        description: '当前配置可能是旧版本留下的内置覆盖数据。你可以修复 JSON，或手动恢复内置版本；系统不会自动修改现有数据。',
+        action: expect.objectContaining({ label: '恢复内置' }),
+      }),
+    )
+
+    const toastOptions = vi.mocked(toast.error).mock.calls.at(-1)?.[1]
+    const restoreAction = toastOptions?.action as Action
+    await act(async () => {
+      restoreAction.onClick({} as never)
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(deleteEventPackage).toHaveBeenCalledWith('default'))
   })
 
   it('edits TRPG checks through the focused DM-style visual workflow', async () => {

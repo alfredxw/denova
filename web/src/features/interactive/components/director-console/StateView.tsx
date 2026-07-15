@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Activity, ArrowRight, Sparkles, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ActorStateField, ActorStateSchemaSnapshot, Snapshot } from '../../types'
-import type { StoryStateDisplayPreference } from '../story-state/display-preference'
+import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from '../story-state/display-preference'
 import { StateDisplayPreferenceMenu } from '../story-state/StateDisplayPreferenceMenu'
 import {
   actorFieldEntries,
@@ -19,7 +19,7 @@ import { ActorTabs } from './ActorTabs'
 import { StateValue } from './shared'
 import { StateSchemaOverview } from './StateSchemaOverview'
 
-export function StateView({ storyId, snapshot, stateFacts, syncError, displayPreference = 'collapsed', onDisplayPreferenceChange = noopDisplayPreferenceChange, onSnapshotRefresh }: { storyId?: string; snapshot: Snapshot | null; stateFacts: Array<[string, unknown]>; syncStatus?: string; syncError?: string; displayPreference?: StoryStateDisplayPreference; onDisplayPreferenceChange?: (value: StoryStateDisplayPreference) => void; onSnapshotRefresh?: () => void | Promise<unknown> }) {
+export function StateView({ storyId, snapshot, stateFacts, syncError, displayPreference = DEFAULT_STORY_STATE_DISPLAY, onDisplayPreferenceChange = noopDisplayPreferenceChange, onSnapshotRefresh }: { storyId?: string; snapshot: Snapshot | null; stateFacts: Array<[string, unknown]>; syncStatus?: string; syncError?: string; displayPreference?: StoryStateDisplayPreference; onDisplayPreferenceChange?: (value: StoryStateDisplayPreference) => void; onSnapshotRefresh?: () => void | Promise<unknown> }) {
   const { t } = useTranslation()
   const turn = snapshot?.current_turn
   const { actors, worldFacts } = useMemo(() => splitStoryStateFacts(stateFacts), [stateFacts])
