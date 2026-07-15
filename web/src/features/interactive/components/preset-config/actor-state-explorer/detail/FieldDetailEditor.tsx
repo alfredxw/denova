@@ -12,6 +12,7 @@ import { FieldTypeBadge } from '../shared/FieldTypeBadge'
 import { VisibilityBadge } from '../shared/VisibilityBadge'
 import { StateValueEditor } from '../shared/StateValueEditor'
 import { DetailResponsiveGrid, DetailStack } from './DetailLayout'
+import { actorStateFieldNameHasPathSeparator } from '../validation'
 
 const FIELD_TYPES = ['number', 'string', 'bool', 'enum', 'object', 'list'] as const
 const VISIBILITY_OPTIONS = ['visible', 'hidden', 'spoiler'] as const
@@ -55,6 +56,7 @@ export function FieldDetailEditor({
 	const nameConflict = normalizedName !== '' && (template.fields || []).some((candidate, index) => (
 		index !== fieldIndex && normalizeStateName(candidate.name) === normalizedName
 	))
+	const hasPathSeparator = actorStateFieldNameHasPathSeparator(field.name)
 
   return (
     <DetailStack>
@@ -86,10 +88,15 @@ export function FieldDetailEditor({
                 value={field.name || ''}
                 onChange={(e) => updateField({ name: e.target.value })}
                 placeholder={t('settingPanel.actorState.explorer.fieldNamePlaceholder')}
+				aria-invalid={hasPathSeparator || nameConflict || undefined}
               />
             </FormField>
           </div>
-			{nameConflict ? (
+			{hasPathSeparator ? (
+				<div role="alert" className="rounded-[12px] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-[11px] text-[var(--nova-danger)]">
+					{t('settingPanel.actorState.explorer.pathSeparatorInvalid')}
+				</div>
+			) : nameConflict ? (
 				<div role="alert" className="rounded-[12px] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-[11px] text-[var(--nova-danger)]">
 					{t('settingPanel.actorState.explorer.nameConflict')}
 				</div>

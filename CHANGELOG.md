@@ -6,24 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Changed
-
-- 游戏模式主舞台的“当前状态”改为摘要优先的自适应布局：数值指标会填满不完整末行，短字段与长文本分层排列，储物袋、功法、器物和故事上下文等结构化对象按字段进入可切换的二级 Tab，同一时间只展示一项，减少空白和纵向占用；宽窄屏及浅深色主题保持一致。
-- Game Mode's main-stage Current State now uses an adaptive, summary-first layout: numeric metrics fill incomplete final rows, compact facts and long-form text use separate flows, and structured objects such as Inventory, Techniques, Artifacts, and Story Context become switchable field-level sub-tabs that show one section at a time, reducing whitespace and vertical length across narrow/wide viewports and light/dark themes.
-
-### Fixed
-
-- 方案预设检测到无效 JSON 时会区分普通配置与旧版内置覆盖：后者提供明确说明和手动“恢复内置”操作，但不会自动修改或回退用户数据。
-- Presets with invalid JSON now distinguish ordinary edits from older built-in overrides. Overrides offer an explicit manual restore action without automatically changing or rolling back user data.
-
 ## [v0.2.0] - 2026-07-15
 
-### Brief
+### Brief / 简要说明
 
-- Denova 0.2.0 将写作工作台与可玩的 AI 互动叙事收敛到同一套长期创作架构：Story Director、Actor State、事件包、TRPG 检定、资料工作集、可检索 Turn 历史、Agent/Subagent 工作流和本地 Trace 现在拥有清晰的数据边界。
-- Denova 0.2.0 brings the writing workbench and playable AI narrative onto one long-lived creation architecture, with explicit boundaries for Story Director plans, Actor State, Event Packages, TRPG checks, lore worksets, searchable Turn history, Agent/Subagent workflows, and local traces.
-- 本版本仍为 Beta。0.2.0 开发期间出现但从未正式发布的中间格式不提供迁移；v0.1.18 已发布的故事、工作区、资料库、会话和配置数据继续保留必要的读取与数据保护逻辑。
-- This release remains Beta. Intermediate formats created during 0.2.0 development were never released and are not migrated; required read and data-protection paths remain for story, workspace, lore, session, and configuration data released in v0.1.18.
+#### 中文
+
+- Beta 不兼容提醒：0.2.0 开发期间出现但从未正式发布的中间格式不提供迁移；v0.1.18 已发布的故事、工作区、资料库、会话和配置数据继续保留必要的读取与数据保护逻辑。
+- 状态字段名称现在禁止使用路径分隔符 `/`，所有内置预设已改用无歧义名称；开发期自定义状态系统需要先重命名相关字段，已开始故事的冻结 Schema 不会被自动改写。
+- 写作工作台与可玩的 AI 互动叙事现在建立在同一套长期创作架构上；Story Director、Actor State、事件包、TRPG 检定、资料工作集和可检索 Turn 历史拥有明确的数据边界。
+- Agent/Subagent 工作流新增可配置 Skills、上下文压缩、工具结果保留策略、运行计划和本地 Trace，长对话与复杂工具调用更可控、更易排查。
+- 游戏主舞台的当前状态采用摘要优先的自适应布局，方案预设也能安全识别旧版无效覆盖并让用户手动恢复内置数据。
+
+#### English
+
+- Beta compatibility notice: intermediate formats created during 0.2.0 development were never released and are not migrated. Required read and data-protection paths remain for stories, workspaces, lore, sessions, and settings released in v0.1.18.
+- State field names can no longer use the `/` path separator, and all built-in presets now use unambiguous names. Development custom State Systems must rename affected fields, while frozen schemas in started stories are not rewritten automatically.
+- The writing workbench and playable AI narrative now share one long-lived creation architecture, with clear boundaries for Story Director plans, Actor State, Event Packages, TRPG checks, lore worksets, and searchable Turn history.
+- Agent and Subagent workflows add configurable Skills, context compaction, tool-result retention, run plans, and local traces, making long conversations and complex tool runs easier to control and inspect.
+- Game Mode's Current State uses a summary-first adaptive layout, while Presets can safely identify invalid legacy overrides and let users restore built-ins manually.
 
 ### Added
 
@@ -44,6 +45,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Beta 不兼容：状态字段名称禁止包含路径分隔符 `/`；内置预设中的相关名称统一改用“与”，前端可视化编辑、后端预设保存、故事创建与 AI 状态结构适配都会拒绝该符号。开发期自定义状态系统需要先重命名字段；已开始故事继续保留冻结 Schema，不自动改写用户状态。
+- Beta breaking: State field names cannot contain the `/` path separator. Affected built-in preset names now use “and,” and the visual editor, server-side preset writes, story creation, and AI schema adaptation all reject the separator. Development custom State Systems must rename affected fields; started stories keep their frozen schemas without automatic state rewrites.
+- 游戏模式主舞台的“当前状态”改为摘要优先的自适应布局：数值指标会填满不完整末行，短字段与长文本分层排列，储物袋、功法、器物和故事上下文等结构化对象按字段进入可切换的二级 Tab，同一时间只展示一项，减少空白和纵向占用；宽窄屏及浅深色主题保持一致。
+- Game Mode's main-stage Current State now uses an adaptive, summary-first layout: numeric metrics fill incomplete final rows, compact facts and long-form text use separate flows, and structured objects such as Inventory, Techniques, Artifacts, and Story Context become switchable field-level sub-tabs that show one section at a time, reducing whitespace and vertical length across narrow/wide viewports and light/dark themes.
 - Beta 不兼容：0.2.0 最终导演格式直接使用三文档和最终模块引用；不再读取或迁移开发期的混合导演文档、Event System、Opening Selector、Teller orchestration、内嵌导演资源、`auto` 状态适配模式或旧合并提交协议。使用开发快照的工作区需要重新创建这些未发布资源。
 - Beta breaking: the final 0.2.0 format directly uses three Director documents and final module references. It no longer reads or migrates development-only combined Director documents, Event Systems, Opening Selectors, Teller orchestration, embedded Director resources, the `auto` adaptation mode, or the combined submission contract. Workspaces created from development snapshots must recreate those unreleased resources.
 - 游戏模式移除独立 Story Memory / Memory Structure 可写真源；旧文件不会自动删除或覆盖，但新运行时只使用 Turn、Actor State、Lore 和 Director 文档。
@@ -59,6 +64,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 方案预设检测到无效 JSON 时会区分普通配置与旧版内置覆盖：后者提供明确说明和手动“恢复内置”操作，但不会自动修改或回退用户数据。
+- Presets with invalid JSON now distinguish ordinary edits from older built-in overrides. Overrides offer an explicit manual restore action without automatically changing or rolling back user data.
 - 资料库所有读改写操作现在在同一工作区跨 `LoreStore` 实例串行化，并使用同目录临时文件、`fsync` 与原子 rename 保存，修复并发创建、分类或更新时丢条目和留下半写 JSON 的问题。
 - Lore read-modify-write operations are serialized across `LoreStore` instances for the same workspace and saved through same-directory temp files, `fsync`, and atomic rename, preventing lost entries and partially written JSON during concurrent creates, classification, or updates.
 - 修复世界状态长期为空、基础 `story_context` Actor 缺失、状态字段重复初始化、`set(null)`、错误覆盖现值及状态结构审查未初始化已确认值等问题，并保留迁移与规则状态来源审计。

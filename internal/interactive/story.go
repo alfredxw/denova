@@ -151,6 +151,9 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		trpgSystem = *req.TRPGSystem
 	}
 	if !actorStateEmpty(actorState) {
+		if err := validateActorStateSystem(actorState); err != nil {
+			return StorySummary{}, fmt.Errorf("创建故事的状态系统无效 / Invalid state system for story creation: %w", err)
+		}
 		meta.ActorStateSchema = FreezeActorStateSchemaWithRules(actorState, trpgSystem, len(req.InitialStateOps) > 0)
 		if meta.ActorStateSchema != nil && req.ActorStateAdaptation != nil {
 			record := *req.ActorStateAdaptation

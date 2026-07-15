@@ -154,6 +154,15 @@ func TestApplyActorStateSchemaAdaptationRejectsInvalidFieldContract(t *testing.T
 	}
 }
 
+func TestApplyActorStateSchemaAdaptationRejectsPathSeparatorFieldName(t *testing.T) {
+	_, _, err := ApplyActorStateSchemaAdaptation(defaultActorStateSystem(), StoryDirectorTRPGSystem{}, ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{
+		Op: "fields", TemplateID: DefaultActorID, FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "专注/意志", Type: "string"}}},
+	}}})
+	if err == nil || !strings.Contains(err.Error(), "路径分隔符") {
+		t.Fatalf("AI schema adaptation must reject slash-delimited field names, got %v", err)
+	}
+}
+
 func floatPointer(value float64) *float64 {
 	return &value
 }

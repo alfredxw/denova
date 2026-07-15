@@ -262,9 +262,9 @@ function ActorStateTemplateDetails({
   useEffect(() => {
     if (!activeField) setDefaultValid(true)
   }, [activeField])
-  useEffect(() => {
+	useEffect(() => {
 		const names = fields.map((field) => normalizeActorStateFieldName(field.name))
-		const fieldsValid = names.every(Boolean) && new Set(names).size === names.length
+		const fieldsValid = names.every((name) => Boolean(name) && !name.includes('/')) && new Set(names).size === names.length
 		onValidChange(defaultValid && initialActorValid && fieldsValid)
 	}, [defaultValid, fields, initialActorValid, onValidChange])
 

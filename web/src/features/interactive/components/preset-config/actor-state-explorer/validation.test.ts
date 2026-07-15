@@ -47,4 +47,13 @@ describe('isActorStateExplorerValueValid', () => {
       initial_actors: [{ id: 'protagonist', name: '主角', template_id: 'missing' }],
     })).toBe(false)
   })
+
+  it('rejects path separators after Unicode normalization', () => {
+    for (const name of ['精神/意志状态', '精神／意志状态']) {
+      expect(isActorStateExplorerValueValid({
+        ...baseValue,
+        templates: [{ ...baseValue.templates![0], fields: [{ name, type: 'string' }] }],
+      })).toBe(false)
+    }
+  })
 })

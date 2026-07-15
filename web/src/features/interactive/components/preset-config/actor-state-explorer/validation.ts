@@ -18,10 +18,10 @@ export function isActorStateExplorerValueValid(value: ExplorerProps['value']) {
   for (const tpl of value.templates || []) {
     if (!tpl.id || !tpl.name || templateIds.has(tpl.id)) return false
     templateIds.add(tpl.id)
-		const fieldNames = new Set<string>()
+    const fieldNames = new Set<string>()
     for (const field of tpl.fields || []) {
 			const normalizedName = normalizeStateName(field.name)
-			if (!normalizedName || fieldNames.has(normalizedName)) return false
+			if (!normalizedName || actorStateFieldNameHasPathSeparator(field.name) || fieldNames.has(normalizedName)) return false
 			fieldNames.add(normalizedName)
     }
     const rulePools = new Set<string>()
@@ -36,6 +36,10 @@ export function isActorStateExplorerValueValid(value: ExplorerProps['value']) {
     if (!actor.id || !actor.name || !actor.template_id || !templateIds.has(actor.template_id)) return false
   }
   return true
+}
+
+export function actorStateFieldNameHasPathSeparator(value: string | undefined) {
+	return normalizeStateName(value).includes('/')
 }
 
 function normalizeStateName(value: string | undefined) {
