@@ -1,0 +1,99 @@
+AGENTS.md
+  h_beed6209b76699 62 gitai:{"mixed_line_ranges":[{"Single":62}],"operations":[]}
+CHANGELOG.md
+  s_7d231d8df07088::t_2df85bfb9fbebb 9-18
+web/src/components/Chat/AgentMessageList.test.tsx
+  s_abd72a422af119::t_b9206635785674 57,61,66-68
+web/src/components/Chat/AgentMessageList.tsx
+  s_abd72a422af119::t_b0fc7940a96a3c 27,314
+web/src/components/Chat/MessageItem.test.tsx
+  s_abd72a422af119::t_e612309d95429c 50-57
+web/src/components/Chat/MessageItem.tsx
+  s_abd72a422af119::t_a0032e3a27082b 3,22,519-520,522-523,1499-1500
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_7d231d8df07088::t_d4d267af002102 5,7,69-78,162,169-171,186,706-751
+web/src/features/interactive/components/StoryStage.tsx
+  s_abd72a422af119::t_7620622954d591 578
+web/src/features/interactive/components/director-console/StateView.tsx
+  s_abd72a422af119::t_dffde8a6616139 5,22
+web/src/features/interactive/components/director-console/shared.test.tsx
+  s_7d231d8df07088::t_a1cd31b52a1654 1-15
+web/src/features/interactive/components/director-console/shared.tsx
+  s_7d231d8df07088::t_ae97ddc17af887 52,54
+web/src/features/interactive/components/setting-panel/PresetSettingsPanel.tsx
+  s_7d231d8df07088::t_d9addd685af6ce 43,588-607,610,798,822,833
+web/src/features/interactive/components/story-state/StateDisplayPreferenceMenu.tsx
+  s_7d231d8df07088::t_ceb3cb41e8290a 8
+web/src/features/interactive/components/story-state/StoryStateLedger.test.tsx
+  s_7d231d8df07088::t_80cfffb154a488 1,3-4,17-23,36,41-42,48-50,72-74,105-165,186-234,340,351
+web/src/features/interactive/components/story-state/StoryStateLedger.tsx
+  s_7d231d8df07088::t_ac6ece8bbc292f 1,28-36,42-52,67-71,79-102,106-107,110-114,117,154-211,256,259,290-303,309,318,337-339,351,380-399,401-451,453,457-458,461,463-467,469-475,482-497
+web/src/features/interactive/components/story-state/display-preference.test.ts
+  s_7d231d8df07088::t_a68cfb2be60fcf 12,15
+web/src/features/interactive/components/story-state/display-preference.ts
+  s_7d231d8df07088::t_1392b89aaa08e2 4-5,7,30
+web/src/hooks/useAgentChat.ts
+  s_abd72a422af119::t_a555ea42bdcc72 62
+web/src/hooks/useAgentSSEUIMessageStream.ts
+  s_abd72a422af119::t_75f56cff3c2fd0 57
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_7d231d8df07088::t_56f8eb4bc82763 615-617
+web/src/i18n/locales/en-US/storyStage.ts
+  s_7d231d8df07088::t_700d25ec1e3b42 20-21,31,39-40,42
+web/src/i18n/locales/zh-CN/chat.ts
+  s_abd72a422af119::t_9bb4132e9e56f2 304
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_7d231d8df07088::t_2e4c5cf7d2d40b 615-617
+web/src/i18n/locales/zh-CN/storyStage.ts
+  s_7d231d8df07088::t_4ae9d01faec486 20-21,31,39-40,42,120
+web/src/index.css
+  s_7d231d8df07088::t_10ee443df258f0 2181-2182,2193-2200,2209-2263,2265,2269,2282-2283,2286-2287,2291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0c06cfb8dd39063d4502076f7dedf944d99e3fa9",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_7d231d8df07088": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f65f6-16f7-75b3-9ed8-4801560b93a0",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_abd72a422af119": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f65e6-e681-7390-9709-cd0b8393d7c0",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {
+    "AGENTS.md": [
+      {
+        "hash": "h_beed6209b76699",
+        "line_ranges": [
+          {
+            "Single": 62
+          }
+        ],
+        "mixed_line_ranges": [
+          {
+            "Single": 62
+          }
+        ],
+        "operations": []
+      }
+    ]
+  },
+  "remote_transcripts": {}
+}
