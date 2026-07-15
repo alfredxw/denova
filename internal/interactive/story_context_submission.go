@@ -75,7 +75,7 @@ func meaningfulStoryContextValue(value any) bool {
 func newStoryContextRequiredDiagnostic(field, reason string) *TurnSubmissionDiagnostic {
 	path := formatStateUpdatePath([]string{DefaultStoryContextActorID, field})
 	return newTurnSubmissionDiagnostic(
-		TurnSubmissionModuleStateUpdates,
+		TurnSubmissionModuleActorStatePatches,
 		nil,
 		TurnSubmissionDiagnosticStoryContextRequired,
 		path,

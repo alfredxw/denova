@@ -527,7 +527,6 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		AgentKind:            strings.TrimSpace(req.AgentKind),
 		DisplayEvents:        sanitizeDisplayEvents(req.DisplayEvents),
 		ModelContextMessages: sanitizeModelContextMessages(req.ModelContextMessages),
-		TurnBrief:            normalizeTurnBriefPointer(req.TurnBrief),
 		RuleResolution:       normalizeRuleResolutionPointer(req.RuleResolution),
 		TurnResult:           turnResult,
 		TerminalOutcome:      normalizeTerminalOutcomePointer(req.TerminalOutcome),
@@ -982,7 +981,6 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 			continue
 		}
 		lines[i].Raw["rule_resolution"] = next
-		delete(lines[i].Raw, "turn_brief")
 		existingOps := []StateOp{}
 		existingActorOps := []ActorStateOp{}
 		if target.StateDelta != nil {
@@ -1292,7 +1290,7 @@ func terminalOutcomeFromRuleResolution(resolution RuleResolution, turnID, narrat
 		Terminal:              true,
 		Type:                  firstNonEmptyString(candidate.Type, "bad_end"),
 		Reason:                candidate.Reason,
-		FinalNarrativeSummary: trimBytes(narrative, maxTurnBriefTextBytes),
+		FinalNarrativeSummary: trimBytes(narrative, maxInteractiveTextBytes),
 		CausedByTurnID:        turnID,
 		RuleResolutionID:      resolution.ID,
 	})

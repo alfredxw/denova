@@ -468,8 +468,10 @@ function readRuleRoll(value: unknown): PublicRuleRoll | undefined {
     ? data.state_changes
         .map((item) => {
           const change = objectData(item)
-          if (!readString(change.path)) return null
-          return { path: readString(change.path), change: readNumber(change.change) || 0, reason: readString(change.reason) }
+          const actorId = readString(change.actor_id)
+          const fieldId = readString(change.field_id)
+          if (!actorId || !fieldId) return null
+          return { actor_id: actorId, field_id: fieldId, change: readNumber(change.change) || 0, reason: readString(change.reason) }
         })
         .filter((item): item is NonNullable<typeof item> => Boolean(item))
     : undefined

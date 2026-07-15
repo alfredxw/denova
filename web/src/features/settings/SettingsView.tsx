@@ -436,9 +436,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                placeholder={placeholderFor('agent_idle_timeout_seconds')}
                min={0}
                onChange={(v) => setField('agent_idle_timeout_seconds', v)} />
-          <Num label={t('settings.agent.toolResultLimitKB')} value={draft.agent_tool_result_limit_kb ?? null}
-               placeholder={placeholderFor('agent_tool_result_limit_kb')}
-               min={0}
+		  <Num label={t('settings.agent.toolResultLimitKB')} value={draft.agent_tool_result_limit_kb ?? null}
+			   placeholder={placeholderFor('agent_tool_result_limit_kb')}
+			   min={1}
                onChange={(v) => setField('agent_tool_result_limit_kb', v)} />
           <BoolTri label={t('settings.agent.planModeDefault')} value={draft.plan_mode_default ?? null}
                    effective={effective.plan_mode_default}

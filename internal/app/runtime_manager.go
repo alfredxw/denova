@@ -809,7 +809,7 @@ func appAgentIdleTimeoutSeconds(v *int) int {
 }
 
 func appAgentToolResultLimitKB(v *int) int {
-	if v == nil || *v < 0 {
+	if v == nil || *v <= 0 {
 		return config.DefaultAgentToolResultLimitKB
 	}
 	return *v
@@ -817,7 +817,7 @@ func appAgentToolResultLimitKB(v *int) int {
 
 func agentToolResultMaxBytes(cfg config.Config) int {
 	if cfg.AgentToolResultLimitKB <= 0 {
-		return 0
+		return config.DefaultAgentToolResultLimitKB * 1024
 	}
 	return cfg.AgentToolResultLimitKB * 1024
 }

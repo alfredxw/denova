@@ -645,7 +645,7 @@ func TestAppendTurnWithStateConsumesRuleStateChanges(t *testing.T) {
 	story, err := store.CreateStory(CreateStoryRequest{
 		StoryDirectorID: director.ID,
 		Title:           "规则状态",
-		InitialStateOps: StoryDirectorInitialStateOps(director),
+		ActorState:      &director.ActorState,
 	})
 	if err != nil {
 		t.Fatalf("CreateStory failed: %v", err)
@@ -693,10 +693,8 @@ func TestAppendTurnWithStateConsumesRuleStateChanges(t *testing.T) {
 
 func TestAppendTurnWithStateSkipsUnknownRuleStateChanges(t *testing.T) {
 	store := NewStore(t.TempDir())
-	story, err := store.CreateStory(CreateStoryRequest{
-		Title:           "规则状态跳过",
-		InitialStateOps: StoryDirectorInitialStateOps(DefaultStoryDirector()),
-	})
+	director := DefaultStoryDirector()
+	story, err := store.CreateStory(CreateStoryRequest{Title: "规则状态跳过", ActorState: &director.ActorState})
 	if err != nil {
 		t.Fatalf("CreateStory failed: %v", err)
 	}
@@ -733,7 +731,7 @@ func TestRerollRuleResolutionReplacesAutomaticRuleStateOps(t *testing.T) {
 	story, err := store.CreateStory(CreateStoryRequest{
 		StoryDirectorID: director.ID,
 		Title:           "规则重抽",
-		InitialStateOps: StoryDirectorInitialStateOps(director),
+		ActorState:      &director.ActorState,
 	})
 	if err != nil {
 		t.Fatalf("CreateStory failed: %v", err)
@@ -790,11 +788,10 @@ func newStoreWithStaminaTestDirector(t *testing.T) (*Store, StoryDirector) {
 		ID:   "stamina-test-director",
 		Name: "体力测试导演",
 		ModuleRefs: StoryDirectorModuleRefs{
-			NarrativeStyleDisabled:  true,
-			EventPackagesDisabled:   true,
-			RuleSystemDisabled:      true,
-			OpeningSelectorDisabled: true,
-			ImagePresetDisabled:     true,
+			NarrativeStyleDisabled: true,
+			EventPackagesDisabled:  true,
+			RuleSystemDisabled:     true,
+			ImagePresetDisabled:    true,
 		},
 		Strategy: StoryDirectorStrategy{Enabled: true},
 		ActorState: StoryDirectorActorStateSystem{

@@ -44,14 +44,15 @@ func TestOpeningTurnStaysVisibleWhileStateSchemaInitializesBeforeMaintenance(t *
 		if toolContext.MaintenanceTask == "state_schema_initialization" {
 			once.Do(func() { close(started) })
 			<-release
-			if toolContext.SubmitStateSchemaProposal == nil {
-				t.Fatal("state schema Director must receive the proposal submit callback")
+			if toolContext.SubmitStateSchemaBatch == nil {
+				t.Fatal("state schema Director must receive the Batch submit callback")
 			}
-			_, err := toolContext.SubmitStateSchemaProposal(context.Background(), interactive.ActorStateSchemaProposal{
+			result, err := toolContext.SubmitStateSchemaBatch(context.Background(), stateSchemaBatchFromProposal("crisis-pressure", interactive.ActorStateSchemaProposal{
 				Summary: "补充危机压力",
 				Requirements: []interactive.ActorStateSchemaRequirementReview{{
 					Source:       interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: turn.ID},
 					Requirement:  "燃烧长街形成可持续的危机压力",
+					EvidenceKind: "confirmed",
 					ExpectedType: "number",
 					Decision:     "add",
 					TemplateID:   "protagonist",
@@ -64,9 +65,9 @@ func TestOpeningTurnStaysVisibleWhileStateSchemaInitializesBeforeMaintenance(t *
 						Op: "add", Field: interactive.ActorStateField{Name: "危机压力", Type: "number", Default: 1, Min: &minPressure, Max: &maxPressure, Visibility: "visible"}, Reason: "首轮出现燃烧街道",
 					}},
 				}}},
-			})
-			if err != nil {
-				t.Fatalf("submit state schema proposal: %v", err)
+			}))
+			if err != nil || !result.Finalized {
+				t.Fatalf("submit state schema Batch: result=%#v err=%v", result, err)
 			}
 			return "状态结构提案已提交。", nil
 		}
@@ -138,11 +139,12 @@ func TestStateSchemaInitializationRejectsLoreRevisionChangedDuringDirectorReview
 		}
 		close(started)
 		<-release
-		_, err := toolContext.SubmitStateSchemaProposal(context.Background(), interactive.ActorStateSchemaProposal{
+		result, err := toolContext.SubmitStateSchemaBatch(context.Background(), stateSchemaBatchFromProposal("covered-state", interactive.ActorStateSchemaProposal{
 			Summary: "现有状态字段已覆盖规则",
 			Requirements: []interactive.ActorStateSchemaRequirementReview{{
 				Source:       interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: turn.ID},
 				Requirement:  "长期追踪主角状态",
+				EvidenceKind: "confirmed",
 				ExpectedType: "string",
 				Decision:     "covered",
 				TemplateID:   "protagonist",
@@ -150,8 +152,11 @@ func TestStateSchemaInitializationRejectsLoreRevisionChangedDuringDirectorReview
 				ValuePolicy:  interactive.ActorStateSchemaValuePolicySchemaOnly,
 			}},
 			Adaptation: interactive.ActorStateSchemaAdaptation{},
-		})
-		return "状态结构提案已提交。", err
+		}))
+		if err != nil || !result.Finalized {
+			return "", fmt.Errorf("状态结构 Batch 未完成: result=%#v err=%v", result, err)
+		}
+		return "状态结构提案已提交。", nil
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{}).bindDirectorRuntime(newWorkspaceDirectorTaskGroup(), generator)
 	done := startInteractiveDirectorMaintenanceTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil, false)
@@ -205,14 +210,17 @@ func TestStateSchemaInitializationRejectsLoreRequirementThatWasNotRead(t *testin
 		if toolContext.MaintenanceTask != "state_schema_initialization" {
 			return "maintenance complete", nil
 		}
-		_, err := toolContext.SubmitStateSchemaProposal(callCtx, interactive.ActorStateSchemaProposal{
+		result, err := toolContext.SubmitStateSchemaBatch(callCtx, stateSchemaBatchFromProposal("unread-lore", interactive.ActorStateSchemaProposal{
 			Summary: "声称资料已覆盖",
 			Requirements: []interactive.ActorStateSchemaRequirementReview{{
-				Source: interactive.ActorStateSchemaRequirementSource{Kind: "lore", ID: "numeric-rule"}, Requirement: "长期状态规则", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly,
+				Source: interactive.ActorStateSchemaRequirementSource{Kind: "lore", ID: "numeric-rule"}, Requirement: "长期状态规则", EvidenceKind: "confirmed", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly,
 			}},
 			Adaptation: interactive.ActorStateSchemaAdaptation{},
-		})
-		return "状态结构提案已提交。", err
+		}))
+		if err != nil || !result.Finalized {
+			return "", fmt.Errorf("状态结构 Batch 未完成: result=%#v err=%v", result, err)
+		}
+		return "状态结构提案已提交。", nil
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{}).bindDirectorRuntime(newWorkspaceDirectorTaskGroup(), generator)
 	<-startInteractiveDirectorMaintenanceTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil, false)
@@ -252,16 +260,18 @@ func TestStateSchemaInitializationKeepsFinalizedProposalAfterLaterSubmitFails(t 
 		if toolContext.MaintenanceTask != "state_schema_initialization" {
 			return "maintenance complete", nil
 		}
-		if _, err := toolContext.SubmitStateSchemaProposal(callCtx, interactive.ActorStateSchemaProposal{
+		first, err := toolContext.SubmitStateSchemaBatch(callCtx, stateSchemaBatchFromProposal("covered-state", interactive.ActorStateSchemaProposal{
 			Summary: "现有字段已覆盖",
 			Requirements: []interactive.ActorStateSchemaRequirementReview{{
-				Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: turn.ID}, Requirement: "长期追踪主角状态", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly,
+				Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: turn.ID}, Requirement: "长期追踪主角状态", EvidenceKind: "confirmed", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly,
 			}},
 			Adaptation: interactive.ActorStateSchemaAdaptation{},
-		}); err != nil {
-			return "", err
+		}))
+		if err != nil || !first.Finalized {
+			return "", fmt.Errorf("有效 Batch 未完成: result=%#v err=%v", first, err)
 		}
-		if _, err := toolContext.SubmitStateSchemaProposal(callCtx, interactive.ActorStateSchemaProposal{Summary: "缺少覆盖审查"}); err == nil {
+		later, err := toolContext.SubmitStateSchemaBatch(callCtx, stateSchemaBatchFromProposal("missing-review", interactive.ActorStateSchemaProposal{Summary: "缺少覆盖审查"}))
+		if err == nil && len(later.Rejected) == 0 && len(later.Blocked) == 0 {
 			return "", fmt.Errorf("expected the later proposal to fail validation")
 		}
 		return "后续提案未通过。", nil
@@ -278,5 +288,18 @@ func TestStateSchemaInitializationKeepsFinalizedProposalAfterLaterSubmitFails(t 
 	}
 	if snapshot.ActorStateSchema == nil || snapshot.ActorStateSchema.Revision != 1 {
 		t.Fatalf("older proposal must not be applied after a later submit failure: %#v", snapshot.ActorStateSchema)
+	}
+}
+
+func stateSchemaBatchFromProposal(itemID string, proposal interactive.ActorStateSchemaProposal) interactive.ActorStateSchemaBatch {
+	return interactive.ActorStateSchemaBatch{
+		Summary: proposal.Summary,
+		Items: []interactive.ActorStateSchemaBatchItem{{
+			ItemID:       itemID,
+			Summary:      proposal.Summary,
+			Requirements: proposal.Requirements,
+			Adaptation:   proposal.Adaptation,
+		}},
+		Finalize: true,
 	}
 }

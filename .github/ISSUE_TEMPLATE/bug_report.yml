@@ -15,7 +15,7 @@ body:
     attributes:
       label: Version / 版本
       description: Which Denova version are you using? / 你正在使用哪个 Denova 版本？
-      placeholder: "Example: v0.1.18 or commit SHA"
+      placeholder: "Example: v0.2.0 or commit SHA"
     validations:
       required: true
 

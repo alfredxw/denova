@@ -2051,7 +2051,7 @@ function publicRuleRollFromResolution(resolution?: RuleResolution): PublicRuleRo
     resolution_id: resolution.id,
     label: result.label || resolution.request?.rule?.label || resolution.request?.challenge || resolution.request?.action,
     difficulty: resolution.request?.difficulty,
-    dice: result.dice || resolution.request?.rule?.dice,
+    dice: result.dice,
     roll_mode: result.roll_mode || resolution.request?.rule?.roll_mode,
     rolls: result.rolls,
     kept_roll: result.kept_roll,
@@ -2074,13 +2074,12 @@ function publicRuleRollFromToolOutput(content: string): PublicRuleRoll | null {
   const stateChanges = Array.isArray(parsed.state_changes)
     ? parsed.state_changes
       .map((item) => isPlainRecord(item) ? {
-				actor_id: String(item.actor_id || '').trim() || undefined,
-				field_id: String(item.field_id || '').trim() || undefined,
-				path: String(item.path || '').trim() || undefined,
+        actor_id: String(item.actor_id || '').trim(),
+        field_id: String(item.field_id || '').trim(),
         change: Number(item.change),
         reason: typeof item.reason === 'string' ? item.reason : undefined,
       } : null)
-			.filter((item): item is NonNullable<typeof item> => Boolean(item && (item.field_id || item.path) && Number.isFinite(item.change)))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item && item.actor_id && item.field_id && Number.isFinite(item.change)))
     : undefined
   return {
     resolution_id: stringFromRecord(parsed, 'resolution_id'),

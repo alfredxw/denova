@@ -86,36 +86,17 @@ export function makeImagePresetPayload(draft: ImagePreset): Partial<ImagePreset>
 }
 
 export function makeStoryDirectorPayload(draft: StoryDirector): Partial<StoryDirector> {
-  const payload = cloneStoryDirector({
-    ...draft,
-    id: draft.id,
-  })
-  delete (payload as unknown as Record<string, unknown>).event_system
-  delete (payload as unknown as Record<string, unknown>).opening_selector
-  const refs = payload.module_refs
-  if (refs) {
-    if (!refs.event_package_ids?.length && refs.event_system_id) {
-      refs.event_package_ids = [refs.event_system_id]
-    }
-    if (refs.event_packages_disabled === undefined && refs.event_system_disabled === true) {
-      refs.event_packages_disabled = true
-    }
-    delete (refs as Record<string, unknown>).event_system_id
-    delete (refs as Record<string, unknown>).event_system_disabled
-    delete (refs as Record<string, unknown>).opening_selector_id
-    delete (refs as Record<string, unknown>).opening_selector_disabled
-  }
-  return payload
+  return cloneStoryDirector({
+		...draft,
+		id: draft.id,
+	})
 }
 
 export function makeEventPackagePayload(draft: EventPackageModule): Partial<EventPackageModule> {
-  const payload = cloneEventPackage({
-    ...draft,
-    id: draft.id,
-  })
-  delete (payload as unknown as Record<string, unknown>).event_system
-  delete (payload as unknown as Record<string, unknown>).custom_events
-  return payload
+	return cloneEventPackage({
+		...draft,
+		id: draft.id,
+	})
 }
 
 export function makeRuleSystemPayload(draft: RuleSystemModule): Partial<RuleSystemModule> {

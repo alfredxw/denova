@@ -45,7 +45,7 @@ type FilteredToolResult struct {
 }
 
 const (
-	defaultToolResultMaxBytes = 0
+	defaultToolResultMaxBytes = config.DefaultAgentToolResultLimitKB * 1024
 	toolResultMetadataHeader  = "[Denova tool result metadata]"
 )
 

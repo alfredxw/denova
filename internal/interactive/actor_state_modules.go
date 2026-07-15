@@ -127,29 +127,11 @@ func (l *ActorStateLibrary) Update(id string, item ActorStateModule, baseRevisio
 		return ActorStateModule{}, err
 	}
 	path := filepath.Join(l.dir(), id+".json")
-	if current.NeedsMigration && !isBuiltin {
-		if err := l.backupActorStateBeforeMigration(path); err != nil {
-			return ActorStateModule{}, fmt.Errorf("备份旧状态系统失败: %w", err)
-		}
-	}
 	if err := writeActorStateFile(path, item); err != nil {
 		return ActorStateModule{}, err
 	}
 	item.Path = path
 	return applyActorStateOwnership(item), nil
-}
-
-func (l *ActorStateLibrary) backupActorStateBeforeMigration(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	timestamp := time.Now().UTC().Format("20060102T150405.000000000Z")
-	backupDir := filepath.Join(l.novaDir, "backups", "state-system-v6", timestamp)
-	if err := os.MkdirAll(backupDir, 0o755); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(backupDir, filepath.Base(path)), data, 0o644)
 }
 
 func (l *ActorStateLibrary) Delete(id string) error {

@@ -55,14 +55,14 @@ func TestBuildStateSchemaAdaptationInstructionIncludesFrozenSchemaAndCurrentActo
 	}
 }
 
-func TestBuildStateSchemaAdaptationInstructionDoesNotLimitCurrentActorState(t *testing.T) {
+func TestBuildStateSchemaAdaptationInstructionKeepsCurrentActorStateWithinHighLimit(t *testing.T) {
 	stateSystem := interactive.StoryDirectorActorStateSystem{Templates: []interactive.ActorStateTemplate{{
 		ID: "character", Name: "角色", Fields: []interactive.ActorStateField{{Name: "记忆", Type: "string", Visibility: "visible"}},
 	}}}
 	req := interactive.CreateStoryRequest{Title: "完整状态上下文", ActorState: &stateSystem}
 	director := interactive.StoryDirector{ID: "director", ActorState: stateSystem}
 	turn := &interactive.TurnEvent{ID: "opening-turn", BranchID: "main", Narrative: "众人到场。"}
-	largeValue := strings.Repeat("x", maxInteractiveStateSchemaPromptBytes+8192)
+	largeValue := strings.Repeat("x", maxInteractiveStateSchemaCurrentActorStateBytes/2)
 	actors := make(map[string]any, 30)
 	for index := 0; index < 30; index++ {
 		actorID := fmt.Sprintf("actor-%02d", index)
@@ -78,8 +78,11 @@ func TestBuildStateSchemaAdaptationInstructionDoesNotLimitCurrentActorState(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(instruction) <= maxInteractiveStateSchemaPromptBytes {
+	if len(instruction) <= maxInteractiveStateSchemaNonStatePromptBytes {
 		t.Fatalf("regression fixture must exceed the non-state prompt budget: %d", len(instruction))
+	}
+	if len(instruction) > maxInteractiveStateSchemaTotalPromptBytes {
+		t.Fatalf("instruction exceeds the declared total prompt limit: %d", len(instruction))
 	}
 	var prompt stateSchemaAdaptationPrompt
 	if err := json.Unmarshal([]byte(strings.TrimPrefix(instruction, stateSchemaAdaptationInstructionPrefix)), &prompt); err != nil {
@@ -96,6 +99,27 @@ func TestBuildStateSchemaAdaptationInstructionDoesNotLimitCurrentActorState(t *t
 	if lastState["记忆"] != largeValue {
 		t.Fatalf("large Actor value was truncated: got=%d want=%d", len(fmt.Sprint(lastState["记忆"])), len(largeValue))
 	}
+	if prompt.Limits["max_current_actor_state_bytes"] != maxInteractiveStateSchemaCurrentActorStateBytes || prompt.Limits["max_total_prompt_bytes"] != maxInteractiveStateSchemaTotalPromptBytes {
+		t.Fatalf("prompt must declare Actor-state and total hard limits: %#v", prompt.Limits)
+	}
+}
+
+func TestBuildStateSchemaAdaptationInstructionRejectsActorStateAboveHighLimitWithoutTruncation(t *testing.T) {
+	stateSystem := interactive.StoryDirectorActorStateSystem{Templates: []interactive.ActorStateTemplate{{
+		ID: "character", Name: "角色", Fields: []interactive.ActorStateField{{Name: "记忆", Type: "string", Visibility: "visible"}},
+	}}}
+	req := interactive.CreateStoryRequest{Title: "超限状态上下文", ActorState: &stateSystem}
+	director := interactive.StoryDirector{ID: "director", ActorState: stateSystem}
+	turn := &interactive.TurnEvent{ID: "opening-turn", BranchID: "main", Narrative: "角色到场。"}
+	actors := map[string]any{"actor": map[string]any{
+		"id": "actor", "name": "actor", "template_id": "character",
+		"state": map[string]any{"记忆": strings.Repeat("x", maxInteractiveStateSchemaCurrentActorStateBytes)},
+	}}
+
+	instruction, err := buildStateSchemaAdaptationInstructionAfterOpening(req, director, nil, turn, map[string]any{"actors": actors})
+	if err == nil || instruction != "" || !strings.Contains(err.Error(), "Current Actor state snapshot exceeds the safety limit") {
+		t.Fatalf("oversized Actor state must fail explicitly without a partial prompt: instruction_bytes=%d err=%v", len(instruction), err)
+	}
 }
 
 func TestBuildStateSchemaAdaptationInstructionIsSourcedAndBounded(t *testing.T) {
@@ -111,7 +135,7 @@ func TestBuildStateSchemaAdaptationInstructionIsSourcedAndBounded(t *testing.T) 
 	if err != nil {
 		t.Fatalf("buildStateSchemaAdaptationInstruction failed: %v", err)
 	}
-	if len(instruction) > maxInteractiveStateSchemaPromptBytes {
+	if len(instruction) > maxInteractiveStateSchemaNonStatePromptBytes {
 		t.Fatalf("instruction exceeds bounded payload: %d", len(instruction))
 	}
 	for _, want := range []string{"sources", "story_origin", "state_preset", "trpg_bindings", "max_non_state_prompt_bytes"} {
@@ -220,7 +244,7 @@ func TestBuildStateSchemaAdaptationInstructionSeparatesCompleteResidentLoreFromD
 			t.Fatalf("state schema instruction leaked non-discovery lore value %q: %s", unexpected, instruction)
 		}
 	}
-	if len(instruction) > maxInteractiveStateSchemaPromptBytes {
+	if len(instruction) > maxInteractiveStateSchemaNonStatePromptBytes {
 		t.Fatalf("instruction exceeds bounded payload: %d", len(instruction))
 	}
 }

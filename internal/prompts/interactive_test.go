@@ -236,7 +236,7 @@ func TestInteractiveDirectorPromptEditsDirectorPlanFiles(t *testing.T) {
 		PlanningTemplates:           `{"plan":"# 导演私密规划","agent_brief":"# 正文 Agent 简报"}`,
 		LoreContext:                 "## 资料库索引（source: lore index, bounded）\n- 沈凝 / 重要角色\n- 青岚盟 / 重要势力",
 		BranchPlanningTurns:         5,
-		TurnAuditJSON:               `{"turn_brief":{"turn_goal":"公开比试"}}`,
+		TurnAuditJSON:               `{"turn_result":{"director_update":{"needed":true,"reason":"公开比试"}}}`,
 		TurnHistory:                 "第 1 回合剧情：主角报名。",
 		StoryDirectorStrategyPrompt: "- 伏笔回收前至少给一次可感知征兆。",
 		DirectorEventCatalog:        `[{"id":"face_slap","category":"打脸"}]`,

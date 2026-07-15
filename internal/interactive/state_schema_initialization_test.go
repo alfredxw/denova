@@ -196,7 +196,7 @@ func TestBuildStateSchemaMigrationRejectsLossyFallbackOverExistingValue(t *testi
 	}
 }
 
-func TestApplyStateSchemaInitializationMigratesOpeningStateAndKeepsAudit(t *testing.T) {
+func TestApplyStateSchemaProposalMigratesOpeningStateAndKeepsAudit(t *testing.T) {
 	workspace := t.TempDir()
 	novaDir := filepath.Join(workspace, ".denova")
 	store := NewStoreWithNovaDir(workspace, novaDir)
@@ -234,16 +234,23 @@ func TestApplyStateSchemaInitializationMigratesOpeningStateAndKeepsAudit(t *test
 	if _, claimed, err := store.ClaimStateSchemaInitialization(story.ID, turn.ID); err != nil || !claimed {
 		t.Fatalf("claim initialization: claimed=%v err=%v", claimed, err)
 	}
-	status, err := store.ApplyStateSchemaInitialization(story.ID, "main", turn.ID, ActorStateSchemaAdaptation{
+	status, err := store.ApplyStateSchemaProposal(story.ID, "main", turn.ID, ActorStateSchemaProposal{
 		Summary: "根据真实开局调整修炼状态",
-		TemplateOps: []ActorStateTemplateSchemaOp{{
-			Op: "fields", TemplateID: "protagonist", FieldOps: []ActorStateFieldSchemaOp{
-				{Op: "replace", FieldID: "功力", Field: ActorStateField{Name: "战力", Type: "number", Default: 0, Visibility: "visible"}, Reason: "数值检定需要"},
-				{Op: "remove", FieldID: "旧秘密", Reason: "开局未采用"},
-				{Op: "add", Field: ActorStateField{Name: "士气", Type: "number", Default: 10, Visibility: "visible"}, Reason: "首轮明确出现"},
-			},
-		}, {Op: "remove", TemplateID: "npc", Reason: "首轮临时角色已离场"}},
-		ActorOps: []ActorStateRuntimeSchemaOp{{Op: "remove", ActorID: "guide", Reason: "不再长期追踪"}},
+		Requirements: []ActorStateSchemaRequirementReview{
+			{Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: turn.ID}, Requirement: "战力需要参与数值检定", EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicyPreserve, ActorID: "protagonist", ExpectedType: "number", Decision: "replace", TemplateID: "protagonist", FieldID: "战力"},
+			{Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: turn.ID}, Requirement: "首轮明确出现士气", EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "number", Decision: "add", TemplateID: "protagonist", FieldID: "士气"},
+		},
+		Adaptation: ActorStateSchemaAdaptation{
+			Summary: "根据真实开局调整修炼状态",
+			TemplateOps: []ActorStateTemplateSchemaOp{{
+				Op: "fields", TemplateID: "protagonist", FieldOps: []ActorStateFieldSchemaOp{
+					{Op: "replace", FieldID: "功力", Field: ActorStateField{Name: "战力", Type: "number", Default: 0, Visibility: "visible"}, Reason: "数值检定需要"},
+					{Op: "remove", FieldID: "旧秘密", Reason: "开局未采用"},
+					{Op: "add", Field: ActorStateField{Name: "士气", Type: "number", Default: 10, Visibility: "visible"}, Reason: "首轮明确出现"},
+				},
+			}, {Op: "remove", TemplateID: "npc", Reason: "首轮临时角色已离场"}},
+			ActorOps: []ActorStateRuntimeSchemaOp{{Op: "remove", ActorID: "guide", Reason: "不再长期追踪"}},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -341,7 +348,12 @@ func TestStateSchemaInitializationFailureAndSkipKeepRevisionOne(t *testing.T) {
 	if _, claimed, err := store.ClaimStateSchemaInitialization(story.ID, turn.ID); err != nil || !claimed {
 		t.Fatalf("claim initialization: claimed=%v err=%v", claimed, err)
 	}
-	_, err = store.ApplyStateSchemaInitialization(story.ID, "main", turn.ID, ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{Op: "remove", TemplateID: "npc"}}})
+	_, err = store.ApplyStateSchemaProposal(story.ID, "main", turn.ID, ActorStateSchemaProposal{
+		Requirements: []ActorStateSchemaRequirementReview{{
+			Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: turn.ID}, Requirement: "临时向导不再长期追踪", EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, Decision: "ignored", Reason: "临时角色已离场",
+		}},
+		Adaptation: ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{Op: "remove", TemplateID: "npc"}}},
+	})
 	if err == nil {
 		t.Fatal("removing an in-use template without Actor migration must fail")
 	}
@@ -423,6 +435,7 @@ func TestApplyUnchangedStateSchemaProposalKeepsRevisionAndStoresReview(t *testin
 		Summary: "现有生命字段完整覆盖规则", ReviewedLoreIDs: []string{"生命规则"},
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "lore", ID: "生命规则"}, Requirement: "生命为 0-100",
+			EvidenceKind: "confirmed",
 			ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "number", Min: &minValue, Max: &maxValue, Decision: "covered", TemplateID: "protagonist", FieldID: "生命",
 		}},
 	})

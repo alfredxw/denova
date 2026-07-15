@@ -44,12 +44,6 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 		BranchID:  "main",
 		User:      "我报名参加公开比试",
 		Narrative: "登记弟子抬头看了他一眼，压低声音笑了。",
-		TurnBrief: &interactive.TurnBrief{
-			UserAction:       "报名公开比试",
-			TurnGoal:         "建立公开质疑",
-			EventIntents:     []string{"face_slap"},
-			StateExpectation: "公开比试即将开始",
-		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -217,10 +211,6 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 		BranchID:  "main",
 		User:      "我强行穿过禁制",
 		Narrative: "禁制轰然亮起。",
-		TurnBrief: &interactive.TurnBrief{
-			UserAction: "强行穿过禁制",
-			TurnGoal:   "制造失败代价",
-		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -297,10 +287,6 @@ func TestAnalyzeInteractiveDirectorContextUsesCurrentDirectorInputs(t *testing.T
 		BranchID:  "main",
 		User:      "我邀请沈凝旁观公开比试",
 		Narrative: "沈凝停下脚步，示意我继续说。",
-		TurnBrief: &interactive.TurnBrief{
-			UserAction:   "邀请沈凝旁观公开比试",
-			EventIntents: []string{"face_slap"},
-		},
 	})
 	if err != nil {
 		t.Fatal(err)

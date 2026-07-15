@@ -56,17 +56,100 @@ checksum_file() {
   shasum -a 256 "${file}" | awk -v name="${name}" '{print $1 "  " name}'
 }
 
+release_version_without_prefix() {
+  printf '%s' "${VERSION#v}"
+}
+
+validate_release_metadata() {
+  if [[ "${VERSION}" == "dev" ]]; then
+    return
+  fi
+  local expected web_version npm_version release_tag
+  expected="$(release_version_without_prefix)"
+  release_tag="v${expected}"
+  web_version="$(node -p "require('./web/package.json').version")"
+  npm_version="$(node -p "require('./npm/package.json').version")"
+  if [[ "${web_version}" != "${expected}" || "${npm_version}" != "${expected}" ]]; then
+    echo "错误: Release ${release_tag} 与包版本不一致（web=${web_version}, npm=${npm_version}）" >&2
+    exit 1
+  fi
+  if ! grep -Fq "## [${release_tag}]" CHANGELOG.md; then
+    echo "错误: CHANGELOG.md 缺少 ${release_tag} 章节" >&2
+    exit 1
+  fi
+  if ! grep -Fq "<strong>${release_tag}</strong>" README.md || ! grep -Fq "<strong>${release_tag}</strong>" README.en.md; then
+    echo "错误: README.md 与 README.en.md 的当前版本必须同步为 ${release_tag}" >&2
+    exit 1
+  fi
+}
+
+write_release_notes() {
+  local release_tag
+  release_tag="v$(release_version_without_prefix)"
+  {
+    echo "# Denova ${release_tag}"
+    echo
+    echo "## Release highlights / 发布内容"
+    echo
+    awk -v heading="## [${release_tag}]" '
+      index($0, heading) == 1 { found = 1; next }
+      found && /^## \[/ { exit }
+      found { print }
+    ' CHANGELOG.md
+    cat <<'EOF'
+
+## Verification / 验证
+
+- Backend: `go test ./...`, `go vet ./...`, and `go mod tidy -diff`.
+- Frontend: complete Vitest suite, i18n key check, TypeScript check, and production Vite build.
+- Packaging: five platform archives are generated from the same source revision and listed in `checksums.txt`.
+
+后端已通过完整 Go 测试、静态检查与依赖一致性检查；前端已通过完整测试、双语键检查、TypeScript 检查和生产构建；五个平台压缩包均由同一源码版本生成并写入 `checksums.txt`。
+
+## Install / 安装
+
+Download the archive for your platform, verify it against `checksums.txt`, extract it, and run Denova from the extracted `denova` directory.
+
+下载对应平台压缩包，使用 `checksums.txt` 校验后解压，并在解压后的 `denova` 目录运行：
+
+```bash
+./denova
+```
+
+Windows:
+
+```powershell
+denova.exe
+```
+
+Checksum example / 校验示例：
+
+```bash
+shasum -a 256 -c checksums.txt
+```
+EOF
+  } > "${DIST_DIR}/RELEASE_NOTES.md"
+}
+
 require_command go
 require_command node
 require_command tar
 
 echo "==> 构建 GitHub Release 产物 version=${VERSION}"
 cd "${ROOT_DIR}"
+validate_release_metadata
 rm -rf "${DIST_DIR}"
 mkdir -p "${DIST_DIR}" "${BUILD_DIR}"
 
-echo "==> 构建前端"
+echo "==> 安装前端依赖并执行发布校验"
 run_pnpm -C "${ROOT_DIR}/web" install --frozen-lockfile
+go mod tidy -diff
+go test ./...
+go vet ./...
+run_pnpm -C "${ROOT_DIR}/web" test
+run_pnpm -C "${ROOT_DIR}/web" check:i18n
+
+echo "==> 构建前端"
 run_pnpm -C "${ROOT_DIR}/web" build
 
 echo "==> 交叉编译并打包"
@@ -92,6 +175,7 @@ for target in "${TARGETS[@]}"; do
   cp -R "${ROOT_DIR}/skills" "${package_dir}/skills"
   copy_if_exists "${ROOT_DIR}/config.toml" "${package_dir}/"
   copy_if_exists "${ROOT_DIR}/README.md" "${package_dir}/"
+  copy_if_exists "${ROOT_DIR}/README.en.md" "${package_dir}/"
   copy_if_exists "${ROOT_DIR}/CHANGELOG.md" "${package_dir}/"
   copy_if_exists "${ROOT_DIR}/LICENSE" "${package_dir}/"
 
@@ -121,23 +205,7 @@ for file in "${DIST_DIR}"/denova-*; do
   checksum_file "${file}" >> "${DIST_DIR}/checksums.txt"
 done
 
-cat > "${DIST_DIR}/RELEASE_NOTES.md" <<EOF
-Denova ${VERSION}
-
-下载对应平台压缩包，解压后进入 denova 目录运行：
-
-\`\`\`bash
-./denova
-\`\`\`
-
-Windows 用户运行：
-
-\`\`\`powershell
-denova.exe
-\`\`\`
-
-校验文件完整性请使用 checksums.txt。
-EOF
+write_release_notes
 
 echo "==> GitHub Release 产物已生成: ${DIST_DIR}"
 find "${DIST_DIR}" -maxdepth 1 -type f -print | sort

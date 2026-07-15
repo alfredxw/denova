@@ -48,7 +48,6 @@ export interface Teller {
   description: string
   style_refs?: string[] | null
   style_rules?: StyleRule[] | null
-  orchestration?: TellerOrchestrationConfig | null
   context_policy: TellerContextPolicy
   slots: TellerPromptSlot[]
   custom: boolean
@@ -85,7 +84,6 @@ export interface StoryDirector {
   event_packages?: TellerEventPackage[]
   trpg_system: StoryDirectorTRPGSystem
   actor_state?: StoryDirectorActorStateSystem
-  opening_selector?: StoryDirectorOpeningSelector
   resolved_snapshot?: StoryDirectorResolvedSnapshot
   path?: string
   custom: boolean
@@ -101,8 +99,6 @@ export interface StoryDirectorModuleRefs {
   narrative_style_disabled?: boolean
   event_package_ids?: string[]
   event_packages_disabled?: boolean
-  event_system_id?: string
-  event_system_disabled?: boolean
   rule_system_id?: string
   rule_system_disabled?: boolean
   actor_state_id?: string
@@ -126,7 +122,6 @@ interface StoryDirectorResolvedSnapshot {
   narrative_style_id?: string
   image_preset_id?: string
   event_packages?: TellerEventPackage[]
-  event_system?: StoryDirectorEventSystem
   trpg_system?: StoryDirectorTRPGSystem
   actor_state?: StoryDirectorActorStateSystem
 }
@@ -168,23 +163,6 @@ export interface ActorStateModule {
   name: string
   description: string
   actor_state: StoryDirectorActorStateSystem
-  migration_warnings?: string[]
-  path?: string
-  custom: boolean
-  builtin_overridden?: boolean
-  invalid?: boolean
-  error?: string
-  created_at?: string
-  updated_at?: string
-}
-
-export interface OpeningSelectorModule {
-  version: number
-  id: string
-  name: string
-  description: string
-  opening_selector: StoryDirectorOpeningSelector
-  tags: string[]
   path?: string
   custom: boolean
   builtin_overridden?: boolean
@@ -199,19 +177,14 @@ interface StoryDirectorStrategy {
   mainline_strength?: string
   failure_policy?: string
   pacing_curve?: string
-	event_frequency?: 'off' | 'sparse' | 'balanced' | 'frequent' | string
+  event_frequency?: 'off' | 'sparse' | 'balanced' | 'frequent' | string
   director_agent_mode?: 'triggered' | 'every_turn' | 'off' | string
   rule_state_consumption_mode?: 'hybrid_auto' | 'director_only' | string
   rule_visibility_mode?: 'audit_only' | 'public_roll' | string
-	state_schema_adaptation_mode?: 'after_opening' | 'off' | string
+  state_schema_adaptation_mode?: 'after_opening' | 'off' | string
   branch_planning_turns?: number
   planning_templates?: DirectorPlanningTemplates
   prompt_markdown?: string
-}
-
-interface StoryDirectorEventSystem {
-  event_packages?: TellerEventPackage[]
-  custom_events?: DirectorEvent[]
 }
 
 export interface StoryDirectorTRPGSystem {
@@ -276,7 +249,6 @@ export interface InitialActorTraitRoll {
 }
 
 export interface ActorStateField {
-  /** Legacy v5 fields accepted only while loading old workspace data. */
   id?: string
   path?: string
   name: string
@@ -298,12 +270,6 @@ export interface ActorStateInitialActor {
   role?: string
   description?: string
   state?: Record<string, unknown>
-}
-
-export interface StoryDirectorOpeningSelector {
-  enabled: boolean
-  trait_pools?: OpeningTraitPool[]
-  initial_state_ops?: StateOp[]
 }
 
 export interface ImagePresetSlot {
@@ -337,18 +303,6 @@ export interface StyleReferenceFileDocument {
   revision: string
 }
 
-interface TellerOrchestrationConfig {
-  enabled: boolean
-  mainline_strength?: string
-  failure_policy?: string
-	pacing_curve?: string
-	event_frequency?: 'off' | 'sparse' | 'balanced' | 'frequent' | string
-  event_packages?: TellerEventPackage[]
-  custom_events?: DirectorEvent[]
-  rule_templates?: RuleCheck[]
-  opening?: TellerOpeningConfig
-}
-
 export interface TellerEventPackage {
   id?: string
   name?: string
@@ -364,27 +318,6 @@ export interface TellerEventCard {
   category?: string
   tags?: string[]
   intensity?: string
-}
-
-interface TellerOpeningConfig {
-  enabled: boolean
-  trait_pools?: OpeningTraitPool[]
-  initial_state_ops?: StateOp[]
-}
-
-export interface OpeningTraitPool {
-  id?: string
-  name?: string
-  draw_count?: number
-  traits?: OpeningTrait[]
-}
-
-export interface OpeningTrait {
-  id?: string
-  name?: string
-  summary?: string
-  weight?: number
-  ops?: StateOp[]
 }
 
 interface TellerContextPolicy {
@@ -415,7 +348,7 @@ export interface TurnEvent {
   state_delta?: StateDelta
   hot_state?: HotState
   rule_resolution?: RuleResolution
-	turn_result?: TurnResult
+  turn_result?: TurnResult
   terminal_outcome?: TerminalOutcome
   state_status?: 'pending' | 'ready' | 'failed'
   state_error?: string
@@ -522,29 +455,6 @@ export interface StateOp {
 
 interface HotState {
   choices: string[]
-}
-
-interface DirectorEvent {
-  id?: string
-  name?: string
-  category?: string
-  status?: string
-  enabled?: boolean
-  summary?: string
-  public_summary?: string
-  hidden_truth?: string
-  template?: string
-  normalized_trigger?: string
-  intensity?: string
-  required_foreshadowing?: string[]
-  payoff_target?: string
-  reward?: string
-  cost?: string
-  failure_level?: string
-  compatible_genres?: string[]
-  incompatible_state_flags?: string[]
-  user_configured?: boolean
-  director_instruction_note?: string
 }
 
 export interface DirectorPlanDocs {
@@ -716,8 +626,7 @@ export interface RuleStateBinding {
 
 export interface RuleStateBindingModifier {
   source?: 'actor' | 'target' | string
-	field_id?: string
-	field_path?: string
+  field_id?: string
   effect?: 'advantage' | 'resistance' | string
   scale?: number
   offset?: number
@@ -729,8 +638,7 @@ export interface RuleStateBindingModifier {
 
 export interface RuleNarrativeStateRef {
   source?: 'actor' | 'target' | 'scene' | string
-	field_id?: string
-	field_path?: string
+  field_id?: string
   usage?: 'check_decision' | 'difficulty' | 'outcome_design' | 'prose' | string
   guidance?: string
 }
@@ -742,8 +650,7 @@ export interface RuleOutcomeStateChangeBinding {
 
 export interface RuleComputedStateChange {
   source?: 'actor' | 'target' | string
-	field_id?: string
-	field_path?: string
+  field_id?: string
   change_formula?: RuleStateChangeFormula
   reason?: string
 }
@@ -758,8 +665,7 @@ export interface RuleStateChangeFormula {
 
 export interface RuleStateFormulaTerm {
   source?: 'actor' | 'target' | string
-	field_id?: string
-	field_path?: string
+  field_id?: string
   scale?: number
   offset?: number
 }
@@ -793,7 +699,6 @@ interface TurnCheckRule {
   template_id?: string
   label?: string
   failure_policy?: string
-  dice?: string
   roll_mode?: 'normal' | 'advantage' | 'disadvantage' | string
   modifier?: number
   binding_id?: string
@@ -803,9 +708,8 @@ interface TurnCheckRule {
 
 interface TurnCheckBonus {
   kind?: string
-	actor_id?: string
-	field_id?: string
-	source_path?: string
+  actor_id?: string
+  field_id?: string
   reason: string
   value: number
 }
@@ -823,9 +727,8 @@ interface TurnCheckOutcome {
 }
 
 interface TurnStateChange {
-	actor_id?: string
-	field_id?: string
-	path?: string
+  actor_id: string
+  field_id: string
   change: number
   reason?: string
 }
@@ -835,8 +738,7 @@ interface TurnCheckAdjudication {
   stakes?: string
   difficulty_reason?: string
   roll_mode_reason?: string
-	state_refs?: Array<{ actor_id: string; field_id: string }>
-	state_paths?: string[]
+  state_refs?: Array<{ actor_id: string; field_id: string }>
 }
 
 interface RuleResult {
@@ -844,10 +746,6 @@ interface RuleResult {
   label?: string
   kind?: string
   mode?: string
-  attribute_path?: string
-  attribute_value?: number
-  expression?: string
-  expression_value?: number
   dice?: string
   rolls?: number[]
   roll_total?: number
@@ -872,14 +770,13 @@ interface RuleStateConsumption {
   status: 'none' | 'disabled' | 'applied' | 'partial' | 'skipped' | string
   mode?: 'hybrid_auto' | 'director_only' | string
   applied_ops?: StateOp[]
-	applied_actor_ops?: ActorStateOp[]
+  applied_actor_ops?: ActorStateOp[]
   warnings?: RuleStateConsumptionWarning[]
 }
 
 interface RuleStateConsumptionWarning {
-	actor_id?: string
-	field_id?: string
-	path?: string
+  actor_id?: string
+  field_id?: string
   reason: string
 }
 
@@ -899,22 +796,6 @@ export interface TerminalOutcome {
   restart_suggestions?: string[]
 }
 
-export interface OpeningRollRequest {
-  teller_id?: string
-  story_director_id?: string
-  selected_trait_ids?: string[]
-  locked_trait_ids?: string[]
-  seed?: number
-}
-
-export interface OpeningRollResult {
-  teller_id?: string
-  story_director_id?: string
-  seed: number
-  traits: OpeningRolledTrait[]
-  state_ops: StateOp[]
-}
-
 export interface ActorTraitRollRequest {
   story_director_id?: string
   actor_id: string
@@ -929,13 +810,6 @@ export interface ActorTraitRollResult {
   template_id: string
   seed: number
   traits: ActorTraitInstance[]
-}
-
-interface OpeningRolledTrait {
-  pool_id: string
-  id: string
-  name: string
-  summary?: string
 }
 
 export interface RuleResolutionRerollInput {
@@ -992,7 +866,7 @@ export interface ActorStateSchemaRequirementSource {
 export interface ActorStateSchemaRequirementReview {
 	source: ActorStateSchemaRequirementSource
 	requirement: string
-	evidence_kind?: 'confirmed' | 'inferred' | 'default' | string
+	evidence_kind: 'confirmed' | 'inferred' | 'default' | string
 	value_policy?: 'schema_only' | 'preserve' | 'initialize' | 'defer' | string
 	actor_id?: string
 	expected_type?: string

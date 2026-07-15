@@ -276,7 +276,7 @@ func TestToolOrchestratorAllowsIDEWriteAndFiltersResult(t *testing.T) {
 		t.Fatalf("result should include filtered metadata: %s", result)
 	}
 	if !strings.Contains(result, content) {
-		t.Fatalf("result should include full tool output by default")
+		t.Fatalf("result below the high default limit should stay complete")
 	}
 }
 

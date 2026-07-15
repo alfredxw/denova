@@ -40,17 +40,11 @@ export function utf8ByteLength(value: string): number {
 }
 
 export function normalizedStoryDirectorRefs(refs: StoryDirectorModuleRefs | undefined): StoryDirectorModuleRefs {
-  const legacyEventPackageID = refs?.event_system_id || ''
-  const eventPackageIDs = refs?.event_package_ids?.length
-    ? refs.event_package_ids
-    : legacyEventPackageID
-      ? [legacyEventPackageID]
-      : ['default']
   return {
     narrative_style_id: refs?.narrative_style_id || 'classic',
     narrative_style_disabled: refs?.narrative_style_disabled === true,
-    event_package_ids: normalizeIDList(eventPackageIDs),
-    event_packages_disabled: refs?.event_packages_disabled === true || refs?.event_system_disabled === true,
+    event_package_ids: normalizeIDList(refs?.event_package_ids?.length ? refs.event_package_ids : ['default']),
+    event_packages_disabled: refs?.event_packages_disabled === true,
     rule_system_id: refs?.rule_system_id || 'default',
     rule_system_disabled: refs?.rule_system_disabled === true,
     actor_state_id: refs?.actor_state_id || 'default',
@@ -77,7 +71,7 @@ export function directorResolvedEventPackages(director: StoryDirector): TellerEv
     ? director.event_packages
     : director.resolved_snapshot?.event_packages?.length
       ? director.resolved_snapshot.event_packages
-      : director.resolved_snapshot?.event_system?.event_packages || []
+      : []
 }
 
 export function newEmptyStoryDirectorSections(): {

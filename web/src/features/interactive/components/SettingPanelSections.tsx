@@ -885,13 +885,7 @@ export function ActorStateEditor({
       contentClassName="flex min-h-[320px] flex-1 p-0"
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {draft.migration_warnings?.length ? (
-          <div className="border-b border-[var(--nova-warning)]/25 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-muted)]">
-            <div className="font-medium text-[var(--nova-text)]">{t('settingPanel.actorState.migrationWarning')}</div>
-            {draft.migration_warnings.map((warning) => <div key={warning}>{warning}</div>)}
-          </div>
-        ) : null}
-        <div className="flex min-h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1.5">
+		<div className="flex min-h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1.5">
           <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">
             {linkedRuleSystems.length
               ? t('settingPanel.actorState.usedByChecks', { count: linkedRuleSystems.length })
@@ -985,8 +979,8 @@ function directorResolvedEventPackages(director: StoryDirector): TellerEventPack
   return director.event_packages?.length
     ? director.event_packages
     : director.resolved_snapshot?.event_packages?.length
-      ? director.resolved_snapshot.event_packages
-      : director.resolved_snapshot?.event_system?.event_packages || []
+		? director.resolved_snapshot.event_packages
+		: []
 }
 
 function directorEventCardCount(eventPackages: TellerEventPackage[] | undefined) {

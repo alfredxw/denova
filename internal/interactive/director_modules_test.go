@@ -1,8 +1,6 @@
 package interactive
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -154,98 +152,15 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 		ID:   "genre-director",
 		Name: "题材导演",
 		ModuleRefs: StoryDirectorModuleRefs{
-			NarrativeStyleDisabled:  true,
-			EventPackagesDisabled:   true,
-			RuleSystemDisabled:      true,
-			ActorStateID:            ActorStateInfiniteFlowID,
-			OpeningSelectorDisabled: true,
-			ImagePresetDisabled:     true,
+			NarrativeStyleDisabled: true,
+			EventPackagesDisabled:  true,
+			RuleSystemDisabled:     true,
+			ActorStateID:           ActorStateInfiniteFlowID,
+			ImagePresetDisabled:    true,
 		},
 	})
 	if !actorStateTemplateHasField(ActorStateModule{ActorState: resolved.ActorState}, ActorStateOpponentTemplateID, "rules.triggers") {
 		t.Fatalf("director should resolve infinite-flow actor state templates: %#v", resolved.ActorState)
-	}
-}
-
-func TestActorStateModuleMigratesOpeningSelectorIntoTraitLibrary(t *testing.T) {
-	novaDir := t.TempDir()
-	actorStateLibrary := NewActorStateLibrary(novaDir)
-	module, err := actorStateLibrary.Create(ActorStateModule{
-		ID:          "state-with-opening",
-		Name:        "带开局词条的状态系统",
-		Description: "验证开局词条归属状态系统。",
-		ActorState:  defaultActorStateSystem(),
-		OpeningSelector: StoryDirectorOpeningSelector{
-			Enabled: true,
-			InitialStateOps: []StateOp{{
-				Op:    "set",
-				Path:  "rules.opening_origin",
-				Value: "state-system",
-			}},
-			TraitPools: []OpeningTraitPool{{
-				ID:        "talent",
-				Name:      "天赋",
-				DrawCount: 1,
-				Traits: []OpeningTrait{{
-					ID:      "clear-mind",
-					Name:    "澄心",
-					Summary: "开局精神状态更稳定。",
-					Ops: []StateOp{{
-						Op:    "set",
-						Path:  "actors.protagonist.state.current.mental_status",
-						Value: "澄明稳定",
-					}},
-				}},
-			}},
-		},
-	})
-	if err != nil {
-		t.Fatalf("create actor state with opening failed: %v", err)
-	}
-	if len(module.OpeningSelector.TraitPools) != 0 || len(module.OpeningSelector.InitialStateOps) != 0 {
-		t.Fatalf("opening selector should be cleared after migration: %#v", module.OpeningSelector)
-	}
-	if len(module.ActorState.TraitPools) != 1 || module.ActorState.TraitPools[0].ID != "talent" {
-		t.Fatalf("legacy traits should migrate into actor state trait pools: %#v", module.ActorState.TraitPools)
-	}
-	protagonist := actorStateTemplateByID(module.ActorState, DefaultActorID)
-	if len(protagonist.TraitRules) != 1 || protagonist.TraitRules[0].PoolID != "talent" || protagonist.TraitRules[0].DrawCount != 1 {
-		t.Fatalf("legacy draw count should become protagonist template rule: %#v", protagonist.TraitRules)
-	}
-	if len(module.MigrationWarnings) < 2 {
-		t.Fatalf("discarded legacy StateOps should be reported: %#v", module.MigrationWarnings)
-	}
-
-	director := ResolveStoryDirectorModules(novaDir, StoryDirector{
-		ID:   "opening-from-state",
-		Name: "开局归属状态系统",
-		ModuleRefs: StoryDirectorModuleRefs{
-			NarrativeStyleDisabled: true,
-			EventPackagesDisabled:  true,
-			RuleSystemDisabled:     true,
-			ActorStateID:           module.ID,
-			ImagePresetDisabled:    true,
-		},
-	})
-	if len(director.ActorState.TraitPools) != 1 || director.ActorState.TraitPools[0].ID != "talent" {
-		t.Fatalf("director should resolve the trait library from actor state module: %#v", director.ActorState)
-	}
-	if director.ModuleRefs.OpeningSelectorID != "" {
-		t.Fatalf("new director refs should not need opening_selector_id: %#v", director.ModuleRefs)
-	}
-	roll, err := RollActorTraits(director.ActorState, ActorTraitRollRequest{
-		ActorID:    DefaultActorID,
-		TemplateID: DefaultActorID,
-		Seed:       7,
-	})
-	if err != nil {
-		t.Fatalf("roll actor traits failed: %v", err)
-	}
-	if len(roll.Traits) != 1 || roll.Traits[0].TraitID != "clear-mind" {
-		t.Fatalf("actor roll should use state-system traits: %#v", roll.Traits)
-	}
-	if containsStateOp(StoryDirectorInitialStateOps(director), "rules.opening_origin", "state-system") || containsStateOp(StoryDirectorInitialStateOps(director), "actors.protagonist.state.current.mental_status", "澄明稳定") {
-		t.Fatalf("legacy arbitrary StateOps must not execute: %#v", StoryDirectorInitialStateOps(director))
 	}
 }
 
@@ -333,30 +248,6 @@ func TestDirectorModuleBuiltinOverridesRestore(t *testing.T) {
 		t.Fatalf("unexpected restored actor state: %#v", restoredActorState)
 	}
 
-	openingLibrary := NewOpeningSelectorLibrary(novaDir)
-	opening, err := openingLibrary.Get(DefaultOpeningSelectorID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	opening.Name = "我的开局选择"
-	overriddenOpening, err := openingLibrary.Update(DefaultOpeningSelectorID, opening, opening.UpdatedAt)
-	if err != nil {
-		t.Fatalf("Update built-in opening selector should create override: %v", err)
-	}
-	if overriddenOpening.Custom || !overriddenOpening.BuiltinOverridden || overriddenOpening.Name != "我的开局选择" {
-		t.Fatalf("unexpected opening override: %#v", overriddenOpening)
-	}
-	if err := openingLibrary.Delete(DefaultOpeningSelectorID); err != nil {
-		t.Fatalf("Delete opening override should restore builtin: %v", err)
-	}
-	restoredOpening, err := openingLibrary.Get(DefaultOpeningSelectorID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if restoredOpening.Custom || restoredOpening.BuiltinOverridden || restoredOpening.Name == "我的开局选择" {
-		t.Fatalf("unexpected restored opening selector: %#v", restoredOpening)
-	}
-
 }
 
 func requireActorStateTemplates(t *testing.T, item ActorStateModule, ids ...string) {
@@ -397,40 +288,6 @@ func actorStateTemplateHasField(item ActorStateModule, templateID, fieldPath str
 	return false
 }
 
-func TestParseLegacyRuleSystemKeepsSingleCheck(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "legacy.json")
-	if err := os.WriteFile(path, []byte(`{
-  "id": "legacy-rules",
-  "name": "旧 TRPG 检定",
-  "trpg_system": {
-    "rule_templates": [
-      {
-        "id": "first-rule",
-        "label": "第一条旧规则",
-        "dice": "1d20",
-        "failure_policy": "fail_forward"
-      },
-      {
-        "id": "second-rule",
-        "label": "第二条旧规则",
-        "dice": "1d100",
-        "failure_policy": "hard_failure"
-      }
-    ]
-  }
-}`), 0o644); err != nil {
-		t.Fatalf("write legacy rule system failed: %v", err)
-	}
-
-	item, err := parseRuleSystemFile(path)
-	if err != nil {
-		t.Fatalf("parse legacy rule system failed: %v", err)
-	}
-	if len(item.TRPGSystem.RuleTemplates) != 1 || item.TRPGSystem.RuleTemplates[0].ID != "first-rule" {
-		t.Fatalf("legacy rule system should keep one check config: %#v", item.TRPGSystem.RuleTemplates)
-	}
-}
-
 func TestDirectorEventCatalogUsesOnlyExplicitConfiguredEventCards(t *testing.T) {
 	module := builtinGenreEventPackageModule(
 		"test-pack",
@@ -467,7 +324,6 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	eventLibrary := NewEventPackageLibrary(novaDir)
 	ruleLibrary := NewRuleSystemLibrary(novaDir)
 	actorStateLibrary := NewActorStateLibrary(novaDir)
-	openingLibrary := NewOpeningSelectorLibrary(novaDir)
 	directorLibrary := NewStoryDirectorLibrary(novaDir)
 
 	eventModule, err := eventLibrary.Create(EventPackageModule{
@@ -526,25 +382,15 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create actor state failed: %v", err)
 	}
-	if _, err := openingLibrary.Create(OpeningSelectorModule{
-		ID:   "wasteland-openings",
-		Name: "旧废土开局",
-		OpeningSelector: StoryDirectorOpeningSelector{Enabled: true, InitialStateOps: []StateOp{{
-			Op: "set", Path: "flags.wasteland", Value: true,
-		}}},
-	}); err != nil {
-		t.Fatalf("create legacy opening selector file failed: %v", err)
-	}
 	director, err := directorLibrary.Create(StoryDirector{
 		ID:   "modular",
 		Name: "模块化导演",
 		ModuleRefs: StoryDirectorModuleRefs{
-			NarrativeStyleID:  "classic",
-			EventPackageIDs:   []string{eventModule.ID},
-			RuleSystemID:      ruleModule.ID,
-			ActorStateID:      actorModule.ID,
-			OpeningSelectorID: "wasteland-openings",
-			ImagePresetID:     "game-cg",
+			NarrativeStyleID: "classic",
+			EventPackageIDs:  []string{eventModule.ID},
+			RuleSystemID:     ruleModule.ID,
+			ActorStateID:     actorModule.ID,
+			ImagePresetID:    "game-cg",
 		},
 		Strategy: StoryDirectorStrategy{Enabled: true},
 	})
@@ -560,13 +406,6 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 	if len(director.ActorState.Templates) != 1 || director.ActorState.Templates[0].ID != "protagonist" || len(director.ActorState.InitialActors) != 1 {
 		t.Fatalf("director should resolve actor state module on create: %#v", director.ActorState)
 	}
-	if len(director.OpeningSelector.InitialStateOps) != 0 || len(director.OpeningSelector.TraitPools) != 0 {
-		t.Fatalf("standalone opening selectors must not be loaded: %#v", director.OpeningSelector)
-	}
-	if director.ModuleRefs.OpeningSelectorID != "" {
-		t.Fatalf("legacy standalone opening selector refs should be discarded: %#v", director.ModuleRefs)
-	}
-
 	eventModule.Events[0].DescriptionMarkdown = "v2"
 	if _, err := eventLibrary.Update(eventModule.ID, eventModule, eventModule.UpdatedAt); err != nil {
 		t.Fatalf("update event package failed: %v", err)
@@ -608,18 +447,16 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 		ID:   "detached",
 		Name: "可关闭模块导演",
 		ModuleRefs: StoryDirectorModuleRefs{
-			NarrativeStyleID:        "missing-style",
-			NarrativeStyleDisabled:  true,
-			EventPackageIDs:         []string{"missing-events"},
-			EventPackagesDisabled:   true,
-			RuleSystemID:            "missing-rules",
-			RuleSystemDisabled:      true,
-			ActorStateID:            "missing-actors",
-			ActorStateDisabled:      true,
-			OpeningSelectorID:       "missing-opening",
-			OpeningSelectorDisabled: true,
-			ImagePresetID:           "missing-image",
-			ImagePresetDisabled:     true,
+			NarrativeStyleID:       "missing-style",
+			NarrativeStyleDisabled: true,
+			EventPackageIDs:        []string{"missing-events"},
+			EventPackagesDisabled:  true,
+			RuleSystemID:           "missing-rules",
+			RuleSystemDisabled:     true,
+			ActorStateID:           "missing-actors",
+			ActorStateDisabled:     true,
+			ImagePresetID:          "missing-image",
+			ImagePresetDisabled:    true,
 		},
 		Strategy: StoryDirectorStrategy{Enabled: true},
 		ResolvedSnapshot: StoryDirectorResolvedSnapshot{
@@ -644,14 +481,6 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 			ActorState: StoryDirectorActorStateSystem{
 				Templates: []ActorStateTemplate{{ID: "snapshot-template", Name: "旧状态模板"}},
 			},
-			OpeningSelector: StoryDirectorOpeningSelector{
-				Enabled: true,
-				InitialStateOps: []StateOp{{
-					Op:    "set",
-					Path:  "flags.snapshot",
-					Value: true,
-				}},
-			},
 		},
 	})
 	if err != nil {
@@ -671,12 +500,6 @@ func TestStoryDirectorDisabledModulesStayDetached(t *testing.T) {
 	}
 	if len(director.ActorState.Templates) != 0 || len(director.ActorState.InitialActors) != 0 {
 		t.Fatalf("disabled actor state should not use defaults or snapshot, got %#v", director.ActorState)
-	}
-	if director.OpeningSelector.Enabled || len(director.OpeningSelector.InitialStateOps) != 0 || len(director.OpeningSelector.TraitPools) != 0 {
-		t.Fatalf("disabled opening selector should stay off, got %#v", director.OpeningSelector)
-	}
-	if len(StoryDirectorInitialStateOps(director)) != 0 {
-		t.Fatalf("disabled rule/opening modules should not generate initial state ops")
 	}
 	if events := DirectorEventCatalogFromStoryDirector(director); len(events) != 0 {
 		t.Fatalf("disabled event packages should not expose default event catalog: %#v", events)

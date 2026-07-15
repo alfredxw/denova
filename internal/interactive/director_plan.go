@@ -161,9 +161,6 @@ type DirectorPlanRunToken struct {
 }
 
 func NormalizeStoryDirectorPlanningTemplates(templates StoryDirectorPlanningTemplates) StoryDirectorPlanningTemplates {
-	if strings.TrimSpace(templates.AgentBrief) == "" && strings.Contains(templates.Plan, "## 正文Agent可读") && strings.Contains(templates.Plan, "## 后台导演私密") {
-		templates.Plan, templates.AgentBrief = migrateLegacyCombinedDirectorPlan(templates.Plan)
-	}
 	defaults := DefaultStoryDirectorPlanningTemplates()
 	templates.Plan = normalizeDirectorPlanTemplate(templates.Plan, defaults.Plan)
 	templates.AgentBrief = normalizeDirectorPlanTemplate(templates.AgentBrief, defaults.AgentBrief)
@@ -357,7 +354,7 @@ func (s *Store) MarkDirectorPlanRunStarted(storyID, branchID string, token Direc
 	if err != nil {
 		return err
 	}
-	// The three Markdown documents can be changed by safe external migrations
+	// The three Markdown documents can be changed by safe external updates
 	// such as a lore-name rename. Synchronize the persisted revision to the
 	// run token before claiming this run; API edits during the run still update
 	// metadata and therefore retain the existing conflict protection.
@@ -412,8 +409,6 @@ func (s *Store) completeDirectorPlanRun(storyID, branchID string, token Director
 		return DirectorPlan{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	decision := ParsePlanDecision(summary)
-	decision.BaseRevision = token.Revision
 	if token.Revision != "" && token.Revision != storedMetadata.Revision {
 		storedMetadata.LastRun = &DirectorPlanRunStatus{
 			Status:        DirectorPlanStatusConflict,
@@ -435,6 +430,11 @@ func (s *Store) completeDirectorPlanRun(storyID, branchID string, token Director
 		// must not replace its status or replay event decisions against stale turns.
 		return s.readDirectorPlanLocked(storyID, branchID)
 	}
+	decision, err := ParsePlanDecisionJSON(summary)
+	if err != nil {
+		return DirectorPlan{}, fmt.Errorf("导演规划决策格式无效: %w", err)
+	}
+	decision.BaseRevision = token.Revision
 	publishedDocs := plan.Docs
 	if stagedDocs != nil {
 		if !directorPlanHashesEqual(token.Hashes, directorPlanHashes(publishedDocs)) {
@@ -714,9 +714,6 @@ func (s *Store) readDirectorPlanLocked(storyID, branchID string) (DirectorPlan, 
 }
 
 func (s *Store) readDirectorPlanDocsLocked(storyID, branchID string) (DirectorPlanDocs, error) {
-	if err := s.ensureDirectorDocumentsV2Locked(storyID, branchID); err != nil {
-		return DirectorPlanDocs{}, err
-	}
 	dir := s.directorPlanBranchDir(storyID, branchID)
 	data, err := os.ReadFile(filepath.Join(dir, directorPlanFile))
 	if err != nil {

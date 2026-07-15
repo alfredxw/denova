@@ -91,7 +91,7 @@ func (s *Store) MarkStateSchemaInitializationFailed(storyID, sourceTurnID string
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	status := *meta.StateSchemaInitialization
 	status.Status = StateSchemaInitializationFailed
-	status.Error = trimBytes(cause.Error(), maxTurnBriefTextBytes)
+	status.Error = trimBytes(cause.Error(), maxInteractiveTextBytes)
 	status.CompletedAt = now
 	status.UpdatedAt = now
 	meta.StateSchemaInitialization = &status
@@ -235,18 +235,13 @@ func (s *Store) SkipStateSchemaInitialization(storyID string) (StateSchemaInitia
 	return status, nil
 }
 
-func (s *Store) ApplyStateSchemaInitialization(storyID, branchID, sourceTurnID string, adaptation ActorStateSchemaAdaptation) (StateSchemaInitializationStatus, error) {
-	return s.applyStateSchemaInitialization(storyID, branchID, sourceTurnID, adaptation, nil)
-}
-
 // ApplyStateSchemaProposal validates and applies the Director's sourced schema
-// review. Unlike the legacy diff-only entry point, it preserves coverage audit
-// and does not advance the schema revision when the contract is unchanged.
+// review without advancing the schema revision when the contract is unchanged.
 func (s *Store) ApplyStateSchemaProposal(storyID, branchID, sourceTurnID string, proposal ActorStateSchemaProposal) (StateSchemaInitializationStatus, error) {
-	return s.applyStateSchemaInitialization(storyID, branchID, sourceTurnID, proposal.Adaptation, &proposal)
+	return s.applyStateSchemaInitialization(storyID, branchID, sourceTurnID, proposal)
 }
 
-func (s *Store) applyStateSchemaInitialization(storyID, branchID, sourceTurnID string, adaptation ActorStateSchemaAdaptation, proposal *ActorStateSchemaProposal) (StateSchemaInitializationStatus, error) {
+func (s *Store) applyStateSchemaInitialization(storyID, branchID, sourceTurnID string, proposal ActorStateSchemaProposal) (StateSchemaInitializationStatus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	meta, lines, err := s.readStoryLocked(storyID)
@@ -276,25 +271,21 @@ func (s *Store) applyStateSchemaInitialization(storyID, branchID, sourceTurnID s
 	path, _ := eventPath(branch.Head, eventsByID(lines))
 	state := stateFromPath(path)
 	applyLegacyActorStateAliases(state, meta.ActorStateSchema)
-	if proposal != nil {
-		normalized, _, err := ValidateActorStateSchemaProposal(meta.ActorStateSchema.System, meta.ActorStateSchema.TRPGSystem, *proposal)
-		if err != nil {
-			return status, err
-		}
-		proposal = &normalized
-		adaptation = normalized.Adaptation
+	normalized, _, err := ValidateActorStateSchemaProposal(meta.ActorStateSchema.System, meta.ActorStateSchema.TRPGSystem, proposal)
+	if err != nil {
+		return status, err
 	}
+	proposal = normalized
+	adaptation := proposal.Adaptation
 	targetSystem, record, err := ApplyActorStateSchemaAdaptation(meta.ActorStateSchema.System, meta.ActorStateSchema.TRPGSystem, adaptation)
 	if err != nil {
 		return status, err
 	}
 	record.SourceTurnID = sourceTurnID
-	if proposal != nil {
-		record.Summary = firstNonEmptyString(proposal.Summary, record.Summary)
-		record.LoreRevision = strings.TrimSpace(proposal.SourceLoreRevision)
-		record.ReviewedLoreIDs = append([]string(nil), proposal.ReviewedLoreIDs...)
-		record.Requirements = append([]ActorStateSchemaRequirementReview(nil), proposal.Requirements...)
-	}
+	record.Summary = firstNonEmptyString(proposal.Summary, record.Summary)
+	record.LoreRevision = strings.TrimSpace(proposal.SourceLoreRevision)
+	record.ReviewedLoreIDs = append([]string(nil), proposal.ReviewedLoreIDs...)
+	record.Requirements = append([]ActorStateSchemaRequirementReview(nil), proposal.Requirements...)
 	record.Changes = stateSchemaAdaptationChanges(adaptation)
 	schemaChanged := !reflect.DeepEqual(normalizeActorStateSystem(meta.ActorStateSchema.System), normalizeActorStateSystem(targetSystem))
 	var ops []StateOp

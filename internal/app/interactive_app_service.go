@@ -749,12 +749,6 @@ func (s *InteractiveAppService) startInteractiveTask(storyID, branchID, message 
 	}
 	applyRequestLocaleToConfig(&runtimeCfg, locale)
 
-	if migrated, migrateErr := store.EnsureStoryContextFoundation(storyID, branchID); migrateErr != nil {
-		log.Printf("[interactive-agent-task] 补齐 story_context 基础状态失败 story_id=%s branch_id=%s err=%v", storyID, branchID, migrateErr)
-		return nil
-	} else if migrated {
-		log.Printf("[interactive-agent-task] 已确定性补齐 story_context 基础状态 story_id=%s branch_id=%s", storyID, branchID)
-	}
 	storyCtx, err := store.StoryContext(storyID, branchID)
 	if err != nil {
 		log.Printf("[interactive-agent-task] 读取互动故事上下文失败 story_id=%s branch_id=%s err=%v", storyID, branchID, err)

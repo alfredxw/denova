@@ -133,8 +133,6 @@ const snapshot = {
   'snapshot.field.state_expectation': 'State Expectation',
   'snapshot.field.continuity_notes': 'Continuity Notes',
   'snapshot.field.kind': 'Kind',
-  'snapshot.field.attribute_path': 'Attribute',
-  'snapshot.field.attribute_value': 'Attribute Value',
   'snapshot.field.dice': 'Dice',
   'snapshot.field.rolls': 'Rolls',
   'snapshot.field.roll_total': 'Roll Total',

@@ -14,7 +14,6 @@ const evidenceInitialization = {
     { source: { kind: 'opening', id: 'confirmed-source' }, requirement: '明确事实', evidence_kind: 'confirmed', decision: 'covered' },
     { source: { kind: 'trpg', id: 'default-source' }, requirement: '规则初始值', evidence_kind: 'default', decision: 'covered' },
     { source: { kind: 'opening', id: 'future-source' }, requirement: '未来证据类型', evidence_kind: 'future-evidence', decision: 'ignored', reason: '兼容未来值' },
-    { source: { kind: 'opening', id: 'legacy-source' }, requirement: '旧记录未保存证据类型', decision: 'ignored', reason: '兼容旧数据' },
   ],
 }
 
@@ -75,13 +74,12 @@ describe('StateSchemaOverview', () => {
     expect(screen.getAllByText(/numeric-rule/).length).toBeGreaterThan(0)
   })
 
-  it('localizes known evidence kinds and gracefully renders unknown or legacy values', () => {
+  it('localizes known evidence kinds and renders unknown future values', () => {
     render(<StateSchemaOverview initialization={evidenceInitialization} />)
 
     expect(screen.getByText('已确认')).toBeInTheDocument()
     expect(screen.getByText('规则默认')).toBeInTheDocument()
     expect(screen.getByText('future-evidence')).toBeInTheDocument()
-    expect(screen.getByText('旧记录未保存证据类型')).toBeInTheDocument()
   })
 
   it('localizes evidence kinds in English', async () => {

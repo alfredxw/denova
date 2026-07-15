@@ -312,8 +312,21 @@ func TestInteractiveStoryCreateAdaptsAndFreezesStoryStateSchema(t *testing.T) {
 				proposal.Requirements[index].Decision = "covered"
 			}
 		}
-		_, err := toolContext.SubmitStateSchemaProposal(callCtx, proposal)
-		return "状态结构提案已提交。", err
+		for index := range proposal.Requirements {
+			proposal.Requirements[index].EvidenceKind = "confirmed"
+		}
+		result, err := toolContext.SubmitStateSchemaBatch(callCtx, interactive.ActorStateSchemaBatch{
+			Summary: proposal.Summary,
+			Items: []interactive.ActorStateSchemaBatchItem{{
+				ItemID: "api-state-schema-review", Summary: proposal.Summary,
+				Requirements: proposal.Requirements, Adaptation: proposal.Adaptation,
+			}},
+			Finalize: true,
+		})
+		if err != nil || !result.Finalized {
+			return "", errors.New("状态结构 Batch 未完成")
+		}
+		return "状态结构提案已提交。", nil
 	})
 	t.Cleanup(restoreDirector)
 	server := NewServer(application, "0")
@@ -590,16 +603,16 @@ func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
 		ID:   "detached",
 		Name: "关闭模块导演",
 		ModuleRefs: interactive.StoryDirectorModuleRefs{
-			NarrativeStyleID:        "non-classic-style",
-			NarrativeStyleDisabled:  true,
-			EventSystemID:           "default",
-			EventSystemDisabled:     true,
-			RuleSystemID:            "default",
-			RuleSystemDisabled:      true,
-			OpeningSelectorID:       "default",
-			OpeningSelectorDisabled: true,
-			ImagePresetID:           "non-default-image",
-			ImagePresetDisabled:     true,
+			NarrativeStyleID:       "non-classic-style",
+			NarrativeStyleDisabled: true,
+			EventPackageIDs:        []string{"default"},
+			EventPackagesDisabled:  true,
+			RuleSystemID:           "default",
+			RuleSystemDisabled:     true,
+			ActorStateID:           "default",
+			ActorStateDisabled:     true,
+			ImagePresetID:          "non-default-image",
+			ImagePresetDisabled:    true,
 		},
 		Strategy: interactive.StoryDirectorStrategy{Enabled: true},
 	}); err != nil {

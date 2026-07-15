@@ -9,8 +9,57 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
+
+func TestLoreStoreSerializesConcurrentCreatesAcrossInstances(t *testing.T) {
+	workspace := t.TempDir()
+	const count = 16
+	start := make(chan struct{})
+	errs := make(chan error, count)
+	var wg sync.WaitGroup
+	for index := 0; index < count; index++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					errs <- fmt.Errorf("concurrent Create panic: %v", recovered)
+				}
+			}()
+			<-start
+			_, err := NewLoreStore(workspace).Create(LoreItemInput{
+				ID: fmt.Sprintf("item-%02d", index), Type: "world", Name: fmt.Sprintf("资料-%02d", index), Content: "并发写入",
+			})
+			errs <- err
+		}(index)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent Create failed: %v", err)
+		}
+	}
+
+	items, err := NewLoreStore(workspace).ListAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != count {
+		t.Fatalf("concurrent creates lost updates: got=%d want=%d items=%#v", len(items), count, items)
+	}
+	data, err := os.ReadFile(NewLoreStore(workspace).itemsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted LoreCollection
+	if err := json.Unmarshal(data, &persisted); err != nil || len(persisted.Items) != count {
+		t.Fatalf("persisted lore must remain valid and complete: items=%d err=%v", len(persisted.Items), err)
+	}
+}
 
 func TestLoreStoreNormalizesProgressiveLoadingDefaults(t *testing.T) {
 	workspace := t.TempDir()

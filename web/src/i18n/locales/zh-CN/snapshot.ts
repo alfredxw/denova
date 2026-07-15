@@ -133,8 +133,6 @@ const snapshot = {
   'snapshot.field.state_expectation': '状态预期',
   'snapshot.field.continuity_notes': '连续性约束',
   'snapshot.field.kind': '类型',
-  'snapshot.field.attribute_path': '属性',
-  'snapshot.field.attribute_value': '属性值',
   'snapshot.field.dice': '骰子',
   'snapshot.field.rolls': '掷骰',
   'snapshot.field.roll_total': '骰子合计',

@@ -116,7 +116,7 @@ func (d *ActorStateSchemaBatchDraft) Submit(batch ActorStateSchemaBatch, audit A
 		result.Finalized = d.finalized != nil
 		return result
 	}
-	requestedSummary := trimBytes(batch.Summary, maxTurnBriefTextBytes)
+	requestedSummary := trimBytes(batch.Summary, maxInteractiveTextBytes)
 	if d.finalized != nil {
 		for index, item := range batch.Items {
 			result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue(strings.TrimSpace(item.ItemID), "draft_finalized", fmt.Sprintf("items[%d]", index), "状态结构草稿已经 finalize，不能再增加或替换 item"))
@@ -306,7 +306,7 @@ func (d *ActorStateSchemaBatchDraft) mergedProposal(extra *ActorStateSchemaPropo
 }
 
 func actorStateSchemaProposalFromBatchItem(item ActorStateSchemaBatchItem) ActorStateSchemaProposal {
-	summary := trimBytes(item.Summary, maxTurnBriefTextBytes)
+	summary := trimBytes(item.Summary, maxInteractiveTextBytes)
 	adaptation := item.Adaptation
 	adaptation.InitialActorOps = append([]ActorStateInitialActorSchemaOp(nil), item.Adaptation.InitialActorOps...)
 	adaptation.ActorOps = append([]ActorStateRuntimeSchemaOp(nil), item.Adaptation.ActorOps...)
@@ -342,10 +342,10 @@ func actorStateSchemaProposalFromBatchItem(item ActorStateSchemaBatchItem) Actor
 func mergeActorStateSchemaProposals(base, addition ActorStateSchemaProposal) ActorStateSchemaProposal {
 	merged := base
 	if strings.TrimSpace(addition.Summary) != "" {
-		merged.Summary = trimBytes(addition.Summary, maxTurnBriefTextBytes)
+		merged.Summary = trimBytes(addition.Summary, maxInteractiveTextBytes)
 	}
 	if strings.TrimSpace(addition.Adaptation.Summary) != "" {
-		merged.Adaptation.Summary = trimBytes(addition.Adaptation.Summary, maxTurnBriefTextBytes)
+		merged.Adaptation.Summary = trimBytes(addition.Adaptation.Summary, maxInteractiveTextBytes)
 	}
 	merged.Requirements = append(merged.Requirements, addition.Requirements...)
 	merged.Adaptation.TemplateOps = append(merged.Adaptation.TemplateOps, addition.Adaptation.TemplateOps...)
@@ -356,7 +356,7 @@ func mergeActorStateSchemaProposals(base, addition ActorStateSchemaProposal) Act
 
 func actorStateSchemaProposalTail(normalized, before ActorStateSchemaProposal, itemSummary string) ActorStateSchemaProposal {
 	proposal := ActorStateSchemaProposal{
-		Summary:      trimBytes(itemSummary, maxTurnBriefTextBytes),
+		Summary:      trimBytes(itemSummary, maxInteractiveTextBytes),
 		Requirements: append([]ActorStateSchemaRequirementReview(nil), normalized.Requirements[len(before.Requirements):]...),
 		Adaptation: ActorStateSchemaAdaptation{
 			TemplateOps:     append([]ActorStateTemplateSchemaOp(nil), normalized.Adaptation.TemplateOps[len(before.Adaptation.TemplateOps):]...),

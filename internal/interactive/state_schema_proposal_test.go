@@ -15,6 +15,19 @@ func TestValidateActorStateSchemaProposalRejectsEmptyUnreviewedDiff(t *testing.T
 	}
 }
 
+func TestValidateActorStateSchemaProposalRequiresEvidenceKind(t *testing.T) {
+	proposal := ActorStateSchemaProposal{Requirements: []ActorStateSchemaRequirementReview{{
+		Source:      ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"},
+		Requirement: "不需要长期追踪的气氛细节",
+		ValuePolicy: ActorStateSchemaValuePolicySchemaOnly,
+		Decision:    "ignored",
+		Reason:      "只影响当前场景",
+	}}}
+	if _, _, err := ValidateActorStateSchemaProposal(StoryDirectorActorStateSystem{}, StoryDirectorTRPGSystem{}, proposal); err == nil || !strings.Contains(err.Error(), "evidence_kind") {
+		t.Fatalf("the final schema-review contract must reject a missing evidence_kind: %v", err)
+	}
+}
+
 func TestValidateActorStateSchemaProposalRejectsGenericCoverageForNumericRule(t *testing.T) {
 	base := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID: "protagonist", Fields: []ActorStateField{{Name: "当前资源", Type: "object", Default: map[string]any{}}},
@@ -25,6 +38,7 @@ func TestValidateActorStateSchemaProposalRejectsGenericCoverageForNumericRule(t 
 		ReviewedLoreIDs: []string{"具体数值"},
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "lore", ID: "具体数值"}, Requirement: "灵力必须独立按 0-100 结算",
+			EvidenceKind: "confirmed",
 			ValuePolicy:  ActorStateSchemaValuePolicySchemaOnly,
 			ExpectedType: "number", Min: &minValue, Max: &maxValue, Decision: "covered", TemplateID: "protagonist", FieldID: "当前资源",
 		}},
@@ -44,6 +58,7 @@ func TestValidateActorStateSchemaProposalRejectsUntypedCoverage(t *testing.T) {
 		ReviewedLoreIDs: []string{"具体数值"},
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "lore", ID: "具体数值"}, Requirement: "灵力需要独立结算",
+			EvidenceKind: "confirmed",
 			ValuePolicy: ActorStateSchemaValuePolicySchemaOnly,
 			Decision:    "covered", TemplateID: "protagonist", FieldID: "当前资源",
 		}},
@@ -73,6 +88,7 @@ func TestValidateActorStateSchemaProposalAcceptsRequirementAddedWithNewTemplate(
 		Summary: "新增关系角色模板",
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "重要角色需要好感度",
+			EvidenceKind: "confirmed",
 			ValuePolicy:  ActorStateSchemaValuePolicySchemaOnly,
 			ExpectedType: "number", Min: &minValue, Max: &maxValue, Decision: "add", TemplateID: "important_character", FieldID: "好感度",
 		}},

@@ -311,7 +311,7 @@ func TestCompleteDirectorPlanRunDetectsManualConflict(t *testing.T) {
 	if _, err := store.UpdateDirectorPlan(story.ID, UpdateDirectorPlanRequest{BranchID: "main", Docs: docs, BaseRevision: plan.Metadata.Revision}); err != nil {
 		t.Fatal(err)
 	}
-	completed, err := store.CompleteDirectorPlanRun(story.ID, "main", token, "turn_1", "后台导演尝试完成。")
+	completed, err := store.CompleteDirectorPlanRun(story.ID, "main", token, "turn_1", `{"mode":"patch","reason":"后台导演尝试完成"}`)
 	if err != nil {
 		t.Fatal(err)
 	}

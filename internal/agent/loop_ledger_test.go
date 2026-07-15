@@ -35,7 +35,7 @@ func TestContextLedgerRecordsBoundedSources(t *testing.T) {
 	}
 }
 
-func TestFilterToolResultAddsManifestWithoutDefaultTruncation(t *testing.T) {
+func TestFilterToolResultKeepsContentBelowHighDefaultLimit(t *testing.T) {
 	content := strings.Repeat("章节正文", 4096)
 	filtered := FilterToolResultForModel("write_file", `{"path":"chapters/ch00001.md"}`, content)
 	if filtered.Manifest.Source != ToolSourceWrite || !filtered.Manifest.MutatesWorkspace || !filtered.Manifest.RequiresPostCheck {
@@ -45,7 +45,7 @@ func TestFilterToolResultAddsManifestWithoutDefaultTruncation(t *testing.T) {
 		t.Fatalf("write_file capability = %q, want file_write", filtered.Manifest.Capability)
 	}
 	if filtered.Truncated {
-		t.Fatalf("default tool result filtering should not truncate")
+		t.Fatalf("tool result below the high default limit should not truncate")
 	}
 	if !strings.Contains(filtered.Content, "schema: tool_result.v1") ||
 		!strings.Contains(filtered.Content, "mutates_workspace: true") ||
@@ -55,7 +55,18 @@ func TestFilterToolResultAddsManifestWithoutDefaultTruncation(t *testing.T) {
 		t.Fatalf("filtered result should include model-visible metadata: %s", filtered.Content)
 	}
 	if !strings.Contains(filtered.Content, content) {
-		t.Fatalf("filtered result should include full content by default")
+		t.Fatalf("filtered result should include full content below the default limit")
+	}
+}
+
+func TestFilterToolResultBoundsOutputAboveHighDefaultLimit(t *testing.T) {
+	content := strings.Repeat("x", defaultToolResultMaxBytes+1024)
+	filtered := FilterToolResultForModel("read_file", `{"path":"references/large.txt"}`, content)
+	if !filtered.Truncated || filtered.Manifest.MaxResultBytes != defaultToolResultMaxBytes {
+		t.Fatalf("default tool result safety cap was not enforced: %#v", filtered)
+	}
+	if !strings.Contains(filtered.Content, "[tool result truncated]") || !strings.Contains(filtered.Content, "truncated: true") {
+		t.Fatalf("bounded result should explain its truncation: %s", filtered.Content[len(filtered.Content)-512:])
 	}
 }
 

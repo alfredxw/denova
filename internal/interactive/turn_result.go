@@ -67,8 +67,8 @@ func validateTurnResult(result TurnResult, configuredChoiceCount int, terminal b
 	if err := validateStoryChoiceCount(choiceCount); err != nil {
 		return err
 	}
-	if len(result.StateUpdates) > maxTurnBriefListItems {
-		return fmt.Errorf("TurnResult state_updates 不能超过 %d 项", maxTurnBriefListItems)
+	if len(result.StateUpdates) > maxInteractiveListItems {
+		return fmt.Errorf("TurnResult state_updates 不能超过 %d 项", maxInteractiveListItems)
 	}
 	for index, update := range result.StateUpdates {
 		if err := validateStateUpdateShape(update); err != nil {

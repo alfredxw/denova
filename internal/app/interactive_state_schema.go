@@ -17,9 +17,11 @@ import (
 	"denova/internal/session"
 )
 
-const maxInteractiveStateSchemaPromptBytes = interactive.DirectorContextMaxBytes
+const maxInteractiveStateSchemaNonStatePromptBytes = interactive.DirectorContextMaxBytes
+const maxInteractiveStateSchemaCurrentActorStateBytes = 1024 * 1024
+const maxInteractiveStateSchemaTotalPromptBytes = 2 * 1024 * 1024
 const maxInteractiveStateSchemaResidentLoreContextBytes = book.ResidentLoreSafetyMaxBytes + interactive.DirectorContextMaxBytes
-const stateSchemaAdaptationInstructionPrefix = "以下 JSON 是本次动态上下文；current_actor_state 是不截断的完整当前 Actor 快照，其他动态片段有界；完整常驻资料由独立稳定前缀提供。每个片段均标明来源字段；不要假设未提供的故事设定。\n"
+const stateSchemaAdaptationInstructionPrefix = "以下 JSON 是本次动态上下文；current_actor_state 在声明的 1 MiB 安全上限内完整保留，超过上限会明确拒绝而不会静默截断；其他动态片段有界；完整常驻资料由独立稳定前缀提供。每个片段均标明来源字段；不要假设未提供的故事设定。\n"
 
 const (
 	stateSchemaStoryOriginSourceID = "story-origin"
@@ -55,7 +57,6 @@ type stateSchemaAdaptationSources struct {
 	OpeningTurnID             string                        `json:"opening_turn_id,omitempty"`
 	OpeningUserAction         string                        `json:"opening_user_action,omitempty"`
 	OpeningNarrative          string                        `json:"opening_narrative,omitempty"`
-	OpeningTurnBrief          string                        `json:"opening_turn_brief,omitempty"`
 	OpeningTurnResult         string                        `json:"opening_turn_result,omitempty"`
 	OpeningTurnResultSourceID string                        `json:"opening_turn_result_source_id,omitempty"`
 	CurrentActorState         *stateSchemaCurrentActorState `json:"current_actor_state,omitempty"`
@@ -154,7 +155,6 @@ func runInteractiveStateSchemaInitialization(ctx context.Context, cfg *config.Co
 		}
 	}
 	draft := interactive.NewActorStateSchemaBatchDraft(storyCtx.Meta.ActorStateSchema.System, storyCtx.Meta.ActorStateSchema.TRPGSystem)
-	legacyProposalIndex := 0
 	openingSourceIDs := []string{turn.ID}
 	if strings.TrimSpace(req.Origin) != "" {
 		openingSourceIDs = append(openingSourceIDs, stateSchemaStoryOriginSourceID)
@@ -265,70 +265,6 @@ func runInteractiveStateSchemaInitialization(ctx context.Context, cfg *config.Co
 			}
 			return result, nil
 		},
-		SubmitStateSchemaProposal: func(_ context.Context, proposal interactive.ActorStateSchemaProposal) (interactive.ActorStateSchemaProposalPreview, error) {
-			reviewMu.Lock()
-			defer reviewMu.Unlock()
-			// Compatibility for in-process generators that still submit one full
-			// proposal. The model-facing tool only exposes the Batch contract.
-			for index := range proposal.Requirements {
-				if strings.TrimSpace(proposal.Requirements[index].EvidenceKind) == "" {
-					proposal.Requirements[index].EvidenceKind = "confirmed"
-				}
-				if strings.TrimSpace(proposal.Requirements[index].ValuePolicy) != "" {
-					continue
-				}
-				proposal.Requirements[index].ValuePolicy = interactive.ActorStateSchemaValuePolicySchemaOnly
-				for _, op := range proposal.Adaptation.InitialActorOps {
-					actorID := strings.TrimSpace(firstNonEmptyApp(op.ActorID, op.Actor.ID))
-					value, exists := op.Actor.State[proposal.Requirements[index].FieldID]
-					if !exists || value == nil {
-						continue
-					}
-					proposal.Requirements[index].ValuePolicy = interactive.ActorStateSchemaValuePolicyInitialize
-					proposal.Requirements[index].ActorID = actorID
-					break
-				}
-				if proposal.Requirements[index].ValuePolicy == interactive.ActorStateSchemaValuePolicyInitialize {
-					continue
-				}
-				for _, op := range proposal.Adaptation.ActorOps {
-					actorID := strings.TrimSpace(op.ActorID)
-					valueMatches := op.Op == "set" && strings.TrimSpace(op.FieldID) == strings.TrimSpace(proposal.Requirements[index].FieldID) && op.Value != nil
-					if !valueMatches {
-						value, exists := op.Actor.State[proposal.Requirements[index].FieldID]
-						valueMatches = exists && value != nil
-						if actorID == "" {
-							actorID = strings.TrimSpace(op.Actor.ID)
-						}
-					}
-					if !valueMatches {
-						continue
-					}
-					proposal.Requirements[index].ValuePolicy = interactive.ActorStateSchemaValuePolicyInitialize
-					proposal.Requirements[index].ActorID = actorID
-					break
-				}
-			}
-			legacyProposalIndex++
-			result := submitBatchLocked(interactive.ActorStateSchemaBatch{
-				Summary: proposal.Summary,
-				Items: []interactive.ActorStateSchemaBatchItem{{
-					ItemID: fmt.Sprintf("legacy-proposal-%d", legacyProposalIndex), Summary: proposal.Summary,
-					Requirements: proposal.Requirements, Adaptation: proposal.Adaptation,
-				}},
-				Finalize: true,
-			})
-			if len(result.Rejected) > 0 {
-				return interactive.ActorStateSchemaProposalPreview{}, fmt.Errorf("状态结构 Batch item 被拒绝 code=%s path=%s: %s", result.Rejected[0].Code, result.Rejected[0].Path, result.Rejected[0].Message)
-			}
-			if len(result.Blocked) > 0 {
-				return interactive.ActorStateSchemaProposalPreview{}, fmt.Errorf("状态结构 Batch item 被阻塞 code=%s path=%s: %s", result.Blocked[0].Code, result.Blocked[0].Path, result.Blocked[0].Message)
-			}
-			if !result.Finalized || result.Preview == nil {
-				return interactive.ActorStateSchemaProposalPreview{}, fmt.Errorf("状态结构 Batch 尚未 finalize")
-			}
-			return *result.Preview, nil
-		},
 	}, instruction)
 	if err == nil {
 		err = ctx.Err()
@@ -412,22 +348,23 @@ func buildStateSchemaAdaptationInstructionAfterOpeningWithSources(req interactiv
 		StatePreset:  compactStateSchemaAdaptationPreset(*req.ActorState),
 		TRPGBindings: compactStateSchemaAdaptationRules(trpgSystem),
 		Limits: map[string]int{
-			"max_non_state_prompt_bytes":   maxInteractiveStateSchemaPromptBytes,
-			"max_template_ops":             64,
-			"max_field_ops":                64,
-			"max_initial_actor_ops":        64,
-			"max_lore_read_items_per_call": interactive.StateSchemaLoreReadMaxItemsPerCall,
-			"max_lore_read_result_bytes":   interactive.StateSchemaLoreReadMaxResultBytes,
-			"max_lore_read_total_bytes":    interactive.StateSchemaLoreReadMaxTotalBytes,
-			"max_resident_lore_body_bytes": book.ResidentLoreSafetyMaxBytes,
-			"max_batch_items":              interactive.StateSchemaBatchMaxItems,
+			"max_non_state_prompt_bytes":    maxInteractiveStateSchemaNonStatePromptBytes,
+			"max_current_actor_state_bytes": maxInteractiveStateSchemaCurrentActorStateBytes,
+			"max_total_prompt_bytes":        maxInteractiveStateSchemaTotalPromptBytes,
+			"max_template_ops":              64,
+			"max_field_ops":                 64,
+			"max_initial_actor_ops":         64,
+			"max_lore_read_items_per_call":  interactive.StateSchemaLoreReadMaxItemsPerCall,
+			"max_lore_read_result_bytes":    interactive.StateSchemaLoreReadMaxResultBytes,
+			"max_lore_read_total_bytes":     interactive.StateSchemaLoreReadMaxTotalBytes,
+			"max_resident_lore_body_bytes":  book.ResidentLoreSafetyMaxBytes,
+			"max_batch_items":               interactive.StateSchemaBatchMaxItems,
 		},
 	}
 	if turn != nil {
 		prompt.Sources.OpeningTurnID = trimStateSchemaPromptText(turn.ID, 128)
 		prompt.Sources.OpeningUserAction = trimStateSchemaPromptText(turn.User, 1200)
 		prompt.Sources.OpeningNarrative = trimStateSchemaPromptText(turn.Narrative, 6000)
-		prompt.Sources.OpeningTurnBrief = compactStateSchemaTurnValue(turn.TurnBrief, 3000)
 		prompt.Sources.OpeningTurnResult = compactStateSchemaTurnValue(turn.TurnResult, 3000)
 		if turn.TurnResult != nil {
 			prompt.Sources.OpeningTurnResultSourceID = trimStateSchemaPromptText(turn.ID, 128)
@@ -444,12 +381,21 @@ func buildStateSchemaAdaptationInstructionAfterOpeningWithSources(req interactiv
 		}
 	}
 	currentActorState := prompt.Sources.CurrentActorState
+	if currentActorState != nil {
+		actorStateData, marshalErr := json.Marshal(currentActorState)
+		if marshalErr != nil {
+			return "", fmt.Errorf("序列化完整 Actor 状态快照失败 / Failed to serialize the complete Actor state snapshot: %w", marshalErr)
+		}
+		if len(actorStateData) > maxInteractiveStateSchemaCurrentActorStateBytes {
+			return "", fmt.Errorf("当前 Actor 状态快照超过安全上限 / Current Actor state snapshot exceeds the safety limit: %d > %d bytes", len(actorStateData), maxInteractiveStateSchemaCurrentActorStateBytes)
+		}
+	}
 	prompt.Sources.CurrentActorState = nil
 	data, err := json.Marshal(prompt)
 	if err != nil {
 		return "", fmt.Errorf("序列化状态结构初始化上下文失败: %w", err)
 	}
-	maxPayloadBytes := maxInteractiveStateSchemaPromptBytes - len(stateSchemaAdaptationInstructionPrefix)
+	maxPayloadBytes := maxInteractiveStateSchemaNonStatePromptBytes - len(stateSchemaAdaptationInstructionPrefix)
 	if len(data) > maxPayloadBytes {
 		for index := range prompt.StatePreset.Templates {
 			prompt.StatePreset.Templates[index].Description = ""
@@ -468,12 +414,15 @@ func buildStateSchemaAdaptationInstructionAfterOpeningWithSources(req interactiv
 		}
 	}
 	if len(data) > maxPayloadBytes {
-		return "", fmt.Errorf("状态结构初始化上下文超过上限: %d > %d bytes", len(data)+len(stateSchemaAdaptationInstructionPrefix), maxInteractiveStateSchemaPromptBytes)
+		return "", fmt.Errorf("状态结构初始化非状态上下文超过上限 / State-schema non-state context exceeds the limit: %d > %d bytes", len(data)+len(stateSchemaAdaptationInstructionPrefix), maxInteractiveStateSchemaNonStatePromptBytes)
 	}
 	prompt.Sources.CurrentActorState = currentActorState
 	data, err = json.Marshal(prompt)
 	if err != nil {
-		return "", fmt.Errorf("序列化完整 Actor 状态快照失败: %w", err)
+		return "", fmt.Errorf("序列化完整 Actor 状态快照失败 / Failed to serialize the complete Actor state snapshot: %w", err)
+	}
+	if len(data)+len(stateSchemaAdaptationInstructionPrefix) > maxInteractiveStateSchemaTotalPromptBytes {
+		return "", fmt.Errorf("状态结构初始化总上下文超过安全上限 / State-schema context exceeds the total safety limit: %d > %d bytes", len(data)+len(stateSchemaAdaptationInstructionPrefix), maxInteractiveStateSchemaTotalPromptBytes)
 	}
 	return stateSchemaAdaptationInstructionPrefix + string(data), nil
 }

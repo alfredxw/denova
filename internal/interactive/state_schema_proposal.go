@@ -53,7 +53,7 @@ type ActorStateSchemaRequirementReview struct {
 	Requirement string                            `json:"requirement"`
 	// EvidenceKind preserves whether the requirement or proposed initial value
 	// is explicitly confirmed, reasonably inferred, or a rules-level default.
-	EvidenceKind string `json:"evidence_kind,omitempty"`
+	EvidenceKind string `json:"evidence_kind"`
 	// ValuePolicy makes Actor value handling explicit instead of treating a
 	// sourced schema requirement as if it had also initialized runtime state.
 	ValuePolicy  string   `json:"value_policy" jsonschema:"description=该需求的 Actor 值策略：schema_only 仅审查结构；preserve 校验并保留已有值；initialize 必须在同一 item 用字段级 actor_ops set 落值；defer 明确延后且必须说明理由"`
@@ -80,7 +80,7 @@ type ActorStateSchemaProposalPreview struct {
 // ValidateActorStateSchemaProposal normalizes the model-facing proposal and
 // verifies that its schema diff can produce a valid frozen story contract.
 func ValidateActorStateSchemaProposal(base StoryDirectorActorStateSystem, trpg StoryDirectorTRPGSystem, proposal ActorStateSchemaProposal) (ActorStateSchemaProposal, ActorStateSchemaProposalPreview, error) {
-	proposal.Summary = trimBytes(proposal.Summary, maxTurnBriefTextBytes)
+	proposal.Summary = trimBytes(proposal.Summary, maxInteractiveTextBytes)
 	if len(proposal.Requirements) == 0 {
 		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("状态结构提案缺少来源化覆盖审查")
 	}
@@ -134,7 +134,7 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		review.ItemID = strings.TrimSpace(review.ItemID)
 		review.Source.Kind = strings.TrimSpace(review.Source.Kind)
 		review.Source.ID = strings.TrimSpace(review.Source.ID)
-		review.Requirement = trimBytes(review.Requirement, maxTurnBriefTextBytes)
+		review.Requirement = trimBytes(review.Requirement, maxInteractiveTextBytes)
 		review.EvidenceKind = strings.TrimSpace(review.EvidenceKind)
 		review.ValuePolicy = strings.TrimSpace(review.ValuePolicy)
 		review.ActorID = normalizeActorStateID(review.ActorID)
@@ -142,7 +142,7 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		review.Decision = strings.TrimSpace(review.Decision)
 		review.TemplateID = normalizeActorStateID(review.TemplateID)
 		review.FieldID = normalizeActorStateFieldName(review.FieldID)
-		review.Reason = trimBytes(review.Reason, maxTurnBriefTextBytes)
+		review.Reason = trimBytes(review.Reason, maxInteractiveTextBytes)
 		switch review.Source.Kind {
 		case "lore", "opening", "turn_result", "trpg":
 		default:
@@ -155,7 +155,7 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 			return fmt.Errorf("状态需求引用了未经后端确认审阅的资料: %s", review.Source.ID)
 		}
 		switch review.EvidenceKind {
-		case "", "confirmed", "inferred", "default":
+		case "confirmed", "inferred", "default":
 		default:
 			return fmt.Errorf("状态需求 evidence_kind 无效: %s", review.EvidenceKind)
 		}

@@ -34,6 +34,9 @@ func (s *LoreStore) AllRevision() (string, error) {
 // ApplyTypeChanges atomically updates only type metadata after verifying the
 // preview revision. User confirmation is recorded as manual provenance.
 func (s *LoreStore) ApplyTypeChanges(expectedRevision string, changes []LoreTypeChange) (LoreTypeApplyResult, error) {
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return LoreTypeApplyResult{}, err

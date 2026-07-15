@@ -242,7 +242,7 @@ describe('StoryStage composer', () => {
     expect(screen.getByText('潜入检定')).toBeInTheDocument()
     expect(screen.getByText('总值 6 / 目标 18')).toBeInTheDocument()
     expect(screen.getByText(/失败会损失体力并暴露行踪/)).toBeInTheDocument()
-    expect(screen.getByText('actors.protagonist.state.resources.hp -10')).toBeInTheDocument()
+    expect(screen.getByText('protagonist / 当前生命 -10')).toBeInTheDocument()
     expect(screen.getByText('守阁长老拦在门前。')).toBeInTheDocument()
   })
 
@@ -1259,10 +1259,9 @@ function storyDirector(ruleVisibilityMode: string) {
     strategy: {
       enabled: true,
       rule_visibility_mode: ruleVisibilityMode,
-    },
-    trpg_system: { rule_templates: [] },
-    opening_selector: { enabled: true },
-    custom: false,
+		},
+		trpg_system: { rule_templates: [] },
+		custom: false,
   }
 }
 
@@ -1293,7 +1292,7 @@ function snapshotWithRuleResolution(): Snapshot {
           outcomes: {
             critical_success: { result: '无声潜入。' },
             success: { result: '成功潜入。' },
-            failure: { result: '强闯失败导致主线中断', state_changes: [{ path: 'actors.protagonist.state.resources.hp', change: -10, reason: '被禁制反震' }] },
+            failure: { result: '强闯失败导致主线中断', state_changes: [{ actor_id: 'protagonist', field_id: '当前生命', change: -10, reason: '被禁制反震' }] },
             critical_failure: { result: '被当场抓住。' },
           },
         },
@@ -1310,7 +1309,7 @@ function snapshotWithRuleResolution(): Snapshot {
           total: 6,
           outcome: 'failure',
           result: '强闯失败导致主线中断',
-          state_changes: [{ path: 'actors.protagonist.state.resources.hp', change: -10, reason: '被禁制反震' }],
+          state_changes: [{ actor_id: 'protagonist', field_id: '当前生命', change: -10, reason: '被禁制反震' }],
         },
       },
     }],

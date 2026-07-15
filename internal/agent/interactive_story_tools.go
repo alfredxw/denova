@@ -31,9 +31,6 @@ type InteractiveStoryToolContext struct {
 	OnLoreItemsRead          func([]string)
 	SubmitStateSchemaBatch   func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
 	SubmitDirectorPlanUpdate func(context.Context, interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error)
-	// SubmitStateSchemaProposal remains available to in-process integrations
-	// during the Batch transition. The model-facing tool uses Batch only.
-	SubmitStateSchemaProposal func(context.Context, interactive.ActorStateSchemaProposal) (interactive.ActorStateSchemaProposalPreview, error)
 	// DisplayConversation receives display-only progress for background helper
 	// agents. It must not receive final assistant text as model-visible context.
 	DisplayConversation Conversation

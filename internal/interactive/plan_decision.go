@@ -35,14 +35,6 @@ type PlanDecisionDeviation struct {
 	Reason              string   `json:"reason,omitempty"`
 }
 
-func ParsePlanDecision(output string) PlanDecision {
-	decision, err := ParsePlanDecisionJSON(output)
-	if err != nil {
-		return normalizePlanDecision(PlanDecision{Mode: PlanDecisionPatch, Reason: strings.TrimSpace(output)})
-	}
-	return decision
-}
-
 // ParsePlanDecisionJSON extracts and validates one structured PlanDecision from
 // model output. Surrounding narration is tolerated for recovery, but callers
 // should persist only the returned normalized decision.
@@ -121,15 +113,15 @@ func topLevelJSONObjectCandidates(output string) []string {
 
 func normalizePlanDecision(decision PlanDecision) PlanDecision {
 	decision.Mode = normalizeEnum(decision.Mode, PlanDecisionKeep, PlanDecisionPatch, PlanDecisionReplan)
-	decision.Triggers = normalizeStringListLimit(decision.Triggers, maxTurnBriefListItems)
+	decision.Triggers = normalizeStringListLimit(decision.Triggers, maxInteractiveListItems)
 	decision.SceneTransition.Kind = normalizeEnum(decision.SceneTransition.Kind, "none", "exit", "enter", "replace")
 	decision.SceneTransition.From = trimBytes(decision.SceneTransition.From, 256)
 	decision.SceneTransition.To = trimBytes(decision.SceneTransition.To, 256)
-	decision.SceneTransition.Evidence = normalizeStringListLimit(decision.SceneTransition.Evidence, maxTurnBriefListItems)
+	decision.SceneTransition.Evidence = normalizeStringListLimit(decision.SceneTransition.Evidence, maxInteractiveListItems)
 	decision.Deviation.Level = normalizeEnum(decision.Deviation.Level, "none", "minor", "major")
-	decision.Deviation.InvalidatedPlanRefs = normalizeStringListLimit(decision.Deviation.InvalidatedPlanRefs, maxTurnBriefListItems)
-	decision.Deviation.Reason = trimBytes(decision.Deviation.Reason, maxTurnBriefTextBytes)
-	decision.Reason = trimBytes(decision.Reason, maxTurnBriefTextBytes)
+	decision.Deviation.InvalidatedPlanRefs = normalizeStringListLimit(decision.Deviation.InvalidatedPlanRefs, maxInteractiveListItems)
+	decision.Deviation.Reason = trimBytes(decision.Deviation.Reason, maxInteractiveTextBytes)
+	decision.Reason = trimBytes(decision.Reason, maxInteractiveTextBytes)
 	decision.BaseRevision = trimBytes(decision.BaseRevision, 128)
 	if decision.EventDecision != nil {
 		normalized := normalizeEventDecision(*decision.EventDecision)

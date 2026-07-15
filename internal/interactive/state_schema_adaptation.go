@@ -144,7 +144,7 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 	if err := json.Unmarshal([]byte(payload), &adaptation); err != nil {
 		return ActorStateSchemaAdaptation{}, fmt.Errorf("解析状态结构适配结果失败: %w", err)
 	}
-	adaptation.Summary = trimBytes(adaptation.Summary, maxTurnBriefTextBytes)
+	adaptation.Summary = trimBytes(adaptation.Summary, maxInteractiveTextBytes)
 	if len(adaptation.TemplateOps) > maxActorStateSchemaAdaptationOps {
 		return ActorStateSchemaAdaptation{}, fmt.Errorf("状态结构模板操作过多: %d > %d", len(adaptation.TemplateOps), maxActorStateSchemaAdaptationOps)
 	}
@@ -159,13 +159,13 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		op := &adaptation.TemplateOps[index]
 		op.Op = strings.TrimSpace(op.Op)
 		op.TemplateID = normalizeActorStateID(op.TemplateID)
-		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
+		op.Reason = trimBytes(op.Reason, maxInteractiveTextBytes)
 		fieldOps += len(op.FieldOps)
 		for fieldIndex := range op.FieldOps {
 			fieldOp := &op.FieldOps[fieldIndex]
 			fieldOp.Op = strings.TrimSpace(fieldOp.Op)
 			fieldOp.FieldID = normalizeActorStateFieldName(fieldOp.FieldID)
-			fieldOp.Reason = trimBytes(fieldOp.Reason, maxTurnBriefTextBytes)
+			fieldOp.Reason = trimBytes(fieldOp.Reason, maxInteractiveTextBytes)
 		}
 	}
 	if fieldOps > maxActorStateSchemaAdaptationOps {
@@ -175,7 +175,7 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		op := &adaptation.InitialActorOps[index]
 		op.Op = strings.TrimSpace(op.Op)
 		op.ActorID = normalizeActorStateID(op.ActorID)
-		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
+		op.Reason = trimBytes(op.Reason, maxInteractiveTextBytes)
 		normalizeActorStateSchemaActorValueSource(op.ValueSource)
 	}
 	for index := range adaptation.ActorOps {
@@ -185,7 +185,7 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		op.FieldID = normalizeActorStateFieldName(op.FieldID)
 		op.Actor.ID = normalizeActorStateID(op.Actor.ID)
 		op.Actor.TemplateID = normalizeActorStateID(op.Actor.TemplateID)
-		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
+		op.Reason = trimBytes(op.Reason, maxInteractiveTextBytes)
 		normalizeActorStateSchemaActorValueSource(op.ValueSource)
 		if op.Op != "add" && op.Op != "replace" && op.Op != "remove" && op.Op != "set" {
 			return ActorStateSchemaAdaptation{}, fmt.Errorf("运行时 Actor 操作无效: %s", op.Op)
@@ -245,7 +245,7 @@ func ApplyActorStateSchemaAdaptation(base StoryDirectorActorStateSystem, trpg St
 	}
 	record := ActorStateSchemaAdaptationRecord{
 		Source:          "director_agent",
-		Summary:         trimBytes(adaptation.Summary, maxTurnBriefTextBytes),
+		Summary:         trimBytes(adaptation.Summary, maxInteractiveTextBytes),
 		TemplateOps:     len(adaptation.TemplateOps),
 		FieldOps:        fieldOps,
 		InitialActorOps: len(adaptation.InitialActorOps),
@@ -275,8 +275,8 @@ func applyActorStateTemplateSchemaOp(system StoryDirectorActorStateSystem, op Ac
 		if actorStateTemplateByID(system, templates[0].ID).ID != "" {
 			return system, fmt.Errorf("新增状态模板已存在: %s", templates[0].ID)
 		}
-		if len(system.Templates) >= maxTurnBriefListItems {
-			return system, fmt.Errorf("状态模板数量已达到上限: %d", maxTurnBriefListItems)
+		if len(system.Templates) >= maxInteractiveListItems {
+			return system, fmt.Errorf("状态模板数量已达到上限: %d", maxInteractiveListItems)
 		}
 		system.Templates = append(system.Templates, templates[0])
 		return system, nil
@@ -411,8 +411,8 @@ func applyActorStateInitialActorSchemaOp(system StoryDirectorActorStateSystem, o
 	default:
 		return system, fmt.Errorf("初始 Actor 操作无效: %s", op.Op)
 	}
-	if len(system.InitialActors) > maxTurnBriefListItems {
-		return system, fmt.Errorf("初始 Actor 数量超过上限: %d", maxTurnBriefListItems)
+	if len(system.InitialActors) > maxInteractiveListItems {
+		return system, fmt.Errorf("初始 Actor 数量超过上限: %d", maxInteractiveListItems)
 	}
 	return system, nil
 }

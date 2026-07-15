@@ -355,25 +355,27 @@ func TestInteractiveConversationInjectsStoryDirectorStrategyPrompt(t *testing.T)
 func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 	workspace := t.TempDir()
 	novaDir := t.TempDir()
+	eventPackage, err := interactive.NewEventPackageLibrary(novaDir).Create(interactive.EventPackageModule{
+		ID:   "academy-pack",
+		Name: "学院事件包",
+		Events: []interactive.TellerEventCard{{
+			ID:                  "academy_trial",
+			TypeName:            "外门考核打脸",
+			DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
+			Enabled:             true,
+			Category:            "学院",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	director, err := interactive.NewStoryDirectorLibrary(novaDir).Create(interactive.StoryDirector{
 		ID:          "event-card-director",
 		Name:        "事件卡导演",
 		Description: "测试事件系统只进入后台导演",
+		ModuleRefs:  interactive.StoryDirectorModuleRefs{EventPackageIDs: []string{eventPackage.ID}},
 		Strategy: interactive.StoryDirectorStrategy{
 			Enabled: true,
-		},
-		EventSystem: interactive.StoryDirectorEventSystem{
-			EventPackages: []interactive.TellerEventPackage{{
-				ID:      "academy-pack",
-				Enabled: true,
-				Events: []interactive.TellerEventCard{{
-					ID:                  "academy_trial",
-					TypeName:            "外门考核打脸",
-					DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
-					Enabled:             true,
-					Category:            "学院",
-				}},
-			}},
 		},
 	})
 	if err != nil {
@@ -439,33 +441,23 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 	}
 }
 
-func TestInteractiveDirectorEventCatalogIncludesTellerEventCards(t *testing.T) {
-	teller := interactive.Teller{
-		ID:   "catalog",
-		Name: "事件目录",
-		Orchestration: &interactive.TellerOrchestrationConfig{
+func TestInteractiveDirectorEventCatalogIncludesConfiguredEventCards(t *testing.T) {
+	director := interactive.StoryDirector{
+		ID:         "catalog",
+		Name:       "事件目录",
+		ModuleRefs: interactive.StoryDirectorModuleRefs{EventPackageIDs: []string{"academy-pack"}},
+		EventPackages: []interactive.TellerEventPackage{{
+			ID:      "academy-pack",
 			Enabled: true,
-			EventPackages: []interactive.TellerEventPackage{{
-				ID:      "academy-pack",
-				Enabled: true,
-				Events: []interactive.TellerEventCard{{
-					ID:                  "academy_trial",
-					TypeName:            "外门考核打脸",
-					DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
-					Enabled:             true,
-					Category:            "学院",
-				}},
+			Events: []interactive.TellerEventCard{{
+				ID:                  "academy_trial",
+				TypeName:            "外门考核打脸",
+				DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
+				Enabled:             true,
+				Category:            "学院",
 			}},
-		},
-		Slots: []interactive.TellerPromptSlot{{
-			ID:      "identity",
-			Name:    "系统提示",
-			Target:  "system",
-			Enabled: true,
-			Content: "规则",
 		}},
 	}
-	director := interactive.StoryDirectorFromTellerOrchestration(teller.ID, teller.Name, teller.Description, *teller.Orchestration)
 	catalog := interactiveDirectorEventCatalog(director)
 	found := false
 	for _, event := range catalog {
@@ -490,7 +482,7 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 		Origin:          "主角站在秘境入口",
 		StoryTellerID:   "classic",
 		StoryDirectorID: director.ID,
-		InitialStateOps: interactive.StoryDirectorInitialStateOps(director),
+		ActorState:      &director.ActorState,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -541,17 +533,9 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 func newInteractiveStoreWithHPTestDirector(t *testing.T, workspace, novaDir string) (*interactive.Store, interactive.StoryDirector) {
 	t.Helper()
 	hpMin, hpMax := 0.0, 10.0
-	director, err := interactive.NewStoryDirectorLibrary(novaDir).Create(interactive.StoryDirector{
-		ID:   "hp-test-director",
-		Name: "生命测试导演",
-		ModuleRefs: interactive.StoryDirectorModuleRefs{
-			NarrativeStyleDisabled:  true,
-			EventPackagesDisabled:   true,
-			RuleSystemDisabled:      true,
-			OpeningSelectorDisabled: true,
-			ImagePresetDisabled:     true,
-		},
-		Strategy: interactive.StoryDirectorStrategy{Enabled: true},
+	actorState, err := interactive.NewActorStateLibrary(novaDir).Create(interactive.ActorStateModule{
+		ID:   "hp-test-state",
+		Name: "生命测试状态",
 		ActorState: interactive.StoryDirectorActorStateSystem{
 			Templates: []interactive.ActorStateTemplate{{
 				ID:   "protagonist",
@@ -574,6 +558,21 @@ func newInteractiveStoreWithHPTestDirector(t *testing.T, workspace, novaDir stri
 				Role:       "protagonist",
 			}},
 		},
+	})
+	if err != nil {
+		t.Fatalf("create hp actor state failed: %v", err)
+	}
+	director, err := interactive.NewStoryDirectorLibrary(novaDir).Create(interactive.StoryDirector{
+		ID:   "hp-test-director",
+		Name: "生命测试导演",
+		ModuleRefs: interactive.StoryDirectorModuleRefs{
+			NarrativeStyleDisabled: true,
+			EventPackagesDisabled:  true,
+			RuleSystemDisabled:     true,
+			ActorStateID:           actorState.ID,
+			ImagePresetDisabled:    true,
+		},
+		Strategy: interactive.StoryDirectorStrategy{Enabled: true},
 	})
 	if err != nil {
 		t.Fatalf("create hp test director failed: %v", err)

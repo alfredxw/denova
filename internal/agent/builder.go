@@ -657,7 +657,7 @@ func configModelMaxRetries(cfg *config.Config) int {
 
 func configToolResultMaxBytes(cfg *config.Config) int {
 	if cfg == nil || cfg.AgentToolResultLimitKB <= 0 {
-		return 0
+		return defaultToolResultMaxBytes
 	}
 	return cfg.AgentToolResultLimitKB * 1024
 }

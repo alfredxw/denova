@@ -85,9 +85,8 @@ export interface PublicRuleRoll {
 }
 
 export interface PublicRuleStateChange {
-	actor_id?: string
-	field_id?: string
-	path?: string
+  actor_id: string
+  field_id: string
   change: number
   reason?: string
 }

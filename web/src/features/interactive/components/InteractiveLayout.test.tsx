@@ -212,9 +212,8 @@ function storyDirector(id: string, name: string, narrativeStyleId: string): Stor
     name,
     description: '',
     module_refs: { narrative_style_id: narrativeStyleId },
-    strategy: { enabled: true },
-    trpg_system: {},
-    opening_selector: { enabled: true },
-    custom: false,
+		strategy: { enabled: true },
+		trpg_system: {},
+		custom: false,
   }
 }

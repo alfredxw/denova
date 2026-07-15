@@ -337,7 +337,7 @@ func normalizeActorStateOps(ops []ActorStateOp) []ActorStateOp {
 		op.Op = strings.TrimSpace(op.Op)
 		op.ActorID = normalizeActorStateID(op.ActorID)
 		op.FieldID = normalizeActorStateFieldName(op.FieldID)
-		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
+		op.Reason = trimBytes(op.Reason, maxInteractiveTextBytes)
 		op.SourceTurnID = trimBytes(op.SourceTurnID, 128)
 		op.SourceKind = trimBytes(op.SourceKind, 128)
 		op.SourceID = trimBytes(op.SourceID, 128)

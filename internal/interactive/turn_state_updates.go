@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-const maxTurnStateUpdateValueBytes = maxTurnBriefTextBytes
+const maxTurnStateUpdateValueBytes = maxInteractiveTextBytes
 
 // TurnStateUpdateCompileOptions keeps validation inputs explicit at the
 // model-to-state boundary.
@@ -52,13 +52,13 @@ func (e *StateUpdateValidationError) Error() string {
 // rejects the whole module.
 func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState map[string]any, updates []StateUpdate, options TurnStateUpdateCompileOptions) (CompiledTurnStateUpdates, error) {
 	updates = normalizeTurnStateUpdates(updates)
-	if len(updates) > maxTurnBriefListItems {
+	if len(updates) > maxInteractiveListItems {
 		return CompiledTurnStateUpdates{}, &StateUpdateValidationError{
-			Index:    maxTurnBriefListItems,
+			Index:    maxInteractiveListItems,
 			Code:     "too_many_state_updates",
-			Expected: fmt.Sprintf("at most %d operations", maxTurnBriefListItems),
+			Expected: fmt.Sprintf("at most %d operations", maxInteractiveListItems),
 			Actual:   fmt.Sprintf("%d operations", len(updates)),
-			Cause:    fmt.Errorf("state_updates 不能超过 %d 项", maxTurnBriefListItems),
+			Cause:    fmt.Errorf("state_updates 不能超过 %d 项", maxInteractiveListItems),
 		}
 	}
 

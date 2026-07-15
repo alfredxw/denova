@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -132,7 +133,8 @@ type LoreApplyResult struct {
 }
 
 type LoreStore struct {
-	workspace string
+	workspace  string
+	mutationMu *sync.Mutex
 }
 
 type loreNameAllocator struct {
@@ -156,6 +158,8 @@ type LoreIndexOptions struct {
 
 var ErrLoreRevisionConflict = errors.New("资料已被其他操作更新，请重新加载后再保存")
 
+var loreMutationLocks sync.Map
+
 func (item *LoreItem) UnmarshalJSON(data []byte) error {
 	type loreItemAlias LoreItem
 	raw := struct {
@@ -175,7 +179,16 @@ func (item *LoreItem) UnmarshalJSON(data []byte) error {
 }
 
 func NewLoreStore(workspace string) *LoreStore {
-	return &LoreStore{workspace: workspace}
+	return &LoreStore{workspace: workspace, mutationMu: sharedLoreMutationLock(workspace)}
+}
+
+func sharedLoreMutationLock(workspace string) *sync.Mutex {
+	path := workspacepath.Path(workspace, "lore", "items.json")
+	if absolute, err := filepath.Abs(path); err == nil {
+		path = absolute
+	}
+	lock, _ := loreMutationLocks.LoadOrStore(filepath.Clean(path), &sync.Mutex{})
+	return lock.(*sync.Mutex)
 }
 
 func (s *LoreStore) List() ([]LoreItem, error) {
@@ -230,6 +243,9 @@ func (s *LoreStore) list(includeDisabled bool) ([]LoreItem, error) {
 }
 
 func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return LoreItem{}, err
@@ -279,6 +295,9 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 	if id == "" {
 		return LoreItem{}, errors.New("资料 ID 不能为空")
 	}
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return LoreItem{}, err
@@ -355,6 +374,9 @@ func (s *LoreStore) Delete(id string) error {
 	if id == "" {
 		return errors.New("资料 ID 不能为空")
 	}
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return err
@@ -392,6 +414,9 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 	if len(ops) == 0 {
 		return LoreApplyResult{}, errors.New("没有可执行的资料库操作")
 	}
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return LoreApplyResult{}, err
@@ -544,6 +569,9 @@ func (s *LoreStore) SetImage(id string, image *LoreItemImage) (LoreItem, error) 
 	if id == "" {
 		return LoreItem{}, errors.New("资料 ID 不能为空")
 	}
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return LoreItem{}, err
@@ -771,8 +799,19 @@ func (s *LoreStore) ProgressiveContextMarkdown() (string, error) {
 }
 
 func (s *LoreStore) Ensure() error {
-	_, err := s.loadOrCreate()
-	return err
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
+	collection, err := s.loadOrCreate()
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(s.itemsPath()); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return s.save(collection)
 }
 
 func (s *LoreStore) loadOrCreate() (LoreCollection, error) {
@@ -790,24 +829,61 @@ func (s *LoreStore) loadOrCreate() (LoreCollection, error) {
 	if !os.IsNotExist(err) {
 		return LoreCollection{}, err
 	}
-	collection := LoreCollection{Version: loreItemsVersion}
-	if err := s.save(collection); err != nil {
-		return LoreCollection{}, err
-	}
-	return collection, nil
+	return LoreCollection{Version: loreItemsVersion, Items: []LoreItem{}}, nil
 }
 
 func (s *LoreStore) save(collection LoreCollection) error {
 	collection.Version = loreItemsVersion
 	collection.Items = normalizeLoreItems(collection.Items)
-	if err := os.MkdirAll(filepath.Dir(s.itemsPath()), 0o755); err != nil {
+	path := s.itemsPath()
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(collection, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.itemsPath(), append(data, '\n'), 0o644)
+	temp, err := os.CreateTemp(dir, ".items-*.tmp")
+	if err != nil {
+		return fmt.Errorf("创建资料库临时文件失败 path=%s: %w", path, err)
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	closeTemp := func() {
+		if closeErr := temp.Close(); closeErr != nil {
+			log.Printf("[lore-store] close temp file failed path=%s err=%v", tempPath, closeErr)
+		}
+	}
+	if err := temp.Chmod(0o644); err != nil {
+		closeTemp()
+		return fmt.Errorf("设置资料库临时文件权限失败 path=%s: %w", tempPath, err)
+	}
+	if _, err := temp.Write(append(data, '\n')); err != nil {
+		closeTemp()
+		return fmt.Errorf("写入资料库临时文件失败 path=%s: %w", tempPath, err)
+	}
+	if err := temp.Sync(); err != nil {
+		closeTemp()
+		return fmt.Errorf("同步资料库临时文件失败 path=%s: %w", tempPath, err)
+	}
+	if err := temp.Close(); err != nil {
+		return fmt.Errorf("关闭资料库临时文件失败 path=%s: %w", tempPath, err)
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return fmt.Errorf("原子替换资料库文件失败 path=%s: %w", path, err)
+	}
+	if directory, err := os.Open(dir); err == nil {
+		if syncErr := directory.Sync(); syncErr != nil {
+			log.Printf("[lore-store] sync directory failed path=%s err=%v", dir, syncErr)
+		}
+		if closeErr := directory.Close(); closeErr != nil {
+			log.Printf("[lore-store] close directory failed path=%s err=%v", dir, closeErr)
+		}
+	} else {
+		log.Printf("[lore-store] open directory for sync failed path=%s err=%v", dir, err)
+	}
+	return nil
 }
 
 func (s *LoreStore) itemsPath() string {

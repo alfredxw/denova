@@ -102,7 +102,7 @@ func stringPtr(v string) *string  { return &v }
 const (
 	DefaultWritingSkillName        = "novel-lite"
 	DefaultAgentIdleTimeoutSeconds = 0
-	DefaultAgentToolResultLimitKB  = 0
+	DefaultAgentToolResultLimitKB  = 1024
 	DefaultTraceCaptureLevel       = "summary"
 	DefaultTraceExporter           = "local"
 	DefaultTraceRetentionRuns      = 100
@@ -479,6 +479,7 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 	} else {
 		novaDir = normalizePath(novaDir)
 	}
+	global.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(global.AgentToolResultLimitKB)
 	user, err := ReadSettingsFile(UserConfigPath(novaDir))
 	if err != nil {
 		return LayeredSettings{}, err
@@ -615,6 +616,9 @@ func normalizeAgentToolResultLimitKB(limit *int) *int {
 	}
 	if *limit < 0 {
 		return nil
+	}
+	if *limit == 0 {
+		return intPtr(DefaultAgentToolResultLimitKB)
 	}
 	return limit
 }

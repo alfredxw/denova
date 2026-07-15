@@ -50,7 +50,7 @@ func TestPrepareTurnSubmissionIgnoresResubmittedAcceptedModule(t *testing.T) {
 	}, prepared, TurnSubmissionInput{
 		Choices: &choices,
 		Diagnostics: []TurnSubmissionDiagnostic{{
-			Module: TurnSubmissionModuleStateUpdates, Code: TurnSubmissionDiagnosticInvalidModule,
+			Module: TurnSubmissionModuleActorStatePatches, Code: TurnSubmissionDiagnosticInvalidModule,
 		}},
 	})
 	if !receipt.Ready || len(receipt.Diagnostics) != 0 || !prepared.Ready() {
@@ -80,20 +80,10 @@ func TestPrepareTurnSubmissionRejectsStateModuleAtomically(t *testing.T) {
 	}
 }
 
-func TestDecodeTurnSubmissionInputKeepsValidModuleWhenSiblingShapeIsInvalid(t *testing.T) {
-	input := DecodeTurnSubmissionInput(`{"state_updates":[{"op":"replace","path":"/protagonist/当前处境","value":"哨站"}],"choices":{"bad":true}}`)
-	if input.Fatal || input.StateUpdates == nil || input.Choices != nil {
-		t.Fatalf("valid module should survive sibling decode failure: %#v", input)
-	}
-	if len(input.Diagnostics) != 1 || input.Diagnostics[0].Module != TurnSubmissionModuleChoices {
-		t.Fatalf("unexpected module diagnostics: %#v", input.Diagnostics)
-	}
-}
-
 func TestSeparateSubmissionToolsIsolateMalformedJSON(t *testing.T) {
 	system, state := turnSubmissionTestState()
 	malformed := DecodeActorStatePatchesSubmissionInput(`{"patches":[{"op":"replace","path":"/protagonist/当前处境","value":"以"路过的散修"身份"}]}`)
-	if malformed.Fatal || malformed.StateUpdates != nil || len(malformed.Diagnostics) != 1 || malformed.Diagnostics[0].Module != TurnSubmissionModuleActorStatePatches {
+	if malformed.StateUpdates != nil || len(malformed.Diagnostics) != 1 || malformed.Diagnostics[0].Module != TurnSubmissionModuleActorStatePatches {
 		t.Fatalf("malformed patch JSON must be isolated to its module: %#v", malformed)
 	}
 	prepared, receipt := PrepareTurnSubmission(TurnSubmissionContext{ActorState: system, CurrentState: state, ChoiceCount: 5}, nil, malformed)
@@ -148,16 +138,6 @@ func TestChoicesSubmissionRejectsUnexplainedDirectorUpdateHint(t *testing.T) {
 	}
 }
 
-func TestDecodeTurnSubmissionInputRejectsUnexpectedTopLevelShapeAsWhole(t *testing.T) {
-	input := DecodeTurnSubmissionInput(`{"state_updates":[],"choices":[],"contract":{}}`)
-	if !input.Fatal || input.StateUpdates != nil || input.Choices != nil {
-		t.Fatalf("unexpected top-level fields should reject the call shape: %#v", input)
-	}
-	if len(input.Diagnostics) != 1 || input.Diagnostics[0].Code != TurnSubmissionDiagnosticInvalidTopLevel {
-		t.Fatalf("unexpected fatal diagnostics: %#v", input.Diagnostics)
-	}
-}
-
 func TestPrepareTurnSubmissionUsesConfiguredChoiceCountAndUnicodeDistinctness(t *testing.T) {
 	system, state := turnSubmissionTestState()
 	updates := []StateUpdate{}
@@ -195,16 +175,6 @@ func TestPrepareTurnSubmissionAcceptsEmptyChoicesOnlyForDeclaredTerminal(t *test
 	}, nil, TurnSubmissionInput{StateUpdates: &updates, Choices: &choices})
 	if !receipt.Ready || !prepared.Ready() || len(prepared.TurnResult().Choices) != 0 {
 		t.Fatalf("declared terminal empty choices should be accepted: %#v", receipt)
-	}
-}
-
-func TestDecodeTurnSubmissionInputRejectsMoreThanMaximumChoices(t *testing.T) {
-	input := DecodeTurnSubmissionInput(`{"state_updates":[],"choices":["1","2","3","4","5","6","7","8","9","10","11"]}`)
-	if input.Fatal || input.StateUpdates == nil || input.Choices != nil {
-		t.Fatalf("valid state module should survive an oversized choices module: %#v", input)
-	}
-	if len(input.Diagnostics) != 1 || input.Diagnostics[0].Code != "too_many_choices" {
-		t.Fatalf("unexpected oversized choices diagnostic: %#v", input.Diagnostics)
 	}
 }
 
