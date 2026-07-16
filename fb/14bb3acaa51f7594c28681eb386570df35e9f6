@@ -1,0 +1,470 @@
+.gitignore
+  s_23dfa1fff0cb39::t_11ece127259cc8 20-21
+CHANGELOG.md
+  s_23dfa1fff0cb39::t_9aa010831c2601 9-51
+docs/workspace-change-engine.md
+  s_23dfa1fff0cb39::t_27a41e3e293573 1-141
+go.mod
+  s_23dfa1fff0cb39::t_361be7abc6fc31 18
+internal/agent/agent_filesystem_backend.go
+  s_23dfa1fff0cb39::t_088cbccb8c3977 7,17,22,26-33
+internal/agent/agent_filesystem_backend_test.go
+  s_23dfa1fff0cb39::t_b31e5972e7689f 123,129
+internal/agent/builder.go
+  s_23dfa1fff0cb39::t_7cddb0df752c55 26,210-215,222,256,599,606-632,634-636,639-640
+internal/agent/chat.go
+  s_9fc9c4172ee422::t_6f0259ecda1bb5 39,52-55,166,181-183,186,191,205,219,241,246,250,264,279,338,354,547-564,626-633,658-665
+internal/agent/chat_display_test.go
+  s_c30007bf82721f::t_f25a4a23a8cd9e 155
+internal/agent/context_analysis.go
+  s_9fc9c4172ee422::t_20f13233efb0d9 831-833
+internal/agent/middleware.go
+  s_9fc9c4172ee422::t_e1a4fc788f022e 27,169,181-185,210-211,217,229,239-241,268,271,283,285,289-303,311,315-331,342,352-354,390-408
+internal/agent/mutation_tracker.go
+  s_9fc9c4172ee422::t_33757d968d61a5 13,20-26,42,89,96-102,168-173
+internal/agent/review_feedback.go
+  s_9fc9c4172ee422::t_2b6047c79259cd 1-93
+internal/agent/review_feedback_test.go
+  s_9fc9c4172ee422::t_eb77f72bba4093 1-81
+internal/agent/run_ledger.go
+  s_9fc9c4172ee422::t_509d0c7af922b1 89
+internal/agent/run_observer.go
+  s_9fc9c4172ee422::t_5a012911ddb1d2 22-24,33-49,99-125,188-205
+internal/agent/run_options.go
+  s_23dfa1fff0cb39::t_9ff9768c03db0d 24,48
+internal/agent/shell.go
+  s_23dfa1fff0cb39::t_c94c07fd5f50f2 18-19,23-26,29-30,34-41,51-53,60-61,64-65,69-99
+internal/agent/shell_test.go
+  s_589ad501797294::t_399a3826e1b27b 105-115
+internal/agent/tool_execution_gate.go
+  s_23dfa1fff0cb39::t_27c0f5e0d08557 1-82
+internal/agent/tool_execution_gate_test.go
+  s_23dfa1fff0cb39::t_7efa7e5e8907d4 1-280
+internal/agent/workspace_change_tool_result.go
+  s_9fc9c4172ee422::t_475f06425da4b1 1-59
+internal/agent/workspace_file_tools.go
+  s_9fc9c4172ee422::t_571f078b151be4 1-264
+internal/agent/workspace_file_tools_test.go
+  s_23dfa1fff0cb39::t_daf07a2742e3f7 1-385
+internal/agent/workspace_read_file.go
+  s_23dfa1fff0cb39::t_4cddd82c230d2f 1-264
+internal/agent/workspace_read_file_test.go
+  s_23dfa1fff0cb39::t_647fe78ed8f0fe 1-160
+internal/api/agentui/message.go
+  s_145a437015eb06::t_bb196a2b0c3da9 23
+internal/api/agentui/stream.go
+  s_23dfa1fff0cb39::t_e98b3186406c82 77-81
+internal/api/agentui/stream_test.go
+  s_145a437015eb06::t_5350aedbcde38a 31-37,81,100
+internal/api/handler_workspace_changes_test.go
+  s_23dfa1fff0cb39::t_fd5406d3a8444e 1-352
+internal/api/handler_workspace_test.go
+  s_ef0528a4d1b6a3::t_b49ced4d3ef633 69-70,76-78,88,102-169
+internal/api/handlers/handler_chat.go
+  s_9fc9c4172ee422::t_b500333e31e3d3 5,15,34-36,60,66-82
+internal/api/handlers/handler_workspace.go
+  s_23dfa1fff0cb39::t_33ec83329a4332 14,16,84,90-93,197,204-220,222-235,241-246,265,289,310,336,361
+internal/api/handlers/handler_workspace_changes.go
+  s_9fc9c4172ee422::t_bb91b86d79f526 1-338
+internal/api/routes.go
+  s_9fc9c4172ee422::t_ade2f4839e4d1d 34-43
+internal/app/app.go
+  s_6d3822754da243::t_fe21f219bca23a 39-40,126,223-226
+internal/app/automation_active_registry.go
+  s_6d3822754da243::t_a5a17fb1e5d818 1-202
+internal/app/automation_active_registry_test.go
+  s_6d3822754da243::t_9db8ba467b807a 1-120
+internal/app/automation_app_service.go
+  s_6d3822754da243::t_60675225a3bf0e 21-22,93-99,114-120,147-160,166,168-173,180-186,195-201,221-236,241,243-248,258-261,263-265,276,305,368-373,383,452-458,468,478-484,494-496,509-511,519-521,543-544,559,677-679,756
+internal/app/automation_mutation_trigger.go
+  s_23dfa1fff0cb39::t_8e679a277e18ee 10-12,14
+internal/app/automation_trigger_coordinator.go
+  s_23dfa1fff0cb39::t_872d735b861310 1-203
+internal/app/automation_trigger_coordinator_test.go
+  s_6d3822754da243::t_54c782943af104 1-69
+internal/app/automation_trigger_service.go
+  s_6d3822754da243::t_a97adb469db598 42-48,58-63,67-69,73-74,77,86-92,149-150,171,175,179,197,213-214,216-224,247,261-274,280,301,367-369,375-376,412-413,448
+internal/app/automation_trigger_service_test.go
+  s_6d3822754da243::t_3e869e17bc6e7d 9,17,119,339-673
+internal/app/automation_workspace_snapshot.go
+  s_6d3822754da243::t_d990f0be5c7465 1-140
+internal/app/chat_app_service.go
+  s_9fc9c4172ee422::t_80f9d73fa32580 246,251-264,269,306,336,457-459,467-479
+internal/app/chat_review_feedback.go
+  s_23dfa1fff0cb39::t_6fe7dca4f1817e 1-108
+internal/app/chat_review_feedback_test.go
+  s_23dfa1fff0cb39::t_38ccedeaa47831 1-89
+internal/app/runtime_builder.go
+  s_23dfa1fff0cb39::t_c90c4830867b05 6,36-44
+internal/app/workspace_change_lease_test.go
+  s_6d3822754da243::t_cd3b1593d56f16 1-132
+internal/app/workspace_change_runtime.go
+  s_6d3822754da243::t_d6afb325c8084d 1-114
+internal/app/workspace_mutations.go
+  s_d230d030e29c7f::t_81354ca6cc2113 1-109
+internal/app/workspace_mutations_test.go
+  s_23dfa1fff0cb39::t_02a945cc338fa0 1-162
+internal/app/workspace_version_mutations.go
+  s_6d3822754da243::t_41332d2930d42c 1-193
+internal/automation/automation_test.go
+  s_6d3822754da243::t_19c883c648ccef 4-5,9,117-270
+internal/automation/store.go
+  s_6d3822754da243::t_f0dd48dcb0e05e 30-33,37,44,68-73,90-94,97,109,114,117,120,130-134,137,150-152,154,161-165,168,173,177,190-191,193-196,198-235,237-243,245-247,311
+internal/automation/store_io.go
+  s_23dfa1fff0cb39::t_c718cd761389fd 1-128
+internal/automation/trigger_store.go
+  s_6d3822754da243::t_ec1d3c28dd270f 28-32,35,49,54,57,60,68-72,74,78-82,91-93,98-103,127-131,134,138-139,143,294,303-307,310,314,322,327,330,333,338-344
+internal/book/files.go
+  s_23dfa1fff0cb39::t_2cad7252d6a2f0 4-5,45-51,54,59,62,67,69,72,74-75,107,111,118,121-123
+internal/book/files_test.go
+  s_145a437015eb06::t_aec023435d8748 8,71-73
+internal/book/versions/files.go
+  s_23dfa1fff0cb39::t_e24b27bad2e91e 113-114,123-124
+internal/book/versions/service_test.go
+  s_23dfa1fff0cb39::t_305fd1c7db65c5 207-240
+internal/prompts/system.go
+  s_c30007bf82721f::t_a42a1e611a0264 147,151-157
+internal/workspacechange/apply.go
+  s_a14259375c3019::t_1fd29e17c52dc5 1-454
+internal/workspacechange/atomic_file.go
+  s_8df984b491ac03::t_cb017c3738a386 1-96
+internal/workspacechange/capabilities.go
+  s_140b28141c1476::t_3ecbbc6ccf9d0d 1-54
+internal/workspacechange/comments.go
+  s_9fc9c4172ee422::t_e12128bf19f6c9 1-300
+internal/workspacechange/durability.go
+  s_8df984b491ac03::t_6a92e4890b0bea 1-227
+internal/workspacechange/durability_test.go
+  s_23dfa1fff0cb39::t_6938bf702f211c 1-321
+internal/workspacechange/exclusive.go
+  s_23dfa1fff0cb39::t_4606ec50ab9ee9 1-48
+internal/workspacechange/exclusive_test.go
+  s_d230d030e29c7f::t_51ca39e35922b0 1-28
+internal/workspacechange/history.go
+  s_23dfa1fff0cb39::t_f18296a1ad989b 1-234
+internal/workspacechange/operation.go
+  s_8df984b491ac03::t_50bf02ef234ef5 1-397
+internal/workspacechange/operation_test.go
+  s_8df984b491ac03::t_1394f7122dfa6d 1-379
+internal/workspacechange/projection_safety_test.go
+  s_23dfa1fff0cb39::t_d532160551fab4 1-108
+internal/workspacechange/query.go
+  s_a14259375c3019::t_0b6771af8597e3 1-146
+internal/workspacechange/recovery.go
+  s_8df984b491ac03::t_cf6c49019ece44 1-203
+internal/workspacechange/review.go
+  s_23dfa1fff0cb39::t_5c2b454f28a8fc 1-551
+internal/workspacechange/review_history_test.go
+  s_23dfa1fff0cb39::t_96a93cac10236c 1-381
+internal/workspacechange/review_thread.go
+  s_23dfa1fff0cb39::t_a7181deb16fefa 1-250
+internal/workspacechange/review_thread_test.go
+  s_23dfa1fff0cb39::t_a14cd4e6f2c8be 1-224
+internal/workspacechange/revision.go
+  s_23dfa1fff0cb39::t_0dc52a1c04fdbb 1-19
+internal/workspacechange/save.go
+  s_2b2a0d070594c0::t_81ea0c10cb6df7 1-97
+internal/workspacechange/service.go
+  s_a14259375c3019::t_99d8bd7c2fb5b0 1-678
+internal/workspacechange/service_test.go
+  s_9fc9c4172ee422::t_53e4299344e62a 1-1049
+internal/workspacechange/store.go
+  s_8df984b491ac03::t_3ee376cd6c58c4 1-379
+internal/workspacechange/types.go
+  s_23dfa1fff0cb39::t_778c493ce20b2f 1-319
+web/package.json
+  s_23dfa1fff0cb39::t_3afa8f456164cc 53
+web/pnpm-lock.yaml
+  s_23dfa1fff0cb39::t_993f5abf6d018a 77-79
+web/src/App.tsx
+  s_23dfa1fff0cb39::t_c635854520fd65 30,39,94,122-137,143-154,189,398,402,405,415,423,431,434,443-444,451,550,552-556,559,561-574,764,780-781,907
+web/src/components/Chat/AgentMessageList.test.tsx
+  s_23dfa1fff0cb39::t_8a073b49477c04 87-112
+web/src/components/Chat/AgentMessageList.tsx
+  s_23dfa1fff0cb39::t_5380c0a648d262 39,59-65,79,94,112,114,337-338,373,421-440,478,488-500
+web/src/components/Chat/AgentPanel.test.tsx
+  s_23dfa1fff0cb39::t_ca2e22f09c784e 10,30-33,39-40,54,217-258
+web/src/components/Chat/AgentPanel.tsx
+  s_23dfa1fff0cb39::t_8693ec3c239cd2 10,28-31,61,76-80,125-129,148,153-160,268-304,380,413-414,458,491-492
+web/src/components/Chat/InputArea.test.tsx
+  s_23dfa1fff0cb39::t_883ab07f3f15a9 1,120-190
+web/src/components/Chat/InputArea.tsx
+  s_23dfa1fff0cb39::t_764b7c17cfa508 31,65,87-88,130-131,158,161,209-210,393-404,411-427,551-553,679
+web/src/components/Chat/MessageItem.test.tsx
+  s_145a437015eb06::t_a151af19cfebbe 249-274
+web/src/components/Chat/MessageItem.tsx
+  s_145a437015eb06::t_123509834a9b35 916-920,930,1448-1464
+web/src/components/Editor/EditorSearchBar.tsx
+  s_2b2a0d070594c0::t_547a4d360e4411 1-79
+web/src/components/Editor/EditorSettingsPanel.tsx
+  s_2b2a0d070594c0::t_be2e78c31bdd3a 1-298
+web/src/components/Editor/EditorSurface.tsx
+  s_23dfa1fff0cb39::t_541e6ee6b39b3b 1-74
+web/src/components/Editor/EditorToolbar.tsx
+  s_2b2a0d070594c0::t_facc4caec45f81 1-155
+web/src/components/Editor/MarkdownEditor.test.tsx
+  s_c7b02cef8f05de::t_cd333d0e3b6235 11-12,17-18,43,89-93,269-303,471-532,559-560,566-629
+web/src/components/Editor/MarkdownEditor.tsx
+  s_6d3822754da243::t_02867a71bb811f 1-2,8,16-42,45-46,60-62,73,87-88,112,154,156-159,161,163-164,168-190,354-372,374-375,377-392,394-396
+web/src/components/Editor/SelectionToolbar.tsx
+  s_23dfa1fff0cb39::t_58b1a6914c1a0d 1-68
+web/src/components/Editor/editorDecorations.ts
+  s_23dfa1fff0cb39::t_1e8f0fe72707d1 1-137
+web/src/components/Editor/editorDocument.ts
+  s_23dfa1fff0cb39::t_368aac8481ab7d 1-133
+web/src/components/Editor/useEditorDraftPersistence.ts
+  s_cb0db51ed9b9cb::t_0e8cf43e191d42 1-570
+web/src/components/Home/HomeView.tsx
+  s_cb0db51ed9b9cb::t_675a63277b9b92 46-47,62,111,148
+web/src/components/layout/workspace-layout.test.tsx
+  s_23dfa1fff0cb39::t_54439cc9c8e321 45-57
+web/src/components/layout/workspace-layout.tsx
+  s_23dfa1fff0cb39::t_570b87f2782280 20,36,40-42,46-47,57-63,65,68-71,73-74,76,83,93,96-98
+web/src/components/workbench/ModeRouter.tsx
+  s_23dfa1fff0cb39::t_21d4cf2e9fbac7 1,9,20-22,88,93,104-105,111,178,194-195,330-332,338-362,438,471-503,505-545,602,673-677,694,697-698,727-728,731,735-736,739,749-763
+web/src/components/workbench/WorkbenchShell.tsx
+  s_23dfa1fff0cb39::t_795b73cb657dbc 41,113,704
+web/src/features/changes/agent/AgentChangeSummaryCard.test.ts
+  s_23dfa1fff0cb39::t_4b7f82672e7419 1-58
+web/src/features/changes/agent/AgentChangeSummaryCard.tsx
+  s_23dfa1fff0cb39::t_6907d0ca275791 1-166
+web/src/features/changes/agent/ReviewFeedbackTray.test.ts
+  s_23dfa1fff0cb39::t_53e14ccb8699ef 1-17
+web/src/features/changes/agent/ReviewFeedbackTray.tsx
+  s_23dfa1fff0cb39::t_9c0bded63cfd21 1-87
+web/src/features/changes/api.test.ts
+  s_23dfa1fff0cb39::t_55925818c929f7 1-188
+web/src/features/changes/api.ts
+  s_23dfa1fff0cb39::t_f815c28db3d71c 1-146
+web/src/features/changes/diff-stats.test.ts
+  s_b824145467cc48::t_4fd704d42a6a32 1-13
+web/src/features/changes/diff-stats.ts
+  s_b824145467cc48::t_251cba8720f775 1-23
+web/src/features/changes/errors.ts
+  s_23dfa1fff0cb39::t_9a816785537209 1-20
+web/src/features/changes/review/ChangeReviewWorkspace.test.tsx
+  s_23dfa1fff0cb39::t_13eb0c18d711d4 1-275
+web/src/features/changes/review/ChangeReviewWorkspace.tsx
+  s_23dfa1fff0cb39::t_47e3d6530fdb73 1-382
+web/src/features/changes/review/InlineCommentThread.test.tsx
+  s_23dfa1fff0cb39::t_40c7dfde93f76d 1-26
+web/src/features/changes/review/InlineCommentThread.tsx
+  s_23dfa1fff0cb39::t_849783a2e003de 1-126
+web/src/features/changes/review/ReviewDiffEditor.test.ts
+  s_23dfa1fff0cb39::t_e3c4c07ac0d516 1-17
+web/src/features/changes/review/ReviewDiffEditor.tsx
+  s_23dfa1fff0cb39::t_6aed10a05c9b3c 1-345
+web/src/features/changes/review/ReviewFileNavigator.tsx
+  s_b824145467cc48::t_8f594bc118b42e 1-45
+web/src/features/changes/review/ReviewToolbar.tsx
+  s_23dfa1fff0cb39::t_21bfdfafc67f78 1-106
+web/src/features/changes/review/ReviewUtilityTab.tsx
+  s_23dfa1fff0cb39::t_8103ab25501db3 1-16
+web/src/features/changes/review/monaco/review-editor-adapter.test.ts
+  s_23dfa1fff0cb39::t_114d3763e1bfdf 1-280
+web/src/features/changes/review/monaco/review-editor-adapter.ts
+  s_23dfa1fff0cb39::t_e528798eb4dd57 1-368
+web/src/features/changes/review/monaco/review-model-lifecycle.test.ts
+  s_23dfa1fff0cb39::t_c8becae8c8fe19 1-34
+web/src/features/changes/review/monaco/review-model-lifecycle.ts
+  s_23dfa1fff0cb39::t_c946fbf6cfdf9a 1-11
+web/src/features/changes/review/monaco/utf8-offset-index.test.ts
+  s_b824145467cc48::t_dca574da4feab7 1-46
+web/src/features/changes/review/monaco/utf8-offset-index.ts
+  s_b824145467cc48::t_2956240604bd2b 1-188
+web/src/features/changes/review/review-diff.css
+  s_23dfa1fff0cb39::t_5a9f309000192e 1-48
+web/src/features/changes/types.test.ts
+  s_140b28141c1476::t_da0f0abedf2b9a 1-11
+web/src/features/changes/types.ts
+  s_23dfa1fff0cb39::t_ffa84dbe491a89 1-214
+web/src/features/changes/use-change-review.test.tsx
+  s_b824145467cc48::t_d7765132f2dae8 1-80
+web/src/features/changes/use-change-review.ts
+  s_b824145467cc48::t_a4d7ab5a2fbda3 1-87
+web/src/features/changes/use-writing-change-review.test.tsx
+  s_23dfa1fff0cb39::t_ddfdf10d76f571 1-109
+web/src/features/changes/use-writing-change-review.ts
+  s_23dfa1fff0cb39::t_71ae5242751a25 1-90
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_140b28141c1476::t_4ea7f090f3150f 6,94-110,151-153,224-262
+web/src/features/interactive/components/SettingPanel.tsx
+  s_140b28141c1476::t_8f11f1b5a28e55 6,165,168,192,243,247,257,260,263-264,270,277,289,292-301,307-308,310,313-315,432,437
+web/src/hooks/useAgentChat.ts
+  s_23dfa1fff0cb39::t_ab2986588cda23 26,29,31,42-45,50,62-68,200,207,210,218,240-243,253,256
+web/src/hooks/useIsMobile.test.tsx
+  s_cb0db51ed9b9cb::t_9428e7d92ac571 1-40
+web/src/hooks/useIsMobile.ts
+  s_cb0db51ed9b9cb::t_40d4c4f7252a71 3-6
+web/src/hooks/useWorkspace.test.tsx
+  s_23dfa1fff0cb39::t_e2f2507c63861b 46-47,64,71,92,107,112,119-120,150-295,308-313
+web/src/hooks/useWorkspace.ts
+  s_cb0db51ed9b9cb::t_0136b0a58678dc 14,44,51-58,61-97,100-101,106-108,114-116,119,121,123,128,133-137,144-146,148,152-154,161-165,170-172,174,182-183,185-187,189,234,242,246-247,251,255,271-272,274-282,290-294,298,303-304,306-311,315-325,328,332-333,336-338
+web/src/i18n/locales/en-US.ts
+  s_145a437015eb06::t_5bd4f8cb531876 39,80
+web/src/i18n/locales/en-US/changes.ts
+  s_23dfa1fff0cb39::t_0779629341acbd 1-97
+web/src/i18n/locales/en-US/chat.ts
+  s_145a437015eb06::t_9e8b8cc1d79343 122
+web/src/i18n/locales/en-US/editor.ts
+  s_145a437015eb06::t_9bd3badb5e9390 49-53
+web/src/i18n/locales/zh-CN.ts
+  s_145a437015eb06::t_751af949be4921 39,80
+web/src/i18n/locales/zh-CN/changes.ts
+  s_23dfa1fff0cb39::t_d6fa2520c47447 1-97
+web/src/i18n/locales/zh-CN/chat.ts
+  s_145a437015eb06::t_9d9af9d0c8699e 122
+web/src/i18n/locales/zh-CN/editor.ts
+  s_145a437015eb06::t_eb4fcaebdf8f80 49-53
+web/src/lib/agent-ui.test.ts
+  s_23dfa1fff0cb39::t_13ebc76ff95b3c 22,33
+web/src/lib/agent-ui.ts
+  s_23dfa1fff0cb39::t_463594a1f85bb6 44,59-62,104-109
+web/src/lib/api-client/client.test.ts
+  s_145a437015eb06::t_8584b19fb1a36c 4,95-112
+web/src/lib/api-client/client.ts
+  s_145a437015eb06::t_5d6a390684c0fc 16-32,59-64
+web/src/lib/api-client/workspace.test.ts
+  s_140b28141c1476::t_c131b73a793169 1-35
+web/src/lib/api-client/workspace.ts
+  s_140b28141c1476::t_216b6f3328a9ec 47-54,68,72
+web/src/stores/workspace-store.test.ts
+  s_23dfa1fff0cb39::t_c2578c2071e2a3 1,39-46
+web/src/stores/workspace-store.ts
+  s_23dfa1fff0cb39::t_2aa7408b255327 21-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fb14bb3acaa51f7594c28681eb386570df35e9f6",
+  "prompts": {},
+  "humans": {
+    "h_beed6209b76699": {
+      "author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_140b28141c1476": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f66ca-6dbe-7671-b21d-7fb84ced3343",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_145a437015eb06": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f66af-3033-7671-98bc-270474f67cb7",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_23dfa1fff0cb39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f668e-f409-7b03-a47d-40e006cd9eca",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_2b2a0d070594c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f66fa-d1ac-7a30-89d8-ae5693e7e8db",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_589ad501797294": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f66e5-6c65-7402-a8cd-23eabc1a18d9",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_6d3822754da243": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6724-80f4-7d70-a341-b6ec0f3deda5",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_8df984b491ac03": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f66f1-6245-73c0-9096-8987b7860a2d",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_9fc9c4172ee422": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f677c-28d7-7d61-b7c8-d097e03a583a",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_a14259375c3019": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6785-775b-7c80-bf93-38ec353b1eb1",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_b824145467cc48": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f677b-f25c-7f10-839e-21fe04feeb3b",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_c30007bf82721f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f66af-0082-7d52-893f-3bdc165ad3fd",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_c7b02cef8f05de": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6717-8321-7ec0-bff7-f633c7eadc22",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_cb0db51ed9b9cb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6707-b47c-78c2-a808-eb17ad9c1131",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_d230d030e29c7f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6717-ab10-7441-83dc-882d53dbe2f1",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_ef0528a4d1b6a3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f66ee-cfd3-72f2-b852-031041ef66c8",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
