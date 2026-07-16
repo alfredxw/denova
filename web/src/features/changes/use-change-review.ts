@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
-import { getWorkspaceChangeReviewThread, listWorkspaceChangeGroups, type ListWorkspaceChangeGroupsOptions } from './api'
+import { getWorkspaceChangeGroup, getWorkspaceChangeReviewThread, listWorkspaceChangeGroups, type ListWorkspaceChangeGroupsOptions } from './api'
 import type { WorkspaceChangeEvent } from './types'
 
 export const workspaceChangeKeys = {
@@ -77,6 +77,20 @@ export function useWorkspaceChangeReviewThread(workspace: string, id: string) {
   const query = useQuery({
     queryKey: workspaceChangeKeys.reviewThread(workspace, id),
     queryFn: () => getWorkspaceChangeReviewThread(workspace, id),
+    enabled: Boolean(workspace && id),
+    staleTime: 5_000,
+  })
+
+  useEffect(() => subscribeWorkspaceChangeEvents(queryClient), [queryClient])
+
+  return query
+}
+
+export function useWorkspaceChangeGroup(workspace: string, id: string) {
+  const queryClient = useQueryClient()
+  const query = useQuery({
+    queryKey: workspaceChangeKeys.detail(workspace, id),
+    queryFn: () => getWorkspaceChangeGroup(workspace, id),
     enabled: Boolean(workspace && id),
     staleTime: 5_000,
   })

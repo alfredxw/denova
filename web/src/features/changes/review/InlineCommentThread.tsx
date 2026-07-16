@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Check, MessageSquarePlus, Pencil, RefreshCw, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import type { WorkspaceChangeComment } from '../types'
+
+const INLINE_COMMENT_EDITOR_CLASS = 'nova-review-inline-editor min-h-0 resize-none rounded-none border-0 bg-transparent px-0 py-0 text-xs leading-5 shadow-none focus:outline-none focus:ring-0 focus-visible:border-transparent focus-visible:outline-none focus-visible:ring-0'
 
 interface InlineCommentThreadProps {
   comments?: WorkspaceChangeComment[]
@@ -19,14 +21,36 @@ interface InlineCommentThreadProps {
   onUpdate?: (comment: WorkspaceChangeComment, body: string) => Promise<void> | void
   onResolve?: (comment: WorkspaceChangeComment, resolved: boolean) => Promise<void> | void
   onDelete?: (comment: WorkspaceChangeComment) => Promise<void> | void
+  onEditingChange?: (editing: boolean) => void
 }
 
-export function InlineCommentThread({ comments = [], anchorLabel, disabled = false, draft, onUpdate, onResolve, onDelete }: InlineCommentThreadProps) {
+export function InlineCommentThread({ comments = [], anchorLabel, disabled = false, draft, onUpdate, onResolve, onDelete, onEditingChange }: InlineCommentThreadProps) {
   const { t } = useTranslation()
   const [editingID, setEditingID] = useState('')
   const [editBody, setEditBody] = useState('')
   const [localBusy, setLocalBusy] = useState('')
+  const editingRef = useRef(false)
+  const editorRef = useRef<HTMLTextAreaElement | null>(null)
+  const editingCallbackRef = useRef(onEditingChange)
+  editingCallbackRef.current = onEditingChange
   const busy = disabled || Boolean(localBusy)
+  const focusRequestKey = editingID || (draft ? 'draft' : '')
+
+  useLayoutEffect(() => {
+    if (!focusRequestKey) return
+    editorRef.current?.focus({ preventScroll: true })
+  }, [focusRequestKey])
+
+  useEffect(() => () => {
+    if (editingRef.current) editingCallbackRef.current?.(false)
+  }, [])
+
+  const setEditing = (id: string) => {
+    const editing = Boolean(id)
+    if (editing !== editingRef.current) editingCallbackRef.current?.(editing)
+    editingRef.current = editing
+    setEditingID(id)
+  }
 
   const run = async (id: string, operation: () => Promise<void> | void) => {
     setLocalBusy(id)
@@ -55,13 +79,16 @@ export function InlineCommentThread({ comments = [], anchorLabel, disabled = fal
           {editingID === comment.id ? (
             <>
               <Textarea
+                ref={editorRef}
                 value={editBody}
                 disabled={busy}
                 onChange={(event) => setEditBody(event.target.value)}
-                className="min-h-16 resize-y border-[var(--nova-border)] bg-[var(--nova-bg)] text-xs"
+                minRows={1}
+                maxRows={8}
+                className={INLINE_COMMENT_EDITOR_CLASS}
               />
               <div className="mt-2 flex justify-end gap-1">
-                <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => setEditingID('')}>
+                <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => setEditing('')}>
                   {t('common.cancel')}
                 </Button>
                 <Button
@@ -69,7 +96,7 @@ export function InlineCommentThread({ comments = [], anchorLabel, disabled = fal
                   size="xs"
                   disabled={busy || !editBody.trim()}
                   onClick={() => void run(comment.id, () => onUpdate?.(comment, editBody.trim())).then((saved) => {
-                    if (saved) setEditingID('')
+                    if (saved) setEditing('')
                   })}
                 >
                   <Check />{t('common.save')}
@@ -81,7 +108,7 @@ export function InlineCommentThread({ comments = [], anchorLabel, disabled = fal
               <p className="whitespace-pre-wrap break-words leading-5">{comment.body}</p>
               <div className="mt-1.5 flex flex-wrap items-center justify-end gap-1">
                 {onUpdate && (
-                  <Button type="button" size="icon-xs" variant="ghost" disabled={busy} aria-label={t('changes.editComment')} onClick={() => { setEditingID(comment.id); setEditBody(comment.body) }}>
+                  <Button type="button" size="icon-xs" variant="ghost" disabled={busy} aria-label={t('changes.editComment')} onClick={() => { setEditing(comment.id); setEditBody(comment.body) }}>
                     <Pencil />
                   </Button>
                 )}
@@ -104,12 +131,14 @@ export function InlineCommentThread({ comments = [], anchorLabel, disabled = fal
       {draft && (
         <div className="px-3 py-2">
           <Textarea
-            autoFocus
+            ref={editorRef}
             value={draft.body}
             disabled={disabled || draft.submitting}
             onChange={(event) => draft.onChange(event.target.value)}
             placeholder={t('changes.commentPlaceholder')}
-            className="min-h-20 resize-y border-[var(--nova-border)] bg-[var(--nova-bg)] text-xs"
+            minRows={2}
+            maxRows={8}
+            className={INLINE_COMMENT_EDITOR_CLASS}
           />
           <div className="mt-2 flex justify-end gap-1.5">
             <Button type="button" size="xs" variant="ghost" disabled={disabled || draft.submitting} onClick={draft.onCancel}>

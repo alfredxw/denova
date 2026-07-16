@@ -1,6 +1,8 @@
 import type { Monaco, MonacoDiffEditor } from '@monaco-editor/react'
 import type { IDisposable, editor } from 'monaco-editor'
 import type { ReviewThreadFile, WorkspaceChangeCommentAnchor } from '../../types'
+import { ReviewCommentGutter } from './review-comment-gutter'
+import { installReviewEditorPointerFocus } from './review-editor-dom'
 import { Utf8OffsetIndex } from './utf8-offset-index'
 
 export type ReviewDiffLayout = 'unified' | 'split'
@@ -16,6 +18,18 @@ export interface ReviewZonePortalTarget extends ReviewZoneDescriptor {
   domNode: HTMLElement
 }
 
+/** Compares portal targets without relying on refetch-created object identity. */
+export function sameReviewZonePortalTargets(before: ReviewZonePortalTarget[], after: ReviewZonePortalTarget[]): boolean {
+  return before.length === after.length && before.every((target, index) => {
+    const next = after[index]
+    return target.key === next.key
+      && target.side === next.side
+      && target.start === next.start
+      && target.end === next.end
+      && target.domNode === next.domNode
+  })
+}
+
 interface AdapterCallbacks {
   commentLabel: string
   beforeLabel: string
@@ -29,14 +43,11 @@ interface ZoneRecord {
   editor: editor.ICodeEditor
   id: string
   zone: editor.IViewZone
-  observer?: ResizeObserver
+  heightTracker?: ReviewZoneHeightTracker
 }
 
-interface GlyphRecord {
-  editor: editor.ICodeEditor
-  widget: editor.IGlyphMarginWidget
-  domNode: HTMLButtonElement
-  click: (event: MouseEvent) => void
+interface ReviewZoneHeightTracker {
+  dispose: () => void
 }
 
 const MAX_QUOTE_BYTES = 16 * 1024
@@ -50,8 +61,10 @@ export class ReviewEditorAdapter {
   private readonly disposables: IDisposable[] = []
   private readonly originalDecorations: editor.IEditorDecorationsCollection
   private readonly modifiedDecorations: editor.IEditorDecorationsCollection
-  private glyphs: GlyphRecord[] = []
+  private readonly originalGutter: ReviewCommentGutter
+  private readonly modifiedGutter: ReviewCommentGutter
   private zones: ZoneRecord[] = []
+  private portalTargets: ReviewZonePortalTarget[] = []
   private file: ReviewThreadFile | null = null
   private layout: ReviewDiffLayout = 'unified'
   private zoneDescriptors: ReviewZoneDescriptor[] = []
@@ -66,7 +79,21 @@ export class ReviewEditorAdapter {
     this.callbacks = callbacks
     this.originalDecorations = editorInstance.getOriginalEditor().createDecorationsCollection()
     this.modifiedDecorations = editorInstance.getModifiedEditor().createDecorationsCollection()
+    this.originalGutter = new ReviewCommentGutter(editorInstance.getOriginalEditor(), monaco, {
+      id: 'split-before',
+      labelForLine: (lineNumber) => `${callbacks.commentLabel} · ${callbacks.beforeLabel} · L${lineNumber}`,
+      isCommentable: () => this.layout === 'split',
+      onRequest: (lineNumber) => this.requestCommentForLine(editorInstance.getOriginalEditor(), 'before', lineNumber),
+    })
+    this.modifiedGutter = new ReviewCommentGutter(editorInstance.getModifiedEditor(), monaco, {
+      id: 'split-after',
+      labelForLine: (lineNumber) => `${callbacks.commentLabel} · ${callbacks.afterLabel} · L${lineNumber}`,
+      isCommentable: () => this.layout === 'split',
+      onRequest: (lineNumber) => this.requestCommentForLine(editorInstance.getModifiedEditor(), 'after', lineNumber),
+    })
     this.disposables.push(
+      installReviewEditorPointerFocus(editorInstance.getOriginalEditor()),
+      installReviewEditorPointerFocus(editorInstance.getModifiedEditor()),
       editorInstance.onDidUpdateDiff(() => this.rebuild()),
       editorInstance.onDidChangeModel(() => this.rebuild()),
       this.installCommentAction(editorInstance.getOriginalEditor(), 'before'),
@@ -83,6 +110,9 @@ export class ReviewEditorAdapter {
     this.layout = layout
     this.zoneDescriptors = zones
     this.commentingDisabled = commentingDisabled
+    const gutterDisabled = commentingDisabled || layout !== 'split'
+    this.originalGutter.updateDisabled(gutterDisabled)
+    this.modifiedGutter.updateDisabled(gutterDisabled)
     if (contentChanged) {
       this.beforeIndex = new Utf8OffsetIndex(file.before_content)
       this.afterIndex = new Utf8OffsetIndex(file.after_content)
@@ -97,7 +127,8 @@ export class ReviewEditorAdapter {
   dispose() {
     if (this.disposed) return
     this.disposed = true
-    this.clearGlyphs()
+    this.originalGutter.dispose()
+    this.modifiedGutter.dispose()
     this.clearZones(true)
     this.originalDecorations.clear()
     this.modifiedDecorations.clear()
@@ -116,95 +147,8 @@ export class ReviewEditorAdapter {
 
   private rebuild() {
     if (this.disposed || !this.file) return
-    this.rebuildGlyphs()
     this.rebuildZones()
     this.rebuildDecorations()
-  }
-
-  private rebuildGlyphs() {
-    this.clearGlyphs()
-    const changes = this.editor.getLineChanges() ?? []
-    const originalEditor = this.editor.getOriginalEditor()
-    const modifiedEditor = this.editor.getModifiedEditor()
-    const seen = new Set<string>()
-
-    for (const [index, change] of changes.entries()) {
-      const hasOriginalLines = change.originalStartLineNumber > 0 && change.originalEndLineNumber >= change.originalStartLineNumber
-      const hasModifiedLines = change.modifiedStartLineNumber > 0 && change.modifiedEndLineNumber >= change.modifiedStartLineNumber
-      if (this.layout === 'split' && hasOriginalLines) {
-        this.addGlyph(originalEditor, originalEditor, 'before', change.originalStartLineNumber, change.originalStartLineNumber, `before:${index}`, seen)
-      }
-      const modifiedLine = clampLine(
-        change.modifiedStartLineNumber || change.modifiedEndLineNumber || change.originalStartLineNumber,
-        modifiedEditor,
-      )
-      if (this.layout === 'unified' && hasOriginalLines) {
-        // Unified Monaco paints deleted source lines into the modified inline
-        // surface. The widget lives there, but its authoritative anchor must
-        // still be calculated against the original snapshot.
-        this.addGlyph(modifiedEditor, originalEditor, 'before', modifiedLine, change.originalStartLineNumber, `before-inline:${index}`, seen)
-      }
-      if (hasModifiedLines) {
-        this.addGlyph(modifiedEditor, modifiedEditor, 'after', modifiedLine, change.modifiedStartLineNumber || modifiedLine, `after:${index}`, seen)
-      }
-    }
-  }
-
-  private addGlyph(
-    displayEditor: editor.ICodeEditor,
-    anchorEditor: editor.ICodeEditor,
-    side: 'before' | 'after',
-    displayLineNumber: number,
-    anchorLineNumber: number,
-    id: string,
-    seen: Set<string>,
-  ) {
-    const displayLine = clampLine(displayLineNumber, displayEditor)
-    const anchorLine = clampLine(anchorLineNumber, anchorEditor)
-    const dedupeKey = `${side}:${anchorLine}`
-    if (seen.has(dedupeKey)) return
-    seen.add(dedupeKey)
-    const domNode = document.createElement('button')
-    domNode.type = 'button'
-    domNode.tabIndex = 0
-    domNode.className = 'nova-review-glyph-button'
-    domNode.dataset.reviewCommentSide = side
-    domNode.disabled = this.commentingDisabled
-    domNode.setAttribute('aria-disabled', String(this.commentingDisabled))
-    const sideLabel = side === 'before' ? this.callbacks.beforeLabel : this.callbacks.afterLabel
-    const label = `${this.callbacks.commentLabel} · ${sideLabel}`
-    domNode.setAttribute('aria-label', label)
-    domNode.title = label
-    const icon = document.createElement('span')
-    icon.className = 'codicon codicon-add'
-    icon.setAttribute('aria-hidden', 'true')
-    domNode.append(icon)
-    const range = new this.monaco.Range(displayLine, 1, displayLine, 1)
-    const widget: editor.IGlyphMarginWidget = {
-      getId: () => `denova.change-review.${id}`,
-      getDomNode: () => domNode,
-      getPosition: () => ({
-        lane: side === 'before' ? this.monaco.editor.GlyphMarginLane.Left : this.monaco.editor.GlyphMarginLane.Right,
-        range,
-        zIndex: 50,
-      }),
-    }
-    const click = (event: MouseEvent) => {
-      event.preventDefault()
-      event.stopPropagation()
-      if (this.commentingDisabled) return
-      this.requestCommentForLine(anchorEditor, side, anchorLine)
-    }
-    domNode.addEventListener('click', click)
-    displayEditor.addGlyphMarginWidget(widget)
-    this.glyphs.push({ editor: displayEditor, widget, domNode, click })
-  }
-
-  private clearGlyphs() {
-    for (const glyph of this.glyphs.splice(0)) {
-      glyph.domNode.removeEventListener('click', glyph.click)
-      glyph.editor.removeGlyphMarginWidget(glyph.widget)
-    }
   }
 
   private requestCommentForSelection(codeEditor: editor.IStandaloneCodeEditor, side: 'before' | 'after') {
@@ -256,13 +200,21 @@ export class ReviewEditorAdapter {
   }
 
   private rebuildZones() {
-    const reusableHosts = new Map(this.zones.map((record) => [record.key, record.zone.domNode as HTMLElement]))
-    this.clearZones(false)
+    const existingByKey = new Map(this.zones.map((record) => [record.key, record]))
+    const nextZones: ZoneRecord[] = []
     const targets: ReviewZonePortalTarget[] = []
     for (const descriptor of this.zoneDescriptors) {
       const location = this.zoneLocation(descriptor)
       if (!location) continue
-      const domNode = reusableHosts.get(descriptor.key) ?? document.createElement('div')
+      const existing = existingByKey.get(descriptor.key)
+      existingByKey.delete(descriptor.key)
+      if (existing && existing.editor === location.editor && existing.zone.afterLineNumber === location.afterLineNumber) {
+        nextZones.push(existing)
+        targets.push({ ...descriptor, domNode: existing.zone.domNode as HTMLElement })
+        continue
+      }
+      if (existing) this.removeZone(existing)
+      const domNode = (existing?.zone.domNode as HTMLElement | undefined) ?? document.createElement('div')
       domNode.className = 'nova-review-zone-host'
       const zone: editor.IViewZone = {
         afterLineNumber: location.afterLineNumber,
@@ -276,27 +228,28 @@ export class ReviewEditorAdapter {
         zoneID = accessor.addZone(zone)
       })
       const record: ZoneRecord = { key: descriptor.key, editor: location.editor, id: zoneID, zone }
-      if (typeof ResizeObserver !== 'undefined') {
-        record.observer = new ResizeObserver(() => {
-          const nextHeight = Math.max(64, Math.ceil(domNode.scrollHeight))
-          if (zone.heightInPx === nextHeight) return
-          zone.heightInPx = nextHeight
-          location.editor.changeViewZones((accessor) => accessor.layoutZone(zoneID))
-        })
-        record.observer.observe(domNode)
-      }
-      this.zones.push(record)
+      record.heightTracker = trackReviewZoneContentHeight(location.editor, zoneID, zone, domNode)
+      nextZones.push(record)
       targets.push({ ...descriptor, domNode })
     }
-    this.callbacks.onPortalTargetsChange(targets)
+    for (const stale of existingByKey.values()) this.removeZone(stale)
+    this.zones = nextZones
+    if (!sameReviewZonePortalTargets(this.portalTargets, targets)) {
+      this.portalTargets = targets
+      this.callbacks.onPortalTargetsChange(targets)
+    }
   }
 
   private clearZones(notify: boolean) {
-    for (const record of this.zones.splice(0)) {
-      record.observer?.disconnect()
-      record.editor.changeViewZones((accessor) => accessor.removeZone(record.id))
-    }
-    if (notify) this.callbacks.onPortalTargetsChange([])
+    for (const record of this.zones.splice(0)) this.removeZone(record)
+    if (!notify) return
+    this.portalTargets = []
+    this.callbacks.onPortalTargetsChange([])
+  }
+
+  private removeZone(record: ZoneRecord) {
+    record.heightTracker?.dispose()
+    record.editor.changeViewZones((accessor) => accessor.removeZone(record.id))
   }
 
   private zoneLocation(descriptor: ReviewZoneDescriptor): { editor: editor.ICodeEditor; afterLineNumber: number } | null {
@@ -341,6 +294,55 @@ export class ReviewEditorAdapter {
     this.originalDecorations.set(before)
     this.modifiedDecorations.set(after)
   }
+}
+
+/** Keeps Monaco's reserved view-zone height equal to the portaled comment card. */
+export function trackReviewZoneContentHeight(codeEditor: editor.ICodeEditor, zoneID: string, zone: editor.IViewZone, domNode: HTMLElement): ReviewZoneHeightTracker | undefined {
+  if (typeof ResizeObserver === 'undefined') return undefined
+  let observedChild: Element | null = null
+  const view = domNode.ownerDocument.defaultView
+  const syncHeight = () => {
+    const child = domNode.firstElementChild as HTMLElement | null
+    const hostStyle = view?.getComputedStyle(domNode)
+    const childStyle = child ? view?.getComputedStyle(child) : undefined
+    const childHeight = child ? Math.max(child.getBoundingClientRect().height, child.scrollHeight) : 0
+    const contentHeight = childHeight > 0
+      ? childHeight
+        + cssPixels(childStyle?.marginTop)
+        + cssPixels(childStyle?.marginBottom)
+        + cssPixels(hostStyle?.paddingTop)
+        + cssPixels(hostStyle?.paddingBottom)
+      : domNode.scrollHeight
+    const nextHeight = Math.max(64, Math.ceil(contentHeight))
+    if (zone.heightInPx === nextHeight) return
+    zone.heightInPx = nextHeight
+    codeEditor.changeViewZones((accessor) => accessor.layoutZone(zoneID))
+  }
+  const resizeObserver = new ResizeObserver(syncHeight)
+  const observeCurrentChild = () => {
+    const child = domNode.firstElementChild
+    if (child !== observedChild) {
+      if (observedChild) resizeObserver.unobserve(observedChild)
+      observedChild = child
+      if (child) resizeObserver.observe(child)
+    }
+    syncHeight()
+  }
+  resizeObserver.observe(domNode)
+  const mutationObserver = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(observeCurrentChild)
+  mutationObserver?.observe(domNode, { childList: true })
+  observeCurrentChild()
+  return {
+    dispose: () => {
+      mutationObserver?.disconnect()
+      resizeObserver.disconnect()
+    },
+  }
+}
+
+function cssPixels(value: string | undefined): number {
+  const parsed = Number.parseFloat(value ?? '')
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 export function mapOriginalLineToModified(lineNumber: number, changes: readonly editor.ILineChange[]): number {

@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useWorkspaceChangeGroups, useWorkspaceChangeReviewThread } from './use-change-review'
+import { useWorkspaceChangeGroup, useWorkspaceChangeGroups, useWorkspaceChangeReviewThread } from './use-change-review'
 
 const apiMocks = vi.hoisted(() => ({
   listWorkspaceChangeGroups: vi.fn(),
+  getWorkspaceChangeGroup: vi.fn(),
   getWorkspaceChangeReviewThread: vi.fn(),
 }))
 
@@ -16,6 +17,7 @@ describe('useWorkspaceChangeGroups', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     apiMocks.listWorkspaceChangeGroups.mockResolvedValue([])
+    apiMocks.getWorkspaceChangeGroup.mockResolvedValue({ id: 'group-1', created_at: '', review_status: 'pending', apply_state: 'applied', change_sets: [] })
     apiMocks.getWorkspaceChangeReviewThread.mockResolvedValue({ id: 'thread-1', latest_group_id: '', groups: [], comments: [], files: [] })
   })
 
@@ -67,6 +69,19 @@ describe('useWorkspaceChangeGroups', () => {
     window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { workspace: '/books/current' } }))
     await waitFor(() => expect(apiMocks.getWorkspaceChangeReviewThread).toHaveBeenCalledTimes(2))
   })
+
+  it('loads one historical review group and refreshes it from the shared workspace event', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <GroupHarness workspace="/books/current" groupID="group-1" />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => expect(apiMocks.getWorkspaceChangeGroup).toHaveBeenCalledWith('/books/current', 'group-1'))
+
+    window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { workspace: '/books/current' } }))
+    await waitFor(() => expect(apiMocks.getWorkspaceChangeGroup).toHaveBeenCalledTimes(2))
+  })
 })
 
 function Harness({ workspace }: { workspace: string }) {
@@ -76,5 +91,10 @@ function Harness({ workspace }: { workspace: string }) {
 
 function ThreadHarness({ workspace, threadID }: { workspace: string; threadID: string }) {
   useWorkspaceChangeReviewThread(workspace, threadID)
+  return null
+}
+
+function GroupHarness({ workspace, groupID }: { workspace: string; groupID: string }) {
+  useWorkspaceChangeGroup(workspace, groupID)
   return null
 }

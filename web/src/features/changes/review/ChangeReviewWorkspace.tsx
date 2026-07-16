@@ -1,10 +1,10 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Check, ExternalLink, FileDiff, Loader2 } from 'lucide-react'
+import { AlertTriangle, Check, FileDiff, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { lineDiffStats } from '../diff-stats'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { logWorkspaceChangeError, workspaceChangeErrorMessage } from '../errors'
 import {
   createWorkspaceChangeComment,
@@ -23,16 +23,18 @@ import type {
   WorkspaceChangeGroupSummary,
   WorkspaceChangeMutationResult,
 } from '../types'
-import { invalidateWorkspaceChangeQueries, useWorkspaceChangeReviewThread } from '../use-change-review'
+import { invalidateWorkspaceChangeQueries, useWorkspaceChangeGroup, useWorkspaceChangeReviewThread } from '../use-change-review'
+import { ReviewFileDiffSection } from './ReviewFileDiffSection'
 import { ReviewFileNavigator } from './ReviewFileNavigator'
 import { ReviewToolbar } from './ReviewToolbar'
 import { ReviewUtilityTab } from './ReviewUtilityTab'
 import type { ReviewDiffLayout } from './monaco/review-editor-adapter'
 import { Utf8OffsetIndex } from './monaco/utf8-offset-index'
-
-const ReviewDiffEditor = lazy(() => import('./ReviewDiffEditor').then((module) => ({ default: module.ReviewDiffEditor })))
+import { projectReviewGroupFiles } from './review-group-projection'
+import './review-diff.css'
 
 const REVIEW_LAYOUT_STORAGE_KEY = 'nova:change-review-layout'
+const REVIEW_SCOPE_THREAD = 'thread'
 
 interface ChangeReviewWorkspaceProps {
   workspace: string
@@ -40,6 +42,8 @@ interface ChangeReviewWorkspaceProps {
   /** Prevents mutating a review thread while its Agent run is still appending changes. */
   disabled?: boolean
   selectedPath?: string | null
+  agentVisible?: boolean
+  onToggleAgent?: () => void
   onClose: () => void
   onOpenFile?: (path: string) => void | Promise<void>
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
@@ -65,18 +69,33 @@ type CommentVariables =
   | { action: 'delete'; workspace: string; comment: WorkspaceChangeComment }
 
 /** Full-width, server-projected review surface rendered in the central editor region. */
-export function ChangeReviewWorkspace({ workspace, threadID, disabled = false, selectedPath, onClose, onOpenFile, onWorkspaceChanged, onFeedbackCommentsChange }: ChangeReviewWorkspaceProps) {
+export function ChangeReviewWorkspace({ workspace, threadID, disabled = false, selectedPath, agentVisible = false, onToggleAgent, onClose, onOpenFile, onWorkspaceChanged, onFeedbackCommentsChange }: ChangeReviewWorkspaceProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const threadQuery = useWorkspaceChangeReviewThread(workspace, threadID)
-  const thread = threadQuery.data
   const [layout, setLayout] = useState<ReviewDiffLayout>(readReviewLayout)
   const [activePath, setActivePath] = useState('')
-  const [selectedGroupID, setSelectedGroupID] = useState('')
+  const [selectedScopeID, setSelectedScopeID] = useState(REVIEW_SCOPE_THREAD)
   const [error, setError] = useState('')
-  const [hasCommentDraft, setHasCommentDraft] = useState(false)
+  const [commentDraftPaths, setCommentDraftPaths] = useState<ReadonlySet<string>>(() => new Set())
+  const [collapsedPaths, setCollapsedPaths] = useState<ReadonlySet<string>>(() => new Set())
+  const [navigatorVisible, setNavigatorVisible] = useState(true)
+  const freezeProjection = commentDraftPaths.size > 0
+  const historicalGroupID = selectedScopeID === REVIEW_SCOPE_THREAD ? '' : selectedScopeID
+  const historicalGroupQuery = useWorkspaceChangeGroup(workspace, historicalGroupID)
+  const thread = useFrozenReviewValue(`${workspace}:${threadID}`, threadQuery.data, freezeProjection)
+  const historicalGroup = useFrozenReviewValue(`${workspace}:${historicalGroupID}`, historicalGroupQuery.data, freezeProjection)
+  const reviewFiles = useMemo(() => selectedScopeID === REVIEW_SCOPE_THREAD
+    ? (thread?.files ?? [])
+    : projectReviewGroupFiles(historicalGroup), [historicalGroup, selectedScopeID, thread?.files])
+  const reviewComments = selectedScopeID === REVIEW_SCOPE_THREAD ? (thread?.comments ?? []) : (historicalGroup?.comments ?? [])
   const activeWorkspaceRef = useRef(workspace)
   const feedbackCallbackRef = useRef(onFeedbackCommentsChange)
+  const reviewScrollRef = useRef<HTMLDivElement | null>(null)
+  const fileSectionRefs = useRef(new Map<string, HTMLElement>())
+  const scrollFrameRef = useRef<number | null>(null)
+  const jumpFrameRef = useRef<number | null>(null)
+  const pendingJumpPathRef = useRef('')
   activeWorkspaceRef.current = workspace
   feedbackCallbackRef.current = onFeedbackCommentsChange
 
@@ -90,13 +109,22 @@ export function ChangeReviewWorkspace({ workspace, threadID, disabled = false, s
 
   useEffect(() => {
     setActivePath('')
-    setSelectedGroupID('')
+    setSelectedScopeID(REVIEW_SCOPE_THREAD)
     setError('')
-    setHasCommentDraft(false)
+    setCommentDraftPaths(new Set())
+    setCollapsedPaths(new Set())
+    setNavigatorVisible(true)
+    fileSectionRefs.current.clear()
   }, [threadID, workspace])
 
   useEffect(() => {
-    const files = thread?.files ?? []
+    setActivePath('')
+    setCollapsedPaths(new Set())
+    fileSectionRefs.current.clear()
+  }, [selectedScopeID])
+
+  useEffect(() => {
+    const files = reviewFiles
     if (!files.length) {
       setActivePath('')
       return
@@ -104,32 +132,28 @@ export function ChangeReviewWorkspace({ workspace, threadID, disabled = false, s
     if (files.some((file) => file.path === activePath)) return
     const preferred = selectedPath && files.some((file) => file.path === selectedPath) ? selectedPath : files[0].path
     setActivePath(preferred)
-  }, [activePath, selectedPath, thread?.files])
+  }, [activePath, reviewFiles, selectedPath])
 
   useEffect(() => {
-    const groups = thread?.groups ?? []
-    if (!groups.length) {
-      setSelectedGroupID('')
-      return
-    }
-    if (groups.some((group) => group.id === selectedGroupID)) return
-    const preferred = groups.find((group) => group.id === thread?.latest_group_id) ?? groups[groups.length - 1]
-    setSelectedGroupID(preferred.id)
-  }, [selectedGroupID, thread?.groups, thread?.latest_group_id])
+    const available = new Set(reviewFiles.map((file) => file.path))
+    setCollapsedPaths((current) => {
+      const next = new Set([...current].filter((path) => available.has(path)))
+      return next.size === current.size ? current : next
+    })
+    setCommentDraftPaths((current) => {
+      const next = new Set([...current].filter((path) => available.has(path)))
+      return next.size === current.size ? current : next
+    })
+  }, [reviewFiles])
 
   useEffect(() => {
-    if (!activePath || !thread?.groups.length) return
-    const current = thread.groups.find((group) => group.id === selectedGroupID)
-    if (current?.paths?.includes(activePath)) return
-    const matching = [...thread.groups].reverse().find((group) => group.paths?.includes(activePath))
-    if (matching) setSelectedGroupID(matching.id)
-  }, [activePath, selectedGroupID, thread?.groups])
+    if (selectedScopeID === REVIEW_SCOPE_THREAD) return
+    if (thread?.groups.some((group) => group.id === selectedScopeID)) return
+    setSelectedScopeID(REVIEW_SCOPE_THREAD)
+  }, [selectedScopeID, thread?.groups])
 
-  const selectedFile = useMemo(() => thread?.files.find((file) => file.path === activePath) ?? null, [activePath, thread?.files])
-  const selectedFileStats = useMemo(() => selectedFile ? lineDiffStats(selectedFile.before_content, selectedFile.after_content) : null, [selectedFile])
+  const selectedGroupID = selectedScopeID === REVIEW_SCOPE_THREAD ? thread?.latest_group_id : selectedScopeID
   const selectedGroup = useMemo(() => thread?.groups.find((group) => group.id === selectedGroupID) ?? null, [selectedGroupID, thread?.groups])
-  const selectedGroupOwnsFile = !selectedFile || Boolean(selectedGroup?.paths?.includes(selectedFile.path))
-  const fileComments = useMemo(() => selectedFile && thread ? commentsForFile(selectedFile, thread.comments) : [], [selectedFile, thread])
   const feedbackComments = useMemo(() => thread ? deriveFeedbackComments(thread) : [], [thread])
 
   useEffect(() => {
@@ -140,6 +164,10 @@ export function ChangeReviewWorkspace({ workspace, threadID, disabled = false, s
   useEffect(() => {
     if (threadQuery.isError) logWorkspaceChangeError('中央变更审阅加载失败', threadQuery.error)
   }, [threadQuery.error, threadQuery.isError])
+
+  useEffect(() => {
+    if (historicalGroupQuery.isError) logWorkspaceChangeError('历史变更审阅加载失败', historicalGroupQuery.error)
+  }, [historicalGroupQuery.error, historicalGroupQuery.isError])
 
   const finishWorkspaceMutation = useCallback(async (
     result: WorkspaceChangeMutationResult,
@@ -214,8 +242,101 @@ export function ChangeReviewWorkspace({ workspace, threadID, disabled = false, s
   })
 
   const busy = disabled || reviewMutation.isPending || historyMutation.isPending || commentMutation.isPending
-  const reviewLocked = busy || hasCommentDraft
-  const conflict = selectedFile && (selectedFile.continuity !== 'continuous' || selectedFile.apply_state === 'conflicted')
+  const reviewLocked = busy || commentDraftPaths.size > 0
+  const allDiffsCollapsed = reviewFiles.length > 0 && reviewFiles.every((file) => collapsedPaths.has(file.path))
+  const scopeLoading = selectedScopeID !== REVIEW_SCOPE_THREAD && historicalGroupQuery.isLoading
+  const scopeError = selectedScopeID !== REVIEW_SCOPE_THREAD && historicalGroupQuery.isError
+
+  const handleDraftChange = useCallback((path: string, hasDraft: boolean) => {
+    setCommentDraftPaths((current) => {
+      if (hasDraft === current.has(path)) return current
+      const next = new Set(current)
+      if (hasDraft) next.add(path)
+      else next.delete(path)
+      return next
+    })
+  }, [])
+
+  const registerFileSection = useCallback((path: string, node: HTMLElement | null) => {
+    if (node) fileSectionRefs.current.set(path, node)
+    else fileSectionRefs.current.delete(path)
+  }, [])
+
+  const toggleFile = useCallback((path: string) => {
+    setActivePath(path)
+    setCollapsedPaths((current) => {
+      const next = new Set(current)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }, [])
+
+  const toggleAllDiffs = useCallback(() => {
+    setCollapsedPaths(allDiffsCollapsed ? new Set() : new Set(reviewFiles.map((file) => file.path)))
+  }, [allDiffsCollapsed, reviewFiles])
+
+  const cancelPendingJump = useCallback(() => {
+    pendingJumpPathRef.current = ''
+    if (jumpFrameRef.current !== null) {
+      window.cancelAnimationFrame(jumpFrameRef.current)
+      jumpFrameRef.current = null
+    }
+  }, [])
+
+  const scheduleFileNavigation = useCallback((path: string) => {
+    pendingJumpPathRef.current = path
+    if (jumpFrameRef.current !== null) window.cancelAnimationFrame(jumpFrameRef.current)
+    jumpFrameRef.current = window.requestAnimationFrame(() => {
+      jumpFrameRef.current = null
+      const pendingPath = pendingJumpPathRef.current
+      pendingJumpPathRef.current = ''
+      const section = fileSectionRefs.current.get(pendingPath)
+      if (typeof section?.scrollIntoView === 'function') {
+        section.scrollIntoView({ behavior: 'auto', block: 'start', inline: 'nearest' })
+      }
+    })
+  }, [])
+
+  const jumpToFile = useCallback((path: string) => {
+    setActivePath(path)
+    setCollapsedPaths((current) => {
+      if (!current.has(path)) return current
+      const next = new Set(current)
+      next.delete(path)
+      return next
+    })
+    scheduleFileNavigation(path)
+  }, [scheduleFileNavigation])
+
+  const syncActivePathFromScroll = useCallback(() => {
+    scrollFrameRef.current = null
+    const scroll = reviewScrollRef.current
+    if (!scroll || reviewFiles.length === 0) return
+    if (pendingJumpPathRef.current) return
+    const activationLine = scroll.getBoundingClientRect().top + 48
+    let nextPath = reviewFiles[0].path
+    for (const file of reviewFiles) {
+      const section = fileSectionRefs.current.get(file.path)
+      if (!section || section.getBoundingClientRect().top > activationLine) break
+      nextPath = file.path
+    }
+    if (scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 2) {
+      nextPath = reviewFiles[reviewFiles.length - 1].path
+    }
+    setActivePath((current) => current === nextPath ? current : nextPath)
+  }, [reviewFiles])
+
+  const handleReviewScroll = useCallback(() => {
+    cancelPendingJump()
+    if (scrollFrameRef.current !== null) return
+    scrollFrameRef.current = window.requestAnimationFrame(syncActivePathFromScroll)
+  }, [cancelPendingJump, syncActivePathFromScroll])
+
+  useEffect(() => () => {
+    if (scrollFrameRef.current !== null) window.cancelAnimationFrame(scrollFrameRef.current)
+    cancelPendingJump()
+  }, [cancelPendingJump])
 
   if (threadQuery.isLoading) {
     return <ReviewSurfaceState onClose={onClose} icon={<Loader2 className="h-5 w-5 animate-spin" />} label={t('changes.loading')} />
@@ -237,69 +358,93 @@ export function ChangeReviewWorkspace({ workspace, threadID, disabled = false, s
       <ReviewToolbar
         thread={thread}
         selectedGroup={selectedGroup}
+        selectedScopeID={selectedScopeID}
+        fileCount={reviewFiles.length}
         layout={layout}
         busy={reviewLocked}
-        refreshing={threadQuery.isFetching}
-        actionScopeAvailable={selectedGroupOwnsFile}
+        refreshing={threadQuery.isFetching || historicalGroupQuery.isFetching}
+        allDiffsCollapsed={allDiffsCollapsed}
+        navigatorVisible={navigatorVisible}
+        agentVisible={agentVisible}
         onLayoutChange={setLayout}
-        onGroupChange={(groupID) => {
-          setSelectedGroupID(groupID)
-          const group = thread.groups.find((item) => item.id === groupID)
-          if (!group?.paths?.includes(activePath)) {
-            const nextPath = group?.paths?.find((path) => thread.files.some((file) => file.path === path))
-            if (nextPath) setActivePath(nextPath)
-          }
-        }}
+        onScopeChange={setSelectedScopeID}
         onReview={(decision) => selectedGroup && reviewMutation.mutate({ workspace, group: selectedGroup, decision })}
         onHistory={(action) => selectedGroup && historyMutation.mutate({ workspace, group: selectedGroup, action })}
-        onRefresh={() => void threadQuery.refetch()}
+        onRefresh={() => {
+          void threadQuery.refetch()
+          if (selectedScopeID !== REVIEW_SCOPE_THREAD) void historicalGroupQuery.refetch()
+        }}
+        onToggleAllDiffs={toggleAllDiffs}
+        onToggleNavigator={() => setNavigatorVisible((visible) => !visible)}
+        onToggleAgent={onToggleAgent}
         onClose={onClose}
       />
 
       {error && <div role="alert" className="shrink-0 border-b border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-[11px] text-[var(--nova-danger)]">{error}</div>}
-      {conflict && (
-        <div role="status" className="flex shrink-0 items-start gap-2 border-b border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] text-[var(--nova-text-muted)]">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--nova-warning)]" />
-          <span>{t('changes.applyState.conflictedDescription')}</span>
-        </div>
-      )}
 
-      <div className="flex min-h-0 flex-1 max-lg:flex-col">
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {selectedFile ? (
-            <>
-              <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3">
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-[var(--nova-text)]" title={selectedFile.path}>{selectedFile.path}</span>
-                <span className="font-mono text-[10px] text-[var(--nova-success)]">+{selectedFileStats?.additions ?? 0}</span>
-                <span className="font-mono text-[10px] text-[var(--nova-danger)]">−{selectedFileStats?.deletions ?? 0}</span>
-                {onOpenFile && (
-                  <Button type="button" size="xs" variant="ghost" disabled={reviewLocked} onClick={() => void onOpenFile(selectedFile.path)}>
-                    <ExternalLink />{t('changes.openFile')}
-                  </Button>
-                )}
-              </div>
-              <div className="min-h-0 flex-1">
-                <Suspense fallback={<ReviewState icon={<Loader2 className="h-5 w-5 animate-spin" />} label={t('changes.loading')} />}>
-                  <ReviewDiffEditor
-                    threadID={thread.id}
-                    file={selectedFile}
-                    comments={fileComments}
-                    layout={layout}
-                    busy={busy}
-                    onDraftChange={setHasCommentDraft}
-                    onCreateComment={(request) => commentMutation.mutateAsync({ action: 'create', workspace, request }).then(() => undefined)}
-                    onUpdateComment={(comment, body) => commentMutation.mutateAsync({ action: 'update', workspace, comment, body }).then(() => undefined)}
-                    onResolveComment={(comment, resolved) => commentMutation.mutateAsync({ action: 'resolve', workspace, comment, resolved }).then(() => undefined)}
-                    onDeleteComment={(comment) => commentMutation.mutateAsync({ action: 'delete', workspace, comment }).then(() => undefined)}
-                  />
-                </Suspense>
-              </div>
-            </>
+      <div className="nova-review-container min-h-0 flex-1">
+        <div className="nova-review-layout flex h-full min-h-0">
+          <ScrollArea
+            type="always"
+            data-review-scroll-root="true"
+            className="min-h-0 min-w-0 flex-1 overflow-hidden"
+            viewportRef={reviewScrollRef}
+            viewportProps={{
+              role: 'main',
+              tabIndex: 0,
+              'aria-label': t('changes.viewDiff'),
+              onScroll: handleReviewScroll,
+              onWheelCapture: cancelPendingJump,
+              onPointerDownCapture: cancelPendingJump,
+              onKeyDownCapture: cancelPendingJump,
+              onTouchStartCapture: cancelPendingJump,
+              className: 'nova-review-scrollbar overscroll-contain focus-visible:ring-0 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[-1px] focus-visible:outline-[var(--nova-accent-blue)]',
+            }}
+          >
+          {scopeLoading ? (
+            <ReviewState icon={<Loader2 className="h-5 w-5 animate-spin" />} label={t('changes.loading')} />
+          ) : scopeError ? (
+            <ReviewState
+              icon={<AlertTriangle className="h-5 w-5 text-[var(--nova-danger)]" />}
+              label={workspaceChangeErrorMessage(t, historicalGroupQuery.error, 'changes.loadFailed')}
+              action={<Button type="button" size="sm" variant="outline" onClick={() => void historicalGroupQuery.refetch()}>{t('changes.retry')}</Button>}
+            />
+          ) : reviewFiles.length > 0 ? (
+            reviewFiles.map((file) => (
+              <ReviewFileDiffSection
+                key={file.path}
+                threadID={thread.id}
+                file={file}
+                comments={commentsForFile(file, reviewComments)}
+                layout={layout}
+                active={file.path === activePath}
+                collapsed={collapsedPaths.has(file.path)}
+                hasDraft={commentDraftPaths.has(file.path)}
+                mutationBusy={busy}
+                navigationLocked={reviewLocked}
+                sectionRef={(node) => registerFileSection(file.path, node)}
+                onToggle={() => toggleFile(file.path)}
+                onOpenFile={onOpenFile}
+                onDraftChange={(hasDraft) => handleDraftChange(file.path, hasDraft)}
+                onCreateComment={(request) => commentMutation.mutateAsync({ action: 'create', workspace, request }).then(() => undefined)}
+                onUpdateComment={(comment, body) => commentMutation.mutateAsync({ action: 'update', workspace, comment, body }).then(() => undefined)}
+                onResolveComment={(comment, resolved) => commentMutation.mutateAsync({ action: 'resolve', workspace, comment, resolved }).then(() => undefined)}
+                onDeleteComment={(comment) => commentMutation.mutateAsync({ action: 'delete', workspace, comment }).then(() => undefined)}
+              />
+            ))
           ) : (
             <ReviewState icon={<Check className="h-5 w-5 text-[var(--nova-success)]" />} label={t('changes.noPendingTitle')} />
           )}
-        </main>
-        <ReviewFileNavigator files={thread.files} selectedPath={activePath} disabled={reviewLocked} onSelect={setActivePath} />
+          </ScrollArea>
+          {navigatorVisible && (
+            <ReviewFileNavigator
+              files={reviewFiles}
+              selectedPath={activePath}
+              onSelect={jumpToFile}
+              onCollapse={() => setNavigatorVisible(false)}
+            />
+          )}
+        </div>
       </div>
     </section>
   )
@@ -351,6 +496,17 @@ function commentsForFile(file: ReviewThreadFile, comments: WorkspaceChangeCommen
     const revision = comment.anchor?.revision
     return Boolean(revision && (revision === file.base_revision || revision === file.revision))
   })
+}
+
+/** Keeps Monaco's source snapshots stable while a local inline comment is being composed. */
+function useFrozenReviewValue<T>(identity: string, liveValue: T | undefined, frozen: boolean): T | undefined {
+  const snapshotRef = useRef<{ identity: string; value: T | undefined }>({ identity, value: liveValue })
+  if (snapshotRef.current.identity !== identity) {
+    snapshotRef.current = { identity, value: liveValue }
+  } else if (!frozen) {
+    snapshotRef.current.value = liveValue
+  }
+  return frozen ? snapshotRef.current.value : liveValue
 }
 
 function readReviewLayout(): ReviewDiffLayout {

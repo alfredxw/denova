@@ -1,4 +1,4 @@
-import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, Database, FileDiff, FileText, Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, Database, FileText, Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -17,7 +17,6 @@ import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
-import { useWorkspaceChangeGroups } from '@/features/changes/use-change-review'
 import { useWritingChangeReview } from '@/features/changes/use-writing-change-review'
 import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
 import type { Tab } from './TabController'
@@ -353,13 +352,6 @@ export function ModeRouter(props: ModeRouterProps) {
     onShowAgent: () => onSetRightPanel('ai'),
   })
   const reviewVisible = Boolean(activeReviewThreadID)
-  const pendingChangesQuery = useWorkspaceChangeGroups(activeSessionId ? workspace : '', { status: 'pending', sessionID: activeSessionId })
-  const pendingChangeCount = new Set((pendingChangesQuery.data ?? []).filter((group) => (
-    typeof group.pending_edit_count === 'number'
-      ? group.pending_edit_count > 0
-      : group.review_status === 'pending' || group.review_status === 'mixed'
-  )).map((group) => group.review_thread_id || group.id)).size
-  const latestReviewThreadID = pendingChangesQuery.data?.[0]?.review_thread_id || pendingChangesQuery.data?.[0]?.id || ''
   const closeBooks = () => {
     if (booksReturnMode === 'interactive') {
       onSetMode('interactive')
@@ -474,6 +466,8 @@ export function ModeRouter(props: ModeRouterProps) {
             threadID={activeReviewThreadID}
             disabled={isStreaming}
             selectedPath={selectedFile}
+            agentVisible={aiVisible}
+            onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
             onClose={closeChangeReview}
             onOpenFile={async (path) => {
               const navigated = await onSelectFile(path)
@@ -492,11 +486,8 @@ export function ModeRouter(props: ModeRouterProps) {
                 <IdeWritingInfoActions
                   projectVisible={projectVisible}
                   aiVisible={aiVisible}
-                  reviewVisible={reviewVisible}
-                  pendingChangeCount={pendingChangeCount}
                   onToggleProjectVisible={onToggleProjectVisible}
                   onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
-                  onToggleReview={() => reviewVisible ? closeChangeReview() : void openChangeReview(latestReviewThreadID)}
                 />
               )}
               onActivateTab={onActivateTab}
@@ -724,19 +715,13 @@ function MainRouteLayer({ visible, children }: { visible: boolean; children: Rea
 function IdeWritingInfoActions({
   projectVisible,
   aiVisible,
-  reviewVisible,
-  pendingChangeCount,
   onToggleProjectVisible,
   onToggleAgent,
-  onToggleReview,
 }: {
   projectVisible: boolean
   aiVisible: boolean
-  reviewVisible: boolean
-  pendingChangeCount: number
   onToggleProjectVisible: () => void
   onToggleAgent: () => void
-  onToggleReview: () => void
 }) {
   const { t } = useTranslation()
   const ProjectIcon = projectVisible ? PanelLeftClose : PanelLeftOpen
@@ -746,21 +731,6 @@ function IdeWritingInfoActions({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={onToggleReview}
-        aria-label={t('changes.title')}
-        aria-pressed={reviewVisible}
-        className={`nova-nav-item relative flex h-7 w-7 items-center justify-center ${reviewVisible ? 'is-active' : ''}`}
-        title={t('changes.title')}
-      >
-        <FileDiff className="h-3.5 w-3.5" />
-        {pendingChangeCount > 0 && (
-          <span className="absolute -right-1 -top-1 min-w-3 rounded-full bg-[var(--nova-danger)] px-0.5 text-center text-[8px] font-semibold leading-3 text-white">
-            {pendingChangeCount > 9 ? '9+' : pendingChangeCount}
-          </span>
-        )}
-      </button>
       <button
         type="button"
         onClick={onToggleProjectVisible}

@@ -1,6 +1,14 @@
-import { Check, Columns2, RefreshCw, RotateCcw, RotateCw, Rows3, Undo2 } from 'lucide-react'
+import { Bot, Check, ChevronDown, ChevronsDownUp, ChevronsUpDown, Columns2, PanelRightClose, PanelRightOpen, RefreshCw, RotateCcw, RotateCw, Rows3, Undo2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import type { ReviewThread, WorkspaceChangeGroupSummary } from '../types'
 import type { ReviewDiffLayout } from './monaco/review-editor-adapter'
 import { ReviewUtilityTab } from './ReviewUtilityTab'
@@ -8,45 +16,69 @@ import { ReviewUtilityTab } from './ReviewUtilityTab'
 interface ReviewToolbarProps {
   thread: ReviewThread
   selectedGroup: WorkspaceChangeGroupSummary | null
+  selectedScopeID: string
+  fileCount: number
   layout: ReviewDiffLayout
   busy: boolean
   refreshing: boolean
-  actionScopeAvailable: boolean
+  allDiffsCollapsed: boolean
+  navigatorVisible: boolean
+  agentVisible: boolean
   onLayoutChange: (layout: ReviewDiffLayout) => void
-  onGroupChange: (groupID: string) => void
+  onScopeChange: (scopeID: string) => void
   onReview: (decision: 'accept' | 'reject') => void
   onHistory: (action: 'undo' | 'redo') => void
   onRefresh: () => void
+  onToggleAllDiffs: () => void
+  onToggleNavigator: () => void
+  onToggleAgent?: () => void
   onClose: () => void
 }
 
-export function ReviewToolbar({ thread, selectedGroup, layout, busy, refreshing, actionScopeAvailable, onLayoutChange, onGroupChange, onReview, onHistory, onRefresh, onClose }: ReviewToolbarProps) {
+export function ReviewToolbar({ thread, selectedGroup, selectedScopeID, fileCount, layout, busy, refreshing, allDiffsCollapsed, navigatorVisible, agentVisible, onLayoutChange, onScopeChange, onReview, onHistory, onRefresh, onToggleAllDiffs, onToggleNavigator, onToggleAgent, onClose }: ReviewToolbarProps) {
   const { t } = useTranslation()
-  const canReview = actionScopeAvailable && selectedGroup?.apply_state === 'applied' && (selectedGroup.pending_edit_count ?? 0) > 0
+  const canReview = selectedGroup?.apply_state === 'applied' && (selectedGroup.pending_edit_count ?? 0) > 0
+  const CollapseIcon = allDiffsCollapsed ? ChevronsUpDown : ChevronsDownUp
+  const NavigatorIcon = navigatorVisible ? PanelRightClose : PanelRightOpen
+  const selectedGroupIndex = thread.groups.findIndex((group) => group.id === selectedScopeID)
+  const selectedScopeLabel = selectedScopeID === 'thread'
+    ? t('changes.scope.cumulative')
+    : selectedGroupIndex >= 0
+      ? groupLabel(t, thread.groups[selectedGroupIndex], selectedGroupIndex)
+      : t('changes.scope.cumulative')
+  const historicalGroups = thread.groups.map((group, index) => ({ group, index })).reverse()
   return (
     <header className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs text-[var(--nova-text-muted)]">
-      <ReviewUtilityTab onClose={onClose} disabled={busy} />
+      <ReviewUtilityTab onClose={onClose} />
       <div className="flex min-h-10 flex-wrap items-center gap-2 px-3 py-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px]">
-            {t('changes.filesChanged', { count: thread.files.length })}
+            {t('changes.filesChanged', { count: fileCount })}
           </span>
           {thread.groups.length > 0 && (
-            <label className="flex min-w-0 items-center gap-1.5">
-              <span className="sr-only">{t('changes.noSelection')}</span>
-              <select
-                value={selectedGroup?.id ?? ''}
-                disabled={busy}
-                onChange={(event) => onGroupChange(event.target.value)}
-                className="h-7 max-w-48 min-w-0 rounded-md border border-[var(--nova-border)] bg-[var(--nova-bg)] px-2 text-[11px] text-[var(--nova-text)] outline-none focus:border-[var(--nova-accent-blue)] disabled:opacity-50"
-              >
-                {thread.groups.map((group, index) => (
-                  <option key={group.id} value={group.id}>
-                    {t('changes.editNumber', { number: index + 1 })} · {t(`changes.status.${group.review_status}`, { defaultValue: group.review_status })}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" size="xs" variant="outline" disabled={busy} className="min-w-0 max-w-56 justify-between font-normal">
+                  <span className="truncate">{selectedScopeLabel}</span>
+                  <ChevronDown data-icon="inline-end" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-56">
+                <DropdownMenuGroup>
+                  <DropdownMenuCheckboxItem checked={selectedScopeID === 'thread'} onSelect={() => onScopeChange('thread')}>
+                    {t('changes.scope.cumulative')}
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                  {historicalGroups.map(({ group, index }) => (
+                    <DropdownMenuCheckboxItem key={group.id} checked={selectedScopeID === group.id} onSelect={() => onScopeChange(group.id)}>
+                      <span className="min-w-0 flex-1 truncate">{groupLabel(t, group, index)}</span>
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
 
@@ -71,22 +103,56 @@ export function ReviewToolbar({ thread, selectedGroup, layout, busy, refreshing,
           </button>
         </div>
 
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          disabled={fileCount === 0}
+          onClick={onToggleAllDiffs}
+          aria-label={t(allDiffsCollapsed ? 'changes.expandAllDiffs' : 'changes.collapseAllDiffs')}
+          title={t(allDiffsCollapsed ? 'changes.expandAllDiffs' : 'changes.collapseAllDiffs')}
+        >
+          <CollapseIcon />
+        </Button>
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          onClick={onToggleNavigator}
+          aria-pressed={navigatorVisible}
+          aria-label={t(navigatorVisible ? 'changes.hideFileNavigator' : 'changes.showFileNavigator')}
+          title={t(navigatorVisible ? 'changes.hideFileNavigator' : 'changes.showFileNavigator')}
+        >
+          <NavigatorIcon />
+        </Button>
         <Button type="button" size="icon-xs" variant="ghost" disabled={busy || refreshing} onClick={onRefresh} aria-label={t('changes.refresh')}>
           <RefreshCw className={refreshing ? 'animate-spin' : ''} />
         </Button>
+        {onToggleAgent && (
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="ghost"
+            onClick={onToggleAgent}
+            aria-pressed={agentVisible}
+            aria-label={t(agentVisible ? 'router.hideAgent' : 'router.showAgent')}
+            title={t(agentVisible ? 'router.hideAgent' : 'router.showAgent')}
+            className={agentVisible ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : undefined}
+          >
+            <Bot />
+          </Button>
+        )}
       </div>
 
       {selectedGroup && (
         <div className="flex min-h-9 flex-wrap items-center justify-end gap-1.5 border-t border-[var(--nova-border-soft)] px-3 py-1">
-          <span className={`mr-auto text-[10px] ${actionScopeAvailable ? 'text-[var(--nova-text-faint)]' : 'text-[var(--nova-warning)]'}`}>
-            {actionScopeAvailable
-              ? `${t('changes.scope.group', { count: selectedGroup.paths?.length ?? 0 })} · ${t(`changes.applyState.${selectedGroup.apply_state}`, { defaultValue: selectedGroup.apply_state })}`
-              : t('changes.scope.mismatch')}
+          <span className="mr-auto text-[10px] text-[var(--nova-text-faint)]">
+            {t('changes.scope.group', { count: selectedGroup.paths?.length ?? 0 })} · {t(`changes.applyState.${selectedGroup.apply_state}`, { defaultValue: selectedGroup.apply_state })}
           </span>
-          <Button type="button" size="xs" variant="ghost" disabled={busy || !actionScopeAvailable || selectedGroup.can_undo !== true} onClick={() => onHistory('undo')}>
+          <Button type="button" size="xs" variant="ghost" disabled={busy || selectedGroup.can_undo !== true} onClick={() => onHistory('undo')}>
             <Undo2 />{t('changes.undo')}
           </Button>
-          <Button type="button" size="xs" variant="ghost" disabled={busy || !actionScopeAvailable || selectedGroup.can_redo !== true} onClick={() => onHistory('redo')}>
+          <Button type="button" size="xs" variant="ghost" disabled={busy || selectedGroup.can_redo !== true} onClick={() => onHistory('redo')}>
             <RotateCw />{t('changes.redo')}
           </Button>
           {canReview && (
@@ -103,4 +169,8 @@ export function ReviewToolbar({ thread, selectedGroup, layout, busy, refreshing,
       )}
     </header>
   )
+}
+
+function groupLabel(t: ReturnType<typeof useTranslation>['t'], group: WorkspaceChangeGroupSummary, index: number): string {
+  return `${t('changes.editNumber', { number: index + 1 })} · ${t(`changes.status.${group.review_status}`, { defaultValue: group.review_status })}`
 }
