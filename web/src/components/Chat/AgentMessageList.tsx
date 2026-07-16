@@ -36,6 +36,7 @@ interface MessageListProps {
   bottomPaddingPx?: number
   afterContent?: ReactNode
   afterContentKey?: string
+  timelineAttachments?: AgentTimelineAttachment[]
   messageStyle?: CSSProperties
   collapseTraceBeforeAssistant?: boolean
   onEditMessage?: (view: AgentMessageView) => void
@@ -55,6 +56,13 @@ interface MessageListProps {
   onVisibleTurnAnchorChange?: (anchorId: string) => void
 }
 
+/** Durable UI attached to the last visible row of one Agent run. */
+export interface AgentTimelineAttachment {
+  id: string
+  runId: string
+  content: ReactNode
+}
+
 export interface TurnScrollRequest {
   anchorId: string
   requestId: number
@@ -68,6 +76,7 @@ type AgentChatListItem =
   | { kind: 'message'; key: string; view: AgentMessageView; sourceIndex: number }
   | { kind: 'legacy-message'; key: string; message: ChatMessage; sourceIndex: number; openView?: AgentMessageView }
   | { kind: 'trace'; key: string; views: AgentMessageView[]; activeStreamingTrace: boolean }
+  | { kind: 'attachment'; key: string; runId: string; content: ReactNode }
 
 const MESSAGE_LIST_OVERSCAN = { main: 520, reverse: 260 }
 const MESSAGE_LIST_INCREASE_VIEWPORT_BY = { top: 420, bottom: 900 }
@@ -82,7 +91,7 @@ interface MessageListVirtuosoContext {
   afterContent?: ReactNode
 }
 
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, afterContentKey, messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, afterContentKey, timelineAttachments = [], messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const lastVisibleTurnAnchorRef = useRef('')
@@ -100,8 +109,9 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       visibleActivityContent,
       collapseTraceBeforeAssistant,
       groupSubAgentTimeline: Boolean(onOpenSubAgentSession),
+      timelineAttachments,
     }),
-    [collapseTraceBeforeAssistant, isStreaming, onOpenSubAgentSession, views, visibleActivityContent],
+    [collapseTraceBeforeAssistant, isStreaming, onOpenSubAgentSession, timelineAttachments, views, visibleActivityContent],
   )
   const scrollContentKey = useMemo(
     () => buildMessageListScrollKey(listItems, bottomPaddingPx, afterContent ? afterContentKey || 'after-content' : ''),
@@ -324,6 +334,8 @@ function AgentChatListRow({ item, isStreaming, highlightDialogue, messageStyle, 
           onGenerateInteractiveImage={onGenerateInteractiveImage}
           onOpenTrace={onOpenTrace}
         />
+      ) : item.kind === 'attachment' ? (
+        item.content
       ) : item.kind === 'legacy-message' ? (
         <MessageItem
           message={item.message}
@@ -358,7 +370,7 @@ function AgentChatListRow({ item, isStreaming, highlightDialogue, messageStyle, 
   )
 }
 
-function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, collapseTraceBeforeAssistant, groupSubAgentTimeline }: { views: AgentMessageView[]; isStreaming: boolean; visibleActivityContent: string; collapseTraceBeforeAssistant: boolean; groupSubAgentTimeline: boolean }): AgentChatListItem[] {
+function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, collapseTraceBeforeAssistant, groupSubAgentTimeline, timelineAttachments }: { views: AgentMessageView[]; isStreaming: boolean; visibleActivityContent: string; collapseTraceBeforeAssistant: boolean; groupSubAgentTimeline: boolean; timelineAttachments: AgentTimelineAttachment[] }): AgentChatListItem[] {
   const items: AgentChatListItem[] = []
   if (views.length === 0 && !isStreaming) {
     items.push({ kind: 'empty', key: 'empty' })
@@ -406,6 +418,26 @@ function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, c
     items.push({ kind: 'message', key: agentMessageItemKey(view, index), view, sourceIndex: index })
   }
 
+  for (const attachment of timelineAttachments) {
+    const runId = attachment.runId.trim()
+    if (!runId) continue
+    let insertAt = -1
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      if (chatListItemRunID(items[index]) === runId) {
+        insertAt = index + 1
+        break
+      }
+    }
+    if (insertAt < 0) continue
+    while (insertAt < items.length && items[insertAt]?.kind === 'attachment') insertAt += 1
+    items.splice(insertAt, 0, {
+      kind: 'attachment',
+      key: `attachment-${attachment.id}`,
+      runId,
+      content: attachment.content,
+    })
+  }
+
   if (isStreaming) {
     if (visibleActivityContent) {
       items.push({ kind: 'activity', key: `activity-${visibleActivityContent.length}`, content: visibleActivityContent })
@@ -443,6 +475,7 @@ function buildMessageListScrollKey(items: AgentChatListItem[], bottomPaddingPx?:
       return `${item.key}:${item.activeStreamingTrace ? 'active' : 'idle'}:${item.views.length}:${item.views.map((view) => `${view.partId}:${view.kind}:${view.status || ''}:${agentViewContent(view).length}:${stringifyLength(view.output)}`).join(',')}`
     }
     if (item.kind === 'activity') return `${item.key}:${item.content.length}`
+    if (item.kind === 'attachment') return `${item.key}:${item.runId}`
     return item.key
   }).join('|')
   return [
@@ -450,6 +483,19 @@ function buildMessageListScrollKey(items: AgentChatListItem[], bottomPaddingPx?:
     afterContentKey,
     itemKey,
   ].join('|')
+}
+
+function chatListItemRunID(item: AgentChatListItem): string {
+  if (item.kind === 'message') return item.view.metadata.run_id || ''
+  if (item.kind === 'legacy-message') return item.message.run_id || item.openView?.metadata.run_id || ''
+  if (item.kind === 'trace') {
+    for (let index = item.views.length - 1; index >= 0; index -= 1) {
+      const runID = item.views[index]?.metadata.run_id
+      if (runID) return runID
+    }
+  }
+  if (item.kind === 'attachment') return item.runId
+  return ''
 }
 
 function agentMessageItemKey(view: AgentMessageView, index: number) {

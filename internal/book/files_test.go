@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
-	"time"
 )
 
 func TestSafePath(t *testing.T) {
@@ -68,7 +68,9 @@ func TestServiceWriteFileIfRevisionRejectsStaleRevision(t *testing.T) {
 		t.Fatalf("读取文件版本失败: %v", err)
 	}
 
-	time.Sleep(2 * time.Millisecond)
+	if !strings.HasPrefix(revision, "sha256:") {
+		t.Fatalf("revision should be content-addressed, got %q", revision)
+	}
 	if err := service.WriteFile("chapters/ch01.md", "Agent 已更新的新内容"); err != nil {
 		t.Fatalf("Agent 写入失败: %v", err)
 	}

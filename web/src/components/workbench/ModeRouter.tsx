@@ -1,4 +1,4 @@
-import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, Database, FileText, Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, Database, FileDiff, FileText, Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -6,7 +6,7 @@ import { FileTree } from '@/components/Sidebar/FileTree'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { AgentPanel } from '@/components/Chat/AgentPanel'
 import { FilePreview } from '@/components/workbench/FilePreview'
-import { MarkdownEditor } from '@/components/Editor/MarkdownEditor'
+import { MarkdownEditor, type EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
 import { BookSettingsShortcuts } from '@/components/workbench/BookSettingsShortcuts'
 import { getImagePresets, getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
@@ -17,6 +17,9 @@ import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
+import { useWorkspaceChangeGroups } from '@/features/changes/use-change-review'
+import { useWritingChangeReview } from '@/features/changes/use-writing-change-review'
+import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
 import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
 import { WorkbenchShell } from './WorkbenchShell'
@@ -82,11 +85,12 @@ interface ModeRouterProps {
   onCloseSettings: () => void
   onToggleInteractiveRightPanel: () => void
   onSwitchBook: (path: string) => void
+  onBeforeWorkspaceSwitch: EditorFlushHandler
   onBooksChange: () => void | Promise<void>
   onOpenCharacterCardImport: () => void
   onSetSidebarView: (view: 'outline' | 'files' | 'search') => void
   onSelectSearchResult: (result: WorkspaceSearchResult, query: string) => void | Promise<void>
-  onSelectFile: (path: string) => void | Promise<void>
+  onSelectFile: (path: string) => boolean | void | Promise<boolean | void>
   onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
   onReferenceFile: (path: string) => void
   onCreateItem: (path: string, type: 'file' | 'dir') => Promise<void>
@@ -97,12 +101,14 @@ interface ModeRouterProps {
   onActivateTab: (tab: Tab) => void
   onCloseTab: (tab: Tab) => void
   onSaveCurrentFile: (path: string, content: string) => Promise<boolean>
+  onEditorFlushHandlerChange: (handler: EditorFlushHandler | null) => void
+  onWorkspaceChanged: (paths: string[]) => void | Promise<void>
   onQuoteSelection: (selection: TextSelection) => void
   onCreateChatSession: (title?: string) => void | Promise<void>
   onSwitchChatSession: (id: string) => void | Promise<void>
   onRenameChatSession: (id: string, title: string) => void | Promise<void>
   onDeleteChatSession: (id: string) => void | Promise<void>
-  onSend: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string; tellerId?: string }) => void
+  onSend: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string; tellerId?: string; reviewFeedback?: { reviewThreadId: string; commentIds: string[] } }) => boolean | Promise<boolean>
   onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
   onReferenceRemove: (path: string) => void
@@ -169,6 +175,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onCloseSettings,
     onToggleInteractiveRightPanel,
     onSwitchBook,
+    onBeforeWorkspaceSwitch,
     onBooksChange,
     onOpenCharacterCardImport,
     onSetSidebarView,
@@ -184,6 +191,8 @@ export function ModeRouter(props: ModeRouterProps) {
     onActivateTab,
     onCloseTab,
     onSaveCurrentFile,
+    onEditorFlushHandlerChange,
+    onWorkspaceChanged,
     onQuoteSelection,
     onCreateChatSession,
     onSwitchChatSession,
@@ -318,12 +327,39 @@ export function ModeRouter(props: ModeRouterProps) {
       setIllustrationInsertSignal((current) => ({ illustration, nonce: (current?.nonce || 0) + 1 }))
     }
     if (illustration.chapter_path && selectedFile !== illustration.chapter_path) {
-      void Promise.resolve(onSelectFile(illustration.chapter_path)).finally(() => window.setTimeout(apply, 0))
+      void Promise.resolve(onSelectFile(illustration.chapter_path)).then((navigated) => {
+        if (navigated !== false) window.setTimeout(apply, 0)
+      })
       return
     }
     apply()
   }
   const aiVisible = rightPanel === 'ai'
+  const {
+    activeReviewThreadID,
+    reviewFeedback,
+    openChangeReview,
+    closeChangeReview,
+    selectReviewFeedback,
+    removeReviewFeedback,
+    clearReviewFeedback,
+  } = useWritingChangeReview({
+    workspace,
+    contextKey: activeSessionId,
+    ideActive: mode === 'ide' && !settingsOpen && !versionsVisible && !ideWorkspacePanel,
+    selectedFile,
+    agentVisible: aiVisible,
+    onBeforeOpen: onBeforeWorkspaceSwitch,
+    onShowAgent: () => onSetRightPanel('ai'),
+  })
+  const reviewVisible = Boolean(activeReviewThreadID)
+  const pendingChangesQuery = useWorkspaceChangeGroups(activeSessionId ? workspace : '', { status: 'pending', sessionID: activeSessionId })
+  const pendingChangeCount = new Set((pendingChangesQuery.data ?? []).filter((group) => (
+    typeof group.pending_edit_count === 'number'
+      ? group.pending_edit_count > 0
+      : group.review_status === 'pending' || group.review_status === 'mixed'
+  )).map((group) => group.review_thread_id || group.id)).size
+  const latestReviewThreadID = pendingChangesQuery.data?.[0]?.review_thread_id || pendingChangesQuery.data?.[0]?.id || ''
   const closeBooks = () => {
     if (booksReturnMode === 'interactive') {
       onSetMode('interactive')
@@ -399,7 +435,7 @@ export function ModeRouter(props: ModeRouterProps) {
             outline={summary?.outline}
             chapterPlans={summary?.chapter_plans || []}
             selectedFile={selectedFile}
-            onSelectFile={onSelectFile}
+            onSelectFile={(path) => { void onSelectFile(path) }}
             onRequestBookSettingCreate={(item) => requestSkillsAgent(t('planning.bookSettingCreatePrompt', item))}
             onSetChapterConfirmed={onSetChapterConfirmed}
           />
@@ -432,58 +468,81 @@ export function ModeRouter(props: ModeRouterProps) {
     <main className="relative h-full min-w-0 overflow-hidden bg-[var(--nova-bg)]">
       <Suspense fallback={<div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">{t('router.loading')}</div>}>
       <MainRouteLayer visible={visibleMainRoute === 'ide-writing'}>
-        <TabController
-          tabs={openTabs}
-          activeTabKey={activeTabKey}
-          summary={summary}
-          actions={(
-            <IdeWritingInfoActions
-              projectVisible={projectVisible}
-              aiVisible={aiVisible}
-              onToggleProjectVisible={onToggleProjectVisible}
-              onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
+        {activeReviewThreadID ? (
+          <ChangeReviewWorkspace
+            workspace={workspace}
+            threadID={activeReviewThreadID}
+            disabled={isStreaming}
+            selectedPath={selectedFile}
+            onClose={closeChangeReview}
+            onOpenFile={async (path) => {
+              const navigated = await onSelectFile(path)
+              if (navigated !== false) closeChangeReview()
+            }}
+            onWorkspaceChanged={onWorkspaceChanged}
+            onFeedbackCommentsChange={selectReviewFeedback}
+          />
+        ) : (
+          <>
+            <TabController
+              tabs={openTabs}
+              activeTabKey={activeTabKey}
+              summary={summary}
+              actions={(
+                <IdeWritingInfoActions
+                  projectVisible={projectVisible}
+                  aiVisible={aiVisible}
+                  reviewVisible={reviewVisible}
+                  pendingChangeCount={pendingChangeCount}
+                  onToggleProjectVisible={onToggleProjectVisible}
+                  onToggleAgent={() => onSetRightPanel(aiVisible ? null : 'ai')}
+                  onToggleReview={() => reviewVisible ? closeChangeReview() : void openChangeReview(latestReviewThreadID)}
+                />
+              )}
+              onActivateTab={onActivateTab}
+              onCloseTab={onCloseTab}
             />
-          )}
-          onActivateTab={onActivateTab}
-          onCloseTab={onCloseTab}
-        />
-        <div className="flex min-h-0 flex-1 flex-col">
-          {activeTab ? (
-            activeFileKind === 'image' || activeFileKind === 'json' || activeFileKind === 'jsonl' ? (
-              <FilePreview path={selectedFile || activeTab.path} content={fileContent} />
-            ) : (
-              <MarkdownEditor
-                fileName={selectedFile}
-                content={fileContent}
-                onSave={onSaveCurrentFile}
-                onQuoteSelection={onQuoteSelection}
-                saveSignal={saveSignal}
-                autoSaveEnabled={editorAutoSaveEnabled}
-                autoSaveDelayMs={editorAutoSaveDelayMs}
-                chapterSummary={currentChapter}
-                searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
-                onGenerateIllustration={requestChapterIllustration}
-                generateIllustrationDisabled={isStreaming || !currentChapter}
-                illustrationInsertSignal={illustrationInsertSignal}
-                onLineChange={setEditorLine}
-              />
-            )
-          ) : (
-            loreEmpty ? (
-              <EmptyLoreGuide
-                emptyText={t('router.chooseFile')}
-                title={t('loreInit.ideTitle')}
-                description={t('loreInit.ideDescription')}
-                action={t('loreInit.ideAction')}
-                onClick={requestWritingInit}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">
-                {t('router.chooseFile')}
-              </div>
-            )
-          )}
-        </div>
+            <div className="flex min-h-0 flex-1 flex-col">
+              {activeTab ? (
+                activeFileKind === 'image' || activeFileKind === 'json' || activeFileKind === 'jsonl' ? (
+                  <FilePreview path={selectedFile || activeTab.path} content={fileContent} />
+                ) : (
+                  <MarkdownEditor
+                    workspace={workspace}
+                    fileName={selectedFile}
+                    content={fileContent}
+                    onSave={onSaveCurrentFile}
+                    onQuoteSelection={onQuoteSelection}
+                    saveSignal={saveSignal}
+                    autoSaveEnabled={editorAutoSaveEnabled}
+                    autoSaveDelayMs={editorAutoSaveDelayMs}
+                    chapterSummary={currentChapter}
+                    searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
+                    onGenerateIllustration={requestChapterIllustration}
+                    generateIllustrationDisabled={isStreaming || !currentChapter}
+                    illustrationInsertSignal={illustrationInsertSignal}
+                    onLineChange={setEditorLine}
+                    onFlushHandlerChange={onEditorFlushHandlerChange}
+                  />
+                )
+              ) : (
+                loreEmpty ? (
+                  <EmptyLoreGuide
+                    emptyText={t('router.chooseFile')}
+                    title={t('loreInit.ideTitle')}
+                    description={t('loreInit.ideDescription')}
+                    action={t('loreInit.ideAction')}
+                    onClick={requestWritingInit}
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center text-xs text-[var(--nova-text-muted)]">
+                    {t('router.chooseFile')}
+                  </div>
+                )
+              )}
+            </div>
+          </>
+        )}
       </MainRouteLayer>
 
       {mountedRoutes.has('interactive') && (
@@ -540,6 +599,7 @@ export function ModeRouter(props: ModeRouterProps) {
             novaDir={novaDir}
             books={books}
             onSwitch={onSwitchBook}
+            onBeforeSwitch={onBeforeWorkspaceSwitch}
             onBooksChange={onBooksChange}
             onOpenCharacterCardImport={onOpenCharacterCardImport}
             onClose={closeBooks}
@@ -610,6 +670,11 @@ export function ModeRouter(props: ModeRouterProps) {
       onSubmitPlanQuestion={onSubmitPlanQuestion}
       onApproveProposedPlan={onApproveProposedPlan}
       onExitPlanMode={onExitChatPlanMode}
+      reviewFeedback={reviewFeedback}
+      onReviewFeedbackRemove={removeReviewFeedback}
+      onReviewFeedbackSubmitted={clearReviewFeedback}
+      onOpenChangeReview={(reviewThreadID) => { void openChangeReview(reviewThreadID) }}
+      onWorkspaceChanged={onWorkspaceChanged}
       onClose={() => onSetRightPanel(null)}
       onSubAgentDetailsChange={setAgentSubAgentDetailsOpen}
     />
@@ -626,10 +691,11 @@ export function ModeRouter(props: ModeRouterProps) {
       currentChapter={currentChapter}
       editorLine={editorLine}
       isStreaming={isStreaming}
-      projectVisible={projectVisible}
+      projectVisible={projectVisible && !reviewVisible}
       activityBarExpanded={activityBarExpanded}
       rightPanel={rightPanel}
-      rightPanelWide={agentSubAgentDetailsOpen}
+      rightPanelWide={agentSubAgentDetailsOpen && !reviewVisible}
+      centerFocus={reviewVisible}
       settingsOpen={settingsOpen}
       interactiveSubmode={interactiveSubmode}
       sidebar={sidebar}
@@ -658,13 +724,19 @@ function MainRouteLayer({ visible, children }: { visible: boolean; children: Rea
 function IdeWritingInfoActions({
   projectVisible,
   aiVisible,
+  reviewVisible,
+  pendingChangeCount,
   onToggleProjectVisible,
   onToggleAgent,
+  onToggleReview,
 }: {
   projectVisible: boolean
   aiVisible: boolean
+  reviewVisible: boolean
+  pendingChangeCount: number
   onToggleProjectVisible: () => void
   onToggleAgent: () => void
+  onToggleReview: () => void
 }) {
   const { t } = useTranslation()
   const ProjectIcon = projectVisible ? PanelLeftClose : PanelLeftOpen
@@ -674,6 +746,21 @@ function IdeWritingInfoActions({
 
   return (
     <>
+      <button
+        type="button"
+        onClick={onToggleReview}
+        aria-label={t('changes.title')}
+        aria-pressed={reviewVisible}
+        className={`nova-nav-item relative flex h-7 w-7 items-center justify-center ${reviewVisible ? 'is-active' : ''}`}
+        title={t('changes.title')}
+      >
+        <FileDiff className="h-3.5 w-3.5" />
+        {pendingChangeCount > 0 && (
+          <span className="absolute -right-1 -top-1 min-w-3 rounded-full bg-[var(--nova-danger)] px-0.5 text-center text-[8px] font-semibold leading-3 text-white">
+            {pendingChangeCount > 9 ? '9+' : pendingChangeCount}
+          </span>
+        )}
+      </button>
       <button
         type="button"
         onClick={onToggleProjectVisible}

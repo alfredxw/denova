@@ -23,9 +23,12 @@ import {
   type AgentUIMessage,
 } from '@/lib/agent-ui'
 import { agentViewContent, buildAgentMessageViews, isPlanProtocolToolName, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
+import { isWorkspaceChangeForWorkspace, type WorkspaceChangeEvent } from '@/features/changes/types'
 
 interface ChatOptions {
+  workspace?: string
   onAgentFileChange?: (path?: string) => void | Promise<void>
+  onWorkspaceChange?: (event: WorkspaceChangeEvent) => void | Promise<void>
 }
 
 export interface ChatSendOptions {
@@ -36,11 +39,15 @@ export interface ChatSendOptions {
   planMode?: boolean
   displayMessage?: string
   hideUserMessage?: boolean
+  reviewFeedback?: {
+    reviewThreadId: string
+    commentIds: string[]
+  }
 }
 
 export function useAgentChat(options: ChatOptions = {}) {
   const { t } = useTranslation()
-  const { onAgentFileChange } = options
+  const { workspace = '', onAgentFileChange, onWorkspaceChange } = options
   const transport = useMemo(() => new AgentChatTransport(), [])
   const {
     messages: uiMessages,
@@ -52,6 +59,13 @@ export function useAgentChat(options: ChatOptions = {}) {
   } = useAIChat<AgentUIMessage>({
     transport,
     throttle: 60,
+    onData: (part) => {
+      if (part.type !== 'data-agent-workspace-change') return
+      const event = part.data as WorkspaceChangeEvent
+      if (!isWorkspaceChangeForWorkspace(event, workspace)) return
+      window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: event }))
+      void onWorkspaceChange?.(event)
+    },
     onFinish: () => {
       clearInputState()
       void onAgentFileChange?.()
@@ -183,17 +197,17 @@ export function useAgentChat(options: ChatOptions = {}) {
   }, [activePlanMode, loreReferences, references, styleScenes, t, textSelections])
 
   const send = useCallback(async (input: string, sendOptions: ChatSendOptions = {}) => {
-    if (isStreaming) return
+    if (isStreaming) return false
     const command = agentBypassCommand(input)
     if (command) {
       const result = await executeCommand(command)
       if (command === 'clear') {
         await loadHistory()
         await loadSessions()
-        return
+        return true
       }
       appendDataMessage(setUIMessages, 'data-agent-system', { content: result })
-      return
+      return true
     }
 
     let prepared: ReturnType<typeof prepareAgentRequest>
@@ -201,7 +215,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       prepared = prepareAgentRequest(input, sendOptions.planMode)
     } catch (e) {
       appendDataMessage(setUIMessages, 'data-agent-system', { content: (e as Error).message })
-      return
+      return false
     }
     if (prepared.planMode !== activePlanMode || sendOptions.planMode !== undefined) {
       setActivePlanMode(prepared.planMode)
@@ -223,6 +237,10 @@ export function useAgentChat(options: ChatOptions = {}) {
       writing_skill: sendOptions.writingSkill,
       image_preset_id: sendOptions.imagePresetId,
       teller_id: sendOptions.tellerId,
+      review_feedback: sendOptions.reviewFeedback ? {
+        review_thread_id: sendOptions.reviewFeedback.reviewThreadId,
+        comment_ids: sendOptions.reviewFeedback.commentIds,
+      } : undefined,
     } as Parameters<typeof buildAgentChatRequestBody>[0] & { message: string }) as Record<string, unknown>
     body.message = prepared.message
 
@@ -232,8 +250,10 @@ export function useAgentChat(options: ChatOptions = {}) {
         metadata: sendOptions.hideUserMessage ? { display_hidden: true } : undefined,
         parts: [{ type: 'text', text: sendOptions.displayMessage || input }],
       }, { body })
+      return true
     } catch (e) {
       appendDataMessage(setUIMessages, 'data-agent-error', { content: t('chat.activity.requestFailed', { error: String(e) }) })
+      return false
     }
   }, [activePlanMode, isStreaming, loadHistory, loadSessions, prepareAgentRequest, sendMessage, setActivePlanMode, setUIMessages, t])
 

@@ -42,6 +42,19 @@ describe('WorkspaceLayout', () => {
     expect(container.querySelector('#right')).toHaveAttribute('data-nova-right-panel', 'wide')
   })
 
+  it('marks a center-focused workspace so review can temporarily rebalance the layout', () => {
+    const { container } = render(
+      <WorkspaceLayout
+        activityBar={<nav aria-label="一级菜单栏">菜单</nav>}
+        main={<main>变更审阅</main>}
+        rightPanel={<aside>创作 Agent</aside>}
+        centerFocus
+      />,
+    )
+
+    expect(container.querySelector('[data-testid="nova-workspace-horizontal"]')).toHaveAttribute('data-nova-layout-emphasis', 'center')
+  })
+
   it('normalizes persisted workspace layout order before handing it to resizable panels', () => {
     window.localStorage.setItem('nova-workspace-horizontal', JSON.stringify({ right: 34, center: 46, sidebar: 20 }))
 

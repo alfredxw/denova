@@ -913,7 +913,11 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : name
   const detailArgs = isDelegationTool ? formatTaskDelegationArgs(rawArgs) : (isChapterBodyHidden ? '' : args)
   const hasResult = status === 'success'
-  const isStreamingContent = !isChapterBodyHidden && status === 'running' && isContentTool(name) && rawArgs.length > 50
+  const batchEditCount = name === 'edit_file' ? extractBatchEditCount(rawArgs) : 0
+  const batchEditSummary = batchEditCount > 0
+    ? [extractToolArgPath(rawArgs), t('chat.tool.batchEdits', { count: batchEditCount })].filter(Boolean).join(' · ')
+    : ''
+  const isStreamingContent = !isChapterBodyHidden && batchEditCount === 0 && status === 'running' && isContentTool(name) && rawArgs.length > 50
   const streamPreview = isStreamingContent ? extractStreamingContent(rawArgs) : ''
   const summary = taskSubAgent
     ? t('chat.subagent.delegating', { name: taskSubAgent })
@@ -923,7 +927,7 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
     ? chapterGeneratedChars !== undefined
       ? t(isDirectorPlanHidden ? (hasResult ? 'chat.tool.fileWrittenWithCount' : 'chat.tool.fileWritingWithCount') : (hasResult ? 'chat.tool.chapterWrittenWithCount' : 'chat.tool.chapterWritingWithCount'), { count: chapterGeneratedChars })
       : (isDirectorPlanHidden ? (hasResult ? t('chat.tool.fileWritten') : t('chat.tool.fileWriting')) : (hasResult ? t('chat.tool.chapterWritten') : t('chat.tool.chapterWriting')))
-    : (hasResult ? resultPreview || t('chat.tool.done') : summary)
+    : batchEditSummary || (hasResult ? resultPreview || t('chat.tool.done') : summary)
   const hasDetail = Boolean(detailArgs || result || isChapterBodyHidden)
   const streamPreviewScrollLock = useBottomScrollLock<HTMLDivElement>({
     enabled: isStreamingContent,
@@ -1439,6 +1443,23 @@ function buildToolArgSummary(args: string) {
     // 非 JSON 参数使用通用预览。
   }
   return buildPreview(args, 120)
+}
+
+/** edit_file 的 edits 数组是结构化批量改动，不把 new_string 当成流式正文展开。 */
+function extractBatchEditCount(args: string): number {
+  if (!args || !/"edits"\s*:/.test(args)) return 0
+  try {
+    const data = JSON.parse(args) as { edits?: unknown[] }
+    return Array.isArray(data.edits) ? data.edits.length : 0
+  } catch {
+    const editsStart = args.search(/"edits"\s*:\s*\[/)
+    if (editsStart < 0) return 0
+    const partialEdits = args.slice(editsStart)
+    return Math.max(
+      (partialEdits.match(/"old_string"\s*:/g) || []).length,
+      (partialEdits.match(/"new_string"\s*:/g) || []).length,
+    )
+  }
 }
 
 function extractToolArgPath(args: string) {

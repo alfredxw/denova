@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useWorkspaceStore } from './workspace-store'
 
 describe('useWorkspaceStore', () => {
@@ -35,5 +35,13 @@ describe('useWorkspaceStore', () => {
 
     useWorkspaceStore.getState().setRightPanel(null)
     expect(window.localStorage.getItem('nova:right-panel')).toBeNull()
+  })
+
+  it('migrates the legacy change-review right panel back to the Agent panel', async () => {
+    window.localStorage.setItem('nova:right-panel', 'review')
+    vi.resetModules()
+    const { useWorkspaceStore: reloadedStore } = await import('./workspace-store')
+
+    expect(reloadedStore.getInitialState().rightPanel).toBe('ai')
   })
 })

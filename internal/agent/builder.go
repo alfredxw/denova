@@ -23,25 +23,12 @@ import (
 	"denova/internal/prompts"
 	"denova/internal/providercompat"
 	novaskills "denova/internal/skills"
+	"denova/internal/workspacechange"
 )
 
 var newDeepAgent = deep.New
 
 const unlimitedAgentMaxIterations = 1_000_000
-
-var novaReadFileToolDesc = fmt.Sprintf(`Reads a file from the filesystem.
-- file_path must be an absolute path.
-- By default this tool reads up to %d lines from line 1. Do not use a smaller scan limit just to inspect normal source or writing files.
-- Use offset and limit to continue reading later sections. Set limit above %d only when the task truly needs more context.
-- Results are returned with line numbers in cat -n format.
-- Read a file before editing it.
-
-从文件系统读取文件。
-- file_path 必须是绝对路径。
-- 默认从第 1 行开始最多读取 %d 行。普通源码或正文文件不要先用更小的扫描 limit。
-- 需要继续读取后续片段时使用 offset 和 limit；只有确实需要更多上下文时才把 limit 设为超过 %d。
-- 结果以 cat -n 行号格式返回。
-- 编辑前必须先读取目标文件。`, agentFileReadDefaultLimitLines, agentFileReadDefaultLimitLines, agentFileReadDefaultLimitLines, agentFileReadDefaultLimitLines)
 
 // Build 构建小说创作 Agent（deep agent + 文件系统工具 + Skill 中间件）。
 func Build(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (adk.Agent, error) {
@@ -220,14 +207,19 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	if err != nil {
 		return chatModelAgentAssembly{}, fmt.Errorf("创建 backend 失败: %w", err)
 	}
-	backend := newAgentFilesystemBackend(localBackend)
+	workspace := ""
+	if cfg != nil {
+		workspace = cfg.Workspace
+	}
+	backend := newAgentFilesystemBackend(localBackend, workspace)
+	executionGate := sharedToolExecutionGate(workspace)
 	settings := spec.ToolSettings
 	middlewares := []agenttools.MiddlewareRegistration{
 		{
 			Name:    "filesystem",
 			Enabled: agenttools.FilesystemAllowed,
 			Build: func(ctx context.Context, _ agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
-				return newFilesystemMiddleware(ctx, backend, newAgentStreamingShell(), spec.ToolSettings)
+				return newFilesystemMiddleware(ctx, backend, newAgentStreamingShell(workspace), spec.ToolSettings, workspace)
 			},
 		},
 		{
@@ -261,6 +253,7 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 					toolSettings:        spec.ToolSettings,
 					enforceToolSettings: true,
 					toolResultMaxBytes:  configToolResultMaxBytes(cfg),
+					executionGate:       executionGate,
 				}, nil
 			},
 		},
@@ -603,23 +596,48 @@ func configManagerFactoryAllowed(settings config.ResolvedAgentToolSettings) bool
 		settings.AgentConfigWrite
 }
 
-func newFilesystemMiddleware(ctx context.Context, backend filesystem.Backend, streamingShell filesystem.StreamingShell, settings config.ResolvedAgentToolSettings) (adk.ChatModelAgentMiddleware, error) {
+func newFilesystemMiddleware(ctx context.Context, backend filesystem.Backend, streamingShell filesystem.StreamingShell, settings config.ResolvedAgentToolSettings, workspaces ...string) (adk.ChatModelAgentMiddleware, error) {
 	if backend == nil {
 		return nil, nil
 	}
 	if !settings.FileRead && !settings.FileWrite && !settings.ShellExecute {
 		return nil, nil
 	}
+	workspace := ""
+	if len(workspaces) > 0 {
+		workspace = strings.TrimSpace(workspaces[0])
+	}
+	readTool, err := newWorkspaceReadFileTool(backend, workspace)
+	if err != nil {
+		return nil, fmt.Errorf("创建 read_file 工具失败: %w", err)
+	}
+	readToolConfig := &filesystemmw.ToolConfig{CustomTool: readTool}
+	writeToolConfig := &filesystemmw.ToolConfig{}
+	editToolConfig := &filesystemmw.ToolConfig{}
+	if workspace != "" && settings.FileWrite {
+		changes, err := workspacechange.ForWorkspace(workspace)
+		if err != nil {
+			return nil, fmt.Errorf("创建 workspace change service 失败: %w", err)
+		}
+		writeTool, err := newWorkspaceWriteFileTool(changes)
+		if err != nil {
+			return nil, fmt.Errorf("创建 write_file 工具失败: %w", err)
+		}
+		editTool, err := newWorkspaceEditFileTool(changes)
+		if err != nil {
+			return nil, fmt.Errorf("创建 edit_file 工具失败: %w", err)
+		}
+		writeToolConfig.CustomTool = writeTool
+		editToolConfig.CustomTool = editTool
+	}
 	mwConfig := &filesystemmw.MiddlewareConfig{
-		Backend:      backend,
-		LsToolConfig: &filesystemmw.ToolConfig{},
-		ReadFileToolConfig: &filesystemmw.ToolConfig{
-			Desc: &novaReadFileToolDesc,
-		},
+		Backend:             backend,
+		LsToolConfig:        &filesystemmw.ToolConfig{},
+		ReadFileToolConfig:  readToolConfig,
 		GlobToolConfig:      &filesystemmw.ToolConfig{},
 		GrepToolConfig:      &filesystemmw.ToolConfig{},
-		WriteFileToolConfig: &filesystemmw.ToolConfig{},
-		EditFileToolConfig:  &filesystemmw.ToolConfig{},
+		WriteFileToolConfig: writeToolConfig,
+		EditFileToolConfig:  editToolConfig,
 	}
 	if streamingShell != nil {
 		mwConfig.StreamingShell = streamingShell

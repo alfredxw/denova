@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"log"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 	"denova/internal/agent"
 	"denova/internal/api/sse"
 	novaApp "denova/internal/app"
+	"denova/internal/workspacechange"
 )
 
 // handleChat 处理聊天请求：启动后台 Task，然后以 AI SDK UIMessage stream 订阅事件。
@@ -29,9 +31,9 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 	}
 	req.Locale = requestLocale(c)
 
-	task := h.app.StartTask(req)
-	if task == nil {
-		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
+	task, err := h.app.StartTaskWithError(req)
+	if err != nil {
+		h.writeChatPreparationError(c, err)
 		return
 	}
 	log.Printf("[agent-ui-sse] attach new chat task_id=%s", task.ID())
@@ -55,10 +57,27 @@ func (h *Handlers) HandleChatContextAnalysis(ctx context.Context, c *app.Request
 	req.Locale = requestLocale(c)
 	analysis, err := h.app.AnalyzeContext(req)
 	if err != nil {
-		writeError(c, consts.StatusConflict, err.Error())
+		h.writeChatPreparationError(c, err)
 		return
 	}
 	c.JSON(consts.StatusOK, analysis)
+}
+
+func (h *Handlers) writeChatPreparationError(c *app.RequestContext, err error) {
+	if errors.Is(err, novaApp.ErrNoWorkspace) {
+		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
+		return
+	}
+	if errors.Is(err, novaApp.ErrWorkspaceChanged) {
+		h.writeWorkspaceChangeLeaseError(c, "", err)
+		return
+	}
+	var changeErr *workspacechange.Error
+	if errors.As(err, &changeErr) {
+		writeWorkspaceChangeError(c, err)
+		return
+	}
+	writeError(c, consts.StatusInternalServerError, err.Error())
 }
 
 func (h *Handlers) HandleChatContextCompaction(ctx context.Context, c *app.RequestContext) {

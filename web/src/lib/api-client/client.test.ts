@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import { setConfiguredLocale } from '@/i18n'
-import { clearRemoteAccessCredentials, fetchAPI, requestJSON, setRemoteAccessCredentials } from './client'
+import { APIError, clearRemoteAccessCredentials, fetchAPI, requestJSON, setRemoteAccessCredentials } from './client'
 
 vi.mock('sonner', () => ({
   toast: {
@@ -91,5 +91,23 @@ describe('api client backend availability toast', () => {
     expect(listener).toHaveBeenCalledTimes(1)
     clearRemoteAccessCredentials()
     window.removeEventListener('nova:remote-access-required', listener)
+  })
+
+  it('preserves status, domain code and details for structured conflicts', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'workspace revision changed',
+      code: 'revision_conflict',
+      details: { path: 'chapters/ch01.md', expected: 'sha256:old', actual: 'sha256:new' },
+    }), { status: 409, headers: { 'Content-Type': 'application/json' } })))
+
+    const error = await requestJSON('/api/workspace/change-groups/group-1/review').catch((reason) => reason)
+
+    expect(error).toBeInstanceOf(APIError)
+    expect(error).toMatchObject({
+      message: 'workspace revision changed',
+      status: 409,
+      code: 'revision_conflict',
+      details: { path: 'chapters/ch01.md', expected: 'sha256:old', actual: 'sha256:new' },
+    })
   })
 })

@@ -828,6 +828,9 @@ func composeAgentInput(req ChatRequest, pending *session.Interruption, bookServi
 		agentMessage = appendSelectionContext(agentMessage, req.Selections)
 		contextLog.addSelections(req.Selections)
 	}
+	if !req.ResolvedReviewFeedback.Empty() {
+		agentMessage = appendReviewFeedbackContext(agentMessage, req.ResolvedReviewFeedback, contextLog)
+	}
 	agentMessage = appendContextBoundaryInstruction(agentMessage)
 	contextLog.add("注入规则", "上下文边界", prompts.ContextBoundary(""), "")
 	return agentInputComposition{

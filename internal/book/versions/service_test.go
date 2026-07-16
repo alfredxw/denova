@@ -204,6 +204,40 @@ func TestGoGitVersionExcludesRunLedgers(t *testing.T) {
 	}
 }
 
+func TestGoGitVersionExcludesAndPreservesChangeJournal(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	settings := DefaultAutoSettings()
+	writeFile(t, dir, "chapters/ch0001.md", "第一版")
+	writeFile(t, dir, ".denova/changes/ledger.jsonl", `{"type":"change_applied"}`)
+	writeFile(t, dir, ".nova/changes/legacy.jsonl", `{"type":"comment_added"}`)
+
+	first, err := service.Create("初始版本", VersionSourceManual, settings)
+	if err != nil {
+		t.Fatalf("Create first failed: %v", err)
+	}
+	files, err := service.commitFiles(first.Version.ID)
+	if err != nil {
+		t.Fatalf("commitFiles first failed: %v", err)
+	}
+	for _, path := range []string{".denova/changes/ledger.jsonl", ".nova/changes/legacy.jsonl"} {
+		if _, ok := files[path]; ok {
+			t.Fatalf("change journal must not be committed: path=%s files=%v", path, sortedVersionFilePaths(files))
+		}
+	}
+
+	writeFile(t, dir, "chapters/ch0001.md", "第二版")
+	if _, err := service.Restore(first.Version.ID, settings); err != nil {
+		t.Fatalf("Restore failed: %v", err)
+	}
+	if got := readFile(t, dir, ".denova/changes/ledger.jsonl"); got != `{"type":"change_applied"}` {
+		t.Fatalf("current change journal should survive restore: %q", got)
+	}
+	if got := readFile(t, dir, ".nova/changes/legacy.jsonl"); got != `{"type":"comment_added"}` {
+		t.Fatalf("legacy change journal should survive restore: %q", got)
+	}
+}
+
 func TestGoGitVersionExcludesInteractiveData(t *testing.T) {
 	dir := t.TempDir()
 	service := NewService(dir)

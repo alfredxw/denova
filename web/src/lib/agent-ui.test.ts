@@ -19,6 +19,7 @@ describe('agent-ui', () => {
       writing_skill: 'draft',
       image_preset_id: 'preset-1',
       teller_id: 'teller-1',
+      review_feedback: { review_thread_id: 'review-1', comment_ids: ['comment-1', 'comment-1', 'comment-2'] },
     })).toEqual({
       references: ['chapters/a.md'],
       lore_references: ['lore-1'],
@@ -29,6 +30,7 @@ describe('agent-ui', () => {
       writing_skill: 'draft',
       image_preset_id: 'preset-1',
       teller_id: 'teller-1',
+      review_feedback: { review_thread_id: 'review-1', comment_ids: ['comment-1', 'comment-2'] },
     })
   })
 

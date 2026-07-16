@@ -102,6 +102,17 @@ func TestAgentStreamingShellReportsExitCode(t *testing.T) {
 	}
 }
 
+func TestAgentStreamingShellRejectsBackgroundExecution(t *testing.T) {
+	sh := &agentStreamingShell{goos: runtime.GOOS, lookPath: exec.LookPath}
+	_, err := sh.ExecuteStreaming(context.Background(), &filesystem.ExecuteRequest{
+		Command:            "echo unsafe",
+		RunInBackendGround: true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "background shell execution is disabled") {
+		t.Fatalf("background execution should be rejected, got %v", err)
+	}
+}
+
 func collectShellOutput(ctx context.Context, sh *agentStreamingShell, command string) (string, error) {
 	sr, err := sh.ExecuteStreaming(ctx, &filesystem.ExecuteRequest{Command: command})
 	if err != nil {

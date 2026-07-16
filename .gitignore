@@ -17,7 +17,8 @@ web/node_modules/
 web/dist/
 internal/webfs/dist/
 plan.md
-docs/
+docs/*
+!docs/workspace-change-engine.md
 .worktrees/
 .pnpm-store/
 .DS_Store

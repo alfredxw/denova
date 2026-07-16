@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/cloudwego/eino/adk"
@@ -32,6 +33,15 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 	if err != nil {
 		return nil, fmt.Errorf("解析工作目录失败: %w", err)
 	}
+	canonicalWorkspace, err := filepath.EvalSymlinks(absWorkspace)
+	if err != nil {
+		return nil, fmt.Errorf("解析工作目录真实路径失败: %w", err)
+	}
+	info, err := os.Stat(canonicalWorkspace)
+	if err != nil || !info.IsDir() {
+		return nil, fmt.Errorf("工作目录不存在: %s", canonicalWorkspace)
+	}
+	absWorkspace = filepath.Clean(canonicalWorkspace)
 
 	state := book.NewState(absWorkspace)
 	if err := state.InitWorkspace(); err != nil {

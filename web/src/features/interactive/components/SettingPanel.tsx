@@ -3,7 +3,7 @@ import { BookMarked, Building2, Database, FileText, Image as ImageIcon, Library,
 import type { LucideIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { abortLoreImagesGenerate, clearLoreItemImage, createLoreItem, deleteLoreItem, generateLoreItemImage, getLoreItems, readFile, saveFile, streamLoreImagesGenerate, updateLoreItem, workspaceAssetURL, type LoreImageProgressEvent, type LoreItem, type SSEEvent } from '@/lib/api'
+import { abortLoreImagesGenerate, APIError, clearLoreItemImage, createLoreItem, deleteLoreItem, generateLoreItemImage, getLoreItems, readFile, saveFile, streamLoreImagesGenerate, updateLoreItem, workspaceAssetURL, type LoreImageProgressEvent, type LoreItem, type SSEEvent } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
@@ -162,8 +162,10 @@ function LoreSettingPanel({
   const [query, setQuery] = useState('')
   const [creatorContent, setCreatorContent] = useState('')
   const [creatorRevision, setCreatorRevision] = useState('')
+  const [creatorWorkspace, setCreatorWorkspace] = useState('')
   const [openingPresets, setOpeningPresets] = useState<BookOpeningPreset[]>([])
   const [openingPresetRevision, setOpeningPresetRevision] = useState('')
+  const [openingPresetWorkspace, setOpeningPresetWorkspace] = useState('')
   const [activeOpeningPresetId, setActiveOpeningPresetId] = useState('')
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>(externalImagePresets)
   const [activeImagePresetId, setActiveImagePresetId] = useState('')
@@ -187,6 +189,7 @@ function LoreSettingPanel({
   const loreSavedSignature = useRef('')
   const loreBaseRevisionRef = useRef('')
   const loreImageBatchAbortRef = useRef<AbortController | null>(null)
+  const isCreatorActive = activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)
 
   useEffect(() => {
     let cancelled = false
@@ -237,10 +240,11 @@ function LoreSettingPanel({
   }, [draft, tagDraft])
 
   useEffect(() => {
-    if (activeMode !== 'creator' && !(activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)) return
+    if (!isCreatorActive) return
     let cancelled = false
     setCreatorContent('')
     setCreatorRevision('')
+    setCreatorWorkspace('')
     if (!workspace)
       return () => {
         cancelled = true
@@ -250,24 +254,27 @@ function LoreSettingPanel({
         if (!cancelled) {
           setCreatorContent(data.content)
           setCreatorRevision(data.revision || '')
+          setCreatorWorkspace(data.workspace)
         }
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
           setCreatorContent('')
-          setCreatorRevision('')
+          setCreatorRevision(error instanceof APIError && error.status === 404 ? 'missing' : '')
+          setCreatorWorkspace(error instanceof APIError && error.status === 404 ? workspace : '')
         }
       })
     return () => {
       cancelled = true
     }
-  }, [activeId, activeMode, workspace])
+  }, [isCreatorActive, workspace])
 
   useEffect(() => {
     if (activeMode !== 'lore' || activeId !== INTERACTIVE_OPENING_PRESET_ENTRY_ID) return
     let cancelled = false
     setOpeningPresets([])
     setOpeningPresetRevision('')
+    setOpeningPresetWorkspace('')
     setActiveOpeningPresetId('')
     if (!workspace)
       return () => {
@@ -279,20 +286,33 @@ function LoreSettingPanel({
         const presets = parseBookOpeningPresets(data.content)
         setOpeningPresets(presets)
         setOpeningPresetRevision(data.revision || '')
+        setOpeningPresetWorkspace(data.workspace)
         setActiveOpeningPresetId((current) => (current && presets.some((preset) => preset.id === current) ? current : presets[0]?.id || ''))
       })
-      .catch(async () => {
+      .catch(async (error) => {
+        if (!(error instanceof APIError) || error.status !== 404) {
+          if (!cancelled) {
+            setOpeningPresets([])
+            setOpeningPresetRevision('')
+            setOpeningPresetWorkspace('')
+            setActiveOpeningPresetId('')
+          }
+          return
+        }
         try {
           const legacy = await readFile(LEGACY_INTERACTIVE_OPENING_PRESET_PATH)
           if (cancelled) return
           const presets = parseBookOpeningPresets(legacy.content)
           setOpeningPresets(presets)
-          setOpeningPresetRevision('')
+          setOpeningPresetRevision('missing')
+          setOpeningPresetWorkspace(legacy.workspace)
           setActiveOpeningPresetId((current) => (current && presets.some((preset) => preset.id === current) ? current : presets[0]?.id || ''))
-        } catch {
+        } catch (legacyError) {
           if (!cancelled) {
             setOpeningPresets([])
-            setOpeningPresetRevision('')
+            const legacyMissing = legacyError instanceof APIError && legacyError.status === 404
+            setOpeningPresetRevision(legacyMissing ? 'missing' : '')
+            setOpeningPresetWorkspace(legacyMissing ? workspace : '')
             setActiveOpeningPresetId('')
           }
         }
@@ -409,12 +429,12 @@ function LoreSettingPanel({
     setSaving(true)
     try {
       if (activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)) {
-        const result = await saveFile(CREATOR_PATH, creatorContent, creatorRevision)
+        const result = await saveFile(CREATOR_PATH, creatorContent, creatorRevision, creatorWorkspace || workspace)
         setCreatorRevision(result.revision || '')
         return
       }
       if (activeMode === 'lore' && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID) {
-        const result = await saveFile(INTERACTIVE_OPENING_PRESET_PATH, serializeBookOpeningPresets(openingPresets), openingPresetRevision)
+        const result = await saveFile(INTERACTIVE_OPENING_PRESET_PATH, serializeBookOpeningPresets(openingPresets), openingPresetRevision, openingPresetWorkspace || workspace)
         setOpeningPresetRevision(result.revision || '')
         notifyOpeningPresetUpdated()
         return
@@ -586,7 +606,6 @@ function LoreSettingPanel({
     }
   }, [])
 
-  const isCreatorActive = activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)
   const isOpeningPresetActive = activeMode === 'lore' && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID
   const isLoreConfigAgentActive = activeMode === 'lore' && activeId === LORE_CONFIG_AGENT_ENTRY_ID
   const saveDisabled = saving || (activeMode === 'lore' && !isCreatorActive && !isOpeningPresetActive && !draft)

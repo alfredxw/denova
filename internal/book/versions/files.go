@@ -110,6 +110,8 @@ func isVersionExcludedRelPath(relPath string) bool {
 	return cleanRel == ".git" || strings.HasPrefix(cleanRel, ".git/") ||
 		cleanRel == workspacepath.CurrentRel("runs") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("runs")+"/") ||
 		cleanRel == workspacepath.LegacyRel("runs") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("runs")+"/") ||
+		cleanRel == workspacepath.CurrentRel("changes") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("changes")+"/") ||
+		cleanRel == workspacepath.LegacyRel("changes") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("changes")+"/") ||
 		cleanRel == workspacepath.CurrentRel("interactive") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("interactive")+"/") ||
 		cleanRel == workspacepath.LegacyRel("interactive") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("interactive")+"/")
 }
@@ -118,6 +120,8 @@ func versionProtectedExcludedDirs() []string {
 	return []string{
 		workspacepath.CurrentRel("runs"),
 		workspacepath.LegacyRel("runs"),
+		workspacepath.CurrentRel("changes"),
+		workspacepath.LegacyRel("changes"),
 		workspacepath.CurrentRel("interactive"),
 		workspacepath.LegacyRel("interactive"),
 	}

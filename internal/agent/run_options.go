@@ -21,6 +21,7 @@ type RunOptions struct {
 	RootAgentName       string
 	TaskID              string
 	SessionID           string
+	ReviewThreadID      string
 	StoryID             string
 	BranchID            string
 	TurnID              string
@@ -44,6 +45,7 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 	}
 	o.TaskID = strings.TrimSpace(o.TaskID)
 	o.SessionID = strings.TrimSpace(o.SessionID)
+	o.ReviewThreadID = strings.TrimSpace(o.ReviewThreadID)
 	o.StoryID = strings.TrimSpace(o.StoryID)
 	o.BranchID = strings.TrimSpace(o.BranchID)
 	o.TurnID = strings.TrimSpace(o.TurnID)

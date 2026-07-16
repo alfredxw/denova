@@ -6,6 +6,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- 写作模式新增持久化 Change Review：Agent 每轮写入会在对应对话末尾形成变更摘要卡；Review 在中间编辑区使用 Monaco 展示累计 Diff，默认 Unified、可切 Split，并支持自适应文件导航、UTF-8 inline comments、评论解决/删除，以及跨重启保留的 Undo/Redo。
+- Writing Mode adds durable Change Review. Each Agent run ends with an in-conversation change summary, while the central editor uses Monaco for a cumulative diff (Unified by default, with Split available), adaptive file navigation, UTF-8 inline comments, comment resolution/deletion, and restart-safe undo/redo.
+- 审阅评论可统一引用到创作 Agent 输入框；服务端只接受 thread/comment IDs 并从当前工作区账本解析可信上下文。后续 Agent run 继承同一 Review Thread，新的修改持续叠加到累计 Diff，同时保留每轮独立的 Undo 边界。
+- Review comments can be attached together above the Writing Agent composer. The server accepts only thread/comment IDs and resolves trusted context from the active workspace ledger; follow-up Agent runs remain in the same Review Thread and accumulate into the diff while retaining independent per-run Undo boundaries.
+- 新增 workspace change 事件账本与内容寻址 blob：正文不内联进 JSONL 或模型上下文；SHA-256 revision、预写事件、原子 rename、`fsync` 与启动恢复共同保护作品内容。
+- Added a workspace-change event ledger with content-addressed blobs. Manuscript text is not inlined into JSONL or model context; SHA-256 revisions, prepared events, atomic rename, `fsync`, and startup recovery protect workspace content.
+- 跨文件 Review、Undo 与 Redo 新增 group operation WAL：全部路径的 before/after blob 与最终投影会在首次写入前持久化，崩溃后可确定性继续；外部分叉进入显式 conflict，不被自动覆盖。
+- Cross-file Review, Undo, and Redo now use a group-operation WAL. Every path's before/after blobs and final projection are durable before the first write, allowing deterministic crash recovery while preserving externally diverged content as an explicit conflict.
+
+### Changed
+
+- Beta 不兼容：`edit_file` 改为单文件批量协议 `{file_path, base_revision, edits[]}`，`write_file` 也强制提交全文 revision（仅新建文件使用 `missing`）；所有编辑项基于同一初始快照验证，缺失、歧义或重叠会使整批零写入失败。不同文件仍可在同一 Agent 轮次分别调用并聚合结果。
+- Beta breaking: `edit_file` now uses the single-file batch contract `{file_path, base_revision, edits[]}`, and `write_file` also requires a full-file revision (`missing` is reserved for intentional creation). Every edit is validated against one initial snapshot, and missing, ambiguous, or overlapping edits reject the whole batch without writing. Independent files can still be edited in the same Agent turn with aggregated results.
+- Agent 同轮工具调度改为工作区级读写门：已证明只读的文件、资料和搜索工具继续并行，`edit_file`、`write_file`、Shell 与未知副作用工具独占执行；流式工具持锁到结果流真正结束。
+- Same-turn Agent scheduling now uses a workspace-scoped read/write gate: proven read-only file, lore, and search tools remain parallel, while `edit_file`, `write_file`, Shell, and unknown-effect tools execute exclusively; streaming tools retain the lease until their result stream actually finishes.
+- 编辑器文件 revision 从 `mtime:size` 改为精确内容的 `sha256:` 哈希；本地自动保存通过同一变更服务做 CAS 与原子写，但继续使用 TipTap 本地历史，不为每次输入制造 Review 记录。
+- Editor file revisions now use exact `sha256:` content hashes instead of `mtime:size`. Local autosaves use the same change service for CAS and atomic writes while retaining TipTap-local history without creating a Review entry for every keystroke.
+- 工作区、工具调度门与变更服务统一使用规范真实路径；通过符号链接别名打开同一作品不再产生多把锁或多份 ledger identity。
+- Workspace runtime, tool gates, and change services now share one canonical real-path identity, so opening the same work through a symbolic-link alias cannot create separate locks or ledger identities.
+- 文件树创建/删除/重命名/复制/移动、版本恢复与手动版本快照现在和编辑器、Agent、Review 共用同一工作区租约；Agent Shell 固定前台运行并绑定工作区 cwd，无法安全协调生命周期的后台 Shell 模式在本 Beta 中不再支持。
+- File-tree create/delete/rename/copy/move, version restore, and manual version snapshots now share the workspace lease used by the editor, Agent, and Review. Agent Shell runs in the foreground with the workspace as cwd; background Shell mode, whose lifetime cannot be coordinated safely, is no longer supported in this beta.
+- 自动化运行占用、触发状态、定时进度与 Inbox 去重现在按 canonical workspace 隔离；同一工作区的 mutation 检查会串行合并，App 关闭时取消并等待后台 evaluator，JSON Store 通过路径锁和原子持久化避免并发丢更新与半写文件。
+- Automation run claims, trigger state, schedule progress, and Inbox deduplication are now isolated by canonical workspace. Mutation checks for one workspace are serialized and coalesced, App shutdown cancels and drains evaluators, and path-locked atomic Store writes prevent concurrent lost updates and torn JSON.
+
+### Fixed
+
+- Agent 变更到达时，干净编辑器会建立新的 Undo 历史边界；存在未保存草稿时不再静默覆盖，而是保留本地内容并提供显式“保留本地 / 使用工作区版本”冲突处理。
+- When Agent changes arrive, a clean editor establishes a new undo-history boundary. Unsaved drafts are no longer overwritten silently; local content is preserved behind an explicit keep-local/use-workspace conflict decision.
+- Nova/Git 版本快照与恢复现在排除并保护 `.denova/changes` 和旧版 `.nova/changes`，避免作品回滚同时回滚或删除审阅、评论和撤销历史。
+- Nova/Git snapshots and restores now exclude and protect `.denova/changes` and legacy `.nova/changes`, preventing manuscript restoration from rewinding or deleting review, comment, and undo history.
+- 编辑器自动保存现在绑定读取时的工作区身份并取消旧工作区队列；跨工作区响应、过期 SSE 与乱序刷新不会再覆盖当前草稿或错误刷新同名相对路径。
+- Editor autosave is now bound to the workspace identity captured at read time and cancels stale workspace queues; cross-workspace responses, stale SSE events, and out-of-order refreshes can no longer overwrite the active draft or refresh a same-named relative path in the wrong workspace.
+- 当文件可见更新但目录或 journal 尚未完成持久化时，现在返回可重试的 `durability_pending`；后续写入先恢复未完成操作，且仍会重新校验 revision。
+- Visible mutations whose directory or journal durability is not yet finalized now return retryable `durability_pending`; subsequent writes recover pending work first and still revalidate the current revision.
+- Reject 在文件 head 已变化时只通过唯一、完全相等的 diff 区段映射原 hunk；原位置消失但其他位置存在相同文本时会安全报冲突。未知 ledger 事件也会阻止回放，历史正文仅按需从 blob hydrate，固定大小工具回执不会再随批量 edit 数量膨胀。
+- Reject now maps recorded hunks only through unique exact diff regions after the file head changes, safely conflicting when identical text survives only elsewhere. Unknown ledger events also stop replay, historical bodies hydrate from blobs only on demand, and fixed-size tool receipts no longer grow with batch edit count.
+- 编辑器保存、Reject、Undo/Redo 在完整提交后的自动化触发绑定不可变工作区运行时快照；即使用户随后切换作品，异步检查与自动执行也不会漂移到新工作区。
+- Post-commit automation triggers from editor saves, Reject, and Undo/Redo are bound to immutable workspace runtime snapshots, so asynchronous checks and auto-runs cannot drift into a newly selected work.
+- Review 回执现在只包含本次决定真正修改的路径；自动化触发、SSE 失效与前端刷新不再错误复用整个 group 的历史路径，选择性 Reject 也只重载实际受影响文件。
+- Review receipts now contain only paths actually changed by the current decision. Automation triggers, SSE invalidation, and frontend refresh no longer reuse a group's historical path set, and selective Reject reloads only affected files.
+
 ## [v0.2.0] - 2026-07-15
 
 ### Brief / 简要说明

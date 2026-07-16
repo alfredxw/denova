@@ -243,16 +243,30 @@ func (a *App) StartTask(req agent.ChatRequest) *Task {
 }
 
 func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
-	runtime, req, err := s.prepareIDEChatRuntime(req, true)
+	task, err := s.StartTaskWithError(req)
 	if err != nil {
 		log.Printf("[agent-task] 准备 IDE Agent 运行时失败 err=%v", err)
 		return nil
+	}
+	return task
+}
+
+// StartTaskWithError preserves preparation failures so HTTP callers can
+// distinguish invalid review references from a missing workspace.
+func (a *App) StartTaskWithError(req agent.ChatRequest) (*Task, error) {
+	return a.chat().StartTaskWithError(req)
+}
+
+func (s *ChatAppService) StartTaskWithError(req agent.ChatRequest) (*Task, error) {
+	runtime, req, err := s.prepareIDEChatRuntime(req, true)
+	if err != nil {
+		return nil, err
 	}
 
 	runner, err := buildAgentRunner(context.Background(), &runtime.cfg, runtime.state, runtime.ideTeller)
 	if err != nil {
 		log.Printf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err)
-		return nil
+		return nil, err
 	}
 	a := s.app
 	a.mu.Lock()
@@ -289,6 +303,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 			AgentKind:           agent.AgentKindIDE,
 			TaskID:              task.ID(),
 			SessionID:           runtime.sess.ID,
+			ReviewThreadID:      req.ResolvedReviewFeedback.ReviewThreadID,
 			Workspace:           runtime.workspace,
 			Mode:                "ide",
 			IdleTimeout:         agentIdleTimeout(runtime.cfg),
@@ -318,7 +333,7 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 	a.activeTask = task
 	a.mu.Unlock()
 
-	return task
+	return task, nil
 }
 
 func agentIdleTimeout(cfg config.Config) time.Duration {
@@ -396,10 +411,6 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 		a.mu.Unlock()
 		return ideChatRuntime{}, req, ErrNoWorkspace
 	}
-	if abortRunning && a.activeTask != nil && a.activeTask.Status() == TaskRunning {
-		log.Printf("[agent-task] replace running task id=%s", a.activeTask.ID())
-		a.activeTask.Abort()
-	}
 
 	runtime := ideChatRuntime{
 		sess:           a.session,
@@ -443,12 +454,28 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 	if err := applyWritingSkillRuntimePolicy(&runtime, &req); err != nil {
 		return ideChatRuntime{}, req, err
 	}
+	if err := s.resolveReviewFeedback(runtime, &req); err != nil {
+		return ideChatRuntime{}, req, err
+	}
 	residentBytes, err := book.NewLoreStore(runtime.workspace).ResidentContentBytes()
 	if err != nil {
 		return ideChatRuntime{}, req, fmt.Errorf("读取常驻资料预算失败: %w", err)
 	}
 	if residentBytes > book.ResidentLoreSafetyMaxBytes {
 		return ideChatRuntime{}, req, fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentBytes+1023)/1024)
+	}
+	if abortRunning {
+		a.mu.Lock()
+		if a.workspace != runtime.workspace {
+			actualWorkspace := a.workspace
+			a.mu.Unlock()
+			return ideChatRuntime{}, req, fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, runtime.workspace, actualWorkspace)
+		}
+		if a.activeTask != nil && a.activeTask.Status() == TaskRunning {
+			log.Printf("[agent-task] replace running task id=%s", a.activeTask.ID())
+			a.activeTask.Abort()
+		}
+		a.mu.Unlock()
 	}
 	return runtime, req, nil
 }

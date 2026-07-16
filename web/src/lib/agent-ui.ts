@@ -41,6 +41,7 @@ export type AgentDataParts = {
   'agent-system': AgentDataPayload
   'agent-token-usage': AgentDataPayload
   'agent-tool-result': AgentDataPayload
+  'agent-workspace-change': AgentDataPayload
 }
 
 export type AgentUIMessage = UIMessage<AgentMessageMetadata, AgentDataParts>
@@ -55,6 +56,10 @@ interface AgentChatRequestBody {
   writing_skill?: string
   image_preset_id?: string
   teller_id?: string
+  review_feedback?: {
+    review_thread_id: string
+    comment_ids: string[]
+  }
 }
 
 export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
@@ -96,6 +101,12 @@ export function buildAgentChatRequestBody(body: AgentChatRequestBody): AgentChat
     writing_skill: body.writing_skill || undefined,
     image_preset_id: body.image_preset_id || undefined,
     teller_id: body.teller_id || undefined,
+    review_feedback: body.review_feedback?.review_thread_id && body.review_feedback.comment_ids.length
+      ? {
+          review_thread_id: body.review_feedback.review_thread_id,
+          comment_ids: Array.from(new Set(body.review_feedback.comment_ids)),
+        }
+      : undefined,
   }
 }
 

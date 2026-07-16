@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestWorkspaceDeleteCreatesRestorableVersion(t *testing.T) {
@@ -67,14 +66,17 @@ func TestWorkspaceFileWriteRejectsStaleRevision(t *testing.T) {
 		t.Fatalf("read status = %d body=%s", readResp.Code, readResp.Body.String())
 	}
 	var readBody struct {
-		Revision string `json:"revision"`
+		Revision  string `json:"revision"`
+		Workspace string `json:"workspace"`
 	}
 	decodeResponse(t, readResp.Body.Bytes(), &readBody)
 	if readBody.Revision == "" {
 		t.Fatalf("读取文件应返回 revision")
 	}
+	if readBody.Workspace != application.Workspace() {
+		t.Fatalf("读取文件应返回 canonical workspace: got=%q want=%q", readBody.Workspace, application.Workspace())
+	}
 
-	time.Sleep(2 * time.Millisecond)
 	if err := application.BookService().WriteFile("chapters/ch01.md", "Agent 已更新的新内容"); err != nil {
 		t.Fatalf("Agent 写入失败: %v", err)
 	}
@@ -83,6 +85,7 @@ func TestWorkspaceFileWriteRejectsStaleRevision(t *testing.T) {
 		"path":          "chapters/ch01.md",
 		"content":       "前端旧内容",
 		"base_revision": readBody.Revision,
+		"workspace":     readBody.Workspace,
 	})
 	if writeResp.Code != http.StatusConflict {
 		t.Fatalf("write status = %d body=%s", writeResp.Code, writeResp.Body.String())
@@ -93,6 +96,74 @@ func TestWorkspaceFileWriteRejectsStaleRevision(t *testing.T) {
 	}
 	if got != "Agent 已更新的新内容" {
 		t.Fatalf("冲突后应保留 Agent 内容，实际: %q", got)
+	}
+}
+
+func TestWorkspaceFileWriteRejectsDifferentWorkspaceIdentity(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	if err := application.BookService().Create("chapters/ch01.md", "file", "当前内容"); err != nil {
+		t.Fatalf("创建测试文件失败: %v", err)
+	}
+	readResp := performJSONRequest(t, server, http.MethodGet, "/api/workspace/file?path=chapters%2Fch01.md", nil)
+	var readBody struct {
+		Revision string `json:"revision"`
+	}
+	decodeResponse(t, readResp.Body.Bytes(), &readBody)
+
+	writeResp := performJSONRequest(t, server, http.MethodPost, "/api/workspace/file", map[string]string{
+		"path":          "chapters/ch01.md",
+		"content":       "不应写入",
+		"base_revision": readBody.Revision,
+		"workspace":     filepath.Join(t.TempDir(), "another-workspace"),
+	})
+	if writeResp.Code != http.StatusConflict {
+		t.Fatalf("write status = %d body=%s", writeResp.Code, writeResp.Body.String())
+	}
+	var errorBody struct {
+		Code string `json:"code"`
+	}
+	decodeResponse(t, writeResp.Body.Bytes(), &errorBody)
+	if errorBody.Code != "workspace_changed" {
+		t.Fatalf("error code = %q body=%s", errorBody.Code, writeResp.Body.String())
+	}
+	got, err := application.BookService().ReadFile("chapters/ch01.md")
+	if err != nil || got != "当前内容" {
+		t.Fatalf("工作区身份冲突不得写文件: content=%q err=%v", got, err)
+	}
+}
+
+func TestWorkspaceFileWriteReportsNoop(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	if err := application.BookService().Create("chapters/ch01.md", "file", "未变化"); err != nil {
+		t.Fatalf("创建测试文件失败: %v", err)
+	}
+	readResp := performJSONRequest(t, server, http.MethodGet, "/api/workspace/file?path=chapters%2Fch01.md", nil)
+	var readBody struct {
+		Revision  string `json:"revision"`
+		Workspace string `json:"workspace"`
+	}
+	decodeResponse(t, readResp.Body.Bytes(), &readBody)
+	writeResp := performJSONRequest(t, server, http.MethodPost, "/api/workspace/file", map[string]string{
+		"path":          "chapters/ch01.md",
+		"content":       "未变化",
+		"base_revision": readBody.Revision,
+		"workspace":     readBody.Workspace,
+	})
+	if writeResp.Code != http.StatusOK {
+		t.Fatalf("write status = %d body=%s", writeResp.Code, writeResp.Body.String())
+	}
+	var writeBody struct {
+		Workspace string `json:"workspace"`
+		Changed   bool   `json:"changed"`
+	}
+	decodeResponse(t, writeResp.Body.Bytes(), &writeBody)
+	if writeBody.Workspace != readBody.Workspace {
+		t.Fatalf("保存响应 workspace=%q want=%q", writeBody.Workspace, readBody.Workspace)
+	}
+	if writeBody.Changed {
+		t.Fatalf("同内容保存应报告 changed=false: %s", writeResp.Body.String())
 	}
 }
 

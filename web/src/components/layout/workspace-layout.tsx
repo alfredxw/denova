@@ -17,6 +17,7 @@ interface WorkspaceLayoutProps {
   rightPanelVisible?: boolean
   bottomPanelVisible?: boolean
   rightPanelWide?: boolean
+  centerFocus?: boolean
 }
 
 /** 工作台布局组件，只负责可拖拽区域编排，不承载业务逻辑。 */
@@ -32,21 +33,20 @@ export function WorkspaceLayout({
   rightPanelVisible = true,
   bottomPanelVisible = true,
   rightPanelWide = false,
+  centerFocus = false,
 }: WorkspaceLayoutProps) {
   const { t } = useTranslation()
   const horizontalGroupRef = useGroupRef()
-  const layoutBeforeWideRef = useRef<Layout | null>(null)
-  const wasRightPanelWideRef = useRef(false)
+  const layoutBeforeEmphasisRef = useRef<Layout | null>(null)
+  const previousEmphasisRef = useRef<'normal' | 'right' | 'center'>('normal')
+  const layoutEmphasis = rightPanelWide ? 'right' : centerFocus ? 'center' : 'normal'
 
   useEffect(() => {
     if (!rightPanelVisible) {
-      layoutBeforeWideRef.current = null
-      wasRightPanelWideRef.current = false
+      layoutBeforeEmphasisRef.current = null
+      previousEmphasisRef.current = 'normal'
       return
     }
-
-    const shouldRestoreFromWide = wasRightPanelWideRef.current && !rightPanelWide
-    if (!rightPanelWide && !shouldRestoreFromWide) return
 
     const updateRightPanelWidth = () => {
       const group = horizontalGroupRef.current
@@ -54,42 +54,33 @@ export function WorkspaceLayout({
       const layout = group.getLayout()
       if (typeof layout.right !== 'number' || typeof layout.center !== 'number') return
 
-      if (rightPanelWide) {
-        if (!layoutBeforeWideRef.current) layoutBeforeWideRef.current = layout
-        wasRightPanelWideRef.current = true
-      }
-
-      if (!rightPanelWide) {
-        const storedLayout = layoutBeforeWideRef.current
-        layoutBeforeWideRef.current = null
-        wasRightPanelWideRef.current = false
-        if (storedLayout && typeof storedLayout.right === 'number' && typeof storedLayout.center === 'number') {
-          if (Math.abs(storedLayout.right - layout.right) > 1 || Math.abs(storedLayout.center - layout.center) > 1) {
-            group.setLayout(storedLayout)
-          }
-          return
+      if (layoutEmphasis === 'normal') {
+        const storedLayout = layoutBeforeEmphasisRef.current
+        layoutBeforeEmphasisRef.current = null
+        previousEmphasisRef.current = 'normal'
+        if (storedLayout && typeof storedLayout.right === 'number' && typeof storedLayout.center === 'number'
+          && (Math.abs(storedLayout.right - layout.right) > 1 || Math.abs(storedLayout.center - layout.center) > 1)) {
+          group.setLayout(storedLayout)
         }
+        return
       }
 
+      if (previousEmphasisRef.current === 'normal' && !layoutBeforeEmphasisRef.current) {
+        layoutBeforeEmphasisRef.current = layout
+      }
+      previousEmphasisRef.current = layoutEmphasis
       const sidebarSize = sidebarVisible && typeof layout.sidebar === 'number' ? layout.sidebar : 0
-      const targetRightSize = rightPanelWide ? 58 : 34
-      const minCenterSize = Math.max(100 - sidebarSize - targetRightSize, 22)
-      const nextCenterSize = Math.min(layout.center, minCenterSize)
-      const nextRightSize = 100 - sidebarSize - nextCenterSize
+      const nextRightSize = layoutEmphasis === 'right' ? 58 : 34
+      const nextCenterSize = Math.max(100 - sidebarSize - nextRightSize, 22)
       const layoutSum = Object.values(layout).reduce((sum, value) => sum + value, 0)
-
-      const rightPanelSizeChanged = rightPanelWide
-        ? nextRightSize > layout.right + 1 || layout.center > nextCenterSize + 1
-        : Math.abs(nextRightSize - layout.right) > 1 || Math.abs(nextCenterSize - layout.center) > 1
-
-      if (rightPanelSizeChanged || Math.abs(layoutSum - 100) > 1) {
+      if (Math.abs(nextRightSize - layout.right) > 1 || Math.abs(nextCenterSize - layout.center) > 1 || Math.abs(layoutSum - 100) > 1) {
         group.setLayout({ ...layout, center: nextCenterSize, right: nextRightSize })
       }
     }
     updateRightPanelWidth()
     const frame = window.requestAnimationFrame(updateRightPanelWidth)
     return () => window.cancelAnimationFrame(frame)
-  }, [horizontalGroupRef, rightPanelVisible, rightPanelWide, sidebarVisible])
+  }, [horizontalGroupRef, layoutEmphasis, rightPanelVisible, sidebarVisible])
 
   return (
     <div data-nova-app-shell="true" className="h-dvh w-screen overflow-hidden">
@@ -99,9 +90,12 @@ export function WorkspaceLayout({
           {activityBar}
           <Group
             id="nova-workspace-horizontal"
+            data-nova-layout-emphasis={layoutEmphasis}
             groupRef={horizontalGroupRef}
             defaultLayout={readStoredLayoutForWorkspace('nova-workspace-horizontal', ['sidebar', 'center', 'right'])}
-            onLayoutChanged={(layout) => storeLayout('nova-workspace-horizontal', layout)}
+            onLayoutChanged={(layout) => {
+              if (layoutEmphasis === 'normal') storeLayout('nova-workspace-horizontal', layout)
+            }}
             orientation="horizontal"
             resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
             className="min-w-0 flex-1"

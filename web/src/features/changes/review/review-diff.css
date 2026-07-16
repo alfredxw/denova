@@ -1,0 +1,48 @@
+.nova-review-glyph-button {
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--nova-border);
+  border-radius: 5px;
+  background: var(--nova-surface-2);
+  color: var(--nova-text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.82;
+}
+
+.nova-review-glyph-button:hover,
+.nova-review-glyph-button:focus-visible {
+  border-color: var(--nova-accent-blue);
+  background: var(--nova-active);
+  color: var(--nova-text);
+  opacity: 1;
+}
+
+.nova-review-glyph-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.32;
+}
+
+.nova-review-glyph-button:focus-visible {
+  outline: 2px solid var(--nova-accent-blue);
+  outline-offset: 1px;
+}
+
+.nova-review-comment-range {
+  background-color: color-mix(in srgb, var(--nova-accent-blue) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--nova-accent-blue);
+}
+
+.nova-review-zone-host {
+  box-sizing: border-box;
+  position: relative;
+  z-index: 20;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+  pointer-events: auto;
+  padding: 4px 8px;
+}

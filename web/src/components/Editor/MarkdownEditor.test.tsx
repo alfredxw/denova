@@ -8,10 +8,14 @@ const toastMock = vi.hoisted(() => ({
   success: vi.fn(),
 }))
 
+const editorStateMock = vi.hoisted(() => ({ create: vi.fn((config: unknown) => config) }))
+
 const tiptapMock = vi.hoisted(() => {
   const handlers = new Map<string, Set<(...args: unknown[]) => void>>()
   const chainApi = {
     focus: vi.fn(() => chainApi),
+    setMeta: vi.fn(() => chainApi),
+    setContent: vi.fn(() => chainApi),
     insertContentAt: vi.fn(() => chainApi),
     run: vi.fn(() => true),
   }
@@ -36,6 +40,7 @@ const tiptapMock = vi.hoisted(() => {
     },
     view: {
       dispatch: vi.fn(),
+      updateState: vi.fn(),
       dom: document.createElement('div'),
     },
     isDestroyed: false,
@@ -80,6 +85,11 @@ vi.mock('@tiptap/react', () => ({
     return tiptapMock.editor
   },
 }))
+
+vi.mock('@tiptap/pm/state', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@tiptap/pm/state')>()
+  return { ...actual, EditorState: editorStateMock }
+})
 
 vi.mock('@tiptap/starter-kit', () => ({ default: { configure: () => ({}) } }))
 vi.mock('@tiptap/extension-character-count', () => ({ CharacterCount: { configure: () => ({}) } }))
@@ -256,6 +266,41 @@ describe('MarkdownEditor', () => {
     expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第二版\n')
   })
 
+  it('切换 workspace 后丢弃旧工作区中尚未执行的保存', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<boolean>()
+    const saveWorkspaceA = vi.fn(() => firstSave.promise)
+    const saveWorkspaceB = vi.fn(() => Promise.resolve(true))
+    const { rerender } = render(
+      <MarkdownEditor workspace="/books/a" fileName="chapters/ch01.md" content="初始" onSave={saveWorkspaceA} autoSaveDelayMs={100} />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '第一版'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+    act(() => {
+      tiptapMock.markdown = '第二版'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+    expect(saveWorkspaceA).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <MarkdownEditor workspace="/books/b" fileName="chapters/ch01.md" content="B 工作区" onSave={saveWorkspaceB} autoSaveDelayMs={100} />,
+    )
+
+    await act(async () => {
+      firstSave.resolve(true)
+      await firstSave.promise
+      await Promise.resolve()
+    })
+
+    expect(saveWorkspaceA).toHaveBeenCalledTimes(1)
+    expect(saveWorkspaceB).not.toHaveBeenCalled()
+  })
+
   it('切换文件时为排队中的自动保存保留各自的目标文件', async () => {
     vi.useFakeTimers()
     const firstSave = deferred<boolean>()
@@ -423,6 +468,68 @@ describe('MarkdownEditor', () => {
     expect(onSave).not.toHaveBeenCalled()
   })
 
+  it('关闭自动保存后导航 flush 仍会等待草稿保存', async () => {
+    const onSave = vi.fn(() => Promise.resolve(true))
+    let flush: (() => Promise<boolean>) | null = null
+    render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content="初始"
+        onSave={onSave}
+        autoSaveEnabled={false}
+        onFlushHandlerChange={(handler) => { flush = handler }}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '导航前草稿'
+      tiptapMock.emit('update')
+    })
+    let saved = false
+    await act(async () => {
+      saved = await flush!()
+    })
+
+    expect(saved).toBe(true)
+    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '导航前草稿\n')
+  })
+
+  it('关闭自动保存后直接切换文件仍会保存旧文件草稿', async () => {
+    const onSave = vi.fn(() => Promise.resolve(true))
+    const { rerender } = render(
+      <MarkdownEditor fileName="chapters/ch01.md" content="第一章" onSave={onSave} autoSaveEnabled={false} />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '第一章未保存草稿'
+      tiptapMock.emit('update')
+    })
+    rerender(<MarkdownEditor fileName="data/state.json" content="{}" onSave={onSave} autoSaveEnabled={false} />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '第一章未保存草稿\n')
+  })
+
+  it('编辑器卸载时兜底保存尚未 flush 的草稿', async () => {
+    const onSave = vi.fn(() => Promise.resolve(true))
+    const { unmount } = render(
+      <MarkdownEditor fileName="chapters/ch01.md" content="第一章" onSave={onSave} autoSaveEnabled={false} />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '关闭 Tab 前草稿'
+      tiptapMock.emit('update')
+    })
+    unmount()
+    await act(async () => {
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '关闭 Tab 前草稿\n')
+  })
+
   it('外部内容同步不会触发自动保存', () => {
     vi.useFakeTimers()
     const onSave = vi.fn(() => Promise.resolve(true))
@@ -449,10 +556,75 @@ describe('MarkdownEditor', () => {
     })
 
     expect(onSave).not.toHaveBeenCalled()
-    expect(tiptapMock.editor.commands.setContent).toHaveBeenLastCalledWith(
+    expect(tiptapMock.chainApi.setMeta).toHaveBeenLastCalledWith('addToHistory', false)
+    expect(tiptapMock.chainApi.setContent).toHaveBeenLastCalledWith(
       'Agent 写入的新内容',
       { emitUpdate: false, contentType: 'markdown' },
     )
+  })
+
+  it('本地草稿未保存时保留内容并提示外部更新冲突', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn(() => Promise.resolve(true))
+    const { rerender } = render(
+      <MarkdownEditor fileName="chapters/ch01.md" content="初始" onSave={onSave} autoSaveEnabled={false} />,
+    )
+    tiptapMock.chainApi.setContent.mockClear()
+
+    act(() => {
+      tiptapMock.markdown = '本地草稿'
+      tiptapMock.emit('update')
+    })
+    rerender(<MarkdownEditor fileName="chapters/ch01.md" content="Agent 新版本" onSave={onSave} autoSaveEnabled={false} />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('工作区版本已发生变化')
+    expect(tiptapMock.chainApi.setContent).not.toHaveBeenCalledWith('Agent 新版本', expect.anything())
+
+    await user.click(screen.getByRole('button', { name: '载入工作区版本' }))
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(tiptapMock.chainApi.setMeta).toHaveBeenLastCalledWith('addToHistory', false)
+    expect(tiptapMock.chainApi.setContent).toHaveBeenLastCalledWith('Agent 新版本', { emitUpdate: false, contentType: 'markdown' })
+  })
+
+  it('保留本地版本会显式保存，失败时保留冲突提示以便重试', async () => {
+    const user = userEvent.setup()
+    const onSave = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true)
+    const { rerender } = render(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="初始" onSave={onSave} autoSaveEnabled={false} />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '本地草稿'
+      tiptapMock.emit('update')
+    })
+    rerender(<MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="Agent 新版本" onSave={onSave} autoSaveEnabled={false} />)
+
+    await user.click(screen.getByRole('button', { name: '保留草稿并覆盖' }))
+    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '本地草稿\n')
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '保留草稿并覆盖' }))
+    expect(onSave).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('切换文件时清空本地历史，外部同步事务不进入 undo 栈', () => {
+    const { rerender } = render(
+      <MarkdownEditor fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+    tiptapMock.chainApi.setMeta.mockClear()
+    editorStateMock.create.mockClear()
+
+    rerender(<MarkdownEditor fileName="chapters/ch01.md" content="Agent 修改第一章" onSave={vi.fn()} />)
+    expect(tiptapMock.chainApi.setMeta).toHaveBeenLastCalledWith('addToHistory', false)
+    expect(editorStateMock.create).toHaveBeenCalledTimes(1)
+
+    rerender(<MarkdownEditor fileName="chapters/ch02.md" content="第二章" onSave={vi.fn()} />)
+    expect(editorStateMock.create).toHaveBeenCalledTimes(2)
+    expect(tiptapMock.editor.view.updateState).toHaveBeenCalled()
   })
 
   it('点击生成本章插画按钮时提交当前章节路径', async () => {

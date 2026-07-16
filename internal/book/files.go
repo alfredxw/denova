@@ -1,8 +1,9 @@
 package book
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -41,40 +42,37 @@ func (s *Service) Tree() ([]*FileNode, error) {
 
 // ReadFile 读取 workspace 内文件内容。
 func (s *Service) ReadFile(relPath string) (string, error) {
+	content, _, err := s.ReadFileWithRevision(relPath)
+	return content, err
+}
+
+// ReadFileWithRevision reads one stable byte snapshot and derives its revision
+// from those exact bytes, avoiding a separate stat/read race.
+func (s *Service) ReadFileWithRevision(relPath string) (string, string, error) {
 	absPath, err := SafePath(s.workspace, relPath)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	info, err := os.Stat(absPath)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if info.IsDir() {
-		return "", errors.New("路径是目录而非文件")
+		return "", "", errors.New("路径是目录而非文件")
 	}
 
 	data, err := os.ReadFile(absPath)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return string(data), nil
+	return string(data), contentRevision(data), nil
 }
 
-// FileRevision 返回文件当前轻量版本，用于阻止旧编辑器内容覆盖较新的外部写入。
+// FileRevision returns a content-addressed revision used to reject stale writes.
 func (s *Service) FileRevision(relPath string) (string, error) {
-	absPath, err := SafePath(s.workspace, relPath)
-	if err != nil {
-		return "", err
-	}
-	info, err := os.Stat(absPath)
-	if err != nil {
-		return "", err
-	}
-	if info.IsDir() {
-		return "", errors.New("路径是目录而非文件")
-	}
-	return fileRevision(info), nil
+	_, revision, err := s.ReadFileWithRevision(relPath)
+	return revision, err
 }
 
 // WriteFile 写入 workspace 内文件内容，必要时创建父目录。
@@ -106,29 +104,23 @@ func (s *Service) WriteFileIfRevision(relPath, content, expectedRevision string)
 		return "", err
 	}
 	if expectedRevision != "" {
-		info, err := os.Stat(absPath)
+		data, err := os.ReadFile(absPath)
 		if err != nil {
 			return "", err
 		}
-		if info.IsDir() {
-			return "", errors.New("路径是目录而非文件")
-		}
-		if fileRevision(info) != expectedRevision {
+		if contentRevision(data) != expectedRevision {
 			return "", ErrFileRevisionConflict
 		}
 	}
 	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
 		return "", err
 	}
-	info, err := os.Stat(absPath)
-	if err != nil {
-		return "", err
-	}
-	return fileRevision(info), nil
+	return contentRevision([]byte(content)), nil
 }
 
-func fileRevision(info os.FileInfo) string {
-	return fmt.Sprintf("%d:%d", info.ModTime().UnixNano(), info.Size())
+func contentRevision(content []byte) string {
+	hash := sha256.Sum256(content)
+	return "sha256:" + hex.EncodeToString(hash[:])
 }
 
 // Create 新建 workspace 内文件或目录。

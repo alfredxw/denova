@@ -84,6 +84,32 @@ describe('Agent MessageList', () => {
     await waitFor(() => expect(handleVisibleTurnAnchorChange).toHaveBeenCalledWith('turn-1'))
   })
 
+  it('把持久化变更摘要插入对应 run 的最后一条消息后', () => {
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[
+          { id: 'assistant-a', role: 'assistant', metadata: { run_id: 'run-a' }, parts: [{ type: 'text', text: '第一轮完成' }] },
+          { id: 'user-b', role: 'user', parts: [{ type: 'text', text: '继续调整' }] },
+          { id: 'assistant-b', role: 'assistant', metadata: { run_id: 'run-b' }, parts: [{ type: 'text', text: '第二轮完成' }] },
+        ] as AgentUIMessage[]}
+        timelineAttachments={[
+          { id: 'group-a', runId: 'run-a', content: <div data-testid="summary-a">第一轮变更</div> },
+          { id: 'group-b', runId: 'run-b', content: <div data-testid="summary-b">第二轮变更</div> },
+        ]}
+      />,
+    )
+
+    const firstMessage = screen.getByText('第一轮完成')
+    const firstSummary = screen.getByTestId('summary-a')
+    const secondUser = screen.getByText('继续调整')
+    const secondSummary = screen.getByTestId('summary-b')
+    expect(firstMessage.compareDocumentPosition(firstSummary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(firstSummary.compareDocumentPosition(secondUser) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText('第二轮完成').compareDocumentPosition(secondSummary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('按 parts 折叠 assistant 正文前的 trace', async () => {
     renderMessageList(
       <MessageList

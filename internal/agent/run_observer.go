@@ -19,6 +19,9 @@ type LLMOutcome struct {
 // RunObserver records durable state for one Agent run without changing model-visible behavior.
 type RunObserver struct {
 	ledger         *RunLedger
+	runID          string
+	sessionID      string
+	reviewThreadID string
 	rootSpanID     string
 	llmSpanID      string
 	lastLLMOutcome LLMOutcome
@@ -27,7 +30,23 @@ type RunObserver struct {
 }
 
 func newRunObserver(ledger *RunLedger, rootSpanID string) *RunObserver {
-	return &RunObserver{ledger: ledger, rootSpanID: rootSpanID, pendingTools: map[string]*traceSpanHandle{}}
+	runID := ""
+	if ledger != nil {
+		runID = strings.TrimSpace(ledger.ID())
+	}
+	return newRunObserverWithIdentity(ledger, rootSpanID, runID, "", "")
+
+}
+
+func newRunObserverWithIdentity(ledger *RunLedger, rootSpanID, runID, sessionID, reviewThreadID string) *RunObserver {
+	return &RunObserver{
+		ledger:         ledger,
+		runID:          strings.TrimSpace(runID),
+		sessionID:      strings.TrimSpace(sessionID),
+		reviewThreadID: strings.TrimSpace(reviewThreadID),
+		rootSpanID:     rootSpanID,
+		pendingTools:   map[string]*traceSpanHandle{},
+	}
 }
 
 func ContextWithRunObserver(ctx context.Context, observer *RunObserver) context.Context {
@@ -75,6 +94,33 @@ func (o *RunObserver) LastLLMOutcome() LLMOutcome {
 	outcome := o.lastLLMOutcome
 	outcome.RequestedTools = append([]string(nil), outcome.RequestedTools...)
 	return outcome
+}
+
+// RunID returns the durable run identity available to tools in this context.
+// It is intentionally metadata-only; tools must not depend on the run ledger
+// contents when applying workspace changes.
+func (o *RunObserver) RunID() string {
+	if o == nil {
+		return ""
+	}
+	return o.runID
+}
+
+// SessionID identifies the user-visible conversation that owns this run.
+func (o *RunObserver) SessionID() string {
+	if o == nil {
+		return ""
+	}
+	return o.sessionID
+}
+
+// ReviewThreadID links this run to a multi-run review without changing the
+// run-scoped ChangeGroup/Undo boundary.
+func (o *RunObserver) ReviewThreadID() string {
+	if o == nil {
+		return ""
+	}
+	return o.reviewThreadID
 }
 
 func (o *RunObserver) RecordToolDecision(decision ToolDecision) {
@@ -138,6 +184,24 @@ func (o *RunObserver) RecordToolExecution(result ToolExecutionRecord) {
 		"idempotency_key": result.IdempotencyKey,
 		"error":           result.Error,
 		"recorded_at":     time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if result.Workspace != "" {
+		attrs["workspace"] = result.Workspace
+	}
+	if result.ChangeGroupID != "" {
+		attrs["change_group_id"] = result.ChangeGroupID
+	}
+	if result.ReviewThreadID != "" {
+		attrs["review_thread_id"] = result.ReviewThreadID
+	}
+	if result.ChangeSetID != "" {
+		attrs["change_set_id"] = result.ChangeSetID
+	}
+	if result.BaseRevision != "" {
+		attrs["base_revision"] = result.BaseRevision
+	}
+	if result.Revision != "" {
+		attrs["revision"] = result.Revision
 	}
 	if result.ArgsBytes > 0 {
 		attrs["args_bytes"] = result.ArgsBytes

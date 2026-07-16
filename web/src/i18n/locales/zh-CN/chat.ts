@@ -119,6 +119,7 @@ const chat = {
   'chat.action.scrollToBottom': '回到底部',
   'chat.tool.calling': '调用工具',
   'chat.tool.writing': '正在写入…',
+  'chat.tool.batchEdits': '编辑 {{count}} 处',
   'chat.tool.chapterWriting': '正在写入章节',
   'chat.tool.chapterWritingWithCount': '正在写入章节 · 已生成 {{count}} 字',
   'chat.tool.chapterWritten': '章节已写入',

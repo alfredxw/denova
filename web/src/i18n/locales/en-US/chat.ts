@@ -119,6 +119,7 @@ const chat = {
   'chat.action.scrollToBottom': 'Back to bottom',
   'chat.tool.calling': 'Calling Tool',
   'chat.tool.writing': 'Writing...',
+  'chat.tool.batchEdits': 'Editing {{count}} places',
   'chat.tool.chapterWriting': 'Writing chapter',
   'chat.tool.chapterWritingWithCount': 'Writing chapter · {{count}} chars',
   'chat.tool.chapterWritten': 'Chapter written',

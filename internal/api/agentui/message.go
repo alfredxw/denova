@@ -20,6 +20,7 @@ const (
 	DataTypeSystem            = "data-agent-system"
 	DataTypeTokenUsage        = "data-agent-token-usage"
 	DataTypeToolResult        = "data-agent-tool-result"
+	DataTypeWorkspaceChange   = "data-agent-workspace-change"
 )
 
 // Message is the backend JSON shape for AI SDK UI messages used by the web app.
