@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { MarkdownRenderer, type MarkdownRendererComponents } from '@/components/common/MarkdownRenderer'
 import { workspaceAssetURL, type ChapterIllustration, type ChatMessage, type InteractiveImage, type InteractiveImageError } from '@/lib/api'
+import type { UserMessageReference } from '@/lib/api-client/types'
 import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { isWorkspaceImagePath } from '@/lib/workspace-file-kind'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
@@ -65,7 +66,8 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
         <AIMessage from="user" className="max-w-none items-end">
           <div className="nova-message-body-with-meta nova-message-body-with-meta-user max-w-[88%]">
             <AIMessageContent className="nova-user-message rounded-lg bg-[var(--nova-user-message-bg-to)] px-3 py-2 text-sm leading-5 text-[var(--nova-user-message-text)] whitespace-pre-wrap group-[.is-user]:px-3 group-[.is-user]:py-2" style={messageStyle}>
-              {content}
+              <SentMessageReferences references={message.user_references} />
+              <span>{content}</span>
             </AIMessageContent>
             <MessageInlineMeta message={message} content={content} align="right" reserveSpace={Boolean(onEdit)} onEdit={canEdit ? onEdit : undefined} />
           </div>
@@ -188,6 +190,32 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return null
   }
 })
+
+function SentMessageReferences({ references }: { references?: UserMessageReference[] }) {
+  const { t } = useTranslation()
+  if (!references?.length) return null
+  return (
+    <div data-testid="sent-message-references" className="mb-1.5 flex max-w-full flex-col gap-1 border-b border-current/10 pb-1.5 text-[11px] leading-4">
+      {references.map((reference, index) => (
+        <div key={`${reference.kind}:${reference.id || reference.label}:${index}`} className="flex min-w-0 items-start gap-1.5">
+          <span className="shrink-0 rounded bg-black/10 px-1 py-0.5 text-[10px] opacity-75 dark:bg-white/10">
+            {t(`chat.reference.${reference.kind}`)}
+          </span>
+          <span className="min-w-0 break-words">
+            <span className="font-medium">{reference.label}{formatReferenceLines(reference)}</span>
+            {reference.detail ? <span className="ml-1 opacity-75">— {reference.detail}</span> : null}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function formatReferenceLines(reference: UserMessageReference): string {
+  if (reference.start_line === undefined) return ''
+  if (reference.end_line !== undefined && reference.end_line !== reference.start_line) return `:L${reference.start_line}-L${reference.end_line}`
+  return `:L${reference.start_line}`
+}
 
 function TraceLinkButton({ runID, onOpenTrace }: { runID?: string; onOpenTrace?: (runID: string) => void }) {
   const { t } = useTranslation()

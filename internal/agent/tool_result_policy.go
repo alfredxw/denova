@@ -128,6 +128,7 @@ func FilterToolResultForModel(toolName, args, content string) FilteredToolResult
 func FilterToolResultForModelWithLimit(toolName, args, content string, maxBytes int) FilteredToolResult {
 	manifest := ManifestForTool(toolName)
 	manifest.MaxResultBytes = normalizeToolResultLimitBytes(maxBytes)
+	content = workspaceChangeToolResultForModel(toolName, content)
 	body, truncated := truncateUTF8Bytes(content, normalizedToolResultLimit(manifest))
 	return filteredToolResultFromBody(manifest, args, body, len(content), truncated)
 }

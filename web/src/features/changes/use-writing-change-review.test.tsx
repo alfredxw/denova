@@ -19,10 +19,11 @@ describe('useWritingChangeReview', () => {
     )
 
     await act(async () => {
-      expect(await result.current.openChangeReview('thread-1')).toBe(true)
+      expect(await result.current.openChangeReview('thread-1', 'group-2')).toBe(true)
     })
     expect(beforeOpen).toHaveBeenCalledTimes(1)
     expect(result.current.activeReviewThreadID).toBe('thread-1')
+    expect(result.current.activeReviewRequest).toMatchObject({ threadID: 'thread-1', groupID: 'group-2' })
 
     rerender({ selectedFile: 'chapters/b.md' })
     expect(result.current.activeReviewThreadID).toBe('')
@@ -99,11 +100,32 @@ describe('useWritingChangeReview', () => {
     const commentB = { id: 'comment-b', group_id: 'group-b', body: 'B' }
 
     act(() => result.current.selectReviewFeedback('thread-a', [commentA]))
-    act(() => result.current.clearReviewFeedback())
+    act(() => result.current.submitReviewFeedback({ reviewThreadId: 'thread-a', comments: [commentA] }))
     act(() => result.current.selectReviewFeedback('thread-b', [commentB]))
     expect(result.current.reviewFeedback?.comments.map((comment) => comment.id)).toEqual(['comment-b'])
 
     act(() => result.current.selectReviewFeedback('thread-a', [commentA]))
     expect(result.current.reviewFeedback).toBeNull()
+  })
+
+  it('optimistically consumes submitted comments and restores them when submission fails', () => {
+    const { result } = renderHook(() => useWritingChangeReview({
+      workspace: '/book',
+      contextKey: 'session-1',
+      ideActive: true,
+      selectedFile: null,
+      agentVisible: true,
+      onBeforeOpen: () => true,
+      onShowAgent: vi.fn(),
+    }))
+    const comment = { id: 'comment-1', group_id: 'group-1', body: 'revise this' }
+    const feedback = { reviewThreadId: 'thread-1', comments: [comment] }
+
+    act(() => result.current.selectReviewFeedback('thread-1', [comment]))
+    act(() => result.current.submitReviewFeedback(feedback))
+    expect(result.current.reviewFeedback).toBeNull()
+
+    act(() => result.current.restoreReviewFeedback(feedback))
+    expect(result.current.reviewFeedback?.comments.map((item) => item.id)).toEqual(['comment-1'])
   })
 })

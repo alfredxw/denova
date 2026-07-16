@@ -14,6 +14,7 @@ import {
   switchSession,
 } from '@/lib/api'
 import type { ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
+import type { UserMessageReference } from '@/lib/api-client/types'
 import { fetchSettings } from '@/features/settings/api'
 import { formatApprovedPlanExecutionMessage } from '@/lib/plan-mode'
 import {
@@ -43,6 +44,12 @@ export interface ChatSendOptions {
     reviewThreadId: string
     commentIds: string[]
   }
+  reviewFeedbackDisplay?: {
+    comments: Array<{ id: string; body: string; review_path?: string; review_line?: number }>
+  }
+  loreReferenceLabels?: Record<string, string>
+  onSubmissionStart?: () => void
+  onSubmissionError?: () => void
 }
 
 export function useAgentChat(options: ChatOptions = {}) {
@@ -66,10 +73,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: event }))
       void onWorkspaceChange?.(event)
     },
-    onFinish: () => {
-      clearInputState()
-      void onAgentFileChange?.()
-    },
+    onFinish: () => { void onAgentFileChange?.() },
   })
   const messages = useMemo(() => normalizeAgentUIMessages(uiMessages), [uiMessages])
   const isStreaming = status === 'submitted' || status === 'streaming'
@@ -151,7 +155,6 @@ export function useAgentChat(options: ChatOptions = {}) {
     setStyleScenes(prev => prev.filter(item => item !== scene))
   }, [])
   const clearReferences = useCallback(() => setReferences([]), [])
-  const clearLoreReferences = useCallback(() => setLoreReferences([]), [])
   const clearStyleScenes = useCallback(() => setStyleScenes([]), [])
   const addTextSelection = useCallback((sel: TextSelection) => {
     setTextSelections(prev => [...prev, sel])
@@ -159,14 +162,6 @@ export function useAgentChat(options: ChatOptions = {}) {
   const removeTextSelection = useCallback((index: number) => {
     setTextSelections(prev => prev.filter((_, i) => i !== index))
   }, [])
-  const clearTextSelections = useCallback(() => setTextSelections([]), [])
-
-  const clearInputState = useCallback(() => {
-    clearReferences()
-    clearLoreReferences()
-    clearStyleScenes()
-    clearTextSelections()
-  }, [clearLoreReferences, clearReferences, clearStyleScenes, clearTextSelections])
 
   const prepareAgentRequest = useCallback((input: string, forcedPlanMode?: boolean) => {
     if (input.startsWith('/')) {
@@ -192,6 +187,10 @@ export function useAgentChat(options: ChatOptions = {}) {
       loreReferences: Array.from(new Set(loreReferences)),
       styleScenes: Array.from(new Set([...styleScenes, ...inlineStyleScenes])),
       textSelections,
+      composerReferences: references,
+      composerLoreReferences: loreReferences,
+      composerStyleScenes: styleScenes,
+      composerTextSelections: textSelections,
       planMode,
     }
   }, [activePlanMode, loreReferences, references, styleScenes, t, textSelections])
@@ -244,14 +243,33 @@ export function useAgentChat(options: ChatOptions = {}) {
     } as Parameters<typeof buildAgentChatRequestBody>[0] & { message: string }) as Record<string, unknown>
     body.message = prepared.message
 
+    const userReferences = buildUserMessageReferences(prepared, sendOptions)
+    let submissionStarted = false
     try {
-      await sendMessage({
+      const pendingRequest = sendMessage({
         role: 'user',
-        metadata: sendOptions.hideUserMessage ? { display_hidden: true } : undefined,
+        metadata: {
+          ...(sendOptions.hideUserMessage ? { display_hidden: true } : {}),
+          ...(userReferences.length ? { user_references: userReferences } : {}),
+        },
         parts: [{ type: 'text', text: sendOptions.displayMessage || input }],
       }, { body })
+      setReferences((current) => current.filter((item) => !prepared.composerReferences.includes(item)))
+      setLoreReferences((current) => current.filter((item) => !prepared.composerLoreReferences.includes(item)))
+      setStyleScenes((current) => current.filter((item) => !prepared.composerStyleScenes.includes(item)))
+      setTextSelections((current) => current.filter((item) => !prepared.composerTextSelections.includes(item)))
+      submissionStarted = true
+      sendOptions.onSubmissionStart?.()
+      await pendingRequest
       return true
     } catch (e) {
+      if (submissionStarted) {
+        setReferences((current) => Array.from(new Set([...prepared.composerReferences, ...current])))
+        setLoreReferences((current) => Array.from(new Set([...prepared.composerLoreReferences, ...current])))
+        setStyleScenes((current) => Array.from(new Set([...prepared.composerStyleScenes, ...current])))
+        setTextSelections((current) => [...prepared.composerTextSelections.filter((item) => !current.includes(item)), ...current])
+        sendOptions.onSubmissionError?.()
+      }
       appendDataMessage(setUIMessages, 'data-agent-error', { content: t('chat.activity.requestFailed', { error: String(e) }) })
       return false
     }
@@ -365,6 +383,45 @@ export function useAgentChat(options: ChatOptions = {}) {
     clearReferences,
     clearStyleScenes,
   }
+}
+
+function buildUserMessageReferences(
+  prepared: {
+    references: string[]
+    loreReferences: string[]
+    styleScenes: string[]
+    textSelections: TextSelection[]
+  },
+  options: ChatSendOptions,
+): UserMessageReference[] {
+  const result: UserMessageReference[] = []
+  for (const path of prepared.references) result.push({ kind: 'file', label: path })
+  for (const id of prepared.loreReferences) result.push({ kind: 'lore', id, label: options.loreReferenceLabels?.[id] || id })
+  for (const scene of prepared.styleScenes) result.push({ kind: 'style', label: scene })
+  for (const selection of prepared.textSelections) {
+    result.push({
+      kind: 'selection',
+      label: selection.fileName,
+      start_line: selection.startLine,
+      end_line: selection.endLine,
+      detail: boundedReferenceDetail(selection.content),
+    })
+  }
+  for (const comment of options.reviewFeedbackDisplay?.comments ?? []) {
+    result.push({
+      kind: 'review_comment',
+      id: comment.id,
+      label: comment.review_path || comment.id,
+      ...(comment.review_line !== undefined ? { start_line: comment.review_line, end_line: comment.review_line } : {}),
+      detail: boundedReferenceDetail(comment.body),
+    })
+  }
+  return result
+}
+
+function boundedReferenceDetail(value: string): string {
+  const normalized = value.trim()
+  return normalized.length > 512 ? `${normalized.slice(0, 512)}…` : normalized
 }
 
 function normalizeIDEContext(context?: IDEContext) {

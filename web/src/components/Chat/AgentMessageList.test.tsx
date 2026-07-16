@@ -84,6 +84,33 @@ describe('Agent MessageList', () => {
     await waitFor(() => expect(handleVisibleTurnAnchorChange).toHaveBeenCalledWith('turn-1'))
   })
 
+  it('把本轮引用显示在已发送的用户消息内', () => {
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[{
+          id: 'user-with-references',
+          role: 'user',
+          metadata: {
+            user_references: [
+              { kind: 'file', label: 'chapters/ch01.md' },
+              { kind: 'selection', label: 'chapters/ch02.md', start_line: 8, end_line: 10, detail: '被引用的正文' },
+              { kind: 'review_comment', id: 'comment-1', label: 'setting/progress.md', start_line: 24, detail: '需要增加爽点' },
+            ],
+          },
+          parts: [{ type: 'text', text: '请统一修改' }],
+        }] as AgentUIMessage[]}
+      />,
+    )
+
+    const references = screen.getByTestId('sent-message-references')
+    expect(references).toHaveTextContent('chapters/ch01.md')
+    expect(references).toHaveTextContent('chapters/ch02.md')
+    expect(references).toHaveTextContent('需要增加爽点')
+    expect(screen.getByText('请统一修改')).toBeInTheDocument()
+  })
+
   it('把持久化变更摘要插入对应 run 的最后一条消息后', () => {
     renderMessageList(
       <MessageList

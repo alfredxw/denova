@@ -224,6 +224,9 @@ func addMetadataPayload(target map[string]any, entry session.HistoryEntry) {
 	if entry.SSEGeneratedChars > 0 {
 		target["sse_generated_chars"] = entry.SSEGeneratedChars
 	}
+	if len(entry.UserReferences) > 0 {
+		target["user_references"] = append([]session.UserMessageReference(nil), entry.UserReferences...)
+	}
 }
 
 func addUsagePayload(target map[string]any, entry session.HistoryEntry) {

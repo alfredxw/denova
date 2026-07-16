@@ -326,6 +326,7 @@ function metadataToChatFields(view: AgentMessageView): Partial<ChatMessage> {
     navigation_turn_id: metadata.navigation_turn_id,
     turn_versions: metadata.turn_versions,
     turn_version_index: metadata.turn_version_index,
+    user_references: metadata.user_references,
   }
 }
 
@@ -563,7 +564,30 @@ function providerAgentMetadata(value: unknown): AgentMessageMetadata {
     navigation_turn_id: readString(agent.navigation_turn_id) || undefined,
     turn_versions: readTurnVersions(agent.turn_versions),
     turn_version_index: readNumber(agent.turn_version_index),
+    user_references: readUserMessageReferences(agent.user_references),
   }
+}
+
+function readUserMessageReferences(value: unknown): AgentMessageMetadata['user_references'] {
+  if (!Array.isArray(value)) return undefined
+  const references = value
+    .map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+      const data = item as Record<string, unknown>
+      const kind = readString(data.kind)
+      const label = readString(data.label)
+      if (!label || !['file', 'lore', 'style', 'selection', 'review_comment'].includes(kind)) return null
+      return {
+        kind: kind as NonNullable<AgentMessageMetadata['user_references']>[number]['kind'],
+        id: readString(data.id) || undefined,
+        label,
+        detail: readString(data.detail) || undefined,
+        start_line: readNumber(data.start_line),
+        end_line: readNumber(data.end_line),
+      }
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+  return references.length ? references : undefined
 }
 
 function readUsageCalls(value: unknown): TokenUsageCall[] | undefined {

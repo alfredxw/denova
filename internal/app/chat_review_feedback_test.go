@@ -60,6 +60,21 @@ func TestResolveReviewFeedbackUsesCanonicalWorkspaceLedger(t *testing.T) {
 	if resolved.Body != comment.Body || resolved.Path != path || resolved.Anchor.Revision != change.Revision || resolved.Anchor.Side != workspacechange.CommentAnchorSideAfter || resolved.Anchor.Encoding != workspacechange.CommentAnchorEncodingUTF8Byte {
 		t.Fatalf("resolved comment did not come from the ledger: %#v", resolved)
 	}
+	if err := chat.consumeResolvedReviewFeedback(ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}, req); err != nil {
+		t.Fatal(err)
+	}
+	group, err := service.GetGroup(context.Background(), "group-1")
+	if err != nil || len(group.Comments) != 1 || !group.Comments[0].Deleted {
+		t.Fatalf("submitted review comments were not consumed: group=%#v err=%v", group, err)
+	}
+	reloaded, err := workspacechange.NewService(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloadedGroup, err := reloaded.GetGroup(context.Background(), "group-1")
+	if err != nil || len(reloadedGroup.Comments) != 1 || !reloadedGroup.Comments[0].Deleted {
+		t.Fatalf("consumed review comments did not survive replay: group=%#v err=%v", reloadedGroup, err)
+	}
 
 	crossSession := agent.ChatRequest{ReviewFeedback: agent.ReviewFeedbackRef{
 		ReviewThreadID: "thread-1", CommentIDs: []string{comment.ID},

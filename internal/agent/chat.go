@@ -298,6 +298,9 @@ func (r *Runtime) Run(
 
 	agentMessage := composition.AgentMessage
 	contextLog := composition.ContextLog
+	if setter, ok := conversation.(UserMessageReferencesSetter); ok {
+		setter.SetUserMessageReferences(userMessageReferencesForRequest(req))
+	}
 
 	history, err := conversation.PrepareMessages(originalMessage, agentMessage)
 	if err != nil {
@@ -305,6 +308,19 @@ func (r *Runtime) Run(
 		finishRun("error", err.Error(), 0)
 		emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return
+	}
+	if options.OnUserMessageCommitted != nil {
+		if err := options.OnUserMessageCommitted(traceCtx); err != nil {
+			runLogger.Error("commit_user_message_side_effect_failed", slog.Any("error", err))
+			finishRun("error", err.Error(), 0)
+			emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
+			return
+		}
+		emit(Event{Type: "workspace_change", Data: map[string]interface{}{
+			"workspace":        options.Workspace,
+			"review_thread_id": options.ReviewThreadID,
+			"action":           "review_feedback_consumed",
+		}})
 	}
 	if compactor, ok := conversation.(ContextCompactionConversation); ok {
 		compactionStarted := time.Now()

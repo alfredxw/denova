@@ -152,10 +152,12 @@
 
 .nova-review-diff-line-added {
   background: var(--nova-review-added-line-bg);
+  pointer-events: none;
 }
 
 .nova-review-diff-line-removed {
   background: var(--nova-review-removed-line-bg);
+  pointer-events: none;
 }
 
 .nova-review-diff-margin-added {
@@ -169,11 +171,32 @@
 .nova-review-diff-word-added {
   border-radius: 2px;
   background: var(--nova-review-added-word-bg);
+  pointer-events: none;
 }
 
 .nova-review-diff-word-removed {
   border-radius: 2px;
   background: var(--nova-review-removed-word-bg);
+  pointer-events: none;
+}
+
+/* Monaco paints line decorations after its selection in the same overlay row.
+   Keep diff fills behind selection, while rendered text and cursors stay above both. */
+.nova-review-editor .monaco-editor .view-overlays .selected-text {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.nova-review-editor .monaco-editor .view-lines {
+  z-index: 2;
+}
+
+.nova-review-editor .monaco-editor .contentWidgets {
+  z-index: 3;
+}
+
+.nova-review-editor .monaco-editor .cursors-layer {
+  z-index: 4;
 }
 
 .nova-review-diff-number-added {

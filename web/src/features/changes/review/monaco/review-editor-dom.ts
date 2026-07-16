@@ -44,6 +44,7 @@ export function installReviewEditorPointerFocus(codeEditor: editor.IStandaloneCo
     if (event.button !== 0) return
     const eventTarget = event.target instanceof Element ? event.target : null
     if (eventTarget?.closest('.nova-review-zone-host, button, input, textarea, select, a[href], [role="button"]')) return
+    if (codeEditor.hasTextFocus()) return
     const target = codeEditor.getTargetAtClientPoint(event.clientX, event.clientY)
     if (!target?.position) return
 

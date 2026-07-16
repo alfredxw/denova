@@ -16,41 +16,39 @@ import (
 )
 
 var workspaceEditFileToolDescription = strings.TrimSpace(`Apply one or more exact text edits to a single workspace file as one reviewed change.
-- Read the file before editing it.
 - file_path must identify one file inside the current workspace.
 - Every item in edits is matched against the same original file snapshot, not against the result of an earlier item.
 - Keep edits non-overlapping. Use replace_all only when every exact occurrence should change.
 - Put dependent changes to the same file in one call. Independent files may use separate edit_file calls in the same assistant response.
-- base_revision is required and must be the complete-file revision returned by read_file. A stale revision rejects the whole call without writing.
+- The tool captures and protects the current file snapshot internally when the call starts.
 
 将一个或多个精确文本修改作为一次可审阅变更应用到同一个 workspace 文件。
-- 编辑前必须先读取文件。
 - file_path 必须指向当前 workspace 内的单个文件。
 - edits 中的每一项都基于同一份原始文件快照匹配，不基于前一项修改后的结果。
 - 各修改区间不得重叠；只有确实需要替换全部精确匹配时才使用 replace_all。
 - 同一文件内相互依赖的修改必须放在一次调用中；不同文件的独立修改可以在同一轮分别调用 edit_file。
-- base_revision 必填，必须使用 read_file 返回的完整文件 revision；版本过期时整次调用将零写入失败。`)
+- 工具会在调用开始时自行获取并保护当前文件快照。`)
 
 var workspaceWriteFileToolDescription = strings.TrimSpace(`Replace the complete content of one workspace file as a reviewed change.
 - Use edit_file for localized changes; use write_file only for a new file or an intentional full rewrite.
 - file_path must identify one file inside the current workspace.
-- base_revision is required. Use the complete-file revision returned by read_file when replacing an existing file; use the literal "missing" only when intentionally creating a new file.
+- The tool detects whether the file exists and protects its current snapshot internally.
 
 将一个 workspace 文件的完整内容替换为新内容，并记录为可审阅变更。
 - 局部修改使用 edit_file；只有新建文件或明确需要整体重写时才使用 write_file。
 - file_path 必须指向当前 workspace 内的单个文件。
-- base_revision 必填。覆盖已有文件时使用 read_file 返回的完整文件 revision；仅在明确新建文件时使用字面值 "missing"。`)
+- 工具会自行判断文件是否存在并保护当前快照。`)
 
 type workspaceChangeService interface {
 	Workspace() string
+	ReadFile(string) (content string, revision string, err error)
 	ApplyEdits(context.Context, workspacechange.ApplyEditsRequest) (workspacechange.ChangeSet, error)
 	ReplaceFile(context.Context, workspacechange.ReplaceFileRequest) (workspacechange.ChangeSet, error)
 }
 
 type workspaceEditFileInput struct {
-	FilePath     string                      `json:"file_path" jsonschema:"required,description=Absolute or workspace-relative path of the single file to edit"`
-	BaseRevision string                      `json:"base_revision" jsonschema:"required,description=Complete-file sha256 revision returned by read_file"`
-	Edits        []workspaceEditFileTextEdit `json:"edits" jsonschema:"required,description=One or more non-overlapping exact replacements evaluated against the same original file snapshot"`
+	FilePath string                      `json:"file_path" jsonschema:"required,description=Absolute or workspace-relative path of the single file to edit"`
+	Edits    []workspaceEditFileTextEdit `json:"edits" jsonschema:"required,description=One or more non-overlapping exact replacements evaluated against the same original file snapshot"`
 }
 
 type workspaceEditFileTextEdit struct {
@@ -61,9 +59,8 @@ type workspaceEditFileTextEdit struct {
 }
 
 type workspaceWriteFileInput struct {
-	FilePath     string `json:"file_path" jsonschema:"required,description=Absolute or workspace-relative path of the file to replace"`
-	Content      string `json:"content" jsonschema:"description=Complete new file content"`
-	BaseRevision string `json:"base_revision" jsonschema:"required,description=Complete-file sha256 revision from read_file; use missing only to create a new file"`
+	FilePath string `json:"file_path" jsonschema:"required,description=Absolute or workspace-relative path of the file to replace"`
+	Content  string `json:"content" jsonschema:"description=Complete new file content"`
 }
 
 func newWorkspaceEditFileTool(changes workspaceChangeService) (tool.BaseTool, error) {
@@ -75,7 +72,7 @@ func newWorkspaceEditFileTool(changes workspaceChangeService) (tool.BaseTool, er
 		return nil, err
 	}
 	return utils.InferTool("edit_file", workspaceEditFileToolDescription, func(ctx context.Context, input workspaceEditFileInput) (string, error) {
-		baseRevision, err := requiredBaseRevision(input.FilePath, input.BaseRevision, false)
+		baseRevision, err := currentWorkspaceBaseRevision(changes, input.FilePath)
 		if err != nil {
 			return "", err
 		}
@@ -110,7 +107,7 @@ func newWorkspaceWriteFileTool(changes workspaceChangeService) (tool.BaseTool, e
 		return nil, err
 	}
 	return utils.InferTool("write_file", workspaceWriteFileToolDescription, func(ctx context.Context, input workspaceWriteFileInput) (string, error) {
-		baseRevision, err := requiredBaseRevision(input.FilePath, input.BaseRevision, true)
+		baseRevision, err := currentWorkspaceBaseRevisionOrMissing(changes, input.FilePath)
 		if err != nil {
 			return "", err
 		}
@@ -138,23 +135,32 @@ func canonicalChangeWorkspace(changes workspaceChangeService) (string, error) {
 	return filepath.Clean(workspace), nil
 }
 
-func requiredBaseRevision(path, revision string, allowMissing bool) (string, error) {
+func currentWorkspaceBaseRevision(changes workspaceChangeService, path string) (string, error) {
+	_, revision, err := changes.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
 	revision = strings.TrimSpace(revision)
-	if revision == "" {
-		return "", &workspacechange.Error{
-			Code:    workspacechange.ErrorCodeInvalidEdit,
-			Message: "base_revision is required; read the complete file before changing it",
-			Details: map[string]any{"path": path, "workspace_mutated": false, "required_source": "read_file"},
-		}
+	if revision != "" {
+		return revision, nil
 	}
-	if revision == "missing" && !allowMissing {
-		return "", &workspacechange.Error{
-			Code:    workspacechange.ErrorCodeInvalidEdit,
-			Message: "edit_file requires the sha256 revision of an existing file",
-			Details: map[string]any{"path": path, "workspace_mutated": false, "required_source": "read_file"},
-		}
+	return "", &workspacechange.Error{
+		Code:    workspacechange.ErrorCodeConflict,
+		Message: "workspace change service returned an empty current revision",
+		Details: map[string]any{"path": path, "workspace_mutated": false},
 	}
-	return revision, nil
+}
+
+func currentWorkspaceBaseRevisionOrMissing(changes workspaceChangeService, path string) (string, error) {
+	revision, err := currentWorkspaceBaseRevision(changes, path)
+	if err == nil {
+		return revision, nil
+	}
+	var changeErr *workspacechange.Error
+	if errors.As(err, &changeErr) && changeErr.Code == workspacechange.ErrorCodeNotFound {
+		return "missing", nil
+	}
+	return "", err
 }
 
 func workspaceChangeMetadata(ctx context.Context) workspacechange.ChangeMetadata {
@@ -230,8 +236,8 @@ func formatWorkspaceChangeToolError(toolName string, err error) (string, bool) {
 		Status:           "rejected",
 		Tool:             normalizeToolName(toolName),
 		Code:             changeErr.Code,
-		Message:          changeErr.Message,
-		Details:          changeErr.Details,
+		Message:          workspaceChangeToolPublicErrorMessage(changeErr),
+		Details:          workspaceChangeToolPublicErrorDetails(changeErr.Details),
 		Retryable:        workspaceChangeErrorRetryable(changeErr.Code),
 		WorkspaceMutated: workspaceChangeErrorMutated(changeErr),
 	}
@@ -240,6 +246,33 @@ func formatWorkspaceChangeToolError(toolName string, err error) (string, bool) {
 		return "", false
 	}
 	return "[tool error]\n" + string(data), true
+}
+
+func workspaceChangeToolPublicErrorMessage(changeErr *workspacechange.Error) string {
+	if changeErr != nil && changeErr.Code == workspacechange.ErrorCodeRevisionConflict {
+		return "Workspace file changed during the tool call; retry the operation. / 工具调用期间文件发生变化，请重试。"
+	}
+	if changeErr == nil {
+		return ""
+	}
+	return changeErr.Message
+}
+
+func workspaceChangeToolPublicErrorDetails(details map[string]any) map[string]any {
+	if len(details) == 0 {
+		return nil
+	}
+	public := make(map[string]any, len(details))
+	for key, value := range details {
+		if strings.Contains(strings.ToLower(key), "revision") {
+			continue
+		}
+		public[key] = value
+	}
+	if len(public) == 0 {
+		return nil
+	}
+	return public
 }
 
 func workspaceChangeErrorMutated(changeErr *workspacechange.Error) bool {

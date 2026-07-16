@@ -14,6 +14,7 @@ import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { BookRecord, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
+import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
@@ -107,7 +108,7 @@ interface ModeRouterProps {
   onSwitchChatSession: (id: string) => void | Promise<void>
   onRenameChatSession: (id: string, title: string) => void | Promise<void>
   onDeleteChatSession: (id: string) => void | Promise<void>
-  onSend: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string; tellerId?: string; reviewFeedback?: { reviewThreadId: string; commentIds: string[] } }) => boolean | Promise<boolean>
+  onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
   onReferenceRemove: (path: string) => void
@@ -336,12 +337,15 @@ export function ModeRouter(props: ModeRouterProps) {
   const aiVisible = rightPanel === 'ai'
   const {
     activeReviewThreadID,
+    activeReviewRequest,
     reviewFeedback,
+    submittedReviewCommentIDs,
     openChangeReview,
     closeChangeReview,
     selectReviewFeedback,
     removeReviewFeedback,
-    clearReviewFeedback,
+    submitReviewFeedback,
+    restoreReviewFeedback,
   } = useWritingChangeReview({
     workspace,
     contextKey: activeSessionId,
@@ -464,6 +468,7 @@ export function ModeRouter(props: ModeRouterProps) {
           <ChangeReviewWorkspace
             workspace={workspace}
             threadID={activeReviewThreadID}
+            scopeRequest={activeReviewRequest}
             disabled={isStreaming}
             selectedPath={selectedFile}
             agentVisible={aiVisible}
@@ -475,6 +480,7 @@ export function ModeRouter(props: ModeRouterProps) {
             }}
             onWorkspaceChanged={onWorkspaceChanged}
             onFeedbackCommentsChange={selectReviewFeedback}
+            hiddenCommentIDs={submittedReviewCommentIDs}
           />
         ) : (
           <>
@@ -663,8 +669,9 @@ export function ModeRouter(props: ModeRouterProps) {
       onExitPlanMode={onExitChatPlanMode}
       reviewFeedback={reviewFeedback}
       onReviewFeedbackRemove={removeReviewFeedback}
-      onReviewFeedbackSubmitted={clearReviewFeedback}
-      onOpenChangeReview={(reviewThreadID) => { void openChangeReview(reviewThreadID) }}
+      onReviewFeedbackSubmitted={submitReviewFeedback}
+      onReviewFeedbackSubmissionFailed={restoreReviewFeedback}
+      onOpenChangeReview={(reviewThreadID, groupID) => { void openChangeReview(reviewThreadID, groupID) }}
       onWorkspaceChanged={onWorkspaceChanged}
       onClose={() => onSetRightPanel(null)}
       onSubAgentDetailsChange={setAgentSubAgentDetailsOpen}

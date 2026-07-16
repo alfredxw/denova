@@ -29,6 +29,7 @@ import { useWorkspaceChangeGroups } from '@/features/changes/use-change-review'
 import { AgentChangeSummaryCard } from '@/features/changes/agent/AgentChangeSummaryCard'
 import { MAX_REVIEW_FEEDBACK_COMMENT_COUNT, MAX_REVIEW_FEEDBACK_CONTEXT_BYTES, reviewFeedbackContextBytes, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { toast } from 'sonner'
+import type { ChatSendOptions } from '@/hooks/useAgentChat'
 
 type AgentPanelView = 'chat' | 'sessions' | 'traces'
 
@@ -58,7 +59,7 @@ interface AgentPanelProps {
   onSwitchSession: (id: string) => void | Promise<void>
   onRenameSession: (id: string, title: string) => void | Promise<void>
   onDeleteSession: (id: string) => void | Promise<void>
-  onSend: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string; tellerId?: string; reviewFeedback?: { reviewThreadId: string; commentIds: string[] } }) => boolean | Promise<boolean>
+  onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
   onReferenceRemove: (path: string) => void
@@ -75,8 +76,9 @@ interface AgentPanelProps {
   onExitPlanMode: () => void
   reviewFeedback?: ReviewFeedbackSelection | null
   onReviewFeedbackRemove?: (commentID: string) => void
-  onReviewFeedbackSubmitted?: () => void
-  onOpenChangeReview?: (reviewThreadID: string) => void
+  onReviewFeedbackSubmitted?: (feedback: ReviewFeedbackSelection) => void
+  onReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackSelection) => void
+  onOpenChangeReview?: (reviewThreadID: string, groupID: string) => void
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
   onClose: () => void
   onSubAgentDetailsChange?: (open: boolean) => void
@@ -125,6 +127,7 @@ export function AgentPanel({
   reviewFeedback,
   onReviewFeedbackRemove,
   onReviewFeedbackSubmitted,
+  onReviewFeedbackSubmissionFailed,
   onOpenChangeReview,
   onWorkspaceChanged,
   onClose,
@@ -276,7 +279,7 @@ export function AgentPanel({
             workspace={workspace}
             summary={summary}
             disabled={isStreaming}
-            onReview={(reviewThreadID) => onOpenChangeReview?.(reviewThreadID)}
+            onReview={(reviewThreadID, groupID) => onOpenChangeReview?.(reviewThreadID, groupID)}
             onWorkspaceChanged={onWorkspaceChanged}
           />
         ),
@@ -284,6 +287,7 @@ export function AgentPanel({
   ), [activeRunID, changeGroupsQuery.data, isStreaming, onOpenChangeReview, onWorkspaceChanged, workspace])
 
   const sendWithWritingSkill = async (message: string) => {
+    const feedbackSelection = reviewFeedback?.comments.length ? reviewFeedback : null
     const feedback = reviewFeedback?.comments.length ? {
       reviewThreadId: reviewFeedback.reviewThreadId,
       commentIds: reviewFeedback.comments.map((comment) => comment.id),
@@ -299,8 +303,31 @@ export function AgentPanel({
       toast.error(t('changes.feedback.tooLarge'))
       return false
     }
-    const accepted = await onSend(effectiveMessage, { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId, reviewFeedback: feedback })
-    if (feedback && accepted) onReviewFeedbackSubmitted?.()
+    let submissionStarted = false
+    let submissionRestored = false
+    const handleSubmissionStart = () => {
+      if (!feedbackSelection || submissionStarted) return
+      submissionStarted = true
+      onReviewFeedbackSubmitted?.(feedbackSelection)
+    }
+    const handleSubmissionError = () => {
+      if (!feedbackSelection || !submissionStarted || submissionRestored) return
+      submissionRestored = true
+      onReviewFeedbackSubmissionFailed?.(feedbackSelection)
+    }
+    const accepted = await onSend(effectiveMessage, {
+      writingSkill,
+      ideContext,
+      imagePresetId,
+      tellerId: ideTellerId,
+      reviewFeedback: feedback,
+      reviewFeedbackDisplay: feedbackSelection || undefined,
+      loreReferenceLabels,
+      onSubmissionStart: handleSubmissionStart,
+      onSubmissionError: handleSubmissionError,
+    })
+    if (feedbackSelection && accepted && !submissionStarted) handleSubmissionStart()
+    if (!accepted) handleSubmissionError()
     return accepted
   }
 

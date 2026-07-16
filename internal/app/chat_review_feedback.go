@@ -85,6 +85,24 @@ func (s *ChatAppService) resolveReviewFeedback(runtime ideChatRuntime, req *agen
 	return nil
 }
 
+func (s *ChatAppService) consumeResolvedReviewFeedback(runtime ideChatRuntime, req agent.ChatRequest) error {
+	if req.ResolvedReviewFeedback.Empty() {
+		return nil
+	}
+	if runtime.sess == nil || strings.TrimSpace(runtime.sess.ID) == "" {
+		return invalidReviewFeedbackError("the active session identity is unavailable", nil)
+	}
+	return s.app.WithWorkspaceChangeService(runtime.workspace, func(service *workspacechange.Service) error {
+		_, err := service.ConsumeReviewComments(
+			context.Background(),
+			req.ResolvedReviewFeedback.ReviewThreadID,
+			runtime.sess.ID,
+			req.ReviewFeedback.CommentIDs,
+		)
+		return err
+	})
+}
+
 func normalizeReviewFeedbackCommentIDs(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := make(map[string]bool, len(values))

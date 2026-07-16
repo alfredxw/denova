@@ -303,6 +303,15 @@ func (s *Service) applyEvent(event ledgerEvent) error {
 		comment := *event.Comment
 		s.comments[comment.ID] = &comment
 		s.refreshGroup(comment.GroupID)
+	case eventCommentsUpserted:
+		if len(event.Comments) == 0 {
+			return errors.New("comments event is missing comments")
+		}
+		for i := range event.Comments {
+			comment := event.Comments[i]
+			s.comments[comment.ID] = &comment
+			s.refreshGroup(comment.GroupID)
+		}
 	case eventHistoryState:
 		s.applyHistoryState(event.GroupID, event.HistoryState)
 	case eventOperationPrepared:

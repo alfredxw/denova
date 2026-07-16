@@ -1,7 +1,7 @@
 import type { ChatTransport, UIMessage } from 'ai'
 import { DefaultChatTransport } from 'ai'
 import { fetchAPI } from './api-client/client'
-import type { ChatMessage } from './api-client/types'
+import type { ChatMessage, UserMessageReference } from './api-client/types'
 
 export interface AgentMessageMetadata {
   created_at?: string
@@ -25,6 +25,7 @@ export interface AgentMessageMetadata {
   navigation_turn_id?: string
   turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
   turn_version_index?: number
+  user_references?: UserMessageReference[]
 }
 
 type AgentDataPayload = Record<string, unknown>

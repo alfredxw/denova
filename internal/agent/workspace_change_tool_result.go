@@ -27,6 +27,40 @@ type workspaceChangeEditReceipt struct {
 	Replacements int    `json:"replacements"`
 }
 
+type workspaceChangeToolModelReceipt struct {
+	Schema         string `json:"schema"`
+	Status         string `json:"status"`
+	Workspace      string `json:"workspace"`
+	ChangeGroupID  string `json:"change_group_id"`
+	ReviewThreadID string `json:"review_thread_id,omitempty"`
+	ChangeSetID    string `json:"change_set_id"`
+	Path           string `json:"path"`
+	ReviewStatus   string `json:"review_status"`
+	ApplyState     string `json:"apply_state"`
+}
+
+func workspaceChangeToolResultForModel(toolName, content string) string {
+	receipt, ok := parseWorkspaceChangeToolReceipt(toolName, content)
+	if !ok {
+		return content
+	}
+	public, err := json.Marshal(workspaceChangeToolModelReceipt{
+		Schema:         receipt.Schema,
+		Status:         receipt.Status,
+		Workspace:      receipt.Workspace,
+		ChangeGroupID:  receipt.ChangeGroupID,
+		ReviewThreadID: receipt.ReviewThreadID,
+		ChangeSetID:    receipt.ChangeSetID,
+		Path:           receipt.Path,
+		ReviewStatus:   receipt.ReviewStatus,
+		ApplyState:     receipt.ApplyState,
+	})
+	if err != nil {
+		return content
+	}
+	return string(public)
+}
+
 func parseWorkspaceChangeToolReceipt(toolName, content string) (workspaceChangeToolReceipt, bool) {
 	if !isWorkspaceChangeReceiptTool(toolName) {
 		return workspaceChangeToolReceipt{}, false

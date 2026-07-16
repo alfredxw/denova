@@ -614,7 +614,7 @@ export function InputArea({
                   type="button"
                   size="icon-sm"
                   className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                  disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0 && !(agentKey && workspace)}
+                  disabled={!onTogglePlanMode && !writingSkillControl && !onContextAnalyze && tokenUsageMessages.length === 0}
                   aria-label={t('chat.input.actions')}
                   title={t('chat.input.actions')}
                 >
@@ -639,7 +639,6 @@ export function InputArea({
                   </>
                 ) : null}
                 {writingSkillControl}
-                <ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled} />
                 <DropdownMenuItem
                   onSelect={() => setTokenUsageOpen(true)}
                   className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
@@ -672,6 +671,7 @@ export function InputArea({
             <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
           </>
         }
+        toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled} />}
         submitControl={
           <Button
             type="button"

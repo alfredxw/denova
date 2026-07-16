@@ -31,6 +31,7 @@ import { ReviewUtilityTab } from './ReviewUtilityTab'
 import type { ReviewDiffLayout } from './monaco/review-editor-adapter'
 import { Utf8OffsetIndex } from './monaco/utf8-offset-index'
 import { projectReviewGroupFiles } from './review-group-projection'
+import type { ChangeReviewScopeRequest } from '../use-writing-change-review'
 import './review-diff.css'
 
 const REVIEW_LAYOUT_STORAGE_KEY = 'nova:change-review-layout'
@@ -39,6 +40,7 @@ const REVIEW_SCOPE_THREAD = 'thread'
 interface ChangeReviewWorkspaceProps {
   workspace: string
   threadID: string
+  scopeRequest?: ChangeReviewScopeRequest | null
   /** Prevents mutating a review thread while its Agent run is still appending changes. */
   disabled?: boolean
   selectedPath?: string | null
@@ -48,6 +50,7 @@ interface ChangeReviewWorkspaceProps {
   onOpenFile?: (path: string) => void | Promise<void>
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
   onFeedbackCommentsChange?: (threadID: string, comments: WorkspaceChangeComment[]) => void
+  hiddenCommentIDs?: ReadonlySet<string>
 }
 
 type ReviewVariables = {
@@ -69,7 +72,7 @@ type CommentVariables =
   | { action: 'delete'; workspace: string; comment: WorkspaceChangeComment }
 
 /** Full-width, server-projected review surface rendered in the central editor region. */
-export function ChangeReviewWorkspace({ workspace, threadID, disabled = false, selectedPath, agentVisible = false, onToggleAgent, onClose, onOpenFile, onWorkspaceChanged, onFeedbackCommentsChange }: ChangeReviewWorkspaceProps) {
+export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disabled = false, selectedPath, agentVisible = false, onToggleAgent, onClose, onOpenFile, onWorkspaceChanged, onFeedbackCommentsChange, hiddenCommentIDs }: ChangeReviewWorkspaceProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const threadQuery = useWorkspaceChangeReviewThread(workspace, threadID)
@@ -88,7 +91,8 @@ export function ChangeReviewWorkspace({ workspace, threadID, disabled = false, s
   const reviewFiles = useMemo(() => selectedScopeID === REVIEW_SCOPE_THREAD
     ? (thread?.files ?? [])
     : projectReviewGroupFiles(historicalGroup), [historicalGroup, selectedScopeID, thread?.files])
-  const reviewComments = selectedScopeID === REVIEW_SCOPE_THREAD ? (thread?.comments ?? []) : (historicalGroup?.comments ?? [])
+  const reviewComments = (selectedScopeID === REVIEW_SCOPE_THREAD ? (thread?.comments ?? []) : (historicalGroup?.comments ?? []))
+    .filter((comment) => !hiddenCommentIDs?.has(comment.id))
   const activeWorkspaceRef = useRef(workspace)
   const feedbackCallbackRef = useRef(onFeedbackCommentsChange)
   const reviewScrollRef = useRef<HTMLDivElement | null>(null)
@@ -96,6 +100,7 @@ export function ChangeReviewWorkspace({ workspace, threadID, disabled = false, s
   const scrollFrameRef = useRef<number | null>(null)
   const jumpFrameRef = useRef<number | null>(null)
   const pendingJumpPathRef = useRef('')
+  const appliedScopeRequestRef = useRef(0)
   activeWorkspaceRef.current = workspace
   feedbackCallbackRef.current = onFeedbackCommentsChange
 
@@ -114,8 +119,16 @@ export function ChangeReviewWorkspace({ workspace, threadID, disabled = false, s
     setCommentDraftPaths(new Set())
     setCollapsedPaths(new Set())
     setNavigatorVisible(true)
+    appliedScopeRequestRef.current = 0
     fileSectionRefs.current.clear()
   }, [threadID, workspace])
+
+  useEffect(() => {
+    if (!scopeRequest || scopeRequest.threadID !== threadID || appliedScopeRequestRef.current === scopeRequest.id) return
+    if (scopeRequest.groupID && !thread?.groups.some((group) => group.id === scopeRequest.groupID)) return
+    appliedScopeRequestRef.current = scopeRequest.id
+    setSelectedScopeID(scopeRequest.groupID || REVIEW_SCOPE_THREAD)
+  }, [scopeRequest, thread?.groups, threadID])
 
   useEffect(() => {
     setActivePath('')

@@ -114,8 +114,11 @@ describe('ReviewEditorAdapter', () => {
     expect(decorations).toEqual(expect.arrayContaining([
       expect.objectContaining({ options: expect.objectContaining({ marginClassName: 'nova-review-diff-margin-removed' }) }),
       expect.objectContaining({ options: expect.objectContaining({ marginClassName: 'nova-review-diff-margin-added' }) }),
-      expect.objectContaining({ options: expect.objectContaining({ inlineClassName: 'nova-review-diff-word-removed' }) }),
-      expect.objectContaining({ options: expect.objectContaining({ inlineClassName: 'nova-review-diff-word-added' }) }),
+      expect.objectContaining({ options: expect.objectContaining({ className: 'nova-review-diff-word-removed' }) }),
+      expect.objectContaining({ options: expect.objectContaining({ className: 'nova-review-diff-word-added' }) }),
+    ]))
+    expect(decorations).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ options: expect.objectContaining({ inlineClassName: expect.stringContaining('nova-review-diff-word-') }) }),
     ]))
     adapter.dispose()
   })

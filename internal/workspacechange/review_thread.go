@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 )
 
 // GetReviewThread derives a cross-run review projection without changing the
@@ -197,6 +198,45 @@ func (s *Service) GetReviewComments(ctx context.Context, threadID, sessionID str
 		return nil, err
 	}
 
+	return s.reviewCommentsLocked(threadID, sessionID, commentIDs)
+}
+
+// ConsumeReviewComments atomically marks one validated feedback batch deleted
+// after its durable user message has been committed.
+func (s *Service) ConsumeReviewComments(ctx context.Context, threadID, sessionID string, commentIDs []string) ([]Comment, error) {
+	if s == nil {
+		return nil, newError(ErrorCodeConflict, "change service is nil", nil)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.contextError(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.reconcilePendingDurabilityLocked(); err != nil {
+		return nil, err
+	}
+	resolved, err := s.reviewCommentsLocked(threadID, sessionID, commentIDs)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	consumed := make([]Comment, 0, len(resolved))
+	for _, item := range resolved {
+		comment := item.Comment
+		comment.Deleted = true
+		comment.UpdatedAt = now
+		consumed = append(consumed, comment)
+	}
+	if len(consumed) == 0 {
+		return nil, nil
+	}
+	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, Comments: consumed}); err != nil {
+		return nil, err
+	}
+	return consumed, nil
+}
+
+func (s *Service) reviewCommentsLocked(threadID, sessionID string, commentIDs []string) ([]ReviewFeedbackComment, error) {
 	threadID = strings.TrimSpace(threadID)
 	sessionID = strings.TrimSpace(sessionID)
 	groups := s.reviewThreadGroupsLocked(threadID)

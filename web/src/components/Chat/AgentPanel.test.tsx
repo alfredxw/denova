@@ -215,13 +215,24 @@ describe('AgentPanel', () => {
     })
   })
 
-  it('只在审阅意见被 Agent 请求成功受理后清空反馈托盘', async () => {
+  it('发送开始时移走审阅意见，并在请求失败时恢复', async () => {
     const user = userEvent.setup()
-    const handleSend = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+    const handleSend = vi.fn()
+      .mockImplementationOnce(async (_message, options) => {
+        options?.onSubmissionStart?.()
+        options?.onSubmissionError?.()
+        return false
+      })
+      .mockImplementationOnce(async (_message, options) => {
+        options?.onSubmissionStart?.()
+        return true
+      })
     const handleSubmitted = vi.fn()
+    const handleSubmissionFailed = vi.fn()
     renderAgentPanel({
       onSend: handleSend,
       onReviewFeedbackSubmitted: handleSubmitted,
+      onReviewFeedbackSubmissionFailed: handleSubmissionFailed,
       reviewFeedback: {
         reviewThreadId: 'thread-1',
         comments: [{ id: 'comment-1', group_id: 'group-1', body: '把这里写得更克制' }],
@@ -230,10 +241,12 @@ describe('AgentPanel', () => {
 
     await user.click(screen.getByRole('button', { name: '发送' }))
     await waitFor(() => expect(handleSend).toHaveBeenCalledTimes(1))
-    expect(handleSubmitted).not.toHaveBeenCalled()
+    expect(handleSubmitted).toHaveBeenCalledTimes(1)
+    expect(handleSubmissionFailed).toHaveBeenCalledTimes(1)
 
     await user.click(screen.getByRole('button', { name: '发送' }))
-    await waitFor(() => expect(handleSubmitted).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(handleSubmitted).toHaveBeenCalledTimes(2))
+    expect(handleSubmissionFailed).toHaveBeenCalledTimes(1)
   })
 
   it('在超过单次评论上限时保留反馈并阻止发送', async () => {

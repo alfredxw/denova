@@ -14,7 +14,7 @@ interface AgentChangeSummaryCardProps {
   workspace: string
   summary: WorkspaceChangeGroupSummary
   disabled?: boolean
-  onReview: (reviewThreadID: string) => void
+  onReview: (reviewThreadID: string, groupID: string) => void
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
 }
 
@@ -107,7 +107,7 @@ export function AgentChangeSummaryCard({ workspace, summary, disabled = false, o
           {undoMutation.isPending ? <Loader2 className="animate-spin" /> : <RotateCcw />}
           {t('changes.undo')}
         </Button>
-        <Button type="button" size="sm" variant="outline" onClick={() => onReview(reviewThreadID)} className="shrink-0">
+        <Button type="button" size="sm" variant="outline" onClick={() => onReview(reviewThreadID, summary.id)} className="shrink-0">
           {t('changes.review')}
         </Button>
       </header>
@@ -118,7 +118,7 @@ export function AgentChangeSummaryCard({ workspace, summary, disabled = false, o
             <button
               key={file.path}
               type="button"
-              onClick={() => onReview(reviewThreadID)}
+              onClick={() => onReview(reviewThreadID, summary.id)}
               className="flex w-full items-center gap-3 border-b border-[var(--nova-border-soft)] px-3 py-2 text-left last:border-b-0 hover:bg-[var(--nova-hover)]"
             >
               <span className="min-w-0 flex-1 truncate">{file.path}</span>

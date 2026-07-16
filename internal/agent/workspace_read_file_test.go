@@ -14,7 +14,7 @@ import (
 	"denova/internal/workspacechange"
 )
 
-func TestWorkspaceReadFileToolReturnsFullRevisionForPartialWindow(t *testing.T) {
+func TestWorkspaceReadFileToolReturnsPartialWindowWithoutRevision(t *testing.T) {
 	content := "first\nsecond\nthird\nfourth"
 	path := writeTempFile(t, content)
 	base, err := newWorkspaceReadFileTool(newTestAgentFilesystemBackend(t))
@@ -33,11 +33,18 @@ func TestWorkspaceReadFileToolReturnsFullRevisionForPartialWindow(t *testing.T) 
 	if err := json.Unmarshal([]byte(metadataLine), &metadata); err != nil {
 		t.Fatal(err)
 	}
-	if metadata.Schema != workspaceReadFileResultSchema || metadata.RevisionScope != "full_file" {
+	if metadata.Schema != workspaceReadFileResultSchema || metadata.Offset != 2 || metadata.Limit != 1 {
 		t.Fatalf("unexpected read metadata: %#v", metadata)
 	}
-	if metadata.Revision != workspacechange.Revision([]byte(content)) {
-		t.Fatalf("partial read revision = %q, want full-file %q", metadata.Revision, workspacechange.Revision([]byte(content)))
+	var rawMetadata map[string]any
+	if err := json.Unmarshal([]byte(metadataLine), &rawMetadata); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := rawMetadata["revision"]; ok {
+		t.Fatalf("read_file exposed internal revision: %s", metadataLine)
+	}
+	if _, ok := rawMetadata["revision_scope"]; ok {
+		t.Fatalf("read_file exposed revision metadata: %s", metadataLine)
 	}
 	if !strings.Contains(body, "     2\tsecond") || strings.Contains(body, "first") || strings.Contains(body, "third") {
 		t.Fatalf("partial cat-n selection mismatch: %q", body)
@@ -64,26 +71,10 @@ func TestWorkspaceReadFileToolPreservesDefaultWindowSchema(t *testing.T) {
 	}
 }
 
-func TestWorkspaceReadRevisionRejectsStaleAgentEdit(t *testing.T) {
+func TestWorkspaceEditFileUsesCurrentRevisionWithoutReadDependency(t *testing.T) {
 	workspace := t.TempDir()
 	path := filepath.Join(workspace, "ideas.md")
 	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	readTool, err := newWorkspaceReadFileTool(newTestAgentFilesystemBackend(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := readTool.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"`+path+`"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	metadataLine, _, ok := strings.Cut(result, "\n")
-	if !ok {
-		t.Fatalf("read result has no metadata line: %q", result)
-	}
-	var metadata workspaceReadFileMetadata
-	if err := json.Unmarshal([]byte(metadataLine), &metadata); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte("manual update"), 0o644); err != nil {
@@ -97,16 +88,16 @@ func TestWorkspaceReadRevisionRejectsStaleAgentEdit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = editTool.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"`+path+`","base_revision":"`+metadata.Revision+`","edits":[{"old_string":"original","new_string":"agent update"}]}`)
-	if err == nil {
-		t.Fatal("stale read revision should reject edit_file")
+	_, err = editTool.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","edits":[{"old_string":"manual update","new_string":"agent update"}]}`)
+	if err != nil {
+		t.Fatal(err)
 	}
 	content, readErr := os.ReadFile(path)
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	if string(content) != "manual update" {
-		t.Fatalf("stale Agent edit overwrote manual content: %q", content)
+	if string(content) != "agent update" {
+		t.Fatalf("edit_file did not apply against its current snapshot: %q", content)
 	}
 }
 

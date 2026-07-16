@@ -14,6 +14,7 @@ describe('review editor DOM integration', () => {
     const focus = vi.spyOn(editContext, 'focus')
     const codeEditor = {
       getDomNode: () => root,
+      hasTextFocus: () => false,
       getTargetAtClientPoint: vi.fn(() => ({ position })),
       setPosition: vi.fn(),
     } as unknown as editor.IStandaloneCodeEditor
@@ -46,6 +47,25 @@ describe('review editor DOM integration', () => {
     input.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
 
     expect(codeEditor.getTargetAtClientPoint).not.toHaveBeenCalled()
+    disposable.dispose()
+  })
+
+  it('leaves pointer selection gestures to Monaco after the editor has text focus', () => {
+    const root = document.createElement('div')
+    const line = document.createElement('span')
+    root.append(line)
+    const codeEditor = {
+      getDomNode: () => root,
+      hasTextFocus: () => true,
+      getTargetAtClientPoint: vi.fn(),
+      setPosition: vi.fn(),
+    } as unknown as editor.IStandaloneCodeEditor
+
+    const disposable = installReviewEditorPointerFocus(codeEditor)
+    line.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 320, clientY: 480 }))
+
+    expect(codeEditor.getTargetAtClientPoint).not.toHaveBeenCalled()
+    expect(codeEditor.setPosition).not.toHaveBeenCalled()
     disposable.dispose()
   })
 

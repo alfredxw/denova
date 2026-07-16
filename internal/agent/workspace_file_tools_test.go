@@ -16,6 +16,10 @@ import (
 
 type recordingWorkspaceChangeService struct {
 	workspace      string
+	readCalls      int
+	readPath       string
+	readRevision   string
+	readErr        error
 	applyCalls     int
 	replaceCalls   int
 	applyRequest   workspacechange.ApplyEditsRequest
@@ -26,6 +30,19 @@ type recordingWorkspaceChangeService struct {
 
 func (s *recordingWorkspaceChangeService) Workspace() string {
 	return s.workspace
+}
+
+func (s *recordingWorkspaceChangeService) ReadFile(path string) (string, string, error) {
+	s.readCalls++
+	s.readPath = path
+	if s.readErr != nil {
+		return "", "", s.readErr
+	}
+	revision := s.readRevision
+	if revision == "" {
+		revision = "sha256:current"
+	}
+	return "", revision, nil
 }
 
 func (s *recordingWorkspaceChangeService) ApplyEdits(_ context.Context, request workspacechange.ApplyEditsRequest) (workspacechange.ChangeSet, error) {
@@ -41,7 +58,7 @@ func (s *recordingWorkspaceChangeService) ReplaceFile(_ context.Context, request
 }
 
 func TestWorkspaceEditFileToolBatchesOneFileAndReturnsBoundedReceipt(t *testing.T) {
-	service := &recordingWorkspaceChangeService{workspace: t.TempDir(), changeSet: workspacechange.ChangeSet{
+	service := &recordingWorkspaceChangeService{workspace: t.TempDir(), readRevision: "sha256:before", changeSet: workspacechange.ChangeSet{
 		ID:            "change-1",
 		GroupID:       "run-1",
 		Path:          "chapters/ch01.md",
@@ -74,7 +91,6 @@ func TestWorkspaceEditFileToolBatchesOneFileAndReturnsBoundedReceipt(t *testing.
 	ctx := ContextWithRunObserver(context.Background(), observer)
 	result, err := invokable.InvokableRun(ctx, `{
         "file_path":"chapters/ch01.md",
-        "base_revision":"sha256:before",
         "edits":[
           {"id":"opening","old_string":"old 1","new_string":"new 1"},
           {"id":"ending","old_string":"old 2","new_string":"new 2","replace_all":true}
@@ -83,7 +99,7 @@ func TestWorkspaceEditFileToolBatchesOneFileAndReturnsBoundedReceipt(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if service.applyRequest.Path != "chapters/ch01.md" || service.applyRequest.BaseRevision != "sha256:before" {
+	if service.readCalls != 1 || service.readPath != "chapters/ch01.md" || service.applyRequest.Path != "chapters/ch01.md" || service.applyRequest.BaseRevision != "sha256:before" {
 		t.Fatalf("unexpected request: %#v", service.applyRequest)
 	}
 	if len(service.applyRequest.Edits) != 2 || !service.applyRequest.Edits[1].ReplaceAll {
@@ -143,13 +159,13 @@ func TestWorkspaceEditFileToolPublishesBatchSchema(t *testing.T) {
 	if err := json.Unmarshal(data, &encoded); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"file_path", "base_revision", "edits"} {
+	for _, name := range []string{"file_path", "edits"} {
 		if _, ok := encoded.JSONSchema.Properties[name]; !ok {
 			t.Fatalf("batch edit schema is missing root property %q: %s", name, data)
 		}
 	}
-	if !containsStringValue(encoded.JSONSchema.Required, "base_revision") {
-		t.Fatalf("batch edit schema does not require base_revision: %s", data)
+	if _, ok := encoded.JSONSchema.Properties["base_revision"]; ok || containsStringValue(encoded.JSONSchema.Required, "base_revision") {
+		t.Fatalf("batch edit schema exposes internal base_revision: %s", data)
 	}
 	for _, legacy := range []string{"old_string", "new_string", "replace_all"} {
 		if _, ok := encoded.JSONSchema.Properties[legacy]; ok {
@@ -168,7 +184,7 @@ func containsStringValue(values []string, target string) bool {
 }
 
 func TestWorkspaceWriteFileToolUsesChangeService(t *testing.T) {
-	service := &recordingWorkspaceChangeService{workspace: t.TempDir(), changeSet: workspacechange.ChangeSet{
+	service := &recordingWorkspaceChangeService{workspace: t.TempDir(), readRevision: "sha256:before", changeSet: workspacechange.ChangeSet{
 		ID:           "change-write",
 		GroupID:      "group-write",
 		Path:         "ideas.md",
@@ -181,11 +197,11 @@ func TestWorkspaceWriteFileToolUsesChangeService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := base.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","content":"new","base_revision":"sha256:before"}`)
+	result, err := base.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","content":"new"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if service.replaceRequest.Path != "ideas.md" || service.replaceRequest.Content != "new" || service.replaceRequest.BaseRevision != "sha256:before" {
+	if service.readCalls != 1 || service.readPath != "ideas.md" || service.replaceRequest.Path != "ideas.md" || service.replaceRequest.Content != "new" || service.replaceRequest.BaseRevision != "sha256:before" {
 		t.Fatalf("unexpected replace request: %#v", service.replaceRequest)
 	}
 	if !strings.Contains(result, `"change_set_id":"change-write"`) {
@@ -193,7 +209,7 @@ func TestWorkspaceWriteFileToolUsesChangeService(t *testing.T) {
 	}
 }
 
-func TestWorkspaceWriteFileToolRequiresBaseRevisionInSchema(t *testing.T) {
+func TestWorkspaceWriteFileToolHidesBaseRevisionFromSchema(t *testing.T) {
 	base, err := newWorkspaceWriteFileTool(&recordingWorkspaceChangeService{workspace: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
@@ -208,14 +224,15 @@ func TestWorkspaceWriteFileToolRequiresBaseRevisionInSchema(t *testing.T) {
 	}
 	var encoded struct {
 		JSONSchema struct {
-			Required []string `json:"required"`
+			Properties map[string]json.RawMessage `json:"properties"`
+			Required   []string                   `json:"required"`
 		} `json:"json_schema"`
 	}
 	if err := json.Unmarshal(data, &encoded); err != nil {
 		t.Fatal(err)
 	}
-	if !containsStringValue(encoded.JSONSchema.Required, "base_revision") {
-		t.Fatalf("write schema does not require base_revision: %s", data)
+	if _, ok := encoded.JSONSchema.Properties["base_revision"]; ok || containsStringValue(encoded.JSONSchema.Required, "base_revision") {
+		t.Fatalf("write schema exposes internal base_revision: %s", data)
 	}
 }
 
@@ -240,7 +257,6 @@ func TestWorkspaceEditFileToolLeavesFileUntouchedWhenOneBatchEditFails(t *testin
 	}
 	_, err = base.(tool.InvokableTool).InvokableRun(context.Background(), `{
 	        "file_path":"chapters/ch01.md",
-	        "base_revision":"`+workspacechange.Revision([]byte(original))+`",
 	        "edits":[
           {"id":"valid","old_string":"opening","new_string":"new opening"},
           {"id":"missing","old_string":"not present","new_string":"replacement"}
@@ -298,44 +314,76 @@ func TestDurabilityPendingToolErrorIsRetryableAndReportsVisibleMutation(t *testi
 	}
 }
 
-func TestWorkspaceFileToolsRequireReadRevisionBeforeCallingService(t *testing.T) {
-	service := &recordingWorkspaceChangeService{workspace: t.TempDir()}
+func TestWorkspaceFileToolsResolveCurrentRevisionWithoutModelInput(t *testing.T) {
+	service := &recordingWorkspaceChangeService{workspace: t.TempDir(), readRevision: "sha256:current"}
 	edit, err := newWorkspaceEditFileTool(service)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := edit.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","edits":[{"old_string":"a","new_string":"b"}]}`); err == nil {
-		t.Fatal("edit_file without base_revision should fail")
+	if _, err := edit.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","edits":[{"old_string":"a","new_string":"b"}]}`); err != nil {
+		t.Fatal(err)
 	}
-	if service.applyCalls != 0 {
-		t.Fatalf("edit service was called %d times without a revision", service.applyCalls)
+	if service.applyCalls != 1 || service.applyRequest.BaseRevision != "sha256:current" {
+		t.Fatalf("edit_file did not resolve the current revision: %#v", service.applyRequest)
 	}
 
 	write, err := newWorkspaceWriteFileTool(service)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := write.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","content":"new"}`); err == nil {
-		t.Fatal("write_file without base_revision should fail")
+	if _, err := write.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","content":"new"}`); err != nil {
+		t.Fatal(err)
 	}
-	if service.replaceCalls != 0 {
-		t.Fatalf("write service was called %d times without a revision", service.replaceCalls)
+	if service.replaceCalls != 1 || service.replaceRequest.BaseRevision != "sha256:current" || service.readCalls != 2 {
+		t.Fatalf("write_file did not resolve the current revision: %#v", service.replaceRequest)
 	}
 }
 
-func TestWorkspaceWriteFileToolUsesMissingRevisionForIntentionalCreate(t *testing.T) {
-	service := &recordingWorkspaceChangeService{workspace: t.TempDir(), changeSet: workspacechange.ChangeSet{
+func TestWorkspaceWriteFileToolDetectsMissingFileInternally(t *testing.T) {
+	service := &recordingWorkspaceChangeService{workspace: t.TempDir(), readErr: &workspacechange.Error{
+		Code: workspacechange.ErrorCodeNotFound, Message: "workspace file not found",
+	}, changeSet: workspacechange.ChangeSet{
 		ID: "created", GroupID: "group", Path: "new.md", BaseRevision: "missing", Revision: "sha256:after",
 	}}
 	write, err := newWorkspaceWriteFileTool(service)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := write.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"new.md","content":"new","base_revision":"missing"}`); err != nil {
+	if _, err := write.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"new.md","content":"new"}`); err != nil {
 		t.Fatal(err)
 	}
 	if service.replaceCalls != 1 || service.replaceRequest.BaseRevision != "missing" {
-		t.Fatalf("intentional create did not preserve missing CAS: %#v", service.replaceRequest)
+		t.Fatalf("create did not derive missing CAS internally: %#v", service.replaceRequest)
+	}
+}
+
+func TestWorkspaceChangeErrorHidesInternalRevisionsFromAgent(t *testing.T) {
+	err := &workspacechange.Error{
+		Code:    workspacechange.ErrorCodeRevisionConflict,
+		Message: "workspace file revision changed",
+		Details: map[string]any{
+			"path":              "chapters/ch01.md",
+			"expected_revision": "sha256:before",
+			"actual_revision":   "sha256:after",
+		},
+	}
+	message, ok := formatWorkspaceChangeToolError("edit_file", err)
+	if !ok {
+		t.Fatal("workspace change error should be recognized")
+	}
+	if strings.Contains(message, "expected_revision") || strings.Contains(message, "actual_revision") || strings.Contains(message, "sha256:") {
+		t.Fatalf("tool error exposed internal revisions: %s", message)
+	}
+}
+
+func TestWorkspaceChangeReceiptHidesInternalRevisionsFromModel(t *testing.T) {
+	raw := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/ch01.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied"}`
+	filtered := FilterToolResultForModel("edit_file", `{"file_path":"chapters/ch01.md","edits":[]}`, raw)
+	if !strings.Contains(filtered.Content, `"change_set_id":"change-1"`) {
+		t.Fatalf("model receipt lost public change identity: %s", filtered.Content)
+	}
+	if strings.Contains(filtered.Content, "base_revision") || strings.Contains(filtered.Content, `"revision"`) || strings.Contains(filtered.Content, "sha256:") {
+		t.Fatalf("model receipt exposed internal revisions: %s", filtered.Content)
 	}
 }
 

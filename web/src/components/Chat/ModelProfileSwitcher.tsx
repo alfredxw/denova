@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, Cpu, Loader2 } from 'lucide-react'
+import { Check, ChevronDown, Cpu, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { fetchSettings, updateUserSettings } from '@/features/settings/api'
 import type { AgentModelOverride, LayeredSettings, ModelProfileSettings, Settings } from '@/features/settings/types'
@@ -22,6 +23,7 @@ interface ModelProfileSwitcherProps {
 interface ModelProfileOption {
   id: string
   label: string
+  modelLabel: string
 }
 
 export function ModelProfileSwitcher({ agentKey, workspace, disabled = false }: ModelProfileSwitcherProps) {
@@ -30,22 +32,32 @@ export function ModelProfileSwitcher({ agentKey, workspace, disabled = false }: 
   if (!selector.enabled) return null
 
   return (
-    <>
-      <DropdownMenuSub>
-        <DropdownMenuSubTrigger
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
           disabled={disabled || !selector.settings}
-          className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+          className="nova-agent-composer-pill h-8 max-w-36 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+          aria-label={selector.t('chat.modelProfile.switch', { model: selector.currentModelLabel })}
+          title={selector.t('chat.modelProfile.switch', { model: selector.currentModelLabel })}
+          data-model-profile-trigger="true"
+          data-current-model={selector.currentModelLabel}
         >
           <Cpu className="h-3.5 w-3.5" />
-          <span className="min-w-0 flex-1">{selector.t('chat.modelProfile.action')}</span>
-          <span className="max-w-36 truncate text-[10px] text-[var(--nova-text-faint)]">{selector.currentLabel}</span>
-        </DropdownMenuSubTrigger>
-        <DropdownMenuSubContent className="w-72 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
-          <ModelProfileOptions selector={selector} />
-        </DropdownMenuSubContent>
-      </DropdownMenuSub>
-      <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
-    </>
+          <span className="min-w-0 truncate">{selector.settings ? selector.currentModelLabel : selector.t('chat.modelProfile.loading')}</span>
+          <ChevronDown className="h-3 w-3 text-[var(--nova-text-faint)]" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        side="top"
+        aria-label={selector.t('chat.modelProfile.action')}
+        className="w-72 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]"
+      >
+        <ModelProfileOptions selector={selector} />
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -57,7 +69,7 @@ interface ModelProfileSelector {
   settings: LayeredSettings | null
   options: ModelProfileOption[]
   currentProfile: string
-  currentLabel: string
+  currentModelLabel: string
   savingProfile: string | null
   error: string | null
   selectProfile: (profileID: string) => Promise<void>
@@ -105,7 +117,7 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
     () => agentKey ? resolveCurrentProfileID(settings?.effective ?? {}, agentKey, options) : 'default',
     [agentKey, options, settings?.effective],
   )
-  const currentLabel = options.find((option) => option.id === currentProfile)?.label || currentProfile
+  const currentModelLabel = options.find((option) => option.id === currentProfile)?.modelLabel || currentProfile
 
   const selectProfile = async (profileID: string) => {
     if (!agentKey || disabled || savingProfile || selectingRef.current || profileID === currentProfile) return
@@ -136,7 +148,7 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
     settings,
     options,
     currentProfile,
-    currentLabel,
+    currentModelLabel,
     savingProfile,
     error,
     selectProfile,
@@ -151,11 +163,7 @@ function ModelProfileOptions({ selector }: { selector: ModelProfileSelector }) {
         <DropdownMenuItem
           key={option.id}
           disabled={Boolean(savingProfile)}
-          onSelect={(event) => {
-            event.preventDefault()
-            void selectProfile(option.id)
-          }}
-          onClick={() => void selectProfile(option.id)}
+          onSelect={() => void selectProfile(option.id)}
           className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
         >
           {savingProfile === option.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className={`h-3.5 w-3.5 ${option.id === currentProfile ? 'opacity-100' : 'opacity-0'}`} />}
@@ -191,6 +199,7 @@ export function buildModelProfileOptions(settings: LayeredSettings | null, t: (k
   if (!profiles.has('default')) profiles.set('default', t('chat.modelProfile.defaultModel'))
   return Array.from(profiles.entries()).map(([id, label]) => ({
     id,
+    modelLabel: label,
     label: id === 'default'
       ? t('chat.modelProfile.defaultProfile', { label })
       : t('chat.modelProfile.profile', { id, label }),

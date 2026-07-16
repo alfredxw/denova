@@ -211,8 +211,7 @@ export class UnifiedReviewEditorAdapter {
         decorations.push({
           range: new this.monaco.Range(lineNumber, range.startColumn, lineNumber, range.endColumn),
           options: {
-            inlineClassName: wordClassName,
-            inlineClassNameAffectsLetterSpacing: false,
+            className: wordClassName,
             stickiness: this.monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
             zIndex: 10,
           },

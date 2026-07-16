@@ -299,17 +299,24 @@ func (s *ChatAppService) StartTaskWithError(req agent.ChatRequest) (*Task, error
 			runtimeContexts.DynamicTitle,
 			runtimeContexts.Dynamic,
 		)
+		var onUserMessageCommitted func(context.Context) error
+		if !req.ResolvedReviewFeedback.Empty() {
+			onUserMessageCommitted = func(context.Context) error {
+				return s.consumeResolvedReviewFeedback(runtime, req)
+			}
+		}
 		runtime.chatService.RunWithOptions(ctx, runner, conversation, runtime.bookService, req, agent.RunOptions{
-			AgentKind:           agent.AgentKindIDE,
-			TaskID:              task.ID(),
-			SessionID:           runtime.sess.ID,
-			ReviewThreadID:      req.ResolvedReviewFeedback.ReviewThreadID,
-			Workspace:           runtime.workspace,
-			Mode:                "ide",
-			IdleTimeout:         agentIdleTimeout(runtime.cfg),
-			ToolResultMaxBytes:  agentToolResultMaxBytes(runtime.cfg),
-			SystemPromptLog:     agent.BuildInstructionComposition(&runtime.cfg, runtime.state, runtime.ideTeller),
-			OnMutationsVerified: a.automationMutationCallback("ide_agent_post_run"),
+			AgentKind:              agent.AgentKindIDE,
+			TaskID:                 task.ID(),
+			SessionID:              runtime.sess.ID,
+			ReviewThreadID:         req.ResolvedReviewFeedback.ReviewThreadID,
+			Workspace:              runtime.workspace,
+			Mode:                   "ide",
+			IdleTimeout:            agentIdleTimeout(runtime.cfg),
+			ToolResultMaxBytes:     agentToolResultMaxBytes(runtime.cfg),
+			SystemPromptLog:        agent.BuildInstructionComposition(&runtime.cfg, runtime.state, runtime.ideTeller),
+			OnMutationsVerified:    a.automationMutationCallback("ide_agent_post_run"),
+			OnUserMessageCommitted: onUserMessageCommitted,
 		}, emit)
 		if runtime.versionService != nil && hasBeforeVersionState {
 			settings := book.DefaultVersionAutoSettings()

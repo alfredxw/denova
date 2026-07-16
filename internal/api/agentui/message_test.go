@@ -10,7 +10,7 @@ import (
 func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 	createdAt := time.Date(2026, 7, 8, 12, 0, 0, 0, time.UTC)
 	entries := []session.HistoryEntry{
-		{ID: "user-1", Role: "user", Content: "你好", CreatedAt: createdAt},
+		{ID: "user-1", Role: "user", Content: "你好", CreatedAt: createdAt, UserReferences: []session.UserMessageReference{{Kind: "file", Label: "chapters/ch01.md"}}},
 		{ID: "assistant-1", Role: "assistant", Content: "回复", RunID: "run-1"},
 		{ID: "thinking-1", Role: "thinking", Content: "思考"},
 		{ID: "tool-1", Role: "tool_call", Name: "read_file", Args: `{"path":"a.md"}`, Status: "success", Result: "ok"},
@@ -48,6 +48,10 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 
 	if messages[1].Metadata["run_id"] != "run-1" {
 		t.Fatalf("expected run metadata to be preserved, got %#v", messages[1].Metadata)
+	}
+	userReferences, ok := messages[0].Metadata["user_references"].([]session.UserMessageReference)
+	if !ok || len(userReferences) != 1 || userReferences[0].Label != "chapters/ch01.md" {
+		t.Fatalf("expected user reference metadata to be preserved, got %#v", messages[0].Metadata)
 	}
 	if messages[6].Parts[0]["data"].(map[string]any)["total_tokens"] != 12 {
 		t.Fatalf("expected token usage payload, got %#v", messages[6].Parts[0]["data"])

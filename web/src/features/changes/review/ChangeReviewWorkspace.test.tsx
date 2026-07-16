@@ -266,6 +266,57 @@ describe('ChangeReviewWorkspace', () => {
     expect(scopeButton()).toHaveTextContent(/第 1 轮修改|Agent edit 1/i)
   })
 
+  it('opens directly on the Agent change group requested by its summary card', async () => {
+    const historical = reviewGroup()
+    const secondHistorical: WorkspaceChangeGroup = {
+      ...reviewGroup(),
+      id: 'group-2',
+      review_status: 'pending',
+      change_sets: reviewGroup().change_sets.map((change) => ({
+        ...change,
+        id: 'history-set-2',
+        group_id: 'group-2',
+        path: 'history/round-two.md',
+      })),
+    }
+    queryMocks.useWorkspaceChangeGroup.mockImplementation((_workspace: string, groupID: string) => (
+      groupID === historical.id
+        ? { ...emptyGroupQuery(), data: historical }
+        : groupID === secondHistorical.id
+          ? { ...emptyGroupQuery(), data: secondHistorical }
+        : emptyGroupQuery()
+    ))
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ChangeReviewWorkspace
+          workspace="/books/demo"
+          threadID="thread-1"
+          scopeRequest={{ id: 1, threadID: 'thread-1', groupID: 'group-1' }}
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => expect(queryMocks.useWorkspaceChangeGroup).toHaveBeenCalledWith('/books/demo', 'group-1'))
+    expect(await screen.findByTestId('review-diff-editor')).toHaveTextContent('history/round-one.md')
+    expect(scopeButton()).toHaveTextContent(/第 1 轮修改|Agent edit 1/i)
+
+    view.rerender(
+      <QueryClientProvider client={queryClient}>
+        <ChangeReviewWorkspace
+          workspace="/books/demo"
+          threadID="thread-1"
+          scopeRequest={{ id: 2, threadID: 'thread-1', groupID: 'group-2' }}
+          onClose={vi.fn()}
+        />
+      </QueryClientProvider>,
+    )
+    await waitFor(() => expect(queryMocks.useWorkspaceChangeGroup).toHaveBeenCalledWith('/books/demo', 'group-2'))
+    expect(await screen.findByTestId('review-diff-editor')).toHaveTextContent('history/round-two.md')
+    expect(scopeButton()).toHaveTextContent(/第 2 轮修改|Agent edit 2/i)
+  })
+
   it('freezes the displayed snapshot while a comment draft is open and adopts refreshes after cancel', async () => {
     let currentThread = reviewThread()
     queryMocks.useWorkspaceChangeReviewThread.mockImplementation(() => ({

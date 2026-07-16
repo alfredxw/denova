@@ -24,6 +24,7 @@ const (
 	eventReviewUpdated          = "review_updated"
 	eventChangeState            = "change_state"
 	eventCommentUpserted        = "comment_upserted"
+	eventCommentsUpserted       = "comments_upserted"
 	eventHistoryState           = "history_state"
 	eventOperationPrepared      = "operation_prepared"
 	eventOperationPathApplied   = "operation_path_applied"
@@ -46,6 +47,7 @@ type ledgerEvent struct {
 	EditStatuses  map[string]string `json:"edit_statuses,omitempty"`
 	ApplyState    string            `json:"apply_state,omitempty"`
 	Comment       *Comment          `json:"comment,omitempty"`
+	Comments      []Comment         `json:"comments,omitempty"`
 	HistoryState  string            `json:"history_state,omitempty"`
 	Operation     *durableOperation `json:"operation,omitempty"`
 	OperationID   string            `json:"operation_id,omitempty"`
