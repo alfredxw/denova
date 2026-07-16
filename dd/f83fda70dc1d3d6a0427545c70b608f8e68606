@@ -1,0 +1,107 @@
+internal/agent/chat.go
+  s_23dfa1fff0cb39::t_75bb389af549ad 301-303,312-324
+internal/agent/conversation.go
+  s_23dfa1fff0cb39::t_e6aafb4e594712 25-30,72-86,150
+internal/agent/conversation_test.go
+  s_23dfa1fff0cb39::t_0b55413d523fe8 53-83
+internal/agent/run_options.go
+  s_23dfa1fff0cb39::t_82c24af88547cf 20-35
+internal/agent/user_message_references.go
+  s_23dfa1fff0cb39::t_2398795a415e00 1-55
+internal/api/agentui/message.go
+  s_23dfa1fff0cb39::t_4727946ec89f98 227-229
+internal/api/agentui/message_test.go
+  s_23dfa1fff0cb39::t_e6c504654939f6 13,52-55
+internal/app/chat_app_service.go
+  s_23dfa1fff0cb39::t_4b45c3dc051044 302-307,309-319
+internal/app/chat_review_feedback.go
+  s_23dfa1fff0cb39::t_2cde524779b165 88-105
+internal/app/chat_review_feedback_test.go
+  s_23dfa1fff0cb39::t_4ba528339990ba 63-77
+internal/session/session.go
+  s_23dfa1fff0cb39::t_b7fc11a60788a0 49,53-89,180
+internal/session/store_test.go
+  s_23dfa1fff0cb39::t_39364b7c00b0c2 133-166
+internal/session/types.go
+  s_23dfa1fff0cb39::t_e81d65e992e766 43-76,80-88
+internal/workspacechange/review_thread.go
+  s_23dfa1fff0cb39::t_43ebf7a4638baa 7,201-239
+internal/workspacechange/service.go
+  s_23dfa1fff0cb39::t_4d2856bc02a909 306-314
+internal/workspacechange/store.go
+  s_23dfa1fff0cb39::t_fe1b4c4dcc3c12 27,50
+web/src/components/Chat/AgentMessageList.test.tsx
+  s_23dfa1fff0cb39::t_549705fdfd1f55 87-113
+web/src/components/Chat/AgentPanel.test.tsx
+  s_23dfa1fff0cb39::t_16dcad470fa81e 218,220-229,231,235,244-245,248-249
+web/src/components/Chat/AgentPanel.tsx
+  s_23dfa1fff0cb39::t_917717d1435d27 32,62,79-81,130,282,290,306-330
+web/src/components/Chat/MessageItem.tsx
+  s_23dfa1fff0cb39::t_e876a59f3044d6 8,69-70,194-219
+web/src/components/Chat/ModelProfileSwitcher.tsx
+  s_a6f152691e80bb::t_a56ce65eac1fc7 2,4,6-7,10,26,35-39,41-45,48-60,72,120,151,166,202
+web/src/components/Chat/ModelProfileSwitcher.ui.test.tsx
+  s_a6f152691e80bb::t_8d3cc8b6e83333 1-78
+web/src/components/workbench/ModeRouter.tsx
+  s_23dfa1fff0cb39::t_e7a5235e9cd1fd 17,111,340,342,347-348,471,483,672-674
+web/src/features/changes/agent/AgentChangeSummaryCard.tsx
+  s_23dfa1fff0cb39::t_02993dcfc7d2dd 17,110,121
+web/src/features/changes/review/ChangeReviewWorkspace.test.tsx
+  s_23dfa1fff0cb39::t_7e6a48547f1ad1 269-319
+web/src/features/changes/review/ChangeReviewWorkspace.tsx
+  s_23dfa1fff0cb39::t_dd19d5dd76f548 34,43,53,75,94-95,103,122,126-132
+web/src/features/changes/review/monaco/review-editor-adapter.test.ts
+  s_23dfa1fff0cb39::t_d4bd3330774dec 117-121
+web/src/features/changes/review/monaco/review-editor-dom.test.ts
+  s_23dfa1fff0cb39::t_176449b0be8c7d 17,53-71
+web/src/features/changes/review/monaco/review-editor-dom.ts
+  s_23dfa1fff0cb39::t_65b61f1c398232 47
+web/src/features/changes/review/monaco/unified-review-editor-adapter.ts
+  s_23dfa1fff0cb39::t_fceb167525a3e3 214
+web/src/features/changes/review/review-diff.css
+  s_23dfa1fff0cb39::t_b98314b2b7e870 155,160,174,180-199
+web/src/features/changes/use-writing-change-review.test.tsx
+  s_23dfa1fff0cb39::t_35e576f8bad33a 22,26,103,110-130
+web/src/features/changes/use-writing-change-review.ts
+  s_23dfa1fff0cb39::t_9d603f25057555 5-10,24,26,29-30,33,38,40,45,48,50-51,55,76-87,89-92,96,98,103-104
+web/src/hooks/useAgentChat.test.tsx
+  s_23dfa1fff0cb39::t_d24a6fb394edf0 1-116
+web/src/hooks/useAgentChat.ts
+  s_23dfa1fff0cb39::t_4d39dc6888c2db 17,47-52,76,190-193,246-247,249,251-254,257-263,266-272,388-426
+web/src/i18n/locales/en-US/chat.ts
+  s_a6f152691e80bb::t_4d3984d4d75917 52-56,58-59
+web/src/i18n/locales/zh-CN/chat.ts
+  s_a6f152691e80bb::t_6b47fb1e46413c 52-56,58-59
+web/src/lib/agent-message-view.ts
+  s_23dfa1fff0cb39::t_e3b88e184e96e2 329,567,571-592
+web/src/lib/agent-ui.ts
+  s_23dfa1fff0cb39::t_a24c35abee3d39 4,28
+web/src/lib/api-client/types.ts
+  s_23dfa1fff0cb39::t_461b5827c536de 66-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ddf83fda70dc1d3d6a0427545c70b608f8e68606",
+  "prompts": {},
+  "sessions": {
+    "s_23dfa1fff0cb39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f668e-f409-7b03-a47d-40e006cd9eca",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_a6f152691e80bb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6b87-f723-7970-9c5c-e370aefd2d00",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
