@@ -6,7 +6,13 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { InlineCommentThread } from '@/components/review/InlineCommentThread'
 import type { CreateDocumentCommentRequest, DocumentReviewAnchor, DocumentReviewComment } from '@/features/document-review/types'
-import { commentWidgetPosition, createDocumentReviewAnchor, type DocumentReviewSnapshot, type EditorReviewRange } from './documentReviewAnchors'
+import {
+  captureDocumentReviewSelection,
+  commentWidgetPosition,
+  createDocumentReviewAnchor,
+  type DocumentReviewSnapshot,
+  type EditorReviewRange,
+} from './documentReviewAnchors'
 import { documentReviewPluginKey, type DocumentReviewDecoration, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 import { documentReviewRangeAtCoordinates } from './documentReviewHover'
 
@@ -68,16 +74,30 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
   const startDraft = useCallback(async (range: EditorReviewRange) => {
     if (preparing) return
     const request = ++preparationRequestRef.current
+    console.debug('[DocumentReviewAnnotations.startDraft] preparing document comment anchor', {
+      fileName,
+      kind: range.kind,
+      editorFrom: range.from,
+      editorTo: range.to,
+    })
     setPreparing(true)
+    setQuickAction(null)
     try {
+      const selection = captureDocumentReviewSelection(editor, range)
       const snapshot = await onPrepareSnapshot()
       if (request !== preparationRequestRef.current) return
-      const anchor = createDocumentReviewAnchor(editor, snapshot, range)
-      setDraft({ ...range, anchor, key: `draft:${range.from}:${range.to}`, body: '', submitting: false })
-      setQuickAction(null)
+      const anchor = createDocumentReviewAnchor(editor, snapshot, selection)
+      console.debug('[DocumentReviewAnnotations.startDraft] document comment anchor prepared', {
+        fileName,
+        revision: anchor.revision,
+        byteStart: anchor.start,
+        byteEnd: anchor.end,
+      })
+      // 草稿与创建后的评论共用同一分组 key：提交时 widget 宿主与 Portal 原地复用，避免闪一下
+      setDraft({ ...range, anchor, key: documentCommentAnchorKey(anchor), body: '', submitting: false })
     } catch (error) {
       if (request !== preparationRequestRef.current) return
-      console.error('准备正文审阅评论失败', { fileName, error })
+      console.error('准备正文审阅评论失败:', error instanceof Error ? error.message : String(error), { fileName, error })
       toast.error(t('editor.review.prepareFailed'))
     } finally {
       if (request === preparationRequestRef.current) setPreparing(false)
@@ -89,6 +109,8 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     if (from === to) return
     const displayQuote = editor.state.doc.textBetween(from, to, '\n').trim()
     if (!displayQuote) return
+    // 弹层打开后折叠选区，让浮动评论按钮立即消失；评论范围由审阅高亮继续标记
+    editor.chain().setTextSelection(to).run()
     void startDraft({ from, to, widgetPos: commentWidgetPosition(editor.state.doc, to), kind: 'text-range', displayQuote })
   }, [editor, startDraft])
 
@@ -255,7 +277,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
           <div className="nova-document-review-thread-anchor">
             <InlineCommentThread
               comments={group.comments}
-              quote={group.outdated || group.draft ? group.quote : undefined}
+              quote={group.outdated ? group.quote : undefined}
               anchorLabel={group.outdated ? t('editor.review.outdated') : t('editor.review.comment')}
               draft={group.draft ? {
                 body: group.draft.body,
@@ -327,7 +349,11 @@ function buildGroups(editor: Editor, comments: DocumentReviewComment[], draft: D
 }
 
 function documentCommentGroupKey(comment: DocumentReviewComment): string {
-  return `comment:${comment.anchor.revision}:${comment.anchor.start}:${comment.anchor.end}`
+  return documentCommentAnchorKey(comment.anchor)
+}
+
+function documentCommentAnchorKey(anchor: DocumentReviewAnchor): string {
+  return `comment:${anchor.revision}:${anchor.start}:${anchor.end}`
 }
 
 function mappedCommentRange(editor: Editor, key: string): { from: number; to: number } | null {

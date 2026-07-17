@@ -274,3 +274,86 @@ func TestInteractiveConversationDropsTransientIndexAndThinkingFromNextTurn(t *te
 		}
 	}
 }
+
+func TestInteractiveConversationPersistsNarrativeAnchorBeforeSubmissionTools(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	story, err := store.CreateStory(interactive.CreateStoryRequest{
+		Title:         "锚点顺序",
+		Origin:        "主角站在一扇门前。",
+		StoryTellerID: "classic",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "检查门", 800, &config.Config{})
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{Role: "thinking", Content: "先观察环境。"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-lore", Role: "tool_call", Name: "list_lore_items", Content: "list_lore_items", Status: "success"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-patches", Role: "tool_call", Name: "submit_actor_state_patches", Content: "submit_actor_state_patches", Status: "success"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-choices", Role: "tool_call", Name: "submit_choices", Content: "submit_choices", Status: "success"}); err != nil {
+		t.Fatal(err)
+	}
+	submitTestTurnResult(t, conversation, "观察门缝", "确认蓝光来源")
+	if err := conversation.AppendAssistantWithThinking("门缝里透出蓝光。", "先观察环境。"); err != nil {
+		t.Fatal(err)
+	}
+
+	if conversation.lastTurn == nil {
+		t.Fatal("回合必须已持久化")
+	}
+	events := conversation.lastTurn.DisplayEvents
+	roles := make([]string, 0, len(events))
+	for _, event := range events {
+		roles = append(roles, event.Role+":"+event.Name)
+	}
+	anchorIndex := -1
+	loreIndex := -1
+	submitIndex := -1
+	for index, event := range events {
+		switch {
+		case event.Role == interactive.DisplayEventRoleNarrative:
+			anchorIndex = index
+		case event.Name == "list_lore_items":
+			loreIndex = index
+		case event.Name == "submit_actor_state_patches":
+			submitIndex = index
+		}
+	}
+	if anchorIndex < 0 {
+		t.Fatalf("持久化的展示时间线必须包含正文锚点: %v", roles)
+	}
+	if !(loreIndex >= 0 && submitIndex >= 0 && loreIndex < anchorIndex && anchorIndex < submitIndex) {
+		t.Fatalf("正文锚点必须位于正文前工具与首个提交工具之间: %v", roles)
+	}
+}
+
+func TestWithInteractiveNarrativeAnchorFallbacks(t *testing.T) {
+	if got := withInteractiveNarrativeAnchor(nil); len(got) != 0 {
+		t.Fatalf("空事件列表不应产生锚点: %#v", got)
+	}
+
+	withoutSubmission := []interactive.DisplayEvent{
+		{Role: "thinking", Content: "思考"},
+		{ID: "call-lore", Role: "tool_call", Name: "list_lore_items"},
+	}
+	if got := withInteractiveNarrativeAnchor(withoutSubmission); len(got) != len(withoutSubmission) {
+		t.Fatalf("找不到提交工具时不应插入锚点，保持旧布局兜底: %#v", got)
+	}
+
+	anchored := []interactive.DisplayEvent{
+		{Role: "thinking", Content: "思考"},
+		{ID: interactiveNarrativeAnchorEventID, Role: interactive.DisplayEventRoleNarrative},
+		{ID: "call-patches", Role: "tool_call", Name: "submit_actor_state_patches"},
+	}
+	again := withInteractiveNarrativeAnchor(anchored)
+	if len(again) != len(anchored) {
+		t.Fatalf("已含锚点的事件列表必须幂等返回: %#v", again)
+	}
+}

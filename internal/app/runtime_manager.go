@@ -363,7 +363,7 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings, b
 	return layered, nil
 }
 
-// UpdateWorkspaceSettings 持久化当前工作区配置并返回最新分层快照。
+// UpdateWorkspaceSettings 持久化当前工作区的 Agent 定制并返回最新分层快照。
 func (a *App) UpdateWorkspaceSettings(settings config.Settings, baseRevision ...string) (config.LayeredSettings, error) {
 	return a.runtime().UpdateWorkspaceSettings(settings, firstRevision(baseRevision))
 }
@@ -376,17 +376,16 @@ func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settin
 	if workspace == "" {
 		return config.LayeredSettings{}, fmt.Errorf("当前没有打开的工作区")
 	}
-	settings.LLMInputLogEnabled = nil
-	settings.TraceCaptureLevel = ""
-	settings.TraceExporter = ""
-	settings.TraceRetentionRuns = nil
-	// Agent model selection is user-scoped and must not vary by workspace.
-	settings.AgentModels = config.AgentModelSettings{}
 	path := config.WorkspaceConfigPath(workspace)
-	if err := config.WriteSettingsFileIfRevision(path, settings, baseRevision); err != nil {
+	existing, err := config.ReadSettingsFile(path)
+	if err != nil {
 		return config.LayeredSettings{}, err
 	}
-	log.Printf("[settings] 工作区配置已保存 path=%s", path)
+	prepared := config.PrepareWorkspaceAgentSettingsForWrite(existing, settings)
+	if err := config.WriteSettingsFileIfRevision(path, prepared, baseRevision); err != nil {
+		return config.LayeredSettings{}, err
+	}
+	log.Printf("[settings] 工作区 Agent 定制已保存 path=%s", path)
 	layered, err := s.Settings()
 	if err != nil {
 		return config.LayeredSettings{}, err

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, CheckCheck, Loader2 } from 'lucide-react'
+import { Bell, CheckCheck, Loader2, Star } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { formatDateTime, getResolvedLocale } from '@/i18n'
 import { getMessages, markAllMessagesRead, markMessageRead } from './api'
 import type { ProductMessage } from './types'
+
+const DENOVA_GITHUB_URL = 'https://github.com/alfredxw/denova'
 
 export function MessageCenterButton({ className = '' }: { className?: string }) {
   const { t } = useTranslation()
@@ -178,6 +180,7 @@ export function MessageCenterButton({ className = '' }: { className?: string }) 
                     <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{messageMeta(activeItem, t)}</div>
                   </div>
                   {activeItem.type === 'changelog' && <DonationPrompt />}
+                  {activeItem.type === 'changelog' && <GitHubStarPrompt />}
                   <MarkdownRenderer content={activeItem.body} />
                 </article>
               ) : (
@@ -210,6 +213,30 @@ function DonationPrompt() {
         loading="lazy"
         className="h-auto max-h-24 w-auto max-w-[120px] shrink-0 self-center rounded-md border border-[var(--nova-border-soft)] bg-white p-1 sm:max-h-32"
       />
+    </section>
+  )
+}
+
+function GitHubStarPrompt() {
+  const { t } = useTranslation()
+  return (
+    <section
+      className="mb-4 flex flex-col gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[color-mix(in_srgb,var(--nova-surface-2)_88%,transparent)] p-3 text-xs leading-5 text-[var(--nova-text-muted)] shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between"
+      aria-label={t('messages.github.title')}
+    >
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-[var(--nova-text)]">{t('messages.github.title')}</div>
+        <p className="m-0 mt-1">{t('messages.github.description')}</p>
+      </div>
+      <a
+        href={DENOVA_GITHUB_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-1.5 text-xs font-medium text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] sm:self-center"
+      >
+        <Star className="h-3.5 w-3.5" />
+        {t('messages.github.star')}
+      </a>
     </section>
   )
 }

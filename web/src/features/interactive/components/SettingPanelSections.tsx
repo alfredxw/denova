@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectVa
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
+import { SearchHighlightTextarea } from '@/components/common/SearchHighlightTextarea'
 import { type LoreItem, workspaceAssetURL } from '@/lib/api'
 import { INTERACTIVE_OPENING_PRESET_ENTRY_ID, newBookOpeningPreset, type BookOpeningPreset } from '../opening'
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../preset-ownership'
@@ -1260,6 +1261,7 @@ export function LoreEditor({
   imagePresetId,
   imageInstruction,
   imageGenerating,
+  searchQuery,
   setDraft,
   setTagDraft,
   onImagePresetChange,
@@ -1275,6 +1277,7 @@ export function LoreEditor({
   imagePresetId: string
   imageInstruction: string
   imageGenerating: boolean
+  searchQuery?: string
   setDraft: (draft: LoreItem | null) => void
   setTagDraft: (value: string) => void
   onImagePresetChange: (id: string) => void
@@ -1393,8 +1396,9 @@ export function LoreEditor({
                   <Input className={inputClassName} value={tagDraft} onChange={(event) => setTagDraft(event.target.value)} placeholder={t('settingPanel.placeholder.tags')} />
                 </Field>
                 <Field label={t('settingPanel.field.brief')}>
-                  <Textarea
+                  <SearchHighlightTextarea
                     autoResize
+                    highlightQuery={searchQuery}
                     className="nova-field min-h-14 resize-y text-xs leading-5 shadow-none focus-visible:ring-0"
                     value={draft.brief_description || ''}
                     onChange={(event) => setDraft({ ...draft, brief_description: event.target.value })}
@@ -1413,9 +1417,10 @@ export function LoreEditor({
             </div>
           </div>
           <div className="min-h-[420px] flex-1 p-3 sm:p-4">
-            <Textarea
+            <SearchHighlightTextarea
               autoResize
               maxRows={Number.POSITIVE_INFINITY}
+              highlightQuery={searchQuery}
               aria-label={t('settingPanel.field.content')}
               className="nova-field min-h-[360px] overflow-y-hidden overscroll-y-auto! resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
               value={draft.content || ''}

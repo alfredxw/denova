@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchSettings } from './api'
+import { fetchSettings, updateUserSettings } from './api'
 import { modelProfilesForEditor, SettingsView, UpdatePanel } from './SettingsView'
 import type { LayeredSettings, UpdateCheckResult, UpdateInstallResult } from './types'
 
@@ -10,7 +10,6 @@ vi.mock('./api', () => ({
   fetchSettings: vi.fn(),
   installUpdateStream: vi.fn(),
   updateUserSettings: vi.fn(),
-  updateWorkspaceSettings: vi.fn(),
 }))
 
 vi.mock('@/features/interactive/api', () => ({
@@ -119,6 +118,41 @@ describe('SettingsView debug section', () => {
 
     expect(await screen.findAllByText('调试')).not.toHaveLength(0)
     expect(screen.getByText('记录完整 LLM 输入')).toBeInTheDocument()
+  })
+})
+
+describe('SettingsView user scope', () => {
+  beforeEach(() => {
+    vi.mocked(fetchSettings).mockReset()
+    vi.mocked(updateUserSettings).mockReset()
+  })
+
+  it('shows one user settings surface and persists every section to the user config', async () => {
+    const settings = layeredSettings({ devMode: false })
+    settings.user = { version_timed_interval_minutes: 10 }
+    settings.effective = { ...settings.effective, version_timed_interval_minutes: 10 }
+    vi.mocked(fetchSettings).mockResolvedValue(settings)
+    vi.mocked(updateUserSettings).mockResolvedValue(settings)
+
+    render(<SettingsView />)
+
+    expect(await screen.findAllByText('设置')).not.toHaveLength(0)
+    expect(screen.queryByRole('button', { name: '用户配置' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '当前工作区' })).not.toBeInTheDocument()
+    expect(screen.queryByText('工作区配置文件')).not.toBeInTheDocument()
+    expect(screen.getByText('默认叙事')).toBeInTheDocument()
+    expect(screen.getByText('定时自动保存版本')).toBeInTheDocument()
+    expect(screen.getByText('故事舞台行间距')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('定时保存间隔 (分钟)'), { target: { value: '20' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(updateUserSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ version_timed_interval_minutes: 20 }),
+        'user-rev',
+      )
+    })
   })
 })
 

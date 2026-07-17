@@ -1,6 +1,6 @@
 import type { SSEEvent } from '@/lib/api'
 
-export type InteractiveSubmode = 'story' | 'timeline' | 'lore' | 'creator' | 'teller'
+export type InteractiveSubmode = 'story' | 'timeline' | 'director' | 'lore' | 'creator' | 'teller'
 
 export interface StorySummary {
   id: string
@@ -356,6 +356,11 @@ export interface TurnEvent {
   version_idx?: number
 }
 
+export interface UpdateTurnNarrativeResult {
+  turn: TurnEvent
+  context_compaction_invalidated: boolean
+}
+
 export interface TurnResult {
   state_updates: Array<{ op: 'replace' | 'delta' | 'create' | string; path: string; value: unknown }>
   choices: string[]
@@ -364,7 +369,7 @@ export interface TurnResult {
 
 export interface TurnDisplayEvent {
   id?: string
-  role: 'assistant' | 'thinking' | 'tool_call' | 'tool_result'
+  role: 'assistant' | 'thinking' | 'tool_call' | 'tool_result' | 'narrative'
   content?: string
   name?: string
   args?: string

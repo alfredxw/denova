@@ -9,6 +9,10 @@ const toastMock = vi.hoisted(() => ({
 }))
 
 const editorStateMock = vi.hoisted(() => ({ create: vi.fn((config: unknown) => config) }))
+const workspaceApiMock = vi.hoisted(() => ({ readFile: vi.fn() }))
+const documentReviewAnnotationsMock = vi.hoisted(() => ({
+  prepareSnapshot: null as null | (() => Promise<{ content: string; revision: string }>),
+}))
 
 const tiptapMock = vi.hoisted(() => {
   const handlers = new Map<string, Set<(...args: unknown[]) => void>>()
@@ -99,12 +103,24 @@ vi.mock('@tiptap/extension-image', () => ({ default: { extend: () => ({ configur
 vi.mock('@tiptap/extension-table', () => ({ TableKit: { configure: vi.fn((options) => ({ name: 'tableKit', options })) } }))
 vi.mock('@tiptap/markdown', () => ({ Markdown: { configure: () => ({}) } }))
 vi.mock('sonner', () => ({ toast: toastMock }))
+vi.mock('@/lib/api-client/workspace', () => ({ readFile: workspaceApiMock.readFile }))
+vi.mock('./DocumentReviewAnnotations', async () => {
+  const { forwardRef } = await import('react')
+  return {
+    DocumentReviewAnnotations: forwardRef<unknown, { onPrepareSnapshot: () => Promise<{ content: string; revision: string }> }>((props, _ref) => {
+      documentReviewAnnotationsMock.prepareSnapshot = props.onPrepareSnapshot
+      return null
+    }),
+  }
+})
 
 describe('MarkdownEditor', () => {
   beforeEach(() => {
     vi.useRealTimers()
     window.localStorage.clear()
     tiptapMock.reset()
+    workspaceApiMock.readFile.mockReset()
+    documentReviewAnnotationsMock.prepareSnapshot = null
   })
 
   afterEach(() => {
@@ -718,6 +734,38 @@ describe('MarkdownEditor', () => {
     expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument()
     expect(tiptapMock.editor.view.dom).not.toHaveAttribute('aria-readonly')
     expect(tiptapMock.editor.setEditable).not.toHaveBeenCalled()
+  })
+
+  it('原始 Markdown 与 TipTap 仅格式化不同也能准备正文评论快照', async () => {
+    const content = '# 创作者指令\n## 创作约束\n- 第一项\n'
+    tiptapMock.markdown = '# 创作者指令\n\n## 创作约束\n\n- 第一项\n'
+    workspaceApiMock.readFile.mockResolvedValue({
+      workspace: '/books/demo',
+      path: 'CREATOR.md',
+      content,
+      revision: 'sha256:canonical',
+    })
+
+    render(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="CREATOR.md"
+        content={content}
+        onSave={vi.fn().mockResolvedValue(true)}
+        documentReview={{
+          comments: [],
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+        }}
+      />,
+    )
+
+    expect(documentReviewAnnotationsMock.prepareSnapshot).not.toBeNull()
+    await expect(documentReviewAnnotationsMock.prepareSnapshot!()).resolves.toEqual({
+      content,
+      revision: 'sha256:canonical',
+    })
   })
 })
 

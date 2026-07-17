@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Activity, Bot, Check, FileText, Loader2, PenLine, Plus, SearchCheck, SlidersHorizontal, Sparkles, WandSparkles, X } from 'lucide-react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
-import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
+import { fetchSettings, updateUserSettings } from '@/features/settings/api'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { removeChatContextCompaction } from '@/lib/api'
 import type { ChapterIllustration, ChapterSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
@@ -634,7 +634,7 @@ function IdeTellerSelector({ workspace, tellers, onValueChange }: { workspace: s
     setSaving(true)
     try {
       const settings = await fetchSettings()
-      await updateWorkspaceSettings({ ...settings.workspace, ide_story_teller_id: next })
+      await updateUserSettings({ ...settings.user, ide_story_teller_id: next })
       window.dispatchEvent(new CustomEvent('nova:settings-updated'))
     } catch (e) {
       console.warn('保存 IDE 默认导演失败', e)
@@ -705,7 +705,7 @@ function ImagePresetSelector({ workspace, value, presets, onValueChange }: { wor
     setSaving(true)
     try {
       const settings = await fetchSettings()
-      await updateWorkspaceSettings({ ...settings.workspace, ide_image_preset_id: next })
+      await updateUserSettings({ ...settings.user, ide_image_preset_id: next })
       window.dispatchEvent(new CustomEvent('nova:settings-updated'))
     } catch (e) {
       console.warn('保存 IDE 图像方案失败', e)
@@ -775,7 +775,7 @@ function WritingSkillSelector({ workspace, value, options, onValueChange }: { wo
     setSavingSkill(next)
     try {
       const settings = await fetchSettings()
-      await updateWorkspaceSettings({ ...settings.workspace, writing_skill_default: next })
+      await updateUserSettings({ ...settings.user, writing_skill_default: next })
       window.dispatchEvent(new CustomEvent('nova:settings-updated'))
     } catch (e) {
       console.warn('保存写作 Skill 失败', e)

@@ -25,8 +25,6 @@ import {
   hasNativeIndent,
   isMarkdownFile,
   isTxtFile,
-  normalizeEditorText,
-  readEditorText,
   resetEditorStateHistory,
   updateCharacterStats,
 } from './editorDocument'
@@ -223,9 +221,8 @@ export function MarkdownEditor({
     if (!document.revision || (workspace && document.workspace !== workspace)) {
       throw new Error('The canonical document snapshot is unavailable')
     }
-    if (normalizeEditorText(document.content) !== readEditorText(editor, fileName)) {
-      throw new Error('The editor and workspace snapshots differ')
-    }
+    // TipTap can insert equivalent blank lines or normalize Markdown markers.
+    // The anchor builder validates the selected range against this canonical snapshot.
     return { content: document.content, revision: document.revision }
   }, [documentReview, editor, fileName, flushCurrentDraft, workspace])
 

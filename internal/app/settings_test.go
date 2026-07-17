@@ -90,24 +90,40 @@ func TestAppUpdateUserSettingsPreservesRemoteAccessPasswordHash(t *testing.T) {
 	}
 }
 
-func TestAppUpdateWorkspaceSettingsPersists(t *testing.T) {
+func TestAppUpdateWorkspaceSettingsOnlyPersistsAgentOverrides(t *testing.T) {
 	ws := t.TempDir()
 	novaDir := t.TempDir()
+	if err := config.WriteSettingsFile(config.WorkspaceConfigPath(ws), config.Settings{OpenAIModel: "legacy-workspace-model"}); err != nil {
+		t.Fatal(err)
+	}
 
 	a := &App{
 		cfg:       &config.Config{Workspace: ws, NovaDir: novaDir},
 		workspace: ws,
 	}
-	in := config.Settings{OpenAIModel: "ws-model"}
-	if _, err := a.UpdateWorkspaceSettings(in); err != nil {
+	enabled := false
+	in := config.Settings{
+		OpenAIModel: "ignored-new-model",
+		AgentTools: config.AgentToolSettings{
+			IDE: config.AgentToolOverride{ShellExecute: &enabled},
+		},
+	}
+	layered, err := a.UpdateWorkspaceSettings(in)
+	if err != nil {
 		t.Fatal(err)
 	}
 	out, err := config.ReadSettingsFile(config.WorkspaceConfigPath(ws))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.OpenAIModel != "ws-model" {
-		t.Fatalf("workspace model not persisted: %s", out.OpenAIModel)
+	if out.OpenAIModel != "legacy-workspace-model" {
+		t.Fatalf("legacy workspace general setting should be preserved: %s", out.OpenAIModel)
+	}
+	if out.AgentTools.IDE.ShellExecute == nil || *out.AgentTools.IDE.ShellExecute {
+		t.Fatalf("workspace Agent override not persisted: %#v", out.AgentTools.IDE)
+	}
+	if layered.Workspace.OpenAIModel != "" || layered.Effective.OpenAIModel == "ignored-new-model" {
+		t.Fatalf("workspace general settings must not become effective: %#v", layered)
 	}
 }
 

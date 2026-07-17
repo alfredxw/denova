@@ -1,6 +1,4 @@
 const settings = {
-  'settings.activeLayer.user': '用户配置',
-  'settings.activeLayer.workspace': '当前工作区',
   'settings.agent.maxIteration': '最大迭代轮数（留空不限制）',
   'settings.agent.modelMaxRetries': '模型重试次数',
   'settings.agent.idleTimeoutSeconds': '空闲超时（秒，0 为不限制）',
@@ -13,7 +11,6 @@ const settings = {
   'settings.access.passwordSetPlaceholder': '已设置；输入新密码可替换',
   'settings.access.restartHint': '开启并重启后，Denova 会监听局域网地址；同一局域网里的其他设备可使用启动时显示的访问地址打开 Denova，并在页面里输入这里配置的用户名和密码。本机 localhost 访问不需要登录。',
   'settings.access.username': '远程访问用户名',
-  'settings.access.userOnly': '局域网访问是用户级启动设置，请切换到用户配置后修改。',
   'settings.appearance.language': '界面语言',
   'settings.appearance.theme': '主题',
   'settings.updates.asset': '安装包：{{name}}（{{size}}）',
@@ -50,7 +47,6 @@ const settings = {
   'settings.updates.stagedRestart': '更新已暂存。点击“重启并安装”后，Denova 会退出、替换文件并自动启动新版本。',
   'settings.updates.updateAvailableTitle': '发现新版本',
   'settings.updates.upToDateTitle': '当前已是最新版本',
-  'settings.updates.userOnly': '应用更新是用户级配置，请切换到用户配置后修改自动检查策略。',
   'settings.appearance.readingFont': '阅读字体',
   'settings.appearance.readingFontSize': '阅读字号 (px)',
   'settings.appearance.uiFont': '界面字体',
@@ -79,7 +75,6 @@ const settings = {
   'settings.debug.traceExporterOTLP': 'OTLP（预留）',
   'settings.debug.traceRetentionRuns': 'Trace 保留运行数',
   'settings.debug.traceHelp': '摘要 trace 只记录有界预览、hash、大小、Token、耗时、状态和关联 ID。调试模式只扩大预览和诊断字段，仍不会保存完整 prompt、输出或工具结果。',
-  'settings.debug.userOnly': '调试选项是用户级开发设置，请切换到用户配置后修改。',
   'settings.group.common': '公共配置',
   'settings.group.ide': '写作模式',
   'settings.group.interactive': '游戏模式',
@@ -94,7 +89,6 @@ const settings = {
   'settings.ide.hideNovelChapterBodyInLiveOutputHelp': '开启后，章节正文不在 Agent 流中输出；文件仍正常写入。',
   'settings.ide.maxOpenTabs': '最大同时打开 Tab 数',
   'settings.interactive.lineHeight': '故事舞台行间距',
-  'settings.interactive.workspaceOnly': '游戏模式参数按每本书单独保存，请切换到工作区配置后修改。',
   'settings.model.modelProfiles': '语言模型',
   'settings.model.profileBaseUrlPlaceholder': 'Base URL',
   'settings.model.profileEmpty': '继承 {{count}} 个语言模型；新增时只需填写 Base URL、API Key 和模型名。',
@@ -143,7 +137,6 @@ const settings = {
   'settings.paths.novaDir': 'Denova 数据目录',
   'settings.paths.skillsDir': 'Skills 目录',
   'settings.paths.userConfig': '用户配置文件',
-  'settings.paths.workspaceConfig': '工作区配置文件',
   'settings.onboarding.title': '新手引导',
   'settings.onboarding.description': '重新打开配置、建书、写作和模块导览流程。',
   'settings.onboarding.reopen': '重新打开',
@@ -171,7 +164,6 @@ const settings = {
   'settings.versions.agentThreshold': 'Agent 触发字数',
   'settings.versions.timedAuto': '定时自动保存版本',
   'settings.versions.timedInterval': '定时保存间隔 (分钟)',
-  'settings.versions.workspaceOnly': '版本管理策略按每本书单独保存，请切换到工作区配置后修改。',
 } as const
 
 export default settings

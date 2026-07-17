@@ -111,14 +111,38 @@ describe('MessageItem', () => {
     render(
       <MessageItem
         message={{ role: 'assistant', content: '故事继续。', turn_id: 'turn-1', streaming: true }}
+        onEditAssistantReply={vi.fn()}
         onGenerateInteractiveImage={vi.fn()}
         onRegenerate={vi.fn()}
       />,
     )
 
     expect(screen.queryByRole('button', { name: '复制消息' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '编辑 AI 回复' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '生成互动图像' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '重新生成这一轮' })).not.toBeInTheDocument()
+  })
+
+  it('游戏模式持久化 AI 回复把编辑按钮放在复制与图像生成同一操作行', async () => {
+    const user = userEvent.setup()
+    const handleEdit = vi.fn()
+    const { container } = render(
+      <MessageItem
+        message={{ role: 'assistant', content: '朋友住在 3 楼 403 室。', turn_id: 'turn-1' }}
+        onEditAssistantReply={handleEdit}
+        onGenerateInteractiveImage={vi.fn()}
+      />,
+    )
+
+    const actionRow = container.querySelector('.nova-message-meta') as HTMLElement
+    expect(within(actionRow).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
+      '复制消息',
+      '编辑 AI 回复',
+      '生成互动图像',
+    ])
+
+    await user.click(screen.getByRole('button', { name: '编辑 AI 回复' }))
+    expect(handleEdit).toHaveBeenCalledWith(expect.objectContaining({ turn_id: 'turn-1' }))
   })
 
   it('错误消息结束后展示复制和重试操作', () => {

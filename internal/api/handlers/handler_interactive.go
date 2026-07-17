@@ -298,6 +298,25 @@ func (h *Handlers) HandleInteractiveTurnVersionSwitch(ctx context.Context, c *ap
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (h *Handlers) HandleInteractiveTurnNarrativeUpdate(ctx context.Context, c *app.RequestContext) {
+	var body interactive.UpdateTurnNarrativeRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	body.TurnID = c.Param("turn_id")
+	if strings.TrimSpace(body.Narrative) == "" {
+		writeError(c, consts.StatusBadRequest, "AI 回复不能为空 / AI reply cannot be empty")
+		return
+	}
+	result, err := h.app.UpdateInteractiveTurnNarrative(c.Param("id"), body)
+	if err != nil {
+		writeError(c, consts.StatusConflict, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
 func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestContext) {
 	var body struct {
 		Mode               string   `json:"mode"`

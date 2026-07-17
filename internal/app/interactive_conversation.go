@@ -599,7 +599,7 @@ func (c *interactiveConversation) AppendAssistantWithMetadata(content, thinking 
 		Thinking:             thinking,
 		RunID:                assistantMetadata.RunID,
 		AgentKind:            assistantMetadata.AgentKind,
-		DisplayEvents:        c.displayEventsSnapshot(),
+		DisplayEvents:        withInteractiveNarrativeAnchor(c.displayEventsSnapshot()),
 		ModelContextMessages: c.modelContextMessagesSnapshot(),
 		RuleResolution:       c.ruleResolutionSnapshot(),
 		TurnResult:           turnResult,
@@ -904,6 +904,35 @@ func (c *interactiveConversation) displayEventsSnapshot() []interactive.DisplayE
 	result := make([]interactive.DisplayEvent, len(c.displayEvents))
 	copy(result, c.displayEvents)
 	return result
+}
+
+// interactiveNarrativeAnchorEventID 是正文锚点展示事件的固定 ID，一个回合最多一个锚点。
+const interactiveNarrativeAnchorEventID = "narrative-anchor"
+
+// withInteractiveNarrativeAnchor 在持久化的展示时间线中插入正文锚点，标记正文
+// 实际流出的位置：正文在回合提交工具（submit_actor_state_patches / submit_choices）
+// 之前输出完整，因此锚点插在首个提交工具调用事件前。找不到提交工具事件时
+// （异常或旧数据）不插入锚点，前端按“正文在最后”的旧布局兜底；已含锚点的
+// 事件列表原样返回。
+func withInteractiveNarrativeAnchor(events []interactive.DisplayEvent) []interactive.DisplayEvent {
+	if len(events) == 0 {
+		return events
+	}
+	for _, event := range events {
+		if event.Role == interactive.DisplayEventRoleNarrative {
+			return events
+		}
+	}
+	anchor := interactive.DisplayEvent{ID: interactiveNarrativeAnchorEventID, Role: interactive.DisplayEventRoleNarrative}
+	for index, event := range events {
+		if event.Role == "tool_call" && agent.IsInteractiveTurnSubmissionTool(event.Name) {
+			result := make([]interactive.DisplayEvent, 0, len(events)+1)
+			result = append(result, events[:index]...)
+			result = append(result, anchor)
+			return append(result, events[index:]...)
+		}
+	}
+	return events
 }
 
 func (c *interactiveConversation) assistantMetadataSnapshot() session.MessageMetadata {

@@ -3,10 +3,10 @@ import { toast } from 'sonner'
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, PanelLeft, Plus, RefreshCw, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
-import { applyUpdate, checkForUpdate, fetchSettings, installUpdateStream, updateUserSettings, updateWorkspaceSettings } from './api'
+import type { ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
+import { applyUpdate, checkForUpdate, fetchSettings, installUpdateStream, updateUserSettings } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
-import { settingsForLayer, settingsRevisionForLayer, useAutoSaveSettings } from './use-auto-save-settings'
+import { useAutoSaveSettings } from './use-auto-save-settings'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
@@ -35,7 +35,6 @@ type SettingsSection = {
   children: ReactNode
 }
 
-const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
 const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 const iconButtonCls = 'nova-nav-item rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 400000
@@ -60,7 +59,6 @@ let nextSettingsEventSourceID = 1
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
   const [layered, setLayered] = useState<LayeredSettings | null>(null)
-  const [activeLayer, setActiveLayer] = useState<SettingsLayer>('user')
   const [draft, setDraft] = useState<Settings>({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -100,11 +98,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     try {
       const data = await fetchSettings()
       setLayered(data)
-      setDraft(settingsForLayer(data, activeLayer))
+      setDraft(data.user)
     } catch (e) {
       setError((e as Error).message)
     }
-  }, [activeLayer])
+  }, [])
 
   useEffect(() => { void load() }, [load])
 
@@ -119,16 +117,10 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [load, settingsEventSource])
 
   useEffect(() => {
-    if (activeLayer !== 'workspace') return
     getInteractiveTellers()
       .then((items) => setAvailableTellers(items))
       .catch((e) => console.warn('[settings] 获取导演列表失败', e))
-  }, [activeLayer])
-
-  useEffect(() => {
-    if (!layered) return
-    setDraft(settingsForLayer(layered, activeLayer))
-  }, [activeLayer])
+  }, [])
 
   const effective = layered?.effective ?? {}
   const showDebugSettings = layered?.runtime?.dev_mode === true
@@ -201,9 +193,8 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [])
 
   const saveDraft = useCallback(async (settings: Settings, baseRevision?: string) => {
-    const updater = activeLayer === 'user' ? updateUserSettings : updateWorkspaceSettings
-    return baseRevision ? updater(settings, baseRevision) : updater(settings)
-  }, [activeLayer])
+    return updateUserSettings(settings, baseRevision)
+  }, [])
 
   const applySavedSettings = useCallback((next: LayeredSettings) => {
     setLayered(next)
@@ -217,7 +208,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     setSaving(true)
     setError(null)
     try {
-      const next = await saveDraft(draft, settingsRevisionForLayer(layered, activeLayer))
+      const next = await saveDraft(draft, layered?.revisions?.user)
       applySavedSettings(next)
       toast.success(t('common.saved'))
     } catch (e) {
@@ -253,8 +244,8 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
 
   useAutoSaveSettings({
     draft,
-    saved: layered ? settingsForLayer(layered, activeLayer) : {},
-    baseRevision: settingsRevisionForLayer(layered, activeLayer),
+    saved: layered?.user ?? {},
+    baseRevision: layered?.revisions?.user,
     ready: Boolean(layered),
     save: saveDraft,
     onSavingChange: setSaving,
@@ -281,11 +272,9 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <ThemeSelect label={t('settings.appearance.theme')} value={draft.theme}
                        effective={effective.theme}
                        onChange={(v) => setField('theme', v)} />
-          {activeLayer === 'user' && (
-            <MotionIntensitySelect label={t('settings.appearance.motionIntensity')} value={draft.motion_intensity}
-                                   effective={effective.motion_intensity}
-                                   onChange={(v) => setField('motion_intensity', v)} />
-          )}
+          <MotionIntensitySelect label={t('settings.appearance.motionIntensity')} value={draft.motion_intensity}
+                                 effective={effective.motion_intensity}
+                                 onChange={(v) => setField('motion_intensity', v)} />
           <FontSelect label={t('settings.appearance.uiFont')} value={draft.ui_font_family}
                       effective={effective.ui_font_family}
                       onChange={(v) => setField('ui_font_family', v)} />
@@ -326,26 +315,22 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       title: t('settings.section.updates'),
       children: (
         <>
-          {activeLayer === 'user' ? (
-            <BoolTri label={t('settings.updates.autoCheck')} value={draft.update_check_enabled ?? null}
-                     effective={effective.update_check_enabled}
-                     onChange={(v) => setField('update_check_enabled', v)} />
-          ) : (
-            <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.updates.userOnly')}</div>
-          )}
-	          <UpdatePanel
-	            status={updateStatus}
-	            installResult={updateInstallResult}
-	            applyResult={updateApplyResult}
-	            installProgress={updateInstallProgress}
-	            checking={checkingUpdate}
-	            installing={installingUpdate}
-	            applying={applyingUpdate}
-	            error={updateError}
-	            onCheck={() => void runUpdateCheck()}
-	            onInstall={() => void runUpdateInstall()}
-	            onApply={() => void runUpdateApply()}
-	          />
+          <BoolTri label={t('settings.updates.autoCheck')} value={draft.update_check_enabled ?? null}
+                   effective={effective.update_check_enabled}
+                   onChange={(v) => setField('update_check_enabled', v)} />
+          <UpdatePanel
+            status={updateStatus}
+            installResult={updateInstallResult}
+            applyResult={updateApplyResult}
+            installProgress={updateInstallProgress}
+            checking={checkingUpdate}
+            installing={installingUpdate}
+            applying={applyingUpdate}
+            error={updateError}
+            onCheck={() => void runUpdateCheck()}
+            onInstall={() => void runUpdateInstall()}
+            onApply={() => void runUpdateApply()}
+          />
         </>
       ),
     },
@@ -390,7 +375,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                 onChange={(v) => setField('skills_dir', v)} />
           <ReadOnly label={t('settings.paths.novaDir')} value={layered?.paths?.denova_dir || layered?.paths?.nova_dir} />
           <ReadOnly label={t('settings.paths.userConfig')} value={layered?.paths?.user_config} />
-          <ReadOnly label={t('settings.paths.workspaceConfig')} value={layered?.paths?.workspace_config} />
         </>
       ),
     },
@@ -398,7 +382,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       id: 'access',
       group: t('settings.group.common'),
       title: t('settings.section.access'),
-      children: activeLayer === 'user' ? (
+      children: (
         <>
           <BoolTri label={t('settings.access.allowLan')} value={draft.allow_lan_access ?? null}
                    effective={effective.allow_lan_access}
@@ -416,8 +400,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
             {t('settings.access.restartHint')}
           </div>
         </>
-      ) : (
-        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.access.userOnly')}</div>
       ),
     },
     {
@@ -453,7 +435,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       id: 'debug' as const,
       group: t('settings.group.common'),
       title: t('settings.section.debug'),
-      children: activeLayer === 'user' ? (
+      children: (
         <>
           <BoolTri label={t('settings.debug.llmInputLog')} value={draft.llm_input_log_enabled ?? null}
                    effective={effective.llm_input_log_enabled}
@@ -475,8 +457,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
             {t('settings.debug.traceHelp')}
           </div>
         </>
-      ) : (
-        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.debug.userOnly')}</div>
       ),
     }] : []),
     {
@@ -506,15 +486,13 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Num label={t('settings.ide.chapterGroupMax')} value={draft.chapter_group_max ?? null}
                placeholder={placeholderFor('chapter_group_max')}
                onChange={(v) => setField('chapter_group_max', v)} />
-          {activeLayer === 'workspace' && (
-            <TellerSelect
-              label={t('settings.ide.defaultTeller')}
-              value={draft.ide_story_teller_id}
-              effective={effective.ide_story_teller_id}
-              tellers={availableTellers}
-              onChange={(v) => setField('ide_story_teller_id', v)}
-            />
-          )}
+          <TellerSelect
+            label={t('settings.ide.defaultTeller')}
+            value={draft.ide_story_teller_id}
+            effective={effective.ide_story_teller_id}
+            tellers={availableTellers}
+            onChange={(v) => setField('ide_story_teller_id', v)}
+          />
         </>
       ),
     },
@@ -537,7 +515,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       id: 'versions',
       group: t('settings.group.ide'),
       title: t('settings.section.versions'),
-      children: activeLayer === 'workspace' ? (
+      children: (
         <>
           <BoolTri label={t('settings.versions.timedAuto')} value={draft.version_timed_enabled ?? null}
                    effective={effective.version_timed_enabled}
@@ -552,23 +530,19 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                placeholder={placeholderFor('version_agent_char_threshold')}
                onChange={(v) => setField('version_agent_char_threshold', v)} />
         </>
-      ) : (
-        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.versions.workspaceOnly')}</div>
       ),
     },
     {
       id: 'interactive',
       group: t('settings.group.interactive'),
       title: t('settings.section.interactive'),
-      children: activeLayer === 'workspace' ? (
+      children: (
         <>
           <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}
                placeholder={placeholderFor('interactive_stage_line_height')}
                step={0.05}
                onChange={(v) => setField('interactive_stage_line_height', v)} />
         </>
-      ) : (
-        <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settings.interactive.workspaceOnly')}</div>
       ),
     },
   ]
@@ -588,7 +562,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     const openSection = (event: Event) => {
       const detail = (event as CustomEvent<SettingsSectionRequest>).detail
-      if (detail?.layer === 'user' || detail?.layer === 'workspace') setActiveLayer(detail.layer)
       const section = detail?.section
       if (!isSettingsSectionId(section)) return
       requestAnimationFrame(() => {
@@ -649,20 +622,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       <div className="nova-topbar flex min-h-10 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b px-3 py-1.5 text-xs sm:px-4">
         <SettingsIcon className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
         <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('settings.title')}</span>
-        <div className="flex shrink-0 gap-1 border-l border-[var(--nova-border)] pl-2 sm:ml-3 sm:pl-3">
-          {(['user', 'workspace'] as SettingsLayer[]).map((l) => (
-            <button
-              key={l}
-              type="button"
-              onClick={() => setActiveLayer(l)}
-              className={`${tabCls} ${
-                activeLayer === l ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'
-              }`}
-            >
-              {l === 'user' ? t('settings.activeLayer.user') : t('settings.activeLayer.workspace')}
-            </button>
-          ))}
-        </div>
         <button
           type="button"
           onClick={onSave}

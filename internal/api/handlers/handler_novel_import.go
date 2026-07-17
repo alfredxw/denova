@@ -13,7 +13,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/config"
 	"denova/internal/book"
 )
 
@@ -155,16 +154,6 @@ func (h *Handlers) HandleNovelImport(ctx context.Context, c *app.RequestContext)
 		writeErrorKey(c, status, "api.novelImport.importFailed", "detail", err.Error())
 		return
 	}
-	if preview.ChapterFilenameFormat != "" || preview.VolumeDirFormat != "" {
-		settings := config.Settings{
-			ChapterFilenameFormat: preview.ChapterFilenameFormat,
-			VolumeDirFormat:       preview.VolumeDirFormat,
-		}
-		if _, settingsErr := h.app.UpdateWorkspaceSettings(settings); settingsErr != nil {
-			log.Printf("[api] 小说导入写入章节/分卷文件名模板失败 workspace=%q chapter_format=%q volume_format=%q err=%v", workspace, preview.ChapterFilenameFormat, preview.VolumeDirFormat, settingsErr)
-		}
-	}
-
 	importPreview, paths, err := book.ImportNovelToWorkspace(workspace, filename, data, opts)
 	if err != nil {
 		log.Printf("[api] 小说导入确认 import failed filename=%q workspace=%q err=%v", filename, workspace, err)

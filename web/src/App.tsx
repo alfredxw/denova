@@ -629,7 +629,7 @@ function App() {
       setSettingsOpen(true)
       window.setTimeout(() => {
         window.dispatchEvent(new CustomEvent(SETTINGS_SECTION_EVENT, {
-          detail: { section: 'model', layer: 'user' },
+          detail: { section: 'model' },
         }))
       }, 0)
       return

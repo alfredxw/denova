@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { FileText, Loader2, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
+import { HighlightedText } from '@/components/common/HighlightedText'
 import { searchWorkspace, type WorkspaceSearchResult } from '@/lib/api'
 
 interface SearchPanelProps {
@@ -135,38 +136,6 @@ function SearchEmptyState({ text }: { text: string }) {
       {text}
     </div>
   )
-}
-
-function HighlightedText({ text, query }: { text: string; query: string }) {
-  const parts = splitByQuery(text, query)
-  return (
-    <>
-      {parts.map((part, index) => part.matched ? (
-        <mark key={`${part.text}:${index}`} className="rounded bg-[var(--nova-warning-bg)] px-0.5 text-[var(--nova-warning)]">
-          {part.text}
-        </mark>
-      ) : (
-        <span key={`${part.text}:${index}`}>{part.text}</span>
-      ))}
-    </>
-  )
-}
-
-function splitByQuery(text: string, query: string): Array<{ text: string; matched: boolean }> {
-  const normalizedQuery = query.trim().toLowerCase()
-  if (!normalizedQuery) return [{ text, matched: false }]
-  const normalizedText = text.toLowerCase()
-  const parts: Array<{ text: string; matched: boolean }> = []
-  let cursor = 0
-  while (cursor < text.length) {
-    const index = normalizedText.indexOf(normalizedQuery, cursor)
-    if (index < 0) break
-    if (index > cursor) parts.push({ text: text.slice(cursor, index), matched: false })
-    parts.push({ text: text.slice(index, index + normalizedQuery.length), matched: true })
-    cursor = index + normalizedQuery.length
-  }
-  if (cursor < text.length) parts.push({ text: text.slice(cursor), matched: false })
-  return parts.length > 0 ? parts : [{ text, matched: false }]
 }
 
 function groupSearchResults(results: WorkspaceSearchResult[]): SearchResultGroup[] {

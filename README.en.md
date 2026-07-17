@@ -143,10 +143,10 @@ export DENOVA_FRONTEND_PORT="5173"
 Configuration precedence:
 
 ```text
-Built-in defaults < global config.toml < user-level config < workspace-level config < environment variables
+Built-in defaults < global config.toml < user-level config < environment variables
 ```
 
-Legacy workspaces and environment variables are still read for compatibility; new configuration should use `.denova` / `DENOVA_*`.
+Common, Writing Mode, and Game Mode preferences from Settings are now stored uniformly at the user level. A workspace `.denova/config.toml` only carries workspace customizations explicitly exposed by the Agents page; other legacy fields remain on disk but no longer override user settings. Legacy environment variables are still read for compatibility; new configuration should use `.denova` / `DENOVA_*`.
 
 ## Remote Access and Phone Usage
 

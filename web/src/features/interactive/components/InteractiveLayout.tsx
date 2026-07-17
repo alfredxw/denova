@@ -8,12 +8,12 @@ import { readFile } from '@/lib/api'
 import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, switchInteractiveBranch, updateInteractiveStory } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { BranchTimeline } from './BranchTimeline'
+import { DirectorBackstage } from './director-backstage/DirectorBackstage'
 import { DirectorPanel } from './DirectorPanel'
 import { SettingPanel, type SettingPanelMode } from './SettingPanel'
 import { StoryPicker } from './StoryPicker'
 import { StoryStage } from './StoryStage'
 import {
-  OPEN_DIRECTOR_STATE_EVENT,
   readStoryStateDisplayPreference,
   writeStoryStateDisplayPreference,
   type StoryStateDisplayPreference,
@@ -162,8 +162,8 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
   }, [reloadSnapshot, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status, snapshot?.director_plan_status?.status, snapshot?.state_schema_initialization?.status, snapshot?.turns?.length])
 
   useEffect(() => {
-    if (!isMobile) setMobileSnapshotOpen(false)
-  }, [isMobile])
+    if (!isMobile || submode !== 'story') setMobileSnapshotOpen(false)
+  }, [isMobile, submode])
 
   const handleCreateStory = async (input: StoryCreateInput) => {
     const story = await createInteractiveStory(input)
@@ -226,7 +226,6 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
   }, [])
 
   const openDirectorState = useCallback(() => {
-    window.dispatchEvent(new Event(OPEN_DIRECTOR_STATE_EVENT))
     if (isMobile) {
       setMobileSnapshotOpen(true)
       return
@@ -270,8 +269,8 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
     await reloadStories()
   }
 
-  const settingMode: SettingPanelMode = submode === 'story' || submode === 'timeline' ? 'lore' : submode
-  const settingsWorkspaceVisible = submode !== 'story' && submode !== 'timeline'
+  const settingMode: SettingPanelMode = submode === 'story' || submode === 'timeline' || submode === 'director' ? 'lore' : submode
+  const settingsWorkspaceVisible = submode !== 'story' && submode !== 'timeline' && submode !== 'director'
   const contentKey = settingsWorkspaceVisible ? `settings:${settingMode}` : submode
   const directorPanelVisible = isMobile ? mobileSnapshotOpen : rightPanelVisible
   const storyStage = (
@@ -318,6 +317,8 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
             <motion.div key={contentKey} variants={panelPresence} initial="initial" animate="animate" transition={{ duration: 0.2, ease: novaEase }} className="flex min-h-0 flex-1 flex-col">
               {settingsWorkspaceVisible ? (
                 <SettingPanel mode={settingMode} workspace={workspace} presetUsageMode="game" tellers={tellers} storyDirectors={storyDirectors} imagePresets={imagePresets} onTellersChange={setTellers} onStoryDirectorsChange={setStoryDirectors} onImagePresetsChange={onImagePresetsChange} />
+              ) : submode === 'director' ? (
+                <DirectorBackstage storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />
               ) : submode === 'timeline' ? (
                 <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} onSelect={setCurrentStoryId} onCreate={() => undefined} onDelete={handleDeleteStory} hideCreate />} />
               ) : isMobile ? (
@@ -327,7 +328,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
                     title: t('directorPanel.title'),
                     side: 'right',
                     icon: <Gauge className="h-4 w-4" />,
-                    content: <DirectorPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} stateDisplayPreference={storyStateDisplayPreference} onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />,
+                    content: <DirectorPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} stateDisplayPreference={storyStateDisplayPreference} onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange} />,
                   }]}
                   closeLabel={t('common.close')}
                   openPaneId={mobileSnapshotOpen ? 'director-panel' : null}
@@ -346,7 +347,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
                       <InteractiveResizeHandle direction="vertical" label={t('interactiveLayout.resizeDirectorPanel')} />
                       <Panel id="snapshot" defaultSize="320px" minSize="180px" maxSize="45%" className="min-w-0">
                         <motion.div className="h-full min-h-0" variants={subtlePresence} initial="initial" animate="animate" transition={{ duration: 0.16, ease: novaEase }}>
-                          <DirectorPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} stateDisplayPreference={storyStateDisplayPreference} onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />
+                          <DirectorPanel storyId={currentStoryId} story={currentStory} storyDirectors={storyDirectors} onDirectorChange={handleDirectorChange} onReplyTargetCharsChange={handleReplyTargetCharsChange} branchId={currentBranchId} snapshot={displaySnapshot} stateDisplayPreference={storyStateDisplayPreference} onStateDisplayPreferenceChange={handleStoryStateDisplayPreferenceChange} />
                         </motion.div>
                       </Panel>
                     </>

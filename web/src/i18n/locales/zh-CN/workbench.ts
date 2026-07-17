@@ -3,6 +3,7 @@ const workbench = {
   'workbench.activity.automations': '自动化',
   'workbench.activity.books': '书籍管理',
   'workbench.activity.creator': '创作者',
+  'workbench.activity.director': '导演',
   'workbench.activity.lore': '资料库',
   'workbench.activity.settings': '设置',
   'workbench.activity.skills': 'Skills',

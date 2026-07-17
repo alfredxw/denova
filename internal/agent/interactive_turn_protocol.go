@@ -184,14 +184,17 @@ func interactiveOutputContainsNarrativeCandidate(message *schema.Message) bool {
 		return false
 	}
 	for _, call := range message.ToolCalls {
-		if !isInteractiveTurnSubmissionTool(call.Function.Name) {
+		if !IsInteractiveTurnSubmissionTool(call.Function.Name) {
 			return false
 		}
 	}
 	return true
 }
 
-func isInteractiveTurnSubmissionTool(name string) bool {
+// IsInteractiveTurnSubmissionTool reports whether the tool finalizes the
+// current interactive turn. Submission tool calls always come after the
+// narrative prose, so they anchor the narrative position in display events.
+func IsInteractiveTurnSubmissionTool(name string) bool {
 	switch strings.TrimSpace(name) {
 	case interactiveActorStatePatchesToolName, interactiveChoicesToolName:
 		return true

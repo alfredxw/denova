@@ -519,7 +519,7 @@ func TestPrepareUserSettingsForWriteRejectsEnabledRemoteAccessWithoutCredentials
 	}
 }
 
-func TestLoadLayeredAppliesAllLayers(t *testing.T) {
+func TestLoadLayeredKeepsGeneralSettingsUserScopedAndAppliesWorkspaceAgentOverrides(t *testing.T) {
 	home := t.TempDir()
 	ws := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(ws, ".nova"), 0o755); err != nil {
@@ -527,7 +527,12 @@ func TestLoadLayeredAppliesAllLayers(t *testing.T) {
 	}
 
 	user := Settings{OpenAIModel: "user-model", MaxIteration: intPtr(20)}
-	wsCfg := Settings{OpenAIModel: "ws-model"}
+	wsCfg := Settings{
+		OpenAIModel: "ws-model",
+		AgentTools: AgentToolSettings{
+			IDE: AgentToolOverride{ShellExecute: boolPtr(false)},
+		},
+	}
 	if err := WriteSettingsFile(filepath.Join(home, "config.toml"), user); err != nil {
 		t.Fatal(err)
 	}
@@ -539,14 +544,20 @@ func TestLoadLayeredAppliesAllLayers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if layered.Effective.OpenAIModel != "ws-model" {
-		t.Fatalf("workspace should win: %s", layered.Effective.OpenAIModel)
+	if layered.Effective.OpenAIModel != "user-model" {
+		t.Fatalf("general settings should stay user-scoped: %s", layered.Effective.OpenAIModel)
 	}
 	if layered.Effective.MaxIteration == nil || *layered.Effective.MaxIteration != 20 {
 		t.Fatalf("user MaxIteration should inherit: %v", layered.Effective.MaxIteration)
 	}
 	if layered.User.OpenAIModel != "user-model" {
 		t.Fatalf("raw user should be preserved")
+	}
+	if layered.Workspace.OpenAIModel != "" {
+		t.Fatalf("workspace general setting should be filtered: %s", layered.Workspace.OpenAIModel)
+	}
+	if layered.Effective.AgentTools.IDE.ShellExecute == nil || *layered.Effective.AgentTools.IDE.ShellExecute {
+		t.Fatalf("workspace Agent override should remain effective: %#v", layered.Effective.AgentTools.IDE)
 	}
 }
 
@@ -573,8 +584,37 @@ func TestLoadLayeredIgnoresNovaDirFromEditableLayers(t *testing.T) {
 	if layered.Effective.NovaDir != normalizePath(home) {
 		t.Fatalf("editable layers should not override startup nova_dir: %q", layered.Effective.NovaDir)
 	}
-	if layered.Effective.OpenAIModel != "ws-model" {
-		t.Fatalf("other editable fields should still merge: %q", layered.Effective.OpenAIModel)
+	if layered.Effective.OpenAIModel != "user-model" {
+		t.Fatalf("workspace general fields should not override user settings: %q", layered.Effective.OpenAIModel)
+	}
+}
+
+func TestPrepareWorkspaceAgentSettingsForWritePreservesLegacyGeneralValues(t *testing.T) {
+	existing := Settings{
+		OpenAIModel: "legacy-workspace-model",
+		AgentTools: AgentToolSettings{
+			IDE: AgentToolOverride{ShellExecute: boolPtr(true)},
+		},
+	}
+	incoming := Settings{
+		OpenAIModel: "ignored-new-model",
+		AgentModels: AgentModelSettings{
+			IDE: AgentModelOverride{ProfileID: "ignored-workspace-profile"},
+		},
+		AgentTools: AgentToolSettings{
+			IDE: AgentToolOverride{ShellExecute: boolPtr(false)},
+		},
+	}
+
+	prepared := PrepareWorkspaceAgentSettingsForWrite(existing, incoming)
+	if prepared.OpenAIModel != "legacy-workspace-model" {
+		t.Fatalf("legacy general value should remain reversible on disk: %q", prepared.OpenAIModel)
+	}
+	if prepared.AgentModels.IDE.ProfileID != "" {
+		t.Fatalf("workspace model selection must remain user-scoped: %#v", prepared.AgentModels)
+	}
+	if prepared.AgentTools.IDE.ShellExecute == nil || *prepared.AgentTools.IDE.ShellExecute {
+		t.Fatalf("workspace Agent override should be replaced: %#v", prepared.AgentTools.IDE)
 	}
 }
 

@@ -1,7 +1,8 @@
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import { EditorState } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
+import { diffChars } from 'diff'
 import type { DocumentReviewAnchor, DocumentReviewAnchorKind } from '@/features/document-review/types'
-import { normalizeEditorText } from './editorDocument'
 
 export interface EditorReviewRange {
   from: number
@@ -16,43 +17,57 @@ export interface DocumentReviewSnapshot {
   revision: string
 }
 
-/** Maps a TipTap selection to canonical Markdown bytes without mutating editor state. */
-export function createDocumentReviewAnchor(editor: Editor, snapshot: DocumentReviewSnapshot, range: EditorReviewRange): DocumentReviewAnchor {
-  const canonical = normalizeEditorText(snapshot.content)
+/** Freezes the exact editor document that owns a review selection before saving starts. */
+export interface DocumentReviewSelectionSnapshot {
+  document: ProseMirrorNode
+  range: EditorReviewRange
+}
+
+export function captureDocumentReviewSelection(editor: Editor, range: EditorReviewRange): DocumentReviewSelectionSnapshot {
+  return { document: editor.state.doc, range }
+}
+
+/** Maps a frozen TipTap selection to exact bytes in the revision-bound Markdown source. */
+export function createDocumentReviewAnchor(
+  editor: Editor,
+  snapshot: DocumentReviewSnapshot,
+  selection: DocumentReviewSelectionSnapshot,
+): DocumentReviewAnchor {
+  const canonical = snapshot.content
+  const { document, range } = selection
   if (!snapshot.revision.trim()) throw new Error('Document revision is unavailable')
+  if (!editor.markdown) throw new Error('Markdown serialization is unavailable')
+
+  const canonicalDocument = editor.schema.nodeFromJSON(editor.markdown.parse(canonical))
+  if (!reviewDocumentsEquivalent(canonicalDocument, document)) {
+    throw new Error('The editor and workspace snapshots differ')
+  }
 
   const startMarker = uniqueMarker(canonical, '\uE000nova-review-start\uE001')
   const endMarker = uniqueMarker(canonical + startMarker, '\uE000nova-review-end\uE001')
-  const transaction = editor.state.tr.insertText(endMarker, range.to).insertText(startMarker, range.from)
-  if (!editor.markdown) throw new Error('Markdown serialization is unavailable')
-  const marked = normalizeEditorText(editor.markdown.serialize(transaction.doc.toJSON()))
+  const transaction = EditorState.create({ doc: document }).tr
+    .insertText(endMarker, range.to)
+    .insertText(startMarker, range.from)
+  const marked = editor.markdown.serialize(transaction.doc.toJSON())
   const startMarkerOffset = marked.indexOf(startMarker)
   const endMarkerOffset = marked.indexOf(endMarker)
-
-  let start = -1
-  let end = -1
-  let quote = ''
-  if (startMarkerOffset >= 0 && endMarkerOffset > startMarkerOffset) {
-    const withoutMarkers = marked.replace(startMarker, '').replace(endMarker, '')
-    if (withoutMarkers === canonical) {
-      start = startMarkerOffset
-      end = endMarkerOffset - startMarker.length
-      quote = withoutMarkers.slice(start, end)
-    }
+  if (startMarkerOffset < 0 || endMarkerOffset <= startMarkerOffset) {
+    throw new Error('The selected text could not be serialized with stable boundaries')
   }
 
-  // Markdown serializers can normalize syntax that was authored differently.
-  // A unique visible quote remains safe; ambiguous text is deliberately rejected.
-  if (start < 0 || end < start || !quote) {
-    const visibleQuote = range.displayQuote
-    const first = canonical.indexOf(visibleQuote)
-    if (!visibleQuote || first < 0 || canonical.lastIndexOf(visibleQuote) !== first) {
-      throw new Error('The selected text cannot be mapped uniquely to Markdown')
-    }
-    start = first
-    end = first + visibleQuote.length
-    quote = canonical.slice(start, end)
+  const serialized = marked.slice(0, startMarkerOffset)
+    + marked.slice(startMarkerOffset + startMarker.length, endMarkerOffset)
+    + marked.slice(endMarkerOffset + endMarker.length)
+  const serializedStart = startMarkerOffset
+  const serializedEnd = endMarkerOffset - startMarker.length
+  const mapped = mapAlignedRange(serialized, canonical, serializedStart, serializedEnd)
+  if (!mapped || !canonicalRangeMatchesEditor(editor, canonical, mapped.start, mapped.end, startMarker, endMarker, range)) {
+    throw new Error('The selected text cannot be mapped safely to canonical Markdown')
   }
+
+  const { start, end } = mapped
+  const quote = canonical.slice(start, end)
+  if (!quote) throw new Error('The selected text maps to an empty Markdown range')
 
   const byteStart = utf8Bytes(canonical.slice(0, start))
   const byteEnd = byteStart + utf8Bytes(quote)
@@ -69,6 +84,132 @@ export function createDocumentReviewAnchor(editor: Editor, snapshot: DocumentRev
     editor_from: range.from,
     editor_to: range.to,
   }
+}
+
+interface AlignmentSegment {
+  sourceStart: number
+  sourceEnd: number
+  targetStart: number
+  targetEnd: number
+  equal: boolean
+}
+
+function reviewDocumentsEquivalent(left: ProseMirrorNode, right: ProseMirrorNode): boolean {
+  if (!left.sameMarkup(right)) return false
+  const leftChildren = reviewContentChildCount(left)
+  const rightChildren = reviewContentChildCount(right)
+  if (leftChildren !== rightChildren) return false
+  for (let index = 0; index < leftChildren; index += 1) {
+    if (!left.child(index).eq(right.child(index))) return false
+  }
+  return true
+}
+
+function reviewContentChildCount(document: ProseMirrorNode): number {
+  let count = document.childCount
+  while (count > 0) {
+    const node = document.child(count - 1)
+    if (node.type.name !== 'paragraph' || node.content.size > 0) break
+    count -= 1
+  }
+  return count
+}
+
+function mapAlignedRange(source: string, target: string, start: number, end: number): { start: number; end: number } | null {
+  if (start < 0 || end < start || end > source.length) return null
+  const segments: AlignmentSegment[] = []
+  const changes = diffChars(source, target)
+  let sourceOffset = 0
+  let targetOffset = 0
+  for (let index = 0; index < changes.length;) {
+    const change = changes[index]
+    if (!change.added && !change.removed) {
+      segments.push({
+        sourceStart: sourceOffset,
+        sourceEnd: sourceOffset + change.value.length,
+        targetStart: targetOffset,
+        targetEnd: targetOffset + change.value.length,
+        equal: true,
+      })
+      sourceOffset += change.value.length
+      targetOffset += change.value.length
+      index += 1
+      continue
+    }
+
+    const sourceStart = sourceOffset
+    const targetStart = targetOffset
+    while (index < changes.length && (changes[index].added || changes[index].removed)) {
+      const edited = changes[index]
+      if (edited.removed) sourceOffset += edited.value.length
+      if (edited.added) targetOffset += edited.value.length
+      index += 1
+    }
+    segments.push({ sourceStart, sourceEnd: sourceOffset, targetStart, targetEnd: targetOffset, equal: false })
+  }
+
+  const mappedStart = mapAlignedBoundary(segments, start, 'start', source.length, target.length)
+  const mappedEnd = mapAlignedBoundary(segments, end, 'end', source.length, target.length)
+  return mappedStart !== null && mappedEnd !== null && mappedEnd >= mappedStart
+    ? { start: mappedStart, end: mappedEnd }
+    : null
+}
+
+function mapAlignedBoundary(
+  segments: AlignmentSegment[],
+  offset: number,
+  side: 'start' | 'end',
+  sourceLength: number,
+  targetLength: number,
+): number | null {
+  for (const segment of segments) {
+    if (!segment.equal) continue
+    const inside = side === 'start'
+      ? offset >= segment.sourceStart && (offset < segment.sourceEnd || offset === sourceLength)
+      : offset <= segment.sourceEnd && (offset > segment.sourceStart || offset === 0)
+    if (inside) return segment.targetStart + offset - segment.sourceStart
+  }
+
+  const edited = segments.find((segment) => !segment.equal && offset >= segment.sourceStart && offset <= segment.sourceEnd)
+  if (!edited) return offset === sourceLength ? targetLength : null
+  const sourceSpan = edited.sourceEnd - edited.sourceStart
+  const targetSpan = edited.targetEnd - edited.targetStart
+  if (sourceSpan === 0) return side === 'start' ? edited.targetEnd : edited.targetStart
+  if (offset === edited.sourceStart) return edited.targetStart
+  if (offset === edited.sourceEnd) return edited.targetEnd
+  return edited.targetStart + Math.round(((offset - edited.sourceStart) / sourceSpan) * targetSpan)
+}
+
+function canonicalRangeMatchesEditor(
+  editor: Editor,
+  canonical: string,
+  start: number,
+  end: number,
+  startMarker: string,
+  endMarker: string,
+  range: EditorReviewRange,
+): boolean {
+  const markdown = editor.markdown
+  if (!markdown) return false
+  const markedCanonical = canonical.slice(0, start)
+    + startMarker
+    + canonical.slice(start, end)
+    + endMarker
+    + canonical.slice(end)
+  const markedDocument = editor.schema.nodeFromJSON(markdown.parse(markedCanonical))
+  const startPosition = textPosition(markedDocument, startMarker)
+  const endPosition = textPosition(markedDocument, endMarker)
+  return startPosition === range.from && endPosition === range.to + startMarker.length
+}
+
+function textPosition(document: ProseMirrorNode, text: string): number {
+  let result = -1
+  document.descendants((node, position) => {
+    if (result >= 0 || !node.isText || !node.text) return
+    const offset = node.text.indexOf(text)
+    if (offset >= 0) result = position + offset
+  })
+  return result
 }
 
 /** Places a comment after its text block while keeping block widgets out of inline DOM. */

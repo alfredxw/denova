@@ -15,6 +15,9 @@ const messages = {
   'messages.donation.title': '给 Denova 充点 token',
   'messages.donation.description': '如果 Denova 项目有帮到你，可以给它也充点 token，帮助 Denova 持续开源、持续迭代。非常感谢！',
   'messages.donation.alt': 'Denova 赞助二维码',
+  'messages.github.title': '给 Denova 点个 Star',
+  'messages.github.description': '如果 Denova 项目有帮到你，欢迎去 GitHub 点个 Star，这是对 Denova 持续开源、持续迭代最大的支持。',
+  'messages.github.star': '去 GitHub 点 Star',
 } as const
 
 export default messages

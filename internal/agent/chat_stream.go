@@ -195,7 +195,7 @@ func interactiveToolCallsRequireReclassification(calls []schema.ToolCall, comple
 			}
 			continue
 		}
-		if !isInteractiveTurnSubmissionTool(name) {
+		if !IsInteractiveTurnSubmissionTool(name) {
 			return true
 		}
 	}

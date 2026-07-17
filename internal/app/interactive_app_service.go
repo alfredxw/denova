@@ -474,6 +474,31 @@ func (s *InteractiveAppService) SwitchInteractiveTurnVersion(storyID string, req
 	return store.SwitchTurnVersion(storyID, req)
 }
 
+func (a *App) UpdateInteractiveTurnNarrative(storyID string, req interactive.UpdateTurnNarrativeRequest) (interactive.UpdateTurnNarrativeResult, error) {
+	return a.interactiveService().UpdateInteractiveTurnNarrative(storyID, req)
+}
+
+func (s *InteractiveAppService) UpdateInteractiveTurnNarrative(storyID string, req interactive.UpdateTurnNarrativeRequest) (interactive.UpdateTurnNarrativeResult, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.UpdateTurnNarrativeResult{}, ErrNoWorkspace
+	}
+	result, err := store.UpdateTurnNarrative(storyID, req)
+	if err != nil {
+		log.Printf("[interactive-turn-edit] update failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, req.BranchID, req.TurnID, err)
+		return interactive.UpdateTurnNarrativeResult{}, err
+	}
+	log.Printf(
+		"[interactive-turn-edit] narrative updated story_id=%s branch_id=%s turn_id=%s narrative_bytes=%d context_compaction_invalidated=%t",
+		storyID,
+		result.Turn.BranchID,
+		result.Turn.ID,
+		len([]byte(result.Turn.Narrative)),
+		result.ContextCompactionInvalidated,
+	)
+	return result, nil
+}
+
 func (a *App) DeleteInteractiveBranch(storyID, branchID string) error {
 	return a.interactiveService().DeleteInteractiveBranch(storyID, branchID)
 }

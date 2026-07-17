@@ -7,10 +7,11 @@ import { StoryStage } from './StoryStage'
 import { mergeInteractiveTurnPersistedSnapshot, useInteractiveStore } from '../stores/interactive-store'
 import type { InteractiveTurnPersistedEvent, Snapshot, StorySummary, TurnEvent } from '../types'
 
-const { generateInteractiveImageMock, runInteractiveDirectorMock, sendInteractiveMessageMock, useSkillCommandsMock } = vi.hoisted(() => ({
+const { generateInteractiveImageMock, runInteractiveDirectorMock, sendInteractiveMessageMock, updateInteractiveTurnNarrativeMock, useSkillCommandsMock } = vi.hoisted(() => ({
   generateInteractiveImageMock: vi.fn(),
   runInteractiveDirectorMock: vi.fn(),
   sendInteractiveMessageMock: vi.fn(),
+  updateInteractiveTurnNarrativeMock: vi.fn(),
   useSkillCommandsMock: vi.fn(),
 }))
 
@@ -31,6 +32,7 @@ vi.mock('../api', () => ({
   runInteractiveDirector: runInteractiveDirectorMock,
   sendInteractiveMessage: sendInteractiveMessageMock,
   switchInteractiveTurnVersion: vi.fn(),
+  updateInteractiveTurnNarrative: updateInteractiveTurnNarrativeMock,
 }))
 
 beforeEach(() => {
@@ -41,6 +43,7 @@ beforeEach(() => {
   runInteractiveDirectorMock.mockReset()
   runInteractiveDirectorMock.mockResolvedValue(directorStatus('running', { completed_docs: 1 }))
   sendInteractiveMessageMock.mockReset()
+  updateInteractiveTurnNarrativeMock.mockReset()
   useSkillCommandsMock.mockReset()
   useSkillCommandsMock.mockReturnValue([])
 })
@@ -119,6 +122,33 @@ describe('StoryStage TurnResult choices', () => {
     }
   })
 
+})
+
+describe('StoryStage AI reply editing', () => {
+  it('edits persisted AI prose without regenerating the turn', async () => {
+    const user = userEvent.setup()
+    render(<ReplyEditHarness />)
+
+    await user.click(screen.getByRole('button', { name: '编辑 AI 回复' }))
+    const editor = screen.getByRole('textbox', { name: 'AI 回复正文' })
+    expect(editor).toHaveValue('朋友住在 3 楼 403 室。')
+    expect(screen.getByText(/不会重新生成/)).toBeInTheDocument()
+
+    await user.clear(editor)
+    await user.type(editor, '朋友住在 4 楼 403 室。')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(updateInteractiveTurnNarrativeMock).toHaveBeenCalledWith('story-1', 'turn-edit', {
+        branch_id: 'main',
+        narrative: '朋友住在 4 楼 403 室。',
+        expected_narrative: '朋友住在 3 楼 403 室。',
+      })
+    })
+    expect(await screen.findByText('朋友住在 4 楼 403 室。')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(sendInteractiveMessageMock).not.toHaveBeenCalled()
+  })
 })
 
 describe('StoryStage current state ledger', () => {
@@ -775,6 +805,128 @@ describe('StoryStage streaming rendering', () => {
     expect(screen.queryByText('write_file')).not.toBeInTheDocument()
   })
 
+  it('renders submission tool cards after the narrative when the turn has a narrative anchor', async () => {
+    const turn: TurnEvent = {
+      id: 'turn-1',
+      parent_id: null,
+      branch_id: 'main',
+      ts: '2026-07-11T00:00:00Z',
+      user: '推开石门',
+      narrative: '石门后传来锁链拖地的声音。',
+      display_events: [
+        {
+          id: 'game-thinking',
+          role: 'thinking' as const,
+          content: '正在判断石门后的威胁。',
+          agent_kind: 'interactive_story',
+        },
+        {
+          id: 'narrative-anchor',
+          role: 'narrative' as const,
+        },
+        {
+          id: 'submit-patches',
+          role: 'tool_call' as const,
+          name: 'submit_actor_state_patches',
+          content: 'submit_actor_state_patches',
+          status: 'success' as const,
+          agent_kind: 'interactive_story',
+        },
+        {
+          id: 'submit-choices',
+          role: 'tool_call' as const,
+          name: 'submit_choices',
+          content: 'submit_choices',
+          status: 'success' as const,
+          agent_kind: 'interactive_story',
+        },
+      ],
+    }
+
+    render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+        <StoryStage
+          workspace="/tmp/book"
+          stories={[story()]}
+          story={story()}
+          tellers={[]}
+          storyId="story-1"
+          branchId="main"
+          snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [turn], current_turn: turn, state: {} }}
+          onDone={() => undefined}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    const narrative = screen.getByText('石门后传来锁链拖地的声音。')
+    expect(narrative).toBeInTheDocument()
+    // 提交结果工具卡片渲染在正文之后，不再折进思考分组
+    const submitPatches = screen.getByText('submit_actor_state_patches')
+    const submitChoices = screen.getByText('submit_choices')
+    expect(submitPatches).toBeInTheDocument()
+    expect(submitChoices).toBeInTheDocument()
+    expect(narrative.compareDocumentPosition(submitPatches) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(narrative.compareDocumentPosition(submitChoices) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // 思考折叠分组只包含思考内容，不再吞掉提交结果工具
+    const traceButton = screen.getByRole('button', { name: /思考过程/ })
+    expect(traceButton.textContent).not.toMatch(/工具调用/)
+  })
+
+  it('keeps submission tools inside the trace group for turns persisted without a narrative anchor', async () => {
+    const turn: TurnEvent = {
+      id: 'turn-1',
+      parent_id: null,
+      branch_id: 'main',
+      ts: '2026-07-11T00:00:00Z',
+      user: '推开石门',
+      narrative: '石门后传来锁链拖地的声音。',
+      display_events: [
+        {
+          id: 'game-thinking',
+          role: 'thinking' as const,
+          content: '正在判断石门后的威胁。',
+          agent_kind: 'interactive_story',
+        },
+        {
+          id: 'submit-patches',
+          role: 'tool_call' as const,
+          name: 'submit_actor_state_patches',
+          content: 'submit_actor_state_patches',
+          status: 'success' as const,
+          agent_kind: 'interactive_story',
+        },
+        {
+          id: 'submit-choices',
+          role: 'tool_call' as const,
+          name: 'submit_choices',
+          content: 'submit_choices',
+          status: 'success' as const,
+          agent_kind: 'interactive_story',
+        },
+      ],
+    }
+
+    render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+        <StoryStage
+          workspace="/tmp/book"
+          stories={[story()]}
+          story={story()}
+          tellers={[]}
+          storyId="story-1"
+          branchId="main"
+          snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [turn], current_turn: turn, state: {} }}
+          onDone={() => undefined}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    expect(screen.getByText('石门后传来锁链拖地的声音。')).toBeInTheDocument()
+    // 旧数据没有锚点：保持旧布局，提交结果工具仍在思考折叠分组内（默认折叠不渲染）
+    expect(screen.getByRole('button', { name: /思考过程.*2 次工具调用/ })).toBeInTheDocument()
+    expect(screen.queryByText('submit_choices')).not.toBeInTheDocument()
+  })
+
   it('updates a live tool card when an index-based call later receives an id', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
@@ -1061,6 +1213,45 @@ describe('StoryStage opening panel', () => {
     expect(screen.getByRole('button', { name: '使用自定义开局' })).toBeEnabled()
   })
 })
+
+function ReplyEditHarness() {
+  const initialTurn: TurnEvent = {
+    id: 'turn-edit',
+    parent_id: null,
+    branch_id: 'main',
+    ts: '2026-06-28T00:00:00Z',
+    user: '去找朋友',
+    narrative: '朋友住在 3 楼 403 室。',
+  }
+  const [snapshot, setSnapshot] = useState<Snapshot>({
+    story_id: 'story-1',
+    branch_id: 'main',
+    turns: [initialTurn],
+    current_turn: initialTurn,
+    state: {},
+  })
+
+  return (
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+      <StoryStage
+        workspace="/tmp/book"
+        stories={[story()]}
+        story={story()}
+        tellers={[]}
+        storyId="story-1"
+        branchId="main"
+        snapshot={snapshot}
+        onDone={() => {
+          const narrative = updateInteractiveTurnNarrativeMock.mock.calls.at(-1)?.[2]?.narrative || initialTurn.narrative
+          const turn = { ...snapshot.turns[0], narrative }
+          const nextSnapshot = { ...snapshot, turns: [turn], current_turn: turn }
+          setSnapshot(nextSnapshot)
+          return Promise.resolve(nextSnapshot)
+        }}
+      />
+    </VirtuosoMockContext.Provider>
+  )
+}
 
 function StoryStageHarness({ onDone }: { onDone?: (options?: { silent?: boolean }) => Promise<Snapshot | void> } = {}) {
   const [snapshot, setSnapshot] = useState<Snapshot>({ story_id: 'story-1', branch_id: 'main', turns: [], state: {} })

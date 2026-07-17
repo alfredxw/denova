@@ -1,6 +1,4 @@
 const settings = {
-  'settings.activeLayer.user': 'User Config',
-  'settings.activeLayer.workspace': 'Current Workspace',
   'settings.agent.maxIteration': 'Max Iterations (blank = unlimited)',
   'settings.agent.modelMaxRetries': 'Model Retries',
   'settings.agent.idleTimeoutSeconds': 'Idle Timeout (s, 0 = unlimited)',
@@ -13,7 +11,6 @@ const settings = {
   'settings.access.passwordSetPlaceholder': 'Already set; enter a new password to replace it',
   'settings.access.restartHint': 'After enabling this and restarting Denova, Denova listens on the LAN address. Other devices on the same local network can open Denova with the startup access URL and sign in on the page with this username and password. Localhost access does not require login.',
   'settings.access.username': 'Remote Access Username',
-  'settings.access.userOnly': 'LAN access is a user-level startup setting. Switch to User Config to edit it.',
   'settings.appearance.language': 'Interface Language',
   'settings.appearance.theme': 'Theme',
   'settings.updates.asset': 'Package: {{name}} ({{size}})',
@@ -50,7 +47,6 @@ const settings = {
   'settings.updates.stagedRestart': 'Update staged. Restart and install to exit Denova, replace files, and launch the new version automatically.',
   'settings.updates.updateAvailableTitle': 'New version available',
   'settings.updates.upToDateTitle': 'Denova is up to date',
-  'settings.updates.userOnly': 'App updates are user-level settings. Switch to User Config to edit the auto-check policy.',
   'settings.appearance.readingFont': 'Reading Font',
   'settings.appearance.readingFontSize': 'Reading Font Size (px)',
   'settings.appearance.uiFont': 'UI Font',
@@ -79,7 +75,6 @@ const settings = {
   'settings.debug.traceExporterOTLP': 'OTLP (reserved)',
   'settings.debug.traceRetentionRuns': 'Trace Retention Runs',
   'settings.debug.traceHelp': 'Summary trace records only bounded previews, hashes, sizes, token usage, timing, status, and IDs. Debug increases preview and diagnostic fields, but still does not store full prompts, outputs, or tool results.',
-  'settings.debug.userOnly': 'Debug options are user-level development settings. Switch to User Config to edit them.',
   'settings.group.common': 'Common',
   'settings.group.ide': 'Writing Mode',
   'settings.group.interactive': 'Game Mode',
@@ -94,7 +89,6 @@ const settings = {
   'settings.ide.hideNovelChapterBodyInLiveOutputHelp': 'When enabled, chapter body is hidden from the Agent stream. Files are still written normally.',
   'settings.ide.maxOpenTabs': 'Max Open Tabs',
   'settings.interactive.lineHeight': 'Story Stage Line Height',
-  'settings.interactive.workspaceOnly': 'Game Mode settings are saved per book. Switch to workspace config to edit them.',
   'settings.model.modelProfiles': 'Language Models',
   'settings.model.profileBaseUrlPlaceholder': 'Base URL',
   'settings.model.profileEmpty': 'Inheriting {{count}} language model(s). Add one with only Base URL, API Key, and model name.',
@@ -143,7 +137,6 @@ const settings = {
   'settings.paths.novaDir': 'Denova Data Directory',
   'settings.paths.skillsDir': 'Skills Directory',
   'settings.paths.userConfig': 'User Config File',
-  'settings.paths.workspaceConfig': 'Workspace Config File',
   'settings.onboarding.title': 'New User Guide',
   'settings.onboarding.description': 'Reopen the setup, book creation, writing, and module tour flow.',
   'settings.onboarding.reopen': 'Reopen',
@@ -171,7 +164,6 @@ const settings = {
   'settings.versions.agentThreshold': 'Agent Trigger Characters',
   'settings.versions.timedAuto': 'Timed Auto Version',
   'settings.versions.timedInterval': 'Timed Save Interval (minutes)',
-  'settings.versions.workspaceOnly': 'Version policies are saved per book. Switch to workspace config to edit them.',
 } as const
 
 export default settings

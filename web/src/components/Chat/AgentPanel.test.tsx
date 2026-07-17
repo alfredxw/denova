@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
+import { fetchSettings, updateUserSettings } from '@/features/settings/api'
 import { AgentPanel } from './AgentPanel'
 
 const useWritingSkillOptionsMock = vi.hoisted(() => vi.fn())
@@ -12,9 +12,9 @@ const useWorkspaceChangeGroupsMock = vi.hoisted(() => vi.fn())
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: vi.fn().mockResolvedValue({
     effective: { ide_story_teller_id: 'classic', writing_skill_default: 'novel-lite' },
-    workspace: {},
+    user: {},
   }),
-  updateWorkspaceSettings: vi.fn().mockResolvedValue(undefined),
+  updateUserSettings: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/hooks/useSkillCommands', () => ({
@@ -34,7 +34,7 @@ vi.mock('@/features/changes/use-change-review', () => ({
 describe('AgentPanel', () => {
   beforeEach(() => {
     vi.mocked(fetchSettings).mockClear()
-    vi.mocked(updateWorkspaceSettings).mockClear()
+    vi.mocked(updateUserSettings).mockClear()
     useWritingSkillOptionsMock.mockReset()
     useWorkspaceChangeGroupsMock.mockReset()
     useWorkspaceChangeGroupsMock.mockReturnValue({ data: [] })
@@ -200,7 +200,7 @@ describe('AgentPanel', () => {
     fireEvent.click(slowBurnItem.closest('[role="menuitem"]') || slowBurnItem)
 
     await waitFor(() => {
-      expect(updateWorkspaceSettings).toHaveBeenCalledWith(expect.objectContaining({ ide_story_teller_id: 'slow-burn' }))
+      expect(updateUserSettings).toHaveBeenCalledWith(expect.objectContaining({ ide_story_teller_id: 'slow-burn' }))
     })
 
     window.dispatchEvent(new CustomEvent('nova:writing-agent-init', {

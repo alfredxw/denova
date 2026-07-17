@@ -185,6 +185,14 @@ func TestWriteAgentConfigsRequiresExplicitScopeAndWorkspace(t *testing.T) {
 	if _, err := writeTool.(tool.InvokableTool).InvokableRun(context.Background(), `{"scope":"workspace","operations":[]}`); err == nil {
 		t.Fatalf("write_agent_configs should reject workspace scope without workspace")
 	}
+
+	writeTool, err = newWriteAgentConfigsTool(&config.Config{NovaDir: t.TempDir(), Workspace: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeTool.(tool.InvokableTool).InvokableRun(context.Background(), `{"scope":"workspace","operations":[{"op":"set_agent_override","agent":"ide","model":{"profile_id":"workspace-model"}}]}`); err == nil {
+		t.Fatalf("write_agent_configs should keep model selection user-scoped")
+	}
 }
 
 func TestWriteAgentConfigsPreservesUnrelatedSettings(t *testing.T) {

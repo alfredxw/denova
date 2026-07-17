@@ -20,7 +20,8 @@ export function isDirectorDisplayEvent(event: TurnDisplayEvent) {
 export function displayEventToChatMessage(event: TurnDisplayEvent, fallbackID: string): ChatMessage {
   return {
     id: event.id || fallbackID,
-    role: event.role,
+    // narrative 锚点只属于游戏主时间线，导演后台时间线（isDirectorDisplayEvent 过滤）不会出现；此处仅做类型收窄兜底。
+    role: event.role === 'narrative' ? undefined : event.role,
     content: event.content || event.name || '',
     name: event.name || event.content,
     args: event.args || '',

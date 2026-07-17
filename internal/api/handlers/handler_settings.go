@@ -11,7 +11,7 @@ import (
 	"denova/config"
 )
 
-// handleSettingsGet GET /api/settings — 返回三层配置快照。
+// handleSettingsGet GET /api/settings — 返回用户设置、工作区 Agent 定制及生效快照。
 func (h *Handlers) HandleSettingsGet(ctx context.Context, c *app.RequestContext) {
 	layered, err := h.app.Settings()
 	if err != nil {
@@ -55,7 +55,7 @@ func settingsErrorKey(err error) string {
 	}
 }
 
-// handleSettingsWorkspaceUpdate PUT /api/settings/workspace — 持久化工作区级配置。
+// handleSettingsWorkspaceUpdate PUT /api/settings/workspace — 持久化工作区级 Agent 定制。
 func (h *Handlers) HandleSettingsWorkspaceUpdate(ctx context.Context, c *app.RequestContext) {
 	body, baseRevision, err := bindSettingsUpdate(c)
 	if err != nil {

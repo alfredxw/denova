@@ -24,12 +24,12 @@ import { chatMessagesToAgentUIMessages } from '@/lib/agent-legacy-message'
 import { agentSubAgentSessionKey, agentViewToRenderMessage, type AgentMessageView } from '@/lib/agent-message-view'
 import { fetchSettings } from '@/features/settings/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveImage, removeInteractiveContextCompaction, runInteractiveDirector, sendInteractiveMessage, switchInteractiveTurnVersion } from '../api'
+import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveImage, removeInteractiveContextCompaction, runInteractiveDirector, sendInteractiveMessage, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
 import { createInteractiveNarrativeFilter, sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import type { ImagePreset, InteractiveTurnPersistedEvent, RuleResolution, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TokenUsageEvent } from '../types'
+import type { ImagePreset, InteractiveTurnPersistedEvent, RuleResolution, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TokenUsageEvent, TurnEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { NewStorySetupPanel } from './NewStorySetupPanel'
 import { StoryOpeningPanel } from './StoryOpeningPanel'
@@ -40,6 +40,7 @@ import { isDirectorDisplayEvent } from './director-console/utils'
 import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from './story-state/display-preference'
 import { StoryStateLedger } from './story-state/StoryStateLedger'
 import { buildStoryStateModel } from './story-state/model'
+import { EditInteractiveReplyDialog } from './EditInteractiveReplyDialog'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -128,6 +129,12 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   useEffect(() => {
     setOptimisticInteractiveImages({})
   }, [stageKey])
+  const [replyEditTarget, setReplyEditTarget] = useState<{
+    turnId: string
+    branchId: string
+    initialContent: string
+    expectedNarrative: string
+  } | null>(null)
   const [editingTurn, setEditingTurn] = useState<{
     id: string
     content: string
@@ -153,6 +160,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const [turnScrollRequest, setTurnScrollRequest] = useState<TurnScrollRequest>()
   const currentCompactionMessageIdRef = useRef<string | null>(null)
   const compactionIdCounterRef = useRef(0)
+
+  useEffect(() => {
+    setReplyEditTarget(null)
+  }, [stageKey])
   const liveMessageBufferRef = useRef<BufferedLiveMessage[]>([])
   const liveMessageRafRef = useRef<number | null>(null)
   const liveMessagePromoteRafRef = useRef<number | null>(null)
@@ -337,9 +348,19 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         })
       }
       const deferredImageMessages: ChatMessage[] = []
+      // narrative 锚点标记正文在事件流中的真实位置：锚点前的思考/工具留在正文之前，
+      // 提交结果等锚点后事件渲染在正文之后；旧回合没有锚点，正文兜底排在最后。
+      const preNarrativeMessages: ChatMessage[] = []
+      const postNarrativeMessages: ChatMessage[] = []
+      let narrativeAnchored = false
       for (const [index, event] of displayEvents.entries()) {
+        if (event.role === 'narrative') {
+          narrativeAnchored = true
+          continue
+        }
+        const timeline = narrativeAnchored ? postNarrativeMessages : preNarrativeMessages
         if (event.role === 'thinking') {
-          messages.push({
+          timeline.push({
             id: event.id || `${turn.id}-thinking-${index}`,
             role: 'thinking',
             content: event.content || '',
@@ -386,12 +407,12 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           if (event.name === 'generate_interactive_image') {
             deferredImageMessages.push(toolMessage)
           } else {
-            messages.push(toolMessage)
+            timeline.push(toolMessage)
           }
           continue
         }
         if (event.role === 'assistant') {
-          messages.push({
+          timeline.push({
             id: event.id || `${turn.id}-subagent-${index}`,
             role: 'assistant',
             content: event.content || '',
@@ -408,6 +429,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
           })
         }
       }
+      messages.push(...preNarrativeMessages)
       const ruleRoll = publicRuleRollVisible ? publicRuleRollFromResolution(turn.rule_resolution) : null
       if (ruleRoll) {
         messages.push({
@@ -435,6 +457,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         interactive_image_error: latestInteractiveImageError(deferredImageMessages),
         interactive_image_status: mergedImages?.length ? 'success' : latestInteractiveImageStatus(deferredImageMessages),
       })
+      messages.push(...postNarrativeMessages)
       return messages
     })
   }, [optimisticInteractiveImages, publicRuleRollVisible, storyPathTurns])
@@ -511,9 +534,9 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     [availableBookOpeningPresets, selectedBookOpeningPresetId],
   )
   const turnsById = useMemo(() => {
-    const result = new Map<string, { user: string }>()
+    const result = new Map<string, TurnEvent>()
     for (const turn of snapshot?.turns || []) {
-      result.set(turn.id, { user: turn.user })
+      result.set(turn.id, turn)
     }
     return result
   }, [snapshot?.turns])
@@ -1015,6 +1038,20 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     if (message) startEditingMessage(message)
   }
 
+  const startEditingAssistantReply = (view: AgentMessageView) => {
+    if (streaming || generatingImageTurnId || switchingVersionTurnId) return
+    const message = agentViewToRenderMessage(view)
+    if (!message?.turn_id) return
+    const turn = turnsById.get(message.turn_id)
+    if (!turn) return
+    setReplyEditTarget({
+      turnId: turn.id,
+      branchId: turn.branch_id || branchId,
+      initialContent: sanitizeStoredNarrative(turn.narrative),
+      expectedNarrative: turn.narrative,
+    })
+  }
+
   const regenerateView = (view: AgentMessageView) => {
     const message = agentViewToRenderMessage(view)
     if (message) regenerateMessage(message)
@@ -1198,6 +1235,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 turnScrollRequest={turnScrollRequest}
                 onVisibleTurnAnchorChange={handleVisibleTurnAnchorChange}
                 onEditMessage={startEditingView}
+                onEditAssistantReply={generatingImageTurnId || switchingVersionTurnId ? undefined : startEditingAssistantReply}
                 onRegenerateMessage={regenerateView}
                 onSwitchMessageVersion={switchViewVersion}
                 onGenerateInteractiveImage={generateImageForView}
@@ -1524,6 +1562,22 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
               </div>
             </DialogContent>
           </Dialog>
+          {replyEditTarget ? (
+            <EditInteractiveReplyDialog
+              key={replyEditTarget.turnId}
+              turnId={replyEditTarget.turnId}
+              initialContent={replyEditTarget.initialContent}
+              onClose={() => setReplyEditTarget(null)}
+              onSave={async (narrative) => {
+                await updateInteractiveTurnNarrative(storyId, replyEditTarget.turnId, {
+                  branch_id: replyEditTarget.branchId,
+                  narrative,
+                  expected_narrative: replyEditTarget.expectedNarrative,
+                })
+                await onDone({ silent: true })
+              }}
+            />
+          ) : null}
         </div>
       </div> : null}
     </main>

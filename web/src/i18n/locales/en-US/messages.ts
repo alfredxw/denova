@@ -15,6 +15,9 @@ const messages = {
   'messages.donation.title': 'Top up Denova',
   'messages.donation.description': 'If Denova has helped you, consider topping it up with a few tokens to help keep Denova open source and improving. Thank you.',
   'messages.donation.alt': 'Denova donation QR code',
+  'messages.github.title': 'Star Denova on GitHub',
+  'messages.github.description': 'If Denova has helped you, a star on GitHub goes a long way toward keeping Denova open source and improving. Thank you!',
+  'messages.github.star': 'Star on GitHub',
 } as const
 
 export default messages

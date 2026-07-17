@@ -61,6 +61,23 @@ type SwitchTurnVersionRequest struct {
 	VersionTurnID string `json:"version_turn_id"`
 }
 
+// UpdateTurnNarrativeRequest updates only the creator-visible narrative of an
+// existing turn. ExpectedNarrative provides compare-and-swap protection for
+// editors opened from an older snapshot.
+type UpdateTurnNarrativeRequest struct {
+	BranchID          string  `json:"branch_id"`
+	TurnID            string  `json:"-"`
+	Narrative         string  `json:"narrative"`
+	ExpectedNarrative *string `json:"expected_narrative,omitempty"`
+}
+
+// UpdateTurnNarrativeResult reports the durable turn and whether a checkpoint
+// was invalidated so future model context is rebuilt from the edited prose.
+type UpdateTurnNarrativeResult struct {
+	Turn                         TurnEvent `json:"turn"`
+	ContextCompactionInvalidated bool      `json:"context_compaction_invalidated"`
+}
+
 type InteractiveImageGenerateRequest struct {
 	BranchID string `json:"branch_id,omitempty"`
 	TurnID   string `json:"turn_id"`
@@ -202,8 +219,16 @@ type TurnEvent struct {
 
 const TokenUsageEventType = "token_usage"
 
+// DisplayEventRoleNarrative marks the position where the turn narrative was
+// streamed relative to thinking/tool events. It carries no content; the UI
+// renders turn.narrative at this anchor so submission tool cards stay after
+// the prose instead of being folded into the thinking trace group.
+const DisplayEventRoleNarrative = "narrative"
+
 // DisplayEvent 表示互动回合中只用于前端展示的事件，例如思考过程和工具调用卡片。
 // 它不进入下一轮 Agent 上下文；Args/Result 仅用于追溯当时的工具调用过程。
+// Role 为 narrative 的事件是正文位置锚点：正文本身不进入 DisplayEvents，
+// 锚点只标记正文在事件流中的相对位置，供前端按真实顺序穿插渲染。
 type DisplayEvent struct {
 	ID                string   `json:"id,omitempty"`
 	Role              string   `json:"role"`
