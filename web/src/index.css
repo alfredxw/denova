@@ -1666,15 +1666,18 @@ html[data-nova-motion="off"] *::after {
   text-indent: 2em;
 }
 
-.nova-document-review-mode .editor-content .tiptap {
-  caret-color: transparent;
-  cursor: text;
+.editor-content .tiptap .nova-document-review-highlight {
+  cursor: pointer;
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(in srgb, var(--nova-warning) 72%, transparent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.18em;
+  text-decoration-skip-ink: auto;
 }
 
-.editor-content .tiptap .nova-document-review-highlight {
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--nova-warning) 18%, transparent);
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--nova-warning) 58%, transparent);
+.editor-content .tiptap .nova-document-review-highlight:hover {
+  text-decoration-color: var(--nova-warning);
+  text-decoration-thickness: 2px;
 }
 
 .editor-content .tiptap .nova-document-review-widget {
@@ -1684,11 +1687,17 @@ html[data-nova-motion="off"] *::after {
   text-indent: 0;
 }
 
+.editor-content .tiptap .nova-document-review-thread-anchor {
+  width: min(32rem, calc(100% - var(--nova-document-review-anchor-offset, 0px)));
+  margin-left: var(--nova-document-review-anchor-offset, 0px);
+}
+
 .editor-content .tiptap .nova-document-review-widget.is-outdated {
   opacity: 0.78;
 }
 
 .editor-content .tiptap .nova-document-review-widget .nova-review-comment-thread {
+  margin-inline: 0;
   font-family: var(--nova-font-sans, Inter, sans-serif);
   font-size: 12px;
   line-height: 1.5;

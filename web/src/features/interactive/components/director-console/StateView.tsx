@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, ArrowRight, Sparkles, UserRound } from 'lucide-react'
+import { Activity, ArrowRight, ChevronDown, Sparkles, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/ui/button'
 import type { ActorStateField, ActorStateSchemaSnapshot, Snapshot } from '../../types'
-import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from '../story-state/display-preference'
-import { StateDisplayPreferenceMenu } from '../story-state/StateDisplayPreferenceMenu'
 import {
   actorFieldEntries,
   actorName,
@@ -17,34 +16,35 @@ import {
 } from '../story-state/model'
 import { ActorTabs } from './ActorTabs'
 import { StateValue } from './shared'
-import { StateSchemaOverview } from './StateSchemaOverview'
 
-export function StateView({ storyId, snapshot, stateFacts, syncError, displayPreference = DEFAULT_STORY_STATE_DISPLAY, onDisplayPreferenceChange = noopDisplayPreferenceChange, onSnapshotRefresh }: { storyId?: string; snapshot: Snapshot | null; stateFacts: Array<[string, unknown]>; syncStatus?: string; syncError?: string; displayPreference?: StoryStateDisplayPreference; onDisplayPreferenceChange?: (value: StoryStateDisplayPreference) => void; onSnapshotRefresh?: () => void | Promise<unknown> }) {
+const CHANGES_PREVIEW_COUNT = 5
+
+// 状态 tab 只做核心浏览：Actor → 世界与场景 → 本回合变化。
+// 展示偏好设置在控制台 header 设置区；状态结构机械信息在导演 tab。
+export function StateView({ snapshot, stateFacts, syncError }: { snapshot: Snapshot | null; stateFacts: Array<[string, unknown]>; syncError?: string }) {
   const { t } = useTranslation()
   const turn = snapshot?.current_turn
   const { actors, worldFacts } = useMemo(() => splitStoryStateFacts(stateFacts), [stateFacts])
   const [selectedActorId, setSelectedActorId] = useState(actors[0]?.[0] || '')
+  const [showAllChanges, setShowAllChanges] = useState(false)
 
   useEffect(() => {
     if (actors.some(([actorId]) => actorId === selectedActorId)) return
     setSelectedActorId(actors[0]?.[0] || '')
   }, [actors, selectedActorId])
 
+  useEffect(() => {
+    setShowAllChanges(false)
+  }, [turn?.id])
+
   const changes = useMemo(() => stateChanges(turn?.state_delta), [turn?.state_delta])
+  const visibleChanges = showAllChanges ? changes : changes.slice(0, CHANGES_PREVIEW_COUNT)
   const actorNames = useMemo(() => new Map(actors.map(([actorId, actor]) => [actorId, actorName(actorId, actor)])), [actors])
   const hasState = actors.length > 0 || worldFacts.length > 0
   const selectedActor = actors.find(([actorId]) => actorId === selectedActorId)
 
   return (
     <div className="min-w-0 space-y-5">
-      <section className="flex min-w-0 items-center gap-3 rounded-[10px] border border-[var(--nova-border)] bg-[var(--director-panel)] px-3 py-2.5">
-        <div className="min-w-0 flex-1">
-          <h3 className="text-[11px] font-semibold text-[var(--nova-text)]">{t('storyStage.state.stageDisplay')}</h3>
-          <p className="mt-0.5 text-[10px] leading-4 text-[var(--nova-text-faint)]">{t('storyStage.state.stageDisplayHint')}</p>
-        </div>
-        <StateDisplayPreferenceMenu value={displayPreference} onChange={onDisplayPreferenceChange} compact />
-      </section>
-      <StateSchemaOverview storyId={storyId} schema={snapshot?.actor_state_schema} initialization={snapshot?.state_schema_initialization} canReview={!snapshot || (snapshot.graph?.branches.length ?? 0) <= 1} onRefresh={onSnapshotRefresh} />
       <section className="min-w-0">
         {turn?.state_error || syncError ? (
           <div className="mb-3 rounded-[10px] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-5 text-[var(--nova-danger)]">
@@ -88,10 +88,16 @@ export function StateView({ storyId, snapshot, stateFacts, syncError, displayPre
         <section aria-labelledby="director-state-change-title">
           <SectionHeading id="director-state-change-title" icon={<Activity className="h-3.5 w-3.5" />} title={t('directorPanel.stateDelta')} hint={t('directorPanel.stateDeltaHint')} />
           <ol className="mt-3 space-y-2">
-            {changes.map((change) => (
+            {visibleChanges.map((change) => (
               <StateChangeRow key={change.id} change={change} actorName={change.actorId ? actorNames.get(change.actorId) : undefined} />
             ))}
           </ol>
+          {changes.length > CHANGES_PREVIEW_COUNT ? (
+            <Button type="button" variant="ghost" size="xs" className="mt-2 w-full gap-1 text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]" onClick={() => setShowAllChanges((value) => !value)}>
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showAllChanges ? 'rotate-180' : ''}`} />
+              {showAllChanges ? t('directorPanel.stateDeltaShowLess') : t('directorPanel.stateDeltaShowAll', { count: changes.length })}
+            </Button>
+          ) : null}
         </section>
       ) : null}
     </div>
@@ -227,5 +233,3 @@ function changeVerb(op: string, t: ReturnType<typeof useTranslation>['t']) {
   if (normalized === 'remove' || normalized === 'delete' || normalized === 'unset') return t('directorPanel.stateChange.remove')
   return op
 }
-
-function noopDisplayPreferenceChange() {}

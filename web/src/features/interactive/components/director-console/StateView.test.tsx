@@ -1,6 +1,7 @@
 import { act, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
+import type { Snapshot } from '../../types'
 import { StateView } from './StateView'
 
 describe('StateView', () => {
@@ -166,26 +167,29 @@ describe('StateView', () => {
     expect(screen.queryByText('不得泄露')).not.toBeInTheDocument()
   })
 
-  it('disables schema re-review when the snapshot graph has multiple branches', () => {
+  it('truncates a long turn change list and expands it on demand', async () => {
     render(
       <StateView
-        storyId="story"
         snapshot={{
           story_id: 'story', branch_id: 'main', turns: [], state: {},
-          state_schema_initialization: { mode: 'after_opening', status: 'ready' },
-          graph: {
-            nodes: [],
-            branches: [
-              { id: 'main', head: 'turn-1', created_at: '2026-07-13T00:00:00Z', current: true },
-              { id: 'branch-2', head: 'turn-1', from: 'main', created_at: '2026-07-13T00:00:01Z', current: false },
-            ],
-          },
+          current_turn: {
+            id: 'turn-1',
+            state_delta: {
+              ops: Array.from({ length: 7 }, (_, index) => ({ path: `world_flags.flag_${index}`, op: 'set', value: index })),
+            },
+          } as Snapshot['current_turn'],
         }}
-        stateFacts={[]}
+        stateFacts={[['world_flags', { flag_0: 0 }]]}
       />,
     )
 
-    expect(screen.getByRole('button', { name: '重新审查' })).toBeDisabled()
-    expect(screen.getByText('当前故事已有多个分支，暂不能安全迁移共享状态结构。')).toBeInTheDocument()
+    expect(screen.getByText('World flags / Flag 0')).toBeInTheDocument()
+    expect(screen.queryByText('World flags / Flag 6')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '展开全部（7）' }))
+    expect(screen.getByText('World flags / Flag 6')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '收起' }))
+    expect(screen.queryByText('World flags / Flag 6')).not.toBeInTheDocument()
   })
 })

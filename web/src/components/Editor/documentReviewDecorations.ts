@@ -9,11 +9,13 @@ export interface DocumentReviewDecoration {
   to?: number
   widgetPos: number
   outdated?: boolean
+  showWidget?: boolean
 }
 
 export interface DocumentReviewDecorationState {
   enabled: boolean
   decorations: DocumentReviewDecoration[]
+  onHighlightClick?: (key: string) => void
 }
 
 export type DocumentReviewPortalTarget = { key: string; element: HTMLElement }
@@ -29,21 +31,29 @@ export function createDocumentReviewExtension(
     addProseMirrorPlugins() {
       return [new Plugin<DecorationSet>({
         key: documentReviewPluginKey,
-        // Keep ProseMirror selectable in Review mode while rejecting every
-        // transaction that could change the manuscript (typing, paste, drop,
-        // commands, or IME input).
-        filterTransaction: (transaction) => !stateRef.current.enabled || !transaction.docChanged,
         state: {
           init: (_, state) => createDecorations(state.doc, stateRef.current),
           apply: (transaction, previous, _oldState, nextState) => {
-            if (transaction.docChanged || transaction.getMeta(documentReviewPluginKey)) {
+            if (transaction.getMeta(documentReviewPluginKey)) {
               return createDecorations(nextState.doc, stateRef.current)
             }
-            return previous.map(transaction.mapping, transaction.doc)
+            return transaction.docChanged
+              ? previous.map(transaction.mapping, transaction.doc)
+              : previous
           },
         },
         props: {
           decorations: (state) => documentReviewPluginKey.getState(state) ?? DecorationSet.empty,
+          handleClick: (_view, _position, event) => {
+            if (event.button !== 0 || event.detail > 1) return false
+            const target = event.target instanceof Element
+              ? event.target.closest<HTMLElement>('[data-document-review-key]')
+              : null
+            const key = target?.dataset.documentReviewKey
+            if (!key) return false
+            stateRef.current.onHighlightClick?.(key)
+            return false
+          },
         },
         view: (view) => {
           let frame = 0
@@ -77,8 +87,12 @@ function createDecorations(doc: ProseMirrorNode, state: DocumentReviewDecoration
     const from = item.from ?? 0
     const to = item.to ?? 0
     if (!item.outdated && from >= 0 && to > from && to <= doc.content.size) {
-      decorations.push(Decoration.inline(from, to, { class: 'nova-document-review-highlight' }))
+      decorations.push(Decoration.inline(from, to, {
+        class: 'nova-document-review-highlight',
+        'data-document-review-key': item.key,
+      }, { documentReviewKey: item.key, kind: 'highlight' }))
     }
+    if (!item.showWidget) continue
     const widgetPos = Math.max(0, Math.min(doc.content.size, item.widgetPos))
     decorations.push(Decoration.widget(widgetPos, () => {
       const element = document.createElement('div')
@@ -86,7 +100,12 @@ function createDecorations(doc: ProseMirrorNode, state: DocumentReviewDecoration
       element.dataset.documentReviewTarget = item.key
       element.contentEditable = 'false'
       return element
-    }, { key: item.key, side: 1 }))
+    }, {
+      key: item.key,
+      side: 1,
+      stopEvent: () => true,
+      ignoreSelection: true,
+    }))
   }
   return DecorationSet.create(doc, decorations)
 }

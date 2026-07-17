@@ -30,7 +30,6 @@ interface EditorSurfaceProps {
   showSelectionToolbar: boolean
   selectionToolbarMode?: 'quote' | 'comment'
   onSelectionAction: () => void
-  reviewMode?: boolean
   reviewAnnotations?: ReactNode
 }
 
@@ -45,13 +44,12 @@ export function EditorSurface({
   showSelectionToolbar,
   selectionToolbarMode = 'quote',
   onSelectionAction,
-  reviewMode = false,
   reviewAnnotations,
 }: EditorSurfaceProps) {
   return (
     <div
       ref={containerRef}
-      className={`relative flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-8${reviewMode ? ' nova-document-review-mode' : ''}`}
+      className="relative flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-8"
       style={{
         background: themeStyle.background,
         ['--nova-editor-color' as string]: themeStyle.color,

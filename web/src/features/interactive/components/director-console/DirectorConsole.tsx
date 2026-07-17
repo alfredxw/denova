@@ -6,8 +6,7 @@ import { analyzeInteractiveDirectorContext, getInteractiveDirector, rebuildInter
 import type { DirectorPlan, DirectorPlanDocs, DirectorPlanStatus, Snapshot, StoryDirector, StorySummary } from '../../types'
 import { ConsoleTabs } from './ConsoleTabs'
 import { DirectorConsoleHeader } from './DirectorConsoleHeader'
-import { DirectorRunView } from './DirectorRunView'
-import { PlanView } from './PlanView'
+import { DirectorView } from './DirectorView'
 import { StateView } from './StateView'
 import type { ConsoleTab } from './types'
 import { extractDirectorDisplayEvents, isMissingDirectorPlanError, stateEntries } from './utils'
@@ -22,7 +21,6 @@ export interface DirectorConsoleProps {
   branchId: string
   snapshot: Snapshot | null
   loading: boolean
-	stateStatus?: string
 	stateError?: string
 	stateDisplayPreference: StoryStateDisplayPreference
 	onStateDisplayPreferenceChange: (value: StoryStateDisplayPreference) => void
@@ -42,7 +40,6 @@ export function DirectorConsole({
   branchId,
   snapshot,
   loading,
-	stateStatus,
 	stateError,
 	stateDisplayPreference,
 	onStateDisplayPreferenceChange,
@@ -67,7 +64,6 @@ export function DirectorConsole({
   const [directorPlan, setDirectorPlan] = useState<DirectorPlan | null>(snapshot?.director_plan || null)
   const [draftDocs, setDraftDocs] = useState<DirectorPlanDocs | null>(snapshot?.director_plan?.docs || null)
   const [manualDirectorStatus, setManualDirectorStatus] = useState<DirectorPlanStatus | null>(null)
-  const [processRevealed, setProcessRevealed] = useState(false)
 
   const ruleResolution = snapshot?.current_turn?.rule_resolution
   const terminalOutcome = snapshot?.current_turn?.terminal_outcome
@@ -86,10 +82,6 @@ export function DirectorConsole({
     const actors = stateFacts.find(([key]) => key === 'actors')?.[1]
     return actors && typeof actors === 'object' && !Array.isArray(actors) ? Object.keys(actors).length : 0
   }, [stateFacts])
-
-  useEffect(() => {
-    setProcessRevealed(false)
-  }, [branchId, storyId])
 
   useEffect(() => {
     setDirectorPlan(snapshot?.director_plan || null)
@@ -228,48 +220,40 @@ export function DirectorConsole({
 
   return (
     <aside className="director-console flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--director-canvas)] text-[var(--nova-text)]">
-      <DirectorConsoleHeader branchId={branchId} turnCount={(snapshot?.turns || []).length || (snapshot?.current_turn ? 1 : 0)} story={story} storyDirectors={storyDirectors} onDirectorChange={onDirectorChange} onReplyTargetCharsChange={onReplyTargetCharsChange} />
-      <ConsoleTabs activeTab={activeTab} onChange={onTabChange} stateCount={actorCount} />
-      {activeTab === 'plan' && directorError ? <div className="mx-4 mt-3 rounded-[10px] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-5 text-[var(--nova-danger)]">{directorError}</div> : null}
+      <DirectorConsoleHeader branchId={branchId} turnCount={(snapshot?.turns || []).length || (snapshot?.current_turn ? 1 : 0)} story={story} storyDirectors={storyDirectors} onDirectorChange={onDirectorChange} onReplyTargetCharsChange={onReplyTargetCharsChange} stateDisplayPreference={stateDisplayPreference} onStateDisplayPreferenceChange={onStateDisplayPreferenceChange} />
+      <ConsoleTabs activeTab={activeTab} onChange={onTabChange} stateCount={actorCount} directorStatus={directorStatus} directorActive={rebuilding || retryingDirector} />
+      {activeTab === 'director' && directorError ? <div className="mx-4 mt-3 rounded-[10px] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-5 text-[var(--nova-danger)]">{directorError}</div> : null}
       <div className="min-h-0 flex-1 overflow-hidden px-4 py-4">
         <div className="director-console__scroll h-full min-h-0 overflow-y-auto pb-4 pr-1">
-          {activeTab === 'run' ? (
-            <DirectorRunView
+          {activeTab === 'state' ? (
+            <StateView snapshot={snapshot} stateFacts={stateFacts} syncError={stateError} />
+          ) : (
+            <DirectorView
               storyId={storyId}
+              snapshot={snapshot}
+              onSnapshotRefresh={onSnapshotRefresh}
+              revealed={directorRevealed}
+              onReveal={onRevealDirector}
               hasDirectorRun={hasDirectorRun}
               directorStatus={directorStatus}
               directorMetadata={directorMetadata}
-              stateSchemaInitialization={snapshot?.state_schema_initialization}
-              loading={loading || planLoading || retryingDirector}
-              retrying={retryingDirector}
-              contextAnalysisLoading={contextAnalysisLoading}
-              canAnalyzeDirectorContext={canAnalyzeDirectorContext}
-              directorError={directorError}
-              directorDisplayEvents={directorDisplayEvents}
-              processRevealed={processRevealed}
-              onRevealProcess={() => setProcessRevealed(true)}
-              onRun={() => void runDirectorPlan()}
-              onAnalyze={openDirectorContextAnalysis}
-            />
-          ) : activeTab === 'state' ? (
-            <StateView storyId={storyId} snapshot={snapshot} stateFacts={stateFacts} syncStatus={stateStatus} syncError={stateError} displayPreference={stateDisplayPreference} onDisplayPreferenceChange={onStateDisplayPreferenceChange} onSnapshotRefresh={onSnapshotRefresh} />
-          ) : (
-            <PlanView
-              storyId={storyId}
-              directorRevealed={directorRevealed}
-              onRevealDirector={onRevealDirector}
               directorPlan={directorPlan}
               draftDocs={draftDocs}
               onDraftDocsChange={setDraftDocs}
-              directorStatus={directorStatus}
-              directorMetadata={directorMetadata}
-              loading={planLoading || retryingDirector}
+              loading={loading || planLoading || retryingDirector}
+              running={retryingDirector}
               rebuilding={rebuilding}
               saving={savingPlan}
+              directorError={directorError}
+              directorDisplayEvents={directorDisplayEvents}
+              analyzing={contextAnalysisLoading}
+              canAnalyze={canAnalyzeDirectorContext}
+              onRun={() => void runDirectorPlan()}
+              onAnalyze={openDirectorContextAnalysis}
+              onEvaluateEvent={() => void runDirectorPlan(true)}
+              onResetEvents={() => void rebuildDirector(true)}
               onSave={() => void saveDirectorPlan()}
-				onRebuild={() => void rebuildDirector()}
-				onEvaluateEvent={() => void runDirectorPlan(true)}
-				onResetEvents={() => void rebuildDirector(true)}
+              onRebuild={() => void rebuildDirector()}
               hasRuleAudit={hasRuleAudit}
               ruleResolution={ruleResolution}
               terminalOutcome={terminalOutcome}
