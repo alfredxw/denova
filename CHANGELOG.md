@@ -19,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 写作与游戏 Agent 输入区的模型选择器改为无边框的“模型文字 + 下拉箭头”，移除重复图标和芯片外观；同一菜单现在可快速设置跟随配置、低、中或高 reasoning effort，当前强度会以弱化文字紧跟模型名展示。
+- The shared Writing and Game Agent model selector is now a borderless model label with a dropdown chevron, removing the redundant icon and pill treatment. The same menu can quickly choose inherited, low, medium, or high reasoning effort, with the active effort shown as subdued text beside the model name.
 - Unified Review 改为 Monaco 单模型投影：整页只保留一列带增删颜色的行号，每个可见源码行在悬停时都提供行级 `+` 评论入口；变更竖线位于行号左侧，替换内容提供 word diff。Unified 与 Split 共享审阅主题，深色行背景分别为 `rgb(31,49,36)` 和 `rgb(60,31,27)`。轮次选择器改用组件库菜单，默认展示累计变更，也可切换任一历史 Agent 轮次。
 - Unified Review now uses a single Monaco model projection with one color-coded line-number gutter and a hover `+` comment action on every visible source line. Change bars sit to the left of line numbers, and replacements retain word-level diffs. Unified and Split share a review theme whose dark line backgrounds are `rgb(31,49,36)` and `rgb(60,31,27)`. The shared run menu defaults to cumulative changes and can open any historical Agent run.
 - 中央 Change Review 改为单页多文件滚动：每个文件可独立折叠，工具栏可一键折叠/展开全部 Diff；右侧文件导航只负责跳转并可手动收起，所选 Agent 轮次不再随滚动文件隐式切换。编辑器工具栏不再重复提供独立 Review 入口，统一从 Agent 变更摘要卡进入。
@@ -38,6 +40,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Agent 消息虚拟列表不再把每一行误判为最后一项；变更摘要、已发送引用消息及其他相邻消息块之间稳定保留 `16px` 纵向间距，只有真实列表末项取消额外留白。
+- Agent message virtualization no longer treats every row as the final item. Change summaries, sent-reference messages, and other adjacent message blocks now retain a stable `16px` vertical gap, while only the actual final row removes trailing space.
 - 发送 Agent 消息时，文件、资料、风格、文本选区与审阅意见引用会原子地从输入区转入已发送的用户消息，并随会话持久化；发送失败会恢复原引用。审阅意见在用户消息落盘后由工作区账本批量消费，已发送的评论不再残留在 Diff 中。
 - File, lore, style, text-selection, and review-comment references now move atomically from the composer into the sent user message and persist with session history; failed submissions restore them. Once the user message is durable, referenced review comments are consumed as one workspace-ledger operation and disappear from the diff.
 - Agent 变更摘要卡的“审阅”现在携带对应变更组；即使多个修改轮次属于同一审阅线程，点击第二组或后续组也会直接打开该轮 Diff，而不是停留在累计变更或上一轮。

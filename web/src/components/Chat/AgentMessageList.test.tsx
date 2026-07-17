@@ -135,6 +135,9 @@ describe('Agent MessageList', () => {
     expect(firstMessage.compareDocumentPosition(firstSummary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(firstSummary.compareDocumentPosition(secondUser) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.getByText('第二轮完成').compareDocumentPosition(secondSummary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(firstSummary.closest('[data-nova-chat-item="attachment"]')).toHaveClass('pb-4')
+    expect(firstSummary.closest('[data-nova-chat-item="attachment"]')).not.toHaveClass('last:pb-0')
+    expect(secondSummary.closest('[data-nova-chat-item="attachment"]')).toHaveClass('pb-0')
   })
 
   it('按 parts 折叠 assistant 正文前的 trace', async () => {

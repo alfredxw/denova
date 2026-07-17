@@ -200,6 +200,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
     return (
       <AgentChatListRow
         item={resolvedItem}
+        isLast={index === listItems.length - 1}
         isStreaming={isStreaming}
         highlightDialogue={highlightDialogue}
         messageStyle={messageStyle}
@@ -274,8 +275,9 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ item, isStreaming, highlightDialogue, messageStyle, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange }: {
+function AgentChatListRow({ item, isLast, isStreaming, highlightDialogue, messageStyle, onEditMessage, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange }: {
   item: AgentChatListItem
+  isLast: boolean
   isStreaming: boolean
   highlightDialogue: boolean
   messageStyle?: CSSProperties
@@ -302,7 +304,7 @@ function AgentChatListRow({ item, isStreaming, highlightDialogue, messageStyle, 
       data-nova-chat-item={item.kind}
       data-nova-chat-row-key={item.key}
       data-nova-chat-turn-anchor={turnAnchor}
-      className="min-w-0 px-6 pb-4 last:pb-0"
+      className={`min-w-0 px-6 ${isLast ? 'pb-0' : 'pb-4'}`}
       variants={listItem}
       initial="initial"
       animate="animate"

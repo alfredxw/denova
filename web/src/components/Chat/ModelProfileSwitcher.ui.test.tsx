@@ -15,13 +15,13 @@ let latestSettings: LayeredSettings
 describe('ModelProfileSwitcher quick control', () => {
   beforeEach(() => {
     latestSettings = settingsSnapshot({
-      user: { agent_models: { ide: { profile_id: 'fast' } } },
+      user: { agent_models: { ide: { profile_id: 'fast', reasoning_effort: 'medium' } } },
       effective: {
         model_profiles: [
           { id: 'default', name: 'GPT 4.1', openai_model: 'gpt-4.1' },
           { id: 'fast', name: 'Turbo', openai_model: 'gpt-4.1-mini' },
         ],
-        agent_models: { ide: { profile_id: 'fast' } },
+        agent_models: { ide: { profile_id: 'fast', reasoning_effort: 'medium' } },
       },
     })
     vi.mocked(fetchSettings).mockReset()
@@ -39,21 +39,58 @@ describe('ModelProfileSwitcher quick control', () => {
     })
   })
 
-  it('shows the current model on the trigger and switches from its popup list', async () => {
+  it('uses a borderless text-and-chevron trigger with the current effort', async () => {
+    const { container } = render(<ModelProfileSwitcher agentKey="ide" workspace="/tmp/book" />)
+
+    const trigger = await screen.findByRole('button', { name: '切换模型，当前：Turbo 中' })
+    expect(trigger).toHaveAttribute('data-current-model', 'Turbo')
+    expect(trigger).toHaveAttribute('data-current-reasoning-effort', 'medium')
+    expect(trigger).toHaveClass('border-0', 'bg-transparent')
+    expect(container.querySelector('.lucide-cpu')).not.toBeInTheDocument()
+    expect(container.querySelectorAll('svg')).toHaveLength(1)
+    expect(container.querySelector('.lucide-chevron-down')).toBeInTheDocument()
+  })
+
+  it('switches the model from its popup list', async () => {
     const user = userEvent.setup()
     render(<ModelProfileSwitcher agentKey="ide" workspace="/tmp/book" />)
 
-    const trigger = await screen.findByRole('button', { name: '切换模型，当前：Turbo' })
+    const trigger = await screen.findByRole('button', { name: '切换模型，当前：Turbo 中' })
     expect(trigger).toHaveAttribute('data-current-model', 'Turbo')
 
     await user.click(trigger)
-    expect(screen.getByRole('menu', { name: '切换模型，当前：Turbo' })).toBeInTheDocument()
+    expect(screen.getByText('模型')).toBeInTheDocument()
+    expect(screen.getByText('推理强度')).toBeInTheDocument()
     await user.click(screen.getByRole('menuitem', { name: '默认：GPT 4.1' }))
 
     await waitFor(() => expect(updateUserSettings).toHaveBeenCalledWith(expect.objectContaining({
       agent_models: expect.objectContaining({ ide: expect.objectContaining({ profile_id: 'default' }) }),
     }), undefined))
-    expect(await screen.findByRole('button', { name: '切换模型，当前：GPT 4.1' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: '切换模型，当前：GPT 4.1 中' })).toBeInTheDocument()
+  })
+
+  it('updates reasoning effort and can return to inherited configuration', async () => {
+    const user = userEvent.setup()
+    render(<ModelProfileSwitcher agentKey="ide" workspace="/tmp/book" />)
+
+    await user.click(await screen.findByRole('button', { name: '切换模型，当前：Turbo 中' }))
+    await user.click(screen.getByRole('menuitem', { name: '高' }))
+
+    await waitFor(() => expect(updateUserSettings).toHaveBeenLastCalledWith(expect.objectContaining({
+      agent_models: expect.objectContaining({ ide: expect.objectContaining({ reasoning_effort: 'high' }) }),
+    }), undefined))
+    const highTrigger = await screen.findByRole('button', { name: '切换模型，当前：Turbo 高' })
+    expect(highTrigger).toHaveAttribute('data-current-reasoning-effort', 'high')
+
+    await user.click(highTrigger)
+    await user.click(screen.getByRole('menuitem', { name: '跟随配置' }))
+
+    await waitFor(() => {
+      const saved = vi.mocked(updateUserSettings).mock.calls.at(-1)?.[0]
+      expect(saved).toBeDefined()
+      expect(saved!.agent_models?.ide).not.toHaveProperty('reasoning_effort')
+    })
+    expect(await screen.findByRole('button', { name: '切换模型，当前：Turbo' })).toHaveAttribute('data-current-reasoning-effort', '')
   })
 })
 
