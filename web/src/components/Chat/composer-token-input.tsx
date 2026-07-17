@@ -236,7 +236,7 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
       return
     }
     if (value === '') {
-      editor.commands.clearContent({ emitUpdate: false })
+      editor.commands.clearContent(false)
     } else {
       editor.commands.setContent(textToComposerJSON(value, parseOptions), { emitUpdate: false })
     }
