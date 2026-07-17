@@ -53,6 +53,7 @@ interface EditorDraftPersistence {
   externalConflict: ExternalContentConflict | null
   externalConflictSaving: boolean
   handleSave: () => Promise<void>
+  flushCurrentDraft: EditorFlushHandler
   loadExternalVersion: () => void
   keepLocalVersion: () => Promise<void>
 }
@@ -564,6 +565,7 @@ export function useEditorDraftPersistence({
     externalConflict,
     externalConflictSaving,
     handleSave,
+    flushCurrentDraft,
     loadExternalVersion,
     keepLocalVersion,
   }

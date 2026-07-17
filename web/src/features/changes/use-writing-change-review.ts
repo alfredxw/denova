@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ReviewFeedbackSelection } from './agent/ReviewFeedbackTray'
+import type { ReviewFeedbackComment, ReviewFeedbackSelection } from './agent/ReviewFeedbackTray'
 import type { WorkspaceChangeComment } from './types'
 
 export interface ChangeReviewScopeRequest {
@@ -60,7 +60,7 @@ export function useWritingChangeReview({ workspace, contextKey, ideActive, selec
       && !comment.resolved
       && suppressedFeedbackRef.current.get(feedbackKey(reviewThreadID, comment.id)) !== feedbackVersion(comment)
     ))
-    setReviewFeedback(pending.length ? { reviewThreadId: reviewThreadID, comments: pending } : null)
+    setReviewFeedback(pending.length ? { source: 'workspace_change', reviewThreadId: reviewThreadID, comments: pending } : null)
     if (pending.length && !agentVisible) onShowAgent()
   }, [agentVisible, onShowAgent])
 
@@ -105,7 +105,7 @@ export function useWritingChangeReview({ workspace, contextKey, ideActive, selec
   }
 }
 
-function feedbackVersion(comment: WorkspaceChangeComment): string {
+function feedbackVersion(comment: ReviewFeedbackComment): string {
   return `${comment.updated_at ?? comment.created_at ?? ''}\u0000${comment.body}`
 }
 

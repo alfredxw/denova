@@ -1,4 +1,4 @@
-import type { RefObject } from 'react'
+import type { ReactNode, RefObject } from 'react'
 import type { Editor } from '@tiptap/react'
 import { EditorContent } from '@tiptap/react'
 
@@ -28,7 +28,10 @@ interface EditorSurfaceProps {
     onClose: () => void
   }
   showSelectionToolbar: boolean
-  onQuoteSelection: () => void
+  selectionToolbarMode?: 'quote' | 'comment'
+  onSelectionAction: () => void
+  reviewMode?: boolean
+  reviewAnnotations?: ReactNode
 }
 
 /** 编辑器的纯展示层；文档同步、保存和冲突状态由 MarkdownEditor 管理。 */
@@ -40,12 +43,15 @@ export function EditorSurface({
   nativeIndent,
   search,
   showSelectionToolbar,
-  onQuoteSelection,
+  selectionToolbarMode = 'quote',
+  onSelectionAction,
+  reviewMode = false,
+  reviewAnnotations,
 }: EditorSurfaceProps) {
   return (
     <div
       ref={containerRef}
-      className="relative flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-8"
+      className={`relative flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-8${reviewMode ? ' nova-document-review-mode' : ''}`}
       style={{
         background: themeStyle.background,
         ['--nova-editor-color' as string]: themeStyle.color,
@@ -66,8 +72,9 @@ export function EditorSurface({
         />
       )}
       <EditorContent editor={editor} className={`editor-content editor-theme-${settings.theme}${nativeIndent ? ' native-indent' : ''}`} />
+      {reviewAnnotations}
       {editor && showSelectionToolbar && (
-        <SelectionToolbar editor={editor} onQuote={onQuoteSelection} />
+        <SelectionToolbar editor={editor} mode={selectionToolbarMode} onAction={onSelectionAction} />
       )}
     </div>
   )

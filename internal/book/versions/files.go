@@ -112,6 +112,8 @@ func isVersionExcludedRelPath(relPath string) bool {
 		cleanRel == workspacepath.LegacyRel("runs") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("runs")+"/") ||
 		cleanRel == workspacepath.CurrentRel("changes") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("changes")+"/") ||
 		cleanRel == workspacepath.LegacyRel("changes") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("changes")+"/") ||
+		cleanRel == workspacepath.CurrentRel("reviews") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("reviews")+"/") ||
+		cleanRel == workspacepath.LegacyRel("reviews") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("reviews")+"/") ||
 		cleanRel == workspacepath.CurrentRel("interactive") || strings.HasPrefix(cleanRel, workspacepath.CurrentRel("interactive")+"/") ||
 		cleanRel == workspacepath.LegacyRel("interactive") || strings.HasPrefix(cleanRel, workspacepath.LegacyRel("interactive")+"/")
 }
@@ -122,6 +124,8 @@ func versionProtectedExcludedDirs() []string {
 		workspacepath.LegacyRel("runs"),
 		workspacepath.CurrentRel("changes"),
 		workspacepath.LegacyRel("changes"),
+		workspacepath.CurrentRel("reviews"),
+		workspacepath.LegacyRel("reviews"),
 		workspacepath.CurrentRel("interactive"),
 		workspacepath.LegacyRel("interactive"),
 	}

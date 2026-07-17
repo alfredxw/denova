@@ -204,13 +204,15 @@ func TestGoGitVersionExcludesRunLedgers(t *testing.T) {
 	}
 }
 
-func TestGoGitVersionExcludesAndPreservesChangeJournal(t *testing.T) {
+func TestGoGitVersionExcludesAndPreservesReviewJournals(t *testing.T) {
 	dir := t.TempDir()
 	service := NewService(dir)
 	settings := DefaultAutoSettings()
 	writeFile(t, dir, "chapters/ch0001.md", "第一版")
 	writeFile(t, dir, ".denova/changes/ledger.jsonl", `{"type":"change_applied"}`)
 	writeFile(t, dir, ".nova/changes/legacy.jsonl", `{"type":"comment_added"}`)
+	writeFile(t, dir, ".denova/reviews/ledger.jsonl", `{"type":"comments_upserted"}`)
+	writeFile(t, dir, ".nova/reviews/legacy.jsonl", `{"type":"comments_upserted"}`)
 
 	first, err := service.Create("初始版本", VersionSourceManual, settings)
 	if err != nil {
@@ -220,9 +222,14 @@ func TestGoGitVersionExcludesAndPreservesChangeJournal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("commitFiles first failed: %v", err)
 	}
-	for _, path := range []string{".denova/changes/ledger.jsonl", ".nova/changes/legacy.jsonl"} {
+	for _, path := range []string{
+		".denova/changes/ledger.jsonl",
+		".nova/changes/legacy.jsonl",
+		".denova/reviews/ledger.jsonl",
+		".nova/reviews/legacy.jsonl",
+	} {
 		if _, ok := files[path]; ok {
-			t.Fatalf("change journal must not be committed: path=%s files=%v", path, sortedVersionFilePaths(files))
+			t.Fatalf("review journal must not be committed: path=%s files=%v", path, sortedVersionFilePaths(files))
 		}
 	}
 
@@ -235,6 +242,12 @@ func TestGoGitVersionExcludesAndPreservesChangeJournal(t *testing.T) {
 	}
 	if got := readFile(t, dir, ".nova/changes/legacy.jsonl"); got != `{"type":"comment_added"}` {
 		t.Fatalf("legacy change journal should survive restore: %q", got)
+	}
+	if got := readFile(t, dir, ".denova/reviews/ledger.jsonl"); got != `{"type":"comments_upserted"}` {
+		t.Fatalf("current document review journal should survive restore: %q", got)
+	}
+	if got := readFile(t, dir, ".nova/reviews/legacy.jsonl"); got != `{"type":"comments_upserted"}` {
+		t.Fatalf("legacy document review journal should survive restore: %q", got)
 	}
 }
 

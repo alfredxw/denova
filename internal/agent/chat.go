@@ -50,8 +50,8 @@ type ChatRequest struct {
 	// ImagePreset is resolved by the app layer from ImagePresetID or workspace settings.
 	ImagePreset ImagePresetContext `json:"-"`
 
-	// ResolvedReviewFeedback is populated by the app layer from the canonical
-	// workspace change ledger. Clients may submit IDs only, never comment text.
+	// ResolvedReviewFeedback is populated by the app layer from a canonical
+	// workspace review ledger. Clients may submit IDs only, never comment text.
 	ResolvedReviewFeedback ReviewFeedbackContext `json:"-"`
 }
 

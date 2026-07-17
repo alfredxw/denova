@@ -34,6 +34,20 @@ describe('agent-ui', () => {
     })
   })
 
+  it('保留正文审阅来源并去重评论 ID', () => {
+    expect(buildAgentChatRequestBody({
+      review_feedback: {
+        source: 'document',
+        review_thread_id: 'document-review-1',
+        comment_ids: ['comment-1', 'comment-1', 'comment-2'],
+      },
+    }).review_feedback).toEqual({
+      source: 'document',
+      review_thread_id: 'document-review-1',
+      comment_ids: ['comment-1', 'comment-2'],
+    })
+  })
+
   it('通过唯一 view 模块将 AgentUIMessage parts 转为展示模型', () => {
     const messages: AgentUIMessage[] = [
       {

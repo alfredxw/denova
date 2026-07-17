@@ -12,9 +12,67 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"denova/internal/agent"
+	"denova/internal/book"
+	"denova/internal/documentreview"
 	"denova/internal/session"
 	"denova/internal/workspacechange"
 )
+
+func TestDocumentReviewFeedbackResolvesCurrentAnchorAndConsumesAfterCommit(t *testing.T) {
+	workspace := t.TempDir()
+	path := "chapters/ch01.md"
+	before := "Alpha target Omega\n"
+	if err := os.MkdirAll(filepath.Join(workspace, "chapters"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, filepath.FromSlash(path)), []byte(before), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reviews, err := documentreview.ForWorkspace(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := len("Alpha ")
+	thread, comment, err := reviews.AddComment(context.Background(), documentreview.AddCommentRequest{
+		Path: path,
+		Body: "Make this image more specific.",
+		Anchor: documentreview.Anchor{
+			Kind: documentreview.AnchorKindTextRange, Encoding: documentreview.AnchorEncodingUTF8,
+			Revision: workspacechange.Revision([]byte(before)), Start: start, End: start + len("target"), Quote: "target",
+			Prefix: "Alpha ", Suffix: " Omega\n", DisplayQuote: "target", EditorFrom: 7, EditorTo: 13,
+		},
+	}, documentreview.Snapshot{Content: before, Revision: workspacechange.Revision([]byte(before))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	after := "Intro\n" + before
+	if err := os.WriteFile(filepath.Join(workspace, filepath.FromSlash(path)), []byte(after), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	application := &App{workspace: workspace, bookService: book.NewService(workspace)}
+	chat := &ChatAppService{app: application}
+	req := agent.ChatRequest{ReviewFeedback: agent.ReviewFeedbackRef{
+		Source: agent.ReviewFeedbackSourceDocument, ReviewThreadID: thread.ID, CommentIDs: []string{comment.ID},
+	}}
+	if err := chat.resolveReviewFeedback(ideChatRuntime{workspace: workspace}, &req); err != nil {
+		t.Fatal(err)
+	}
+	if req.ResolvedReviewFeedback.Source != agent.ReviewFeedbackSourceDocument || len(req.ResolvedReviewFeedback.Comments) != 1 {
+		t.Fatalf("resolved document feedback = %#v", req.ResolvedReviewFeedback)
+	}
+	resolved := req.ResolvedReviewFeedback.Comments[0]
+	if resolved.Path != path || resolved.Body != comment.Body || resolved.Anchor.Revision != workspacechange.Revision([]byte(after)) || resolved.Anchor.Start != len("Intro\nAlpha ") {
+		t.Fatalf("document anchor was not projected from the canonical file: %#v", resolved)
+	}
+	if err := chat.consumeResolvedReviewFeedback(ideChatRuntime{workspace: workspace}, req); err != nil {
+		t.Fatal(err)
+	}
+	pending, err := reviews.CurrentThread(context.Background())
+	if err != nil || pending.ID != "" || len(pending.Comments) != 0 {
+		t.Fatalf("document feedback remained pending after commit: %#v err=%v", pending, err)
+	}
+}
 
 func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(t *testing.T) {
 	workspace := t.TempDir()
