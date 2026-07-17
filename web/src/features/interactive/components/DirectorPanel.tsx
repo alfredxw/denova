@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Snapshot, StoryDirector, StorySummary } from '../types'
 import { DirectorConsole } from './director-console/DirectorConsole'
+import { readStoredConsoleTab, readStoredDirectorRevealed, writeStoredConsoleTab, writeStoredDirectorRevealed } from './director-console/persistence'
 import type { ConsoleTab } from './director-console/types'
 import { DEFAULT_STORY_STATE_DISPLAY, OPEN_DIRECTOR_STATE_EVENT, type StoryStateDisplayPreference } from './story-state/display-preference'
 
@@ -19,17 +20,34 @@ interface DirectorPanelProps {
 }
 
 export function DirectorPanel({ storyId, story, storyDirectors = [], onDirectorChange, onReplyTargetCharsChange, branchId, snapshot, loading = false, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onSnapshotRefresh }: DirectorPanelProps) {
-  const [activeTab, setActiveTab] = useState<ConsoleTab>('state')
-  const [directorRevealed, setDirectorRevealed] = useState(false)
+  const [activeTab, setActiveTab] = useState<ConsoleTab>(() => readStoredConsoleTab(storyId) || 'state')
+  const [directorRevealed, setDirectorRevealed] = useState(() => readStoredDirectorRevealed(storyId))
   const effectiveBranchId = branchId || snapshot?.branch_id || ''
 
+  // tab 与揭示态按故事持久化：切分支、切面板、刷新页面都不丢失；仅切故事时恢复该故事各自的偏好。
   useEffect(() => {
-    setActiveTab('state')
-    setDirectorRevealed(false)
-  }, [effectiveBranchId, storyId])
+    setActiveTab(readStoredConsoleTab(storyId) || 'state')
+    setDirectorRevealed(readStoredDirectorRevealed(storyId))
+  }, [storyId])
+
+  const storyIdRef = useRef(storyId)
+  storyIdRef.current = storyId
+
+  const changeTab = (tab: ConsoleTab) => {
+    setActiveTab(tab)
+    writeStoredConsoleTab(storyId, tab)
+  }
+
+  const revealDirector = () => {
+    setDirectorRevealed(true)
+    writeStoredDirectorRevealed(storyId, true)
+  }
 
   useEffect(() => {
-    const openState = () => setActiveTab('state')
+    const openState = () => {
+      setActiveTab('state')
+      writeStoredConsoleTab(storyIdRef.current, 'state')
+    }
     window.addEventListener(OPEN_DIRECTOR_STATE_EVENT, openState)
     return () => window.removeEventListener(OPEN_DIRECTOR_STATE_EVENT, openState)
   }, [])
@@ -44,14 +62,13 @@ export function DirectorPanel({ storyId, story, storyDirectors = [], onDirectorC
       branchId={effectiveBranchId}
       snapshot={snapshot}
       loading={loading}
-      stateStatus={snapshot?.current_turn?.state_status || ''}
       stateError={snapshot?.current_turn?.state_error || ''}
       stateDisplayPreference={stateDisplayPreference}
       onStateDisplayPreferenceChange={onStateDisplayPreferenceChange}
       activeTab={activeTab}
-      onTabChange={setActiveTab}
+      onTabChange={changeTab}
       directorRevealed={directorRevealed}
-      onRevealDirector={() => setDirectorRevealed(true)}
+      onRevealDirector={revealDirector}
       onSnapshotRefresh={onSnapshotRefresh}
     />
   )

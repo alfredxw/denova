@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react'
 import { useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -112,9 +112,6 @@ export function MarkdownEditor({
   const [searchQuery, setSearchQuery] = useState('')
   const [searchIndex, setSearchIndex] = useState(0)
   const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([])
-  const [reviewMode, setReviewMode] = useState(false)
-  const [reviewSwitching, setReviewSwitching] = useState(false)
-  const [reviewSnapshot, setReviewSnapshot] = useState<DocumentReviewSnapshot | null>(null)
   const [reviewPortalTargets, setReviewPortalTargets] = useState<DocumentReviewPortalTarget[]>([])
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastIllustrationInsertNonceRef = useRef<number | null>(null)
@@ -125,8 +122,6 @@ export function MarkdownEditor({
   const workspaceImageExtension = useMemo(() => createWorkspaceImageExtension(), [])
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const reviewAnnotationsRef = useRef<DocumentReviewAnnotationsHandle>(null)
-  const reviewDocumentKeyRef = useRef(`${workspace}\u0000${fileName || ''}`)
-  const reviewModeRef = useRef(false)
   const reviewDecorationStateRef = useRef<DocumentReviewDecorationState>({ enabled: false, decorations: [] })
   const updateReviewPortalTargets = useCallback((targets: DocumentReviewPortalTarget[]) => {
     setReviewPortalTargets((current) => sameReviewPortalTargets(current, targets) ? current : targets)
@@ -196,33 +191,6 @@ export function MarkdownEditor({
     updateSearch(searchStateRef.current.query, 0)
   }, [editor, onLineChange, updateSearch])
 
-  const exitReviewMode = useCallback((reason = 'author') => {
-    if (reviewModeRef.current) console.debug('[editor-review] exit review mode', { reason })
-    reviewModeRef.current = false
-    reviewDecorationStateRef.current = { ...reviewDecorationStateRef.current, enabled: false }
-    setReviewMode(false)
-    setReviewSnapshot(null)
-    if (editor && !editor.isDestroyed) {
-      editor.view.dom.removeAttribute('aria-readonly')
-      if (typeof editor.setEditable === 'function') editor.setEditable(true)
-    }
-  }, [editor])
-
-  // This must precede draft persistence's layout effects. Otherwise the
-  // Review-mode transaction filter would reject a legitimate file/content
-  // replacement before the later passive effect could exit Review mode.
-  useLayoutEffect(() => {
-    const nextDocumentKey = `${workspace}\u0000${fileName || ''}`
-    if (reviewDocumentKeyRef.current !== nextDocumentKey) {
-      reviewDocumentKeyRef.current = nextDocumentKey
-      exitReviewMode('document_changed')
-      return
-    }
-    if (reviewModeRef.current && reviewSnapshot && normalizeEditorText(content) !== normalizeEditorText(reviewSnapshot.content)) {
-      exitReviewMode('content_changed')
-    }
-  }, [content, exitReviewMode, fileName, reviewSnapshot, workspace])
-
   const {
     saveStatus,
     externalConflict,
@@ -246,37 +214,20 @@ export function MarkdownEditor({
     onFlushHandlerChange,
   })
 
-  const enterReviewMode = useCallback(async () => {
-    if (!editor || editor.isDestroyed || !fileName || !documentReview || !isMarkdownFile(fileName) || reviewSwitching) return
-    setReviewSwitching(true)
-    try {
-      if (!(await flushCurrentDraft())) return
-      const document = await readFile(fileName)
-      if (!document.revision || (workspace && document.workspace !== workspace)) {
-        throw new Error('The canonical document snapshot is unavailable')
-      }
-      if (normalizeEditorText(document.content) !== readEditorText(editor, fileName)) {
-        throw new Error('The editor and workspace snapshots differ')
-      }
-      setReviewSnapshot({ content: document.content, revision: document.revision })
-      reviewDecorationStateRef.current = { ...reviewDecorationStateRef.current, enabled: true }
-      editor.view.dom.setAttribute('aria-readonly', 'true')
-      reviewModeRef.current = true
-      setReviewMode(true)
-      // Selection must remain editable at the view level so ProseMirror keeps
-      // browser text selections in sync. The review plugin rejects doc changes.
-      if (typeof editor.setEditable === 'function') editor.setEditable(true)
-    } catch (error) {
-      console.error('进入正文审阅模式失败', { workspace, fileName, error })
-      toast.error(t('editor.review.enterFailed'))
-    } finally {
-      setReviewSwitching(false)
+  const prepareDocumentReviewSnapshot = useCallback(async (): Promise<DocumentReviewSnapshot> => {
+    if (!editor || editor.isDestroyed || !fileName || !documentReview || !isMarkdownFile(fileName)) {
+      throw new Error('Document comments are unavailable')
     }
-  }, [documentReview, editor, fileName, flushCurrentDraft, reviewSwitching, t, workspace])
-
-  useEffect(() => {
-    if (reviewMode && !documentReview) exitReviewMode('review_unavailable')
-  }, [documentReview, exitReviewMode, reviewMode])
+    if (!(await flushCurrentDraft())) throw new Error('The current draft could not be saved')
+    const document = await readFile(fileName)
+    if (!document.revision || (workspace && document.workspace !== workspace)) {
+      throw new Error('The canonical document snapshot is unavailable')
+    }
+    if (normalizeEditorText(document.content) !== readEditorText(editor, fileName)) {
+      throw new Error('The editor and workspace snapshots differ')
+    }
+    return { content: document.content, revision: document.revision }
+  }, [documentReview, editor, fileName, flushCurrentDraft, workspace])
 
   // 监听 TipTap 内容和选区变化，实时更新选区字数与光标行号。
   useEffect(() => {
@@ -393,7 +344,9 @@ export function MarkdownEditor({
     reviewAnnotationsRef.current?.startSelectionComment()
   }, [])
 
-  // Cmd+Shift+L：编辑模式引用到 Chat，审阅模式创建评论。
+  const documentCommentsAvailable = Boolean(documentReview && fileName && isMarkdownFile(fileName))
+
+  // Cmd+Shift+L：正文支持评论时创建评论，其他文件保留原有的选区引用能力。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const inCurrentEditor = Boolean(
@@ -403,13 +356,13 @@ export function MarkdownEditor({
 
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
         e.preventDefault()
-        if (reviewMode) commentCurrentSelection()
+        if (documentCommentsAvailable) commentCurrentSelection()
         else quoteCurrentSelection()
       }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [commentCurrentSelection, quoteCurrentSelection, reviewMode])
+  }, [commentCurrentSelection, documentCommentsAvailable, editor, quoteCurrentSelection])
 
   /** 跳转到下一处搜索结果。 */
   const goToSearchMatch = useCallback((direction: 1 | -1) => {
@@ -457,13 +410,6 @@ export function MarkdownEditor({
         onSettingsChange={setSettings}
         onGenerateIllustration={onGenerateIllustration}
         generateIllustrationDisabled={generateIllustrationDisabled}
-        reviewAvailable={Boolean(documentReview && isMarkdownFile(fileName))}
-        reviewMode={reviewMode}
-        reviewSwitching={reviewSwitching}
-        onReviewModeChange={(nextReviewMode) => {
-          if (nextReviewMode) void enterReviewMode()
-          else exitReviewMode('author')
-        }}
       />
       {externalConflict?.workspace === workspace && externalConflict.fileName === fileName && (
         <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] text-[var(--nova-text-muted)]">
@@ -492,21 +438,19 @@ export function MarkdownEditor({
           onNavigate: goToSearchMatch,
           onClose: closeSearch,
         }}
-        showSelectionToolbar={selectedCharacters > 0 && (reviewMode || Boolean(onQuoteSelection))}
-        selectionToolbarMode={reviewMode ? 'comment' : 'quote'}
-        onSelectionAction={reviewMode ? commentCurrentSelection : quoteCurrentSelection}
-        reviewMode={reviewMode}
-        reviewAnnotations={editor && fileName && documentReview ? (
+        showSelectionToolbar={selectedCharacters > 0 && (documentCommentsAvailable || Boolean(onQuoteSelection))}
+        selectionToolbarMode={documentCommentsAvailable ? 'comment' : 'quote'}
+        onSelectionAction={documentCommentsAvailable ? commentCurrentSelection : quoteCurrentSelection}
+        reviewAnnotations={editor && fileName && documentReview && documentCommentsAvailable ? (
           <DocumentReviewAnnotations
             ref={reviewAnnotationsRef}
-            enabled={reviewMode}
             editor={editor}
             fileName={fileName}
-            snapshot={reviewSnapshot}
             containerRef={editorContainerRef}
             comments={documentReview.comments.filter((comment) => comment.path === fileName)}
             decorationStateRef={reviewDecorationStateRef}
             portalTargets={reviewPortalTargets}
+            onPrepareSnapshot={prepareDocumentReviewSnapshot}
             onCreate={documentReview.onCreate}
             onUpdate={documentReview.onUpdate}
             onDelete={documentReview.onDelete}

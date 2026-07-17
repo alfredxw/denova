@@ -2,7 +2,7 @@ import { Editor } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from '@tiptap/markdown'
 import { afterEach, describe, expect, it } from 'vitest'
-import { createDocumentReviewAnchor, textBlockRangeAtPosition, topLevelWidgetPosition } from './documentReviewAnchors'
+import { commentWidgetPosition, createDocumentReviewAnchor, textBlockRangeAtPosition } from './documentReviewAnchors'
 
 describe('document review anchors', () => {
   let editor: Editor | null = null
@@ -29,7 +29,7 @@ describe('document review anchors', () => {
     const selected = ranges[1]
     const anchor = createDocumentReviewAnchor(editor, { content, revision: 'sha256:test' }, {
       ...selected,
-      widgetPos: topLevelWidgetPosition(editor.state.doc, selected.to),
+      widgetPos: commentWidgetPosition(editor.state.doc, selected.to),
       kind: 'text-range',
       displayQuote: '目标😀',
     })
@@ -52,5 +52,23 @@ describe('document review anchors', () => {
     const range = textBlockRangeAtPosition(editor.state.doc, secondParagraphPosition)
     expect(range).toMatchObject({ kind: 'text-block', displayQuote: '第二段' })
     expect(range && editor.state.doc.textBetween(range.from, range.to, '\n')).toBe('第二段')
+  })
+
+  it('places list-item comments directly after the anchored text block', () => {
+    editor = new Editor({
+      extensions: [StarterKit, Markdown],
+      content: '- **成长性**：逐步解锁\n- **代价**：消耗神识\n',
+      contentType: 'markdown',
+    })
+    let position = 0
+    editor.state.doc.descendants((node, nodePosition) => {
+      if (position || !node.isText || !node.text?.includes('成长性')) return
+      position = nodePosition + node.text.indexOf('成长性') + 1
+    })
+    const range = textBlockRangeAtPosition(editor.state.doc, position)
+
+    expect(range).not.toBeNull()
+    expect(editor.state.doc.resolve(range!.widgetPos).parent.type.name).toBe('listItem')
+    expect(range!.widgetPos).toBeLessThan(editor.state.doc.child(0).nodeSize)
   })
 })

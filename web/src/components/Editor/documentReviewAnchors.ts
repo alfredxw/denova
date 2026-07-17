@@ -71,7 +71,11 @@ export function createDocumentReviewAnchor(editor: Editor, snapshot: DocumentRev
   }
 }
 
-export function topLevelWidgetPosition(doc: ProseMirrorNode, position: number): number {
+/** Places a comment after its text block while keeping block widgets out of inline DOM. */
+export function commentWidgetPosition(doc: ProseMirrorNode, position: number): number {
+  const nestedTextBlockPosition = nestedCommentWidgetPosition(doc, position)
+  if (nestedTextBlockPosition !== null) return nestedTextBlockPosition
+
   let result = doc.content.size
   let found = false
   doc.forEach((node, offset) => {
@@ -93,7 +97,22 @@ export function textBlockRangeAtPosition(doc: ProseMirrorNode, position: number)
     const to = resolved.end(depth)
     const displayQuote = node.textBetween(0, node.content.size, '\n').trim()
     if (!displayQuote || to <= from) return null
-    return { from, to, widgetPos: topLevelWidgetPosition(doc, to), kind: 'text-block', displayQuote }
+    return { from, to, widgetPos: commentWidgetPosition(doc, to), kind: 'text-block', displayQuote }
+  }
+  return null
+}
+
+function nestedCommentWidgetPosition(doc: ProseMirrorNode, position: number): number | null {
+  const safePosition = Math.max(0, Math.min(doc.content.size, position))
+  const candidates = safePosition > 0 ? [safePosition, safePosition - 1] : [safePosition]
+  for (const candidate of candidates) {
+    const resolved = doc.resolve(candidate)
+    for (let depth = resolved.depth; depth > 0; depth -= 1) {
+      if (!resolved.node(depth).isTextblock || depth < 2) continue
+      const parentName = resolved.node(depth - 1).type.name
+      if (parentName !== 'listItem' && parentName !== 'taskItem' && parentName !== 'tableCell' && parentName !== 'tableHeader') return null
+      return Math.max(0, Math.min(doc.content.size, resolved.after(depth)))
+    }
   }
   return null
 }

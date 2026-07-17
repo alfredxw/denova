@@ -97,6 +97,22 @@ describe('InlineCommentThread', () => {
     expect(screen.getByRole('textbox')).toHaveValue('不要丢失这段意见')
   })
 
+  it('saves a comment after existing characters are deleted', async () => {
+    const user = userEvent.setup()
+    const comment = { id: 'comment-1', group_id: 'group-1', body: '需要删除的原评论' }
+    const onUpdate = vi.fn().mockResolvedValue(undefined)
+    render(<InlineCommentThread comments={[comment]} onUpdate={onUpdate} />)
+
+    await user.click(screen.getByRole('button', { name: '修改评论' }))
+    const textbox = screen.getByRole('textbox')
+    await user.clear(textbox)
+    await user.type(textbox, '精简评论')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(comment, '精简评论'))
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
   it('reports the whole lifetime of an existing comment edit draft', async () => {
     const user = userEvent.setup()
     const onEditingChange = vi.fn()

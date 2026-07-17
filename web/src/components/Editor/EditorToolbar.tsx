@@ -1,4 +1,4 @@
-import { BookOpen, Check, FilePenLine, ImagePlus, Loader2, MessageSquareText, Save, Settings } from 'lucide-react'
+import { BookOpen, Check, ImagePlus, Save, Settings } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
@@ -59,10 +59,6 @@ interface EditorToolbarProps {
   onSettingsChange: (settings: EditorSettings) => void
   onGenerateIllustration?: (chapterPath: string) => void
   generateIllustrationDisabled: boolean
-  reviewAvailable?: boolean
-  reviewMode?: boolean
-  reviewSwitching?: boolean
-  onReviewModeChange?: (review: boolean) => void
 }
 
 export function EditorToolbar({
@@ -77,10 +73,6 @@ export function EditorToolbar({
   onSettingsChange,
   onGenerateIllustration,
   generateIllustrationDisabled,
-  reviewAvailable = false,
-  reviewMode = false,
-  reviewSwitching = false,
-  onReviewModeChange,
 }: EditorToolbarProps) {
   const { t } = useTranslation()
   const saveStatusMeta = saveStatus ? SAVE_STATUS_META[saveStatus] : null
@@ -94,29 +86,7 @@ export function EditorToolbar({
         <span className="truncate font-medium text-[var(--nova-text)]">{displayTitle || fileName}</span>
       </div>
       <div className="flex shrink-0 items-center gap-2">
-        {reviewAvailable && onReviewModeChange && (
-          <div className="flex h-7 items-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" role="group" aria-label={t('editor.review.mode')}>
-            <button
-              type="button"
-              disabled={reviewSwitching}
-              onClick={() => onReviewModeChange(false)}
-              className={`flex h-5 items-center gap-1 rounded px-1.5 text-[10px] transition-colors ${!reviewMode ? 'bg-[var(--nova-active)] text-[var(--nova-text)] shadow-sm' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]'}`}
-              aria-pressed={!reviewMode}
-            >
-              <FilePenLine className="h-3 w-3" />{t('editor.review.editMode')}
-            </button>
-            <button
-              type="button"
-              disabled={reviewSwitching}
-              onClick={() => onReviewModeChange(true)}
-              className={`flex h-5 items-center gap-1 rounded px-1.5 text-[10px] transition-colors ${reviewMode ? 'bg-[var(--nova-active)] text-[var(--nova-text)] shadow-sm' : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]'}`}
-              aria-pressed={reviewMode}
-            >
-              {reviewSwitching ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageSquareText className="h-3 w-3" />}{t('editor.review.reviewMode')}
-            </button>
-          </div>
-        )}
-        {!reviewMode && saveStatusMeta && (
+        {saveStatusMeta && (
           <span
             className={`inline-flex h-5 min-w-5 items-center justify-end gap-1 text-[11px] transition-colors ${saveStatusMeta.className}`}
             aria-live="polite"
@@ -131,7 +101,7 @@ export function EditorToolbar({
             <span className={saveStatusMeta.subtle ? 'sr-only' : ''}>{saveStatusLabel}</span>
           </span>
         )}
-        {!reviewMode && onGenerateIllustration && (
+        {onGenerateIllustration && (
           <TooltipIconButton
             label={generateIllustrationDisabled ? t('editor.generateIllustrationDisabled') : t('editor.generateIllustration')}
             size="icon-xs"
@@ -144,7 +114,7 @@ export function EditorToolbar({
             <ImagePlus className="h-3.5 w-3.5" />
           </TooltipIconButton>
         )}
-        {!reviewMode && <Button
+        <Button
           type="button"
           onClick={onSave}
           size="xs"
@@ -153,7 +123,7 @@ export function EditorToolbar({
         >
           <Save className="w-3.5 h-3.5" />
           {t('editor.save')}
-        </Button>}
+        </Button>
         <Popover open={settingsOpen} onOpenChange={onSettingsOpenChange}>
           <PopoverTrigger asChild>
             <Button
