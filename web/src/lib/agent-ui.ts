@@ -58,6 +58,7 @@ interface AgentChatRequestBody {
   image_preset_id?: string
   teller_id?: string
   review_feedback?: {
+    source?: 'workspace_change' | 'document'
     review_thread_id: string
     comment_ids: string[]
   }
@@ -104,6 +105,7 @@ export function buildAgentChatRequestBody(body: AgentChatRequestBody): AgentChat
     teller_id: body.teller_id || undefined,
     review_feedback: body.review_feedback?.review_thread_id && body.review_feedback.comment_ids.length
       ? {
+          ...(body.review_feedback.source ? { source: body.review_feedback.source } : {}),
           review_thread_id: body.review_feedback.review_thread_id,
           comment_ids: Array.from(new Set(body.review_feedback.comment_ids)),
         }

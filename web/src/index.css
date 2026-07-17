@@ -1666,6 +1666,34 @@ html[data-nova-motion="off"] *::after {
   text-indent: 2em;
 }
 
+.nova-document-review-mode .editor-content .tiptap {
+  caret-color: transparent;
+  cursor: text;
+}
+
+.editor-content .tiptap .nova-document-review-highlight {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--nova-warning) 18%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--nova-warning) 58%, transparent);
+}
+
+.editor-content .tiptap .nova-document-review-widget {
+  display: block;
+  width: 100%;
+  margin: 0.45rem 0 0.8rem;
+  text-indent: 0;
+}
+
+.editor-content .tiptap .nova-document-review-widget.is-outdated {
+  opacity: 0.78;
+}
+
+.editor-content .tiptap .nova-document-review-widget .nova-review-comment-thread {
+  font-family: var(--nova-font-sans, Inter, sans-serif);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* hardBreak 缩进：让 br 换行后的行也有 2em 缩进 */
 .editor-content .tiptap .nova-hard-break::after {
   content: '';

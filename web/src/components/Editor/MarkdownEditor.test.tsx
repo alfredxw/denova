@@ -1,7 +1,9 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MarkdownEditor } from './MarkdownEditor'
+import { server } from '@/test/msw/server'
 
 const toastMock = vi.hoisted(() => ({
   error: vi.fn(),
@@ -44,6 +46,7 @@ const tiptapMock = vi.hoisted(() => {
       dom: document.createElement('div'),
     },
     isDestroyed: false,
+    setEditable: vi.fn(),
     getText: () => tiptapMock.text,
     getMarkdown: () => tiptapMock.markdown,
     getHTML: () => '',
@@ -692,6 +695,56 @@ describe('MarkdownEditor', () => {
     })
     expect(tiptapMock.chainApi.run).toHaveBeenCalled()
     expect(toastMock.success).not.toHaveBeenCalled()
+  })
+
+  it('保存并校验规范正文后进入只读审阅模式，再显式返回编辑模式', async () => {
+    const user = userEvent.setup()
+    tiptapMock.markdown = '正文\n'
+    const documentReview = {
+      comments: [],
+      onCreate: vi.fn(),
+      onUpdate: vi.fn(),
+      onDelete: vi.fn(),
+    }
+    server.use(http.get('/api/workspace/file', ({ request }) => {
+      expect(new URL(request.url).searchParams.get('path')).toBe('chapters/ch01.md')
+      return HttpResponse.json({ workspace: '/books/demo', path: 'chapters/ch01.md', content: '正文\n', revision: 'sha256:body' })
+    }))
+
+    const { rerender } = render(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content={'正文\n'}
+        onSave={vi.fn().mockResolvedValue(true)}
+        documentReview={documentReview}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '审阅' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '审阅' })).toHaveAttribute('aria-pressed', 'true'))
+    expect(tiptapMock.editor.view.dom).toHaveAttribute('aria-readonly', 'true')
+    expect(tiptapMock.editor.setEditable).toHaveBeenLastCalledWith(true)
+
+    await user.click(screen.getByRole('button', { name: '编辑' }))
+    expect(tiptapMock.editor.view.dom).not.toHaveAttribute('aria-readonly')
+    expect(tiptapMock.editor.setEditable).toHaveBeenLastCalledWith(true)
+
+    await user.click(screen.getByRole('button', { name: '审阅' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: '审阅' })).toHaveAttribute('aria-pressed', 'true'))
+    rerender(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch02.md"
+        content={'第二章\n'}
+        onSave={vi.fn().mockResolvedValue(true)}
+        documentReview={documentReview}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '编辑' })).toHaveAttribute('aria-pressed', 'true'))
+    expect(tiptapMock.editor.view.dom).not.toHaveAttribute('aria-readonly')
+    expect(tiptapMock.chainApi.setContent).toHaveBeenLastCalledWith('第二章\n', { emitUpdate: false, contentType: 'markdown' })
   })
 })
 

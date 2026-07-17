@@ -41,11 +41,12 @@ export interface ChatSendOptions {
   displayMessage?: string
   hideUserMessage?: boolean
   reviewFeedback?: {
+    source?: 'workspace_change' | 'document'
     reviewThreadId: string
     commentIds: string[]
   }
   reviewFeedbackDisplay?: {
-    comments: Array<{ id: string; body: string; review_path?: string; review_line?: number }>
+    comments: Array<{ id: string; body: string; path?: string; review_path?: string; review_line?: number }>
   }
   loreReferenceLabels?: Record<string, string>
   onSubmissionStart?: () => void
@@ -237,6 +238,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       image_preset_id: sendOptions.imagePresetId,
       teller_id: sendOptions.tellerId,
       review_feedback: sendOptions.reviewFeedback ? {
+        source: sendOptions.reviewFeedback.source,
         review_thread_id: sendOptions.reviewFeedback.reviewThreadId,
         comment_ids: sendOptions.reviewFeedback.commentIds,
       } : undefined,
@@ -411,7 +413,7 @@ function buildUserMessageReferences(
     result.push({
       kind: 'review_comment',
       id: comment.id,
-      label: comment.review_path || comment.id,
+      label: comment.review_path || comment.path || comment.id,
       ...(comment.review_line !== undefined ? { start_line: comment.review_line, end_line: comment.review_line } : {}),
       detail: boundedReferenceDetail(comment.body),
     })

@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 写作页新增作者自用的正文“编辑 / 审阅”模式：审阅模式下正文只读，可通过文本选区或右侧行级 `+` 添加评论，并直接编辑、取消或删除。待处理评论会自动堆叠到创作 Agent 输入框上方，随下一条用户消息一次性发送；只有消息持久化成功后才从正文移除，发送失败会原样恢复。
+- The writing page now includes author-only Edit and Review modes. Review keeps the manuscript read-only, supports comments from a text selection or the right-side line `+`, and allows in-place editing, cancellation, and deletion. Pending comments automatically stack above the Writing Agent composer and are sent once with the next user message; they disappear only after that message is durable and are restored unchanged on send failure.
+- 正文审阅评论使用带 revision、UTF-8 字节区间和有界上下文的锚点，持久化到工作区私有 append-only review ledger；服务端根据当前文件重新投影可信引用，歧义或过期锚点不会被静默引用。Nova/Git 版本快照与恢复会排除并保护 `.denova/reviews` 和旧版 `.nova/reviews`。
+- Document review comments use revision-bound UTF-8 byte anchors with bounded context and persist in a private append-only workspace review ledger. The server reprojects trusted references against current files and refuses ambiguous or stale anchors instead of silently quoting them. Nova/Git snapshots and restores exclude and protect `.denova/reviews` and legacy `.nova/reviews`.
 - 写作模式新增持久化 Change Review：Agent 每轮写入会在对应对话末尾形成变更摘要卡；Review 在中间编辑区使用 Monaco 展示累计 Diff，默认 Unified、可切 Split，并支持自适应文件导航、UTF-8 inline comments、评论解决/删除，以及跨重启保留的 Undo/Redo。
 - Writing Mode adds durable Change Review. Each Agent run ends with an in-conversation change summary, while the central editor uses Monaco for a cumulative diff (Unified by default, with Split available), adaptive file navigation, UTF-8 inline comments, comment resolution/deletion, and restart-safe undo/redo.
 - 审阅评论可统一引用到创作 Agent 输入框；服务端只接受 thread/comment IDs 并从当前工作区账本解析可信上下文。后续 Agent run 继承同一 Review Thread，新的修改持续叠加到累计 Diff，同时保留每轮独立的 Undo 边界。

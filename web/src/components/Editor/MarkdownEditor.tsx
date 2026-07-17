@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useRef, useState } from 'react'
+import { useEffect, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -25,6 +25,8 @@ import {
   hasNativeIndent,
   isMarkdownFile,
   isTxtFile,
+  normalizeEditorText,
+  readEditorText,
   resetEditorStateHistory,
   updateCharacterStats,
 } from './editorDocument'
@@ -38,8 +40,20 @@ import {
 } from './editorDecorations'
 import type { SearchMatch, SearchState } from './editorDecorations'
 import { useEditorDraftPersistence, type EditorFlushHandler } from './useEditorDraftPersistence'
+import { readFile } from '@/lib/api-client/workspace'
+import type { CreateDocumentCommentRequest, DocumentReviewComment } from '@/features/document-review/types'
+import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from './DocumentReviewAnnotations'
+import type { DocumentReviewSnapshot } from './documentReviewAnchors'
+import { createDocumentReviewExtension, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 
 export type { EditorFlushHandler } from './useEditorDraftPersistence'
+
+export interface DocumentReviewController {
+  comments: DocumentReviewComment[]
+  onCreate: (request: CreateDocumentCommentRequest) => Promise<DocumentReviewComment>
+  onUpdate: (comment: DocumentReviewComment, body: string) => Promise<DocumentReviewComment>
+  onDelete: (comment: DocumentReviewComment) => Promise<DocumentReviewComment>
+}
 
 interface MarkdownEditorProps {
   /** Canonical workspace identity. Save tasks never cross this boundary. */
@@ -60,6 +74,7 @@ interface MarkdownEditorProps {
   onExternalConflict?: (conflict: { fileName: string; localContent: string; externalContent: string }) => void
   /** Registers the navigation guard used by tabs, previews, and workspace switches. */
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
+  documentReview?: DocumentReviewController
 }
 
 interface EditorSearchIntent {
@@ -86,6 +101,7 @@ export function MarkdownEditor({
   onLineChange,
   onExternalConflict,
   onFlushHandlerChange,
+  documentReview,
 }: MarkdownEditorProps) {
   const { t } = useTranslation()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -96,6 +112,10 @@ export function MarkdownEditor({
   const [searchQuery, setSearchQuery] = useState('')
   const [searchIndex, setSearchIndex] = useState(0)
   const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([])
+  const [reviewMode, setReviewMode] = useState(false)
+  const [reviewSwitching, setReviewSwitching] = useState(false)
+  const [reviewSnapshot, setReviewSnapshot] = useState<DocumentReviewSnapshot | null>(null)
+  const [reviewPortalTargets, setReviewPortalTargets] = useState<DocumentReviewPortalTarget[]>([])
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastIllustrationInsertNonceRef = useRef<number | null>(null)
   const lastSearchIntentNonceRef = useRef<number | null>(null)
@@ -104,6 +124,14 @@ export function MarkdownEditor({
   const dialogueHighlightExtension = useMemo(() => createDialogueHighlightExtension(), [])
   const workspaceImageExtension = useMemo(() => createWorkspaceImageExtension(), [])
   const editorContainerRef = useRef<HTMLDivElement>(null)
+  const reviewAnnotationsRef = useRef<DocumentReviewAnnotationsHandle>(null)
+  const reviewDocumentKeyRef = useRef(`${workspace}\u0000${fileName || ''}`)
+  const reviewModeRef = useRef(false)
+  const reviewDecorationStateRef = useRef<DocumentReviewDecorationState>({ enabled: false, decorations: [] })
+  const updateReviewPortalTargets = useCallback((targets: DocumentReviewPortalTarget[]) => {
+    setReviewPortalTargets((current) => sameReviewPortalTargets(current, targets) ? current : targets)
+  }, [])
+  const reviewExtension = useMemo(() => createDocumentReviewExtension(reviewDecorationStateRef, updateReviewPortalTargets), [updateReviewPortalTargets])
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -113,6 +141,7 @@ export function MarkdownEditor({
       searchExtension,
       dialogueHighlightExtension,
       workspaceImageExtension,
+      reviewExtension,
       TableKit.configure({
         table: {
           resizable: false,
@@ -167,11 +196,39 @@ export function MarkdownEditor({
     updateSearch(searchStateRef.current.query, 0)
   }, [editor, onLineChange, updateSearch])
 
+  const exitReviewMode = useCallback((reason = 'author') => {
+    if (reviewModeRef.current) console.debug('[editor-review] exit review mode', { reason })
+    reviewModeRef.current = false
+    reviewDecorationStateRef.current = { ...reviewDecorationStateRef.current, enabled: false }
+    setReviewMode(false)
+    setReviewSnapshot(null)
+    if (editor && !editor.isDestroyed) {
+      editor.view.dom.removeAttribute('aria-readonly')
+      if (typeof editor.setEditable === 'function') editor.setEditable(true)
+    }
+  }, [editor])
+
+  // This must precede draft persistence's layout effects. Otherwise the
+  // Review-mode transaction filter would reject a legitimate file/content
+  // replacement before the later passive effect could exit Review mode.
+  useLayoutEffect(() => {
+    const nextDocumentKey = `${workspace}\u0000${fileName || ''}`
+    if (reviewDocumentKeyRef.current !== nextDocumentKey) {
+      reviewDocumentKeyRef.current = nextDocumentKey
+      exitReviewMode('document_changed')
+      return
+    }
+    if (reviewModeRef.current && reviewSnapshot && normalizeEditorText(content) !== normalizeEditorText(reviewSnapshot.content)) {
+      exitReviewMode('content_changed')
+    }
+  }, [content, exitReviewMode, fileName, reviewSnapshot, workspace])
+
   const {
     saveStatus,
     externalConflict,
     externalConflictSaving,
     handleSave,
+    flushCurrentDraft,
     loadExternalVersion,
     keepLocalVersion,
   } = useEditorDraftPersistence({
@@ -188,6 +245,38 @@ export function MarkdownEditor({
     onExternalConflict,
     onFlushHandlerChange,
   })
+
+  const enterReviewMode = useCallback(async () => {
+    if (!editor || editor.isDestroyed || !fileName || !documentReview || !isMarkdownFile(fileName) || reviewSwitching) return
+    setReviewSwitching(true)
+    try {
+      if (!(await flushCurrentDraft())) return
+      const document = await readFile(fileName)
+      if (!document.revision || (workspace && document.workspace !== workspace)) {
+        throw new Error('The canonical document snapshot is unavailable')
+      }
+      if (normalizeEditorText(document.content) !== readEditorText(editor, fileName)) {
+        throw new Error('The editor and workspace snapshots differ')
+      }
+      setReviewSnapshot({ content: document.content, revision: document.revision })
+      reviewDecorationStateRef.current = { ...reviewDecorationStateRef.current, enabled: true }
+      editor.view.dom.setAttribute('aria-readonly', 'true')
+      reviewModeRef.current = true
+      setReviewMode(true)
+      // Selection must remain editable at the view level so ProseMirror keeps
+      // browser text selections in sync. The review plugin rejects doc changes.
+      if (typeof editor.setEditable === 'function') editor.setEditable(true)
+    } catch (error) {
+      console.error('进入正文审阅模式失败', { workspace, fileName, error })
+      toast.error(t('editor.review.enterFailed'))
+    } finally {
+      setReviewSwitching(false)
+    }
+  }, [documentReview, editor, fileName, flushCurrentDraft, reviewSwitching, t, workspace])
+
+  useEffect(() => {
+    if (reviewMode && !documentReview) exitReviewMode('review_unavailable')
+  }, [documentReview, exitReviewMode, reviewMode])
 
   // 监听 TipTap 内容和选区变化，实时更新选区字数与光标行号。
   useEffect(() => {
@@ -300,7 +389,11 @@ export function MarkdownEditor({
     onQuoteSelection({ fileName, startLine, endLine, content: text })
   }, [editor, fileName, onQuoteSelection])
 
-  // Cmd+Shift+L 快捷键：引用选区到 Chat
+  const commentCurrentSelection = useCallback(() => {
+    reviewAnnotationsRef.current?.startSelectionComment()
+  }, [])
+
+  // Cmd+Shift+L：编辑模式引用到 Chat，审阅模式创建评论。
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const inCurrentEditor = Boolean(
@@ -310,12 +403,13 @@ export function MarkdownEditor({
 
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'l') {
         e.preventDefault()
-        quoteCurrentSelection()
+        if (reviewMode) commentCurrentSelection()
+        else quoteCurrentSelection()
       }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [quoteCurrentSelection])
+  }, [commentCurrentSelection, quoteCurrentSelection, reviewMode])
 
   /** 跳转到下一处搜索结果。 */
   const goToSearchMatch = useCallback((direction: 1 | -1) => {
@@ -363,6 +457,13 @@ export function MarkdownEditor({
         onSettingsChange={setSettings}
         onGenerateIllustration={onGenerateIllustration}
         generateIllustrationDisabled={generateIllustrationDisabled}
+        reviewAvailable={Boolean(documentReview && isMarkdownFile(fileName))}
+        reviewMode={reviewMode}
+        reviewSwitching={reviewSwitching}
+        onReviewModeChange={(nextReviewMode) => {
+          if (nextReviewMode) void enterReviewMode()
+          else exitReviewMode('author')
+        }}
       />
       {externalConflict?.workspace === workspace && externalConflict.fileName === fileName && (
         <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] text-[var(--nova-text-muted)]">
@@ -391,9 +492,31 @@ export function MarkdownEditor({
           onNavigate: goToSearchMatch,
           onClose: closeSearch,
         }}
-        showSelectionToolbar={selectedCharacters > 0 && Boolean(onQuoteSelection)}
-        onQuoteSelection={quoteCurrentSelection}
+        showSelectionToolbar={selectedCharacters > 0 && (reviewMode || Boolean(onQuoteSelection))}
+        selectionToolbarMode={reviewMode ? 'comment' : 'quote'}
+        onSelectionAction={reviewMode ? commentCurrentSelection : quoteCurrentSelection}
+        reviewMode={reviewMode}
+        reviewAnnotations={editor && fileName && documentReview ? (
+          <DocumentReviewAnnotations
+            ref={reviewAnnotationsRef}
+            enabled={reviewMode}
+            editor={editor}
+            fileName={fileName}
+            snapshot={reviewSnapshot}
+            containerRef={editorContainerRef}
+            comments={documentReview.comments.filter((comment) => comment.path === fileName)}
+            decorationStateRef={reviewDecorationStateRef}
+            portalTargets={reviewPortalTargets}
+            onCreate={documentReview.onCreate}
+            onUpdate={documentReview.onUpdate}
+            onDelete={documentReview.onDelete}
+          />
+        ) : null}
       />
     </div>
   )
+}
+
+function sameReviewPortalTargets(current: DocumentReviewPortalTarget[], next: DocumentReviewPortalTarget[]): boolean {
+  return current.length === next.length && current.every((target, index) => target.key === next[index]?.key && target.element === next[index]?.element)
 }

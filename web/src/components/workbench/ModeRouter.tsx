@@ -1,5 +1,5 @@
 import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, Database, FileText, Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SlidersHorizontal, Sparkles } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FileTree } from '@/components/Sidebar/FileTree'
@@ -19,6 +19,7 @@ import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import { useWritingChangeReview } from '@/features/changes/use-writing-change-review'
+import { useDocumentReview } from '@/features/document-review/use-document-review'
 import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
 import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
@@ -335,10 +336,11 @@ export function ModeRouter(props: ModeRouterProps) {
     apply()
   }
   const aiVisible = rightPanel === 'ai'
+  const showAgent = useCallback(() => onSetRightPanel('ai'), [onSetRightPanel])
   const {
     activeReviewThreadID,
     activeReviewRequest,
-    reviewFeedback,
+    reviewFeedback: changeReviewFeedback,
     submittedReviewCommentIDs,
     openChangeReview,
     closeChangeReview,
@@ -353,8 +355,32 @@ export function ModeRouter(props: ModeRouterProps) {
     selectedFile,
     agentVisible: aiVisible,
     onBeforeOpen: onBeforeWorkspaceSwitch,
-    onShowAgent: () => onSetRightPanel('ai'),
+    onShowAgent: showAgent,
   })
+  const documentReview = useDocumentReview({
+    workspace,
+    agentVisible: aiVisible,
+    onShowAgent: showAgent,
+  })
+  const reviewFeedback = changeReviewFeedback || documentReview.feedback
+  const documentReviewController = useMemo(() => ({
+    comments: documentReview.thread.comments,
+    onCreate: documentReview.addComment,
+    onUpdate: documentReview.editComment,
+    onDelete: documentReview.removeComment,
+  }), [documentReview.addComment, documentReview.editComment, documentReview.removeComment, documentReview.thread.comments])
+  const removeActiveReviewFeedback = useCallback((commentID: string) => {
+    if (reviewFeedback?.source === 'document') documentReview.removeFeedback(commentID)
+    else removeReviewFeedback(commentID)
+  }, [documentReview.removeFeedback, removeReviewFeedback, reviewFeedback?.source])
+  const submitActiveReviewFeedback = useCallback((feedback: NonNullable<typeof reviewFeedback>) => {
+    if (feedback.source === 'document') documentReview.submitFeedback(feedback)
+    else submitReviewFeedback(feedback)
+  }, [documentReview.submitFeedback, submitReviewFeedback])
+  const restoreActiveReviewFeedback = useCallback((feedback: NonNullable<typeof reviewFeedback>) => {
+    if (feedback.source === 'document') documentReview.restoreFeedback(feedback)
+    else restoreReviewFeedback(feedback)
+  }, [documentReview.restoreFeedback, restoreReviewFeedback])
   const reviewVisible = Boolean(activeReviewThreadID)
   const closeBooks = () => {
     if (booksReturnMode === 'interactive') {
@@ -520,6 +546,7 @@ export function ModeRouter(props: ModeRouterProps) {
                     illustrationInsertSignal={illustrationInsertSignal}
                     onLineChange={setEditorLine}
                     onFlushHandlerChange={onEditorFlushHandlerChange}
+                    documentReview={documentReviewController}
                   />
                 )
               ) : (
@@ -668,9 +695,9 @@ export function ModeRouter(props: ModeRouterProps) {
       onApproveProposedPlan={onApproveProposedPlan}
       onExitPlanMode={onExitChatPlanMode}
       reviewFeedback={reviewFeedback}
-      onReviewFeedbackRemove={removeReviewFeedback}
-      onReviewFeedbackSubmitted={submitReviewFeedback}
-      onReviewFeedbackSubmissionFailed={restoreReviewFeedback}
+      onReviewFeedbackRemove={removeActiveReviewFeedback}
+      onReviewFeedbackSubmitted={submitActiveReviewFeedback}
+      onReviewFeedbackSubmissionFailed={restoreActiveReviewFeedback}
       onOpenChangeReview={(reviewThreadID, groupID) => { void openChangeReview(reviewThreadID, groupID) }}
       onWorkspaceChanged={onWorkspaceChanged}
       onClose={() => onSetRightPanel(null)}

@@ -1,13 +1,39 @@
 import { MessageSquareText, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { WorkspaceChangeComment } from '../types'
 
 export const MAX_REVIEW_FEEDBACK_COMMENT_COUNT = 256
 export const MAX_REVIEW_FEEDBACK_CONTEXT_BYTES = 256 * 1024
 
 export interface ReviewFeedbackSelection {
+  source?: 'workspace_change' | 'document'
   reviewThreadId: string
-  comments: WorkspaceChangeComment[]
+  comments: ReviewFeedbackComment[]
+}
+
+export interface ReviewFeedbackComment {
+  id: string
+  body: string
+  path?: string
+  group_id?: string
+  change_set_id?: string
+  edit_id?: string
+  hunk_id?: string
+  review_path?: string
+  review_line?: number
+  created_at?: string
+  updated_at?: string
+  anchor?: {
+    kind?: string
+    side?: string
+    encoding?: string
+    revision?: string
+    start?: number
+    end?: number
+    quote?: string
+    prefix?: string
+    suffix?: string
+    display_quote?: string
+  }
 }
 
 interface ReviewFeedbackTrayProps {
@@ -44,7 +70,7 @@ export function ReviewFeedbackTray({ feedback, onRemove }: ReviewFeedbackTrayPro
             className="inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-bg)] px-2 py-1 text-[11px] text-[var(--nova-text)]"
           >
             <span className="max-w-56 truncate" title={comment.body}>
-              {comment.review_path || comment.change_set_id || t('changes.comment')}
+              {comment.review_path || comment.path || comment.change_set_id || t('changes.comment')}
               {comment.review_line !== undefined ? ` · ${t('changes.feedback.line', { line: comment.review_line })}` : ''}
               {' — '}{comment.body}
             </span>
@@ -66,6 +92,7 @@ export function ReviewFeedbackTray({ feedback, onRemove }: ReviewFeedbackTrayPro
 /** Mirrors the trusted server payload with a small safety allowance for its prompt wrapper. */
 export function reviewFeedbackContextBytes(feedback: ReviewFeedbackSelection): number {
   const payload = JSON.stringify({
+    source: feedback.source || 'workspace_change',
     review_thread_id: feedback.reviewThreadId,
     comments: feedback.comments.map((comment) => ({
       comment_id: comment.id,
@@ -73,7 +100,7 @@ export function reviewFeedbackContextBytes(feedback: ReviewFeedbackSelection): n
       ...(comment.change_set_id ? { change_set_id: comment.change_set_id } : {}),
       ...(comment.edit_id ? { edit_id: comment.edit_id } : {}),
       ...(comment.hunk_id ? { hunk_id: comment.hunk_id } : {}),
-      ...(comment.review_path ? { path: comment.review_path } : {}),
+      ...(comment.review_path || comment.path ? { path: comment.review_path || comment.path } : {}),
       body: comment.body,
       anchor: compactAnchor(comment.anchor),
     })),
@@ -81,7 +108,7 @@ export function reviewFeedbackContextBytes(feedback: ReviewFeedbackSelection): n
   return new TextEncoder().encode(payload).length + 2 * 1024
 }
 
-function compactAnchor(anchor: WorkspaceChangeComment['anchor']): Record<string, string | number> {
+function compactAnchor(anchor: ReviewFeedbackComment['anchor']): Record<string, string | number> {
   if (!anchor) return {}
   return Object.fromEntries(Object.entries(anchor).filter(([, value]) => value !== undefined && value !== '' && value !== 0))
 }

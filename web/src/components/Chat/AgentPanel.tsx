@@ -289,6 +289,7 @@ export function AgentPanel({
   const sendWithWritingSkill = async (message: string) => {
     const feedbackSelection = reviewFeedback?.comments.length ? reviewFeedback : null
     const feedback = reviewFeedback?.comments.length ? {
+      source: reviewFeedback.source || 'workspace_change' as const,
       reviewThreadId: reviewFeedback.reviewThreadId,
       commentIds: reviewFeedback.comments.map((comment) => comment.id),
     } : undefined
