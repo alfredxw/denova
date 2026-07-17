@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复写作模式发送消息后输入框内容（如 initPrompt 预填提示词）未被清空的问题：根因是 TipTap 编辑器在 `disabled`（AI 回复中）状态下，value→editor 同步使用的 `setContent(空 JSON)` 不会更新 editor DOM，改用 TipTap 内置 `clearContent` 命令确保发送后输入框被可靠清空。
+- Fix: the composer input (e.g. initPrompt prefill) was not cleared after sending in writing mode. Root cause: TipTap's `setContent(empty JSON)` used by the value→editor sync does not update the editor DOM while `disabled` (AI streaming); switched to TipTap's built-in `clearContent` command to reliably clear the input after a send.
+
 ## [v0.2.0] - 2026-07-15
 
 ### Brief / 简要说明

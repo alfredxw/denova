@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { InputArea } from './InputArea'
 
@@ -116,5 +117,70 @@ describe('InputArea command menu', () => {
     )
 
     expect(screen.queryByLabelText('Plan Mode 已开启')).not.toBeInTheDocument()
+  })
+})
+
+describe('InputArea prefill clearing', () => {
+  it('clears prefilled prompt after sending without disabled transition', async () => {
+    const user = userEvent.setup()
+    const sentMessages: string[] = []
+
+    function Wrapper() {
+      const [inputPrefill, setInputPrefill] = useState<{ prompt: string; nonce: number } | null>({ prompt: 'prefilled-init', nonce: 1 })
+      return (
+        <InputArea
+          onSend={(msg) => { sentMessages.push(msg) }}
+          disabled={false}
+          inputPrefill={inputPrefill}
+          onInputPrefillConsumed={() => setInputPrefill(null)}
+        />
+      )
+    }
+
+    render(<Wrapper />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).toHaveTextContent('prefilled-init')
+    })
+
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(sentMessages).toEqual(['prefilled-init'])
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).not.toHaveTextContent('prefilled-init')
+    })
+  })
+
+  it('clears prefilled prompt after sending (realistic inputPrefill state)', async () => {
+    const user = userEvent.setup()
+    const sentMessages: string[] = []
+
+    function Wrapper() {
+      const [inputPrefill, setInputPrefill] = useState<{ prompt: string; nonce: number } | null>({ prompt: 'prefilled-init', nonce: 1 })
+      const [disabled, setDisabled] = useState(false)
+      return (
+        <InputArea
+          onSend={(msg) => { sentMessages.push(msg); setDisabled(true) }}
+          disabled={disabled}
+          inputPrefill={inputPrefill}
+          onInputPrefillConsumed={() => setInputPrefill(null)}
+        />
+      )
+    }
+
+    render(<Wrapper />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).toHaveTextContent('prefilled-init')
+    })
+
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(sentMessages).toEqual(['prefilled-init'])
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).not.toHaveTextContent('prefilled-init')
+    })
   })
 })
