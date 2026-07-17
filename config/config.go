@@ -354,7 +354,7 @@ func settingsAgentIdleTimeoutSeconds(v *int) int {
 }
 
 func settingsAgentToolResultLimitKB(v *int) int {
-	if v == nil || *v < 0 {
+	if v == nil || *v <= 0 {
 		return DefaultAgentToolResultLimitKB
 	}
 	return *v

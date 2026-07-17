@@ -29,7 +29,7 @@ function main() {
   for (const name of ["vendor", "web", "skills"]) {
     rmSync(join(packageDir, name), { recursive: true, force: true });
   }
-  for (const name of ["README.md", "CHANGELOG.md", "LICENSE", "config.toml"]) {
+  for (const name of ["README.md", "README.en.md", "CHANGELOG.md", "LICENSE", "config.toml"]) {
     rmSync(join(packageDir, name), { force: true });
   }
 
@@ -38,6 +38,7 @@ function main() {
   cpDir(join(rootDir, "skills"), join(packageDir, "skills"));
   cpFileIfExists("config.toml");
   cpFileIfExists("README.md");
+  cpFileIfExists("README.en.md");
   cpFileIfExists("CHANGELOG.md");
   cpFileIfExists("LICENSE");
 

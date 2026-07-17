@@ -56,10 +56,8 @@ describe('StoryStage TurnResult choices', () => {
 			user: '检查钟楼',
 			narrative: '钟楼上有反光一闪。',
 			state_status: 'ready' as const,
-			memory_status: 'running' as const,
 			turn_result: {
-				contract: { player_intent: '检查钟楼', scene_goal: '确认反光来源' },
-				scene_result: { status: 'continued', scene_id: '旧城钟楼', summary: '发现钟楼上的可疑反光', next_scene_goal: '找到观察角度' },
+				state_updates: [],
 				choices: ['绕到钟楼背面', '询问附近守夜人'],
 			},
 		}
@@ -89,7 +87,7 @@ describe('StoryStage TurnResult choices', () => {
     const stream = controllableInteractiveStream()
     const persisted = persistedTurnEvent()
     persisted.turn.turn_result = {
-      contract: { player_intent: '推门', scene_goal: '确认门外情况' },
+      state_updates: [],
       choices: ['沿墙观察', '询问守夜人'],
     }
     sendInteractiveMessageMock.mockResolvedValue(stream.readable)
@@ -244,7 +242,7 @@ describe('StoryStage composer', () => {
     expect(screen.getByText('潜入检定')).toBeInTheDocument()
     expect(screen.getByText('总值 6 / 目标 18')).toBeInTheDocument()
     expect(screen.getByText(/失败会损失体力并暴露行踪/)).toBeInTheDocument()
-    expect(screen.getByText('actors.protagonist.state.resources.hp -10')).toBeInTheDocument()
+    expect(screen.getByText('protagonist / 当前生命 -10')).toBeInTheDocument()
     expect(screen.getByText('守阁长老拦在门前。')).toBeInTheDocument()
   })
 
@@ -314,7 +312,7 @@ describe('StoryStage composer', () => {
             ts: '2026-06-28T00:00:00Z',
             user: '开局',
             narrative: '雨停了。',
-            turn_result: { contract: { player_intent: '开局', scene_goal: '观察环境' }, choices: ['继续观察', '询问路人'] },
+            turn_result: { state_updates: [], choices: ['继续观察', '询问路人'] },
           }],
           current_turn: {
             id: 'turn-1',
@@ -323,7 +321,7 @@ describe('StoryStage composer', () => {
             ts: '2026-06-28T00:00:00Z',
             user: '开局',
             narrative: '雨停了。',
-            turn_result: { contract: { player_intent: '开局', scene_goal: '观察环境' }, choices: ['继续观察', '询问路人'] },
+            turn_result: { state_updates: [], choices: ['继续观察', '询问路人'] },
           },
           director_plan_status: directorStatus('running', { completed_docs: 1, blocking: true }),
         }}
@@ -1241,6 +1239,7 @@ function story(): StorySummary {
     origin: '',
     story_teller_id: 'classic',
     story_director_id: 'default',
+    choice_count: 5,
     reply_target_chars: 2000,
     image_settings: { mode: 'manual', interval_turns: 3 },
     opening: { mode: 'ai' },
@@ -1260,10 +1259,9 @@ function storyDirector(ruleVisibilityMode: string) {
     strategy: {
       enabled: true,
       rule_visibility_mode: ruleVisibilityMode,
-    },
-    trpg_system: { rule_templates: [] },
-    opening_selector: { enabled: true },
-    custom: false,
+		},
+		trpg_system: { rule_templates: [] },
+		custom: false,
   }
 }
 
@@ -1294,7 +1292,7 @@ function snapshotWithRuleResolution(): Snapshot {
           outcomes: {
             critical_success: { result: '无声潜入。' },
             success: { result: '成功潜入。' },
-            failure: { result: '强闯失败导致主线中断', state_changes: [{ path: 'actors.protagonist.state.resources.hp', change: -10, reason: '被禁制反震' }] },
+            failure: { result: '强闯失败导致主线中断', state_changes: [{ actor_id: 'protagonist', field_id: '当前生命', change: -10, reason: '被禁制反震' }] },
             critical_failure: { result: '被当场抓住。' },
           },
         },
@@ -1311,7 +1309,7 @@ function snapshotWithRuleResolution(): Snapshot {
           total: 6,
           outcome: 'failure',
           result: '强闯失败导致主线中断',
-          state_changes: [{ path: 'actors.protagonist.state.resources.hp', change: -10, reason: '被禁制反震' }],
+          state_changes: [{ actor_id: 'protagonist', field_id: '当前生命', change: -10, reason: '被禁制反震' }],
         },
       },
     }],

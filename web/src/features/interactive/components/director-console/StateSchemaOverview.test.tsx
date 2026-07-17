@@ -1,10 +1,21 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import i18n, { setConfiguredLocale } from '@/i18n'
 import { StateSchemaOverview } from './StateSchemaOverview'
 
 const retryMock = vi.fn()
 const reviewMock = vi.fn()
 const skipMock = vi.fn()
+
+const evidenceInitialization = {
+  mode: 'after_opening',
+  status: 'ready',
+  requirements: [
+    { source: { kind: 'opening', id: 'confirmed-source' }, requirement: '明确事实', evidence_kind: 'confirmed', decision: 'covered' },
+    { source: { kind: 'trpg', id: 'default-source' }, requirement: '规则初始值', evidence_kind: 'default', decision: 'covered' },
+    { source: { kind: 'opening', id: 'future-source' }, requirement: '未来证据类型', evidence_kind: 'future-evidence', decision: 'ignored', reason: '兼容未来值' },
+  ],
+}
 
 vi.mock('../../api', () => ({
   retryInteractiveStateSchema: (...args: unknown[]) => retryMock(...args),
@@ -17,6 +28,11 @@ describe('StateSchemaOverview', () => {
     retryMock.mockReset().mockResolvedValue({ status: 'running' })
     reviewMock.mockReset().mockResolvedValue({ status: 'running' })
     skipMock.mockReset().mockResolvedValue({ status: 'skipped' })
+  })
+
+  afterEach(async () => {
+    setConfiguredLocale('zh-CN')
+    await i18n.changeLanguage('zh-CN')
   })
 
   it('shows the current revision, visible schema, adaptation changes, and warnings', () => {
@@ -39,7 +55,7 @@ describe('StateSchemaOverview', () => {
         requirements: [{
           source: { kind: 'lore', id: 'numeric-rule' },
           requirement: '生命值必须保持在 0 到 100', expected_type: 'number', min: 0, max: 100,
-          decision: 'add', template_id: 'protagonist', field_id: '生命', reason: '常驻规则要求可计算生命值',
+          evidence_kind: 'inferred', decision: 'add', template_id: 'protagonist', field_id: '生命', reason: '常驻规则要求可计算生命值',
         }],
         changes: [{ kind: 'field', op: 'add', template_id: 'protagonist', target_id: '危机压力', reason: '首轮出现追捕' }],
         warnings: ['旧压力值无法转换，已使用默认值'],
@@ -53,8 +69,26 @@ describe('StateSchemaOverview', () => {
     expect(screen.getByText('旧压力值无法转换，已使用默认值')).toBeInTheDocument()
     expect(screen.getByText('覆盖审查')).toBeInTheDocument()
     expect(screen.getByText(/生命值必须保持在 0 到 100/)).toBeInTheDocument()
+    expect(screen.getByText('合理推测')).toBeInTheDocument()
     expect(screen.getByText(/protagonist\.生命/)).toBeInTheDocument()
     expect(screen.getAllByText(/numeric-rule/).length).toBeGreaterThan(0)
+  })
+
+  it('localizes known evidence kinds and renders unknown future values', () => {
+    render(<StateSchemaOverview initialization={evidenceInitialization} />)
+
+    expect(screen.getByText('已确认')).toBeInTheDocument()
+    expect(screen.getByText('规则默认')).toBeInTheDocument()
+    expect(screen.getByText('future-evidence')).toBeInTheDocument()
+  })
+
+  it('localizes evidence kinds in English', async () => {
+    setConfiguredLocale('en-US')
+    await i18n.changeLanguage('en-US')
+    render(<StateSchemaOverview initialization={evidenceInitialization} />)
+
+    expect(screen.getByText('Confirmed')).toBeInTheDocument()
+    expect(screen.getByText('Rule default')).toBeInTheDocument()
   })
 
   it('retries or locks the preset after a failed adaptation', async () => {

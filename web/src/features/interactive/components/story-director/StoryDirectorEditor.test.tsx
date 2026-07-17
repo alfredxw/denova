@@ -4,19 +4,18 @@ import type { StoryDirector } from '../../types'
 import { StoryDirectorEditor } from './StoryDirectorEditor'
 
 describe('StoryDirectorEditor', () => {
-  it('displays the legacy auto schema mode as adapt after opening', () => {
+  it('displays the configured after-opening schema mode', () => {
     const draft: StoryDirector = {
       version: 1,
-      id: 'legacy-director',
-      name: '旧导演',
+		id: 'custom-director',
+		name: '自定义导演',
       description: '',
       strategy: {
         enabled: true,
-        state_schema_adaptation_mode: 'auto',
+		state_schema_adaptation_mode: 'after_opening',
       },
       trpg_system: {},
-      opening_selector: { enabled: true },
-      custom: true,
+	  custom: true,
     }
 
     render(
@@ -26,13 +25,11 @@ describe('StoryDirectorEditor', () => {
         eventPackages={[]}
         ruleSystems={[]}
         actorStates={[]}
-        memoryStructures={[]}
         imagePresets={[]}
         setDraft={vi.fn()}
       />,
     )
 
-    expect(screen.getByText('首轮后动态适配')).toBeInTheDocument()
-    expect(screen.queryByText('自定义（auto）')).not.toBeInTheDocument()
+	expect(screen.getByText('首轮后动态适配')).toBeInTheDocument()
   })
 })

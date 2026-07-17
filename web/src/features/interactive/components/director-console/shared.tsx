@@ -15,17 +15,17 @@ export function SyncBadge({ status, error, loading }: { status?: string; error?:
     return (
       <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-[11px] text-[var(--nova-text-muted)]">
         <Loader2 className="h-3 w-3 animate-spin" />
-        {t('memoryPanel.syncing')}
+        {t('directorPanel.syncing')}
       </span>
     )
   }
   if (status === 'failed') {
-    return <span className="inline-flex max-w-[120px] shrink-0 truncate rounded-full border border-[var(--nova-danger)] bg-[var(--nova-danger-bg)] px-2 py-0.5 text-[11px] text-[var(--nova-danger)]" title={error}>{t('memoryPanel.failed')}</span>
+    return <span className="inline-flex max-w-[120px] shrink-0 truncate rounded-full border border-[var(--nova-danger)] bg-[var(--nova-danger-bg)] px-2 py-0.5 text-[11px] text-[var(--nova-danger)]" title={error}>{t('directorPanel.failed')}</span>
   }
-  return <span className="inline-flex shrink-0 rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-[11px] text-[var(--nova-text-muted)]">{t('memoryPanel.ready')}</span>
+  return <span className="inline-flex shrink-0 rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-0.5 text-[11px] text-[var(--nova-text-muted)]">{t('directorPanel.ready')}</span>
 }
 
-export function MemoryChip({ children }: { children: string }) {
+export function AuditChip({ children }: { children: string }) {
   return <span className="max-w-full truncate rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 text-[11px] text-[var(--nova-text-muted)]">{children}</span>
 }
 
@@ -36,7 +36,7 @@ export function StateValue({ value }: { value: unknown }) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs text-[var(--nova-text-muted)]">
         <span className={`h-1.5 w-1.5 rounded-full ${value ? 'bg-[var(--nova-success)]' : 'bg-[var(--nova-text-faint)]'}`} />
-        {value ? t('memoryPanel.stateValue.yes') : t('memoryPanel.stateValue.no')}
+        {value ? t('directorPanel.stateValue.yes') : t('directorPanel.stateValue.no')}
       </span>
     )
   }
@@ -45,13 +45,13 @@ export function StateValue({ value }: { value: unknown }) {
     return <p className="whitespace-pre-wrap break-words text-xs leading-5 text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">{value}</p>
   }
   if (Array.isArray(value)) {
-    if (value.length === 0) return <span className="text-xs text-[var(--nova-text-faint)]">{t('memoryPanel.stateValue.empty')}</span>
+    if (value.length === 0) return <span className="text-xs text-[var(--nova-text-faint)]">{t('directorPanel.stateValue.empty')}</span>
     const simple = value.every((item) => item === null || ['string', 'number', 'boolean'].includes(typeof item))
     if (simple) {
       return (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex min-w-0 flex-wrap gap-1.5">
           {value.map((item, index) => (
-            <span key={`${String(item)}-${index}`} className="rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-0.5 text-[11px] text-[var(--nova-text-muted)]">
+            <span key={`${String(item)}-${index}`} className="max-w-full min-w-0 whitespace-normal break-words rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 py-1 text-[11px] leading-4 text-[var(--nova-text-muted)] [overflow-wrap:anywhere]">
               {item === null ? '—' : String(item)}
             </span>
           ))}
@@ -71,7 +71,7 @@ export function StateValue({ value }: { value: unknown }) {
   }
   if (isRecord(value)) {
     const entries = Object.entries(value).filter(([, item]) => item !== undefined)
-    if (entries.length === 0) return <span className="text-xs text-[var(--nova-text-faint)]">{t('memoryPanel.stateValue.empty')}</span>
+    if (entries.length === 0) return <span className="text-xs text-[var(--nova-text-faint)]">{t('directorPanel.stateValue.empty')}</span>
     return (
       <dl className="divide-y divide-[var(--nova-border-soft)] overflow-hidden rounded-[8px] border border-[var(--nova-border-soft)] bg-[var(--nova-surface)]">
         {entries.slice(0, 20).map(([key, item]) => (

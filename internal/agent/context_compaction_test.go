@@ -59,7 +59,7 @@ func TestBuildContextCompactionUsesExplicitSourceTranscript(t *testing.T) {
 	newMessages, result, err := BuildContextCompaction(context.Background(), &config.Config{}, config.AgentKindInteractiveStory, ContextCompactionInput{
 		Messages:         modelMessages,
 		SourceMessages:   sourceMessages,
-		ReferenceContext: "Story Memory: plot_summary",
+		ReferenceContext: "Lore: plot_summary",
 		Force:            true,
 		KeepLatestUser:   true,
 	}, 7)
@@ -75,7 +75,7 @@ func TestBuildContextCompactionUsesExplicitSourceTranscript(t *testing.T) {
 	if capturedSource[1].ReasoningContent != "" {
 		t.Fatalf("reasoning content should not reach compaction model: %#v", capturedSource[1])
 	}
-	if capturedReference != "Story Memory: plot_summary" {
+	if capturedReference != "Lore: plot_summary" {
 		t.Fatalf("reference context = %q", capturedReference)
 	}
 	if len(newMessages) != 2 || !isContextCompactionMessage(newMessages[0]) || newMessages[1].Content != "当前模型指令" {
@@ -215,14 +215,14 @@ func TestContextCompactionPolicyUsesConfiguredRetainedTurns(t *testing.T) {
 	}
 }
 
-func TestBuildContextCompactionTranscriptKeepsAllIncrementalMessagesAndMemory(t *testing.T) {
+func TestBuildContextCompactionTranscriptKeepsAllIncrementalMessagesAndReferenceContext(t *testing.T) {
 	messages := make([]*schema.Message, 0, 40)
 	for i := 1; i <= 40; i++ {
 		messages = append(messages, schema.UserMessage(strings.Repeat("旧消息", 2000)+":"+string(rune('A'+i%26))))
 	}
 	policy := contextCompactionPolicy{TargetMinRatio: 0.10, TargetMaxRatio: 0.25}
 	existing := "既有压缩摘要：主角进入旧城。"
-	reference := "完整故事记忆：关系=信任；任务=寻找钥匙。"
+	reference := "有界参考上下文：关系=信任；任务=寻找钥匙。"
 	inputChars := contextCompactionInputChars(existing, messages, reference)
 	transcript := buildContextCompactionTranscript(messages, existing, reference, 1234, inputChars, "", policy)
 
@@ -230,7 +230,7 @@ func TestBuildContextCompactionTranscriptKeepsAllIncrementalMessagesAndMemory(t 
 		t.Fatalf("compaction transcript should not report omitted content:\n%s", transcript[:200])
 	}
 	if !strings.Contains(transcript, existing) || !strings.Contains(transcript, reference) {
-		t.Fatalf("transcript should include existing memory and reference context:\n%s", transcript)
+		t.Fatalf("transcript should include existing checkpoint and reference context:\n%s", transcript)
 	}
 	if !strings.Contains(transcript, "--- message 1 role=user ---") || !strings.Contains(transcript, "--- message 40 role=user ---") {
 		t.Fatalf("transcript should include the full incremental message range")

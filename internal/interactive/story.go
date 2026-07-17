@@ -20,6 +20,13 @@ const defaultFirstStoryTitle = "新的开始"
 
 // DefaultStoryReplyTargetChars is the default target length for one interactive story turn.
 const DefaultStoryReplyTargetChars = 2000
+
+const (
+	DefaultStoryChoiceCount = 5
+	MinStoryChoiceCount     = 2
+	MaxStoryChoiceCount     = 10
+)
+
 const maxStoryOpeningTextRunes = 4000
 
 const (
@@ -86,11 +93,15 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		StoryDirectorID:  NormalizeStoryDirectorID(req.StoryDirectorID),
 		ModuleRefs:       cloneStoryDirectorModuleRefs(req.ModuleRefs),
 		ReplyTargetChars: normalizeStoryReplyTargetChars(req.ReplyTargetChars),
+		ChoiceCount:      normalizeStoryChoiceCount(req.ChoiceCount),
 		Opening:          normalizeStoryOpeningConfig(req.Opening),
 		ImageSettings:    normalizeStoryImageSettings(req.ImageSettings),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 		Branches:         1,
+	}
+	if err := validateStoryChoiceCount(story.ChoiceCount); err != nil {
+		return StorySummary{}, err
 	}
 	if story.StoryTellerID == "" {
 		story.StoryTellerID = "classic"
@@ -109,6 +120,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		StoryDirectorID:  story.StoryDirectorID,
 		ModuleRefs:       cloneStoryDirectorModuleRefs(story.ModuleRefs),
 		ReplyTargetChars: story.ReplyTargetChars,
+		ChoiceCount:      story.ChoiceCount,
 		Opening:          story.Opening,
 		ImageSettings:    story.ImageSettings,
 		CurrentBranch:    "main",
@@ -139,6 +151,9 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		trpgSystem = *req.TRPGSystem
 	}
 	if !actorStateEmpty(actorState) {
+		if err := validateActorStateSystem(actorState); err != nil {
+			return StorySummary{}, fmt.Errorf("创建故事的状态系统无效 / Invalid state system for story creation: %w", err)
+		}
 		meta.ActorStateSchema = FreezeActorStateSchemaWithRules(actorState, trpgSystem, len(req.InitialStateOps) > 0)
 		if meta.ActorStateSchema != nil && req.ActorStateAdaptation != nil {
 			record := *req.ActorStateAdaptation
@@ -227,6 +242,12 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 		}
 		meta.ReplyTargetChars = *req.ReplyTargetChars
 	}
+	if req.ChoiceCount != nil {
+		if err := validateStoryChoiceCount(*req.ChoiceCount); err != nil {
+			return StorySummary{}, err
+		}
+		meta.ChoiceCount = *req.ChoiceCount
+	}
 	if req.Opening != nil {
 		meta.Opening = normalizeStoryOpeningConfig(*req.Opening)
 	}
@@ -249,6 +270,7 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 			index.Stories[i].StoryDirectorID = normalizedStoryDirectorID(meta.StoryDirectorID)
 			index.Stories[i].ModuleRefs = cloneStoryDirectorModuleRefs(meta.ModuleRefs)
 			index.Stories[i].ReplyTargetChars = meta.ReplyTargetChars
+			index.Stories[i].ChoiceCount = meta.ChoiceCount
 			index.Stories[i].Opening = meta.Opening
 			index.Stories[i].ImageSettings = meta.ImageSettings
 			index.Stories[i].UpdatedAt = now
@@ -489,7 +511,8 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	actorState := actorStateSystemFromSnapshot(meta.ActorStateSchema, director.ActorState)
 	applyLegacyActorStateAliases(state, meta.ActorStateSchema)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	turnResult := normalizeTurnResultPointer(req.TurnResult)
+	terminal := (req.TerminalOutcome != nil && req.TerminalOutcome.Terminal) || (req.RuleResolution != nil && req.RuleResolution.TerminalCandidate != nil)
+	turnResult := normalizeTurnResultPointer(req.TurnResult, meta.ChoiceCount, terminal)
 	if req.TurnResult != nil && turnResult == nil {
 		return TurnEvent{}, nil, fmt.Errorf("TurnResult 未通过校验")
 	}
@@ -507,36 +530,35 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		AgentKind:            strings.TrimSpace(req.AgentKind),
 		DisplayEvents:        sanitizeDisplayEvents(req.DisplayEvents),
 		ModelContextMessages: sanitizeModelContextMessages(req.ModelContextMessages),
-		TurnBrief:            normalizeTurnBriefPointer(req.TurnBrief),
 		RuleResolution:       normalizeRuleResolutionPointer(req.RuleResolution),
 		TurnResult:           turnResult,
 		TerminalOutcome:      normalizeTerminalOutcomePointer(req.TerminalOutcome),
-		MemoryStatus:         "pending",
 		Flags:                map[string]bool{"pinned": false, "locked": false},
 	}
 	ops := normalizeStateOps(req.Ops)
 	actorOps := normalizeActorStateOps(req.ActorOps)
-	if turn.TurnResult != nil && len(turn.TurnResult.ActorStatePatches) > 0 {
-		patches := append([]ActorStatePatch(nil), turn.TurnResult.ActorStatePatches...)
-		for i := range patches {
-			patches[i].SourceTurnID = turn.ID
-		}
-		patchResult, err := ValidateActorStatePatchesAgainstState(actorState, state, patches, turn.ID)
+	if turn.TurnResult != nil && len(turn.TurnResult.StateUpdates) > 0 {
+		compiled, err := CompileTurnStateUpdates(actorState, state, turn.TurnResult.StateUpdates, TurnStateUpdateCompileOptions{
+			SourceTurnID:             turn.ID,
+			RuleResolution:           turn.RuleResolution,
+			RuleStateConsumptionMode: director.Strategy.RuleStateConsumptionMode,
+		})
 		if err != nil {
-			return TurnEvent{}, nil, fmt.Errorf("TurnResult Actor State 校验失败: %w", err)
+			return TurnEvent{}, nil, fmt.Errorf("TurnResult state_updates 校验失败: %w", err)
 		}
-		for i := range patchResult.Ops {
-			patchResult.Ops[i].SourceKind = StateOpSourceTurnResult
-			patchResult.Ops[i].SourceID = turn.ID
-			patchResult.Ops[i].SourceTurnID = turn.ID
+		turn.TurnResult.StateUpdates = compiled.Updates
+		for i := range compiled.Ops {
+			compiled.Ops[i].SourceKind = StateOpSourceTurnResult
+			compiled.Ops[i].SourceID = turn.ID
+			compiled.Ops[i].SourceTurnID = turn.ID
 		}
-		ops = append(ops, patchResult.Ops...)
-		for i := range patchResult.ActorOps {
-			patchResult.ActorOps[i].SourceKind = StateOpSourceTurnResult
-			patchResult.ActorOps[i].SourceID = turn.ID
-			patchResult.ActorOps[i].SourceTurnID = turn.ID
+		ops = append(ops, compiled.Ops...)
+		for i := range compiled.ActorOps {
+			compiled.ActorOps[i].SourceKind = StateOpSourceTurnResult
+			compiled.ActorOps[i].SourceID = turn.ID
+			compiled.ActorOps[i].SourceTurnID = turn.ID
 		}
-		actorOps = append(actorOps, patchResult.ActorOps...)
+		actorOps = append(actorOps, compiled.ActorOps...)
 	}
 	if turn.RuleResolution != nil {
 		ruleOps, ruleActorOps := applyRuleStateConsumptionV2(state, actorState, turn.ID, turn.RuleResolution, director.Strategy.RuleStateConsumptionMode)
@@ -888,8 +910,6 @@ func (s *Store) MarkStateFailed(storyID string, req MarkStateFailedRequest) erro
 		}
 		raw["state_status"] = "failed"
 		raw["state_error"] = errText
-		raw["memory_status"] = "failed"
-		raw["memory_error"] = errText
 		updated = true
 		break
 	}
@@ -964,7 +984,6 @@ func (s *Store) RerollRuleResolution(storyID, resolutionID string, req RuleResol
 			continue
 		}
 		lines[i].Raw["rule_resolution"] = next
-		delete(lines[i].Raw, "turn_brief")
 		existingOps := []StateOp{}
 		existingActorOps := []ActorStateOp{}
 		if target.StateDelta != nil {
@@ -1274,7 +1293,7 @@ func terminalOutcomeFromRuleResolution(resolution RuleResolution, turnID, narrat
 		Terminal:              true,
 		Type:                  firstNonEmptyString(candidate.Type, "bad_end"),
 		Reason:                candidate.Reason,
-		FinalNarrativeSummary: trimBytes(narrative, maxTurnBriefTextBytes),
+		FinalNarrativeSummary: trimBytes(narrative, maxInteractiveTextBytes),
 		CausedByTurnID:        turnID,
 		RuleResolutionID:      resolution.ID,
 	})
@@ -1312,9 +1331,24 @@ func normalizeStoryReplyTargetChars(value int) int {
 	return value
 }
 
+func normalizeStoryChoiceCount(value int) int {
+	if value == 0 {
+		return DefaultStoryChoiceCount
+	}
+	return value
+}
+
+func validateStoryChoiceCount(value int) error {
+	if value < MinStoryChoiceCount || value > MaxStoryChoiceCount {
+		return fmt.Errorf("互动故事行动建议数量必须在 %d 到 %d 之间", MinStoryChoiceCount, MaxStoryChoiceCount)
+	}
+	return nil
+}
+
 func normalizeStorySummary(story StorySummary) StorySummary {
 	story.StoryDirectorID = normalizedStoryDirectorID(story.StoryDirectorID)
 	story.ReplyTargetChars = normalizeStoryReplyTargetChars(story.ReplyTargetChars)
+	story.ChoiceCount = normalizeStoryChoiceCount(story.ChoiceCount)
 	story.Opening = normalizeStoryOpeningConfig(story.Opening)
 	story.ImageSettings = normalizeStoryImageSettings(story.ImageSettings)
 	story.ModuleRefs = cloneStoryDirectorModuleRefs(story.ModuleRefs)
@@ -1324,6 +1358,7 @@ func normalizeStorySummary(story StorySummary) StorySummary {
 func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	meta.StoryDirectorID = normalizedStoryDirectorID(meta.StoryDirectorID)
 	meta.ReplyTargetChars = normalizeStoryReplyTargetChars(meta.ReplyTargetChars)
+	meta.ChoiceCount = normalizeStoryChoiceCount(meta.ChoiceCount)
 	meta.Opening = normalizeStoryOpeningConfig(meta.Opening)
 	meta.ImageSettings = normalizeStoryImageSettings(meta.ImageSettings)
 	meta.ActorStateSchema = normalizeActorStateSchemaSnapshot(meta.ActorStateSchema)

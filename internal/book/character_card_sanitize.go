@@ -134,41 +134,7 @@ func sanitizeTavernOpening(value string) (string, bool) {
 }
 
 func inferTavernLoreType(title, content string) string {
-	normalizedTitle := strings.ToLower(strings.TrimSpace(strings.TrimLeft(title, "# ")))
-	titlePrefixes := []struct {
-		typeName string
-		prefixes []string
-	}{
-		{"character", []string{"角色:", "角色：", "人物:", "人物：", "npc:", "npc：", "[角色]", "【角色】", "[人物]", "【人物】", "[npc]", "【npc】"}},
-		{"location", []string{"地点:", "地点：", "场景:", "场景：", "区域:", "区域：", "[地点]", "【地点】", "[场景]", "【场景】"}},
-		{"faction", []string{"势力:", "势力：", "组织:", "组织：", "门派:", "门派：", "阵营:", "阵营：", "[势力]", "【势力】", "[组织]", "【组织】"}},
-		{"rule", []string{"规则:", "规则：", "机制:", "机制：", "法则:", "法则：", "[规则]", "【规则】", "[机制]", "【机制】"}},
-		{"item", []string{"物品:", "物品：", "道具:", "道具：", "装备:", "装备：", "[物品]", "【物品】", "[道具]", "【道具】"}},
-	}
-	for _, candidate := range titlePrefixes {
-		for _, prefix := range candidate.prefixes {
-			if strings.HasPrefix(normalizedTitle, prefix) {
-				return candidate.typeName
-			}
-		}
-	}
-	probe := strings.TrimSpace(title) + "\n" + firstCardRunes(content, 500)
-	patterns := []struct {
-		typeName string
-		pattern  *regexp.Regexp
-	}{
-		{"character", regexp.MustCompile(`(?im)^\s*(?:#{1,3}\s*)?(?:角色|人物|npc)(?:设定|资料|信息)?\s*[:：]`)},
-		{"location", regexp.MustCompile(`(?im)^\s*(?:#{1,3}\s*)?(?:地点|场景|区域)(?:设定|资料|信息)?\s*[:：]`)},
-		{"faction", regexp.MustCompile(`(?im)^\s*(?:#{1,3}\s*)?(?:势力|组织|门派|阵营)(?:设定|资料|信息)?\s*[:：]`)},
-		{"rule", regexp.MustCompile(`(?im)^\s*(?:#{1,3}\s*)?(?:规则|机制|法则)(?:设定|资料|信息)?\s*[:：]`)},
-		{"item", regexp.MustCompile(`(?im)^\s*(?:#{1,3}\s*)?(?:物品|道具|装备)(?:设定|资料|信息)?\s*[:：]`)},
-	}
-	for _, candidate := range patterns {
-		if candidate.pattern.MatchString(probe) {
-			return candidate.typeName
-		}
-	}
-	return "world"
+	return ClassifyLoreItemHeuristic(LoreClassificationInput{Name: title, Content: content}).Type
 }
 
 func firstCardRunes(value string, limit int) string {

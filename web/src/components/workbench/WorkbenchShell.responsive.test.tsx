@@ -80,22 +80,6 @@ describe('WorkbenchShell responsive main content', () => {
     expect(screen.getByRole('button', { name: /游戏模式|Game Mode/ })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('keeps Story Memory out of primary navigation and treats its manager as part of Story', () => {
-    const props = {
-      ...workbenchProps(<div />),
-      interactiveSubmode: 'memory' as const,
-    }
-    const { rerender } = render(<WorkbenchShell {...props} />)
-
-    expect(screen.queryByRole('button', { name: /故事记忆|Story Memory/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /剧情|Story/ })).toHaveClass('is-active')
-
-    responsiveState.mobile = true
-    rerender(<WorkbenchShell {...props} />)
-    expect(screen.queryByRole('button', { name: /故事记忆|Story Memory/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /剧情|Story/ })).toHaveAttribute('aria-pressed', 'true')
-  })
-
   it('shows editor updated time and line in the global bottom status bar', () => {
     render(<WorkbenchShell {...workbenchProps(<div />)}
       mode="ide"

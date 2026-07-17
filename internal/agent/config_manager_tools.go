@@ -30,7 +30,7 @@ type tellerWriteInput struct {
 type tellerWriteOperation struct {
 	Op     string             `json:"op" jsonschema:"description=操作类型：create/update/delete"`
 	ID     string             `json:"id" jsonschema:"description=目标叙事风格 ID；update/delete 必填"`
-	Teller interactive.Teller `json:"teller" jsonschema:"description=create/update 使用的完整叙事风格配置；不要新增 orchestration，故事编排请使用 story_directors"`
+	Teller interactive.Teller `json:"teller" jsonschema:"description=create/update 使用的完整叙事风格配置；这里只维护文风、提示词槽位、文风参考和上下文策略，故事编排使用 story_directors"`
 }
 
 type styleReferenceWriteInput struct {
@@ -52,7 +52,7 @@ type storyDirectorWriteInput struct {
 type storyDirectorWriteOperation struct {
 	Op       string                    `json:"op" jsonschema:"description=操作类型：create/update/delete"`
 	ID       string                    `json:"id" jsonschema:"description=目标故事导演 ID；update/delete 必填"`
-	Director interactive.StoryDirector `json:"director" jsonschema:"description=create/update 使用的完整故事导演配置；module_refs 保存叙事风格、多个事件包、TRPG 检定、状态系统（actor_state）、Story Memory Structure 和图像方案引用，并用 *_disabled 显式关闭某个模块；事件包使用 event_package_ids；TRPG 检定使用 rule_system_id 选择一个 DM 检定风格资源；状态系统使用 actor_state_id，状态模板可表示故事上下文、主角、重要角色、敌人、怪物、世界、故事倒计时、势力、基地或副本等 Actor；词条库属于状态系统 actor_state.trait_pools，模板通过 trait_rules 声明可用池和 draw_count，禁止写 opening_selector、opening_selector_id、initial_state_ops 或词条 StateOp；记忆结构使用 memory_structure_id 和 memory_structure_disabled，只定义叙事承接 schema，不负责状态管理；TRPG rule_templates 只作为兼容容器，资源内只使用 rule_templates[0]，检定固定 d20，可配置 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id；strategy 建议使用枚举 mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，event_frequency=off/sparse/balanced/frequent，state_schema_adaptation_mode=after_opening/off 默认 after_opening（旧 auto 读取为 after_opening），rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only，branch_planning_turns 默认 5；strategy.planning_templates.plan 可配置单份 director.md Markdown 模板且必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略和输出协议"`
+	Director interactive.StoryDirector `json:"director" jsonschema:"description=create/update 使用的完整故事导演配置；module_refs 保存叙事风格、多个事件包、TRPG 检定、状态系统（actor_state）和图像方案引用，并用 *_disabled 显式关闭某个模块；事件包使用 event_package_ids；TRPG 检定使用 rule_system_id 选择一个 DM 检定风格资源；状态系统使用 actor_state_id，状态模板可表示故事上下文、主角、重要角色、敌人、怪物、世界、故事倒计时、势力、基地或副本等 Actor；词条库属于状态系统 actor_state.trait_pools，模板通过 trait_rules 声明可用池和 draw_count；TRPG 资源只配置一项 rule_templates[0]，检定固定 d20，可配置 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id；strategy 建议使用枚举 mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，event_frequency=off/sparse/balanced/frequent，state_schema_adaptation_mode=after_opening/off 默认 after_opening，rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only，branch_planning_turns 默认 5；strategy.planning_templates.plan 可配置单份 director.md Markdown 模板且必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略和输出协议"`
 }
 
 type eventPackageWriteInput struct {
@@ -63,7 +63,7 @@ type eventPackageWriteInput struct {
 type eventPackageWriteOperation struct {
 	Op      string                         `json:"op" jsonschema:"description=操作类型：create/update/delete"`
 	ID      string                         `json:"id" jsonschema:"description=目标事件包 ID；update/delete 必填"`
-	Package interactive.EventPackageModule `json:"package" jsonschema:"description=create/update 使用的完整事件包配置；events 是事件卡列表，不要写 event_system 或 custom_events"`
+	Package interactive.EventPackageModule `json:"package" jsonschema:"description=create/update 使用的完整事件包配置；events 是事件卡列表"`
 }
 
 type actorStateWriteInput struct {
@@ -74,18 +74,7 @@ type actorStateWriteInput struct {
 type actorStateWriteOperation struct {
 	Op         string                       `json:"op" jsonschema:"description=操作类型：create/update/delete"`
 	ID         string                       `json:"id" jsonschema:"description=目标状态系统 ID；update/delete 必填"`
-	ActorState interactive.ActorStateModule `json:"actor_state" jsonschema:"description=create/update 使用的完整状态系统模块配置；actor_state.templates 定义状态模板和字段 schema，templates[].trait_rules 通过 pool_id 与 draw_count 绑定词条池；actor_state.trait_pools 是可复用词条库，词条只含 id、name、summary、weight、visibility，不得含 ops；initial_actors 是初始 Actor 实例。Actor 创建时后端会写入默认值、实例覆盖值并自动抽取词条快照。不要写 opening_selector、initial_state_ops 或任意 StateOp"`
-}
-
-type storyMemoryStructurePresetWriteInput struct {
-	Message    string                                     `json:"message" jsonschema:"description=本次故事记忆结构预设变更说明"`
-	Operations []storyMemoryStructurePresetWriteOperation `json:"operations" jsonschema:"description=批量故事记忆结构预设操作"`
-}
-
-type storyMemoryStructurePresetWriteOperation struct {
-	Op     string                                 `json:"op" jsonschema:"description=操作类型：create/update/delete"`
-	ID     string                                 `json:"id" jsonschema:"description=目标故事记忆结构预设 ID；update/delete 必填"`
-	Preset interactive.StoryMemoryStructureModule `json:"preset" jsonschema:"description=create/update 使用的完整故事记忆结构预设；structures 定义叙事承接表结构和字段 schema，records 不属于预设；不要把可计算状态、当前场景状态或规则字段放进记忆结构"`
+	ActorState interactive.ActorStateModule `json:"actor_state" jsonschema:"description=create/update 使用的完整状态系统模块配置；actor_state.templates 定义状态模板和字段 schema，templates[].trait_rules 通过 pool_id 与 draw_count 绑定词条池；actor_state.trait_pools 是可复用词条库，词条只含 id、name、summary、weight、visibility，不得含 ops；initial_actors 是初始 Actor 实例。Actor 创建时后端会写入默认值、实例覆盖值并自动抽取词条快照"`
 }
 
 type imagePresetWriteInput struct {
@@ -133,38 +122,6 @@ type skillWriteOperation struct {
 	Content     string   `json:"content" jsonschema:"description=create/update 使用的完整 SKILL.md 内容"`
 }
 
-type storyMemoryInput struct {
-	StoryID         string   `json:"story_id" jsonschema:"description=互动故事 ID"`
-	BranchID        string   `json:"branch_id,omitempty" jsonschema:"description=分支 ID；为空时使用当前分支"`
-	IncludeArchived bool     `json:"include_archived,omitempty" jsonschema:"description=是否包含归档记录"`
-	IDs             []string `json:"ids,omitempty" jsonschema:"description=要读取的故事记忆记录 ID 列表"`
-}
-
-type storyMemoryStructureWriteInput struct {
-	StoryID    string                               `json:"story_id" jsonschema:"description=互动故事 ID"`
-	Message    string                               `json:"message" jsonschema:"description=本次故事记忆结构变更说明"`
-	Operations []storyMemoryStructureWriteOperation `json:"operations" jsonschema:"description=批量故事记忆结构操作"`
-}
-
-type storyMemoryStructureWriteOperation struct {
-	Op        string                                  `json:"op" jsonschema:"description=操作类型：create/update/delete"`
-	ID        string                                  `json:"id" jsonschema:"description=目标结构 ID；update/delete 必填"`
-	Structure interactive.StoryMemoryStructureRequest `json:"structure" jsonschema:"description=create/update 使用的完整结构定义"`
-}
-
-type storyMemoryRecordWriteInput struct {
-	StoryID    string                            `json:"story_id" jsonschema:"description=互动故事 ID"`
-	BranchID   string                            `json:"branch_id,omitempty" jsonschema:"description=分支 ID；为空时使用当前分支"`
-	Message    string                            `json:"message" jsonschema:"description=本次故事记忆记录变更说明"`
-	Operations []storyMemoryRecordWriteOperation `json:"operations" jsonschema:"description=批量故事记忆记录操作"`
-}
-
-type storyMemoryRecordWriteOperation struct {
-	Op     string                               `json:"op" jsonschema:"description=操作类型：create/update/archive/restore/delete"`
-	ID     string                               `json:"id" jsonschema:"description=目标记录 ID；update/archive/restore/delete 必填"`
-	Record interactive.StoryMemoryRecordRequest `json:"record" jsonschema:"description=create/update 使用的故事记忆记录"`
-}
-
 type configManagerToolBuilder struct {
 	build func() (tool.BaseTool, error)
 }
@@ -191,9 +148,6 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 		{build: func() (tool.BaseTool, error) { return newListActorStatesTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newReadActorStatesTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newWriteActorStatesTool(novaDir) }},
-		{build: func() (tool.BaseTool, error) { return newListStoryMemoryStructurePresetsTool(novaDir) }},
-		{build: func() (tool.BaseTool, error) { return newReadStoryMemoryStructurePresetsTool(novaDir) }},
-		{build: func() (tool.BaseTool, error) { return newWriteStoryMemoryStructurePresetsTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newListImagePresetsTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newReadImagePresetsTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newWriteImagePresetsTool(novaDir) }},
@@ -205,11 +159,6 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 		{build: func() (tool.BaseTool, error) { return newWriteSkillsTool(cfg) }},
 		{build: func() (tool.BaseTool, error) { return newListAgentConfigsTool(cfg) }},
 		{build: func() (tool.BaseTool, error) { return newWriteAgentConfigsTool(cfg) }},
-		{build: func() (tool.BaseTool, error) { return newListStoryMemoryStructuresTool(workspace, novaDir) }},
-		{build: func() (tool.BaseTool, error) { return newWriteStoryMemoryStructuresTool(workspace, novaDir) }},
-		{build: func() (tool.BaseTool, error) { return newListStoryMemoryRecordsTool(workspace, novaDir) }},
-		{build: func() (tool.BaseTool, error) { return newReadStoryMemoryRecordsTool(workspace, novaDir) }},
-		{build: func() (tool.BaseTool, error) { return newWriteStoryMemoryRecordsTool(workspace, novaDir) }},
 	}
 	tools := make([]tool.BaseTool, 0, len(builders)+2)
 	for _, builder := range builders {
@@ -421,7 +370,7 @@ func newListTellersTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_tellers", "按叙事风格 ID 批量读取完整配置。顶层 style_refs 是所有场景默认生效的文风参考；style_rules 使用 scene + style_refs 引用 .denova/styles/*.md 表示分场景文风参考。旧 style_contents 只为兼容保留，新配置不要继续内联长文风内容。旧配置里可能带 orchestration；新配置不要继续写该字段，事件、TRPG 检定、状态系统和图像方案应写入故事导演；Actor 词条写入状态系统 trait_pools，并通过模板 trait_rules 绑定。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_tellers", "按叙事风格 ID 批量读取完整配置。顶层 style_refs 是所有场景默认生效的文风参考；style_rules 使用 scene + style_refs 引用 .denova/styles/*.md 表示分场景文风参考。旧 style_contents 只为兼容已发布配置保留，新配置不要继续内联长文风内容。事件、TRPG 检定、状态系统和图像方案属于故事导演；Actor 词条属于状态系统 trait_pools，并通过模板 trait_rules 绑定。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法读取叙事风格")
@@ -444,7 +393,7 @@ func newReadTellersTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteTellersTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_tellers", "批量创建、更新或删除叙事风格配置。叙事风格是共享模块，不存在每个风格可配置的模式字段；只维护文风、提示词槽位、文风参考和上下文策略。顶层 style_refs 表示所有场景默认生效的文风参考；style_rules 表示分场景文风参考，必须优先使用 style_refs 引用 .denova/styles/*.md。如需新增文风参考，先用 write_style_references 创建 md，再把 path 写入顶层 style_refs 或对应 style_rules[].style_refs。不要新增 orchestration，故事编排请使用 write_story_directors。更新内置 ID 会在用户空间覆盖同一个叙事风格；删除内置 ID 只用于恢复内置默认内容，必须来自用户明确指令。", func(ctx context.Context, input tellerWriteInput) (string, error) {
+	return utils.InferTool("write_tellers", "批量创建、更新或删除叙事风格配置。叙事风格是共享模块，不存在每个风格可配置的模式字段；只维护文风、提示词槽位、文风参考和上下文策略。顶层 style_refs 表示所有场景默认生效的文风参考；style_rules 表示分场景文风参考，必须优先使用 style_refs 引用 .denova/styles/*.md。如需新增文风参考，先用 write_style_references 创建 md，再把 path 写入顶层 style_refs 或对应 style_rules[].style_refs。故事编排请使用 write_story_directors。更新内置 ID 会在用户空间覆盖同一个叙事风格；删除内置 ID 只用于恢复内置默认内容，必须来自用户明确指令。", func(ctx context.Context, input tellerWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入叙事风格")
@@ -508,7 +457,7 @@ func newListEventPackagesTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadEventPackagesTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_event_packages", "按事件包 ID 批量读取完整配置。事件包直接包含 events 事件卡列表；不再存在 event_system 或 custom_events 层。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_event_packages", "按事件包 ID 批量读取完整配置。事件包直接包含 events 事件卡列表。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法读取事件包")
@@ -531,7 +480,7 @@ func newReadEventPackagesTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteEventPackagesTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_event_packages", "批量创建、更新或删除事件包。事件包是游戏模式独占模块，一个事件包就是一组事件卡；create/update 必须写完整 events，不要写 event_system 或 custom_events。删除内置事件包会恢复内置版本；删除自定义事件包必须来自用户明确指令。", func(ctx context.Context, input eventPackageWriteInput) (string, error) {
+	return utils.InferTool("write_event_packages", "批量创建、更新或删除事件包。事件包是游戏模式独占模块，一个事件包就是一组事件卡；create/update 必须写完整 events。删除内置事件包会恢复内置版本；删除自定义事件包必须来自用户明确指令。", func(ctx context.Context, input eventPackageWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入事件包")
@@ -618,7 +567,7 @@ func newReadActorStatesTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteActorStatesTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_actor_states", "批量创建、更新或删除状态系统。create/update 必须写完整 actor_state.templates、actor_state.trait_pools 和 initial_actors。模板是 Actor 状态 schema；templates[].trait_rules 只能引用存在的 pool_id，draw_count 必须为正且不超过池内词条数。词条只写 id、name、summary、weight、visibility，禁止写 ops、路径或 StateOp。主角、重要角色、敌人和怪物均在 Actor 创建时由后端应用模板默认值、实例覆盖值并自动抽取词条快照；initial_actors 仅声明开局就存在的 Actor。当前时间、地点、事件、资源、关系数值、持续状态、规则标记，以及会影响后续承接或规则检定的结构化状态都放进状态系统；普通叙事记录和场景流水留在故事记忆。字段 path 不要带 actors.<actor_id>.state 前缀，只写模板内字段路径，例如 crisis.countdown。不要写 opening_selector、initial_state_ops 或客户端 StateOp。删除内置状态系统会恢复内置版本；删除自定义状态系统必须来自用户明确指令。", func(ctx context.Context, input actorStateWriteInput) (string, error) {
+	return utils.InferTool("write_actor_states", "批量创建、更新或删除状态系统。create/update 必须写完整 actor_state.templates、actor_state.trait_pools 和 initial_actors。模板是 Actor 状态 schema；templates[].trait_rules 只能引用存在的 pool_id，draw_count 必须为正且不超过池内词条数。词条只写 id、name、summary、weight、visibility，禁止写 ops、路径或 StateOp。主角、重要角色、敌人和怪物均在 Actor 创建时由后端应用模板默认值、实例覆盖值并自动抽取词条快照；initial_actors 仅声明开局就存在的 Actor。当前时间、地点、事件、资源、关系数值、持续状态、规则标记，以及会影响后续承接或规则检定的结构化状态都放进状态系统；普通叙事记录和场景流水只保留在 Turn 历史。字段 path 不要带 actors.<actor_id>.state 前缀，只写模板内字段路径，例如 crisis.countdown。删除内置状态系统会恢复内置版本；删除自定义状态系统必须来自用户明确指令。", func(ctx context.Context, input actorStateWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入状态系统")
@@ -654,103 +603,8 @@ func newWriteActorStatesTool(novaDir string) (tool.BaseTool, error) {
 	})
 }
 
-func newListStoryMemoryStructurePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_story_memory_structure_presets", "列出 Story Memory Structure 预设索引，返回 ID、名称、简介、类型、结构数量和启用结构数量；这是游戏模式独占导演模块，只定义叙事承接 schema，不负责状态管理，也不包含任何故事运行时 records。需要完整字段 schema 时再调用 read_story_memory_structure_presets。", func(ctx context.Context, input struct{}) (string, error) {
-		_ = ctx
-		_ = input
-		if novaDir == "" {
-			return "", fmt.Errorf("nova_dir 不可用，无法读取故事记忆结构预设")
-		}
-		items, err := interactive.NewStoryMemoryStructureLibrary(novaDir).List()
-		if err != nil {
-			return "", err
-		}
-		if len(items) == 0 {
-			return "暂无故事记忆结构预设。", nil
-		}
-		var sb strings.Builder
-		sb.WriteString("# Story Memory Structure 预设索引\n\n")
-		for _, item := range items {
-			enabled := 0
-			fields := 0
-			for _, structure := range item.Structures {
-				if structure.Enabled == nil || *structure.Enabled {
-					enabled++
-				}
-				fields += len(structure.Fields)
-			}
-			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  适用: 游戏模式\n  结构: %d/%d 启用\n  字段: %d\n", item.ID, item.Name, boolLabel(item.Custom, "custom", "built-in"), enabled, len(item.Structures), fields)
-			if item.Description != "" {
-				fmt.Fprintf(&sb, "  简介: %s\n", item.Description)
-			}
-			sb.WriteString("\n")
-		}
-		return strings.TrimSpace(sb.String()), nil
-	})
-}
-
-func newReadStoryMemoryStructurePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_story_memory_structure_presets", "按 Story Memory Structure 预设 ID 批量读取完整配置。structures 只定义剧情纪要、长期人物档案、世界上下文、进行中事项、伏笔和长期弧线等叙事承接 schema；运行时 records、auto_interval_turns、手动/自动整理开关都属于具体故事，不属于预设。", func(ctx context.Context, input idListInput) (string, error) {
-		_ = ctx
-		if novaDir == "" {
-			return "", fmt.Errorf("nova_dir 不可用，无法读取故事记忆结构预设")
-		}
-		lib := interactive.NewStoryMemoryStructureLibrary(novaDir)
-		result := []interactive.StoryMemoryStructureModule{}
-		for _, id := range input.IDs {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			item, err := lib.Get(id)
-			if err != nil {
-				return "", err
-			}
-			result = append(result, item)
-		}
-		return marshalToolJSON(result)
-	})
-}
-
-func newWriteStoryMemoryStructurePresetsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_story_memory_structure_presets", "批量创建、更新或删除 Story Memory Structure 预设。create/update 必须写完整 structures；只管理叙事承接 schema，不写故事 records，也不新增可计算状态、当前场景状态或规则字段。要让故事使用该结构，更新 story_director.module_refs.memory_structure_id；禁用写 memory_structure_disabled=true 并保留 ID。删除内置 ID 会恢复内置默认内容；删除自定义 ID 必须来自用户明确指令。", func(ctx context.Context, input storyMemoryStructurePresetWriteInput) (string, error) {
-		_ = ctx
-		if novaDir == "" {
-			return "", fmt.Errorf("nova_dir 不可用，无法写入故事记忆结构预设")
-		}
-		lib := interactive.NewStoryMemoryStructureLibrary(novaDir)
-		result := map[string][]string{"created": []string{}, "updated": []string{}, "deleted": []string{}}
-		for _, op := range input.Operations {
-			switch strings.TrimSpace(op.Op) {
-			case "create":
-				item, err := lib.Create(op.Preset)
-				if err != nil {
-					return "", err
-				}
-				result["created"] = append(result["created"], item.ID)
-			case "update":
-				id := firstConfigNonEmpty(op.ID, op.Preset.ID)
-				item, err := lib.Update(id, op.Preset, "")
-				if err != nil {
-					return "", err
-				}
-				result["updated"] = append(result["updated"], item.ID)
-			case "delete":
-				id := strings.TrimSpace(op.ID)
-				if err := lib.Delete(id); err != nil {
-					return "", err
-				}
-				result["deleted"] = append(result["deleted"], id)
-			default:
-				return "", fmt.Errorf("不支持的故事记忆结构预设操作: %s", op.Op)
-			}
-		}
-		return formatBatchResult(firstConfigNonEmpty(input.Message, "故事记忆结构预设已更新"), result), nil
-	})
-}
-
 func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_story_directors", "列出故事导演索引，返回 ID、名称、简介、策略、模块引用开关和系统配置概览；策略会用中文名称展示，完整枚举 ID 见 read/write 工具说明。故事导演是游戏模式独占模块；需要完整配置时再调用 read_story_directors。故事导演可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统、Story Memory Structure 和图像方案；Actor 词条库属于状态系统。", func(ctx context.Context, input struct{}) (string, error) {
+	return utils.InferTool("list_story_directors", "列出故事导演索引，返回 ID、名称、简介、策略、模块引用开关和系统配置概览；策略会用中文名称展示，完整枚举 ID 见 read/write 工具说明。故事导演是游戏模式独占模块；需要完整配置时再调用 read_story_directors。故事导演可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统和图像方案；Actor 词条库属于状态系统。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		if novaDir == "" {
@@ -771,7 +625,7 @@ func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 			for _, pkg := range director.EventPackages {
 				eventCards += len(pkg.Events)
 			}
-			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  适用: 游戏模式\n  策略: enabled=%t 主线=%s 失败=%s 节奏=%s 扰动=%s\n  模块: narrative=%s events=%s trpg=%s state=%s memory_structure=%s image=%s\n  事件: %d 包 / %d 卡\n  状态系统: %d 模板 / %d 初始 Actor / %d 词条池\n  Story Memory: %d 结构\n  TRPG 检定: %d 条\n",
+			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  类型: %s\n  适用: 游戏模式\n  策略: enabled=%t 主线=%s 失败=%s 节奏=%s 扰动=%s\n  模块: narrative=%s events=%s trpg=%s state=%s image=%s\n  事件: %d 包 / %d 卡\n  状态系统: %d 模板 / %d 初始 Actor / %d 词条池\n  TRPG 检定: %d 条\n",
 				director.ID,
 				director.Name,
 				boolLabel(director.Custom, "custom", "built-in"),
@@ -784,14 +638,12 @@ func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 				boolLabel(!director.ModuleRefs.EventPackagesDisabled, "on:"+strings.Join(director.ModuleRefs.EventPackageIDs, ","), "off:"+strings.Join(director.ModuleRefs.EventPackageIDs, ",")),
 				boolLabel(!director.ModuleRefs.RuleSystemDisabled, "on:"+director.ModuleRefs.RuleSystemID, "off:"+director.ModuleRefs.RuleSystemID),
 				boolLabel(!director.ModuleRefs.ActorStateDisabled, "on:"+director.ModuleRefs.ActorStateID, "off:"+director.ModuleRefs.ActorStateID),
-				boolLabel(!director.ModuleRefs.MemoryStructureDisabled, "on:"+director.ModuleRefs.MemoryStructureID, "off:"+director.ModuleRefs.MemoryStructureID),
 				boolLabel(!director.ModuleRefs.ImagePresetDisabled, "on:"+director.ModuleRefs.ImagePresetID, "off:"+director.ModuleRefs.ImagePresetID),
 				eventPackages,
 				eventCards,
 				len(director.ActorState.Templates),
 				len(director.ActorState.InitialActors),
 				len(director.ActorState.TraitPools),
-				len(director.ResolvedSnapshot.StoryMemoryStructures),
 				len(director.TRPGSystem.RuleTemplates),
 			)
 			if director.Description != "" {
@@ -804,7 +656,7 @@ func newListStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newReadStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_story_directors", "按故事导演 ID 批量读取完整配置。故事导演是游戏模式独占模块；module_refs 决定引用哪些模块，event_package_ids 可引用多个事件包，rule_system_id 引用一个 TRPG 检定资源，actor_state_id 引用状态系统。状态系统的 trait_pools 是通用词条库，模板 trait_rules 决定各类 Actor 创建时从哪些池抽取多少词条；故事导演不再拥有 opening_selector 或 initial_state_ops。memory_structure_id 引用 Story Memory Structure 预设，*_disabled=true 表示对应模块关闭且保留原 ID 以便重新启用。TRPG rule_templates 只作为兼容容器，资源内只使用 rule_templates[0]，检定固定 d20，支持 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，event_frequency=off/sparse/balanced/frequent，state_schema_adaptation_mode=after_opening/off（旧 auto 读取为 after_opening），rule_state_consumption_mode=hybrid_auto/director_only，rule_visibility_mode=audit_only/public_roll；branch_planning_turns 控制最近分支规划回合数；planning_templates.plan 是单份 director.md Markdown 模板；strategy.prompt_markdown 是纯 Markdown 高级策略提示，最多 64KB。", func(ctx context.Context, input idListInput) (string, error) {
+	return utils.InferTool("read_story_directors", "按故事导演 ID 批量读取完整配置。故事导演是游戏模式独占模块；module_refs 决定引用哪些模块，event_package_ids 可引用多个事件包，rule_system_id 引用一个 TRPG 检定资源，actor_state_id 引用状态系统，*_disabled=true 表示对应模块关闭且保留原 ID 以便重新启用。状态系统的 trait_pools 是通用词条库，模板 trait_rules 决定各类 Actor 创建时从哪些池抽取多少词条。TRPG 资源只配置一项 rule_templates[0]，检定固定 d20，支持 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，event_frequency=off/sparse/balanced/frequent，state_schema_adaptation_mode=after_opening/off，rule_state_consumption_mode=hybrid_auto/director_only，rule_visibility_mode=audit_only/public_roll；branch_planning_turns 控制最近分支规划回合数；planning_templates.plan 是单份 director.md Markdown 模板；strategy.prompt_markdown 是纯 Markdown 高级策略提示，最多 64KB。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法读取故事导演")
@@ -827,7 +679,7 @@ func newReadStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 }
 
 func newWriteStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_story_directors", "批量创建、更新或删除故事导演配置。故事导演通过 module_refs 可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统、Story Memory Structure 和图像方案；用 narrative_style_disabled、event_packages_disabled、rule_system_disabled、actor_state_disabled、memory_structure_disabled、image_preset_disabled 关闭模块，关闭时保留对应 ID。不要写 opening_selector、opening_selector_id、opening_selector_disabled 或 initial_state_ops；Actor 词条库和模板抽取规则通过 write_actor_states 更新。事件包引用写 event_package_ids；TRPG 检定引用写 rule_system_id；带 state_bindings 的 TRPG 检定资源必须配置 actor_state_id；状态系统引用写 actor_state_id；记忆结构引用写 memory_structure_id。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，event_frequency=off/sparse/balanced/frequent，state_schema_adaptation_mode=after_opening/off 默认 after_opening（旧 auto 读取为 after_opening），rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only；branch_planning_turns 默认 5；planning_templates.plan 可写单份 director.md Markdown 模板并必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略、工具权限和输出协议。删除内置故事导演会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input storyDirectorWriteInput) (string, error) {
+	return utils.InferTool("write_story_directors", "批量创建、更新或删除故事导演配置。故事导演通过 module_refs 可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统和图像方案；用 narrative_style_disabled、event_packages_disabled、rule_system_disabled、actor_state_disabled、image_preset_disabled 关闭模块，关闭时保留对应 ID。Actor 词条库和模板抽取规则通过 write_actor_states 更新。事件包引用写 event_package_ids；TRPG 检定引用写 rule_system_id；带 state_bindings 的 TRPG 检定资源必须配置 actor_state_id；状态系统引用写 actor_state_id。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，event_frequency=off/sparse/balanced/frequent，state_schema_adaptation_mode=after_opening/off 默认 after_opening，rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only；branch_planning_turns 默认 5；planning_templates.plan 可写单份 director.md Markdown 模板并必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略、工具权限和输出协议。删除内置故事导演会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input storyDirectorWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
 			return "", fmt.Errorf("nova_dir 不可用，无法写入故事导演")
@@ -1004,158 +856,11 @@ func newWriteSkillsTool(cfg *config.Config) (tool.BaseTool, error) {
 	})
 }
 
-func newListStoryMemoryStructuresTool(workspace, novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_story_memory_structures", "读取某个互动故事当前有效的故事记忆结构定义和来源；结构现在默认来自故事导演引用的 Story Memory Structure 预设，只负责叙事承接，不负责状态管理。新配置请优先使用 list/read/write_story_memory_structure_presets，并通过 write_story_directors 修改 module_refs.memory_structure_id。本工具保留用于查看具体故事当前生效结构。", func(ctx context.Context, input storyMemoryInput) (string, error) {
-		_ = ctx
-		state, err := interactive.NewStoreWithNovaDir(workspace, novaDir).StoryMemory(input.StoryID, input.BranchID, input.IncludeArchived)
-		if err != nil {
-			return "", err
-		}
-		return marshalToolJSON(map[string]any{
-			"story_id":                  state.StoryID,
-			"branch_id":                 state.BranchID,
-			"memory_structure_id":       state.MemoryStructureID,
-			"memory_structure_name":     state.MemoryStructureName,
-			"memory_structure_disabled": state.MemoryStructureDisabled,
-			"structures":                state.Structures,
-		})
-	})
-}
-
-func newWriteStoryMemoryStructuresTool(workspace, novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_story_memory_structures", "兼容旧故事级结构入口：批量创建、更新或删除 story-local 故事记忆结构。新配置默认不要使用本工具；请改用 write_story_memory_structure_presets 管理结构预设，并用 write_story_directors 更新 module_refs.memory_structure_id。", func(ctx context.Context, input storyMemoryStructureWriteInput) (string, error) {
-		_ = ctx
-		store := interactive.NewStoreWithNovaDir(workspace, novaDir)
-		result := map[string][]string{"created": []string{}, "updated": []string{}, "deleted": []string{}}
-		for _, op := range input.Operations {
-			switch strings.TrimSpace(op.Op) {
-			case "create":
-				structure, err := store.SaveStoryMemoryStructure(input.StoryID, op.Structure)
-				if err != nil {
-					return "", err
-				}
-				result["created"] = append(result["created"], structure.ID)
-			case "update":
-				req := op.Structure
-				if req.ID == "" {
-					req.ID = op.ID
-				}
-				structure, err := store.SaveStoryMemoryStructure(input.StoryID, req)
-				if err != nil {
-					return "", err
-				}
-				result["updated"] = append(result["updated"], structure.ID)
-			case "delete":
-				id := strings.TrimSpace(op.ID)
-				if err := store.DeleteStoryMemoryStructure(input.StoryID, id); err != nil {
-					return "", err
-				}
-				result["deleted"] = append(result["deleted"], id)
-			default:
-				return "", fmt.Errorf("不支持的故事记忆结构操作: %s", op.Op)
-			}
-		}
-		return formatBatchResult(firstConfigNonEmpty(input.Message, "故事记忆结构已更新"), result), nil
-	})
-}
-
-func newListStoryMemoryRecordsTool(workspace, novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("list_story_memory_records", "列出某个互动故事当前分支的故事记忆记录索引；需要完整 values 时再调用 read_story_memory_records。", func(ctx context.Context, input storyMemoryInput) (string, error) {
-		_ = ctx
-		state, err := interactive.NewStoreWithNovaDir(workspace, novaDir).StoryMemory(input.StoryID, input.BranchID, input.IncludeArchived)
-		if err != nil {
-			return "", err
-		}
-		var sb strings.Builder
-		sb.WriteString("# 故事记忆记录索引\n\n")
-		for _, record := range state.Records {
-			fmt.Fprintf(&sb, "- id: %s\n  structure_id: %s\n  key: %s\n  archived: %t\n  branch: %s\n  updated_at: %s\n\n", record.ID, record.StructureID, record.Key, record.Archived, record.BranchID, record.UpdatedAt)
-		}
-		if len(state.Records) == 0 {
-			return "暂无故事记忆记录。", nil
-		}
-		return strings.TrimSpace(sb.String()), nil
-	})
-}
-
-func newReadStoryMemoryRecordsTool(workspace, novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("read_story_memory_records", "按记录 ID 批量读取故事记忆记录详情。", func(ctx context.Context, input storyMemoryInput) (string, error) {
-		_ = ctx
-		state, err := interactive.NewStoreWithNovaDir(workspace, novaDir).StoryMemory(input.StoryID, input.BranchID, true)
-		if err != nil {
-			return "", err
-		}
-		want := map[string]bool{}
-		for _, id := range input.IDs {
-			if id = strings.TrimSpace(id); id != "" {
-				want[id] = true
-			}
-		}
-		records := []interactive.StoryMemoryRecord{}
-		for _, record := range state.Records {
-			if want[record.ID] {
-				records = append(records, record)
-			}
-		}
-		return marshalToolJSON(records)
-	})
-}
-
-func newWriteStoryMemoryRecordsTool(workspace, novaDir string) (tool.BaseTool, error) {
-	return utils.InferTool("write_story_memory_records", "批量创建、更新、归档或恢复故事记忆记录。只改记录内容，不改故事记忆结构定义；delete 等同归档。", func(ctx context.Context, input storyMemoryRecordWriteInput) (string, error) {
-		_ = ctx
-		store := interactive.NewStoreWithNovaDir(workspace, novaDir)
-		result := map[string][]string{"created": []string{}, "updated": []string{}, "archived": []string{}, "restored": []string{}}
-		for _, op := range input.Operations {
-			switch strings.TrimSpace(op.Op) {
-			case "create":
-				record, err := store.SaveStoryMemoryRecord(input.StoryID, withRecordBranch(op.Record, input.BranchID))
-				if err != nil {
-					return "", err
-				}
-				result["created"] = append(result["created"], record.ID)
-			case "update":
-				req := withRecordBranch(op.Record, input.BranchID)
-				if req.ID == "" {
-					req.ID = op.ID
-				}
-				record, err := store.SaveStoryMemoryRecord(input.StoryID, req)
-				if err != nil {
-					return "", err
-				}
-				result["updated"] = append(result["updated"], record.ID)
-			case "archive", "delete":
-				record, err := store.SetStoryMemoryRecordArchived(input.StoryID, op.ID, input.BranchID, true)
-				if err != nil {
-					return "", err
-				}
-				result["archived"] = append(result["archived"], record.ID)
-			case "restore":
-				record, err := store.SetStoryMemoryRecordArchived(input.StoryID, op.ID, input.BranchID, false)
-				if err != nil {
-					return "", err
-				}
-				result["restored"] = append(result["restored"], record.ID)
-			default:
-				return "", fmt.Errorf("不支持的故事记忆记录操作: %s", op.Op)
-			}
-		}
-		return formatBatchResult(firstConfigNonEmpty(input.Message, "故事记忆记录已更新"), result), nil
-	})
-}
-
 func skillDirs(cfg *config.Config) []novaskills.Directory {
 	if cfg == nil {
 		return nil
 	}
 	return novaskills.NewDirectories(cfg.SkillsDir, cfg.NovaDir, cfg.Workspace)
-}
-
-func withRecordBranch(req interactive.StoryMemoryRecordRequest, branchID string) interactive.StoryMemoryRecordRequest {
-	if strings.TrimSpace(req.BranchID) == "" {
-		req.BranchID = strings.TrimSpace(branchID)
-	}
-	return req
 }
 
 func marshalToolJSON(v any) (string, error) {

@@ -15,6 +15,7 @@ import (
 
 const (
 	DirectorPlanDocPlan        = "plan"
+	DirectorPlanDocAgentBrief  = "agent_brief"
 	DirectorPlanDocLoreContext = "lore_context"
 
 	DirectorPlanStatusWaitingOpening = "waiting_opening"
@@ -25,6 +26,7 @@ const (
 	DirectorPlanStatusConflict       = "conflict"
 
 	directorPlanFile         = "director.md"
+	directorAgentBriefFile   = "agent-brief.md"
 	directorPlanMetadataFile = "metadata.json"
 
 	defaultBranchPlanningTurns = 5
@@ -40,24 +42,9 @@ const (
 	directorPlanVisibleBytes = DirectorContextMaxBytes
 )
 
-var requiredDirectorPlanHeadings = []string{
-	"正文Agent可读",
-	"后台导演私密",
-	"阶段钩子与阅读欲望",
-	"资料库锚点",
-	"核心角色与关系张力",
-	"重要势力与阶段阻力",
-	"当前场景与行动空间",
-	"信息揭示与线索密度",
-	"遭遇、检定与代价",
-	"爽点、危机与反转",
-	"状态连续性",
-	"最近分支安排",
-	"伏笔与回收",
-}
-
 type StoryDirectorPlanningTemplates struct {
-	Plan string `json:"plan,omitempty"`
+	Plan       string `json:"plan,omitempty"`
+	AgentBrief string `json:"agent_brief,omitempty"`
 }
 
 type DirectorPlanSeed struct {
@@ -72,11 +59,12 @@ type DirectorPlanSeed struct {
 
 type DirectorPlanDocs struct {
 	Plan        string `json:"plan"`
+	AgentBrief  string `json:"agent_brief"`
 	LoreContext string `json:"lore_context"`
 }
 
 type DirectorPlanVisibleDocs struct {
-	Plan        string `json:"plan,omitempty"`
+	AgentBrief  string `json:"agent_brief,omitempty"`
 	LoreContext string `json:"lore_context,omitempty"`
 }
 
@@ -172,85 +160,10 @@ type DirectorPlanRunToken struct {
 	Hashes   map[string]string `json:"hashes,omitempty"`
 }
 
-func DefaultStoryDirectorPlanningTemplates() StoryDirectorPlanningTemplates {
-	return StoryDirectorPlanningTemplates{
-		Plan: strings.TrimSpace(`# 导演规划
-
-## 正文Agent可读
-
-### 阶段钩子与阅读欲望
-围绕主角当前最想解决的问题、可见收益、未解谜团和下一次反转建立推进动力。每个可玩回合至少推进一个有效信息点、角色关系变化、压力升级、收益/代价或新悬念，避免连续空转。
-
-### 资料库锚点
-优先使用资料库中的重要角色、势力、规则、地点和既有关系；非必要不要自创核心角色、组织或世界规则。资料库不足时，新增内容只能作为临时候选，并要与既有设定自洽。
-
-### 核心角色与关系张力
-规划男/女主角、关键同伴、阶段性反派、重要势力代表与关系节点的目标、态度和冲突。普通 NPC 只有承担信息、冲突、选择代价或节奏功能时才出现。
-
-### 重要势力与阶段阻力
-记录当前阶段能推动压力的势力、派系、组织规则、资源封锁、舆论评价或追捕压力。
-
-### 当前场景与行动空间
-明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。
-
-### 信息揭示与线索密度
-安排本阶段应公开的信息、可发现线索和误导点；失败不应让剧情卡死，失败可以带来代价、不完整信息或危机升级。
-
-### 遭遇、检定与代价
-准备可能触发的战斗、谈判、追逐、陷阱、谜题或规则检定，明确成功、部分成功、失败和重大失败的后果。
-
-### 爽点、危机与反转
-给后续回合准备阶段性爽点、危险升级、关系爆点、身份揭露、误会反转或伏笔回收，抓住阅读欲望。
-
-### 状态连续性
-记录主角、重要角色、势力、资源、任务进度、已公开信息和世界状态的可见变化。
-
-### 最近分支安排
-规划最近 {{branch_planning_turns}} 回合内可能的用户方向、裁定要点和承接路径；尊重用户选择，不锁死唯一解。
-
-### 伏笔与回收
-标出可给玩家感知的线索、回收点和新悬念。
-
-## 后台导演私密
-
-### 阶段钩子与阅读欲望
-维护隐藏真相、阶段高潮、下一次反转和阅读钩子的投放顺序，保证节奏持续向前。
-
-### 资料库锚点
-记录后台规划必须遵守的资料库设定、重要角色/势力边界和不可违背的世界规则；新增候选必须注明为何资料库不足。
-
-### 核心角色与关系张力
-规划重要角色的隐藏动机、真实立场、关系转折、阶段性敌意或结盟机会。
-
-### 重要势力与阶段阻力
-安排势力暗线行动、资源争夺、规则压迫、追杀、审判、交易或舆论压力。
-
-### 当前场景与行动空间
-准备场景背后的隐藏资源、陷阱、证据、观察角度和可承接行动。
-
-### 信息揭示与线索密度
-规划本阶段应该揭示、暂缓、误导或拆分的信息，确保用户每轮都有可感知收获。
-
-### 遭遇、检定与代价
-准备不同裁定等级下的隐藏代价、奖励、敌对反应、资源损耗和失败推进路径。
-
-### 爽点、危机与反转
-安排爽点释放、危机升级、角色爆点、反派压迫和反转条件，不让剧情只停留在氛围描写。
-
-### 状态连续性
-记录不应直接剧透的隐藏状态、未公开角色动机、幕后势力变化和长期影响。
-
-### 最近分支安排
-为最近 {{branch_planning_turns}} 回合的用户选择准备多条承接策略；偏离主线时重规划，不强拉回固定剧本。
-
-### 伏笔与回收
-维护伏笔投放、误导、回收条件和替代回收路径。`),
-	}
-}
-
 func NormalizeStoryDirectorPlanningTemplates(templates StoryDirectorPlanningTemplates) StoryDirectorPlanningTemplates {
 	defaults := DefaultStoryDirectorPlanningTemplates()
 	templates.Plan = normalizeDirectorPlanTemplate(templates.Plan, defaults.Plan)
+	templates.AgentBrief = normalizeDirectorPlanTemplate(templates.AgentBrief, defaults.AgentBrief)
 	return templates
 }
 
@@ -441,7 +354,7 @@ func (s *Store) MarkDirectorPlanRunStarted(storyID, branchID string, token Direc
 	if err != nil {
 		return err
 	}
-	// The two Markdown documents can be changed by safe external migrations
+	// The three Markdown documents can be changed by safe external updates
 	// such as a lore-name rename. Synchronize the persisted revision to the
 	// run token before claiming this run; API edits during the run still update
 	// metadata and therefore retain the existing conflict protection.
@@ -474,6 +387,17 @@ func (s *Store) MarkDirectorPlanRunStarted(storyID, branchID string, token Direc
 }
 
 func (s *Store) CompleteDirectorPlanRun(storyID, branchID string, token DirectorPlanRunToken, sourceTurnID, summary string) (DirectorPlan, error) {
+	return s.completeDirectorPlanRun(storyID, branchID, token, sourceTurnID, summary, nil)
+}
+
+// CompleteDirectorPlanRunWithDocs publishes a finalized run-local Patch draft.
+// The three Markdown files remain unchanged while individual documents are
+// retried; they are written together only after the draft has finalized.
+func (s *Store) CompleteDirectorPlanRunWithDocs(storyID, branchID string, token DirectorPlanRunToken, sourceTurnID, summary string, docs DirectorPlanDocs) (DirectorPlan, error) {
+	return s.completeDirectorPlanRun(storyID, branchID, token, sourceTurnID, summary, &docs)
+}
+
+func (s *Store) completeDirectorPlanRun(storyID, branchID string, token DirectorPlanRunToken, sourceTurnID, summary string, stagedDocs *DirectorPlanDocs) (DirectorPlan, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	storedMetadata, err := s.readDirectorPlanMetadataLocked(storyID, branchID)
@@ -485,8 +409,6 @@ func (s *Store) CompleteDirectorPlanRun(storyID, branchID string, token Director
 		return DirectorPlan{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	decision := ParsePlanDecision(summary)
-	decision.BaseRevision = token.Revision
 	if token.Revision != "" && token.Revision != storedMetadata.Revision {
 		storedMetadata.LastRun = &DirectorPlanRunStatus{
 			Status:        DirectorPlanStatusConflict,
@@ -507,6 +429,18 @@ func (s *Store) CompleteDirectorPlanRun(storyID, branchID string, token Director
 		// A newer Director run already owns the branch status. An older completion
 		// must not replace its status or replay event decisions against stale turns.
 		return s.readDirectorPlanLocked(storyID, branchID)
+	}
+	decision, err := ParsePlanDecisionJSON(summary)
+	if err != nil {
+		return DirectorPlan{}, fmt.Errorf("导演规划决策格式无效: %w", err)
+	}
+	decision.BaseRevision = token.Revision
+	publishedDocs := plan.Docs
+	if stagedDocs != nil {
+		if !directorPlanHashesEqual(token.Hashes, directorPlanHashes(publishedDocs)) {
+			return DirectorPlan{}, fmt.Errorf("导演规划文件在 Patch 草稿期间发生变化，拒绝覆盖")
+		}
+		plan.Docs = *stagedDocs
 	}
 	if err := validateDirectorPlanDocs(plan.Docs); err != nil {
 		startReady := directorPlanRunStartReady(storedMetadata.LastRun)
@@ -586,6 +520,12 @@ func (s *Store) CompleteDirectorPlanRun(storyID, branchID string, token Director
 		decision.Mode = PlanDecisionPatch
 		decision.Reason = firstNonEmpty(decision.Reason, "导演实际修改了计划，按 patch 记录。")
 	}
+	docsWritten := stagedDocs != nil && !directorPlanHashesEqual(directorPlanHashes(publishedDocs), directorPlanHashes(plan.Docs))
+	if docsWritten {
+		if err := writeDirectorDocumentChangesAtomically(s.directorPlanBranchDir(storyID, branchID), publishedDocs, plan.Docs); err != nil {
+			return DirectorPlan{}, fmt.Errorf("原子发布导演规划文档失败: %w", err)
+		}
+	}
 	plan.Metadata = s.buildDirectorPlanMetadataLocked(storyID, branchID, NormalizeBranchPlanningTurns(plan.Metadata.BranchPlanningTurns), "interactive_director", sourceTurnID)
 	plan.Metadata.EventRuntime = eventRuntime
 	plan.Metadata.LoreRevision, _ = book.NewLoreStore(s.root).Revision()
@@ -602,6 +542,11 @@ func (s *Store) CompleteDirectorPlanRun(storyID, branchID string, token Director
 		EventOpportunity: opportunity,
 	}
 	if err := s.writeDirectorPlanMetadataLocked(storyID, branchID, plan.Metadata); err != nil {
+		if docsWritten {
+			if restoreErr := writeDirectorDocumentChangesAtomically(s.directorPlanBranchDir(storyID, branchID), plan.Docs, publishedDocs); restoreErr != nil {
+				return DirectorPlan{}, fmt.Errorf("写入导演规划元数据失败: %v；恢复原文档也失败: %v", err, restoreErr)
+			}
+		}
 		return DirectorPlan{}, err
 	}
 	return s.readDirectorPlanLocked(storyID, branchID)
@@ -661,7 +606,11 @@ func (s *Store) MarkDirectorPlanRunSkipped(storyID, branchID, sourceTurnID, reas
 
 func (s *Store) seedDirectorPlanLocked(storyID, branchID string, meta StoryMeta, seed DirectorPlanSeed) error {
 	templates := NormalizeStoryDirectorPlanningTemplates(seed.Templates)
-	docs := DirectorPlanDocs{Plan: renderDirectorPlanTemplate(templates.Plan, meta, branchID, seed), LoreContext: defaultDirectorLoreContextDocument()}
+	docs := DirectorPlanDocs{
+		Plan:        renderDirectorPlanTemplate(templates.Plan, meta, branchID, seed),
+		AgentBrief:  renderDirectorPlanTemplate(templates.AgentBrief, meta, branchID, seed),
+		LoreContext: defaultDirectorLoreContextDocument(),
+	}
 	if err := validateDirectorPlanDocs(docs); err != nil {
 		return err
 	}
@@ -692,6 +641,7 @@ func (s *Store) cloneDirectorPlanForBranchLocked(storyID, fromBranchID, branchID
 	note := fmt.Sprintf("\n\n> 分支说明：本规划从 `%s` 分支创建，当前分支为 `%s`（%s）。用户选择优先，后续后台导演应按本分支独立刷新。\n", fromBranchID, branchID, strings.TrimSpace(title))
 	docs := DirectorPlanDocs{
 		Plan:        trimBytes(parent.Docs.Plan+note, maxDirectorPlanDocBytes),
+		AgentBrief:  parent.Docs.AgentBrief,
 		LoreContext: parent.Docs.LoreContext,
 	}
 	if err := validateDirectorPlanDocs(docs); err != nil {
@@ -756,7 +706,7 @@ func (s *Store) readDirectorPlanLocked(storyID, branchID string) (DirectorPlan, 
 		BranchID: branchID,
 		Docs:     docs,
 		VisibleDocs: DirectorPlanVisibleDocs{
-			Plan:        ExtractDirectorPlanVisibleSection(docs.Plan),
+			AgentBrief:  strings.TrimSpace(trimBytes(docs.AgentBrief, directorPlanVisibleBytes)),
 			LoreContext: ExtractDirectorLoreContextActiveSection(docs.LoreContext),
 		},
 		Metadata: metadata,
@@ -764,31 +714,24 @@ func (s *Store) readDirectorPlanLocked(storyID, branchID string) (DirectorPlan, 
 }
 
 func (s *Store) readDirectorPlanDocsLocked(storyID, branchID string) (DirectorPlanDocs, error) {
-	data, err := os.ReadFile(filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorPlanFile))
+	dir := s.directorPlanBranchDir(storyID, branchID)
+	data, err := os.ReadFile(filepath.Join(dir, directorPlanFile))
 	if err != nil {
 		return DirectorPlanDocs{}, err
 	}
-	loreContext, loreErr := os.ReadFile(filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorLoreContextFile))
-	if os.IsNotExist(loreErr) {
-		loreContext = []byte(defaultDirectorLoreContextDocument())
-		if writeErr := os.WriteFile(filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorLoreContextFile), append(loreContext, '\n'), 0o644); writeErr != nil {
-			return DirectorPlanDocs{}, writeErr
-		}
-	} else if loreErr != nil {
+	agentBrief, err := os.ReadFile(filepath.Join(dir, directorAgentBriefFile))
+	if err != nil {
+		return DirectorPlanDocs{}, err
+	}
+	loreContext, loreErr := os.ReadFile(filepath.Join(dir, directorLoreContextFile))
+	if loreErr != nil {
 		return DirectorPlanDocs{}, loreErr
 	}
-	return DirectorPlanDocs{Plan: string(data), LoreContext: string(loreContext)}, nil
+	return DirectorPlanDocs{Plan: string(data), AgentBrief: string(agentBrief), LoreContext: string(loreContext)}, nil
 }
 
 func (s *Store) writeDirectorPlanDocsLocked(storyID, branchID string, docs DirectorPlanDocs) error {
-	dir := s.directorPlanBranchDir(storyID, branchID)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(dir, directorPlanFile), []byte(strings.TrimSpace(docs.Plan)+"\n"), 0o644); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(dir, directorLoreContextFile), []byte(strings.TrimSpace(docs.LoreContext)+"\n"), 0o644)
+	return writeDirectorDocumentsAtomically(s.directorPlanBranchDir(storyID, branchID), docs)
 }
 
 func (s *Store) readDirectorPlanMetadataLocked(storyID, branchID string) (DirectorPlanMetadata, error) {
@@ -848,6 +791,9 @@ func validateDirectorPlanDocs(docs DirectorPlanDocs) error {
 	if err := validateDirectorPlanDoc(DirectorPlanDocPlan, docs.Plan); err != nil {
 		return err
 	}
+	if err := validateDirectorPlanDoc(DirectorPlanDocAgentBrief, docs.AgentBrief); err != nil {
+		return err
+	}
 	return validateDirectorLoreContextDoc(docs.LoreContext)
 }
 
@@ -859,8 +805,12 @@ func validateDirectorPlanDoc(kind, content string) error {
 	if len([]byte(content)) > maxDirectorPlanDocBytes {
 		return fmt.Errorf("导演规划 %s 超过大小上限 %d bytes", kind, maxDirectorPlanDocBytes)
 	}
-	for _, heading := range requiredDirectorPlanHeadings {
-		if !strings.Contains(content, heading) {
+	headings := requiredDirectorPrivatePlanHeadings
+	if kind == DirectorPlanDocAgentBrief {
+		headings = requiredDirectorAgentBriefHeadings
+	}
+	for _, heading := range headings {
+		if !strings.Contains(content, "## "+heading) {
 			return fmt.Errorf("导演规划 %s 缺少必填标题: %s", kind, heading)
 		}
 	}
@@ -888,7 +838,7 @@ func DirectorPlanVisibleContext(plan DirectorPlan, limitBytes int) string {
 		limitBytes = DirectorContextMaxBytes
 	}
 	var sb strings.Builder
-	writeDirectorPlanContextBlock(&sb, "导演规划", plan.VisibleDocs.Plan)
+	writeDirectorPlanContextBlock(&sb, "正文 Agent 简报（source: agent-brief.md）", plan.VisibleDocs.AgentBrief)
 	return strings.TrimSpace(trimBytes(sb.String(), limitBytes))
 }
 
@@ -1018,16 +968,10 @@ func (s *Store) directorPlanBranchDir(storyID, branchID string) string {
 	return filepath.Join(s.root, "interactive", "stories", storyID, "director", branchID)
 }
 
-func (s *Store) DirectorPlanAllowedPaths(storyID, branchID string) []string {
-	return []string{
-		filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorPlanFile),
-		filepath.Join(s.directorPlanBranchDir(storyID, branchID), directorLoreContextFile),
-	}
-}
-
 func directorPlanDocInfos(dir string, docs DirectorPlanDocs) map[string]DirectorPlanDocInfo {
 	return map[string]DirectorPlanDocInfo{
-		DirectorPlanDocPlan:        directorPlanDocInfo(filepath.Join(dir, directorPlanFile), docs.Plan, ExtractDirectorPlanVisibleSection(docs.Plan)),
+		DirectorPlanDocPlan:        directorPlanDocInfo(filepath.Join(dir, directorPlanFile), docs.Plan, ""),
+		DirectorPlanDocAgentBrief:  directorPlanDocInfo(filepath.Join(dir, directorAgentBriefFile), docs.AgentBrief, docs.AgentBrief),
 		DirectorPlanDocLoreContext: directorPlanDocInfo(filepath.Join(dir, directorLoreContextFile), docs.LoreContext, ExtractDirectorLoreContextActiveSection(docs.LoreContext)),
 	}
 }
@@ -1039,16 +983,17 @@ func directorPlanDocInfo(path, content, visible string) DirectorPlanDocInfo {
 func directorPlanHashes(docs DirectorPlanDocs) map[string]string {
 	return map[string]string{
 		DirectorPlanDocPlan:        textHash(docs.Plan),
+		DirectorPlanDocAgentBrief:  textHash(docs.AgentBrief),
 		DirectorPlanDocLoreContext: textHash(docs.LoreContext),
 	}
 }
 
 func directorPlanRevision(docs DirectorPlanDocs, updatedAt string) string {
-	return textHash(strings.Join([]string{docs.Plan, docs.LoreContext, updatedAt}, "\n---director-plan---\n"))
+	return textHash(strings.Join([]string{docs.Plan, docs.AgentBrief, docs.LoreContext, updatedAt}, "\n---director-plan---\n"))
 }
 
 func requiredDirectorPlanDocKinds() []string {
-	return []string{DirectorPlanDocPlan, DirectorPlanDocLoreContext}
+	return []string{DirectorPlanDocPlan, DirectorPlanDocAgentBrief, DirectorPlanDocLoreContext}
 }
 
 func directorPlanRunStartReady(run *DirectorPlanRunStatus) bool {

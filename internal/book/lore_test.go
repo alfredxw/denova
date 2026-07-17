@@ -2,14 +2,64 @@ package book
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
+
+func TestLoreStoreSerializesConcurrentCreatesAcrossInstances(t *testing.T) {
+	workspace := t.TempDir()
+	const count = 16
+	start := make(chan struct{})
+	errs := make(chan error, count)
+	var wg sync.WaitGroup
+	for index := 0; index < count; index++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					errs <- fmt.Errorf("concurrent Create panic: %v", recovered)
+				}
+			}()
+			<-start
+			_, err := NewLoreStore(workspace).Create(LoreItemInput{
+				ID: fmt.Sprintf("item-%02d", index), Type: "world", Name: fmt.Sprintf("资料-%02d", index), Content: "并发写入",
+			})
+			errs <- err
+		}(index)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent Create failed: %v", err)
+		}
+	}
+
+	items, err := NewLoreStore(workspace).ListAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != count {
+		t.Fatalf("concurrent creates lost updates: got=%d want=%d items=%#v", len(items), count, items)
+	}
+	data, err := os.ReadFile(NewLoreStore(workspace).itemsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted LoreCollection
+	if err := json.Unmarshal(data, &persisted); err != nil || len(persisted.Items) != count {
+		t.Fatalf("persisted lore must remain valid and complete: items=%d err=%v", len(persisted.Items), err)
+	}
+}
 
 func TestLoreStoreNormalizesProgressiveLoadingDefaults(t *testing.T) {
 	workspace := t.TempDir()
@@ -151,6 +201,11 @@ func TestLoreStoreProgressiveContextSplitsResidentAndIndex(t *testing.T) {
 	if _, err := store.Create(LoreItemInput{ID: "secret", Type: "rule", Name: "隐藏规则", Importance: "minor", LoadMode: LoreLoadModeManual, BriefDescription: "隐藏规则索引简介", Content: "隐藏完整正文"}); err != nil {
 		t.Fatal(err)
 	}
+	for i := 0; i < 12; i++ {
+		if _, err := store.Create(LoreItemInput{ID: fmt.Sprintf("candidate-%02d", i), Type: "character", Name: fmt.Sprintf("候选角色%02d", i), Importance: "minor", LoadMode: LoreLoadModeAuto, Content: "按需正文"}); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	context, err := store.ProgressiveContextMarkdown()
 	if err != nil {
@@ -159,8 +214,11 @@ func TestLoreStoreProgressiveContextSplitsResidentAndIndex(t *testing.T) {
 	if !strings.Contains(context, "## 常驻资料库") || !strings.Contains(context, "主角完整正文") {
 		t.Fatalf("resident context missing full content: %s", context)
 	}
-	if !strings.Contains(context, "## 资料库索引") || !strings.Contains(context, "base") || !strings.Contains(context, "secret") {
-		t.Fatalf("index context missing non-resident items: %s", context)
+	if !strings.Contains(context, "## 按需资料名称目录") || !strings.Contains(context, "黄泉酒馆") || !strings.Contains(context, "隐藏规则") || !strings.Contains(context, "候选角色11") {
+		t.Fatalf("name catalog context missing non-resident items: %s", context)
+	}
+	if strings.Contains(context, "id: base") || strings.Contains(context, "黄泉酒馆索引简介") {
+		t.Fatalf("name catalog should remain a compact discovery surface: %s", context)
 	}
 	if strings.Contains(context, "据点完整正文") || strings.Contains(context, "隐藏完整正文") {
 		t.Fatalf("non-resident full content should not be in progressive context: %s", context)
@@ -306,8 +364,45 @@ func TestLoreStoreNameRosterIsBoundedAndOmitsResidentBodies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len([]byte(bounded)) > 128 || !strings.Contains(bounded, "省略") || !strings.Contains(bounded, "list_lore_items") {
-		t.Fatalf("bounded roster should explain omitted names within its byte limit:\n%s", bounded)
+	if len([]byte(bounded)) > 128 || !strings.Contains(bounded, "omitted: 3") || strings.Contains(bounded, "常驻规则") {
+		t.Fatalf("bounded roster should report omitted names within its byte limit:\n%s", bounded)
+	}
+}
+
+func TestLoreStoreNameRosterUsesThe64KiBDiscoveryBudget(t *testing.T) {
+	store := NewLoreStore(t.TempDir())
+	items := make([]LoreItem, 400)
+	for index := range items {
+		items[index] = LoreItem{
+			ID:         fmt.Sprintf("entry-%03d", index),
+			Enabled:    true,
+			Type:       "character",
+			Name:       fmt.Sprintf("候选资料%03d-%s", index, strings.Repeat("长名称", 6)),
+			Importance: "minor",
+			LoadMode:   LoreLoadModeAuto,
+			Content:    "不应出现的正文",
+		}
+	}
+	data, err := json.Marshal(LoreCollection{Version: loreItemsVersion, Items: items})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(store.itemsPath()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.itemsPath(), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	roster, err := store.LoreNameRosterMarkdown(LoreIndexDefaultMaxBytes, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len([]byte(roster)) <= 8*1024 || len([]byte(roster)) > 64*1024 {
+		t.Fatalf("name roster should use more than the old 8 KiB budget without crossing 64 KiB, got %d bytes", len([]byte(roster)))
+	}
+	if !strings.Contains(roster, "候选资料399") || !strings.Contains(roster, "omitted: 0") || strings.Contains(roster, "不应出现的正文") {
+		t.Fatalf("64 KiB roster should expose late names, report completeness, and omit bodies:\n%s", roster)
 	}
 }
 
@@ -359,38 +454,6 @@ func TestLoreStoreCompactIndexBudgetFallsBackToNameRoster(t *testing.T) {
 		if !strings.Contains(index, "id: "+id) || !strings.Contains(index, "名称: 资料"+id) {
 			t.Fatalf("name-only fallback should retain full roster entry %s:\n%s", id, index)
 		}
-	}
-}
-
-func TestLoreStoreStoryMemoryContextIncludesBoundedFullLore(t *testing.T) {
-	store := NewLoreStore(t.TempDir())
-	if _, err := store.Create(LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", LoadMode: LoreLoadModeResident, Content: "主角完整正文"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Create(LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: LoreLoadModeAuto, BriefDescription: "黄泉酒馆索引简介", Content: "据点完整正文"}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Create(LoreItemInput{ID: "secret", Type: "rule", Name: "隐藏规则", Importance: "minor", LoadMode: LoreLoadModeManual, BriefDescription: "隐藏规则索引简介", Content: strings.Repeat("隐藏完整正文", 800)}); err != nil {
-		t.Fatal(err)
-	}
-
-	context, err := store.StoryMemoryContextMarkdown(20 * 1024)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(context, "主角完整正文") || !strings.Contains(context, "据点完整正文") || !strings.Contains(context, "隐藏完整正文") {
-		t.Fatalf("story memory context should include full lore while within budget: %s", context)
-	}
-
-	bounded, err := store.StoryMemoryContextMarkdown(1200)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len([]byte(bounded)) > 1200 {
-		t.Fatalf("bounded context bytes = %d, want <= 1200", len([]byte(bounded)))
-	}
-	if !strings.Contains(bounded, "secret") || !strings.Contains(bounded, "隐藏规则") {
-		t.Fatalf("bounded context should retain an index for omitted lore: %s", bounded)
 	}
 }
 

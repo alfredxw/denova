@@ -1,4 +1,4 @@
-export type PresetResourceKind = 'teller' | 'event' | 'rule' | 'actor-state' | 'memory-structure' | 'director' | 'image'
+export type PresetResourceKind = 'teller' | 'event' | 'rule' | 'actor-state' | 'director' | 'image'
 
 export type PresetModuleOwnership = 'shared' | 'gameOnly' | 'writingOnly'
 export type PresetUsageMode = 'writing' | 'game'
@@ -10,11 +10,10 @@ const PRESET_RESOURCE_OWNERSHIP: Record<PresetResourceKind, PresetModuleOwnershi
   event: 'gameOnly',
   rule: 'gameOnly',
   'actor-state': 'gameOnly',
-  'memory-structure': 'gameOnly',
 }
 
 export const SHARED_PRESET_RESOURCE_KINDS: PresetResourceKind[] = ['teller', 'image']
-export const GAME_ONLY_PRESET_RESOURCE_KINDS: PresetResourceKind[] = ['director', 'event', 'rule', 'actor-state', 'memory-structure']
+export const GAME_ONLY_PRESET_RESOURCE_KINDS: PresetResourceKind[] = ['director', 'event', 'rule', 'actor-state']
 
 export function presetModuleOwnership(kind: PresetResourceKind): PresetModuleOwnership {
   return PRESET_RESOURCE_OWNERSHIP[kind]

@@ -107,12 +107,10 @@ func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T
 		StoryTellerID:        "classic",
 		StoryDirectorID:      "default",
 		BranchID:             "main",
-		DirectorPlanPaths:    "/tmp/director.md",
-		DirectorPlanDocs:     `{"plan":"# 正文Agent可读"}`,
+		DirectorPlanDocs:     "## 文件：agent-brief.md\n\n# 正文 Agent 简报",
 		LoreContext:          "角色 沈凝。外门比试关键见证者。",
 		TurnAuditJSON:        `{"turn_id":"turn-1","user_action":"报名比试"}`,
 		TurnHistory:          "用户：我报名参加公开比试",
-		StoryMemorySummary:   "公开比试即将开始。",
 		StoryDirectorPlan:    "mainline_strength: soft_guidance",
 		DirectorEventCatalog: `{"events":[{"id":"face_slap"}]}`,
 	})
@@ -129,9 +127,9 @@ func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T
 	if analysis.MessageCount != 1 {
 		t.Fatalf("director analysis should estimate the single user instruction message, got %d", analysis.MessageCount)
 	}
-	var sawOutputProtocol, sawLore, sawTurnAudit, sawPlanPath bool
+	var sawOutputProtocol, sawLore, sawTurnAudit, sawPlanDocs bool
 	for _, part := range analysis.SystemPromptParts {
-		if part.ID == "output_protocol" && strings.Contains(part.Content, "director.md") {
+		if part.ID == "output_protocol" && strings.Contains(part.Content, submitDirectorPlanUpdateToolName) {
 			sawOutputProtocol = true
 		}
 	}
@@ -141,12 +139,31 @@ func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T
 			sawLore = true
 		case part.Title == "本回合 TurnResult / RuleResolution / StateDelta 审计 JSON" && strings.Contains(part.Source, "committed turn") && strings.Contains(part.Content, "turn-1"):
 			sawTurnAudit = true
-		case part.Title == "允许读写的导演规划文件路径" && strings.Contains(part.Source, "backend guard") && strings.Contains(part.Content, "director.md"):
-			sawPlanPath = true
+		case part.Title == "文件：agent-brief.md" && strings.Contains(part.Content, "正文 Agent 简报"):
+			sawPlanDocs = true
 		}
 	}
-	if !sawOutputProtocol || !sawLore || !sawTurnAudit || !sawPlanPath {
-		t.Fatalf("director analysis missing expected parts output=%v lore=%v audit=%v planPath=%v parts=%#v", sawOutputProtocol, sawLore, sawTurnAudit, sawPlanPath, analysis.ContextMessages)
+	if !sawOutputProtocol || !sawLore || !sawTurnAudit || !sawPlanDocs {
+		t.Fatalf("director analysis missing expected parts output=%v lore=%v audit=%v planDocs=%v parts=%#v", sawOutputProtocol, sawLore, sawTurnAudit, sawPlanDocs, analysis.ContextMessages)
+	}
+}
+
+func TestInteractiveDirectorContextAnalysisIncludesStableResidentLoreMessage(t *testing.T) {
+	analysis, err := BuildInteractiveDirectorContextAnalysisWithStableContext(
+		&config.Config{OpenAIContextWindowTokens: 128000},
+		"完整常驻资料（complete=true）",
+		"## [[公开比试规则]]\n\n禁止场外偷袭。",
+		1024,
+		prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{Title: "外门逆袭"}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if analysis.MessageCount != 2 {
+		t.Fatalf("stable resident Lore plus the task instruction should be two exact model messages, got %d", analysis.MessageCount)
+	}
+	if len(analysis.ContextMessages) == 0 || analysis.ContextMessages[0].ID != "resident_lore" || !strings.Contains(analysis.ContextMessages[0].Content, "禁止场外偷袭") || !strings.Contains(analysis.ContextMessages[0].Note, "max_bytes=1024") {
+		t.Fatalf("stable resident Lore should be explicit in diagnostics: %#v", analysis.ContextMessages)
 	}
 }
 

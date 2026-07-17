@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -39,11 +40,11 @@ func truncateForLog(s string, n int) string {
 	return s
 }
 
-// 集成测试，用于人工检查四引擎聚合效果。
-// 在 -short 模式下跳过以保持离线测试套件快速，也可直接运行`go test ./internal/agent/ -run TestLiveWebSearch_HelloWorld -v`
+// 集成测试，用于人工检查四引擎聚合效果。默认测试套件不访问公网；显式设置
+// DENOVA_LIVE_WEB_SEARCH_TEST=1 后单独运行本测试。
 func TestLiveWebSearch_HelloWorld(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping live web search in -short mode; run without -short (e.g. via IDE debug) to execute")
+	if os.Getenv("DENOVA_LIVE_WEB_SEARCH_TEST") != "1" {
+		t.Skip("skipping live web search; set DENOVA_LIVE_WEB_SEARCH_TEST=1 to execute")
 	}
 
 	const query = "Hello World"

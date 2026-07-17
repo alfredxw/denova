@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.1.18</strong> (2026-07-01) · Beta
+  Current version: <strong>v0.2.0</strong> (2026-07-15) · Beta
 </p>
 
 ![Denova Writing Mode](./img/ide.png)
@@ -54,21 +54,21 @@ You can start from an original idea, import an existing novel for fan fiction, a
 
 - **Writing Mode**: fiction-focused Markdown editing, multiple tabs, global search, chapter statistics, outlines, chapter-group plans, progress tracking, and existing novel import.
 - **Creative Agents**: read selections, files, and lore; call tools to generate or edit chapters; and use Skills / SubAgents for different writing tasks, prose styles, and workflows.
-- **Game Mode**: run interactive text adventures with player input, story branches, storyline switching, action suggestions, scene memory, long-term story memory, and Story Director driven goals, pressure, costs, event card packs, and rule checks.
-- **Lore and presets**: maintain durable settings such as characters, worlds, locations, factions, rules, and items; narrative styles handle prose, prompt slots, and scene style rules, while Story Directors can plug together narrative styles, event packages, TRPG Checks, State Systems, Story Memory Structure, and image presets, with each module independently switchable. State Systems also provide reusable trait libraries whose templates define draw rules for each kind of Actor.
+- **Game Mode**: run interactive text adventures with player input, story branches, storyline switching, action suggestions, searchable Turn history, Actor State, and Story Director driven goals, pressure, costs, event card packs, and rule checks.
+- **Lore and presets**: maintain durable settings such as characters, worlds, locations, factions, rules, and items; narrative styles handle prose, prompt slots, and scene style rules, while Story Directors can plug together narrative styles, event packages, TRPG Checks, State Systems, and image presets, with each module independently switchable. State Systems also provide reusable trait libraries whose templates define draw rules for each kind of Actor.
 - **Image creation**: generate chapter illustrations, interactive images, and book covers through OpenAI-compatible image model profiles, with previews and result management in the UI.
-- **Context management**: progressively assemble model context, compact long memories, improve cache reuse, and keep tool results bounded to reduce noise and token cost.
+- **Context management**: progressively assemble model context, build source-linked history checkpoints, improve cache reuse, and keep tool results bounded to reduce noise and token cost.
 - **Versions and restore**: save local versions, inspect diffs, restore history, and enable timed saves or automatic saves after large Agent outputs.
 - **Automation**: schedule tasks, reviews, auto-continuation, and custom Prompt workflows.
 - **Product experience**: Chinese and English UI, light and dark themes, OpenAI-compatible model setup, remote access, PWA phone usage, and Windows / macOS / Linux support.
 
 ## Writing Mode and Game Mode
 
-Denova has two parallel workspaces. Writing Mode focuses on the fiction production line: ideas, settings, outlines, chapter plans, prose, and progress. Game Mode focuses on playable interactive narrative: player actions, story branches, scene memory, storylines, and choice-driven progression.
+Denova has two parallel workspaces. Writing Mode focuses on the fiction production line: ideas, settings, outlines, chapter plans, prose, and progress. Game Mode focuses on playable interactive narrative: player actions, story branches, Turn history, Actor State, storylines, and choice-driven progression.
 
 Game Mode includes a built-in Story Director that prepares the opening stage from the story setup and lore library, choosing the key characters, factions, clues, risks, and near-term branches that can make the first scene immediately playable. As the story continues, it responds to player choices while keeping character motives, world rules, relationships, and foreshadowing coherent. Important characters, locations, factions, and rules from the lore library are given priority, so established creative material becomes part of the adventure. Each turn aims to deliver meaningful information, relationship movement, pressure, reward, cost, or a fresh hook, then leaves the player with clear ways to continue.
 
-Creators can freely combine narrative styles, event packages, TRPG Checks, State Systems, Story Memory Structure, and image presets, or disable any module that a story does not need. Event packages give the Director optional story material to seed, develop, resolve, or abandon. State Systems adapt to the actual opening and track lasting changes such as attributes, resources, relationships, injuries, and traits; TRPG Checks add fixed-d20 rules and state-based modifiers; Story Memory preserves important facts across long-running branches. The Director Console also lets creators inspect and adjust current plans, character state, and event progress, giving interactive stories room to improvise without losing their long-term shape.
+Creators can freely combine narrative styles, event packages, TRPG Checks, State Systems, and image presets, or disable any module that a story does not need. Event packages give the Director optional story material to seed, develop, resolve, or abandon. State Systems adapt to the actual opening and track lasting changes such as attributes, resources, relationships, injuries, and traits; TRPG Checks add fixed-d20 rules and state-based modifiers. Committed Turns are the source of historical facts, Actor State owns current computable facts, Lore owns stable canon, and `director.md` owns future intent. Agents can recover older facts through bounded Turn-history search without maintaining a second writable source of truth. The Director Console exposes current plans, Actor State, and event progress.
 
 The two modes share durable creative assets such as lore, presets, model and Agent configuration, Skills, version management, and base settings. Writing progress and chapter plans do not automatically enter Game Mode. If an interactive story should reference a passage or current writing milestone, move stable information into lore first or reference it explicitly in the input.
 
@@ -106,7 +106,7 @@ Requires Go 1.26.5+, Node.js 20+, pnpm and ripgrep.
 git clone https://github.com/alfredxw/denova.git
 cd denova
 corepack enable
-./bootstrap.sh
+./scripts/bootstrap.sh
 ```
 
 Default addresses:
@@ -173,20 +173,26 @@ denova.example.com {
 Start both frontend and backend:
 
 ```bash
-./bootstrap.sh
+./scripts/bootstrap.sh
 ```
 
 Start frontend or backend separately:
 
 ```bash
-./bootstrap.sh fe
-./bootstrap.sh be
+./scripts/bootstrap.sh fe
+./scripts/bootstrap.sh be
+```
+
+Stop the Denova backend running from this repository and restart it in the foreground:
+
+```bash
+./scripts/restart-backend.sh
 ```
 
 Allow LAN devices to access the frontend dev server:
 
 ```bash
-./bootstrap.sh fe --lan
+./scripts/bootstrap.sh fe --lan
 ```
 
 ## Donate QR Code

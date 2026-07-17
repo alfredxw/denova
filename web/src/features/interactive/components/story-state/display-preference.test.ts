@@ -9,10 +9,10 @@ import {
 describe('story state display preference', () => {
   beforeEach(() => window.localStorage.clear())
 
-  it('defaults to collapsed and ignores unknown persisted values', () => {
+  it('defaults to an adaptive preview and ignores unknown persisted values', () => {
     expect(readStoryStateDisplayPreference()).toBe(DEFAULT_STORY_STATE_DISPLAY)
     window.localStorage.setItem(STORY_STATE_DISPLAY_STORAGE_KEY, 'legacy-expanded')
-    expect(readStoryStateDisplayPreference()).toBe('collapsed')
+    expect(readStoryStateDisplayPreference()).toBe('preview')
   })
 
   it('persists the explicit user choice', () => {

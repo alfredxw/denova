@@ -24,17 +24,7 @@ type RuleStateConsumption struct {
 type RuleStateConsumptionWarning struct {
 	ActorID string `json:"actor_id,omitempty"`
 	FieldID string `json:"field_id,omitempty"`
-	Path    string `json:"-"`
 	Reason  string `json:"reason"`
-}
-
-func applyRuleStateConsumption(state map[string]any, system StoryDirectorActorStateSystem, turnID string, resolution *RuleResolution, mode string) []StateOp {
-	_, actorOps := applyRuleStateConsumptionV2(state, system, turnID, resolution, mode)
-	ops := make([]StateOp, 0, len(actorOps))
-	for _, op := range actorOps {
-		ops = append(ops, StateOp{Op: op.Op, Path: actorStateFieldPath(op.ActorID, op.FieldID), Value: op.Value, Reason: op.Reason, SourceTurnID: op.SourceTurnID, SourceKind: op.SourceKind, SourceID: op.SourceID})
-	}
-	return normalizeStateOps(ops)
 }
 
 func applyRuleStateConsumptionV2(state map[string]any, system StoryDirectorActorStateSystem, turnID string, resolution *RuleResolution, mode string) ([]StateOp, []ActorStateOp) {
@@ -121,25 +111,6 @@ func ruleStateChangeToActorOp(state map[string]any, system StoryDirectorActorSta
 	return ActorStateOp{Op: "set", ActorID: actorID, FieldID: actorStateFieldID(field), Value: next, Reason: reason, SourceTurnID: turnID, SourceKind: StateOpSourceRuleResolution, SourceID: resolution.ID}, true, RuleStateConsumptionWarning{}
 }
 
-func ruleStateChangeToOp(state map[string]any, system StoryDirectorActorStateSystem, turnID string, resolution RuleResolution, change TurnStateChange) (StateOp, bool, RuleStateConsumptionWarning) {
-	op, ok, warning := ruleStateChangeToActorOp(state, system, turnID, resolution, change)
-	if !ok {
-		return StateOp{}, false, warning
-	}
-	return StateOp{Op: op.Op, Path: actorStateFieldPath(op.ActorID, op.FieldID), Value: op.Value, Reason: op.Reason, SourceTurnID: op.SourceTurnID, SourceKind: op.SourceKind, SourceID: op.SourceID}, true, RuleStateConsumptionWarning{}
-}
-
-func parseActorStateFieldPath(path string) (string, string, bool) {
-	path = canonicalStatePath(path)
-	parts := strings.Split(path, ".")
-	if len(parts) < 4 || parts[0] != actorStateRoot || parts[2] != "state" {
-		return "", "", false
-	}
-	actorID := normalizeActorStateID(parts[1])
-	fieldPath := strings.Join(parts[3:], ".")
-	return actorID, fieldPath, actorID != "" && fieldPath != ""
-}
-
 func actorTemplateIDFromStateOrSystem(state map[string]any, system StoryDirectorActorStateSystem, actorID string) (string, bool) {
 	if raw := getPath(state, actorStateActorPath(actorID, "template_id")); raw != nil {
 		if value := normalizeActorStateID(fmt.Sprint(raw)); value != "" {
@@ -212,20 +183,13 @@ func normalizeRuleStateConsumptionPointer(value *RuleStateConsumption) *RuleStat
 	next.Mode = normalizeRuleStateConsumptionMode(next.Mode)
 	next.AppliedOps = normalizeStateOps(next.AppliedOps)
 	next.AppliedActorOps = normalizeActorStateOps(next.AppliedActorOps)
-	if len(next.Warnings) > maxTurnBriefListItems {
-		next.Warnings = next.Warnings[:maxTurnBriefListItems]
+	if len(next.Warnings) > maxInteractiveListItems {
+		next.Warnings = next.Warnings[:maxInteractiveListItems]
 	}
 	warnings := make([]RuleStateConsumptionWarning, 0, len(next.Warnings))
 	for _, warning := range next.Warnings {
 		warning.ActorID = normalizeActorStateID(warning.ActorID)
 		warning.FieldID = normalizeActorStateFieldName(warning.FieldID)
-		if warning.ActorID == "" || warning.FieldID == "" {
-			if actorID, fieldID, ok := parseActorStateFieldPath(warning.Path); ok {
-				warning.ActorID = actorID
-				warning.FieldID = fieldID
-			}
-		}
-		warning.Path = ""
 		warning.Reason = trimBytes(warning.Reason, 1024)
 		if warning.ActorID == "" && warning.FieldID == "" && warning.Reason == "" {
 			continue

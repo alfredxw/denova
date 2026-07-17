@@ -18,19 +18,13 @@ const (
 )
 
 var requiredDirectorLoreContextHeadings = []string{
-	"当前背景与地点",
-	"当前势力",
-	"当前角色",
-	"候场角色",
-	"暂离场角色",
-	"当前物品与其他设定",
+	"当前",
+	"候场",
+	"暂离场",
 }
 
 var activeDirectorLoreContextSections = map[string]bool{
-	"当前背景与地点":   true,
-	"当前势力":      true,
-	"当前角色":      true,
-	"当前物品与其他设定": true,
+	"当前": true,
 }
 
 // DirectorLoreContextReferences is the parsed, name-based working set from
@@ -43,38 +37,39 @@ type DirectorLoreContextReferences struct {
 }
 
 func defaultDirectorLoreContextDocument() string {
-	return strings.TrimSpace(`# 分支资料上下文
+	return strings.TrimSpace(`# 分支资料工作集
 
-> 本文件只维护当前分支的资料工作集。使用 [[资料名称]] 精确引用资料库；不要复制资料正文。规则类资料由系统自动全量加载，不写入本文件。
+> 使用 [[资料名称]] 精确引用资料库，不复制正文。二级标题只表示生命周期状态；可按角色、势力、地点、物品等需要自由增加三级标题。常驻资料已由系统完整加载，不重复写入本文件。
 
-## 当前背景与地点
+## 当前
 
-记录当前阶段和场景必须完整加载的世界观、背景与地点资料。
+### 角色
 
-## 当前势力
+记录当前场景或最近分支持续参与的角色，并用一句话说明本阶段功能。
 
-记录当前正在施加资源、制度、舆论、追捕或关系压力的势力。
+### 势力
 
-## 当前角色
+记录正在施加资源、制度、舆论、追捕或关系压力的势力。
 
-记录当前场景或最近分支会持续参与的资料库角色，并用一句话说明本阶段作用。
+### 地点、物品与其他设定
 
-## 候场角色
+记录当前阶段必须完整加载的背景、地点、物品或其他稳定设定。
 
-记录可能在明确触发条件下入场的角色。候场资料只供 Director 规划，不自动注入正文 Agent。
+## 候场
 
-## 暂离场角色
+### 角色与势力
 
-记录阶段作用已完成、暂不自动召回，但可能被玩家主动寻找或在后续阶段回归的角色。
+记录可能在明确触发条件下入场的角色或势力。候场资料只供 Director 规划，不自动注入正文 Agent。
 
-## 当前物品与其他设定
+## 暂离场
 
-记录当前剧情必须完整加载的物品或其他稳定设定。`)
+### 角色与势力
+
+记录阶段作用已完成、暂不自动召回，但可能被玩家主动寻找或在后续阶段回归的角色或势力。`)
 }
 
 // ParseDirectorLoreContextReferences extracts exact [[name]] references and
-// classifies them by their Markdown section. Unknown sections remain private
-// Director notes and do not enter the Game Agent's automatic lore context.
+// classifies them by their validated Markdown lifecycle section.
 func ParseDirectorLoreContextReferences(content string) DirectorLoreContextReferences {
 	refs := DirectorLoreContextReferences{}
 	seenActive := map[string]bool{}
@@ -91,9 +86,9 @@ func ParseDirectorLoreContextReferences(content string) DirectorLoreContextRefer
 			switch {
 			case activeDirectorLoreContextSections[section]:
 				appendUniqueLoreName(&refs.Active, seenActive, name)
-			case section == "候场角色":
+			case section == "候场":
 				appendUniqueLoreName(&refs.Candidates, seenCandidates, name)
-			case section == "暂离场角色":
+			case section == "暂离场":
 				appendUniqueLoreName(&refs.Offstage, seenOffstage, name)
 			}
 		}
@@ -164,8 +159,8 @@ func (s *Store) validateDirectorLoreContext(content string) error {
 			log.Printf("[director-lore-context] ignoring unavailable lore reference name=%q source=lore-context.md location=internal/interactive/director_lore_context.go", name)
 			continue
 		}
-		if item.Type == "rule" {
-			return fmt.Errorf("规则类资料由系统全量加载，不应写入 lore-context.md: %s", name)
+		if item.LoadMode == book.LoreLoadModeResident {
+			return fmt.Errorf("常驻资料已由系统完整加载，不应重复写入 lore-context.md: %s", name)
 		}
 	}
 	activeNames := make(map[string]bool, len(refs.Active))
@@ -214,8 +209,27 @@ func validateDirectorLoreContextDoc(content string) error {
 	if len([]byte(content)) > maxDirectorPlanDocBytes {
 		return fmt.Errorf("导演资料工作集超过大小上限 %d bytes", maxDirectorPlanDocBytes)
 	}
+	allowed := map[string]bool{}
+	seen := map[string]bool{}
 	for _, heading := range requiredDirectorLoreContextHeadings {
-		if !strings.Contains(content, "## "+heading) {
+		allowed[heading] = true
+	}
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "## ") {
+			continue
+		}
+		heading := strings.TrimSpace(strings.TrimPrefix(trimmed, "## "))
+		if !allowed[heading] {
+			return fmt.Errorf("导演资料工作集包含未知二级标题 %q；请改为 当前、候场或暂离场，内容分类请使用三级标题", heading)
+		}
+		if seen[heading] {
+			return fmt.Errorf("导演资料工作集二级标题重复: %s", heading)
+		}
+		seen[heading] = true
+	}
+	for _, heading := range requiredDirectorLoreContextHeadings {
+		if !seen[heading] {
 			return fmt.Errorf("导演资料工作集缺少必填标题: %s", heading)
 		}
 	}

@@ -65,7 +65,7 @@ func upsertDirectorEvent(events []DirectorEvent, next DirectorEvent) []DirectorE
 			return events
 		}
 	}
-	if len(events) >= maxTurnBriefListItems {
+	if len(events) >= maxInteractiveListItems {
 		return events
 	}
 	return append(events, next)
@@ -89,7 +89,7 @@ func appendDirectorEventIfMissing(events []DirectorEvent, next DirectorEvent) []
 			return events
 		}
 	}
-	if len(events) >= maxTurnBriefListItems {
+	if len(events) >= maxInteractiveListItems {
 		return events
 	}
 	return append(events, next)

@@ -1,11 +1,39 @@
 package interactive
 
 import (
-	"os"
-	"path/filepath"
+	"encoding/json"
 	"strings"
 	"testing"
 )
+
+func TestBuildNewActorStateOpsEmitsOneSetPerResolvedField(t *testing.T) {
+	template := ActorStateTemplate{
+		ID: "protagonist",
+		Fields: []ActorStateField{
+			{Name: "生命", Type: "number", Default: 100},
+			{Name: "备注", Type: "string"},
+		},
+	}
+	_, actorOps, normalized, err := buildNewActorStateOps(template, "protagonist", "主角", "protagonist", "", map[string]any{
+		"生命": 80,
+		"备注": nil,
+	}, "初始化", "turn-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(actorOps) != 1 {
+		t.Fatalf("defaults and explicit values must resolve before emitting one op per field: %#v", actorOps)
+	}
+	if op := actorOps[0]; op.FieldID != "生命" || op.Value != float64(80) {
+		t.Fatalf("explicit value must replace the default in the single emitted op: %#v", op)
+	}
+	if normalized["生命"] != float64(80) {
+		t.Fatalf("normalized state must keep the explicit override: %#v", normalized)
+	}
+	if _, exists := normalized["备注"]; exists {
+		t.Fatalf("null input must remain omitted instead of becoming a set(null): %#v", normalized)
+	}
+}
 
 func TestRollActorTraitsUsesFixedSelectionsWithoutDuplicates(t *testing.T) {
 	system := actorTraitTestSystem()
@@ -38,13 +66,13 @@ func TestRollActorTraitsUsesFixedSelectionsWithoutDuplicates(t *testing.T) {
 
 func TestActorCreationUsesOneFlowAndPreservesTraitSnapshots(t *testing.T) {
 	system := actorTraitTestSystem()
-	initialOps, err := BuildActorStateInitialOps(system, []InitialActorTraitRoll{{
+	initialOps, initialActorOps, err := BuildActorStateInitialChanges(system, []InitialActorTraitRoll{{
 		ActorID: "protagonist", Seed: 9, Selections: []ActorTraitSelection{{PoolID: "nature", TraitIDs: []string{"patient", "bold"}}},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := applyActorTraitTestOps(nil, initialOps)
+	state := applyActorTraitTestOps(nil, initialOps, initialActorOps)
 	initialTraits := actorTraitInstancesFromState(state, "protagonist")
 	if len(initialTraits) != 2 || initialTraits[0].SourceKind != "initial_trait_roll" || initialTraits[0].SourceTurnID != "story_create" {
 		t.Fatalf("initial Actor should persist trait snapshots: %#v", initialTraits)
@@ -168,13 +196,13 @@ func TestActorTraitLifecycleDrawRerollSetRemove(t *testing.T) {
 
 func TestActorStateRuntimeContextFiltersVisibilityAndLibrary(t *testing.T) {
 	system := actorTraitTestSystem()
-	ops, err := BuildActorStateInitialOps(system, []InitialActorTraitRoll{{
+	ops, actorOps, err := BuildActorStateInitialChanges(system, []InitialActorTraitRoll{{
 		ActorID: "protagonist", Seed: 1, Selections: []ActorTraitSelection{{PoolID: "nature", TraitIDs: []string{"patient", "secret"}}},
 	}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := applyActorTraitTestOps(nil, ops)
+	state := applyActorTraitTestOps(nil, ops, actorOps)
 	context := ActorStateRuntimeContext(system, state, 64*1024)
 	if !strings.Contains(context, "patient") || !strings.Contains(context, "耐心") {
 		t.Fatalf("visible assigned trait should enter runtime context: %s", context)
@@ -182,22 +210,29 @@ func TestActorStateRuntimeContextFiltersVisibilityAndLibrary(t *testing.T) {
 	if strings.Contains(context, "secret") || strings.Contains(context, "未被抽取的配置词条") {
 		t.Fatalf("hidden traits and the reusable library must stay out of runtime context: %s", context)
 	}
-	if len(context) > 64*1024 || !strings.Contains(context, `"kind": "actor_state_runtime"`) || !strings.Contains(context, `"field_id": "状态"`) {
+	if len(context) > 64*1024 || !strings.Contains(context, `"kind": "actor_state_runtime"`) || !strings.Contains(context, `"field_id": "状态"`) || !strings.Contains(context, `"create_templates"`) || !strings.Contains(context, `"template_id": "protagonist"`) {
 		t.Fatalf("runtime context must be sourced and bounded: bytes=%d context=%s", len(context), context)
+	}
+	bounded := ActorStateRuntimeContext(system, state, 512)
+	if bounded == "" || len(bounded) > 512 || !json.Valid([]byte(bounded)) || !strings.Contains(bounded, `"truncated": true`) {
+		t.Fatalf("small runtime context must remain valid bounded JSON: bytes=%d context=%s", len(bounded), bounded)
 	}
 }
 
 func TestActorTraitSnapshotsReplayIdenticallyAcrossBranches(t *testing.T) {
 	system := actorTraitTestSystem()
-	ops, err := BuildActorStateInitialOps(system, []InitialActorTraitRoll{{
-		ActorID: "protagonist", Seed: 31, Selections: []ActorTraitSelection{{PoolID: "nature", TraitIDs: []string{"patient", "bold"}}},
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
 	root := t.TempDir()
 	store := NewStore(root)
-	story, err := store.CreateStory(CreateStoryRequest{Title: "词条重放", Origin: "开始", InitialStateOps: ops})
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title: "词条重放", Origin: "开始", ActorState: &system,
+		InitialTraitRolls: []InitialActorTraitRoll{{
+			ActorID: "protagonist",
+			Seed:    31,
+			Selections: []ActorTraitSelection{{
+				PoolID: "nature", TraitIDs: []string{"patient", "bold"},
+			}},
+		}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,67 +267,6 @@ func TestActorTraitSnapshotsReplayIdenticallyAcrossBranches(t *testing.T) {
 	replayed := actorTraitInstancesFromState(reloaded.State, "protagonist")
 	if len(replayed) != 2 || replayed[0] != want[0] || replayed[1] != want[1] {
 		t.Fatalf("disk replay must remain independent of current library definitions: want=%#v got=%#v", want, replayed)
-	}
-}
-
-func TestActorStateV4MigrationBacksUpBeforeFirstSave(t *testing.T) {
-	novaDir := t.TempDir()
-	dir := filepath.Join(novaDir, "story-director-modules", "actor-states")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, "legacy.json")
-	raw := `{
-  "version": 4,
-  "id": "legacy",
-  "name": "旧状态系统",
-  "actor_state": {
-    "templates": [{"id":"protagonist","name":"主角","fields":[{"id":"status","path":"status","name":"状态","type":"string"}]}],
-    "initial_actors": [{"id":"protagonist","name":"主角","template_id":"protagonist"}]
-  },
-  "opening_selector": {
-    "enabled": true,
-    "trait_pools": [{"id":"origin","name":"出身","draw_count":1,"traits":[{"id":"wanderer","name":"旅人","ops":[{"op":"set","path":"flags.legacy","value":true}]}]}],
-    "initial_state_ops": [{"op":"set","path":"actors.protagonist.state.status","value":"ready"}]
-  },
-  "tags": [],
-  "custom": true
-}`
-	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	library := NewActorStateLibrary(novaDir)
-	migrated, err := library.Get("legacy")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !migrated.NeedsMigration || migrated.SourceVersion != 4 || len(migrated.MigrationWarnings) == 0 {
-		t.Fatalf("legacy module should surface pending migration and warnings: %#v", migrated)
-	}
-	if len(migrated.ActorState.TraitPools) != 1 || migrated.ActorState.InitialActors[0].State["状态"] != "ready" {
-		t.Fatalf("legacy pools and mappable Actor state should migrate: %#v", migrated.ActorState)
-	}
-	if _, err := library.Update("legacy", migrated, migrated.UpdatedAt); err != nil {
-		t.Fatal(err)
-	}
-	backups, err := filepath.Glob(filepath.Join(novaDir, "backups", "state-system-v6", "*", "legacy.json"))
-	if err != nil || len(backups) != 1 {
-		t.Fatalf("expected one timestamped v6 backup: paths=%#v err=%v", backups, err)
-	}
-	backupData, err := os.ReadFile(backups[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(backupData), `"opening_selector"`) || !strings.Contains(string(backupData), `"flags.legacy"`) {
-		t.Fatalf("backup should retain discarded legacy operations: %s", backupData)
-	}
-	savedData, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(savedData), `"opening_selector"`) || !strings.Contains(string(savedData), `"trait_pools"`) {
-		t.Fatalf("saved v5 module should contain only the unified trait library: %s", savedData)
 	}
 }
 

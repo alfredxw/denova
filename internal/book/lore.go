@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -20,7 +21,7 @@ import (
 	"denova/internal/workspacepath"
 )
 
-const loreItemsVersion = 1
+const loreItemsVersion = 2
 
 const (
 	LoreLoadModeResident = "resident"
@@ -39,6 +40,11 @@ const (
 
 	LoreIndexMatchAny = "any"
 	LoreIndexMatchAll = "all"
+
+	LoreTypeSourceHeuristic = "heuristic"
+	LoreTypeSourceSemantic  = "semantic"
+	LoreTypeSourceManual    = "manual"
+	LoreTypeSourceLegacy    = "legacy"
 )
 
 // LoreItem 是用户可编辑的作品资料条目。固定字段只负责索引和展示，正文继续使用 Markdown。
@@ -46,6 +52,7 @@ type LoreItem struct {
 	ID               string          `json:"id"`
 	Enabled          bool            `json:"enabled"`
 	Type             string          `json:"type"`
+	TypeSource       string          `json:"type_source"`
 	Name             string          `json:"name"`
 	Importance       string          `json:"importance"`
 	Tags             []string        `json:"tags"`
@@ -63,6 +70,7 @@ type LoreItemInput struct {
 	ID               string          `json:"id"`
 	Enabled          *bool           `json:"enabled,omitempty"`
 	Type             string          `json:"type"`
+	TypeSource       string          `json:"type_source,omitempty"`
 	Name             string          `json:"name"`
 	Importance       string          `json:"importance"`
 	Tags             []string        `json:"tags"`
@@ -125,7 +133,8 @@ type LoreApplyResult struct {
 }
 
 type LoreStore struct {
-	workspace string
+	workspace  string
+	mutationMu *sync.Mutex
 }
 
 type loreNameAllocator struct {
@@ -149,6 +158,8 @@ type LoreIndexOptions struct {
 
 var ErrLoreRevisionConflict = errors.New("资料已被其他操作更新，请重新加载后再保存")
 
+var loreMutationLocks sync.Map
+
 func (item *LoreItem) UnmarshalJSON(data []byte) error {
 	type loreItemAlias LoreItem
 	raw := struct {
@@ -168,7 +179,16 @@ func (item *LoreItem) UnmarshalJSON(data []byte) error {
 }
 
 func NewLoreStore(workspace string) *LoreStore {
-	return &LoreStore{workspace: workspace}
+	return &LoreStore{workspace: workspace, mutationMu: sharedLoreMutationLock(workspace)}
+}
+
+func sharedLoreMutationLock(workspace string) *sync.Mutex {
+	path := workspacepath.Path(workspace, "lore", "items.json")
+	if absolute, err := filepath.Abs(path); err == nil {
+		path = absolute
+	}
+	lock, _ := loreMutationLocks.LoadOrStore(filepath.Clean(path), &sync.Mutex{})
+	return lock.(*sync.Mutex)
 }
 
 func (s *LoreStore) List() ([]LoreItem, error) {
@@ -223,6 +243,9 @@ func (s *LoreStore) list(includeDisabled bool) ([]LoreItem, error) {
 }
 
 func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return LoreItem{}, err
@@ -232,6 +255,7 @@ func (s *LoreStore) Create(input LoreItemInput) (LoreItem, error) {
 		ID:               input.ID,
 		Enabled:          loreInputEnabled(input.Enabled, true),
 		Type:             input.Type,
+		TypeSource:       firstNonEmptyLoreValue(input.TypeSource, LoreTypeSourceManual),
 		Name:             input.Name,
 		Importance:       input.Importance,
 		Tags:             input.Tags,
@@ -271,6 +295,9 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 	if id == "" {
 		return LoreItem{}, errors.New("资料 ID 不能为空")
 	}
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return LoreItem{}, err
@@ -283,10 +310,15 @@ func (s *LoreStore) Update(id string, input LoreItemInput) (LoreItem, error) {
 			return LoreItem{}, ErrLoreRevisionConflict
 		}
 		previous := collection.Items[i]
+		typeSource := previous.TypeSource
+		if normalizeLoreType(input.Type) != previous.Type {
+			typeSource = LoreTypeSourceManual
+		}
 		updated := normalizeLoreItem(LoreItem{
 			ID:               id,
 			Enabled:          loreInputEnabled(input.Enabled, collection.Items[i].Enabled),
 			Type:             input.Type,
+			TypeSource:       typeSource,
 			Name:             input.Name,
 			Importance:       input.Importance,
 			Tags:             input.Tags,
@@ -342,6 +374,9 @@ func (s *LoreStore) Delete(id string) error {
 	if id == "" {
 		return errors.New("资料 ID 不能为空")
 	}
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return err
@@ -379,6 +414,9 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 	if len(ops) == 0 {
 		return LoreApplyResult{}, errors.New("没有可执行的资料库操作")
 	}
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return LoreApplyResult{}, err
@@ -394,6 +432,7 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 				ID:               op.Item.ID,
 				Enabled:          loreInputEnabled(op.Item.Enabled, true),
 				Type:             op.Item.Type,
+				TypeSource:       firstNonEmptyLoreValue(op.Item.TypeSource, LoreTypeSourceManual),
 				Name:             op.Item.Name,
 				Importance:       op.Item.Importance,
 				Tags:             op.Item.Tags,
@@ -429,10 +468,16 @@ func (s *LoreStore) ApplyOperations(message string, ops []LoreOperation) (LoreAp
 			if idx < 0 {
 				return LoreApplyResult{}, fmt.Errorf("资料不存在: %s", id)
 			}
+			typeName := firstNonEmptyLoreValue(op.Item.Type, next[idx].Type)
+			typeSource := next[idx].TypeSource
+			if normalizeLoreType(typeName) != next[idx].Type {
+				typeSource = LoreTypeSourceManual
+			}
 			updated := normalizeLoreItem(LoreItem{
 				ID:               id,
 				Enabled:          loreInputEnabled(op.Item.Enabled, next[idx].Enabled),
-				Type:             firstNonEmptyLoreValue(op.Item.Type, next[idx].Type),
+				Type:             typeName,
+				TypeSource:       typeSource,
 				Name:             firstNonEmptyLoreValue(op.Item.Name, next[idx].Name),
 				Importance:       firstNonEmptyLoreValue(op.Item.Importance, next[idx].Importance),
 				Tags:             op.Item.Tags,
@@ -524,6 +569,9 @@ func (s *LoreStore) SetImage(id string, image *LoreItemImage) (LoreItem, error) 
 	if id == "" {
 		return LoreItem{}, errors.New("资料 ID 不能为空")
 	}
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
 	collection, err := s.loadOrCreate()
 	if err != nil {
 		return LoreItem{}, err
@@ -675,67 +723,11 @@ func (s *LoreStore) ResidentLoreIndexMarkdown(maxBytes int) (string, error) {
 // It intentionally excludes briefs and bodies so callers can expose many
 // names without treating every lore item as active model context.
 func (s *LoreStore) LoreNameRosterMarkdown(maxBytes int, excludeResident bool) (string, error) {
-	items, err := s.List()
-	if err != nil {
-		return "", err
-	}
-	filtered := make([]LoreItem, 0, len(items))
-	for _, item := range items {
-		if excludeResident && item.LoadMode == LoreLoadModeResident {
-			continue
-		}
-		filtered = append(filtered, item)
-	}
-	sort.SliceStable(filtered, func(i, j int) bool {
-		if rankI, rankJ := loreImportanceRank(filtered[i].Importance), loreImportanceRank(filtered[j].Importance); rankI != rankJ {
-			return rankI < rankJ
-		}
-		if filtered[i].Type != filtered[j].Type {
-			return filtered[i].Type < filtered[j].Type
-		}
-		if filtered[i].Name != filtered[j].Name {
-			return filtered[i].Name < filtered[j].Name
-		}
-		return filtered[i].ID < filtered[j].ID
+	return s.LoreNameCatalogMarkdown(LoreNameCatalogOptions{
+		MaxBytes:        maxBytes,
+		ExcludeResident: excludeResident,
+		OmitWhenEmpty:   true,
 	})
-	if maxBytes <= 0 || maxBytes > LoreIndexDefaultMaxBytes {
-		maxBytes = LoreIndexDefaultMaxBytes
-	}
-	header := fmt.Sprintf("# 资料名称目录\n\n共 %d 条启用资料。目录只用于发现候选；需要简介或正文时使用 list_lore_items / read_lore_items。\n\n", len(filtered))
-	lines := make([]string, 0, len(filtered))
-	for _, item := range filtered {
-		name := strings.Join(strings.Fields(strings.TrimSpace(item.Name)), " ")
-		lines = append(lines, fmt.Sprintf("- [%s/%s] %s\n", item.Type, item.Importance, name))
-	}
-	full := header + strings.Join(lines, "")
-	if len([]byte(full)) <= maxBytes {
-		return strings.TrimSpace(full), nil
-	}
-
-	shortHeader := fmt.Sprintf("# 资料名称目录\n\n共 %d 条。\n", len(filtered))
-	var sb strings.Builder
-	sb.WriteString(shortHeader)
-	kept := 0
-	for index, line := range lines {
-		omitted := len(lines) - index
-		notice := fmt.Sprintf("省略 %d 条；使用 list_lore_items 继续浏览。\n", omitted)
-		if sb.Len()+len([]byte(line))+len([]byte(notice)) > maxBytes {
-			break
-		}
-		sb.WriteString(line)
-		kept++
-	}
-	omitted := len(lines) - kept
-	if omitted > 0 {
-		notice := fmt.Sprintf("省略 %d 条；使用 list_lore_items 继续浏览。\n", omitted)
-		if sb.Len()+len([]byte(notice)) <= maxBytes {
-			sb.WriteString(notice)
-		} else {
-			fallback := fmt.Sprintf("共%d条，省略%d条；用 list_lore_items。", len(lines), omitted)
-			return strings.TrimSpace(truncateStringBytes(fallback, maxBytes)), nil
-		}
-	}
-	return strings.TrimSpace(sb.String()), nil
 }
 
 func (s *LoreStore) ResidentContextMarkdown() (string, error) {
@@ -784,7 +776,11 @@ func (s *LoreStore) ProgressiveContextMarkdown() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	index, err := s.IndexMarkdown()
+	catalog, err := s.LoreNameCatalogMarkdown(LoreNameCatalogOptions{
+		MaxBytes:        LoreIndexDefaultMaxBytes,
+		ExcludeResident: true,
+		OmitWhenEmpty:   true,
+	})
 	if err != nil {
 		return "", err
 	}
@@ -794,83 +790,28 @@ func (s *LoreStore) ProgressiveContextMarkdown() (string, error) {
 		sb.WriteString(resident)
 		sb.WriteString("\n\n")
 	}
-	if index != "" {
-		sb.WriteString("## 资料库索引\n\n")
-		sb.WriteString(index)
+	if catalog != "" {
+		sb.WriteString("## 按需资料名称目录（source: lore/items.json, max 64 KiB）\n\n")
+		sb.WriteString(strings.TrimSpace(strings.TrimPrefix(catalog, "# 资料名称目录")))
 		sb.WriteString("\n\n")
 	}
 	return strings.TrimSpace(sb.String()), nil
 }
 
-// StoryMemoryContextMarkdown returns bounded lore context for interactive story-memory consolidation.
-// It prefers full entries within maxBytes and keeps an index for entries that cannot be expanded.
-func (s *LoreStore) StoryMemoryContextMarkdown(maxBytes int) (string, error) {
-	if maxBytes <= 0 {
-		maxBytes = 32 * 1024
-	}
-	items, err := s.List()
-	if err != nil {
-		return "", err
-	}
-	if len(items) == 0 {
-		return "", nil
-	}
-
-	fullBudget := maxBytes * 3 / 4
-	if fullBudget < maxBytes-8*1024 {
-		fullBudget = maxBytes - 8*1024
-	}
-	if fullBudget < maxBytes/2 {
-		fullBudget = maxBytes / 2
-	}
-
-	includedFull := map[string]bool{}
-	var full strings.Builder
-	for _, item := range items {
-		if strings.TrimSpace(item.Content) == "" {
-			continue
-		}
-		block := formatLoreItemMarkdown(item, true) + "\n\n"
-		if full.Len()+len([]byte(block)) > fullBudget {
-			continue
-		}
-		full.WriteString(block)
-		includedFull[item.ID] = true
-	}
-
-	var sb strings.Builder
-	if strings.TrimSpace(full.String()) != "" {
-		appendLoreContextPart(&sb, "## 资料库完整条目（供故事记忆校准）\n\n", maxBytes)
-		appendLoreContextPart(&sb, strings.TrimSpace(full.String())+"\n\n", maxBytes)
-	}
-
-	remaining := make([]LoreItem, 0)
-	for _, item := range items {
-		if !includedFull[item.ID] {
-			remaining = append(remaining, item)
-		}
-	}
-	if len(remaining) > 0 {
-		if sb.Len() > 0 {
-			appendLoreContextPart(&sb, "\n", maxBytes)
-		}
-		appendLoreContextPart(&sb, "## 资料库索引（未完整注入，整理记忆时不得改写这些既有设定）\n\n", maxBytes)
-		omitted := 0
-		for _, item := range remaining {
-			if !appendLoreContextPart(&sb, formatLoreItemIndexMarkdown(item), maxBytes) {
-				omitted++
-			}
-		}
-		if omitted > 0 {
-			appendLoreContextPart(&sb, fmt.Sprintf("\n（还有 %d 条资料因上下文上限未展开。）\n", omitted), maxBytes)
-		}
-	}
-	return strings.TrimSpace(sb.String()), nil
-}
-
 func (s *LoreStore) Ensure() error {
-	_, err := s.loadOrCreate()
-	return err
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+
+	collection, err := s.loadOrCreate()
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(s.itemsPath()); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return s.save(collection)
 }
 
 func (s *LoreStore) loadOrCreate() (LoreCollection, error) {
@@ -888,24 +829,61 @@ func (s *LoreStore) loadOrCreate() (LoreCollection, error) {
 	if !os.IsNotExist(err) {
 		return LoreCollection{}, err
 	}
-	collection := LoreCollection{Version: loreItemsVersion}
-	if err := s.save(collection); err != nil {
-		return LoreCollection{}, err
-	}
-	return collection, nil
+	return LoreCollection{Version: loreItemsVersion, Items: []LoreItem{}}, nil
 }
 
 func (s *LoreStore) save(collection LoreCollection) error {
 	collection.Version = loreItemsVersion
 	collection.Items = normalizeLoreItems(collection.Items)
-	if err := os.MkdirAll(filepath.Dir(s.itemsPath()), 0o755); err != nil {
+	path := s.itemsPath()
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(collection, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.itemsPath(), append(data, '\n'), 0o644)
+	temp, err := os.CreateTemp(dir, ".items-*.tmp")
+	if err != nil {
+		return fmt.Errorf("创建资料库临时文件失败 path=%s: %w", path, err)
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	closeTemp := func() {
+		if closeErr := temp.Close(); closeErr != nil {
+			log.Printf("[lore-store] close temp file failed path=%s err=%v", tempPath, closeErr)
+		}
+	}
+	if err := temp.Chmod(0o644); err != nil {
+		closeTemp()
+		return fmt.Errorf("设置资料库临时文件权限失败 path=%s: %w", tempPath, err)
+	}
+	if _, err := temp.Write(append(data, '\n')); err != nil {
+		closeTemp()
+		return fmt.Errorf("写入资料库临时文件失败 path=%s: %w", tempPath, err)
+	}
+	if err := temp.Sync(); err != nil {
+		closeTemp()
+		return fmt.Errorf("同步资料库临时文件失败 path=%s: %w", tempPath, err)
+	}
+	if err := temp.Close(); err != nil {
+		return fmt.Errorf("关闭资料库临时文件失败 path=%s: %w", tempPath, err)
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return fmt.Errorf("原子替换资料库文件失败 path=%s: %w", path, err)
+	}
+	if directory, err := os.Open(dir); err == nil {
+		if syncErr := directory.Sync(); syncErr != nil {
+			log.Printf("[lore-store] sync directory failed path=%s err=%v", dir, syncErr)
+		}
+		if closeErr := directory.Close(); closeErr != nil {
+			log.Printf("[lore-store] close directory failed path=%s err=%v", dir, closeErr)
+		}
+	} else {
+		log.Printf("[lore-store] open directory for sync failed path=%s err=%v", dir, err)
+	}
+	return nil
 }
 
 func (s *LoreStore) itemsPath() string {
@@ -933,6 +911,7 @@ func normalizeLoreItems(items []LoreItem) []LoreItem {
 func normalizeLoreItem(item LoreItem) LoreItem {
 	item.ID = normalizeLoreID(item.ID)
 	item.Type = normalizeLoreType(item.Type)
+	item.TypeSource = normalizeLoreTypeSource(item.TypeSource)
 	item.Name = strings.TrimSpace(item.Name)
 	item.Importance = normalizeLoreImportance(item.Importance)
 	item.LoadMode = normalizeLoreLoadMode(item.LoadMode, item.Importance)
@@ -946,6 +925,15 @@ func normalizeLoreItem(item LoreItem) LoreItem {
 	item.Image = normalizeLoreItemImage(item.Image)
 	item.Provenance = normalizeLoreProvenance(item.Provenance)
 	return item
+}
+
+func normalizeLoreTypeSource(value string) string {
+	switch strings.TrimSpace(value) {
+	case LoreTypeSourceHeuristic, LoreTypeSourceSemantic, LoreTypeSourceManual, LoreTypeSourceLegacy:
+		return strings.TrimSpace(value)
+	default:
+		return LoreTypeSourceLegacy
+	}
 }
 
 func normalizeLoreProvenance(value *LoreProvenance) *LoreProvenance {

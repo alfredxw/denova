@@ -24,5 +24,5 @@ describe('StoryPicker', () => {
 })
 
 function story(id: string, title: string) {
-  return { id, title, origin: '', story_teller_id: 'classic', story_director_id: 'default', reply_target_chars: 2000, opening: { mode: 'ai' as const }, created_at: '', updated_at: '', branches: 1, events: 0 }
+  return { id, title, origin: '', story_teller_id: 'classic', story_director_id: 'default', choice_count: 5, reply_target_chars: 2000, opening: { mode: 'ai' as const }, created_at: '', updated_at: '', branches: 1, events: 0 }
 }

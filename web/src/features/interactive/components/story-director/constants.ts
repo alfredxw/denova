@@ -3,21 +3,29 @@ import type { DirectorPlanningTemplates } from '../../types'
 export const STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT = 64 * 1024
 export const STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT = 64 * 1024
 export const STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK = 5
-export const EMPTY_DIRECTOR_PLANNING_TEMPLATES: DirectorPlanningTemplates = { plan: '' }
-export const DIRECTOR_PLAN_REQUIRED_HEADINGS = [
-  '## 正文Agent可读',
-  '## 后台导演私密',
-  '### 阶段钩子与阅读欲望',
-  '### 资料库锚点',
-  '### 核心角色与关系张力',
-  '### 重要势力与阶段阻力',
-  '### 当前场景与行动空间',
-  '### 信息揭示与线索密度',
-  '### 遭遇、检定与代价',
-  '### 爽点、危机与反转',
-  '### 状态连续性',
-  '### 最近分支安排',
-  '### 伏笔与回收',
+export const EMPTY_DIRECTOR_PLANNING_TEMPLATES: DirectorPlanningTemplates = { plan: '', agent_brief: '' }
+export const DIRECTOR_PRIVATE_PLAN_REQUIRED_HEADINGS = [
+  '## 阶段目标与隐藏钩子',
+  '## 资料库锚点',
+  '## 选角覆盖',
+  '## 核心角色与关系张力',
+  '## 重要势力与阶段阻力',
+  '## 当前场景幕后信息',
+  '## 信息揭示与线索密度',
+  '## 遭遇、检定与代价',
+  '## 爽点、危机与反转',
+  '## 状态连续性',
+  '## 最近分支安排',
+  '## 伏笔与回收',
+] as const
+export const DIRECTOR_AGENT_BRIEF_REQUIRED_HEADINGS = [
+  '## 当前目标与可见钩子',
+  '## 当前场景与行动空间',
+  '## 当前角色与可见关系',
+  '## 已公开信息与可发现线索',
+  '## 遭遇、检定与可见代价',
+  '## 状态连续性',
+  '## 最近分支承接',
 ] as const
 export const STORY_DIRECTOR_MAINLINE_OPTIONS = [
   { value: 'soft_guidance', labelKey: 'settingPanel.storyDirector.strategy.mainline.softGuidance', descriptionKey: 'settingPanel.storyDirector.strategy.mainline.softGuidanceDesc' },

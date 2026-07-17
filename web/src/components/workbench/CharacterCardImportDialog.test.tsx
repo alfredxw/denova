@@ -22,6 +22,9 @@ const preview: CharacterCardPreview = {
   opening_truncated_count: 0,
   resident_lore_warning: true,
   resident_lore_warning_threshold_kb: 32,
+  classification_mode: 'heuristic',
+  classification_counts: { character: 2, other: 10 },
+  uncertain_type_count: 10,
   compatibility: {
     capabilities: ['character_lore', 'resident_lore', 'on_demand_lore', 'narrative_openings'],
     sanitized_runtime: ['worldbook_runtime'],
@@ -43,6 +46,7 @@ function Harness({ cardPreview = preview, onImport = vi.fn() }: { cardPreview?: 
       targetMode="new_book"
       bookTitle="命定之诗"
       userCharacterName=""
+      semanticClassification
       previewing={false}
       importing={false}
       error=""
@@ -52,6 +56,7 @@ function Harness({ cardPreview = preview, onImport = vi.fn() }: { cardPreview?: 
       onTargetModeChange={vi.fn()}
       onBookTitleChange={vi.fn()}
       onUserCharacterNameChange={vi.fn()}
+      onSemanticClassificationChange={vi.fn()}
       onImport={onImport}
     />
   )
@@ -65,6 +70,7 @@ describe('CharacterCardImportDialog', () => {
     expect(screen.getByText('启用 326 项')).toBeInTheDocument()
     expect(screen.getByText('常驻 85 项 / 已启用 96 KB')).toBeInTheDocument()
     expect(screen.getByText('酒馆专属加载条件已忽略；关键词仅保留用于资料搜索。')).toBeInTheDocument()
+    expect(screen.getByText('将语义分析用于 10 个名称无法确定类型的条目；关闭后仅使用本地名称规则。')).toBeInTheDocument()
 
     expect(screen.getByText('常驻资料约 107 KB，超过 32 KB 建议值。导入不会受阻；如需减少上下文占用，可在导入后将部分资料改为按需加载。')).toBeInTheDocument()
     const importButton = screen.getByRole('button', { name: '导入' })

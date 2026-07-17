@@ -35,6 +35,12 @@ func TestFileCheckpointStorePersistsValuesByHashedKey(t *testing.T) {
 	if files[0].Name() == key || filepath.Base(files[0].Name()) != files[0].Name() {
 		t.Fatalf("checkpoint key should not become a path segment: %q", files[0].Name())
 	}
+	if err := removeCheckpoint(workspace, AgentKindIDE, key); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := store.Get(context.Background(), key); err != nil || ok {
+		t.Fatalf("removed checkpoint remained readable: ok=%t err=%v", ok, err)
+	}
 }
 
 func TestCheckpointStoreFallsBackToMemoryWithoutWorkspace(t *testing.T) {

@@ -8,6 +8,7 @@ export interface StoryCreateInput {
   story_director_id: string
   module_refs?: StoryDirectorModuleRefs
   reply_target_chars: number
+  choice_count: number
   image_settings?: StoryImageSettings
   opening?: StoryOpeningConfig
   initial_trait_rolls?: InitialActorTraitRoll[]
@@ -15,6 +16,9 @@ export interface StoryCreateInput {
 
 const STORY_OPENING_TEXT_LIMIT = 4000
 export const DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS = 2000
+export const DEFAULT_INTERACTIVE_CHOICE_COUNT = 5
+export const MIN_INTERACTIVE_CHOICE_COUNT = 2
+export const MAX_INTERACTIVE_CHOICE_COUNT = 10
 export const INTERACTIVE_OPENING_PRESET_PATH = 'setting/interactive-openings.json'
 export const LEGACY_INTERACTIVE_OPENING_PRESET_PATH = 'setting/interactive-opening.md'
 export const INTERACTIVE_OPENING_PRESET_UPDATED_EVENT = 'nova:interactive-opening-preset-updated'

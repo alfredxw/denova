@@ -2,9 +2,10 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { toast, type Action } from 'sonner'
 import { deleteLoreItem, generateLoreItemImage, getLoreItems, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
-import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, createStoryMemoryStructure, deleteActorState, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, deleteStoryMemoryStructurePreset, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStoryMemoryStructures, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector, updateStoryMemoryStructure } from '../api'
-import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller } from '../types'
+import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../api'
+import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { defaultRuleTemplates } from './preset-config/ruleTemplates'
 import { newRuleSystemDraft } from './setting-panel/presetResources'
 import { SettingPanel } from './SettingPanel'
@@ -65,6 +66,16 @@ vi.mock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'dark' }),
 }))
 
+vi.mock('sonner', () => ({
+  toast: {
+    dismiss: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn(),
+  },
+}))
+
 vi.mock('@/components/Chat/ConfigManagerChat', () => ({
   ConfigManagerChat: (props: {
     origin?: string
@@ -101,21 +112,18 @@ vi.mock('../api', () => ({
   createInteractiveTeller: vi.fn(),
   createRuleSystem: vi.fn(),
   createStoryDirector: vi.fn(),
-  createStoryMemoryStructure: vi.fn(),
   deleteActorState: vi.fn(),
   deleteEventPackage: vi.fn(),
   deleteImagePreset: vi.fn(),
   deleteInteractiveTeller: vi.fn(),
   deleteRuleSystem: vi.fn(),
   deleteStoryDirector: vi.fn(),
-  deleteStoryMemoryStructurePreset: vi.fn(),
   getActorStates: vi.fn(),
   getEventPackages: vi.fn(),
   getImagePresets: vi.fn(),
   getInteractiveTellers: vi.fn(),
   getRuleSystems: vi.fn(),
   getStoryDirectors: vi.fn(),
-  getStoryMemoryStructures: vi.fn(),
   getStyleReferences: vi.fn(),
   saveStyleReference: vi.fn(),
   updateEventPackage: vi.fn(),
@@ -124,7 +132,6 @@ vi.mock('../api', () => ({
   updateActorState: vi.fn(),
   updateRuleSystem: vi.fn(),
   updateStoryDirector: vi.fn(),
-  updateStoryMemoryStructure: vi.fn(),
 }))
 
 describe('SettingPanel', () => {
@@ -147,21 +154,21 @@ describe('SettingPanel', () => {
     vi.mocked(createStoryDirector).mockReset()
     vi.mocked(updateStoryDirector).mockReset()
     vi.mocked(deleteStoryDirector).mockReset()
-    vi.mocked(getStoryMemoryStructures).mockReset()
-    vi.mocked(createStoryMemoryStructure).mockReset()
-    vi.mocked(updateStoryMemoryStructure).mockReset()
-    vi.mocked(deleteStoryMemoryStructurePreset).mockReset()
     vi.mocked(getActorStates).mockReset()
     vi.mocked(createActorState).mockReset()
     vi.mocked(updateActorState).mockReset()
     vi.mocked(deleteActorState).mockReset()
     vi.mocked(getEventPackages).mockReset()
+    vi.mocked(deleteEventPackage).mockReset()
     vi.mocked(updateEventPackage).mockReset()
     vi.mocked(getRuleSystems).mockReset()
     vi.mocked(updateRuleSystem).mockReset()
     vi.mocked(getStyleReferences).mockReset()
     vi.mocked(updateImagePreset).mockReset()
     vi.mocked(deleteImagePreset).mockReset()
+    vi.mocked(toast.dismiss).mockReset()
+    vi.mocked(toast.error).mockReset()
+    vi.mocked(toast.success).mockReset()
     vi.mocked(getLoreItems).mockResolvedValue([])
     vi.mocked(getInteractiveTellers).mockResolvedValue([teller('classic', '经典叙事'), teller('slow-burn', '慢热叙事')])
     vi.mocked(updateInteractiveTeller).mockImplementation(async (id, input) => ({ ...teller(id, input.name || id), ...input, id, custom: id !== 'classic', builtin_overridden: id === 'classic', updated_at: '2026-01-01T00:00:01Z' }) as Teller)
@@ -170,16 +177,13 @@ describe('SettingPanel', () => {
     vi.mocked(createStoryDirector).mockResolvedValue(storyDirector('default-custom', '默认导演'))
     vi.mocked(updateStoryDirector).mockImplementation(async (id, input) => ({ ...storyDirector(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as StoryDirector)
     vi.mocked(deleteStoryDirector).mockResolvedValue(undefined)
-    vi.mocked(getStoryMemoryStructures).mockResolvedValue([memoryStructure('default', '默认记忆结构')])
-    vi.mocked(createStoryMemoryStructure).mockResolvedValue(memoryStructure('custom-memory', '自定义记忆结构'))
-    vi.mocked(updateStoryMemoryStructure).mockImplementation(async (id, input) => ({ ...memoryStructure(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as StoryMemoryStructureModule)
-    vi.mocked(deleteStoryMemoryStructurePreset).mockResolvedValue(undefined)
     vi.mocked(getActorStates).mockResolvedValue([])
     vi.mocked(deleteActorState).mockResolvedValue(undefined)
     vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
     vi.mocked(updateImagePreset).mockImplementation(async (id, input) => ({ ...imagePreset(id, input.name || id), ...input, id, custom: id !== 'game-cg', builtin_overridden: id === 'game-cg', updated_at: '2026-01-01T00:00:01Z' }) as ImagePreset)
     vi.mocked(deleteImagePreset).mockResolvedValue(undefined)
     vi.mocked(getEventPackages).mockResolvedValue([eventPackage('default', '默认事件包')])
+    vi.mocked(deleteEventPackage).mockResolvedValue(undefined)
     vi.mocked(updateEventPackage).mockImplementation(async (id, input) => ({ ...eventPackage(id, input.name || id), ...input, id, custom: id !== 'default', builtin_overridden: id === 'default', updated_at: '2026-01-01T00:00:01Z' }) as EventPackageModule)
     vi.mocked(getRuleSystems).mockResolvedValue([
       ruleSystem('default', '均衡 DM 检定'),
@@ -598,41 +602,58 @@ describe('SettingPanel', () => {
     const template = [
       '# 自定义导演规划',
       '',
-      '## 正文Agent可读',
-      '### 阶段钩子与阅读欲望',
+      '## 阶段目标与隐藏钩子',
       '钩子',
-      '### 资料库锚点',
+      '## 资料库锚点',
       '资料库角色与势力',
-      '### 核心角色与关系张力',
+      '## 选角覆盖',
+      '标准场景',
+      '## 核心角色与关系张力',
       '核心角色',
-      '### 重要势力与阶段阻力',
+      '## 重要势力与阶段阻力',
       '势力阻力',
-      '### 当前场景与行动空间',
+      '## 当前场景幕后信息',
       '行动空间',
-      '### 信息揭示与线索密度',
+      '## 信息揭示与线索密度',
       '线索密度',
-      '### 遭遇、检定与代价',
+      '## 遭遇、检定与代价',
       '检定代价',
-      '### 爽点、危机与反转',
+      '## 爽点、危机与反转',
       '爽点反转',
-      '### 状态连续性',
+      '## 状态连续性',
       '状态',
-      '### 最近分支安排',
+      '## 最近分支安排',
       '最近分支',
-      '### 伏笔与回收',
+      '## 伏笔与回收',
       '伏笔',
-      '',
-      '## 后台导演私密',
-      '隐藏推进安排',
+    ].join('\n')
+    const agentBriefTemplate = [
+      '# 自定义正文 Agent 简报',
+      '## 当前目标与可见钩子',
+      '目标',
+      '## 当前场景与行动空间',
+      '场景',
+      '## 当前角色与可见关系',
+      '角色',
+      '## 已公开信息与可发现线索',
+      '线索',
+      '## 遭遇、检定与可见代价',
+      '代价',
+      '## 状态连续性',
+      '状态',
+      '## 最近分支承接',
+      '承接',
     ].join('\n')
     const planTemplateField = screen.getByRole('textbox', { name: /director\.md 模板/ })
     expect(planTemplateField).toHaveClass('min-h-[calc(20*1.25rem+1rem)]')
     fireEvent.change(planTemplateField, { target: { value: template } })
+    fireEvent.change(screen.getByRole('textbox', { name: /agent-brief\.md 模板/ }), { target: { value: agentBriefTemplate } })
 
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(updateStoryDirector).toHaveBeenCalled())
     const payload = vi.mocked(updateStoryDirector).mock.calls.at(-1)?.[1] as Partial<StoryDirector>
     expect(payload.strategy?.planning_templates?.plan).toBe(template)
+    expect(payload.strategy?.planning_templates?.agent_brief).toBe(agentBriefTemplate)
   })
 
   it('saves advanced Markdown strategy prompt for story directors', async () => {
@@ -682,35 +703,52 @@ describe('SettingPanel', () => {
     expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '均衡 DM 检定' })).not.toBeInTheDocument()
     expect(updateEventPackage).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith(
+      '当前配置包含无效 JSON',
+      expect.objectContaining({
+        description: '请修复 JSON 后再保存或切换配置。',
+        action: undefined,
+      }),
+    )
   })
 
-  it('edits memory structure metadata in the shared resource identity panel', async () => {
+  it('offers a manual built-in restore for invalid JSON from an old override', async () => {
     const user = userEvent.setup()
+    const overridden = {
+      ...eventPackage('default', '默认事件包'),
+      builtin_overridden: true,
+    }
+    vi.mocked(getEventPackages)
+      .mockResolvedValueOnce([overridden])
+      .mockResolvedValue([eventPackage('default', '默认事件包')])
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: '展开全部目录' }))
-    await user.click(screen.getByRole('button', { name: /默认记忆结构/ }))
+    await user.click(screen.getByRole('button', { name: '事件包' }))
+    await user.click(await screen.findByRole('button', { name: /默认事件包/ }))
+    await user.click(screen.getByRole('button', { name: 'JSON' }))
+    fireEvent.change(screen.getByTestId('monaco-json-editor'), { target: { value: '{' } })
 
-    const metadata = screen.getByTestId('preset-metadata')
-    const nameInput = within(metadata).getByRole('textbox', { name: '名称' })
-    const descriptionInput = within(metadata).getByRole('textbox', { name: '描述' })
-    expect(nameInput).toHaveValue('默认记忆结构')
-    expect(descriptionInput).toHaveValue('默认记忆结构 description')
-    expect(screen.getByText('编辑内置资源会保存为同 ID 覆盖；右上角可恢复内置版本。')).toBeInTheDocument()
-    expect(screen.getByTestId('preset-config-visual-editor')).toHaveClass('preset-config-visual-container')
-    expect(screen.getByTestId('memory-structure-editor')).toHaveClass('preset-visual-editor-shell', 'overflow-hidden')
+    await user.click(screen.getByRole('button', { name: 'TRPG 检定' }))
+    await user.click(await screen.findByRole('button', { name: /均衡 DM 检定/ }))
 
-    await user.clear(nameInput)
-    await user.type(nameInput, '长期记忆结构')
-    await user.clear(descriptionInput)
-    await user.type(descriptionInput, '记录长期承接信息')
-    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
+    expect(deleteEventPackage).not.toHaveBeenCalled()
+    expect(toast.error).toHaveBeenCalledWith(
+      '当前配置包含无效 JSON',
+      expect.objectContaining({
+        description: '当前配置可能是旧版本留下的内置覆盖数据。你可以修复 JSON，或手动恢复内置版本；系统不会自动修改现有数据。',
+        action: expect.objectContaining({ label: '恢复内置' }),
+      }),
+    )
 
-    await waitFor(() => expect(updateStoryMemoryStructure).toHaveBeenCalled())
-    expect(updateStoryMemoryStructure).toHaveBeenCalledWith('default', expect.objectContaining({
-      name: '长期记忆结构',
-      description: '记录长期承接信息',
-    }), '', '/workspace')
+    const toastOptions = vi.mocked(toast.error).mock.calls.at(-1)?.[1]
+    const restoreAction = toastOptions?.action as Action
+    await act(async () => {
+      restoreAction.onClick({} as never)
+      await Promise.resolve()
+    })
+
+    await waitFor(() => expect(deleteEventPackage).toHaveBeenCalledWith('default'))
   })
 
   it('edits TRPG checks through the focused DM-style visual workflow', async () => {
@@ -778,71 +816,6 @@ describe('SettingPanel', () => {
     expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('default_difficulty')
     expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('default_roll_mode')
     expect(visualPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('success_state_ops')
-  })
-
-  it('normalizes legacy TRPG JSON into one supported DM check', async () => {
-    const user = userEvent.setup()
-    render(<PresetModeHarness />)
-
-    await user.click(screen.getByRole('button', { name: '展开全部目录' }))
-    await user.click(screen.getByRole('button', { name: /均衡 DM 检定/ }))
-
-    await user.click(screen.getByRole('button', { name: 'JSON' }))
-    fireEvent.change(screen.getByTestId('monaco-json-editor'), {
-      target: {
-        value: JSON.stringify({
-          rule_templates: [{
-            id: 'legacy',
-            label: '旧规则',
-            kind: 'dice',
-            mode: 'd100_under',
-            dice: '1d100',
-            modifier: 3,
-            difficulty: 55,
-            resource_cost_path: 'resources.hp',
-            success_state_ops: [],
-            category: 'social',
-            default_difficulty: 'hard',
-            default_roll_mode: 'advantage',
-            failure_policy: 'success_at_cost',
-            impact: 'relationship_change',
-            difficulty_guidance: '对方越抗拒越难。',
-            state_effect_guidance: '成功关系 +1，失败关系 -1。',
-            trigger: '谈判触发',
-            must_check_examples: ['逼迫敌对 NPC 让步'],
-            skip_check_examples: ['普通寒暄'],
-          }, {
-            id: 'legacy-extra',
-            label: '旧规则 2',
-            dice: '1d20',
-            failure_policy: 'hard_failure',
-          }],
-        }, null, 2),
-      },
-    })
-    await user.click(screen.getByRole('button', { name: '保存' }))
-    await waitFor(() => expect(updateRuleSystem).toHaveBeenCalledTimes(1))
-    const jsonPayload = vi.mocked(updateRuleSystem).mock.calls.at(-1)?.[1] as Partial<RuleSystemModule>
-    expect(jsonPayload.trpg_system?.rule_templates).toEqual([expect.objectContaining({
-      id: 'legacy',
-      label: '旧规则',
-      dice: '1d20',
-      modifier: 3,
-      failure_policy: 'success_at_cost',
-      difficulty_guidance: '对方越抗拒越难。',
-      state_effect_guidance: '成功关系 +1，失败关系 -1。',
-      trigger: '谈判触发',
-      must_check_examples: ['逼迫敌对 NPC 让步'],
-      skip_check_examples: ['普通寒暄'],
-    })])
-    expect(jsonPayload.trpg_system?.rule_templates).toHaveLength(1)
-    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('impact')
-    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('kind')
-    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('category')
-    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('default_difficulty')
-    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('default_roll_mode')
-    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('resource_cost_path')
-    expect(jsonPayload.trpg_system?.rule_templates?.[0]).not.toHaveProperty('success_state_ops')
   })
 
   it('starts custom TRPG check modules from built-in rule templates', () => {
@@ -1189,7 +1162,6 @@ function storyDirector(id: string, name: string): StoryDirector {
       event_package_ids: ['default'],
       rule_system_id: 'default',
       actor_state_id: 'default',
-      memory_structure_id: 'default',
       image_preset_id: 'game-cg',
     },
     strategy: { enabled: true, mainline_strength: 'balanced' },
@@ -1232,31 +1204,12 @@ function isBuiltinRuleSystemID(id: string) {
   return BUILTIN_RULE_SYSTEM_IDS.has(id)
 }
 
-function memoryStructure(id: string, name: string): StoryMemoryStructureModule {
-  return {
-    version: 1,
-    id,
-    name,
-    description: `${name} description`,
-    structures: [{
-      id: 'plot',
-      name: '剧情纪要',
-      description: '',
-      generation_instruction: '',
-      mode: 'append',
-      enabled: true,
-      fields: [{ id: 'event', name: '事件', enabled: true, order: 10 }],
-      order: 10,
-    }],
-    custom: id !== 'default',
-  }
-}
-
 function loreItem(id: string, name: string, type: LoreItem['type'] = 'character'): LoreItem {
   return {
     id,
     enabled: true,
     type,
+    type_source: 'manual',
     name,
     importance: 'important',
     load_mode: 'auto',

@@ -85,7 +85,6 @@ type RuleStateBindingInput struct {
 	ActorID       string  `json:"actor_id,omitempty"`
 	TemplateID    string  `json:"template_id,omitempty"`
 	FieldID       string  `json:"field_id,omitempty"`
-	Path          string  `json:"-"`
 	RawValue      float64 `json:"raw_value"`
 	ComputedValue float64 `json:"computed_value"`
 	Effect        string  `json:"effect,omitempty"`
@@ -94,7 +93,6 @@ type RuleStateBindingInput struct {
 type RuleStateBindingWarning struct {
 	ActorID string `json:"actor_id,omitempty"`
 	FieldID string `json:"field_id,omitempty"`
-	Path    string `json:"-"`
 	Reason  string `json:"reason"`
 }
 
@@ -109,7 +107,7 @@ func normalizeRuleStateBindings(values []RuleStateBinding) []RuleStateBinding {
 			value.ID = fmt.Sprintf("binding-%d", i+1)
 		}
 		value.Label = trimBytes(firstNonEmptyString(value.Label, value.ID), 256)
-		value.Trigger = trimBytes(value.Trigger, maxTurnBriefTextBytes)
+		value.Trigger = trimBytes(value.Trigger, maxInteractiveTextBytes)
 		value.ActorTemplateID = normalizeActorStateID(value.ActorTemplateID)
 		value.TargetTemplateID = normalizeActorStateID(value.TargetTemplateID)
 		value.Modifiers = normalizeRuleStateBindingModifiers(value.Modifiers)
@@ -177,8 +175,8 @@ func resolvedRuleStateFieldID(system StoryDirectorActorStateSystem, templateID, 
 }
 
 func normalizeRuleStateBindingModifiers(values []RuleStateBindingModifier) []RuleStateBindingModifier {
-	if len(values) > maxTurnBriefListItems {
-		values = values[:maxTurnBriefListItems]
+	if len(values) > maxInteractiveListItems {
+		values = values[:maxInteractiveListItems]
 	}
 	out := make([]RuleStateBindingModifier, 0, len(values))
 	for _, value := range values {
@@ -202,15 +200,15 @@ func normalizeRuleStateBindingModifiers(values []RuleStateBindingModifier) []Rul
 }
 
 func normalizeRuleNarrativeStateRefs(values []RuleNarrativeStateRef) []RuleNarrativeStateRef {
-	if len(values) > maxTurnBriefListItems {
-		values = values[:maxTurnBriefListItems]
+	if len(values) > maxInteractiveListItems {
+		values = values[:maxInteractiveListItems]
 	}
 	out := make([]RuleNarrativeStateRef, 0, len(values))
 	for _, value := range values {
 		value.Source = normalizeRuleNarrativeSource(value.Source)
 		value.FieldID = normalizeActorStateFieldName(value.FieldID)
 		value.Usage = normalizeRuleNarrativeUsage(value.Usage)
-		value.Guidance = trimBytes(value.Guidance, maxTurnBriefTextBytes)
+		value.Guidance = trimBytes(value.Guidance, maxInteractiveTextBytes)
 		if value.Source == "" || (value.Source != "scene" && value.FieldID == "") {
 			continue
 		}
@@ -223,8 +221,8 @@ func normalizeRuleNarrativeStateRefs(values []RuleNarrativeStateRef) []RuleNarra
 }
 
 func normalizeRuleOutcomeStateChangeBindings(values []RuleOutcomeStateChangeBinding) []RuleOutcomeStateChangeBinding {
-	if len(values) > maxTurnBriefListItems {
-		values = values[:maxTurnBriefListItems]
+	if len(values) > maxInteractiveListItems {
+		values = values[:maxInteractiveListItems]
 	}
 	out := make([]RuleOutcomeStateChangeBinding, 0, len(values))
 	for _, value := range values {
@@ -242,8 +240,8 @@ func normalizeRuleOutcomeStateChangeBindings(values []RuleOutcomeStateChangeBind
 }
 
 func normalizeRuleComputedStateChanges(values []RuleComputedStateChange) []RuleComputedStateChange {
-	if len(values) > maxTurnBriefListItems {
-		values = values[:maxTurnBriefListItems]
+	if len(values) > maxInteractiveListItems {
+		values = values[:maxInteractiveListItems]
 	}
 	out := make([]RuleComputedStateChange, 0, len(values))
 	for _, value := range values {
@@ -263,8 +261,8 @@ func normalizeRuleComputedStateChanges(values []RuleComputedStateChange) []RuleC
 }
 
 func normalizeRuleStateChangeFormula(value RuleStateChangeFormula) RuleStateChangeFormula {
-	if len(value.Terms) > maxTurnBriefListItems {
-		value.Terms = value.Terms[:maxTurnBriefListItems]
+	if len(value.Terms) > maxInteractiveListItems {
+		value.Terms = value.Terms[:maxInteractiveListItems]
 	}
 	terms := make([]RuleStateFormulaTerm, 0, len(value.Terms))
 	for _, term := range value.Terms {
@@ -341,8 +339,8 @@ func normalizeRuleStateBindingAuditPointer(value *RuleStateBindingAudit) *RuleSt
 }
 
 func normalizeRuleStateBindingInputs(values []RuleStateBindingInput) []RuleStateBindingInput {
-	if len(values) > maxTurnBriefListItems {
-		values = values[:maxTurnBriefListItems]
+	if len(values) > maxInteractiveListItems {
+		values = values[:maxInteractiveListItems]
 	}
 	out := make([]RuleStateBindingInput, 0, len(values))
 	for _, value := range values {
@@ -350,13 +348,6 @@ func normalizeRuleStateBindingInputs(values []RuleStateBindingInput) []RuleState
 		value.ActorID = normalizeActorStateID(value.ActorID)
 		value.TemplateID = normalizeActorStateID(value.TemplateID)
 		value.FieldID = normalizeActorStateFieldName(value.FieldID)
-		if value.FieldID == "" {
-			if actorID, fieldID, ok := parseActorStateFieldPath(value.Path); ok {
-				value.ActorID = firstNonEmptyString(value.ActorID, actorID)
-				value.FieldID = fieldID
-			}
-		}
-		value.Path = ""
 		value.Effect = normalizeRuleBindingEffect(value.Effect)
 		if value.Source == "" && value.FieldID == "" {
 			continue
@@ -370,20 +361,13 @@ func normalizeRuleStateBindingInputs(values []RuleStateBindingInput) []RuleState
 }
 
 func normalizeRuleStateBindingWarnings(values []RuleStateBindingWarning) []RuleStateBindingWarning {
-	if len(values) > maxTurnBriefListItems {
-		values = values[:maxTurnBriefListItems]
+	if len(values) > maxInteractiveListItems {
+		values = values[:maxInteractiveListItems]
 	}
 	out := make([]RuleStateBindingWarning, 0, len(values))
 	for _, value := range values {
 		value.ActorID = normalizeActorStateID(value.ActorID)
 		value.FieldID = normalizeActorStateFieldName(value.FieldID)
-		if value.ActorID == "" || value.FieldID == "" {
-			if actorID, fieldID, ok := parseActorStateFieldPath(value.Path); ok {
-				value.ActorID = actorID
-				value.FieldID = fieldID
-			}
-		}
-		value.Path = ""
 		value.Reason = trimBytes(value.Reason, 512)
 		if value.ActorID == "" && value.FieldID == "" && value.Reason == "" {
 			continue
@@ -735,7 +719,7 @@ func normalizeRuleBindingRounding(value string) string {
 
 func normalizeRuleNarrativeUsage(value string) string {
 	switch normalizeTurnCheckEnumToken(value) {
-	case "check_decision", "difficulty", "outcome_design", "prose", "memory":
+	case "check_decision", "difficulty", "outcome_design", "prose":
 		return normalizeTurnCheckEnumToken(value)
 	default:
 		return "outcome_design"

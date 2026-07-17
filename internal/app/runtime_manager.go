@@ -161,9 +161,8 @@ func (s *WorkspaceRuntimeManager) UpdateBookInfo(path string, title, author, des
 	if title != "" {
 		meta.Title = title
 	}
-	if author != "" {
-		meta.Author = author
-	}
+	// author 允许设为空字符串（清除作者），所以总是更新。
+	meta.Author = author
 	// description 允许设为空字符串（清除简介），所以总是更新。
 	meta.Description = description
 	return s.app.bookMetaStore.Write(absPath, meta)
@@ -809,7 +808,7 @@ func appAgentIdleTimeoutSeconds(v *int) int {
 }
 
 func appAgentToolResultLimitKB(v *int) int {
-	if v == nil || *v < 0 {
+	if v == nil || *v <= 0 {
 		return config.DefaultAgentToolResultLimitKB
 	}
 	return *v
@@ -817,7 +816,7 @@ func appAgentToolResultLimitKB(v *int) int {
 
 func agentToolResultMaxBytes(cfg config.Config) int {
 	if cfg.AgentToolResultLimitKB <= 0 {
-		return 0
+		return config.DefaultAgentToolResultLimitKB * 1024
 	}
 	return cfg.AgentToolResultLimitKB * 1024
 }

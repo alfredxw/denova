@@ -4,12 +4,10 @@ import { describe, expect, it, vi } from 'vitest'
 import type {
   EventPackageModule,
   StoryDirectorActorStateSystem,
-  StoryMemoryStructure,
 } from '../../types'
 import {
   ActorStateVisualEditor,
   EventPackageVisualEditor,
-  MemoryStructureVisualEditor,
 } from './visual-editors'
 
 describe('preset visual editor selection stability', () => {
@@ -59,34 +57,5 @@ describe('preset visual editor selection stability', () => {
     expect(latest?.initial_actors?.[0].template_id).toBe('protagonist')
     expect(screen.getByTestId('actor-state-templates-trigger-protagonist')).toHaveAttribute('data-state', 'active')
     expect(screen.getByDisplayValue('player')).toBeInTheDocument()
-  })
-
-  it('keeps a memory structure and field open while cascading a keyed field id', async () => {
-    let latest: StoryMemoryStructure[] = []
-    function Harness() {
-      const [value, setValue] = useState<StoryMemoryStructure[]>([{
-        id: 'memory_one',
-        name: 'Memory One',
-        mode: 'keyed',
-        key_field_id: 'key_one',
-        fields: [{ id: 'key_one', name: 'Key One', order: 10 }],
-        order: 10,
-      }])
-      latest = value
-      return <MemoryStructureVisualEditor value={value} onChange={setValue} onValidityChange={vi.fn()} resetKey="memory" />
-    }
-
-    render(<Harness />)
-    const structureIdInput = await screen.findByDisplayValue('memory_one')
-    const fieldIdInput = await screen.findByDisplayValue('key_one')
-
-    fireEvent.change(structureIdInput, { target: { value: 'memory_renamed' } })
-    fireEvent.change(fieldIdInput, { target: { value: 'key_renamed' } })
-
-    expect(latest[0].id).toBe('memory_renamed')
-    expect(latest[0].fields[0].id).toBe('key_renamed')
-    expect(latest[0].key_field_id).toBe('key_renamed')
-    expect(screen.getByTestId('memory-structures-trigger-memory_renamed')).toHaveAttribute('data-state', 'active')
-    expect(screen.getByDisplayValue('key_renamed')).toBeInTheDocument()
   })
 })

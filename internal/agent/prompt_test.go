@@ -27,7 +27,7 @@ func TestBuildInteractiveStoryInstructionIsIsolatedFromIDEPrompt(t *testing.T) {
 			t.Fatalf("interactive story instruction should not contain IDE-only prompt %q:\n%s", forbidden, instruction)
 		}
 	}
-	for _, required := range []string{"游戏模式", "互动文字冒险", "只输出本回合可展示在故事舞台上的故事正文", "隐藏状态块", "快捷选择块", "禁止使用写文件工具", "write_todos", "<invoke>", "文字小说 RPG", "回合裁定循环", "可选择", "一致性自检", "list_lore_items", "read_lore_items", "list_interactive_memories", "read_interactive_memories"} {
+	for _, required := range []string{"游戏模式", "互动文字冒险", "只输出本回合可展示在故事舞台上的故事正文", "隐藏状态块", "快捷选择块", "禁止使用写文件工具", "write_todos", "<invoke>", "文字小说 RPG", "回合裁定循环", "可选择", "一致性自检", "list_lore_items", "read_lore_items", "search_story_history"} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("interactive story instruction should contain %q:\n%s", required, instruction)
 		}
@@ -263,7 +263,7 @@ func TestSystemPromptSourceSummaryUsesStructuredStateParts(t *testing.T) {
 	}
 }
 
-func TestBuiltinAgentPromptsExposeInteractiveMemoryToolsWithoutCustomPrompt(t *testing.T) {
+func TestBuiltinAgentPromptsExposeTurnHistorySearchWithoutCustomPrompt(t *testing.T) {
 	state := book.NewState(t.TempDir())
 	cfg := &config.Config{
 		Workspace: state.Workspace(),
@@ -273,7 +273,7 @@ func TestBuiltinAgentPromptsExposeInteractiveMemoryToolsWithoutCustomPrompt(t *t
 	}
 	builtin := BuiltinAgentPrompts(cfg, state, IDEStoryTeller{})
 	got := builtin.InteractiveStory.SystemPrompt
-	for _, required := range []string{"list_lore_items", "read_lore_items", "list_interactive_memories", "read_interactive_memories"} {
+	for _, required := range []string{"list_lore_items", "read_lore_items", "search_story_history", "turn_id"} {
 		if !strings.Contains(got, required) {
 			t.Fatalf("builtin interactive prompt missing %q:\n%s", required, got)
 		}
@@ -290,8 +290,8 @@ func TestBuiltinAgentPromptsExposeInteractiveMemoryToolsWithoutCustomPrompt(t *t
 	if !strings.Contains(interactive.OutputProtocol, "只输出本回合可展示在故事舞台上的故事正文") {
 		t.Fatalf("output protocol should require direct narrative text: %#v", interactive)
 	}
-	if !strings.Contains(interactive.EditableSystemPrompt, "list_interactive_memories") || !strings.Contains(interactive.EditableSystemPrompt, "read_interactive_memories") {
-		t.Fatalf("editable prompt should include memory recall flow: %#v", interactive)
+	if !strings.Contains(interactive.EditableSystemPrompt, "search_story_history") || !strings.Contains(interactive.EditableSystemPrompt, "turn_id") {
+		t.Fatalf("editable prompt should include turn history recall flow: %#v", interactive)
 	}
 	if !strings.Contains(interactive.EditableSystemPrompt, "story 级运行参数") || strings.Contains(interactive.EditableSystemPrompt, "2000 个中文字") {
 		t.Fatalf("editable prompt should describe dynamic story reply target without fixed fallback: %s", interactive.EditableSystemPrompt)
@@ -307,8 +307,8 @@ func TestBuiltinAgentPromptsExposeInteractiveMemoryToolsWithoutCustomPrompt(t *t
 	if flowSource == nil || !flowSource.Editable || flowSource.Field != "flow_prompt" {
 		t.Fatalf("flow source should be editable flow_prompt: %#v", flowSource)
 	}
-	if !strings.Contains(flowSource.Content, "list_interactive_memories") || !strings.Contains(flowSource.Content, "read_interactive_memories") {
-		t.Fatalf("flow source should include memory recall flow: %#v", flowSource)
+	if !strings.Contains(flowSource.Content, "search_story_history") || !strings.Contains(flowSource.Content, "turn_id") {
+		t.Fatalf("flow source should include turn history recall flow: %#v", flowSource)
 	}
 	customSource := findPromptSource(interactiveSources, "custom")
 	if customSource == nil || !customSource.Editable || customSource.Field != "system_prompt" {
@@ -324,18 +324,20 @@ func TestBuiltinInteractiveDirectorPromptUsesMaintenanceToolContract(t *testing.
 	got := builtin.InteractiveDirector.SystemPrompt
 	for _, required := range []string{
 		"后台导演 Agent",
-		"TurnResult",
-		"State Reducer",
-		"Memory Recorder",
+		"Turn 与 StateDelta",
+		"search_story_history",
+		"turn_id",
 		"director.md",
-		"PlanDecision",
-		"只能使用 read_file、write_file、edit_file",
+		"submit_director_plan_update",
+		"keep 使用空 updates",
+		"普通更新默认只改 agent-brief.md",
+		"只重试 retry_documents",
 	} {
 		if !strings.Contains(got, required) {
 			t.Fatalf("builtin interactive director prompt missing %q:\n%s", required, got)
 		}
 	}
-	for _, legacy := range []string{"互动记忆 Agent", "字段包括 state_ops", "apply_actor_state_patch"} {
+	for _, legacy := range []string{"Memory Recorder", "字段包括 state_ops", "apply_actor_state_patch", "只能使用 read_file、write_file、edit_file"} {
 		if strings.Contains(got, legacy) {
 			t.Fatalf("builtin interactive director prompt should not contain legacy contract %q:\n%s", legacy, got)
 		}
@@ -350,17 +352,17 @@ func TestBuiltinContextCompactionPromptIsConfigurableInAgentsView(t *testing.T) 
 	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "互动小说上下文压缩器") {
 		t.Fatalf("builtin context compaction prompt missing role:\n%s", builtin.ContextCompaction.SystemPrompt)
 	}
-	for _, required := range []string{"【事件时间线】", "【长期影响账本】", "【当前阶段快照】", "目标长度由用户消息配置"} {
+	for _, required := range []string{"【历史事件时间线】", "【历史因果与来源】", "【未闭环事项】", "目标长度由用户消息配置"} {
 		if !strings.Contains(builtin.ContextCompaction.SystemPrompt, required) {
 			t.Fatalf("builtin context compaction prompt missing %q:\n%s", required, builtin.ContextCompaction.SystemPrompt)
 		}
 	}
-	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "plot_summary") {
-		t.Fatalf("builtin context compaction prompt should mention configured target length:\n%s", builtin.ContextCompaction.SystemPrompt)
+	if !strings.Contains(builtin.ContextCompaction.SystemPrompt, "checkpoint 不是新的事实真源") {
+		t.Fatalf("builtin context compaction prompt should define the checkpoint boundary:\n%s", builtin.ContextCompaction.SystemPrompt)
 	}
 
 	blocks := BuiltinAgentPromptBlocks(cfg, state, IDEStoryTeller{})
-	if !strings.Contains(blocks.ContextCompaction.EditableSystemPrompt, "【事件时间线】") {
+	if !strings.Contains(blocks.ContextCompaction.EditableSystemPrompt, "【历史事件时间线】") {
 		t.Fatalf("context compaction editable prompt missing target rule:\n%s", blocks.ContextCompaction.EditableSystemPrompt)
 	}
 
@@ -387,7 +389,7 @@ func TestInteractiveFlowSourceKeepsRecallFlowWithCreatorPrompt(t *testing.T) {
 	if flowSource == nil {
 		t.Fatal("interactive story flow source missing")
 	}
-	for _, required := range []string{"工具化召回流程", "list_lore_items", "read_lore_items", "list_interactive_memories", "read_interactive_memories"} {
+	for _, required := range []string{"工具化召回流程", "list_lore_items", "read_lore_items", "search_story_history", "turn_id"} {
 		if !strings.Contains(flowSource.Content, required) {
 			t.Fatalf("flow source should keep %q with creator prompt:\n%s", required, flowSource.Content)
 		}

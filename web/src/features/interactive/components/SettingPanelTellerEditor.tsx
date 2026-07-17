@@ -20,7 +20,7 @@ import { getStyleReferences, readStyleReferenceFile, saveStyleReference, updateS
 import type { StyleReference, StyleReferenceFileDocument, StyleRule, Teller, TellerPromptSlot } from '../types'
 import { PresetEmptyState, PresetMetadataPanel } from './preset-config/PresetEditorChrome'
 
-const TELLER_TARGET_OPTIONS = [{ value: 'system' }, { value: 'turn_context' }, { value: 'state_memory' }] as const
+const TELLER_TARGET_OPTIONS = [{ value: 'system' }, { value: 'turn_context' }] as const
 
 type TellerTarget = TellerPromptSlot['target']
 const actionButtonClassName = 'nova-nav-item gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
@@ -954,13 +954,6 @@ function targetTranslationKeys(target: TellerTarget) {
       label: 'settingPanel.target.system.label',
       summary: 'settingPanel.target.system.summary',
       detail: 'settingPanel.target.system.detail',
-    }
-  }
-  if (target === 'state_memory') {
-    return {
-      label: 'settingPanel.target.stateMemory.label',
-      summary: 'settingPanel.target.stateMemory.summary',
-      detail: 'settingPanel.target.stateMemory.detail',
     }
   }
   return {

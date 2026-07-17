@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/cloudwego/eino/adk"
@@ -33,27 +32,19 @@ type interactiveStoryToolMiddleware struct {
 
 type interactiveDirectorPlanFileMiddleware struct {
 	*adk.BaseChatModelAgentMiddleware
-	allowedPaths map[string]bool
-	task         string
+	task string
 }
 
 func newInteractiveStoryToolMiddleware() *interactiveStoryToolMiddleware {
 	return &interactiveStoryToolMiddleware{}
 }
 
-func newInteractiveDirectorPlanFileMiddleware(allowedPaths []string, tasks ...string) *interactiveDirectorPlanFileMiddleware {
-	allowed := make(map[string]bool, len(allowedPaths))
-	for _, path := range allowedPaths {
-		cleaned := cleanDirectorPlanToolPath(path)
-		if cleaned != "" {
-			allowed[cleaned] = true
-		}
-	}
+func newInteractiveDirectorPlanFileMiddleware(tasks ...string) *interactiveDirectorPlanFileMiddleware {
 	task := ""
 	if len(tasks) > 0 {
 		task = strings.TrimSpace(tasks[0])
 	}
-	return &interactiveDirectorPlanFileMiddleware{allowedPaths: allowed, task: task}
+	return &interactiveDirectorPlanFileMiddleware{task: task}
 }
 
 func (m *interactiveDirectorPlanFileMiddleware) WrapInvokableToolCall(
@@ -82,14 +73,8 @@ func (m *interactiveDirectorPlanFileMiddleware) WrapStreamableToolCall(
 	}, nil
 }
 
-func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name, args string) string {
+func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name, _ string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
-	if m != nil && m.task == "memory_update" {
-		if name == "apply_story_memory_patches" {
-			return ""
-		}
-		return fmt.Sprintf("[tool error] Memory Recorder 只能使用 apply_story_memory_patches，拒绝工具: %s", name)
-	}
 	if m != nil && m.task == "state_schema_initialization" {
 		switch name {
 		case "list_lore_items", "read_lore_items", "submit_state_schema_adaptation":
@@ -99,33 +84,15 @@ func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name,
 		}
 	}
 	switch name {
-	case "read_event_cards", "list_lore_items", "read_lore_items":
+	case "read_event_cards", "list_lore_items", "read_lore_items", "search_story_history", submitDirectorPlanUpdateToolName:
 		return ""
 	case "read_file", "write_file", "edit_file":
-		target := cleanDirectorPlanToolPath(toolPathFromArgs(args))
-		if target == "" {
-			return fmt.Sprintf("[tool error] interactive_director 工具 %q 必须提供 file_path。", name)
-		}
-		if m == nil || !m.allowedPaths[target] {
-			return fmt.Sprintf("[tool error] interactive_director 只能访问当前分支导演规划文件，拒绝路径: %s", target)
-		}
-		return ""
-	case "apply_actor_state_patch", "apply_story_memory_patches":
-		return fmt.Sprintf("[tool error] Director 只维护 ArcPlan，不能写 Actor State 或 Story Memory，拒绝工具: %s", name)
+		return fmt.Sprintf("[tool error] Director 规划文档已在上下文中完整提供；请用 %s 提交带 base_hash 的 Markdown Patch，拒绝工具: %s", submitDirectorPlanUpdateToolName, name)
+	case "apply_actor_state_patch":
+		return fmt.Sprintf("[tool error] Director 只维护 ArcPlan，不能写 Actor State，拒绝工具: %s", name)
 	default:
-		return fmt.Sprintf("[tool error] Director 只能使用规划文件、资料库只读和事件卡工具，拒绝工具: %s", name)
+		return fmt.Sprintf("[tool error] Director 只能使用 %s、历史检索、资料库只读和事件卡工具，拒绝工具: %s", submitDirectorPlanUpdateToolName, name)
 	}
-}
-
-func cleanDirectorPlanToolPath(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return ""
-	}
-	if abs, err := filepath.Abs(path); err == nil {
-		path = abs
-	}
-	return filepath.Clean(path)
 }
 
 func (m *interactiveStoryToolMiddleware) WrapInvokableToolCall(
@@ -177,7 +144,7 @@ func isInteractiveStoryWriteTool(name string) bool {
 }
 
 func interactiveStoryWriteToolBlockedMessage(name string) string {
-	return fmt.Sprintf("[tool error] 游戏模式禁止使用写文件工具 %q。请不要修改 workspace 文件；先用 submit_interactive_turn_result 提交隐藏回合结果，再只输出本回合故事正文。", name)
+	return fmt.Sprintf("[tool error] 游戏模式禁止使用写文件工具 %q。请不要修改 workspace 文件；先直接输出完整故事正文，再分别用 submit_actor_state_patches 与 submit_choices 提交一致的隐藏回合结果。", name)
 }
 
 type ToolDecision struct {

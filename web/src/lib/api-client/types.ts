@@ -85,9 +85,8 @@ export interface PublicRuleRoll {
 }
 
 export interface PublicRuleStateChange {
-	actor_id?: string
-	field_id?: string
-	path?: string
+  actor_id: string
+  field_id: string
   change: number
   reason?: string
 }
@@ -367,6 +366,9 @@ export interface CharacterCardImportResult {
   book_meta?: BookMeta
   message: string
   resident_lore_bytes: number
+  classification_mode: LoreClassificationMode
+  classification_counts: Partial<Record<LoreItem['type'], number>>
+  uncertain_type_count: number
 }
 
 export interface CharacterCardPreview {
@@ -388,6 +390,9 @@ export interface CharacterCardPreview {
   opening_truncated_count: number
   resident_lore_warning: boolean
   resident_lore_warning_threshold_kb: number
+  classification_mode: LoreClassificationMode
+  classification_counts: Partial<Record<LoreItem['type'], number>>
+  uncertain_type_count: number
 }
 
 interface CharacterCardCompatibilityReport {
@@ -531,6 +536,7 @@ export interface LoreItem {
   id: string
   enabled: boolean
   type: 'character' | 'world' | 'location' | 'faction' | 'rule' | 'item' | 'other'
+  type_source: 'heuristic' | 'semantic' | 'manual' | 'legacy'
   name: string
   importance: 'major' | 'important' | 'minor'
   load_mode: 'resident' | 'auto' | 'manual'
@@ -547,6 +553,43 @@ export interface LoreItem {
     source_record_id: string
     source_hash: string
   }
+}
+
+export type LoreClassificationMode = 'heuristic' | 'semantic'
+
+export interface LoreClassificationPreviewRequest {
+  item_ids?: string[]
+  mode?: LoreClassificationMode
+}
+
+export interface LoreClassificationPreviewItem {
+  id: string
+  name: string
+  current_type: LoreItem['type']
+  current_type_source: LoreItem['type_source']
+  suggested_type: LoreItem['type']
+  confidence: 'high' | 'medium' | 'low'
+  reason?: string
+  suggestion_source: 'heuristic' | 'semantic'
+}
+
+export interface LoreClassificationPreview {
+  revision: string
+  mode: LoreClassificationMode
+  items: LoreClassificationPreviewItem[]
+  counts: Partial<Record<LoreItem['type'], number>>
+  warning?: string
+}
+
+export interface LoreClassificationApplyRequest {
+  revision: string
+  changes: Array<{ id: string; type: LoreItem['type'] }>
+}
+
+export interface LoreTypeApplyResult {
+  revision: string
+  items: LoreItem[]
+  updated: LoreItem[]
 }
 
 interface LoreItemImage {

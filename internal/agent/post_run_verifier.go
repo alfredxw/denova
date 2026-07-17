@@ -67,7 +67,7 @@ func verifyMutation(bookService *book.Service, mutation ToolMutation) []PostRunV
 			Message: fmt.Sprintf("%s did not expose a target path", mutation.ToolName),
 		}}
 	}
-	abs, err := book.SafePath(bookService.Workspace(), target)
+	abs, relativeTarget, err := resolveVerifiedMutationTarget(bookService.Workspace(), target)
 	if err != nil {
 		return []PostRunVerificationCheck{{
 			Type:    "path",
@@ -92,13 +92,37 @@ func verifyMutation(bookService *book.Service, mutation ToolMutation) []PostRunV
 		}
 		checks = append(checks, PostRunVerificationCheck{Type: "path_exists", Target: target, Status: "ok", Message: kind + " exists"})
 	}
-	if strings.HasPrefix(target, "chapters/") && !isChapterContentPath(target) {
+	if strings.HasPrefix(relativeTarget, "chapters/") && !isChapterContentPath(relativeTarget) {
 		checks = append(checks, PostRunVerificationCheck{Type: "chapter_path", Target: target, Status: "warning", Message: "chapter writes should use .md or .txt files under chapters/"})
 	}
-	if target == "setting/character-states.md" || target == "progress.md" {
+	if relativeTarget == "setting/character-states.md" || relativeTarget == "progress.md" {
 		checks = append(checks, PostRunVerificationCheck{Type: "state_sync", Target: target, Status: "ok", Message: "tracked writing-state file"})
 	}
 	return checks
+}
+
+func resolveVerifiedMutationTarget(workspace, target string) (absolutePath, relativeTarget string, err error) {
+	workspace = strings.TrimSpace(workspace)
+	target = strings.TrimSpace(target)
+	if !filepath.IsAbs(target) {
+		absolutePath, err = book.SafePath(workspace, target)
+		return absolutePath, filepath.ToSlash(filepath.Clean(target)), err
+	}
+
+	absoluteWorkspace, err := filepath.Abs(workspace)
+	if err != nil {
+		return "", "", fmt.Errorf("解析 workspace 路径失败: %w", err)
+	}
+	cleanTarget := filepath.Clean(target)
+	relativeTarget, err = filepath.Rel(filepath.Clean(absoluteWorkspace), cleanTarget)
+	if err != nil || relativeTarget == "." || relativeTarget == ".." || strings.HasPrefix(relativeTarget, ".."+string(filepath.Separator)) || filepath.IsAbs(relativeTarget) {
+		return "", "", errors.New("路径不在 workspace 范围内")
+	}
+	absolutePath, err = book.SafePath(absoluteWorkspace, filepath.ToSlash(relativeTarget))
+	if err != nil {
+		return "", "", err
+	}
+	return absolutePath, filepath.ToSlash(relativeTarget), nil
 }
 
 func verifyLoreMutation(workspace string, mutation ToolMutation) []PostRunVerificationCheck {

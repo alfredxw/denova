@@ -26,7 +26,7 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
       else await skipInteractiveStateSchema(storyId)
       await onRefresh?.()
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : t('memoryPanel.stateSchema.actionFailed'))
+      setActionError(error instanceof Error ? error.message : t('directorPanel.stateSchema.actionFailed'))
     } finally {
       setAction('')
     }
@@ -48,9 +48,9 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
             <StatusIcon status={initialization.status} />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-xs font-semibold">{t('memoryPanel.stateSchema.title')}</h3>
+                <h3 className="text-xs font-semibold">{t('directorPanel.stateSchema.title')}</h3>
                 <span className="font-mono text-[9px] uppercase tracking-[0.1em] opacity-70">
-                  {t(`memoryPanel.stateSchema.status.${initialization.status}`, { defaultValue: initialization.status })}
+                  {t(`directorPanel.stateSchema.status.${initialization.status}`, { defaultValue: initialization.status })}
                 </span>
               </div>
               <p className="mt-1 text-[11px] leading-4 opacity-80">{initializationDescription(initialization, t)}</p>
@@ -59,10 +59,10 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button size="xs" variant="outline" disabled={!storyId || Boolean(action)} onClick={() => void runAction('retry')}>
                     <RefreshCw className={`mr-1 h-3 w-3 ${action === 'retry' ? 'animate-spin' : ''}`} />
-                    {t('memoryPanel.stateSchema.retry')}
+                    {t('directorPanel.stateSchema.retry')}
                   </Button>
                   <Button size="xs" variant="ghost" disabled={!storyId || Boolean(action)} onClick={() => void runAction('skip')}>
-                    {t('memoryPanel.stateSchema.usePreset')}
+                    {t('directorPanel.stateSchema.usePreset')}
                   </Button>
                 </div>
               ) : null}
@@ -70,11 +70,11 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button size="xs" variant="outline" disabled={!storyId || !canReview || Boolean(action)} onClick={() => void runAction('review')}>
                     <RefreshCw className={`mr-1 h-3 w-3 ${action === 'review' ? 'animate-spin' : ''}`} />
-                    {t('memoryPanel.stateSchema.review')}
+                    {t('directorPanel.stateSchema.review')}
                   </Button>
                 </div>
               ) : null}
-              {initialization.status === 'ready' && !canReview ? <p className="mt-1.5 text-[10px] leading-4 opacity-70">{t('memoryPanel.stateSchema.reviewMultiBranchUnavailable')}</p> : null}
+              {initialization.status === 'ready' && !canReview ? <p className="mt-1.5 text-[10px] leading-4 opacity-70">{t('directorPanel.stateSchema.reviewMultiBranchUnavailable')}</p> : null}
               {actionError ? <p className="mt-2 text-[10px] text-[var(--nova-danger)]">{actionError}</p> : null}
             </div>
           </div>
@@ -84,19 +84,19 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
       {requirements.length || reviewedLoreIDs.length || loreRevision ? (
         <section className="min-w-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--director-panel)] px-3 py-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="flex items-center gap-1.5 text-xs font-semibold"><ListChecks className="h-3.5 w-3.5 text-[var(--director-brass)]" />{t('memoryPanel.stateSchema.coverageReview')}</h3>
+            <h3 className="flex items-center gap-1.5 text-xs font-semibold"><ListChecks className="h-3.5 w-3.5 text-[var(--director-brass)]" />{t('directorPanel.stateSchema.coverageReview')}</h3>
             {initialization?.outcome ? (
               <span className="rounded bg-[var(--nova-surface-3)] px-1.5 py-0.5 text-[9px] text-[var(--nova-text-faint)]">
-                {t(`memoryPanel.stateSchema.outcome.${initialization.outcome}`, { defaultValue: initialization.outcome })}
+                {t(`directorPanel.stateSchema.outcome.${initialization.outcome}`, { defaultValue: initialization.outcome })}
               </span>
             ) : null}
           </div>
           {loreRevision || reviewedLoreIDs.length ? (
             <div className="mt-2 space-y-1 text-[9px] leading-4 text-[var(--nova-text-faint)]">
-              {loreRevision ? <p>{t('memoryPanel.stateSchema.loreRevision')} <span className="font-mono">{loreRevision}</span></p> : null}
+              {loreRevision ? <p>{t('directorPanel.stateSchema.loreRevision')} <span className="font-mono">{loreRevision}</span></p> : null}
               {reviewedLoreIDs.length ? (
                 <div className="flex flex-wrap items-center gap-1">
-                  <span>{t('memoryPanel.stateSchema.reviewedLore')}</span>
+                  <span>{t('directorPanel.stateSchema.reviewedLore')}</span>
                   {reviewedLoreIDs.map((id) => <span key={id} className="max-w-full break-all rounded bg-[var(--nova-surface-3)] px-1.5 py-0.5 font-mono">{id}</span>)}
                 </div>
               ) : null}
@@ -107,8 +107,9 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
               {requirements.map((requirement, index) => (
                 <li key={`${requirement.source.kind}:${requirement.source.id}:${requirement.template_id}:${requirement.field_id}:${index}`} className="min-w-0 rounded-md bg-[var(--nova-surface-2)] px-2.5 py-2 text-[10px] leading-4">
                   <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-[var(--nova-text-faint)]">
-                    <span className="rounded bg-[var(--nova-surface-3)] px-1.5 py-0.5 font-medium text-[var(--nova-text-muted)]">{t(`memoryPanel.stateSchema.decision.${requirement.decision}`, { defaultValue: requirement.decision })}</span>
-                    <span className="min-w-0 break-words">{t(`memoryPanel.stateSchema.source.${requirement.source.kind}`, { defaultValue: requirement.source.kind })} · <span className="break-all font-mono">{requirement.source.id}</span></span>
+                    <span className="rounded bg-[var(--nova-surface-3)] px-1.5 py-0.5 font-medium text-[var(--nova-text-muted)]">{t(`directorPanel.stateSchema.decision.${requirement.decision}`, { defaultValue: requirement.decision })}</span>
+                    <span className="rounded border border-[var(--nova-border)] px-1.5 py-0.5">{t(`directorPanel.stateSchema.evidence.${requirement.evidence_kind}`, { defaultValue: requirement.evidence_kind })}</span>
+                    <span className="min-w-0 break-words">{t(`directorPanel.stateSchema.source.${requirement.source.kind}`, { defaultValue: requirement.source.kind })} · <span className="break-all font-mono">{requirement.source.id}</span></span>
                   </div>
                   <p className="mt-1 break-words text-[var(--nova-text-muted)]">{requirement.requirement}</p>
                   {requirementTarget(requirement) ? <p className="mt-0.5 break-all font-mono text-[9px] text-[var(--nova-text-faint)]">{requirementTarget(requirement)}{requirementExpected(requirement) ? ` · ${requirementExpected(requirement)}` : ''}</p> : null}
@@ -123,7 +124,7 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
       {schema ? (
         <section className="rounded-[10px] border border-[var(--nova-border)] bg-[var(--director-panel)]">
           <div className="flex items-center justify-between gap-2 border-b border-[var(--nova-border)] px-3 py-2.5">
-            <div className="flex items-center gap-2 text-xs font-semibold"><Database className="h-3.5 w-3.5 text-[var(--director-brass)]" />{t('memoryPanel.stateSchema.structure')}</div>
+            <div className="flex items-center gap-2 text-xs font-semibold"><Database className="h-3.5 w-3.5 text-[var(--director-brass)]" />{t('directorPanel.stateSchema.structure')}</div>
             <span className="font-mono text-[9px] text-[var(--nova-text-faint)]">rev {schema.revision || 1}</span>
           </div>
           <div className="divide-y divide-[var(--nova-border)]">
@@ -142,7 +143,7 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
                   ))}
                   {(template.trait_rules || []).length ? (
                     <div className="flex flex-wrap gap-1 pt-1 text-[9px] text-[var(--nova-text-faint)]">
-                      <span>{t('memoryPanel.stateSchema.traitRules', { count: template.trait_rules?.length || 0 })}</span>
+                      <span>{t('directorPanel.stateSchema.traitRules', { count: template.trait_rules?.length || 0 })}</span>
                       {template.trait_rules?.map((rule) => <span key={rule.pool_id} className="rounded bg-[var(--nova-surface-3)] px-1.5 py-0.5 font-mono">{rule.pool_id} × {rule.draw_count}</span>)}
                     </div>
                   ) : null}
@@ -152,7 +153,7 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
           </div>
           {(schema.system.initial_actors || []).length ? (
             <div className="border-t border-[var(--nova-border)] px-3 py-2 text-[10px] text-[var(--nova-text-faint)]">
-              {t('memoryPanel.stateSchema.initialActors', { actors: schema.system.initial_actors?.map((actor) => actor.name || actor.id).join('、') })}
+              {t('directorPanel.stateSchema.initialActors', { actors: schema.system.initial_actors?.map((actor) => actor.name || actor.id).join('、') })}
             </div>
           ) : null}
         </section>
@@ -160,7 +161,7 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
 
       {(initialization?.changes || []).length ? (
         <section className="rounded-[10px] border border-[var(--nova-border)] bg-[var(--director-panel)] px-3 py-2.5">
-          <h3 className="text-xs font-semibold">{t('memoryPanel.stateSchema.changes')}</h3>
+          <h3 className="text-xs font-semibold">{t('directorPanel.stateSchema.changes')}</h3>
           <ul className="mt-2 space-y-1.5">
             {initialization?.changes?.map((change, index) => (
               <li key={`${change.kind}:${change.template_id}:${change.field_id}:${change.actor_id}:${index}`} className="text-[10px] leading-4 text-[var(--nova-text-muted)]">
@@ -175,7 +176,7 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
 
       {(initialization?.warnings || []).length ? (
         <section className="rounded-[10px] border border-[var(--nova-warning)]/25 bg-[var(--nova-warning-bg)] px-3 py-2.5 text-[var(--nova-warning)]">
-          <h3 className="flex items-center gap-1.5 text-xs font-semibold"><AlertTriangle className="h-3.5 w-3.5" />{t('memoryPanel.stateSchema.warnings')}</h3>
+          <h3 className="flex items-center gap-1.5 text-xs font-semibold"><AlertTriangle className="h-3.5 w-3.5" />{t('directorPanel.stateSchema.warnings')}</h3>
           <ul className="mt-1.5 list-disc space-y-1 pl-4 text-[10px] leading-4">{initialization?.warnings?.map((warning) => <li key={warning}>{warning}</li>)}</ul>
         </section>
       ) : null}
@@ -197,7 +198,7 @@ function statusClass(status: string) {
 
 function initializationDescription(status: StateSchemaInitializationStatus, t: ReturnType<typeof useTranslation>['t']) {
   if (status.summary) return status.summary
-  return t(`memoryPanel.stateSchema.description.${status.status}`, { defaultValue: status.status })
+  return t(`directorPanel.stateSchema.description.${status.status}`, { defaultValue: status.status })
 }
 
 function changeLabel(change: NonNullable<StateSchemaInitializationStatus['changes']>[number]) {

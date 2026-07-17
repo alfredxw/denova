@@ -4,7 +4,7 @@ const settings = {
   'settings.agent.maxIteration': 'Max Iterations (blank = unlimited)',
   'settings.agent.modelMaxRetries': 'Model Retries',
   'settings.agent.idleTimeoutSeconds': 'Idle Timeout (s, 0 = unlimited)',
-  'settings.agent.toolResultLimitKB': 'Tool Result Limit (KB, 0 = unlimited)',
+  'settings.agent.toolResultLimitKB': 'Tool Result Safety Limit (KB)',
   'settings.agent.planModeDefault': 'Default PlanMode',
   'settings.agent.writingSkillDefault': 'Default Writing Skill',
   'settings.access.allowLan': 'Allow LAN Access',

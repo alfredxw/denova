@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -153,11 +154,15 @@ func (r *Runtime) Run(
 		runLogger.Warn("run_ledger_unavailable", slog.String("workspace", workspace), slog.Any("error", ledgerErr))
 	}
 	rootSpan := StartRootTraceSpan(runLedger, map[string]any{
-		"workspace":  workspace,
-		"task_id":    options.TaskID,
-		"agent_kind": options.AgentKind,
-		"session_id": options.SessionID,
-		"mode":       options.Mode,
+		"workspace":        workspace,
+		"task_id":          options.TaskID,
+		"agent_kind":       options.AgentKind,
+		"session_id":       options.SessionID,
+		"story_id":         options.StoryID,
+		"branch_id":        options.BranchID,
+		"turn_id":          options.TurnID,
+		"maintenance_task": options.MaintenanceTask,
+		"mode":             options.Mode,
 	})
 	rootSpanID := ""
 	if rootSpan != nil {
@@ -185,10 +190,20 @@ func (r *Runtime) Run(
 		}
 		finished = true
 		usageCollector.EmitIfAny(emit, generatedBytes)
+		traceMetadata := runTraceMetadataForConversation(options, conversation)
+		if !traceMetadata.empty() {
+			if err := runLedger.Record("run_context", traceMetadata.record()); err != nil {
+				runLogger.Warn("run_ledger_context_metadata_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
+			}
+		}
 		if rootSpan != nil {
 			rootSpan.Finish(status, map[string]any{
-				"reason":          strings.TrimSpace(reason),
-				"generated_bytes": generatedBytes,
+				"reason":           strings.TrimSpace(reason),
+				"generated_bytes":  generatedBytes,
+				"story_id":         traceMetadata.StoryID,
+				"branch_id":        traceMetadata.BranchID,
+				"turn_id":          traceMetadata.TurnID,
+				"maintenance_task": traceMetadata.MaintenanceTask,
 			})
 		}
 		if err := runLedger.RecordFinish(status, reason, generatedBytes); err != nil {
@@ -222,28 +237,36 @@ func (r *Runtime) Run(
 		rawEmit(ev)
 	}
 	emit(Event{Type: "run_state", Data: map[string]string{
-		"run_id":          runLedger.ID(),
-		"task_id":         options.TaskID,
-		"agent_kind":      options.AgentKind,
-		"session_id":      options.SessionID,
-		"root_agent_name": options.RootAgentName,
-		"phase":           "started",
+		"run_id":           runLedger.ID(),
+		"task_id":          options.TaskID,
+		"agent_kind":       options.AgentKind,
+		"session_id":       options.SessionID,
+		"story_id":         options.StoryID,
+		"branch_id":        options.BranchID,
+		"turn_id":          options.TurnID,
+		"maintenance_task": options.MaintenanceTask,
+		"root_agent_name":  options.RootAgentName,
+		"phase":            "started",
 	}})
 	originalMessage := req.Message
 	if err := runLedger.Record("run_started", map[string]any{
-		"workspace":       workspace,
-		"task_id":         options.TaskID,
-		"agent_kind":      options.AgentKind,
-		"session_id":      options.SessionID,
-		"mode":            options.Mode,
-		"message":         textSummary{Bytes: len(originalMessage), Chars: len([]rune(originalMessage)), Preview: safeLogPreview(originalMessage, policy.RunLedger.PreviewChars)},
-		"references":      len(req.References),
-		"lore_references": len(req.LoreReferences),
-		"style_scenes":    len(req.StyleScenes),
-		"selections":      len(req.Selections),
-		"plan_mode":       req.PlanMode,
-		"writing_skill":   req.WritingSkill,
-		"checkpoint_id":   checkpointID,
+		"workspace":        workspace,
+		"task_id":          options.TaskID,
+		"agent_kind":       options.AgentKind,
+		"session_id":       options.SessionID,
+		"story_id":         options.StoryID,
+		"branch_id":        options.BranchID,
+		"turn_id":          options.TurnID,
+		"maintenance_task": options.MaintenanceTask,
+		"mode":             options.Mode,
+		"message":          textSummary{Bytes: len(originalMessage), Chars: len([]rune(originalMessage)), Preview: safeLogPreview(originalMessage, policy.RunLedger.PreviewChars)},
+		"references":       len(req.References),
+		"lore_references":  len(req.LoreReferences),
+		"style_scenes":     len(req.StyleScenes),
+		"selections":       len(req.Selections),
+		"plan_mode":        req.PlanMode,
+		"writing_skill":    req.WritingSkill,
+		"checkpoint_id":    checkpointID,
 	}); err != nil {
 		runLogger.Warn("run_ledger_start_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
 	}
@@ -318,12 +341,13 @@ func (r *Runtime) Run(
 			})
 		}
 	}
-	if err := runLedger.RecordContext(contextLog.Audit()); err != nil {
+	contextLedgerParts := contextLedgerPartsForConversation(contextLog, conversation, history)
+	if err := runLedger.RecordContext(contextLedgerParts); err != nil {
 		runLogger.Warn("run_ledger_context_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
 	}
 	RecordCompletedTraceSpan(traceCtx, "context_build", contextBuildStarted, "success", map[string]any{
 		"history_messages":    len(history),
-		"context_parts":       len(contextLog.Audit()),
+		"context_parts":       len(contextLedgerParts),
 		"message_chars":       len([]rune(originalMessage)),
 		"agent_message_chars": len([]rune(agentMessage)),
 		"plan_mode":           req.PlanMode,
@@ -353,6 +377,15 @@ func (r *Runtime) Run(
 	runCtx, cancelRun := context.WithCancel(contextWithCompactionController(ContextWithRunObserver(traceCtx, observer), conversation))
 	defer cancelRun()
 	runOptions := []adk.AgentRunOption{}
+	if options.AgentKind == AgentKindInteractiveStory {
+		cancelOption, cancelAgent := adk.WithCancel()
+		runCtx = withInteractiveTurnCancel(runCtx, cancelAgent)
+		runOptions = append(runOptions, cancelOption)
+	} else if isInteractiveDirectorPlanRun(options.AgentKind, options.MaintenanceTask) {
+		cancelOption, cancelAgent := adk.WithCancel()
+		runCtx = withInteractiveDirectorPlanCancel(runCtx, cancelAgent)
+		runOptions = append(runOptions, cancelOption)
+	}
 	if checkpointID != "" {
 		runOptions = append(runOptions, adk.WithCheckPointID(checkpointID))
 	}
@@ -412,6 +445,20 @@ func (r *Runtime) Run(
 			break
 		}
 		if event.Err != nil {
+			if interactiveTurnCompletedByCancel(event.Err, options.AgentKind, conversation, fullContent.Len()) {
+				if err := removeCheckpoint(options.Workspace, options.AgentKind, checkpointID); err != nil {
+					runLogger.Warn("interactive_completion_checkpoint_cleanup_failed", slog.String("checkpoint_id", checkpointID), slog.Any("error", err))
+				}
+				runLogger.Info("interactive_turn_completed_after_submission", slog.Int("generated_bytes", fullContent.Len()))
+				break
+			}
+			if interactiveDirectorPlanCompletedByCancel(event.Err, options.AgentKind, options.MaintenanceTask) {
+				if err := removeCheckpoint(options.Workspace, options.AgentKind, checkpointID); err != nil {
+					runLogger.Warn("interactive_director_completion_checkpoint_cleanup_failed", slog.String("checkpoint_id", checkpointID), slog.Any("error", err))
+				}
+				runLogger.Info("interactive_director_plan_completed_after_submission")
+				break
+			}
 			if reason, retrying := interactiveCompletionRetryFromError(event.Err); retrying {
 				runLogger.Info("interactive_completion_retry", slog.String("code", reason.Code), slog.Int("generated_bytes", fullContent.Len()))
 				continue
@@ -500,6 +547,9 @@ func (r *Runtime) Run(
 		if mv.IsStreaming && mv.MessageStream != nil {
 			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, options.ToolResultMaxBytes, eventMeta, interactiveNarrativeReady(conversation, eventMeta), planParser, emit)
 			if streamErr != nil {
+				// A completion-guard retry arrives after all response frames. Preserve
+				// the rejected call's provider usage even though its prose is discarded.
+				usageCollector.AddMessage(msg)
 				if reason, retrying := interactiveCompletionRetryFromError(streamErr); retrying {
 					runLogger.Info("interactive_completion_retry", slog.String("code", reason.Code), slog.Int("generated_bytes", fullContent.Len()))
 					continue
@@ -587,4 +637,16 @@ func (r *Runtime) Run(
 		"status":          "success",
 	}})
 	emit(Event{Type: "done", Data: map[string]string{}})
+}
+
+func interactiveTurnCompletedByCancel(err error, agentKind string, conversation Conversation, generatedBytes int) bool {
+	if err == nil || agentKind != AgentKindInteractiveStory || generatedBytes == 0 {
+		return false
+	}
+	reporter, ok := conversation.(InteractiveNarrativeReadinessReporter)
+	if !ok || !reporter.InteractiveNarrativeReady() {
+		return false
+	}
+	var cancelErr *adk.CancelError
+	return errors.As(err, &cancelErr) && cancelErr.Info != nil && cancelErr.Info.Mode&adk.CancelAfterToolCalls != 0
 }

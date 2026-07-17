@@ -151,11 +151,12 @@ func normalizeChoiceListLimit(input []string, limit int) []string {
 	seen := map[string]bool{}
 	for _, choice := range input {
 		choice = strings.TrimSpace(choice)
-		if choice == "" || seen[choice] {
+		key := normalizedChoiceKey(choice)
+		if key == "" || seen[key] {
 			continue
 		}
 		choices = append(choices, choice)
-		seen[choice] = true
+		seen[key] = true
 		if len(choices) >= limit {
 			break
 		}

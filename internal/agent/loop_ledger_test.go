@@ -24,18 +24,18 @@ func TestContextLedgerRecordsBoundedSources(t *testing.T) {
 	if part.Source != "文件引用" || part.Title != "@chapters/ch01.md" || part.Purpose != "user_reference" {
 		t.Fatalf("unexpected ledger part identity: %#v", part)
 	}
-	if part.Bytes == 0 || part.Chars == 0 || part.Preview == "" {
+	if part.Bytes == 0 || part.Chars == 0 || part.Hash == "" || part.Preview == "" {
 		t.Fatalf("ledger should record bounded size metadata: %#v", part)
 	}
 	if strings.Contains(part.Preview, "很长很长") {
 		t.Fatalf("preview should be bounded, got %q", part.Preview)
 	}
-	if !part.Included || !part.Truncated || part.Limit != 12 {
+	if !part.Included || !part.Truncated || part.Limit != 12 || part.LimitUnit != "bytes" {
 		t.Fatalf("ledger should preserve inclusion and truncation metadata: %#v", part)
 	}
 }
 
-func TestFilterToolResultAddsManifestWithoutDefaultTruncation(t *testing.T) {
+func TestFilterToolResultKeepsContentBelowHighDefaultLimit(t *testing.T) {
 	content := strings.Repeat("章节正文", 4096)
 	filtered := FilterToolResultForModel("write_file", `{"path":"chapters/ch00001.md"}`, content)
 	if filtered.Manifest.Source != ToolSourceWrite || !filtered.Manifest.MutatesWorkspace || !filtered.Manifest.RequiresPostCheck {
@@ -45,7 +45,7 @@ func TestFilterToolResultAddsManifestWithoutDefaultTruncation(t *testing.T) {
 		t.Fatalf("write_file capability = %q, want file_write", filtered.Manifest.Capability)
 	}
 	if filtered.Truncated {
-		t.Fatalf("default tool result filtering should not truncate")
+		t.Fatalf("tool result below the high default limit should not truncate")
 	}
 	if !strings.Contains(filtered.Content, "schema: tool_result.v1") ||
 		!strings.Contains(filtered.Content, "mutates_workspace: true") ||
@@ -55,7 +55,18 @@ func TestFilterToolResultAddsManifestWithoutDefaultTruncation(t *testing.T) {
 		t.Fatalf("filtered result should include model-visible metadata: %s", filtered.Content)
 	}
 	if !strings.Contains(filtered.Content, content) {
-		t.Fatalf("filtered result should include full content by default")
+		t.Fatalf("filtered result should include full content below the default limit")
+	}
+}
+
+func TestFilterToolResultBoundsOutputAboveHighDefaultLimit(t *testing.T) {
+	content := strings.Repeat("x", defaultToolResultMaxBytes+1024)
+	filtered := FilterToolResultForModel("read_file", `{"path":"references/large.txt"}`, content)
+	if !filtered.Truncated || filtered.Manifest.MaxResultBytes != defaultToolResultMaxBytes {
+		t.Fatalf("default tool result safety cap was not enforced: %#v", filtered)
+	}
+	if !strings.Contains(filtered.Content, "[tool result truncated]") || !strings.Contains(filtered.Content, "truncated: true") {
+		t.Fatalf("bounded result should explain its truncation: %s", filtered.Content[len(filtered.Content)-512:])
 	}
 }
 
@@ -109,16 +120,28 @@ func TestPostRunVerifierChecksLoreWriteResult(t *testing.T) {
 func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	workspace := t.TempDir()
 	ledger, err := newRunLedgerWithOptions(workspace, RunLedgerPolicy{Enabled: true, Directory: ".denova/runs", PreviewChars: 8}, RunOptions{
-		AgentKind: AgentKindIDE,
-		TaskID:    "task-1",
-		SessionID: "session-1",
-		Workspace: workspace,
-		Mode:      "ide",
+		AgentKind:       AgentKindInteractiveStory,
+		TaskID:          "task-1",
+		SessionID:       "session-1",
+		StoryID:         "story-1",
+		BranchID:        "main",
+		TurnID:          "turn-1",
+		MaintenanceTask: "director_plan_update",
+		Workspace:       workspace,
+		Mode:            "interactive",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := ledger.RecordContext([]ContextLedgerPart{{Source: "用户输入", Title: "请求", Included: true}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := ledger.Record("run_context", map[string]any{
+		"story_id":         "story-1",
+		"branch_id":        "main",
+		"turn_id":          "turn-committed",
+		"maintenance_task": "director_plan_update",
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := ledger.RecordEvent(Event{Type: "tool_result", Data: map[string]interface{}{
@@ -188,7 +211,7 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	if len(summaries) != 1 || summaries[0].Status != "success" || summaries[0].Events != 1 || summaries[0].ContextParts != 1 {
 		t.Fatalf("unexpected trace summary: %#v", summaries)
 	}
-	if summaries[0].AgentKind != AgentKindIDE || summaries[0].TaskID != "task-1" || summaries[0].SessionID != "session-1" || summaries[0].Mutations != 1 || summaries[0].VerificationStatus != "ok" {
+	if summaries[0].AgentKind != AgentKindInteractiveStory || summaries[0].TaskID != "task-1" || summaries[0].SessionID != "session-1" || summaries[0].StoryID != "story-1" || summaries[0].BranchID != "main" || summaries[0].TurnID != "turn-committed" || summaries[0].MaintenanceTask != "director_plan_update" || summaries[0].Mutations != 1 || summaries[0].VerificationStatus != "ok" {
 		t.Fatalf("trace summary should include durable run state: %#v", summaries[0])
 	}
 	if summaries[0].ToolCalls != 2 || summaries[0].ToolSuccesses != 1 || summaries[0].ToolBlocked != 1 || summaries[0].ToolTruncated != 1 || summaries[0].InvalidToolArgs != 1 {
@@ -198,7 +221,7 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(trace.Records) != 10 || trace.Summary.ID != summaries[0].ID {
+	if len(trace.Records) != 11 || trace.Summary.ID != summaries[0].ID {
 		t.Fatalf("unexpected trace detail: %#v", trace)
 	}
 }

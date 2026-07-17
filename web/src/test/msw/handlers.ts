@@ -86,29 +86,6 @@ export const handlers = [
       state: { on_stage: [], characters: {}, events: [] },
     }),
   ),
-  http.get('/api/interactive/stories/:id/memory', ({ params, request }) => {
-    const branch = new URL(request.url).searchParams.get('branch') || 'main'
-    return HttpResponse.json({
-      story_id: params.id,
-      branch_id: branch,
-      entries: [],
-      sync_status: '',
-    })
-  }),
-  http.get('/api/interactive/stories/:id/story-memory', ({ params, request }) => {
-    const branch = new URL(request.url).searchParams.get('branch') || 'main'
-    return HttpResponse.json({
-      story_id: params.id,
-      branch_id: branch,
-      settings: {
-        enabled: true,
-        auto_interval_turns: 3,
-      },
-      structures: [],
-      records: [],
-      sync_status: '',
-    })
-  }),
   http.get('/api/interactive/stories/:id/branches', () =>
     HttpResponse.json({
       branches: [{ id: 'main', head: '', created_at: '', current: true }],
@@ -215,7 +192,7 @@ export const handlers = [
         interactive_story: {
           runtime_contract: '互动运行契约测试',
           output_protocol: '互动输出格式测试',
-          editable_system_prompt: 'list_interactive_memories read_interactive_memories',
+          editable_system_prompt: 'search_story_history',
         },
       },
       builtin_agent_prompt_sources: {
@@ -232,7 +209,7 @@ export const handlers = [
           sources: [
             { id: 'runtime_contract', title: '互动运行契约', source: 'Denova runtime', content: '互动运行契约测试' },
             { id: 'output_protocol', title: '互动输出格式', source: 'Denova runtime', content: '互动输出格式测试' },
-            { id: 'flow', title: '流程规则', source: 'Denova built-in', content: 'list_interactive_memories read_interactive_memories', editable: true, field: 'flow_prompt' },
+            { id: 'flow', title: '流程规则', source: 'Denova built-in', content: 'search_story_history', editable: true, field: 'flow_prompt' },
             { id: 'custom', title: '用户自定义', source: 'user/workspace config', content: '', editable: true, field: 'system_prompt' },
           ],
         },

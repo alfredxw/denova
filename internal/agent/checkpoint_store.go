@@ -47,6 +47,25 @@ func newCheckpointStore(workspace, agentKind string) interface {
 	}
 }
 
+// removeCheckpoint discards an internal checkpoint after a protocol-level
+// graceful stop has been converted into a successful completed turn.
+func removeCheckpoint(workspace, agentKind, key string) error {
+	workspace = strings.TrimSpace(workspace)
+	key = strings.TrimSpace(key)
+	if workspace == "" || key == "" {
+		return nil
+	}
+	agentKind = sanitizeCheckpointSegment(agentKind)
+	if agentKind == "" {
+		agentKind = AgentKindUnknown
+	}
+	store := &fileCheckpointStore{dir: workspacepath.Path(workspace, "checkpoints", agentKind)}
+	if err := os.Remove(store.pathForKey(key)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 func (s *fileCheckpointStore) Set(_ context.Context, key string, value []byte) error {
 	if s == nil {
 		return nil

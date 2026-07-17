@@ -46,8 +46,8 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatal(err)
 	}
 
-	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我点燃火把", story.ReplyTargetChars, nil)
-	history, err := conversation.PrepareMessages("我点燃火把", "我点燃火把")
+	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我在黄泉酒馆点燃火把", story.ReplyTargetChars, nil)
+	history, err := conversation.PrepareMessages("我在黄泉酒馆点燃火把", "我在黄泉酒馆点燃火把")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,13 +60,13 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if history[1].Role != schema.User || history[1].Content != "我推开酒馆的门" {
 		t.Fatalf("history[0] mismatch: %#v", history[0])
 	}
-	if strings.Contains(history[1].Content, "故事记忆") || strings.Contains(history[1].Content, "最高篇幅约束") {
+	if strings.Contains(history[1].Content, "历史 checkpoint") || strings.Contains(history[1].Content, "最高篇幅约束") {
 		t.Fatalf("history[1] should remain plain story history, got: %#v", history[1])
 	}
 	if history[2].Role != schema.Assistant || history[2].Content != "门后传来低沉的风声。" {
 		t.Fatalf("history[2] mismatch: %#v", history[2])
 	}
-	if history[3].Role != schema.User || !strings.Contains(history[3].Content, "我点燃火把") {
+	if history[3].Role != schema.User || !strings.Contains(history[3].Content, "我在黄泉酒馆点燃火把") {
 		t.Fatalf("history[3] mismatch: %#v", history[3])
 	}
 	for _, want := range []string{
@@ -75,10 +75,10 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"800 个中文字",
 		"最高篇幅约束",
 		"list_lore_items",
-		"list_interactive_memories",
-		"当前分支故事记忆",
-		"后台导演规划可读区",
-		"source: director.md visible section",
+		"search_story_history",
+		"turn_id",
+		"正文 Agent 简报",
+		"source: agent-brief.md",
 		"bounded",
 	} {
 		if !strings.Contains(history[3].Content, want) {
@@ -92,6 +92,9 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		if strings.Contains(history[3].Content, forbidden) {
 			t.Fatalf("history[3] should not include %q: %#v", forbidden, history[3])
 		}
+	}
+	if strings.Contains(history[3].Content, "维护当前阶段的隐藏真相、阶段高潮") {
+		t.Fatalf("Game Agent model input must not contain private director.md content: %#v", history[3])
 	}
 	for _, forbidden := range []string{"末日开端", "主角醒来发现世界已末日"} {
 		if strings.Contains(history[3].Content, forbidden) {
@@ -108,11 +111,27 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"导演注入规则",
 		"本轮上下文",
 		"DirectorPlan",
-		"后台导演规划可读区",
+		"正文 Agent 简报",
 	} {
 		if !strings.Contains(sources, want) {
 			t.Fatalf("context sources should include %q: %s", want, sources)
 		}
+	}
+	ledgerParts := conversation.ContextLedgerParts()
+	var sawResidentLore, sawActiveLore, sawCurrentAction bool
+	for _, part := range ledgerParts {
+		if part.Source == "ResidentLore" && part.Bytes > 0 && part.Limit > book.ResidentLoreSafetyMaxBytes && part.LimitUnit == "bytes" && strings.Contains(part.Note, "complete=true") && strings.Contains(part.Note, "revision=") && strings.Contains(part.Note, "exact_final_message=true") {
+			sawResidentLore = true
+		}
+		if part.Source == "LoreContext" && part.Title == "当前分支活动资料工作集" && part.Bytes > 0 {
+			sawActiveLore = true
+		}
+		if part.Source == "本轮行动" && part.Title == "当前用户行动" && part.Bytes > 0 {
+			sawCurrentAction = true
+		}
+	}
+	if !sawResidentLore || !sawActiveLore || !sawCurrentAction {
+		t.Fatalf("durable context fragments should distinguish resident lore, active lore, and current action metadata: %#v", ledgerParts)
 	}
 
 	submitTestTurnResult(t, conversation, "点燃火把", "照亮酒馆墙面")
@@ -127,14 +146,24 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatalf("turn count = %d, want 2", len(snapshot.Turns))
 	}
 	last := snapshot.Turns[1]
-	if last.User != "我点燃火把" || last.Narrative != "火光照亮了墙上的新线索。" {
+	if last.User != "我在黄泉酒馆点燃火把" || last.Narrative != "火光照亮了墙上的新线索。" {
 		t.Fatalf("last turn mismatch: %#v", last)
+	}
+	traceMetadata := conversation.RunTraceMetadata()
+	if traceMetadata.StoryID != story.ID || traceMetadata.BranchID != last.BranchID || traceMetadata.TurnID != last.ID {
+		t.Fatalf("committed turn trace metadata mismatch: %#v", traceMetadata)
 	}
 	if last.Thinking != "先判断现场风险。" {
 		t.Fatalf("last thinking = %q, want persisted thinking", last.Thinking)
 	}
+	storyEventCommitted := false
 	if last.StateDelta != nil {
-		t.Fatalf("assistant narrative should not embed state_delta: %#v", last.StateDelta)
+		for _, op := range last.StateDelta.ActorOps {
+			storyEventCommitted = storyEventCommitted || op.ActorID == interactive.DefaultStoryContextActorID && op.FieldID == "当前事件"
+		}
+	}
+	if !storyEventCommitted {
+		t.Fatalf("turn should atomically persist the required story context: %#v", last.StateDelta)
 	}
 	if _, err := store.AppendStateDelta(story.ID, interactive.AppendStateDeltaRequest{
 		ParentID: last.ID,
@@ -157,7 +186,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 	for _, want := range []string{
 		"keep、patch 或 replan",
-		"不得写入它们",
+		"不得改写历史 Turn 或 Actor State",
 		"资料库优先",
 		"不负责替用户选择下一步行动",
 	} {
@@ -172,11 +201,10 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		t.Fatalf("director lore-name roster should not preload briefs or bodies: %s", directorInstruction)
 	}
 	for _, want := range []string{
-		"当前分支故事记忆",
 		"近期剧情历史",
 		"本回合 TurnResult / RuleResolution / StateDelta 审计 JSON",
 		"turn_result",
-		"我点燃火把",
+		"我在黄泉酒馆点燃火把",
 		"状态系统 Schema",
 		"当前状态系统快照",
 		"director.md",
@@ -184,9 +212,6 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		if !strings.Contains(directorInstruction, want) {
 			t.Fatalf("director instruction should include maintenance context %q: %s", want, directorInstruction)
 		}
-	}
-	if strings.Contains(directorInstruction, "故事记忆结构与字段协议") {
-		t.Fatalf("director plan context should not duplicate Memory Recorder schema: %s", directorInstruction)
 	}
 	if strings.Contains(directorInstruction, "经典叙事者") || strings.Contains(directorInstruction, "导演本轮上下文规则") {
 		t.Fatalf("director instruction should not include story-only teller rules: %s", directorInstruction)
@@ -252,7 +277,7 @@ func TestInteractiveConversationRejectsAssistantWithoutTurnResult(t *testing.T) 
 		t.Fatal(err)
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", story.ReplyTargetChars, nil)
-	if err := conversation.AppendAssistant("主角向前走去。"); err == nil || !strings.Contains(err.Error(), "submit_interactive_turn_result") {
+	if err := conversation.AppendAssistant("主角向前走去。"); err == nil || !strings.Contains(err.Error(), "actor_state_patches") || !strings.Contains(err.Error(), "choices") {
 		t.Fatalf("assistant without TurnResult should be rejected, got %v", err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -330,25 +355,27 @@ func TestInteractiveConversationInjectsStoryDirectorStrategyPrompt(t *testing.T)
 func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 	workspace := t.TempDir()
 	novaDir := t.TempDir()
+	eventPackage, err := interactive.NewEventPackageLibrary(novaDir).Create(interactive.EventPackageModule{
+		ID:   "academy-pack",
+		Name: "学院事件包",
+		Events: []interactive.TellerEventCard{{
+			ID:                  "academy_trial",
+			TypeName:            "外门考核打脸",
+			DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
+			Enabled:             true,
+			Category:            "学院",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	director, err := interactive.NewStoryDirectorLibrary(novaDir).Create(interactive.StoryDirector{
 		ID:          "event-card-director",
 		Name:        "事件卡导演",
 		Description: "测试事件系统只进入后台导演",
+		ModuleRefs:  interactive.StoryDirectorModuleRefs{EventPackageIDs: []string{eventPackage.ID}},
 		Strategy: interactive.StoryDirectorStrategy{
 			Enabled: true,
-		},
-		EventSystem: interactive.StoryDirectorEventSystem{
-			EventPackages: []interactive.TellerEventPackage{{
-				ID:      "academy-pack",
-				Enabled: true,
-				Events: []interactive.TellerEventCard{{
-					ID:                  "academy_trial",
-					TypeName:            "外门考核打脸",
-					DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
-					Enabled:             true,
-					Category:            "学院",
-				}},
-			}},
 		},
 	})
 	if err != nil {
@@ -369,7 +396,7 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	docs := plan.Docs
-	docs.Plan = strings.Replace(docs.Plan, "明确当前场景、主角处境、直接目标和可玩行动空间，让用户能观察、对话、调查、冒险、交易或保守应对。", "公开压力升高，同门质疑逼近；玩家可以反证、迂回或调查。", 1)
+	docs.AgentBrief = strings.Replace(docs.AgentBrief, "说明当前场景、主角处境、直接目标，以及可观察、对话、调查、冒险、交易或保守应对的空间。", "公开压力升高，同门质疑逼近；玩家可以反证、迂回或调查。", 1)
 	if _, err := store.UpdateDirectorPlan(story.ID, interactive.UpdateDirectorPlanRequest{BranchID: "main", Docs: docs, BaseRevision: plan.Metadata.Revision}); err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +414,7 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	turnInstruction := history[len(history)-1].Content
-	for _, want := range []string{"后台导演规划可读区", "公开压力升高", "同门质疑"} {
+	for _, want := range []string{"正文 Agent 简报", "公开压力升高", "同门质疑"} {
 		if !strings.Contains(turnInstruction, want) {
 			t.Fatalf("interactive turn instruction should include translated director plan %q:\n%s", want, turnInstruction)
 		}
@@ -414,33 +441,23 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 	}
 }
 
-func TestInteractiveDirectorEventCatalogIncludesTellerEventCards(t *testing.T) {
-	teller := interactive.Teller{
-		ID:   "catalog",
-		Name: "事件目录",
-		Orchestration: &interactive.TellerOrchestrationConfig{
+func TestInteractiveDirectorEventCatalogIncludesConfiguredEventCards(t *testing.T) {
+	director := interactive.StoryDirector{
+		ID:         "catalog",
+		Name:       "事件目录",
+		ModuleRefs: interactive.StoryDirectorModuleRefs{EventPackageIDs: []string{"academy-pack"}},
+		EventPackages: []interactive.TellerEventPackage{{
+			ID:      "academy-pack",
 			Enabled: true,
-			EventPackages: []interactive.TellerEventPackage{{
-				ID:      "academy-pack",
-				Enabled: true,
-				Events: []interactive.TellerEventCard{{
-					ID:                  "academy_trial",
-					TypeName:            "外门考核打脸",
-					DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
-					Enabled:             true,
-					Category:            "学院",
-				}},
+			Events: []interactive.TellerEventCard{{
+				ID:                  "academy_trial",
+				TypeName:            "外门考核打脸",
+				DescriptionMarkdown: "## 触发场景\n外门考核中同门当众质疑主角。\n\n## 事件回收 / 后果\n以后续榜单与戒律回收。",
+				Enabled:             true,
+				Category:            "学院",
 			}},
-		},
-		Slots: []interactive.TellerPromptSlot{{
-			ID:      "identity",
-			Name:    "系统提示",
-			Target:  "system",
-			Enabled: true,
-			Content: "规则",
 		}},
 	}
-	director := interactive.StoryDirectorFromTellerOrchestration(teller.ID, teller.Name, teller.Description, *teller.Orchestration)
 	catalog := interactiveDirectorEventCatalog(director)
 	found := false
 	for _, event := range catalog {
@@ -465,7 +482,7 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 		Origin:          "主角站在秘境入口",
 		StoryTellerID:   "classic",
 		StoryDirectorID: director.ID,
-		InitialStateOps: interactive.StoryDirectorInitialStateOps(director),
+		ActorState:      &director.ActorState,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -516,18 +533,9 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 func newInteractiveStoreWithHPTestDirector(t *testing.T, workspace, novaDir string) (*interactive.Store, interactive.StoryDirector) {
 	t.Helper()
 	hpMin, hpMax := 0.0, 10.0
-	director, err := interactive.NewStoryDirectorLibrary(novaDir).Create(interactive.StoryDirector{
-		ID:   "hp-test-director",
-		Name: "生命测试导演",
-		ModuleRefs: interactive.StoryDirectorModuleRefs{
-			NarrativeStyleDisabled:  true,
-			EventPackagesDisabled:   true,
-			RuleSystemDisabled:      true,
-			MemoryStructureDisabled: true,
-			OpeningSelectorDisabled: true,
-			ImagePresetDisabled:     true,
-		},
-		Strategy: interactive.StoryDirectorStrategy{Enabled: true},
+	actorState, err := interactive.NewActorStateLibrary(novaDir).Create(interactive.ActorStateModule{
+		ID:   "hp-test-state",
+		Name: "生命测试状态",
 		ActorState: interactive.StoryDirectorActorStateSystem{
 			Templates: []interactive.ActorStateTemplate{{
 				ID:   "protagonist",
@@ -550,6 +558,21 @@ func newInteractiveStoreWithHPTestDirector(t *testing.T, workspace, novaDir stri
 				Role:       "protagonist",
 			}},
 		},
+	})
+	if err != nil {
+		t.Fatalf("create hp actor state failed: %v", err)
+	}
+	director, err := interactive.NewStoryDirectorLibrary(novaDir).Create(interactive.StoryDirector{
+		ID:   "hp-test-director",
+		Name: "生命测试导演",
+		ModuleRefs: interactive.StoryDirectorModuleRefs{
+			NarrativeStyleDisabled: true,
+			EventPackagesDisabled:  true,
+			RuleSystemDisabled:     true,
+			ActorStateID:           actorState.ID,
+			ImagePresetDisabled:    true,
+		},
+		Strategy: interactive.StoryDirectorStrategy{Enabled: true},
 	})
 	if err != nil {
 		t.Fatalf("create hp test director failed: %v", err)
@@ -585,10 +608,10 @@ func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{Role: "thinking", Content: "第二轮基于工具结果继续判断。"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-2", Role: "tool_call", Name: "apply_story_memory_patches", Content: "apply_story_memory_patches", Args: `{"patches":[{"table":"plot_summary"}]}`, Status: "running"}); err != nil {
+	if err := conversation.AppendDisplayEvent(session.DisplayEvent{ID: "call-2", Role: "tool_call", Name: "search_story_history", Content: "search_story_history", Args: `{"keywords":["钟楼"]}`, Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.UpdateDisplayToolResult("call-2", "apply_story_memory_patches", "success", "已写入 1 条记忆"); err != nil {
+	if err := conversation.UpdateDisplayToolResult("call-2", "search_story_history", "success", "找到 1 个历史回合"); err != nil {
 		t.Fatal(err)
 	}
 	submitTestTurnResult(t, conversation, "调查档案柜", "找到档案室线索")
@@ -604,13 +627,13 @@ func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {
 	if len(events) != 4 {
 		t.Fatalf("display event count = %d, want 4: %#v", len(events), events)
 	}
-	if events[0].Role != "thinking" || events[1].Name != "list_lore_items" || events[2].Role != "thinking" || events[3].Name != "apply_story_memory_patches" {
+	if events[0].Role != "thinking" || events[1].Name != "list_lore_items" || events[2].Role != "thinking" || events[3].Name != "search_story_history" {
 		t.Fatalf("display events order mismatch: %#v", events)
 	}
 	if events[1].Args != `{"keywords":["档案室"]}` || events[1].Result != "找到档案室设定" || events[1].Status != "success" {
 		t.Fatalf("first tool event details mismatch: %#v", events[1])
 	}
-	if events[3].Args == "" || events[3].Result != "已写入 1 条记忆" || events[3].Status != "success" {
+	if events[3].Args == "" || events[3].Result != "找到 1 个历史回合" || events[3].Status != "success" {
 		t.Fatalf("second tool event details mismatch: %#v", events[3])
 	}
 }
@@ -715,7 +738,7 @@ func TestInteractiveConversationKeepsFullHistoryWithoutSlidingWindow(t *testing.
 	if history[0].Content != "第1次行动" || history[2].Content != "第2次行动" || history[6].Content != "第4次行动" {
 		t.Fatalf("interactive story history should keep the full pre-compaction chain: %#v", history)
 	}
-	if strings.Contains(history[8].Content, "较早") || strings.Contains(history[8].Content, "第1次行动") {
+	if strings.Contains(history[8].Content, "[历史上下文检查点]") || strings.Contains(history[8].Content, "第1次行动") {
 		t.Fatalf("turn instruction should not carry sliding-window summaries or duplicate raw history: %s", history[8].Content)
 	}
 }
@@ -816,7 +839,7 @@ func TestInteractiveTurnMemoryKeepsFullTurnChain(t *testing.T) {
 		{User: "第4次行动", Narrative: "第4段剧情"},
 		{User: "第5次行动", Narrative: "第5段剧情"},
 	}
-	memory := buildInteractiveTurnMemory(turns)
+	memory := buildInteractiveTurnHistory(turns)
 	if len(memory.Turns) != len(turns) {
 		t.Fatalf("turns = %d, want full chain %d", len(memory.Turns), len(turns))
 	}
@@ -828,7 +851,7 @@ func TestInteractiveTurnMemoryKeepsFullTurnChain(t *testing.T) {
 	}
 }
 
-func TestInteractiveTurnMemoryWithCompactionUsesSingleSummaryAndRetainedTail(t *testing.T) {
+func TestInteractiveTurnHistoryWithCompactionUsesSingleCheckpointAndRetainedTail(t *testing.T) {
 	turns := []interactive.TurnEvent{
 		{User: "第1次行动", Narrative: "第1段剧情"},
 		{User: "第2次行动", Narrative: "第2段剧情"},
@@ -840,22 +863,22 @@ func TestInteractiveTurnMemoryWithCompactionUsesSingleSummaryAndRetainedTail(t *
 		Summary:         "压缩摘要：主角已进入旧城。",
 		SourceTurnCount: 3,
 	}
-	memory := buildInteractiveTurnMemoryWithCompaction(turns, compaction, 1)
-	if memory.PreviousSummary != "" {
-		t.Fatalf("previous summary should stay empty when compaction summary is a model message, got %q", memory.PreviousSummary)
+	history := buildInteractiveTurnHistoryWithCompaction(turns, compaction, 1)
+	if history.PreviousSummary != "" {
+		t.Fatalf("previous summary should stay empty when the history checkpoint is a model message, got %q", history.PreviousSummary)
 	}
-	if len(memory.Turns) != 3 ||
-		memory.Turns[0].User != "第3次行动" ||
-		memory.Turns[1].User != "第4次行动" ||
-		memory.Turns[2].User != "第5次行动" {
-		t.Fatalf("retained tail should keep retained source turns plus post-compaction turns: %#v", memory.Turns)
+	if len(history.Turns) != 3 ||
+		history.Turns[0].User != "第3次行动" ||
+		history.Turns[1].User != "第4次行动" ||
+		history.Turns[2].User != "第5次行动" {
+		t.Fatalf("retained tail should keep retained source turns plus post-compaction turns: %#v", history.Turns)
 	}
-	if memory.PreviousCount != 3 || memory.OmittedCount != 3 {
-		t.Fatalf("unexpected compaction counts: %#v", memory)
+	if history.PreviousCount != 3 || history.OmittedCount != 3 {
+		t.Fatalf("unexpected compaction counts: %#v", history)
 	}
 }
 
-func TestInteractiveTurnMemoryWithCompactionRetainsSourceTailImmediatelyAfterCompaction(t *testing.T) {
+func TestInteractiveTurnHistoryWithCompactionRetainsSourceTailImmediatelyAfterCompaction(t *testing.T) {
 	turns := []interactive.TurnEvent{
 		{User: "第1次行动", Narrative: "第1段剧情"},
 		{User: "第2次行动", Narrative: "第2段剧情"},
@@ -865,33 +888,34 @@ func TestInteractiveTurnMemoryWithCompactionRetainsSourceTailImmediatelyAfterCom
 		Summary:         "压缩摘要：主角已进入旧城。",
 		SourceTurnCount: len(turns),
 	}
-	memory := buildInteractiveTurnMemoryWithCompaction(turns, compaction, 2)
-	if memory.PreviousSummary != "" {
-		t.Fatalf("compaction summary should not be duplicated in previous summary: %q", memory.PreviousSummary)
+	history := buildInteractiveTurnHistoryWithCompaction(turns, compaction, 2)
+	if history.PreviousSummary != "" {
+		t.Fatalf("history checkpoint should not be duplicated in previous summary: %q", history.PreviousSummary)
 	}
-	if len(memory.Turns) != 2 || memory.Turns[0].User != "第2次行动" || memory.Turns[1].User != "第3次行动" {
-		t.Fatalf("retained tail should remain available immediately after compaction: %#v", memory.Turns)
+	if len(history.Turns) != 2 || history.Turns[0].User != "第2次行动" || history.Turns[1].User != "第3次行动" {
+		t.Fatalf("retained tail should remain available immediately after compaction: %#v", history.Turns)
 	}
 }
 
 func TestInteractiveCompactionSourceUsesOnlyTurnsAfterPreviousCompaction(t *testing.T) {
 	turns := []interactive.TurnEvent{
-		{User: "已压缩行动1", Narrative: "已压缩剧情1"},
-		{User: "已压缩行动2", Narrative: "已压缩剧情2"},
-		{User: "新增行动3", Narrative: "新增剧情3"},
+		{ID: "turn-1", BranchID: "main", User: "已压缩行动1", Narrative: "已压缩剧情1"},
+		{ID: "turn-2", BranchID: "main", User: "已压缩行动2", Narrative: "已压缩剧情2"},
+		{ID: "turn-3", BranchID: "main", User: "新增行动3", Narrative: "新增剧情3"},
 	}
 	compaction := &interactive.ContextCompactionEvent{
 		Summary:         "旧压缩摘要：前两回合已整理。",
 		SourceTurnCount: 2,
 	}
-	source, existing := interactiveCompactionSource(turns, compaction)
-	if existing != compaction.Summary {
-		t.Fatalf("existing memory = %q", existing)
+	source, checkpoint := interactiveCompactionSource(turns, compaction)
+	if checkpoint != compaction.Summary {
+		t.Fatalf("existing checkpoint = %q", checkpoint)
 	}
 	if len(source) != 2 {
 		t.Fatalf("source len = %d, want user+narrative for one new turn: %#v", len(source), source)
 	}
-	if source[0].Content != "新增行动3" || source[1].Content != "新增剧情3" {
+	if !strings.Contains(source[0].Content, "[source turn_id=turn-3 branch_id=main]") || !strings.HasSuffix(source[0].Content, "新增行动3") ||
+		!strings.Contains(source[1].Content, "[source turn_id=turn-3 branch_id=main]") || !strings.HasSuffix(source[1].Content, "新增剧情3") {
 		t.Fatalf("source should contain only new turn messages: %#v", source)
 	}
 	for _, msg := range source {
@@ -924,13 +948,38 @@ func TestParseInteractiveAssistantOutput(t *testing.T) {
 
 func submitTestTurnResult(t *testing.T, conversation *interactiveConversation, intent, goal string) {
 	t.Helper()
-	receipt, err := conversation.SubmitTurnResult(context.Background(), interactive.TurnResult{
-		Contract:    interactive.TurnContract{PlayerIntent: intent, SceneGoal: goal},
-		SceneResult: interactive.TurnSceneResult{Status: "continued", Summary: goal},
-		PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "none"},
-		Choices:     []string{"继续当前行动", "观察周围变化"},
-	})
-	if err != nil || !receipt.Accepted {
+	updates := []interactive.StateUpdate{}
+	storyContext, err := conversation.store.StoryContext(conversation.storyID, conversation.branchID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actors, _ := storyContext.Snapshot.State["actors"].(map[string]any)
+	_, hasStoryContext := actors[interactive.DefaultStoryContextActorID]
+	actorState := conversation.storyDirectorForMeta(storyContext.Meta).ActorState
+	if storyContext.Meta.ActorStateSchema != nil {
+		actorState = storyContext.Meta.ActorStateSchema.System
+	}
+	if !hasStoryContext {
+		for _, actor := range actorState.InitialActors {
+			if actor.ID == interactive.DefaultStoryContextActorID && actor.TemplateID == interactive.ActorStateStoryContextTemplateID {
+				hasStoryContext = true
+				break
+			}
+		}
+	}
+	if hasStoryContext {
+		event := strings.TrimSpace(goal)
+		if event == "" {
+			event = strings.TrimSpace(intent)
+		}
+		updates = append(updates,
+			interactive.StateUpdate{Op: "replace", Path: "/story/当前详细地点", Value: "测试场景"},
+			interactive.StateUpdate{Op: "replace", Path: "/story/当前事件", Value: event},
+		)
+	}
+	input := testTurnSubmissionInput(updates, true)
+	receipt, err := conversation.SubmitTurnResult(context.Background(), input)
+	if err != nil || !receipt.Ready {
 		t.Fatalf("SubmitTurnResult failed: receipt=%#v err=%v", receipt, err)
 	}
 }

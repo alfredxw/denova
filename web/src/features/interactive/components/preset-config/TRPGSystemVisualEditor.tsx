@@ -304,13 +304,13 @@ function StateFieldReferenceEditor({
 
   binding.modifiers?.forEach((item, index) => {
     rows.push(selector(`modifier-${index}`, t('settingPanel.trpgRule.fieldReference.modifier', { index: index + 1 }), item.source, item.field_id, (field_id) => {
-      onChange({ modifiers: binding.modifiers?.map((candidate, candidateIndex) => candidateIndex === index ? { ...candidate, field_id, field_path: undefined } : candidate) })
+      onChange({ modifiers: binding.modifiers?.map((candidate, candidateIndex) => candidateIndex === index ? { ...candidate, field_id } : candidate) })
     }))
   })
   binding.narrative_state_refs?.forEach((item, index) => {
     if (item.source === 'scene') return
     rows.push(selector(`narrative-${index}`, t('settingPanel.trpgRule.fieldReference.narrative', { index: index + 1 }), item.source, item.field_id, (field_id) => {
-      onChange({ narrative_state_refs: binding.narrative_state_refs?.map((candidate, candidateIndex) => candidateIndex === index ? { ...candidate, field_id, field_path: undefined } : candidate) })
+      onChange({ narrative_state_refs: binding.narrative_state_refs?.map((candidate, candidateIndex) => candidateIndex === index ? { ...candidate, field_id } : candidate) })
     }))
   })
   binding.outcome_state_changes?.forEach((outcome, outcomeIndex) => {
@@ -319,7 +319,7 @@ function StateFieldReferenceEditor({
         onChange({
           outcome_state_changes: binding.outcome_state_changes?.map((candidate, candidateOutcomeIndex) => candidateOutcomeIndex !== outcomeIndex ? candidate : {
             ...candidate,
-            state_changes: candidate.state_changes?.map((change, candidateChangeIndex) => candidateChangeIndex === changeIndex ? { ...change, field_id, field_path: undefined } : change),
+            state_changes: candidate.state_changes?.map((change, candidateChangeIndex) => candidateChangeIndex === changeIndex ? { ...change, field_id } : change),
           }),
         })
       }))
@@ -332,7 +332,7 @@ function StateFieldReferenceEditor({
                 ...change,
                 change_formula: {
                   ...change.change_formula,
-                  terms: change.change_formula?.terms?.map((candidateTerm, candidateTermIndex) => candidateTermIndex === termIndex ? { ...candidateTerm, field_id, field_path: undefined } : candidateTerm),
+                  terms: change.change_formula?.terms?.map((candidateTerm, candidateTermIndex) => candidateTermIndex === termIndex ? { ...candidateTerm, field_id } : candidateTerm),
                 },
               }),
             }),

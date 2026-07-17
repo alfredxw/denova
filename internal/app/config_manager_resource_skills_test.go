@@ -24,11 +24,6 @@ func TestConfigManagerResourceSkillNames(t *testing.T) {
 			want: []string{configManagerAutomationSkill},
 		},
 		{
-			name: "story memory origin",
-			req:  ConfigManagerRequest{Origin: "story_memory", StoryID: "story-1", Context: map[string]string{"selected_structure_id": "current_state"}},
-			want: []string{configManagerStoryMemorySkill},
-		},
-		{
 			name: "teller origin",
 			req:  ConfigManagerRequest{Origin: "teller", Context: map[string]string{"teller_count": "3"}},
 			want: []string{configManagerTellerSkill, configManagerStoryDirectorSkill, configManagerImagePresetSkill},
@@ -52,11 +47,6 @@ func TestConfigManagerResourceSkillNames(t *testing.T) {
 			name: "agents origin",
 			req:  ConfigManagerRequest{Origin: "agents", ResourceID: "user:ide"},
 			want: []string{configManagerAgentConfigSkill},
-		},
-		{
-			name: "context signal without origin",
-			req:  ConfigManagerRequest{Context: map[string]string{"record_count": "2", "selected_structure_name": "角色"}},
-			want: []string{configManagerStoryMemorySkill},
 		},
 		{
 			name: "dedupe automation signals",

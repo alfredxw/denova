@@ -15,9 +15,10 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { getImagePresets } from '../api'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, INTERACTIVE_OPENING_PRESET_ENTRY_ID, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, serializeBookOpeningPresets, type BookOpeningPreset } from '../opening'
-import type { PresetResourceKind, PresetUsageMode } from '../preset-ownership'
+import type { PresetUsageMode } from '../preset-ownership'
 import type { ImagePreset, StoryDirector, Teller } from '../types'
 import { CreatorDirectory, CreatorEditor, LoreDirectory, LoreEditor, OpeningPresetEditor } from './SettingPanelSections'
+import { LoreClassificationDialog } from './LoreClassificationDialog'
 import { PresetSettingsPanel } from './setting-panel/PresetSettingsPanel'
 import { EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS } from './setting-panel/presetResources'
 
@@ -101,7 +102,6 @@ interface SettingPanelProps {
   tellers?: Teller[]
   storyDirectors?: StoryDirector[]
   imagePresets?: ImagePreset[]
-  presetFocus?: { nonce: number; kind: PresetResourceKind; id?: string }
   presetUsageMode?: PresetUsageMode
   onTellersChange?: (tellers: Teller[]) => void
   onStoryDirectorsChange?: (directors: StoryDirector[]) => void
@@ -115,7 +115,6 @@ export function SettingPanel({
   tellers = EMPTY_TELLERS,
   storyDirectors = EMPTY_STORY_DIRECTORS,
   imagePresets = EMPTY_IMAGE_PRESETS,
-  presetFocus,
   presetUsageMode = 'game',
   onTellersChange,
   onStoryDirectorsChange,
@@ -130,7 +129,6 @@ export function SettingPanel({
         tellers={tellers}
         storyDirectors={storyDirectors}
         imagePresets={imagePresets}
-        presetFocus={presetFocus}
         presetUsageMode={presetUsageMode}
         onTellersChange={onTellersChange}
         onStoryDirectorsChange={onStoryDirectorsChange}
@@ -172,6 +170,7 @@ function LoreSettingPanel({
   const [loreImageInstruction, setLoreImageInstruction] = useState('')
   const [loreImageGeneratingId, setLoreImageGeneratingId] = useState('')
   const [loreImageBatchOpen, setLoreImageBatchOpen] = useState(false)
+  const [loreClassificationOpen, setLoreClassificationOpen] = useState(false)
   const [loreImageBatchSelectedIds, setLoreImageBatchSelectedIds] = useState<string[]>([])
   const [loreImageBatchQuery, setLoreImageBatchQuery] = useState('')
   const [loreImageBatchType, setLoreImageBatchType] = useState<LoreType | 'all'>('all')
@@ -601,7 +600,7 @@ function LoreSettingPanel({
         <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.directoryHint')}</div>
       </div>
 
-      {activeMode === 'lore' ? <LoreDirectory items={items} activeId={activeId} query={query} saving={saving} onQueryChange={setQuery} onSelect={handleSelectLore} onCreate={(section) => void handleCreateLore(section)} onBatchGenerate={handleOpenLoreImageBatch} /> : <CreatorDirectory />}
+      {activeMode === 'lore' ? <LoreDirectory items={items} activeId={activeId} query={query} saving={saving} onQueryChange={setQuery} onSelect={handleSelectLore} onCreate={(section) => void handleCreateLore(section)} onBatchGenerate={handleOpenLoreImageBatch} onClassify={() => setLoreClassificationOpen(true)} /> : <CreatorDirectory />}
     </div>
   )
 
@@ -680,6 +679,16 @@ function LoreSettingPanel({
           </main>
         )}
       </AdaptiveSurface>
+      <LoreClassificationDialog
+        open={loreClassificationOpen}
+        onOpenChange={setLoreClassificationOpen}
+        onApplied={(nextItems) => {
+          setItems(nextItems)
+          const selectedItem = nextItems.find((item) => item.id === activeId)
+          if (selectedItem) mergeSavedLoreItem(selectedItem)
+          notifyLoreUpdated(selectedItem ? [selectedItem.id] : [])
+        }}
+      />
       <LoreImageBatchDialog
         open={loreImageBatchOpen}
         items={items}

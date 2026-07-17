@@ -4,11 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryMemoryStructureModule, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, Teller } from '../../types'
 import { PresetMetadataPanel } from '../preset-config/PresetEditorChrome'
 import { BooleanSwitchField } from '../setting-panel/BooleanSwitchField'
 import { DirectorModuleConsole } from './ModuleConsole'
-import { consoleSectionClassName, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_EVENT_FREQUENCY_OPTIONS, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS, STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS, STORY_DIRECTOR_STATE_SCHEMA_ADAPTATION_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StrategySelectOption } from './constants'
+import { consoleSectionClassName, DIRECTOR_AGENT_BRIEF_REQUIRED_HEADINGS, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_EVENT_FREQUENCY_OPTIONS, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS, STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS, STORY_DIRECTOR_STATE_SCHEMA_ADAPTATION_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StrategySelectOption } from './constants'
 import { EmptyState, Field, SectionTitle } from './shared'
 import { directorResolvedEventPackages, findById, normalizeBranchPlanningTurns, normalizedStoryDirectorRefs, presetStatusLabel, strategyOptionText, utf8ByteLength, validateDirectorPlanningTemplate } from './utils'
 
@@ -18,7 +18,6 @@ export function StoryDirectorEditor({
   eventPackages,
   ruleSystems,
   actorStates,
-  memoryStructures,
   imagePresets,
   setDraft,
   onValidityChange,
@@ -28,7 +27,6 @@ export function StoryDirectorEditor({
   eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
   actorStates: ActorStateModule[]
-  memoryStructures: StoryMemoryStructureModule[]
   imagePresets: ImagePreset[]
   setDraft: (draft: StoryDirector | null) => void
   onValidityChange?: (valid: boolean) => void
@@ -43,8 +41,10 @@ export function StoryDirectorEditor({
   const strategyPromptValid = strategyPromptBytes <= STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT
   const planningTemplates = draft?.strategy?.planning_templates || EMPTY_DIRECTOR_PLANNING_TEMPLATES
   const planningTemplateValue = planningTemplates.plan || ''
+  const agentBriefTemplateValue = planningTemplates.agent_brief || ''
   const planningTemplateValidity = validateDirectorPlanningTemplate(planningTemplateValue)
-  const planningTemplatesValid = planningTemplateValidity.valid
+  const agentBriefTemplateValidity = validateDirectorPlanningTemplate(agentBriefTemplateValue, DIRECTOR_AGENT_BRIEF_REQUIRED_HEADINGS)
+  const planningTemplatesValid = planningTemplateValidity.valid && agentBriefTemplateValidity.valid
 
   useEffect(() => {
     setStrategyPromptOpen(false)
@@ -81,8 +81,8 @@ export function StoryDirectorEditor({
       },
     })
   }
-  const updatePlanningTemplate = (value: string) => {
-    updateStrategy({ planning_templates: { ...planningTemplates, plan: value } })
+  const updatePlanningTemplate = (key: 'plan' | 'agent_brief', value: string) => {
+    updateStrategy({ planning_templates: { ...planningTemplates, [key]: value } })
   }
   const refs = normalizedStoryDirectorRefs(draft.module_refs)
   const updateModuleRef = <K extends keyof StoryDirectorModuleRefs>(key: K, value: StoryDirectorModuleRefs[K]) => {
@@ -117,7 +117,6 @@ export function StoryDirectorEditor({
   const selectedEventCardCount = selectedEventPackages.reduce((total, item) => total + item.cards, 0)
   const selectedRuleSystem = findById(ruleSystems, refs.rule_system_id || 'default')
   const selectedActorState = findById(actorStates, refs.actor_state_id || 'default')
-  const selectedMemoryStructure = findById(memoryStructures, refs.memory_structure_id || 'default')
   const selectedImagePreset = findById(imagePresets, refs.image_preset_id || 'game-cg')
   const selectedTeller = findById(tellers, refs.narrative_style_id || 'classic')
 
@@ -139,15 +138,12 @@ export function StoryDirectorEditor({
           selectedTellerName={selectedTeller?.name || refs.narrative_style_id || 'classic'}
           selectedRuleName={selectedRuleSystem?.name || refs.rule_system_id || 'default'}
           selectedActorStateName={selectedActorState?.name || refs.actor_state_id || 'default'}
-          selectedMemoryStructureCount={selectedMemoryStructure?.structures?.filter((structure) => structure.enabled !== false).length ?? draft.resolved_snapshot?.story_memory_structures?.filter((structure) => structure.enabled !== false).length ?? 0}
-          selectedMemoryStructureTotal={selectedMemoryStructure?.structures?.length ?? draft.resolved_snapshot?.story_memory_structures?.length ?? 0}
           selectedImageName={selectedImagePreset?.name || refs.image_preset_id || 'game-cg'}
           selectedEventCardCount={selectedEventCardCount}
           tellers={tellers}
           eventPackages={eventPackages}
           ruleSystems={ruleSystems}
           actorStates={actorStates}
-          memoryStructures={memoryStructures}
           imagePresets={imagePresets}
           onModuleRefChange={updateModuleRef}
         />
@@ -280,7 +276,10 @@ export function StoryDirectorEditor({
             />
             {planningTemplatesOpen ? (
               <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3">
-                <PlanningTemplateTextarea label={t('settingPanel.storyDirector.planningTemplate.plan')} value={planningTemplateValue} validity={planningTemplateValidity} onChange={updatePlanningTemplate} />
+                <div className="grid gap-3 lg:grid-cols-2">
+                  <PlanningTemplateTextarea label={t('settingPanel.storyDirector.planningTemplate.plan')} value={planningTemplateValue} validity={planningTemplateValidity} onChange={(value) => updatePlanningTemplate('plan', value)} />
+                  <PlanningTemplateTextarea label={t('settingPanel.storyDirector.planningTemplate.agentBrief')} value={agentBriefTemplateValue} validity={agentBriefTemplateValidity} onChange={(value) => updatePlanningTemplate('agent_brief', value)} />
+                </div>
                 <div className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.storyDirector.planningTemplatesRequiredHeadings')}</div>
               </div>
             ) : null}

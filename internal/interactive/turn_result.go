@@ -3,177 +3,178 @@ package interactive
 import (
 	"fmt"
 	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
 )
 
 const StateOpSourceTurnResult = "turn_result"
 
-// TurnContract records the Game Agent's bounded intent for one playable turn.
-// It is persisted with the final turn and never rendered as story prose.
-type TurnContract struct {
-	PlayerIntent             string              `json:"player_intent" jsonschema_description:"玩家本轮实际意图。"`
-	SceneGoal                string              `json:"scene_goal" jsonschema_description:"本轮需要推进或解决的场景目标。"`
-	Beats                    []string            `json:"beats,omitempty" jsonschema_description:"本轮正文需要完成的 1 到 3 个叙事节拍。"`
-	NPCIntents               []string            `json:"npc_intents,omitempty" jsonschema_description:"本轮重要角色各自主动追求的目标。"`
-	Reveals                  []string            `json:"reveals,omitempty" jsonschema_description:"本轮确定向玩家揭示的信息。"`
-	Costs                    []string            `json:"costs,omitempty" jsonschema_description:"本轮已经成立或可能成立的代价。"`
-	ContinuityConstraints    []string            `json:"continuity_constraints,omitempty" jsonschema_description:"正文不可违背的既有事实和连续性约束。"`
-	ChoiceAxes               []string            `json:"choice_axes,omitempty" jsonschema_description:"正文结尾留下的不同下一步行动维度。"`
-	ExpectedStateChanges     []string            `json:"expected_state_changes,omitempty" jsonschema_description:"本轮预计会改变的状态语义说明；实际状态以 actor_state_patches 和 RuleResolution 为准。"`
-	SceneTransitionCandidate TurnSceneTransition `json:"scene_transition_candidate,omitempty" jsonschema_description:"Game Agent 对场景边界的候选判断。"`
-	PlanAlignmentCandidate   TurnPlanAlignment   `json:"plan_alignment_candidate,omitempty" jsonschema_description:"Game Agent 对当前计划是否仍然成立的候选判断。"`
+const (
+	TurnStateUpdateReplace = "replace"
+	TurnStateUpdateDelta   = "delta"
+	TurnStateUpdateCreate  = "create"
+
+	maxDirectorUpdateReasonBytes = 1024
+)
+
+// StateUpdate is the small, model-facing state mutation contract. Path is a
+// schema-bound JSON Pointer whose first segment is a stable Actor ID.
+type StateUpdate struct {
+	Op    string `json:"op" jsonschema:"enum=replace,enum=delta,enum=create" jsonschema_description:"状态操作，只能使用 replace、delta 或 create。"`
+	Path  string `json:"path" jsonschema_description:"以稳定 actor_id 开头的 schema-bound JSON Pointer，例如 /protagonist/生命值。"`
+	Value any    `json:"value" jsonschema_description:"replace/create 的目标值，或 delta 的数值变化量。"`
 }
 
-type TurnSceneTransition struct {
-	Kind   string `json:"kind,omitempty" jsonschema:"enum=none,enum=exit,enum=enter,enum=replace" jsonschema_description:"场景变化类型；没有场景边界时使用 none。"`
-	From   string `json:"from,omitempty" jsonschema_description:"离开的场景或阶段。"`
-	To     string `json:"to,omitempty" jsonschema_description:"进入的新场景或阶段候选。"`
-	Reason string `json:"reason,omitempty" jsonschema_description:"判断为场景边界的正文依据。"`
+// DirectorUpdateHint is a lightweight post-narrative signal from the Game
+// Agent. It only reports that committed facts materially affect future
+// planning; the Director remains responsible for deciding patch versus replan
+// and which Markdown documents actually need edits.
+type DirectorUpdateHint struct {
+	Needed bool   `json:"needed" jsonschema_description:"仅当本回合让当前目标、阶段、关键关系、重大线索或规划前提发生实质变化时为 true；普通承接必须为 false。"`
+	Reason string `json:"reason,omitempty" jsonschema_description:"needed=true 时简短说明哪些已发生事实影响后续规划；不要提出具体 director.md 改写方案。"`
 }
 
-type TurnPlanAlignment struct {
-	Level               string   `json:"level,omitempty" jsonschema:"enum=aligned,enum=minor_deviation,enum=major_deviation" jsonschema_description:"本轮结果与当前计划的对齐程度。"`
-	InvalidatedPlanRefs []string `json:"invalidated_plan_refs,omitempty" jsonschema_description:"可能被本轮事实推翻的 beat 或计划引用。"`
-	Reason              string   `json:"reason,omitempty" jsonschema_description:"偏航候选判断依据。"`
-}
-
-type StoryFactCandidate struct {
-	Kind       string   `json:"kind" jsonschema_description:"事实类型，例如 plot、relationship、clue、secret、world、commitment。"`
-	Subject    string   `json:"subject" jsonschema_description:"事实主要涉及的人物、地点、势力、物品或事件。"`
-	Fact       string   `json:"fact" jsonschema_description:"本轮正文已经明确成立、后续需要承接的事实。"`
-	Visibility string   `json:"visibility,omitempty" jsonschema:"enum=public,enum=player_known,enum=private" jsonschema_description:"事实可见性；未来计划不得作为事实候选。"`
-	Importance string   `json:"importance,omitempty" jsonschema:"enum=low,enum=medium,enum=high,enum=critical" jsonschema_description:"长期记忆重要程度。"`
-	People     []string `json:"people,omitempty" jsonschema_description:"相关人物。"`
-	Places     []string `json:"places,omitempty" jsonschema_description:"相关地点。"`
-	Tags       []string `json:"tags,omitempty" jsonschema_description:"检索标签。"`
-}
-
-type TurnSceneResult struct {
-	Status        string `json:"status,omitempty" jsonschema:"enum=continued,enum=completed,enum=transitioned,enum=terminal" jsonschema_description:"本轮结束后的场景状态。"`
-	SceneID       string `json:"scene_id,omitempty" jsonschema_description:"当前场景稳定标识或名称。"`
-	NextSceneID   string `json:"next_scene_id,omitempty" jsonschema_description:"发生场景切换时的下一场景标识或名称。"`
-	Summary       string `json:"summary,omitempty" jsonschema_description:"本轮场景结果的简短事实摘要。"`
-	NextSceneGoal string `json:"next_scene_goal,omitempty" jsonschema_description:"下一场景已经明确时的即时目标。"`
-}
-
-type TurnPlanSignals struct {
-	SceneTransition TurnSceneTransition `json:"scene_transition,omitempty"`
-	DeviationLevel  string              `json:"deviation_level,omitempty" jsonschema:"enum=none,enum=minor,enum=major" jsonschema_description:"最终结果对当前计划的影响等级。"`
-	InvalidatedRefs []string            `json:"invalidated_refs,omitempty" jsonschema_description:"被最终事实推翻的计划引用。"`
-	Reason          string              `json:"reason,omitempty" jsonschema_description:"最终计划信号判断依据。"`
-}
-
-// TurnResult is produced by the Game Agent alongside narrative. The backend
-// validates it and atomically materializes Actor State changes with the turn.
+// TurnResult is the complete hidden result produced by the Game Agent. The
+// backend compiles StateUpdates into replayable StateDelta operations.
 type TurnResult struct {
-	Contract          TurnContract         `json:"contract"`
-	ActorStatePatches []ActorStatePatch    `json:"actor_state_patches,omitempty" jsonschema_description:"非规则叙事已经明确建立的 Actor 状态更新；数值检定结果不要在这里重复写。"`
-	FactCandidates    []StoryFactCandidate `json:"fact_candidates,omitempty" jsonschema_description:"已经发生、值得由 Memory Recorder 整理为长期记忆的事实候选。"`
-	SceneResult       TurnSceneResult      `json:"scene_result,omitempty"`
-	PlanSignals       TurnPlanSignals      `json:"plan_signals,omitempty"`
-	Choices           []string             `json:"choices,omitempty" jsonschema_description:"与正文结尾一致、可直接作为下一轮输入的 2 到 4 个行动建议。"`
+	StateUpdates   []StateUpdate       `json:"state_updates"`
+	Choices        []string            `json:"choices"`
+	DirectorUpdate *DirectorUpdateHint `json:"director_update,omitempty"`
 }
 
 func NormalizeTurnResult(result TurnResult) TurnResult {
-	result.Contract = normalizeTurnContract(result.Contract)
-	if len(result.ActorStatePatches) > maxTurnBriefListItems {
-		result.ActorStatePatches = result.ActorStatePatches[:maxTurnBriefListItems]
-	}
-	for i := range result.ActorStatePatches {
-		result.ActorStatePatches[i].ActorID = normalizeActorStateID(result.ActorStatePatches[i].ActorID)
-		result.ActorStatePatches[i].TemplateID = normalizeActorStateID(result.ActorStatePatches[i].TemplateID)
-		result.ActorStatePatches[i].ActorName = trimBytes(result.ActorStatePatches[i].ActorName, 128)
-		result.ActorStatePatches[i].Role = trimBytes(result.ActorStatePatches[i].Role, 128)
-		result.ActorStatePatches[i].Description = trimBytes(result.ActorStatePatches[i].Description, maxTurnBriefTextBytes)
-		result.ActorStatePatches[i].Reason = trimBytes(result.ActorStatePatches[i].Reason, maxTurnBriefTextBytes)
-		result.ActorStatePatches[i].SourceTurnID = ""
-	}
-	result.FactCandidates = normalizeStoryFactCandidates(result.FactCandidates)
-	result.SceneResult.Status = normalizeEnum(result.SceneResult.Status, "continued", "completed", "transitioned", "terminal")
-	result.SceneResult.SceneID = trimBytes(result.SceneResult.SceneID, 256)
-	result.SceneResult.NextSceneID = trimBytes(result.SceneResult.NextSceneID, 256)
-	result.SceneResult.Summary = trimBytes(result.SceneResult.Summary, maxTurnBriefTextBytes)
-	result.SceneResult.NextSceneGoal = trimBytes(result.SceneResult.NextSceneGoal, maxTurnBriefTextBytes)
-	result.PlanSignals.SceneTransition = normalizeTurnSceneTransition(result.PlanSignals.SceneTransition)
-	result.PlanSignals.DeviationLevel = normalizeEnum(result.PlanSignals.DeviationLevel, "none", "minor", "major")
-	result.PlanSignals.InvalidatedRefs = normalizeStringListLimit(result.PlanSignals.InvalidatedRefs, maxTurnBriefListItems)
-	result.PlanSignals.Reason = trimBytes(result.PlanSignals.Reason, maxTurnBriefTextBytes)
-	result.Choices = normalizeChoiceListLimit(result.Choices, 4)
+	result.StateUpdates = normalizeTurnStateUpdates(result.StateUpdates)
+	result.Choices = normalizeChoiceListLimit(result.Choices, MaxStoryChoiceCount+1)
+	result.DirectorUpdate = normalizeDirectorUpdateHint(result.DirectorUpdate)
 	return result
 }
 
-func ValidateTurnResult(result TurnResult) error {
-	if strings.TrimSpace(result.Contract.PlayerIntent) == "" && strings.TrimSpace(result.Contract.SceneGoal) == "" {
-		return fmt.Errorf("TurnResult 缺少 player_intent 或 scene_goal")
+func ValidateTurnResult(result TurnResult, configuredChoiceCount ...int) error {
+	choiceCount := DefaultStoryChoiceCount
+	if len(configuredChoiceCount) > 0 {
+		choiceCount = normalizeStoryChoiceCount(configuredChoiceCount[0])
 	}
-	for _, fact := range result.FactCandidates {
-		if strings.TrimSpace(fact.Fact) == "" {
-			return fmt.Errorf("TurnResult 事实候选内容不能为空")
+	return validateTurnResult(result, choiceCount, false)
+}
+
+func validateTerminalTurnResult(result TurnResult, configuredChoiceCount int) error {
+	return validateTurnResult(result, configuredChoiceCount, true)
+}
+
+func validateTurnResult(result TurnResult, configuredChoiceCount int, terminal bool) error {
+	choiceCount := normalizeStoryChoiceCount(configuredChoiceCount)
+	if err := validateStoryChoiceCount(choiceCount); err != nil {
+		return err
+	}
+	if len(result.StateUpdates) > maxInteractiveListItems {
+		return fmt.Errorf("TurnResult state_updates 不能超过 %d 项", maxInteractiveListItems)
+	}
+	for index, update := range result.StateUpdates {
+		if err := validateStateUpdateShape(update); err != nil {
+			return fmt.Errorf("TurnResult state_updates[%d] 无效: %w", index, err)
 		}
 	}
-	if len(result.Choices) == 1 || (result.SceneResult.Status != "terminal" && len(result.Choices) < 2) {
-		return fmt.Errorf("TurnResult choices 必须提供 2 到 4 个与正文结尾一致的行动建议；终局回合可以为空")
+	if err := validateDirectorUpdateHint(result.DirectorUpdate); err != nil {
+		return fmt.Errorf("TurnResult director_update 无效: %w", err)
+	}
+	if terminal {
+		if len(result.Choices) != 0 {
+			return fmt.Errorf("明确终局的 TurnResult choices 必须为空")
+		}
+		return nil
+	}
+	if len(result.Choices) != choiceCount {
+		return fmt.Errorf("TurnResult choices 必须提供恰好 %d 个不同的行动建议", choiceCount)
 	}
 	return nil
 }
 
-func normalizeTurnResultPointer(result *TurnResult) *TurnResult {
+func normalizeDirectorUpdateHint(hint *DirectorUpdateHint) *DirectorUpdateHint {
+	if hint == nil {
+		return nil
+	}
+	normalized := &DirectorUpdateHint{
+		Needed: hint.Needed,
+		Reason: strings.TrimSpace(trimBytes(hint.Reason, maxDirectorUpdateReasonBytes)),
+	}
+	if !normalized.Needed {
+		return nil
+	}
+	return normalized
+}
+
+func validateDirectorUpdateHint(hint *DirectorUpdateHint) error {
+	if hint == nil {
+		return nil
+	}
+	if !hint.Needed {
+		return fmt.Errorf("needed=false 时应省略 director_update")
+	}
+	if strings.TrimSpace(hint.Reason) == "" {
+		return fmt.Errorf("needed=true 时 reason 不能为空")
+	}
+	if len([]byte(hint.Reason)) > maxDirectorUpdateReasonBytes {
+		return fmt.Errorf("reason 超过 %d bytes", maxDirectorUpdateReasonBytes)
+	}
+	return nil
+}
+
+func normalizeTurnResultPointer(result *TurnResult, configuredChoiceCount int, terminal bool) *TurnResult {
 	if result == nil {
 		return nil
 	}
 	normalized := NormalizeTurnResult(*result)
-	if err := ValidateTurnResult(normalized); err != nil {
+	var err error
+	if terminal {
+		err = validateTerminalTurnResult(normalized, configuredChoiceCount)
+	} else {
+		err = ValidateTurnResult(normalized, configuredChoiceCount)
+	}
+	if err != nil {
 		return nil
 	}
 	return &normalized
 }
 
-func normalizeTurnContract(contract TurnContract) TurnContract {
-	contract.PlayerIntent = trimBytes(contract.PlayerIntent, maxTurnBriefTextBytes)
-	contract.SceneGoal = trimBytes(contract.SceneGoal, maxTurnBriefTextBytes)
-	contract.Beats = normalizeStringListLimit(contract.Beats, 3)
-	contract.NPCIntents = normalizeStringListLimit(contract.NPCIntents, maxTurnBriefListItems)
-	contract.Reveals = normalizeStringListLimit(contract.Reveals, maxTurnBriefListItems)
-	contract.Costs = normalizeStringListLimit(contract.Costs, maxTurnBriefListItems)
-	contract.ContinuityConstraints = normalizeStringListLimit(contract.ContinuityConstraints, maxTurnBriefListItems)
-	contract.ChoiceAxes = normalizeStringListLimit(contract.ChoiceAxes, maxTurnBriefListItems)
-	contract.ExpectedStateChanges = normalizeStringListLimit(contract.ExpectedStateChanges, maxTurnBriefListItems)
-	contract.SceneTransitionCandidate = normalizeTurnSceneTransition(contract.SceneTransitionCandidate)
-	contract.PlanAlignmentCandidate.Level = normalizeEnum(contract.PlanAlignmentCandidate.Level, "aligned", "minor_deviation", "major_deviation")
-	contract.PlanAlignmentCandidate.InvalidatedPlanRefs = normalizeStringListLimit(contract.PlanAlignmentCandidate.InvalidatedPlanRefs, maxTurnBriefListItems)
-	contract.PlanAlignmentCandidate.Reason = trimBytes(contract.PlanAlignmentCandidate.Reason, maxTurnBriefTextBytes)
-	return contract
-}
-
-func normalizeTurnSceneTransition(value TurnSceneTransition) TurnSceneTransition {
-	value.Kind = normalizeEnum(value.Kind, "none", "exit", "enter", "replace")
-	value.From = trimBytes(value.From, 256)
-	value.To = trimBytes(value.To, 256)
-	value.Reason = trimBytes(value.Reason, maxTurnBriefTextBytes)
-	return value
-}
-
-func normalizeStoryFactCandidates(values []StoryFactCandidate) []StoryFactCandidate {
-	if len(values) > maxTurnBriefListItems {
-		values = values[:maxTurnBriefListItems]
+func normalizeTurnStateUpdates(updates []StateUpdate) []StateUpdate {
+	if updates == nil {
+		return []StateUpdate{}
 	}
-	out := make([]StoryFactCandidate, 0, len(values))
-	for _, value := range values {
-		value.Kind = trimBytes(value.Kind, 128)
-		value.Subject = trimBytes(value.Subject, 256)
-		value.Fact = trimBytes(value.Fact, maxTurnBriefTextBytes)
-		if strings.TrimSpace(value.Fact) == "" {
-			continue
+	result := make([]StateUpdate, len(updates))
+	for index, update := range updates {
+		update.Op = strings.ToLower(strings.TrimSpace(update.Op))
+		update.Path = strings.TrimSpace(update.Path)
+		result[index] = update
+	}
+	return result
+}
+
+func validateStateUpdateShape(update StateUpdate) error {
+	switch update.Op {
+	case TurnStateUpdateReplace, TurnStateUpdateDelta, TurnStateUpdateCreate:
+	default:
+		return fmt.Errorf("op 必须是 replace、delta 或 create")
+	}
+	if !strings.HasPrefix(update.Path, "/") || update.Path == "/" {
+		return fmt.Errorf("path 必须是以 / 开头的非空 JSON Pointer")
+	}
+	if update.Value == nil {
+		return fmt.Errorf("value 不能为空")
+	}
+	if update.Op == TurnStateUpdateDelta {
+		if _, ok := actorStateNumber(update.Value); !ok {
+			return fmt.Errorf("delta 的 value 必须是 number")
 		}
-		value.Visibility = normalizeEnum(value.Visibility, "public", "player_known", "private")
-		value.Importance = normalizeEnum(value.Importance, "low", "medium", "high", "critical")
-		value.People = normalizeStringListLimit(value.People, maxTurnBriefListItems)
-		value.Places = normalizeStringListLimit(value.Places, maxTurnBriefListItems)
-		value.Tags = normalizeStringListLimit(value.Tags, maxTurnBriefListItems)
-		out = append(out, value)
 	}
-	return out
+	return nil
 }
 
+func normalizedChoiceKey(value string) string {
+	return cases.Fold().String(norm.NFKC.String(strings.TrimSpace(value)))
+}
+
+// normalizeEnum remains shared by Director decision normalization.
 func normalizeEnum(value string, allowed ...string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
 	for _, candidate := range allowed {

@@ -30,8 +30,8 @@ func TestInteractiveStoryLoadsAllResidentLoreAndActiveOnDemandLore(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan.Docs.LoreContext = strings.Replace(plan.Docs.LoreContext, "## 当前角色\n", "## 当前角色\n\n- [[沈凝]]：当前见证者\n", 1)
-	plan.Docs.LoreContext = strings.Replace(plan.Docs.LoreContext, "## 候场角色\n", "## 候场角色\n\n- [[戒律长老]]：规则破坏时入场\n", 1)
+	plan.Docs.LoreContext = strings.Replace(plan.Docs.LoreContext, "## 当前\n", "## 当前\n\n- [[沈凝]]：当前见证者\n", 1)
+	plan.Docs.LoreContext = strings.Replace(plan.Docs.LoreContext, "## 候场\n", "## 候场\n\n- [[戒律长老]]：规则破坏时入场\n", 1)
 	if _, err := store.UpdateDirectorPlan(story.ID, interactive.UpdateDirectorPlanRequest{BranchID: "main", Docs: plan.Docs, BaseRevision: plan.Metadata.Revision}); err != nil {
 		t.Fatal(err)
 	}
@@ -66,14 +66,25 @@ func TestDirectorReceivesCommittedTemporaryLoreRecallForPromotion(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	turn := interactive.TurnEvent{ModelContextMessages: []interactive.ModelContextMessage{{
-		Role: "assistant",
-		ToolCalls: []interactive.ModelContextToolCall{{Function: interactive.ModelContextFunctionCall{
-			Name:      "read_lore_items",
-			Arguments: `{"names":["洛青衣"]}`,
-		}}},
-	}}}
-	context, err := buildInteractiveDirectorLoreContext(workspace, plan, turn, interactiveDirectorTaskDirectorPlanUpdate)
+	turn := interactive.TurnEvent{ModelContextMessages: []interactive.ModelContextMessage{
+		{
+			Role: "assistant",
+			ToolCalls: []interactive.ModelContextToolCall{{
+				ID: "call-read-lore",
+				Function: interactive.ModelContextFunctionCall{
+					Name:      "read_lore_items",
+					Arguments: `{"names":["洛青衣"]}`,
+				},
+			}},
+		},
+		{
+			Role:       "tool",
+			ToolCallID: "call-read-lore",
+			ToolName:   "read_lore_items",
+			Content:    "# 资料库条目\n\n## 洛青衣（character / important / auto）\nID：luo\n\n```markdown\n洛青衣完整设定\n```",
+		},
+	}}
+	context, err := buildInteractiveDirectorLoreContext(workspace, plan, turn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +93,33 @@ func TestDirectorReceivesCommittedTemporaryLoreRecallForPromotion(t *testing.T) 
 	}
 }
 
-func TestDirectorLoreRosterIsInjectedOnlyForOpeningRevisionChangesOrMajorDeviation(t *testing.T) {
+func TestDirectorRecognizesOnlySuccessfulFullLoreToolResultsAsTemporaryRecalls(t *testing.T) {
+	items := []book.LoreItem{
+		{ID: "full", Name: "完整命中"},
+		{ID: "failed", Name: "失败调用"},
+		{ID: "index", Name: "目录命中"},
+	}
+	messages := []interactive.ModelContextMessage{
+		{Role: "assistant", ToolCalls: []interactive.ModelContextToolCall{
+			{ID: "call-full", Function: interactive.ModelContextFunctionCall{Name: "list_lore_items", Arguments: `{"keywords":["完整"],"detail":"full"}`}},
+			{ID: "call-failed", Function: interactive.ModelContextFunctionCall{Name: "read_lore_items", Arguments: `{"ids":["failed"]}`}},
+			{ID: "call-index", Function: interactive.ModelContextFunctionCall{Name: "list_lore_items", Arguments: `{"keywords":["目录"]}`}},
+		}},
+		{Role: "tool", ToolCallID: "call-full", Content: "# 资料库条目\n\n## 完整命中（character / important / auto）\nID：full\n\n```markdown\n正文中可能出现并非回执的字段\nID：failed\n```"},
+		{Role: "tool", ToolCallID: "call-failed", Content: "资料正文累计超过本任务上下文上限"},
+		{Role: "tool", ToolCallID: "call-index", Content: "# 资料库索引\n\n- [index] 目录命中"},
+	}
+
+	got := formatTemporaryLoreRecalls(items, messages)
+	if !strings.Contains(got, "[[完整命中]]") {
+		t.Fatalf("detail=full result should be recognized as a temporary recall:\n%s", got)
+	}
+	if strings.Contains(got, "失败调用") || strings.Contains(got, "目录命中") {
+		t.Fatalf("failed and index-only calls must not become read receipts:\n%s", got)
+	}
+}
+
+func TestDirectorLoreRosterIsInjectedOnEveryRun(t *testing.T) {
 	workspace := t.TempDir()
 	lore := book.NewLoreStore(workspace)
 	for _, input := range []book.LoreItemInput{
@@ -104,7 +141,7 @@ func TestDirectorLoreRosterIsInjectedOnlyForOpeningRevisionChangesOrMajorDeviati
 		t.Fatal(err)
 	}
 
-	opening, err := buildInteractiveDirectorLoreContext(workspace, plan, interactive.TurnEvent{}, interactiveDirectorTaskOpeningPlan)
+	opening, err := buildInteractiveDirectorLoreContext(workspace, plan, interactive.TurnEvent{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,8 +150,15 @@ func TestDirectorLoreRosterIsInjectedOnlyForOpeningRevisionChangesOrMajorDeviati
 			t.Fatalf("opening roster missing %q:\n%s", want, opening)
 		}
 	}
-	if strings.Contains(opening, "[rule/major] 常驻规则") || strings.Contains(opening, "沈凝正文") {
-		t.Fatalf("opening roster should exclude resident names and all bodies:\n%s", opening)
+	if strings.Contains(opening, "[rule/major] 常驻规则") || strings.Contains(opening, "常驻正文") || strings.Contains(opening, "沈凝正文") {
+		t.Fatalf("dynamic director Lore should exclude resident context and all catalog bodies:\n%s", opening)
+	}
+	stable, err := buildInteractiveDirectorStableContext(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stable.Content, "常驻正文") || strings.Contains(stable.Content, "沈凝正文") || !strings.Contains(stable.Title, "complete=true") {
+		t.Fatalf("resident Lore should use its own complete stable source: %#v", stable)
 	}
 
 	currentRevision, err := lore.Revision()
@@ -122,20 +166,12 @@ func TestDirectorLoreRosterIsInjectedOnlyForOpeningRevisionChangesOrMajorDeviati
 		t.Fatal(err)
 	}
 	plan.Metadata.LoreRevision = currentRevision
-	regular, err := buildInteractiveDirectorLoreContext(workspace, plan, interactive.TurnEvent{}, interactiveDirectorTaskDirectorPlanUpdate)
+	regular, err := buildInteractiveDirectorLoreContext(workspace, plan, interactive.TurnEvent{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(regular, "资料名称目录") {
-		t.Fatalf("ordinary patch should not repeat the full roster:\n%s", regular)
+	if !strings.Contains(regular, "资料名称目录") || !strings.Contains(regular, "[character/major] 沈凝") {
+		t.Fatalf("ordinary patches should retain the bounded discovery roster:\n%s", regular)
 	}
 
-	majorTurn := interactive.TurnEvent{TurnResult: &interactive.TurnResult{PlanSignals: interactive.TurnPlanSignals{DeviationLevel: "major"}}}
-	major, err := buildInteractiveDirectorLoreContext(workspace, plan, majorTurn, interactiveDirectorTaskDirectorPlanUpdate)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(major, "资料名称目录") {
-		t.Fatalf("major deviation should restore the roster:\n%s", major)
-	}
 }

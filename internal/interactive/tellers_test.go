@@ -44,7 +44,7 @@ func TestTellerLibraryMaterializesBuiltinsAndListsThem(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Get %s failed: %v", id, err)
 		}
-		if teller.ID != id || teller.Name == "" || teller.PromptForTargets("system") == "" || teller.PromptForTargets("turn_context") == "" || teller.PromptForTargets("state_memory") == "" {
+		if teller.ID != id || teller.Name == "" || teller.PromptForTargets("system") == "" || teller.PromptForTargets("turn_context") == "" {
 			t.Fatalf("unexpected builtin teller %s: %#v", id, teller)
 		}
 	}
@@ -87,7 +87,7 @@ func TestTellerLibraryRefreshesOldBuiltinVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get classic failed: %v", err)
 	}
-	if classic.Version != tellerVersion || classic.Name != builtinTellers["classic"].Name || !containsTellerSlot(classic, "turn_context") || !containsTellerSlot(classic, "state_memory") {
+	if classic.Version != tellerVersion || classic.Name != builtinTellers["classic"].Name || !containsTellerSlot(classic, "turn_context") {
 		t.Fatalf("classic builtin should be refreshed to current version: %#v", classic)
 	}
 }
@@ -251,37 +251,8 @@ func TestNormalizeStyleRulesCapsRefsPerRule(t *testing.T) {
 	}
 }
 
-func TestTellerOrchestrationDefaultsAndDirectorEventCatalog(t *testing.T) {
-	library := NewTellerLibrary(t.TempDir())
-	created, err := library.Create(Teller{
-		ID:   "orchestrated",
-		Name: "叙事编排",
-		Slots: []TellerPromptSlot{{
-			ID:      "identity",
-			Name:    "系统提示",
-			Target:  "system",
-			Enabled: true,
-			Content: "规则",
-		}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if created.Orchestration == nil || !created.Orchestration.Enabled || len(created.Orchestration.EventPackages) == 0 {
-		t.Fatalf("default orchestration missing: %#v", created.Orchestration)
-	}
-	catalog := DirectorEventCatalogFromTeller(created)
-	if len(catalog) == 0 || !directorEventQueued(catalog, "face_slap") {
-		t.Fatalf("director event catalog should include default planning inputs: %#v", catalog)
-	}
-}
-
 func TestDefaultWebnovelEventCardsUseDifferentiatedPresets(t *testing.T) {
-	config := DefaultTellerOrchestrationConfig()
-	if len(config.EventPackages) != 1 {
-		t.Fatalf("default orchestration packages = %#v", config.EventPackages)
-	}
-	cards := config.EventPackages[0].Events
+	cards := defaultTellerEventCards()
 	if len(cards) < 2 {
 		t.Fatalf("default event package should include multiple cards: %#v", cards)
 	}
@@ -303,106 +274,56 @@ func TestDefaultWebnovelEventCardsUseDifferentiatedPresets(t *testing.T) {
 	}
 }
 
-func TestTellerOrchestrationPreservesDisabledConfig(t *testing.T) {
-	library := NewTellerLibrary(t.TempDir())
-	created, err := library.Create(Teller{
-		ID:   "disabled-orchestration",
-		Name: "关闭编排",
-		Orchestration: &TellerOrchestrationConfig{
-			Enabled:       false,
-			EventPackages: []TellerEventPackage{},
-			CustomEvents: []DirectorEvent{{
-				ID:      "custom_trial",
-				Name:    "自定义审判",
-				Enabled: true,
-			}},
-		},
-		Slots: []TellerPromptSlot{{
-			ID:      "identity",
-			Name:    "系统提示",
-			Target:  "system",
-			Enabled: true,
-			Content: "规则",
-		}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if created.Orchestration == nil || created.Orchestration.Enabled {
-		t.Fatalf("disabled orchestration should be preserved: %#v", created.Orchestration)
-	}
-	catalog := DirectorEventCatalogFromTeller(created)
-	if !directorEventQueued(catalog, "custom_trial") {
-		t.Fatalf("disabled orchestration should preserve configured event catalog input: %#v", catalog)
-	}
-}
-
-func TestTellerEventCardsNormalizeAndBuildDirectorCatalog(t *testing.T) {
+func TestEventPackageCardsNormalizeAndBuildDirectorCatalog(t *testing.T) {
 	longDescription := strings.Repeat("伏笔", MaxEventCardDescriptionChars+20)
-	teller := normalizeTeller(Teller{
-		ID:   "event-cards",
-		Name: "事件卡方案",
-		Orchestration: &TellerOrchestrationConfig{
-			Enabled: true,
-			EventPackages: []TellerEventPackage{{
-				ID:      "academy-pack",
-				Name:    "学院包",
-				Enabled: true,
-				Events: []TellerEventCard{
-					{
-						ID:                  "academy_trial",
-						TypeName:            "外门考核打脸",
-						DescriptionMarkdown: "## 触发场景\n主角在外门考核被执事和同门轻视。\n\n## 背景融合方式\n绑定外门名额、执事偏见和残卷线索。",
-						Enabled:             true,
-						Category:            "学院",
-						Tags:                []string{"外门", "考核", "外门"},
-						Intensity:           "high",
-					},
-					{
-						ID:                  "academy_trial",
-						TypeName:            "重复事件",
-						DescriptionMarkdown: "应被去重",
-						Enabled:             true,
-					},
-					{
-						ID:                  "disabled_card",
-						TypeName:            "停用事件",
-						DescriptionMarkdown: "## 触发场景\n暂不启用。",
-						Enabled:             false,
-					},
-					{
-						ID:                  "long_card",
-						TypeName:            "长事件",
-						DescriptionMarkdown: longDescription,
-						Enabled:             true,
-					},
-				},
-			}},
+	events := normalizeTellerEventCards([]TellerEventCard{
+		{
+			ID:                  "academy_trial",
+			TypeName:            "外门考核打脸",
+			DescriptionMarkdown: "## 触发场景\n主角在外门考核被执事和同门轻视。\n\n## 背景融合方式\n绑定外门名额、执事偏见和残卷线索。",
+			Enabled:             true,
+			Category:            "学院",
+			Tags:                []string{"外门", "考核", "外门"},
+			Intensity:           "high",
 		},
-		Slots: []TellerPromptSlot{{
-			ID:      "identity",
-			Name:    "系统提示",
-			Target:  "system",
-			Enabled: true,
-			Content: "规则",
-		}},
-	})
-	pkg := teller.Orchestration.EventPackages[0]
-	if len(pkg.Events) != 3 {
-		t.Fatalf("event cards should be normalized and deduped: %#v", pkg.Events)
+		{
+			ID:                  "academy_trial",
+			TypeName:            "重复事件",
+			DescriptionMarkdown: "应被去重",
+			Enabled:             true,
+		},
+		{
+			ID:                  "disabled_card",
+			TypeName:            "停用事件",
+			DescriptionMarkdown: "## 触发场景\n暂不启用。",
+			Enabled:             false,
+		},
+		{
+			ID:                  "long_card",
+			TypeName:            "长事件",
+			DescriptionMarkdown: longDescription,
+			Enabled:             true,
+		},
+	}, "academy-pack")
+	if len(events) != 3 {
+		t.Fatalf("event cards should be normalized and deduped: %#v", events)
 	}
-	if got := len([]rune(pkg.Events[2].DescriptionMarkdown)); got != MaxEventCardDescriptionChars {
+	if got := len([]rune(events[2].DescriptionMarkdown)); got != MaxEventCardDescriptionChars {
 		t.Fatalf("event card description chars = %d, want %d", got, MaxEventCardDescriptionChars)
 	}
-	if len(pkg.Events[0].Tags) != 2 {
-		t.Fatalf("event card tags should be deduped: %#v", pkg.Events[0].Tags)
+	if len(events[0].Tags) != 2 {
+		t.Fatalf("event card tags should be deduped: %#v", events[0].Tags)
 	}
 
-	catalog := DirectorEventCatalogFromTeller(teller)
-	if !directorEventQueued(catalog, "academy_trial") || !directorEventQueued(catalog, "long_card") || directorEventQueued(catalog, "disabled_card") {
+	catalog := DirectorEventCatalogFromStoryDirector(StoryDirector{
+		ID:            "event-cards",
+		ModuleRefs:    StoryDirectorModuleRefs{EventPackageIDs: []string{"academy-pack"}},
+		EventPackages: []TellerEventPackage{{ID: "academy-pack", Name: "学院包", Enabled: true, Events: events}},
+	})
+	if !directorEventQueued(catalog, "academy-pack/academy_trial") || !directorEventQueued(catalog, "academy-pack/long_card") || directorEventQueued(catalog, "academy-pack/disabled_card") {
 		t.Fatalf("director catalog should contain enabled event cards only: %#v", catalog)
 	}
-	event := directorEventByID(catalog, "academy_trial")
+	event := directorEventByID(catalog, "academy-pack/academy_trial")
 	if event.Name != "外门考核打脸" || event.Category != "学院" || event.Template == "" || event.Intensity != "high" {
 		t.Fatalf("event card should map to director event: %#v", event)
 	}
@@ -411,44 +332,26 @@ func TestTellerEventCardsNormalizeAndBuildDirectorCatalog(t *testing.T) {
 	}
 }
 
-func TestDirectorEventCatalogFromTellerIncludesEventCardMarkdown(t *testing.T) {
-	teller := normalizeTeller(Teller{
-		ID:   "catalog-card",
-		Name: "目录方案",
-		Orchestration: &TellerOrchestrationConfig{
+func TestDirectorEventCatalogIncludesEventCardMarkdown(t *testing.T) {
+	director := normalizeStoryDirector(StoryDirector{
+		ID:         "catalog-card",
+		ModuleRefs: StoryDirectorModuleRefs{EventPackageIDs: []string{"conflict-pack"}},
+		EventPackages: []TellerEventPackage{{
+			ID:      "conflict-pack",
 			Enabled: true,
-			EventPackages: []TellerEventPackage{{
-				ID:      "conflict-pack",
-				Enabled: true,
-				Events: []TellerEventCard{{
-					ID:                  "faction_conflict",
-					TypeName:            "宗门冲突",
-					DescriptionMarkdown: "## 触发场景\n宗门长老逼迫主角交出线索。\n\n## 事件回收 / 后果\n后续以宗门戒律和人情债回收。",
-					Enabled:             true,
-					Category:            "冲突",
-				}},
+			Events: []TellerEventCard{{
+				ID:                  "faction_conflict",
+				TypeName:            "宗门冲突",
+				DescriptionMarkdown: "## 触发场景\n宗门长老逼迫主角交出线索。\n\n## 事件回收 / 后果\n后续以宗门戒律和人情债回收。",
+				Enabled:             true,
+				Category:            "冲突",
 			}},
-			CustomEvents: []DirectorEvent{{
-				ID:      "custom_trial",
-				Name:    "公开审理",
-				Enabled: true,
-			}},
-		},
-		Slots: []TellerPromptSlot{{
-			ID:      "identity",
-			Name:    "系统提示",
-			Target:  "system",
-			Enabled: true,
-			Content: "规则",
 		}},
 	})
-	catalog := DirectorEventCatalogFromTeller(teller)
-	card := directorEventByID(catalog, "faction_conflict")
+	catalog := DirectorEventCatalogFromStoryDirector(director)
+	card := directorEventByID(catalog, "conflict-pack/faction_conflict")
 	if card.Template == "" || !strings.Contains(card.Template, "宗门长老") || card.Category != "冲突" {
 		t.Fatalf("catalog should include event card markdown: %#v", card)
-	}
-	if !directorEventQueued(catalog, "custom_trial") || !directorEventQueued(catalog, "face_slap") {
-		t.Fatalf("catalog should include custom and built-in events: %#v", catalog)
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 
 const (
 	StateOpSourceActorTrait = "actor_trait"
-	maxActorTraitsPerActor  = maxTurnBriefListItems
+	maxActorTraitsPerActor  = maxInteractiveListItems
 	maxActorTraitSummary    = 512
 )
 
@@ -46,8 +46,8 @@ func normalizeActorTraitPools(pools []ActorTraitPool) []ActorTraitPool {
 	if pools == nil {
 		return []ActorTraitPool{}
 	}
-	if len(pools) > maxTurnBriefListItems {
-		pools = pools[:maxTurnBriefListItems]
+	if len(pools) > maxInteractiveListItems {
+		pools = pools[:maxInteractiveListItems]
 	}
 	out := make([]ActorTraitPool, 0, len(pools))
 	seen := map[string]bool{}
@@ -58,7 +58,7 @@ func normalizeActorTraitPools(pools []ActorTraitPool) []ActorTraitPool {
 		}
 		seen[pool.ID] = true
 		pool.Name = trimBytes(firstNonEmptyString(pool.Name, pool.ID), 128)
-		pool.Description = trimBytes(pool.Description, maxTurnBriefTextBytes)
+		pool.Description = trimBytes(pool.Description, maxInteractiveTextBytes)
 		pool.Traits = normalizeActorTraitDefinitions(pool.Traits)
 		out = append(out, pool)
 	}
@@ -69,8 +69,8 @@ func normalizeActorTraitDefinitions(traits []ActorTraitDefinition) []ActorTraitD
 	if traits == nil {
 		return []ActorTraitDefinition{}
 	}
-	if len(traits) > maxTurnBriefListItems {
-		traits = traits[:maxTurnBriefListItems]
+	if len(traits) > maxInteractiveListItems {
+		traits = traits[:maxInteractiveListItems]
 	}
 	out := make([]ActorTraitDefinition, 0, len(traits))
 	seen := map[string]bool{}
@@ -95,8 +95,8 @@ func normalizeActorTraitRules(rules []ActorTraitRule) []ActorTraitRule {
 	if rules == nil {
 		return []ActorTraitRule{}
 	}
-	if len(rules) > maxTurnBriefListItems {
-		rules = rules[:maxTurnBriefListItems]
+	if len(rules) > maxInteractiveListItems {
+		rules = rules[:maxInteractiveListItems]
 	}
 	out := make([]ActorTraitRule, 0, len(rules))
 	seen := map[string]bool{}
@@ -304,29 +304,6 @@ func actorTraitPoolByID(system StoryDirectorActorStateSystem, id string) (ActorT
 	return ActorTraitPool{}, false
 }
 
-func BuildActorStateInitialOps(system StoryDirectorActorStateSystem, rolls []InitialActorTraitRoll) ([]StateOp, error) {
-	ops, actorOps, err := BuildActorStateInitialChanges(system, rolls)
-	if err != nil {
-		return nil, err
-	}
-	// Compatibility for callers that still consume v1 StateOps. New story
-	// creation persists ActorOps directly.
-	for _, actorOp := range actorOps {
-		templateID := ""
-		for _, actor := range normalizeActorStateSystem(system).InitialActors {
-			if actor.ID == actorOp.ActorID {
-				templateID = actor.TemplateID
-				break
-			}
-		}
-		template := actorStateTemplateByID(system, templateID)
-		field, _ := actorStateFieldByID(template, actorOp.FieldID)
-		legacyPath := firstNonEmptyString(field.LegacyPath, actorOp.FieldID)
-		ops = append(ops, StateOp{Op: actorOp.Op, Path: actorStateFieldPath(actorOp.ActorID, legacyPath), Value: actorOp.Value, Reason: actorOp.Reason, SourceTurnID: actorOp.SourceTurnID, SourceKind: actorOp.SourceKind, SourceID: actorOp.SourceID})
-	}
-	return normalizeStateOps(ops), nil
-}
-
 func BuildActorStateInitialChanges(system StoryDirectorActorStateSystem, rolls []InitialActorTraitRoll) ([]StateOp, []ActorStateOp, error) {
 	system = normalizeActorStateSystem(system)
 	if actorStateEmpty(system) {
@@ -397,37 +374,59 @@ func buildNewActorStateOps(template ActorStateTemplate, actorID, name, role, des
 		{Op: "set", Path: actorStateActorPath(actorID, "role"), Value: trimBytes(firstNonEmptyString(role, template.ID), 128), Reason: reason, SourceTurnID: sourceTurnID},
 	}
 	if strings.TrimSpace(description) != "" {
-		ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(actorID, "description"), Value: trimBytes(description, maxTurnBriefTextBytes), Reason: reason, SourceTurnID: sourceTurnID})
+		ops = append(ops, StateOp{Op: "set", Path: actorStateActorPath(actorID, "description"), Value: trimBytes(description, maxInteractiveTextBytes), Reason: reason, SourceTurnID: sourceTurnID})
 	}
+	actorOps, normalizedState, err := buildActorStateValueOps(template, actorID, state, reason, sourceTurnID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return normalizeStateOps(ops), actorOps, normalizedState, nil
+}
+
+// buildActorStateValueOps resolves defaults and explicit values before
+// emitting operations so each Actor field is initialized at most once.
+func buildActorStateValueOps(template ActorStateTemplate, actorID string, state map[string]any, reason, sourceTurnID string) ([]ActorStateOp, map[string]any, error) {
 	fieldByReference := actorStateFieldsByReference(template)
-	actorOps := []ActorStateOp{}
 	normalizedState := map[string]any{}
 	for _, field := range template.Fields {
 		fieldID := actorStateFieldID(field)
 		if field.Default != nil {
-			actorOps = append(actorOps, ActorStateOp{Op: "set", ActorID: actorID, FieldID: fieldID, Value: field.Default, Reason: reason, SourceTurnID: sourceTurnID})
 			normalizedState[fieldID] = field.Default
 		}
 	}
 	keys := make([]string, 0, len(state))
 	for key := range state {
-		keys = append(keys, strings.TrimSpace(key))
+		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	for _, key := range keys {
+	for _, rawKey := range keys {
+		key := strings.TrimSpace(rawKey)
+		// A JSON null is an omitted value, not an instruction to erase a
+		// default or materialize a null-valued field.
+		if state[rawKey] == nil {
+			continue
+		}
 		field, ok := fieldByReference[actorStateFieldNameKey(key)]
 		if !ok {
-			return nil, nil, nil, fmt.Errorf("Actor 状态字段不在模板中: actor=%s template=%s field=%s", actorID, template.ID, key)
+			return nil, nil, fmt.Errorf("Actor 状态字段不在模板中: actor=%s template=%s field=%s", actorID, template.ID, key)
 		}
-		value, err := normalizeActorStateValue(field, state[key])
+		value, err := normalizeActorStateValue(field, state[rawKey])
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		fieldID := actorStateFieldID(field)
 		normalizedState[fieldID] = value
+	}
+	actorOps := make([]ActorStateOp, 0, len(normalizedState))
+	for _, field := range template.Fields {
+		fieldID := actorStateFieldID(field)
+		value, exists := normalizedState[fieldID]
+		if !exists || value == nil {
+			continue
+		}
 		actorOps = append(actorOps, ActorStateOp{Op: "set", ActorID: actorID, FieldID: fieldID, Value: value, Reason: reason, SourceTurnID: sourceTurnID})
 	}
-	return normalizeStateOps(ops), normalizeActorStateOps(actorOps), normalizedState, nil
+	return normalizeActorStateOps(actorOps), normalizedState, nil
 }
 
 func actorTraitInstancesFromState(state map[string]any, actorID string) []ActorTraitInstance {
@@ -597,8 +596,8 @@ func ActorStateRuntimeContext(system StoryDirectorActorStateSystem, state map[st
 		actorIDs = append(actorIDs, actorID)
 	}
 	sort.Strings(actorIDs)
-	if len(actorIDs) > maxTurnBriefListItems {
-		actorIDs = actorIDs[:maxTurnBriefListItems]
+	if len(actorIDs) > maxInteractiveListItems {
+		actorIDs = actorIDs[:maxInteractiveListItems]
 	}
 	actors := map[string]any{}
 	for _, actorID := range actorIDs {
@@ -621,7 +620,7 @@ func ActorStateRuntimeContext(system StoryDirectorActorStateSystem, state map[st
 			"role":        role,
 		}
 		if description := strings.TrimSpace(fmt.Sprint(record["description"])); description != "" && description != "<nil>" {
-			entry["description"] = trimBytes(description, maxTurnBriefTextBytes)
+			entry["description"] = trimBytes(description, maxInteractiveTextBytes)
 		}
 		rawState, _ := record["state"].(map[string]any)
 		visibleState := map[string]any{}
@@ -638,13 +637,9 @@ func ActorStateRuntimeContext(system StoryDirectorActorStateSystem, state map[st
 			if value != nil {
 				visibleState[fieldID] = value
 			}
-			writableFields = append(writableFields, map[string]any{
-				"field_id":           fieldID,
-				"type":               field.Type,
-				"options":            field.Options,
-				"description":        field.Description,
-				"update_instruction": field.UpdateInstruction,
-			})
+			descriptor := actorStateRuntimeFieldDescriptor(field)
+			descriptor["path"] = formatStateUpdatePath([]string{actorID, fieldID})
+			writableFields = append(writableFields, descriptor)
 		}
 		if len(visibleState) > 0 {
 			entry["state"] = visibleState
@@ -664,102 +659,82 @@ func ActorStateRuntimeContext(system StoryDirectorActorStateSystem, state map[st
 		}
 		actors[actorID] = entry
 	}
+	createTemplates := make([]map[string]any, 0, len(system.Templates))
+	for _, template := range system.Templates {
+		if len(createTemplates) >= maxInteractiveListItems {
+			break
+		}
+		fields := make([]map[string]any, 0, len(template.Fields))
+		for _, field := range template.Fields {
+			if field.Visibility != "hidden" {
+				fields = append(fields, actorStateRuntimeFieldDescriptor(field))
+			}
+		}
+		entry := map[string]any{
+			"template_id":     template.ID,
+			"name":            template.Name,
+			"writable_fields": fields,
+		}
+		if description := strings.TrimSpace(template.Description); description != "" {
+			entry["description"] = trimBytes(description, maxInteractiveTextBytes)
+		}
+		if len(template.TraitRules) > 0 {
+			entry["automatic_trait_rules"] = template.TraitRules
+		}
+		createTemplates = append(createTemplates, entry)
+	}
 	payload := map[string]any{
-		"source": map[string]any{"kind": "actor_state_runtime"},
-		"limits": map[string]any{"max_bytes": limitBytes, "max_actors": maxTurnBriefListItems, "max_traits_per_actor": maxActorTraitsPerActor},
-		"actors": actors,
+		"source":           map[string]any{"kind": "actor_state_runtime", "schema": "story_frozen_actor_state"},
+		"limits":           map[string]any{"max_bytes": limitBytes, "max_actors": maxInteractiveListItems, "max_templates": maxInteractiveListItems, "max_traits_per_actor": maxActorTraitsPerActor},
+		"actors":           actors,
+		"create_templates": createTemplates,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return ""
 	}
-	return trimBytes(string(data), limitBytes)
+	for len(data) > limitBytes {
+		payload["truncated"] = true
+		if len(createTemplates) > 0 {
+			createTemplates = createTemplates[:len(createTemplates)-1]
+			payload["create_templates"] = createTemplates
+		} else if len(actorIDs) > 0 {
+			last := actorIDs[len(actorIDs)-1]
+			actorIDs = actorIDs[:len(actorIDs)-1]
+			delete(actors, last)
+		} else {
+			return ""
+		}
+		data, err = json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			return ""
+		}
+	}
+	return string(data)
 }
 
-func migrateLegacyOpeningTraits(system StoryDirectorActorStateSystem, legacy StoryDirectorOpeningSelector) (StoryDirectorActorStateSystem, []string) {
-	system = normalizeActorStateSystem(system)
-	warnings := []string{}
-	protagonistIndex := -1
-	for index, template := range system.Templates {
-		if template.ID == DefaultActorID {
-			protagonistIndex = index
-			break
-		}
+func actorStateRuntimeFieldDescriptor(field ActorStateField) map[string]any {
+	descriptor := map[string]any{
+		"field_id": actorStateFieldID(field),
+		"type":     field.Type,
 	}
-	knownPools := map[string]bool{}
-	for _, pool := range system.TraitPools {
-		knownPools[pool.ID] = true
+	if field.Default != nil {
+		descriptor["default"] = field.Default
 	}
-	for _, legacyPool := range normalizeOpeningTraitPools(legacy.TraitPools) {
-		pool := ActorTraitPool{ID: legacyPool.ID, Name: legacyPool.Name}
-		for _, legacyTrait := range legacyPool.Traits {
-			pool.Traits = append(pool.Traits, ActorTraitDefinition{
-				ID:         legacyTrait.ID,
-				Name:       legacyTrait.Name,
-				Summary:    legacyTrait.Summary,
-				Weight:     legacyTrait.Weight,
-				Visibility: "visible",
-			})
-			if len(legacyTrait.Ops) > 0 {
-				warnings = append(warnings, fmt.Sprintf("旧词条 %s/%s 的 StateOp 不再执行；原配置已保留在迁移备份中。", legacyPool.ID, legacyTrait.ID))
-			}
-		}
-		pool = normalizeActorTraitPools([]ActorTraitPool{pool})[0]
-		if !knownPools[pool.ID] {
-			knownPools[pool.ID] = true
-			system.TraitPools = append(system.TraitPools, pool)
-		}
-		if protagonistIndex >= 0 && len(pool.Traits) > 0 {
-			rules := system.Templates[protagonistIndex].TraitRules
-			hasRule := false
-			for _, rule := range rules {
-				if rule.PoolID == pool.ID {
-					hasRule = true
-					break
-				}
-			}
-			if !hasRule {
-				drawCount := legacyPool.DrawCount
-				if drawCount > len(pool.Traits) {
-					drawCount = len(pool.Traits)
-				}
-				system.Templates[protagonistIndex].TraitRules = append(rules, ActorTraitRule{PoolID: pool.ID, DrawCount: drawCount})
-			}
-		} else if protagonistIndex < 0 {
-			warnings = append(warnings, fmt.Sprintf("旧词条池 %s 已迁入词条库，但找不到 protagonist 模板，尚未绑定抽取规则。", pool.ID))
-		}
+	if field.Min != nil {
+		descriptor["min"] = *field.Min
 	}
-	for _, op := range legacy.InitialStateOps {
-		path := canonicalStatePath(op.Path)
-		if path == "rules.opening_traits" {
-			continue
-		}
-		actorID, fieldPath, ok := parseActorStateFieldPath(path)
-		if op.Op != "set" || !ok || !migrateLegacyInitialActorValue(&system, actorID, fieldPath, op.Value) {
-			warnings = append(warnings, fmt.Sprintf("旧初始化操作 %s %s 无法映射到初始 Actor，已停止执行；原配置已保留在迁移备份中。", op.Op, op.Path))
-		}
+	if field.Max != nil {
+		descriptor["max"] = *field.Max
 	}
-	return normalizeActorStateSystem(system), warnings
-}
-
-func migrateLegacyInitialActorValue(system *StoryDirectorActorStateSystem, actorID, fieldPath string, value any) bool {
-	if system == nil {
-		return false
+	if len(field.Options) > 0 {
+		descriptor["options"] = field.Options
 	}
-	for actorIndex := range system.InitialActors {
-		actor := &system.InitialActors[actorIndex]
-		if actor.ID != actorID {
-			continue
-		}
-		template := actorStateTemplateByID(*system, actor.TemplateID)
-		if _, ok := actorStateFieldByPath(template, fieldPath); !ok {
-			return false
-		}
-		if actor.State == nil {
-			actor.State = map[string]any{}
-		}
-		actor.State[fieldPath] = value
-		return true
+	if description := strings.TrimSpace(field.Description); description != "" {
+		descriptor["description"] = description
 	}
-	return false
+	if instruction := strings.TrimSpace(field.UpdateInstruction); instruction != "" {
+		descriptor["update_instruction"] = instruction
+	}
+	return descriptor
 }

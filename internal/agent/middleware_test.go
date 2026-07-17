@@ -78,9 +78,9 @@ func TestInteractiveStoryToolMiddlewareAllowsReadTools(t *testing.T) {
 	}
 }
 
-func TestInteractiveDirectorPlanFileMiddlewareBlocksStateAndMemoryTools(t *testing.T) {
-	middleware := newInteractiveDirectorPlanFileMiddleware([]string{"/tmp/story/director/main/director.md"})
-	for _, name := range []string{"apply_actor_state_patch", "apply_story_memory_patches"} {
+func TestInteractiveDirectorPlanFileMiddlewareBlocksStateTools(t *testing.T) {
+	middleware := newInteractiveDirectorPlanFileMiddleware()
+	for _, name := range []string{"apply_actor_state_patch"} {
 		called := false
 		endpoint, err := middleware.WrapInvokableToolCall(
 			context.Background(),
@@ -97,21 +97,21 @@ func TestInteractiveDirectorPlanFileMiddlewareBlocksStateAndMemoryTools(t *testi
 		if err != nil {
 			t.Fatal(err)
 		}
-		if called || !strings.Contains(result, "不能写 Actor State 或 Story Memory") {
+		if called || !strings.Contains(result, "不能写 Actor State") {
 			t.Fatalf("%s should be blocked, called=%v result=%s", name, called, result)
 		}
 	}
 }
 
-func TestInteractiveMemoryRecorderMiddlewareAllowsMemoryToolOnly(t *testing.T) {
-	middleware := newInteractiveDirectorPlanFileMiddleware(nil, "memory_update")
+func TestInteractiveDirectorPlanMiddlewareAllowsStructuredSubmitAndBlocksFiles(t *testing.T) {
+	middleware := newInteractiveDirectorPlanFileMiddleware()
 	for _, tc := range []struct {
 		name    string
 		allowed bool
 	}{
-		{name: "apply_story_memory_patches", allowed: true},
-		{name: "apply_actor_state_patch", allowed: false},
+		{name: submitDirectorPlanUpdateToolName, allowed: true},
 		{name: "read_file", allowed: false},
+		{name: "write_file", allowed: false},
 	} {
 		called := false
 		endpoint, err := middleware.WrapInvokableToolCall(
@@ -132,14 +132,14 @@ func TestInteractiveMemoryRecorderMiddlewareAllowsMemoryToolOnly(t *testing.T) {
 		if tc.allowed && (!called || result != "ok") {
 			t.Fatalf("%s should pass through, called=%v result=%s", tc.name, called, result)
 		}
-		if !tc.allowed && (called || !strings.Contains(result, "只能使用 apply_story_memory_patches")) {
-			t.Fatalf("%s should be blocked, called=%v result=%s", tc.name, called, result)
+		if !tc.allowed && (called || !strings.Contains(result, submitDirectorPlanUpdateToolName)) {
+			t.Fatalf("%s should be blocked in favor of structured submit, called=%v result=%s", tc.name, called, result)
 		}
 	}
 }
 
 func TestInteractiveStateSchemaMiddlewareAllowsReviewToolsOnly(t *testing.T) {
-	middleware := newInteractiveDirectorPlanFileMiddleware(nil, "state_schema_initialization")
+	middleware := newInteractiveDirectorPlanFileMiddleware("state_schema_initialization")
 	for _, tc := range []struct {
 		name    string
 		allowed bool
@@ -147,7 +147,7 @@ func TestInteractiveStateSchemaMiddlewareAllowsReviewToolsOnly(t *testing.T) {
 		{name: "list_lore_items", allowed: true},
 		{name: "read_lore_items", allowed: true},
 		{name: "submit_state_schema_adaptation", allowed: true},
-		{name: "apply_story_memory_patches", allowed: false},
+		{name: "apply_actor_state_patch", allowed: false},
 		{name: "write_file", allowed: false},
 	} {
 		called := false
@@ -176,7 +176,7 @@ func TestInteractiveStateSchemaMiddlewareAllowsReviewToolsOnly(t *testing.T) {
 }
 
 func TestInteractiveDirectorPlanFileMiddlewareBlocksUnauthorizedTools(t *testing.T) {
-	middleware := newInteractiveDirectorPlanFileMiddleware([]string{"/tmp/story/director/main/director.md"})
+	middleware := newInteractiveDirectorPlanFileMiddleware()
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
@@ -276,7 +276,7 @@ func TestToolOrchestratorAllowsIDEWriteAndFiltersResult(t *testing.T) {
 		t.Fatalf("result should include filtered metadata: %s", result)
 	}
 	if !strings.Contains(result, content) {
-		t.Fatalf("result should include full tool output by default")
+		t.Fatalf("result below the high default limit should stay complete")
 	}
 }
 

@@ -14,14 +14,14 @@ import (
 type ToolSource string
 
 const (
-	ToolSourceOther  ToolSource = "other"
-	ToolSourceRead   ToolSource = "read"
-	ToolSourceWrite  ToolSource = "write"
-	ToolSourceShell  ToolSource = "shell"
-	ToolSourceLore   ToolSource = "lore"
-	ToolSourceMemory ToolSource = "memory"
-	ToolSourceWeb    ToolSource = "web"
-	ToolSourceImage  ToolSource = "image"
+	ToolSourceOther   ToolSource = "other"
+	ToolSourceRead    ToolSource = "read"
+	ToolSourceWrite   ToolSource = "write"
+	ToolSourceShell   ToolSource = "shell"
+	ToolSourceLore    ToolSource = "lore"
+	ToolSourceHistory ToolSource = "history"
+	ToolSourceWeb     ToolSource = "web"
+	ToolSourceImage   ToolSource = "image"
 )
 
 // ToolManifest describes the loop-level contract for a model-visible tool result.
@@ -45,7 +45,7 @@ type FilteredToolResult struct {
 }
 
 const (
-	defaultToolResultMaxBytes = 0
+	defaultToolResultMaxBytes = config.DefaultAgentToolResultLimitKB * 1024
 	toolResultMetadataHeader  = "[Denova tool result metadata]"
 )
 
@@ -70,8 +70,8 @@ func ManifestForTool(name string) ToolManifest {
 	case normalized == "read_lore_items" || normalized == "list_lore_items":
 		manifest.Source = ToolSourceLore
 		manifest.Capability = config.AgentToolLoreRead
-	case normalized == "read_interactive_memories" || normalized == "list_interactive_memories":
-		manifest.Source = ToolSourceMemory
+	case normalized == "search_story_history":
+		manifest.Source = ToolSourceHistory
 	case capabilityForConfigManagerTool(normalized) != "":
 		manifest.Capability = capabilityForConfigManagerTool(normalized)
 		if strings.HasPrefix(normalized, "write_") {
@@ -104,9 +104,9 @@ func ManifestForTool(name string) ToolManifest {
 
 func capabilityForConfigManagerTool(name string) string {
 	switch name {
-	case "list_style_references", "list_tellers", "read_tellers", "list_story_directors", "read_story_directors", "list_actor_states", "read_actor_states", "list_image_presets", "read_image_presets", "list_story_memory_structures", "list_story_memory_records", "read_story_memory_records":
+	case "list_style_references", "list_tellers", "read_tellers", "list_story_directors", "read_story_directors", "list_actor_states", "read_actor_states", "list_image_presets", "read_image_presets":
 		return config.AgentToolLoreRead
-	case "write_style_references", "write_tellers", "write_story_directors", "write_actor_states", "write_image_presets", "write_story_memory_structures", "write_story_memory_records":
+	case "write_style_references", "write_tellers", "write_story_directors", "write_actor_states", "write_image_presets":
 		return config.AgentToolLoreWrite
 	case "list_automations", "read_automations", "write_automations":
 		return config.AgentToolTodo

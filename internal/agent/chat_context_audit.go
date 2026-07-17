@@ -76,6 +76,34 @@ func (l *contextBuildLog) Audit() []ContextLedgerPart {
 	return l.ledger.Parts()
 }
 
+func (l *contextBuildLog) auditForMessages(messages []*schema.Message) []ContextLedgerPart {
+	if l == nil || l.ledger == nil {
+		return nil
+	}
+	ledger := NewContextLedger(l.ledger.policy)
+	for _, part := range l.parts {
+		content := strings.TrimSpace(part.Content)
+		included := false
+		if content != "" {
+			for _, message := range messages {
+				if message != nil && strings.Contains(strings.TrimSpace(message.Content), content) {
+					included = true
+					break
+				}
+			}
+		}
+		note := part.Note
+		if content != "" && !included {
+			if note != "" {
+				note += "; "
+			}
+			note += "not_present_after_final_compaction"
+		}
+		ledger.AddPart(part.Source, part.Title, "", part.Content, note, included, content != "" && !included, 0)
+	}
+	return ledger.Parts()
+}
+
 func (l *contextBuildLog) FullParts() []ContextAnalysisPart {
 	if l == nil || len(l.parts) == 0 {
 		return nil
@@ -83,6 +111,17 @@ func (l *contextBuildLog) FullParts() []ContextAnalysisPart {
 	result := make([]ContextAnalysisPart, len(l.parts))
 	copy(result, l.parts)
 	return result
+}
+
+func contextLedgerPartsForConversation(log *contextBuildLog, conversation Conversation, messages []*schema.Message) []ContextLedgerPart {
+	parts := log.auditForMessages(messages)
+	if reporter, ok := conversation.(FinalContextLedgerReporter); ok {
+		return append(parts, reporter.ContextLedgerPartsForMessages(messages)...)
+	}
+	if reporter, ok := conversation.(ContextLedgerReporter); ok {
+		parts = append(parts, reporter.ContextLedgerParts()...)
+	}
+	return parts
 }
 
 func addContextLog(logs []*contextBuildLog, source, title, content, note string) {

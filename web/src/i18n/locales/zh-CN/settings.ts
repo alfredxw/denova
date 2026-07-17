@@ -4,7 +4,7 @@ const settings = {
   'settings.agent.maxIteration': '最大迭代轮数（留空不限制）',
   'settings.agent.modelMaxRetries': '模型重试次数',
   'settings.agent.idleTimeoutSeconds': '空闲超时（秒，0 为不限制）',
-  'settings.agent.toolResultLimitKB': '工具结果截断（KB，0 为不截断）',
+  'settings.agent.toolResultLimitKB': '工具结果安全上限（KB）',
   'settings.agent.planModeDefault': '默认 PlanMode',
   'settings.agent.writingSkillDefault': '默认写作 Skill',
   'settings.access.allowLan': '允许局域网访问',

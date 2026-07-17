@@ -2,7 +2,6 @@ package interactive
 
 import (
 	"encoding/json"
-	"os"
 	"strings"
 	"testing"
 )
@@ -217,20 +216,14 @@ func TestCreateStorySeedsDirectorPlanDocs(t *testing.T) {
 	if err := validateDirectorPlanDoc("plan", plan.Docs.Plan); err != nil {
 		t.Fatalf("director plan should be valid: %v\n%s", err, plan.Docs.Plan)
 	}
+	if err := validateDirectorPlanDoc(DirectorPlanDocAgentBrief, plan.Docs.AgentBrief); err != nil {
+		t.Fatalf("agent brief should be valid: %v\n%s", err, plan.Docs.AgentBrief)
+	}
 	if !strings.Contains(plan.Docs.Plan, "隐脉觉醒") {
 		t.Fatalf("director plan should include opening summary:\n%s", plan.Docs.Plan)
 	}
-	if strings.Contains(plan.VisibleDocs.Plan, "后台导演私密") {
-		t.Fatalf("visible docs must exclude private section:\n%s", plan.VisibleDocs.Plan)
-	}
-	paths := store.DirectorPlanAllowedPaths(story.ID, "main")
-	if len(paths) != 2 || !strings.HasSuffix(paths[0], "director.md") || !strings.HasSuffix(paths[1], "lore-context.md") {
-		t.Fatalf("director should expose director.md and lore-context.md paths: %#v", paths)
-	}
-	for _, path := range store.DirectorPlanAllowedPaths(story.ID, "main") {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("director plan path should exist %s: %v", path, err)
-		}
+	if plan.VisibleDocs.AgentBrief != strings.TrimSpace(plan.Docs.AgentBrief) || strings.Contains(plan.VisibleDocs.AgentBrief, "阶段目标与隐藏钩子") {
+		t.Fatalf("visible docs must expose only agent-brief.md:\n%s", plan.VisibleDocs.AgentBrief)
 	}
 }
 
@@ -318,7 +311,7 @@ func TestCompleteDirectorPlanRunDetectsManualConflict(t *testing.T) {
 	if _, err := store.UpdateDirectorPlan(story.ID, UpdateDirectorPlanRequest{BranchID: "main", Docs: docs, BaseRevision: plan.Metadata.Revision}); err != nil {
 		t.Fatal(err)
 	}
-	completed, err := store.CompleteDirectorPlanRun(story.ID, "main", token, "turn_1", "后台导演尝试完成。")
+	completed, err := store.CompleteDirectorPlanRun(story.ID, "main", token, "turn_1", `{"mode":"patch","reason":"后台导演尝试完成"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,16 +323,16 @@ func TestCompleteDirectorPlanRunDetectsManualConflict(t *testing.T) {
 func TestDirectorPlanVisibleContextExcludesPrivateSections(t *testing.T) {
 	docs := DefaultStoryDirectorPlanningTemplates()
 	plan := DirectorPlan{VisibleDocs: DirectorPlanVisibleDocs{
-		Plan: ExtractDirectorPlanVisibleSection(docs.Plan) + "\n" + strings.Repeat("可见线索", 2000),
+		AgentBrief: docs.AgentBrief + "\n" + strings.Repeat("可见线索", 2000),
 	}}
 	context := DirectorPlanVisibleContext(plan, 4096)
 	if len(context) > 4096 {
 		t.Fatalf("visible context exceeded caller budget: bytes=%d", len(context))
 	}
-	if !strings.Contains(context, "正文Agent可读") || !strings.Contains(context, "导演规划") {
+	if !strings.Contains(context, "正文 Agent 简报") || !strings.Contains(context, "当前目标与可见钩子") {
 		t.Fatalf("visible context should include public sections:\n%s", context)
 	}
-	if strings.Contains(context, "后台导演私密") || strings.Contains(context, "隐藏状态") {
+	if strings.Contains(context, "阶段目标与隐藏钩子") || strings.Contains(context, "隐藏状态不可泄露") {
 		t.Fatalf("visible context should exclude private sections:\n%s", context)
 	}
 }
@@ -357,10 +350,10 @@ func TestDirectorPlanAcceptsLargeVisibleSections(t *testing.T) {
 	visibleMarker := strings.Repeat("可见线索", 3600)
 	privateMarker := "隐藏真相不可泄露"
 	docs := plan.Docs
-	docs.Plan = strings.Replace(docs.Plan, "围绕主角当前最想解决的问题、可见收益、未解谜团和下一次反转建立推进动力。", visibleMarker, 1)
-	docs.Plan = strings.Replace(docs.Plan, "维护隐藏真相、阶段高潮、下一次反转和阅读钩子的投放顺序，保证节奏持续向前。", privateMarker, 1)
-	if len([]byte(docs.Plan)) <= 32*1024 || len([]byte(docs.Plan)) >= 64*1024 {
-		t.Fatalf("test plan size should sit between old and new limits, got %d", len([]byte(docs.Plan)))
+	docs.AgentBrief = strings.Replace(docs.AgentBrief, "说明主角当前最想解决的问题、可见收益、未解谜团和这一回合应延续的推进动力。", visibleMarker, 1)
+	docs.Plan = strings.Replace(docs.Plan, "维护当前阶段的隐藏真相、阶段高潮、反转条件与阅读钩子投放顺序，保证每个可玩回合都能产生有效推进。", privateMarker, 1)
+	if len([]byte(docs.AgentBrief)) <= 32*1024 || len([]byte(docs.AgentBrief)) >= 64*1024 {
+		t.Fatalf("test agent brief size should sit between old and new limits, got %d", len([]byte(docs.AgentBrief)))
 	}
 	updated, err := store.UpdateDirectorPlan(story.ID, UpdateDirectorPlanRequest{
 		BranchID:     "main",
@@ -371,11 +364,11 @@ func TestDirectorPlanAcceptsLargeVisibleSections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(updated.VisibleDocs.Plan, visibleMarker) {
-		t.Fatalf("visible plan should keep large public section, visible bytes=%d", len([]byte(updated.VisibleDocs.Plan)))
+	if !strings.Contains(updated.VisibleDocs.AgentBrief, visibleMarker) {
+		t.Fatalf("visible agent brief should keep large public section, visible bytes=%d", len([]byte(updated.VisibleDocs.AgentBrief)))
 	}
-	if strings.Contains(updated.VisibleDocs.Plan, privateMarker) {
-		t.Fatalf("visible plan should still exclude private section")
+	if strings.Contains(updated.VisibleDocs.AgentBrief, privateMarker) {
+		t.Fatalf("visible agent brief should exclude private plan")
 	}
 }
 

@@ -24,7 +24,8 @@ type listLoreItemsInput struct {
 	Match     string   `json:"match,omitempty" jsonschema:"enum=any,enum=all" jsonschema_description:"多关键词关系：any 表示命中任意关键词（OR，默认），all 表示命中全部关键词（AND）。"`
 	Types     []string `json:"types,omitempty" jsonschema_description:"可选资料类型数组：character/world/location/faction/rule/item/other。"`
 	LoadModes []string `json:"load_modes,omitempty" jsonschema_description:"可选加载策略数组：resident/auto/manual；状态结构审查优先使用 resident。"`
-	Limit     int      `json:"limit,omitempty" jsonschema_description:"本页返回数量，默认 10，最大 50。"`
+	Detail    string   `json:"detail,omitempty" jsonschema:"enum=index,enum=full" jsonschema_description:"返回粒度：index（默认）返回目录/简介；full 在提供筛选条件时直接返回完整正文，避免再调用 read_lore_items。"`
+	Limit     int      `json:"limit,omitempty" jsonschema_description:"筛选结果的本页数量，默认 10，最大 50；空筛选目录由 64 KiB 上限自动分页。"`
 	Offset    int      `json:"offset,omitempty" jsonschema_description:"分页起点，默认 0；根据返回的下一页 offset 继续读取。"`
 }
 
@@ -63,13 +64,34 @@ type loreReadPolicy struct {
 	usedBytes int
 }
 
+const (
+	defaultLoreReadMaxItems       = 16
+	defaultLoreReadMaxResultBytes = 64 * 1024
+	defaultLoreReadMaxTotalBytes  = 128 * 1024
+)
+
+func defaultLoreReadPolicy() *loreReadPolicy {
+	return &loreReadPolicy{
+		MaxItemsPerCall: defaultLoreReadMaxItems,
+		MaxResultBytes:  defaultLoreReadMaxResultBytes,
+		MaxTotalBytes:   defaultLoreReadMaxTotalBytes,
+	}
+}
+
 func (p *loreReadPolicy) validateBatch(input readLoreItemsInput) error {
+	if len(input.IDs) > 0 && len(input.Names) > 0 {
+		return fmt.Errorf("ids 和 names 只能选择一种读取方式")
+	}
+	count := len(input.IDs) + len(input.Names)
+	if count == 0 {
+		return fmt.Errorf("至少提供一个资料 ID 或唯一名称")
+	}
+	return p.validateItemCount(count)
+}
+
+func (p *loreReadPolicy) validateItemCount(count int) error {
 	if p == nil || p.MaxItemsPerCall <= 0 {
 		return nil
-	}
-	count := len(input.IDs)
-	if len(input.Names) > 0 {
-		count = len(input.Names)
 	}
 	if count > p.MaxItemsPerCall {
 		return fmt.Errorf("单次最多读取 %d 个资料条目，当前请求 %d 个", p.MaxItemsPerCall, count)
@@ -116,7 +138,10 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 	if len(options) > 0 {
 		readPolicy = options[0].ReadPolicy
 	}
-	readTool, err := utils.InferTool("read_lore_items", "按资料库条目 ID 或唯一名称批量读取完整正文。只读取本轮已经确认相关的少量条目。", func(ctx context.Context, input readLoreItemsInput) (string, error) {
+	if readPolicy == nil {
+		readPolicy = defaultLoreReadPolicy()
+	}
+	readTool, err := utils.InferTool("read_lore_items", "按资料库条目 ID 或唯一名称批量读取完整正文。名称已在上下文目录中出现时可直接读取，无需先调用 list_lore_items。", func(ctx context.Context, input readLoreItemsInput) (string, error) {
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法读取资料库")
@@ -135,17 +160,7 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 		if err != nil {
 			return "", err
 		}
-		if len(items) == 0 {
-			return "未读取到资料库条目。", nil
-		}
-		var sb strings.Builder
-		fmt.Fprintln(&sb, "# 资料库条目")
-		fmt.Fprintln(&sb)
-		for _, item := range items {
-			fmt.Fprintln(&sb, formatLoreReference(item))
-			fmt.Fprintln(&sb)
-		}
-		output := strings.TrimSpace(sb.String())
+		output := formatLoreItems(items)
 		if err := readPolicy.accept(output, items); err != nil {
 			return "", err
 		}
@@ -154,7 +169,7 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 	if err != nil {
 		return nil, err
 	}
-	listTool, err := utils.InferTool("list_lore_items", "分页列出或检索启用的资料库目录，只返回索引，不返回正文。keywords 为空时浏览全部条目；多个 keywords 默认按 any（OR）召回，也可用 all（AND）；后端自动对名称、别名和标签做模糊匹配并按相关度排序。确认条目后用 read_lore_items 读取正文。", func(ctx context.Context, input listLoreItemsInput) (string, error) {
+	listTool, err := utils.InferTool("list_lore_items", "浏览或检索启用的资料库。空筛选返回最多 64 KiB 的名称目录；筛选时 detail=index 返回简介，detail=full 可在同一次调用中返回完整正文。已知唯一名称时可直接使用 read_lore_items。", func(ctx context.Context, input listLoreItemsInput) (string, error) {
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法列出资料库")
@@ -162,7 +177,18 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 		if err := validateListLoreItemsInput(input); err != nil {
 			return "", err
 		}
-		index, err := book.NewLoreStore(workspace).LoreIndexMarkdown(book.LoreIndexOptions{
+		store := book.NewLoreStore(workspace)
+		if !hasLoreListFilters(input) {
+			catalog, err := store.LoreNameCatalogMarkdown(book.LoreNameCatalogOptions{
+				Offset:   input.Offset,
+				MaxBytes: book.LoreIndexDefaultMaxBytes,
+			})
+			if err != nil {
+				return "", err
+			}
+			return strings.TrimSpace(catalog), nil
+		}
+		options := book.LoreIndexOptions{
 			Keywords:  input.Keywords,
 			Match:     input.Match,
 			Types:     input.Types,
@@ -170,7 +196,22 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 			Limit:     input.Limit,
 			Offset:    input.Offset,
 			Paginate:  true,
-		})
+		}
+		if strings.EqualFold(strings.TrimSpace(input.Detail), "full") {
+			items, err := store.QueryLoreItems(options)
+			if err != nil {
+				return "", err
+			}
+			if err := readPolicy.validateItemCount(len(items)); err != nil {
+				return "", err
+			}
+			output := formatLoreItems(items)
+			if err := readPolicy.accept(output, items); err != nil {
+				return "", err
+			}
+			return output, nil
+		}
+		index, err := store.LoreIndexMarkdown(options)
 		if err != nil {
 			return "", err
 		}
@@ -239,7 +280,32 @@ func validateListLoreItemsInput(input listLoreItemsInput) error {
 	if input.Offset < 0 {
 		return fmt.Errorf("offset 不能小于 0")
 	}
+	detail := strings.ToLower(strings.TrimSpace(input.Detail))
+	if detail != "" && detail != "index" && detail != "full" {
+		return fmt.Errorf("detail 只能是 index 或 full")
+	}
+	if detail == "full" && !hasLoreListFilters(input) {
+		return fmt.Errorf("detail=full 必须提供 keywords、types 或 load_modes 筛选，禁止无界读取整个资料库正文")
+	}
 	return nil
+}
+
+func hasLoreListFilters(input listLoreItemsInput) bool {
+	return len(input.Keywords) > 0 || len(input.Types) > 0 || len(input.LoadModes) > 0
+}
+
+func formatLoreItems(items []book.LoreItem) string {
+	if len(items) == 0 {
+		return "未读取到资料库条目。"
+	}
+	var sb strings.Builder
+	fmt.Fprintln(&sb, "# 资料库条目")
+	fmt.Fprintln(&sb)
+	for _, item := range items {
+		fmt.Fprintln(&sb, formatLoreReference(item))
+		fmt.Fprintln(&sb)
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 func buildWriteLoreOperations(store *book.LoreStore, input writeLoreItemsInput) ([]book.LoreOperation, error) {

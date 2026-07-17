@@ -1,7 +1,6 @@
 package app
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,9 +10,40 @@ import (
 
 const (
 	interactiveResolvedLoreContextMaxBytes   = interactive.DirectorContextMaxBytes
-	interactiveDirectorLoreRosterMaxBytes    = 8 * 1024
+	interactiveDirectorLoreRosterMaxBytes    = 64 * 1024
 	interactiveTemporaryLoreRecallMaxEntries = 16
 )
+
+// interactiveDirectorStableContext keeps complete resident Lore outside the
+// per-run instruction budget so the 64 KiB discovery catalog cannot be
+// displaced by resident bodies.
+type interactiveDirectorStableContext struct {
+	Title     string
+	Content   string
+	MaxBytes  int
+	Revision  string
+	BodyBytes int
+}
+
+func buildInteractiveDirectorStableContext(workspace string) (interactiveDirectorStableContext, error) {
+	resident, err := assembleResidentLore(book.NewLoreStore(workspace))
+	if err != nil {
+		return interactiveDirectorStableContext{}, fmt.Errorf("装配后台导演的完整常驻资料失败: %w", err)
+	}
+	if err := validateResidentLoreSnapshot(resident, "后台导演", interactiveResidentLoreMessageMaxBytes); err != nil {
+		return interactiveDirectorStableContext{}, err
+	}
+	return interactiveDirectorStableContext{
+		Title: fmt.Sprintf(
+			"完整常驻资料（source: enabled resident lore bodies; complete=true; body_bytes=%d; max_body_bytes=%d; lore_revision=%s）",
+			resident.BodyBytes, book.ResidentLoreSafetyMaxBytes, resident.Revision,
+		),
+		Content:   resident.Content,
+		MaxBytes:  interactiveResidentLoreMessageMaxBytes,
+		Revision:  resident.Revision,
+		BodyBytes: resident.BodyBytes,
+	}, nil
+}
 
 func buildInteractiveStoryLoreContext(workspace string, plan interactive.DirectorPlan, userAction string) (string, error) {
 	items, err := book.NewLoreStore(workspace).List()
@@ -47,27 +77,15 @@ func buildInteractiveStoryLoreContext(workspace string, plan interactive.Directo
 	return selectedContext, nil
 }
 
-func buildInteractiveDirectorLoreContext(workspace string, plan interactive.DirectorPlan, turn interactive.TurnEvent, task string) (string, error) {
+func buildInteractiveDirectorLoreContext(workspace string, plan interactive.DirectorPlan, turn interactive.TurnEvent) (string, error) {
 	store := book.NewLoreStore(workspace)
+	startRevision, err := store.Revision()
+	if err != nil {
+		return "", fmt.Errorf("读取资料库装配前 revision 失败: %w", err)
+	}
 	items, err := store.List()
 	if err != nil {
 		return "", fmt.Errorf("读取 Director 资料库失败: %w", err)
-	}
-	currentRevision, err := store.Revision()
-	if err != nil {
-		return "", fmt.Errorf("读取资料库 revision 失败: %w", err)
-	}
-	residentItems := loreItemsOfLoadMode(items, book.LoreLoadModeResident)
-	residentBodyBytes := 0
-	for _, item := range residentItems {
-		residentBodyBytes += len([]byte(strings.TrimSpace(item.Content)))
-	}
-	if residentBodyBytes > book.ResidentLoreSafetyMaxBytes {
-		return "", fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentBodyBytes+1023)/1024)
-	}
-	residentContext, err := formatBoundedCompleteLoreSection("常驻资料（source: enabled resident lore, complete）", residentItems, book.ResidentLoreSafetyMaxBytes+len(residentItems)*1024+1024)
-	if err != nil {
-		return "", err
 	}
 	byName := loreItemsByName(items)
 	refs := interactive.ParseDirectorLoreContextReferences(plan.Docs.LoreContext)
@@ -85,15 +103,19 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	if workset != "" {
 		workset = "## 分支资料工作集（source: lore-context.md）\n\n" + workset
 	}
-	roster := ""
-	if shouldInjectDirectorLoreRoster(task, plan.Metadata.LoreRevision, currentRevision, turn) {
-		roster, err = store.LoreNameRosterMarkdown(interactiveDirectorLoreRosterMaxBytes, true)
-		if err != nil {
-			return "", fmt.Errorf("生成资料名称目录失败: %w", err)
-		}
-		if roster != "" {
-			roster = "## 非驻留资料名称目录（source: lore/items.json, revision-bound, bounded）\n\n" + roster
-		}
+	roster, err := store.LoreNameRosterMarkdown(interactiveDirectorLoreRosterMaxBytes, true)
+	if err != nil {
+		return "", fmt.Errorf("生成资料名称目录失败: %w", err)
+	}
+	if roster != "" {
+		roster = "## 非驻留资料名称目录（source: lore/items.json, revision-bound, max 64 KiB）\n\n" + roster
+	}
+	currentRevision, err := store.Revision()
+	if err != nil {
+		return "", fmt.Errorf("读取资料库装配后 revision 失败: %w", err)
+	}
+	if strings.TrimSpace(startRevision) != strings.TrimSpace(currentRevision) {
+		return "", fmt.Errorf("资料库在导演发现上下文装配期间发生变化: before=%s after=%s", strings.TrimSpace(startRevision), strings.TrimSpace(currentRevision))
 	}
 	temporary := formatTemporaryLoreRecalls(items, turn.ModelContextMessages)
 	reviewStatus := "## 资料库审阅状态（source: lore revision）\n\n"
@@ -102,29 +124,9 @@ func buildInteractiveDirectorLoreContext(workspace string, plan interactive.Dire
 	} else if plan.Metadata.LoreRevision != currentRevision {
 		reviewStatus += fmt.Sprintf("资料库已变化（上次：%s，当前：%s）。名称目录已刷新，请重新判断新增或修改后的候选资料。", plan.Metadata.LoreRevision, currentRevision)
 	} else {
-		reviewStatus += "资料库自上次 Director 完成审阅后没有变化；仅在 replan、场景切换或角色功能空缺时重新扩展候选。"
+		reviewStatus += "资料库自上次 Director 完成审阅后没有变化；名称目录仍会每轮提供，遇到 replan、场景切换或角色功能空缺时据此扩展候选。"
 	}
-	return joinLoreContextSections(residentContext, reviewStatus, roster, workset, activeContext, temporary), nil
-}
-
-func shouldInjectDirectorLoreRoster(task, reviewedRevision, currentRevision string, turn interactive.TurnEvent) bool {
-	if strings.TrimSpace(task) == interactiveDirectorTaskOpeningPlan {
-		return true
-	}
-	if strings.TrimSpace(reviewedRevision) == "" || reviewedRevision != currentRevision {
-		return true
-	}
-	return turn.TurnResult != nil && strings.TrimSpace(turn.TurnResult.PlanSignals.DeviationLevel) == "major"
-}
-
-func loreItemsOfLoadMode(items []book.LoreItem, loadMode string) []book.LoreItem {
-	result := []book.LoreItem{}
-	for _, item := range items {
-		if item.LoadMode == loadMode {
-			result = append(result, item)
-		}
-	}
-	return result
+	return joinLoreContextSections(reviewStatus, roster, workset, activeContext, temporary), nil
 }
 
 func formatBoundedCompleteLoreSection(title string, items []book.LoreItem, maxBytes int) (string, error) {
@@ -192,45 +194,93 @@ func joinLoreContextSections(sections ...string) string {
 
 func formatTemporaryLoreRecalls(items []book.LoreItem, messages []interactive.ModelContextMessage) string {
 	byID := make(map[string]book.LoreItem, len(items))
-	byName := make(map[string]book.LoreItem, len(items))
 	for _, item := range items {
 		byID[item.ID] = item
-		byName[item.Name] = item
+	}
+	toolNamesByCallID := map[string]string{}
+	for _, message := range messages {
+		if strings.TrimSpace(message.Role) != "assistant" {
+			continue
+		}
+		for _, call := range message.ToolCalls {
+			name := strings.TrimSpace(call.Function.Name)
+			if !isLoreBodyReadTool(name) {
+				continue
+			}
+			if id := strings.TrimSpace(call.ID); id != "" {
+				toolNamesByCallID[id] = name
+			}
+		}
 	}
 	names := []string{}
 	seen := map[string]bool{}
 	for _, message := range messages {
-		for _, call := range message.ToolCalls {
-			if strings.TrimSpace(call.Function.Name) != "read_lore_items" {
+		if strings.TrimSpace(message.Role) != "tool" {
+			continue
+		}
+		toolName := strings.TrimSpace(message.ToolName)
+		if toolName == "" {
+			toolName = strings.TrimSpace(message.Name)
+		}
+		if toolName == "" {
+			toolName = toolNamesByCallID[strings.TrimSpace(message.ToolCallID)]
+		}
+		if !isLoreBodyReadTool(toolName) {
+			continue
+		}
+		for _, id := range successfulLoreResultIDs(message.Content) {
+			item, ok := byID[id]
+			if !ok || seen[item.Name] || len(names) >= interactiveTemporaryLoreRecallMaxEntries {
 				continue
 			}
-			var args struct {
-				IDs   []string `json:"ids"`
-				Names []string `json:"names"`
-			}
-			if json.Unmarshal([]byte(call.Function.Arguments), &args) != nil {
-				continue
-			}
-			for _, id := range args.IDs {
-				item, ok := byID[strings.TrimSpace(id)]
-				if !ok || seen[item.Name] || len(names) >= interactiveTemporaryLoreRecallMaxEntries {
-					continue
-				}
-				seen[item.Name] = true
-				names = append(names, "- [["+item.Name+"]]：本回合由 Game Agent 临时读取；请判断是否应加入当前、候场或保持临时召回。")
-			}
-			for _, name := range args.Names {
-				item, ok := byName[strings.TrimSpace(name)]
-				if !ok || seen[item.Name] || len(names) >= interactiveTemporaryLoreRecallMaxEntries {
-					continue
-				}
-				seen[item.Name] = true
-				names = append(names, "- [["+item.Name+"]]：本回合由 Game Agent 临时读取；请判断是否应加入当前、候场或保持临时召回。")
-			}
+			seen[item.Name] = true
+			names = append(names, "- [["+item.Name+"]]：本回合由 Game Agent 临时读取；请判断是否应加入当前、候场或保持临时召回。")
 		}
 	}
 	if len(names) == 0 {
 		return ""
 	}
 	return "## 本回合临时召回资料（source: committed tool calls）\n\n" + strings.Join(names, "\n")
+}
+
+func isLoreBodyReadTool(name string) bool {
+	switch strings.TrimSpace(name) {
+	case "read_lore_items", "list_lore_items":
+		return true
+	default:
+		return false
+	}
+}
+
+// successfulLoreResultIDs reads only the stable IDs emitted by a successful
+// full-body lore tool result. Index responses and tool errors do not use this
+// document header, so they cannot create false read receipts.
+func successfulLoreResultIDs(content string) []string {
+	content = strings.TrimSpace(content)
+	if !strings.HasPrefix(content, "# 资料库条目") {
+		return nil
+	}
+	result := []string{}
+	seen := map[string]bool{}
+	inFence := false
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "```") {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		if !strings.HasPrefix(line, "ID：") {
+			continue
+		}
+		id := strings.TrimSpace(strings.TrimPrefix(line, "ID："))
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		result = append(result, id)
+	}
+	return result
 }

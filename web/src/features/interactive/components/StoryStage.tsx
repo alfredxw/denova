@@ -58,7 +58,7 @@ interface StoryStageProps {
   snapshotLoading?: boolean
   loreEmpty?: boolean
   bookOpeningPresets?: BookOpeningPreset[]
-  sceneMemoryVisible?: boolean
+  directorPanelVisible?: boolean
   stateDisplayPreference?: StoryStateDisplayPreference
   onStorySelect?: (storyId: string) => void
   onStoryCreate?: (input: StoryCreateInput) => void | Promise<void>
@@ -69,7 +69,7 @@ interface StoryStageProps {
   onImageSettingsChange?: (settings: StoryImageSettings) => void | Promise<void>
   onRequestLoreInit?: () => void
   onOpenDirectorConfig?: () => void
-  onToggleSceneMemory?: () => void
+  onToggleDirectorPanel?: () => void
   onOpenDirectorState?: () => void
   onStateDisplayPreferenceChange?: (value: StoryStateDisplayPreference) => void
   onTurnPersisted?: (event: InteractiveTurnPersistedEvent) => Snapshot | void
@@ -93,7 +93,7 @@ type LiveTurnRenderKeys = {
   assistant: string
 }
 
-export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], sceneMemoryVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleSceneMemory, onOpenDirectorState, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
+export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const keyboardInset = useKeyboardInset()
@@ -496,8 +496,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     () =>
       (snapshot?.current_turn?.turn_result?.choices || snapshot?.current_turn?.hot_state?.choices || [])
         .map((choice) => choice.trim())
-        .filter(Boolean)
-        .slice(0, 4),
+        .filter(Boolean),
     [snapshot?.current_turn?.hot_state?.choices, snapshot?.current_turn?.turn_result?.choices],
   )
   const directorPlanStatus = snapshot?.director_plan_status
@@ -576,7 +575,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     setShowSkillCommands(false)
     setSkillCommandQuery(null)
     setActiveSkillCommandIndex(0)
-    setStageActivityContent(t('storyStage.activity.connecting'))
+    setStageActivityContent(t('storyStage.activity.thinking'))
     flushLiveMessageBuffer()
     liveToolKeyToMessageIdRef.current = {}
     nonNarrativeLiveMessageStreamingRef.current = false
@@ -1090,10 +1089,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       <StoryPicker stories={stories} currentStoryId={storyId} onSelect={(id) => { setCreatingStory(false); setEditingStorySetup(false); onStorySelect(id) }} onCreate={() => { setEditingStorySetup(false); setCreatingStory(true) }} onDelete={onStoryDelete} />
       {isMobile ? <StoryDirectorPicker story={story} storyDirectors={storyDirectors} onChange={onDirectorChange} /> : null}
       {isMobile ? <ReplyTargetCharsControl story={story} onChange={onReplyTargetCharsChange} /> : null}
-      {onToggleSceneMemory && (
-        <Button type="button" variant="outline" size="sm" className={`h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] hover:bg-[var(--nova-hover)] ${sceneMemoryVisible ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} onClick={onToggleSceneMemory} aria-label={sceneMemoryVisible ? t('storyStage.hideSceneMemory') : t('storyStage.showSceneMemory')} title={sceneMemoryVisible ? t('storyStage.hideSceneMemory') : t('storyStage.showSceneMemory')}>
+      {onToggleDirectorPanel && (
+        <Button type="button" variant="outline" size="sm" className={`h-7 gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] hover:bg-[var(--nova-hover)] ${directorPanelVisible ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} onClick={onToggleDirectorPanel} aria-label={directorPanelVisible ? t('storyStage.hideDirectorPanel') : t('storyStage.showDirectorPanel')} title={directorPanelVisible ? t('storyStage.hideDirectorPanel') : t('storyStage.showDirectorPanel')}>
           <PanelRight className="h-3.5 w-3.5" />
-          {t('storyStage.sceneMemory')}
+          {t('storyStage.directorPanel')}
         </Button>
       )}
     </>
@@ -2052,7 +2051,7 @@ function publicRuleRollFromResolution(resolution?: RuleResolution): PublicRuleRo
     resolution_id: resolution.id,
     label: result.label || resolution.request?.rule?.label || resolution.request?.challenge || resolution.request?.action,
     difficulty: resolution.request?.difficulty,
-    dice: result.dice || resolution.request?.rule?.dice,
+    dice: result.dice,
     roll_mode: result.roll_mode || resolution.request?.rule?.roll_mode,
     rolls: result.rolls,
     kept_roll: result.kept_roll,
@@ -2075,13 +2074,12 @@ function publicRuleRollFromToolOutput(content: string): PublicRuleRoll | null {
   const stateChanges = Array.isArray(parsed.state_changes)
     ? parsed.state_changes
       .map((item) => isPlainRecord(item) ? {
-				actor_id: String(item.actor_id || '').trim() || undefined,
-				field_id: String(item.field_id || '').trim() || undefined,
-				path: String(item.path || '').trim() || undefined,
+        actor_id: String(item.actor_id || '').trim(),
+        field_id: String(item.field_id || '').trim(),
         change: Number(item.change),
         reason: typeof item.reason === 'string' ? item.reason : undefined,
       } : null)
-			.filter((item): item is NonNullable<typeof item> => Boolean(item && (item.field_id || item.path) && Number.isFinite(item.change)))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item && item.actor_id && item.field_id && Number.isFinite(item.change)))
     : undefined
   return {
     resolution_id: stringFromRecord(parsed, 'resolution_id'),

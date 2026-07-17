@@ -57,9 +57,6 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 		return nil, err
 	}
 	interactiveStore := interactive.NewStoreWithNovaDir(absWorkspace, runtimeCfg.NovaDir)
-	if err := interactiveStore.MigrateStoryMemoryStructuresToDirectorModules(); err != nil {
-		return nil, fmt.Errorf("迁移故事记忆结构预设失败: %w", err)
-	}
 
 	return &runtimeState{
 		workspace:              absWorkspace,

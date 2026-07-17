@@ -73,6 +73,44 @@ func (h *Handlers) HandleLoreItemDelete(ctx context.Context, c *app.RequestConte
 	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
 }
 
+func (h *Handlers) HandleLoreClassificationPreview(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	var body novaApp.LoreClassificationPreviewRequest
+	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	preview, err := h.app.PreviewLoreClassification(ctx, body)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, preview)
+}
+
+func (h *Handlers) HandleLoreClassificationApply(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	var body novaApp.LoreClassificationApplyRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
+		return
+	}
+	result, err := h.app.ApplyLoreClassification(body)
+	if err != nil {
+		if errors.Is(err, book.ErrLoreRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
+			return
+		}
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, result)
+}
+
 func (h *Handlers) HandleLoreItemImageGenerate(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return

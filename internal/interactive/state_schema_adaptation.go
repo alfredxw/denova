@@ -51,19 +51,32 @@ type ActorStateFieldSchemaOp struct {
 // initial state objects. Dynamic actors created after the opening are not part
 // of this initialization contract.
 type ActorStateInitialActorSchemaOp struct {
-	Op      string                 `json:"op"`
-	ActorID string                 `json:"actor_id,omitempty"`
-	Actor   ActorStateInitialActor `json:"actor,omitempty"`
-	Reason  string                 `json:"reason,omitempty"`
+	Op          string                            `json:"op"`
+	ActorID     string                            `json:"actor_id,omitempty"`
+	Actor       ActorStateInitialActor            `json:"actor,omitempty"`
+	Reason      string                            `json:"reason,omitempty"`
+	ValueSource *ActorStateSchemaActorValueSource `json:"value_source,omitempty" jsonschema:"-"`
 }
 
 // ActorStateRuntimeSchemaOp migrates an Actor already materialized in the
 // story. It does not change the reusable initial-Actor definitions.
 type ActorStateRuntimeSchemaOp struct {
-	Op      string                 `json:"op"`
-	ActorID string                 `json:"actor_id,omitempty"`
-	Actor   ActorStateInitialActor `json:"actor,omitempty"`
-	Reason  string                 `json:"reason,omitempty"`
+	Op          string                            `json:"op"`
+	ActorID     string                            `json:"actor_id,omitempty"`
+	FieldID     string                            `json:"field_id,omitempty" jsonschema:"description=op=set 时要初始化的冻结 schema field_id"`
+	Value       any                               `json:"value,omitempty" jsonschema:"description=op=set 时写入的非空字段值"`
+	Actor       ActorStateInitialActor            `json:"actor,omitempty"`
+	Reason      string                            `json:"reason,omitempty"`
+	ValueSource *ActorStateSchemaActorValueSource `json:"value_source,omitempty" jsonschema:"-"`
+}
+
+// ActorStateSchemaActorValueSource links Actor values produced by a Batch item
+// to the exact requirement evidence persisted in the schema adaptation audit.
+type ActorStateSchemaActorValueSource struct {
+	SourceID     string                            `json:"source_id"`
+	ItemID       string                            `json:"item_id"`
+	Source       ActorStateSchemaRequirementSource `json:"source"`
+	EvidenceKind string                            `json:"evidence_kind"`
 }
 
 // ActorStateSchemaAdaptationRecord is persisted with the frozen story schema
@@ -86,13 +99,14 @@ type ActorStateSchemaAdaptationRecord struct {
 // ActorStateSchemaAdaptationChange is a bounded user-visible audit item for
 // one schema or initial-Actor change proposed by the initialization Director.
 type ActorStateSchemaAdaptationChange struct {
-	Kind       string `json:"kind"`
-	Op         string `json:"op"`
-	TemplateID string `json:"template_id,omitempty"`
-	FieldID    string `json:"field_id,omitempty"`
-	TargetID   string `json:"target_id,omitempty"`
-	ActorID    string `json:"actor_id,omitempty"`
-	Reason     string `json:"reason,omitempty"`
+	Kind        string                            `json:"kind"`
+	Op          string                            `json:"op"`
+	TemplateID  string                            `json:"template_id,omitempty"`
+	FieldID     string                            `json:"field_id,omitempty"`
+	TargetID    string                            `json:"target_id,omitempty"`
+	ActorID     string                            `json:"actor_id,omitempty"`
+	Reason      string                            `json:"reason,omitempty"`
+	ValueSource *ActorStateSchemaActorValueSource `json:"value_source,omitempty"`
 }
 
 // StateSchemaInitializationStatus is story-global because all branches share
@@ -130,7 +144,7 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 	if err := json.Unmarshal([]byte(payload), &adaptation); err != nil {
 		return ActorStateSchemaAdaptation{}, fmt.Errorf("解析状态结构适配结果失败: %w", err)
 	}
-	adaptation.Summary = trimBytes(adaptation.Summary, maxTurnBriefTextBytes)
+	adaptation.Summary = trimBytes(adaptation.Summary, maxInteractiveTextBytes)
 	if len(adaptation.TemplateOps) > maxActorStateSchemaAdaptationOps {
 		return ActorStateSchemaAdaptation{}, fmt.Errorf("状态结构模板操作过多: %d > %d", len(adaptation.TemplateOps), maxActorStateSchemaAdaptationOps)
 	}
@@ -145,13 +159,13 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		op := &adaptation.TemplateOps[index]
 		op.Op = strings.TrimSpace(op.Op)
 		op.TemplateID = normalizeActorStateID(op.TemplateID)
-		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
+		op.Reason = trimBytes(op.Reason, maxInteractiveTextBytes)
 		fieldOps += len(op.FieldOps)
 		for fieldIndex := range op.FieldOps {
 			fieldOp := &op.FieldOps[fieldIndex]
 			fieldOp.Op = strings.TrimSpace(fieldOp.Op)
 			fieldOp.FieldID = normalizeActorStateFieldName(fieldOp.FieldID)
-			fieldOp.Reason = trimBytes(fieldOp.Reason, maxTurnBriefTextBytes)
+			fieldOp.Reason = trimBytes(fieldOp.Reason, maxInteractiveTextBytes)
 		}
 	}
 	if fieldOps > maxActorStateSchemaAdaptationOps {
@@ -161,16 +175,19 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		op := &adaptation.InitialActorOps[index]
 		op.Op = strings.TrimSpace(op.Op)
 		op.ActorID = normalizeActorStateID(op.ActorID)
-		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
+		op.Reason = trimBytes(op.Reason, maxInteractiveTextBytes)
+		normalizeActorStateSchemaActorValueSource(op.ValueSource)
 	}
 	for index := range adaptation.ActorOps {
 		op := &adaptation.ActorOps[index]
 		op.Op = strings.TrimSpace(op.Op)
 		op.ActorID = normalizeActorStateID(op.ActorID)
+		op.FieldID = normalizeActorStateFieldName(op.FieldID)
 		op.Actor.ID = normalizeActorStateID(op.Actor.ID)
 		op.Actor.TemplateID = normalizeActorStateID(op.Actor.TemplateID)
-		op.Reason = trimBytes(op.Reason, maxTurnBriefTextBytes)
-		if op.Op != "add" && op.Op != "replace" && op.Op != "remove" {
+		op.Reason = trimBytes(op.Reason, maxInteractiveTextBytes)
+		normalizeActorStateSchemaActorValueSource(op.ValueSource)
+		if op.Op != "add" && op.Op != "replace" && op.Op != "remove" && op.Op != "set" {
 			return ActorStateSchemaAdaptation{}, fmt.Errorf("运行时 Actor 操作无效: %s", op.Op)
 		}
 		if firstNonEmptyString(op.ActorID, op.Actor.ID) == "" {
@@ -178,6 +195,17 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 		}
 	}
 	return adaptation, nil
+}
+
+func normalizeActorStateSchemaActorValueSource(source *ActorStateSchemaActorValueSource) {
+	if source == nil {
+		return
+	}
+	source.SourceID = strings.TrimSpace(source.SourceID)
+	source.ItemID = strings.TrimSpace(source.ItemID)
+	source.Source.Kind = strings.TrimSpace(source.Source.Kind)
+	source.Source.ID = strings.TrimSpace(source.Source.ID)
+	source.EvidenceKind = strings.TrimSpace(source.EvidenceKind)
 }
 
 // ApplyActorStateSchemaAdaptation applies a Director-proposed initialization
@@ -208,13 +236,16 @@ func ApplyActorStateSchemaAdaptation(base StoryDirectorActorStateSystem, trpg St
 	if err := validateActorStateTRPGReferences(system, trpg); err != nil {
 		return StoryDirectorActorStateSystem{}, ActorStateSchemaAdaptationRecord{}, err
 	}
+	if err := validateActorStateRuntimeSchemaOps(system, adaptation.ActorOps); err != nil {
+		return StoryDirectorActorStateSystem{}, ActorStateSchemaAdaptationRecord{}, err
+	}
 	fieldOps := 0
 	for _, op := range adaptation.TemplateOps {
 		fieldOps += len(op.FieldOps)
 	}
 	record := ActorStateSchemaAdaptationRecord{
 		Source:          "director_agent",
-		Summary:         trimBytes(adaptation.Summary, maxTurnBriefTextBytes),
+		Summary:         trimBytes(adaptation.Summary, maxInteractiveTextBytes),
 		TemplateOps:     len(adaptation.TemplateOps),
 		FieldOps:        fieldOps,
 		InitialActorOps: len(adaptation.InitialActorOps),
@@ -244,8 +275,8 @@ func applyActorStateTemplateSchemaOp(system StoryDirectorActorStateSystem, op Ac
 		if actorStateTemplateByID(system, templates[0].ID).ID != "" {
 			return system, fmt.Errorf("新增状态模板已存在: %s", templates[0].ID)
 		}
-		if len(system.Templates) >= maxTurnBriefListItems {
-			return system, fmt.Errorf("状态模板数量已达到上限: %d", maxTurnBriefListItems)
+		if len(system.Templates) >= maxInteractiveListItems {
+			return system, fmt.Errorf("状态模板数量已达到上限: %d", maxInteractiveListItems)
 		}
 		system.Templates = append(system.Templates, templates[0])
 		return system, nil
@@ -380,8 +411,8 @@ func applyActorStateInitialActorSchemaOp(system StoryDirectorActorStateSystem, o
 	default:
 		return system, fmt.Errorf("初始 Actor 操作无效: %s", op.Op)
 	}
-	if len(system.InitialActors) > maxTurnBriefListItems {
-		return system, fmt.Errorf("初始 Actor 数量超过上限: %d", maxTurnBriefListItems)
+	if len(system.InitialActors) > maxInteractiveListItems {
+		return system, fmt.Errorf("初始 Actor 数量超过上限: %d", maxInteractiveListItems)
 	}
 	return system, nil
 }

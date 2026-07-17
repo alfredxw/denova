@@ -69,10 +69,10 @@ type DirectorEventCardIndex struct {
 func normalizeEventDecision(decision EventDecision) EventDecision {
 	decision.Mode = normalizeEnum(decision.Mode, EventDecisionNone, EventDecisionSeed, EventDecisionAdvance, EventDecisionPayoff, EventDecisionResolve, EventDecisionAbandon)
 	decision.EventRef = trimBytes(strings.TrimSpace(decision.EventRef), 256)
-	decision.Summary = trimBytes(strings.TrimSpace(decision.Summary), maxTurnBriefTextBytes)
-	decision.Reason = trimBytes(strings.TrimSpace(decision.Reason), maxTurnBriefTextBytes)
-	decision.Evidence = normalizeStringListLimit(decision.Evidence, maxTurnBriefListItems)
-	decision.EvidenceTurnIDs = normalizeStringListLimit(decision.EvidenceTurnIDs, maxTurnBriefListItems)
+	decision.Summary = trimBytes(strings.TrimSpace(decision.Summary), maxInteractiveTextBytes)
+	decision.Reason = trimBytes(strings.TrimSpace(decision.Reason), maxInteractiveTextBytes)
+	decision.Evidence = normalizeStringListLimit(decision.Evidence, maxInteractiveListItems)
+	decision.EvidenceTurnIDs = normalizeStringListLimit(decision.EvidenceTurnIDs, maxInteractiveListItems)
 	return decision
 }
 

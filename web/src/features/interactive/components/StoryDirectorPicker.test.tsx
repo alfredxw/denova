@@ -46,10 +46,9 @@ function storyDirector(id: string, name: string): StoryDirector {
     id,
     name,
     description: '',
-    strategy: { enabled: true },
-    trpg_system: {},
-    opening_selector: { enabled: true },
-    custom: false,
+		strategy: { enabled: true },
+		trpg_system: {},
+		custom: false,
   }
 }
 
@@ -60,6 +59,7 @@ function story(storyDirectorId: string) {
     origin: '',
     story_teller_id: 'classic',
     story_director_id: storyDirectorId,
+    choice_count: 5,
     reply_target_chars: 900,
     opening: { mode: 'ai' as const },
     created_at: '',

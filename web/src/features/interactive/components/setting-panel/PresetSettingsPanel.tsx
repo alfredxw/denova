@@ -1,26 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { BrainCircuit, Compass, Database, Dice5, Loader2, PanelLeft, RotateCcw, Save, ScrollText, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
+import { Compass, Database, Dice5, Loader2, PanelLeft, RotateCcw, Save, ScrollText, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, createStoryMemoryStructure, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteRuleSystem, deleteStoryDirector, deleteStoryMemoryStructurePreset, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStoryMemoryStructures, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector, updateStoryMemoryStructure } from '../../api'
+import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteRuleSystem, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../../api'
 import type { PresetResourceKind, PresetUsageMode } from '../../preset-ownership'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryMemoryStructureModule, Teller } from '../../types'
-import { ActorStateEditor, EventPackageEditor, ImagePresetEditor, RuleSystemEditor, StoryMemoryStructureEditor, TellerDirectory } from '../SettingPanelSections'
+import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
+import { ActorStateEditor, EventPackageEditor, ImagePresetEditor, RuleSystemEditor, TellerDirectory } from '../SettingPanelSections'
 import { TellerEditor } from '../SettingPanelTellerEditor'
 import { StoryDirectorEditor } from '../story-director/StoryDirectorEditor'
 import { usePresetResourceAutosave } from './usePresetResourceAutosave'
-import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneMemoryStructure, cloneRuleSystem, cloneStoryDirector, cloneTeller, currentPresetBuiltinOverridden, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_MEMORY_STRUCTURES, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeMemoryStructurePayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newMemoryStructureDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDeleteTarget, type PresetDrafts } from './presetResources'
+import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneRuleSystem, cloneStoryDirector, cloneTeller, currentPresetBuiltinOverridden, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDeleteTarget, type PresetDrafts } from './presetResources'
 
 interface PresetSettingsPanelProps {
   workspace: string
   tellers?: Teller[]
   storyDirectors?: StoryDirector[]
   imagePresets?: ImagePreset[]
-  presetFocus?: { nonce: number; kind: PresetResourceKind; id?: string }
   presetUsageMode?: PresetUsageMode
   onTellersChange?: (tellers: Teller[]) => void
   onStoryDirectorsChange?: (directors: StoryDirector[]) => void
@@ -41,13 +40,13 @@ interface AutosavedListEntry {
 
 const actionButtonClassName = 'gap-1.5 border-[var(--preset-line)] bg-[var(--preset-raised)] text-[var(--nova-text-muted)] shadow-none hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const iconActionClassName = 'border-[var(--preset-line)] bg-transparent text-[var(--nova-text-muted)] shadow-none hover:border-[var(--nova-danger-border)] hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]'
+const PRESET_CONFIG_INVALID_TOAST_ID = 'preset-config-invalid'
 
 export function PresetSettingsPanel({
   workspace,
   tellers: externalTellers = EMPTY_TELLERS,
   storyDirectors: externalStoryDirectors = EMPTY_STORY_DIRECTORS,
   imagePresets: externalImagePresets = EMPTY_IMAGE_PRESETS,
-  presetFocus,
   presetUsageMode = 'game',
   onTellersChange,
   onStoryDirectorsChange,
@@ -60,7 +59,6 @@ export function PresetSettingsPanel({
   const [deletePresetTarget, setDeletePresetTarget] = useState<PresetDeleteTarget | null>(null)
   const [presetConfigValid, setPresetConfigValid] = useState(true)
   const presetConfigValidRef = useRef(true)
-  const presetFocusNonceRef = useRef<number | null>(null)
   const closeDirectoryRef = useRef<() => void>(() => {})
   const autosavedListEntriesRef = useRef<Partial<Record<PresetResourceKind, AutosavedListEntry>>>({})
 
@@ -84,9 +82,6 @@ export function PresetSettingsPanel({
   const [actorStates, setActorStates] = useState<ActorStateModule[]>(EMPTY_ACTOR_STATES)
   const [activeActorStateId, setActiveActorStateId] = useState('')
   const [actorStateDraft, setActorStateDraft] = useState<ActorStateModule | null>(null)
-  const [memoryStructures, setMemoryStructures] = useState<StoryMemoryStructureModule[]>(EMPTY_MEMORY_STRUCTURES)
-  const [activeMemoryStructureId, setActiveMemoryStructureId] = useState('')
-  const [memoryStructureDraft, setMemoryStructureDraft] = useState<StoryMemoryStructureModule | null>(null)
 
   const markAutosavedListEntry = (kind: PresetResourceKind, item: { id: string } & object) => {
     autosavedListEntriesRef.current[kind] = {
@@ -124,7 +119,7 @@ export function PresetSettingsPanel({
 
   useEffect(() => {
     setPresetConfigValid(true)
-  }, [activeActorStateId, activeEventPackageId, activeMemoryStructureId, activeRuleSystemId, activeStoryDirectorId, presetResourceKind])
+  }, [activeActorStateId, activeEventPackageId, activeRuleSystemId, activeStoryDirectorId, presetResourceKind])
 
   useEffect(() => {
     if (onTellersChange || externalTellers.length > 0 || !workspace) return
@@ -229,23 +224,6 @@ export function PresetSettingsPanel({
   }, [workspace])
 
   useEffect(() => {
-    if (!workspace) return
-    let cancelled = false
-    getStoryMemoryStructures()
-      .then((data) => {
-        if (cancelled) return
-        setMemoryStructures(data)
-        setActiveMemoryStructureId((current) => current || data[0]?.id || '')
-      })
-      .catch(() => {
-        if (!cancelled) setMemoryStructures([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [workspace])
-
-  useEffect(() => {
     setTellers(externalTellers)
     setActiveTellerId((current) => {
       if (current === TELLER_CONFIG_AGENT_ENTRY_ID) return current
@@ -307,14 +285,6 @@ export function PresetSettingsPanel({
     setActorStateDraft(null)
   }, [workspace])
 
-  useEffect(() => {
-    setActiveMemoryStructureId((current) => {
-      if (current && memoryStructures.some((item) => item.id === current)) return current
-      return memoryStructures[0]?.id || ''
-    })
-    setMemoryStructureDraft(null)
-  }, [workspace])
-
   const presetDrafts: PresetDrafts = useMemo(() => ({
     teller: tellerDraft,
     director: storyDirectorDraft,
@@ -322,8 +292,7 @@ export function PresetSettingsPanel({
     event: eventPackageDraft,
     rule: ruleSystemDraft,
     actorState: actorStateDraft,
-    memoryStructure: memoryStructureDraft,
-  }), [actorStateDraft, eventPackageDraft, imagePresetDraft, memoryStructureDraft, ruleSystemDraft, storyDirectorDraft, tellerDraft])
+  }), [actorStateDraft, eventPackageDraft, imagePresetDraft, ruleSystemDraft, storyDirectorDraft, tellerDraft])
 
   const mergeSavedTeller = (teller: Teller, preserveDraft = false) => {
     if (preserveDraft) markAutosavedListEntry('teller', teller)
@@ -371,12 +340,6 @@ export function PresetSettingsPanel({
     if (preserveDraft) markAutosavedListEntry('actor-state', item)
     else clearAutosavedListEntry('actor-state')
     setActorStates((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
-  }
-
-  const mergeSavedMemoryStructure = (item: StoryMemoryStructureModule, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('memory-structure', item)
-    else clearAutosavedListEntry('memory-structure')
-    setMemoryStructures((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
   }
 
   const tellerAutosave = usePresetResourceAutosave<Teller, Partial<Teller>, Teller>({
@@ -485,24 +448,6 @@ export function PresetSettingsPanel({
     onFlushError: (err) => console.warn('[actor-state-editor] 切换条目前自动保存状态系统失败', err),
   })
 
-  const memoryStructureAutosave = usePresetResourceAutosave<StoryMemoryStructureModule, Partial<StoryMemoryStructureModule>, StoryMemoryStructureModule>({
-    draft: memoryStructureDraft,
-    scopeKey: workspace,
-    active: presetResourceKind === 'memory-structure',
-    valid: presetConfigValid,
-    makePayload: makeMemoryStructurePayload,
-    signature: presetResourceDraftSignature,
-    save: (id, payload, baseRevision) => updateStoryMemoryStructure(id, payload, baseRevision, workspace),
-    onSaved: (item, mode) => {
-      mergeSavedMemoryStructure(item, mode === 'auto')
-    },
-    onAutoSaveError: (err) => {
-      console.warn('[story-memory-structure-editor] 自动保存记忆结构失败', err)
-      toast.error((err as Error).message || t('editor.saveFailed'))
-    },
-    onFlushError: (err) => console.warn('[story-memory-structure-editor] 切换条目前自动保存记忆结构失败', err),
-  })
-
   useEffect(() => {
     if (activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID) {
       setTellerDraft(null)
@@ -560,33 +505,6 @@ export function PresetSettingsPanel({
     setActorStateDraft(nextDraft)
     actorStateAutosave.resetBaseline(nextDraft)
   }, [activeActorStateId, actorStates, actorStateAutosave.resetBaseline])
-
-  useEffect(() => {
-    const item = memoryStructures.find((entry) => entry.id === activeMemoryStructureId) || null
-    if (shouldPreserveAutosavedDraft('memory-structure', item, memoryStructureDraft?.id)) return
-    const nextDraft = item ? cloneMemoryStructure(item) : null
-    setMemoryStructureDraft(nextDraft)
-    memoryStructureAutosave.resetBaseline(nextDraft)
-  }, [activeMemoryStructureId, memoryStructures, memoryStructureAutosave.resetBaseline])
-
-  useEffect(() => {
-    if (!presetFocus || presetFocusNonceRef.current === presetFocus.nonce) return
-    let cancelled = false
-    void (async () => {
-      if (presetFocus.kind !== 'memory-structure') return
-      const targetId = presetFocus.id || memoryStructures[0]?.id || ''
-      if (!targetId) return
-      if (presetFocus.id && !memoryStructures.some((item) => item.id === presetFocus.id)) return
-      if (!(await flushPresetResourceAutoSave()) || cancelled) return
-      setPresetResourceKind('memory-structure')
-      setActiveTellerId((current) => current === TELLER_CONFIG_AGENT_ENTRY_ID ? '' : current)
-      setActiveMemoryStructureId(targetId)
-      presetFocusNonceRef.current = presetFocus.nonce
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [memoryStructures, presetFocus])
 
   const refreshTellers = async (nextActiveId?: string) => {
     clearAutosavedListEntry('teller')
@@ -658,30 +576,38 @@ export function PresetSettingsPanel({
     })
   }
 
-  const refreshMemoryStructures = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('memory-structure')
-    const data = await getStoryMemoryStructures()
-    setMemoryStructures(data)
-    setActiveMemoryStructureId((current) => {
-      if (nextActiveId) return nextActiveId
-      if (current && data.some((item) => item.id === current)) return current
-      return data[0]?.id || ''
-    })
-  }
-
   const autosaveForKind = (kind: PresetResourceKind): AutosaveController => {
     if (kind === 'director') return storyDirectorAutosave
     if (kind === 'image') return imagePresetAutosave
     if (kind === 'event') return eventPackageAutosave
     if (kind === 'rule') return ruleSystemAutosave
     if (kind === 'actor-state') return actorStateAutosave
-    if (kind === 'memory-structure') return memoryStructureAutosave
     return tellerAutosave
+  }
+
+  const showInvalidPresetConfigNotice = () => {
+    const canRestoreBuiltin = currentPresetBuiltinOverridden(presetResourceKind, presetDrafts)
+    console.warn('[preset-settings] 无效 JSON 阻止保存或切换配置', {
+      kind: presetResourceKind,
+      builtinOverride: canRestoreBuiltin,
+    })
+    toast.error(t('settingPanel.presetConfig.invalidTitle'), {
+      id: PRESET_CONFIG_INVALID_TOAST_ID,
+      description: t(canRestoreBuiltin
+        ? 'settingPanel.presetConfig.invalidBuiltinDescription'
+        : 'settingPanel.presetConfig.invalidDescription'),
+      action: canRestoreBuiltin
+        ? {
+            label: t('settingPanel.restoreBuiltin'),
+            onClick: () => void handleRestoreBuiltinPreset(),
+          }
+        : undefined,
+    })
   }
 
   const canLeavePresetResource = () => {
     if (isPresetConfigResourceKind(presetResourceKind) && !presetConfigValidRef.current) {
-      toast.error(t('settingPanel.presetConfig.invalidBlock'))
+      showInvalidPresetConfigNotice()
       return false
     }
     return true
@@ -734,7 +660,6 @@ export function PresetSettingsPanel({
     if (kind === 'event') return activeEventPackageId
     if (kind === 'rule') return activeRuleSystemId
     if (kind === 'actor-state') return activeActorStateId
-    if (kind === 'memory-structure') return activeMemoryStructureId
     return activeTellerId
   }
 
@@ -744,7 +669,6 @@ export function PresetSettingsPanel({
     if (kind === 'event') setActiveEventPackageId(id)
     if (kind === 'rule') setActiveRuleSystemId(id)
     if (kind === 'actor-state') setActiveActorStateId(id)
-    if (kind === 'memory-structure') setActiveMemoryStructureId(id)
   }
 
   const handleCreateTeller = async () => {
@@ -812,19 +736,6 @@ export function PresetSettingsPanel({
     }
   }
 
-  const handleCreateMemoryStructure = async () => {
-    if (!(await flushPresetResourceAutoSave())) return
-    setSaving(true)
-    try {
-      const item = await createStoryMemoryStructure(newMemoryStructureDraft(t))
-      setPresetResourceKind('memory-structure')
-      await refreshMemoryStructures(item.id)
-      closeDirectoryRef.current()
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const handleCreateImagePreset = async () => {
     if (!(await flushPresetResourceAutoSave())) return
     setSaving(true)
@@ -871,9 +782,6 @@ export function PresetSettingsPanel({
       } else if (deletePresetTarget.kind === 'actor-state') {
         await deleteActorState(deletePresetTarget.id)
         await refreshActorStates()
-      } else if (deletePresetTarget.kind === 'memory-structure') {
-        await deleteStoryMemoryStructurePreset(deletePresetTarget.id)
-        await refreshMemoryStructures()
       } else if (deletePresetTarget.kind === 'director') {
         await deleteStoryDirector(deletePresetTarget.id)
         await refreshStoryDirectors()
@@ -887,7 +795,7 @@ export function PresetSettingsPanel({
     }
   }
 
-  const handleRestoreBuiltinPreset = async () => {
+  async function handleRestoreBuiltinPreset() {
     if (!currentPresetBuiltinOverridden(presetResourceKind, presetDrafts)) return
     setSaving(true)
     try {
@@ -904,9 +812,6 @@ export function PresetSettingsPanel({
       } else if (presetResourceKind === 'actor-state' && actorStateDraft) {
         await deleteActorState(actorStateDraft.id)
         await refreshActorStates(actorStateDraft.id)
-      } else if (presetResourceKind === 'memory-structure' && memoryStructureDraft) {
-        await deleteStoryMemoryStructurePreset(memoryStructureDraft.id)
-        await refreshMemoryStructures(memoryStructureDraft.id)
       } else if (presetResourceKind === 'director' && storyDirectorDraft) {
         await deleteStoryDirector(storyDirectorDraft.id)
         await refreshStoryDirectors(storyDirectorDraft.id)
@@ -914,6 +819,7 @@ export function PresetSettingsPanel({
         await deleteInteractiveTeller(tellerDraft.id)
         await refreshTellers(tellerDraft.id)
       }
+      toast.dismiss(PRESET_CONFIG_INVALID_TOAST_ID)
       toast.success(t('settingPanel.restoreBuiltinDone'))
     } catch (err) {
       toast.error((err as Error).message || t('settingPanel.restoreBuiltinFailed'))
@@ -924,7 +830,7 @@ export function PresetSettingsPanel({
 
   const handleSave = async () => {
     if (isPresetConfigResourceKind(presetResourceKind) && !presetConfigValidRef.current) {
-      toast.error(t('settingPanel.presetConfig.invalidBlock'))
+      showInvalidPresetConfigNotice()
       return
     }
     setSaving(true)
@@ -943,7 +849,6 @@ export function PresetSettingsPanel({
     if (presetResourceKind === 'event') return eventPackageDraft
     if (presetResourceKind === 'rule') return ruleSystemDraft
     if (presetResourceKind === 'actor-state') return actorStateDraft
-    if (presetResourceKind === 'memory-structure') return memoryStructureDraft
     return tellerDraft
   }
 
@@ -965,14 +870,12 @@ export function PresetSettingsPanel({
         eventPackages={eventPackages}
         ruleSystems={ruleSystems}
         actorStates={actorStates}
-        memoryStructures={memoryStructures}
         activeTellerId={activeTellerId}
         activeStoryDirectorId={activeStoryDirectorId}
         activeImagePresetId={activeImagePresetId}
         activeEventPackageId={activeEventPackageId}
         activeRuleSystemId={activeRuleSystemId}
         activeActorStateId={activeActorStateId}
-        activeMemoryStructureId={activeMemoryStructureId}
         saving={busy}
         onSelectTeller={handleSelectTeller}
         onSelectStoryDirector={(id) => selectPresetResource('director', id)}
@@ -980,14 +883,12 @@ export function PresetSettingsPanel({
         onSelectEventPackage={(id) => selectPresetResource('event', id)}
         onSelectRuleSystem={(id) => selectPresetResource('rule', id)}
         onSelectActorState={(id) => selectPresetResource('actor-state', id)}
-        onSelectMemoryStructure={(id) => selectPresetResource('memory-structure', id)}
         onCreateTeller={() => void handleCreateTeller()}
         onCreateStoryDirector={() => void handleCreateStoryDirector()}
         onCreateImagePreset={() => void handleCreateImagePreset()}
         onCreateEventPackage={() => void handleCreateEventPackage()}
         onCreateRuleSystem={() => void handleCreateRuleSystem()}
         onCreateActorState={() => void handleCreateActorState()}
-        onCreateMemoryStructure={() => void handleCreateMemoryStructure()}
       />
     </div>
   )
@@ -1059,7 +960,6 @@ export function PresetSettingsPanel({
                   event_package_count: String(eventPackages.length),
                   rule_system_count: String(ruleSystems.length),
                   actor_state_count: String(actorStates.length),
-                  memory_structure_count: String(memoryStructures.length),
                   story_director_count: String(storyDirectors.length),
                   image_preset_count: String(imagePresets.length),
                 }}
@@ -1068,7 +968,6 @@ export function PresetSettingsPanel({
                   void refreshEventPackages()
                   void refreshRuleSystems()
                   void refreshActorStates()
-                  void refreshMemoryStructures()
                   void refreshStoryDirectors()
                   void refreshImagePresets()
                 }}
@@ -1083,7 +982,6 @@ export function PresetSettingsPanel({
                 eventPackages={eventPackages}
                 ruleSystems={ruleSystems}
                 actorStates={actorStates}
-                memoryStructures={memoryStructures}
                 tellerDraft={tellerDraft}
                 setTellerDraft={setTellerDraft}
                 activeSlotId={activeSlotId}
@@ -1098,8 +996,6 @@ export function PresetSettingsPanel({
                 setRuleSystemDraft={setRuleSystemDraft}
                 actorStateDraft={actorStateDraft}
                 setActorStateDraft={setActorStateDraft}
-                memoryStructureDraft={memoryStructureDraft}
-                setMemoryStructureDraft={setMemoryStructureDraft}
                 onOpenActorState={(id) => selectPresetResource('actor-state', id)}
                 onOpenRuleSystem={(id) => selectPresetResource('rule', id)}
                 onSave={handleSave}
@@ -1149,7 +1045,6 @@ interface PresetResourcePaneProps {
   eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
   actorStates: ActorStateModule[]
-  memoryStructures: StoryMemoryStructureModule[]
   tellerDraft: Teller | null
   setTellerDraft: (draft: Teller | null) => void
   activeSlotId: string
@@ -1164,8 +1059,6 @@ interface PresetResourcePaneProps {
   setRuleSystemDraft: (draft: RuleSystemModule | null) => void
   actorStateDraft: ActorStateModule | null
   setActorStateDraft: (draft: ActorStateModule | null) => void
-  memoryStructureDraft: StoryMemoryStructureModule | null
-  setMemoryStructureDraft: (draft: StoryMemoryStructureModule | null) => void
   onOpenActorState: (id: string) => void
   onOpenRuleSystem: (id: string) => void
   onSave: () => void
@@ -1177,7 +1070,6 @@ function PresetResourcePane(props: PresetResourcePaneProps) {
   if (props.kind === 'event') return <EventPackagePane draft={props.eventPackageDraft} setDraft={props.setEventPackageDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
   if (props.kind === 'rule') return <RuleSystemPane draft={props.ruleSystemDraft} actorStates={props.actorStates} setDraft={props.setRuleSystemDraft} onOpenActorState={props.onOpenActorState} onSave={props.onSave} onValidityChange={props.onValidityChange} />
   if (props.kind === 'actor-state') return <ActorStatePane draft={props.actorStateDraft} ruleSystems={props.ruleSystems} setDraft={props.setActorStateDraft} onOpenRuleSystem={props.onOpenRuleSystem} onSave={props.onSave} onValidityChange={props.onValidityChange} />
-  if (props.kind === 'memory-structure') return <MemoryStructurePane draft={props.memoryStructureDraft} setDraft={props.setMemoryStructureDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
   if (props.kind === 'director') {
     return (
       <StoryDirectorPane
@@ -1186,7 +1078,6 @@ function PresetResourcePane(props: PresetResourcePaneProps) {
         eventPackages={props.eventPackages}
         ruleSystems={props.ruleSystems}
         actorStates={props.actorStates}
-        memoryStructures={props.memoryStructures}
         imagePresets={props.imagePresets}
         setDraft={props.setStoryDirectorDraft}
         onSave={props.onSave}
@@ -1217,11 +1108,7 @@ function ActorStatePane(props: { draft: ActorStateModule | null; ruleSystems: Ru
   return <ActorStateEditor {...props} />
 }
 
-function MemoryStructurePane(props: { draft: StoryMemoryStructureModule | null; setDraft: (draft: StoryMemoryStructureModule | null) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
-  return <StoryMemoryStructureEditor {...props} />
-}
-
-function StoryDirectorPane(props: { draft: StoryDirector | null; tellers: Teller[]; eventPackages: EventPackageModule[]; ruleSystems: RuleSystemModule[]; actorStates: ActorStateModule[]; memoryStructures: StoryMemoryStructureModule[]; imagePresets: ImagePreset[]; setDraft: (draft: StoryDirector | null) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
+function StoryDirectorPane(props: { draft: StoryDirector | null; tellers: Teller[]; eventPackages: EventPackageModule[]; ruleSystems: RuleSystemModule[]; actorStates: ActorStateModule[]; imagePresets: ImagePreset[]; setDraft: (draft: StoryDirector | null) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
   return <StoryDirectorEditor {...props} />
 }
 
@@ -1232,6 +1119,5 @@ function presetResourceIcon(kind: PresetResourceKind) {
   if (kind === 'event') return <ScrollText className={iconClassName} />
   if (kind === 'rule') return <Dice5 className={iconClassName} />
   if (kind === 'actor-state') return <Database className={iconClassName} />
-  if (kind === 'memory-structure') return <BrainCircuit className={iconClassName} />
   return <SlidersHorizontal className={iconClassName} />
 }

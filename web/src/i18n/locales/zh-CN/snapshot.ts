@@ -1,5 +1,5 @@
 const snapshot = {
-  'snapshot.title': '场景记忆',
+  'snapshot.title': '当前场景',
   'snapshot.subtitle': '当前回合的实时上下文',
   'snapshot.syncing': '同步中',
   'snapshot.syncFailed': '同步失败',
@@ -33,6 +33,7 @@ const snapshot = {
   'snapshot.director.docs': '规划文档',
   'snapshot.director.branchPlanningTurns': '分支回合',
   'snapshot.director.plan': 'director.md',
+  'snapshot.director.agentBrief': 'agent-brief.md · 正文 Agent 简报',
   'snapshot.director.documentEmpty': '该文档暂无内容',
   'snapshot.director.loreContext': 'lore-context.md · 分支资料工作集',
   'snapshot.ruleAudit.title': '规则审计',
@@ -132,8 +133,6 @@ const snapshot = {
   'snapshot.field.state_expectation': '状态预期',
   'snapshot.field.continuity_notes': '连续性约束',
   'snapshot.field.kind': '类型',
-  'snapshot.field.attribute_path': '属性',
-  'snapshot.field.attribute_value': '属性值',
   'snapshot.field.dice': '骰子',
   'snapshot.field.rolls': '掷骰',
   'snapshot.field.roll_total': '骰子合计',

@@ -32,7 +32,7 @@ func TestProcessStreamingEventReclassifiesInteractiveToolPreambleAsThinking(t *t
 		0,
 		0,
 		agentEventMetadata{AgentKind: AgentKindInteractiveStory},
-		true,
+		false,
 		nil,
 		func(event Event) { events = append(events, event) },
 	)
@@ -50,9 +50,9 @@ func TestProcessStreamingEventReclassifiesInteractiveToolPreambleAsThinking(t *t
 	}
 }
 
-func TestProcessStreamingEventStreamsInteractivePreparationAsThinkingBeforeTurnResult(t *testing.T) {
+func TestProcessStreamingEventStreamsInteractiveCandidateBeforeTurnResult(t *testing.T) {
 	reader, writer := schema.Pipe[*schema.Message](1)
-	writer.Send(&schema.Message{Role: schema.Assistant, Content: "我先检查当前剧情状态。"}, nil)
+	writer.Send(&schema.Message{Role: schema.Assistant, Content: "夜雨落在青石街上。"}, nil)
 	writer.Close()
 
 	var content strings.Builder
@@ -73,14 +73,14 @@ func TestProcessStreamingEventStreamsInteractivePreparationAsThinkingBeforeTurnR
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := content.String(); got != "" {
-		t.Fatalf("pre-TurnResult content must not enter narrative: %q", got)
+	if got := content.String(); got != "夜雨落在青石街上。" {
+		t.Fatalf("pre-TurnResult candidate = %q", got)
 	}
-	if got := thinking.String(); got != "我先检查当前剧情状态。" {
-		t.Fatalf("thinking = %q", got)
+	if thinking.Len() != 0 {
+		t.Fatalf("candidate leaked into thinking: %q", thinking.String())
 	}
-	if len(events) != 1 || events[0].Type != "thinking" {
-		t.Fatalf("first preparation event = %#v, want thinking", events)
+	if len(events) != 1 || events[0].Type != "chunk" {
+		t.Fatalf("first candidate event = %#v, want chunk", events)
 	}
 }
 
@@ -120,8 +120,60 @@ func TestProcessStreamingEventStreamsInteractiveNarrativeAfterTurnResult(t *test
 
 func TestProcessStreamingEventKeepsInteractiveCompletionRetryInternal(t *testing.T) {
 	reader, writer := schema.Pipe[*schema.Message](2)
-	writer.Send(&schema.Message{Role: schema.Assistant, Content: "门后传来锁链拖地的声音。"}, nil)
+	writer.Send(&schema.Message{
+		Role:    schema.Assistant,
+		Content: "门后传来锁链拖地的声音。",
+		ResponseMeta: &schema.ResponseMeta{Usage: &schema.TokenUsage{
+			PromptTokens:     120,
+			CompletionTokens: 12,
+			TotalTokens:      132,
+		}},
+	}, nil)
 	writer.Send(nil, interactiveRetryErrorForTest{reason: interactiveCompletionRetryReason{Code: interactiveCompletionRetryCode}})
+
+	var content strings.Builder
+	var thinking strings.Builder
+	var events []Event
+	message, err := processStreamingEvent(
+		context.Background(),
+		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: schema.Assistant},
+		&content,
+		&thinking,
+		0,
+		0,
+		agentEventMetadata{AgentKind: AgentKindInteractiveStory},
+		false,
+		nil,
+		func(event Event) { events = append(events, event) },
+	)
+	if _, retrying := interactiveCompletionRetryFromError(err); !retrying {
+		t.Fatalf("expected internal protocol retry, got %v", err)
+	}
+	if message == nil || message.ResponseMeta == nil || message.ResponseMeta.Usage == nil || message.ResponseMeta.Usage.TotalTokens != 132 {
+		t.Fatalf("rejected model response must retain usage for accounting: %#v", message)
+	}
+	if content.String() != "门后传来锁链拖地的声音。" || thinking.Len() != 0 {
+		t.Fatalf("rejected candidate classification mismatch: content=%q thinking=%q", content.String(), thinking.String())
+	}
+	if !hasEvent(events, "chunk") {
+		t.Fatalf("candidate must be visible before the submission retry: %#v", events)
+	}
+	if hasEvent(events, "error") {
+		t.Fatalf("internal retry leaked as a user-visible error: %#v", events)
+	}
+}
+
+func TestProcessStreamingEventKeepsContentBeforeSubmitAsNarrative(t *testing.T) {
+	reader, writer := schema.Pipe[*schema.Message](2)
+	writer.Send(&schema.Message{Role: schema.Assistant, Content: "石门在轰鸣中开启。"}, nil)
+	writer.Send(&schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{
+		ID: "call-submit",
+		Function: schema.FunctionCall{
+			Name:      "submit_actor_state_patches",
+			Arguments: `{"patches":[]}`,
+		},
+	}}}, nil)
+	writer.Close()
 
 	var content strings.Builder
 	var thinking strings.Builder
@@ -138,14 +190,17 @@ func TestProcessStreamingEventKeepsInteractiveCompletionRetryInternal(t *testing
 		nil,
 		func(event Event) { events = append(events, event) },
 	)
-	if _, retrying := interactiveCompletionRetryFromError(err); !retrying {
-		t.Fatalf("expected internal protocol retry, got %v", err)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if content.Len() != 0 || thinking.String() != "门后传来锁链拖地的声音。" {
-		t.Fatalf("rejected candidate classification mismatch: content=%q thinking=%q", content.String(), thinking.String())
+	if content.String() != "石门在轰鸣中开启。" || thinking.Len() != 0 {
+		t.Fatalf("submit response classification mismatch: content=%q thinking=%q", content.String(), thinking.String())
 	}
-	if hasEvent(events, "error") {
-		t.Fatalf("internal retry leaked as a user-visible error: %#v", events)
+	if hasEvent(events, interactiveContentReclassifiedEvent) {
+		t.Fatalf("submit must not retract the preceding narrative: %#v", events)
+	}
+	if len(events) == 0 || events[0].Type != "chunk" {
+		t.Fatalf("narrative must precede submit tool events: %#v", events)
 	}
 }
 

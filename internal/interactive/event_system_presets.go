@@ -6,13 +6,6 @@ import (
 )
 
 const (
-	GenreXuanhuanEventSystemID   = "genre-xuanhuan"
-	GenreXiuxianEventSystemID    = "genre-xiuxian"
-	GenreApocalypseEventSystemID = "genre-apocalypse"
-	GenreWesternEventSystemID    = "genre-western-fantasy"
-	GenreUrbanEventSystemID      = "genre-urban"
-	GenreTRPGEventSystemID       = "genre-trpg"
-
 	GenreXuanhuanEventPackageID   = "xuanhuan-core"
 	GenreXiuxianEventPackageID    = "xiuxian-core"
 	GenreApocalypseEventPackageID = "apocalypse-core"

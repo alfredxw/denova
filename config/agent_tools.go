@@ -91,8 +91,8 @@ func DefaultAgentToolSettings() AgentToolSettings {
 			AgentConfigWrite: on,
 		},
 		InteractiveDirector: AgentToolOverride{
-			FileRead:         on,
-			FileWrite:        on,
+			FileRead:         off,
+			FileWrite:        off,
 			ShellExecute:     off,
 			Skills:           off,
 			LoreRead:         on,

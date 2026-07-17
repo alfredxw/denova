@@ -1,5 +1,5 @@
 const snapshot = {
-  'snapshot.title': 'Scene Memory',
+  'snapshot.title': 'Current Scene',
   'snapshot.subtitle': 'Live context for the current turn',
   'snapshot.syncing': 'Syncing',
   'snapshot.syncFailed': 'Sync failed',
@@ -33,6 +33,7 @@ const snapshot = {
   'snapshot.director.docs': 'Plan Docs',
   'snapshot.director.branchPlanningTurns': 'Branch Turns',
   'snapshot.director.plan': 'director.md',
+  'snapshot.director.agentBrief': 'agent-brief.md · Prose Agent brief',
   'snapshot.director.documentEmpty': 'This document is empty',
   'snapshot.director.loreContext': 'lore-context.md · Branch lore set',
   'snapshot.ruleAudit.title': 'Rule Audit',
@@ -132,8 +133,6 @@ const snapshot = {
   'snapshot.field.state_expectation': 'State Expectation',
   'snapshot.field.continuity_notes': 'Continuity Notes',
   'snapshot.field.kind': 'Kind',
-  'snapshot.field.attribute_path': 'Attribute',
-  'snapshot.field.attribute_value': 'Attribute Value',
   'snapshot.field.dice': 'Dice',
   'snapshot.field.rolls': 'Rolls',
   'snapshot.field.roll_total': 'Roll Total',

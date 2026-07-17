@@ -87,3 +87,49 @@ func TestWorkspaceDirectorTaskGroupWaitKeyWaitsForQueuedWork(t *testing.T) {
 	}
 	tasks.Close()
 }
+
+func TestInteractiveForegroundWaitsForSchemaLaneButNotDerivedMaintenance(t *testing.T) {
+	tasks := newWorkspaceDirectorTaskGroup()
+	conversation := &interactiveConversation{storyID: "story-1"}
+	schemaKey := interactiveStateSchemaMaintenanceKey(conversation, "main")
+	derivedKey := interactiveDerivedMaintenanceKey(conversation, "main")
+	if schemaKey == derivedKey {
+		t.Fatalf("maintenance lanes must be distinct: %s", schemaKey)
+	}
+
+	releaseSchema := make(chan struct{})
+	releaseDerived := make(chan struct{})
+	derivedStarted := make(chan struct{})
+	_, _ = tasks.GoKeyed(schemaKey, func(context.Context) { <-releaseSchema })
+	derivedDone, _ := tasks.GoKeyed(derivedKey, func(context.Context) {
+		close(derivedStarted)
+		<-releaseDerived
+	})
+	<-derivedStarted
+	waitDone := make(chan error, 1)
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				waitDone <- fmt.Errorf("schema lane wait panic: %v", recovered)
+			}
+		}()
+		waitDone <- tasks.WaitKey(context.Background(), schemaKey)
+	}()
+	select {
+	case err := <-waitDone:
+		t.Fatalf("schema wait returned before schema completion: %v", err)
+	default:
+	}
+	close(releaseSchema)
+	if err := <-waitDone; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-derivedDone:
+		t.Fatal("schema wait should not require derived Director/Memory maintenance")
+	default:
+	}
+	close(releaseDerived)
+	<-derivedDone
+	tasks.Close()
+}

@@ -150,7 +150,7 @@ func TestLoadWithWorkspaceAllowsUnlimitedAgentIdleTimeout(t *testing.T) {
 	}
 }
 
-func TestLoadWithWorkspaceAllowsUnlimitedAgentToolResultLimit(t *testing.T) {
+func TestLoadWithWorkspaceMapsZeroToolResultLimitToHighDefault(t *testing.T) {
 	novaDir := t.TempDir()
 	ws := t.TempDir()
 	t.Setenv("NOVA_DIR", novaDir)
@@ -166,11 +166,11 @@ func TestLoadWithWorkspaceAllowsUnlimitedAgentToolResultLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.AgentToolResultLimitKB != 0 {
-		t.Fatalf("agent tool result limit should allow explicit 0, got %d", cfg.AgentToolResultLimitKB)
+	if cfg.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
+		t.Fatalf("agent tool result limit should map 0 to the high default, got %d", cfg.AgentToolResultLimitKB)
 	}
-	if layered.Effective.AgentToolResultLimitKB == nil || *layered.Effective.AgentToolResultLimitKB != 0 {
-		t.Fatalf("effective agent tool result limit should preserve explicit 0")
+	if layered.Effective.AgentToolResultLimitKB == nil || *layered.Effective.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
+		t.Fatalf("effective agent tool result limit should expose the high default")
 	}
 }
 
@@ -291,7 +291,7 @@ func TestLoadWithWorkspaceAllowsGlobalUnlimitedAgentIdleTimeout(t *testing.T) {
 	}
 }
 
-func TestLoadWithWorkspaceAllowsGlobalUnlimitedAgentToolResultLimit(t *testing.T) {
+func TestLoadWithWorkspaceMapsGlobalZeroToolResultLimitToHighDefault(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
 	ws := t.TempDir()
@@ -307,11 +307,11 @@ func TestLoadWithWorkspaceAllowsGlobalUnlimitedAgentToolResultLimit(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.AgentToolResultLimitKB != 0 {
-		t.Fatalf("global agent tool result limit should allow explicit 0, got %d", cfg.AgentToolResultLimitKB)
+	if cfg.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
+		t.Fatalf("global agent tool result limit should map 0 to the high default, got %d", cfg.AgentToolResultLimitKB)
 	}
-	if layered.Global.AgentToolResultLimitKB == nil || *layered.Global.AgentToolResultLimitKB != 0 {
-		t.Fatalf("global layer should preserve explicit 0")
+	if layered.Global.AgentToolResultLimitKB == nil || *layered.Global.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
+		t.Fatalf("global layer should expose the high default")
 	}
 }
 

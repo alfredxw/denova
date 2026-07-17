@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirectorModuleRefs, StoryMemoryStructureModule, Teller } from '../../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirectorModuleRefs, Teller } from '../../types'
 import { consoleSectionClassName, selectClassName } from './constants'
 import { SectionTitle } from './shared'
 import { normalizeIDList } from './utils'
@@ -14,15 +14,12 @@ export function DirectorModuleConsole({
   selectedTellerName,
   selectedRuleName,
   selectedActorStateName,
-  selectedMemoryStructureCount,
-  selectedMemoryStructureTotal,
   selectedImageName,
   selectedEventCardCount,
   tellers,
   eventPackages,
   ruleSystems,
   actorStates,
-  memoryStructures,
   imagePresets,
   onModuleRefChange,
 }: {
@@ -30,15 +27,12 @@ export function DirectorModuleConsole({
   selectedTellerName: string
   selectedRuleName: string
   selectedActorStateName: string
-  selectedMemoryStructureCount: number
-  selectedMemoryStructureTotal: number
   selectedImageName: string
   selectedEventCardCount: number
   tellers: Teller[]
   eventPackages: EventPackageModule[]
   ruleSystems: RuleSystemModule[]
   actorStates: ActorStateModule[]
-  memoryStructures: StoryMemoryStructureModule[]
   imagePresets: ImagePreset[]
   onModuleRefChange: <K extends keyof StoryDirectorModuleRefs>(key: K, value: StoryDirectorModuleRefs[K]) => void
 }) {
@@ -95,22 +89,6 @@ export function DirectorModuleConsole({
               enabled={!refs.actor_state_disabled}
               items={actorStates}
               onChange={(value) => onModuleRefChange('actor_state_id', value)}
-            />
-          </ModuleRefRow>
-          <ModuleRefRow
-            label={t('settingPanel.presetKind.memoryStructure')}
-            summary={refs.memory_structure_disabled
-              ? t('settingPanel.storyDirector.moduleDisabled')
-              : t('settingPanel.memoryStructure.summaryCount', { enabled: selectedMemoryStructureCount, total: selectedMemoryStructureTotal })}
-            enabled={!refs.memory_structure_disabled}
-            onEnabledChange={(enabled) => onModuleRefChange('memory_structure_disabled', !enabled)}
-          >
-            <ModuleSelect
-              value={refs.memory_structure_id || ''}
-              fallbackValue="default"
-              enabled={!refs.memory_structure_disabled}
-              items={memoryStructures}
-              onChange={(value) => onModuleRefChange('memory_structure_id', value)}
             />
           </ModuleRefRow>
         </ModuleGroup>

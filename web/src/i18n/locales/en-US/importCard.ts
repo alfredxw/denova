@@ -18,6 +18,8 @@ const importCard = {
   'importCard.defaultUserCharacterName': 'Player Character',
   'importCard.userCharacterName': '{{user}} character name',
   'importCard.userCharacterHint': 'This card contains the {{user}} placeholder. Denova will create a player-character lore item with this name.',
+  'importCard.semanticClassification': 'Organize lore types intelligently',
+  'importCard.semanticClassificationHint': 'Use semantic analysis for {{count}} entries whose type is unclear from the name; turn this off to use local name rules only.',
   'importCard.compat.capabilities': 'Imported capabilities',
   'importCard.compat.sanitized': 'Runtime cleaned',
   'importCard.compat.discarded': 'Extensions discarded',

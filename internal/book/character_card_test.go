@@ -300,8 +300,8 @@ func TestTavernWorldbookIsNormalizedWithoutLoadingEngine(t *testing.T) {
 	if strings.Join(location.Keywords, ",") != "旧港,港口,雨夜" || strings.Contains(location.Content, "UpdateVariable") {
 		t.Fatalf("关键词应合并去重且运行块应被清洗: %#v", location)
 	}
-	if rumor.Enabled || rumor.LoadMode != LoreLoadModeAuto || rumor.Type != "world" {
-		t.Fatalf("非 constant 禁用条目应保留为按需 world: %#v", rumor)
+	if rumor.Enabled || rumor.LoadMode != LoreLoadModeAuto || rumor.Type != "other" || rumor.TypeSource != LoreTypeSourceHeuristic {
+		t.Fatalf("无明确类型信号的禁用条目应保留为按需 other，等待后续整理: %#v", rumor)
 	}
 	if location.Provenance == nil || location.Provenance.SourceRecordID != "7" || location.Provenance.SourceHash == "" {
 		t.Fatalf("应记录模型不可见来源: %#v", location.Provenance)
@@ -324,6 +324,95 @@ func TestTavernWorldbookIsNormalizedWithoutLoadingEngine(t *testing.T) {
 	}
 	if !strings.Contains(searchIndex, "关键词: 旧港、港口、雨夜") {
 		t.Fatalf("资料索引应直接展示搜索关键词:\n%s", searchIndex)
+	}
+}
+
+func TestLoreClassificationHeuristicRecognizesCommonWorldbookNames(t *testing.T) {
+	tests := map[string]string{
+		"人物详情：沈凝":                 "character",
+		"详细人物-罗衡":                 "character",
+		"角色档案·戒律长老":               "character",
+		"地点：旧港":                   "location",
+		"宗门：青岚宗":                  "faction",
+		"力量体系：灵脉":                 "rule",
+		"法宝：照夜镜":                  "item",
+		"世界观：黄昏纪元":                "world",
+		"Character Profile: Iris": "character",
+		"Location - Old Harbor":   "location",
+		"远方传闻":                    "other",
+	}
+	for name, want := range tests {
+		got := ClassifyLoreItemHeuristic(LoreClassificationInput{Name: name})
+		if got.Type != want {
+			t.Fatalf("name %q classified as %s, want %s (%#v)", name, got.Type, want, got)
+		}
+	}
+}
+
+func TestCharacterCardImportSemanticallyClassifiesOnlyUncertainEntries(t *testing.T) {
+	workspace := t.TempDir()
+	called := 0
+	result, err := NewService(workspace).ImportTavernCharacterCard("semantic.json", []byte(`{
+		"data":{"name":"归舟","description":"旅者","character_book":{"entries":[
+			{"id":1,"comment":"地点：旧港","content":"旧港常年下雨。","enabled":true},
+			{"id":2,"comment":"沈凝","keys":["见证者"],"content":"她负责见证公开比试。","enabled":true}
+		]}}
+	}`), CharacterCardImportOptions{
+		ClassificationMode: LoreClassificationModeSemantic,
+		ClassifyLore: func(inputs []LoreClassificationInput) ([]LoreClassificationSuggestion, error) {
+			called++
+			if len(inputs) != 1 || inputs[0].Name != "沈凝" || len([]byte(inputs[0].Content)) > semanticLoreClassificationBodyBytes {
+				t.Fatalf("semantic classifier should receive only bounded uncertain entries: %#v", inputs)
+			}
+			return []LoreClassificationSuggestion{{ID: inputs[0].ID, Type: "character", Confidence: LoreClassificationConfidenceHigh, Reason: "正文描述人物职责"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called != 1 || result.ClassificationMode != LoreClassificationModeSemantic || result.UncertainTypeCount != 0 || result.ClassificationCounts["character"] != 1 || result.ClassificationCounts["location"] != 1 {
+		t.Fatalf("unexpected semantic classification summary: called=%d result=%#v", called, result)
+	}
+	items, err := NewLoreStore(workspace).ListAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range items {
+		if item.Name == "沈凝" && (item.Type != "character" || item.TypeSource != LoreTypeSourceSemantic) {
+			t.Fatalf("semantic type provenance not persisted: %#v", item)
+		}
+		if item.Name == "地点：旧港" && item.TypeSource != LoreTypeSourceHeuristic {
+			t.Fatalf("high-confidence local classification should not call the model: %#v", item)
+		}
+	}
+}
+
+func TestCharacterCardImportDoesNotPersistLowConfidenceSemanticSuggestion(t *testing.T) {
+	workspace := t.TempDir()
+	result, err := NewService(workspace).ImportTavernCharacterCard("low-confidence.json", []byte(`{
+		"data":{"name":"归舟","description":"旅者","character_book":{"entries":[
+			{"id":1,"comment":"沈凝","content":"也许是人物，也可能是一处代号。","enabled":true}
+		]}}
+	}`), CharacterCardImportOptions{
+		ClassificationMode: LoreClassificationModeSemantic,
+		ClassifyLore: func(inputs []LoreClassificationInput) ([]LoreClassificationSuggestion, error) {
+			return []LoreClassificationSuggestion{{ID: inputs[0].ID, Type: "character", Confidence: LoreClassificationConfidenceLow, Reason: "证据不足"}}, nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.UncertainTypeCount != 1 {
+		t.Fatalf("low-confidence suggestion should remain uncertain: %#v", result)
+	}
+	items, err := NewLoreStore(workspace).ListAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range items {
+		if item.Name == "沈凝" && (item.Type != "other" || item.TypeSource != LoreTypeSourceHeuristic) {
+			t.Fatalf("low-confidence semantic suggestion must not overwrite the heuristic result: %#v", item)
+		}
 	}
 }
 

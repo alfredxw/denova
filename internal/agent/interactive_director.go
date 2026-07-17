@@ -63,20 +63,28 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, cfg *config.Confi
 	if err != nil {
 		return "", fmt.Errorf("构建互动导演 Agent 失败: %w", err)
 	}
-	runner := NewRunnerWithOptions(ctx, builtAgent, RunOptions{AgentKind: config.AgentKindInteractiveDirector, Workspace: cfg.Workspace})
+	runOptions := RunOptions{
+		AgentKind:       config.AgentKindInteractiveDirector,
+		StoryID:         toolContext.StoryID,
+		BranchID:        toolContext.BranchID,
+		TurnID:          toolContext.TurnID,
+		MaintenanceTask: toolContext.MaintenanceTask,
+		Workspace:       cfg.Workspace,
+	}
+	runner := NewRunnerWithOptions(ctx, builtAgent, runOptions)
 	conversation := &singleInstructionConversation{
 		instruction:           instruction,
+		stableContextTitle:    toolContext.StableContextTitle,
+		stableContext:         toolContext.StableContext,
+		stableContextMaxBytes: toolContext.StableContextMaxBytes,
 		display:               toolContext.DisplayConversation,
 		hideDirectorToolInput: cfg.HideChapterBodyLiveOutput,
 		directorTools:         map[string]*directorToolDisplayState{},
 	}
 	bookService := book.NewService(state.Workspace())
 	var runErr error
-	NewChatService().RunWithOptions(ctx, runner, conversation, bookService, ChatRequest{Message: instruction}, RunOptions{
-		AgentKind:          config.AgentKindInteractiveDirector,
-		Workspace:          cfg.Workspace,
-		ToolResultMaxBytes: interactiveDirectorToolResultMaxBytes,
-	}, func(event Event) {
+	runOptions.ToolResultMaxBytes = interactiveDirectorToolResultMaxBytes
+	NewChatService().RunWithOptions(ctx, runner, conversation, bookService, ChatRequest{Message: instruction}, runOptions, func(event Event) {
 		if event.Type != "error" {
 			return
 		}
@@ -88,7 +96,7 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, cfg *config.Confi
 		return "", runErr
 	}
 	output := strings.TrimSpace(conversation.output)
-	if output == "" {
+	if output == "" && !isInteractiveDirectorPlanTask(toolContext.MaintenanceTask) {
 		return "", fmt.Errorf("互动导演 Agent 返回为空")
 	}
 	return output, nil
@@ -96,6 +104,9 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, cfg *config.Confi
 
 type singleInstructionConversation struct {
 	instruction           string
+	stableContextTitle    string
+	stableContext         string
+	stableContextMaxBytes int
 	output                string
 	display               Conversation
 	hideDirectorToolInput bool
@@ -103,12 +114,93 @@ type singleInstructionConversation struct {
 	directorTools         map[string]*directorToolDisplayState
 }
 
+const maxSingleInstructionStableContextTitleBytes = 512
+
 func (c *singleInstructionConversation) PrepareMessages(_, agentMessage string) ([]*schema.Message, error) {
 	message := strings.TrimSpace(agentMessage)
 	if message == "" {
 		message = c.instruction
 	}
-	return []*schema.Message{schema.UserMessage(message)}, nil
+	stable := strings.TrimSpace(c.stableContext)
+	if stable == "" {
+		return []*schema.Message{schema.UserMessage(message)}, nil
+	}
+	if c.stableContextMaxBytes <= 0 {
+		return nil, fmt.Errorf("稳定模型上下文缺少大小上限")
+	}
+	if len([]byte(stable)) > c.stableContextMaxBytes {
+		return nil, fmt.Errorf("稳定模型上下文超过上限: %d > %d bytes", len([]byte(stable)), c.stableContextMaxBytes)
+	}
+	title := strings.TrimSpace(c.stableContextTitle)
+	if title == "" {
+		title = "稳定模型上下文"
+	}
+	if len([]byte(title)) > maxSingleInstructionStableContextTitleBytes {
+		return nil, fmt.Errorf("稳定模型上下文标题超过上限: %d > %d bytes", len([]byte(title)), maxSingleInstructionStableContextTitleBytes)
+	}
+	stableMessage := fmt.Sprintf("# %s\n\n%s", title, stable)
+	if len([]byte(stableMessage)) > c.stableContextMaxBytes {
+		return nil, fmt.Errorf("稳定模型上下文最终消息超过上限: %d > %d bytes", len([]byte(stableMessage)), c.stableContextMaxBytes)
+	}
+	return []*schema.Message{
+		schema.UserMessage(stableMessage),
+		schema.UserMessage(message),
+	}, nil
+}
+
+func (c *singleInstructionConversation) ContextSourceSummary() string {
+	if c == nil || strings.TrimSpace(c.stableContext) == "" {
+		return ""
+	}
+	return fmt.Sprintf("stable_context title=%q max_bytes=%d content=%s", strings.TrimSpace(c.stableContextTitle), c.stableContextMaxBytes, promptPartSummary(c.stableContext))
+}
+
+func (c *singleInstructionConversation) ContextLedgerParts() []ContextLedgerPart {
+	if c == nil || strings.TrimSpace(c.stableContext) == "" {
+		return nil
+	}
+	stableMessage := c.stableContextModelMessage()
+	return c.ContextLedgerPartsForMessages([]*schema.Message{schema.UserMessage(stableMessage)})
+}
+
+func (c *singleInstructionConversation) ContextLedgerPartsForMessages(messages []*schema.Message) []ContextLedgerPart {
+	if c == nil || strings.TrimSpace(c.stableContext) == "" {
+		return nil
+	}
+	stableMessage := c.stableContextModelMessage()
+	included := false
+	for _, message := range messages {
+		if message != nil && message.Role == schema.User && strings.TrimSpace(message.Content) == stableMessage {
+			included = true
+			break
+		}
+	}
+	ledger := NewContextLedger(DefaultLoopPolicy().ContextLedger)
+	title := strings.TrimSpace(c.stableContextTitle)
+	if title == "" {
+		title = "稳定模型上下文"
+	}
+	bodyBytes := len([]byte(strings.TrimSpace(c.stableContext)))
+	messageBytes := len([]byte(stableMessage))
+	messageLimit := c.stableContextMaxBytes
+	note := fmt.Sprintf("complete=true; source=enabled resident lore; body_bytes=%d; message_bytes=%d; message_max_bytes=%d; final_message=true", bodyBytes, messageBytes, messageLimit)
+	if !included {
+		note += "; not_present_after_final_compaction"
+	}
+	ledger.AddPart("ResidentLore", title, "stable model prefix", stableMessage, note, included, !included, messageLimit)
+	return ledger.Parts()
+}
+
+func (c *singleInstructionConversation) stableContextModelMessage() string {
+	stable := strings.TrimSpace(c.stableContext)
+	if stable == "" {
+		return ""
+	}
+	title := strings.TrimSpace(c.stableContextTitle)
+	if title == "" {
+		title = "稳定模型上下文"
+	}
+	return fmt.Sprintf("# %s\n\n%s", title, stable)
 }
 
 func (c *singleInstructionConversation) AppendAssistant(content string) error {
@@ -370,6 +462,23 @@ func (s *directorToolDisplayState) progressEvent() (session.DisplayEvent, bool) 
 }
 
 func (s *directorToolDisplayState) projectDisplayArgs() (string, bool) {
+	if strings.TrimSpace(s.name) == submitDirectorPlanUpdateToolName {
+		input := submitDirectorPlanUpdateInput{}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(s.rawArgs)), &input); err != nil {
+			encoded, _ := json.Marshal(map[string]string{"mode": "pending"})
+			return string(encoded), true
+		}
+		mode := strings.TrimSpace(string(input.Decision.Mode))
+		if mode == "" {
+			mode = "pending"
+		}
+		encoded, _ := json.Marshal(map[string]any{
+			"mode":      mode,
+			"documents": len(input.Updates),
+			"finalize":  input.Finalize,
+		})
+		return string(encoded), true
+	}
 	preview, ok := directorToolPathArgPreviewFromArgs(s.rawArgs)
 	if !ok || !isDirectorPlanPath(preview.path) {
 		return "", false
@@ -383,6 +492,19 @@ func (s *directorToolDisplayState) syncDecodedGeneratedChars() {
 	}
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal([]byte(strings.TrimSpace(s.rawArgs)), &payload); err != nil {
+		return
+	}
+	if strings.TrimSpace(s.name) == submitDirectorPlanUpdateToolName {
+		var input submitDirectorPlanUpdateInput
+		if err := json.Unmarshal([]byte(strings.TrimSpace(s.rawArgs)), &input); err == nil {
+			total := 0
+			for _, update := range input.Updates {
+				for _, edit := range update.Edits {
+					total += utf8.RuneCountInString(edit.Content)
+				}
+			}
+			s.generatedChars = total
+		}
 		return
 	}
 	for _, key := range directorToolGeneratedTextKeys(s.name) {
@@ -573,6 +695,8 @@ func directorToolGeneratedTextKeys(name string) []string {
 	switch strings.TrimSpace(name) {
 	case "edit_file":
 		return []string{"new_string", "content"}
+	case submitDirectorPlanUpdateToolName:
+		return []string{"plan", "agent_brief", "lore_context"}
 	default:
 		return []string{"content", "new_string"}
 	}
@@ -606,7 +730,7 @@ func markDirectorPlanInputHidden(event *session.DisplayEvent, generatedChars int
 	if event == nil {
 		return
 	}
-	event.SSEHiddenFields = []string{"content", "new_string", "old_string"}
+	event.SSEHiddenFields = []string{"content", "new_string", "old_string", "plan", "agent_brief", "lore_context"}
 	event.SSEHiddenReason = directorPlanHiddenReason
 	event.SSEDisplayNotice = directorPlanHiddenNotice
 	if generatedChars > 0 {
@@ -616,7 +740,7 @@ func markDirectorPlanInputHidden(event *session.DisplayEvent, generatedChars int
 
 func directorPlanWriteTool(name string) bool {
 	switch strings.TrimSpace(name) {
-	case "write_file", "edit_file":
+	case "write_file", "edit_file", submitDirectorPlanUpdateToolName:
 		return true
 	default:
 		return false
@@ -628,5 +752,10 @@ func isDirectorPlanPath(path string) bool {
 	for strings.HasSuffix(normalized, "/") {
 		normalized = strings.TrimSuffix(normalized, "/")
 	}
-	return normalized == "director.md" || strings.HasSuffix(normalized, "/director.md")
+	for _, name := range []string{"director.md", "agent-brief.md", "lore-context.md"} {
+		if normalized == name || strings.HasSuffix(normalized, "/"+name) {
+			return true
+		}
+	}
+	return false
 }

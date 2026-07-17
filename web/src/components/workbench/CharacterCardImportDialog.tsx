@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import type { CharacterCardPreview } from '@/lib/api'
 
 export type CharacterCardTargetMode = 'current' | 'new_book'
@@ -18,6 +19,7 @@ interface CharacterCardImportDialogProps {
   targetMode: CharacterCardTargetMode
   bookTitle: string
   userCharacterName: string
+  semanticClassification: boolean
   previewing: boolean
   importing: boolean
   error: string
@@ -27,6 +29,7 @@ interface CharacterCardImportDialogProps {
   onTargetModeChange: (mode: CharacterCardTargetMode) => void
   onBookTitleChange: (title: string) => void
   onUserCharacterNameChange: (name: string) => void
+  onSemanticClassificationChange: (enabled: boolean) => void
   onImport: () => void | Promise<void>
 }
 
@@ -40,6 +43,7 @@ export function CharacterCardImportDialog({
   targetMode,
   bookTitle,
   userCharacterName,
+  semanticClassification,
   previewing,
   importing,
   error,
@@ -49,6 +53,7 @@ export function CharacterCardImportDialog({
   onTargetModeChange,
   onBookTitleChange,
   onUserCharacterNameChange,
+  onSemanticClassificationChange,
   onImport,
 }: CharacterCardImportDialogProps) {
   const { t } = useTranslation()
@@ -112,6 +117,23 @@ export function CharacterCardImportDialog({
                   ))}
                 </div>
                 <CompatibilityReport preview={preview} />
+              </div>
+            )}
+
+            {preview && (
+              <div className="flex items-start justify-between gap-3 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-[var(--nova-text)]">{t('importCard.semanticClassification')}</div>
+                  <div className="mt-1 text-[11px] leading-4 text-[var(--nova-text-faint)]">
+                    {t('importCard.semanticClassificationHint', { count: preview.uncertain_type_count || 0 })}
+                  </div>
+                </div>
+                <Switch
+                  checked={semanticClassification}
+                  onCheckedChange={onSemanticClassificationChange}
+                  disabled={importing}
+                  aria-label={t('importCard.semanticClassification')}
+                />
               </div>
             )}
 

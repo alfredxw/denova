@@ -134,6 +134,5 @@ describe('TRPGSystemVisualEditor', () => {
     await user.click(screen.getByRole('option', { name: '行动/状态.值' }))
 
     expect(latest.rule_templates?.[0].state_bindings?.[0].modifiers?.[0]).toMatchObject({ field_id: '行动/状态.值' })
-    expect(latest.rule_templates?.[0].state_bindings?.[0].modifiers?.[0]).not.toHaveProperty('field_path')
   })
 })

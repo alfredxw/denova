@@ -2,13 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ContextAnalysisDialog } from '@/components/Chat/ContextAnalysisDialog'
 import type { ContextAnalysis } from '@/lib/api'
-import type { AgentUIMessage } from '@/lib/agent-ui'
 import { analyzeInteractiveDirectorContext, getInteractiveDirector, rebuildInteractiveDirector, rerollInteractiveRuleResolution, runInteractiveDirector, updateInteractiveDirector } from '../../api'
-import type { DirectorPlan, DirectorPlanDocs, DirectorPlanStatus, Snapshot, StoryDirector, StoryMemoryRecord, StoryMemoryStructure, StorySummary } from '../../types'
+import type { DirectorPlan, DirectorPlanDocs, DirectorPlanStatus, Snapshot, StoryDirector, StorySummary } from '../../types'
 import { ConsoleTabs } from './ConsoleTabs'
 import { DirectorConsoleHeader } from './DirectorConsoleHeader'
 import { DirectorRunView } from './DirectorRunView'
-import { MemoryView } from './MemoryView'
 import { PlanView } from './PlanView'
 import { StateView } from './StateView'
 import type { ConsoleTab } from './types'
@@ -24,32 +22,14 @@ export interface DirectorConsoleProps {
   branchId: string
   snapshot: Snapshot | null
   loading: boolean
-  memoryLoading: boolean
-  memoryError: string
 	stateStatus?: string
 	stateError?: string
 	stateDisplayPreference: StoryStateDisplayPreference
 	onStateDisplayPreferenceChange: (value: StoryStateDisplayPreference) => void
-	memoryStatus?: string
-	memorySyncError?: string
   activeTab: ConsoleTab
   onTabChange: (tab: ConsoleTab) => void
   directorRevealed: boolean
   onRevealDirector: () => void
-  structures: StoryMemoryStructure[]
-  filteredRecords: StoryMemoryRecord[]
-  visibleStructures: StoryMemoryStructure[]
-  structureRecordCounts: Map<string, number>
-  selectedStructureId: string
-  onSelectStructure: (structureId: string) => void
-  query: string
-  onQueryChange: (value: string) => void
-  generateMessages: AgentUIMessage[]
-  generating: boolean
-  generateActivity: string
-  onGenerateMemory: () => void
-  onAbortGenerate: () => void
-  onOpenMemoryManager?: () => void
   onSnapshotRefresh?: () => void | Promise<unknown>
 }
 
@@ -62,32 +42,14 @@ export function DirectorConsole({
   branchId,
   snapshot,
   loading,
-  memoryLoading,
-  memoryError,
 	stateStatus,
 	stateError,
 	stateDisplayPreference,
 	onStateDisplayPreferenceChange,
-	memoryStatus,
-	memorySyncError,
   activeTab,
   onTabChange,
   directorRevealed,
   onRevealDirector,
-  structures,
-  filteredRecords,
-  visibleStructures,
-  structureRecordCounts,
-  selectedStructureId,
-  onSelectStructure,
-  query,
-  onQueryChange,
-  generateMessages,
-  generating,
-  generateActivity,
-  onGenerateMemory,
-  onAbortGenerate,
-  onOpenMemoryManager,
   onSnapshotRefresh,
 }: DirectorConsoleProps) {
   const { t } = useTranslation()
@@ -152,9 +114,9 @@ export function DirectorConsole({
       .catch((err) => {
         if (cancelled) return
         if (isMissingDirectorPlanError(err)) {
-          console.info('[interactive-memory-panel] director plan missing for branch', { storyId, branchId, error: err })
+          console.info('[interactive-director-panel] director plan missing for branch', { storyId, branchId, error: err })
         } else {
-          console.error('[interactive-memory-panel] load director plan failed', err)
+          console.error('[interactive-director-panel] load director plan failed', err)
         }
         setDirectorError(err instanceof Error ? err.message : t('snapshot.director.loadFailed'))
       })
@@ -175,7 +137,7 @@ export function DirectorConsole({
       onRevealDirector()
       await onSnapshotRefresh?.()
     } catch (err) {
-      console.error('[interactive-memory-panel] rebuild director failed', err)
+      console.error('[interactive-director-panel] rebuild director failed', err)
       setDirectorError(err instanceof Error ? err.message : t('snapshot.director.rebuildFailed'))
     } finally {
       setRebuilding(false)
@@ -197,7 +159,7 @@ export function DirectorConsole({
       setDraftDocs(plan.docs)
       await onSnapshotRefresh?.()
     } catch (err) {
-      console.error('[interactive-memory-panel] save director plan failed', err)
+      console.error('[interactive-director-panel] save director plan failed', err)
       setDirectorError(err instanceof Error ? err.message : t('snapshot.director.saveFailed'))
     } finally {
       setSavingPlan(false)
@@ -213,7 +175,7 @@ export function DirectorConsole({
       setManualDirectorStatus(status)
       await onSnapshotRefresh?.()
     } catch (err) {
-      console.error('[interactive-memory-panel] retry director failed', err)
+      console.error('[interactive-director-panel] retry director failed', err)
       setDirectorError(err instanceof Error ? err.message : t('storyStage.director.retryFailed'))
     } finally {
       setRetryingDirector(false)
@@ -223,7 +185,7 @@ export function DirectorConsole({
   const analyzeDirectorContext = async () => {
     if (!storyId || !currentTurnId) {
       setContextAnalysis(null)
-      setContextAnalysisError(t('memoryPanel.directorContextAnalysisUnavailable'))
+      setContextAnalysisError(t('directorPanel.directorContextAnalysisUnavailable'))
       return
     }
     setContextAnalysisLoading(true)
@@ -235,8 +197,8 @@ export function DirectorConsole({
         turn_id: currentTurnId,
       }))
     } catch (err) {
-      console.error('[interactive-memory-panel] analyze director context failed', err)
-      setContextAnalysisError(err instanceof Error ? err.message : t('memoryPanel.directorContextAnalysisFailed'))
+      console.error('[interactive-director-panel] analyze director context failed', err)
+      setContextAnalysisError(err instanceof Error ? err.message : t('directorPanel.directorContextAnalysisFailed'))
     } finally {
       setContextAnalysisLoading(false)
     }
@@ -257,7 +219,7 @@ export function DirectorConsole({
       await rerollInteractiveRuleResolution(storyId, resolutionId, { branch_id: branchId, turn_id: turnId })
       await onSnapshotRefresh?.()
     } catch (err) {
-      console.error('[interactive-memory-panel] reroll rules failed', err)
+      console.error('[interactive-director-panel] reroll rules failed', err)
       setRuleError(err instanceof Error ? err.message : t('snapshot.ruleAudit.rerollFailed'))
     } finally {
       setRerolling(false)
@@ -267,7 +229,7 @@ export function DirectorConsole({
   return (
     <aside className="director-console flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--director-canvas)] text-[var(--nova-text)]">
       <DirectorConsoleHeader branchId={branchId} turnCount={(snapshot?.turns || []).length || (snapshot?.current_turn ? 1 : 0)} story={story} storyDirectors={storyDirectors} onDirectorChange={onDirectorChange} onReplyTargetCharsChange={onReplyTargetCharsChange} />
-      <ConsoleTabs activeTab={activeTab} onChange={onTabChange} stateCount={actorCount} memoryCount={filteredRecords.length} />
+      <ConsoleTabs activeTab={activeTab} onChange={onTabChange} stateCount={actorCount} />
       {activeTab === 'plan' && directorError ? <div className="mx-4 mt-3 rounded-[10px] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs leading-5 text-[var(--nova-danger)]">{directorError}</div> : null}
       <div className="min-h-0 flex-1 overflow-hidden px-4 py-4">
         <div className="director-console__scroll h-full min-h-0 overflow-y-auto pb-4 pr-1">
@@ -286,32 +248,11 @@ export function DirectorConsole({
               directorDisplayEvents={directorDisplayEvents}
               processRevealed={processRevealed}
               onRevealProcess={() => setProcessRevealed(true)}
-              generateMessages={generateMessages}
-              generating={generating}
-              generateActivity={generateActivity}
-              onGenerateMemory={onGenerateMemory}
-              onAbortGenerate={onAbortGenerate}
               onRun={() => void runDirectorPlan()}
               onAnalyze={openDirectorContextAnalysis}
             />
           ) : activeTab === 'state' ? (
             <StateView storyId={storyId} snapshot={snapshot} stateFacts={stateFacts} syncStatus={stateStatus} syncError={stateError} displayPreference={stateDisplayPreference} onDisplayPreferenceChange={onStateDisplayPreferenceChange} onSnapshotRefresh={onSnapshotRefresh} />
-          ) : activeTab === 'memory' ? (
-            <MemoryView
-				loadError={memoryError}
-				memoryStatus={memoryStatus}
-				memorySyncError={memorySyncError}
-              memoryLoading={memoryLoading}
-              structures={structures}
-              filteredRecords={filteredRecords}
-              visibleStructures={visibleStructures}
-              structureRecordCounts={structureRecordCounts}
-              selectedStructureId={selectedStructureId}
-              onSelectStructure={onSelectStructure}
-              query={query}
-              onQueryChange={onQueryChange}
-              onOpenMemoryManager={onOpenMemoryManager}
-            />
           ) : (
             <PlanView
               storyId={storyId}
@@ -345,8 +286,8 @@ export function DirectorConsole({
         error={contextAnalysisError}
         analysis={contextAnalysis}
         onOpenChange={setContextAnalysisOpen}
-        title={t('memoryPanel.directorContextAnalysis')}
-        description={t('memoryPanel.directorContextAnalysisDescription')}
+        title={t('directorPanel.directorContextAnalysis')}
+        description={t('directorPanel.directorContextAnalysisDescription')}
       />
     </aside>
   )

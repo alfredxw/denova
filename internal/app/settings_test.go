@@ -226,7 +226,7 @@ func TestApplyLayeredSettingsToConfigAppliesAgentToolResultLimit(t *testing.T) {
 	}
 }
 
-func TestApplyLayeredSettingsToConfigAllowsUnlimitedAgentToolResultLimit(t *testing.T) {
+func TestApplyLayeredSettingsToConfigMapsZeroToolResultLimitToHighDefault(t *testing.T) {
 	limitKB := 0
 	cfg := &config.Config{AgentToolResultLimitKB: 128}
 	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
@@ -234,8 +234,8 @@ func TestApplyLayeredSettingsToConfigAllowsUnlimitedAgentToolResultLimit(t *test
 			AgentToolResultLimitKB: &limitKB,
 		},
 	})
-	if cfg.AgentToolResultLimitKB != 0 {
-		t.Fatalf("agent tool result limit = %d, want 0", cfg.AgentToolResultLimitKB)
+	if cfg.AgentToolResultLimitKB != config.DefaultAgentToolResultLimitKB {
+		t.Fatalf("agent tool result limit = %d, want %d", cfg.AgentToolResultLimitKB, config.DefaultAgentToolResultLimitKB)
 	}
 }
 

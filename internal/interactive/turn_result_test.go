@@ -22,33 +22,26 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 		User:      "我接受苏灿灿的帮助",
 		Narrative: "苏灿灿替林风处理了掌心灼伤，并答应继续调查青冥灵根。",
 		TurnResult: &TurnResult{
-			Contract: TurnContract{
-				PlayerIntent: "接受帮助并调查灵根",
-				SceneGoal:    "确认伤势来源",
-				ChoiceAxes:   []string{"追问典籍来源", "检查掌心变化"},
+			StateUpdates: []StateUpdate{{
+				Op:   TurnStateUpdateCreate,
+				Path: "/protagonist",
+				Value: map[string]any{
+					"template_id": "protagonist",
+					"name":        "林风",
+					"state":       map[string]any{"当前身体状态": "掌心灼伤缓解，体力恢复"},
+				},
+			}},
+			Choices: testTurnChoices(),
+			DirectorUpdate: &DirectorUpdateHint{
+				Needed: true,
+				Reason: "主角接受关键角色帮助，公开关系与阶段调查方向发生变化",
 			},
-			ActorStatePatches: []ActorStatePatch{{
-				ActorID:    "protagonist",
-				TemplateID: "protagonist",
-				State:      map[string]any{"当前身体状态": "掌心灼伤缓解，体力恢复"},
-				Reason:     "接受治疗后体力恢复",
-			}},
-			FactCandidates: []StoryFactCandidate{{
-				Kind:       "relationship",
-				Subject:    "苏灿灿",
-				Fact:       "确认林风的伤势异常并决定继续帮助调查",
-				Visibility: "player_known",
-				Importance: "high",
-			}},
-			SceneResult: TurnSceneResult{Status: "continued", Summary: "丹堂调查继续"},
-			PlanSignals: TurnPlanSignals{DeviationLevel: "none"},
-			Choices:     []string{"追问典籍来源", "检查掌心变化"},
 		},
 	})
 	if err != nil {
 		t.Fatalf("AppendTurnWithState failed: %v", err)
 	}
-	if turn.TurnResult == nil || turn.TurnResult.Contract.SceneGoal != "确认伤势来源" {
+	if turn.TurnResult == nil || len(turn.TurnResult.StateUpdates) != 1 || turn.TurnResult.StateUpdates[0].Path != "/protagonist" || turn.TurnResult.DirectorUpdate == nil || !turn.TurnResult.DirectorUpdate.Needed {
 		t.Fatalf("turn result not persisted: %#v", turn.TurnResult)
 	}
 	if delta == nil || turn.StateDelta == nil || len(turn.StateDelta.ActorOps) == 0 {
@@ -66,10 +59,10 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 	if !foundBodyStatus {
 		t.Fatalf("body status op missing: %#v", turn.StateDelta.ActorOps)
 	}
-	if turn.StateStatus != "ready" || turn.MemoryStatus != "pending" {
-		t.Fatalf("turn phase status mismatch: state=%q memory=%q", turn.StateStatus, turn.MemoryStatus)
+	if turn.StateStatus != "ready" {
+		t.Fatalf("turn state status mismatch: %q", turn.StateStatus)
 	}
-	if turn.HotState != nil || len(turn.TurnResult.Choices) != 2 {
+	if turn.HotState != nil || len(turn.TurnResult.Choices) != DefaultStoryChoiceCount {
 		t.Fatalf("new turn choices should exist only in turn result: turn_result=%#v hot_state=%#v", turn.TurnResult, turn.HotState)
 	}
 
@@ -82,30 +75,79 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 	}
 }
 
-func TestValidateTurnResultRequiresChoicesExceptAtTerminal(t *testing.T) {
-	base := TurnResult{Contract: TurnContract{PlayerIntent: "前进", SceneGoal: "离开大厅"}}
-	if err := ValidateTurnResult(base); err == nil || !strings.Contains(err.Error(), "2 到 4") {
-		t.Fatalf("non-terminal turn without choices should fail, err=%v", err)
+func TestValidateTurnResultRequiresConfiguredChoices(t *testing.T) {
+	base := TurnResult{StateUpdates: []StateUpdate{}}
+	if err := ValidateTurnResult(base); err == nil {
+		t.Fatal("a non-terminal turn may not omit choices")
+	}
+	if err := validateTerminalTurnResult(base, DefaultStoryChoiceCount); err != nil {
+		t.Fatalf("a declared terminal turn may use empty choices: %v", err)
 	}
 	base.Choices = []string{"只有一个"}
 	if err := ValidateTurnResult(base); err == nil {
-		t.Fatal("non-terminal turn with one choice should fail")
+		t.Fatal("one choice should fail the default count")
 	}
 	base.Choices = []string{"推开门", "检查窗户"}
-	if err := ValidateTurnResult(base); err != nil {
-		t.Fatalf("two choices should pass: %v", err)
+	if err := ValidateTurnResult(base); err == nil {
+		t.Fatal("two choices should fail the default count")
 	}
-	base.SceneResult.Status = "terminal"
-	base.Choices = nil
+	base.Choices = testTurnChoices()
 	if err := ValidateTurnResult(base); err != nil {
-		t.Fatalf("terminal turn may omit choices: %v", err)
+		t.Fatalf("five choices should pass: %v", err)
+	}
+	if err := validateTerminalTurnResult(base, DefaultStoryChoiceCount); err == nil {
+		t.Fatal("a declared terminal turn must not expose follow-up choices")
+	}
+	base.Choices = []string{"左", "中", "右"}
+	if err := ValidateTurnResult(base, 3); err != nil {
+		t.Fatalf("configured choice count should pass: %v", err)
 	}
 }
 
-func TestNormalizeTurnResultKeepsAtMostFourUniqueChoices(t *testing.T) {
-	result := NormalizeTurnResult(TurnResult{Choices: []string{" A ", "A", "B", "C", "D", "E"}})
-	if got := result.Choices; len(got) != 4 || strings.Join(got, ",") != "A,B,C,D" {
+func TestNormalizeTurnResultKeepsDistinctChoices(t *testing.T) {
+	result := NormalizeTurnResult(TurnResult{Choices: []string{" Ａ ", "a", "B", "C", "D", "E"}})
+	if got := result.Choices; len(got) != 5 || strings.Join(got, ",") != "Ａ,B,C,D,E" {
 		t.Fatalf("normalized choices = %#v", got)
+	}
+}
+
+func TestNormalizeTurnResultOmitsRoutineDirectorHintAndValidatesMaterialReason(t *testing.T) {
+	routine := NormalizeTurnResult(TurnResult{DirectorUpdate: &DirectorUpdateHint{Needed: false, Reason: "普通承接"}})
+	if routine.DirectorUpdate != nil {
+		t.Fatalf("needed=false should normalize to omission: %#v", routine.DirectorUpdate)
+	}
+	material := TurnResult{Choices: testTurnChoices(), DirectorUpdate: &DirectorUpdateHint{Needed: true}}
+	if err := ValidateTurnResult(material); err == nil || !strings.Contains(err.Error(), "reason") {
+		t.Fatalf("material Director hint without evidence reason should fail: %v", err)
+	}
+	material.DirectorUpdate.Reason = "阶段目标已经完成"
+	if err := ValidateTurnResult(material); err != nil {
+		t.Fatalf("bounded material Director hint should pass: %v", err)
+	}
+}
+
+func TestAppendTurnWithStateUsesStoryChoiceCount(t *testing.T) {
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{Title: "七个选项", ChoiceCount: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+		User: "前进", Narrative: "前方出现岔路。",
+		TurnResult: &TurnResult{StateUpdates: []StateUpdate{}, Choices: testTurnChoices()},
+	}); err == nil {
+		t.Fatal("default five choices should fail a story configured for seven")
+	}
+	choices := append(testTurnChoices(), "返回营地", "独自探路")
+	turn, _, err := store.AppendTurnWithState(story.ID, AppendTurnWithStateRequest{
+		User: "前进", Narrative: "前方出现岔路。",
+		TurnResult: &TurnResult{StateUpdates: []StateUpdate{}, Choices: choices},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if turn.TurnResult == nil || len(turn.TurnResult.Choices) != 7 {
+		t.Fatalf("custom choices were not persisted: %#v", turn.TurnResult)
 	}
 }
 
@@ -164,7 +206,7 @@ func TestAppendTurnWithStateRejectsStaleExpectedParent(t *testing.T) {
 		ExpectedParentID: &base,
 		User:             "先行动",
 		Narrative:        "第一回合完成。",
-		TurnResult:       &TurnResult{Contract: TurnContract{PlayerIntent: "先行动"}, Choices: []string{"继续行动", "观察环境"}},
+		TurnResult:       &TurnResult{StateUpdates: []StateUpdate{}, Choices: testTurnChoices()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -174,7 +216,7 @@ func TestAppendTurnWithStateRejectsStaleExpectedParent(t *testing.T) {
 		ExpectedParentID: &base,
 		User:             "迟到行动",
 		Narrative:        "不应写入。",
-		TurnResult:       &TurnResult{Contract: TurnContract{PlayerIntent: "迟到行动"}, Choices: []string{"继续行动", "观察环境"}},
+		TurnResult:       &TurnResult{StateUpdates: []StateUpdate{}, Choices: testTurnChoices()},
 	})
 	if err == nil || !strings.Contains(err.Error(), "分支已前进") {
 		t.Fatalf("expected stale parent rejection after %s, got %v", first.ID, err)
@@ -191,7 +233,7 @@ func TestAppendStateDeltaRejectsNonHeadTurn(t *testing.T) {
 		BranchID:   "main",
 		User:       "第一步",
 		Narrative:  "第一回合。",
-		TurnResult: &TurnResult{Contract: TurnContract{PlayerIntent: "第一步"}, Choices: []string{"继续行动", "观察环境"}},
+		TurnResult: &TurnResult{StateUpdates: []StateUpdate{}, Choices: testTurnChoices()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -200,7 +242,7 @@ func TestAppendStateDeltaRejectsNonHeadTurn(t *testing.T) {
 		BranchID:   "main",
 		User:       "第二步",
 		Narrative:  "第二回合。",
-		TurnResult: &TurnResult{Contract: TurnContract{PlayerIntent: "第二步"}, Choices: []string{"继续行动", "观察环境"}},
+		TurnResult: &TurnResult{StateUpdates: []StateUpdate{}, Choices: testTurnChoices()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -213,4 +255,8 @@ func TestAppendStateDeltaRejectsNonHeadTurn(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "不是当前分支头") {
 		t.Fatalf("expected non-head state rejection, got %v", err)
 	}
+}
+
+func testTurnChoices() []string {
+	return []string{"继续行动", "观察环境", "询问同伴", "检查状态", "暂时等待"}
 }

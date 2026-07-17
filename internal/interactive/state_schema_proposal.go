@@ -10,6 +10,13 @@ import (
 const maxActorStateSchemaRequirementReviews = 64
 
 const (
+	ActorStateSchemaValuePolicySchemaOnly = "schema_only"
+	ActorStateSchemaValuePolicyPreserve   = "preserve"
+	ActorStateSchemaValuePolicyInitialize = "initialize"
+	ActorStateSchemaValuePolicyDefer      = "defer"
+)
+
+const (
 	StateSchemaLoreReadMaxItemsPerCall = 4
 	StateSchemaLoreReadMaxResultBytes  = DirectorContextMaxBytes
 	StateSchemaLoreReadMaxTotalBytes   = 2 * StateSchemaLoreReadMaxResultBytes
@@ -39,15 +46,25 @@ type ActorStateSchemaRequirementSource struct {
 // ActorStateSchemaRequirementReview explains whether one sourced requirement
 // is already covered, requires a schema operation, or is intentionally ignored.
 type ActorStateSchemaRequirementReview struct {
-	Source       ActorStateSchemaRequirementSource `json:"source"`
-	Requirement  string                            `json:"requirement"`
-	ExpectedType string                            `json:"expected_type,omitempty"`
-	Min          *float64                          `json:"min,omitempty"`
-	Max          *float64                          `json:"max,omitempty"`
-	Decision     string                            `json:"decision"`
-	TemplateID   string                            `json:"template_id,omitempty"`
-	FieldID      string                            `json:"field_id,omitempty"`
-	Reason       string                            `json:"reason,omitempty"`
+	// ItemID is injected by the Batch backend and links this audit record to
+	// Actor value provenance. Model-supplied values are overwritten.
+	ItemID      string                            `json:"item_id,omitempty" jsonschema:"-"`
+	Source      ActorStateSchemaRequirementSource `json:"source"`
+	Requirement string                            `json:"requirement"`
+	// EvidenceKind preserves whether the requirement or proposed initial value
+	// is explicitly confirmed, reasonably inferred, or a rules-level default.
+	EvidenceKind string `json:"evidence_kind"`
+	// ValuePolicy makes Actor value handling explicit instead of treating a
+	// sourced schema requirement as if it had also initialized runtime state.
+	ValuePolicy  string   `json:"value_policy" jsonschema:"description=该需求的 Actor 值策略：schema_only 仅审查结构；preserve 校验并保留已有值；initialize 必须在同一 item 用字段级 actor_ops set 落值；defer 明确延后且必须说明理由"`
+	ActorID      string   `json:"actor_id,omitempty" jsonschema:"description=value_policy 为 preserve、initialize 或 defer 时对应的稳定 actor_id；schema_only 时省略"`
+	ExpectedType string   `json:"expected_type,omitempty"`
+	Min          *float64 `json:"min,omitempty"`
+	Max          *float64 `json:"max,omitempty"`
+	Decision     string   `json:"decision"`
+	TemplateID   string   `json:"template_id,omitempty"`
+	FieldID      string   `json:"field_id,omitempty"`
+	Reason       string   `json:"reason,omitempty"`
 }
 
 // ActorStateSchemaProposalPreview is returned to the Director after validating
@@ -63,7 +80,7 @@ type ActorStateSchemaProposalPreview struct {
 // ValidateActorStateSchemaProposal normalizes the model-facing proposal and
 // verifies that its schema diff can produce a valid frozen story contract.
 func ValidateActorStateSchemaProposal(base StoryDirectorActorStateSystem, trpg StoryDirectorTRPGSystem, proposal ActorStateSchemaProposal) (ActorStateSchemaProposal, ActorStateSchemaProposalPreview, error) {
-	proposal.Summary = trimBytes(proposal.Summary, maxTurnBriefTextBytes)
+	proposal.Summary = trimBytes(proposal.Summary, maxInteractiveTextBytes)
 	if len(proposal.Requirements) == 0 {
 		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("状态结构提案缺少来源化覆盖审查")
 	}
@@ -114,14 +131,18 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 	}
 	for index := range proposal.Requirements {
 		review := &proposal.Requirements[index]
+		review.ItemID = strings.TrimSpace(review.ItemID)
 		review.Source.Kind = strings.TrimSpace(review.Source.Kind)
 		review.Source.ID = strings.TrimSpace(review.Source.ID)
-		review.Requirement = trimBytes(review.Requirement, maxTurnBriefTextBytes)
+		review.Requirement = trimBytes(review.Requirement, maxInteractiveTextBytes)
+		review.EvidenceKind = strings.TrimSpace(review.EvidenceKind)
+		review.ValuePolicy = strings.TrimSpace(review.ValuePolicy)
+		review.ActorID = normalizeActorStateID(review.ActorID)
 		review.ExpectedType = strings.TrimSpace(review.ExpectedType)
 		review.Decision = strings.TrimSpace(review.Decision)
 		review.TemplateID = normalizeActorStateID(review.TemplateID)
 		review.FieldID = normalizeActorStateFieldName(review.FieldID)
-		review.Reason = trimBytes(review.Reason, maxTurnBriefTextBytes)
+		review.Reason = trimBytes(review.Reason, maxInteractiveTextBytes)
 		switch review.Source.Kind {
 		case "lore", "opening", "turn_result", "trpg":
 		default:
@@ -130,10 +151,33 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		if review.Source.ID == "" || review.Requirement == "" {
 			return fmt.Errorf("状态需求覆盖审查缺少来源或需求说明")
 		}
-		if review.Source.Kind == "lore" {
-			reviewedLore[review.Source.ID] = true
+		if review.Source.Kind == "lore" && !reviewedLore[review.Source.ID] {
+			return fmt.Errorf("状态需求引用了未经后端确认审阅的资料: %s", review.Source.ID)
+		}
+		switch review.EvidenceKind {
+		case "confirmed", "inferred", "default":
+		default:
+			return fmt.Errorf("状态需求 evidence_kind 无效: %s", review.EvidenceKind)
+		}
+		switch review.ValuePolicy {
+		case ActorStateSchemaValuePolicySchemaOnly:
+			if review.ActorID != "" {
+				return fmt.Errorf("schema_only 状态需求不能指定 actor_id: source=%s actor=%s", review.Source.ID, review.ActorID)
+			}
+		case ActorStateSchemaValuePolicyPreserve, ActorStateSchemaValuePolicyInitialize, ActorStateSchemaValuePolicyDefer:
+			if review.ActorID == "" {
+				return fmt.Errorf("状态需求 value_policy=%s 时必须指定 actor_id: source=%s", review.ValuePolicy, review.Source.ID)
+			}
+			if review.ValuePolicy == ActorStateSchemaValuePolicyDefer && review.Reason == "" {
+				return fmt.Errorf("延后 Actor 状态初始化必须说明理由: source=%s actor=%s", review.Source.ID, review.ActorID)
+			}
+		default:
+			return fmt.Errorf("状态需求 value_policy 无效: %s", review.ValuePolicy)
 		}
 		if review.Decision == "ignored" {
+			if review.ValuePolicy != ActorStateSchemaValuePolicySchemaOnly {
+				return fmt.Errorf("ignored 状态需求只能使用 value_policy=schema_only: source=%s", review.Source.ID)
+			}
 			if review.Reason == "" {
 				return fmt.Errorf("忽略状态需求必须说明理由: source=%s", review.Source.ID)
 			}
@@ -162,6 +206,9 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		}
 		if review.ExpectedType != "" && field.Type != review.ExpectedType {
 			return fmt.Errorf("状态需求字段类型不匹配: template=%s field=%s expected=%s actual=%s", review.TemplateID, review.FieldID, review.ExpectedType, field.Type)
+		}
+		if review.EvidenceKind == "inferred" && (field.Visibility == "spoiler" || field.Visibility == "hidden") {
+			return fmt.Errorf("推测信息不能填充秘密或剧透状态字段: template=%s field=%s visibility=%s", review.TemplateID, review.FieldID, field.Visibility)
 		}
 		if review.Min != nil && (field.Min == nil || *field.Min != *review.Min) {
 			return fmt.Errorf("状态需求字段 min 不匹配: template=%s field=%s", review.TemplateID, review.FieldID)
