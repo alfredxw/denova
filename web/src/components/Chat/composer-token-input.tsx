@@ -235,7 +235,11 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
       requestAnimationFrame(syncHeight)
       return
     }
-    editor.commands.setContent(textToComposerJSON(value, parseOptions), { emitUpdate: false })
+    if (value === '') {
+      editor.commands.clearContent({ emitUpdate: false })
+    } else {
+      editor.commands.setContent(textToComposerJSON(value, parseOptions), { emitUpdate: false })
+    }
     previousTokenKeysRef.current = new Set(collectTokenEntries(editor.state.doc).map((token) => token.key))
     emitTrigger(editor)
     syncEmptyAndTokens(editor, false)
