@@ -22,6 +22,12 @@ type Conversation interface {
 	ResolveInterruption(id string) error
 }
 
+// UserMessageReferencesSetter lets a durable conversation attach bounded,
+// display-only references to the next persisted user message.
+type UserMessageReferencesSetter interface {
+	SetUserMessageReferences([]session.UserMessageReference)
+}
+
 // ContextSourceReporter 可由 Conversation 提供本轮已拼装的业务上下文来源。
 // ChatService 会在 PrepareMessages 后追加打印，便于排查非通用注入内容。
 type ContextSourceReporter interface {
@@ -63,13 +69,21 @@ type InteractiveNarrativeReadinessReporter interface {
 }
 
 type SessionConversation struct {
-	session             *session.Session
-	cfg                 *config.Config
-	agentKind           string
-	stableContextTitle  string
-	stableContext       string
-	dynamicContextTitle string
-	dynamicContext      string
+	session               *session.Session
+	cfg                   *config.Config
+	agentKind             string
+	stableContextTitle    string
+	stableContext         string
+	dynamicContextTitle   string
+	dynamicContext        string
+	userMessageReferences []session.UserMessageReference
+}
+
+func (c *SessionConversation) SetUserMessageReferences(references []session.UserMessageReference) {
+	if c == nil {
+		return
+	}
+	c.userMessageReferences = append([]session.UserMessageReference(nil), references...)
 }
 
 func NewSessionConversation(sess *session.Session, options ...SessionConversationOption) *SessionConversation {
@@ -133,7 +147,7 @@ func (c *SessionConversation) PrepareMessages(originalMessage, agentMessage stri
 	if c == nil || c.session == nil {
 		return nil, fmt.Errorf("会话不存在")
 	}
-	if err := c.session.Append(schema.UserMessage(originalMessage)); err != nil {
+	if err := c.session.AppendWithMetadata(schema.UserMessage(originalMessage), session.MessageMetadata{UserReferences: c.userMessageReferences}); err != nil {
 		return nil, err
 	}
 	result, err := agentcontext.Build(context.Background(), agentcontext.Request{

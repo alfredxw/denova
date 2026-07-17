@@ -84,6 +84,62 @@ describe('Agent MessageList', () => {
     await waitFor(() => expect(handleVisibleTurnAnchorChange).toHaveBeenCalledWith('turn-1'))
   })
 
+  it('把本轮引用显示在已发送的用户消息内', () => {
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[{
+          id: 'user-with-references',
+          role: 'user',
+          metadata: {
+            user_references: [
+              { kind: 'file', label: 'chapters/ch01.md' },
+              { kind: 'selection', label: 'chapters/ch02.md', start_line: 8, end_line: 10, detail: '被引用的正文' },
+              { kind: 'review_comment', id: 'comment-1', label: 'setting/progress.md', start_line: 24, detail: '需要增加爽点' },
+            ],
+          },
+          parts: [{ type: 'text', text: '请统一修改' }],
+        }] as AgentUIMessage[]}
+      />,
+    )
+
+    const references = screen.getByTestId('sent-message-references')
+    expect(references).toHaveTextContent('chapters/ch01.md')
+    expect(references).toHaveTextContent('chapters/ch02.md')
+    expect(references).toHaveTextContent('需要增加爽点')
+    expect(screen.getByText('请统一修改')).toBeInTheDocument()
+  })
+
+  it('把持久化变更摘要插入对应 run 的最后一条消息后', () => {
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={[
+          { id: 'assistant-a', role: 'assistant', metadata: { run_id: 'run-a' }, parts: [{ type: 'text', text: '第一轮完成' }] },
+          { id: 'user-b', role: 'user', parts: [{ type: 'text', text: '继续调整' }] },
+          { id: 'assistant-b', role: 'assistant', metadata: { run_id: 'run-b' }, parts: [{ type: 'text', text: '第二轮完成' }] },
+        ] as AgentUIMessage[]}
+        timelineAttachments={[
+          { id: 'group-a', runId: 'run-a', content: <div data-testid="summary-a">第一轮变更</div> },
+          { id: 'group-b', runId: 'run-b', content: <div data-testid="summary-b">第二轮变更</div> },
+        ]}
+      />,
+    )
+
+    const firstMessage = screen.getByText('第一轮完成')
+    const firstSummary = screen.getByTestId('summary-a')
+    const secondUser = screen.getByText('继续调整')
+    const secondSummary = screen.getByTestId('summary-b')
+    expect(firstMessage.compareDocumentPosition(firstSummary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(firstSummary.compareDocumentPosition(secondUser) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText('第二轮完成').compareDocumentPosition(secondSummary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(firstSummary.closest('[data-nova-chat-item="attachment"]')).toHaveClass('pb-4')
+    expect(firstSummary.closest('[data-nova-chat-item="attachment"]')).not.toHaveClass('last:pb-0')
+    expect(secondSummary.closest('[data-nova-chat-item="attachment"]')).toHaveClass('pb-0')
+  })
+
   it('按 parts 折叠 assistant 正文前的 trace', async () => {
     renderMessageList(
       <MessageList

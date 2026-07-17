@@ -50,6 +50,37 @@ func TestSessionConversationKeepsFullEffectiveHistoryBeforeCompaction(t *testing
 	}
 }
 
+func TestSessionConversationPersistsUserMessageReferencesOutsideModelContent(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conversation := NewSessionConversation(sess)
+	conversation.SetUserMessageReferences([]session.UserMessageReference{
+		{Kind: "file", Label: "chapters/ch01.md"},
+		{Kind: "review_comment", ID: "comment-1", Label: "setting/progress.md", Detail: "需要增加爽点"},
+	})
+
+	history, err := conversation.PrepareMessages("请统一修改", "请统一修改")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 || history[0].Content != "请统一修改" {
+		t.Fatalf("display references must not be injected into model content: %#v", history)
+	}
+	visible := sess.History()
+	if len(visible) != 1 || len(visible[0].UserReferences) != 2 {
+		t.Fatalf("user references were not persisted: %#v", visible)
+	}
+	if visible[0].UserReferences[1].Detail != "需要增加爽点" {
+		t.Fatalf("review comment display detail was lost: %#v", visible[0].UserReferences)
+	}
+}
+
 func TestSessionConversationPrependsDynamicContextInsideFinalUserMessageOnly(t *testing.T) {
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {

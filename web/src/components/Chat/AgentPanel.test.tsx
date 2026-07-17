@@ -7,6 +7,7 @@ import { fetchSettings, updateWorkspaceSettings } from '@/features/settings/api'
 import { AgentPanel } from './AgentPanel'
 
 const useWritingSkillOptionsMock = vi.hoisted(() => vi.fn())
+const useWorkspaceChangeGroupsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: vi.fn().mockResolvedValue({
@@ -26,11 +27,17 @@ vi.mock('@/hooks/useWritingSkillOptions', () => ({
   useWritingSkillOptions: useWritingSkillOptionsMock,
 }))
 
+vi.mock('@/features/changes/use-change-review', () => ({
+  useWorkspaceChangeGroups: useWorkspaceChangeGroupsMock,
+}))
+
 describe('AgentPanel', () => {
   beforeEach(() => {
     vi.mocked(fetchSettings).mockClear()
     vi.mocked(updateWorkspaceSettings).mockClear()
     useWritingSkillOptionsMock.mockReset()
+    useWorkspaceChangeGroupsMock.mockReset()
+    useWorkspaceChangeGroupsMock.mockReturnValue({ data: [] })
     useWritingSkillOptionsMock.mockReturnValue([
       { name: 'novel-lite', description: 'Lite', scope: 'builtin', path: '/skills/novel-lite/SKILL.md', active: true, agent: 'ide' },
       { name: 'novel-standard', description: 'Standard', scope: 'builtin', path: '/skills/novel-standard/SKILL.md', active: true, agent: 'ide' },
@@ -44,6 +51,7 @@ describe('AgentPanel', () => {
     renderAgentPanel()
 
     expect(useWritingSkillOptionsMock).toHaveBeenCalledWith('/workspace')
+    expect(useWorkspaceChangeGroupsMock).toHaveBeenCalledWith('/workspace', { sessionID: 'session-1' })
     expect(screen.getByRole('button', { name: '对话' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '会话' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '运行追踪' })).toBeInTheDocument()
@@ -205,6 +213,61 @@ describe('AgentPanel', () => {
         expect.objectContaining({ tellerId: 'slow-burn', writingSkill: 'novel-lite' }),
       )
     })
+  })
+
+  it('发送开始时移走审阅意见，并在请求失败时恢复', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn()
+      .mockImplementationOnce(async (_message, options) => {
+        options?.onSubmissionStart?.()
+        options?.onSubmissionError?.()
+        return false
+      })
+      .mockImplementationOnce(async (_message, options) => {
+        options?.onSubmissionStart?.()
+        return true
+      })
+    const handleSubmitted = vi.fn()
+    const handleSubmissionFailed = vi.fn()
+    renderAgentPanel({
+      onSend: handleSend,
+      onReviewFeedbackSubmitted: handleSubmitted,
+      onReviewFeedbackSubmissionFailed: handleSubmissionFailed,
+      reviewFeedback: {
+        reviewThreadId: 'thread-1',
+        comments: [{ id: 'comment-1', group_id: 'group-1', body: '把这里写得更克制' }],
+      },
+    })
+
+    await user.click(screen.getByRole('button', { name: '发送' }))
+    await waitFor(() => expect(handleSend).toHaveBeenCalledTimes(1))
+    expect(handleSubmitted).toHaveBeenCalledTimes(1)
+    expect(handleSubmissionFailed).toHaveBeenCalledTimes(1)
+
+    await user.click(screen.getByRole('button', { name: '发送' }))
+    await waitFor(() => expect(handleSubmitted).toHaveBeenCalledTimes(2))
+    expect(handleSubmissionFailed).toHaveBeenCalledTimes(1)
+  })
+
+  it('在超过单次评论上限时保留反馈并阻止发送', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn().mockResolvedValue(true)
+    renderAgentPanel({
+      onSend: handleSend,
+      onReviewFeedbackRemove: vi.fn(),
+      reviewFeedback: {
+        reviewThreadId: 'thread-1',
+        comments: Array.from({ length: 257 }, (_, index) => ({
+          id: `comment-${index}`,
+          group_id: 'group-1',
+          body: `意见 ${index}`,
+        })),
+      },
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent('一次最多提交 256 条审阅意见')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+    expect(handleSend).not.toHaveBeenCalled()
   })
 })
 

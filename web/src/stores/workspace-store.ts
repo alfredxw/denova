@@ -18,6 +18,8 @@ function readInitialRightPanel(): RightPanel {
   if (typeof window === 'undefined') return 'ai'
   const stored = window.localStorage.getItem(RIGHT_PANEL_STORAGE_KEY)
   if (stored === null) return 'ai'
+  // Beta migration: Change Review moved from the right panel into the editor.
+  if (stored === 'review') return 'ai'
   return isRightPanel(stored) ? stored : 'ai'
 }
 

@@ -12,22 +12,33 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
-	"sync"
 
 	"github.com/cloudwego/eino/adk/filesystem"
 	"github.com/cloudwego/eino/schema"
+
+	"denova/internal/workspacechange"
 )
 
 type agentStreamingShell struct {
-	goos     string
-	lookPath func(string) (string, error)
+	goos      string
+	lookPath  func(string) (string, error)
+	workspace string
+	changes   *workspacechange.Service
 }
 
-func newAgentStreamingShell() filesystem.StreamingShell {
-	return &agentStreamingShell{
+func newAgentStreamingShell(workspaces ...string) filesystem.StreamingShell {
+	shell := &agentStreamingShell{
 		goos:     runtime.GOOS,
 		lookPath: exec.LookPath,
 	}
+	if len(workspaces) > 0 {
+		shell.workspace = strings.TrimSpace(workspaces[0])
+		if shell.workspace != "" {
+			shell.workspace = filepath.Clean(shell.workspace)
+			shell.changes, _ = workspacechange.ForWorkspace(shell.workspace)
+		}
+	}
+	return shell
 }
 
 func (s *agentStreamingShell) ExecuteStreaming(ctx context.Context, input *filesystem.ExecuteRequest) (*schema.StreamReader[*filesystem.ExecuteResponse], error) {
@@ -37,27 +48,53 @@ func (s *agentStreamingShell) ExecuteStreaming(ctx context.Context, input *files
 	if input.Command == "" {
 		return nil, fmt.Errorf("command is required")
 	}
+	if input.RunInBackendGround {
+		return nil, fmt.Errorf("background shell execution is disabled because its lifetime cannot be coordinated with workspace writes; run the command in the foreground")
+	}
 
 	cmd, stdout, stderr, err := s.initCommand(ctx, input.Command)
 	if err != nil {
 		return nil, err
 	}
 
+	if s.workspace != "" {
+		cmd.Dir = s.workspace
+	}
+
 	sr, w := schema.Pipe[*filesystem.ExecuteResponse](100)
-	if err := cmd.Start(); err != nil {
-		_ = stdout.Close()
-		_ = stderr.Close()
-		go sendShellErrorAndClose(w, fmt.Errorf("failed to start command: %w", err))
-		return sr, nil
-	}
-
-	if input.RunInBackendGround {
-		runShellInBackground(ctx, cmd, stdout, stderr, w)
-		return sr, nil
-	}
-
-	go streamShellOutput(ctx, cmd, stdout, stderr, w)
+	go s.runForeground(ctx, cmd, stdout, stderr, w)
 	return sr, nil
+}
+
+func (s *agentStreamingShell) runForeground(
+	ctx context.Context,
+	cmd *exec.Cmd,
+	stdout, stderr io.ReadCloser,
+	w *schema.StreamWriter[*filesystem.ExecuteResponse],
+) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			sendShellErrorAndClose(w, fmt.Errorf("shell execution panic: %v\n%s", recovered, string(debug.Stack())))
+		}
+	}()
+	run := func() error {
+		if err := cmd.Start(); err != nil {
+			_ = stdout.Close()
+			_ = stderr.Close()
+			return fmt.Errorf("failed to start command: %w", err)
+		}
+		streamShellOutput(ctx, cmd, stdout, stderr, w)
+		return nil
+	}
+	var err error
+	if s.changes != nil {
+		err = s.changes.WithExclusiveWorkspace(ctx, run)
+	} else {
+		err = run()
+	}
+	if err != nil {
+		sendShellErrorAndClose(w, err)
+	}
 }
 
 func (s *agentStreamingShell) initCommand(ctx context.Context, command string) (*exec.Cmd, io.ReadCloser, io.ReadCloser, error) {
@@ -110,72 +147,6 @@ func lookupShell(lookPath func(string) (string, error), name string) string {
 func isWindowsPowerShell(shell string) bool {
 	base := strings.ToLower(filepath.Base(shell))
 	return base == "powershell.exe" || base == "powershell"
-}
-
-func runShellInBackground(ctx context.Context, cmd *exec.Cmd, stdout, stderr io.ReadCloser, w *schema.StreamWriter[*filesystem.ExecuteResponse]) {
-	go func() {
-		defer func() {
-			if pe := recover(); pe != nil {
-				log.Printf("[agent shell] background command panic: %v\n%s", pe, string(debug.Stack()))
-				killShellProcess(cmd)
-			}
-			_ = stdout.Close()
-			_ = stderr.Close()
-		}()
-
-		done := make(chan struct{})
-		go func() {
-			defer func() {
-				if pe := recover(); pe != nil {
-					log.Printf("[agent shell] background pipe drain panic: %v\n%s", pe, string(debug.Stack()))
-				}
-				close(done)
-			}()
-			drainShellPipes(stdout, stderr)
-			_ = cmd.Wait()
-		}()
-
-		select {
-		case <-done:
-		case <-ctx.Done():
-			killShellProcess(cmd)
-		}
-	}()
-
-	go func() {
-		defer func() {
-			if pe := recover(); pe != nil {
-				log.Printf("[agent shell] background response panic: %v\n%s", pe, string(debug.Stack()))
-			}
-			w.Close()
-		}()
-		exitCode := 0
-		w.Send(&filesystem.ExecuteResponse{Output: "command started in background\n", ExitCode: &exitCode}, nil)
-	}()
-}
-
-func drainShellPipes(stdout, stderr io.Reader) {
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer func() {
-			if pe := recover(); pe != nil {
-				log.Printf("[agent shell] stdout drain panic: %v\n%s", pe, string(debug.Stack()))
-			}
-			wg.Done()
-		}()
-		_, _ = io.Copy(io.Discard, stdout)
-	}()
-	go func() {
-		defer func() {
-			if pe := recover(); pe != nil {
-				log.Printf("[agent shell] stderr drain panic: %v\n%s", pe, string(debug.Stack()))
-			}
-			wg.Done()
-		}()
-		_, _ = io.Copy(io.Discard, stderr)
-	}()
-	wg.Wait()
 }
 
 func streamShellOutput(ctx context.Context, cmd *exec.Cmd, stdout, stderr io.ReadCloser, w *schema.StreamWriter[*filesystem.ExecuteResponse]) {

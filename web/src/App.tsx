@@ -27,6 +27,7 @@ import {
   type Tab,
 } from '@/components/workbench/TabController'
 import { ModeRouter } from '@/components/workbench/ModeRouter'
+import type { EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
 import {
   CharacterCardImportDialog,
   type CharacterCardTargetMode,
@@ -35,6 +36,7 @@ import { APP_VERSION } from '@/app-version'
 import { RemoteAccessLogin } from '@/components/RemoteAccessLogin'
 import { OnboardingGuide, type OnboardingNavigationTarget } from '@/features/onboarding/OnboardingGuide'
 import { SETTINGS_SECTION_EVENT, WRITING_AGENT_INIT_EVENT } from '@/features/onboarding/events'
+import { isWorkspaceChangeForWorkspace, type WorkspaceChangeEvent } from '@/features/changes/types'
 
 const PROJECT_VISIBLE_KEY = 'nova.layout.projectVisible'
 const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
@@ -89,6 +91,7 @@ function App() {
   const updateCheckInFlightRef = useRef(false)
   const tabActivationsRef = useRef<Map<string, number>>(new Map())
   const tabActivationCounterRef = useRef(0)
+  const editorFlushHandlerRef = useRef<EditorFlushHandler | null>(null)
 
   const rightPanel = useWorkspaceStore((state) => state.rightPanel)
   const commandOpen = useWorkspaceStore((state) => state.commandOpen)
@@ -116,10 +119,38 @@ function App() {
     setVersionRefreshSignal(value => value + 1)
   }, [])
 
+  const handleEditorFlushHandlerChange = useCallback((handler: EditorFlushHandler | null) => {
+    editorFlushHandlerRef.current = handler
+  }, [])
+
+  const flushEditorDraft = useCallback(async () => {
+    const handler = editorFlushHandlerRef.current
+    if (!handler) return true
+    try {
+      return await handler()
+    } catch (error) {
+      console.error('导航前保存编辑器草稿失败', error)
+      toast.error(t('editor.saveFailed'))
+      return false
+    }
+  }, [t])
+
   const handleAgentFileChange = useCallback(async (path?: string) => {
     await refreshAfterAgentFileChange(path)
     notifyVersionChange()
   }, [notifyVersionChange, refreshAfterAgentFileChange])
+
+  const handleReviewedWorkspaceChange = useCallback(async (paths: string[]) => {
+    const currentPath = selectedFile && paths.includes(selectedFile) ? selectedFile : undefined
+    await handleAgentFileChange(currentPath)
+  }, [handleAgentFileChange, selectedFile])
+
+  const handleWorkspaceChangeEvent = useCallback(async (event: WorkspaceChangeEvent) => {
+    if (!isWorkspaceChangeForWorkspace(event, workspace)) return
+    const paths = Array.from(new Set([...(event.affected_paths ?? []), ...(event.paths ?? []), ...(event.path ? [event.path] : [])]))
+    const path = selectedFile && paths.includes(selectedFile) ? selectedFile : paths[0]
+    await handleAgentFileChange(path)
+  }, [handleAgentFileChange, selectedFile, workspace])
 
   const {
     messages,
@@ -155,7 +186,7 @@ function App() {
     removeStyleScene,
     addTextSelection,
     removeTextSelection,
-  } = useAgentChat({ onAgentFileChange: handleAgentFileChange })
+  } = useAgentChat({ workspace, onAgentFileChange: handleAgentFileChange, onWorkspaceChange: handleWorkspaceChangeEvent })
 
   const handleChatPlanModeChange = useCallback((value: boolean) => {
     setPlanMode(value)
@@ -364,12 +395,14 @@ function App() {
   }, [createItem, notifyVersionChange])
 
   const handleDeleteItem = useCallback(async (path: string) => {
+    if ((selectedFile === path || selectedFile?.startsWith(`${path}/`)) && !(await flushEditorDraft())) return
     await deleteItem(path)
     setOpenTabs((prev) => prev.filter((tab) => tab.path !== path && !tab.path.startsWith(`${path}/`)))
     notifyVersionChange()
-  }, [deleteItem, notifyVersionChange])
+  }, [deleteItem, flushEditorDraft, notifyVersionChange, selectedFile])
 
   const handleRenameItem = useCallback(async (path: string, newName: string) => {
+    if ((selectedFile === path || selectedFile?.startsWith(`${path}/`)) && !(await flushEditorDraft())) return
     await renameItem(path, newName)
     const parent = path.replace(/\/[^/]*$/, '')
     const newPath = parent ? `${parent}/${newName}` : newName
@@ -379,7 +412,7 @@ function App() {
       return tab
     })))
     notifyVersionChange()
-  }, [notifyVersionChange, renameItem])
+  }, [flushEditorDraft, notifyVersionChange, renameItem, selectedFile])
 
   const handleCopyItem = useCallback(async (from: string, to: string) => {
     await copyItem(from, to)
@@ -387,6 +420,7 @@ function App() {
   }, [copyItem, notifyVersionChange])
 
   const handleMoveItem = useCallback(async (from: string, to: string) => {
+    if ((selectedFile === from || selectedFile?.startsWith(`${from}/`)) && !(await flushEditorDraft())) return
     await moveItem(from, to)
     setOpenTabs((prev) => dedupeTabs(prev.map((tab) => {
       if (tab.path === from) return { kind: 'file', path: to }
@@ -394,9 +428,10 @@ function App() {
       return tab
     })))
     notifyVersionChange()
-  }, [moveItem, notifyVersionChange])
+  }, [flushEditorDraft, moveItem, notifyVersionChange, selectedFile])
 
   const handleSelectFile = useCallback(async (path: string) => {
+    if (selectedFile !== path && !(await flushEditorDraft())) return false
     setSelectedChapterId(path)
     const key = `file:${path}`
     setOpenTabs((prev) => {
@@ -405,14 +440,15 @@ function App() {
     })
     setActiveTabKey(key)
     await selectFile(path)
-  }, [limitTabs, selectFile, setSelectedChapterId])
+    return true
+  }, [flushEditorDraft, limitTabs, selectFile, selectedFile, setSelectedChapterId])
 
   const handleSelectSearchResult = useCallback(async (result: WorkspaceSearchResult, query: string) => {
     setSettingsOpen(false)
     setMode('ide')
     setProjectVisible(true)
     setSidebarView('search')
-    await handleSelectFile(result.path)
+    if (!(await handleSelectFile(result.path))) return
     setEditorSearchIntent({
       path: result.path,
       query,
@@ -511,30 +547,31 @@ function App() {
     }
   }, [characterCardBookTitle, characterCardFile, characterCardPreview, characterCardSemanticClassification, characterCardTargetMode, characterCardUserName, notifyVersionChange, refresh, refreshAll, resetCharacterCardImport, setMode, t, workspace])
 
-  const handleActivateTab = useCallback((tab: Tab) => {
+  const handleActivateTab = useCallback(async (tab: Tab) => {
     const key = tabKey(tab)
-    setActiveTabKey(key)
-    if (selectedFile !== tab.path) void handleSelectFile(tab.path)
+    if (selectedFile === tab.path) {
+      setActiveTabKey(key)
+      return
+    }
+    await handleSelectFile(tab.path)
   }, [handleSelectFile, selectedFile])
 
-  const handleCloseTab = useCallback((tab: Tab) => {
+  const handleCloseTab = useCallback(async (tab: Tab) => {
     const key = tabKey(tab)
-    setOpenTabs((prev) => {
-      const idx = prev.findIndex((item) => tabKey(item) === key)
-      if (idx === -1) return prev
-      const next = prev.filter((item) => tabKey(item) !== key)
-      if (activeTabKey === key) {
-        if (next.length === 0) {
-          setActiveTabKey(null)
-          clearSelectedFile()
-        } else {
-          const fallback = next[idx] ?? next[idx - 1] ?? next[0]
-          handleActivateTab(fallback)
-        }
-      }
-      return next
-    })
-  }, [activeTabKey, clearSelectedFile, handleActivateTab])
+    const idx = openTabs.findIndex((item) => tabKey(item) === key)
+    if (idx === -1) return
+    if (activeTabKey === key && !(await flushEditorDraft())) return
+    const next = openTabs.filter((item) => tabKey(item) !== key)
+    setOpenTabs(next)
+    if (activeTabKey !== key) return
+    if (next.length === 0) {
+      setActiveTabKey(null)
+      clearSelectedFile()
+      return
+    }
+    const fallback = next[idx] ?? next[idx - 1] ?? next[0]
+    await handleActivateTab(fallback)
+  }, [activeTabKey, clearSelectedFile, flushEditorDraft, handleActivateTab, openTabs])
 
   const triggerSave = useCallback(() => setSaveSignal((value) => value + 1), [])
   const continueWriting = useCallback(() => {
@@ -724,6 +761,7 @@ function App() {
         onDismissUpdateNotice={dismissUpdateNotice}
         onToggleInteractiveRightPanel={() => setInteractiveRightVisible((value) => !value)}
         onSwitchBook={handleWorkspaceSwitch}
+        onBeforeWorkspaceSwitch={flushEditorDraft}
         onBooksChange={refreshBooks}
         onOpenCharacterCardImport={handleOpenCharacterCardImportFromBooks}
         onSetSidebarView={setSidebarView}
@@ -739,6 +777,8 @@ function App() {
         onActivateTab={handleActivateTab}
         onCloseTab={handleCloseTab}
         onSaveCurrentFile={handleSaveCurrentFile}
+        onEditorFlushHandlerChange={handleEditorFlushHandlerChange}
+        onWorkspaceChanged={handleReviewedWorkspaceChange}
         onQuoteSelection={addTextSelection}
         onCreateChatSession={createChatSession}
         onSwitchChatSession={switchChatSession}
@@ -864,7 +904,7 @@ function isIdeWorkspacePanel(panel: RightPanel): panel is 'lore' | 'creator' | '
 }
 
 function toWritingRightPanel(panel: RightPanel): WritingRightPanel {
-  return panel === 'ai' ? 'ai' : null
+  return panel === 'ai' ? panel : null
 }
 
 function normalizeAppTheme(theme?: string) {

@@ -43,6 +43,8 @@ interface HomeViewProps {
   books: BookRecord[]
   /** 切换到指定 workspace 后由父组件刷新业务状态 */
   onSwitch: (path: string) => void
+  /** 在后端切换 workspace 前保存当前编辑器草稿。 */
+  onBeforeSwitch?: () => Promise<boolean>
   /** 书籍记录有变更时通知父组件刷新列表 */
   onBooksChange: () => void
   /** 打开酒馆角色卡导入弹窗 */
@@ -57,7 +59,7 @@ const iconButtonCls = 'nova-nav-item text-[var(--nova-text-faint)] hover:bg-[var
 type BookDialogState = { mode: 'create'; book: null } | { mode: 'edit'; book: BookRecord }
 
 /** 书籍管理视图：集中展示、创建、打开和编辑 Nova 数据目录中的书籍。 */
-export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, onOpenCharacterCardImport, onClose }: HomeViewProps) {
+export function HomeView({ workspace, novaDir, books, onSwitch, onBeforeSwitch, onBooksChange, onOpenCharacterCardImport, onClose }: HomeViewProps) {
   const { t } = useTranslation()
   const [showNovelImport, setShowNovelImport] = useState(false)
   const [bookDialog, setBookDialog] = useState<BookDialogState | null>(null)
@@ -106,6 +108,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
   /** 切换到指定书籍 */
   const handleSwitch = async (path: string) => {
     try {
+      if (onBeforeSwitch && !(await onBeforeSwitch())) return
       const data = await switchWorkspace(path)
       onSwitch(data.workspace || path)
     } catch (e) {
@@ -142,6 +145,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBooksChange, o
 
   const handleDelete = async () => {
     if (!deleteTarget) return
+    if (deleteTarget.path === workspace && onBeforeSwitch && !(await onBeforeSwitch())) return
     setDeleting(true)
     setDeleteError('')
     try {

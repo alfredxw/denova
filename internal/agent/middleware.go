@@ -24,6 +24,7 @@ type toolOrchestratorMiddleware struct {
 	toolSettings        config.ResolvedAgentToolSettings
 	enforceToolSettings bool
 	toolResultMaxBytes  int
+	executionGate       *toolExecutionGate
 }
 
 type interactiveStoryToolMiddleware struct {
@@ -165,6 +166,7 @@ type ToolDecision struct {
 type ToolExecutionRecord struct {
 	ToolName          string `json:"tool_name"`
 	ToolCallID        string `json:"tool_call_id,omitempty"`
+	Workspace         string `json:"workspace,omitempty"`
 	Status            string `json:"status"`
 	Capability        string `json:"capability,omitempty"`
 	OriginalBytes     int    `json:"original_bytes,omitempty"`
@@ -176,6 +178,11 @@ type ToolExecutionRecord struct {
 	ArgsBytes         int    `json:"args_bytes,omitempty"`
 	ArgsComplete      *bool  `json:"args_complete,omitempty"`
 	ModelFinishReason string `json:"model_finish_reason,omitempty"`
+	ChangeGroupID     string `json:"change_group_id,omitempty"`
+	ReviewThreadID    string `json:"review_thread_id,omitempty"`
+	ChangeSetID       string `json:"change_set_id,omitempty"`
+	BaseRevision      string `json:"base_revision,omitempty"`
+	Revision          string `json:"revision,omitempty"`
 }
 
 func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
@@ -200,12 +207,14 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 			observer.RecordToolExecution(blockedToolExecutionRecord(decision, msg))
 			return msg, nil
 		}
+		release := m.acquireToolExecution(decision)
+		defer release()
 		result, err := endpoint(ctx, args, opts...)
 		if err != nil {
 			if _, ok := compose.IsInterruptRerunError(err); ok {
 				return "", err
 			}
-			msg := fmt.Sprintf("[tool error] %v", err)
+			msg := toolEndpointErrorMessage(decision.ToolName, err)
 			observer.RecordToolExecution(ToolExecutionRecord{
 				ToolName:   decision.ToolName,
 				ToolCallID: decision.ToolCallID,
@@ -217,7 +226,7 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 			return msg, nil
 		}
 		filtered := FilterToolResultForModelWithLimit(toolName(toolCtx), args, result, m.toolResultLimitBytes())
-		observer.RecordToolExecution(ToolExecutionRecord{
+		record := ToolExecutionRecord{
 			ToolName:       filtered.Manifest.Name,
 			ToolCallID:     decision.ToolCallID,
 			Status:         "success",
@@ -227,7 +236,9 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 			Truncated:      filtered.Truncated,
 			Target:         filtered.Target,
 			IdempotencyKey: filtered.IdempotencyKey,
-		})
+		}
+		applyWorkspaceChangeReceiptToExecutionRecord(&record, result)
+		observer.RecordToolExecution(record)
 		return filtered.Content, nil
 	}, nil
 }
@@ -254,8 +265,10 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 			observer.RecordToolExecution(blockedToolExecutionRecord(decision, msg))
 			return singleChunkReader(msg), nil
 		}
+		release := m.acquireToolExecution(decision)
 		sr, err := endpoint(ctx, args, opts...)
 		if err != nil {
+			release()
 			if _, ok := compose.IsInterruptRerunError(err); ok {
 				return nil, err
 			}
@@ -267,10 +280,25 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 				Target:     decision.Target,
 				Error:      err.Error(),
 			})
-			return singleChunkReader(fmt.Sprintf("[tool error] %v", err)), nil
+			return singleChunkReader(toolEndpointErrorMessage(decision.ToolName, err)), nil
 		}
-		return filterToolResultReader(ctx, sr, toolCtx, args, m.toolResultLimitBytes()), nil
+		return filterToolResultReader(ctx, sr, toolCtx, args, m.toolResultLimitBytes(), release), nil
 	}, nil
+}
+
+func toolEndpointErrorMessage(toolName string, err error) string {
+	if msg, ok := formatWorkspaceChangeToolError(toolName, err); ok {
+		return msg
+	}
+	return fmt.Sprintf("[tool error] %v", err)
+}
+
+func (m *toolOrchestratorMiddleware) acquireToolExecution(decision ToolDecision) func() {
+	if m == nil || m.executionGate == nil {
+		return func() {}
+	}
+	manifest := ManifestForTool(decision.ToolName)
+	return m.executionGate.acquire(executionModeForTool(manifest))
 }
 
 func singleChunkReader(msg string) *schema.StreamReader[string] {
@@ -280,10 +308,27 @@ func singleChunkReader(msg string) *schema.StreamReader[string] {
 	return r
 }
 
-func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string], toolCtx *adk.ToolContext, args string, maxBytes int) *schema.StreamReader[string] {
+func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string], toolCtx *adk.ToolContext, args string, maxBytes int, releases ...func()) *schema.StreamReader[string] {
 	r, w := schema.Pipe[string](1)
 	go func() {
 		defer w.Close()
+		defer func() {
+			for _, release := range releases {
+				if release != nil {
+					release()
+				}
+			}
+		}()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				_ = w.Send(fmt.Sprintf("\n[tool error] panic while reading tool result: %v", recovered), nil)
+			}
+		}()
+		if sr == nil {
+			_ = w.Send("\n[tool error] streamable tool returned a nil result stream", nil)
+			return
+		}
+		defer sr.Close()
 		name := toolName(toolCtx)
 		manifest := ManifestForTool(name)
 		manifest.MaxResultBytes = normalizeToolResultLimitBytes(maxBytes)
@@ -294,7 +339,7 @@ func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string]
 			chunk, err := sr.Recv()
 			if errors.Is(err, io.EOF) {
 				filtered := filteredToolResultFromBody(manifest, args, content.String(), originalBytes, originalBytes > content.Len())
-				RunObserverFromContext(ctx).RecordToolExecution(ToolExecutionRecord{
+				record := ToolExecutionRecord{
 					ToolName:       filtered.Manifest.Name,
 					ToolCallID:     toolCallID(toolCtx),
 					Status:         "success",
@@ -304,7 +349,9 @@ func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string]
 					Truncated:      filtered.Truncated,
 					Target:         filtered.Target,
 					IdempotencyKey: filtered.IdempotencyKey,
-				})
+				}
+				applyWorkspaceChangeReceiptToExecutionRecord(&record, content.String())
+				RunObserverFromContext(ctx).RecordToolExecution(record)
 				_ = w.Send(filtered.Content, nil)
 				return
 			}
@@ -338,6 +385,25 @@ func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string]
 		}
 	}()
 	return r
+}
+
+func applyWorkspaceChangeReceiptToExecutionRecord(record *ToolExecutionRecord, content string) {
+	if record == nil {
+		return
+	}
+	receipt, ok := parseWorkspaceChangeToolReceipt(record.ToolName, content)
+	if !ok {
+		return
+	}
+	record.Workspace = receipt.Workspace
+	record.ChangeGroupID = receipt.ChangeGroupID
+	record.ReviewThreadID = receipt.ReviewThreadID
+	record.ChangeSetID = receipt.ChangeSetID
+	record.BaseRevision = receipt.BaseRevision
+	record.Revision = receipt.Revision
+	if strings.TrimSpace(receipt.Path) != "" {
+		record.Target = receipt.Path
+	}
 }
 
 func blockedToolExecutionRecord(decision ToolDecision, msg string) ToolExecutionRecord {

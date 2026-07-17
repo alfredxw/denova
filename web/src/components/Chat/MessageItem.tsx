@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { MarkdownRenderer, type MarkdownRendererComponents } from '@/components/common/MarkdownRenderer'
 import { workspaceAssetURL, type ChapterIllustration, type ChatMessage, type InteractiveImage, type InteractiveImageError } from '@/lib/api'
+import type { UserMessageReference } from '@/lib/api-client/types'
 import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 import { isWorkspaceImagePath } from '@/lib/workspace-file-kind'
 import { useBottomScrollLock } from '@/hooks/useBottomScrollLock'
@@ -65,7 +66,8 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
         <AIMessage from="user" className="max-w-none items-end">
           <div className="nova-message-body-with-meta nova-message-body-with-meta-user max-w-[88%]">
             <AIMessageContent className="nova-user-message rounded-lg bg-[var(--nova-user-message-bg-to)] px-3 py-2 text-sm leading-5 text-[var(--nova-user-message-text)] whitespace-pre-wrap group-[.is-user]:px-3 group-[.is-user]:py-2" style={messageStyle}>
-              {content}
+              <SentMessageReferences references={message.user_references} />
+              <span>{content}</span>
             </AIMessageContent>
             <MessageInlineMeta message={message} content={content} align="right" reserveSpace={Boolean(onEdit)} onEdit={canEdit ? onEdit : undefined} />
           </div>
@@ -188,6 +190,32 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       return null
   }
 })
+
+function SentMessageReferences({ references }: { references?: UserMessageReference[] }) {
+  const { t } = useTranslation()
+  if (!references?.length) return null
+  return (
+    <div data-testid="sent-message-references" className="mb-1.5 flex max-w-full flex-col gap-1 border-b border-current/10 pb-1.5 text-[11px] leading-4">
+      {references.map((reference, index) => (
+        <div key={`${reference.kind}:${reference.id || reference.label}:${index}`} className="flex min-w-0 items-start gap-1.5">
+          <span className="shrink-0 rounded bg-black/10 px-1 py-0.5 text-[10px] opacity-75 dark:bg-white/10">
+            {t(`chat.reference.${reference.kind}`)}
+          </span>
+          <span className="min-w-0 break-words">
+            <span className="font-medium">{reference.label}{formatReferenceLines(reference)}</span>
+            {reference.detail ? <span className="ml-1 opacity-75">— {reference.detail}</span> : null}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function formatReferenceLines(reference: UserMessageReference): string {
+  if (reference.start_line === undefined) return ''
+  if (reference.end_line !== undefined && reference.end_line !== reference.start_line) return `:L${reference.start_line}-L${reference.end_line}`
+  return `:L${reference.start_line}`
+}
 
 function TraceLinkButton({ runID, onOpenTrace }: { runID?: string; onOpenTrace?: (runID: string) => void }) {
   const { t } = useTranslation()
@@ -913,7 +941,11 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   const displayName = isDelegationTool ? t('chat.subagent.taskLabel') : name
   const detailArgs = isDelegationTool ? formatTaskDelegationArgs(rawArgs) : (isChapterBodyHidden ? '' : args)
   const hasResult = status === 'success'
-  const isStreamingContent = !isChapterBodyHidden && status === 'running' && isContentTool(name) && rawArgs.length > 50
+  const batchEditCount = name === 'edit_file' ? extractBatchEditCount(rawArgs) : 0
+  const batchEditSummary = batchEditCount > 0
+    ? [extractToolArgPath(rawArgs), t('chat.tool.batchEdits', { count: batchEditCount })].filter(Boolean).join(' · ')
+    : ''
+  const isStreamingContent = !isChapterBodyHidden && batchEditCount === 0 && status === 'running' && isContentTool(name) && rawArgs.length > 50
   const streamPreview = isStreamingContent ? extractStreamingContent(rawArgs) : ''
   const summary = taskSubAgent
     ? t('chat.subagent.delegating', { name: taskSubAgent })
@@ -923,7 +955,7 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
     ? chapterGeneratedChars !== undefined
       ? t(isDirectorPlanHidden ? (hasResult ? 'chat.tool.fileWrittenWithCount' : 'chat.tool.fileWritingWithCount') : (hasResult ? 'chat.tool.chapterWrittenWithCount' : 'chat.tool.chapterWritingWithCount'), { count: chapterGeneratedChars })
       : (isDirectorPlanHidden ? (hasResult ? t('chat.tool.fileWritten') : t('chat.tool.fileWriting')) : (hasResult ? t('chat.tool.chapterWritten') : t('chat.tool.chapterWriting')))
-    : (hasResult ? resultPreview || t('chat.tool.done') : summary)
+    : batchEditSummary || (hasResult ? resultPreview || t('chat.tool.done') : summary)
   const hasDetail = Boolean(detailArgs || result || isChapterBodyHidden)
   const streamPreviewScrollLock = useBottomScrollLock<HTMLDivElement>({
     enabled: isStreamingContent,
@@ -1439,6 +1471,23 @@ function buildToolArgSummary(args: string) {
     // 非 JSON 参数使用通用预览。
   }
   return buildPreview(args, 120)
+}
+
+/** edit_file 的 edits 数组是结构化批量改动，不把 new_string 当成流式正文展开。 */
+function extractBatchEditCount(args: string): number {
+  if (!args || !/"edits"\s*:/.test(args)) return 0
+  try {
+    const data = JSON.parse(args) as { edits?: unknown[] }
+    return Array.isArray(data.edits) ? data.edits.length : 0
+  } catch {
+    const editsStart = args.search(/"edits"\s*:\s*\[/)
+    if (editsStart < 0) return 0
+    const partialEdits = args.slice(editsStart)
+    return Math.max(
+      (partialEdits.match(/"old_string"\s*:/g) || []).length,
+      (partialEdits.match(/"new_string"\s*:/g) || []).length,
+    )
+  }
 }
 
 function extractToolArgPath(args: string) {

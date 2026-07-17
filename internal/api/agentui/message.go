@@ -20,6 +20,7 @@ const (
 	DataTypeSystem            = "data-agent-system"
 	DataTypeTokenUsage        = "data-agent-token-usage"
 	DataTypeToolResult        = "data-agent-tool-result"
+	DataTypeWorkspaceChange   = "data-agent-workspace-change"
 )
 
 // Message is the backend JSON shape for AI SDK UI messages used by the web app.
@@ -222,6 +223,9 @@ func addMetadataPayload(target map[string]any, entry session.HistoryEntry) {
 	}
 	if entry.SSEGeneratedChars > 0 {
 		target["sse_generated_chars"] = entry.SSEGeneratedChars
+	}
+	if len(entry.UserReferences) > 0 {
+		target["user_references"] = append([]session.UserMessageReference(nil), entry.UserReferences...)
 	}
 }
 

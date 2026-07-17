@@ -130,6 +130,40 @@ func TestAssistantMessageMetadataPersistsRunID(t *testing.T) {
 	}
 }
 
+func TestUserMessageReferencesPersistAcrossSessionReload(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendWithMetadata(schema.UserMessage("请修改"), MessageMetadata{UserReferences: []UserMessageReference{
+		{Kind: "file", Label: "chapters/ch01.md"},
+		{Kind: "review_comment", ID: "comment-1", Label: "setting/progress.md", Detail: "需要增加爽点"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.GetOrCreate("default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := reloaded.History()
+	if len(history) != 1 || len(history[0].UserReferences) != 2 {
+		t.Fatalf("reloaded user references = %#v", history)
+	}
+	if history[0].UserReferences[1].Detail != "需要增加爽点" {
+		t.Fatalf("reloaded review detail = %#v", history[0].UserReferences)
+	}
+}
+
 func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)

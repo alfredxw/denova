@@ -38,6 +38,7 @@ interface WorkbenchShellProps {
   main: ReactNode
   rightPanelContent: ReactNode
   rightPanelWide?: boolean
+  centerFocus?: boolean
   updateNotice?: { latestVersion: string } | null
   onSetMode: (mode: WorkspaceMode) => void
   onToggleActivityBarExpanded: () => void
@@ -109,6 +110,7 @@ export function WorkbenchShell({
   main,
   rightPanelContent,
   rightPanelWide = false,
+  centerFocus = false,
   updateNotice,
   onSetMode,
   onToggleActivityBarExpanded,
@@ -699,6 +701,7 @@ export function WorkbenchShell({
         rightPanel={rightPanelContent}
         rightPanelVisible={mode === 'ide' && !fullWorkspacePanelVisible && Boolean(rightPanelContent)}
         rightPanelWide={rightPanelWide && mode === 'ide' && rightPanel === 'ai' && !fullWorkspacePanelVisible}
+        centerFocus={centerFocus && mode === 'ide' && !fullWorkspacePanelVisible}
         statusBar={statusBar}
       />
       {mainContentPortal}

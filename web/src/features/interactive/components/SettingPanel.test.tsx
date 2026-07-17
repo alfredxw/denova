@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast, type Action } from 'sonner'
-import { deleteLoreItem, generateLoreItemImage, getLoreItems, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
+import { APIError, deleteLoreItem, generateLoreItemImage, getLoreItems, readFile, saveFile, streamLoreImagesGenerate, updateLoreItem, type LoreItem } from '@/lib/api'
 import { createActorState, createImagePreset, createInteractiveTeller, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, getStyleReferences, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../api'
 import type { EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../types'
 import { defaultRuleTemplates } from './preset-config/ruleTemplates'
@@ -91,19 +91,23 @@ vi.mock('@/components/Chat/ConfigManagerChat', () => ({
   },
 }))
 
-vi.mock('@/lib/api', () => ({
-  abortLoreImagesGenerate: vi.fn(),
-  clearLoreItemImage: vi.fn(),
-  createLoreItem: vi.fn(),
-  deleteLoreItem: vi.fn(),
-  generateLoreItemImage: vi.fn(),
-  getLoreItems: vi.fn().mockResolvedValue([]),
-  readFile: vi.fn().mockResolvedValue({ content: '' }),
-  saveFile: vi.fn(),
-  streamLoreImagesGenerate: vi.fn(),
-  updateLoreItem: vi.fn(),
-  workspaceAssetURL: (path: string) => `/api/workspace/asset?path=${encodeURIComponent(path)}`,
-}))
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return {
+    ...actual,
+    abortLoreImagesGenerate: vi.fn(),
+    clearLoreItemImage: vi.fn(),
+    createLoreItem: vi.fn(),
+    deleteLoreItem: vi.fn(),
+    generateLoreItemImage: vi.fn(),
+    getLoreItems: vi.fn().mockResolvedValue([]),
+    readFile: vi.fn().mockResolvedValue({ workspace: '/workspace', path: '', content: '' }),
+    saveFile: vi.fn(),
+    streamLoreImagesGenerate: vi.fn(),
+    updateLoreItem: vi.fn(),
+    workspaceAssetURL: (path: string) => `/api/workspace/asset?path=${encodeURIComponent(path)}`,
+  }
+})
 
 vi.mock('../api', () => ({
   createActorState: vi.fn(),
@@ -144,6 +148,9 @@ describe('SettingPanel', () => {
     vi.mocked(deleteLoreItem).mockReset()
     vi.mocked(generateLoreItemImage).mockReset()
     vi.mocked(streamLoreImagesGenerate).mockReset()
+    vi.mocked(readFile).mockReset()
+    vi.mocked(readFile).mockResolvedValue({ workspace: '/workspace', path: '', content: '' })
+    vi.mocked(saveFile).mockReset()
     vi.mocked(getInteractiveTellers).mockReset()
     vi.mocked(createInteractiveTeller).mockReset()
     vi.mocked(updateInteractiveTeller).mockReset()
@@ -212,6 +219,45 @@ describe('SettingPanel', () => {
       expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()
     })
     expect(screen.getAllByText('配置管理 Agent').length).toBeGreaterThan(0)
+  })
+
+  it('uses the missing revision when CREATOR.md does not exist yet', async () => {
+    const user = userEvent.setup()
+    vi.mocked(readFile).mockRejectedValueOnce(new APIError('not found', { status: 404 }))
+    vi.mocked(saveFile).mockResolvedValue({ path: 'CREATOR.md', message: 'ok', revision: 'creator-rev-1' })
+
+    render(<SettingPanel mode="creator" workspace="/workspace" />)
+
+    await waitFor(() => expect(readFile).toHaveBeenCalledWith('CREATOR.md'))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(saveFile).toHaveBeenCalledWith('CREATOR.md', '', 'missing', '/workspace'))
+  })
+
+  it('saves legacy opening presets into the new file with the missing revision', async () => {
+    const user = userEvent.setup()
+    vi.mocked(readFile)
+      .mockRejectedValueOnce(new APIError('not found', { status: 404 }))
+      .mockResolvedValueOnce({
+        workspace: '/workspace',
+        path: 'setting/interactive-opening.md',
+        content: '旧版开场白',
+        revision: 'legacy-revision',
+      })
+    vi.mocked(saveFile).mockResolvedValue({ path: 'setting/interactive-openings.json', message: 'ok', revision: 'opening-rev-1' })
+
+    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[]} />)
+
+    await user.click(screen.getByRole('button', { name: '书籍预设开场白' }))
+    await waitFor(() => expect(readFile).toHaveBeenCalledTimes(2))
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => expect(saveFile).toHaveBeenCalledWith(
+      'setting/interactive-openings.json',
+      expect.any(String),
+      'missing',
+      '/workspace',
+    ))
   })
 
   it('overrides a built-in narrative style in place instead of copying it', async () => {

@@ -7,7 +7,7 @@ import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { removeChatContextCompaction } from '@/lib/api'
 import type { ChapterIllustration, ChapterSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
-import { agentSubAgentSessionKey, agentViewContent, selectAgentTokenUsageRecords, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
+import { agentSubAgentSessionKey, agentViewContent, buildAgentMessageViews, selectAgentTokenUsageRecords, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { BUILTIN_WRITING_SKILLS, DEFAULT_WRITING_SKILL, useWritingSkillOptions, type WritingSkillOption } from '@/hooks/useWritingSkillOptions'
 import { MessageList } from './MessageList'
@@ -25,6 +25,11 @@ import {
   DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu'
 import { formatPlanDiscussionMessage } from '@/lib/plan-mode'
+import { useWorkspaceChangeGroups } from '@/features/changes/use-change-review'
+import { AgentChangeSummaryCard } from '@/features/changes/agent/AgentChangeSummaryCard'
+import { MAX_REVIEW_FEEDBACK_COMMENT_COUNT, MAX_REVIEW_FEEDBACK_CONTEXT_BYTES, reviewFeedbackContextBytes, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import { toast } from 'sonner'
+import type { ChatSendOptions } from '@/hooks/useAgentChat'
 
 type AgentPanelView = 'chat' | 'sessions' | 'traces'
 
@@ -54,7 +59,7 @@ interface AgentPanelProps {
   onSwitchSession: (id: string) => void | Promise<void>
   onRenameSession: (id: string, title: string) => void | Promise<void>
   onDeleteSession: (id: string) => void | Promise<void>
-  onSend: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string; tellerId?: string }) => void
+  onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
   onReferenceRemove: (path: string) => void
@@ -69,6 +74,12 @@ interface AgentPanelProps {
   onSubmitPlanQuestion: (ref: AgentPartRef, content: string, preview: string) => void
   onApproveProposedPlan: (ref: AgentPartRef) => void
   onExitPlanMode: () => void
+  reviewFeedback?: ReviewFeedbackSelection | null
+  onReviewFeedbackRemove?: (commentID: string) => void
+  onReviewFeedbackSubmitted?: (feedback: ReviewFeedbackSelection) => void
+  onReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackSelection) => void
+  onOpenChangeReview?: (reviewThreadID: string, groupID: string) => void
+  onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
   onClose: () => void
   onSubAgentDetailsChange?: (open: boolean) => void
 }
@@ -113,6 +124,12 @@ export function AgentPanel({
   onSubmitPlanQuestion,
   onApproveProposedPlan,
   onExitPlanMode,
+  reviewFeedback,
+  onReviewFeedbackRemove,
+  onReviewFeedbackSubmitted,
+  onReviewFeedbackSubmissionFailed,
+  onOpenChangeReview,
+  onWorkspaceChanged,
   onClose,
   onSubAgentDetailsChange,
 }: AgentPanelProps) {
@@ -131,10 +148,19 @@ export function AgentPanel({
   const [writingSkill, setWritingSkill] = useState(DEFAULT_WRITING_SKILL)
   const skillCommands = useSkillCommands({ agentKey: 'ide', workspace, fallbackEnabled: true })
   const writingSkillOptions = useWritingSkillOptions(workspace)
+  const changeGroupsQuery = useWorkspaceChangeGroups(activeSessionId ? workspace : '', { sessionID: activeSessionId })
   const tokenUsageMessages = useMemo(
     () => selectAgentTokenUsageRecords(messages),
     [messages],
   )
+  const activeRunID = useMemo(() => {
+    if (!isStreaming) return ''
+    const views = buildAgentMessageViews(messages)
+    for (let index = views.length - 1; index >= 0; index -= 1) {
+      if (!views[index].metadata.subagent && views[index].metadata.run_id) return views[index].metadata.run_id || ''
+    }
+    return ''
+  }, [isStreaming, messages])
   const messageListBottomPadding = inputAreaHeight > 0 ? inputAreaHeight + 20 : undefined
   const styleSceneSuggestions = useMemo(() => {
     const teller = tellers.find((item) => item.id === ideTellerId) || tellers.find((item) => item.id === 'classic') || tellers[0]
@@ -242,8 +268,67 @@ export function AgentPanel({
     await handleAnalyzeContext(CONTEXT_ANALYSIS_SIMULATED_MESSAGE)
   }
 
-  const sendWithWritingSkill = (message: string) => {
-    onSend(message, { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId })
+  const timelineAttachments = useMemo(() => (
+    (changeGroupsQuery.data ?? [])
+      .filter((summary) => Boolean(summary.run_id) && summary.run_id !== activeRunID)
+      .map((summary) => ({
+        id: summary.id,
+        runId: summary.run_id || '',
+        content: (
+          <AgentChangeSummaryCard
+            workspace={workspace}
+            summary={summary}
+            disabled={isStreaming}
+            onReview={(reviewThreadID, groupID) => onOpenChangeReview?.(reviewThreadID, groupID)}
+            onWorkspaceChanged={onWorkspaceChanged}
+          />
+        ),
+      }))
+  ), [activeRunID, changeGroupsQuery.data, isStreaming, onOpenChangeReview, onWorkspaceChanged, workspace])
+
+  const sendWithWritingSkill = async (message: string) => {
+    const feedbackSelection = reviewFeedback?.comments.length ? reviewFeedback : null
+    const feedback = reviewFeedback?.comments.length ? {
+      reviewThreadId: reviewFeedback.reviewThreadId,
+      commentIds: reviewFeedback.comments.map((comment) => comment.id),
+    } : undefined
+    const effectiveMessage = message.trim() || (feedback
+      ? t('changes.feedback.defaultMessage', { count: feedback.commentIds.length })
+      : message)
+    if (feedback && feedback.commentIds.length > MAX_REVIEW_FEEDBACK_COMMENT_COUNT) {
+      toast.error(t('changes.feedback.tooMany', { maximum: MAX_REVIEW_FEEDBACK_COMMENT_COUNT }))
+      return false
+    }
+    if (reviewFeedback && reviewFeedbackContextBytes(reviewFeedback) > MAX_REVIEW_FEEDBACK_CONTEXT_BYTES) {
+      toast.error(t('changes.feedback.tooLarge'))
+      return false
+    }
+    let submissionStarted = false
+    let submissionRestored = false
+    const handleSubmissionStart = () => {
+      if (!feedbackSelection || submissionStarted) return
+      submissionStarted = true
+      onReviewFeedbackSubmitted?.(feedbackSelection)
+    }
+    const handleSubmissionError = () => {
+      if (!feedbackSelection || !submissionStarted || submissionRestored) return
+      submissionRestored = true
+      onReviewFeedbackSubmissionFailed?.(feedbackSelection)
+    }
+    const accepted = await onSend(effectiveMessage, {
+      writingSkill,
+      ideContext,
+      imagePresetId,
+      tellerId: ideTellerId,
+      reviewFeedback: feedback,
+      reviewFeedbackDisplay: feedbackSelection || undefined,
+      loreReferenceLabels,
+      onSubmissionStart: handleSubmissionStart,
+      onSubmissionError: handleSubmissionError,
+    })
+    if (feedbackSelection && accepted && !submissionStarted) handleSubmissionStart()
+    if (!accepted) handleSubmissionError()
+    return accepted
   }
 
   return (
@@ -319,6 +404,7 @@ export function AgentPanel({
                 bottomPaddingClassName="pb-36"
                 bottomPaddingPx={messageListBottomPadding}
                 collapseTraceBeforeAssistant
+                timelineAttachments={timelineAttachments}
                 onOpenSubAgentSession={openSubAgentSession}
                 onInsertIllustration={onInsertIllustration}
                 activeSubAgentSessionKey={activeSubAgentSessionKey}
@@ -351,6 +437,8 @@ export function AgentPanel({
                 styleSceneSuggestions={styleSceneSuggestions}
                 textSelections={textSelections}
                 onTextSelectionRemove={onTextSelectionRemove}
+                reviewFeedback={reviewFeedback}
+                onReviewFeedbackRemove={onReviewFeedbackRemove}
                 skills={skillCommands}
                 onContextAnalyze={openContextAnalysis}
                 tokenUsageMessages={tokenUsageMessages}
@@ -394,6 +482,7 @@ export function AgentPanel({
                         bottomPaddingClassName="pb-36"
                         bottomPaddingPx={messageListBottomPadding}
                         collapseTraceBeforeAssistant
+                        timelineAttachments={timelineAttachments}
                         onOpenSubAgentSession={openSubAgentSession}
                         onInsertIllustration={onInsertIllustration}
                         activeSubAgentSessionKey={activeSubAgentSessionKey}
@@ -426,6 +515,8 @@ export function AgentPanel({
                         styleSceneSuggestions={styleSceneSuggestions}
                         textSelections={textSelections}
                         onTextSelectionRemove={onTextSelectionRemove}
+                        reviewFeedback={reviewFeedback}
+                        onReviewFeedbackRemove={onReviewFeedbackRemove}
                         skills={skillCommands}
                         onContextAnalyze={openContextAnalysis}
                         tokenUsageMessages={tokenUsageMessages}

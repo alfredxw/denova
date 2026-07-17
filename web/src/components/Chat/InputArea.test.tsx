@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
@@ -117,6 +117,77 @@ describe('InputArea command menu', () => {
     )
 
     expect(screen.queryByLabelText('Plan Mode 已开启')).not.toBeInTheDocument()
+  })
+
+  it('shows selected inline comments and allows sending them without extra text', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn()
+    const handleRemove = vi.fn()
+    render(
+      <InputArea
+        onSend={handleSend}
+        disabled={false}
+        reviewFeedback={{
+          reviewThreadId: 'review-1',
+          comments: [{
+            id: 'comment-1',
+            group_id: 'group-1',
+            body: '把这一段写得更克制',
+            review_path: 'chapters/ch01.md',
+            review_line: 12,
+          }],
+        }}
+        onReviewFeedbackRemove={handleRemove}
+      />,
+    )
+
+    expect(screen.getByText(/把这一段写得更克制/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '发送' }))
+    expect(handleSend).toHaveBeenCalledWith('')
+
+    await user.click(screen.getByRole('button', { name: '移出本次提交' }))
+    expect(handleRemove).toHaveBeenCalledWith('comment-1')
+  })
+
+  it('restores supplemental instructions when a review-feedback request is rejected', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn().mockResolvedValue(false)
+    render(<InputArea onSend={handleSend} disabled={false} />)
+
+    await user.type(screen.getByRole('textbox'), 'keep pace')
+    const submittedText = screen.getByRole('textbox').textContent || ''
+    expect(submittedText).not.toBe('')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    expect(handleSend).toHaveBeenCalledWith(submittedText)
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveTextContent(submittedText))
+  })
+
+  it('submits selected review feedback only once while the request is being accepted', async () => {
+    let settleRequest: (accepted: boolean) => void = () => undefined
+    const handleSend = vi.fn(() => new Promise<boolean>((resolve) => { settleRequest = resolve }))
+    render(
+      <InputArea
+        onSend={handleSend}
+        disabled={false}
+        reviewFeedback={{
+          reviewThreadId: 'review-1',
+          comments: [{ id: 'comment-1', group_id: 'group-1', body: '调整这一行' }],
+        }}
+        onReviewFeedbackRemove={vi.fn()}
+      />,
+    )
+
+    const sendButton = screen.getByRole('button', { name: '发送' })
+    fireEvent.click(sendButton)
+    fireEvent.click(sendButton)
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter', shiftKey: false })
+
+    expect(handleSend).toHaveBeenCalledTimes(1)
+    expect(sendButton).toBeDisabled()
+
+    settleRequest(true)
+    await waitFor(() => expect(sendButton).toBeEnabled())
   })
 })
 

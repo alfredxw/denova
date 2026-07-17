@@ -28,6 +28,13 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 		{Type: "tool_call", Data: map[string]any{"id": "tool-1", "name": "read_file", "args": `{"path"`}},
 		{Type: "tool_args_delta", Data: map[string]any{"id": "tool-1", "delta": `:"a.md"}`}},
 		{Type: "tool_result", Data: map[string]any{"id": "tool-1", "name": "read_file", "content": "ok"}},
+		{Type: "workspace_change", Data: map[string]any{
+			"id":              "tool-change-1",
+			"change_group_id": "run-1",
+			"change_set_id":   "change-1",
+			"path":            "chapters/ch01.md",
+			"affected_paths":  []string{"chapters/ch01.md"},
+		}},
 		{Type: "context_compaction", Data: map[string]any{"id": "ctx-1", "content": "压缩完成"}},
 		{Type: "token_usage", Data: map[string]any{"id": "usage-1", "total_tokens": 42}},
 		{Type: "plan_question", Data: map[string]any{"id": "question-1", "content": "选择方向"}},
@@ -71,6 +78,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 		"tool-input-delta",
 		"tool-input-available",
 		"tool-output-available",
+		DataTypeWorkspaceChange,
 		DataTypeContextCompaction,
 		DataTypeTokenUsage,
 		DataTypePlanQuestion,
@@ -89,6 +97,7 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	}
 
 	assertChunk(t, chunks, DataTypeInteractiveImage, "id", "tool-2")
+	assertChunk(t, chunks, DataTypeWorkspaceChange, "id", "tool-change-1")
 	assertChunk(t, chunks, DataTypeRuleRoll, "id", "roll-1")
 	assertChunk(t, chunks, "tool-input-available", "toolCallId", "tool-1")
 	assertStartMetadata(t, chunks[0])

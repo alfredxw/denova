@@ -74,6 +74,11 @@ func (e *StreamEncoder) WriteEvent(ev agent.Event) error {
 			return e.writeData(DataTypeInteractiveImage, eventID(data, "interactive-image"), data)
 		}
 		return nil
+	case "workspace_change":
+		if err := e.closeOpenContent(); err != nil {
+			return err
+		}
+		return e.writeData(DataTypeWorkspaceChange, eventID(data, "workspace-change"), data)
 	case "context_compaction":
 		if err := e.closeOpenContent(); err != nil {
 			return err

@@ -10,12 +10,20 @@ import (
 type ToolMutation struct {
 	ToolName           string     `json:"tool_name"`
 	ToolCallID         string     `json:"tool_call_id,omitempty"`
+	Workspace          string     `json:"workspace,omitempty"`
 	Target             string     `json:"target,omitempty"`
 	Source             ToolSource `json:"source"`
 	RequiresPostCheck  bool       `json:"requires_post_check"`
 	IdempotencyKey     string     `json:"idempotency_key,omitempty"`
 	LoreItemIDs        []string   `json:"lore_item_ids,omitempty"`
 	DeletedLoreItemIDs []string   `json:"deleted_lore_item_ids,omitempty"`
+	ChangeGroupID      string     `json:"change_group_id,omitempty"`
+	ReviewThreadID     string     `json:"review_thread_id,omitempty"`
+	ChangeSetID        string     `json:"change_set_id,omitempty"`
+	BaseRevision       string     `json:"base_revision,omitempty"`
+	Revision           string     `json:"revision,omitempty"`
+	ReviewStatus       string     `json:"review_status,omitempty"`
+	ApplyState         string     `json:"apply_state,omitempty"`
 }
 
 type mutationTracker struct {
@@ -31,6 +39,7 @@ type trackedToolCall struct {
 	target   string
 	itemIDs  []string
 	deleteID []string
+	change   workspaceChangeToolReceipt
 }
 
 func newMutationTracker() *mutationTracker {
@@ -77,12 +86,20 @@ func (t *mutationTracker) Mutations() []ToolMutation {
 		result = append(result, ToolMutation{
 			ToolName:           manifest.Name,
 			ToolCallID:         call.id,
+			Workspace:          call.change.Workspace,
 			Target:             filepath.ToSlash(strings.TrimSpace(target)),
 			Source:             manifest.Source,
 			RequiresPostCheck:  manifest.RequiresPostCheck,
 			IdempotencyKey:     toolIdempotencyKey(manifest.Name, args),
 			LoreItemIDs:        uniqueStrings(call.itemIDs),
 			DeletedLoreItemIDs: uniqueStrings(call.deleteID),
+			ChangeGroupID:      call.change.ChangeGroupID,
+			ReviewThreadID:     call.change.ReviewThreadID,
+			ChangeSetID:        call.change.ChangeSetID,
+			BaseRevision:       call.change.BaseRevision,
+			Revision:           call.change.Revision,
+			ReviewStatus:       call.change.ReviewStatus,
+			ApplyState:         call.change.ApplyState,
 		})
 	}
 	return result
@@ -148,6 +165,12 @@ func (t *mutationTracker) observeToolResult(data any) {
 	}
 	call.itemIDs = append(call.itemIDs, eventDataStringSlice(data, "item_ids")...)
 	call.deleteID = append(call.deleteID, eventDataStringSlice(data, "deleted_ids")...)
+	if receipt, ok := parseWorkspaceChangeToolReceipt(call.name, eventDataString(data, "content")); ok {
+		call.change = receipt
+		if strings.TrimSpace(receipt.Path) != "" {
+			call.target = receipt.Path
+		}
+	}
 }
 
 func (t *mutationTracker) ensureCallLocked(id, name string) *trackedToolCall {

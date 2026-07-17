@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/cloudwego/eino/adk/filesystem"
@@ -13,15 +14,23 @@ import (
 // safety and recovery behavior while delegating ordinary filesystem operations.
 type agentFilesystemBackend struct {
 	filesystem.Backend
+	workspace string
 }
 
 const agentFileReadDefaultLimitLines = 2000
 
-func newAgentFilesystemBackend(inner filesystem.Backend) filesystem.Backend {
+func newAgentFilesystemBackend(inner filesystem.Backend, workspaces ...string) filesystem.Backend {
 	if inner == nil {
 		return nil
 	}
-	return &agentFilesystemBackend{Backend: inner}
+	workspace := ""
+	if len(workspaces) > 0 {
+		workspace = strings.TrimSpace(workspaces[0])
+		if workspace != "" {
+			workspace = filepath.Clean(workspace)
+		}
+	}
+	return &agentFilesystemBackend{Backend: inner, workspace: workspace}
 }
 
 func (b *agentFilesystemBackend) Read(ctx context.Context, req *filesystem.ReadRequest) (*filesystem.FileContent, error) {

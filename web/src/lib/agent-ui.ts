@@ -1,7 +1,7 @@
 import type { ChatTransport, UIMessage } from 'ai'
 import { DefaultChatTransport } from 'ai'
 import { fetchAPI } from './api-client/client'
-import type { ChatMessage } from './api-client/types'
+import type { ChatMessage, UserMessageReference } from './api-client/types'
 
 export interface AgentMessageMetadata {
   created_at?: string
@@ -25,6 +25,7 @@ export interface AgentMessageMetadata {
   navigation_turn_id?: string
   turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
   turn_version_index?: number
+  user_references?: UserMessageReference[]
 }
 
 type AgentDataPayload = Record<string, unknown>
@@ -41,6 +42,7 @@ export type AgentDataParts = {
   'agent-system': AgentDataPayload
   'agent-token-usage': AgentDataPayload
   'agent-tool-result': AgentDataPayload
+  'agent-workspace-change': AgentDataPayload
 }
 
 export type AgentUIMessage = UIMessage<AgentMessageMetadata, AgentDataParts>
@@ -55,6 +57,10 @@ interface AgentChatRequestBody {
   writing_skill?: string
   image_preset_id?: string
   teller_id?: string
+  review_feedback?: {
+    review_thread_id: string
+    comment_ids: string[]
+  }
 }
 
 export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
@@ -96,6 +102,12 @@ export function buildAgentChatRequestBody(body: AgentChatRequestBody): AgentChat
     writing_skill: body.writing_skill || undefined,
     image_preset_id: body.image_preset_id || undefined,
     teller_id: body.teller_id || undefined,
+    review_feedback: body.review_feedback?.review_thread_id && body.review_feedback.comment_ids.length
+      ? {
+          review_thread_id: body.review_feedback.review_thread_id,
+          comment_ids: Array.from(new Set(body.review_feedback.comment_ids)),
+        }
+      : undefined,
   }
 }
 

@@ -46,7 +46,45 @@ func sanitizeMessageMetadata(metadata MessageMetadata) MessageMetadata {
 		}
 		metadata.RunPath = out
 	}
+	metadata.UserReferences = sanitizeUserMessageReferences(metadata.UserReferences)
 	return metadata
+}
+
+const (
+	maxUserMessageReferences      = 256
+	maxUserReferenceLabelBytes    = 1024
+	maxUserReferenceDetailBytes   = 2048
+	maxUserReferenceMetadataBytes = 128 * 1024
+)
+
+func sanitizeUserMessageReferences(values []UserMessageReference) []UserMessageReference {
+	result := make([]UserMessageReference, 0, min(len(values), maxUserMessageReferences))
+	totalBytes := 0
+	for _, value := range values {
+		if len(result) >= maxUserMessageReferences {
+			break
+		}
+		value.Kind = strings.TrimSpace(value.Kind)
+		value.ID = truncateUTF8ByBytes(strings.TrimSpace(value.ID), maxUserReferenceLabelBytes)
+		value.Label = truncateUTF8ByBytes(strings.TrimSpace(value.Label), maxUserReferenceLabelBytes)
+		value.Detail = truncateUTF8ByBytes(strings.TrimSpace(value.Detail), maxUserReferenceDetailBytes)
+		if value.Kind == "" || value.Label == "" {
+			continue
+		}
+		if value.StartLine < 0 {
+			value.StartLine = 0
+		}
+		if value.EndLine < value.StartLine {
+			value.EndLine = value.StartLine
+		}
+		size := len(value.Kind) + len(value.ID) + len(value.Label) + len(value.Detail) + 32
+		if totalBytes+size > maxUserReferenceMetadataBytes {
+			break
+		}
+		totalBytes += size
+		result = append(result, value)
+	}
+	return result
 }
 
 // AppendContextMessage appends a model-visible message that is hidden from UI history.
@@ -139,6 +177,7 @@ func (s *Session) History() []HistoryEntry {
 				SubAgent:          record.messageMetadata.SubAgent,
 				SubAgentSessionID: record.messageMetadata.SubAgentSessionID,
 				SubAgentType:      record.messageMetadata.SubAgentType,
+				UserReferences:    append([]UserMessageReference(nil), record.messageMetadata.UserReferences...),
 			})
 		case historyTypeDisplay:
 			if record.display == nil {

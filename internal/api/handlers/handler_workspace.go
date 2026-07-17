@@ -11,7 +11,9 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	denovaapp "denova/internal/app"
 	"denova/internal/book"
+	"denova/internal/workspacechange"
 )
 
 // handleWorkspaceTree GET /api/workspace/tree — 递归扫描 workspace 目录返回文件树。
@@ -79,20 +81,16 @@ func (h *Handlers) HandleWorkspaceFile(ctx context.Context, c *app.RequestContex
 		return
 	}
 
-	content, err := h.app.BookService().ReadFile(relPath)
-	if err != nil {
-		writeError(c, fileReadStatus(err), err.Error())
-		return
-	}
-	revision, err := h.app.BookService().FileRevision(relPath)
+	content, revision, workspace, err := h.app.ReadWorkspaceFileWithRevision(relPath)
 	if err != nil {
 		writeError(c, fileReadStatus(err), err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]string{
-		"content":  content,
-		"path":     relPath,
-		"revision": revision,
+		"content":   content,
+		"path":      relPath,
+		"revision":  revision,
+		"workspace": workspace,
 	})
 }
 
@@ -196,27 +194,56 @@ func (h *Handlers) HandleWorkspaceFileWrite(ctx context.Context, c *app.RequestC
 		Path         string `json:"path"`
 		Content      string `json:"content"`
 		BaseRevision string `json:"base_revision"`
+		Workspace    string `json:"workspace"`
 	}
 	if err := c.BindJSON(&req); err != nil || req.Path == "" {
 		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.pathContentRequired")
 		return
 	}
 
-	revision, err := h.app.BookService().WriteFileIfRevision(req.Path, req.Content, req.BaseRevision)
+	var saveResult workspacechange.SaveResult
+	canonicalWorkspace, err := h.app.WithWorkspaceChangeMutation(
+		ctx,
+		req.Workspace,
+		func(changeService *workspacechange.Service) (denovaapp.WorkspaceChangeMutationHooks, error) {
+			var saveErr error
+			saveResult, saveErr = changeService.SaveFile(ctx, req.Path, req.Content, req.BaseRevision)
+			if saveErr != nil || !saveResult.Changed {
+				return denovaapp.WorkspaceChangeMutationHooks{}, saveErr
+			}
+			return denovaapp.WorkspaceChangeMutationHooks{
+				CreateTimedVersion: true,
+				AutomationSource:   "workspace_file_write",
+				Paths:              []string{req.Path},
+			}, nil
+		},
+	)
 	if err != nil {
-		if errors.Is(err, book.ErrFileRevisionConflict) {
-			writeErrorKey(c, consts.StatusConflict, "api.workspace.fileRevisionConflict")
+		if errors.Is(err, denovaapp.ErrWorkspaceChanged) {
+			writeJSON(c, consts.StatusConflict, map[string]any{
+				"error": messageKey(c, "api.workspace.changedDuringRequest"),
+				"code":  "workspace_changed",
+				"details": map[string]string{
+					"expected_workspace": strings.TrimSpace(req.Workspace),
+					"actual_workspace":   h.app.Workspace(),
+				},
+			})
+			return
+		}
+		var changeErr *workspacechange.Error
+		if errors.As(err, &changeErr) {
+			writeWorkspaceChangeError(c, err)
 			return
 		}
 		writeErrorKey(c, fileWriteStatus(err), "api.workspace.writeFailed", "detail", err.Error())
 		return
 	}
-	h.app.MaybeCreateTimedVersion(ctx)
-	h.app.CheckAutomationTriggersAfterWorkspaceMutation(ctx, "workspace_file_write", []string{req.Path})
-	writeJSON(c, consts.StatusOK, map[string]string{
-		"path":     req.Path,
-		"revision": revision,
-		"message":  messageKey(c, "api.workspace.fileSaved"),
+	writeJSON(c, consts.StatusOK, map[string]any{
+		"workspace": canonicalWorkspace,
+		"path":      req.Path,
+		"revision":  saveResult.Revision,
+		"changed":   saveResult.Changed,
+		"message":   messageKey(c, "api.workspace.fileSaved"),
 	})
 }
 
@@ -235,7 +262,7 @@ func (h *Handlers) HandleWorkspaceCreate(ctx context.Context, c *app.RequestCont
 		return
 	}
 
-	if err := h.app.BookService().Create(req.Path, req.Type, req.Content); err != nil {
+	if err := h.app.CreateWorkspaceItem(ctx, req.Path, req.Type, req.Content); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			writeErrorKey(c, consts.StatusConflict, "api.workspace.targetExists")
 			return
@@ -243,7 +270,6 @@ func (h *Handlers) HandleWorkspaceCreate(ctx context.Context, c *app.RequestCont
 		writeError(c, fileWriteStatus(err), err.Error())
 		return
 	}
-	h.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": req.Path, "message": messageKey(c, "api.workspace.created")})
 }
 
@@ -260,15 +286,10 @@ func (h *Handlers) HandleWorkspaceDelete(ctx context.Context, c *app.RequestCont
 		return
 	}
 
-	if _, err := h.app.CreateVersion(ctx, "删除前自动备份"); err != nil && !errors.Is(err, book.ErrVersionClean) {
+	if err := h.app.DeleteWorkspaceItem(ctx, req.Path); err != nil {
 		writeErrorKey(c, fileWriteStatus(err), "api.workspace.deleteFailed", "detail", err.Error())
 		return
 	}
-	if err := h.app.BookService().Delete(req.Path); err != nil {
-		writeErrorKey(c, fileWriteStatus(err), "api.workspace.deleteFailed", "detail", err.Error())
-		return
-	}
-	h.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": req.Path, "message": messageKey(c, "api.workspace.deleted")})
 }
 
@@ -286,7 +307,7 @@ func (h *Handlers) HandleWorkspaceRename(ctx context.Context, c *app.RequestCont
 		return
 	}
 
-	newPath, err := h.app.BookService().Rename(req.Path, req.NewName)
+	newPath, err := h.app.RenameWorkspaceItem(ctx, req.Path, req.NewName)
 	if err != nil {
 		if errors.Is(err, os.ErrExist) {
 			writeErrorKey(c, consts.StatusConflict, "api.workspace.targetExists")
@@ -295,7 +316,6 @@ func (h *Handlers) HandleWorkspaceRename(ctx context.Context, c *app.RequestCont
 		writeError(c, fileWriteStatus(err), err.Error())
 		return
 	}
-	h.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": newPath, "message": messageKey(c, "api.workspace.renamed")})
 }
 
@@ -313,7 +333,7 @@ func (h *Handlers) HandleWorkspaceCopy(ctx context.Context, c *app.RequestContex
 		return
 	}
 
-	if err := h.app.BookService().Copy(req.From, req.To); err != nil {
+	if err := h.app.CopyWorkspaceItem(ctx, req.From, req.To); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			writeErrorKey(c, consts.StatusConflict, "api.workspace.targetExists")
 			return
@@ -321,7 +341,6 @@ func (h *Handlers) HandleWorkspaceCopy(ctx context.Context, c *app.RequestContex
 		writeErrorKey(c, fileWriteStatus(err), "api.workspace.copyFailed", "detail", err.Error())
 		return
 	}
-	h.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": req.To, "message": messageKey(c, "api.workspace.copied")})
 }
 
@@ -339,7 +358,7 @@ func (h *Handlers) HandleWorkspaceMove(ctx context.Context, c *app.RequestContex
 		return
 	}
 
-	if err := h.app.BookService().Move(req.From, req.To); err != nil {
+	if err := h.app.MoveWorkspaceItem(ctx, req.From, req.To); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			writeErrorKey(c, consts.StatusConflict, "api.workspace.targetExists")
 			return
@@ -347,7 +366,6 @@ func (h *Handlers) HandleWorkspaceMove(ctx context.Context, c *app.RequestContex
 		writeErrorKey(c, fileWriteStatus(err), "api.workspace.moveFailed", "detail", err.Error())
 		return
 	}
-	h.app.MaybeCreateTimedVersion(ctx)
 	writeJSON(c, consts.StatusOK, map[string]string{"path": req.To, "message": messageKey(c, "api.workspace.moved")})
 }
 

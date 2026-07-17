@@ -86,6 +86,7 @@ func newRunLedgerWithOptions(workspace string, policy RunLedgerPolicy, options R
 		"task_id":          options.TaskID,
 		"agent_kind":       options.AgentKind,
 		"session_id":       options.SessionID,
+		"review_thread_id": options.ReviewThreadID,
 		"story_id":         options.StoryID,
 		"branch_id":        options.BranchID,
 		"turn_id":          options.TurnID,

@@ -27,18 +27,21 @@ type storeFile struct {
 }
 
 func NewStore(userNovaDir, workspace string) *Store {
-	return &Store{userDir: userNovaDir, workspace: workspace}
+	return &Store{
+		userDir:   strings.TrimSpace(userNovaDir),
+		workspace: strings.TrimSpace(workspace),
+	}
 }
 
 func (s *Store) List() ([]Task, error) {
-	userTasks, err := s.readScope(ScopeUser)
+	userTasks, err := s.readScopeLocked(ScopeUser)
 	if err != nil {
 		return nil, err
 	}
 	workspaceTasks := []Task{}
 	if strings.TrimSpace(s.workspace) != "" {
 		var err error
-		workspaceTasks, err = s.readScope(ScopeWorkspace)
+		workspaceTasks, err = s.readScopeLocked(ScopeWorkspace)
 		if err != nil {
 			return nil, err
 		}
@@ -62,6 +65,12 @@ func (s *Store) Create(task Task) (Task, error) {
 	if err != nil {
 		return Task{}, err
 	}
+	path, err := s.pathForScope(normalized.Scope)
+	if err != nil {
+		return Task{}, err
+	}
+	unlock := storePathLocks.lock(path)
+	defer unlock()
 	tasks, err := s.readScope(normalized.Scope)
 	if err != nil {
 		return Task{}, err
@@ -78,8 +87,14 @@ func (s *Store) Update(id string, patch Task) (Task, error) {
 		return Task{}, fmt.Errorf("task id is required")
 	}
 	for _, scope := range s.availableScopes() {
+		path, err := s.pathForScope(scope)
+		if err != nil {
+			return Task{}, err
+		}
+		unlock := storePathLocks.lock(path)
 		tasks, err := s.readScope(scope)
 		if err != nil {
+			unlock()
 			return Task{}, err
 		}
 		for i := range tasks {
@@ -91,14 +106,18 @@ func (s *Store) Update(id string, patch Task) (Task, error) {
 			next.UpdatedAt = time.Now().UTC()
 			normalized, err := NormalizeTask(next)
 			if err != nil {
+				unlock()
 				return Task{}, err
 			}
 			tasks[i] = normalized
 			if err := s.writeScope(scope, tasks); err != nil {
+				unlock()
 				return Task{}, err
 			}
+			unlock()
 			return normalized, nil
 		}
+		unlock()
 	}
 	return Task{}, fmt.Errorf("automation task %s not found", id)
 }
@@ -108,8 +127,14 @@ func (s *Store) Delete(id string) error {
 		return fmt.Errorf("task id is required")
 	}
 	for _, scope := range s.availableScopes() {
+		path, err := s.pathForScope(scope)
+		if err != nil {
+			return err
+		}
+		unlock := storePathLocks.lock(path)
 		tasks, err := s.readScope(scope)
 		if err != nil {
+			unlock()
 			return err
 		}
 		next := tasks[:0]
@@ -122,23 +147,34 @@ func (s *Store) Delete(id string) error {
 			next = append(next, task)
 		}
 		if found {
-			return s.writeScope(scope, next)
+			err := s.writeScope(scope, next)
+			unlock()
+			return err
 		}
+		unlock()
 	}
 	return fmt.Errorf("automation task %s not found", id)
 }
 
 func (s *Store) Get(id string) (Task, error) {
 	for _, scope := range s.availableScopes() {
+		path, err := s.pathForScope(scope)
+		if err != nil {
+			return Task{}, err
+		}
+		unlock := storePathLocks.lock(path)
 		tasks, err := s.readScope(scope)
 		if err != nil {
+			unlock()
 			return Task{}, err
 		}
 		for _, task := range tasks {
 			if task.ID == id {
+				unlock()
 				return task, nil
 			}
 		}
+		unlock()
 	}
 	return Task{}, fmt.Errorf("automation task %s not found", id)
 }
@@ -151,23 +187,64 @@ func (s *Store) availableScopes() []string {
 }
 
 func (s *Store) AppendRun(id string, run RunRecord) (Task, error) {
-	task, err := s.Get(id)
-	if err != nil {
-		return Task{}, err
+	if strings.TrimSpace(id) == "" {
+		return Task{}, fmt.Errorf("task id is required")
 	}
-	task.LastRun = &run
-	nextRuns := []RunRecord{run}
-	for _, existing := range task.RecentRuns {
-		if existing.ID == run.ID {
-			continue
+	for _, scope := range s.availableScopes() {
+		path, err := s.pathForScope(scope)
+		if err != nil {
+			return Task{}, err
 		}
-		nextRuns = append(nextRuns, existing)
+		unlock := storePathLocks.lock(path)
+		tasks, err := s.readScope(scope)
+		if err != nil {
+			unlock()
+			return Task{}, err
+		}
+		for i := range tasks {
+			if tasks[i].ID != id {
+				continue
+			}
+			task := tasks[i]
+			task.LastRun = &run
+			nextRuns := []RunRecord{run}
+			for _, existing := range task.RecentRuns {
+				if existing.ID == run.ID {
+					continue
+				}
+				nextRuns = append(nextRuns, existing)
+			}
+			task.RecentRuns = nextRuns
+			if len(task.RecentRuns) > MaxRecentRuns {
+				task.RecentRuns = task.RecentRuns[:MaxRecentRuns]
+			}
+			task.UpdatedAt = time.Now().UTC()
+			normalized, normalizeErr := NormalizeTask(task)
+			if normalizeErr != nil {
+				unlock()
+				return Task{}, normalizeErr
+			}
+			tasks[i] = normalized
+			if writeErr := s.writeScope(scope, tasks); writeErr != nil {
+				unlock()
+				return Task{}, writeErr
+			}
+			unlock()
+			return normalized, nil
+		}
+		unlock()
 	}
-	task.RecentRuns = nextRuns
-	if len(task.RecentRuns) > MaxRecentRuns {
-		task.RecentRuns = task.RecentRuns[:MaxRecentRuns]
+	return Task{}, fmt.Errorf("automation task %s not found", id)
+}
+
+func (s *Store) readScopeLocked(scope string) ([]Task, error) {
+	path, err := s.pathForScope(scope)
+	if err != nil {
+		return nil, err
 	}
-	return s.Update(id, task)
+	unlock := storePathLocks.lock(path)
+	defer unlock()
+	return s.readScope(scope)
 }
 
 func (s *Store) readScope(scope string) ([]Task, error) {
@@ -227,14 +304,11 @@ func (s *Store) writeScopeFile(scope string, file storeFile) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	return durableWriteJSON(path, append(data, '\n'), 0o644)
 }
 
 func seedWorkspaceDefaultAutomations(file storeFile) storeFile {

@@ -44,7 +44,14 @@ export async function getWorkspaceTree(): Promise<unknown[]> {
   return Array.isArray(data) ? data : []
 }
 
-export async function readFile(path: string): Promise<{ path: string; content: string; revision?: string }> {
+export interface WorkspaceFileDocument {
+  workspace: string
+  path: string
+  content: string
+  revision?: string
+}
+
+export async function readFile(path: string): Promise<WorkspaceFileDocument> {
   return requestJSON(`/api/workspace/file?path=${encodeURIComponent(path)}`)
 }
 
@@ -58,11 +65,11 @@ export async function searchWorkspace(query: string, limit = 100): Promise<Works
   return Array.isArray(data.results) ? data.results : []
 }
 
-export async function saveFile(path: string, content: string, baseRevision?: string): Promise<{ path: string; message: string; revision?: string }> {
+export async function saveFile(path: string, content: string, baseRevision: string, workspace: string): Promise<{ path: string; message: string; revision?: string }> {
   return requestJSON('/api/workspace/file', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ path, content, base_revision: baseRevision || '' }),
+    body: JSON.stringify({ path, content, base_revision: baseRevision || '', workspace }),
   })
 }
 

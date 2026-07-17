@@ -1,9 +1,12 @@
 package automation
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -108,6 +111,160 @@ func TestStoreAppendRunUpdatesExistingRun(t *testing.T) {
 	}
 	if updated.RecentRuns[0].Summary != "second" || updated.LastRun == nil || updated.LastRun.Summary != "second" {
 		t.Fatalf("run was not updated in place: %#v last=%#v", updated.RecentRuns, updated.LastRun)
+	}
+}
+
+func TestStoreConcurrentUserScopeCreatesDoNotLoseTasks(t *testing.T) {
+	root := t.TempDir()
+	userDir := filepath.Join(root, "user")
+	workspaces := []string{filepath.Join(root, "one"), filepath.Join(root, "two")}
+	const count = 24
+	var wg sync.WaitGroup
+	errs := make(chan error, count)
+	for i := 0; i < count; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			_, err := NewStore(userDir, workspaces[index%len(workspaces)]).Create(Task{
+				Scope:    ScopeUser,
+				Name:     "Concurrent user task",
+				Template: TemplateCustomPrompt,
+			})
+			errs <- err
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent Create failed: %v", err)
+		}
+	}
+	tasks, err := NewStore(userDir, "").List()
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+	if len(tasks) != count {
+		t.Fatalf("task count = %d, want %d", len(tasks), count)
+	}
+	data, err := os.ReadFile(filepath.Join(userDir, "automations", "tasks.json"))
+	if err != nil {
+		t.Fatalf("read tasks JSON: %v", err)
+	}
+	var persisted storeFile
+	if err := json.Unmarshal(data, &persisted); err != nil {
+		t.Fatalf("tasks JSON is invalid after concurrent writes: %v", err)
+	}
+	if len(persisted.Tasks) != count {
+		t.Fatalf("persisted task count = %d, want %d", len(persisted.Tasks), count)
+	}
+}
+
+func TestStoreConcurrentAppendRunPreservesEveryRun(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "workspace")
+	userDir := filepath.Join(root, "user")
+	store := NewStore(userDir, workspace)
+	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Review", Template: TemplateReview})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	const count = 12
+	var wg sync.WaitGroup
+	errs := make(chan error, count)
+	for i := 0; i < count; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			_, err := NewStore(userDir, workspace).AppendRun(task.ID, RunRecord{
+				ID:      fmt.Sprintf("run-%02d", index),
+				TaskID:  task.ID,
+				Scope:   ScopeWorkspace,
+				Trigger: TriggerManual,
+				Status:  RunStatusSuccess,
+			})
+			errs <- err
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent AppendRun failed: %v", err)
+		}
+	}
+	updated, err := store.Get(task.ID)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if len(updated.RecentRuns) != count {
+		t.Fatalf("recent run count = %d, want %d", len(updated.RecentRuns), count)
+	}
+	seen := make(map[string]bool, count)
+	for _, run := range updated.RecentRuns {
+		seen[run.ID] = true
+	}
+	for i := 0; i < count; i++ {
+		if !seen[fmt.Sprintf("run-%02d", i)] {
+			t.Fatalf("run-%02d was lost: %#v", i, updated.RecentRuns)
+		}
+	}
+}
+
+func TestStoreConcurrentUserInboxWritesRemainWorkspaceScoped(t *testing.T) {
+	root := t.TempDir()
+	userDir := filepath.Join(root, "user")
+	workspaces := []string{filepath.Join(root, "one"), filepath.Join(root, "two")}
+	const count = 20
+	var wg sync.WaitGroup
+	errs := make(chan error, count)
+	for i := 0; i < count; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			_, err := NewStore(userDir, workspaces[index%2]).CreateInboxItem(TriggerInboxItem{
+				TaskID:       "shared-user-task",
+				TriggerID:    "batch",
+				Scope:        ScopeUser,
+				ActionPolicy: ActionPolicyConfirm,
+				NotifyPolicy: NotifyPolicyInbox,
+				Title:        fmt.Sprintf("Item %d", index),
+				Fingerprint:  fmt.Sprintf("fp-%d", index),
+			})
+			errs <- err
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent CreateInboxItem failed: %v", err)
+		}
+	}
+	for _, workspace := range workspaces {
+		items, err := NewStore(userDir, workspace).ListInbox()
+		if err != nil {
+			t.Fatalf("ListInbox(%s) failed: %v", workspace, err)
+		}
+		if len(items) != count/2 {
+			t.Fatalf("workspace %s inbox count = %d, want %d", workspace, len(items), count/2)
+		}
+		for _, item := range items {
+			if canonicalStoreRoot(item.Workspace) != canonicalStoreRoot(workspace) {
+				t.Fatalf("workspace %s received foreign inbox item: %#v", workspace, item)
+			}
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(userDir, "automations", "inbox.json"))
+	if err != nil {
+		t.Fatalf("read inbox JSON: %v", err)
+	}
+	var persisted inboxFile
+	if err := json.Unmarshal(data, &persisted); err != nil {
+		t.Fatalf("inbox JSON is invalid after concurrent writes: %v", err)
+	}
+	if len(persisted.Items) != count {
+		t.Fatalf("persisted inbox count = %d, want %d", len(persisted.Items), count)
 	}
 }
 

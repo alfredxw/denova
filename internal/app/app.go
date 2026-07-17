@@ -36,6 +36,8 @@ type App struct {
 	activeLoreImageTask    *Task
 	activeAutomationTasks  map[string]*Task
 	activeAutomationRuns   map[string]automationRunState
+	activeAutomationClaims map[string]*automationRunClaim
+	automationTriggers     *automationTriggerCoordinator
 	workspaceDirectorTasks *workspaceDirectorTaskGroup
 	directorGenerator      interactiveDirectorGenerator
 
@@ -121,6 +123,7 @@ var ErrNoWorkspace = fmt.Errorf("尚未选择书籍工作区")
 
 func (a *App) ensureServices() {
 	a.servicesOnce.Do(func() {
+		a.automationTriggers = newAutomationTriggerCoordinator()
 		a.runtimeManager = &WorkspaceRuntimeManager{app: a}
 		a.chatApp = &ChatAppService{app: a}
 		a.interactiveApp = &InteractiveAppService{app: a}
@@ -217,6 +220,10 @@ func (a *App) directorTasksForWorkspace(workspace string) *workspaceDirectorTask
 
 // Close stops background work owned by the current workspace runtime.
 func (a *App) Close() {
+	a.ensureServices()
+	if a.automationTriggers != nil {
+		a.automationTriggers.Close()
+	}
 	a.stopWorkspaceDirectorTasks()
 }
 

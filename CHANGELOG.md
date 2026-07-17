@@ -11,6 +11,77 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 修复写作模式发送消息后输入框内容（如 initPrompt 预填提示词）未被清空的问题：根因是 TipTap 编辑器在 `disabled`（AI 回复中）状态下，value→editor 同步使用的 `setContent(空 JSON)` 不会更新 editor DOM，改用 TipTap 内置 `clearContent` 命令确保发送后输入框被可靠清空。
 - Fix: the composer input (e.g. initPrompt prefill) was not cleared after sending in writing mode. Root cause: TipTap's `setContent(empty JSON)` used by the value→editor sync does not update the editor DOM while `disabled` (AI streaming); switched to TipTap's built-in `clearContent` command to reliably clear the input after a send.
 
+### Added
+
+- 写作模式新增持久化 Change Review：Agent 每轮写入会在对应对话末尾形成变更摘要卡；Review 在中间编辑区使用 Monaco 展示累计 Diff，默认 Unified、可切 Split，并支持自适应文件导航、UTF-8 inline comments、评论解决/删除，以及跨重启保留的 Undo/Redo。
+- Writing Mode adds durable Change Review. Each Agent run ends with an in-conversation change summary, while the central editor uses Monaco for a cumulative diff (Unified by default, with Split available), adaptive file navigation, UTF-8 inline comments, comment resolution/deletion, and restart-safe undo/redo.
+- 审阅评论可统一引用到创作 Agent 输入框；服务端只接受 thread/comment IDs 并从当前工作区账本解析可信上下文。后续 Agent run 继承同一 Review Thread，新的修改持续叠加到累计 Diff，同时保留每轮独立的 Undo 边界。
+- Review comments can be attached together above the Writing Agent composer. The server accepts only thread/comment IDs and resolves trusted context from the active workspace ledger; follow-up Agent runs remain in the same Review Thread and accumulate into the diff while retaining independent per-run Undo boundaries.
+- 新增 workspace change 事件账本与内容寻址 blob：正文不内联进 JSONL 或模型上下文；SHA-256 revision、预写事件、原子 rename、`fsync` 与启动恢复共同保护作品内容。
+- Added a workspace-change event ledger with content-addressed blobs. Manuscript text is not inlined into JSONL or model context; SHA-256 revisions, prepared events, atomic rename, `fsync`, and startup recovery protect workspace content.
+- 跨文件 Review、Undo 与 Redo 新增 group operation WAL：全部路径的 before/after blob 与最终投影会在首次写入前持久化，崩溃后可确定性继续；外部分叉进入显式 conflict，不被自动覆盖。
+- Cross-file Review, Undo, and Redo now use a group-operation WAL. Every path's before/after blobs and final projection are durable before the first write, allowing deterministic crash recovery while preserving externally diverged content as an explicit conflict.
+
+### Changed
+
+- 写作与游戏 Agent 输入区的模型选择器改为无边框的“模型文字 + 下拉箭头”，移除重复图标和芯片外观；同一菜单现在可快速设置跟随配置、低、中或高 reasoning effort，当前强度会以弱化文字紧跟模型名展示。
+- The shared Writing and Game Agent model selector is now a borderless model label with a dropdown chevron, removing the redundant icon and pill treatment. The same menu can quickly choose inherited, low, medium, or high reasoning effort, with the active effort shown as subdued text beside the model name.
+- Unified Review 改为 Monaco 单模型投影：整页只保留一列带增删颜色的行号，每个可见源码行在悬停时都提供行级 `+` 评论入口；变更竖线位于行号左侧，替换内容提供 word diff。Unified 与 Split 共享审阅主题，深色行背景分别为 `rgb(31,49,36)` 和 `rgb(60,31,27)`。轮次选择器改用组件库菜单，默认展示累计变更，也可切换任一历史 Agent 轮次。
+- Unified Review now uses a single Monaco model projection with one color-coded line-number gutter and a hover `+` comment action on every visible source line. Change bars sit to the left of line numbers, and replacements retain word-level diffs. Unified and Split share a review theme whose dark line backgrounds are `rgb(31,49,36)` and `rgb(60,31,27)`. The shared run menu defaults to cumulative changes and can open any historical Agent run.
+- 中央 Change Review 改为单页多文件滚动：每个文件可独立折叠，工具栏可一键折叠/展开全部 Diff；右侧文件导航只负责跳转并可手动收起，所选 Agent 轮次不再随滚动文件隐式切换。编辑器工具栏不再重复提供独立 Review 入口，统一从 Agent 变更摘要卡进入。
+- Central Change Review now uses one multi-file scroll surface. Each file can be collapsed independently, the toolbar can collapse or expand every diff, and the manually hideable right navigator only jumps between files without changing the selected Agent run. The redundant editor-toolbar Review entry has been removed; review opens from the Agent change summary.
+- Beta 不兼容：`edit_file` 改为单文件批量协议 `{file_path, edits[]}`；`read_file` 不再向 Agent 暴露 revision，`edit_file` / `write_file` 也不再接受 `base_revision` 或 `missing`。写工具会在调用时内部获取当前 revision，并由变更服务在提交前复核；所有编辑项基于同一初始快照验证，缺失、歧义或重叠会使整批零写入失败。不同文件仍可在同一 Agent 轮次分别调用并聚合结果。
+- Beta breaking: `edit_file` now uses the single-file batch contract `{file_path, edits[]}`. `read_file` no longer exposes revisions to the Agent, and `edit_file` / `write_file` no longer accept `base_revision` or `missing`. Write tools capture the current revision internally at call time and the change service revalidates it before commit; every edit is validated against one initial snapshot, and missing, ambiguous, or overlapping edits reject the whole batch without writing. Independent files can still be edited in the same Agent turn with aggregated results.
+- Agent 同轮工具调度改为工作区级读写门：已证明只读的文件、资料和搜索工具继续并行，`edit_file`、`write_file`、Shell 与未知副作用工具独占执行；流式工具持锁到结果流真正结束。
+- Same-turn Agent scheduling now uses a workspace-scoped read/write gate: proven read-only file, lore, and search tools remain parallel, while `edit_file`, `write_file`, Shell, and unknown-effect tools execute exclusively; streaming tools retain the lease until their result stream actually finishes.
+- 编辑器文件 revision 从 `mtime:size` 改为精确内容的 `sha256:` 哈希；本地自动保存通过同一变更服务做 CAS 与原子写，但继续使用 TipTap 本地历史，不为每次输入制造 Review 记录。
+- Editor file revisions now use exact `sha256:` content hashes instead of `mtime:size`. Local autosaves use the same change service for CAS and atomic writes while retaining TipTap-local history without creating a Review entry for every keystroke.
+- 工作区、工具调度门与变更服务统一使用规范真实路径；通过符号链接别名打开同一作品不再产生多把锁或多份 ledger identity。
+- Workspace runtime, tool gates, and change services now share one canonical real-path identity, so opening the same work through a symbolic-link alias cannot create separate locks or ledger identities.
+- 文件树创建/删除/重命名/复制/移动、版本恢复与手动版本快照现在和编辑器、Agent、Review 共用同一工作区租约；Agent Shell 固定前台运行并绑定工作区 cwd，无法安全协调生命周期的后台 Shell 模式在本 Beta 中不再支持。
+- File-tree create/delete/rename/copy/move, version restore, and manual version snapshots now share the workspace lease used by the editor, Agent, and Review. Agent Shell runs in the foreground with the workspace as cwd; background Shell mode, whose lifetime cannot be coordinated safely, is no longer supported in this beta.
+- 自动化运行占用、触发状态、定时进度与 Inbox 去重现在按 canonical workspace 隔离；同一工作区的 mutation 检查会串行合并，App 关闭时取消并等待后台 evaluator，JSON Store 通过路径锁和原子持久化避免并发丢更新与半写文件。
+- Automation run claims, trigger state, schedule progress, and Inbox deduplication are now isolated by canonical workspace. Mutation checks for one workspace are serialized and coalesced, App shutdown cancels and drains evaluators, and path-locked atomic Store writes prevent concurrent lost updates and torn JSON.
+
+### Fixed
+
+- Agent 消息虚拟列表不再把每一行误判为最后一项；变更摘要、已发送引用消息及其他相邻消息块之间稳定保留 `16px` 纵向间距，只有真实列表末项取消额外留白。
+- Agent message virtualization no longer treats every row as the final item. Change summaries, sent-reference messages, and other adjacent message blocks now retain a stable `16px` vertical gap, while only the actual final row removes trailing space.
+- 发送 Agent 消息时，文件、资料、风格、文本选区与审阅意见引用会原子地从输入区转入已发送的用户消息，并随会话持久化；发送失败会恢复原引用。审阅意见在用户消息落盘后由工作区账本批量消费，已发送的评论不再残留在 Diff 中。
+- File, lore, style, text-selection, and review-comment references now move atomically from the composer into the sent user message and persist with session history; failed submissions restore them. Once the user message is durable, referenced review comments are consumed as one workspace-ledger operation and disappear from the diff.
+- Agent 变更摘要卡的“审阅”现在携带对应变更组；即使多个修改轮次属于同一审阅线程，点击第二组或后续组也会直接打开该轮 Diff，而不是停留在累计变更或上一轮。
+- Review actions on Agent change-summary cards now carry the exact change group, so later cards in the same review thread open their own diff instead of remaining on cumulative changes or the previously selected round.
+- Review 的增删行与词级 Diff 染色不再覆盖 Monaco 选区或拦截鼠标命中；统一与并排模式现在都能在染色内容上首次拖拽、连续选择并复制文本，同时保持 Diff 背景色与词级高亮。
+- Review diff fills no longer cover Monaco selections or intercept pointer hit-testing. Colored content can now be selected and copied on the first drag and in subsequent gestures in both Unified and Split layouts without losing line or word-level diff highlighting.
+- Review 多文件滚动现在由用户手势独占：进入审阅、当前文件同步、评论高度变化、输入聚焦与 Home/End 都不会再主动定位；浏览器 scroll anchoring 已关闭，评论 textarea 使用 `preventScroll` 聚焦，含已提交评论的展开文件不会因离开视口而卸载 Monaco。只有用户点击右侧/紧凑文件导航时才执行一次文件跳转，滚动经过短评论或超长评论都保持原位置。
+- Review's multi-file scroll is now user-owned. Entering Review, active-file synchronization, comment height changes, input focus, and Home/End no longer trigger positioning; browser scroll anchoring is disabled, comment textareas focus with `preventScroll`, and expanded files with submitted comments keep Monaco mounted offscreen. A single file jump is performed only after the user selects the desktop or compact file navigator, so scrolling past short or very long comments preserves the current position.
+- Review 评论输入聚焦时不再显示浏览器默认的蓝色直角 outline；完整 Diff 使用稳定、可见的纵向滚动槽。延迟挂载的 Monaco 会先按真实宿主尺寸布局，未聚焦文件在鼠标按下阶段使用精确命中位置和 `preventScroll` 获得焦点，不再跳到首字符或带动外层自动滚动。审阅模式下项目侧栏会真正折叠到 0，避免把创作 Agent 的最小宽度从 `360px` 错误放大到约 `462px`；Agent 右栏使用面板库原生的像素宽度保持策略，拖拽实时跟手，关闭后也可从 Review 工具栏重新打开。
+- Review comment inputs no longer show the browser's default square blue focus outline, and the full Diff now has a stable, visible vertical scrollbar gutter. Lazily mounted Monaco instances are laid out from their real host size, and an unfocused file uses the exact pointer hit plus `preventScroll` during mouse-down, preventing first-character jumps and outer-page auto-scroll. Review now truly collapses the project sidebar to zero so it cannot inflate the Writing Agent minimum from `360px` to about `462px`; the Agent panel uses native pixel-preserving resizing and can be reopened from the Review toolbar after being closed.
+- Review 的新评论与已提交评论现在共用同一套紧凑卡片正文样式，编辑时直接原位输入，不再嵌套额外圆角文本框；Monaco 会跟随卡片真实高度重新布局，避免覆盖后续 Diff。不同锚点可同时保留独立草稿，打开一个输入框不再禁用其他行的评论入口或已提交评论操作。
+- New and submitted Review comments now share the same compact card body treatment, with in-place editing instead of a nested rounded textarea. Monaco tracks the card's actual height so it cannot cover later diff lines. Independent anchors can keep simultaneous drafts, and opening one input no longer disables other line-comment entries or submitted-comment actions.
+- Review 的周期性数据刷新或父级重渲染不再先移除再重建语义未变化的 Monaco comment view zone；行内评论输入框会保持挂载、焦点、草稿内容与滚动位置，消除间歇性抖动和输入中断。
+- Periodic Review refreshes and parent re-renders no longer remove and recreate semantically unchanged Monaco comment view zones. Inline comment inputs retain their mount, focus, draft text, and scroll position, eliminating intermittent layout jumps and interrupted typing.
+- Review 文件高度现在随 Monaco 实际换行内容与 inline comment 区域增长，由外层单一滚动页从首文件连续滚动到末文件；评论新建或编辑期间会冻结当前 Review 快照，后台工作区事件仍可刷新缓存，但不再打断输入，草稿结束后才采用新 revision。
+- Review file height now follows Monaco's wrapped content and inline-comment zones so the outer page scrolls continuously from the first file through the last. Creating or editing a comment freezes the displayed review snapshot: background workspace events may refresh the cache, but cannot interrupt input, and the new revision is adopted only after the draft closes.
+- Review 聚焦中间工作面时会保留用户已调整的创作 Agent 面板像素宽度，退出后恢复原可拖拽布局；空间不足时文件导航改为组件库下拉列表，不再挤成横向文件条。
+- Focusing the central Review surface now preserves the user-sized Writing Agent panel width and restores the normal resizable layout on exit. When space is constrained, file navigation becomes a shared dropdown instead of a compressed horizontal strip.
+- Review 文件跳转不再卸载并替换唯一的 Monaco 实例；每个文件使用稳定的模型身份，邻近视口或被跳转到的 Diff 会按需初始化，评论草稿离开视口后仍会保留，修复首次跳转空白和高亮丢失。即使 Agent 正在追加变更或存在未提交的 inline comment 草稿，Review 右上角关闭按钮也始终可用。
+- Review file jumps no longer replace one shared Monaco instance. Each file has stable model identity, diffs initialize near the viewport or immediately on jump, and comment drafts stay mounted offscreen, preventing blank first jumps and lost highlighting. The Review close button also remains available while the Agent is appending changes or an inline-comment draft is open.
+- Agent 变更到达时，干净编辑器会建立新的 Undo 历史边界；存在未保存草稿时不再静默覆盖，而是保留本地内容并提供显式“保留本地 / 使用工作区版本”冲突处理。
+- When Agent changes arrive, a clean editor establishes a new undo-history boundary. Unsaved drafts are no longer overwritten silently; local content is preserved behind an explicit keep-local/use-workspace conflict decision.
+- Nova/Git 版本快照与恢复现在排除并保护 `.denova/changes` 和旧版 `.nova/changes`，避免作品回滚同时回滚或删除审阅、评论和撤销历史。
+- Nova/Git snapshots and restores now exclude and protect `.denova/changes` and legacy `.nova/changes`, preventing manuscript restoration from rewinding or deleting review, comment, and undo history.
+- 编辑器自动保存现在绑定读取时的工作区身份并取消旧工作区队列；跨工作区响应、过期 SSE 与乱序刷新不会再覆盖当前草稿或错误刷新同名相对路径。
+- Editor autosave is now bound to the workspace identity captured at read time and cancels stale workspace queues; cross-workspace responses, stale SSE events, and out-of-order refreshes can no longer overwrite the active draft or refresh a same-named relative path in the wrong workspace.
+- 当文件可见更新但目录或 journal 尚未完成持久化时，现在返回可重试的 `durability_pending`；后续写入先恢复未完成操作，且仍会重新校验 revision。
+- Visible mutations whose directory or journal durability is not yet finalized now return retryable `durability_pending`; subsequent writes recover pending work first and still revalidate the current revision.
+- Reject 在文件 head 已变化时只通过唯一、完全相等的 diff 区段映射原 hunk；原位置消失但其他位置存在相同文本时会安全报冲突。未知 ledger 事件也会阻止回放，历史正文仅按需从 blob hydrate，固定大小工具回执不会再随批量 edit 数量膨胀。
+- Reject now maps recorded hunks only through unique exact diff regions after the file head changes, safely conflicting when identical text survives only elsewhere. Unknown ledger events also stop replay, historical bodies hydrate from blobs only on demand, and fixed-size tool receipts no longer grow with batch edit count.
+- 编辑器保存、Reject、Undo/Redo 在完整提交后的自动化触发绑定不可变工作区运行时快照；即使用户随后切换作品，异步检查与自动执行也不会漂移到新工作区。
+- Post-commit automation triggers from editor saves, Reject, and Undo/Redo are bound to immutable workspace runtime snapshots, so asynchronous checks and auto-runs cannot drift into a newly selected work.
+- Review 回执现在只包含本次决定真正修改的路径；自动化触发、SSE 失效与前端刷新不再错误复用整个 group 的历史路径，选择性 Reject 也只重载实际受影响文件。
+- Review receipts now contain only paths actually changed by the current decision. Automation triggers, SSE invalidation, and frontend refresh no longer reuse a group's historical path set, and selective Reject reloads only affected files.
+
 ## [v0.2.0] - 2026-07-15
 
 ### Brief / 简要说明

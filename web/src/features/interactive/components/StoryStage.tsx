@@ -1443,7 +1443,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                         variant="outline"
                         size="icon-sm"
                         className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-45"
-                        disabled={streaming || branchTerminal || directorBlocking || (!storyId && tokenUsageMessages.length === 0 && !workspace)}
+                        disabled={streaming || branchTerminal || directorBlocking || (!storyId && tokenUsageMessages.length === 0)}
                         aria-label={t('chat.input.actions')}
                         title={t('chat.input.actions')}
                       >
@@ -1451,7 +1451,6 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="start" side="top" className="w-80 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2 text-[var(--nova-text)]">
-                      <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming || directorBlocking} />
                       <InteractiveImageSettingsMenu story={story} disabled={!storyId || streaming || directorBlocking || !onImageSettingsChange} onChange={onImageSettingsChange} />
                       <StoryImagePresetMenu story={story} presets={imagePresets} disabled={!storyId || streaming || directorBlocking || !onImageSettingsChange} onChange={onImageSettingsChange} />
                       <DropdownMenuItem
@@ -1486,6 +1485,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                       <Plus className="h-3.5 w-3.5" />
                     </Button>
                   ) : null}
+                  <ModelProfileSwitcher agentKey="interactive_story" workspace={workspace} disabled={streaming || directorBlocking} />
                 </>
               }
               submitControl={

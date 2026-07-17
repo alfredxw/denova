@@ -36,6 +36,7 @@ type ChatRequest struct {
 	StyleScenes    []string           `json:"style_scenes"`
 	Selections     []TextSelectionRef `json:"selections"`
 	IDEContext     IDEContextRef      `json:"ide_context,omitempty"`
+	ReviewFeedback ReviewFeedbackRef  `json:"review_feedback,omitempty"`
 	PlanMode       bool               `json:"plan_mode"`
 	WritingSkill   string             `json:"writing_skill"`
 	ImagePresetID  string             `json:"image_preset_id"`
@@ -48,6 +49,10 @@ type ChatRequest struct {
 
 	// ImagePreset is resolved by the app layer from ImagePresetID or workspace settings.
 	ImagePreset ImagePresetContext `json:"-"`
+
+	// ResolvedReviewFeedback is populated by the app layer from the canonical
+	// workspace change ledger. Clients may submit IDs only, never comment text.
+	ResolvedReviewFeedback ReviewFeedbackContext `json:"-"`
 }
 
 // StyleRule 是 prompts.StyleRule 的镜像，避免调用方直接依赖 prompts 包。
@@ -158,6 +163,7 @@ func (r *Runtime) Run(
 		"task_id":          options.TaskID,
 		"agent_kind":       options.AgentKind,
 		"session_id":       options.SessionID,
+		"review_thread_id": options.ReviewThreadID,
 		"story_id":         options.StoryID,
 		"branch_id":        options.BranchID,
 		"turn_id":          options.TurnID,
@@ -172,14 +178,17 @@ func (r *Runtime) Run(
 	if runLedger != nil {
 		runID = runLedger.ID()
 	}
+	if runID == "" {
+		runID = options.TaskID
+	}
 	traceCtx := ContextWithRunTrace(ctx, runID, runLedger, rootSpanID)
 	checkpointID := options.checkpointID(runID)
-	observer := newRunObserver(runLedger, rootSpanID)
+	observer := newRunObserverWithIdentity(runLedger, rootSpanID, runID, options.SessionID, options.ReviewThreadID)
 	usageCollector := newRunTokenUsageCollector(runID, options.AgentKind)
 	if runLedger != nil {
 		defer func() {
 			if err := runLedger.Close(); err != nil {
-				runLogger.Warn("run_ledger_close_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
+				runLogger.Warn("run_ledger_close_failed", slog.String("run_id", runID), slog.Any("error", err))
 			}
 		}()
 	}
@@ -193,7 +202,7 @@ func (r *Runtime) Run(
 		traceMetadata := runTraceMetadataForConversation(options, conversation)
 		if !traceMetadata.empty() {
 			if err := runLedger.Record("run_context", traceMetadata.record()); err != nil {
-				runLogger.Warn("run_ledger_context_metadata_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
+				runLogger.Warn("run_ledger_context_metadata_failed", slog.String("run_id", runID), slog.Any("error", err))
 			}
 		}
 		if rootSpan != nil {
@@ -207,13 +216,10 @@ func (r *Runtime) Run(
 			})
 		}
 		if err := runLedger.RecordFinish(status, reason, generatedBytes); err != nil {
-			runLogger.Warn("run_ledger_finish_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
+			runLogger.Warn("run_ledger_finish_failed", slog.String("run_id", runID), slog.Any("error", err))
 		}
 	}
 
-	if runID == "" {
-		runID = options.TaskID
-	}
 	assistantMetadata := session.MessageMetadata{
 		RunID:         runID,
 		AgentKind:     options.AgentKind,
@@ -232,15 +238,16 @@ func (r *Runtime) Run(
 		mutations.Observe(ev)
 		recorder.Record(ev)
 		if err := runLedger.RecordEvent(ev); err != nil {
-			runLogger.Warn("run_ledger_event_failed", slog.String("run_id", runLedger.ID()), slog.String("event_type", ev.Type), slog.Any("error", err))
+			runLogger.Warn("run_ledger_event_failed", slog.String("run_id", runID), slog.String("event_type", ev.Type), slog.Any("error", err))
 		}
 		rawEmit(ev)
 	}
 	emit(Event{Type: "run_state", Data: map[string]string{
-		"run_id":           runLedger.ID(),
+		"run_id":           runID,
 		"task_id":          options.TaskID,
 		"agent_kind":       options.AgentKind,
 		"session_id":       options.SessionID,
+		"review_thread_id": options.ReviewThreadID,
 		"story_id":         options.StoryID,
 		"branch_id":        options.BranchID,
 		"turn_id":          options.TurnID,
@@ -254,6 +261,7 @@ func (r *Runtime) Run(
 		"task_id":          options.TaskID,
 		"agent_kind":       options.AgentKind,
 		"session_id":       options.SessionID,
+		"review_thread_id": options.ReviewThreadID,
 		"story_id":         options.StoryID,
 		"branch_id":        options.BranchID,
 		"turn_id":          options.TurnID,
@@ -268,7 +276,7 @@ func (r *Runtime) Run(
 		"writing_skill":    req.WritingSkill,
 		"checkpoint_id":    checkpointID,
 	}); err != nil {
-		runLogger.Warn("run_ledger_start_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
+		runLogger.Warn("run_ledger_start_failed", slog.String("run_id", runID), slog.Any("error", err))
 	}
 	var pendingInterruption *session.Interruption
 	if shouldResumeInterruptedRequest(req.Message) {
@@ -290,6 +298,9 @@ func (r *Runtime) Run(
 
 	agentMessage := composition.AgentMessage
 	contextLog := composition.ContextLog
+	if setter, ok := conversation.(UserMessageReferencesSetter); ok {
+		setter.SetUserMessageReferences(userMessageReferencesForRequest(req))
+	}
 
 	history, err := conversation.PrepareMessages(originalMessage, agentMessage)
 	if err != nil {
@@ -297,6 +308,19 @@ func (r *Runtime) Run(
 		finishRun("error", err.Error(), 0)
 		emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return
+	}
+	if options.OnUserMessageCommitted != nil {
+		if err := options.OnUserMessageCommitted(traceCtx); err != nil {
+			runLogger.Error("commit_user_message_side_effect_failed", slog.Any("error", err))
+			finishRun("error", err.Error(), 0)
+			emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
+			return
+		}
+		emit(Event{Type: "workspace_change", Data: map[string]interface{}{
+			"workspace":        options.Workspace,
+			"review_thread_id": options.ReviewThreadID,
+			"action":           "review_feedback_consumed",
+		}})
 	}
 	if compactor, ok := conversation.(ContextCompactionConversation); ok {
 		compactionStarted := time.Now()
@@ -327,7 +351,7 @@ func (r *Runtime) Run(
 				"context_window_tokens":       compactionResult.ContextWindowTokens,
 				"threshold":                   compactionResult.Threshold,
 			}); err != nil {
-				runLogger.Warn("run_ledger_context_compaction_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
+				runLogger.Warn("run_ledger_context_compaction_failed", slog.String("run_id", runID), slog.Any("error", err))
 			}
 			RecordCompletedTraceSpan(traceCtx, "context_compaction", compactionStarted, "success", map[string]any{
 				"phase":                   compactionResult.Phase,
@@ -343,7 +367,7 @@ func (r *Runtime) Run(
 	}
 	contextLedgerParts := contextLedgerPartsForConversation(contextLog, conversation, history)
 	if err := runLedger.RecordContext(contextLedgerParts); err != nil {
-		runLogger.Warn("run_ledger_context_failed", slog.String("run_id", runLedger.ID()), slog.Any("error", err))
+		runLogger.Warn("run_ledger_context_failed", slog.String("run_id", runID), slog.Any("error", err))
 	}
 	RecordCompletedTraceSpan(traceCtx, "context_build", contextBuildStarted, "success", map[string]any{
 		"history_messages":    len(history),
@@ -536,6 +560,24 @@ func (r *Runtime) Run(
 			} else if target := parseGeneratedImageToolTarget(mv.Message.ToolName, fullToolContent); target != "" {
 				data["target"] = target
 			}
+			if receipt, ok := parseWorkspaceChangeToolReceipt(mv.Message.ToolName, fullToolContent); ok {
+				data["workspace_change"] = receipt
+				workspaceChangeData := eventMeta.appendTo(map[string]interface{}{
+					"id":               receipt.ChangeSetID,
+					"workspace":        receipt.Workspace,
+					"change_group_id":  receipt.ChangeGroupID,
+					"review_thread_id": receipt.ReviewThreadID,
+					"change_set_id":    receipt.ChangeSetID,
+					"path":             receipt.Path,
+					"affected_paths":   []string{receipt.Path},
+					"base_revision":    receipt.BaseRevision,
+					"revision":         receipt.Revision,
+					"review_status":    receipt.ReviewStatus,
+					"apply_state":      receipt.ApplyState,
+					"workspace_change": receipt,
+				})
+				emit(Event{Type: "workspace_change", Data: workspaceChangeData})
+			}
 			toolContextRecorder.RecordToolResult(mv.Message.ToolName, mv.Message.ToolCallID, content, eventMeta)
 			emit(Event{Type: "tool_result", Data: data})
 			continue
@@ -597,13 +639,14 @@ func (r *Runtime) Run(
 		runLogger.Error("persist_assistant_failed", slog.Any("error", persistErr), slog.Int("generated_bytes", generatedBytes))
 		finishRun("error", persistErr.Error(), generatedBytes)
 		emit(Event{Type: "run_state", Data: map[string]string{
-			"run_id":          runLedger.ID(),
-			"task_id":         options.TaskID,
-			"agent_kind":      options.AgentKind,
-			"session_id":      options.SessionID,
-			"root_agent_name": options.RootAgentName,
-			"phase":           "finished",
-			"status":          "error",
+			"run_id":           runID,
+			"task_id":          options.TaskID,
+			"agent_kind":       options.AgentKind,
+			"session_id":       options.SessionID,
+			"review_thread_id": options.ReviewThreadID,
+			"root_agent_name":  options.RootAgentName,
+			"phase":            "finished",
+			"status":           "error",
 		}})
 		emit(Event{Type: "error", Data: map[string]string{"message": fmt.Sprintf("生成结果持久化失败: %v", persistErr)}})
 		return
@@ -628,13 +671,14 @@ func (r *Runtime) Run(
 	runLogger.Info("run_completed")
 	finishRun("success", "", generatedBytes)
 	emit(Event{Type: "run_state", Data: map[string]string{
-		"run_id":          runLedger.ID(),
-		"task_id":         options.TaskID,
-		"agent_kind":      options.AgentKind,
-		"session_id":      options.SessionID,
-		"root_agent_name": options.RootAgentName,
-		"phase":           "finished",
-		"status":          "success",
+		"run_id":           runID,
+		"task_id":          options.TaskID,
+		"agent_kind":       options.AgentKind,
+		"session_id":       options.SessionID,
+		"review_thread_id": options.ReviewThreadID,
+		"root_agent_name":  options.RootAgentName,
+		"phase":            "finished",
+		"status":           "success",
 	}})
 	emit(Event{Type: "done", Data: map[string]string{}})
 }

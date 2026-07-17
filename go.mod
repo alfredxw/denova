@@ -15,6 +15,7 @@ require (
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/openai/openai-go/v3 v3.41.0
 	github.com/pelletier/go-toml/v2 v2.4.0
+	github.com/sergi/go-diff v1.4.0
 	golang.org/x/crypto v0.53.0
 	golang.org/x/text v0.38.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -61,7 +62,6 @@ require (
 	github.com/nikolalohinski/gonja v1.5.3 // indirect
 	github.com/pjbgf/sha1cd v0.6.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/skeema/knownhosts v1.3.2 // indirect
 	github.com/slongfield/pyfmt v0.0.0-20220222012616-ea85ff4c361f // indirect

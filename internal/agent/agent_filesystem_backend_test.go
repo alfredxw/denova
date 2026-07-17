@@ -120,13 +120,13 @@ func TestAgentFilesystemBackendDoesNotUsePartialPrefixMatch(t *testing.T) {
 	}
 }
 
-func newTestAgentFilesystemBackend(t *testing.T) filesystem.Backend {
+func newTestAgentFilesystemBackend(t *testing.T, workspaces ...string) filesystem.Backend {
 	t.Helper()
 	inner, err := localbk.NewBackend(context.Background(), &localbk.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newAgentFilesystemBackend(inner)
+	return newAgentFilesystemBackend(inner, workspaces...)
 }
 
 type capturingReadBackend struct {

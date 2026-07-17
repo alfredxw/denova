@@ -17,20 +17,22 @@ const (
 
 // RunOptions identifies one Agent run across runtime, trace, and UI surfaces.
 type RunOptions struct {
-	AgentKind           string
-	RootAgentName       string
-	TaskID              string
-	SessionID           string
-	StoryID             string
-	BranchID            string
-	TurnID              string
-	MaintenanceTask     string
-	Workspace           string
-	Mode                string
-	IdleTimeout         time.Duration
-	ToolResultMaxBytes  int
-	SystemPromptLog     SystemPromptCompositionLog
-	OnMutationsVerified func(context.Context, []ToolMutation, PostRunVerification)
+	AgentKind              string
+	RootAgentName          string
+	TaskID                 string
+	SessionID              string
+	ReviewThreadID         string
+	StoryID                string
+	BranchID               string
+	TurnID                 string
+	MaintenanceTask        string
+	Workspace              string
+	Mode                   string
+	IdleTimeout            time.Duration
+	ToolResultMaxBytes     int
+	SystemPromptLog        SystemPromptCompositionLog
+	OnMutationsVerified    func(context.Context, []ToolMutation, PostRunVerification)
+	OnUserMessageCommitted func(context.Context) error
 }
 
 func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
@@ -44,6 +46,7 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 	}
 	o.TaskID = strings.TrimSpace(o.TaskID)
 	o.SessionID = strings.TrimSpace(o.SessionID)
+	o.ReviewThreadID = strings.TrimSpace(o.ReviewThreadID)
 	o.StoryID = strings.TrimSpace(o.StoryID)
 	o.BranchID = strings.TrimSpace(o.BranchID)
 	o.TurnID = strings.TrimSpace(o.TurnID)

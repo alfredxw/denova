@@ -152,7 +152,7 @@ func TestDisplayRecorderKeepsIDEEditFileChapterArgs(t *testing.T) {
 		pendingToolIDs: map[string]string{},
 	}
 
-	args := `{"file_path":"chapters/ch01.md","old_string":"旧段落","new_string":"新段落"}`
+	args := `{"file_path":"chapters/ch01.md","edits":[{"id":"paragraph-1","old_string":"旧段落","new_string":"新段落"}]}`
 	recorder.Record(Event{Type: "tool_call", Data: map[string]interface{}{
 		"agent_kind": AgentKindIDE,
 		"id":         "call-1",

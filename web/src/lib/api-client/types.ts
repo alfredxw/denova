@@ -63,6 +63,16 @@ export interface ChatMessage {
   created_at?: string
   turn_versions?: { turn_id: string; ts: string; current?: boolean }[]
   turn_version_index?: number
+  user_references?: UserMessageReference[]
+}
+
+export interface UserMessageReference {
+  kind: 'file' | 'lore' | 'style' | 'selection' | 'review_comment'
+  id?: string
+  label: string
+  detail?: string
+  start_line?: number
+  end_line?: number
 }
 
 export interface PublicRuleRoll {

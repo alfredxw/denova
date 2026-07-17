@@ -246,6 +246,32 @@ describe('MessageItem', () => {
     expect(screen.getByText('写入完成')).toBeInTheDocument()
   })
 
+  it('批量 edit_file 显示改动数量且不流式展开 new_string', () => {
+    const args = JSON.stringify({
+      file_path: 'chapters/ch01.md',
+      edits: [
+        { id: 'intro', old_string: '旧开场', new_string: '新的开场正文' },
+        { id: 'ending', old_string: '旧结尾', new_string: '新的结尾正文' },
+      ],
+    })
+    const { container } = render(
+      <MessageItem
+        message={{
+          id: 'tool-batch-edit',
+          role: 'tool_call',
+          content: 'edit_file',
+          name: 'edit_file',
+          args,
+          status: 'running',
+        }}
+      />,
+    )
+
+    expect(screen.getByText('chapters/ch01.md · 编辑 2 处')).toBeInTheDocument()
+    expect(container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]')).not.toBeInTheDocument()
+    expect(screen.queryByText(/新的开场正文/)).not.toBeInTheDocument()
+  })
+
   it('隐藏章节正文的工具卡片展示写入状态和说明详情', async () => {
     const user = userEvent.setup()
     const path = '/Users/me/nova/.nova/测试/chapters/ch01.md'
