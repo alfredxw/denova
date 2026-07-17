@@ -1,0 +1,35 @@
+CHANGELOG.md
+  s_23dfa1fff0cb39::t_ef6d66bab580cf 22-23,43-44
+internal/app/chat_review_feedback_test.go
+  s_23dfa1fff0cb39::t_a3731e17ea402c 10-13,19-150
+web/src/components/Chat/AgentMessageList.test.tsx
+  s_23dfa1fff0cb39::t_e94a065abc107e 138-140
+web/src/components/Chat/AgentMessageList.tsx
+  s_23dfa1fff0cb39::t_5835bbec718d84 203,278,280,307
+web/src/components/Chat/ModelProfileSwitcher.tsx
+  s_23dfa1fff0cb39::t_7ae6f95ffd158d 2,28-36,45,48-50,53,56-60,66,83-86,89,95,97,135-142,144-148,150-151,155,164-165,169-184,192-195,198,203-212,215-217,221,223,225-227,236-257,290,295-303,313-323,328
+web/src/components/Chat/ModelProfileSwitcher.ui.test.tsx
+  s_23dfa1fff0cb39::t_edd2bdd4d98d33 18,24,42-54,58,62-63,69-93
+web/src/i18n/locales/en-US/chat.ts
+  s_23dfa1fff0cb39::t_743942cc631cef 63-68
+web/src/i18n/locales/zh-CN/chat.ts
+  s_23dfa1fff0cb39::t_401949124983e9 63-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0007f57eacf42c890753426393111730c6608b43",
+  "prompts": {},
+  "sessions": {
+    "s_23dfa1fff0cb39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f668e-f409-7b03-a47d-40e006cd9eca",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
