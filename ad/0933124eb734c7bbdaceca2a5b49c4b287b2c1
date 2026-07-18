@@ -1,0 +1,147 @@
+README.en.md
+  s_756eebc4c710a9::t_79bc6b834b0ea5 14,80
+README.md
+  s_756eebc4c710a9::t_b7df6934bc8616 14,80
+config/config.go
+  s_d5cda37d15aa34::t_2c46d171fee499 4,278
+internal/agent/review_feedback.go
+  s_d5cda37d15aa34::t_5ecde54403c9b2 99-100,104,108-109,123-127,134-158,161,163-164,166
+internal/api/handlers/handler_chat.go
+  s_d5cda37d15aa34::t_d88f8668124d20 34,58
+internal/api/handlers/handler_settings.go
+  s_d5cda37d15aa34::t_10bd4666936a4b 12,72
+internal/app/app.go
+  s_d5cda37d15aa34::t_22c40fcf55a1fd 5,125-127
+internal/app/automation_app_service.go
+  s_d5cda37d15aa34::t_503bb1271fea8a 333,337,616,618,933,936-937,943
+internal/app/automation_trigger_coordinator.go
+  s_d5cda37d15aa34::t_bf1953ffa67ca1 10-11,171
+internal/app/automation_trigger_service.go
+  s_d5cda37d15aa34::t_f5e6a95e87a115 161,369,397
+internal/app/chat_app_service.go
+  s_d5cda37d15aa34::t_be8d4cf2732b18 25,242-243,246-247,257-258,261-262,305-306,354-355,358-359,379,415,424,466
+internal/app/chat_review_feedback.go
+  s_d5cda37d15aa34::t_3393425909dbe0 20,34,37-44,55-67,70,72-75,87,93,99-100,107,110-113,117-121,123-124,128,135,137,140
+internal/app/chat_review_feedback_test.go
+  s_d5cda37d15aa34::t_2da98692528fdf 59,69,141,150,254,266,342,370,376,460,473,493,505,510
+internal/app/review_feedback_resolver.go
+  s_d5cda37d15aa34::t_d48abd862d8eda 1-204
+internal/app/runtime_manager.go
+  s_d5cda37d15aa34::t_fcdf98b1544908 377
+internal/automation/automation_test.go
+  s_d5cda37d15aa34::t_e3ae684ba37e2b 90-128,429,431-434,436-439,443-451,455-456,458-459,465-482
+internal/automation/run_user_message.go
+  s_d5cda37d15aa34::t_4fafd3cd54334b 1-76
+internal/automation/run_user_message_test.go
+  s_d5cda37d15aa34::t_d55b4016255f32 1-73
+internal/automation/store.go
+  s_d5cda37d15aa34::t_36fed23d868e05 128,150,191,222,239-271,316,363,644,718
+internal/automation/store_io.go
+  s_d5cda37d15aa34::t_c480ba07e0923c 7-8,14
+internal/automation/trigger_config.go
+  s_d5cda37d15aa34::t_ccfaf37721324c 120
+internal/automation/trigger_store.go
+  s_d5cda37d15aa34::t_b5ed7c908fee1f 32,72,106,135,311
+internal/automation/types.go
+  s_d5cda37d15aa34::t_351b450cebfca3 3-7,109-133
+internal/book/summary.go
+  s_d5cda37d15aa34::t_bc4132f1536412 12-17,131,169
+internal/documentreview/service.go
+  s_d5cda37d15aa34::t_a79eae08b2dca0 27-35,41
+internal/keyedlock/keyedlock.go
+  s_d5cda37d15aa34::t_05b93b09b44e45 1-63
+internal/keyedlock/keyedlock_test.go
+  s_d5cda37d15aa34::t_69c02e842735be 1-90
+web/src/components/Editor/DocumentReviewAnnotations.test.tsx
+  s_18184e5e77cd2f::t_ca2feed7a4877a 10,99-100,124-193,196-240
+web/src/components/Editor/DocumentReviewAnnotations.tsx
+  s_18184e5e77cd2f::t_b398da970b2fb1 16,130,133-139,171,176,387,389-394,398-404,406
+web/src/components/Editor/documentReviewDecorations.test.ts
+  s_18184e5e77cd2f::t_c731c255a67b97 5,44,54,64,72,79,134,139-186,188-192
+web/src/components/Editor/documentReviewDecorations.ts
+  s_18184e5e77cd2f::t_f91f12619651bd 18,52,54-56,62,64-65,67,98,119-187,193,196,201,208-214
+web/src/components/Sidebar/DeleteConfirmDialog.tsx
+  s_d5cda37d15aa34::t_c9da6539731bef 2,16-25
+web/src/components/common/ConfirmDialog.tsx
+  s_d5cda37d15aa34::t_5e551da0dc8039 1-90
+web/src/components/common/EmptyState.tsx
+  s_d5cda37d15aa34::t_fcb221e3a1a0ba 1-34
+web/src/components/common/MarkdownEditPreview.tsx
+  s_d5cda37d15aa34::t_29df845b92e238 1-86
+web/src/components/resource-directory/ResourceDirectory.tsx
+  s_d5cda37d15aa34::t_8649e9dbaa982e 1-281
+web/src/components/resource-directory/resource-directory.test.tsx
+  s_d5cda37d15aa34::t_eb5a19ac198968 1-133
+web/src/components/resource-directory/types.ts
+  s_d5cda37d15aa34::t_fb9242b7caa519 1-43
+web/src/components/ui/textarea.tsx
+  s_d5cda37d15aa34::t_ca5fcd44214e38 106
+web/src/features/interactive/components/BranchTimeline.tsx
+  s_d5cda37d15aa34::t_51dbcdd6e2c261 8,124,215-221,410-420
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_18184e5e77cd2f::t_c23625b012c009 251,291,385,416,437-439,442-444,453-456,462-463,466,475,502-507,512-537,542,770,778,803,808,835,1151-1155,1160,1171-1181
+web/src/features/interactive/components/SettingPanel.tsx
+  s_18184e5e77cd2f::t_82e42d4282d3a4 1-2,6,9-10,12-13,17,24-27,31,102-103,108,140-163,166,170-171,304-310,349,353,357-358,570-616,627-661,699-700,704,715-722,1093-1109
+web/src/features/interactive/components/SettingPanelTellerEditor.test.tsx
+  s_18184e5e77cd2f::t_87edd5f401cf84 5
+web/src/features/interactive/components/preset-config/actor-state-explorer/ActorStateExplorer.test.tsx
+  s_18184e5e77cd2f::t_9b02874e66c008 109-139
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/StateDetailArea.tsx
+  s_756eebc4c710a9::t_fa5c6a01077cd7 114-126
+web/src/features/interactive/components/setting-panel/ActorStateEditor.tsx
+  s_18184e5e77cd2f::t_3a06de6ead8891 1-103
+web/src/features/interactive/components/setting-panel/CreatorEditor.tsx
+  s_18184e5e77cd2f::t_d6b8cf7441e68d 1-55
+web/src/features/interactive/components/setting-panel/EventPackageEditor.tsx
+  s_18184e5e77cd2f::t_632f716fda505c 1-42
+web/src/features/interactive/components/setting-panel/ImagePresetEditor.tsx
+  s_18184e5e77cd2f::t_072f407b817cd2 1-241
+web/src/features/interactive/components/setting-panel/OpeningPresetEditor.tsx
+  s_18184e5e77cd2f::t_b55734d846c220 1-109
+web/src/features/interactive/components/setting-panel/RuleSystemEditor.tsx
+  s_18184e5e77cd2f::t_c7cf50b29df594 1-56
+web/src/features/interactive/components/setting-panel/knowledge-sections.ts
+  s_d5cda37d15aa34::t_26f717332e6866 1-55
+web/src/i18n/locales/en-US/common.ts
+  s_d5cda37d15aa34::t_cb9ca4dcbd9d1b 26-28,30-34
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_d5cda37d15aa34::t_6bec42b140a641 343-351
+web/src/i18n/locales/zh-CN/common.ts
+  s_d5cda37d15aa34::t_c42208ca3b67a5 26-28,30-34
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_d5cda37d15aa34::t_f316ee4e08c3ba 343-351
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ad0933124eb734c7bbdaceca2a5b49c4b287b2c1",
+  "prompts": {},
+  "sessions": {
+    "s_18184e5e77cd2f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f72f5-d40a-7bb2-89df-28a41660dd94",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_756eebc4c710a9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f730f-3fce-7f11-bdd4-9ddd64f9810f",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_d5cda37d15aa34": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3ed1791-f721-4d18-b813-dc8baba4d960",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
