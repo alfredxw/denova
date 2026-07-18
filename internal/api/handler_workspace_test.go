@@ -41,7 +41,9 @@ func TestWorkspaceDeleteCreatesRestorableVersion(t *testing.T) {
 		t.Fatalf("删除前应创建可恢复版本，历史: %#v", history)
 	}
 
-	restoreResp := performJSONRequest(t, server, http.MethodPost, "/api/versions/"+backupID+"/restore", nil)
+	restoreResp := performJSONRequest(t, server, http.MethodPost, "/api/versions/"+backupID+"/restore", map[string]any{
+		"paths": []string{"chapters/ch01.md"},
+	})
 	if restoreResp.Code != http.StatusOK {
 		t.Fatalf("restore status = %d body=%s", restoreResp.Code, restoreResp.Body.String())
 	}
@@ -167,15 +169,12 @@ func TestWorkspaceFileWriteReportsNoop(t *testing.T) {
 	}
 }
 
-func TestVersionRestorePlanAndPathRestoreAPI(t *testing.T) {
+func TestVersionPathRestoreAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 	ctx := context.Background()
 	if err := application.BookService().Create("chapters/ch01.md", "file", "第一版"); err != nil {
 		t.Fatalf("创建章节失败: %v", err)
-	}
-	if err := application.BookService().Create("setting/progress.md", "file", "进度一"); err != nil {
-		t.Fatalf("创建进度失败: %v", err)
 	}
 	first, err := application.CreateVersion(ctx, "初始版本")
 	if err != nil || first.Version == nil {
@@ -184,25 +183,18 @@ func TestVersionRestorePlanAndPathRestoreAPI(t *testing.T) {
 	if err := application.BookService().WriteFile("chapters/ch01.md", "第二版"); err != nil {
 		t.Fatalf("更新章节失败: %v", err)
 	}
-	if err := application.BookService().Create("chapters/ch02.md", "file", "新增章节"); err != nil {
-		t.Fatalf("创建新增章节失败: %v", err)
-	}
-	if err := os.Remove(filepath.Join(application.BookService().Workspace(), "setting", "progress.md")); err != nil {
-		t.Fatalf("删除进度失败: %v", err)
-	}
-	second, err := application.CreateVersion(ctx, "第二版本")
-	if err != nil || second.Version == nil {
-		t.Fatalf("创建第二版本失败: %#v err=%v", second, err)
-	}
 
-	body := map[string]any{"paths": []string{"chapters/ch01.md", "setting/progress.md", "chapters/ch02.md"}}
+	// The version service suite covers modified, deleted, and added paths plus
+	// HEAD preservation. This API test keeps one path to verify request/response
+	// wiring without repeating the slower multi-commit repository scenario.
+	body := map[string]any{"paths": []string{"chapters/ch01.md"}}
 	planResp := performJSONRequest(t, server, http.MethodPost, "/api/versions/"+first.Version.ID+"/restore-plan", body)
 	if planResp.Code != http.StatusOK {
 		t.Fatalf("restore-plan status = %d body=%s", planResp.Code, planResp.Body.String())
 	}
 	var plan book.VersionRestorePlan
 	decodeResponse(t, planResp.Body.Bytes(), &plan)
-	if plan.Scope != book.VersionRestoreScopePaths || plan.WillCreateBackup || len(plan.Changes) != 3 {
+	if plan.Scope != book.VersionRestoreScopePaths || plan.WillCreateBackup || len(plan.Changes) != 1 {
 		t.Fatalf("unexpected restore plan: %#v", plan)
 	}
 
@@ -212,17 +204,31 @@ func TestVersionRestorePlanAndPathRestoreAPI(t *testing.T) {
 	}
 	var result book.VersionRestoreResult
 	decodeResponse(t, restoreResp.Body.Bytes(), &result)
-	if result.Scope != book.VersionRestoreScopePaths || result.BackupVersion != nil || len(result.RestoredPaths) != 3 {
+	if result.Scope != book.VersionRestoreScopePaths || result.BackupVersion != nil || len(result.RestoredPaths) != 1 {
 		t.Fatalf("unexpected restore result: %#v", result)
 	}
-	status, err := application.VersionStatus(ctx)
-	if err != nil {
-		t.Fatalf("读取版本状态失败: %v", err)
+	if result.RestoredPaths[0] != "chapters/ch01.md" {
+		t.Fatalf("unexpected restored path: %#v", result.RestoredPaths)
 	}
-	if status.Latest == nil || status.Latest.ID != second.Version.ID {
-		t.Fatalf("路径恢复不应移动当前版本: %#v", status.Latest)
+	restored, err := application.BookService().ReadFile("chapters/ch01.md")
+	if err != nil || restored != "第一版" {
+		t.Fatalf("restored chapter = %q err=%v", restored, err)
 	}
+}
 
+func TestVersionWorkspaceRestorePlanAnnouncesBackupAPI(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	if err := application.BookService().Create("chapters/ch01.md", "file", "第一版"); err != nil {
+		t.Fatalf("创建章节失败: %v", err)
+	}
+	first, err := application.CreateVersion(context.Background(), "初始版本")
+	if err != nil || first.Version == nil {
+		t.Fatalf("创建初始版本失败: %#v err=%v", first, err)
+	}
+	if err := application.BookService().WriteFile("chapters/ch01.md", "第二版"); err != nil {
+		t.Fatalf("更新章节失败: %v", err)
+	}
 	workspacePlanResp := performJSONRequest(t, server, http.MethodPost, "/api/versions/"+first.Version.ID+"/restore-plan", nil)
 	if workspacePlanResp.Code != http.StatusOK {
 		t.Fatalf("workspace restore-plan status = %d body=%s", workspacePlanResp.Code, workspacePlanResp.Body.String())

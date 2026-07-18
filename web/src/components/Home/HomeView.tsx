@@ -5,9 +5,10 @@ import { toast } from 'sonner'
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, rectSortingStrategy, sortableKeyboardCoordinates, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { BookOpen, Download, FileText, Folder, GripVertical, LibraryBig, Loader2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
+import { ArrowDownUp, BookOpen, Download, FileText, Folder, GripVertical, LibraryBig, Loader2, Pencil, Plus, Trash2, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import {
   AlertDialog,
@@ -25,8 +26,10 @@ import {
   exportBook,
   removeBook,
   reorderBooks,
+  setBookSortMode,
   switchWorkspace,
   type BookRecord,
+  type BookSortMode,
 } from '@/lib/api'
 import { getImagePresets } from '@/features/interactive/api'
 import type { ImagePreset } from '@/features/interactive/types'
@@ -41,12 +44,14 @@ interface HomeViewProps {
   novaDir: string
   /** Nova 数据目录下实际存在的书籍 */
   books: BookRecord[]
+  /** 书架与标题快捷入口共用的持久化排序方式。 */
+  bookSortMode: BookSortMode
   /** 切换到指定 workspace 后由父组件刷新业务状态 */
   onSwitch: (path: string) => void
   /** 在后端切换 workspace 前保存当前编辑器草稿。 */
   onBeforeSwitch?: () => Promise<boolean>
   /** 书籍记录有变更时通知父组件刷新列表 */
-  onBooksChange: () => void
+  onBooksChange: () => void | Promise<void>
   /** 打开酒馆角色卡导入弹窗 */
   onOpenCharacterCardImport?: () => void
   /** 关闭全局书籍管理弹窗 */
@@ -59,7 +64,7 @@ const iconButtonCls = 'nova-nav-item text-[var(--nova-text-faint)] hover:bg-[var
 type BookDialogState = { mode: 'create'; book: null } | { mode: 'edit'; book: BookRecord }
 
 /** 书籍管理视图：集中展示、创建、打开和编辑 Nova 数据目录中的书籍。 */
-export function HomeView({ workspace, novaDir, books, onSwitch, onBeforeSwitch, onBooksChange, onOpenCharacterCardImport, onClose }: HomeViewProps) {
+export function HomeView({ workspace, novaDir, books, bookSortMode, onSwitch, onBeforeSwitch, onBooksChange, onOpenCharacterCardImport, onClose }: HomeViewProps) {
   const { t } = useTranslation()
   const [showNovelImport, setShowNovelImport] = useState(false)
   const [bookDialog, setBookDialog] = useState<BookDialogState | null>(null)
@@ -71,6 +76,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBeforeSwitch, 
   const [deleteError, setDeleteError] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [exportingPath, setExportingPath] = useState('')
+  const [updatingSortMode, setUpdatingSortMode] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -122,6 +128,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBeforeSwitch, 
   }
 
   const handleDragEnd = async (event: DragEndEvent) => {
+    if (bookSortMode !== 'manual') return
     const { active, over } = event
     if (!over || active.id === over.id) return
     const oldIndex = orderedBooks.findIndex((book) => book.path === active.id)
@@ -135,6 +142,22 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBeforeSwitch, 
     } catch (e) {
       console.error('保存书籍排序失败', e)
       setOrderedBooks(books)
+    }
+  }
+
+  const handleSortModeChange = async (mode: string) => {
+    if ((mode !== 'recent' && mode !== 'manual') || mode === bookSortMode || updatingSortMode) return
+    setUpdatingSortMode(true)
+    try {
+      await setBookSortMode(mode)
+      await onBooksChange()
+    } catch (e) {
+      console.error('[HomeView.tsx] 保存书籍排序模式失败', { mode, error: e })
+      toast.error(t('home.sortUpdateError'), {
+        description: e instanceof Error ? e.message : String(e),
+      })
+    } finally {
+      setUpdatingSortMode(false)
     }
   }
 
@@ -266,6 +289,20 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBeforeSwitch, 
                 {t('home.bookshelf')}
               </div>
               <div className="flex w-full min-w-0 flex-wrap items-center justify-start gap-2 sm:w-auto sm:shrink-0 sm:justify-end">
+                <Select value={bookSortMode} disabled={updatingSortMode} onValueChange={(mode) => void handleSortModeChange(mode)}>
+                  <SelectTrigger
+                    size="sm"
+                    aria-label={t('home.sortLabel')}
+                    className="nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+                  >
+                    {updatingSortMode ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowDownUp className="h-3.5 w-3.5" />}
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
+                    <SelectItem value="recent" className="text-xs">{t('home.sortRecent')}</SelectItem>
+                    <SelectItem value="manual" className="text-xs">{t('home.sortManual')}</SelectItem>
+                  </SelectContent>
+                </Select>
                 <Button
                   type="button"
                   size="xs"
@@ -330,6 +367,7 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBeforeSwitch, 
                         <SortableBookCard
                           key={book.path}
                           book={book}
+                          disabled={bookSortMode !== 'manual'}
                         >
                           {(dragHandleProps) => (
                             <div
@@ -352,18 +390,20 @@ export function HomeView({ workspace, novaDir, books, onSwitch, onBeforeSwitch, 
                                 />
                                 <div className="flex min-w-0 flex-1 flex-col self-stretch">
                                   <div className="line-clamp-2 text-xs font-semibold leading-4 text-[var(--nova-text)] sm:text-sm sm:leading-5">{book.name || t('home.unnamedBook')}</div>
-                                  <div className="hidden truncate text-[11px] text-[var(--nova-text-muted)] sm:mt-2 sm:block">{book.author ? book.author : 'No Author'}</div>
+                                  <div className="hidden truncate text-[11px] text-[var(--nova-text-muted)] sm:mt-2 sm:block">{book.author || t('home.authorUnset')}</div>
                                   <div className="mt-auto hidden truncate pt-2 text-[10px] text-[var(--nova-text-faint)] sm:block">{book.path}</div>
                                 </div>
                               </button>
                               <div className="absolute right-1 top-1 z-10 flex shrink-0 items-center gap-0.5">
-                                <TooltipIconButton
-                                  label={t('home.dragToSort')}
-                                  className={`${iconButtonCls} cursor-grab bg-[var(--nova-surface)] opacity-100 sm:pointer-events-none sm:opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100`}
-                                  {...dragHandleProps}
-                                >
-                                  <GripVertical className="h-3.5 w-3.5" />
-                                </TooltipIconButton>
+                                {bookSortMode === 'manual' && (
+                                  <TooltipIconButton
+                                    label={t('home.dragToSort')}
+                                    className={`${iconButtonCls} cursor-grab bg-[var(--nova-surface)] opacity-100 sm:pointer-events-none sm:opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100`}
+                                    {...dragHandleProps}
+                                  >
+                                    <GripVertical className="h-3.5 w-3.5" />
+                                  </TooltipIconButton>
+                                )}
                                 <TooltipIconButton
                                   label={t('home.editInfo')}
                                   className={`${iconButtonCls} bg-[var(--nova-surface)] opacity-100 sm:pointer-events-none sm:opacity-0 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100`}

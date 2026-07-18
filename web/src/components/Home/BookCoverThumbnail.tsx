@@ -7,11 +7,12 @@ interface BookCoverThumbnailProps {
   version?: string
   previewURL?: string
   title?: string
+  decorative?: boolean
   className?: string
   iconClassName?: string
 }
 
-export function BookCoverThumbnail({ book, version, previewURL, title, className, iconClassName }: BookCoverThumbnailProps) {
+export function BookCoverThumbnail({ book, version, previewURL, title, decorative = false, className, iconClassName }: BookCoverThumbnailProps) {
   const [failed, setFailed] = useState(false)
 
   useEffect(() => {
@@ -26,11 +27,12 @@ export function BookCoverThumbnail({ book, version, previewURL, title, className
     <div
       className={`relative flex min-w-0 items-center justify-center overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] ${className || ''}`}
       title={imageTitle}
+      aria-hidden={decorative || undefined}
     >
       {showImage ? (
         <img
           src={src}
-          alt={imageTitle}
+          alt={decorative ? '' : imageTitle}
           className="h-full w-full object-cover"
           onError={() => setFailed(true)}
         />

@@ -38,7 +38,8 @@ interface MessageListProps {
   afterContentKey?: string
   timelineAttachments?: AgentTimelineAttachment[]
   messageStyle?: CSSProperties
-  collapseTraceBeforeAssistant?: boolean
+  /** 开启后，连续的 thinking/工具调用 trace 统一折叠为一个分组（含正文之后、回合末尾的 trace）。 */
+  collapseTraceGroups?: boolean
   onEditMessage?: (view: AgentMessageView) => void
   onEditAssistantReply?: (view: AgentMessageView) => void
   onRegenerateMessage?: (view: AgentMessageView) => void
@@ -92,7 +93,7 @@ interface MessageListVirtuosoContext {
   afterContent?: ReactNode
 }
 
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, afterContentKey, timelineAttachments = [], messageStyle, collapseTraceBeforeAssistant = false, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, afterContentKey, timelineAttachments = [], messageStyle, collapseTraceGroups = false, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const lastVisibleTurnAnchorRef = useRef('')
@@ -108,11 +109,11 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
       views,
       isStreaming,
       visibleActivityContent,
-      collapseTraceBeforeAssistant,
+      collapseTraceGroups,
       groupSubAgentTimeline: Boolean(onOpenSubAgentSession),
       timelineAttachments,
     }),
-    [collapseTraceBeforeAssistant, isStreaming, onOpenSubAgentSession, timelineAttachments, views, visibleActivityContent],
+    [collapseTraceGroups, isStreaming, onOpenSubAgentSession, timelineAttachments, views, visibleActivityContent],
   )
   const scrollContentKey = useMemo(
     () => buildMessageListScrollKey(listItems, bottomPaddingPx, afterContent ? afterContentKey || 'after-content' : ''),
@@ -376,7 +377,7 @@ function AgentChatListRow({ item, isLast, isStreaming, highlightDialogue, messag
   )
 }
 
-function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, collapseTraceBeforeAssistant, groupSubAgentTimeline, timelineAttachments }: { views: AgentMessageView[]; isStreaming: boolean; visibleActivityContent: string; collapseTraceBeforeAssistant: boolean; groupSubAgentTimeline: boolean; timelineAttachments: AgentTimelineAttachment[] }): AgentChatListItem[] {
+function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, collapseTraceGroups, groupSubAgentTimeline, timelineAttachments }: { views: AgentMessageView[]; isStreaming: boolean; visibleActivityContent: string; collapseTraceGroups: boolean; groupSubAgentTimeline: boolean; timelineAttachments: AgentTimelineAttachment[] }): AgentChatListItem[] {
   const items: AgentChatListItem[] = []
   if (views.length === 0 && !isStreaming) {
     items.push({ kind: 'empty', key: 'empty' })
@@ -401,21 +402,19 @@ function buildAgentChatListItems({ views, isStreaming, visibleActivityContent, c
         continue
       }
     }
-    if (collapseTraceBeforeAssistant && isAgentTraceView(view)) {
+    if (collapseTraceGroups && isAgentTraceView(view)) {
+      // 连续的 thinking/工具调用统一折成一个分组，不要求后面紧跟正文：
+      // 游戏模式正文之后（提交结果、重试循环）和回合末尾的 trace 也归组折叠。
       const traceViews: AgentMessageView[] = []
       let nextIndex = index
       while (nextIndex < views.length && isAgentTraceView(views[nextIndex])) {
         traceViews.push(views[nextIndex])
         nextIndex += 1
       }
-      const nextView = views[nextIndex]
-      const hasAssistantAfterTrace = nextView?.kind === 'assistant' && agentViewContent(nextView).trim()
       const activeStreamingTrace = isActiveStreamingTrace(views, nextIndex, isStreaming)
-      if (traceViews.length > 0 && (hasAssistantAfterTrace || activeStreamingTrace)) {
-        items.push({ kind: 'trace', key: `trace-${traceViews[0].partId || index}`, views: traceViews, activeStreamingTrace })
-        index = nextIndex - 1
-        continue
-      }
+      items.push({ kind: 'trace', key: `trace-${traceViews[0].partId || index}`, views: traceViews, activeStreamingTrace })
+      index = nextIndex - 1
+      continue
     }
     if (view.kind === 'clear') {
       items.push({ kind: 'clear', key: agentMessageItemKey(view, index), createdAt: readString(view.data.created_at) || view.metadata.created_at })

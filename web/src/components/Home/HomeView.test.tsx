@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeView } from './HomeView'
-import { createBook, downloadBookExport, exportBook, generateBookCover, getBookInfo, uploadBookCover } from '@/lib/api'
+import { createBook, downloadBookExport, exportBook, generateBookCover, getBookInfo, setBookSortMode, uploadBookCover } from '@/lib/api'
 import { getImagePresets } from '@/features/interactive/api'
 import { fetchSettings } from '@/features/settings/api'
 import { toast } from 'sonner'
@@ -16,6 +16,7 @@ vi.mock('@/lib/api', () => ({
   getBookInfo: vi.fn(),
   removeBook: vi.fn(),
   reorderBooks: vi.fn(),
+  setBookSortMode: vi.fn(),
   switchWorkspace: vi.fn(),
   updateBookInfo: vi.fn(),
   uploadBookCover: vi.fn(),
@@ -84,6 +85,7 @@ describe('HomeView book covers', () => {
       filename: '星河边境.txt',
       blob: new Blob(['星河边境']),
     })
+    vi.mocked(setBookSortMode).mockResolvedValue({ message: 'ok' })
   })
 
   it('uses the fixed book cover endpoint with the cover version', async () => {
@@ -105,6 +107,12 @@ describe('HomeView book covers', () => {
     const covers = await screen.findAllByRole('img', { name: '星河边境' })
     expect(covers.some((img) => (img as HTMLImageElement).src.includes('/api/books/cover'))).toBe(true)
     expect(covers.every((img) => !(img as HTMLImageElement).src.includes('v='))).toBe(true)
+  })
+
+  it('shows a localized label when a book has no author', async () => {
+    renderHome()
+
+    expect(await screen.findByText('未填写作者')).toBeInTheDocument()
   })
 
   it('generates a cover from the edit dialog and refreshes the local version', async () => {
@@ -214,10 +222,31 @@ describe('HomeView book covers', () => {
     })
     expect(downloadBookExport).not.toHaveBeenCalled()
   })
+
+  it('defaults to recently opened order and enables drag handles only in manual mode', async () => {
+    const user = userEvent.setup()
+    const onBooksChange = vi.fn()
+    const { rerender } = renderHome({ bookSortMode: 'recent', onBooksChange })
+
+    expect(screen.getByRole('combobox', { name: '书籍排序' })).toHaveTextContent('最近打开')
+    expect(screen.queryByRole('button', { name: '拖拽排序' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('combobox', { name: '书籍排序' }))
+    await user.click(screen.getByRole('option', { name: '手动排序' }))
+    await waitFor(() => expect(setBookSortMode).toHaveBeenCalledWith('manual'))
+    expect(onBooksChange).toHaveBeenCalled()
+
+    rerender(homeViewElement({ bookSortMode: 'manual', onBooksChange }))
+    expect(screen.getByRole('button', { name: '拖拽排序' })).toBeInTheDocument()
+  })
 })
 
 function renderHome(overrides: Partial<Parameters<typeof HomeView>[0]> = {}) {
-  return render(
+  return render(homeViewElement(overrides))
+}
+
+function homeViewElement(overrides: Partial<Parameters<typeof HomeView>[0]> = {}) {
+  return (
     <HomeView
       workspace="/books/star"
       novaDir="/nova"
@@ -228,9 +257,10 @@ function renderHome(overrides: Partial<Parameters<typeof HomeView>[0]> = {}) {
         cover_updated_at: 'old-version',
         last_opened_at: '',
       }]}
+      bookSortMode="recent"
       onSwitch={vi.fn()}
       onBooksChange={vi.fn()}
       {...overrides}
-    />,
+    />
   )
 }

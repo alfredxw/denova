@@ -36,7 +36,7 @@ export function DirectorProcessCard({ status, metadata, loading, displayEvents }
               scrollResetKey={process.scrollKey}
               bottomPaddingClassName="pb-3"
               messageStyle={{ fontSize: '12px', lineHeight: 1.55 }}
-              collapseTraceBeforeAssistant
+              collapseTraceGroups
             />
           </div>
         ) : (

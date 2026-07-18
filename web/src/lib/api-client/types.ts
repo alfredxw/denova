@@ -300,6 +300,13 @@ export interface BookRecord {
   last_opened_at: string
 }
 
+export type BookSortMode = 'recent' | 'manual'
+
+export interface BookshelfResult {
+  books: BookRecord[]
+  sort_mode: BookSortMode
+}
+
 export interface BookCoverResult {
   schema: 'book_cover.v1' | string
   cover_path: string

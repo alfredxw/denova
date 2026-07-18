@@ -600,7 +600,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                   isStreaming={runStream.isStreaming}
                   activityContent={runStream.activityContent}
                   scrollResetKey={runStream.activeRun?.id || activeId || 'automation'}
-                  collapseTraceBeforeAssistant
+                  collapseTraceGroups
                   bottomPaddingClassName="pb-36"
                   bottomPaddingPx={runMessageListBottomPadding}
                 />

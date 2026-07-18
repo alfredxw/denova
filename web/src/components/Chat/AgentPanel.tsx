@@ -405,7 +405,7 @@ export function AgentPanel({
                 scrollResetKey={`${workspace || 'none'}:${activeSessionId || 'current'}`}
                 bottomPaddingClassName="pb-36"
                 bottomPaddingPx={messageListBottomPadding}
-                collapseTraceBeforeAssistant
+                collapseTraceGroups
                 timelineAttachments={timelineAttachments}
                 onOpenSubAgentSession={openSubAgentSession}
                 onInsertIllustration={onInsertIllustration}
@@ -483,7 +483,7 @@ export function AgentPanel({
                         scrollResetKey={`${workspace || 'none'}:${activeSessionId || 'current'}`}
                         bottomPaddingClassName="pb-36"
                         bottomPaddingPx={messageListBottomPadding}
-                        collapseTraceBeforeAssistant
+                        collapseTraceGroups
                         timelineAttachments={timelineAttachments}
                         onOpenSubAgentSession={openSubAgentSession}
                         onInsertIllustration={onInsertIllustration}

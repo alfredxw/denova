@@ -119,7 +119,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         scrollResetKey={chatKey}
         bottomPaddingClassName="pb-36"
         bottomPaddingPx={messageListBottomPadding}
-        collapseTraceBeforeAssistant
+        collapseTraceGroups
       />
       <InputArea
         onSend={(value) => void send(value)}

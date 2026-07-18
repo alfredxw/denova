@@ -1,5 +1,6 @@
 const home = {
   'home.authorPlaceholder': '作者（选填）',
+  'home.authorUnset': '未填写作者',
   'home.bookTitlePlaceholder': '书名（必填）',
   'home.close': '关闭书籍管理',
   'home.cover': '封面',
@@ -33,6 +34,10 @@ const home = {
   'home.generateCover': '生成封面',
   'home.novaDirLoading': 'Denova 数据目录加载中...',
   'home.saveError': '保存失败',
+  'home.sortLabel': '书籍排序',
+  'home.sortManual': '手动排序',
+  'home.sortRecent': '最近打开',
+  'home.sortUpdateError': '保存书籍排序失败',
   'home.softDeleteBook': '从书架移除',
   'home.bookshelf': '书架',
   'home.bookCount': '{{count}} 本书籍',

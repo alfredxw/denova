@@ -131,6 +131,15 @@ func (s *WorkspaceRuntimeManager) Books() []BookRecord {
 	return records
 }
 
+// BookSortMode returns the ordering shared by all book selection surfaces.
+func (a *App) BookSortMode() BookSortMode {
+	return a.runtime().BookSortMode()
+}
+
+func (s *WorkspaceRuntimeManager) BookSortMode() BookSortMode {
+	return s.app.bookRegistry.SortMode()
+}
+
 // BookInfo 读取指定路径工作区的书籍元信息。
 func (a *App) BookInfo(path string) (book.BookMeta, error) {
 	return a.runtime().BookInfo(path)
@@ -196,6 +205,15 @@ func (a *App) ReorderBooks(paths []string) error {
 
 func (s *WorkspaceRuntimeManager) ReorderBooks(paths []string) error {
 	return s.app.bookRegistry.Reorder(paths)
+}
+
+// SetBookSortMode switches between recent-first and the persisted manual order.
+func (a *App) SetBookSortMode(mode BookSortMode) error {
+	return a.runtime().SetBookSortMode(mode)
+}
+
+func (s *WorkspaceRuntimeManager) SetBookSortMode(mode BookSortMode) error {
+	return s.app.bookRegistry.SetSortMode(mode)
 }
 
 func (s *WorkspaceRuntimeManager) activateFallbackWorkspace(ctx context.Context) (string, error) {

@@ -91,6 +91,23 @@ vi.mock('@/components/Chat/ConfigManagerChat', () => ({
   },
 }))
 
+vi.mock('@/components/Editor/MarkdownRichEditor', () => ({
+  MarkdownRichEditor: (props: {
+    value: string
+    onChange: (value: string) => void
+    highlightQuery?: string
+    'aria-label'?: string
+  }) => (
+    <textarea
+      data-testid="lore-rich-editor"
+      aria-label={props['aria-label']}
+      data-highlight-query={props.highlightQuery ?? ''}
+      value={props.value}
+      onChange={(event) => props.onChange(event.target.value)}
+    />
+  ),
+}))
+
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
   return {
@@ -953,7 +970,7 @@ describe('SettingPanel', () => {
     expect(within(previewDialog).getByTestId('image-preview-viewport')).toBeInTheDocument()
   })
 
-  it('keeps the lore body in the unified editor scroller instead of creating a nested scroll trap', async () => {
+  it('keeps the lore body editable in the unified scroller and feeds the directory query to the editor', async () => {
     const item = {
       ...loreItem('long-lore', '长正文资料'),
       content: '正文段落\n'.repeat(80),
@@ -965,26 +982,25 @@ describe('SettingPanel', () => {
     fireEvent.click(await screen.findByRole('button', { name: /长正文资料/ }))
     const editor = screen.getByRole('region', { name: '资料编辑区' })
     const content = within(editor).getByRole('textbox', { name: '正文' }) as HTMLTextAreaElement
-    Object.defineProperty(content, 'scrollHeight', { configurable: true, value: 1200 })
-    const editedContent = `${item.content}新增段落`
 
-    fireEvent.input(content, { target: { value: editedContent } })
-
-    expect(editor).toContainElement(content)
+    // 渲染视图本身即可编辑：不再有 预览/Raw 切换，也不引入嵌套滚动容器
+    expect(content).toHaveAttribute('data-testid', 'lore-rich-editor')
+    expect(within(editor).queryByRole('button', { name: '预览' })).not.toBeInTheDocument()
+    expect(within(editor).queryByRole('button', { name: 'Raw' })).not.toBeInTheDocument()
+    expect(editor.querySelector('.overflow-y-auto')).toBeNull()
     expect(within(editor).getByRole('textbox', { name: '名称' }).closest('[data-slot="lore-primary-fields"]')).toHaveClass(
       'grid-cols-2',
       'md:grid-cols-3',
       'xl:grid-cols-[minmax(12rem,2fr)_repeat(4,minmax(7rem,1fr))]',
     )
-    expect(content).toHaveClass('overflow-y-hidden', 'overscroll-y-auto!')
-    expect(content).not.toHaveClass('h-full')
-    expect(content.style.height).toBe('1200px')
-    expect(content.style.overflowY).toBe('hidden')
 
-    fireEvent.click(within(editor).getByRole('button', { name: '预览' }))
-    const previewContent = editor.querySelector('.chat-agent-message')
-    expect(previewContent).not.toBeNull()
-    expect(previewContent?.parentElement).not.toHaveClass('overflow-y-auto')
+    fireEvent.change(content, { target: { value: `${item.content}新增段落` } })
+    expect(content.value).toBe(`${item.content}新增段落`)
+
+    // 目录搜索词直接传给正文编辑器做高亮，搜索时依然可以编辑
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索资料' }), { target: { value: '正文段落' } })
+    expect(content).toHaveAttribute('data-highlight-query', '正文段落')
+    expect(content).not.toBeDisabled()
   })
 
   it('saves lore item enabled status from a switch', async () => {

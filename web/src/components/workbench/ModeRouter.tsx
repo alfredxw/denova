@@ -12,7 +12,7 @@ import { getImagePresets, getInteractiveTellers } from '@/features/interactive/a
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { BookRecord, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
+import type { BookRecord, BookSortMode, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import type { AgentPartRef } from '@/lib/agent-message-view'
@@ -56,6 +56,7 @@ interface ModeRouterProps {
   interactiveRightVisible: boolean
   novaDir: string
   books: BookRecord[]
+  bookSortMode: BookSortMode
   tree: FileNode[]
   loading: boolean
   selectedFile: string | null
@@ -87,6 +88,7 @@ interface ModeRouterProps {
   onCloseSettings: () => void
   onToggleInteractiveRightPanel: () => void
   onSwitchBook: (path: string) => void
+  onQuickSwitchBook: (path: string) => Promise<boolean>
   onBeforeWorkspaceSwitch: EditorFlushHandler
   onBooksChange: () => void | Promise<void>
   onOpenCharacterCardImport: () => void
@@ -146,6 +148,7 @@ export function ModeRouter(props: ModeRouterProps) {
     interactiveRightVisible,
     novaDir,
     books,
+    bookSortMode,
     tree,
     loading,
     selectedFile,
@@ -177,6 +180,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onCloseSettings,
     onToggleInteractiveRightPanel,
     onSwitchBook,
+    onQuickSwitchBook,
     onBeforeWorkspaceSwitch,
     onBooksChange,
     onOpenCharacterCardImport,
@@ -629,6 +633,7 @@ export function ModeRouter(props: ModeRouterProps) {
             workspace={workspace}
             novaDir={novaDir}
             books={books}
+            bookSortMode={bookSortMode}
             onSwitch={onSwitchBook}
             onBeforeSwitch={onBeforeWorkspaceSwitch}
             onBooksChange={onBooksChange}
@@ -718,6 +723,7 @@ export function ModeRouter(props: ModeRouterProps) {
       booksReturnMode={booksReturnMode}
       currentBookName={currentBookName}
       workspace={workspace}
+      books={books}
       appVersion={appVersion}
       summary={summary}
       currentChapter={currentChapter}
@@ -740,6 +746,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onSetRightPanel={onSetRightPanel}
       onToggleSettings={onToggleSettings}
       onCloseSettings={onCloseSettings}
+      onQuickSwitchBook={onQuickSwitchBook}
       onDismissUpdateNotice={onDismissUpdateNotice}
     />
   )

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { formatDateTime, setConfiguredLocale } from '@/i18n'
 import { WorkbenchShell } from './WorkbenchShell'
 
 const responsiveState = vi.hoisted(() => ({ mobile: false }))
@@ -35,6 +36,7 @@ vi.mock('@/lib/api', () => ({
 describe('WorkbenchShell responsive main content', () => {
   beforeEach(() => {
     responsiveState.mobile = false
+    setConfiguredLocale('zh-CN')
   })
 
   it('keeps the main subtree mounted and preserves local state across the mobile breakpoint', () => {
@@ -82,17 +84,18 @@ describe('WorkbenchShell responsive main content', () => {
   })
 
   it('shows editor updated time and line in the global bottom status bar', () => {
+    const updatedAt = '2026-07-11 22:00'
     render(<WorkbenchShell {...workbenchProps(<div />)}
       mode="ide"
       currentChapter={{
         path: 'chapters/ch01.md', file_name: 'ch01.md', display_title: '第一章', index: 1,
-        words: 100, status: 'draft', confirmed: false, updated_at: '2026-07-11 22:00',
+        words: 100, status: 'draft', confirmed: false, updated_at: updatedAt,
         volume: '', volume_path: '',
       }}
       editorLine={54}
     />)
 
-    expect(screen.getByText(/更新：2026-07-11 22:00 · 行 54|Updated: 2026-07-11 22:00 · Line 54/)).toBeInTheDocument()
+    expect(screen.getByText(`更新：${formatDateTime(updatedAt)} · 行 54`)).toBeInTheDocument()
   })
 })
 
@@ -102,6 +105,7 @@ function workbenchProps(main: ReactNode) {
     booksReturnMode: 'interactive' as const,
     currentBookName: 'Test book',
     workspace: '/tmp/test-book',
+    books: [{ name: 'Test book', path: '/tmp/test-book', author: '', last_opened_at: '' }],
     appVersion: 'test',
     summary: null,
     isStreaming: false,
@@ -119,5 +123,6 @@ function workbenchProps(main: ReactNode) {
     onSetRightPanel: vi.fn(),
     onToggleSettings: vi.fn(),
     onCloseSettings: vi.fn(),
+    onQuickSwitchBook: vi.fn().mockResolvedValue(true),
   }
 }

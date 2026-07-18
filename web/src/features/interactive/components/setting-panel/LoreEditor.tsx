@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Loader2, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { isSaveShortcut } from '@/lib/keyboard'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -10,9 +9,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
-import { MarkdownViewToggle } from '@/components/common/MarkdownEditPreview'
-import { ThemedMarkdownRenderer } from '@/components/common/MarkdownRenderer'
 import { SearchHighlightTextarea } from '@/components/common/SearchHighlightTextarea'
+import { MarkdownRichEditor } from '@/components/Editor/MarkdownRichEditor'
 import { workspaceAssetURL, type LoreItem } from '@/lib/api'
 import type { ImagePreset } from '../../types'
 import { BooleanSwitchField } from './BooleanSwitchField'
@@ -53,7 +51,6 @@ export function LoreEditor({
 }) {
   const { t } = useTranslation()
   const [imageDialogOpen, setImageDialogOpen] = useState(false)
-  const [bodyPreview, setBodyPreview] = useState(false)
   if (!draft) {
     return <EmptyState title={t('settingPanel.editor.noLoreSelected')} description={t('settingPanel.editor.noLoreSelectedDesc')} />
   }
@@ -183,32 +180,18 @@ export function LoreEditor({
             </div>
           </div>
           <div className="min-h-[420px] flex-1 p-3 sm:p-4">
-            <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
-              <span className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.field.content')}</span>
-              <MarkdownViewToggle preview={bodyPreview} onPreviewChange={setBodyPreview} />
-            </div>
-            {bodyPreview ? (
-              <div className="min-w-0 bg-[var(--nova-bg)] px-5 py-4">
-                <ThemedMarkdownRenderer content={draft.content || ''} className="max-w-4xl text-xs leading-5" />
-              </div>
-            ) : (
-              <SearchHighlightTextarea
-                autoResize
-                maxRows={Number.POSITIVE_INFINITY}
-                highlightQuery={searchQuery}
-                aria-label={t('settingPanel.field.content')}
-                className="nova-field min-h-[360px] overflow-y-hidden overscroll-y-auto! resize-none font-mono text-sm leading-7 shadow-none focus-visible:ring-0"
+            <div className="mb-2 text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.field.content')}</div>
+            <div className="min-w-0 bg-[var(--nova-bg)] px-5 py-4">
+              <MarkdownRichEditor
+                key={draft.id}
                 value={draft.content || ''}
-                onChange={(event) => setDraft({ ...draft, content: event.target.value })}
-                onKeyDown={(event) => {
-                  if (isSaveShortcut(event)) {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    onSave()
-                  }
-                }}
+                onChange={(content) => setDraft({ ...draft, content })}
+                highlightQuery={searchQuery}
+                onSaveShortcut={onSave}
+                aria-label={t('settingPanel.field.content')}
+                className="max-w-4xl text-xs leading-5"
               />
-            )}
+            </div>
           </div>
         </div>
       </ScrollArea>

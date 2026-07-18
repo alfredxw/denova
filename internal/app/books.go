@@ -17,6 +17,14 @@ const (
 	bookProjectsDirName = "projects"
 )
 
+// BookSortMode controls the shared ordering used by the bookshelf and book switcher.
+type BookSortMode string
+
+const (
+	BookSortModeRecent BookSortMode = "recent"
+	BookSortModeManual BookSortMode = "manual"
+)
+
 // BookRecord 表示 Nova 数据目录中的一个书籍工作目录。
 type BookRecord struct {
 	Name           string `json:"name"`
@@ -27,10 +35,11 @@ type BookRecord struct {
 }
 
 type bookRegistryData struct {
-	Current string       `json:"current"`
-	Books   []BookRecord `json:"books"`
-	Order   []string     `json:"order,omitempty"`
-	Hidden  []string     `json:"hidden,omitempty"`
+	Current  string       `json:"current"`
+	Books    []BookRecord `json:"books"`
+	SortMode BookSortMode `json:"sort_mode,omitempty"`
+	Order    []string     `json:"order,omitempty"`
+	Hidden   []string     `json:"hidden,omitempty"`
 }
 
 // BookRegistry 持久化当前书籍，并从 Nova 数据目录发现实际存在的书籍工作目录。
@@ -96,15 +105,7 @@ func sortedRegistryBooks(data bookRegistryData) []BookRecord {
 		book.Path = absPath
 		books = append(books, book)
 	}
-	if len(data.Order) > 0 {
-		sortBooksByOrder(books, data.Order, func(i, j int) bool {
-			return books[i].LastOpenedAt > books[j].LastOpenedAt
-		})
-		return books
-	}
-	sort.SliceStable(books, func(i, j int) bool {
-		return books[i].LastOpenedAt > books[j].LastOpenedAt
-	})
+	sortRegistryBooks(books, data)
 	return books
 }
 
@@ -150,9 +151,7 @@ func (r *BookRegistry) scanNovaBooks(data bookRegistryData) ([]BookRecord, error
 	}
 	books = append(books, rootBooks...)
 
-	sortBooksByOrder(books, data.Order, func(i, j int) bool {
-		return strings.ToLower(books[i].Name) < strings.ToLower(books[j].Name)
-	})
+	sortRegistryBooks(books, data)
 	return books, nil
 }
 
@@ -206,6 +205,48 @@ func sortBooksByOrder(books []BookRecord, order []string, fallback func(i, j int
 		}
 		return fallback(i, j)
 	})
+}
+
+func sortRegistryBooks(books []BookRecord, data bookRegistryData) {
+	if resolveBookSortMode(data.SortMode, len(data.Order) > 0) == BookSortModeManual {
+		sortBooksByOrder(books, data.Order, recentBookLess(books))
+		return
+	}
+	sort.SliceStable(books, recentBookLess(books))
+}
+
+func recentBookLess(books []BookRecord) func(i, j int) bool {
+	openedAt := make(map[string]time.Time, len(books))
+	for _, book := range books {
+		if timestamp, err := time.Parse(time.RFC3339Nano, book.LastOpenedAt); err == nil {
+			openedAt[book.Path] = timestamp
+		}
+	}
+	return func(i, j int) bool {
+		leftOpenedAt := openedAt[books[i].Path]
+		rightOpenedAt := openedAt[books[j].Path]
+		if !leftOpenedAt.Equal(rightOpenedAt) {
+			return leftOpenedAt.After(rightOpenedAt)
+		}
+		leftName := strings.ToLower(books[i].Name)
+		rightName := strings.ToLower(books[j].Name)
+		if leftName != rightName {
+			return leftName < rightName
+		}
+		return books[i].Path < books[j].Path
+	}
+}
+
+func resolveBookSortMode(mode BookSortMode, hasLegacyOrder bool) BookSortMode {
+	switch mode {
+	case BookSortModeRecent, BookSortModeManual:
+		return mode
+	default:
+		if hasLegacyOrder {
+			return BookSortModeManual
+		}
+		return BookSortModeRecent
+	}
 }
 
 func pathSet(paths []string) map[string]bool {
@@ -281,14 +322,15 @@ func (r *BookRegistry) Touch(path string) error {
 	}
 
 	data := r.load()
-	now := time.Now().Format(time.RFC3339)
+	now := time.Now().Format(time.RFC3339Nano)
 	record := BookRecord{
 		Name:         filepath.Base(absPath),
 		Path:         absPath,
 		LastOpenedAt: now,
 	}
 	data.Hidden = removePath(data.Hidden, absPath)
-	if len(data.Order) > 0 {
+	if resolveBookSortMode(data.SortMode, len(data.Order) > 0) == BookSortModeManual {
+		data.SortMode = BookSortModeManual
 		found := false
 		for i, book := range data.Books {
 			bookPath, err := filepath.Abs(book.Path)
@@ -305,6 +347,7 @@ func (r *BookRegistry) Touch(path string) error {
 			data.Order = append(data.Order, absPath)
 		}
 	} else {
+		data.SortMode = BookSortModeRecent
 		books := []BookRecord{record}
 		for _, book := range data.Books {
 			bookPath, err := filepath.Abs(book.Path)
@@ -368,7 +411,31 @@ func (r *BookRegistry) Reorder(paths []string) error {
 			order = append(order, book.Path)
 		}
 	}
+	data.SortMode = BookSortModeManual
 	data.Order = order
+	return r.save(data)
+}
+
+// SortMode returns the persisted ordering mode. Legacy registries with an order
+// are treated as manual so an existing user-defined arrangement is preserved.
+func (r *BookRegistry) SortMode() BookSortMode {
+	data := r.load()
+	return resolveBookSortMode(data.SortMode, len(data.Order) > 0)
+}
+
+// SetSortMode switches the shared bookshelf ordering without discarding the
+// user's previous manual arrangement.
+func (r *BookRegistry) SetSortMode(mode BookSortMode) error {
+	if mode != BookSortModeRecent && mode != BookSortModeManual {
+		return errors.New("无效的书籍排序模式")
+	}
+	data := r.load()
+	if mode == BookSortModeManual && len(data.Order) == 0 {
+		for _, book := range r.List() {
+			data.Order = append(data.Order, book.Path)
+		}
+	}
+	data.SortMode = mode
 	return r.save(data)
 }
 

@@ -1,5 +1,6 @@
 const home = {
   'home.authorPlaceholder': 'Author (optional)',
+  'home.authorUnset': 'No author',
   'home.bookTitlePlaceholder': 'Book title (required)',
   'home.close': 'Close Book Management',
   'home.cover': 'Cover',
@@ -33,6 +34,10 @@ const home = {
   'home.generateCover': 'Generate Cover',
   'home.novaDirLoading': 'Denova data directory loading...',
   'home.saveError': 'Save failed',
+  'home.sortLabel': 'Book order',
+  'home.sortManual': 'Manual order',
+  'home.sortRecent': 'Recently opened',
+  'home.sortUpdateError': 'Failed to save book order',
   'home.softDeleteBook': 'Remove from Bookshelf',
   'home.bookshelf': 'Bookshelf',
   'home.bookCount': '{{count}} books',

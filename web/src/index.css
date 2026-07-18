@@ -1790,13 +1790,15 @@ html[data-nova-motion="off"] *::after {
   outline-offset: 2px;
 }
 
-.editor-content .tiptap .nova-search-match {
+.editor-content .tiptap .nova-search-match,
+.nova-rich-markdown .tiptap .nova-search-match {
   border-radius: 3px;
   background: rgba(250, 204, 21, 0.32);
   scroll-margin-top: 48px;
 }
 
-.editor-content .tiptap .nova-search-current {
+.editor-content .tiptap .nova-search-current,
+.nova-rich-markdown .tiptap .nova-search-current {
   background: rgba(251, 146, 60, 0.55);
   outline: 1px solid rgba(251, 191, 36, 0.75);
 }
@@ -1808,6 +1810,31 @@ html[data-nova-motion="off"] *::after {
   float: left;
   height: 0;
   pointer-events: none;
+}
+
+/* 设置面板内嵌的富文本 Markdown 编辑器（MarkdownRichEditor）。
+   排版复用 .chat-agent-message，这里只补编辑器本体行为样式。 */
+.nova-rich-markdown .tiptap {
+  outline: none;
+  min-height: 320px;
+}
+
+.nova-rich-markdown .tiptap > :first-child {
+  margin-top: 0;
+}
+
+.nova-rich-markdown .tiptap > :last-child {
+  margin-bottom: 0;
+}
+
+.nova-rich-markdown .tiptap img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.nova-rich-markdown .tiptap img.ProseMirror-selectednode {
+  outline: 2px solid var(--nova-accent);
+  outline-offset: 2px;
 }
 
 /* AI 对话区 Markdown 输出样式 */

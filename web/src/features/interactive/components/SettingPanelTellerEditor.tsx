@@ -750,7 +750,7 @@ function StyleExtractionChatPanel({ messages, active }: { messages: AgentUIMessa
             scrollResetKey="style-extraction-progress"
             bottomPaddingClassName="pb-4"
             messageStyle={{ fontSize: '12px', lineHeight: 1.55 }}
-            collapseTraceBeforeAssistant
+            collapseTraceGroups
           />
         )}
       </div>

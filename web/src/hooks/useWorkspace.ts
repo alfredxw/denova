@@ -3,7 +3,7 @@ import {
   copyWorkspaceItem,
   createWorkspaceItem,
   deleteWorkspaceItem,
-  getBooks,
+  getBookshelf,
   getCurrentWorkspace,
   getWorkspaceSummary,
   getWorkspaceTree,
@@ -13,7 +13,7 @@ import {
   saveFile,
   APIError,
 } from '@/lib/api'
-import type { BookRecord } from '@/lib/api'
+import type { BookRecord, BookSortMode } from '@/lib/api'
 import type { WorkspaceSummary } from '@/lib/api'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
 
@@ -45,6 +45,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false)
   const [summary, setSummary] = useState<WorkspaceSummary | null>(null)
   const [books, setBooks] = useState<BookRecord[]>([])
+  const [bookSortMode, setBookSortMode] = useState<BookSortMode>('recent')
 
   // 用 ref 追踪最新 selectedFile，避免异步回调闭包捕获旧值
   const selectedFileRef = useRef<string | null>(null)
@@ -182,13 +183,15 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     const requestID = booksRequestRef.current + 1
     booksRequestRef.current = requestID
     try {
-      const nextBooks = await getBooks()
+      const bookshelf = await getBookshelf()
       if (requestID !== booksRequestRef.current) return
-      setBooks(nextBooks)
+      setBooks(bookshelf.books)
+      setBookSortMode(bookshelf.sort_mode)
     } catch (e) {
       if (requestID !== booksRequestRef.current) return
       console.error('获取书籍列表失败', e)
       setBooks([])
+      setBookSortMode('recent')
     }
   }, [])
 
@@ -407,6 +410,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     workspaceLoaded,
     summary,
     books,
+    bookSortMode,
     selectFile,
     clearSelectedFile,
     saveFileContent,

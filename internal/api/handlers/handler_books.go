@@ -20,7 +20,8 @@ const MaxBookCoverUploadBytes int64 = 16 * 1024 * 1024
 // handleBooks GET /api/books — 返回当前 Nova 数据目录下实际存在的书籍工作目录。
 func (h *Handlers) HandleBooks(ctx context.Context, c *app.RequestContext) {
 	writeJSON(c, consts.StatusOK, map[string]interface{}{
-		"books": h.app.Books(),
+		"books":     h.app.Books(),
+		"sort_mode": h.app.BookSortMode(),
 	})
 }
 
@@ -239,6 +240,22 @@ func (h *Handlers) HandleBookReorder(ctx context.Context, c *app.RequestContext)
 		return
 	}
 	if err := h.app.ReorderBooks(req.Paths); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"message": messageKey(c, "api.books.reordered")})
+}
+
+// HandleBookSortMode POST /api/books/sort-mode — 切换书架与快捷入口共用的排序方式。
+func (h *Handlers) HandleBookSortMode(ctx context.Context, c *app.RequestContext) {
+	var req struct {
+		Mode novaApp.BookSortMode `json:"mode"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequest")
+		return
+	}
+	if err := h.app.SetBookSortMode(req.Mode); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}

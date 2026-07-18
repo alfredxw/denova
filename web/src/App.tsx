@@ -5,7 +5,7 @@ import { checkForUpdate, fetchSettings } from '@/features/settings/api'
 import { applyFontSettings, fontSettingsFromEffective } from '@/features/settings/font-variables'
 import { markAutoUpdateChecked, shouldRunAutoUpdateCheck, UPDATE_CHECK_RESULT_EVENT } from '@/features/settings/update-check-cache'
 import type { UpdateCheckResult } from '@/features/settings/types'
-import { getLoreItems, importCharacterCard, previewCharacterCard, setChapterConfirmed, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
+import { getLoreItems, importCharacterCard, previewCharacterCard, setChapterConfirmed, switchWorkspace, type CharacterCardPreview, type LoreItem, type WorkspaceSearchResult } from '@/lib/api'
 import { CommandPalette } from '@/components/common/command-palette'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { useAgentChat } from '@/hooks/useAgentChat'
@@ -110,7 +110,7 @@ function App() {
   }, [mode])
 
   const {
-    tree, loading, selectedFile, fileContent, workspace, workspaceLoaded, summary, books,
+    tree, loading, selectedFile, fileContent, workspace, workspaceLoaded, summary, books, bookSortMode,
     selectFile, clearSelectedFile, saveFileContent, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
   } = useWorkspace({ autoRefreshEnabled: workspaceAutoRefreshEnabled })
@@ -382,6 +382,26 @@ function App() {
     refreshAll()
     notifyVersionChange()
   }
+
+  const handleQuickWorkspaceSwitch = useCallback(async (newPath: string): Promise<boolean> => {
+    if (!newPath || newPath === workspace) return true
+    if (!(await flushEditorDraft())) return false
+    try {
+      const result = await switchWorkspace(newPath)
+      const nextWorkspace = result.workspace || newPath
+      console.info('[App.tsx] 标题栏切换书籍完成', { from: workspace, to: nextWorkspace })
+      setWorkspace(nextWorkspace)
+      await refreshAll()
+      notifyVersionChange()
+      return true
+    } catch (error) {
+      console.error('[App.tsx] 标题栏切换书籍失败', { from: workspace, to: newPath, error })
+      toast.error(t('workbench.bookSwitcher.switchError'), {
+        description: error instanceof Error ? error.message : String(error),
+      })
+      return false
+    }
+  }, [flushEditorDraft, notifyVersionChange, refreshAll, setWorkspace, t, workspace])
 
   const handleSaveCurrentFile = useCallback(async (path: string, content: string) => {
     const saved = await saveFileContent(path, content)
@@ -729,6 +749,7 @@ function App() {
         interactiveRightVisible={interactiveRightVisible}
         novaDir={novaDir}
         books={books}
+        bookSortMode={bookSortMode}
         tree={tree}
         loading={loading}
         selectedFile={selectedFile}
@@ -761,6 +782,7 @@ function App() {
         onDismissUpdateNotice={dismissUpdateNotice}
         onToggleInteractiveRightPanel={() => setInteractiveRightVisible((value) => !value)}
         onSwitchBook={handleWorkspaceSwitch}
+        onQuickSwitchBook={handleQuickWorkspaceSwitch}
         onBeforeWorkspaceSwitch={flushEditorDraft}
         onBooksChange={refreshBooks}
         onOpenCharacterCardImport={handleOpenCharacterCardImportFromBooks}

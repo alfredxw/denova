@@ -7,7 +7,7 @@ const apiMock = vi.hoisted(() => ({
   copyWorkspaceItem: vi.fn(),
   createWorkspaceItem: vi.fn(),
   deleteWorkspaceItem: vi.fn(),
-  getBooks: vi.fn(),
+  getBookshelf: vi.fn(),
   getCurrentWorkspace: vi.fn(),
   getWorkspaceSummary: vi.fn(),
   getWorkspaceTree: vi.fn(),
@@ -23,7 +23,7 @@ describe('useWorkspace', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     apiMock.getCurrentWorkspace.mockResolvedValue({ workspace: '/books/demo', has_state: true })
-    apiMock.getBooks.mockResolvedValue([])
+    apiMock.getBookshelf.mockResolvedValue({ books: [], sort_mode: 'recent' })
     apiMock.getWorkspaceTree.mockResolvedValue([])
     apiMock.getWorkspaceSummary.mockResolvedValue({ title: '', author: '', chapter_count: 0, total_words: 0, chapters: [] })
   })
@@ -40,6 +40,14 @@ describe('useWorkspace', () => {
     await waitFor(() => expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(1))
     expect(apiMock.getWorkspaceSummary).toHaveBeenCalledTimes(1)
     expect(setIntervalSpy.mock.calls.some(([, timeout]) => timeout === TREE_AUTO_REFRESH_INTERVAL_MS_FOR_TEST)).toBe(false)
+  })
+
+  it('暴露书架与快捷切换器共用的排序模式', async () => {
+    apiMock.getBookshelf.mockResolvedValue({ books: [], sort_mode: 'manual' })
+
+    render(<WorkspaceHarness autoRefreshEnabled={false} onChange={() => {}} />)
+
+    await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('|manual'))
   })
 
   it('只应用最后一次选中文件的读取结果，避免旧请求晚返回覆盖当前内容', async () => {
@@ -308,7 +316,7 @@ function WorkspaceHarness({
   return (
     <>
       <div data-testid="workspace-state">{workspace.selectedFile}|{workspace.fileContent}</div>
-      <div data-testid="workspace-meta">{workspace.workspace}|{workspace.tree.map((node) => node.name).join(',')}|{workspace.summary?.title ?? ''}</div>
+      <div data-testid="workspace-meta">{workspace.workspace}|{workspace.tree.map((node) => node.name).join(',')}|{workspace.summary?.title ?? ''}|{workspace.bookSortMode}</div>
     </>
   )
 }

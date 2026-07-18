@@ -16,17 +16,19 @@ import { MessageCenterButton } from '@/features/messages/MessageCenter'
 import type { AutomationMessageNavigation } from '@/features/messages/types'
 import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { getActiveAutomationRuns, getAutomationInbox, type ChapterSummary, type WorkspaceSummary } from '@/lib/api'
+import { getActiveAutomationRuns, getAutomationInbox, type BookRecord, type ChapterSummary, type WorkspaceSummary } from '@/lib/api'
 import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { formatNumber } from './workbench-utils'
 import { formatDateTime } from '@/i18n'
+import { BookSwitcher } from './BookSwitcher'
 
 interface WorkbenchShellProps {
   mode: WorkspaceMode
   booksReturnMode: 'ide' | 'interactive'
   currentBookName: string
   workspace: string
+  books: BookRecord[]
   appVersion: string
   summary: WorkspaceSummary | null
   currentChapter?: ChapterSummary
@@ -49,6 +51,7 @@ interface WorkbenchShellProps {
   onSetRightPanel: (panel: RightPanel) => void
   onToggleSettings: () => void
   onCloseSettings: () => void
+  onQuickSwitchBook: (path: string) => Promise<boolean>
   onDismissUpdateNotice?: () => void
 }
 
@@ -99,6 +102,7 @@ export function WorkbenchShell({
   booksReturnMode,
   currentBookName,
   workspace,
+  books,
   appVersion,
   summary,
   currentChapter,
@@ -121,6 +125,7 @@ export function WorkbenchShell({
   onSetRightPanel,
   onToggleSettings,
   onCloseSettings,
+  onQuickSwitchBook,
   onDismissUpdateNotice,
 }: WorkbenchShellProps) {
   const { t } = useTranslation()
@@ -227,6 +232,12 @@ export function WorkbenchShell({
       returnFromBooks()
       return
     }
+    closeSettingsIfOpen()
+    if (versionsVisible) onSetRightPanel(null)
+    onSetMode('books')
+  }
+
+  const manageBooks = () => {
     closeSettingsIfOpen()
     if (versionsVisible) onSetRightPanel(null)
     onSetMode('books')
@@ -425,8 +436,8 @@ export function WorkbenchShell({
   }
 
   const topBar = (
-    <header className="nova-topbar grid h-10 shrink-0 grid-cols-[auto_1fr_auto] items-center border-b px-3 text-xs">
-      <div className="flex items-center gap-3">
+    <header className="nova-topbar grid h-10 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center border-b px-3 text-xs">
+      <div className="flex min-w-0 items-center gap-2">
         <NovaBrandIcon />
         <LayoutGroup id="workbench-mode-switch">
         <div role="group" className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5" aria-label={t('workbench.modeSwitch')}>
@@ -452,10 +463,14 @@ export function WorkbenchShell({
           </button>
         </div>
         </LayoutGroup>
-      </div>
-      <div className="mx-auto flex min-w-0 max-w-[520px] items-center justify-center gap-1.5" title={workspace || currentBookName}>
-        <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-        <span className="truncate font-medium text-[var(--nova-text)]">{currentBookName}</span>
+        <BookSwitcher
+          books={books}
+          currentBookName={currentBookName}
+          currentChapterCount={summary?.chapter_count}
+          workspace={workspace}
+          onSwitchBook={onQuickSwitchBook}
+          onManageBooks={manageBooks}
+        />
       </div>
       <div className="nova-ui-compact flex items-center justify-end gap-2 text-[var(--nova-text-faint)]">
         <MessageCenterButton className="h-7 w-7" onOpenAutomation={openAutomationNotification} />
@@ -563,14 +578,19 @@ export function WorkbenchShell({
   if (isMobile) {
     const compactMobileNavigation = mode === 'interactive' && interactiveSubmode === 'story' && !sharedMenuActive
     const mobileTopBar = (
-      <header className="nova-mobile-topbar nova-topbar shrink-0 border-b border-[var(--nova-border)] py-2 pl-3 pr-3" title={workspace || currentBookName}>
+      <header className="nova-mobile-topbar nova-topbar shrink-0 border-b border-[var(--nova-border)] py-2 pl-3 pr-3">
         <div className="flex min-w-0 items-center justify-between gap-2">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <NovaBrandIcon />
-            <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--nova-text-faint)]">
-              <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-              <span className="min-w-0 truncate font-medium text-[var(--nova-text-muted)]">{currentBookName}</span>
-            </div>
+            <BookSwitcher
+              books={books}
+              currentBookName={currentBookName}
+              currentChapterCount={summary?.chapter_count}
+              workspace={workspace}
+              compact
+              onSwitchBook={onQuickSwitchBook}
+              onManageBooks={manageBooks}
+            />
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <MessageCenterButton className="h-8 w-8" onOpenAutomation={openAutomationNotification} />

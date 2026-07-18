@@ -37,7 +37,7 @@ describe('Agent MessageList', () => {
       <MessageList
         isStreaming
         activityContent="正在思考…"
-        collapseTraceBeforeAssistant
+        collapseTraceGroups
         messages={[
           {
             id: 'assistant-thinking',
@@ -145,7 +145,7 @@ describe('Agent MessageList', () => {
       <MessageList
         isStreaming={false}
         activityContent=""
-        collapseTraceBeforeAssistant
+        collapseTraceGroups
         messages={[
           {
             id: 'assistant-1',
@@ -166,12 +166,44 @@ describe('Agent MessageList', () => {
     expect(screen.getByText('可见正文')).toBeInTheDocument()
   })
 
+  it('正文之后的 thinking 和工具调用统一折叠为一个分组', async () => {
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        collapseTraceGroups
+        messages={[
+          {
+            id: 'assistant-1',
+            role: 'assistant',
+            parts: [
+              { type: 'text', id: 'text-1', text: '可见正文' },
+              { type: 'reasoning', id: 'reason-1', text: '提交前的检查' },
+              { type: 'dynamic-tool', toolName: 'submit_choices', toolCallId: 'tool-1', state: 'output-available', input: {}, output: 'ok' },
+              { type: 'dynamic-tool', toolName: 'submit_actor_state_patches', toolCallId: 'tool-2', state: 'output-available', input: {}, output: 'ok' },
+            ],
+          },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(screen.getByText('可见正文')).toBeInTheDocument()
+    expect(screen.queryByText('提交前的检查')).not.toBeInTheDocument()
+    expect(screen.queryByText('submit_choices')).not.toBeInTheDocument()
+    const traceButtons = screen.getAllByRole('button', { name: /思考过程.*2 次工具调用/ })
+    expect(traceButtons).toHaveLength(1)
+    fireEvent.click(traceButtons[0])
+    expect(screen.getByText('提交前的检查')).toBeInTheDocument()
+    expect(screen.getByText('submit_choices')).toBeInTheDocument()
+    expect(screen.getByText('submit_actor_state_patches')).toBeInTheDocument()
+  })
+
   it('运行中的 trace 在工具结果返回后保持展开，结束后和工具调用一起折叠', async () => {
     const { rerender } = renderMessageList(
       <MessageList
         isStreaming
         activityContent=""
-        collapseTraceBeforeAssistant
+        collapseTraceGroups
         messages={[
           {
             id: 'assistant-running',
@@ -194,7 +226,7 @@ describe('Agent MessageList', () => {
         <MessageList
           isStreaming
           activityContent=""
-          collapseTraceBeforeAssistant
+          collapseTraceGroups
           messages={[
             {
               id: 'assistant-running',
@@ -217,7 +249,7 @@ describe('Agent MessageList', () => {
         <MessageList
           isStreaming={false}
           activityContent=""
-          collapseTraceBeforeAssistant
+          collapseTraceGroups
           messages={[
             {
               id: 'assistant-running',
@@ -246,7 +278,7 @@ describe('Agent MessageList', () => {
       <MessageList
         isStreaming={false}
         activityContent=""
-        collapseTraceBeforeAssistant
+        collapseTraceGroups
         messages={traceHistoryMessages(false)}
       />,
     )
@@ -259,7 +291,7 @@ describe('Agent MessageList', () => {
         <MessageList
           isStreaming
           activityContent=""
-          collapseTraceBeforeAssistant
+          collapseTraceGroups
           messages={traceHistoryMessages(true)}
         />
       </VirtuosoMockContext.Provider>,

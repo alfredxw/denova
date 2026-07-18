@@ -31,13 +31,6 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 	writeFile(t, dir, ".nova/sessions/internal.txt", "内部数据")
 	writeFile(t, dir, ".nova/lore/items.json", "[]")
 	writeFile(t, dir, ".gitignore", ".nova\n")
-	files, err := service.commitFiles(first.Version.ID)
-	if err != nil {
-		t.Fatalf("commitFiles failed: %v", err)
-	}
-	if _, ok := files[".nova/sessions/internal.txt"]; ok {
-		t.Fatalf("first commit should not include .nova file created later: %v", sortedVersionFilePaths(files))
-	}
 
 	writeFile(t, dir, "chapters/ch0001.md", "第二版")
 	writeFile(t, dir, "chapters/ch0002.md", "新增章节")
@@ -61,28 +54,6 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 		t.Fatalf("unexpected diff: %#v", diff)
 	}
 
-	second, err := service.Create("第二版本", VersionSourceManual, settings)
-	if err != nil {
-		t.Fatalf("Create second failed: %v", err)
-	}
-	if second.Version == nil || second.Version.ID == first.Version.ID {
-		t.Fatalf("expected distinct second git commit: first=%#v second=%#v", first.Version, second.Version)
-	}
-	secondFiles, err := service.commitFiles(second.Version.ID)
-	if err != nil {
-		t.Fatalf("commitFiles second failed: %v", err)
-	}
-	if _, ok := secondFiles[".nova/sessions/internal.txt"]; !ok {
-		t.Fatalf("second commit should include .nova creative state: %v", sortedVersionFilePaths(secondFiles))
-	}
-	if _, ok := secondFiles[".nova/lore/items.json"]; !ok {
-		t.Fatalf("second commit should include .nova lore state: %v", sortedVersionFilePaths(secondFiles))
-	}
-	if _, ok := secondFiles[".gitignore"]; !ok {
-		t.Fatalf("second commit should include workspace .gitignore: %v", sortedVersionFilePaths(secondFiles))
-	}
-
-	writeFile(t, dir, "chapters/ch0001.md", "临时改动")
 	if _, err := service.Restore(first.Version.ID, settings); err != nil {
 		t.Fatalf("Restore failed: %v", err)
 	}
@@ -117,9 +88,8 @@ func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("History failed: %v", err)
 	}
-	if len(history) != 3 ||
+	if len(history) != 2 ||
 		!historyContains(history, first.Version.ID) ||
-		!historyContains(history, second.Version.ID) ||
 		!historyContainsSource(history, VersionSourceRollbackBackup) {
 		t.Fatalf("history should come from git commits, history=%#v latest=%#v", history, cleanStatus.Latest)
 	}

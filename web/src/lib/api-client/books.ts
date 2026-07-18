@@ -1,5 +1,5 @@
 import { fetchAPI, jsonHeaders, parseSSEStream, readErrorMessage, requestJSON } from './client'
-import type { BookCoverResult, BookMeta, BookRecord, NovelImportResult, SSEEvent } from './types'
+import type { BookCoverResult, BookMeta, BookRecord, BookSortMode, BookshelfResult, NovelImportResult, SSEEvent } from './types'
 
 export type BookExportFormat = 'txt'
 
@@ -8,9 +8,16 @@ export interface BookExportFile {
   blob: Blob
 }
 
+export async function getBookshelf(): Promise<BookshelfResult> {
+  const data = await requestJSON<Partial<BookshelfResult>>('/api/books')
+  return {
+    books: data.books || [],
+    sort_mode: data.sort_mode === 'manual' ? 'manual' : 'recent',
+  }
+}
+
 export async function getBooks(): Promise<BookRecord[]> {
-  const data = await requestJSON<{ books: BookRecord[] }>('/api/books')
-  return data.books || []
+  return (await getBookshelf()).books
 }
 
 export async function removeBook(path: string): Promise<{ message: string; workspace: string }> {
@@ -26,6 +33,14 @@ export async function reorderBooks(paths: string[]): Promise<{ message: string }
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ paths }),
+  })
+}
+
+export async function setBookSortMode(mode: BookSortMode): Promise<{ message: string }> {
+  return requestJSON('/api/books/sort-mode', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ mode }),
   })
 }
 

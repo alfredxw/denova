@@ -6,10 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- 顶部当前书名升级为带封面缩略图的快捷切换器；桌面与手机端都可在不离开当前页面、不改变写作/游戏模式的前提下直接切换书籍，并保留书籍管理入口与键盘菜单交互。
+- The current-book title is now a cover-aware quick switcher on desktop and mobile. It changes books without leaving the current page or changing Writing/Game mode, while retaining keyboard menu navigation and a bookshelf-management shortcut.
+
+### Changed
+
+- 书籍管理与标题快捷切换器统一使用持久化排序：默认按最近打开时间排列，也可切换到手动排序并拖拽保存顺序；快捷切换入口从顶栏中间移到左侧模式切换旁，并与模式控件对齐。
+- Book Management and the title quick switcher now share one persisted order: recently opened first by default, with an optional manual drag order. The switcher moves from the top-bar center to the left beside the mode switch and matches its control sizing.
+- 资料库正文编辑器改为单一所见即所得 Markdown 编辑器（与章节正文同一 TipTap 引擎），替换此前的「预览 / Raw」切换；目录搜索关键词现在在渲染后的正文中直接高亮并定位到首个匹配，搜索时也可以直接编辑，简介字段保持原文本框搜索高亮不变。
+- The lore content editor is now a single WYSIWYG Markdown editor (the same TipTap engine as chapter editing), replacing the previous Preview/Raw toggle. Directory search keywords are highlighted directly in the rendered content with a jump to the first match, and editing stays available while searching; the brief field keeps its plain-text search highlight.
+
 ### Fixed
 
-- 修复写作模式发送消息后输入框内容（如 initPrompt 预填提示词）未被清空的问题：根因是 TipTap 编辑器在 `disabled`（AI 回复中）状态下，value→editor 同步使用的 `setContent(空 JSON)` 不会更新 editor DOM，改用 TipTap 内置 `clearContent` 命令确保发送后输入框被可靠清空。
-- Fix: the composer input (e.g. initPrompt prefill) was not cleared after sending in writing mode. Root cause: TipTap's `setContent(empty JSON)` used by the value→editor sync does not update the editor DOM while `disabled` (AI streaming); switched to TipTap's built-in `clearContent` command to reliably clear the input after a send.
+- 游戏模式正文之后的 thinking 与工具调用（含提交结果、重试循环）不再逐张卡片交叉展示，统一折叠为一个可展开的分组；写作、自动化、导演台等所有使用 trace 折叠的区域行为一致。
+- In Game Mode, thinking and tool calls after the narrative (including submission results and retry loops) no longer render as interleaved individual cards; they collapse into a single expandable trace group. Writing, Automations, Director Desk, and all other trace-collapsing surfaces behave consistently.
+
+## [v0.3.0] - 2026-07-18
+
+### Brief / 简要说明
+
+#### 中文
+
+- Beta 不兼容提醒：审阅反馈改为按可信账本来源分组的数组；文件编辑工具改用单文件批量协议并隐藏 revision；后台 Shell 暂不再支持。
+- 写作模式新增持久化 Change Review 与正文评论，可审阅累计 Diff、添加可信评论、将意见交给 Agent，并跨重启 Undo/Redo。
+- 新的工作区变更账本、内容寻址存储、跨文件 WAL、精确 revision 和工作区租约共同保护保存、恢复与并发切换。
+- 游戏模式支持直接修正已保存的 AI 回复，并以全屏导演台和状态感知侧栏集中管理规划、事件、角色与世界状态。
+- 资料库、方案预设和 Skills 统一资源目录体验；设置作用域、模型快捷选择与自动化模板流程同步简化。
+
+#### English
+
+- Beta breaking changes: review feedback is now an array grouped by trusted ledger source; file edits use a single-file batch contract without exposed revisions; background Shell is no longer supported.
+- Writing Mode adds durable Change Review and document comments, with cumulative diffs, trusted feedback for the Agent, and restart-safe undo/redo.
+- A workspace-change ledger, content-addressed storage, cross-file WAL, exact revisions, and workspace leases protect saves, restores, and concurrent workspace switches.
+- Game Mode can edit saved AI replies and centralizes plans, events, actors, and world state in a full-screen Director Desk with a state-aware sidebar.
+- Lore, Presets, and Skills share a consistent resource directory, while settings scope, model shortcuts, and automation templates are simpler.
 
 ### Added
 
@@ -62,15 +94,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - File-tree create/delete/rename/copy/move, version restore, and manual version snapshots now share the workspace lease used by the editor, Agent, and Review. Agent Shell runs in the foreground with the workspace as cwd; background Shell mode, whose lifetime cannot be coordinated safely, is no longer supported in this beta.
 - 自动化运行占用、触发状态、定时进度与 Inbox 去重现在按 canonical workspace 隔离；同一工作区的 mutation 检查会串行合并，App 关闭时取消并等待后台 evaluator，JSON Store 通过路径锁和原子持久化避免并发丢更新与半写文件。
 - Automation run claims, trigger state, schedule progress, and Inbox deduplication are now isolated by canonical workspace. Mutation checks for one workspace are serialized and coalesced, App shutdown cancels and drains evaluators, and path-locked atomic Store writes prevent concurrent lost updates and torn JSON.
-- 游戏模式右侧导演控制台重构为「状态 / 导演」两个 tab：原「规划」与「后台」合并为统一的导演视图，运行状态、规则审计、节拍表、事件编排与执行过程在单页滚动内呈现，消除跨 tab 的重复信息与语义重叠；节拍表三份文档改为可折叠分区，正文预览不再有滚动套滚动。防剧透揭示由两道门合并为一道，并与激活 tab 一起按故事持久化——切分支、切面板、刷新页面都不再重置，且没有任何导演运行记录时不再设置空门。导演选择器与回复字数设置收进标题栏的设置折叠区，导演运行中或失败时「导演」tab 会直接显示状态指示。
-- The game-mode Director Console is restructured into State and Director tabs. The former Plan and Backstage tabs merge into one Director view where run status, rule audit, the beat sheet, event orchestration, and the run process live in a single scroll with no cross-tab duplication, and the three beat-sheet documents become collapsible sections instead of nested scroll areas. The two spoiler gates are unified into one and, together with the active tab, now persist per story — switching branches, toggling the panel, or refreshing no longer resets them, and no gate appears until a director run exists. Story director and reply-length settings move into a collapsible settings strip in the header, and the Director tab surfaces a live indicator while the director is running or has failed.
-- 游戏模式状态 tab 精简为纯浏览视图：只保留 Actor、世界与场景、本回合状态变化三个核心区块，变化列表默认截断为前 5 条、可展开全部。状态结构（schema 适配、覆盖审查、结构定义）移至导演 tab 底部，默认折叠为一张「故事状态结构」卡，初始化进行中或失败时自动展开提醒；主舞台状态展示偏好移入导演控制台标题栏的设置折叠区。
-- The game-mode State tab is now a pure browsing view with only Actors, World & Scene, and turn changes; long change lists are truncated to the first five entries with an expand-all toggle. The state-schema machinery (adaptation, coverage review, structure) moves to the bottom of the Director tab as a collapsed Story State Schema card that auto-expands while initialization is running or has failed, and the stage-state display preference moves into the console header's settings strip.
 - 游戏模式右侧导演控制台重新分层：导演幕后内容（节拍表编辑、事件编排、执行过程、规则审计、状态结构、上下文分析）整体迁入覆盖主舞台的「导演台」全屏视图，宽屏双栏布局，左栏为编辑器级宽度的节拍表文档，右栏为运行状态、事件、审计与执行过程；导演台与故事绑定，不占用一级菜单——入口融在右侧栏「导演控制台」标题行右侧（导演运行中/失败状态一体可见），一级菜单仍停留在「剧情」，header 可一键返回剧情；防剧透揭示在进入时确认一次并按故事持久化。右侧栏为状态感知栏：header 信息条默认展示当前故事导演、每轮目标字数（点击后行内直接编辑，不再弹浮层）与主舞台状态展示；内容区分「变化 / 角色 / 世界」三个 tab 并带数量徽标，选择按故事持久化——变化列表默认前 3 条可展开，角色为紧凑行（行头内联最多两个数值 meter、点击行内展开，默认展开主角，取代原 ActorTabs），世界与场景独立成区。
 - The game-mode right panel is re-layered: all director backstage content (beat-sheet editing, event orchestration, run process, rule audit, state schema, context analysis) moves into a full-screen Director view that overlays the story stage with a wide two-column layout — an editor-width beat sheet on the left and run status, events, audit, and process on the right. Bound to the story rather than the global menu, its entry lives inside the right panel's Director Console title row (with running/failed states surfaced on the same button) while the Story menu stays active, and a header button returns to the story; spoiler reveal still confirms once and persists per story. The right panel is a state-awareness column: its header always shows the current story director, reply target length (now edited inline in place, no popover), and stage-state display preference as one-click controls instead of hiding them behind a settings toggle. Content is organized into Changes / Actors / World tabs with count badges, persisted per story — turn changes truncate to three with expand-all, every actor is a compact row with up to two inline numeric meters and in-place expansion (protagonist expanded by default, replacing the old actor tabs), and world facts get their own section.
+- 从源码运行的环境要求现在明确列出 `ripgrep`，避免 Agent 因缺少项目约定的快速搜索工具而跳过规则与调用点检查。
+- Source-build prerequisites now explicitly list `ripgrep`, preventing Agent workflows from skipping rule and call-site checks when the expected search tool is unavailable.
 
 ### Fixed
 
+- 修复写作模式发送消息后输入框内容（如 initPrompt 预填提示词）未被清空的问题：TipTap 编辑器现在使用内置 `clearContent` 命令，确保 AI 回复期间禁用的输入框也能可靠清空。
+- Fixed the Writing Mode composer retaining sent content such as an initPrompt prefill. The TipTap editor now uses its built-in `clearContent` command so the disabled composer is cleared reliably while the AI responds.
+- 作品信息中的作者字段现在可以清空，书架上的空作者状态使用中英文本地化文案展示。
+- The author field in book metadata can now be cleared, and bookshelf cards show a localized empty-author label.
+- 编辑器保存、Reject 与 Undo/Redo 的自动化触发现在直接复用当前工作区租约捕获的不可变快照，避免工作区切换等待写锁时发生重入读锁死锁。
+- Automation triggers after editor saves, Reject, and Undo/Redo now reuse the immutable snapshot captured by the active workspace lease, preventing a reentrant read-lock deadlock while a workspace switch waits for the write lock.
+- Skills 编辑器工具栏在窄屏下会自适应换行并截断超长路径，「创建用户覆盖」等操作不再被屏幕右侧裁切。
+- The Skills editor toolbar now wraps adaptively and truncates long paths on narrow screens, keeping actions such as Create User Override fully visible.
+- README 中英文的 Discord 徽章与正文入口现在统一指向 Denova 社区，不再误导至其他项目。
+- The Discord badge and body links in both README languages now consistently point to the Denova community instead of another project.
 - 正文多行选区跨过两处或更多已有评论时不再卡死：重叠评论高亮会在写入 ProseMirror 前合成为互不重叠的片段，不再通过 DOM 回写修正无障碍属性；嵌套评论仍各自保留唯一的键盘展开入口，原文点击、评论定位与编辑后的锚点映射保持可用。
 - Multi-line document selections crossing two or more existing comments no longer freeze the UI. Overlapping highlights are composed into disjoint ProseMirror decorations instead of correcting accessibility attributes through DOM writeback; nested comments retain one keyboard disclosure each, while source clicks, thread alignment, and post-edit anchor mapping remain intact.
 - 游戏模式故事舞台的回合展示顺序与实际执行顺序对齐：持久化回合的展示时间线新增正文位置锚点，`submit_actor_state_patches` / `submit_choices` 提交结果工具卡片现在固定在正文之后渲染，不再被折进「思考过程」分组，回合从流式直播切换为持久化历史布局时不再有工具卡片跳变。无锚点的旧回合保持原「正文在最后」布局不变。

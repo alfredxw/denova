@@ -79,11 +79,11 @@ export function SkillEditor({
 
   return (
     <>
-      <div className="flex min-h-12 shrink-0 items-center gap-3 border-b border-[var(--nova-border)] px-4">
+      <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-[var(--nova-border)] px-3 py-2 sm:px-4">
         {editingEntryFile ? <FileCode2 className="h-4 w-4 text-[var(--nova-text-muted)]" /> : <FileText className="h-4 w-4 text-[var(--nova-text-muted)]" />}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-sm text-[var(--nova-text)]">{editingEntryFile ? `/${document.name}` : selectedFilePath}</span>
+        <div className="min-w-0 flex-[1_1_12rem]">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate font-mono text-sm text-[var(--nova-text)]">{editingEntryFile ? `/${document.name}` : selectedFilePath}</span>
             <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{scopeLabel(document.scope, t)}</span>
             {!editingEntryFile && <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('skills.files.reference')}</span>}
             {!document.active && <span className="rounded bg-[var(--nova-warning-bg)] px-1.5 py-0.5 text-[10px] text-[var(--nova-warning)]">{t('skills.shadowed')}</span>}
@@ -92,68 +92,70 @@ export function SkillEditor({
           </div>
           <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]" title={activeDisplayPath}>{activeDisplayPath}</div>
         </div>
-        {dirty && <span className="text-[11px] text-[var(--nova-warning)]">{t('skills.unsaved')}</span>}
-        {document.editable && (
-          <>
-            <button
-              type="button"
-              onClick={onOpenConfig}
-              className="nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px]"
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-              {t('skills.config.action')}
-            </button>
-            {builtinPeer && (
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 max-sm:w-full max-sm:justify-start">
+          {dirty && <span className="text-[11px] text-[var(--nova-warning)]">{t('skills.unsaved')}</span>}
+          {document.editable && (
+            <>
               <button
                 type="button"
-                onClick={onRestoreBuiltin}
-                disabled={saving}
-                className="nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px] disabled:cursor-not-allowed disabled:opacity-45"
+                onClick={onOpenConfig}
+                className="nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px]"
               >
-                <RefreshCw className="h-3.5 w-3.5" />
-                {t('skills.restoreBuiltin.action')}
+                <Settings2 className="h-3.5 w-3.5" />
+                {t('skills.config.action')}
               </button>
-            )}
-            <button
-              type="button"
-              onClick={onDelete}
-              disabled={saving}
-              className="nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px] text-[var(--nova-danger)] disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              {t('skills.delete.action')}
-            </button>
-          </>
-        )}
-        <button
-          type="button"
-          onClick={onToggleFileTree}
-          aria-pressed={fileTreeOpen}
-          className={`nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] px-2 text-[11px] ${fileTreeOpen ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
-        >
-          <ListTree className="h-3.5 w-3.5" />
-          {t('skills.files.title')}
-        </button>
-        <MarkdownViewToggle
-          preview={activeViewMode === 'preview'}
-          onPreviewChange={(preview) => onViewModeChange(preview ? 'preview' : 'raw')}
-          previewDisabled={!activeIsMarkdown}
-          previewDisabledReason={t('skills.editor.previewUnavailable')}
-        />
-        {document.scope === 'builtin' && (
+              {builtinPeer && (
+                <button
+                  type="button"
+                  onClick={onRestoreBuiltin}
+                  disabled={saving}
+                  className="nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px] disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  {t('skills.restoreBuiltin.action')}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={saving}
+                className="nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px] text-[var(--nova-danger)] disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {t('skills.delete.action')}
+              </button>
+            </>
+          )}
           <button
             type="button"
-            onClick={onCreateBuiltinOverride}
-            disabled={saving || (!builtinOverrideScope && !builtinOverride)}
-            title={!builtinOverrideScope && !builtinOverride ? t('skills.override.noWritable') : undefined}
-            className="nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px] disabled:cursor-not-allowed disabled:opacity-45"
+            onClick={onToggleFileTree}
+            aria-pressed={fileTreeOpen}
+            className={`nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] px-2 text-[11px] ${fileTreeOpen ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
           >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : builtinOverride ? <FileCode2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            {builtinOverride
-              ? t('skills.override.open', { scope: scopeLabel(builtinOverride.scope, t) })
-              : t('skills.override.create', { scope: scopeLabel(builtinOverrideScope?.scope || 'user', t) })}
+            <ListTree className="h-3.5 w-3.5" />
+            {t('skills.files.title')}
           </button>
-        )}
+          <MarkdownViewToggle
+            preview={activeViewMode === 'preview'}
+            onPreviewChange={(preview) => onViewModeChange(preview ? 'preview' : 'raw')}
+            previewDisabled={!activeIsMarkdown}
+            previewDisabledReason={t('skills.editor.previewUnavailable')}
+          />
+          {document.scope === 'builtin' && (
+            <button
+              type="button"
+              onClick={onCreateBuiltinOverride}
+              disabled={saving || (!builtinOverrideScope && !builtinOverride)}
+              title={!builtinOverrideScope && !builtinOverride ? t('skills.override.noWritable') : undefined}
+              className="nova-nav-item inline-flex h-7 shrink-0 items-center gap-1 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 text-[11px] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : builtinOverride ? <FileCode2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {builtinOverride
+                ? t('skills.override.open', { scope: scopeLabel(builtinOverride.scope, t) })
+                : t('skills.override.create', { scope: scopeLabel(builtinOverrideScope?.scope || 'user', t) })}
+            </button>
+          )}
+        </div>
       </div>
       <div className="flex min-h-0 flex-1">
         {fileTreeOpen && (

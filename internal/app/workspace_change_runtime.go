@@ -107,7 +107,7 @@ func (a *App) WithWorkspaceChangeMutation(
 	}
 	if strings.TrimSpace(hooks.AutomationSource) != "" && len(hooks.Paths) > 0 {
 		if automation := a.automationSnapshotLocked(); automation != nil {
-			a.automation().CheckTriggersAfterWorkspaceMutation(ctx, hooks.AutomationSource, hooks.Paths)
+			a.automation().checkTriggersAfterWorkspaceMutation(ctx, automation, hooks.AutomationSource, hooks.Paths)
 		}
 	}
 	return actualWorkspace, nil

@@ -1231,7 +1231,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 ) : undefined}
                 afterContentKey={`${snapshot?.current_turn?.id || ''}:${snapshot?.current_turn?.state_status || ''}:${stateDisplayPreference}`}
                 messageStyle={stageTextStyle}
-                collapseTraceBeforeAssistant
+                collapseTraceGroups
                 turnScrollRequest={turnScrollRequest}
                 onVisibleTurnAnchorChange={handleVisibleTurnAnchorChange}
                 onEditMessage={startEditingView}

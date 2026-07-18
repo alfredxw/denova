@@ -805,7 +805,8 @@ describe('StoryStage streaming rendering', () => {
     expect(screen.queryByText('write_file')).not.toBeInTheDocument()
   })
 
-  it('renders submission tool cards after the narrative when the turn has a narrative anchor', async () => {
+  it('folds submission tool cards after the narrative into one collapsed trace group when the turn has a narrative anchor', async () => {
+    const user = userEvent.setup()
     const turn: TurnEvent = {
       id: 'turn-1',
       parent_id: null,
@@ -860,16 +861,18 @@ describe('StoryStage streaming rendering', () => {
 
     const narrative = screen.getByText('石门后传来锁链拖地的声音。')
     expect(narrative).toBeInTheDocument()
-    // 提交结果工具卡片渲染在正文之后，不再折进思考分组
-    const submitPatches = screen.getByText('submit_actor_state_patches')
-    const submitChoices = screen.getByText('submit_choices')
-    expect(submitPatches).toBeInTheDocument()
-    expect(submitChoices).toBeInTheDocument()
-    expect(narrative.compareDocumentPosition(submitPatches) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(narrative.compareDocumentPosition(submitChoices) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    // 思考折叠分组只包含思考内容，不再吞掉提交结果工具
-    const traceButton = screen.getByRole('button', { name: /思考过程/ })
-    expect(traceButton.textContent).not.toMatch(/工具调用/)
+    // 正文之后的提交结果工具统一折叠为一个分组，不再逐张卡片交叉展示
+    expect(screen.queryByText('submit_actor_state_patches')).not.toBeInTheDocument()
+    expect(screen.queryByText('submit_choices')).not.toBeInTheDocument()
+    const postNarrativeGroup = screen.getByRole('button', { name: /^2 次工具调用$/ })
+    expect(narrative.compareDocumentPosition(postNarrativeGroup) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // 正文前的思考分组只包含思考内容，不吞掉提交结果工具
+    const preNarrativeGroup = screen.getByRole('button', { name: /^思考过程$/ })
+    expect(preNarrativeGroup.compareDocumentPosition(narrative) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // 展开正文后的分组可以看到全部提交工具
+    await user.click(postNarrativeGroup)
+    expect(screen.getByText('submit_actor_state_patches')).toBeInTheDocument()
+    expect(screen.getByText('submit_choices')).toBeInTheDocument()
   })
 
   it('keeps submission tools inside the trace group for turns persisted without a narrative anchor', async () => {

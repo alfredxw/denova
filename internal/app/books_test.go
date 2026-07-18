@@ -69,11 +69,11 @@ func TestBookRegistryListScansNovaDirBooks(t *testing.T) {
 	if len(books) != 2 {
 		t.Fatalf("书籍数量不符合预期: %#v", books)
 	}
-	if books[0].Path != bookB || books[1].Path != bookA {
-		t.Fatalf("书籍应来自 Nova 目录并按名称排序: %#v", books)
+	if books[0].Path != bookA || books[1].Path != bookB {
+		t.Fatalf("书籍应来自 Nova 目录并默认按最近打开排序: %#v", books)
 	}
-	if books[1].LastOpenedAt != "2026-01-02T00:00:00Z" {
-		t.Fatalf("应保留已有打开时间用于兼容展示: %#v", books[1])
+	if books[0].LastOpenedAt != "2026-01-02T00:00:00Z" {
+		t.Fatalf("应保留已有打开时间用于排序与展示: %#v", books[0])
 	}
 }
 
@@ -234,6 +234,77 @@ func TestBookRegistryReorderScannedNovaBooks(t *testing.T) {
 	books = registry.List()
 	if len(books) != 2 || books[0].Path != bookB || books[1].Path != bookA {
 		t.Fatalf("打开书籍不应打乱自定义排序: %#v", books)
+	}
+	if registry.SortMode() != BookSortModeManual {
+		t.Fatalf("拖拽排序后应自动切换为手动排序: %s", registry.SortMode())
+	}
+}
+
+func TestBookRegistrySortModeSwitchPreservesManualOrder(t *testing.T) {
+	root := t.TempDir()
+	bookA := filepath.Join(root, "alpha")
+	bookB := filepath.Join(root, "zeta")
+	for _, dir := range []string{bookA, bookB} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	registry := &BookRegistry{path: filepath.Join(root, "books.json")}
+	if err := registry.Touch(bookA); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Touch(bookB); err != nil {
+		t.Fatal(err)
+	}
+	if got := registry.List(); got[0].Path != bookB {
+		t.Fatalf("最近打开排序不符合预期: %#v", got)
+	}
+
+	if err := registry.Reorder([]string{bookA, bookB}); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.SetSortMode(BookSortModeRecent); err != nil {
+		t.Fatal(err)
+	}
+	if got := registry.List(); got[0].Path != bookB {
+		t.Fatalf("切回最近打开排序不符合预期: %#v", got)
+	}
+
+	if err := registry.SetSortMode(BookSortModeManual); err != nil {
+		t.Fatal(err)
+	}
+	if got := registry.List(); got[0].Path != bookA || got[1].Path != bookB {
+		t.Fatalf("恢复手动排序时应保留原顺序: %#v", got)
+	}
+}
+
+func TestBookRegistryLegacyOrderInfersManualSortMode(t *testing.T) {
+	root := t.TempDir()
+	bookA := filepath.Join(root, "alpha")
+	bookB := filepath.Join(root, "zeta")
+	for _, dir := range []string{bookA, bookB} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	registry := &BookRegistry{path: filepath.Join(root, "books.json")}
+	if err := registry.save(bookRegistryData{
+		Books: []BookRecord{
+			{Path: bookA, LastOpenedAt: "2026-01-02T00:00:00Z"},
+			{Path: bookB, LastOpenedAt: "2026-01-01T00:00:00Z"},
+		},
+		Order: []string{bookB, bookA},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if registry.SortMode() != BookSortModeManual {
+		t.Fatalf("旧版自定义顺序应按手动模式读取: %s", registry.SortMode())
+	}
+	if got := registry.List(); got[0].Path != bookB || got[1].Path != bookA {
+		t.Fatalf("旧版自定义顺序应保留: %#v", got)
 	}
 }
 

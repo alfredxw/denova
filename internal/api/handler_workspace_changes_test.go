@@ -13,6 +13,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/common/ut"
 
+	"denova/internal/agent"
 	"denova/internal/workspacechange"
 )
 
@@ -114,8 +115,29 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 	if feedbackResp.Code != http.StatusOK {
 		t.Fatalf("review feedback analysis status=%d body=%s", feedbackResp.Code, feedbackResp.Body.String())
 	}
-	if body := feedbackResp.Body.String(); !strings.Contains(body, "这里的人称需要确认") || !strings.Contains(body, `"source":"workspace_change"`) || strings.Contains(body, "FORGED CLIENT COMMENT") {
-		t.Fatalf("review feedback was not resolved exclusively from the ledger: %s", body)
+	var analysis agent.ContextAnalysis
+	decodeResponse(t, feedbackResp.Body.Bytes(), &analysis)
+	var trustedFeedback agent.ReviewFeedbackContexts
+	for _, part := range analysis.ContextParts {
+		if part.Source != "Review Feedback" {
+			continue
+		}
+		const fence = "```json\n"
+		start := strings.Index(part.Content, fence)
+		end := strings.LastIndex(part.Content, "\n```")
+		if start < 0 || end <= start+len(fence) {
+			t.Fatalf("review feedback context is not a JSON block: %q", part.Content)
+		}
+		if err := json.Unmarshal([]byte(part.Content[start+len(fence):end]), &trustedFeedback); err != nil {
+			t.Fatalf("decode trusted review feedback: %v content=%q", err, part.Content)
+		}
+		break
+	}
+	if len(trustedFeedback) != 1 || trustedFeedback[0].Source != agent.ReviewFeedbackSourceWorkspaceChange || len(trustedFeedback[0].Comments) != 1 || trustedFeedback[0].Comments[0].Body != "这里的人称需要确认" {
+		t.Fatalf("review feedback was not resolved exclusively from the ledger: %#v", trustedFeedback)
+	}
+	if strings.Contains(feedbackResp.Body.String(), "FORGED CLIENT COMMENT") {
+		t.Fatalf("forged client review feedback reached context analysis: %s", feedbackResp.Body.String())
 	}
 
 	forgedFeedbackResp := performJSONRequest(t, server, http.MethodPost, "/api/chat/context-analysis", map[string]any{
