@@ -1,0 +1,131 @@
+CHANGELOG.md
+  s_7ec26d371c44ea::t_dae78ae1ac1602 9-20,23-44,99-100,104-113
+README.en.md
+  s_7294660f3c1b71::t_5febc6cd396cf2 22,56-58,62,72,80
+README.md
+  s_7294660f3c1b71::t_62775886a77fdf 22,56-58,62,72,80
+design-qa.md
+  s_ef7d6848d7d786::t_dbb24c351e8b43 1-74
+internal/api/handler_workspace_changes_test.go
+  s_7294660f3c1b71::t_64a847ef44802f 16,118-140
+internal/api/handler_workspace_test.go
+  s_7294660f3c1b71::t_18e607416bc105 44-46,172,187-190,197,207,210-211,213-215,217,219-231
+internal/api/handlers/handler_books.go
+  s_ef7d6848d7d786::t_f432b93dd6252b 23-24,249-264
+internal/api/routes.go
+  s_ef7d6848d7d786::t_db87d62c9a611a 62
+internal/app/book_meta_store_test.go
+  s_7294660f3c1b71::t_00a10f84f8796e 43-64
+internal/app/books.go
+  s_ef7d6848d7d786::t_5813864ac88e58 20-27,38-42,108,154,210-251,325,332-333,350,414,419-441
+internal/app/books_test.go
+  s_ef7d6848d7d786::t_413a4736f9a8bd 72-73,75-76,238-308
+internal/app/runtime_manager.go
+  s_ef7d6848d7d786::t_aa0820c325cdcf 134-142,210-218
+internal/app/workspace_change_runtime.go
+  s_7294660f3c1b71::t_84c8890a0e2017 110
+internal/book/versions/service_test.go
+  s_7294660f3c1b71::t_c41a60a4459a9f 91
+npm/package.json
+  s_7294660f3c1b71::t_e54b501472bc1c 3
+web/package.json
+  s_7294660f3c1b71::t_10fef6fbea9e7e 4
+web/src/App.tsx
+  s_ef7d6848d7d786::t_d0a1b0f3c681c6 8,113,386-405,752,785
+web/src/components/Chat/AgentMessageList.test.tsx
+  s_ef7d6848d7d786::t_51915f43022df1 40,148,169-200,206,229,252,281,294
+web/src/components/Chat/AgentMessageList.tsx
+  s_ef7d6848d7d786::t_be652ead71c109 41-42,96,112,116,380,405-407,415-417
+web/src/components/Chat/AgentPanel.tsx
+  s_ef7d6848d7d786::t_a778c20c6bd524 408,486
+web/src/components/Chat/ConfigManagerChat.tsx
+  s_ef7d6848d7d786::t_df000e31b95abc 122
+web/src/components/Editor/MarkdownRichEditor.test.tsx
+  s_ef7d6848d7d786::t_bc6a61e0522784 1-171
+web/src/components/Editor/MarkdownRichEditor.tsx
+  s_ef7d6848d7d786::t_408eb3fe4877cc 1-128
+web/src/components/Home/BookCoverThumbnail.tsx
+  s_ef7d6848d7d786::t_d10cb036275abe 10,15,30,35
+web/src/components/Home/HomeView.test.tsx
+  s_ef7d6848d7d786::t_1275240189c712 5,19,88,112-117,225-241,245-249,260,264
+web/src/components/Home/HomeView.tsx
+  s_ef7d6848d7d786::t_6dc07df030f58b 8,11,29,32,47-48,54,67,79,131,148-163,292-305,370,393,398-406
+web/src/components/workbench/BookSwitcher.test.tsx
+  s_ef7d6848d7d786::t_4eccc1ef67f2b2 1-85
+web/src/components/workbench/BookSwitcher.tsx
+  s_ef7d6848d7d786::t_cde73260e6f728 1-170
+web/src/components/workbench/ModeRouter.tsx
+  s_ef7d6848d7d786::t_39524ef36ef6d4 15,59,91,151,183,636,726,749
+web/src/components/workbench/WorkbenchShell.responsive.test.tsx
+  s_ef7d6848d7d786::t_284e138807a370 4,39,87,92,98,108,126
+web/src/components/workbench/WorkbenchShell.tsx
+  s_ef7d6848d7d786::t_b9acaeb435a62f 19,24,31,54,105,128,240-245,439-440,466-473,581,585-593
+web/src/features/automations/AutomationsView.tsx
+  s_ef7d6848d7d786::t_1c95ec8091e138 603
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_ef7d6848d7d786::t_db81ae45b98e57 94-110,973,986-990,996-1003
+web/src/features/interactive/components/SettingPanelTellerEditor.tsx
+  s_ef7d6848d7d786::t_57af108fdface4 753
+web/src/features/interactive/components/StoryStage.test.tsx
+  s_ef7d6848d7d786::t_6f81af75a0e138 808-809,864-875
+web/src/features/interactive/components/StoryStage.tsx
+  s_ef7d6848d7d786::t_e10529b22749f5 1234
+web/src/features/interactive/components/director-console/DirectorProcessCard.tsx
+  s_ef7d6848d7d786::t_aabbe38d29664f 39
+web/src/features/interactive/components/setting-panel/LoreEditor.tsx
+  s_ef7d6848d7d786::t_cadcd1cba79a10 13,183-188,190,192,194
+web/src/features/skills/SkillEditor.tsx
+  s_7294660f3c1b71::t_2856d3939e2711 82,84-86,95-98,101-120,122,124-125,127-128,131-133,135-136,138-158
+web/src/hooks/useWorkspace.test.tsx
+  s_ef7d6848d7d786::t_5185d7eb03d1c2 10,26,45-52,319
+web/src/hooks/useWorkspace.ts
+  s_ef7d6848d7d786::t_5fde995ba79735 6,16,48,186,188-189,194,413
+web/src/i18n/locales/en-US/home.ts
+  s_ef7d6848d7d786::t_d255d4301cb90d 3,37-40
+web/src/i18n/locales/en-US/workbench.ts
+  s_ef7d6848d7d786::t_69a0504cbd7f8b 17-25
+web/src/i18n/locales/zh-CN/home.ts
+  s_ef7d6848d7d786::t_364a3817f24ff7 3,37-40
+web/src/i18n/locales/zh-CN/workbench.ts
+  s_ef7d6848d7d786::t_b2913499c529c9 17-25
+web/src/index.css
+  s_ef7d6848d7d786::t_7779a42570a728 1793-1794,1800-1801,1815-1839
+web/src/lib/api-client/books.ts
+  s_ef7d6848d7d786::t_df182d23b116ab 2,11-18,20,39-46
+web/src/lib/api-client/types.ts
+  s_ef7d6848d7d786::t_ebb5d93cf0210e 303-309
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cc967554f3baab96c46da6fafd0b43d56b900939",
+  "prompts": {},
+  "sessions": {
+    "s_7294660f3c1b71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f73fb-73e9-77f3-adce-4b4b76db1c08",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_7ec26d371c44ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7454-ae95-7b51-b47e-7087fe51b822",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_ef7d6848d7d786": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7435-1a61-70d2-8436-af36de78bcaa",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
