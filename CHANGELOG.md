@@ -32,6 +32,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 工作区不再自动补种“续写章节”和“自动 Review”两条停用任务；自动化读取保持只读，缺少任务文件时直接返回空目录。两个预设改为新建自动化时显式选择的双语模板，只有用户保存后才创建独立任务。升级时会清理从未编辑、启用或运行过的旧默认种子，保留所有有用户使用痕迹的任务。
+- Workspaces no longer auto-seed disabled Continue Writing and Automatic Review tasks, and automation reads stay read-only by returning an empty catalog when no task file exists. The two presets are now bilingual, explicitly selected creation templates that become independent tasks only after the user saves. Upgrades remove untouched legacy seeds while preserving every task with evidence of editing, enabling, or execution.
 - 资料库、方案预设、Skills 三个配置页统一为同一套资源目录组件：搜索、置顶条目、分组折叠、计数与组内新建行为一致；方案预设目录新增一键展开/收起全部，写作/游戏模式切换时会记住各模式上次选中的资源，不再无感知丢失当前选中。
 - The Library, Presets, and Skills pages now share one resource-directory component with consistent search, pinned entries, collapsible counted groups, and per-group create actions. The presets directory adds expand/collapse-all and remembers the last selected resource per usage mode when switching between Writing and Game modes instead of silently losing the selection.
 - 资料库打开时默认选中第一个资料条目而不是配置管理 Agent 对话；目录新增加载骨架与加载失败重试，不再静默吞错；全库为空时显示引导空态，可直接新建第一个条目；新建资料条目的默认名称现在跟随界面语言。

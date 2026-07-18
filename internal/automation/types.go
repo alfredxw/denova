@@ -106,6 +106,34 @@ type Task struct {
 	UpdatedAt           time.Time               `json:"updated_at"`
 }
 
+// TaskTemplate is an immutable creation recipe. Selecting a template copies
+// Defaults into a new user-owned task; saved tasks never stay linked to it.
+type TaskTemplate struct {
+	ID          string               `json:"id"`
+	Version     int                  `json:"version"`
+	Description string               `json:"description"`
+	TargetKinds []string             `json:"target_kinds"`
+	Defaults    TaskTemplateDefaults `json:"defaults"`
+}
+
+// TaskTemplateDefaults contains only editable task-definition fields. Runtime
+// identity, execution history, target, and timestamps are created when the user
+// explicitly saves the draft.
+type TaskTemplateDefaults struct {
+	Enabled             bool                `json:"enabled"`
+	Name                string              `json:"name"`
+	Template            string              `json:"template"`
+	Prompt              string              `json:"prompt"`
+	ModelProfileID      string              `json:"model_profile_id,omitempty"`
+	Schedule            Schedule            `json:"schedule"`
+	Triggers            []TriggerDefinition `json:"triggers"`
+	DefaultActionPolicy string              `json:"default_action_policy"`
+	WriteMode           string              `json:"write_mode"`
+	WriteScope          string              `json:"write_scope"`
+	OutputPolicy        string              `json:"output_policy"`
+	OutputPath          string              `json:"output_path"`
+}
+
 // taskWithoutUnmarshal mirrors Task so UnmarshalJSON can decode without
 // recursing into itself. It exists purely to break the method-set loop that
 // defining UnmarshalJSON on Task otherwise creates.
@@ -237,6 +265,10 @@ type ToolManifestItem struct {
 
 type ListResult struct {
 	Tasks []Task `json:"tasks"`
+}
+
+type TemplateListResult struct {
+	Templates []TaskTemplate `json:"templates"`
 }
 
 type RunResult struct {

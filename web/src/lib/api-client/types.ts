@@ -795,6 +795,29 @@ export interface AutomationTask {
   updated_at?: string
 }
 
+export type AutomationTaskTemplateDefaults = Pick<AutomationTask,
+  | 'enabled'
+  | 'name'
+  | 'template'
+  | 'prompt'
+  | 'model_profile_id'
+  | 'schedule'
+  | 'triggers'
+  | 'default_action_policy'
+  | 'write_mode'
+  | 'write_scope'
+  | 'output_policy'
+  | 'output_path'
+>
+
+export interface AutomationTaskTemplate {
+  id: string
+  version: number
+  description: string
+  target_kinds: AutomationExecutionTarget['kind'][]
+  defaults: AutomationTaskTemplateDefaults
+}
+
 export interface AutomationActiveRun {
   run: AutomationRunRecord
   task_id: string

@@ -1,4 +1,4 @@
-import type { AutomationTask, BookRecord } from '@/lib/api'
+import type { AutomationTask, AutomationTaskTemplate, BookRecord } from '@/lib/api'
 import { automationTaskKey, normalizeAutomationTask } from './automation-catalog'
 import { defaultScheduleTrigger } from './automation-trigger'
 
@@ -26,6 +26,23 @@ export function newAutomationTask(target: NonNullable<AutomationTask['target']>,
     output_path: '',
     recent_runs: [],
   }
+}
+
+export function newAutomationTaskFromTemplate(
+  template: AutomationTaskTemplate,
+  target: NonNullable<AutomationTask['target']>,
+): AutomationTask {
+  if (!template.target_kinds.includes(target.kind)) {
+    throw new Error(`Automation template ${template.id} does not support target ${target.kind}`)
+  }
+  const defaults = JSON.parse(JSON.stringify(template.defaults)) as AutomationTaskTemplate['defaults']
+  return normalizeAutomationTaskShape({
+    ...newAutomationTask(target, defaults.name),
+    ...defaults,
+    scope: target.kind === 'user' ? 'user' : 'workspace',
+    target,
+    recent_runs: [],
+  }, target.kind === 'workspace' ? target.workspace || '' : '')
 }
 
 export function cloneAutomationTask(task: AutomationTask, workspace: string): AutomationTask {
@@ -77,28 +94,6 @@ export function defaultAutomationTarget(workspace: string): NonNullable<Automati
 
 export function automationTargetValue(task: AutomationTask): string {
   return task.target?.kind === 'workspace' ? `workspace:${task.target.workspace || ''}` : 'user'
-}
-
-export function applyAutomationTarget(task: AutomationTask, value: string): AutomationTask {
-  if (value === 'user') {
-    const scheduleTrigger = task.triggers.find((trigger) => trigger.type === 'schedule') || defaultScheduleTrigger(task.schedule)
-    return {
-      ...task,
-      scope: 'user',
-      target: { kind: 'user' },
-      template: 'custom_prompt',
-      triggers: [scheduleTrigger],
-      write_mode: 'read_only',
-      write_scope: 'none',
-      output_policy: 'run_record_only',
-      output_path: '',
-    }
-  }
-  return {
-    ...task,
-    scope: 'workspace',
-    target: { kind: 'workspace', workspace: value.slice('workspace:'.length) },
-  }
 }
 
 export function automationTargetOptions(books: BookRecord[], task: AutomationTask): BookRecord[] {

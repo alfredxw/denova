@@ -39,11 +39,8 @@ func TestStoreSeparatesUserAndWorkspaceTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list tasks: %v", err)
 	}
-	if len(tasks) != 4 {
-		t.Fatalf("task count = %d, want 4", len(tasks))
-	}
-	if !hasTask(tasks, "workspace-auto-continue-writing") || !hasTask(tasks, "workspace-auto-review") {
-		t.Fatalf("default workspace automations missing: %#v", tasks)
+	if len(tasks) != 2 {
+		t.Fatalf("task count = %d, want 2 user-created tasks", len(tasks))
 	}
 
 	userOnly, err := NewStore(userDir, "").List()
@@ -58,32 +55,20 @@ func TestStoreSeparatesUserAndWorkspaceTasks(t *testing.T) {
 	}
 }
 
-func TestStoreSeedsDefaultWorkspaceAutomationsDisabled(t *testing.T) {
+func TestStoreListDoesNotCreateWorkspaceAutomationFile(t *testing.T) {
 	root := t.TempDir()
-	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
+	workspace := filepath.Join(root, "workspace")
+	store := NewStore(filepath.Join(root, "user"), workspace)
 	tasks, err := store.List()
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
 	}
-	if len(tasks) != 2 {
-		t.Fatalf("task count = %d, want seeded defaults only", len(tasks))
+	if len(tasks) != 0 {
+		t.Fatalf("task count = %d, want no implicit tasks", len(tasks))
 	}
-	continueTask := taskByID(tasks, "workspace-auto-continue-writing")
-	if continueTask == nil || continueTask.Enabled || continueTask.Template != TemplateContinueWriting || continueTask.WriteMode != WriteModeConfirmWrite || continueTask.WriteScope != WriteScopeFile {
-		t.Fatalf("unexpected continue writing seed: %#v", continueTask)
-	}
-	if !strings.Contains(continueTask.Prompt, "续写下一章") || !strings.Contains(continueTask.Prompt, "CREATOR.md") {
-		t.Fatalf("continue writing seed prompt should be editable task config, got %q", continueTask.Prompt)
-	}
-	reviewTask := taskByID(tasks, "workspace-auto-review")
-	if reviewTask == nil || reviewTask.Enabled || reviewTask.Template != TemplateReview || reviewTask.WriteMode != WriteModeReadOnly {
-		t.Fatalf("unexpected review seed: %#v", reviewTask)
-	}
-	if !strings.Contains(reviewTask.Prompt, "新增章节") || !strings.Contains(reviewTask.Prompt, "不要把全书当作被评审正文") {
-		t.Fatalf("review seed prompt should target new chapters, got %q", reviewTask.Prompt)
-	}
-	if len(reviewTask.Triggers) != 1 || reviewTask.Triggers[0].Type != TriggerTypeChapterBatch || reviewTask.Triggers[0].ChapterBatchSize != 5 {
-		t.Fatalf("unexpected review seed trigger: %#v", reviewTask.Triggers)
+	path := filepath.Join(workspace, ".denova", "automations", "tasks.json")
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("read-only List should not create %s: %v", path, err)
 	}
 }
 
@@ -307,22 +292,13 @@ func TestStoreConcurrentUserInboxWritesRemainWorkspaceScoped(t *testing.T) {
 	}
 }
 
-func TestStoreMigratesSeededDefaultAutomationPrompts(t *testing.T) {
+func TestStoreRemovesPristineLegacyWorkspaceSeeds(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	store := NewStore(filepath.Join(root, "user"), workspace)
-	if _, err := store.List(); err != nil {
-		t.Fatalf("initial List failed: %v", err)
-	}
-	tasks, err := store.readScope(ScopeWorkspace)
-	if err != nil {
-		t.Fatalf("read workspace tasks failed: %v", err)
-	}
-	for i := range tasks {
-		if tasks[i].ID == "workspace-auto-review" || tasks[i].ID == "workspace-auto-continue-writing" {
-			tasks[i].Prompt = ""
-		}
-	}
+	now := time.Now().UTC()
+	tasks := legacyDefaultWorkspaceAutomations(now)
+	tasks[0].Prompt = "" // Version 1 seeds did not persist editable prompts.
 	if err := store.writeScopeFile(ScopeWorkspace, storeFile{SeedVersion: 1, Tasks: tasks}); err != nil {
 		t.Fatalf("write legacy seed file failed: %v", err)
 	}
@@ -331,32 +307,54 @@ func TestStoreMigratesSeededDefaultAutomationPrompts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List after legacy seed failed: %v", err)
 	}
-	if prompt := taskByID(migrated, "workspace-auto-review").Prompt; !strings.Contains(prompt, "新增章节") {
-		t.Fatalf("review prompt was not migrated: %q", prompt)
-	}
-	if prompt := taskByID(migrated, "workspace-auto-continue-writing").Prompt; !strings.Contains(prompt, "续写下一章") {
-		t.Fatalf("continue prompt was not migrated: %q", prompt)
+	if len(migrated) != 0 {
+		t.Fatalf("pristine legacy seeds should be removed: %#v", migrated)
 	}
 }
 
-func TestStoreDoesNotReseedDeletedDefaultWorkspaceAutomation(t *testing.T) {
+func TestStorePreservesEditedOrUsedLegacyWorkspaceSeeds(t *testing.T) {
 	root := t.TempDir()
-	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
-	if _, err := store.List(); err != nil {
-		t.Fatalf("initial List failed: %v", err)
+	workspace := filepath.Join(root, "workspace")
+	store := NewStore(filepath.Join(root, "user"), workspace)
+	now := time.Now().UTC()
+	tasks := legacyDefaultWorkspaceAutomations(now)
+	tasks[0].Prompt = "用户修改后的续写规则"
+	tasks[0].UpdatedAt = now.Add(time.Minute)
+	tasks[1].RecentRuns = []RunRecord{{ID: "run-1", TaskID: tasks[1].ID, Status: RunStatusSuccess}}
+	if err := store.writeScopeFile(ScopeWorkspace, storeFile{SeedVersion: 2, Tasks: tasks}); err != nil {
+		t.Fatalf("write legacy seed file failed: %v", err)
 	}
-	if err := store.Delete("workspace-auto-review"); err != nil {
-		t.Fatalf("Delete default review failed: %v", err)
-	}
-	tasks, err := store.List()
+
+	migrated, err := store.List()
 	if err != nil {
-		t.Fatalf("second List failed: %v", err)
+		t.Fatalf("List after legacy seed failed: %v", err)
 	}
-	if hasTask(tasks, "workspace-auto-review") {
-		t.Fatalf("deleted default review should not be reseeded: %#v", tasks)
+	if len(migrated) != 2 {
+		t.Fatalf("edited and used legacy tasks must be preserved: %#v", migrated)
 	}
-	if !hasTask(tasks, "workspace-auto-continue-writing") {
-		t.Fatalf("unrelated default should remain: %#v", tasks)
+	if got := taskByID(migrated, legacyContinueWritingTaskID); got == nil || got.Prompt != "用户修改后的续写规则" {
+		t.Fatalf("edited continue-writing task changed during migration: %#v", got)
+	}
+	if got := taskByID(migrated, legacyReviewTaskID); got == nil || len(got.RecentRuns) != 1 {
+		t.Fatalf("used review task changed during migration: %#v", got)
+	}
+}
+
+func TestStorePreservesSeedLikeTaskWithoutLegacyFileMarker(t *testing.T) {
+	root := t.TempDir()
+	workspace := filepath.Join(root, "workspace")
+	store := NewStore(filepath.Join(root, "user"), workspace)
+	tasks := legacyDefaultWorkspaceAutomations(time.Now().UTC())[:1]
+	if err := store.writeScopeFile(ScopeWorkspace, storeFile{Tasks: tasks}); err != nil {
+		t.Fatalf("write unversioned task file failed: %v", err)
+	}
+
+	listed, err := store.List()
+	if err != nil {
+		t.Fatalf("List unversioned task file failed: %v", err)
+	}
+	if len(listed) != 1 || listed[0].ID != legacyContinueWritingTaskID {
+		t.Fatalf("unversioned user-owned task must be preserved: %#v", listed)
 	}
 }
 

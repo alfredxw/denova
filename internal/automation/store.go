@@ -41,8 +41,6 @@ func (s *Store) WithWorkspaces(workspaces ...string) *Store {
 	return s
 }
 
-const workspaceDefaultAutomationSeedVersion = 2
-
 type storeFile struct {
 	SeedVersion int    `json:"seed_version,omitempty"`
 	Tasks       []Task `json:"tasks"`
@@ -419,14 +417,7 @@ func (s *Store) readScope(scope string) ([]Task, error) {
 	}
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		file := storeFile{}
-		if scope == ScopeWorkspace {
-			file = seedWorkspaceDefaultAutomations(file)
-			if writeErr := s.writeScopeFile(scope, file); writeErr != nil {
-				return nil, writeErr
-			}
-		}
-		return s.normalizeTaskList(path, scope, file.Tasks)
+		return s.normalizeTaskList(path, scope, []Task{})
 	}
 	if err != nil {
 		return nil, err
@@ -435,10 +426,14 @@ func (s *Store) readScope(scope string) ([]Task, error) {
 	if err := json.Unmarshal(data, &file); err != nil {
 		return nil, fmt.Errorf("read automations %s failed: %w", path, err)
 	}
-	if scope == ScopeWorkspace && file.SeedVersion < workspaceDefaultAutomationSeedVersion {
-		file = seedWorkspaceDefaultAutomations(file)
-		if writeErr := s.writeScopeFile(scope, file); writeErr != nil {
-			return nil, writeErr
+	if scope == ScopeWorkspace && file.SeedVersion > 0 {
+		migrated, changed := removePristineLegacyWorkspaceSeeds(file.Tasks)
+		file.Tasks = migrated
+		if changed {
+			file.SeedVersion = 0
+			if writeErr := s.writeScopeFile(scope, file); writeErr != nil {
+				return nil, writeErr
+			}
 		}
 	}
 	return s.normalizeTaskList(path, scope, file.Tasks)
@@ -510,9 +505,6 @@ func workspaceTargetID(workspace string) string {
 
 func (s *Store) writeScope(scope string, tasks []Task) error {
 	file := storeFile{Tasks: tasks}
-	if scope == ScopeWorkspace {
-		file.SeedVersion = workspaceDefaultAutomationSeedVersion
-	}
 	return s.writeScopeFile(scope, file)
 }
 
@@ -526,89 +518,6 @@ func (s *Store) writeScopeFile(scope string, file storeFile) error {
 		return err
 	}
 	return durableWriteJSON(path, append(data, '\n'), 0o644)
-}
-
-func seedWorkspaceDefaultAutomations(file storeFile) storeFile {
-	file.SeedVersion = workspaceDefaultAutomationSeedVersion
-	for _, seeded := range defaultWorkspaceAutomations() {
-		file.Tasks = fillExistingWorkspaceDefaultAutomationPrompt(file.Tasks, seeded)
-		if workspaceAutomationSeedExists(file.Tasks, seeded) {
-			continue
-		}
-		file.Tasks = append(file.Tasks, seeded)
-	}
-	return file
-}
-
-func fillExistingWorkspaceDefaultAutomationPrompt(tasks []Task, seeded Task) []Task {
-	for i := range tasks {
-		if tasks[i].ID != seeded.ID {
-			continue
-		}
-		if strings.TrimSpace(tasks[i].Prompt) == "" {
-			tasks[i].Prompt = seeded.Prompt
-		}
-	}
-	return tasks
-}
-
-func workspaceAutomationSeedExists(tasks []Task, seeded Task) bool {
-	for _, task := range tasks {
-		if task.ID == seeded.ID {
-			return true
-		}
-		if task.Scope == ScopeWorkspace && task.Template == seeded.Template {
-			return true
-		}
-	}
-	return false
-}
-
-func defaultWorkspaceAutomations() []Task {
-	now := time.Now().UTC()
-	schedule := Schedule{Kind: ScheduleManual, Hour: 9, Minute: 0, Weekday: 1, DayOfMonth: 1, EveryHours: 6}
-	return []Task{
-		{
-			ID:                  "workspace-auto-continue-writing",
-			Scope:               ScopeWorkspace,
-			Enabled:             false,
-			Name:                "续写章节",
-			Template:            TemplateContinueWriting,
-			Prompt:              DefaultContinueWritingPrompt,
-			Schedule:            schedule,
-			Triggers:            []TriggerDefinition{legacyScheduleTrigger(schedule)},
-			DefaultActionPolicy: ActionPolicyAutoRun,
-			WriteMode:           WriteModeConfirmWrite,
-			WriteScope:          WriteScopeFile,
-			OutputPolicy:        OutputPolicyRunRecordOnly,
-			RecentRuns:          []RunRecord{},
-			CreatedAt:           now,
-			UpdatedAt:           now,
-		},
-		{
-			ID:       "workspace-auto-review",
-			Scope:    ScopeWorkspace,
-			Enabled:  false,
-			Name:     "自动 Review",
-			Template: TemplateReview,
-			Prompt:   DefaultReviewPrompt,
-			Schedule: schedule,
-			Triggers: []TriggerDefinition{{
-				ID:               "chapter_batch_review",
-				Type:             TriggerTypeChapterBatch,
-				Enabled:          true,
-				NotifyPolicy:     NotifyPolicyInbox,
-				ChapterBatchSize: 5,
-			}},
-			DefaultActionPolicy: ActionPolicyAutoRun,
-			WriteMode:           WriteModeReadOnly,
-			WriteScope:          WriteScopeNone,
-			OutputPolicy:        OutputPolicyRunRecordOnly,
-			RecentRuns:          []RunRecord{},
-			CreatedAt:           now,
-			UpdatedAt:           now,
-		},
-	}
 }
 
 func (s *Store) pathForScope(scope string) (string, error) {

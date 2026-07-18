@@ -23,6 +23,12 @@ func (h *Handlers) HandleAutomations(ctx context.Context, c *app.RequestContext)
 	writeJSON(c, consts.StatusOK, automation.ListResult{Tasks: tasks})
 }
 
+func (h *Handlers) HandleAutomationTemplates(ctx context.Context, c *app.RequestContext) {
+	writeJSON(c, consts.StatusOK, automation.TemplateListResult{
+		Templates: h.app.AutomationTemplates(c.Query("locale")),
+	})
+}
+
 func (h *Handlers) HandleAutomationInbox(ctx context.Context, c *app.RequestContext) {
 	items, err := h.app.AutomationInbox()
 	if err != nil {
