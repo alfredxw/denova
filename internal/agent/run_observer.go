@@ -185,6 +185,11 @@ func (o *RunObserver) RecordToolExecution(result ToolExecutionRecord) {
 		"error":           result.Error,
 		"recorded_at":     time.Now().UTC().Format(time.RFC3339Nano),
 	}
+	if result.DomainStatus != "" {
+		attrs["domain_status"] = result.DomainStatus
+		attrs["domain_diagnostic_count"] = result.DomainDiagnosticCount
+		attrs["retry_modules"] = append([]string(nil), result.RetryModules...)
+	}
 	if result.Workspace != "" {
 		attrs["workspace"] = result.Workspace
 	}

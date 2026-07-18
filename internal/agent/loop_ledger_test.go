@@ -162,14 +162,16 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := ledger.RecordToolExecution(ToolExecutionRecord{
-		ToolName:      "write_file",
-		ToolCallID:    "call-1",
-		Status:        "success",
-		Capability:    "file_write",
-		OriginalBytes: 64,
-		ReturnedBytes: 48,
-		Truncated:     true,
-		Target:        "chapters/ch01.md",
+		ToolName:              "submit_interactive_turn",
+		ToolCallID:            "call-1",
+		Status:                "success",
+		DomainStatus:          "rejected",
+		DomainDiagnosticCount: 2,
+		Capability:            "file_write",
+		OriginalBytes:         64,
+		ReturnedBytes:         48,
+		Truncated:             true,
+		Target:                "chapters/ch01.md",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -216,6 +218,9 @@ func TestRunTraceReaderSummarizesLedger(t *testing.T) {
 	}
 	if summaries[0].ToolCalls != 2 || summaries[0].ToolSuccesses != 1 || summaries[0].ToolBlocked != 1 || summaries[0].ToolTruncated != 1 || summaries[0].InvalidToolArgs != 1 {
 		t.Fatalf("trace summary should include tool quality counters: %#v", summaries[0])
+	}
+	if summaries[0].ToolDomainRejected != 1 || summaries[0].ToolDomainDiagnostics != 2 {
+		t.Fatalf("transport success must not hide a rejected domain receipt: %#v", summaries[0])
 	}
 	trace, err := ReadRunTrace(workspace, summaries[0].ID)
 	if err != nil {

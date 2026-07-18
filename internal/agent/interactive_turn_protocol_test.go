@@ -27,7 +27,7 @@ func TestInteractiveCompletionGuardRetriesFinalAnswerBeforeTurnSubmission(t *tes
 		t.Fatalf("retry context should include input, bounded draft, and feedback: %#v", decision.ModifiedInputMessages)
 	}
 	feedback := decision.ModifiedInputMessages[len(decision.ModifiedInputMessages)-1]
-	if feedback.Role != schema.User || !strings.Contains(feedback.Content, "submit_actor_state_patches") || !strings.Contains(feedback.Content, "submit_choices") {
+	if feedback.Role != schema.User || !strings.Contains(feedback.Content, "submit_interactive_turn") || !strings.Contains(feedback.Content, "retry_modules") {
 		t.Fatalf("retry feedback does not explain the protocol: %#v", feedback)
 	}
 	secondDecision := guard(ctx, &adk.RetryContext{
@@ -61,7 +61,7 @@ func TestInteractiveCompletionGuardAcceptsToolCallsAndSubmittedNarrative(t *test
 	guard := newInteractiveCompletionGuard(func() bool { return ready })
 	toolCall := schema.AssistantMessage("", []schema.ToolCall{{
 		ID:       "call-submit",
-		Function: schema.FunctionCall{Name: interactiveActorStatePatchesToolName, Arguments: `{}`},
+		Function: schema.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{}`},
 	}})
 	if decision := guard(context.Background(), &adk.RetryContext{OutputMessage: toolCall}); decision != nil && decision.Retry {
 		t.Fatalf("tool calls must enter the normal ReAct loop: %#v", decision)
@@ -75,14 +75,14 @@ func TestInteractiveCompletionGuardAcceptsToolCallsAndSubmittedNarrative(t *test
 func TestInteractiveTurnProtocolMiddlewareKeepsStableToolsAndForbidsCallsAfterSubmission(t *testing.T) {
 	ready := false
 	middleware := newInteractiveTurnProtocolMiddleware(func() bool { return ready })
-	state := &adk.ChatModelAgentState{ToolInfos: []*schema.ToolInfo{{Name: interactiveActorStatePatchesToolName}, {Name: interactiveChoicesToolName}}}
+	state := &adk.ChatModelAgentState{ToolInfos: []*schema.ToolInfo{{Name: interactiveTurnSubmissionToolName}}}
 	_, state, err := middleware.BeforeModelRewriteState(context.Background(), state, &adk.ModelContext{})
-	if err != nil || len(state.ToolInfos) != 2 {
+	if err != nil || len(state.ToolInfos) != 1 {
 		t.Fatalf("collecting phase should retain tools: state=%#v err=%v", state, err)
 	}
 	ready = true
 	_, state, err = middleware.BeforeModelRewriteState(context.Background(), state, &adk.ModelContext{})
-	if err != nil || len(state.ToolInfos) != 2 {
+	if err != nil || len(state.ToolInfos) != 1 {
 		t.Fatalf("submitted phase should keep the stable tool schema: state=%#v err=%v", state, err)
 	}
 
@@ -106,19 +106,46 @@ func TestInteractiveTurnProtocolMiddlewareKeepsStableToolsAndForbidsCallsAfterSu
 	}
 }
 
+func TestInteractiveTurnProtocolAppliesStoryCompletionBudgetOnlyToNarrativeCandidate(t *testing.T) {
+	middleware := newInteractiveTurnProtocolMiddleware(func() bool { return false }, 1234)
+	base := &interactiveProtocolOptionModel{}
+	wrapped, err := middleware.WrapModel(context.Background(), base, &adk.ModelContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := &interactiveTurnProtocolRunState{}
+	ctx := context.WithValue(context.Background(), interactiveTurnProtocolStateKey{}, state)
+	if _, err := wrapped.Generate(ctx, nil, model.WithMaxTokens(9999)); err != nil {
+		t.Fatal(err)
+	}
+	if base.maxTokens == nil || *base.maxTokens != 1234 {
+		t.Fatalf("first visible narrative should use the story-derived completion budget: %#v", base.maxTokens)
+	}
+	state.retainNarrativeCandidate("正文候选")
+	if _, err := wrapped.Generate(ctx, nil, model.WithMaxTokens(9999)); err != nil {
+		t.Fatal(err)
+	}
+	if base.maxTokens == nil || *base.maxTokens != 9999 {
+		t.Fatalf("structured retry must keep the provider/model budget: %#v", base.maxTokens)
+	}
+}
+
 type interactiveProtocolOptionModel struct {
 	toolChoice *schema.ToolChoice
+	maxTokens  *int
 }
 
 func (m *interactiveProtocolOptionModel) Generate(_ context.Context, _ []*schema.Message, opts ...model.Option) (*schema.Message, error) {
 	common := model.GetCommonOptions(&model.Options{}, opts...)
 	m.toolChoice = common.ToolChoice
+	m.maxTokens = common.MaxTokens
 	return schema.AssistantMessage("正文", nil), nil
 }
 
 func (m *interactiveProtocolOptionModel) Stream(_ context.Context, _ []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
 	common := model.GetCommonOptions(&model.Options{}, opts...)
 	m.toolChoice = common.ToolChoice
+	m.maxTokens = common.MaxTokens
 	return schema.StreamReaderFromArray([]*schema.Message{schema.AssistantMessage("正文", nil)}), nil
 }
 

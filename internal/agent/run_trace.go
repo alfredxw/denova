@@ -20,36 +20,40 @@ const (
 )
 
 type RunTraceSummary struct {
-	ID                   string    `json:"id"`
-	CreatedAt            time.Time `json:"created_at"`
-	Path                 string    `json:"path"`
-	Status               string    `json:"status"`
-	Reason               string    `json:"reason,omitempty"`
-	Events               int       `json:"events"`
-	ContextParts         int       `json:"context_parts"`
-	TaskID               string    `json:"task_id,omitempty"`
-	AgentKind            string    `json:"agent_kind,omitempty"`
-	SessionID            string    `json:"session_id,omitempty"`
-	StoryID              string    `json:"story_id,omitempty"`
-	BranchID             string    `json:"branch_id,omitempty"`
-	TurnID               string    `json:"turn_id,omitempty"`
-	MaintenanceTask      string    `json:"maintenance_task,omitempty"`
-	Phase                string    `json:"phase,omitempty"`
-	ToolCalls            int       `json:"tool_calls,omitempty"`
-	ToolSuccesses        int       `json:"tool_successes,omitempty"`
-	ToolBlocked          int       `json:"tool_blocked,omitempty"`
-	ToolErrors           int       `json:"tool_errors,omitempty"`
-	ToolTruncated        int       `json:"tool_truncated,omitempty"`
-	InvalidToolArgs      int       `json:"invalid_tool_args,omitempty"`
-	LLMCalls             int       `json:"llm_calls,omitempty"`
-	PromptTokens         int       `json:"prompt_tokens,omitempty"`
-	CachedPromptTokens   int       `json:"cached_prompt_tokens,omitempty"`
-	UncachedPromptTokens int       `json:"uncached_prompt_tokens,omitempty"`
-	CacheHitRate         float64   `json:"cache_hit_rate,omitempty"`
-	DurationMS           int64     `json:"duration_ms,omitempty"`
-	Mutations            int       `json:"mutations,omitempty"`
-	VerificationStatus   string    `json:"verification_status,omitempty"`
-	Recoverable          bool      `json:"recoverable,omitempty"`
+	ID                    string    `json:"id"`
+	CreatedAt             time.Time `json:"created_at"`
+	Path                  string    `json:"path"`
+	Status                string    `json:"status"`
+	Reason                string    `json:"reason,omitempty"`
+	Events                int       `json:"events"`
+	ContextParts          int       `json:"context_parts"`
+	TaskID                string    `json:"task_id,omitempty"`
+	AgentKind             string    `json:"agent_kind,omitempty"`
+	SessionID             string    `json:"session_id,omitempty"`
+	StoryID               string    `json:"story_id,omitempty"`
+	BranchID              string    `json:"branch_id,omitempty"`
+	TurnID                string    `json:"turn_id,omitempty"`
+	MaintenanceTask       string    `json:"maintenance_task,omitempty"`
+	Phase                 string    `json:"phase,omitempty"`
+	ToolCalls             int       `json:"tool_calls,omitempty"`
+	ToolSuccesses         int       `json:"tool_successes,omitempty"`
+	ToolBlocked           int       `json:"tool_blocked,omitempty"`
+	ToolErrors            int       `json:"tool_errors,omitempty"`
+	ToolTruncated         int       `json:"tool_truncated,omitempty"`
+	InvalidToolArgs       int       `json:"invalid_tool_args,omitempty"`
+	ToolDomainAccepted    int       `json:"tool_domain_accepted,omitempty"`
+	ToolDomainRejected    int       `json:"tool_domain_rejected,omitempty"`
+	ToolDomainPending     int       `json:"tool_domain_pending,omitempty"`
+	ToolDomainDiagnostics int       `json:"tool_domain_diagnostics,omitempty"`
+	LLMCalls              int       `json:"llm_calls,omitempty"`
+	PromptTokens          int       `json:"prompt_tokens,omitempty"`
+	CachedPromptTokens    int       `json:"cached_prompt_tokens,omitempty"`
+	UncachedPromptTokens  int       `json:"uncached_prompt_tokens,omitempty"`
+	CacheHitRate          float64   `json:"cache_hit_rate,omitempty"`
+	DurationMS            int64     `json:"duration_ms,omitempty"`
+	Mutations             int       `json:"mutations,omitempty"`
+	VerificationStatus    string    `json:"verification_status,omitempty"`
+	Recoverable           bool      `json:"recoverable,omitempty"`
 }
 
 type RunTrace struct {
@@ -263,6 +267,16 @@ func updateRunTraceSummary(summary *RunTraceSummary, record RunTraceRecord, path
 		if truncated {
 			summary.ToolTruncated++
 		}
+		domainStatus, diagnosticCount := runTraceToolExecutionDomain(record.Data)
+		switch domainStatus {
+		case "accepted":
+			summary.ToolDomainAccepted++
+		case "rejected":
+			summary.ToolDomainRejected++
+		case "pending":
+			summary.ToolDomainPending++
+		}
+		summary.ToolDomainDiagnostics += diagnosticCount
 	case "mutations":
 		summary.Mutations += runTraceMutationCount(record.Data)
 		summary.Phase = "verifying"
@@ -361,6 +375,15 @@ func runTraceToolExecutionStatus(data map[string]any) (string, bool) {
 	}
 	truncated, _ := result["truncated"].(bool)
 	return stringField(result, "status"), truncated
+}
+
+func runTraceToolExecutionDomain(data map[string]any) (string, int) {
+	result, ok := data["result"].(map[string]any)
+	if !ok {
+		return "", 0
+	}
+	diagnostics, _ := numericIntField(result, "domain_diagnostic_count")
+	return stringField(result, "domain_status"), diagnostics
 }
 
 func runTraceVerificationStatus(data map[string]any) string {

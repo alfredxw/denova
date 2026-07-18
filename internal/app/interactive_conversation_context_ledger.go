@@ -118,8 +118,8 @@ func interactiveStoryContextSources(title, origin string, teller interactive.Tel
 	}
 	if strings.TrimSpace(actorStateRuntime) != "" {
 		parts = append(parts, interactiveContextSource{
-			Source: "ActorState", Title: "当前 Actor 状态与词条", Purpose: "turn-scoped state snapshot",
-			Content: actorStateRuntime, Note: "source=Snapshot.State.actors; bounded", Limit: interactiveStoryRuntimeContextBytes,
+			Source: "ActorState", Title: "当前 Actor 状态手册", Purpose: "turn-scoped state write guide",
+			Content: actorStateRuntime, Note: "source=effective Actor schema + Snapshot.State.actors; missing initial Actors projected in memory; bounded", Limit: interactiveStoryRuntimeContextBytes,
 		})
 	}
 	if strings.TrimSpace(strategyPrompt) != "" {

@@ -114,9 +114,14 @@ func TestInteractiveStoryPromptRequiresStoryContextUpdateEveryTurn(t *testing.T)
 	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{})
 	turn := InteractiveStoryTurnInstruction("我推开门", "", "")
 	for name, output := range map[string]string{"system": system, "turn": turn} {
-		for _, want := range []string{"每回合", "patches", "replace /story/当前事件", "/story/当前详细地点"} {
+		for _, want := range []string{"每回合", "state_changes", "actor_id=story", "field_id=当前事件", "当前详细地点"} {
 			if !strings.Contains(output, want) {
 				t.Fatalf("%s prompt should require story context field %q:\n%s", name, want, output)
+			}
+		}
+		for _, forbidden := range []string{"replace /story/当前事件", "/story/当前详细地点", "patches"} {
+			if strings.Contains(output, forbidden) {
+				t.Fatalf("%s prompt should not require model-authored state path %q:\n%s", name, forbidden, output)
 			}
 		}
 	}
@@ -138,8 +143,11 @@ func TestInteractiveStoryPromptUsesConfiguredChoiceCountAndSimplifiedResult(t *t
 			}
 		}
 	}
-	if !strings.Contains(system, "submit_actor_state_patches") || !strings.Contains(system, "submit_choices") {
-		t.Fatalf("system prompt should expose the two independent submission tools:\n%s", system)
+	if !strings.Contains(system, "submit_interactive_turn") || strings.Contains(system, "submit_actor_state_patches") || strings.Contains(system, "submit_choices") {
+		t.Fatalf("system prompt should expose one unified turn submission tool:\n%s", system)
+	}
+	if !strings.Contains(system, "state_changes") || !strings.Contains(system, "actor_id") || !strings.Contains(system, "field_id") || strings.Contains(system, "JSON Pointer") {
+		t.Fatalf("system prompt should use structured state fields rather than model-authored paths:\n%s", system)
 	}
 }
 
@@ -218,7 +226,7 @@ func TestInteractiveStoryRuntimeContextIncludesBoundedDirectorPlanVisibleSection
 			t.Fatalf("runtime context should include strategy prompt %q:\n%s", want, output)
 		}
 	}
-	for _, want := range []string{"当前 Actor 状态、词条与可创建模板", "source: Snapshot.State.actors + frozen Actor schema", "bounded", "隐脉"} {
+	for _, want := range []string{"Actor 状态手册", "source: Snapshot.State.actors + effective Actor schema", "bounded Markdown", "隐脉"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("runtime context should include Actor state %q:\n%s", want, output)
 		}

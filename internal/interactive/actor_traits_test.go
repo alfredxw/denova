@@ -196,6 +196,8 @@ func TestActorTraitLifecycleDrawRerollSetRemove(t *testing.T) {
 
 func TestActorStateRuntimeContextFiltersVisibilityAndLibrary(t *testing.T) {
 	system := actorTraitTestSystem()
+	system.Templates[0].Fields[0].Description = "主角当前能够被剧情直接观察到的状态。"
+	system.Templates[0].Fields[0].UpdateInstruction = "仅在正文已经明确改变该状态时更新。"
 	ops, actorOps, err := BuildActorStateInitialChanges(system, []InitialActorTraitRoll{{
 		ActorID: "protagonist", Seed: 1, Selections: []ActorTraitSelection{{PoolID: "nature", TraitIDs: []string{"patient", "secret"}}},
 	}})
@@ -203,19 +205,41 @@ func TestActorStateRuntimeContextFiltersVisibilityAndLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := applyActorTraitTestOps(nil, ops, actorOps)
-	context := ActorStateRuntimeContext(system, state, 64*1024)
+	context := ActorStateRuntimeContext(system, state, 64*1024, 3)
 	if !strings.Contains(context, "patient") || !strings.Contains(context, "耐心") {
 		t.Fatalf("visible assigned trait should enter runtime context: %s", context)
 	}
 	if strings.Contains(context, "secret") || strings.Contains(context, "未被抽取的配置词条") {
 		t.Fatalf("hidden traits and the reusable library must stay out of runtime context: %s", context)
 	}
-	if len(context) > 64*1024 || !strings.Contains(context, `"kind": "actor_state_runtime"`) || !strings.Contains(context, `"field_id": "状态"`) || !strings.Contains(context, `"create_templates"`) || !strings.Contains(context, `"template_id": "protagonist"`) {
-		t.Fatalf("runtime context must be sourced and bounded: bytes=%d context=%s", len(context), context)
+	for _, expected := range []string{
+		"# Actor 状态手册",
+		"来源：`effective_actor_state_schema` + `Snapshot.State.actors`",
+		"Actor ID：`protagonist`",
+		"字段 ID：`状态`",
+		"当前值：`ready`",
+		"字段说明：主角当前能够被剧情直接观察到的状态。",
+		"更新指引：仅在正文已经明确改变该状态时更新。",
+		"## 提交参数模板",
+		`"state_changes"`,
+		`"actor_id": "protagonist"`,
+		`"field_id": "状态"`,
+		"## 新 Actor 可用模板",
+		"Template ID：`important_character`",
+	} {
+		if !strings.Contains(context, expected) {
+			t.Fatalf("runtime context should render a readable schema-derived Markdown guide; missing %q in:\n%s", expected, context)
+		}
+	}
+	if len(context) > 64*1024 || json.Valid([]byte(context)) {
+		t.Fatalf("runtime context must be bounded Markdown rather than raw JSON: bytes=%d context=%s", len(context), context)
+	}
+	if strings.Count(context, "{{next_action_") != 3 {
+		t.Fatalf("submission example must match the story's configured choice count: %s", context)
 	}
 	bounded := ActorStateRuntimeContext(system, state, 512)
-	if bounded == "" || len(bounded) > 512 || !json.Valid([]byte(bounded)) || !strings.Contains(bounded, `"truncated": true`) {
-		t.Fatalf("small runtime context must remain valid bounded JSON: bytes=%d context=%s", len(bounded), bounded)
+	if bounded == "" || len(bounded) > 512 || json.Valid([]byte(bounded)) || !strings.Contains(bounded, "内容已按上下文上限截断") {
+		t.Fatalf("small runtime context must remain bounded Markdown with an explicit truncation marker: bytes=%d context=%s", len(bounded), bounded)
 	}
 }
 

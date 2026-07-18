@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"strings"
 
@@ -116,7 +115,7 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 	if ctx.PrepareTurn == nil && ctx.SubmitTurnResult == nil {
 		return nil, nil
 	}
-	tools := make([]tool.BaseTool, 0, 3)
+	tools := make([]tool.BaseTool, 0, 2)
 	if ctx.PrepareTurn != nil {
 		desc := strings.Join([]string{
 			"执行本回合一次固定 d20 规则检定。Interactive Agent 负责填写用户行为、意图、挑战、消耗、当前状态说明、投前裁定依据、运行时加成来源和值、难度等级，以及大成功/成功/失败/大失败四档后果；本工具负责掷骰、应用优势或劣势、计算目标、判定结果，并返回命中的最终后果。",
@@ -142,67 +141,48 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 		tools = append(tools, prepareTool)
 	}
 	if ctx.SubmitTurnResult != nil {
-		patchDesc := strings.Join([]string{
-			"在完整玩家可见正文已经输出后，独立提交本回合 Actor 状态 patch。参数只有 patches；故事、分支、当前状态与配置由后端绑定。工具返回 ready、module_status、diagnostics 和 retry_modules；已 accepted 的模块会保留。",
-			"patches 是原子操作数组，只能使用 replace、delta、create。路径是 JSON Pointer：第一段必须是当前上下文中列出的稳定 actor_id，第二段必须是冻结 schema 的 field_id；展示名称不能代替 actor_id。replace 设置字段或 object 子路径，delta 只增减已有数值，create 只在 /<actor_id> 根路径创建 Actor。不要重复 RuleResolution 已消费的字段。",
-			"story_context 每回合至少 replace /story/当前事件；当前详细地点尚未初始化或正文确定地点变化时，同时 replace /story/当前详细地点。没有变化的其他字段不要写空值。",
-		}, "\n")
-		patchTool, err := newSubmitTurnModuleTool(interactiveActorStatePatchesToolName, patchDesc, submitActorStatePatchesToolSchema{}, interactive.DecodeActorStatePatchesSubmissionInput, ctx.SubmitTurnResult)
-		if err != nil {
-			return nil, err
-		}
-		choiceDesc := strings.Join([]string{
-			"在完整玩家可见正文已经输出后，独立提交本回合下一步行动建议。choices 必须与已输出正文结尾一致，并提供当前故事配置要求的恰好数量个不同建议。",
+		desc := strings.Join([]string{
+			"在完整玩家可见正文已经输出后，通过一个入口提交本回合 state_changes 与 choices。首次调用同时提供两者；工具返回 ready=false 时，只重交 retry_modules 指定的字段，已 accepted 的模块会保留。ready=true 后立即结束，不要重复或改写正文。",
+			"state_changes 是增量数组，只填写正文中确实发生变化的字段。replace 写入本轮结束后的完整值，delta 只增减已有数值，create 创建确有必要长期追踪的新 Actor。使用 Actor 状态手册中的精确 actor_id、field_id、template_id；object 子字段用 subpath 字符串数组，不要自行拼接路径字符串。不要重复 RuleResolution 已消费的字段。",
+			"story_context 每回合至少 replace actor_id=story、field_id=当前事件；当前详细地点尚未初始化或正文确定地点变化时，同时 replace 当前详细地点。没有变化的其他字段不要写空值。",
+			"choices 必须与已输出正文结尾一致，并提供当前故事配置要求的恰好数量个不同建议；只有 prepare_interactive_turn 返回 terminal_candidate 的终局回合才提交空数组。",
 			"director_update 是可选的低频导演更新提示。普通承接、同一场景内的小变化、常规资源消耗或既定冲突推进必须省略。只有当前目标或阶段改变、关键关系/势力发生重大变化、重要秘密揭示、不可逆结果，或现有简报已经无法指导下一回合时才设置 needed=true，并只说明已发生事实；不要替 Director 决定 patch/replan 或具体文件。",
-			"只有 prepare_interactive_turn 返回 terminal_candidate 的终局回合才提交空数组。工具返回 ready=false 时只调用 retry_modules 指定的工具；ready=true 后立即结束，不要重复或改写正文。",
+			"完整参数模板、当前可用 ID、字段类型，以及与本故事 choice_count 一致的 choices 占位数量，均以本轮 Actor 状态手册为准。",
 		}, "\n")
-		choiceTool, err := newSubmitTurnModuleTool(interactiveChoicesToolName, choiceDesc, submitChoicesToolSchema{}, interactive.DecodeChoicesSubmissionInput, ctx.SubmitTurnResult)
+		submitTool, err := newSubmitInteractiveTurnTool(desc, ctx.SubmitTurnResult)
 		if err != nil {
 			return nil, err
 		}
-		tools = append(tools, patchTool, choiceTool)
+		tools = append(tools, submitTool)
 	}
 	return tools, nil
 }
 
-type submitActorStatePatchesToolSchema struct {
-	Patches []interactive.StateUpdate `json:"patches" jsonschema:"description=本轮原子 Actor 状态 patch"`
+type submitInteractiveTurnToolSchema struct {
+	StateChanges   []interactive.TurnStateChangeInput `json:"state_changes,omitempty" jsonschema:"description=本轮正文已经发生的增量 Actor 状态变化；没有变化时提交空数组"`
+	Choices        []string                           `json:"choices,omitempty" jsonschema:"description=当前故事配置数量的不同下一步行动建议；仅 RuleResolution 已声明 terminal_candidate 时为空数组"`
+	DirectorUpdate *interactive.DirectorUpdateHint    `json:"director_update,omitempty" jsonschema:"description=仅在本轮已发生事实让后续规划发生实质变化时提交；普通回合必须省略"`
 }
 
-type submitChoicesToolSchema struct {
-	Choices        []string                        `json:"choices" jsonschema:"description=当前故事配置数量的不同下一步行动建议；仅 RuleResolution 已声明 terminal_candidate 时为空数组"`
-	DirectorUpdate *interactive.DirectorUpdateHint `json:"director_update,omitempty" jsonschema:"description=仅在本轮已发生事实让后续规划发生实质变化时提交；普通回合必须省略"`
-}
-
-type submitTurnModuleTool struct {
+type submitInteractiveTurnTool struct {
 	info   *schema.ToolInfo
-	decode func(string) interactive.TurnSubmissionInput
 	submit func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)
 }
 
-func newSubmitTurnModuleTool(name, description string, input any, decode func(string) interactive.TurnSubmissionInput, submit func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)) (tool.InvokableTool, error) {
-	var info *schema.ToolInfo
-	var err error
-	switch input.(type) {
-	case submitActorStatePatchesToolSchema:
-		info, err = utils.GoStruct2ToolInfo[submitActorStatePatchesToolSchema](name, description)
-	case submitChoicesToolSchema:
-		info, err = utils.GoStruct2ToolInfo[submitChoicesToolSchema](name, description)
-	default:
-		return nil, fmt.Errorf("未知互动回合提交模块: %s", name)
-	}
+func newSubmitInteractiveTurnTool(description string, submit func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)) (tool.InvokableTool, error) {
+	info, err := utils.GoStruct2ToolInfo[submitInteractiveTurnToolSchema](interactiveTurnSubmissionToolName, description)
 	if err != nil {
 		return nil, err
 	}
-	return &submitTurnModuleTool{info: info, decode: decode, submit: submit}, nil
+	return &submitInteractiveTurnTool{info: info, submit: submit}, nil
 }
 
-func (t *submitTurnModuleTool) Info(context.Context) (*schema.ToolInfo, error) {
+func (t *submitInteractiveTurnTool) Info(context.Context) (*schema.ToolInfo, error) {
 	return t.info, nil
 }
 
-func (t *submitTurnModuleTool) InvokableRun(ctx context.Context, argumentsInJSON string, _ ...tool.Option) (string, error) {
-	input := t.decode(argumentsInJSON)
+func (t *submitInteractiveTurnTool) InvokableRun(ctx context.Context, argumentsInJSON string, _ ...tool.Option) (string, error) {
+	input := interactive.DecodeInteractiveTurnSubmissionInput(argumentsInJSON)
 	receipt, err := t.submit(ctx, input)
 	if err != nil {
 		return "", err

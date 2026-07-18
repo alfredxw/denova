@@ -116,6 +116,43 @@ func TestLegacyStoryFreezesSchemaAfterBackupOnFirstLoad(t *testing.T) {
 	}
 }
 
+func TestLegacyStoryReplaysFrozenInitialActorsWithoutRewritingHistory(t *testing.T) {
+	root := t.TempDir()
+	novaDir := filepath.Join(root, ".nova")
+	legacyStore := NewStore(root)
+	story, err := legacyStore.CreateStory(CreateStoryRequest{Title: "没有 Actor Delta 的旧故事"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyData, err := os.ReadFile(legacyStore.storyPath(story.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	migratedStore := NewStoreWithNovaDir(root, novaDir)
+	snapshot, err := migratedStore.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.ActorStateSchema == nil || len(snapshot.ActorStateSchema.System.InitialActors) == 0 {
+		t.Fatalf("legacy story should freeze a schema with initial Actors: %#v", snapshot.ActorStateSchema)
+	}
+	actors, _ := snapshot.State[actorStateRoot].(map[string]any)
+	for _, initial := range snapshot.ActorStateSchema.System.InitialActors {
+		record, _ := actors[initial.ID].(map[string]any)
+		if record == nil || record["template_id"] != initial.TemplateID {
+			t.Fatalf("frozen initial Actor %q should be available in every replayed snapshot: %#v", initial.ID, record)
+		}
+	}
+	currentData, err := os.ReadFile(legacyStore.storyPath(story.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(currentData) != string(legacyData) {
+		t.Fatal("replaying frozen initial Actors must not rewrite legacy history")
+	}
+}
+
 func TestStoryFreezesChineseActorStateFieldIDs(t *testing.T) {
 	system := StoryDirectorActorStateSystem{
 		Templates: []ActorStateTemplate{{

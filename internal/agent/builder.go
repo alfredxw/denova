@@ -46,7 +46,8 @@ func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.
 	handlers := []adk.ChatModelAgentMiddleware{newInteractiveStoryToolMiddleware()}
 	var outputGuard func(context.Context, *adk.RetryContext) *adk.RetryDecision
 	if len(toolContexts) > 0 && toolContexts[0].TurnResultReady != nil {
-		handlers = append(handlers, newInteractiveTurnProtocolMiddleware(toolContexts[0].TurnResultReady))
+		completionTokens, _ := EstimateContextProjectionReserves(cfg, config.AgentKindInteractiveStory, teller.ReplyTargetChars)
+		handlers = append(handlers, newInteractiveTurnProtocolMiddleware(toolContexts[0].TurnResultReady, completionTokens))
 		outputGuard = newInteractiveCompletionGuard(toolContexts[0].TurnResultReady)
 	}
 	return buildDeepAgent(ctx, cfg, deepAgentSpec{

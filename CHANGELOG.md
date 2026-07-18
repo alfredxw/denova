@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Beta 不兼容：游戏正文 Agent 原有的 `submit_actor_state_patches` 与 `submit_choices` 合并为单一 `submit_interactive_turn` 工具；状态变化改用结构化的 `actor_id`、`field_id`、可选 `subpath` 与 `template_id`，Agent 不再自行拼接 JSON Pointer。后端仍独立验收并保留 `state_changes` / `choices`，单项失败只需按 `retry_modules` 重试；旧工具名仅保留用于读取历史展示事件。
+- Beta breaking: Game Agent's `submit_actor_state_patches` and `submit_choices` tools are replaced by one `submit_interactive_turn` tool. State changes now use structured `actor_id`, `field_id`, optional `subpath`, and `template_id` fields instead of model-authored JSON Pointers. The backend still accepts and retains `state_changes` and `choices` independently, so only `retry_modules` need resubmission; legacy tool names remain readable only in historical display events.
+- 游戏正文 Agent 的 Actor State 上下文由重复注入 raw schema 改为有界 Markdown 状态手册：从有效 schema 与当前分支重放状态生成精确 ID、当前值、类型约束、`description`、`update_instruction`、动态 choice 数量和参数示例；Director 规划上下文仍保留结构化 schema 真源。
+- Game Agent's duplicated raw Actor State schema is replaced by a bounded Markdown state handbook generated from the effective schema and replayed branch state. It includes exact IDs, current values, type constraints, `description`, `update_instruction`, dynamic choice counts, and parameter examples, while Director planning retains the structured schema source of truth.
 - 书籍管理与标题快捷切换器统一使用持久化排序：默认按最近打开时间排列，也可切换到手动排序并拖拽保存顺序；快捷切换入口从顶栏中间移到左侧模式切换旁，并与模式控件对齐。
 - Book Management and the title quick switcher now share one persisted order: recently opened first by default, with an optional manual drag order. The switcher moves from the top-bar center to the left beside the mode switch and matches its control sizing.
 - 资料库正文编辑器改为单一所见即所得 Markdown 编辑器（与章节正文同一 TipTap 引擎），替换此前的「预览 / Raw」切换；目录搜索关键词现在在渲染后的正文中直接高亮并定位到首个匹配，搜索时也可以直接编辑，简介字段保持原文本框搜索高亮不变。
@@ -20,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 旧故事或尚未冻结 schema 的运行时不再把内置初始 Actor 显示为空：事件回放完成后只在缺失时投影 schema 初始角色，不改写历史 JSONL，也不覆盖已有状态或旧字段迁移。互动 Trace 现在区分工具传输成功与领域 `accepted` / `rejected` / `pending`，并记录诊断数与待重试模块；首段正文同时使用故事目标字数推导的 completion 上限，降低超长回合挤占状态提交的概率。
+- Legacy stories and runtimes whose schema is not yet frozen no longer expose an empty built-in Actor set. Schema-defined initial Actors are projected only when absent after event replay, without rewriting JSONL history or overriding existing state and legacy field migrations. Interactive traces now separate transport success from domain `accepted` / `rejected` / `pending`, including diagnostic counts and retry modules, while the first narrative uses a story-target-derived completion ceiling to reduce overlong turns crowding out state submission.
 - 游戏模式正文之后的 thinking 与工具调用（含提交结果、重试循环）不再逐张卡片交叉展示，统一折叠为一个可展开的分组；写作、自动化、导演台等所有使用 trace 折叠的区域行为一致。
 - In Game Mode, thinking and tool calls after the narrative (including submission results and retry loops) no longer render as interleaved individual cards; they collapse into a single expandable trace group. Writing, Automations, Director Desk, and all other trace-collapsing surfaces behave consistently.
 

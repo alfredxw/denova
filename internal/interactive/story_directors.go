@@ -481,10 +481,9 @@ func StoryDirectorRuleSummary(director StoryDirector, limitBytes int) string {
 			"story_director_id": director.ID,
 			"name":              director.Name,
 		},
-		"limits":       map[string]int{"max_bytes": limitBytes},
-		"strategy":     storyDirectorStructuredStrategySummary(director.Strategy),
-		"state_system": storyDirectorActorStateSchemaSummary(director.ActorState),
-		"trpg_system":  director.TRPGSystem,
+		"limits":      map[string]int{"max_bytes": limitBytes},
+		"strategy":    storyDirectorStructuredStrategySummary(director.Strategy),
+		"trpg_system": director.TRPGSystem,
 	}
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
