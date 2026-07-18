@@ -1,0 +1,59 @@
+CHANGELOG.md
+  s_97eae2bd12fcd3::t_663e12e3527783 30-31
+internal/api/handlers/handler_automations.go
+  s_97eae2bd12fcd3::t_52613be7a8d68e 26-31
+internal/api/routes.go
+  s_97eae2bd12fcd3::t_864a8979a44526 169
+internal/app/automation_app_service.go
+  s_97eae2bd12fcd3::t_d961ac5111e778 66-73
+internal/automation/automation_test.go
+  s_97eae2bd12fcd3::t_14bdc69a89376c 42-43,58,60-61,66-67,69-71,295,299-303,305-306,308,310-311,313-324,332-333,335-339,343,345-349,351-352,354,356-357
+internal/automation/default_prompts.go
+  s_97eae2bd12fcd3::t_611a0e6240cb16 7-10
+internal/automation/legacy_seed_migration.go
+  s_97eae2bd12fcd3::t_334edb5003a1c9 1-78
+internal/automation/store.go
+  s_97eae2bd12fcd3::t_adf9c4f6f7d44a 420,429-436
+internal/automation/templates.go
+  s_97eae2bd12fcd3::t_a5c0a2c869e3bb 1-109
+internal/automation/templates_test.go
+  s_97eae2bd12fcd3::t_f7ebbddb41070d 1-48
+internal/automation/types.go
+  s_97eae2bd12fcd3::t_0774763a4a97e6 109-136,270-273
+web/src/features/automations/AutomationTemplateDialog.tsx
+  s_97eae2bd12fcd3::t_d433d96d54e8e4 1-141
+web/src/features/automations/AutomationsView.test.tsx
+  s_97eae2bd12fcd3::t_758d41d2791f53 1-2,22-36,49,64-108
+web/src/features/automations/AutomationsView.tsx
+  s_97eae2bd12fcd3::t_5b42c28e650fdf 2,27,37,49,63,74,76,84-85,95-96,98,106,119,124,129,173,193,198-201,204-207,212,223,249,304,370,407,475,510,567,569-583,644-651
+web/src/features/automations/automation-task-draft.test.ts
+  s_97eae2bd12fcd3::t_7ab4e110081843 2-3,6-25,27-28,30-35,37
+web/src/features/automations/automation-task-draft.ts
+  s_97eae2bd12fcd3::t_7d16277015195b 1,31-47
+web/src/i18n/locales/en-US/automations.ts
+  s_97eae2bd12fcd3::t_76954921adaba0 7-9,14-15,52-57
+web/src/i18n/locales/zh-CN/automations.ts
+  s_97eae2bd12fcd3::t_014eb0c16253e6 7-9,14-15,52-57
+web/src/lib/api-client/automations.ts
+  s_97eae2bd12fcd3::t_5a47f785f76654 3,11-15
+web/src/lib/api-client/types.ts
+  s_97eae2bd12fcd3::t_21df0093c1a4f5 798-820
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "dcbee2b4796bba2efa19061aa2522adadcedfa1a",
+  "prompts": {},
+  "sessions": {
+    "s_97eae2bd12fcd3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f739f-7b4c-70d3-a1e2-bff466926cb4",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
