@@ -1,0 +1,61 @@
+.github/workflows/ci.yml
+  s_63b41f7b4d7006::t_ef738d521c4a10 59-75
+internal/api/handler_interactive_test.go
+  s_1b2d665474b371::t_1667b0d3beb026 692-713
+internal/api/routes.go
+  s_1b2d665474b371::t_2f5e46dd47bf7a 115-116
+internal/app/app.go
+  s_1b2d665474b371::t_6670f5bae24eec 36
+internal/app/interactive_app_service.go
+  s_1b2d665474b371::t_a76306ebb41369 753-755,879-887,1293-1294,1303
+internal/app/interactive_task_registry.go
+  s_1b2d665474b371::t_b3b54d193dc923 1-68
+internal/app/interactive_task_registry_test.go
+  s_1b2d665474b371::t_008c979b9f7df0 1-51
+internal/workspacechange/directory_sync_nonwindows.go
+  s_63b41f7b4d7006::t_1e99acb8b20c29 1-18
+internal/workspacechange/directory_sync_windows.go
+  s_63b41f7b4d7006::t_6c20e97794b64f 1-12
+internal/workspacechange/durability.go
+  s_63b41f7b4d7006::t_e441c876e18985 54
+internal/workspacechange/service_windows_test.go
+  s_63b41f7b4d7006::t_8516fbfec6feb0 1-23
+web/src/features/automations/AutomationTaskCatalog.tsx
+  s_aa6f8939232d82::t_a5a511b4dbcf53 1,3,46-61,63-89
+web/src/features/automations/AutomationsView.test.tsx
+  s_aa6f8939232d82::t_d2b44d454f1372 39,64-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b7bbd10af5ff2d2d6ce5735c38de61abe21d7731",
+  "prompts": {},
+  "sessions": {
+    "s_1b2d665474b371": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f74b9-9de7-7f20-bcbb-8c7a9b2aad2a",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_63b41f7b4d7006": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f74a6-9265-7022-9f5d-5660b3677fcc",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_aa6f8939232d82": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f749e-973a-7e83-bc6d-eb857f67e0c3",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
