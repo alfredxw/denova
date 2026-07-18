@@ -103,7 +103,7 @@ function Textarea({
   )
 }
 
-export { Textarea }
+export { Textarea, type TextareaProps }
 
 function parseCssPixels(value: string) {
   const parsed = Number.parseFloat(value)

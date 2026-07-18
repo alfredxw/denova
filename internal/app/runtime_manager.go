@@ -374,7 +374,7 @@ func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settin
 	workspace := a.workspace
 	a.mu.RUnlock()
 	if workspace == "" {
-		return config.LayeredSettings{}, fmt.Errorf("当前没有打开的工作区")
+		return config.LayeredSettings{}, ErrNoWorkspaceOpen
 	}
 	path := config.WorkspaceConfigPath(workspace)
 	existing, err := config.ReadSettingsFile(path)

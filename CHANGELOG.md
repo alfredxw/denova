@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 资料库正文编辑器新增「预览 / Raw」切换，可直接查看 Markdown 渲染效果，与 Skills 编辑器一致；Skills 列表新增搜索框与可折叠的 scope 分组，并补充加载骨架。
+- The lore content editor gains a Preview/Raw toggle that renders Markdown inline, matching the Skills editor; the Skills list gains a search box, collapsible scope groups, and a loading skeleton.
 - 游戏模式的已持久化 AI 回复新增手动编辑入口，与复制、互动图像按钮位于同一操作行；可在独立编辑器中修正文案而不重新生成回合，也不会改动既有状态、选项、图像或后续剧情。保存使用旧正文做冲突保护，并在修正内容已进入上下文压缩时自动使旧摘要失效，确保后续 Agent 使用新正文。
 - Persisted AI replies in Game Mode now have a manual edit action beside Copy and Interactive Image. A dedicated editor can correct prose without regenerating the turn or changing settled state, choices, images, or later story turns. Saves use the previous prose for conflict protection and invalidate a stale context checkpoint when it already covered the edited turn, ensuring future Agent turns use the corrected text.
 - 写作页新增作者自用的正文评论层：正文始终直接编辑，可通过文本选区或右侧与底层文本块首行对齐的圆角矩形 `+` 添加评论；视觉换行不会把同一段拆成多条评论行。评论提交后正文只保留下划线，点击对应原文才会在其下方展开评论，并支持原位编辑、取消或删除。待处理评论会自动堆叠到创作 Agent 输入框上方，随下一条用户消息一次性发送；只有消息持久化成功后才从正文移除，发送失败会原样恢复。
@@ -30,6 +32,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 资料库、方案预设、Skills 三个配置页统一为同一套资源目录组件：搜索、置顶条目、分组折叠、计数与组内新建行为一致；方案预设目录新增一键展开/收起全部，写作/游戏模式切换时会记住各模式上次选中的资源，不再无感知丢失当前选中。
+- The Library, Presets, and Skills pages now share one resource-directory component with consistent search, pinned entries, collapsible counted groups, and per-group create actions. The presets directory adds expand/collapse-all and remembers the last selected resource per usage mode when switching between Writing and Game modes instead of silently losing the selection.
+- 资料库打开时默认选中第一个资料条目而不是配置管理 Agent 对话；目录新增加载骨架与加载失败重试，不再静默吞错；全库为空时显示引导空态，可直接新建第一个条目；新建资料条目的默认名称现在跟随界面语言。
+- The library now opens on the first lore entry instead of the config Agent chat. The directory shows a loading skeleton and an error-with-retry state instead of failing silently, and an onboarding empty state with a create action appears when the library is empty. Default names of new lore entries now follow the UI language.
+- 删除 Skill、恢复内置 Skill、放弃未保存修改、删除空剧情线等确认操作统一改为应用内确认弹窗，不再使用浏览器原生 confirm；弹窗支持异步执行与失败内联报错。Skills 的新建/导入/配置表单改用统一输入组件，表单草稿不再跨面板切换保留。
+- Destructive confirmations (delete/restore Skill, discard unsaved changes, delete empty branch) now use an in-app confirm dialog with async execution and inline errors instead of the native browser confirm. Skill create/import/config forms use the shared input components, and form drafts no longer persist across panel switches.
 - 正文评论线程改为逐条独立展开：提交新评论不再折叠其他评论，线程头会明确显示评论数量并提供「折叠」，编辑与删除也改为图标加文字；折叠后的原文高亮支持 Tab 聚焦及 Enter/空格展开，并暴露完整无障碍状态。Diff Review 从 UI、API 与领域模型彻底移除「解决 / 重新打开」，评论只保留编辑和删除，活动评论计数统一为 `comment_count`。正文评论与 Diff 评论现在可同时进入下一轮 Agent，跨账本提交会先整体预检，并在任一落盘失败时反向恢复已消费评论。Beta 不兼容：聊天请求的 `review_feedback` 从单对象改为按可信账本来源分组的数组，`resolved` 与 `unresolved_comment_count` 字段及 resolve 路由不再存在；旧账本中的 `resolved` 标记不会迁移，历史记录会按普通未删除评论读取。
 - Document comment threads now expand independently, so submitting a new comment no longer collapses other threads. Thread headers show an explicit comment count and Collapse action, while Edit and Delete use labeled controls; collapsed source highlights are focusable with Tab, toggle with Enter or Space, and expose complete disclosure semantics. Diff Review removes Resolve/Reopen from the UI, API, and domain model, keeps only Edit/Delete, and reports active comments through `comment_count`. Document and Diff comments can accompany the same Agent turn; cross-ledger submission preflights the full batch and restores already-consumed comments in reverse order if any ledger append fails. Beta breaking: chat request `review_feedback` changes from one object to an array grouped by trusted ledger source, while the `resolved` and `unresolved_comment_count` fields and resolve route no longer exist; legacy `resolved` markers are not migrated, so historical entries are read as ordinary non-deleted comments.
 - 设置页移除低频的「用户配置 / 当前工作区」双层 tab，通用、写作与游戏设置统一保存为用户配置；原工作区配置文件中的常规字段继续保留但不再参与生效值合并。工作区级定制收窄为 Agents 页明确提供的提示词、工具、Skill、上下文与 SubAgent 覆盖，模型选择与创作 Agent 的快捷偏好也统一为用户级。
@@ -61,6 +69,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 正文多行选区跨过两处或更多已有评论时不再卡死：重叠评论高亮会在写入 ProseMirror 前合成为互不重叠的片段，不再通过 DOM 回写修正无障碍属性；嵌套评论仍各自保留唯一的键盘展开入口，原文点击、评论定位与编辑后的锚点映射保持可用。
+- Multi-line document selections crossing two or more existing comments no longer freeze the UI. Overlapping highlights are composed into disjoint ProseMirror decorations instead of correcting accessibility attributes through DOM writeback; nested comments retain one keyboard disclosure each, while source clicks, thread alignment, and post-edit anchor mapping remain intact.
 - 游戏模式故事舞台的回合展示顺序与实际执行顺序对齐：持久化回合的展示时间线新增正文位置锚点，`submit_actor_state_patches` / `submit_choices` 提交结果工具卡片现在固定在正文之后渲染，不再被折进「思考过程」分组，回合从流式直播切换为持久化历史布局时不再有工具卡片跳变。无锚点的旧回合保持原「正文在最后」布局不变。
 - Game Mode story stage rendering now matches the real execution order: persisted turns record a narrative anchor in the display timeline, so submission tool cards (`submit_actor_state_patches` / `submit_choices`) render after the prose instead of being folded into the Thinking trace group, and live-to-persisted layout switches no longer move cards. Turns persisted before this change keep the legacy narrative-last layout.
 - 选区点击「添加评论」后浮动按钮立即消失：打开评论弹层时会折叠当前选区，被评论的原文继续由审阅下划线标出，不再出现按钮与弹层同时停留在屏幕上的情况。

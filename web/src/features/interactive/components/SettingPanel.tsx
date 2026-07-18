@@ -1,26 +1,34 @@
-import { useEffect, useRef, useState } from 'react'
-import { BookMarked, Building2, Database, FileText, Image as ImageIcon, Library, Loader2, MapPin, PanelLeft, Save, ScrollText, Search, SlidersHorizontal, Sparkles, Trash2, UserRound } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { BookMarked, Bot, Database, Image as ImageIcon, Images, Loader2, PanelLeft, Save, Search, SlidersHorizontal, Sparkles, Tags, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { abortLoreImagesGenerate, APIError, clearLoreItemImage, createLoreItem, deleteLoreItem, generateLoreItemImage, getLoreItems, readFile, saveFile, streamLoreImagesGenerate, updateLoreItem, workspaceAssetURL, type LoreImageProgressEvent, type LoreItem, type SSEEvent } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
+import { EmptyState } from '@/components/common/EmptyState'
+import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
+import type { ResourceDirectoryBadge, ResourceDirectoryItem, ResourceDirectorySection } from '@/components/resource-directory/types'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { getImagePresets } from '../api'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, INTERACTIVE_OPENING_PRESET_ENTRY_ID, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, serializeBookOpeningPresets, type BookOpeningPreset } from '../opening'
 import type { PresetUsageMode } from '../preset-ownership'
 import type { ImagePreset, StoryDirector, Teller } from '../types'
-import { CreatorDirectory, CreatorEditor, LoreDirectory, LoreEditor, OpeningPresetEditor } from './SettingPanelSections'
+import { CreatorDirectory, CreatorEditor } from './setting-panel/CreatorEditor'
+import { LoreEditor } from './setting-panel/LoreEditor'
+import { OpeningPresetEditor } from './setting-panel/OpeningPresetEditor'
+import { loreImportanceLabel, loreLoadModeLabel, loreTypeLabel } from './setting-panel/editor-shared'
 import { LoreClassificationDialog } from './LoreClassificationDialog'
 import { PresetSettingsPanel } from './setting-panel/PresetSettingsPanel'
 import { EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS } from './setting-panel/presetResources'
+import { firstVisibleLoreItemId, KNOWLEDGE_SECTIONS, sectionItems, type KnowledgeSection, type LoreLoadModeFilter, type LoreType } from './setting-panel/knowledge-sections'
 
 const CREATOR_PATH = 'CREATOR.md'
 const CREATOR_ENTRY_ID = '__creator__'
@@ -29,71 +37,6 @@ const UTF8_ENCODER = new TextEncoder()
 
 export type SettingPanelMode = 'lore' | 'creator' | 'teller'
 
-type LoreType = LoreItem['type']
-
-interface KnowledgeSection {
-  id: string
-  labelKey: string
-  icon: LucideIcon
-  types: LoreType[]
-  createType: LoreType
-  createName: string
-  tag?: string
-  excludeTag?: string
-}
-
-const KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
-  {
-    id: 'characters',
-    labelKey: 'lore.type.character',
-    icon: UserRound,
-    types: ['character'],
-    createType: 'character',
-    createName: '新角色',
-  },
-  {
-    id: 'locations',
-    labelKey: 'lore.type.location',
-    icon: MapPin,
-    types: ['location'],
-    createType: 'location',
-    createName: '新地点',
-  },
-  {
-    id: 'factions',
-    labelKey: 'lore.type.faction',
-    icon: Building2,
-    types: ['faction'],
-    createType: 'faction',
-    createName: '新组织',
-  },
-  {
-    id: 'rules',
-    labelKey: 'lore.type.rule',
-    icon: ScrollText,
-    types: ['world', 'rule'],
-    createType: 'rule',
-    createName: '新规则',
-  },
-  {
-    id: 'templates',
-    labelKey: 'settingPanel.section.templates',
-    icon: FileText,
-    types: ['other'],
-    createType: 'other',
-    createName: '新模板',
-    tag: '模板',
-  },
-  {
-    id: 'assets',
-    labelKey: 'settingPanel.section.assets',
-    icon: Library,
-    types: ['item', 'other'],
-    createType: 'item',
-    createName: '新素材',
-    excludeTag: '模板',
-  },
-]
 const LORE_TYPE_FILTER_OPTIONS: LoreType[] = ['character', 'world', 'location', 'faction', 'rule', 'item', 'other']
 
 interface SettingPanelProps {
@@ -156,10 +99,13 @@ function LoreSettingPanel({
   const { t } = useTranslation()
   const activeMode = mode
   const [items, setItems] = useState<LoreItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [activeId, setActiveId] = useState('')
   const [draft, setDraft] = useState<LoreItem | null>(null)
   const [tagDraft, setTagDraft] = useState('')
   const [query, setQuery] = useState('')
+  const [loadModeFilter, setLoadModeFilter] = useState<LoreLoadModeFilter>('all')
   const [creatorContent, setCreatorContent] = useState('')
   const [creatorRevision, setCreatorRevision] = useState('')
   const [creatorWorkspace, setCreatorWorkspace] = useState('')
@@ -191,33 +137,38 @@ function LoreSettingPanel({
   const loreImageBatchAbortRef = useRef<AbortController | null>(null)
   const isCreatorActive = activeMode === 'creator' || (activeMode === 'lore' && activeId === CREATOR_ENTRY_ID)
 
+  const loadLoreItems = useCallback(async () => {
+    if (!workspace) {
+      setItems([])
+      setActiveId('')
+      setLoadError(null)
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const data = await getLoreItems()
+      setItems(data)
+      // 默认落地到第一个可见资料条目；全库为空时交由空态引导（activeId 置空）
+      setActiveId(firstVisibleLoreItemId(data) ?? '')
+    } catch (error) {
+      setItems([])
+      setActiveId('')
+      setLoadError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setLoading(false)
+    }
+  }, [workspace])
+
   useEffect(() => {
-    let cancelled = false
     setItems([])
-    setActiveId(LORE_CONFIG_AGENT_ENTRY_ID)
+    setActiveId('')
     setDraft(null)
     setTagDraft('')
     setQuery('')
-    if (!workspace)
-      return () => {
-        cancelled = true
-      }
-    getLoreItems()
-      .then((data) => {
-        if (cancelled) return
-        setItems(data)
-        setActiveId(LORE_CONFIG_AGENT_ENTRY_ID)
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setItems([])
-          setActiveId(LORE_CONFIG_AGENT_ENTRY_ID)
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [workspace])
+    void loadLoreItems()
+  }, [loadLoreItems])
 
   useEffect(() => {
     const item = items.find((entry) => entry.id === activeId) || null
@@ -350,7 +301,13 @@ function LoreSettingPanel({
   const refreshItems = async (nextActiveId?: string) => {
     const data = await getLoreItems()
     setItems(data)
-    setActiveId(nextActiveId || LORE_CONFIG_AGENT_ENTRY_ID)
+    // 缺省保持当前选中（仍存在则保留，含伪条目）；否则选中第一个可见条目，全库为空时置空走空态
+    setActiveId((current) => {
+      if (nextActiveId) return nextActiveId
+      if (current === CREATOR_ENTRY_ID || current === INTERACTIVE_OPENING_PRESET_ENTRY_ID || current === LORE_CONFIG_AGENT_ENTRY_ID) return current
+      if (current && data.some((item) => item.id === current)) return current
+      return firstVisibleLoreItemId(data) ?? ''
+    })
   }
 
   useEffect(() => {
@@ -389,15 +346,16 @@ function LoreSettingPanel({
   const handleCreateLore = async (section: KnowledgeSection = KNOWLEDGE_SECTIONS[0]) => {
     setSaving(true)
     try {
+      const createName = t(section.createNameKey)
       const item = await createLoreItem({
         enabled: true,
         type: section.createType,
-        name: section.createName,
+        name: createName,
         importance: section.createType === 'character' ? 'major' : 'important',
         load_mode: section.createType === 'character' ? 'resident' : 'auto',
         tags: section.tag ? [section.tag] : [],
-        brief_description: `${loreTypeLabel(section.createType, t)} ${section.createName}。用 3-5 句概括本项的身份、别名、关键事实、适用场景和触发词。上下文出现相关内容时，一定要参考本项详情。`,
-        content: `## ${section.createName}\n\n`,
+        brief_description: `${loreTypeLabel(section.createType, t)} ${createName}。用 3-5 句概括本项的身份、别名、关键事实、适用场景和触发词。上下文出现相关内容时，一定要参考本项详情。`,
+        content: `## ${createName}\n\n`,
       })
       await refreshItems(item.id)
       notifyLoreUpdated([item.id])
@@ -609,6 +567,53 @@ function LoreSettingPanel({
   const isOpeningPresetActive = activeMode === 'lore' && activeId === INTERACTIVE_OPENING_PRESET_ENTRY_ID
   const isLoreConfigAgentActive = activeMode === 'lore' && activeId === LORE_CONFIG_AGENT_ENTRY_ID
   const saveDisabled = saving || (activeMode === 'lore' && !isCreatorActive && !isOpeningPresetActive && !draft)
+  const loadModeFilterLabel = loadModeFilter === 'resident'
+    ? t('settingPanel.lore.loadModeFilter.resident')
+    : loadModeFilter === 'on_demand'
+      ? t('settingPanel.lore.loadModeFilter.onDemand')
+      : t('settingPanel.lore.loadModeFilter.all')
+  const loadModeFilterAriaLabel = `${t('settingPanel.lore.loadModeFilter')}: ${loadModeFilterLabel}`
+  const loreDirectorySections: ResourceDirectorySection[] = KNOWLEDGE_SECTIONS.map((section) => ({
+    id: section.id,
+    label: t(section.labelKey),
+    icon: section.icon,
+    items: sectionItems(items, section, query, loadModeFilter).map((item) => loreItemToDirectoryItem(item, t)),
+    onCreate: () => void handleCreateLore(section),
+    createLabel: `${t('chat.new')}${t(section.labelKey)}`,
+  }))
+  const loreLoadModeFilterControl = (
+    <Select value={loadModeFilter} onValueChange={(value) => setLoadModeFilter(value as LoreLoadModeFilter)}>
+      <SelectTrigger
+        size="sm"
+        className={cn(
+          'size-7 justify-center border-0 p-0 shadow-none [&>svg:last-child]:hidden',
+          loadModeFilter !== 'all' && 'bg-muted text-foreground',
+        )}
+        aria-label={loadModeFilterAriaLabel}
+        title={loadModeFilterAriaLabel}
+      >
+        <SlidersHorizontal />
+        <span className="sr-only">{loadModeFilterLabel}</span>
+      </SelectTrigger>
+      <SelectContent position="popper" align="end">
+        <SelectGroup>
+          <SelectItem value="all">{t('settingPanel.lore.loadModeFilter.all')}</SelectItem>
+          <SelectItem value="resident">{t('settingPanel.lore.loadModeFilter.resident')}</SelectItem>
+          <SelectItem value="on_demand">{t('settingPanel.lore.loadModeFilter.onDemand')}</SelectItem>
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  )
+  const loreDirectoryActions = (
+    <>
+      <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || items.length === 0} onClick={handleOpenLoreImageBatch} aria-label={t('settingPanel.loreImage.batchOpen')} title={t('settingPanel.loreImage.batchOpen')}>
+        <Images className="h-3.5 w-3.5" />
+      </Button>
+      <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || items.length === 0} onClick={() => setLoreClassificationOpen(true)} aria-label={t('settingPanel.loreClassification.open')} title={t('settingPanel.loreClassification.open')}>
+        <Tags className="h-3.5 w-3.5" />
+      </Button>
+    </>
+  )
   const directoryPanel = (
     <div className="nova-sidebar flex h-full min-h-0 flex-col bg-[var(--nova-surface-2)]">
       <div className="border-b border-[var(--nova-border)] px-3 py-3">
@@ -619,7 +624,41 @@ function LoreSettingPanel({
         <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.directoryHint')}</div>
       </div>
 
-      {activeMode === 'lore' ? <LoreDirectory items={items} activeId={activeId} query={query} saving={saving} onQueryChange={setQuery} onSelect={handleSelectLore} onCreate={(section) => void handleCreateLore(section)} onBatchGenerate={handleOpenLoreImageBatch} onClassify={() => setLoreClassificationOpen(true)} /> : <CreatorDirectory />}
+      {activeMode === 'lore' ? (
+        loading ? (
+          <div className="space-y-2 p-3" aria-label={t('common.loading')}>
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="h-8 animate-pulse rounded-md bg-[var(--nova-surface)]" style={{ opacity: 1 - index * 0.12 }} />
+            ))}
+          </div>
+        ) : loadError ? (
+          <div className="space-y-2 p-3">
+            <InlineErrorNotice message={loadError} />
+            <Button variant="outline" size="sm" onClick={() => void loadLoreItems()}>
+              {t('common.retry')}
+            </Button>
+          </div>
+        ) : (
+          <ResourceDirectory
+            sections={loreDirectorySections}
+            activeId={activeId || null}
+            onSelect={handleSelectLore}
+            saving={saving}
+            pinnedEntries={[
+              { id: CREATOR_ENTRY_ID, label: CREATOR_PATH, icon: BookMarked },
+              { id: INTERACTIVE_OPENING_PRESET_ENTRY_ID, label: t('settingPanel.openingPreset.title'), icon: Sparkles },
+              { id: LORE_CONFIG_AGENT_ENTRY_ID, label: t('settingPanel.loreAgent.title'), icon: Bot },
+            ]}
+            searchPlaceholder={t('settingPanel.searchLore')}
+            query={query}
+            onQueryChange={setQuery}
+            filterItem={() => true}
+            searchAccessory={loreLoadModeFilterControl}
+            headerActions={loreDirectoryActions}
+            emptySectionsLast
+          />
+        )
+      ) : <CreatorDirectory />}
     </div>
   )
 
@@ -657,12 +696,12 @@ function LoreSettingPanel({
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                {activeMode === 'lore' && !isLoreConfigAgentActive && !isCreatorActive && !isOpeningPresetActive && (
-                  <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving || !draft} onClick={handleDelete} aria-label={t('settingPanel.deleteLore')}>
+                {activeMode === 'lore' && !isLoreConfigAgentActive && !isCreatorActive && !isOpeningPresetActive && draft && (
+                  <Button className={iconActionClassName} variant="outline" size="icon" disabled={saving} onClick={handleDelete} aria-label={t('settingPanel.deleteLore')}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 )}
-                {!isLoreConfigAgentActive && (
+                {!isLoreConfigAgentActive && (isCreatorActive || isOpeningPresetActive || draft) && (
                   <Button className={actionButtonClassName} variant="outline" size="sm" disabled={saveDisabled} onClick={handleSave}>
                     {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                     {t('common.save')}
@@ -673,7 +712,14 @@ function LoreSettingPanel({
 
             {activeMode === 'lore' ? (
               <>
-                {activeId === LORE_CONFIG_AGENT_ENTRY_ID ? (
+                {items.length === 0 && !loading && !loadError && !activeId ? (
+                  <EmptyState
+                    icon={Database}
+                    title={t('settingPanel.lore.emptyTitle')}
+                    description={t('settingPanel.lore.emptyDescription')}
+                    action={{ label: t('settingPanel.lore.emptyAction'), onClick: () => void handleCreateLore() }}
+                  />
+                ) : activeId === LORE_CONFIG_AGENT_ENTRY_ID ? (
                   <ConfigManagerChat
                     workspace={workspace}
                     origin="lore"
@@ -1044,22 +1090,23 @@ function ModeIcon({ mode }: { mode: SettingPanelMode }) {
   return <Database className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
 }
 
-function loreTypeLabel(type: LoreItem['type'], t: (key: string) => string) {
-  const key = `lore.type.${type}`
-  const label = t(key)
-  return label === key ? t('lore.type.other') : label
-}
-
-function loreImportanceLabel(importance: LoreItem['importance'], t: (key: string) => string) {
-  const key = `lore.importance.${importance}`
-  const label = t(key)
-  return label === key ? t('lore.importance.important') : label
-}
-
-function loreLoadModeLabel(loadMode: LoreItem['load_mode'] | undefined, t: (key: string) => string) {
-  const key = `lore.loadMode.${loadMode || 'auto'}`
-  const label = t(key)
-  return label === key ? t('lore.loadMode.auto') : label
+function loreItemToDirectoryItem(item: LoreItem, t: (key: string) => string): ResourceDirectoryItem {
+  const imagePath = item.image?.image_path || ''
+  const badges: ResourceDirectoryBadge[] = [{
+    label: item.load_mode === 'resident' ? t('settingPanel.lore.loadModeBadge.resident') : t('settingPanel.lore.loadModeBadge.onDemand'),
+    title: loreLoadModeLabel(item.load_mode, t),
+    tone: item.load_mode === 'resident' ? 'default' : 'outline',
+  }]
+  if (item.enabled === false) {
+    badges.push({ label: t('settingPanel.disabled'), tone: 'muted' })
+  }
+  return {
+    id: item.id,
+    title: item.name,
+    thumbnailUrl: imagePath ? workspaceAssetURL(imagePath) : null,
+    badges,
+    disabled: item.enabled === false,
+  }
 }
 
 function panelTitle(mode: SettingPanelMode, t: (key: string) => string) {

@@ -639,7 +639,7 @@ export function ModeRouter(props: ModeRouterProps) {
       )}
       {mountedRoutes.has('skills') && (
         <MainRouteLayer visible={visibleMainRoute === 'skills'}>
-          <SkillsView workspace={workspace} onClose={() => onSetMode(booksReturnMode)} onRequestAgent={requestSkillsAgent} />
+          <SkillsView workspace={workspace} onClose={() => onSetMode(booksReturnMode)} />
         </MainRouteLayer>
       )}
       {mountedRoutes.has('agents') && (

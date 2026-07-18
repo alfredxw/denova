@@ -29,7 +29,7 @@ func (s *Store) UpdateTriggerState(id string, triggerID string, state TriggerSta
 		if err != nil {
 			return Task{}, err
 		}
-		unlock := storePathLocks.lock(path)
+		unlock := storePathLocks.Lock(path)
 		tasks, err := s.readScope(scope)
 		if err != nil {
 			unlock()
@@ -69,7 +69,7 @@ func (s *Store) ListInbox() ([]TriggerInboxItem, error) {
 		if err != nil {
 			return nil, err
 		}
-		unlock := storePathLocks.lock(path)
+		unlock := storePathLocks.Lock(path)
 		scopeItems, err := location.store.readInboxScope(location.scope)
 		unlock()
 		if err != nil {
@@ -103,7 +103,7 @@ func (s *Store) CreateInboxItem(item TriggerInboxItem) (TriggerInboxItem, error)
 	if err != nil {
 		return TriggerInboxItem{}, err
 	}
-	unlock := storePathLocks.lock(path)
+	unlock := storePathLocks.Lock(path)
 	defer unlock()
 	items, err := destination.readInboxScope(normalized.Scope)
 	if err != nil {
@@ -132,7 +132,7 @@ func (s *Store) GetInboxItem(id string) (TriggerInboxItem, error) {
 		if err != nil {
 			return TriggerInboxItem{}, err
 		}
-		unlock := storePathLocks.lock(path)
+		unlock := storePathLocks.Lock(path)
 		items, err := location.store.readInboxScope(location.scope)
 		if err != nil {
 			unlock()
@@ -308,7 +308,7 @@ func (s *Store) updateInboxItem(id string, update func(TriggerInboxItem, time.Ti
 		if err != nil {
 			return TriggerInboxItem{}, err
 		}
-		unlock := storePathLocks.lock(path)
+		unlock := storePathLocks.Lock(path)
 		items, err := location.store.readInboxScope(location.scope)
 		if err != nil {
 			unlock()

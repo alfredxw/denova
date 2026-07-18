@@ -158,7 +158,7 @@ func (s *AutomationAppService) processContentTriggers(ctx context.Context, now t
 }
 
 func (s *AutomationAppService) processTriggersMatching(ctx context.Context, onlyTaskID string, now time.Time, source string, includeTrigger func(automation.TriggerDefinition) bool) ([]automation.TriggerInboxItem, []automation.RunResult, error) {
-	unlock := triggerExecutionLocks.lock(s.workspace())
+	unlock := triggerExecutionLocks.Lock(s.workspace())
 	defer unlock()
 	target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
 	if workspace := strings.TrimSpace(s.workspace()); workspace != "" {
@@ -366,7 +366,7 @@ func (s *AutomationAppService) evaluateChapterBatchTrigger(now time.Time, task a
 		return automation.TriggerMatch{}, nextState, false, nil
 	}
 	title := fmt.Sprintf("%s reached chapter batch %d", task.Name, batch.Number)
-	summaryText := fmt.Sprintf("Chapter batch %d is ready: %d non-empty chapters reached at %s.", batch.Number, batch.End, now.Local().Format("2006-01-02 15:04"))
+	summaryText := fmt.Sprintf("Chapter batch %d is ready: %d non-empty chapters reached at %s.", batch.Number, batch.End, now.Local().Format(book.DisplayTimeFormat))
 	return automation.TriggerMatch{
 		TaskID:      task.ID,
 		TriggerID:   trigger.ID,
@@ -394,7 +394,7 @@ func (s *AutomationAppService) evaluateScheduleTrigger(now time.Time, task autom
 		TaskID:      task.ID,
 		TriggerID:   trigger.ID,
 		Title:       fmt.Sprintf("%s scheduled trigger", task.Name),
-		Summary:     fmt.Sprintf("Schedule %s is due at %s.", trigger.Schedule.Kind, now.Local().Format("2006-01-02 15:04")),
+		Summary:     fmt.Sprintf("Schedule %s is due at %s.", trigger.Schedule.Kind, now.Local().Format(book.DisplayTimeFormat)),
 		Fingerprint: fingerprint,
 		Evidence: []automation.TriggerEvidence{{
 			Source:  "schedule",

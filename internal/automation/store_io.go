@@ -4,50 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
+
+	"denova/internal/keyedlock"
 )
 
 // storePathLocks coordinates all Store instances in this process. Stores are
 // deliberately short-lived in the app layer, so a mutex on Store itself would
 // not protect shared user-scope files from concurrent read-modify-write cycles.
-var storePathLocks = newKeyedStoreLocks()
-
-type keyedStoreLocks struct {
-	mu      sync.Mutex
-	entries map[string]*keyedStoreLock
-}
-
-type keyedStoreLock struct {
-	mu   sync.Mutex
-	refs int
-}
-
-func newKeyedStoreLocks() *keyedStoreLocks {
-	return &keyedStoreLocks{entries: make(map[string]*keyedStoreLock)}
-}
-
-func (l *keyedStoreLocks) lock(path string) func() {
-	key := canonicalStorePath(path)
-	l.mu.Lock()
-	entry := l.entries[key]
-	if entry == nil {
-		entry = &keyedStoreLock{}
-		l.entries[key] = entry
-	}
-	entry.refs++
-	l.mu.Unlock()
-
-	entry.mu.Lock()
-	return func() {
-		entry.mu.Unlock()
-		l.mu.Lock()
-		entry.refs--
-		if entry.refs == 0 {
-			delete(l.entries, key)
-		}
-		l.mu.Unlock()
-	}
-}
+var storePathLocks = keyedlock.New(canonicalStorePath)
 
 // canonicalStorePath resolves the longest existing prefix. This makes a real
 // workspace path and a symlink alias share one lock even before the JSON file

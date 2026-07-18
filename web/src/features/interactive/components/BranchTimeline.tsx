@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import type { BranchSummary, PlotNode, Snapshot, TurnEvent } from '../types'
 
 interface BranchTimelineProps {
@@ -120,6 +121,7 @@ export function BranchTimeline({
   const [branchTitle, setBranchTitle] = useState('')
   const [creatingBranch, setCreatingBranch] = useState(false)
   const [createError, setCreateError] = useState('')
+  const [deleteBranchTarget, setDeleteBranchTarget] = useState<BranchSummary | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const graphNodes = useMemo(() => buildGraphNodes(snapshot, t), [snapshot, t])
@@ -210,10 +212,13 @@ export function BranchTimeline({
   }
 
   const deleteBranch = (branch: BranchSummary) => {
-    const label = formatBranchName(branch, t)
-    if (!window.confirm(t('branchTimeline.confirmDeleteEmpty', { name: label }))) return
-    onDeleteBranch(branch.id)
-    if (selectedNode?.branch_id === branch.id) setSelectedNodeId(null)
+    setDeleteBranchTarget(branch)
+  }
+
+  const confirmDeleteBranch = () => {
+    if (!deleteBranchTarget) return
+    onDeleteBranch(deleteBranchTarget.id)
+    if (selectedNode?.branch_id === deleteBranchTarget.id) setSelectedNodeId(null)
   }
 
   return (
@@ -402,6 +407,17 @@ export function BranchTimeline({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={Boolean(deleteBranchTarget)}
+        onOpenChange={(open) => {
+          if (!open) setDeleteBranchTarget(null)
+        }}
+        title={t('branchTimeline.deleteEmptyBranch')}
+        description={t('branchTimeline.confirmDeleteEmpty', { name: deleteBranchTarget ? formatBranchName(deleteBranchTarget, t) : '' })}
+        confirmLabel={t('common.delete')}
+        tone="danger"
+        onConfirm={confirmDeleteBranch}
+      />
     </div>
   )
 }

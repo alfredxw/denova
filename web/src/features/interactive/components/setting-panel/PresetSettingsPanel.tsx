@@ -1,19 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Compass, Database, Dice5, Loader2, PanelLeft, RotateCcw, Save, ScrollText, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Bot, Compass, Database, Dice5, Loader2, PanelLeft, RotateCcw, Save, ScrollText, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
-import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteRuleSystem, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../../api'
+import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteRuleSystem, deleteStoryDirector, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../../api'
 import type { PresetResourceKind, PresetUsageMode } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
-import { ActorStateEditor, EventPackageEditor, ImagePresetEditor, RuleSystemEditor, TellerDirectory } from '../SettingPanelSections'
-import { TellerEditor } from '../SettingPanelTellerEditor'
-import { StoryDirectorEditor } from '../story-director/StoryDirectorEditor'
+import { PresetResourcePane } from './PresetResourcePane'
+import { buildPresetDirectorySections, presetDirectoryEntryId } from './preset-directory-sections'
+import { usePresetDraftSync, usePresetResources } from './use-preset-resources'
+import { usePresetSelection } from './use-preset-selection'
 import { usePresetResourceAutosave } from './usePresetResourceAutosave'
-import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneRuleSystem, cloneStoryDirector, cloneTeller, currentPresetBuiltinOverridden, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDeleteTarget, type PresetDrafts } from './presetResources'
+import { currentPresetBuiltinOverridden, EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDeleteTarget } from './presetResources'
 
 interface PresetSettingsPanelProps {
   workspace: string
@@ -31,11 +33,6 @@ interface AutosaveController {
   cancelPending: () => void
   flushPending: () => Promise<unknown> | null
   saveNow: (mode: 'manual' | 'auto') => Promise<unknown>
-}
-
-interface AutosavedListEntry {
-  id: string
-  signature: string
 }
 
 const actionButtonClassName = 'gap-1.5 border-[var(--preset-line)] bg-[var(--preset-raised)] text-[var(--nova-text-muted)] shadow-none hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
@@ -60,287 +57,73 @@ export function PresetSettingsPanel({
   const [presetConfigValid, setPresetConfigValid] = useState(true)
   const presetConfigValidRef = useRef(true)
   const closeDirectoryRef = useRef<() => void>(() => {})
-  const autosavedListEntriesRef = useRef<Partial<Record<PresetResourceKind, AutosavedListEntry>>>({})
 
   const [presetResourceKind, setPresetResourceKind] = useState<PresetResourceKind>('teller')
-  const [tellers, setTellers] = useState<Teller[]>(externalTellers)
-  const [activeTellerId, setActiveTellerId] = useState('')
-  const [tellerDraft, setTellerDraft] = useState<Teller | null>(null)
-  const [activeSlotId, setActiveSlotId] = useState('')
-  const [storyDirectors, setStoryDirectors] = useState<StoryDirector[]>(externalStoryDirectors)
-  const [activeStoryDirectorId, setActiveStoryDirectorId] = useState('')
-  const [storyDirectorDraft, setStoryDirectorDraft] = useState<StoryDirector | null>(null)
-  const [imagePresets, setImagePresets] = useState<ImagePreset[]>(externalImagePresets)
-  const [activeImagePresetId, setActiveImagePresetId] = useState('')
-  const [imagePresetDraft, setImagePresetDraft] = useState<ImagePreset | null>(null)
-  const [eventPackages, setEventPackages] = useState<EventPackageModule[]>(EMPTY_EVENT_PACKAGES)
-  const [activeEventPackageId, setActiveEventPackageId] = useState('')
-  const [eventPackageDraft, setEventPackageDraft] = useState<EventPackageModule | null>(null)
-  const [ruleSystems, setRuleSystems] = useState<RuleSystemModule[]>(EMPTY_RULE_SYSTEMS)
-  const [activeRuleSystemId, setActiveRuleSystemId] = useState('')
-  const [ruleSystemDraft, setRuleSystemDraft] = useState<RuleSystemModule | null>(null)
-  const [actorStates, setActorStates] = useState<ActorStateModule[]>(EMPTY_ACTOR_STATES)
-  const [activeActorStateId, setActiveActorStateId] = useState('')
-  const [actorStateDraft, setActorStateDraft] = useState<ActorStateModule | null>(null)
 
-  const markAutosavedListEntry = (kind: PresetResourceKind, item: { id: string } & object) => {
-    autosavedListEntriesRef.current[kind] = {
-      id: item.id,
-      signature: presetResourceDraftSignature(item),
-    }
-  }
-
-  const clearAutosavedListEntry = (kind: PresetResourceKind) => {
-    delete autosavedListEntriesRef.current[kind]
-  }
-
-  const shouldPreserveAutosavedDraft = (kind: PresetResourceKind, item: ({ id: string } & object) | null, draftId?: string) => {
-    const autosavedEntry = autosavedListEntriesRef.current[kind]
-    if (!autosavedEntry) return false
-    if (
-      !item
-      || item.id !== autosavedEntry.id
-      || draftId !== item.id
-      || presetResourceDraftSignature(item) !== autosavedEntry.signature
-    ) {
-      delete autosavedListEntriesRef.current[kind]
-      return false
-    }
-    return true
-  }
+  const resources = usePresetResources({
+    workspace,
+    externalTellers,
+    externalStoryDirectors,
+    externalImagePresets,
+    onTellersChange,
+    onStoryDirectorsChange,
+    onImagePresetsChange,
+  })
+  const {
+    tellers,
+    activeTellerId,
+    setActiveTellerId,
+    tellerDraft,
+    setTellerDraft,
+    activeSlotId,
+    setActiveSlotId,
+    storyDirectors,
+    activeStoryDirectorId,
+    setActiveStoryDirectorId,
+    storyDirectorDraft,
+    setStoryDirectorDraft,
+    imagePresets,
+    activeImagePresetId,
+    setActiveImagePresetId,
+    imagePresetDraft,
+    setImagePresetDraft,
+    eventPackages,
+    activeEventPackageId,
+    setActiveEventPackageId,
+    eventPackageDraft,
+    setEventPackageDraft,
+    ruleSystems,
+    activeRuleSystemId,
+    setActiveRuleSystemId,
+    ruleSystemDraft,
+    setRuleSystemDraft,
+    actorStates,
+    activeActorStateId,
+    setActiveActorStateId,
+    actorStateDraft,
+    setActorStateDraft,
+    presetDrafts,
+    mergeSavedTeller,
+    mergeSavedStoryDirector,
+    mergeSavedImagePreset,
+    mergeSavedEventPackage,
+    mergeSavedRuleSystem,
+    mergeSavedActorState,
+    refreshTellers,
+    refreshStoryDirectors,
+    refreshImagePresets,
+    refreshEventPackages,
+    refreshRuleSystems,
+    refreshActorStates,
+  } = resources
 
   useEffect(() => {
     presetConfigValidRef.current = presetConfigValid
   }, [presetConfigValid])
 
   useEffect(() => {
-    autosavedListEntriesRef.current = {}
-  }, [workspace])
-
-  useEffect(() => {
     setPresetConfigValid(true)
   }, [activeActorStateId, activeEventPackageId, activeRuleSystemId, activeStoryDirectorId, presetResourceKind])
-
-  useEffect(() => {
-    if (onTellersChange || externalTellers.length > 0 || !workspace) return
-    let cancelled = false
-    getInteractiveTellers()
-      .then((data) => {
-        if (cancelled) return
-        setTellers(data)
-        setActiveTellerId((current) => current || data[0]?.id || '')
-      })
-      .catch(() => {
-        if (!cancelled) setTellers([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [externalTellers.length, onTellersChange, workspace])
-
-  useEffect(() => {
-    if (onStoryDirectorsChange || externalStoryDirectors.length > 0 || !workspace) return
-    let cancelled = false
-    getStoryDirectors()
-      .then((data) => {
-        if (cancelled) return
-        setStoryDirectors(data)
-        setActiveStoryDirectorId((current) => current || data[0]?.id || '')
-      })
-      .catch(() => {
-        if (!cancelled) setStoryDirectors([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [externalStoryDirectors.length, onStoryDirectorsChange, workspace])
-
-  useEffect(() => {
-    if (onImagePresetsChange || externalImagePresets.length > 0 || !workspace) return
-    let cancelled = false
-    getImagePresets()
-      .then((data) => {
-        if (cancelled) return
-        setImagePresets(data)
-        setActiveImagePresetId((current) => current || data[0]?.id || '')
-      })
-      .catch(() => {
-        if (!cancelled) setImagePresets([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [externalImagePresets.length, onImagePresetsChange, workspace])
-
-  useEffect(() => {
-    if (!workspace) return
-    let cancelled = false
-    getEventPackages()
-      .then((data) => {
-        if (cancelled) return
-        setEventPackages(data)
-        setActiveEventPackageId((current) => current || data[0]?.id || '')
-      })
-      .catch(() => {
-        if (!cancelled) setEventPackages([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [workspace])
-
-  useEffect(() => {
-    if (!workspace) return
-    let cancelled = false
-    getRuleSystems()
-      .then((data) => {
-        if (cancelled) return
-        setRuleSystems(data)
-        setActiveRuleSystemId((current) => current || data[0]?.id || '')
-      })
-      .catch(() => {
-        if (!cancelled) setRuleSystems([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [workspace])
-
-  useEffect(() => {
-    if (!workspace) return
-    let cancelled = false
-    getActorStates()
-      .then((data) => {
-        if (cancelled) return
-        setActorStates(data)
-        setActiveActorStateId((current) => current || data[0]?.id || '')
-      })
-      .catch(() => {
-        if (!cancelled) setActorStates([])
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [workspace])
-
-  useEffect(() => {
-    setTellers(externalTellers)
-    setActiveTellerId((current) => {
-      if (current === TELLER_CONFIG_AGENT_ENTRY_ID) return current
-      if (current && externalTellers.some((teller) => teller.id === current)) return current
-      return externalTellers[0]?.id || ''
-    })
-    const activeExternalTeller = externalTellers.find((teller) => teller.id === activeTellerId) || null
-    if (!shouldPreserveAutosavedDraft('teller', activeExternalTeller, tellerDraft?.id)) {
-      setTellerDraft(null)
-      setActiveSlotId('')
-    }
-  }, [externalTellers, workspace])
-
-  useEffect(() => {
-    setStoryDirectors(externalStoryDirectors)
-    setActiveStoryDirectorId((current) => {
-      if (current && externalStoryDirectors.some((director) => director.id === current)) return current
-      return externalStoryDirectors[0]?.id || ''
-    })
-    const activeExternalDirector = externalStoryDirectors.find((director) => director.id === activeStoryDirectorId) || null
-    if (!shouldPreserveAutosavedDraft('director', activeExternalDirector, storyDirectorDraft?.id)) {
-      setStoryDirectorDraft(null)
-    }
-  }, [externalStoryDirectors, workspace])
-
-  useEffect(() => {
-    setImagePresets(externalImagePresets)
-    setActiveImagePresetId((current) => {
-      if (current && externalImagePresets.some((preset) => preset.id === current)) return current
-      return externalImagePresets[0]?.id || ''
-    })
-    const activeExternalPreset = externalImagePresets.find((preset) => preset.id === activeImagePresetId) || null
-    if (!shouldPreserveAutosavedDraft('image', activeExternalPreset, imagePresetDraft?.id)) {
-      setImagePresetDraft(null)
-    }
-  }, [externalImagePresets, workspace])
-
-  useEffect(() => {
-    setActiveEventPackageId((current) => {
-      if (current && eventPackages.some((item) => item.id === current)) return current
-      return eventPackages[0]?.id || ''
-    })
-    setEventPackageDraft(null)
-  }, [workspace])
-
-  useEffect(() => {
-    setActiveRuleSystemId((current) => {
-      if (current && ruleSystems.some((item) => item.id === current)) return current
-      return ruleSystems[0]?.id || ''
-    })
-    setRuleSystemDraft(null)
-  }, [workspace])
-
-  useEffect(() => {
-    setActiveActorStateId((current) => {
-      if (current && actorStates.some((item) => item.id === current)) return current
-      return actorStates[0]?.id || ''
-    })
-    setActorStateDraft(null)
-  }, [workspace])
-
-  const presetDrafts: PresetDrafts = useMemo(() => ({
-    teller: tellerDraft,
-    director: storyDirectorDraft,
-    image: imagePresetDraft,
-    event: eventPackageDraft,
-    rule: ruleSystemDraft,
-    actorState: actorStateDraft,
-  }), [actorStateDraft, eventPackageDraft, imagePresetDraft, ruleSystemDraft, storyDirectorDraft, tellerDraft])
-
-  const mergeSavedTeller = (teller: Teller, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('teller', teller)
-    else clearAutosavedListEntry('teller')
-    setTellers((current) => {
-      const next = current.map((entry) => (entry.id === teller.id ? teller : entry))
-      onTellersChange?.(next)
-      return next
-    })
-  }
-
-  const mergeSavedStoryDirector = (director: StoryDirector, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('director', director)
-    else clearAutosavedListEntry('director')
-    setStoryDirectors((current) => {
-      const next = current.map((entry) => (entry.id === director.id ? director : entry))
-      onStoryDirectorsChange?.(next)
-      return next
-    })
-  }
-
-  const mergeSavedImagePreset = (preset: ImagePreset, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('image', preset)
-    else clearAutosavedListEntry('image')
-    setImagePresets((current) => {
-      const next = current.map((entry) => (entry.id === preset.id ? preset : entry))
-      onImagePresetsChange?.(next)
-      return next
-    })
-  }
-
-  const mergeSavedEventPackage = (item: EventPackageModule, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('event', item)
-    else clearAutosavedListEntry('event')
-    setEventPackages((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
-  }
-
-  const mergeSavedRuleSystem = (item: RuleSystemModule, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('rule', item)
-    else clearAutosavedListEntry('rule')
-    setRuleSystems((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
-  }
-
-  const mergeSavedActorState = (item: ActorStateModule, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('actor-state', item)
-    else clearAutosavedListEntry('actor-state')
-    setActorStates((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
-  }
 
   const tellerAutosave = usePresetResourceAutosave<Teller, Partial<Teller>, Teller>({
     draft: tellerDraft,
@@ -448,133 +231,14 @@ export function PresetSettingsPanel({
     onFlushError: (err) => console.warn('[actor-state-editor] 切换条目前自动保存状态系统失败', err),
   })
 
-  useEffect(() => {
-    if (activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID) {
-      setTellerDraft(null)
-      tellerAutosave.resetBaseline(null)
-      setActiveSlotId('')
-      return
-    }
-    const teller = tellers.find((entry) => entry.id === activeTellerId) || null
-    if (shouldPreserveAutosavedDraft('teller', teller, tellerDraft?.id)) return
-    const nextDraft = teller ? cloneTeller(teller) : null
-    setTellerDraft(nextDraft)
-    setActiveSlotId((current) => {
-      if (current && teller?.slots?.some((slot) => slot.id === current)) return current
-      return teller?.slots?.[0]?.id || ''
-    })
-    tellerAutosave.resetBaseline(nextDraft)
-  }, [activeTellerId, tellers, tellerAutosave.resetBaseline])
-
-  useEffect(() => {
-    const preset = imagePresets.find((entry) => entry.id === activeImagePresetId) || null
-    if (shouldPreserveAutosavedDraft('image', preset, imagePresetDraft?.id)) return
-    const nextDraft = preset ? cloneImagePreset(preset) : null
-    setImagePresetDraft(nextDraft)
-    imagePresetAutosave.resetBaseline(nextDraft)
-  }, [activeImagePresetId, imagePresets, imagePresetAutosave.resetBaseline])
-
-  useEffect(() => {
-    const director = storyDirectors.find((entry) => entry.id === activeStoryDirectorId) || null
-    if (shouldPreserveAutosavedDraft('director', director, storyDirectorDraft?.id)) return
-    const nextDraft = director ? cloneStoryDirector(director) : null
-    setStoryDirectorDraft(nextDraft)
-    storyDirectorAutosave.resetBaseline(nextDraft)
-  }, [activeStoryDirectorId, storyDirectors, storyDirectorAutosave.resetBaseline])
-
-  useEffect(() => {
-    const item = eventPackages.find((entry) => entry.id === activeEventPackageId) || null
-    if (shouldPreserveAutosavedDraft('event', item, eventPackageDraft?.id)) return
-    const nextDraft = item ? cloneEventPackage(item) : null
-    setEventPackageDraft(nextDraft)
-    eventPackageAutosave.resetBaseline(nextDraft)
-  }, [activeEventPackageId, eventPackages, eventPackageAutosave.resetBaseline])
-
-  useEffect(() => {
-    const item = ruleSystems.find((entry) => entry.id === activeRuleSystemId) || null
-    if (shouldPreserveAutosavedDraft('rule', item, ruleSystemDraft?.id)) return
-    const nextDraft = item ? cloneRuleSystem(item) : null
-    setRuleSystemDraft(nextDraft)
-    ruleSystemAutosave.resetBaseline(nextDraft)
-  }, [activeRuleSystemId, ruleSystems, ruleSystemAutosave.resetBaseline])
-
-  useEffect(() => {
-    const item = actorStates.find((entry) => entry.id === activeActorStateId) || null
-    if (shouldPreserveAutosavedDraft('actor-state', item, actorStateDraft?.id)) return
-    const nextDraft = item ? cloneActorState(item) : null
-    setActorStateDraft(nextDraft)
-    actorStateAutosave.resetBaseline(nextDraft)
-  }, [activeActorStateId, actorStates, actorStateAutosave.resetBaseline])
-
-  const refreshTellers = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('teller')
-    const data = await getInteractiveTellers()
-    setTellers(data)
-    onTellersChange?.(data)
-    setActiveTellerId((current) => {
-      if (nextActiveId) return nextActiveId
-      if (current === TELLER_CONFIG_AGENT_ENTRY_ID) return current
-      if (current && data.some((teller) => teller.id === current)) return current
-      return data[0]?.id || ''
-    })
-  }
-
-  const refreshStoryDirectors = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('director')
-    const data = await getStoryDirectors()
-    setStoryDirectors(data)
-    onStoryDirectorsChange?.(data)
-    setActiveStoryDirectorId((current) => {
-      if (nextActiveId) return nextActiveId
-      if (current && data.some((director) => director.id === current)) return current
-      return data[0]?.id || ''
-    })
-  }
-
-  const refreshImagePresets = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('image')
-    const data = await getImagePresets()
-    setImagePresets(data)
-    onImagePresetsChange?.(data)
-    setActiveImagePresetId((current) => {
-      if (nextActiveId) return nextActiveId
-      if (current && data.some((preset) => preset.id === current)) return current
-      return data[0]?.id || ''
-    })
-  }
-
-  const refreshEventPackages = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('event')
-    const data = await getEventPackages()
-    setEventPackages(data)
-    setActiveEventPackageId((current) => {
-      if (nextActiveId) return nextActiveId
-      if (current && data.some((item) => item.id === current)) return current
-      return data[0]?.id || ''
-    })
-  }
-
-  const refreshRuleSystems = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('rule')
-    const data = await getRuleSystems()
-    setRuleSystems(data)
-    setActiveRuleSystemId((current) => {
-      if (nextActiveId) return nextActiveId
-      if (current && data.some((item) => item.id === current)) return current
-      return data[0]?.id || ''
-    })
-  }
-
-  const refreshActorStates = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('actor-state')
-    const data = await getActorStates()
-    setActorStates(data)
-    setActiveActorStateId((current) => {
-      if (nextActiveId) return nextActiveId
-      if (current && data.some((item) => item.id === current)) return current
-      return data[0]?.id || ''
-    })
-  }
+  usePresetDraftSync(resources, {
+    teller: tellerAutosave,
+    director: storyDirectorAutosave,
+    image: imagePresetAutosave,
+    event: eventPackageAutosave,
+    rule: ruleSystemAutosave,
+    'actor-state': actorStateAutosave,
+  })
 
   const autosaveForKind = (kind: PresetResourceKind): AutosaveController => {
     if (kind === 'director') return storyDirectorAutosave
@@ -630,30 +294,6 @@ export function PresetSettingsPanel({
     }
   }
 
-  const handleSelectTeller = async (id: string) => {
-    if (presetResourceKind === 'teller' && activeTellerId === id) {
-      closeDirectoryRef.current()
-      return
-    }
-    if (!(await flushPresetResourceAutoSave())) return
-    if (id !== TELLER_CONFIG_AGENT_ENTRY_ID) setPresetResourceKind('teller')
-    setActiveTellerId(id)
-    closeDirectoryRef.current()
-  }
-
-  const selectPresetResource = async (kind: Exclude<PresetResourceKind, 'teller'>, id: string) => {
-    const activeId = currentActivePresetId(kind)
-    if (presetResourceKind === kind && activeId === id && activeTellerId !== TELLER_CONFIG_AGENT_ENTRY_ID) {
-      closeDirectoryRef.current()
-      return
-    }
-    if (!(await flushPresetResourceAutoSave())) return
-    setPresetResourceKind(kind)
-    setActiveTellerId((current) => current === TELLER_CONFIG_AGENT_ENTRY_ID ? '' : current)
-    setActivePresetId(kind, id)
-    closeDirectoryRef.current()
-  }
-
   const currentActivePresetId = (kind: PresetResourceKind) => {
     if (kind === 'director') return activeStoryDirectorId
     if (kind === 'image') return activeImagePresetId
@@ -670,6 +310,29 @@ export function PresetSettingsPanel({
     if (kind === 'rule') setActiveRuleSystemId(id)
     if (kind === 'actor-state') setActiveActorStateId(id)
   }
+
+  const presetItemsForKind = (kind: PresetResourceKind): { id: string }[] => {
+    if (kind === 'director') return storyDirectors
+    if (kind === 'image') return imagePresets
+    if (kind === 'event') return eventPackages
+    if (kind === 'rule') return ruleSystems
+    if (kind === 'actor-state') return actorStates
+    return tellers
+  }
+
+  const { selectPresetResource, handleSelectDirectoryEntry } = usePresetSelection({
+    workspace,
+    presetUsageMode,
+    presetResourceKind,
+    setPresetResourceKind,
+    activeTellerId,
+    setActiveTellerId,
+    currentActivePresetId,
+    setActivePresetId,
+    presetItemsForKind,
+    flushPresetResourceAutoSave,
+    closeDirectory: () => closeDirectoryRef.current(),
+  })
 
   const handleCreateTeller = async () => {
     if (!(await flushPresetResourceAutoSave())) return
@@ -747,6 +410,15 @@ export function PresetSettingsPanel({
     } finally {
       setSaving(false)
     }
+  }
+
+  const createPresetResource = (kind: PresetResourceKind) => {
+    if (kind === 'director') return handleCreateStoryDirector()
+    if (kind === 'image') return handleCreateImagePreset()
+    if (kind === 'event') return handleCreateEventPackage()
+    if (kind === 'rule') return handleCreateRuleSystem()
+    if (kind === 'actor-state') return handleCreateActorState()
+    return handleCreateTeller()
   }
 
   const requestDeletePreset = (kind: PresetResourceKind, target: { id: string; name: string; custom?: boolean } | null) => {
@@ -859,36 +531,30 @@ export function PresetSettingsPanel({
   const presetConfigInvalid = isPresetConfigResourceKind(presetResourceKind) && !presetConfigValid
   const saveDisabled = busy || presetConfigInvalid || !activeDraft
   const titleIcon = presetResourceIcon(presetResourceKind)
+
+  const presetDirectorySections = buildPresetDirectorySections({
+    lists: { tellers, storyDirectors, imagePresets, eventPackages, ruleSystems, actorStates },
+    presetUsageMode,
+    presetResourceKind,
+    onCreateKind: (kind) => void createPresetResource(kind),
+    t,
+  })
+
+  const activeDirectoryId = isTellerConfigAgentActive
+    ? TELLER_CONFIG_AGENT_ENTRY_ID
+    : presetDirectoryEntryId(presetResourceKind, currentActivePresetId(presetResourceKind))
+
   const directoryPanel = (
     <div className="preset-directory nova-sidebar flex h-full min-h-0 flex-col overflow-hidden">
-      <TellerDirectory
-        resourceKind={presetResourceKind}
-        usageMode={presetUsageMode}
-        tellers={tellers}
-        storyDirectors={storyDirectors}
-        imagePresets={imagePresets}
-        eventPackages={eventPackages}
-        ruleSystems={ruleSystems}
-        actorStates={actorStates}
-        activeTellerId={activeTellerId}
-        activeStoryDirectorId={activeStoryDirectorId}
-        activeImagePresetId={activeImagePresetId}
-        activeEventPackageId={activeEventPackageId}
-        activeRuleSystemId={activeRuleSystemId}
-        activeActorStateId={activeActorStateId}
+      <ResourceDirectory
+        sections={presetDirectorySections}
+        activeId={activeDirectoryId}
+        onSelect={handleSelectDirectoryEntry}
         saving={busy}
-        onSelectTeller={handleSelectTeller}
-        onSelectStoryDirector={(id) => selectPresetResource('director', id)}
-        onSelectImagePreset={(id) => selectPresetResource('image', id)}
-        onSelectEventPackage={(id) => selectPresetResource('event', id)}
-        onSelectRuleSystem={(id) => selectPresetResource('rule', id)}
-        onSelectActorState={(id) => selectPresetResource('actor-state', id)}
-        onCreateTeller={() => void handleCreateTeller()}
-        onCreateStoryDirector={() => void handleCreateStoryDirector()}
-        onCreateImagePreset={() => void handleCreateImagePreset()}
-        onCreateEventPackage={() => void handleCreateEventPackage()}
-        onCreateRuleSystem={() => void handleCreateRuleSystem()}
-        onCreateActorState={() => void handleCreateActorState()}
+        pinnedEntries={[{ id: TELLER_CONFIG_AGENT_ENTRY_ID, label: t('settingPanel.tellerAgent.title'), icon: Bot }]}
+        searchPlaceholder={t('settingPanel.directory.search')}
+        showExpandCollapseAll
+        expandedSectionId={presetResourceKind}
       />
     </div>
   )
@@ -1034,82 +700,6 @@ export function PresetSettingsPanel({
       </AlertDialog>
     </section>
   )
-}
-
-interface PresetResourcePaneProps {
-  kind: PresetResourceKind
-  workspace: string
-  tellers: Teller[]
-  storyDirectors: StoryDirector[]
-  imagePresets: ImagePreset[]
-  eventPackages: EventPackageModule[]
-  ruleSystems: RuleSystemModule[]
-  actorStates: ActorStateModule[]
-  tellerDraft: Teller | null
-  setTellerDraft: (draft: Teller | null) => void
-  activeSlotId: string
-  setActiveSlotId: (value: string) => void
-  storyDirectorDraft: StoryDirector | null
-  setStoryDirectorDraft: (draft: StoryDirector | null) => void
-  imagePresetDraft: ImagePreset | null
-  setImagePresetDraft: (draft: ImagePreset | null) => void
-  eventPackageDraft: EventPackageModule | null
-  setEventPackageDraft: (draft: EventPackageModule | null) => void
-  ruleSystemDraft: RuleSystemModule | null
-  setRuleSystemDraft: (draft: RuleSystemModule | null) => void
-  actorStateDraft: ActorStateModule | null
-  setActorStateDraft: (draft: ActorStateModule | null) => void
-  onOpenActorState: (id: string) => void
-  onOpenRuleSystem: (id: string) => void
-  onSave: () => void
-  onValidityChange: (valid: boolean) => void
-}
-
-function PresetResourcePane(props: PresetResourcePaneProps) {
-  if (props.kind === 'image') return <ImagePresetPane draft={props.imagePresetDraft} setDraft={props.setImagePresetDraft} onSave={props.onSave} />
-  if (props.kind === 'event') return <EventPackagePane draft={props.eventPackageDraft} setDraft={props.setEventPackageDraft} onSave={props.onSave} onValidityChange={props.onValidityChange} />
-  if (props.kind === 'rule') return <RuleSystemPane draft={props.ruleSystemDraft} actorStates={props.actorStates} setDraft={props.setRuleSystemDraft} onOpenActorState={props.onOpenActorState} onSave={props.onSave} onValidityChange={props.onValidityChange} />
-  if (props.kind === 'actor-state') return <ActorStatePane draft={props.actorStateDraft} ruleSystems={props.ruleSystems} setDraft={props.setActorStateDraft} onOpenRuleSystem={props.onOpenRuleSystem} onSave={props.onSave} onValidityChange={props.onValidityChange} />
-  if (props.kind === 'director') {
-    return (
-      <StoryDirectorPane
-        draft={props.storyDirectorDraft}
-        tellers={props.tellers}
-        eventPackages={props.eventPackages}
-        ruleSystems={props.ruleSystems}
-        actorStates={props.actorStates}
-        imagePresets={props.imagePresets}
-        setDraft={props.setStoryDirectorDraft}
-        onSave={props.onSave}
-        onValidityChange={props.onValidityChange}
-      />
-    )
-  }
-  return <TellerPane workspace={props.workspace} draft={props.tellerDraft} setDraft={props.setTellerDraft} activeSlotId={props.activeSlotId} setActiveSlotId={props.setActiveSlotId} onSave={props.onSave} />
-}
-
-function TellerPane(props: { workspace: string; draft: Teller | null; setDraft: (draft: Teller | null) => void; activeSlotId: string; setActiveSlotId: (value: string) => void; onSave: () => void }) {
-  return <TellerEditor {...props} />
-}
-
-function ImagePresetPane(props: { draft: ImagePreset | null; setDraft: (draft: ImagePreset | null) => void; onSave: () => void }) {
-  return <ImagePresetEditor {...props} />
-}
-
-function EventPackagePane(props: { draft: EventPackageModule | null; setDraft: (draft: EventPackageModule | null) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
-  return <EventPackageEditor {...props} />
-}
-
-function RuleSystemPane(props: { draft: RuleSystemModule | null; actorStates: ActorStateModule[]; setDraft: (draft: RuleSystemModule | null) => void; onOpenActorState: (id: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
-  return <RuleSystemEditor {...props} />
-}
-
-function ActorStatePane(props: { draft: ActorStateModule | null; ruleSystems: RuleSystemModule[]; setDraft: (draft: ActorStateModule | null) => void; onOpenRuleSystem: (id: string) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
-  return <ActorStateEditor {...props} />
-}
-
-function StoryDirectorPane(props: { draft: StoryDirector | null; tellers: Teller[]; eventPackages: EventPackageModule[]; ruleSystems: RuleSystemModule[]; actorStates: ActorStateModule[]; imagePresets: ImagePreset[]; setDraft: (draft: StoryDirector | null) => void; onSave: () => void; onValidityChange: (valid: boolean) => void }) {
-  return <StoryDirectorEditor {...props} />
 }
 
 function presetResourceIcon(kind: PresetResourceKind) {

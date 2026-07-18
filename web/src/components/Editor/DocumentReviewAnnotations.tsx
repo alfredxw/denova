@@ -13,7 +13,7 @@ import {
   type DocumentReviewSnapshot,
   type EditorReviewRange,
 } from './documentReviewAnchors'
-import { documentReviewPluginKey, type DocumentReviewDecoration, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
+import { documentReviewKeysFromElement, documentReviewPluginKey, type DocumentReviewDecoration, type DocumentReviewDecorationState, type DocumentReviewPortalTarget } from './documentReviewDecorations'
 import { documentReviewRangeAtCoordinates } from './documentReviewHover'
 
 export interface DocumentReviewAnnotationsHandle {
@@ -127,11 +127,16 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     }
   }, [fileName])
 
-  const toggleExpandedComment = useCallback((key: string) => {
+  const toggleExpandedComments = useCallback((keys: readonly string[]) => {
     setExpandedKeys((current) => {
       const next = new Set(current)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
+      const uniqueKeys = [...new Set(keys)]
+      if (!uniqueKeys.length) return current
+      if (uniqueKeys.every((key) => next.has(key))) {
+        for (const key of uniqueKeys) next.delete(key)
+      } else {
+        for (const key of uniqueKeys) next.add(key)
+      }
       return next
     })
   }, [])
@@ -163,12 +168,12 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     decorationStateRef.current = {
       enabled: true,
       decorations: reviewDecorations,
-      onHighlightClick: toggleExpandedComment,
+      onHighlightClick: toggleExpandedComments,
       expandLabel: t('editor.review.expandComment'),
       collapseLabel: t('editor.review.collapseComment'),
     }
     if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(documentReviewPluginKey, true))
-  }, [decorationStateRef, editor, reviewDecorations, t, toggleExpandedComment])
+  }, [decorationStateRef, editor, reviewDecorations, t, toggleExpandedComments])
 
   useEffect(() => {
     return () => {
@@ -379,16 +384,26 @@ function mappedCommentRange(editor: Editor, key: string): { from: number; to: nu
   const decorations = documentReviewPluginKey.getState(editor.state)?.find(
     0,
     editor.state.doc.content.size,
-    (spec) => spec.documentReviewKey === key && spec.kind === 'highlight',
+    (spec) => Array.isArray(spec.documentReviewKeys) && spec.documentReviewKeys.includes(key) && spec.kind === 'highlight',
   )
-  const highlight = decorations?.find((decoration) => decoration.to > decoration.from)
-  return highlight ? { from: highlight.from, to: highlight.to } : null
+  const highlights = decorations?.filter((decoration) => decoration.to > decoration.from) ?? []
+  if (!highlights.length) return null
+  return {
+    from: Math.min(...highlights.map((highlight) => highlight.from)),
+    to: Math.max(...highlights.map((highlight) => highlight.to)),
+  }
 }
 
 function alignCommentThreads(editor: Editor, targets: DocumentReviewPortalTarget[]): void {
-  const highlights = Array.from(editor.view.dom.querySelectorAll<HTMLElement>('[data-document-review-key]'))
+  const highlights = Array.from(editor.view.dom.querySelectorAll<HTMLElement>('[data-document-review-keys]'))
+  const highlightByKey = new Map<string, HTMLElement>()
+  for (const highlight of highlights) {
+    for (const key of documentReviewKeysFromElement(highlight)) {
+      if (!highlightByKey.has(key)) highlightByKey.set(key, highlight)
+    }
+  }
   for (const target of targets) {
-    const highlight = highlights.find((element) => element.dataset.documentReviewKey === target.key)
+    const highlight = highlightByKey.get(target.key)
     if (!highlight) {
       target.element.style.setProperty('--nova-document-review-anchor-offset', '0px')
       continue

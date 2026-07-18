@@ -180,75 +180,6 @@
   background: var(--preset-surface);
 }
 
-.preset-directory-header {
-  border-color: var(--preset-line);
-  background: var(--preset-surface);
-}
-
-.preset-directory-section {
-  border-radius: 12px;
-}
-
-.preset-directory-section-header {
-  min-height: 38px;
-  border-radius: 10px;
-}
-
-.preset-directory-section-header:hover,
-.preset-directory-section:focus-within > .preset-directory-section-header {
-  background: color-mix(in srgb, var(--preset-raised) 72%, transparent);
-}
-
-.preset-directory-item {
-  position: relative;
-  min-height: 48px;
-  border: 1px solid transparent;
-  border-radius: 11px;
-}
-
-.preset-directory-item::before {
-  position: absolute;
-  top: 8px;
-  bottom: 8px;
-  left: 0;
-  width: 3px;
-  border-radius: 0 999px 999px 0;
-  background: var(--preset-signal);
-  content: '';
-  opacity: 0;
-  transform: scaleY(0.55);
-  transition: opacity var(--nova-motion-fast) var(--nova-ease), transform var(--nova-motion-normal) var(--nova-ease);
-}
-
-.preset-directory-item.is-active {
-  border-color: var(--preset-line);
-  background: var(--nova-active);
-  box-shadow: none;
-}
-
-.preset-directory-item.is-active::before {
-  opacity: 1;
-  transform: scaleY(1);
-}
-
-.preset-directory-item-icon {
-  display: inline-flex;
-  width: 26px;
-  height: 26px;
-  flex: 0 0 26px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--preset-line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--preset-raised) 82%, transparent);
-}
-
-.preset-directory-item.is-active .preset-directory-item-icon {
-  border-color: var(--preset-line);
-  background: var(--preset-raised);
-  color: var(--preset-ink);
-}
-
 .preset-metadata-shell {
   container-name: preset-metadata;
   container-type: inline-size;
@@ -395,7 +326,7 @@
 }
 
 /* Radix uses an inline display:table wrapper. Horizontal growth is invalid here. */
-:is(.actor-state-tree-scroll, .preset-directory-scroll) [data-slot="scroll-area-viewport"] > div {
+:is(.actor-state-tree-scroll) [data-slot="scroll-area-viewport"] > div {
   display: block !important;
   width: 100%;
   min-width: 0 !important;
@@ -492,8 +423,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .actor-state-navigation,
-  .actor-state-navigation-backdrop,
-  .preset-directory-item::before {
+  .actor-state-navigation-backdrop {
     transition: none;
   }
 }

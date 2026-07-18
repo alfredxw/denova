@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSkill, deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, installSkillRemote, installSkillZip, previewSkillRemoteInstall, previewSkillZipInstall, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
@@ -175,7 +175,7 @@ describe('SkillsView', () => {
       file: { ...refDoc.file, size: 10 },
     })
 
-    render(<SkillsView workspace="/books/demo" />)
+    const { container } = render(<SkillsView workspace="/books/demo" />)
 
     await user.click(await screen.findByRole('button', { name: '目录文件' }))
     await user.click(await screen.findByRole('button', { name: /style\.md/ }))
@@ -183,7 +183,7 @@ describe('SkillsView', () => {
       expect(vi.mocked(getSkillFileDocument)).toHaveBeenCalledWith('user', 'draft-plan', 'references/style.md')
     })
     await user.click(screen.getByRole('button', { name: 'Raw' }))
-    const editor = screen.getByRole('textbox') as HTMLTextAreaElement
+    const editor = container.querySelector('textarea') as HTMLTextAreaElement
     await waitFor(() => {
       expect(editor.value).toContain('# Style')
     })
@@ -211,16 +211,16 @@ describe('SkillsView', () => {
     vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [doc] }))
     vi.mocked(getSkillDocument).mockResolvedValue(doc)
 
-    render(<SkillsView workspace="/books/demo" />)
+    const { container } = render(<SkillsView workspace="/books/demo" />)
 
     expect(await screen.findByRole('heading', { name: 'Draft Plan' })).toBeInTheDocument()
     expect(screen.queryByText(/name: draft-plan/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'SKILL.md' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+    expect(container.querySelector('textarea')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Raw' }))
 
-    const editor = screen.getByRole('textbox') as HTMLTextAreaElement
+    const editor = container.querySelector('textarea') as HTMLTextAreaElement
     expect(editor.value).toContain('# Draft Plan')
   })
 
@@ -293,9 +293,34 @@ describe('SkillsView', () => {
     })
   })
 
+  it('deletes an editable Skill after confirming in the dialog', async () => {
+    const user = userEvent.setup()
+    const doc = skillDocument({
+      name: 'draft-plan',
+      description: 'Planning',
+      scope: 'user',
+      path: '/nova/skills/draft-plan/SKILL.md',
+      editable: true,
+      active: true,
+      content: '---\nname: draft-plan\ndescription: Planning\n---\n\n# Draft Plan\n',
+    })
+    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [doc] }))
+    vi.mocked(getSkillDocument).mockResolvedValue(doc)
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    await user.click(await screen.findByRole('button', { name: '删除' }))
+    const dialog = await screen.findByRole('alertdialog', { name: '删除' })
+    expect(within(dialog).getByText(/draft-plan/)).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: '删除' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(deleteSkillDocument)).toHaveBeenCalledWith('user', 'draft-plan')
+    })
+  })
+
   it('restores built-in Skill by deleting the active override', async () => {
     const user = userEvent.setup()
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const override = skillDocument({
       name: 'novel-standard',
       description: 'Workspace override',
@@ -322,11 +347,12 @@ describe('SkillsView', () => {
     render(<SkillsView workspace="/books/demo" />)
 
     await user.click(await screen.findByRole('button', { name: '恢复内置' }))
+    const dialog = await screen.findByRole('alertdialog', { name: '恢复内置' })
+    await user.click(within(dialog).getByRole('button', { name: '恢复内置' }))
 
     await waitFor(() => {
       expect(vi.mocked(deleteSkillDocument)).toHaveBeenCalledWith('workspace', 'novel-standard')
     })
-    confirmSpy.mockRestore()
   })
 })
 

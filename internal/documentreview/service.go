@@ -24,12 +24,21 @@ var workspaceServices = struct {
 	items map[string]*Service
 }{items: map[string]*Service{}}
 
+// eventLog abstracts the durable ledger backing a Service. Depending on the
+// interface instead of the concrete *eventStore keeps the replay/apply logic
+// testable with in-memory fakes and isolates storage concerns behind one seam.
+type eventLog interface {
+	append(event ledgerEvent) error
+	readAll() ([]ledgerEvent, error)
+	close()
+}
+
 // Service owns one workspace's durable author-created document comments.
 // Content mutations remain owned by workspacechange; this service records only
 // review metadata and never rewrites manuscript files.
 type Service struct {
 	workspace string
-	store     *eventStore
+	store     eventLog
 
 	mu       sync.RWMutex
 	threads  map[string]*Thread

@@ -125,7 +125,7 @@ func (s *Store) Create(task Task) (Task, error) {
 	if err != nil {
 		return Task{}, err
 	}
-	unlock := storePathLocks.lock(path)
+	unlock := storePathLocks.Lock(path)
 	defer unlock()
 	tasks, err := destination.readScope(normalized.Scope)
 	if err != nil {
@@ -147,7 +147,7 @@ func (s *Store) Update(id string, patch Task) (Task, error) {
 		if err != nil {
 			return Task{}, err
 		}
-		unlock := storePathLocks.lock(path)
+		unlock := storePathLocks.Lock(path)
 		tasks, err := location.store.readScope(location.scope)
 		if err != nil {
 			unlock()
@@ -188,7 +188,7 @@ func (s *Store) Delete(id string) error {
 		if err != nil {
 			return err
 		}
-		unlock := storePathLocks.lock(path)
+		unlock := storePathLocks.Lock(path)
 		tasks, err := location.store.readScope(location.scope)
 		if err != nil {
 			unlock()
@@ -219,7 +219,7 @@ func (s *Store) Get(id string) (Task, error) {
 		if err != nil {
 			return Task{}, err
 		}
-		unlock := storePathLocks.lock(path)
+		unlock := storePathLocks.Lock(path)
 		tasks, err := location.store.readScope(location.scope)
 		if err != nil {
 			unlock()
@@ -234,6 +234,39 @@ func (s *Store) Get(id string) (Task, error) {
 		unlock()
 	}
 	return Task{}, fmt.Errorf("automation task %s not found", id)
+}
+
+// GetRunByID resolves a single run across the user and workspace scopes this
+// store can see. The app layer must not load every task and scan RecentRuns
+// itself; that lookup belongs next to the persisted run data so callers get a
+// single, lock-aware entry point.
+func (s *Store) GetRunByID(runID string) (Task, RunRecord, error) {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return Task{}, RunRecord{}, fmt.Errorf("run_id is required")
+	}
+	for _, location := range s.taskLocations() {
+		path, err := location.store.pathForScope(location.scope)
+		if err != nil {
+			return Task{}, RunRecord{}, err
+		}
+		unlock := storePathLocks.Lock(path)
+		tasks, err := location.store.readScope(location.scope)
+		if err != nil {
+			unlock()
+			return Task{}, RunRecord{}, err
+		}
+		for _, task := range tasks {
+			for _, run := range task.RecentRuns {
+				if strings.TrimSpace(run.ID) == runID {
+					unlock()
+					return task, run, nil
+				}
+			}
+		}
+		unlock()
+	}
+	return Task{}, RunRecord{}, fmt.Errorf("automation run %s not found", runID)
 }
 
 type taskStoreLocation struct {
@@ -280,7 +313,7 @@ func (s *Store) AppendRun(id string, run RunRecord) (Task, error) {
 		if err != nil {
 			return Task{}, err
 		}
-		unlock := storePathLocks.lock(path)
+		unlock := storePathLocks.Lock(path)
 		tasks, err := location.store.readScope(location.scope)
 		if err != nil {
 			unlock()
@@ -327,7 +360,7 @@ func (s *Store) readScopeLocked(scope string) ([]Task, error) {
 	if err != nil {
 		return nil, err
 	}
-	unlock := storePathLocks.lock(path)
+	unlock := storePathLocks.Lock(path)
 	defer unlock()
 	return s.readScope(scope)
 }
@@ -404,7 +437,6 @@ func (s *Store) normalizeTaskTarget(task Task) (Task, error) {
 		}
 		normalized.WriteMode = WriteModeReadOnly
 		normalized.WriteScope = WriteScopeNone
-		normalized.WritePolicy = WritePolicyReadOnly
 		normalized.OutputPolicy = OutputPolicyRunRecordOnly
 		normalized.OutputPath = ""
 	}
@@ -609,8 +641,7 @@ func NormalizeTask(task Task) (Task, error) {
 	if task.TriggerState == nil {
 		task.TriggerState = map[string]TriggerState{}
 	}
-	task.WriteMode, task.WriteScope = normalizeWriteModeScope(task.WriteMode, task.WriteScope, task.WritePolicy)
-	task.WritePolicy = legacyWritePolicyForModeScope(task.WriteMode, task.WriteScope)
+	task.WriteMode, task.WriteScope = normalizeWriteModeScope(task.WriteMode, task.WriteScope)
 	task.DefaultActionPolicy = actionPolicyForWriteMode(task.WriteMode)
 	task.OutputPolicy = normalizeOutputPolicy(task.OutputPolicy)
 	task.OutputPath = filepath.ToSlash(strings.TrimSpace(task.OutputPath))
@@ -656,9 +687,6 @@ func mergeTaskPatch(current, patch Task) Task {
 	if patch.TriggerState != nil {
 		next.TriggerState = patch.TriggerState
 	}
-	if patch.WritePolicy != "" {
-		next.WritePolicy = patch.WritePolicy
-	}
 	if patch.WriteMode != "" {
 		next.WriteMode = patch.WriteMode
 	}
@@ -687,12 +715,9 @@ func normalizeWritePolicy(policy string) string {
 	}
 }
 
-func normalizeWriteModeScope(mode, scope, legacyPolicy string) (string, string) {
+func normalizeWriteModeScope(mode, scope string) (string, string) {
 	mode = strings.TrimSpace(mode)
 	scope = strings.TrimSpace(scope)
-	if mode == "" {
-		mode, scope = writeModeScopeFromLegacyPolicy(legacyPolicy)
-	}
 	switch mode {
 	case WriteModeConfirmWrite, WriteModeAutoWrite:
 	default:
@@ -719,22 +744,6 @@ func writeModeScopeFromLegacyPolicy(policy string) (string, string) {
 		return WriteModeAutoWrite, WriteScopeLoreAndFile
 	default:
 		return WriteModeReadOnly, WriteScopeNone
-	}
-}
-
-func legacyWritePolicyForModeScope(mode, scope string) string {
-	if mode == WriteModeReadOnly {
-		return WritePolicyReadOnly
-	}
-	switch scope {
-	case WriteScopeLore:
-		return WritePolicyAllowLoreWrite
-	case WriteScopeFile:
-		return WritePolicyAllowFileWrite
-	case WriteScopeLoreAndFile:
-		return WritePolicyAllowLoreAndFileWrite
-	default:
-		return WritePolicyReadOnly
 	}
 }
 

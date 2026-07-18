@@ -87,6 +87,45 @@ func TestStoreSeedsDefaultWorkspaceAutomationsDisabled(t *testing.T) {
 	}
 }
 
+func TestStoreGetRunByIDResolvesRunAcrossScopes(t *testing.T) {
+	root := t.TempDir()
+	userDir := filepath.Join(root, "user")
+	workspace := filepath.Join(root, "workspace")
+	store := NewStore(userDir, workspace)
+
+	userTask, err := store.Create(Task{Scope: ScopeUser, Name: "User task", Template: TemplateCustomPrompt})
+	if err != nil {
+		t.Fatalf("Create user task failed: %v", err)
+	}
+	userRun := RunRecord{ID: "run-user", TaskID: userTask.ID, Scope: ScopeUser, Trigger: TriggerManual, Status: RunStatusSuccess}
+	if _, err := store.AppendRun(userTask.ID, userRun); err != nil {
+		t.Fatalf("AppendRun user failed: %v", err)
+	}
+
+	workspaceTask, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Workspace task", Template: TemplateReview})
+	if err != nil {
+		t.Fatalf("Create workspace task failed: %v", err)
+	}
+	workspaceRun := RunRecord{ID: "run-workspace", TaskID: workspaceTask.ID, Scope: ScopeWorkspace, Trigger: TriggerManual, Status: RunStatusSuccess}
+	if _, err := store.AppendRun(workspaceTask.ID, workspaceRun); err != nil {
+		t.Fatalf("AppendRun workspace failed: %v", err)
+	}
+
+	for _, runID := range []string{"run-user", "run-workspace"} {
+		if _, run, err := store.GetRunByID(runID); err != nil {
+			t.Fatalf("GetRunByID(%q) failed: %v", runID, err)
+		} else if run.ID != runID {
+			t.Fatalf("GetRunByID(%q) returned run %q", runID, run.ID)
+		}
+	}
+	if _, _, err := store.GetRunByID("run-missing"); err == nil {
+		t.Fatal("GetRunByID for unknown run returned nil error")
+	}
+	if _, _, err := store.GetRunByID("  "); err == nil {
+		t.Fatal("GetRunByID for empty run id returned nil error")
+	}
+}
+
 func TestStoreAppendRunUpdatesExistingRun(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
@@ -387,32 +426,57 @@ func TestNormalizeTaskTrimsModelProfileID(t *testing.T) {
 	}
 }
 
-func TestNormalizeTaskMigratesLegacyWritePolicy(t *testing.T) {
+func TestTaskUnmarshalMigratesLegacyWritePolicy(t *testing.T) {
 	tests := []struct {
-		name       string
-		policy     string
-		wantMode   string
-		wantScope  string
-		wantPolicy string
+		name      string
+		policy    string
+		wantMode  string
+		wantScope string
 	}{
-		{"read-only", WritePolicyReadOnly, WriteModeReadOnly, WriteScopeNone, WritePolicyReadOnly},
-		{"file", WritePolicyAllowFileWrite, WriteModeAutoWrite, WriteScopeFile, WritePolicyAllowFileWrite},
-		{"lore", WritePolicyAllowLoreWrite, WriteModeAutoWrite, WriteScopeLore, WritePolicyAllowLoreWrite},
-		{"both", WritePolicyAllowLoreAndFileWrite, WriteModeAutoWrite, WriteScopeLoreAndFile, WritePolicyAllowLoreAndFileWrite},
+		{"read-only", WritePolicyReadOnly, WriteModeReadOnly, WriteScopeNone},
+		{"file", WritePolicyAllowFileWrite, WriteModeAutoWrite, WriteScopeFile},
+		{"lore", WritePolicyAllowLoreWrite, WriteModeAutoWrite, WriteScopeLore},
+		{"both", WritePolicyAllowLoreAndFileWrite, WriteModeAutoWrite, WriteScopeLoreAndFile},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			task, err := NormalizeTask(Task{Scope: ScopeWorkspace, Name: "Write", Template: TemplateReview, WritePolicy: tt.policy})
+			raw := fmt.Sprintf(`{"id":"task-1","scope":"workspace","name":"Write","template":"review","write_policy":%q}`, tt.policy)
+			var task Task
+			if err := json.Unmarshal([]byte(raw), &task); err != nil {
+				t.Fatalf("Unmarshal failed: %v", err)
+			}
+			if task.WriteMode != tt.wantMode || task.WriteScope != tt.wantScope {
+				t.Fatalf("write config = %s/%s, want %s/%s", task.WriteMode, task.WriteScope, tt.wantMode, tt.wantScope)
+			}
+			normalized, err := NormalizeTask(task)
 			if err != nil {
 				t.Fatalf("NormalizeTask failed: %v", err)
 			}
-			if task.WriteMode != tt.wantMode || task.WriteScope != tt.wantScope || task.WritePolicy != tt.wantPolicy {
-				t.Fatalf("write config = %s/%s/%s, want %s/%s/%s", task.WriteMode, task.WriteScope, task.WritePolicy, tt.wantMode, tt.wantScope, tt.wantPolicy)
+			if normalized.WriteMode != tt.wantMode || normalized.WriteScope != tt.wantScope {
+				t.Fatalf("normalized write config = %s/%s, want %s/%s", normalized.WriteMode, normalized.WriteScope, tt.wantMode, tt.wantScope)
 			}
-			if task.DefaultActionPolicy != ActionPolicyAutoRun {
-				t.Fatalf("default action = %q, want auto_run derived from execution mode", task.DefaultActionPolicy)
+			if normalized.DefaultActionPolicy != ActionPolicyAutoRun {
+				t.Fatalf("default action = %q, want auto_run derived from execution mode", normalized.DefaultActionPolicy)
 			}
 		})
+	}
+}
+
+func TestTaskMarshalOmitsLegacyWritePolicy(t *testing.T) {
+	task, err := NormalizeTask(Task{Scope: ScopeWorkspace, Name: "Write", Template: TemplateReview, WriteMode: WriteModeAutoWrite, WriteScope: WriteScopeFile})
+	if err != nil {
+		t.Fatalf("NormalizeTask failed: %v", err)
+	}
+	data, err := json.Marshal(task)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatalf("re-decode failed: %v", err)
+	}
+	if _, exists := fields["write_policy"]; exists {
+		t.Fatalf("serialized task still contains the retired write_policy field: %s", data)
 	}
 }
 

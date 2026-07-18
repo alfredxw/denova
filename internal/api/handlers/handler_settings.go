@@ -9,6 +9,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	"denova/config"
+	appsvc "denova/internal/app"
 )
 
 // handleSettingsGet GET /api/settings — 返回用户设置、工作区 Agent 定制及生效快照。
@@ -68,7 +69,7 @@ func (h *Handlers) HandleSettingsWorkspaceUpdate(ctx context.Context, c *app.Req
 			writeErrorKey(c, consts.StatusConflict, "api.settings.revisionConflict")
 			return
 		}
-		if err.Error() == "当前没有打开的工作区" {
+		if errors.Is(err, appsvc.ErrNoWorkspaceOpen) {
 			writeErrorKey(c, consts.StatusBadRequest, "api.settings.workspaceMissing")
 			return
 		}

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"denova/internal/keyedlock"
 )
 
 // automationTriggerCoordinator owns mutation-trigger evaluation for the App
@@ -166,38 +168,4 @@ func (c *automationTriggerCoordinator) Close() {
 	c.wg.Wait()
 }
 
-type automationTriggerExecutionLocks struct {
-	mu      sync.Mutex
-	entries map[string]*automationTriggerExecutionLock
-}
-
-type automationTriggerExecutionLock struct {
-	mu   sync.Mutex
-	refs int
-}
-
-var triggerExecutionLocks = &automationTriggerExecutionLocks{
-	entries: make(map[string]*automationTriggerExecutionLock),
-}
-
-func (l *automationTriggerExecutionLocks) lock(workspace string) func() {
-	key := canonicalAutomationWorkspace(workspace)
-	l.mu.Lock()
-	entry := l.entries[key]
-	if entry == nil {
-		entry = &automationTriggerExecutionLock{}
-		l.entries[key] = entry
-	}
-	entry.refs++
-	l.mu.Unlock()
-	entry.mu.Lock()
-	return func() {
-		entry.mu.Unlock()
-		l.mu.Lock()
-		entry.refs--
-		if entry.refs == 0 {
-			delete(l.entries, key)
-		}
-		l.mu.Unlock()
-	}
-}
+var triggerExecutionLocks = keyedlock.New(canonicalAutomationWorkspace)

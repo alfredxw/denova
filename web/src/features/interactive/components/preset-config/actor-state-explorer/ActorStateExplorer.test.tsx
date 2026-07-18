@@ -106,6 +106,37 @@ describe('ActorStateExplorer', () => {
     expect(collapseButton).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('switches between field details immediately without waiting for a transition', async () => {
+    const user = userEvent.setup()
+    render(
+      <ActorStateExplorer
+        value={{
+          templates: [{
+            id: 'protagonist',
+            name: 'Protagonist',
+            fields: [
+              { id: 'health', name: 'Health', type: 'number', visibility: 'visible' },
+              { id: 'mana', name: 'Mana', type: 'number', visibility: 'visible' },
+            ],
+          }],
+          initial_actors: [],
+          trait_pools: [],
+        }}
+        onChange={vi.fn()}
+        onValidityChange={vi.fn()}
+      />,
+    )
+
+    const healthItem = screen.getByRole('treeitem', { name: 'Health' })
+    await user.click(within(healthItem).getByTitle(/^Health/))
+    expect(await screen.findByDisplayValue('Health')).toBeInTheDocument()
+
+    const manaItem = screen.getByRole('treeitem', { name: 'Mana' })
+    fireEvent.click(within(manaItem).getByTitle(/^Mana/))
+    expect(screen.getByDisplayValue('Mana')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('Health')).not.toBeInTheDocument()
+  })
+
   it('uses a dismissible structure layer in a narrow editor pane', async () => {
     const user = userEvent.setup()
     const { container } = render(

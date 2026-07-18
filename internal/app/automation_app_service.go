@@ -330,18 +330,11 @@ func (s *AutomationAppService) automationRunByID(runID string) (automation.RunRe
 	if _, run, ok := s.ActiveAutomationTaskByRunID(runID); ok {
 		return run, nil
 	}
-	tasks, err := s.List()
+	_, run, err := s.store().GetRunByID(runID)
 	if err != nil {
 		return automation.RunRecord{}, err
 	}
-	for _, task := range tasks {
-		for _, run := range task.RecentRuns {
-			if run.ID == runID && (s.snapshot == nil || canonicalAutomationWorkspace(run.Workspace) == canonicalAutomationWorkspace(s.workspace())) {
-				return run, nil
-			}
-		}
-	}
-	return automation.RunRecord{}, fmt.Errorf("automation run %s not found", runID)
+	return run, nil
 }
 
 func (s *AutomationAppService) runAutomation(ctx context.Context, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, emit func(agent.Event)) (result automation.RunResult, err error) {
@@ -620,9 +613,9 @@ func (s *AutomationAppService) newRunConversation(run automation.RunRecord, task
 	if err != nil {
 		return nil, err
 	}
-	title := fmt.Sprintf("%s · %s · %s", strings.TrimSpace(task.Name), run.Trigger, run.StartedAt.Local().Format("2006-01-02 15:04"))
+	title := fmt.Sprintf("%s · %s · %s", strings.TrimSpace(task.Name), run.Trigger, run.StartedAt.Local().Format(book.DisplayTimeFormat))
 	if strings.TrimSpace(task.Name) == "" {
-		title = fmt.Sprintf("Automation · %s · %s", run.Trigger, run.StartedAt.Local().Format("2006-01-02 15:04"))
+		title = fmt.Sprintf("Automation · %s · %s", run.Trigger, run.StartedAt.Local().Format(book.DisplayTimeFormat))
 	}
 	if err := sess.Rename(title); err != nil {
 		return nil, err
@@ -937,48 +930,17 @@ func eventMessage(data interface{}) string {
 }
 
 func (s *AutomationAppService) buildAutomationUserMessage(task automation.Task, run automation.RunRecord, writeMode, writeScope string) string {
-	var sb strings.Builder
-	sb.WriteString("执行 Denova 自动化任务。\n\n")
-	sb.WriteString(fmt.Sprintf("任务名称：%s\n", task.Name))
-	sb.WriteString(fmt.Sprintf("触发来源：%s\n", run.Trigger))
-	sb.WriteString(fmt.Sprintf("执行模式：%s\n", writeMode))
-	sb.WriteString(fmt.Sprintf("写入范围：%s\n", writeScope))
-	sb.WriteString(fmt.Sprintf("输出策略：%s\n", task.OutputPolicy))
-	if task.OutputPath != "" {
-		sb.WriteString(fmt.Sprintf("输出文件：%s\n", task.OutputPath))
-	}
-	if len(run.TriggerEvidence) > 0 {
-		sb.WriteString("\n本次触发范围（有界证据，优先处理这些新增内容）：\n")
-		for _, item := range run.TriggerEvidence {
-			sb.WriteString(formatTriggerEvidenceLine(item))
-		}
-	}
+	var confirmedSummary string
 	if run.Trigger == automation.TriggerWriteConfirmation {
-		sb.WriteString("\n写入确认：用户已经确认执行上一轮只读方案。请只在写入范围内落实方案，不要扩大修改范围。\n")
 		if sourceRunID := strings.TrimSpace(run.SourceRunID); sourceRunID != "" {
-			if sourceRun, err := s.automationRunByID(sourceRunID); err == nil && strings.TrimSpace(sourceRun.Summary) != "" {
-				sb.WriteString("已确认方案摘要：\n")
-				sb.WriteString(trimForTriggerSnippet(sourceRun.Summary, 2500))
-				sb.WriteString("\n")
+			if sourceRun, err := s.automationRunByID(sourceRunID); err == nil {
+				confirmedSummary = trimForTriggerSnippet(sourceRun.Summary, 2500)
 			} else if err != nil {
 				log.Printf("[automation] load source run summary failed source_run_id=%s err=%v", sourceRunID, err)
 			}
 		}
-	} else if task.WriteMode == automation.WriteModeConfirmWrite {
-		sb.WriteString("\n写入确认模式：本轮强制只读。请输出具体写入方案/修订建议，包括建议修改的路径、资料库项和原因；不要实际写入。用户确认后会启动第二个写入 run。\n")
 	}
-	sb.WriteString("\n用户 Prompt：\n")
-	if task.Prompt != "" {
-		sb.WriteString(task.Prompt)
-	} else {
-		sb.WriteString(automation.GenericTaskPrompt)
-	}
-	if task.Target.Kind == automation.TargetKindUser {
-		sb.WriteString("\n\n这是用户全局任务，没有书籍工作区。只使用本轮启用的用户级 Skills、Todo 或 Web 能力；不得读取或修改作品文件、资料库和项目状态。")
-	} else {
-		sb.WriteString("\n\n请你自行使用可用工具读取完成任务所需的工作区文件、资料库和状态；先定位范围，再读取和写入。")
-	}
-	return sb.String()
+	return automation.BuildRunUserMessage(task, run, writeMode, writeScope, confirmedSummary)
 }
 
 func boundedRunTriggerEvidence(evidence []automation.TriggerEvidence) []automation.TriggerEvidence {
@@ -1000,25 +962,4 @@ func boundedRunTriggerEvidence(evidence []automation.TriggerEvidence) []automati
 		out = append(out, item)
 	}
 	return out
-}
-
-func formatTriggerEvidenceLine(item automation.TriggerEvidence) string {
-	source := strings.TrimSpace(item.Source)
-	if source == "" {
-		source = "unknown"
-	}
-	title := strings.TrimSpace(item.Title)
-	if title == "" {
-		title = "(untitled)"
-	}
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("- [%s] %s", source, title))
-	if ref := strings.TrimSpace(item.Ref); ref != "" {
-		sb.WriteString(fmt.Sprintf(" — %s", ref))
-	}
-	sb.WriteString("\n")
-	if snippet := strings.TrimSpace(item.Snippet); snippet != "" {
-		sb.WriteString(fmt.Sprintf("  %s\n", snippet))
-	}
-	return sb.String()
 }

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -120,6 +121,9 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 
 // ErrNoWorkspace 表示当前 App 尚未绑定任何书籍 workspace。
 var ErrNoWorkspace = fmt.Errorf("尚未选择书籍工作区")
+
+// ErrNoWorkspaceOpen 表示请求需要一个已打开的工作区但当前没有。
+var ErrNoWorkspaceOpen = errors.New("当前没有打开的工作区")
 
 func (a *App) ensureServices() {
 	a.servicesOnce.Do(func() {

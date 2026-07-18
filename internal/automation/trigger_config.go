@@ -117,7 +117,7 @@ func firstScheduleTrigger(triggers []TriggerDefinition) (TriggerDefinition, bool
 }
 
 func EffectiveActionPolicy(task Task, _ TriggerDefinition) string {
-	mode, _ := normalizeWriteModeScope(task.WriteMode, task.WriteScope, task.WritePolicy)
+	mode, _ := normalizeWriteModeScope(task.WriteMode, task.WriteScope)
 	return actionPolicyForWriteMode(mode)
 }
 

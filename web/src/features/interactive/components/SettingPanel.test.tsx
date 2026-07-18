@@ -248,7 +248,7 @@ describe('SettingPanel', () => {
 
     render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[]} />)
 
-    await user.click(screen.getByRole('button', { name: '书籍预设开场白' }))
+    await user.click(await screen.findByRole('button', { name: '书籍预设开场白' }))
     await waitFor(() => expect(readFile).toHaveBeenCalledTimes(2))
     await user.click(screen.getByRole('button', { name: '保存' }))
 
@@ -288,7 +288,7 @@ describe('SettingPanel', () => {
 
     await user.click(screen.getByRole('button', { name: /经典叙事/ }))
     fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '切换前自动保存' } })
-    await user.click(screen.getByRole('button', { name: '图像方案' }))
+    await user.click(sectionToggle('图像方案'))
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
 
     await waitFor(() => expect(updateInteractiveTeller).toHaveBeenCalled())
@@ -382,7 +382,7 @@ describe('SettingPanel', () => {
     vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
     render(<PresetPanelHarness />)
 
-    await user.click(screen.getByRole('button', { name: '图像方案' }))
+    await user.click(sectionToggle('图像方案'))
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
     fireEvent.change(screen.getByDisplayValue('游戏 CG'), { target: { value: '覆盖后的图像方案' } })
     await user.click(screen.getByRole('button', { name: '保存' }))
@@ -413,7 +413,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetPanelHarness />)
 
-    await user.click(screen.getByRole('button', { name: '图像方案' }))
+    await user.click(sectionToggle('图像方案'))
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
     expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
 
@@ -434,12 +434,14 @@ describe('SettingPanel', () => {
     render(<PresetModeHarness />)
 
     expect(screen.queryByLabelText('方案预设模式筛选')).not.toBeInTheDocument()
-    expect(screen.getByTestId('preset-directory-scroll')).toHaveClass('h-0', 'overflow-hidden', 'overscroll-y-contain')
+    const directory = document.querySelector('.preset-directory')
+    expect(directory).not.toBeNull()
+    expect(directory).toHaveClass('nova-sidebar', 'overflow-hidden')
     expect(screen.queryByText('在目录中选择条目，右侧打开编辑。')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '配置管理 Agent' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '叙事风格' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '图像方案' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '故事导演' })).toBeInTheDocument()
+    expect(sectionToggle('叙事风格')).toBeInTheDocument()
+    expect(sectionToggle('图像方案')).toBeInTheDocument()
+    expect(sectionToggle('故事导演')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /经典叙事/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建故事导演' })).toBeInTheDocument()
@@ -448,17 +450,20 @@ describe('SettingPanel', () => {
     expect(sectionHeader('故事导演').compareDocumentPosition(sectionHeader('叙事风格')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(sectionHeader('故事导演').compareDocumentPosition(sectionHeader('图像方案')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
-    await user.click(screen.getByRole('button', { name: '展开全部目录' }))
+    await user.click(screen.getByRole('button', { name: '收起全部' }))
+    expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /经典叙事/ })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '展开全部' }))
     expect(screen.getByRole('button', { name: /默认导演/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /均衡 DM 检定/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /推进型 DM：失败也前进/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /OSR 型 DM：玩家技巧优先/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '折叠全部目录' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '折叠全部目录' }))
+    expect(screen.getByRole('button', { name: '收起全部' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '收起全部' }))
     expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /经典叙事/ })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '故事导演' }))
+    await user.click(sectionToggle('故事导演'))
 
     await selectDefaultDirector(user)
     expect(screen.queryByRole('tablist', { name: '导演资源' })).not.toBeInTheDocument()
@@ -467,7 +472,7 @@ describe('SettingPanel', () => {
     expect(screen.queryByRole('tab', { name: /开局选择/ })).not.toBeInTheDocument()
     expect(screen.queryByTestId('preset-config-visual-editor')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '事件包' }))
+    await user.click(sectionToggle('事件包'))
 
     expect(screen.getByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建事件包' })).toBeInTheDocument()
@@ -494,21 +499,47 @@ describe('SettingPanel', () => {
 
     await user.click(screen.getByRole('button', { name: '写作模式' }))
 
-    expect(screen.getByRole('button', { name: '叙事风格' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '图像方案' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '故事导演' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '事件包' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'TRPG 检定' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '开局选择器' })).not.toBeInTheDocument()
+    expect(sectionToggle('叙事风格')).toBeInTheDocument()
+    expect(sectionToggle('图像方案')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /(展开|折叠)故事导演$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /(展开|折叠)事件包$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /(展开|折叠)TRPG 检定$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /(展开|折叠)状态系统$/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '默认事件包' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '经典叙事' })).toBeInTheDocument()
+  })
+
+  it('restores the remembered preset selection per usage mode when switching modes', async () => {
+    render(<PresetModeRoundTripHarness />)
+
+    // 游戏模式下选中事件包
+    fireEvent.click(sectionToggle('事件包'))
+    fireEvent.click(await screen.findByRole('button', { name: /默认事件包/ }))
+    expect(await screen.findByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
+
+    // 首次切到写作模式：无记忆，按兜底顺序选中第一个叙事风格
+    fireEvent.click(screen.getByRole('button', { name: '写作模式' }))
+    expect(await screen.findByRole('heading', { name: '经典叙事' })).toBeInTheDocument()
+
+    // 写作模式下改选图像方案
+    fireEvent.click(sectionToggle('图像方案'))
+    fireEvent.click(screen.getByRole('button', { name: /游戏 CG/ }))
+    expect(await screen.findByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
+
+    // 切回游戏模式：恢复游戏模式记忆（默认事件包）
+    fireEvent.click(screen.getByRole('button', { name: '游戏模式' }))
+    expect(await screen.findByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
+
+    // 再切回写作模式：恢复写作模式记忆（游戏 CG）
+    fireEvent.click(screen.getByRole('button', { name: '写作模式' }))
+    expect(await screen.findByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
   })
 
   it('saves visual edits from an event package card', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: '事件包' }))
+    await user.click(sectionToggle('事件包'))
     await user.click(await screen.findByRole('button', { name: /默认事件包/ }))
     await user.click(await screen.findByRole('button', { name: '新增事件卡' }))
     expect(screen.getByTestId('event-package-card-editor')).toHaveClass('grid')
@@ -736,7 +767,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: '事件包' }))
+    await user.click(sectionToggle('事件包'))
     await user.click(await screen.findByRole('button', { name: /默认事件包/ }))
     await user.click(screen.getByRole('button', { name: 'JSON' }))
     fireEvent.change(screen.getByTestId('monaco-json-editor'), { target: { value: '{' } })
@@ -744,7 +775,7 @@ describe('SettingPanel', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '保存' })).toBeDisabled())
     expect(screen.getByText('请先修复 JSON，再切回可视化视图。')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'TRPG 检定' }))
+    await user.click(sectionToggle('TRPG 检定'))
     await user.click(await screen.findByRole('button', { name: /均衡 DM 检定/ }))
     expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '均衡 DM 检定' })).not.toBeInTheDocument()
@@ -769,12 +800,12 @@ describe('SettingPanel', () => {
       .mockResolvedValue([eventPackage('default', '默认事件包')])
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: '事件包' }))
+    await user.click(sectionToggle('事件包'))
     await user.click(await screen.findByRole('button', { name: /默认事件包/ }))
     await user.click(screen.getByRole('button', { name: 'JSON' }))
     fireEvent.change(screen.getByTestId('monaco-json-editor'), { target: { value: '{' } })
 
-    await user.click(screen.getByRole('button', { name: 'TRPG 检定' }))
+    await user.click(sectionToggle('TRPG 检定'))
     await user.click(await screen.findByRole('button', { name: /均衡 DM 检定/ }))
 
     expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
@@ -801,7 +832,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(screen.getByRole('button', { name: '展开全部目录' }))
+    await user.click(sectionToggle('TRPG 检定'))
     await user.click(screen.getByRole('button', { name: /均衡 DM 检定/ }))
 
     expect(screen.getByRole('heading', { name: '均衡 DM 检定' })).toBeInTheDocument()
@@ -1117,12 +1148,16 @@ describe('SettingPanel', () => {
 })
 
 function sectionHeader(name: string) {
-  return screen.getByRole('button', { name })
+  return sectionToggle(name)
+}
+
+function sectionToggle(name: string) {
+  return screen.getByRole('button', { name: new RegExp(`^(展开|折叠)${name}$`) })
 }
 
 async function selectDefaultDirector(user: ReturnType<typeof userEvent.setup>) {
   if (!screen.queryByRole('button', { name: /默认导演/ })) {
-    await user.click(screen.getByRole('button', { name: '故事导演' }))
+    await user.click(sectionToggle('故事导演'))
   }
   await user.click(screen.getByRole('button', { name: /默认导演/ }))
 }
@@ -1132,6 +1167,17 @@ function PresetModeHarness() {
   return (
     <>
       <button type="button" onClick={() => setPresetUsageMode('writing')}>写作模式</button>
+      <PresetPanelHarness presetUsageMode={presetUsageMode} />
+    </>
+  )
+}
+
+function PresetModeRoundTripHarness() {
+  const [presetUsageMode, setPresetUsageMode] = useState<'writing' | 'game'>('game')
+  return (
+    <>
+      <button type="button" onClick={() => setPresetUsageMode('writing')}>写作模式</button>
+      <button type="button" onClick={() => setPresetUsageMode('game')}>游戏模式</button>
       <PresetPanelHarness presetUsageMode={presetUsageMode} />
     </>
   )

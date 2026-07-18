@@ -22,6 +22,7 @@ type ChatAppService struct {
 }
 
 type ideChatRuntime struct {
+	app            *App
 	sess           *session.Session
 	state          *book.State
 	bookService    *book.Service
@@ -238,12 +239,12 @@ func (s *ChatAppService) SessionMessages(id string) ([]session.HistoryEntry, err
 }
 
 // StartTask 启动后台 Agent 任务。如果有正在运行的任务，先终止它。
-func (a *App) StartTask(req agent.ChatRequest) *Task {
-	return a.chat().StartTask(req)
+func (a *App) StartTask(ctx context.Context, req agent.ChatRequest) *Task {
+	return a.chat().StartTask(ctx, req)
 }
 
-func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
-	task, err := s.StartTaskWithError(req)
+func (s *ChatAppService) StartTask(ctx context.Context, req agent.ChatRequest) *Task {
+	task, err := s.StartTaskWithError(ctx, req)
 	if err != nil {
 		log.Printf("[agent-task] 准备 IDE Agent 运行时失败 err=%v", err)
 		return nil
@@ -253,12 +254,12 @@ func (s *ChatAppService) StartTask(req agent.ChatRequest) *Task {
 
 // StartTaskWithError preserves preparation failures so HTTP callers can
 // distinguish invalid review references from a missing workspace.
-func (a *App) StartTaskWithError(req agent.ChatRequest) (*Task, error) {
-	return a.chat().StartTaskWithError(req)
+func (a *App) StartTaskWithError(ctx context.Context, req agent.ChatRequest) (*Task, error) {
+	return a.chat().StartTaskWithError(ctx, req)
 }
 
-func (s *ChatAppService) StartTaskWithError(req agent.ChatRequest) (*Task, error) {
-	runtime, req, err := s.prepareIDEChatRuntime(req, true)
+func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatRequest) (*Task, error) {
+	runtime, req, err := s.prepareIDEChatRuntime(ctx, req, true)
 	if err != nil {
 		return nil, err
 	}
@@ -301,8 +302,8 @@ func (s *ChatAppService) StartTaskWithError(req agent.ChatRequest) (*Task, error
 		)
 		var onUserMessageCommitted func(context.Context) error
 		if !req.ResolvedReviewFeedback.Empty() {
-			onUserMessageCommitted = func(context.Context) error {
-				return s.consumeResolvedReviewFeedback(runtime, req)
+			onUserMessageCommitted = func(ctx context.Context) error {
+				return s.consumeResolvedReviewFeedback(ctx, runtime, req)
 			}
 		}
 		runtime.chatService.RunWithOptions(ctx, runner, conversation, runtime.bookService, req, agent.RunOptions{
@@ -350,12 +351,12 @@ func agentIdleTimeout(cfg config.Config) time.Duration {
 	return time.Duration(cfg.AgentIdleTimeoutSeconds) * time.Second
 }
 
-func (a *App) AnalyzeContext(req agent.ChatRequest) (agent.ContextAnalysis, error) {
-	return a.chat().AnalyzeContext(req)
+func (a *App) AnalyzeContext(ctx context.Context, req agent.ChatRequest) (agent.ContextAnalysis, error) {
+	return a.chat().AnalyzeContext(ctx, req)
 }
 
-func (s *ChatAppService) AnalyzeContext(req agent.ChatRequest) (agent.ContextAnalysis, error) {
-	runtime, req, err := s.prepareIDEChatRuntime(req, false)
+func (s *ChatAppService) AnalyzeContext(ctx context.Context, req agent.ChatRequest) (agent.ContextAnalysis, error) {
+	runtime, req, err := s.prepareIDEChatRuntime(ctx, req, false)
 	if err != nil {
 		return agent.ContextAnalysis{}, err
 	}
@@ -375,7 +376,7 @@ func (a *App) CompactContext(ctx context.Context) (agent.ContextCompactionResult
 }
 
 func (s *ChatAppService) CompactContext(ctx context.Context) (agent.ContextCompactionResult, error) {
-	runtime, _, err := s.prepareIDEChatRuntime(agent.ChatRequest{}, false)
+	runtime, _, err := s.prepareIDEChatRuntime(ctx, agent.ChatRequest{}, false)
 	if err != nil {
 		return agent.ContextCompactionResult{}, err
 	}
@@ -411,7 +412,7 @@ func (s *ChatAppService) RemoveContextCompaction() (bool, error) {
 	return removed, err
 }
 
-func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunning bool) (ideChatRuntime, agent.ChatRequest, error) {
+func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agent.ChatRequest, abortRunning bool) (ideChatRuntime, agent.ChatRequest, error) {
 	a := s.app
 	a.mu.Lock()
 	if a.session == nil || a.bookState == nil || a.cfg == nil {
@@ -420,6 +421,7 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 	}
 
 	runtime := ideChatRuntime{
+		app:            a,
 		sess:           a.session,
 		state:          a.bookState,
 		bookService:    a.bookService,
@@ -461,7 +463,7 @@ func (s *ChatAppService) prepareIDEChatRuntime(req agent.ChatRequest, abortRunni
 	if err := applyWritingSkillRuntimePolicy(&runtime, &req); err != nil {
 		return ideChatRuntime{}, req, err
 	}
-	if err := s.resolveReviewFeedback(runtime, &req); err != nil {
+	if err := s.resolveReviewFeedback(ctx, runtime, &req); err != nil {
 		return ideChatRuntime{}, req, err
 	}
 	residentBytes, err := book.NewLoreStore(runtime.workspace).ResidentContentBytes()

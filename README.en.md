@@ -11,6 +11,7 @@
 </p>
 
 <p align="center">
+  <a href="https://discord.gg/QuHu2aPya"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Join the Denova Discord" /></a>
   <a href="https://github.com/alfredxw/denova/releases"><img alt="Release" src="https://img.shields.io/github/v/release/alfredxw/denova?style=flat-square"></a>
   <a href="./LICENSE"><img alt="License" src="https://img.shields.io/github/license/alfredxw/denova?style=flat-square"></a>
   <img alt="Go" src="https://img.shields.io/badge/Go-1.26%2B-00ADD8?style=flat-square&logo=go&logoColor=white">
@@ -76,7 +77,7 @@ The two modes share durable creative assets such as lore, presets, model and Age
 
 Denova is iterating quickly. Feedback, bug reports, usage notes, and workflow discussions are welcome.
 
-Join the [Discord community](https://discord.gg/QuHu2aPya) to connect with other creators.
+Join the [Discord community](https://discord.gg/fzjDKHxv8Q) to connect with other creators.
 
 <p align="center">
   <img src="./img/wechat.png" alt="WeChat group" width="240">

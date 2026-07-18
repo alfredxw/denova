@@ -31,7 +31,7 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 	}
 	req.Locale = requestLocale(c)
 
-	task, err := h.app.StartTaskWithError(req)
+	task, err := h.app.StartTaskWithError(ctx, req)
 	if err != nil {
 		h.writeChatPreparationError(c, err)
 		return
@@ -55,7 +55,7 @@ func (h *Handlers) HandleChatContextAnalysis(ctx context.Context, c *app.Request
 		return
 	}
 	req.Locale = requestLocale(c)
-	analysis, err := h.app.AnalyzeContext(req)
+	analysis, err := h.app.AnalyzeContext(ctx, req)
 	if err != nil {
 		h.writeChatPreparationError(c, err)
 		return

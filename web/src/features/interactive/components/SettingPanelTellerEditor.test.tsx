@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runConfigManagerStream } from '@/lib/api'
-import { ImagePresetEditor } from './SettingPanelSections'
+import { ImagePresetEditor } from './setting-panel/ImagePresetEditor'
 import { TellerEditor } from './SettingPanelTellerEditor'
 import { getStyleReferences, readStyleReferenceFile, saveStyleReference, updateStyleReferenceFile } from '../api'
 import type { ImagePreset, Teller } from '../types'

@@ -1,8 +1,6 @@
-import { AnimatePresence, motion } from 'motion/react'
 import { Copy, PanelLeft, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from 'react-i18next'
-import { subtlePresence } from '@/features/motion/motion-tokens'
 import { cn } from '@/lib/utils'
 import type { TreeNode } from '../types'
 import { Breadcrumb } from '../shared/Breadcrumb'
@@ -113,28 +111,19 @@ export function StateDetailArea({
 
       {/* Detail content */}
       <div className="min-h-0 flex-1 overflow-y-auto" data-testid="actor-state-detail-scroll">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={detailNodeKey(selectedNode)}
-            variants={subtlePresence}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            className="p-4 2xl:p-5"
-          >
-            <DetailContentFrame>
-              <DetailContent
-                node={selectedNode}
-                selectedId={selectedId}
-                tree={tree}
-                value={value}
-                onChange={onChange}
-                onNodeIdChange={onNodeIdChange}
-                onSelect={onSelect}
-              />
-            </DetailContentFrame>
-          </motion.div>
-        </AnimatePresence>
+        <div key={detailNodeKey(selectedNode)} className="p-4 2xl:p-5">
+          <DetailContentFrame>
+            <DetailContent
+              node={selectedNode}
+              selectedId={selectedId}
+              tree={tree}
+              value={value}
+              onChange={onChange}
+              onNodeIdChange={onNodeIdChange}
+              onSelect={onSelect}
+            />
+          </DetailContentFrame>
+        </div>
       </div>
     </div>
   )

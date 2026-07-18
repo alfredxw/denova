@@ -56,7 +56,7 @@ func TestDocumentReviewFeedbackResolvesCurrentAnchorAndConsumesAfterCommit(t *te
 	req := agent.ChatRequest{ReviewFeedback: agent.ReviewFeedbackRefs{{
 		Source: agent.ReviewFeedbackSourceDocument, ReviewThreadID: thread.ID, CommentIDs: []string{comment.ID},
 	}}}
-	if err := chat.resolveReviewFeedback(ideChatRuntime{workspace: workspace}, &req); err != nil {
+	if err := chat.resolveReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace}, &req); err != nil {
 		t.Fatal(err)
 	}
 	if len(req.ResolvedReviewFeedback) != 1 || req.ResolvedReviewFeedback[0].Source != agent.ReviewFeedbackSourceDocument || len(req.ResolvedReviewFeedback[0].Comments) != 1 {
@@ -66,7 +66,7 @@ func TestDocumentReviewFeedbackResolvesCurrentAnchorAndConsumesAfterCommit(t *te
 	if resolved.Path != path || resolved.Body != comment.Body || resolved.Anchor.Revision != workspacechange.Revision([]byte(after)) || resolved.Anchor.Start != len("Intro\nAlpha ") {
 		t.Fatalf("document anchor was not projected from the canonical file: %#v", resolved)
 	}
-	if err := chat.consumeResolvedReviewFeedback(ideChatRuntime{workspace: workspace}, req); err != nil {
+	if err := chat.consumeResolvedReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace}, req); err != nil {
 		t.Fatal(err)
 	}
 	pending, err := reviews.CurrentThread(context.Background())
@@ -138,7 +138,7 @@ func TestReviewFeedbackResolvesAndConsumesDocumentAndDiffSelectionsTogether(t *t
 		{Source: agent.ReviewFeedbackSourceWorkspaceChange, ReviewThreadID: "diff-thread", CommentIDs: []string{diffComment.ID}},
 		{Source: agent.ReviewFeedbackSourceDocument, ReviewThreadID: documentThread.ID, CommentIDs: []string{documentComment.ID}},
 	}}
-	if err := chat.resolveReviewFeedback(runtime, &req); err != nil {
+	if err := chat.resolveReviewFeedback(context.Background(), runtime, &req); err != nil {
 		t.Fatal(err)
 	}
 	if len(req.ResolvedReviewFeedback) != 2 || req.ResolvedReviewFeedback.CommentCount() != 2 {
@@ -147,7 +147,7 @@ func TestReviewFeedbackResolvesAndConsumesDocumentAndDiffSelectionsTogether(t *t
 	if got := req.ResolvedReviewFeedback.PrimaryReviewThreadID(); got != "diff-thread" {
 		t.Fatalf("primary review thread = %q", got)
 	}
-	if err := chat.consumeResolvedReviewFeedback(runtime, req); err != nil {
+	if err := chat.consumeResolvedReviewFeedback(context.Background(), runtime, req); err != nil {
 		t.Fatal(err)
 	}
 	group, err := changes.GetGroup(context.Background(), "group-1")
@@ -251,7 +251,7 @@ func assertMixedReviewFeedbackRollback(t *testing.T, order []string, failingLedg
 		}
 	}
 	req := agent.ChatRequest{ReviewFeedback: refs}
-	if err := chat.resolveReviewFeedback(runtime, &req); err != nil {
+	if err := chat.resolveReviewFeedback(context.Background(), runtime, &req); err != nil {
 		t.Fatal(err)
 	}
 
@@ -263,7 +263,7 @@ func assertMixedReviewFeedbackRollback(t *testing.T, order []string, failingLedg
 	if err := os.Mkdir(ledgerPath, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	consumeErr := chat.consumeResolvedReviewFeedback(runtime, req)
+	consumeErr := chat.consumeResolvedReviewFeedback(context.Background(), runtime, req)
 	if err := os.Remove(ledgerPath); err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 			CommentIDs:     []string{comment.ID},
 		}},
 	}
-	if err := chat.resolveReviewFeedback(runtime, &req); err != nil {
+	if err := chat.resolveReviewFeedback(context.Background(), runtime, &req); err != nil {
 		t.Fatal(err)
 	}
 
@@ -367,13 +367,13 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 			SessionID:      sess.ID,
 			ReviewThreadID: req.ResolvedReviewFeedback.PrimaryReviewThreadID(),
 			Workspace:      workspace,
-			OnUserMessageCommitted: func(context.Context) error {
+			OnUserMessageCommitted: func(ctx context.Context) error {
 				history := sess.History()
 				if len(history) != 1 || len(history[0].UserReferences) != 1 {
 					return errors.New("review reference was not durable before comment consumption")
 				}
 				callbackSawDurableReference = history[0].UserReferences[0].ID == comment.ID
-				return chat.consumeResolvedReviewFeedback(runtime, req)
+				return chat.consumeResolvedReviewFeedback(ctx, runtime, req)
 			},
 		},
 		func(agent.Event) {},
@@ -457,7 +457,7 @@ func TestResolveReviewFeedbackUsesCanonicalWorkspaceLedger(t *testing.T) {
 	req := agent.ChatRequest{ReviewFeedback: agent.ReviewFeedbackRefs{{
 		ReviewThreadID: " thread-1 ", CommentIDs: []string{" " + comment.ID, comment.ID},
 	}}}
-	if err := chat.resolveReviewFeedback(ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}, &req); err != nil {
+	if err := chat.resolveReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}, &req); err != nil {
 		t.Fatal(err)
 	}
 	if len(req.ReviewFeedback) != 1 || len(req.ReviewFeedback[0].CommentIDs) != 1 || req.ReviewFeedback[0].CommentIDs[0] != comment.ID {
@@ -470,7 +470,7 @@ func TestResolveReviewFeedbackUsesCanonicalWorkspaceLedger(t *testing.T) {
 	if resolved.Body != comment.Body || resolved.Path != path || resolved.Anchor.Revision != change.Revision || resolved.Anchor.Side != workspacechange.CommentAnchorSideAfter || resolved.Anchor.Encoding != workspacechange.CommentAnchorEncodingUTF8Byte {
 		t.Fatalf("resolved comment did not come from the ledger: %#v", resolved)
 	}
-	if err := chat.consumeResolvedReviewFeedback(ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}, req); err != nil {
+	if err := chat.consumeResolvedReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}, req); err != nil {
 		t.Fatal(err)
 	}
 	group, err := service.GetGroup(context.Background(), "group-1")
@@ -490,7 +490,7 @@ func TestResolveReviewFeedbackUsesCanonicalWorkspaceLedger(t *testing.T) {
 		ReviewThreadID: "thread-1", CommentIDs: []string{comment.ID},
 	}}}
 	var crossSessionErr *workspacechange.Error
-	if err := chat.resolveReviewFeedback(ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-2"}}, &crossSession); !errors.As(err, &crossSessionErr) || crossSessionErr.Code != workspacechange.ErrorCodeConflict {
+	if err := chat.resolveReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-2"}}, &crossSession); !errors.As(err, &crossSessionErr) || crossSessionErr.Code != workspacechange.ErrorCodeConflict {
 		t.Fatalf("cross-session feedback error=%v", err)
 	}
 }
@@ -502,12 +502,12 @@ func TestResolveReviewFeedbackRejectsForgedThreadAndStaleWorkspace(t *testing.T)
 
 	req := agent.ChatRequest{ReviewFeedback: agent.ReviewFeedbackRefs{{ReviewThreadID: "missing", CommentIDs: []string{"forged"}}}}
 	var changeErr *workspacechange.Error
-	if err := chat.resolveReviewFeedback(ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}, &req); !errors.As(err, &changeErr) || changeErr.Code != workspacechange.ErrorCodeNotFound {
+	if err := chat.resolveReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}, &req); !errors.As(err, &changeErr) || changeErr.Code != workspacechange.ErrorCodeNotFound {
 		t.Fatalf("forged feedback error=%v", err)
 	}
 
 	application.workspace = t.TempDir()
-	err := chat.resolveReviewFeedback(ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}, &req)
+	err := chat.resolveReviewFeedback(context.Background(), ideChatRuntime{workspace: workspace, sess: &session.Session{ID: "session-1"}}, &req)
 	if !errors.Is(err, ErrWorkspaceChanged) {
 		t.Fatalf("stale workspace error=%v", err)
 	}
