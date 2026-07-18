@@ -1,11 +1,16 @@
 import type { UIMessageChunk } from 'ai'
 import { fetchAPI, jsonHeaders, parseUIMessageStream, requestJSON } from './client'
-import type { AutomationActiveRun, AutomationInboxActionResult, AutomationInboxItem, AutomationTask, AutomationTriggerEvidence } from './types'
+import type { AutomationActiveRun, AutomationInboxActionResult, AutomationInboxItem, AutomationTask, AutomationTaskTemplate, AutomationTriggerEvidence } from './types'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 
 export async function getAutomations(): Promise<AutomationTask[]> {
   const data = await requestJSON<{ tasks: AutomationTask[] }>('/api/automations')
   return data.tasks || []
+}
+
+export async function getAutomationTemplates(locale: string): Promise<AutomationTaskTemplate[]> {
+  const data = await requestJSON<{ templates: AutomationTaskTemplate[] }>(`/api/automations/templates?locale=${encodeURIComponent(locale)}`)
+  return data.templates || []
 }
 
 export async function createAutomation(task: AutomationTask): Promise<AutomationTask> {

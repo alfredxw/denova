@@ -63,6 +63,14 @@ func (s *AutomationAppService) List() ([]automation.Task, error) {
 	return s.storeAllWorkspaces().List()
 }
 
+func (a *App) AutomationTemplates(locale string) []automation.TaskTemplate {
+	return a.automation().Templates(locale)
+}
+
+func (s *AutomationAppService) Templates(locale string) []automation.TaskTemplate {
+	return automation.BuiltinTaskTemplates(locale)
+}
+
 func (a *App) CreateAutomation(task automation.Task) (automation.Task, error) {
 	return a.automation().Create(task)
 }

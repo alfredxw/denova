@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Clock3, Inbox, Loader2, MessageSquareText, PanelLeft, Play, RefreshCw, Save, Settings2, Square, Trash2, X } from 'lucide-react'
+import { Clock3, Inbox, Loader2, MessageSquareText, PanelLeft, Play, Plus, RefreshCw, Save, Settings2, Square, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
@@ -24,6 +24,7 @@ import {
   confirmAutomationInboxItem,
   dismissAutomationInboxItem,
   getAutomationInbox,
+  getAutomationTemplates,
   getAutomations,
   getActiveAutomationRuns,
   getBooks,
@@ -33,6 +34,7 @@ import {
   type AutomationInboxItem,
   type AutomationRunRecord,
   type AutomationTask,
+  type AutomationTaskTemplate,
   type AutomationTriggerDefinition,
   type BookRecord,
 } from '@/lib/api'
@@ -44,6 +46,7 @@ import { useAutomationRunStream } from './useAutomationRunStream'
 import { InboxPanel } from './AutomationInboxPanel'
 import { TriggerEditor } from './AutomationTriggerEditor'
 import { AutomationTaskCatalog } from './AutomationTaskCatalog'
+import { AutomationTemplateDialog } from './AutomationTemplateDialog'
 import { automationTaskKey, findAutomationTaskByTarget, findAutomationTaskForRun } from './automation-catalog'
 import {
   AUTOMATION_NAVIGATION_EVENT,
@@ -51,13 +54,13 @@ import {
   type AutomationNavigationTarget,
 } from './automation-navigation'
 import {
-  applyAutomationTarget,
   automationTargetLabel,
   automationTargetOptions,
   automationTargetValue,
   cloneAutomationTask,
   defaultAutomationTarget,
   newAutomationTask,
+  newAutomationTaskFromTemplate,
   nextAutomationWriteModePatch,
   nextAutomationWriteScopePatch,
   normalizeAutomationTaskShape,
@@ -68,8 +71,9 @@ const fieldCls = 'nova-field min-h-7 w-full min-w-0 rounded-[var(--nova-radius)]
 type AutomationPanelView = 'config' | 'inbox' | 'run' | 'agent'
 
 export function AutomationsView({ workspace, onClose }: { workspace: string; onClose?: () => void }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [tasks, setTasks] = useState<AutomationTask[]>([])
+  const [templates, setTemplates] = useState<AutomationTaskTemplate[]>([])
   const [books, setBooks] = useState<BookRecord[]>([])
   const [activeRuns, setActiveRuns] = useState<AutomationActiveRun[]>([])
   const [inboxItems, setInboxItems] = useState<AutomationInboxItem[]>([])
@@ -77,6 +81,8 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
   const [activeId, setActiveId] = useState<string>('')
   const activeIdRef = useRef('')
   const [draft, setDraft] = useState<AutomationTask>(() => newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName')))
+  const [creating, setCreating] = useState(false)
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [panelView, setPanelView] = useState<AutomationPanelView>('config')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -86,8 +92,10 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
   const load = useCallback(async () => {
     try {
-      const [data, inbox, settings, bookRecords, runningTasks] = await Promise.all([
+      const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN'
+      const [data, taskTemplates, inbox, settings, bookRecords, runningTasks] = await Promise.all([
         getAutomations(),
+        getAutomationTemplates(locale),
         getAutomationInbox(),
         fetchSettings(),
         getBooks(),
@@ -95,6 +103,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       ])
       const normalized = data.map((task) => normalizeAutomationTaskShape(task, workspace))
       setTasks(normalized)
+      setTemplates(taskTemplates)
       setBooks(bookRecords)
       setActiveRuns(runningTasks)
       setInboxItems(inbox)
@@ -107,15 +116,17 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
         activeIdRef.current = key
         setActiveId(key)
         setDraft(cloneAutomationTask(selected, workspace))
+        setCreating(false)
       } else {
         activeIdRef.current = ''
         setActiveId('')
         setDraft(newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName')))
+        setCreating(false)
       }
     } catch (e) {
       setError((e as Error).message)
     }
-  }, [t, workspace])
+  }, [i18n.language, i18n.resolvedLanguage, t, workspace])
 
   const runStream = useAutomationRunStream({ onFinished: load })
   const { loadHistory: loadAutomationRunHistory, resume: resumeAutomationRun } = runStream
@@ -159,6 +170,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
           activeIdRef.current = key
           setActiveId(key)
           setDraft(cloneAutomationTask(task, workspace))
+          setCreating(false)
         }
         setPanelView('run')
         await resumeAutomationRun(active.run, t('automations.run.attached', { name: task?.name || active.run.task_id }))
@@ -178,18 +190,26 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     activeIdRef.current = key
     setActiveId(key)
     setDraft(cloneAutomationTask(task, workspace))
+    setCreating(false)
     setPanelView('config')
   }
 
   const createNew = () => {
-    const target = defaultAutomationTarget(workspace)
+    setTemplateDialogOpen(true)
+  }
+
+  const chooseCreationTemplate = (template: AutomationTaskTemplate | null, target: NonNullable<AutomationTask['target']>) => {
     activeIdRef.current = ''
     setActiveId('')
-    setDraft(newAutomationTask(target, t('automations.defaultName')))
+    setDraft(template
+      ? newAutomationTaskFromTemplate(template, target)
+      : newAutomationTask(target, t('automations.defaultName')))
+    setCreating(true)
     setPanelView('config')
   }
 
   const save = async () => {
+    if (!activeId && !creating) return
     setSaving(true)
     setError(null)
     try {
@@ -200,6 +220,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       setActiveId(key)
       setDraft(cloneAutomationTask(normalized, workspace))
       setTasks((current) => upsertAutomationTask(current, normalized))
+      setCreating(false)
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -225,6 +246,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       activeIdRef.current = fallbackID
       setActiveId(fallbackID)
       setDraft(fallback ? cloneAutomationTask(fallback, workspace) : newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName')))
+      setCreating(false)
       setDeleteTarget(null)
     } catch (e) {
       setError((e as Error).message)
@@ -279,6 +301,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     activeIdRef.current = key
     setActiveId(key)
     setDraft(cloneAutomationTask(task, workspace))
+    setCreating(false)
     if (navigationTarget.inboxId) {
       setPanelView('inbox')
     } else if (navigationTarget.runId) {
@@ -343,10 +366,8 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       return { ...current, schedule, triggers }
     })
   }
-  const setDraftTarget = (value: string) => {
-    setDraft((current) => applyAutomationTarget(current, value))
-  }
   const globalTask = draft.target?.kind === 'user'
+  const hasEditableDraft = Boolean(activeId) || creating
   const targetValue = automationTargetValue(draft)
   const taskListPanel = (
     <AutomationTaskCatalog
@@ -383,7 +404,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
             {t('automations.stopRun')}
           </button>
         )}
-        <button type="button" onClick={save} disabled={saving || running} className="nova-nav-item inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50">
+        <button type="button" onClick={save} disabled={saving || running || !hasEditableDraft} className="nova-nav-item inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50">
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           {t('common.save')}
         </button>
@@ -451,7 +472,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
               )}
             </div>
 
-            {panelView === 'config' ? (
+            {panelView === 'config' ? hasEditableDraft ? (
               <div className="min-h-0 flex-1 overflow-y-auto">
                 <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
                   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--nova-border)] pb-4">
@@ -486,7 +507,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                     </select>
                   </Field>
                   <Field label={t('automations.field.target')}>
-                    <select value={targetValue} disabled={Boolean(activeId)} onChange={(e) => setDraftTarget(e.target.value)} className={fieldCls}>
+                    <select value={targetValue} disabled className={fieldCls}>
                       <option value="user">{t('automations.target.global')}</option>
                       {automationTargetOptions(books, draft).map((book) => <option key={book.path} value={`workspace:${book.path}`}>{t('automations.target.workspace', { name: book.name })}</option>)}
                     </select>
@@ -543,9 +564,23 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                   <SectionTitle title={t('automations.section.runs')} />
                   <RunList task={draft} activeRunId={runStream.activeRun?.id || ''} onOpenRun={openRun} />
                 </section>
+                </div>
               </div>
-            </div>
-          ) : panelView === 'inbox' ? (
+            ) : (
+              <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-4 py-10">
+                <div className="flex max-w-md flex-col items-center text-center">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
+                    <Plus className="h-4 w-4" />
+                  </div>
+                  <div className="mt-3 text-sm font-medium text-[var(--nova-text)]">{t('automations.empty.title')}</div>
+                  <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('automations.empty.description')}</div>
+                  <button type="button" onClick={createNew} className="nova-nav-item mt-4 inline-flex h-8 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 text-xs text-[var(--nova-text)]">
+                    <Plus className="h-3.5 w-3.5" />
+                    {t('automations.newTask')}
+                  </button>
+                </div>
+              </div>
+            ) : panelView === 'inbox' ? (
             <InboxPanel
               items={inboxItems}
               tasks={tasks}
@@ -606,6 +641,14 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
           </main>
         )}
       </AdaptiveSurface>
+      <AutomationTemplateDialog
+        open={templateDialogOpen}
+        workspace={workspace}
+        books={books}
+        templates={templates}
+        onOpenChange={setTemplateDialogOpen}
+        onChoose={chooseCreationTemplate}
+      />
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => {
         if (!open && !saving) setDeleteTarget(null)
       }}>

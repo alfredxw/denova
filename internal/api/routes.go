@@ -166,6 +166,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.POST("/skills/install/github/preview", apiHandlers.HandleSkillInstallGitHubPreview)
 		api.POST("/skills/install/github", apiHandlers.HandleSkillInstallGitHub)
 		api.GET("/automations", apiHandlers.HandleAutomations)
+		api.GET("/automations/templates", apiHandlers.HandleAutomationTemplates)
 		api.POST("/automations", apiHandlers.HandleAutomationCreate)
 		api.GET("/automations/inbox", apiHandlers.HandleAutomationInbox)
 		api.POST("/automations/inbox/:item_id/confirm", apiHandlers.HandleAutomationInboxConfirm)
