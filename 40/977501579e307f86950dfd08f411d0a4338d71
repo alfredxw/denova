@@ -1,0 +1,217 @@
+web/src/components/Chat/AgentChatPane.tsx
+  s_194b21ae0c2048::t_de7f8c7c3b5458 1-22
+web/src/components/Chat/AgentPanel.test.tsx
+  s_194b21ae0c2048::t_4fe84eee0141de 38-51,143
+web/src/components/Chat/AgentPanel.tsx
+  s_194b21ae0c2048::t_c3fb60a6611e03 2,4,6,13-15,21,32-36,146-150,306-390,448-453,455,464-469,513
+web/src/components/Chat/ContextAnalysisDialog.tsx
+  s_194b21ae0c2048::t_a5a5a6c304c9f7 2,7,66,203,208,240,245,292-303,305,313-324,326,365-376,378-394
+web/src/components/Chat/ContextAnalysisDisclosure.tsx
+  s_194b21ae0c2048::t_d2696e3e6a5a89 1-63
+web/src/components/Chat/InputArea.test.tsx
+  s_194b21ae0c2048::t_8a3ea3e2cf8587 69
+web/src/components/Chat/PersistedSettingsMenuSub.tsx
+  s_194b21ae0c2048::t_82c0826b6dfabe 1-81
+web/src/components/Chat/WritingComposerSettingsMenu.tsx
+  s_194b21ae0c2048::t_eeb7d924d4c32e 1-120
+web/src/components/Chat/composer-token-input.tsx
+  s_194b21ae0c2048::t_3944bea6223f14 8,148-149,153-160,194,217-220,248,259-260,265-266,269-270,276-277,381-382
+web/src/components/Chat/useVirtuosoBottomLock.ts
+  s_194b21ae0c2048::t_932d716ac5953b 4,6,21,27,44,75-76,85-86
+web/src/components/Home/HomeView.test.tsx
+  s_194b21ae0c2048::t_db3a5a0311d568 5,242-257
+web/src/components/Home/HomeView.tsx
+  s_194b21ae0c2048::t_91967e25fa02ca 8,11-13,15,161-166,200-207,244,274-277,287,298,311,319-337,452-460,462-465
+web/src/components/common/ConfirmDialog.test.tsx
+  s_194b21ae0c2048::t_e2dd14ae227137 1-72
+web/src/components/common/ConfirmDialog.tsx
+  s_194b21ae0c2048::t_93c48c5cf97441 1,18,24-25,27,39,54-55,65-71,77-78,82-83,87
+web/src/components/common/EmptyState.tsx
+  s_194b21ae0c2048::t_93ec93b00f3922 2-3,8-21,25,30,32,34-40,42,44-49
+web/src/components/forms/form-field.test.tsx
+  s_194b21ae0c2048::t_3072120c779feb 2-4,6-7,9-16,19-21
+web/src/components/forms/form-field.tsx
+  s_194b21ae0c2048::t_4d1628fa59f563 1-39
+web/src/components/forms/form-section-header.tsx
+  s_194b21ae0c2048::t_ccb89e66e48723 1,4-8,11-12,14-18,20
+web/src/components/forms/settings-field-row.tsx
+  s_194b21ae0c2048::t_6c3bc82e3c5f13 1-48
+web/src/components/layout/adaptive-surface.tsx
+  s_194b21ae0c2048::t_cabb4b94e41339 6,60,92-99
+web/src/components/layout/feature-page-shell.test.tsx
+  s_194b21ae0c2048::t_a1ddb951350f4d 2,4,6-8,10-21,24-29,32,34-41,44-49
+web/src/components/layout/feature-page-shell.tsx
+  s_194b21ae0c2048::t_b04e6c17e93b3e 1-3,5-6,9-21,23,26-37,39-41,43,45-71,73-78,80
+web/src/components/layout/mobile-pane-trigger.tsx
+  s_194b21ae0c2048::t_7d959417a3f86a 1-31
+web/src/components/layout/stable-portal-slot.tsx
+  s_194b21ae0c2048::t_e4e9e243a8b438 1-31
+web/src/components/navigation/sectioned-navigation.tsx
+  s_194b21ae0c2048::t_459ecbc4e5bdb7 1-91
+web/src/components/resource-directory/ResourceDirectory.tsx
+  s_194b21ae0c2048::t_56e79b378e8e84 42-47,69-71,125-127,154,158,160,168,178,184,189-190,203-204,209,225,252,267,269,281-298
+web/src/components/resource-directory/resource-directory.test.tsx
+  s_194b21ae0c2048::t_082bedf8163c81 53-56,126
+web/src/components/resource-directory/types.ts
+  s_194b21ae0c2048::t_458cae71cd50d8 22-26,32-33,50
+web/src/components/ui/field.tsx
+  s_194b21ae0c2048::t_4d9a7ba13c713d 1-236
+web/src/components/ui/label.tsx
+  s_194b21ae0c2048::t_3ba977ce16514d 1-22
+web/src/components/ui/textarea.tsx
+  s_194b21ae0c2048::t_317b3978e01a07 4
+web/src/components/ui/toggle-group.tsx
+  s_194b21ae0c2048::t_e4726e670cf708 1-89
+web/src/components/ui/toggle.tsx
+  s_194b21ae0c2048::t_f5d3c8a937194e 1-45
+web/src/components/workbench/WorkbenchShell.tsx
+  s_194b21ae0c2048::t_a76e310444bda1 1,13,139-143,581-589
+web/src/features/agents/AgentsView.test.tsx
+  s_194b21ae0c2048::t_8b24b83e023607 61,78-80
+web/src/features/agents/AgentsView.tsx
+  s_194b21ae0c2048::t_22bd2340b48e49 2-4,7-8,10-12,14,16-17,22,33-36,90-91,95-97,170-179,182,185-186,191,194-213,250,253,325,339-353,392,396-405,408,410,417,431-443,461,463,526,600,615,617,623,636,638,644,648,650,656,660,662,668,676,678,684,688,690,696,700,702,708,737,874,912,1054,1057,1060,1065,1068-1076,1082,1086,1091,1093,1100,1114-1124,1171,1223,1243,1256,1273-1274,1279-1280,1283-1284
+web/src/features/agents/agent-registry.ts
+  s_194b21ae0c2048::t_456a2e402ba610 1,18,25
+web/src/features/automations/AutomationInboxPanel.tsx
+  s_194b21ae0c2048::t_c626ec6a7ede5a 4,26,30,45
+web/src/features/automations/AutomationTaskCatalog.tsx
+  s_194b21ae0c2048::t_00d6e558c88d5a 1-2,4-7,22,34-58,60-101
+web/src/features/automations/AutomationTemplateDialog.tsx
+  s_194b21ae0c2048::t_4c77fa93589cbf 4,7,58-75
+web/src/features/automations/AutomationTriggerEditor.tsx
+  s_194b21ae0c2048::t_c8a5eb7f2b27f0 1,4-8,18,32,34,40-85,93-103,105,111,115-116,118,124-135,137,148-168,175-185
+web/src/features/automations/AutomationsView.test.tsx
+  s_194b21ae0c2048::t_c01cd7d305ea90 1,5,111,122-236,238-247
+web/src/features/automations/AutomationsView.tsx
+  s_194b21ae0c2048::t_22418db5aeeec8 1-2,4-7,9-10,14-17,69,91-94,97-98,109,111-112,119-135,138,155-162,187,192,213,228,244,272,276,328,387-390,392,415-446,464-469,516,518-519,522,526,528,532-570,572-574,579-614,616-618,623-624,628-629,635-642,681,710-719,726-728,730
+web/src/features/interactive/components/CompactResourcePicker.test.tsx
+  s_194b21ae0c2048::t_61e8be30ea575c 1-112
+web/src/features/interactive/components/CompactResourcePicker.tsx
+  s_194b21ae0c2048::t_f25a2d105d9499 2,5,7-15,17-22,25-42,45-46,49,55-60,63-64,70-76,78-104,106,114-118,124-127
+web/src/features/interactive/components/SettingPanel.tsx
+  s_194b21ae0c2048::t_5027441254fa83 2,9,13-14,31,573-587,628,631,647,653,701-762,798-808,905-910,976-982,1003
+web/src/features/interactive/components/SettingPanelTellerEditor.tsx
+  s_194b21ae0c2048::t_b27b76eaf477d6 21-24,136,206,258,264,267,305,535,554,562,581,592,612,654,658,714
+web/src/features/interactive/components/StoryDirectorPicker.test.tsx
+  s_194b21ae0c2048::t_8a77d5d52ec22e 20-21,36,39,49-51
+web/src/features/interactive/components/StoryDirectorPicker.tsx
+  s_194b21ae0c2048::t_0f6137bde209dd 1,4,25-40
+web/src/features/interactive/components/StoryPicker.test.tsx
+  s_194b21ae0c2048::t_3b7e606859aa9d 12-13
+web/src/features/interactive/components/StoryPicker.tsx
+  s_194b21ae0c2048::t_0eb27d21963896 1,5,19-47,49-51
+web/src/features/interactive/components/preset-config/JsonFragmentEditor.tsx
+  s_194b21ae0c2048::t_3aaeaeb53fc741 1-68
+web/src/features/interactive/components/preset-config/PresetEditorChrome.tsx
+  s_194b21ae0c2048::t_5c9b54b644ce4f 1,6-7,9,36-37,45,47,53,55
+web/src/features/interactive/components/preset-config/PresetEmptyState.tsx
+  s_194b21ae0c2048::t_d1287dad03a46c 1-23
+web/src/features/interactive/components/preset-config/PresetField.tsx
+  s_194b21ae0c2048::t_d3b25b85e6262d 1-34
+web/src/features/interactive/components/preset-config/PresetModuleEditorShell.tsx
+  s_194b21ae0c2048::t_b1b1c2a1dc4632 1-36
+web/src/features/interactive/components/preset-config/PresetSectionHeader.tsx
+  s_194b21ae0c2048::t_4fd28082d8c40f 1-20
+web/src/features/interactive/components/preset-config/TRPGSystemVisualEditor.tsx
+  s_194b21ae0c2048::t_ab308241ec96d1 1,17-19,230,253-254,264-266,377-379,409-412,431-433
+web/src/features/interactive/components/preset-config/editor-styles.ts
+  s_2be26cb1ba81d6::t_fdc62ef54427aa 1-9
+web/src/features/interactive/components/preset-config/preset-status.ts
+  s_2be26cb1ba81d6::t_f1b209f044c2c5 1-11
+web/src/features/interactive/components/preset-config/use-preset-section-validity.ts
+  s_2be26cb1ba81d6::t_adf4cd290c3e0a 1-21
+web/src/features/interactive/components/preset-config/visual-editors.tsx
+  s_194b21ae0c2048::t_5f1cb1ef0590c3 1,7,12-14,16,377-384,394-398,432,447-450,561,683,686
+web/src/features/interactive/components/setting-panel/ActorStateEditor.tsx
+  s_194b21ae0c2048::t_2570b88dc61e63 7-9,48,101
+web/src/features/interactive/components/setting-panel/EventPackageEditor.tsx
+  s_194b21ae0c2048::t_7fe8793516fdcc 4-5,7,27,41
+web/src/features/interactive/components/setting-panel/ImagePresetEditor.tsx
+  s_194b21ae0c2048::t_923abc9e64dbdf 8,12-16,95,138-144,150
+web/src/features/interactive/components/setting-panel/LoreEditor.tsx
+  s_194b21ae0c2048::t_d38f5d887d7938 16-18,20,74,285-291,311,315
+web/src/features/interactive/components/setting-panel/OpeningPresetEditor.tsx
+  s_194b21ae0c2048::t_ef8df104b5c900 8-10,51,61,86
+web/src/features/interactive/components/setting-panel/PresetSettingsPanel.tsx
+  s_194b21ae0c2048::t_224187714de6ba 2,6,8-9,535-537,587-674,679-689,695-700
+web/src/features/interactive/components/setting-panel/RuleSystemEditor.tsx
+  s_194b21ae0c2048::t_a2f81272acb7f2 4-5,8,33,55
+web/src/features/interactive/components/setting-panel/preset-directory-sections.tsx
+  s_194b21ae0c2048::t_eff68b191d317b 8,10
+web/src/features/interactive/components/story-director/ModuleConsole.tsx
+  s_194b21ae0c2048::t_7d9c30cbb20066 5,8-10,195-203,236
+web/src/features/interactive/components/story-director/StoryDirectorEditor.tsx
+  s_194b21ae0c2048::t_eeb4457d6c4f20 1,5,8-9,11-14,17-18,335-348
+web/src/features/settings/SettingsView.tsx
+  s_194b21ae0c2048::t_c0b5f5fc4e6c66 1,4,6-7,9,13,15-17,62-65,171,173,541-551,555-564,568-569,571,573-575,592-599,620,708,750,771,910-915,917-925,931-936,938
+web/src/features/settings/use-auto-save-settings.test.tsx
+  s_8db89753d8251c::t_76e36aa914678a 227-395,402-404,407,414-416,419,427-429,433
+web/src/features/settings/use-auto-save-settings.ts
+  s_194b21ae0c2048::t_165d4b0bf0b661 1,8,14-15,19,26-28,32-33,36-38,40,42,44,47-50,54,56-58,61-76,78-84,86-88,90-95,97-101,104-107,109-112,117-121,123,125-129,131-141,144-155,157-172,178,182-183,188,191-195,200-207,218
+web/src/features/settings/use-layered-settings-draft.test.tsx
+  s_8db89753d8251c::t_de8bbbf064805f 1-354
+web/src/features/settings/use-layered-settings-draft.ts
+  s_8db89753d8251c::t_5bdf30a9ef45ff 1-257
+web/src/features/skills/SkillConfigPanel.tsx
+  s_194b21ae0c2048::t_dbb0a9cabc64e0 5-6,10-12,85-100,103-104,112,114-115,118,120,122-123,125-126,128,131-132,134-135,138,140,142
+web/src/features/skills/SkillCreatePanel.tsx
+  s_194b21ae0c2048::t_1ed133ab11b382 4,6-7,12-13,73-78,81-94,97-98,105-106,118,120-121,124,126,128-129,131-132,134,136,138
+web/src/features/skills/SkillIdentityFields.tsx
+  s_194b21ae0c2048::t_14885f85bfa49d 1,3-9,11-23,26-40,42-44,47-59,61-63,65-72,74-80,82-90,92-116
+web/src/features/skills/SkillInstallPanel.tsx
+  s_194b21ae0c2048::t_511aa4238babe1 4,6-8,10,132-137,140-141,143-160,162,164,168,170-193,195,197-200,202,204-206,211,219-220,228-229,237,240,252,269,271,284-289,291
+web/src/features/skills/SkillListPanel.tsx
+  s_194b21ae0c2048::t_c53203a0cde2af 4,104,115-121
+web/src/features/skills/SkillsView.test.tsx
+  s_194b21ae0c2048::t_9507b086a4f198 133,282
+web/src/features/skills/SkillsView.tsx
+  s_194b21ae0c2048::t_bd33b5a74655e2 2,8-10,334-368,419-423,426-430,488,507
+web/src/features/skills/skill-form-fields.tsx
+  s_194b21ae0c2048::t_fdd695fa5d54ba 32
+web/src/hooks/useBottomScrollLock.ts
+  s_194b21ae0c2048::t_541d6e4d046fd2 3,35,38,42,54-55
+web/src/hooks/usePersistedUserSettings.test.tsx
+  s_8db89753d8251c::t_922931c08e800b 1-208
+web/src/hooks/usePersistedUserSettings.ts
+  s_8db89753d8251c::t_c20a932eb10ec4 1-193
+web/src/lib/bottom-scroll-controller.test.ts
+  s_194b21ae0c2048::t_c7dfea8c5b8899 1-56
+web/src/lib/bottom-scroll-controller.ts
+  s_194b21ae0c2048::t_e20025b087ff07 1-47
+web/src/lib/text-input-measurement.ts
+  s_194b21ae0c2048::t_7ab4e931c72fec 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "40977501579e307f86950dfd08f411d0a4338d71",
+  "prompts": {},
+  "sessions": {
+    "s_194b21ae0c2048": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f74a0-2f47-7080-ad90-4ee72f04de90",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_2be26cb1ba81d6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f74da-e2b7-7843-be6e-0df57e326a69",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_8db89753d8251c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7529-b63f-7cc3-b918-8e440c042971",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
