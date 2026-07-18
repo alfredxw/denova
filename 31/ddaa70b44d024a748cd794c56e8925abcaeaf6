@@ -1,0 +1,217 @@
+DESIGN.md
+  s_de1638797fe6ea::t_6fa425a9e30874 1-509
+config/config.go
+  s_21d4d2ac430c83::t_1033a4ee0cae48 43
+docs/workspace-change-engine.md
+  s_21d4d2ac430c83::t_c0274f50a30327 112,114
+internal/agent/automation.go
+  s_aa2d9c021eea7e::t_45f233811cd3eb 38-44
+internal/agent/builder.go
+  s_aa2d9c021eea7e::t_7d7c3d41f0280c 456-457,460
+internal/agent/builder_tool_factory_test.go
+  s_aa2d9c021eea7e::t_76f1cf7f0c2801 1-41
+internal/agent/chat.go
+  s_21d4d2ac430c83::t_42c5398ad7b345 39,55
+internal/agent/config_manager_tools.go
+  s_aa2d9c021eea7e::t_b00b35361ebcf2 136,155-159,721-722,725,732,741-742,744,757-758,760,765-767,772,779,794-798
+internal/agent/config_manager_tools_test.go
+  s_aa2d9c021eea7e::t_3361e2c778f5d8 13,51-76,288-310
+internal/agent/review_feedback.go
+  s_21d4d2ac430c83::t_135977c68fb0bb 24-25,58-59,64-99,106,120,125-134,138-139
+internal/agent/review_feedback_test.go
+  s_21d4d2ac430c83::t_6846e424b59f8b 11,14-15,32-38,43,50-52,67,74,82
+internal/agent/user_message_references.go
+  s_21d4d2ac430c83::t_379bc3b24549f9 10,39-53
+internal/api/handler_workspace_changes_test.go
+  s_21d4d2ac430c83::t_d2e7d6f4ac7cbc 108,112,117,123,126,171-186
+internal/app/automation_active_registry.go
+  s_aa2d9c021eea7e::t_9cc62f0914ad91 30-33,38,60-74
+internal/app/automation_active_registry_test.go
+  s_aa2d9c021eea7e::t_1f03fb19396e44 46-48
+internal/app/automation_app_service.go
+  s_aa2d9c021eea7e::t_6a1893b27431a5 94-96,98-102,119-125,127,204-217,288-302,339,371-373,407,474-476,494,519-521,524-541,562,564-576,897-911,976-980
+internal/app/automation_catalog_test.go
+  s_aa2d9c021eea7e::t_149b3845f27b4c 1-197
+internal/app/automation_target_runtime.go
+  s_21d4d2ac430c83::t_1cccb8ee057a6f 1-103
+internal/app/automation_trigger_service.go
+  s_aa2d9c021eea7e::t_bc6cb44b6af626 43-45,47-51,91-101,163-167
+internal/app/automation_trigger_service_test.go
+  s_aa2d9c021eea7e::t_6932ec1c9f697c 768-776,888-907
+internal/app/chat_app_service.go
+  s_21d4d2ac430c83::t_21a25e653bc0a4 312
+internal/app/chat_review_feedback.go
+  s_21d4d2ac430c83::t_497fc8162cdfb9 7,25-27,29-32,34-39,41,44,48-53,55-59,62,64,69-70,148-164,167-171,174-213,217-286
+internal/app/chat_review_feedback_test.go
+  s_21d4d2ac430c83::t_2f81769361cc96 19,56,58,62,65,78-292,337,340,368,410,457,459,463,466,469,489,491,503
+internal/app/config_manager_app_service.go
+  s_21d4d2ac430c83::t_3216ed76e1d13f 51-55
+internal/app/messages_app_service.go
+  s_aa2d9c021eea7e::t_289bd17f5a289b 3-13,16-20,24-28,32-229
+internal/app/messages_app_service_test.go
+  s_aa2d9c021eea7e::t_be5071ea235a2b 1-64
+internal/app/review_feedback_runtime.go
+  s_21d4d2ac430c83::t_7f6f5bf94c61a7 1-52
+internal/automation/store.go
+  s_21d4d2ac430c83::t_c3a685bfe6fe48 5,19-41,64-71,73,85-110,116,120-124,130,135,145-146,151,157,162,164,170,186-187,192,200,207,217-218,223,229,239-266,278-279,284,290,307,313,349,364,367,370-373,382-436,565-584,635-637
+internal/automation/trigger_store.go
+  s_21d4d2ac430c83::t_ad4bd289524fee 67-68,73,98-102,108,119,130-131,136,306-307,312,330,343-345,352-369
+internal/automation/types.go
+  s_aa2d9c021eea7e::t_5fa123ceaca603 9-11,66-74,83,85
+internal/automation/user_catalog_test.go
+  s_aa2d9c021eea7e::t_5c884a3c389438 1-160
+internal/documentreview/service.go
+  s_21d4d2ac430c83::t_679714b3e556e9 263-310
+internal/messages/service.go
+  s_21d4d2ac430c83::t_1294a64536c216 8,40-46,65-68,73,111-115,141-174
+internal/messages/service_test.go
+  s_aa2d9c021eea7e::t_a6baf8d241fcff 8,240-284
+internal/messages/types.go
+  s_aa2d9c021eea7e::t_a6e4e75f2a9b26 6-8,14-26
+internal/workspacechange/query.go
+  s_21d4d2ac430c83::t_0fd736f98da721 66-79
+internal/workspacechange/review_thread.go
+  s_21d4d2ac430c83::t_3c2bcab95edeac 62-63,189,239-303
+internal/workspacechange/review_thread_test.go
+  s_21d4d2ac430c83::t_581eba8da9ed55 36,42,46,57,106-107,110-111,114-115,135
+internal/workspacechange/service.go
+  s_21d4d2ac430c83::t_9510d6bff1e70a 523,526,529
+internal/workspacechange/service_test.go
+  s_21d4d2ac430c83::t_1fc2d80a4c83b4 482
+internal/workspacechange/types.go
+  s_21d4d2ac430c83::t_4164e6778330fe 150-163,167-180,192-202
+web/src/components/Chat/AgentPanel.test.tsx
+  s_21d4d2ac430c83::t_f9d5ea136500ce 236,239,252-286,293,300
+web/src/components/Chat/AgentPanel.tsx
+  s_21d4d2ac430c83::t_fb19bbf13c3dd6 30,77-80,290-296,298,300,304,311,316,326,331
+web/src/components/Chat/InputArea.test.tsx
+  s_21d4d2ac430c83::t_dff631555094c0 129,138,148,172,175
+web/src/components/Chat/InputArea.tsx
+  s_21d4d2ac430c83::t_6bf7559b0998f0 31,87-88,209
+web/src/components/Editor/DocumentReviewAnnotations.test.tsx
+  s_21d4d2ac430c83::t_4e048a388e630f 1-134
+web/src/components/Editor/DocumentReviewAnnotations.tsx
+  s_21d4d2ac430c83::t_50d8bfc1f2e464 68,122,131-136,138,167-168,171,181-186,255,314-321,332,354
+web/src/components/Editor/documentReviewDecorations.test.ts
+  s_21d4d2ac430c83::t_34efae1c092822 30,36-37,47-50,57-66,79-84,112-138
+web/src/components/review/InlineCommentThread.tsx
+  s_21d4d2ac430c83::t_ebadcba61fb5f0 2,28,33,77-82,91,106-107
+web/src/components/workbench/ModeRouter.tsx
+  s_21d4d2ac430c83::t_5abba92250f25e 22,366-368,375-376,378-383,385-389
+web/src/components/workbench/WorkbenchShell.responsive.test.tsx
+  s_aa2d9c021eea7e::t_59b1d624dbd69a 32
+web/src/components/workbench/WorkbenchShell.tsx
+  s_aa2d9c021eea7e::t_d1786d3fda2bf8 16-17,19,131,149-153,155-156,161,264-270,360,369,460,575,859,863
+web/src/features/automations/AutomationInboxPanel.tsx
+  s_aa2d9c021eea7e::t_f245a4483d899f 5,23,39
+web/src/features/automations/AutomationTaskCatalog.tsx
+  s_21d4d2ac430c83::t_2077bd3c0c513e 1-79
+web/src/features/automations/AutomationTriggerEditor.tsx
+  s_aa2d9c021eea7e::t_b79d31dfb651fb 11,15,20-22,27,92
+web/src/features/automations/AutomationsView.test.tsx
+  s_21d4d2ac430c83::t_91610a85e1200b 1-47
+web/src/features/automations/AutomationsView.tsx
+  s_aa2d9c021eea7e::t_04a1343c153d0d 1-2,29,32,37,45-65,73-74,78-79,83-84,89-96,98-99,102-109,111,113,118,121,123-129,134-145,151-156,158-161,170,177-180,184-186,188,197-202,212,221,223-227,263,267,271-292,310,346-350,352-361,369-371,461,488-491,509,516,524,531,534,581,593,599-601
+web/src/features/automations/automation-catalog.test.ts
+  s_aa2d9c021eea7e::t_97c68252188c7b 1-57
+web/src/features/automations/automation-catalog.ts
+  s_aa2d9c021eea7e::t_f16b97b5b63793 1-99
+web/src/features/automations/automation-navigation.test.ts
+  s_aa2d9c021eea7e::t_7195825b1243be 1-21
+web/src/features/automations/automation-navigation.ts
+  s_aa2d9c021eea7e::t_e6810ac5013573 1-23
+web/src/features/automations/automation-task-draft.test.ts
+  s_aa2d9c021eea7e::t_9ff0af6278f66a 1-26
+web/src/features/automations/automation-task-draft.ts
+  s_aa2d9c021eea7e::t_63f24d6cd4e3b0 1-119
+web/src/features/automations/automation-trigger.ts
+  s_aa2d9c021eea7e::t_eaa48e6a8de2e7 1-11
+web/src/features/changes/agent/ReviewFeedbackTray.test.ts
+  s_21d4d2ac430c83::t_0eb7c12f0d066f 6,14
+web/src/features/changes/agent/ReviewFeedbackTray.tsx
+  s_21d4d2ac430c83::t_b452e51c9a3bce 13-14,42-43,49-50,57,59,70,72,76-77,83,97-101,111,115-118
+web/src/features/changes/review/ChangeReviewWorkspace.tsx
+  s_21d4d2ac430c83::t_0648989ab8cdf1 464
+web/src/features/changes/review/InlineCommentThread.test.tsx
+  s_21d4d2ac430c83::t_f1784e20f63fe7 16,59,90,106,127,132,136-156
+web/src/features/changes/review/ReviewDiffEditor.test.ts
+  s_21d4d2ac430c83::t_abb4c570853664 116,118
+web/src/features/changes/review/ReviewDiffEditor.tsx
+  s_21d4d2ac430c83::t_c763414ae4613a 55
+web/src/features/changes/types.ts
+  s_21d4d2ac430c83::t_d5d114dd83ee80 102,117,162
+web/src/features/changes/use-writing-change-review.test.tsx
+  s_21d4d2ac430c83::t_134d2479664fd7 32,46
+web/src/features/messages/MessageCenter.test.tsx
+  s_aa2d9c021eea7e::t_7e3731a490a33f 134-176
+web/src/features/messages/MessageCenter.tsx
+  s_aa2d9c021eea7e::t_d372f3b5200d6c 2,8,12-14,20,27,47-51,99-103,155-167,173,179,206-223,297,303-316
+web/src/features/messages/types.ts
+  s_aa2d9c021eea7e::t_6da1fdcbe76693 9-14,21-27
+web/src/hooks/useAgentChat.test.tsx
+  s_21d4d2ac430c83::t_5424d87eeb2211 66
+web/src/hooks/useAgentChat.ts
+  s_21d4d2ac430c83::t_c65fe51def53ac 43,47,240-244
+web/src/i18n/locales/en-US/automations.ts
+  s_aa2d9c021eea7e::t_ea109630272dc0 6,10-11,20-24,33
+web/src/i18n/locales/en-US/changes.ts
+  s_21d4d2ac430c83::t_c6833e4191e213 49-50,64,83-84
+web/src/i18n/locales/en-US/common.ts
+  s_21d4d2ac430c83::t_287a770e488d47 7
+web/src/i18n/locales/en-US/editor.ts
+  s_21d4d2ac430c83::t_87496318ad395b 60-61
+web/src/i18n/locales/en-US/messages.ts
+  s_aa2d9c021eea7e::t_b6d74b4ee62d74 3,15-22
+web/src/i18n/locales/zh-CN/automations.ts
+  s_aa2d9c021eea7e::t_789497f8395b5b 6,10-11,20-24,33
+web/src/i18n/locales/zh-CN/changes.ts
+  s_21d4d2ac430c83::t_a202c29aee6a92 49-50,64,83-84
+web/src/i18n/locales/zh-CN/common.ts
+  s_21d4d2ac430c83::t_11fbd8ea6c4146 7
+web/src/i18n/locales/zh-CN/editor.ts
+  s_21d4d2ac430c83::t_dbedecd785f9ca 60-61
+web/src/i18n/locales/zh-CN/messages.ts
+  s_aa2d9c021eea7e::t_c7d9325e0e6f9c 3,15-22
+web/src/index.css
+  s_21d4d2ac430c83::t_963fcf4c9b3d42 1683-1688
+web/src/lib/agent-ui.test.ts
+  s_21d4d2ac430c83::t_879c02d37b9800 22,33,39,43-44,48-60
+web/src/lib/agent-ui.ts
+  s_21d4d2ac430c83::t_1765b1e1107297 60,64,96,107-124,126
+web/src/lib/api-client/types.ts
+  s_aa2d9c021eea7e::t_1064ed5781cc63 720-725,775,777
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "31ddaa70b44d024a748cd794c56e8925abcaeaf6",
+  "prompts": {},
+  "sessions": {
+    "s_21d4d2ac430c83": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f70fe-2c1c-7e21-97a3-85283b896dd3",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_aa2d9c021eea7e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f70f5-3fb9-7143-81f3-005a8adc0f2d",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_de1638797fe6ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7115-3399-7d50-bad3-5c07a2018a58",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
