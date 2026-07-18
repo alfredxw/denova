@@ -1,0 +1,129 @@
+config/config.go
+  s_d5cda37d15aa34::t_2bc292fc31602a 438-463
+internal/agent/builder.go
+  s_d5cda37d15aa34::t_8ba31263ec72f6 318
+internal/agent/config_manager_agent_config_tools.go
+  s_d5cda37d15aa34::t_2501bfbee36d1f 173,187
+internal/agent/config_manager_tools.go
+  s_d5cda37d15aa34::t_b9e569e0cd5073 134,874
+internal/api/agentui/message.go
+  s_d5cda37d15aa34::t_44bb251ae8e5a4 7,322
+internal/api/handlers/handler_books.go
+  s_d5cda37d15aa34::t_973bab83cf399f 47,51
+internal/api/handlers/handler_character_card.go
+  s_d5cda37d15aa34::t_9c25a739e9fc3a 128,131
+internal/api/handlers/handler_config_manager.go
+  s_d5cda37d15aa34::t_d0e291fddc389a 29
+internal/api/handlers/handler_interactive.go
+  s_d5cda37d15aa34::t_bb5726f8611a93 349,351
+internal/api/handlers/handler_novel_import.go
+  s_d5cda37d15aa34::t_d3d55f5af8c2b9 142,148
+internal/app/app.go
+  s_d5cda37d15aa34::t_c1e12f3f6e10d0 87-88
+internal/app/automation_active_registry.go
+  s_d5cda37d15aa34::t_ebb8f551263a37 30-37,39-40,63-66,74-75,116-117,197-198
+internal/app/automation_active_registry_test.go
+  s_d5cda37d15aa34::t_831838858bf734 20-23,27,31,42,45,48,51,54,58-59,74-77,79,94,108,111-116
+internal/app/automation_app_service.go
+  s_d5cda37d15aa34::t_4d75d555e4aaa7 20-23,25,63,71,79,87,94-97,99,103-107,109,117-123,125,128-129,134,137,151,156,165,177,179,207-226,233,240,253,264,266,285-287,289-301,308,323,331-335,342,353,363,380,400-401,415,423,439,447,451,458,466,482,487-488,503,513-521,523-531,533,535-539,547-550,555,575-578,580,583,588,597-599,704,731-734,741,748,781,791,907
+internal/app/automation_mutation_trigger.go
+  s_d5cda37d15aa34::t_5fe645266f7e3e 9-12,14-26
+internal/app/automation_target_runtime.go
+  s_d5cda37d15aa34::t_e08755516290c7 16,18-20,25,31,43,55-62,66,75,86-90,94-95
+internal/app/automation_trigger_coordinator.go
+  s_d5cda37d15aa34::t_552975ff3d122a 33-37,49-50,53,65-68,77,122,130
+internal/app/automation_trigger_coordinator_test.go
+  s_d5cda37d15aa34::t_ac18f22c4034f4 38-42,44,54
+internal/app/automation_trigger_service.go
+  s_d5cda37d15aa34::t_c0ca556af7acba 34,42-48,50,60-61,64-72,76-77,82-83,86-90,99,117-127,143,151,154-155,158-159,164-165,168,171-172,179,192-193,196,200,203,218,224-225,267-268,272,274,276,282,286,289,293,296,301,322,365-366,385,388,396,413,418,433,440,469,474-475,509,527
+internal/app/automation_trigger_service_test.go
+  s_d5cda37d15aa34::t_a743c4836505fe 181,184,365-367,370-372,495,498-499,501-505,508,518,528-529,531,533,535,545-546,807-810,812,818,824,832-836
+internal/app/automation_workspace_snapshot.go
+  s_d5cda37d15aa34::t_b3a8c0d8bbcad3 4-5,18-22,33-85,89,99-106,110-120
+internal/app/book_cover.go
+  s_d5cda37d15aa34::t_b5fd73315398d8 82,96-97,121,124
+internal/app/chat_app_service.go
+  s_d5cda37d15aa34::t_f9357dc158603f 267,435,505-506
+internal/app/config_manager_app_service.go
+  s_d5cda37d15aa34::t_7dc51462758739 32-33,36,56,72-73
+internal/app/config_manager_resource_skills.go
+  s_d5cda37d15aa34::t_8e8ed4c6eeb92f 33
+internal/app/image_agent_service.go
+  s_d5cda37d15aa34::t_114205414725db 110
+internal/app/interactive_app_service.go
+  s_d5cda37d15aa34::t_85cc32551a8732 88,95,105,113,121,237,299,374,376,404,543-544,547-548,551-552,555-556,576,618,745,766,793,927,930,939,942,951,954,963,966,975,978,987,990,999,1002,1011,1014,1023,1026,1035,1038,1047,1050,1059,1062,1071,1074,1083,1086,1095,1098,1107,1110,1119,1122,1131,1134,1143,1146,1155,1158,1167,1170,1179,1182,1191,1194,1203,1206,1215,1218,1227,1230,1239,1242,1251,1254,1263,1266,1275,1278,1326
+internal/app/interactive_image.go
+  s_d5cda37d15aa34::t_db7ae027762535 41
+internal/app/lore_app_service.go
+  s_d5cda37d15aa34::t_1052b0f9023641 269,289,292
+internal/app/messages_app_service.go
+  s_d5cda37d15aa34::t_aa9a92c215a184 15-18,20-25,29-30,34-54,58-67,71-85,89-152,313,333,341,354
+internal/app/messages_app_service_test.go
+  s_d5cda37d15aa34::t_cb237dd891c0a3 65-122
+internal/app/runtime_builder.go
+  s_d5cda37d15aa34::t_c76e3724e7bfdc 69,97,104
+internal/app/runtime_manager.go
+  s_d5cda37d15aa34::t_69984e6ed53e1b 229,304,339,447-448
+internal/app/skills_app_service.go
+  s_d5cda37d15aa34::t_dcd279c65d6fb1 160
+internal/app/style_references.go
+  s_d5cda37d15aa34::t_a77f343c83c495 13,16,25,28,37,40,49,52,61,64
+internal/app/tool_agent.go
+  s_d5cda37d15aa34::t_6d8e594e97a3ad 49
+internal/app/version_summary.go
+  s_d5cda37d15aa34::t_6b8090f220877d 57
+internal/app/workspace_change_runtime.go
+  s_d5cda37d15aa34::t_ca8f1ea1e152a7 110
+internal/automation/store.go
+  s_d5cda37d15aa34::t_51d0022e2dbd66 88-93,117-150,336-342
+internal/automation/user_catalog_test.go
+  s_d5cda37d15aa34::t_0fc8815c533d22 148,150,154-155,158-179
+internal/book/summary.go
+  s_d5cda37d15aa34::t_c91464065f0063 9,132,170
+internal/documentreview/service.go
+  s_d5cda37d15aa34::t_d8383c885dd95d 46-50,86-90,174-176,187,360-365,368-392,394-395,411-418,425-426,430-436,461-465
+internal/documentreview/service_test.go
+  s_d5cda37d15aa34::t_105a04fa916f0c 9,163-277
+internal/documentreview/store.go
+  s_d5cda37d15aa34::t_f6effe66e6fe8f 20
+internal/messages/changelog.go
+  s_d5cda37d15aa34::t_086103af2ce749 8,387-396
+internal/messages/service.go
+  s_d5cda37d15aa34::t_244fb997b40528 17-20,38-41,44-45,47-48,51-54,57,63,65-66,71,73,76-77,82,85-87,90,93,95
+internal/messages/service_test.go
+  s_d5cda37d15aa34::t_02b342c1e6ffa4 29,89-100,103,107,111-112,114-120,122-125,129-130,132-134,138-139,141-143,147-148,150-163,170,173-176,180,184-185,187-188,191-194,198-199,203,206,209-212,216-217,219-222,224,228-230,234-237,241,244-247,251-252,254-255,257-263,265,269-270,273,277-278
+internal/skills/catalog.go
+  s_d5cda37d15aa34::t_1db39cdbdf1732 11,165
+internal/skills/document.go
+  s_d5cda37d15aa34::t_185d75eaf08690 14,520
+web/src/components/workbench/WorkbenchShell.tsx
+  s_d5cda37d15aa34::t_50178deb7de22e 23,549
+web/src/features/automations/automation-task-draft.ts
+  s_d5cda37d15aa34::t_c4fac1194704c8 5-9,22,35-38,42,45-48,53,56,61,63
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_d5cda37d15aa34::t_d520448dad40ec 965,983-987
+web/src/features/interactive/components/setting-panel/LoreEditor.tsx
+  s_d5cda37d15aa34::t_fd58510748ee83 191
+web/src/features/messages/MessageCenter.tsx
+  s_d5cda37d15aa34::t_3121007a35cd3b 6
+web/src/index.css
+  s_d5cda37d15aa34::t_9b6962d1779c5a 751-752
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6a6e7710ea4344a29983bfe02360996b7b02d824",
+  "prompts": {},
+  "sessions": {
+    "s_d5cda37d15aa34": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3ed1791-f721-4d18-b813-dc8baba4d960",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

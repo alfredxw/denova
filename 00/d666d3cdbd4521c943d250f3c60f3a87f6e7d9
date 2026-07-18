@@ -1,0 +1,53 @@
+web/src/components/Editor/DocumentReviewAnnotations.tsx
+  s_b95f9b60b9434f::t_dbc1c0e08c706e 1,3,8-9,11,24,34,43,55,62-63,65,68-85,92,98,100-101,103-105,108-111,118,129,137,139,142-162,165,175,179,186-188,190-193,197-201,203-215,218,221-222,239,243,245,247,251,255-282,291,294-297,302,313,317,324,328-358
+web/src/components/Editor/EditorSurface.tsx
+  s_b95f9b60b9434f::t_d564436784ee14 52
+web/src/components/Editor/EditorToolbar.tsx
+  s_b95f9b60b9434f::t_21464472aea5fb 1,89,104,117,126
+web/src/components/Editor/MarkdownEditor.test.tsx
+  s_b95f9b60b9434f::t_bc3e48ba7a1fe3 1,698,706,716-718,720
+web/src/components/Editor/MarkdownEditor.tsx
+  s_b95f9b60b9434f::t_a7c1ea79e5b96a 1,217-219,221-230,347-349,359,365,441-444,453
+web/src/components/Editor/documentReviewAnchors.test.ts
+  s_b95f9b60b9434f::t_f1b5023b9f91d0 5,32,56-73
+web/src/components/Editor/documentReviewAnchors.ts
+  s_b95f9b60b9434f::t_51741ff488b1f3 74-78,100-115
+web/src/components/Editor/documentReviewDecorations.test.ts
+  s_b95f9b60b9434f::t_e42409d7be7f01 1,3-5,15-16,29-90
+web/src/components/Editor/documentReviewDecorations.ts
+  s_b95f9b60b9434f::t_fdad0be10fe8ff 12,18,37,40-42,47-56,90-93,95,103-108
+web/src/components/Editor/documentReviewHover.test.ts
+  s_b95f9b60b9434f::t_5482a3bbdc1152 1-52
+web/src/components/Editor/documentReviewHover.ts
+  s_b95f9b60b9434f::t_3be7116bb88597 1-11
+web/src/features/changes/review/InlineCommentThread.test.tsx
+  s_b95f9b60b9434f::t_79796ff0cc9f23 100-115
+web/src/features/interactive/components/director-console/StateSchemaCard.tsx
+  s_b95f9b60b9434f::t_2eecc6abca9cb7 1-45
+web/src/features/interactive/components/director-console/StateView.tsx
+  s_b95f9b60b9434f::t_b0a1789da40373 2,4,20-24,29,36-39,41,91,95-100
+web/src/i18n/locales/en-US/editor.ts
+  s_b95f9b60b9434f::t_fe9873c4886f83 61
+web/src/i18n/locales/zh-CN/editor.ts
+  s_b95f9b60b9434f::t_8bdd0e0c0be747 61
+web/src/index.css
+  s_b95f9b60b9434f::t_ede843b1c6b031 1669-1675,1678-1680,1690-1694,1700
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "00d666d3cdbd4521c943d250f3c60f3a87f6e7d9",
+  "prompts": {},
+  "sessions": {
+    "s_b95f9b60b9434f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6e58-d139-7630-8088-321471e1d2d6",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}

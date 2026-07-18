@@ -1,0 +1,51 @@
+internal/app/interactive_conversation.go
+  s_aa2d9c021eea7e::t_84677e89d1b835 602,909-937
+internal/app/interactive_conversation_test.go
+  s_aa2d9c021eea7e::t_c991dfa69f0364 277-359
+internal/interactive/story_turn_narrative.go
+  s_9e85d9edba4b9d::t_8b83b5d8e0f43b 1-127
+internal/interactive/story_turn_narrative_test.go
+  s_9e85d9edba4b9d::t_ce8bd124946251 1-116
+web/src/components/common/HighlightedText.tsx
+  s_144c6ab776bcf8::t_397be319dc4f22 1-56
+web/src/components/common/SearchHighlightTextarea.tsx
+  s_144c6ab776bcf8::t_973c7496f1d81e 1-45
+web/src/features/interactive/components/EditInteractiveReplyDialog.tsx
+  s_9e85d9edba4b9d::t_44c19da047d2ae 1-2,4-6,8-12,15-16,18-22,24-28,30-41,44-61,63-68,70-114,117-120
+web/src/features/interactive/components/StoryStage.test.tsx
+  s_aa2d9c021eea7e::t_a0164eb46aa8bd 10,14,35,46,127-153,808-929,1217-1255
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fd94ca43689d0a819d1c3f2a077b960364ad1afe",
+  "prompts": {},
+  "sessions": {
+    "s_144c6ab776bcf8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5019c13c-d066-4c58-88be-5bd10935d1a0",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_9e85d9edba4b9d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7086-a46c-7b81-89de-ebfcd9ad6916",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_aa2d9c021eea7e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f70f5-3fb9-7143-81f3-005a8adc0f2d",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
