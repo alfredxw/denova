@@ -389,6 +389,51 @@ func (h *Handlers) HandleInteractiveChatContextAnalysis(ctx context.Context, c *
 	writeJSON(c, consts.StatusOK, analysis)
 }
 
+// HandleInteractiveChatStream reconnects to the active game-mode turn and
+// replays its buffered SSE events before following live output.
+func (h *Handlers) HandleInteractiveChatStream(ctx context.Context, c *app.RequestContext) {
+	storyID := strings.TrimSpace(c.Query("story_id"))
+	branchID := strings.TrimSpace(c.Query("branch"))
+	taskID := strings.TrimSpace(c.Query("task_id"))
+	if storyID == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyIDRequired")
+		return
+	}
+	task, info := h.app.ActiveInteractiveTaskFor(storyID, branchID)
+	if task == nil || (taskID != "" && info.TaskID != taskID) {
+		writeErrorKey(c, consts.StatusNotFound, "api.chat.noActiveTask")
+		return
+	}
+	log.Printf("[interactive-agent-sse] attach active task_id=%s story_id=%s branch_id=%s status=%s", task.ID(), info.StoryID, info.BranchID, task.Status())
+	sse.StreamTask(c, task)
+}
+
+// HandleInteractiveChatActive reports the active turn identity and original
+// player message so a refreshed stage can reconstruct its optimistic turn.
+func (h *Handlers) HandleInteractiveChatActive(ctx context.Context, c *app.RequestContext) {
+	storyID := strings.TrimSpace(c.Query("story_id"))
+	branchID := strings.TrimSpace(c.Query("branch"))
+	if storyID == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyIDRequired")
+		return
+	}
+	task, info := h.app.ActiveInteractiveTaskFor(storyID, branchID)
+	if task == nil {
+		writeJSON(c, consts.StatusOK, map[string]any{"active": false})
+		return
+	}
+	status := task.Status()
+	writeJSON(c, consts.StatusOK, map[string]any{
+		"active":                  status == novaApp.TaskRunning,
+		"status":                  status,
+		"task_id":                 info.TaskID,
+		"story_id":                info.StoryID,
+		"branch_id":               info.BranchID,
+		"message":                 info.Message,
+		"regenerate_from_turn_id": info.RegenerateFromTurnID,
+	})
+}
+
 func (h *Handlers) HandleInteractiveContextCompaction(ctx context.Context, c *app.RequestContext) {
 	var body struct {
 		BranchID string `json:"branch_id"`

@@ -1,16 +1,18 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useState } from 'react'
+import { StrictMode, useState } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoryStage } from './StoryStage'
 import { mergeInteractiveTurnPersistedSnapshot, useInteractiveStore } from '../stores/interactive-store'
 import type { InteractiveTurnPersistedEvent, Snapshot, StorySummary, TurnEvent } from '../types'
 
-const { generateInteractiveImageMock, runInteractiveDirectorMock, sendInteractiveMessageMock, updateInteractiveTurnNarrativeMock, useSkillCommandsMock } = vi.hoisted(() => ({
+const { generateInteractiveImageMock, getActiveInteractiveChatMock, runInteractiveDirectorMock, sendInteractiveMessageMock, streamActiveInteractiveChatMock, updateInteractiveTurnNarrativeMock, useSkillCommandsMock } = vi.hoisted(() => ({
   generateInteractiveImageMock: vi.fn(),
+  getActiveInteractiveChatMock: vi.fn(),
   runInteractiveDirectorMock: vi.fn(),
   sendInteractiveMessageMock: vi.fn(),
+  streamActiveInteractiveChatMock: vi.fn(),
   updateInteractiveTurnNarrativeMock: vi.fn(),
   useSkillCommandsMock: vi.fn(),
 }))
@@ -28,9 +30,11 @@ vi.mock('../api', () => ({
   analyzeInteractiveContext: vi.fn(),
   compactInteractiveContext: vi.fn(),
   generateInteractiveImage: generateInteractiveImageMock,
+  getActiveInteractiveChat: getActiveInteractiveChatMock,
   removeInteractiveContextCompaction: vi.fn(),
   runInteractiveDirector: runInteractiveDirectorMock,
   sendInteractiveMessage: sendInteractiveMessageMock,
+  streamActiveInteractiveChat: streamActiveInteractiveChatMock,
   switchInteractiveTurnVersion: vi.fn(),
   updateInteractiveTurnNarrative: updateInteractiveTurnNarrativeMock,
 }))
@@ -40,9 +44,12 @@ beforeEach(() => {
   useInteractiveStore.setState({ storyStageRuns: {} })
   generateInteractiveImageMock.mockReset()
   generateInteractiveImageMock.mockResolvedValue({ enabled: false, skipped: true })
+  getActiveInteractiveChatMock.mockReset()
+  getActiveInteractiveChatMock.mockResolvedValue({ active: false })
   runInteractiveDirectorMock.mockReset()
   runInteractiveDirectorMock.mockResolvedValue(directorStatus('running', { completed_docs: 1 }))
   sendInteractiveMessageMock.mockReset()
+  streamActiveInteractiveChatMock.mockReset()
   updateInteractiveTurnNarrativeMock.mockReset()
   useSkillCommandsMock.mockReset()
   useSkillCommandsMock.mockReturnValue([])
@@ -509,6 +516,80 @@ describe('StoryStage composer', () => {
 })
 
 describe('StoryStage streaming rendering', () => {
+	it('opens only one recovery subscription during the React Strict Mode effect probe', async () => {
+		const stream = controllableInteractiveStream()
+		getActiveInteractiveChatMock.mockResolvedValue({
+			active: true,
+			status: 'running',
+			task_id: 'task-1',
+			story_id: 'story-1',
+			branch_id: 'main',
+			message: '检查石门',
+		})
+		streamActiveInteractiveChatMock.mockResolvedValue(stream.readable)
+
+		try {
+			render(<StrictMode><StoryStageHarness /></StrictMode>)
+			await waitFor(() => expect(streamActiveInteractiveChatMock).toHaveBeenCalledTimes(1))
+			expect(getActiveInteractiveChatMock).toHaveBeenCalledTimes(1)
+		} finally {
+			stream.close()
+		}
+	})
+
+	it('reconnects to the active story stream after refresh without resubmitting the player message', async () => {
+		const stream = controllableInteractiveStream()
+		const handleDone = vi.fn().mockResolvedValue(undefined)
+		getActiveInteractiveChatMock.mockResolvedValue({
+			active: true,
+			status: 'running',
+			task_id: 'task-1',
+			story_id: 'story-1',
+			branch_id: 'main',
+			message: '推开石门',
+		})
+		streamActiveInteractiveChatMock.mockResolvedValue(stream.readable)
+
+		try {
+			render(<PersistedTurnHarness onDone={handleDone} />)
+
+			await waitFor(() => {
+				expect(getActiveInteractiveChatMock).toHaveBeenCalledWith('story-1', 'main')
+				expect(streamActiveInteractiveChatMock).toHaveBeenCalledWith({
+					storyId: 'story-1',
+					branchId: 'main',
+					taskId: 'task-1',
+					signal: expect.any(AbortSignal),
+				})
+			})
+			expect(screen.getByText('推开石门')).toBeInTheDocument()
+			expect(sendInteractiveMessageMock).not.toHaveBeenCalled()
+
+			await act(async () => {
+				stream.enqueue({ event: 'thinking', data: JSON.stringify({ content: '正在回忆石门后的布局。' }) })
+				stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '石门后亮起一盏灯。' }) })
+				await Promise.resolve()
+			})
+			expect(await screen.findByText('正在回忆石门后的布局。')).toBeInTheDocument()
+			await waitFor(() => expect(screen.getByText('石门后亮起一盏灯。')).toBeInTheDocument())
+
+			const persisted = persistedTurnEvent()
+			persisted.turn.user = '推开石门'
+			persisted.turn.narrative = '石门后亮起一盏灯。'
+			await act(async () => {
+				stream.enqueue({ event: 'interactive_turn_persisted', data: JSON.stringify(persisted) })
+				stream.enqueue({ event: 'done', data: '{}' })
+				stream.close()
+				await Promise.resolve()
+			})
+
+			await waitFor(() => expect(handleDone).toHaveBeenCalledWith({ silent: true }))
+			expect(sendInteractiveMessageMock).not.toHaveBeenCalled()
+		} finally {
+			stream.close()
+		}
+	})
+
 	it('retries an unpersisted failed turn with the original player input', async () => {
 		const user = userEvent.setup()
 		const firstStream = controllableInteractiveStream()

@@ -33,7 +33,7 @@ type App struct {
 	bookMetaStore          *BookMetaStore
 	versionService         *book.VersionService
 	activeTask             *Task
-	activeInteractiveTask  *Task
+	activeInteractiveRun   *interactiveTaskRun
 	activeLoreImageTask    *Task
 	activeAutomationTasks  map[string]*Task
 	activeAutomationRuns   map[string]automationRunState

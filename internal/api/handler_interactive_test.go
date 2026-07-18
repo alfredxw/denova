@@ -689,6 +689,28 @@ func TestInteractiveChatRequiresStoryID(t *testing.T) {
 	}
 }
 
+func TestInteractiveChatRecoveryRoutesRejectMissingActiveRun(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+
+	activeResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/chat/active?story_id=story-1&branch=main", nil)
+	if activeResp.Code != http.StatusOK {
+		t.Fatalf("active chat status = %d body=%s", activeResp.Code, activeResp.Body.String())
+	}
+	var active struct {
+		Active bool `json:"active"`
+	}
+	decodeResponse(t, activeResp.Body.Bytes(), &active)
+	if active.Active {
+		t.Fatalf("chat should not be active: %s", activeResp.Body.String())
+	}
+
+	streamResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/chat/stream?story_id=story-1&branch=main", nil)
+	if streamResp.Code != http.StatusNotFound {
+		t.Fatalf("missing stream status = %d body=%s", streamResp.Code, streamResp.Body.String())
+	}
+}
+
 func waitForDirectorStatusAPI(t *testing.T, server *Server, storyID, status string) interactive.DirectorPlanStatus {
 	t.Helper()
 	ticker := time.NewTicker(5 * time.Millisecond)

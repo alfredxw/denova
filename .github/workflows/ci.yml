@@ -56,3 +56,20 @@ jobs:
 
       - name: Build distribution
         run: ./scripts/build.sh
+
+  windows-workspace-change:
+    name: Windows workspace change regression
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Initialize a workspace change store
+        run: go test ./internal/workspacechange -run '^TestNewServiceInitializesWorkspaceChangeStoreOnWindows$' -count=1

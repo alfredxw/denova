@@ -750,9 +750,9 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 		log.Printf("[interactive-agent-task] 未选择 workspace，无法启动任务")
 		return nil
 	}
-	if a.activeInteractiveTask != nil && a.activeInteractiveTask.Status() == TaskRunning {
-		log.Printf("[interactive-agent-task] replace running task id=%s", a.activeInteractiveTask.ID())
-		a.activeInteractiveTask.Abort()
+	if a.activeInteractiveRun != nil && a.activeInteractiveRun.task != nil && a.activeInteractiveRun.task.Status() == TaskRunning {
+		log.Printf("[interactive-agent-task] replace running task id=%s", a.activeInteractiveRun.task.ID())
+		a.activeInteractiveRun.task.Abort()
 	}
 
 	store := a.interactive
@@ -876,9 +876,15 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 		log.Printf("[interactive-agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})
 
-	a.mu.Lock()
-	a.activeInteractiveTask = task
-	a.mu.Unlock()
+	if !s.bindActiveInteractiveTask(task, InteractiveTaskInfo{
+		Workspace:            workspace,
+		StoryID:              storyID,
+		BranchID:             storyCtx.Snapshot.BranchID,
+		Message:              message,
+		RegenerateFromTurnID: rewindTurnID,
+	}) {
+		log.Printf("[interactive-agent-task] skip active task binding after workspace changed id=%s workspace=%s story_id=%s branch_id=%s", task.ID(), workspace, storyID, storyCtx.Snapshot.BranchID)
+	}
 
 	return task
 }
@@ -1284,10 +1290,8 @@ func (a *App) ActiveInteractiveTask() *Task {
 }
 
 func (s *InteractiveAppService) ActiveInteractiveTask() *Task {
-	a := s.app
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.activeInteractiveTask
+	task, _ := s.ActiveInteractiveTaskFor("", "")
+	return task
 }
 
 // AbortInteractiveTask 终止当前游戏模式活跃任务。
@@ -1296,10 +1300,7 @@ func (a *App) AbortInteractiveTask() {
 }
 
 func (s *InteractiveAppService) AbortInteractiveTask() {
-	a := s.app
-	a.mu.RLock()
-	task := a.activeInteractiveTask
-	a.mu.RUnlock()
+	task, _ := s.ActiveInteractiveTaskFor("", "")
 	if task != nil {
 		task.Abort()
 	}

@@ -6,33 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
-
-- 顶部当前书名升级为带封面缩略图的快捷切换器；桌面与手机端都可在不离开当前页面、不改变写作/游戏模式的前提下直接切换书籍，并保留书籍管理入口与键盘菜单交互。
-- The current-book title is now a cover-aware quick switcher on desktop and mobile. It changes books without leaving the current page or changing Writing/Game mode, while retaining keyboard menu navigation and a bookshelf-management shortcut.
-
 ### Changed
 
-- Beta 不兼容：游戏正文 Agent 原有的 `submit_actor_state_patches` 与 `submit_choices` 合并为单一 `submit_interactive_turn` 工具；状态变化改用结构化的 `actor_id`、`field_id`、可选 `subpath` 与 `template_id`，Agent 不再自行拼接 JSON Pointer。后端仍独立验收并保留 `state_changes` / `choices`，单项失败只需按 `retry_modules` 重试；旧工具名仅保留用于读取历史展示事件。
-- Beta breaking: Game Agent's `submit_actor_state_patches` and `submit_choices` tools are replaced by one `submit_interactive_turn` tool. State changes now use structured `actor_id`, `field_id`, optional `subpath`, and `template_id` fields instead of model-authored JSON Pointers. The backend still accepts and retains `state_changes` and `choices` independently, so only `retry_modules` need resubmission; legacy tool names remain readable only in historical display events.
-- 游戏正文 Agent 的 Actor State 上下文由重复注入 raw schema 改为有界 Markdown 状态手册：从有效 schema 与当前分支重放状态生成精确 ID、当前值、类型约束、`description`、`update_instruction`、动态 choice 数量和参数示例；Director 规划上下文仍保留结构化 schema 真源。
-- Game Agent's duplicated raw Actor State schema is replaced by a bounded Markdown state handbook generated from the effective schema and replayed branch state. It includes exact IDs, current values, type constraints, `description`, `update_instruction`, dynamic choice counts, and parameter examples, while Director planning retains the structured schema source of truth.
-- 书籍管理与标题快捷切换器统一使用持久化排序：默认按最近打开时间排列，也可切换到手动排序并拖拽保存顺序；快捷切换入口从顶栏中间移到左侧模式切换旁，并与模式控件对齐。
-- Book Management and the title quick switcher now share one persisted order: recently opened first by default, with an optional manual drag order. The switcher moves from the top-bar center to the left beside the mode switch and matches its control sizing.
-- 资料库正文编辑器改为单一所见即所得 Markdown 编辑器（与章节正文同一 TipTap 引擎），替换此前的「预览 / Raw」切换；目录搜索关键词现在在渲染后的正文中直接高亮并定位到首个匹配，搜索时也可以直接编辑，简介字段保持原文本框搜索高亮不变。
-- The lore content editor is now a single WYSIWYG Markdown editor (the same TipTap engine as chapter editing), replacing the previous Preview/Raw toggle. Directory search keywords are highlighted directly in the rendered content with a jump to the first match, and editing stays available while searching; the brief field keeps its plain-text search highlight.
-
-### Removed
-
-- 移除误放在仓库根目录、仅用于一次性书籍切换器验收的 `design-qa.md`；对应实现仍由自动化测试和正式变更记录覆盖。
-- Removed the one-off `design-qa.md` book-switcher verification artifact from the repository root; automated tests and the formal changelog continue to cover the implementation.
+- 自动化左侧任务目录支持按项目独立展开或折叠；折叠后仍保留运行中数量和任务数量，全局任务组使用同一交互。
+- The Automations task catalog can expand or collapse each project independently while keeping running and task counts visible; the global task group follows the same interaction.
 
 ### Fixed
 
-- 旧故事或尚未冻结 schema 的运行时不再把内置初始 Actor 显示为空：事件回放完成后只在缺失时投影 schema 初始角色，不改写历史 JSONL，也不覆盖已有状态或旧字段迁移。互动 Trace 现在区分工具传输成功与领域 `accepted` / `rejected` / `pending`，并记录诊断数与待重试模块；首段正文同时使用故事目标字数推导的 completion 上限，降低超长回合挤占状态提交的概率。
-- Legacy stories and runtimes whose schema is not yet frozen no longer expose an empty built-in Actor set. Schema-defined initial Actors are projected only when absent after event replay, without rewriting JSONL history or overriding existing state and legacy field migrations. Interactive traces now separate transport success from domain `accepted` / `rejected` / `pending`, including diagnostic counts and retry modules, while the first narrative uses a story-target-derived completion ceiling to reduce overlong turns crowding out state submission.
-- 游戏模式正文之后的 thinking 与工具调用（含提交结果、重试循环）不再逐张卡片交叉展示，统一折叠为一个可展开的分组；写作、自动化、导演台等所有使用 trace 折叠的区域行为一致。
-- In Game Mode, thinking and tool calls after the narrative (including submission results and retry loops) no longer render as interleaved individual cards; they collapse into a single expandable trace group. Writing, Automations, Director Desk, and all other trace-collapsing surfaces behave consistently.
+- 游戏模式现在会在刷新页面后重新连接当前故事与分支的活动 Agent 任务，回放本轮玩家输入、思考、工具调用和流式正文，并在持久化确认后继续合并同一回合。
+- Game Mode now reconnects to the active Agent task for the current story and branch after a page refresh, replaying the player action, reasoning, tool calls, and streamed prose before merging the same turn on persistence confirmation.
+- Windows 新建或切换书籍时不再因工作区变更存储对 `.denova` 目录执行不受支持的同步而失败；账本、内容 blob 和作品文件仍保留完整的文件级持久化同步。
+- Creating or switching books on Windows no longer fails when workspace-change storage encounters unsupported directory synchronization under `.denova`; ledger, content blob, and manuscript files retain full file-level durability synchronization.
 
 ## [v0.3.0] - 2026-07-18
 
@@ -40,136 +24,66 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 #### 中文
 
-- Beta 不兼容提醒：审阅反馈改为按可信账本来源分组的数组；文件编辑工具改用单文件批量协议并隐藏 revision；后台 Shell 暂不再支持。
-- 写作模式新增持久化 Change Review 与正文评论，可审阅累计 Diff、添加可信评论、将意见交给 Agent，并跨重启 Undo/Redo。
-- 新的工作区变更账本、内容寻址存储、跨文件 WAL、精确 revision 和工作区租约共同保护保存、恢复与并发切换。
-- 游戏模式支持直接修正已保存的 AI 回复，并以全屏导演台和状态感知侧栏集中管理规划、事件、角色与世界状态。
-- 资料库、方案预设和 Skills 统一资源目录体验；设置作用域、模型快捷选择与自动化模板流程同步简化。
+- Beta 不兼容提醒：审阅反馈、Agent 文件编辑和游戏回合提交协议均有调整；后台 Shell 暂不再支持，常规设置统一改为用户级。
+- 写作模式新增持久化 Change Review 与正文评论，可审阅累计 Diff、把可信意见交给 Agent，并跨重启 Undo/Redo。
+- 游戏模式支持修正已保存的 AI 回复，并以全屏导演台、状态感知侧栏和结构化回合提交提升创作与游玩体验。
+- 书籍切换、资料库、方案预设、Skills、模型选择和自动化创建流程统一简化，桌面与移动端导航更稳定。
+- 工作区变更账本、原子持久化、崩溃恢复和工作区租约共同保护 Agent 修改、编辑器保存、审阅与版本恢复。
 
 #### English
 
-- Beta breaking changes: review feedback is now an array grouped by trusted ledger source; file edits use a single-file batch contract without exposed revisions; background Shell is no longer supported.
-- Writing Mode adds durable Change Review and document comments, with cumulative diffs, trusted feedback for the Agent, and restart-safe undo/redo.
-- A workspace-change ledger, content-addressed storage, cross-file WAL, exact revisions, and workspace leases protect saves, restores, and concurrent workspace switches.
-- Game Mode can edit saved AI replies and centralizes plans, events, actors, and world state in a full-screen Director Desk with a state-aware sidebar.
-- Lore, Presets, and Skills share a consistent resource directory, while settings scope, model shortcuts, and automation templates are simpler.
+- Beta breaking changes affect review feedback, Agent file editing, and Game turn submission; background Shell is no longer supported, and common settings are now user-scoped.
+- Writing Mode adds durable Change Review and document comments with cumulative diffs, trusted Agent feedback, and restart-safe undo/redo.
+- Game Mode can correct saved AI replies and combines a full-screen Director Desk, a state-aware sidebar, and structured turn submission.
+- Book switching, Lore, Presets, Skills, model selection, and automation creation now share simpler, more consistent desktop and mobile flows.
+- A workspace-change ledger, atomic persistence, crash recovery, and workspace leases protect Agent changes, editor saves, reviews, and version restores.
 
 ### Added
 
-- 资料库正文编辑器新增「预览 / Raw」切换，可直接查看 Markdown 渲染效果，与 Skills 编辑器一致；Skills 列表新增搜索框与可折叠的 scope 分组，并补充加载骨架。
-- The lore content editor gains a Preview/Raw toggle that renders Markdown inline, matching the Skills editor; the Skills list gains a search box, collapsible scope groups, and a loading skeleton.
-- 游戏模式的已持久化 AI 回复新增手动编辑入口，与复制、互动图像按钮位于同一操作行；可在独立编辑器中修正文案而不重新生成回合，也不会改动既有状态、选项、图像或后续剧情。保存使用旧正文做冲突保护，并在修正内容已进入上下文压缩时自动使旧摘要失效，确保后续 Agent 使用新正文。
-- Persisted AI replies in Game Mode now have a manual edit action beside Copy and Interactive Image. A dedicated editor can correct prose without regenerating the turn or changing settled state, choices, images, or later story turns. Saves use the previous prose for conflict protection and invalidate a stale context checkpoint when it already covered the edited turn, ensuring future Agent turns use the corrected text.
-- 写作页新增作者自用的正文评论层：正文始终直接编辑，可通过文本选区或右侧与底层文本块首行对齐的圆角矩形 `+` 添加评论；视觉换行不会把同一段拆成多条评论行。评论提交后正文只保留下划线，点击对应原文才会在其下方展开评论，并支持原位编辑、取消或删除。待处理评论会自动堆叠到创作 Agent 输入框上方，随下一条用户消息一次性发送；只有消息持久化成功后才从正文移除，发送失败会原样恢复。
-- The writing page now includes an author-only document-comment layer while keeping the manuscript directly editable. Comments can start from a text selection or a rounded-rectangle `+` aligned to the first visual line of the underlying text block, so wrapped paragraphs remain one commentable source line. After submission, only an underline remains until the anchored text is clicked to expand the thread directly below it. Comments support in-place editing, cancellation, and deletion. Pending comments automatically stack above the Writing Agent composer and are sent once with the next user message; they disappear only after that message is durable and are restored unchanged on send failure.
-- 正文审阅评论使用带 revision、UTF-8 字节区间和有界上下文的锚点，持久化到工作区私有 append-only review ledger；服务端根据当前文件重新投影可信引用，歧义或过期锚点不会被静默引用。Nova/Git 版本快照与恢复会排除并保护 `.denova/reviews` 和旧版 `.nova/reviews`。
-- Document review comments use revision-bound UTF-8 byte anchors with bounded context and persist in a private append-only workspace review ledger. The server reprojects trusted references against current files and refuses ambiguous or stale anchors instead of silently quoting them. Nova/Git snapshots and restores exclude and protect `.denova/reviews` and legacy `.nova/reviews`.
-- 写作模式新增持久化 Change Review：Agent 每轮写入会在对应对话末尾形成变更摘要卡；Review 在中间编辑区使用 Monaco 展示累计 Diff，默认 Unified、可切 Split，并支持自适应文件导航、可编辑或删除的 UTF-8 inline comments，以及跨重启保留的 Undo/Redo。
-- Writing Mode adds durable Change Review. Each Agent run ends with an in-conversation change summary, while the central editor uses Monaco for a cumulative diff (Unified by default, with Split available), adaptive file navigation, editable/deletable UTF-8 inline comments, and restart-safe undo/redo.
-- 审阅评论可统一引用到创作 Agent 输入框；服务端只接受 thread/comment IDs 并从当前工作区账本解析可信上下文。后续 Agent run 继承同一 Review Thread，新的修改持续叠加到累计 Diff，同时保留每轮独立的 Undo 边界。
-- Review comments can be attached together above the Writing Agent composer. The server accepts only thread/comment IDs and resolves trusted context from the active workspace ledger; follow-up Agent runs remain in the same Review Thread and accumulate into the diff while retaining independent per-run Undo boundaries.
-- 新增 workspace change 事件账本与内容寻址 blob：正文不内联进 JSONL 或模型上下文；SHA-256 revision、预写事件、原子 rename、`fsync` 与启动恢复共同保护作品内容。
-- Added a workspace-change event ledger with content-addressed blobs. Manuscript text is not inlined into JSONL or model context; SHA-256 revisions, prepared events, atomic rename, `fsync`, and startup recovery protect workspace content.
-- 跨文件 Review、Undo 与 Redo 新增 group operation WAL：全部路径的 before/after blob 与最终投影会在首次写入前持久化，崩溃后可确定性继续；外部分叉进入显式 conflict，不被自动覆盖。
-- Cross-file Review, Undo, and Redo now use a group-operation WAL. Every path's before/after blobs and final projection are durable before the first write, allowing deterministic crash recovery while preserving externally diverged content as an explicit conflict.
+- 写作模式新增 Change Review：每轮 Agent 修改都会生成摘要卡，可查看累计或单轮的多文件 Unified / Split Diff、添加行内评论，并执行可跨重启保留的 Undo / Redo。
+- Writing Mode adds Change Review: every Agent edit run produces a summary card with cumulative or per-run multi-file Unified / Split diffs, inline comments, and restart-safe undo/redo.
+- 正文编辑器新增持久化评论，可从文本选区或行级入口创建、原位编辑和删除；待处理评论会随下一条用户消息作为可信引用交给创作 Agent，发送失败时自动恢复。
+- The manuscript editor adds durable comments from text selections or line actions, with in-place editing and deletion. Pending comments become trusted references for the next Agent message and are restored if sending fails.
+- 游戏模式新增已保存 AI 回复的手动修正，以及覆盖主舞台的全屏导演台；规划、事件、规则审计和执行过程集中展示，角色与世界变化保留在状态感知侧栏。
+- Game Mode adds manual correction of saved AI replies and a full-screen Director Desk over the story stage, centralizing plans, events, rule audits, and execution while actor and world changes remain visible in a state-aware sidebar.
+- 顶部书名升级为带封面的书籍快捷切换器，桌面和移动端都可在不离开当前页面、不切换写作/游戏模式的前提下换书；书籍管理与快捷切换共享最近打开或手动拖拽排序。
+- The top-bar title becomes a cover-aware book switcher on desktop and mobile. It changes books without leaving the page or changing Writing/Game mode, and shares recent or manual drag ordering with Book Management.
+- 新增持久化工作区变更账本，为 Agent 修改保存内容寻址快照和跨文件操作记录；原子写入、启动恢复和显式冲突共同保护 Review、Undo / Redo 与外部编辑。
+- A durable workspace-change ledger records content-addressed Agent edits and cross-file operations; atomic writes, startup recovery, and explicit conflicts protect Review, undo/redo, and external edits.
 
 ### Changed
 
-- 工作区不再自动补种“续写章节”和“自动 Review”两条停用任务；自动化读取保持只读，缺少任务文件时直接返回空目录。两个预设改为新建自动化时显式选择的双语模板，只有用户保存后才创建独立任务。升级时会清理从未编辑、启用或运行过的旧默认种子，保留所有有用户使用痕迹的任务。
-- Workspaces no longer auto-seed disabled Continue Writing and Automatic Review tasks, and automation reads stay read-only by returning an empty catalog when no task file exists. The two presets are now bilingual, explicitly selected creation templates that become independent tasks only after the user saves. Upgrades remove untouched legacy seeds while preserving every task with evidence of editing, enabling, or execution.
-- 资料库、方案预设、Skills 三个配置页统一为同一套资源目录组件：搜索、置顶条目、分组折叠、计数与组内新建行为一致；方案预设目录新增一键展开/收起全部，写作/游戏模式切换时会记住各模式上次选中的资源，不再无感知丢失当前选中。
-- The Library, Presets, and Skills pages now share one resource-directory component with consistent search, pinned entries, collapsible counted groups, and per-group create actions. The presets directory adds expand/collapse-all and remembers the last selected resource per usage mode when switching between Writing and Game modes instead of silently losing the selection.
-- 资料库打开时默认选中第一个资料条目而不是配置管理 Agent 对话；目录新增加载骨架与加载失败重试，不再静默吞错；全库为空时显示引导空态，可直接新建第一个条目；新建资料条目的默认名称现在跟随界面语言。
-- The library now opens on the first lore entry instead of the config Agent chat. The directory shows a loading skeleton and an error-with-retry state instead of failing silently, and an onboarding empty state with a create action appears when the library is empty. Default names of new lore entries now follow the UI language.
-- 删除 Skill、恢复内置 Skill、放弃未保存修改、删除空剧情线等确认操作统一改为应用内确认弹窗，不再使用浏览器原生 confirm；弹窗支持异步执行与失败内联报错。Skills 的新建/导入/配置表单改用统一输入组件，表单草稿不再跨面板切换保留。
-- Destructive confirmations (delete/restore Skill, discard unsaved changes, delete empty branch) now use an in-app confirm dialog with async execution and inline errors instead of the native browser confirm. Skill create/import/config forms use the shared input components, and form drafts no longer persist across panel switches.
-- 正文评论线程改为逐条独立展开：提交新评论不再折叠其他评论，线程头会明确显示评论数量并提供「折叠」，编辑与删除也改为图标加文字；折叠后的原文高亮支持 Tab 聚焦及 Enter/空格展开，并暴露完整无障碍状态。Diff Review 从 UI、API 与领域模型彻底移除「解决 / 重新打开」，评论只保留编辑和删除，活动评论计数统一为 `comment_count`。正文评论与 Diff 评论现在可同时进入下一轮 Agent，跨账本提交会先整体预检，并在任一落盘失败时反向恢复已消费评论。Beta 不兼容：聊天请求的 `review_feedback` 从单对象改为按可信账本来源分组的数组，`resolved` 与 `unresolved_comment_count` 字段及 resolve 路由不再存在；旧账本中的 `resolved` 标记不会迁移，历史记录会按普通未删除评论读取。
-- Document comment threads now expand independently, so submitting a new comment no longer collapses other threads. Thread headers show an explicit comment count and Collapse action, while Edit and Delete use labeled controls; collapsed source highlights are focusable with Tab, toggle with Enter or Space, and expose complete disclosure semantics. Diff Review removes Resolve/Reopen from the UI, API, and domain model, keeps only Edit/Delete, and reports active comments through `comment_count`. Document and Diff comments can accompany the same Agent turn; cross-ledger submission preflights the full batch and restores already-consumed comments in reverse order if any ledger append fails. Beta breaking: chat request `review_feedback` changes from one object to an array grouped by trusted ledger source, while the `resolved` and `unresolved_comment_count` fields and resolve route no longer exist; legacy `resolved` markers are not migrated, so historical entries are read as ordinary non-deleted comments.
-- 设置页移除低频的「用户配置 / 当前工作区」双层 tab，通用、写作与游戏设置统一保存为用户配置；原工作区配置文件中的常规字段继续保留但不再参与生效值合并。工作区级定制收窄为 Agents 页明确提供的提示词、工具、Skill、上下文与 SubAgent 覆盖，模型选择与创作 Agent 的快捷偏好也统一为用户级。
-- Settings no longer splits common preferences across User and Current Workspace tabs. Common, Writing Mode, and Game Mode settings now persist uniformly at user scope, while legacy general fields remain on disk without affecting effective settings. Workspace customization is narrowed to the prompt, tool, Skill, context, and SubAgent overrides explicitly exposed by the Agents page; model selection and Writing Agent quick preferences are user-scoped as well.
-- 写作与游戏 Agent 输入区的模型选择器改为无边框的“模型文字 + 下拉箭头”，移除重复图标和芯片外观；同一菜单现在可快速设置跟随配置、低、中或高 reasoning effort，当前强度会以弱化文字紧跟模型名展示。
-- The shared Writing and Game Agent model selector is now a borderless model label with a dropdown chevron, removing the redundant icon and pill treatment. The same menu can quickly choose inherited, low, medium, or high reasoning effort, with the active effort shown as subdued text beside the model name.
-- Unified Review 改为 Monaco 单模型投影：整页只保留一列带增删颜色的行号，每个可见源码行在悬停时都提供行级 `+` 评论入口；变更竖线位于行号左侧，替换内容提供 word diff。Unified 与 Split 共享审阅主题，深色行背景分别为 `rgb(31,49,36)` 和 `rgb(60,31,27)`。轮次选择器改用组件库菜单，默认展示累计变更，也可切换任一历史 Agent 轮次。
-- Unified Review now uses a single Monaco model projection with one color-coded line-number gutter and a hover `+` comment action on every visible source line. Change bars sit to the left of line numbers, and replacements retain word-level diffs. Unified and Split share a review theme whose dark line backgrounds are `rgb(31,49,36)` and `rgb(60,31,27)`. The shared run menu defaults to cumulative changes and can open any historical Agent run.
-- 中央 Change Review 改为单页多文件滚动：每个文件可独立折叠，工具栏可一键折叠/展开全部 Diff；右侧文件导航只负责跳转并可手动收起，所选 Agent 轮次不再随滚动文件隐式切换。编辑器工具栏不再重复提供独立 Review 入口，统一从 Agent 变更摘要卡进入。
-- Central Change Review now uses one multi-file scroll surface. Each file can be collapsed independently, the toolbar can collapse or expand every diff, and the manually hideable right navigator only jumps between files without changing the selected Agent run. The redundant editor-toolbar Review entry has been removed; review opens from the Agent change summary.
-- Beta 不兼容：`edit_file` 改为单文件批量协议 `{file_path, edits[]}`；`read_file` 不再向 Agent 暴露 revision，`edit_file` / `write_file` 也不再接受 `base_revision` 或 `missing`。写工具会在调用时内部获取当前 revision，并由变更服务在提交前复核；所有编辑项基于同一初始快照验证，缺失、歧义或重叠会使整批零写入失败。不同文件仍可在同一 Agent 轮次分别调用并聚合结果。
-- Beta breaking: `edit_file` now uses the single-file batch contract `{file_path, edits[]}`. `read_file` no longer exposes revisions to the Agent, and `edit_file` / `write_file` no longer accept `base_revision` or `missing`. Write tools capture the current revision internally at call time and the change service revalidates it before commit; every edit is validated against one initial snapshot, and missing, ambiguous, or overlapping edits reject the whole batch without writing. Independent files can still be edited in the same Agent turn with aggregated results.
-- Agent 同轮工具调度改为工作区级读写门：已证明只读的文件、资料和搜索工具继续并行，`edit_file`、`write_file`、Shell 与未知副作用工具独占执行；流式工具持锁到结果流真正结束。
-- Same-turn Agent scheduling now uses a workspace-scoped read/write gate: proven read-only file, lore, and search tools remain parallel, while `edit_file`, `write_file`, Shell, and unknown-effect tools execute exclusively; streaming tools retain the lease until their result stream actually finishes.
-- 编辑器文件 revision 从 `mtime:size` 改为精确内容的 `sha256:` 哈希；本地自动保存通过同一变更服务做 CAS 与原子写，但继续使用 TipTap 本地历史，不为每次输入制造 Review 记录。
-- Editor file revisions now use exact `sha256:` content hashes instead of `mtime:size`. Local autosaves use the same change service for CAS and atomic writes while retaining TipTap-local history without creating a Review entry for every keystroke.
-- 工作区、工具调度门与变更服务统一使用规范真实路径；通过符号链接别名打开同一作品不再产生多把锁或多份 ledger identity。
-- Workspace runtime, tool gates, and change services now share one canonical real-path identity, so opening the same work through a symbolic-link alias cannot create separate locks or ledger identities.
-- 文件树创建/删除/重命名/复制/移动、版本恢复与手动版本快照现在和编辑器、Agent、Review 共用同一工作区租约；Agent Shell 固定前台运行并绑定工作区 cwd，无法安全协调生命周期的后台 Shell 模式在本 Beta 中不再支持。
-- File-tree create/delete/rename/copy/move, version restore, and manual version snapshots now share the workspace lease used by the editor, Agent, and Review. Agent Shell runs in the foreground with the workspace as cwd; background Shell mode, whose lifetime cannot be coordinated safely, is no longer supported in this beta.
-- 自动化运行占用、触发状态、定时进度与 Inbox 去重现在按 canonical workspace 隔离；同一工作区的 mutation 检查会串行合并，App 关闭时取消并等待后台 evaluator，JSON Store 通过路径锁和原子持久化避免并发丢更新与半写文件。
-- Automation run claims, trigger state, schedule progress, and Inbox deduplication are now isolated by canonical workspace. Mutation checks for one workspace are serialized and coalesced, App shutdown cancels and drains evaluators, and path-locked atomic Store writes prevent concurrent lost updates and torn JSON.
-- 游戏模式右侧导演控制台重新分层：导演幕后内容（节拍表编辑、事件编排、执行过程、规则审计、状态结构、上下文分析）整体迁入覆盖主舞台的「导演台」全屏视图，宽屏双栏布局，左栏为编辑器级宽度的节拍表文档，右栏为运行状态、事件、审计与执行过程；导演台与故事绑定，不占用一级菜单——入口融在右侧栏「导演控制台」标题行右侧（导演运行中/失败状态一体可见），一级菜单仍停留在「剧情」，header 可一键返回剧情；防剧透揭示在进入时确认一次并按故事持久化。右侧栏为状态感知栏：header 信息条默认展示当前故事导演、每轮目标字数（点击后行内直接编辑，不再弹浮层）与主舞台状态展示；内容区分「变化 / 角色 / 世界」三个 tab 并带数量徽标，选择按故事持久化——变化列表默认前 3 条可展开，角色为紧凑行（行头内联最多两个数值 meter、点击行内展开，默认展开主角，取代原 ActorTabs），世界与场景独立成区。
-- The game-mode right panel is re-layered: all director backstage content (beat-sheet editing, event orchestration, run process, rule audit, state schema, context analysis) moves into a full-screen Director view that overlays the story stage with a wide two-column layout — an editor-width beat sheet on the left and run status, events, audit, and process on the right. Bound to the story rather than the global menu, its entry lives inside the right panel's Director Console title row (with running/failed states surfaced on the same button) while the Story menu stays active, and a header button returns to the story; spoiler reveal still confirms once and persists per story. The right panel is a state-awareness column: its header always shows the current story director, reply target length (now edited inline in place, no popover), and stage-state display preference as one-click controls instead of hiding them behind a settings toggle. Content is organized into Changes / Actors / World tabs with count badges, persisted per story — turn changes truncate to three with expand-all, every actor is a compact row with up to two inline numeric meters and in-place expansion (protagonist expanded by default, replacing the old actor tabs), and world facts get their own section.
-- 从源码运行的环境要求现在明确列出 `ripgrep`，避免 Agent 因缺少项目约定的快速搜索工具而跳过规则与调用点检查。
-- Source-build prerequisites now explicitly list `ripgrep`, preventing Agent workflows from skipping rule and call-site checks when the expected search tool is unavailable.
+- Beta 不兼容：`edit_file` 改为单文件批量协议 `{file_path, edits[]}`，文件 revision 不再暴露给 Agent；写入由服务端以精确内容 revision 原子校验。同轮只读工具仍可并行，写工具与前台 Shell 按工作区串行；后台 Shell 模式不再支持。
+- Beta breaking: `edit_file` now uses the single-file batch contract `{file_path, edits[]}`, and file revisions are no longer exposed to the Agent. The server atomically validates writes against exact content revisions. Read-only tools may still run in parallel, while write tools and foreground Shell are serialized per workspace; background Shell is no longer supported.
+- Beta 不兼容：聊天请求的 `review_feedback` 改为按可信账本来源分组的数组；Diff 与正文评论统一只保留编辑和删除，不再提供 Resolve / Reopen，旧 `resolved` 标记按普通未删除评论读取。
+- Beta breaking: chat request `review_feedback` is now an array grouped by trusted ledger source. Diff and document comments keep Edit and Delete only; Resolve/Reopen is removed, and legacy `resolved` markers are read as ordinary non-deleted comments.
+- Beta 不兼容：游戏正文 Agent 使用统一的 `submit_interactive_turn` 提交状态变化与选项，以结构化 Actor / 字段 ID 替代模型生成的 JSON Pointer；各模块独立验收并只重试失败部分，旧工具名仅用于历史展示。
+- Beta breaking: the Game Agent now submits state changes and choices through `submit_interactive_turn`, using structured actor and field IDs instead of model-authored JSON Pointers. Modules are accepted independently so only failed parts retry; legacy tool names remain for historical display only.
+- 游戏正文 Agent 改用从有效 schema 与当前分支状态生成的有界状态手册，明确当前值、类型约束和更新规则；正文后的 thinking、工具调用与重试统一折叠为可展开 Trace，写作、自动化和导演台保持一致。
+- The Game Agent now receives a bounded state handbook generated from the effective schema and current branch state, including current values, constraints, and update rules. Thinking, tool calls, and retries after prose collapse into one expandable trace consistently across Writing, Automations, and the Director Desk.
+- 资料库、方案预设和 Skills 统一资源目录的搜索、分组、计数、新建与空状态；资料库正文使用与章节一致的所见即所得 Markdown 编辑器，并可在渲染内容中直接搜索、高亮和继续编辑。
+- Lore, Presets, and Skills now share consistent resource-directory search, grouping, counts, creation, and empty states. Lore content uses the same WYSIWYG Markdown editor as chapters, with search and highlighting directly in editable rendered content.
+- 自动化不再为新工作区预置停用任务；“续写章节”和“自动 Review”改为新建时主动选择的双语模板。升级仅清理从未使用的旧种子，并保留所有已有使用痕迹的任务。
+- New workspaces no longer receive disabled automation tasks. Continue Writing and Automatic Review are now bilingual templates selected explicitly during creation; upgrades remove only untouched legacy seeds and preserve every task with usage history.
+- 设置页移除“用户配置 / 当前工作区”双层切换，通用、写作和游戏偏好统一保存为用户配置；工作区只保留 Agents 页明确提供的定制。写作与游戏输入区的模型菜单同时提供 reasoning effort 快捷选择。
+- Settings removes the User/Current Workspace split: common, Writing, and Game preferences are user-scoped, while workspace customization is limited to options explicitly exposed on the Agents page. The shared model menu also provides quick reasoning-effort selection.
+- 删除 Skill、恢复内置 Skill、放弃未保存修改和删除空剧情线等操作统一使用支持异步错误提示的应用内确认弹窗；从源码运行的依赖现在明确包含 `ripgrep`。
+- Destructive actions such as deleting or restoring Skills, discarding drafts, and deleting empty branches now use in-app confirmation with asynchronous error feedback. Source builds now explicitly require `ripgrep`.
 
 ### Fixed
 
-- 修复写作模式发送消息后输入框内容（如 initPrompt 预填提示词）未被清空的问题：TipTap 编辑器现在使用内置 `clearContent` 命令，确保 AI 回复期间禁用的输入框也能可靠清空。
-- Fixed the Writing Mode composer retaining sent content such as an initPrompt prefill. The TipTap editor now uses its built-in `clearContent` command so the disabled composer is cleared reliably while the AI responds.
-- 作品信息中的作者字段现在可以清空，书架上的空作者状态使用中英文本地化文案展示。
-- The author field in book metadata can now be cleared, and bookshelf cards show a localized empty-author label.
-- 编辑器保存、Reject 与 Undo/Redo 的自动化触发现在直接复用当前工作区租约捕获的不可变快照，避免工作区切换等待写锁时发生重入读锁死锁。
-- Automation triggers after editor saves, Reject, and Undo/Redo now reuse the immutable snapshot captured by the active workspace lease, preventing a reentrant read-lock deadlock while a workspace switch waits for the write lock.
-- Skills 编辑器工具栏在窄屏下会自适应换行并截断超长路径，「创建用户覆盖」等操作不再被屏幕右侧裁切。
-- The Skills editor toolbar now wraps adaptively and truncates long paths on narrow screens, keeping actions such as Create User Override fully visible.
-- README 中英文的 Discord 徽章与正文入口现在统一指向 Denova 社区，不再误导至其他项目。
-- The Discord badge and body links in both README languages now consistently point to the Denova community instead of another project.
-- 正文多行选区跨过两处或更多已有评论时不再卡死：重叠评论高亮会在写入 ProseMirror 前合成为互不重叠的片段，不再通过 DOM 回写修正无障碍属性；嵌套评论仍各自保留唯一的键盘展开入口，原文点击、评论定位与编辑后的锚点映射保持可用。
-- Multi-line document selections crossing two or more existing comments no longer freeze the UI. Overlapping highlights are composed into disjoint ProseMirror decorations instead of correcting accessibility attributes through DOM writeback; nested comments retain one keyboard disclosure each, while source clicks, thread alignment, and post-edit anchor mapping remain intact.
-- 游戏模式故事舞台的回合展示顺序与实际执行顺序对齐：持久化回合的展示时间线新增正文位置锚点，`submit_actor_state_patches` / `submit_choices` 提交结果工具卡片现在固定在正文之后渲染，不再被折进「思考过程」分组，回合从流式直播切换为持久化历史布局时不再有工具卡片跳变。无锚点的旧回合保持原「正文在最后」布局不变。
-- Game Mode story stage rendering now matches the real execution order: persisted turns record a narrative anchor in the display timeline, so submission tool cards (`submit_actor_state_patches` / `submit_choices`) render after the prose instead of being folded into the Thinking trace group, and live-to-persisted layout switches no longer move cards. Turns persisted before this change keep the legacy narrative-last layout.
-- 选区点击「添加评论」后浮动按钮立即消失：打开评论弹层时会折叠当前选区，被评论的原文继续由审阅下划线标出，不再出现按钮与弹层同时停留在屏幕上的情况。
-- The floating comment action now disappears as soon as Add Comment is clicked: starting a comment collapses the current selection while the review underline keeps the commented passage marked, so the button no longer lingers next to the open comment box.
-- 提交正文评论不再闪烁抖动：评论草稿与创建后的正式评论共用同一分组 key（锚点 revision + 字节区间），提交时 ProseMirror widget 宿主与 React Portal 原地复用，输入框直接变为已保存评论，不再销毁重建整个弹层。
-- Submitting a document comment no longer flickers: the draft and the persisted comment now share one group key (anchor revision + byte range), so the ProseMirror widget host and React portal are reused in place and the composer morphs into the saved comment instead of being destroyed and recreated.
-- 正文评论不再要求磁盘 Markdown 与 TipTap 序列化后的整篇文本逐字一致；跨多行选区会在确认文档语义一致后忽略编辑器尾部占位空段落，并对齐标题、列表、引用、强调、空行与 CRLF 等源码差异，再以磁盘原始 UTF-8 字节生成锚点，避免把等价格式误报为外部修改，同时仍拒绝真正的 revision 或正文冲突。
-- Document comments no longer require byte-for-byte equality between canonical Markdown and TipTap's whole-document serialization. Multi-line selections now verify semantic equivalence, ignore editor-only trailing placeholder paragraphs, align source differences in headings, lists, blockquotes, emphasis, blank lines, and CRLF, and anchor against the raw on-disk UTF-8 bytes—preventing equivalent formatting from being misreported as an external edit while still rejecting real revision or content conflicts.
-- 正文行级评论入口现在会在整个编辑器区域内按鼠标纵向位置命中对应底层文本块，右侧留白可直接显示并切换按钮，无需先经过正文；按钮固定对齐文本块首行。评论 widget 同时隔离 ProseMirror 键盘事件，编辑已有评论时可正常使用 Backspace / Delete 删除任意字符。
-- The document line-comment action now resolves the underlying text block from the pointer anywhere across the full editor surface, so the right-side whitespace can reveal and move the action directly without first crossing the manuscript. The action stays aligned to the block's first visual line. Comment widgets also isolate ProseMirror keyboard handling so Backspace and Delete can remove any character while editing an existing comment.
-- Agent 消息虚拟列表不再把每一行误判为最后一项；变更摘要、已发送引用消息及其他相邻消息块之间稳定保留 `16px` 纵向间距，只有真实列表末项取消额外留白。
-- Agent message virtualization no longer treats every row as the final item. Change summaries, sent-reference messages, and other adjacent message blocks now retain a stable `16px` vertical gap, while only the actual final row removes trailing space.
-- 发送 Agent 消息时，文件、资料、风格、文本选区与审阅意见引用会原子地从输入区转入已发送的用户消息，并随会话持久化；发送失败会恢复原引用。审阅意见在用户消息落盘后由工作区账本批量消费，已发送的评论不再残留在 Diff 中。
-- File, lore, style, text-selection, and review-comment references now move atomically from the composer into the sent user message and persist with session history; failed submissions restore them. Once the user message is durable, referenced review comments are consumed as one workspace-ledger operation and disappear from the diff.
-- Agent 变更摘要卡的“审阅”现在携带对应变更组；即使多个修改轮次属于同一审阅线程，点击第二组或后续组也会直接打开该轮 Diff，而不是停留在累计变更或上一轮。
-- Review actions on Agent change-summary cards now carry the exact change group, so later cards in the same review thread open their own diff instead of remaining on cumulative changes or the previously selected round.
-- Review 的增删行与词级 Diff 染色不再覆盖 Monaco 选区或拦截鼠标命中；统一与并排模式现在都能在染色内容上首次拖拽、连续选择并复制文本，同时保持 Diff 背景色与词级高亮。
-- Review diff fills no longer cover Monaco selections or intercept pointer hit-testing. Colored content can now be selected and copied on the first drag and in subsequent gestures in both Unified and Split layouts without losing line or word-level diff highlighting.
-- Review 多文件滚动现在由用户手势独占：进入审阅、当前文件同步、评论高度变化、输入聚焦与 Home/End 都不会再主动定位；浏览器 scroll anchoring 已关闭，评论 textarea 使用 `preventScroll` 聚焦，含已提交评论的展开文件不会因离开视口而卸载 Monaco。只有用户点击右侧/紧凑文件导航时才执行一次文件跳转，滚动经过短评论或超长评论都保持原位置。
-- Review's multi-file scroll is now user-owned. Entering Review, active-file synchronization, comment height changes, input focus, and Home/End no longer trigger positioning; browser scroll anchoring is disabled, comment textareas focus with `preventScroll`, and expanded files with submitted comments keep Monaco mounted offscreen. A single file jump is performed only after the user selects the desktop or compact file navigator, so scrolling past short or very long comments preserves the current position.
-- Review 评论输入聚焦时不再显示浏览器默认的蓝色直角 outline；完整 Diff 使用稳定、可见的纵向滚动槽。延迟挂载的 Monaco 会先按真实宿主尺寸布局，未聚焦文件在鼠标按下阶段使用精确命中位置和 `preventScroll` 获得焦点，不再跳到首字符或带动外层自动滚动。审阅模式下项目侧栏会真正折叠到 0，避免把创作 Agent 的最小宽度从 `360px` 错误放大到约 `462px`；Agent 右栏使用面板库原生的像素宽度保持策略，拖拽实时跟手，关闭后也可从 Review 工具栏重新打开。
-- Review comment inputs no longer show the browser's default square blue focus outline, and the full Diff now has a stable, visible vertical scrollbar gutter. Lazily mounted Monaco instances are laid out from their real host size, and an unfocused file uses the exact pointer hit plus `preventScroll` during mouse-down, preventing first-character jumps and outer-page auto-scroll. Review now truly collapses the project sidebar to zero so it cannot inflate the Writing Agent minimum from `360px` to about `462px`; the Agent panel uses native pixel-preserving resizing and can be reopened from the Review toolbar after being closed.
-- Review 的新评论与已提交评论现在共用同一套紧凑卡片正文样式，编辑时直接原位输入，不再嵌套额外圆角文本框；Monaco 会跟随卡片真实高度重新布局，避免覆盖后续 Diff。不同锚点可同时保留独立草稿，打开一个输入框不再禁用其他行的评论入口或已提交评论操作。
-- New and submitted Review comments now share the same compact card body treatment, with in-place editing instead of a nested rounded textarea. Monaco tracks the card's actual height so it cannot cover later diff lines. Independent anchors can keep simultaneous drafts, and opening one input no longer disables other line-comment entries or submitted-comment actions.
-- Review 的周期性数据刷新或父级重渲染不再先移除再重建语义未变化的 Monaco comment view zone；行内评论输入框会保持挂载、焦点、草稿内容与滚动位置，消除间歇性抖动和输入中断。
-- Periodic Review refreshes and parent re-renders no longer remove and recreate semantically unchanged Monaco comment view zones. Inline comment inputs retain their mount, focus, draft text, and scroll position, eliminating intermittent layout jumps and interrupted typing.
-- Review 文件高度现在随 Monaco 实际换行内容与 inline comment 区域增长，由外层单一滚动页从首文件连续滚动到末文件；评论新建或编辑期间会冻结当前 Review 快照，后台工作区事件仍可刷新缓存，但不再打断输入，草稿结束后才采用新 revision。
-- Review file height now follows Monaco's wrapped content and inline-comment zones so the outer page scrolls continuously from the first file through the last. Creating or editing a comment freezes the displayed review snapshot: background workspace events may refresh the cache, but cannot interrupt input, and the new revision is adopted only after the draft closes.
-- Review 聚焦中间工作面时会保留用户已调整的创作 Agent 面板像素宽度，退出后恢复原可拖拽布局；空间不足时文件导航改为组件库下拉列表，不再挤成横向文件条。
-- Focusing the central Review surface now preserves the user-sized Writing Agent panel width and restores the normal resizable layout on exit. When space is constrained, file navigation becomes a shared dropdown instead of a compressed horizontal strip.
-- Review 文件跳转不再卸载并替换唯一的 Monaco 实例；每个文件使用稳定的模型身份，邻近视口或被跳转到的 Diff 会按需初始化，评论草稿离开视口后仍会保留，修复首次跳转空白和高亮丢失。即使 Agent 正在追加变更或存在未提交的 inline comment 草稿，Review 右上角关闭按钮也始终可用。
-- Review file jumps no longer replace one shared Monaco instance. Each file has stable model identity, diffs initialize near the viewport or immediately on jump, and comment drafts stay mounted offscreen, preventing blank first jumps and lost highlighting. The Review close button also remains available while the Agent is appending changes or an inline-comment draft is open.
-- Agent 变更到达时，干净编辑器会建立新的 Undo 历史边界；存在未保存草稿时不再静默覆盖，而是保留本地内容并提供显式“保留本地 / 使用工作区版本”冲突处理。
-- When Agent changes arrive, a clean editor establishes a new undo-history boundary. Unsaved drafts are no longer overwritten silently; local content is preserved behind an explicit keep-local/use-workspace conflict decision.
-- Nova/Git 版本快照与恢复现在排除并保护 `.denova/changes` 和旧版 `.nova/changes`，避免作品回滚同时回滚或删除审阅、评论和撤销历史。
-- Nova/Git snapshots and restores now exclude and protect `.denova/changes` and legacy `.nova/changes`, preventing manuscript restoration from rewinding or deleting review, comment, and undo history.
-- 编辑器自动保存现在绑定读取时的工作区身份并取消旧工作区队列；跨工作区响应、过期 SSE 与乱序刷新不会再覆盖当前草稿或错误刷新同名相对路径。
-- Editor autosave is now bound to the workspace identity captured at read time and cancels stale workspace queues; cross-workspace responses, stale SSE events, and out-of-order refreshes can no longer overwrite the active draft or refresh a same-named relative path in the wrong workspace.
-- 当文件可见更新但目录或 journal 尚未完成持久化时，现在返回可重试的 `durability_pending`；后续写入先恢复未完成操作，且仍会重新校验 revision。
-- Visible mutations whose directory or journal durability is not yet finalized now return retryable `durability_pending`; subsequent writes recover pending work first and still revalidate the current revision.
-- Reject 在文件 head 已变化时只通过唯一、完全相等的 diff 区段映射原 hunk；原位置消失但其他位置存在相同文本时会安全报冲突。未知 ledger 事件也会阻止回放，历史正文仅按需从 blob hydrate，固定大小工具回执不会再随批量 edit 数量膨胀。
-- Reject now maps recorded hunks only through unique exact diff regions after the file head changes, safely conflicting when identical text survives only elsewhere. Unknown ledger events also stop replay, historical bodies hydrate from blobs only on demand, and fixed-size tool receipts no longer grow with batch edit count.
-- 编辑器保存、Reject、Undo/Redo 在完整提交后的自动化触发绑定不可变工作区运行时快照；即使用户随后切换作品，异步检查与自动执行也不会漂移到新工作区。
-- Post-commit automation triggers from editor saves, Reject, and Undo/Redo are bound to immutable workspace runtime snapshots, so asynchronous checks and auto-runs cannot drift into a newly selected work.
-- Review 回执现在只包含本次决定真正修改的路径；自动化触发、SSE 失效与前端刷新不再错误复用整个 group 的历史路径，选择性 Reject 也只重载实际受影响文件。
-- Review receipts now contain only paths actually changed by the current decision. Automation triggers, SSE invalidation, and frontend refresh no longer reuse a group's historical path set, and selective Reject reloads only affected files.
+- Change Review 的多文件滚动、文件跳转、Diff 选区、评论草稿、面板尺寸和延迟加载更加稳定；后台刷新不再打断输入，窄屏导航和 Skills 工具栏也能自适应展示。
+- Change Review now keeps multi-file scrolling, file jumps, diff selection, comment drafts, panel sizing, and lazy loading stable. Background refreshes no longer interrupt input, and compact navigation and the Skills toolbar adapt to narrow screens.
+- 正文评论修复多行重叠选区卡死、等价 Markdown 被误判为外部修改、提交闪烁、键盘编辑失效和行级入口难以命中等问题；评论锚点仍会拒绝真正的正文或 revision 冲突。
+- Document comments no longer freeze on overlapping multi-line selections, misclassify equivalent Markdown as an external edit, flicker on submit, lose keyboard editing, or make line actions difficult to target; real content and revision conflicts are still rejected.
+- Agent 修改到达时不再静默覆盖未保存草稿；编辑器自动保存、Review、Undo / Redo、版本恢复和自动化触发均绑定正确工作区，避免切换作品、乱序事件或符号链接别名导致内容串写、死锁或错误刷新。
+- Agent changes no longer silently overwrite unsaved drafts. Editor autosave, Review, undo/redo, version restore, and automation triggers stay bound to the correct workspace, preventing cross-workspace writes, deadlocks, and stale refreshes during switches, out-of-order events, or symbolic-link aliases.
+- 旧故事或尚未冻结 schema 的运行时会在缺失时恢复内置初始 Actor；游戏回合提交明确显示 accepted / rejected / pending 与待重试模块，并按故事目标字数约束首段生成，降低正文过长挤占状态提交的概率。
+- Legacy stories and runtimes without a frozen schema restore built-in initial Actors when missing. Game turn traces distinguish accepted, rejected, and pending submissions with retry modules, while story target length bounds the opening generation so long prose is less likely to crowd out state submission.
+- 修复写作模式发送消息后输入框未清空，以及作品作者字段无法清空的问题；书架会用本地化文案展示空作者。
+- Fixed the Writing composer retaining sent content and book metadata refusing to clear the author field; bookshelf cards now show a localized empty-author label.
+- 文件、资料、风格、选区与审阅意见引用会随已发送消息原子持久化，失败时恢复；已成功提交给 Agent 的评论不会继续残留在 Diff 中。
+- File, lore, style, selection, and review references now persist atomically with sent messages and recover on failure; comments successfully submitted to the Agent no longer remain in the diff.
 
 ## [v0.2.0] - 2026-07-15
 

@@ -17,19 +17,20 @@ import { AgentTracePanel } from '@/components/Chat/AgentTracePanel'
 import { AgentSubAgentSessionPanel } from '@/components/Chat/AgentSubAgentSessionPanel'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from '@/components/Chat/composer-token-input'
 import { buildContextCompactionMessage, createContextCompactionMessageId, upsertContextCompactionMessage } from '@/components/Chat/context-compaction-message'
-import { subAgentSessionKey } from '@/components/Chat/subagent-session'
 import { MOBILE_NAVIGATION_OPEN_EVENT } from '@/components/layout/workspace-mobile-layout'
 import type { ChatMessage, ContextAnalysis, InteractiveImage, InteractiveImageError, PublicRuleRoll } from '@/lib/api'
 import { chatMessagesToAgentUIMessages } from '@/lib/agent-legacy-message'
 import { agentSubAgentSessionKey, agentViewToRenderMessage, type AgentMessageView } from '@/lib/agent-message-view'
 import { fetchSettings } from '@/features/settings/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveImage, removeInteractiveContextCompaction, runInteractiveDirector, sendInteractiveMessage, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
+import { abortInteractiveChat, analyzeInteractiveContext, compactInteractiveContext, generateInteractiveImage, removeInteractiveContextCompaction, runInteractiveDirector, sendInteractiveMessage, streamActiveInteractiveChat, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
+import type { ActiveInteractiveChat } from '../api'
 import { createInteractiveNarrativeFilter, sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import type { ImagePreset, InteractiveTurnPersistedEvent, RuleResolution, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TokenUsageEvent, TurnEvent } from '../types'
+import type { ImagePreset, InteractiveSSEEvent, InteractiveTurnPersistedEvent, RuleResolution, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TokenUsageEvent, TurnEvent } from '../types'
+import { abortStoryRunStream, clearStoryRunAbortController, registerStoryRunAbortController, useActiveStoryRunRecovery } from '../use-active-story-run'
 import { StoryPicker } from './StoryPicker'
 import { NewStorySetupPanel } from './NewStorySetupPanel'
 import { StoryOpeningPanel } from './StoryOpeningPanel'
@@ -41,6 +42,7 @@ import { DEFAULT_STORY_STATE_DISPLAY, type StoryStateDisplayPreference } from '.
 import { StoryStateLedger } from './story-state/StoryStateLedger'
 import { buildStoryStateModel } from './story-state/model'
 import { EditInteractiveReplyDialog } from './EditInteractiveReplyDialog'
+import { appendBufferedLiveMessage, bindLiveToolEventKeys, findMappedLiveToolId, findToolMessageIndexForPayload, liveToolEventKeys, promoteMessageTarget, promoteMessageTargets, streamMetadataFromPayload, type BufferedLiveMessage } from './story-stage/live-stream-messages'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -81,17 +83,16 @@ const DEFAULT_READING_FONT_SIZE = 18
 const DEFAULT_STAGE_LINE_HEIGHT = 1.78
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
 const DEFAULT_IMAGE_INTERVAL_TURNS = 3
-const stageAbortControllers = new Map<string, AbortController>()
-
-type BufferedLiveMessage = {
-  role: 'assistant' | 'thinking'
-  content: string
-  metadata: Partial<ChatMessage>
-}
 
 type LiveTurnRenderKeys = {
   user: string
   assistant: string
+}
+
+type InteractiveStreamOutcome = {
+  finishedNormally: boolean
+  receivedPersistedTurn: boolean
+  persistedSnapshot?: Snapshot
 }
 
 export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
@@ -580,6 +581,15 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     setHotChoicesExpanded(false)
   }, [snapshotKey])
 
+  useActiveStoryRunRecovery({
+    stageKey,
+    storyId,
+    branchId,
+    isStreaming: () => Boolean(useInteractiveStore.getState().storyStageRuns[stageKey]?.streaming),
+    onResume: resumeActiveStoryRun,
+    onDetach: () => updateStageRun({ streaming: false, activityContent: '' }),
+  })
+
   const send = async (override?: { message?: string; rewindTurnId?: string }) => {
     const sourceMessage = override?.message ?? input
     const message = sourceMessage.trim()
@@ -598,6 +608,48 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     setShowSkillCommands(false)
     setSkillCommandQuery(null)
     setActiveSkillCommandIndex(0)
+    prepareLiveStoryRun(message, nextRewindTurnId)
+    const abortController = new AbortController()
+    registerStoryRunAbortController(stageKey, abortController)
+    try {
+      const stream = await sendInteractiveMessage({
+        mode: 'story',
+        story_id: storyId,
+        branch: branchId,
+        message,
+        style_scenes: mergedStyleScenes,
+        regenerate_from_turn_id: nextRewindTurnId || undefined,
+        signal: abortController.signal,
+      })
+      await completeInteractiveStream(await consumeInteractiveStream(stream))
+    } catch (error) {
+      handleInteractiveStreamError(error)
+    } finally {
+      finishLiveStoryRun(abortController)
+    }
+  }
+
+  async function resumeActiveStoryRun(active: ActiveInteractiveChat, abortController: AbortController, isDisposed: () => boolean) {
+    const message = active.message?.trim() || ''
+    if (!message) return
+    prepareLiveStoryRun(message, active.regenerate_from_turn_id)
+    try {
+      const stream = await streamActiveInteractiveChat({
+        storyId,
+        branchId,
+        taskId: active.task_id,
+        signal: abortController.signal,
+      })
+      if (isDisposed()) return
+      await completeInteractiveStream(await consumeInteractiveStream(stream))
+    } catch (error) {
+      if (!isDisposed()) handleInteractiveStreamError(error)
+    } finally {
+      finishLiveStoryRun(abortController)
+    }
+  }
+
+  function prepareLiveStoryRun(message: string, nextRewindTurnId?: string) {
     setStageActivityContent(t('storyStage.activity.thinking'))
     flushLiveMessageBuffer()
     liveToolKeyToMessageIdRef.current = {}
@@ -609,187 +661,175 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     updateStageRun({ rewindTurnId: nextRewindTurnId || undefined, retryMessage: message })
     liveStageKeyRef.current = stageKey
     setStageStreaming(true)
-    const abortController = new AbortController()
-    stageAbortControllers.set(stageKey, abortController)
+  }
+
+  async function consumeInteractiveStream(stream: ReadableStream<InteractiveSSEEvent>): Promise<InteractiveStreamOutcome> {
     const narrativeFilter = createInteractiveNarrativeFilter()
     let finishedNormally = false
     let streamFailed = false
     let receivedPersistedTurn = false
-    let persistedSnapshot: Snapshot | undefined = undefined
-    try {
-      const stream = await sendInteractiveMessage({
-        mode: 'story',
-        story_id: storyId,
-        branch: branchId,
-        message,
-        style_scenes: mergedStyleScenes,
-        regenerate_from_turn_id: nextRewindTurnId || undefined,
-        signal: abortController.signal,
-      })
-      const reader = stream.getReader()
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        switch (value.event) {
-          case 'chunk': {
-            const data = JSON.parse(value.data)
-            if (data.subagent) {
-              appendAssistantMessage(data.content || '', streamMetadataFromPayload(data))
-              setStageActivityContent('')
-              break
-            }
-            const { text, reset } = narrativeFilter.push(data.content || '')
-            if (reset) resetAssistantMessage()
-            if (text) {
-              collapseNonNarrativeMessages()
-              appendAssistantMessage(text)
-            }
+    let persistedSnapshot: Snapshot | undefined
+    const reader = stream.getReader()
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      switch (value.event) {
+        case 'chunk': {
+          const data = JSON.parse(value.data)
+          if (data.subagent) {
+            appendAssistantMessage(data.content || '', streamMetadataFromPayload(data))
             setStageActivityContent('')
             break
           }
-          case 'thinking': {
-            const data = JSON.parse(value.data)
-            appendThinkingMessage(data.content || '', streamMetadataFromPayload(data))
-            setStageActivityContent(t('storyStage.activity.thinking'))
-            break
+          const { text, reset } = narrativeFilter.push(data.content || '')
+          if (reset) resetAssistantMessage()
+          if (text) {
+            collapseNonNarrativeMessages()
+            appendAssistantMessage(text)
           }
-          case 'interactive_content_reclassified': {
-            const data = JSON.parse(value.data)
-            resetAssistantMessage()
-            appendThinkingMessage(data.content || '', streamMetadataFromPayload(data))
-            setStageActivityContent(t('storyStage.activity.thinking'))
-            break
+          setStageActivityContent('')
+          break
+        }
+        case 'thinking': {
+          const data = JSON.parse(value.data)
+          appendThinkingMessage(data.content || '', streamMetadataFromPayload(data))
+          setStageActivityContent(t('storyStage.activity.thinking'))
+          break
+        }
+        case 'interactive_content_reclassified': {
+          const data = JSON.parse(value.data)
+          resetAssistantMessage()
+          appendThinkingMessage(data.content || '', streamMetadataFromPayload(data))
+          setStageActivityContent(t('storyStage.activity.thinking'))
+          break
+        }
+        case 'tool_call': {
+          const data = JSON.parse(value.data)
+          flushLiveMessageBuffer()
+          appendToolCallMessage(data)
+          setStageActivityContent(t('storyStage.activity.processingTool', {
+            name: data.name || t('storyStage.activity.toolCall'),
+          }))
+          break
+        }
+        case 'tool_args_delta': {
+          const data = JSON.parse(value.data)
+          flushLiveMessageBuffer()
+          appendToolArgsDelta(data)
+          break
+        }
+        case 'tool_result': {
+          const data = JSON.parse(value.data)
+          flushLiveMessageBuffer()
+          updateToolCallMessage(data, 'success', data.content || '')
+          appendLiveRuleRollMessage(data)
+          setStageActivityContent('')
+          break
+        }
+        case 'context_compaction': {
+          const data = JSON.parse(value.data)
+          flushLiveMessageBuffer()
+          appendContextCompactionMessage(data)
+          setStageActivityContent('')
+          if (data.status === 'completed' || data.status === 'failed') currentCompactionMessageIdRef.current = null
+          break
+        }
+        case 'token_usage': {
+          const data = JSON.parse(value.data)
+          flushLiveMessageBuffer()
+          setStageLiveMessages((prev) => upsertTokenUsageMessage(prev, buildTokenUsageMessage(data)))
+          break
+        }
+        case 'interactive_turn_persisted': {
+          const data = JSON.parse(value.data) as InteractiveTurnPersistedEvent
+          flushLiveMessageBuffer()
+          receivedPersistedTurn = true
+          if (data.turn?.id && currentLiveTurnRenderKeysRef.current) {
+            turnRenderKeysRef.current[data.turn.id] = currentLiveTurnRenderKeysRef.current
           }
-          case 'tool_call': {
-            const data = JSON.parse(value.data)
-            flushLiveMessageBuffer()
-            appendToolCallMessage(data)
-            setStageActivityContent(
-              t('storyStage.activity.processingTool', {
-                name: data.name || t('storyStage.activity.toolCall'),
-              }),
-            )
-            break
-          }
-          case 'tool_args_delta': {
-            const data = JSON.parse(value.data)
-            flushLiveMessageBuffer()
-            appendToolArgsDelta(data)
-            break
-          }
-          case 'tool_result': {
-            const data = JSON.parse(value.data)
-            flushLiveMessageBuffer()
-            updateToolCallMessage(data, 'success', data.content || '')
-            appendLiveRuleRollMessage(data)
-            setStageActivityContent('')
-            break
-          }
-          case 'context_compaction': {
-            const data = JSON.parse(value.data)
-            flushLiveMessageBuffer()
-            appendContextCompactionMessage(data)
-            setStageActivityContent('')
-            if (data.status === 'completed' || data.status === 'failed') {
-              currentCompactionMessageIdRef.current = null
-            }
-            break
-          }
-          case 'token_usage': {
-            const data = JSON.parse(value.data)
-            flushLiveMessageBuffer()
-            setStageLiveMessages((prev) => upsertTokenUsageMessage(prev, buildTokenUsageMessage(data)))
-            break
-          }
-          case 'interactive_turn_persisted': {
-            const data = JSON.parse(value.data) as InteractiveTurnPersistedEvent
-            flushLiveMessageBuffer()
-            receivedPersistedTurn = true
-            if (data.turn?.id && currentLiveTurnRenderKeysRef.current) {
-              turnRenderKeysRef.current[data.turn.id] = currentLiveTurnRenderKeysRef.current
-            }
-            persistedSnapshot = onTurnPersisted(data) || persistedSnapshot
-            setStageActivityContent('')
-            break
-          }
-          case 'error': {
-            const data = JSON.parse(value.data)
-            flushLiveMessageBuffer()
-            finishLiveMessages()
-            setStageActivityContent('')
+          persistedSnapshot = onTurnPersisted(data) || persistedSnapshot
+          setStageActivityContent('')
+          break
+        }
+        case 'error': {
+          const data = JSON.parse(value.data)
+          flushLiveMessageBuffer()
+          finishLiveMessages()
+          setStageActivityContent('')
+          streamFailed = true
+          setStageLiveMessages((prev) => [
+            ...prev,
+            { role: 'error', content: data.message || data.error || t('storyStage.activity.unknownError') },
+          ])
+          break
+        }
+        case 'done': {
+          const { text, reset } = narrativeFilter.flush()
+          if (reset) resetAssistantMessage()
+          collapseNonNarrativeMessages()
+          if (text) appendAssistantMessage(text)
+          finishLiveMessages()
+          if (!receivedPersistedTurn && !streamFailed) {
             streamFailed = true
-            setStageLiveMessages((prev) => [
-              ...prev,
-              {
-                role: 'error',
-                content: data.message || data.error || t('storyStage.activity.unknownError'),
-              },
-            ])
-            break
+            setStageLiveMessages([{ role: 'error', content: t('storyStage.activity.persistenceMissing') }])
+          } else if (!streamFailed) {
+            finishedNormally = true
           }
-          case 'done': {
-            const { text, reset } = narrativeFilter.flush()
-            if (reset) resetAssistantMessage()
-            collapseNonNarrativeMessages()
-            if (text) appendAssistantMessage(text)
-            finishLiveMessages()
-            if (!receivedPersistedTurn && !streamFailed) {
-              streamFailed = true
-              setStageLiveMessages([{
-                role: 'error',
-                content: t('storyStage.activity.persistenceMissing'),
-              }])
-            } else if (!streamFailed) {
-              finishedNormally = true
-            }
-            setStageActivityContent('')
-            break
-          }
-          case 'aborted': {
-            const { text, reset } = narrativeFilter.flush()
-            if (reset) resetAssistantMessage()
-            collapseNonNarrativeMessages()
-            if (text) appendAssistantMessage(text)
-            finishLiveMessages()
-            setStageLiveMessages((prev) => [
-              ...prev,
-              { role: 'error', content: t('storyStage.activity.aborted') },
-            ])
-            setStageActivityContent('')
-            break
-          }
+          setStageActivityContent('')
+          break
+        }
+        case 'aborted': {
+          const { text, reset } = narrativeFilter.flush()
+          if (reset) resetAssistantMessage()
+          collapseNonNarrativeMessages()
+          if (text) appendAssistantMessage(text)
+          finishLiveMessages()
+          setStageLiveMessages((prev) => [
+            ...prev,
+            { role: 'error', content: t('storyStage.activity.aborted') },
+          ])
+          setStageActivityContent('')
+          break
         }
       }
-      let nextSnapshot: Snapshot | void = persistedSnapshot
-      if (persistedSnapshot) {
-        void Promise.resolve(onDone({ silent: true })).catch((error) => {
-          console.warn('[interactive-stage] 静默刷新互动快照失败', error)
-        })
-      } else {
-        nextSnapshot = await onDone(receivedPersistedTurn ? { silent: true } : undefined)
-      }
-      if (finishedNormally) await maybeGenerateAutoImage(nextSnapshot)
-    } catch (error) {
-      flushLiveMessageBuffer()
-      finishLiveMessages()
-      setStageActivityContent('')
-      setStageLiveMessages((prev) => [
-        ...prev,
-        {
-          role: 'error',
-          content: isAbortError(error)
-            ? t('storyStage.activity.aborted')
-            : error instanceof Error ? error.message : t('storyStage.activity.runFailed'),
-        },
-      ])
-    } finally {
-      setStageStreaming(false)
-      stageAbortControllers.delete(stageKey)
-      liveToolKeyToMessageIdRef.current = {}
-      currentCompactionMessageIdRef.current = null
-      currentLiveTurnRenderKeysRef.current = null
-      setStageActivityContent('')
     }
+    return { finishedNormally, receivedPersistedTurn, persistedSnapshot }
+  }
+
+  async function completeInteractiveStream({ finishedNormally, receivedPersistedTurn, persistedSnapshot }: InteractiveStreamOutcome) {
+    let nextSnapshot: Snapshot | void = persistedSnapshot
+    if (persistedSnapshot) {
+      void Promise.resolve(onDone({ silent: true })).catch((error) => {
+        console.warn('[interactive-stage] 静默刷新互动快照失败', error)
+      })
+    } else {
+      nextSnapshot = await onDone(receivedPersistedTurn ? { silent: true } : undefined)
+    }
+    if (finishedNormally) await maybeGenerateAutoImage(nextSnapshot)
+  }
+
+  function handleInteractiveStreamError(error: unknown) {
+    flushLiveMessageBuffer()
+    finishLiveMessages()
+    setStageActivityContent('')
+    setStageLiveMessages((prev) => [
+      ...prev,
+      {
+        role: 'error',
+        content: isAbortError(error)
+          ? t('storyStage.activity.aborted')
+          : error instanceof Error ? error.message : t('storyStage.activity.runFailed'),
+      },
+    ])
+  }
+
+  function finishLiveStoryRun(abortController: AbortController) {
+    if (!clearStoryRunAbortController(stageKey, abortController)) return
+    setStageStreaming(false)
+    liveToolKeyToMessageIdRef.current = {}
+    currentCompactionMessageIdRef.current = null
+    currentLiveTurnRenderKeysRef.current = null
+    setStageActivityContent('')
   }
 
   const compactCurrentContext = async () => {
@@ -867,7 +907,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   const stop = () => {
     void abortInteractiveChat()
-    stageAbortControllers.get(stageKey)?.abort()
+    abortStoryRunStream(stageKey)
     setStageActivityContent(t('storyStage.activity.aborting'))
   }
 
@@ -1721,42 +1761,6 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     })
   }
 
-  function findToolMessageIndex(messages: ChatMessage[], id?: string, name?: string) {
-    if (id) {
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const message = messages[i]
-        if (message.role === 'tool_call' && message.id === id) return i
-      }
-      return -1
-    }
-    if (name) {
-      let match = -1
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const message = messages[i]
-        if (message.role === 'tool_call' && message.name === name) {
-          if (match >= 0) return -1
-          match = i
-        }
-      }
-      return match
-    }
-    if (!id && !name) {
-      for (let i = messages.length - 1; i >= 0; i--) {
-        if (messages[i].role === 'tool_call') return i
-      }
-    }
-    return -1
-  }
-
-  function findToolMessageIndexForPayload(messages: ChatMessage[], payload: Record<string, unknown> & { id?: string; name?: string }, keyToMessageId: Record<string, string>) {
-    const toolKeys = liveToolEventKeys(payload)
-    const mappedId = findMappedLiveToolId(toolKeys, keyToMessageId)
-    if (mappedId) return findToolMessageIndex(messages, mappedId, undefined)
-    if (payload.id) return findToolMessageIndex(messages, payload.id, undefined)
-    if (toolKeys.length > 0) return -1
-    return findToolMessageIndex(messages, undefined, payload.name)
-  }
-
   function appendContextCompactionMessage(data: Record<string, unknown>) {
     const compactionId = currentCompactionMessageIdRef.current || createContextCompactionMessageId(compactionIdCounterRef)
     currentCompactionMessageIdRef.current = compactionId
@@ -1799,101 +1803,6 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
       ),
     )
   }
-}
-
-function appendBufferedLiveMessage(messages: ChatMessage[], { role, content, metadata }: BufferedLiveMessage) {
-  if (!content) return messages
-  const last = messages[messages.length - 1]
-  if (role === 'assistant' && last?.role === 'assistant' && last.streaming && sameLiveMessageSource(last, metadata)) {
-    return [...messages.slice(0, -1), { ...last, streaming_target_content: `${last.streaming_target_content || last.content || ''}${content}` }]
-  }
-  if (role === 'thinking' && last?.role === 'thinking' && sameLiveMessageSource(last, metadata)) {
-    return [
-      ...messages.slice(0, -1),
-      {
-        ...last,
-        content: `${last.content || ''}${content}`,
-        streaming: true,
-      },
-    ]
-  }
-  if (role === 'assistant') {
-    return [...messages, { role, content: '', streaming_target_content: content, streaming: true, ...metadata }]
-  }
-  return [...messages, { role, content, streaming: true, ...metadata }]
-}
-
-function promoteMessageTargets(messages: ChatMessage[]) {
-  let changed = false
-  const nextMessages = messages.map((message) => {
-    if (message.streaming_target_content === undefined) return message
-    changed = true
-    return promoteMessageTarget(message)
-  })
-  return changed ? nextMessages : messages
-}
-
-function promoteMessageTarget(message: ChatMessage): ChatMessage {
-  if (message.streaming_target_content === undefined) return message
-  const { streaming_target_content, ...rest } = message
-  return { ...rest, content: streaming_target_content }
-}
-
-function streamMetadataFromPayload(payload: Record<string, unknown>): Partial<ChatMessage> {
-  const runPath = Array.isArray(payload.run_path) ? payload.run_path.filter((item): item is string => typeof item === 'string') : undefined
-  return {
-    run_id: typeof payload.run_id === 'string' ? payload.run_id : undefined,
-    agent_name: typeof payload.agent_name === 'string' ? payload.agent_name : undefined,
-    root_agent_name: typeof payload.root_agent_name === 'string' ? payload.root_agent_name : undefined,
-    run_path: runPath,
-    subagent: readStreamBool(payload.subagent),
-    subagent_session_id: typeof payload.subagent_session_id === 'string' ? payload.subagent_session_id : undefined,
-    subagent_type: typeof payload.subagent_type === 'string' ? payload.subagent_type : undefined,
-  }
-}
-
-function sameLiveMessageSource(message: ChatMessage, metadata: Partial<ChatMessage>) {
-  if (Boolean(message.subagent) !== Boolean(metadata.subagent)) return false
-  if (message.subagent || metadata.subagent) {
-    return subAgentSessionKey(message) === subAgentSessionKey(metadata)
-  }
-  return true
-}
-
-function liveToolEventKeys(payload: Record<string, unknown>) {
-  const metadata = streamMetadataFromPayload(payload)
-  const path = metadata.run_path?.join('/') || ''
-  const source = `${metadata.subagent ? 'sub' : 'root'}:${metadata.subagent_session_id || ''}:${metadata.agent_name || ''}:${path}`
-  const keys: string[] = []
-  if (typeof payload.id === 'string' && payload.id) keys.push(`${source}:id:${payload.id}`)
-  if (typeof payload.index === 'number') keys.push(`${source}:index:${payload.index}`)
-  if (typeof payload.index === 'string' && payload.index) keys.push(`${source}:index:${payload.index}`)
-  return keys
-}
-
-function findMappedLiveToolId(keys: string[], keyToMessageId: Record<string, string>) {
-  for (const key of keys) {
-    if (keyToMessageId[key]) return keyToMessageId[key]
-  }
-  return undefined
-}
-
-function bindLiveToolEventKeys(keys: string[], keyToMessageId: Record<string, string>, toolId: string) {
-  if (keys.length === 0) return keyToMessageId
-  let changed = false
-  const next = { ...keyToMessageId }
-  for (const key of keys) {
-    if (next[key] === toolId) continue
-    next[key] = toolId
-    changed = true
-  }
-  return changed ? next : keyToMessageId
-}
-
-function readStreamBool(value: unknown) {
-  if (typeof value === 'boolean') return value
-  if (typeof value === 'string') return value === 'true'
-  return false
 }
 
 function InteractiveImageSettingsMenu({ story, disabled, onChange }: { story?: StorySummary; disabled?: boolean; onChange?: (settings: StoryImageSettings) => void | Promise<void> }) {

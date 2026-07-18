@@ -367,6 +367,34 @@ export async function sendInteractiveMessage(input: { mode: 'story' | 'setting';
   return parseSSEStream(res.body)
 }
 
+export interface ActiveInteractiveChat {
+  active: boolean
+  status?: 'running' | 'done' | 'aborted' | 'error'
+  task_id?: string
+  story_id?: string
+  branch_id?: string
+  message?: string
+  regenerate_from_turn_id?: string
+}
+
+export function getActiveInteractiveChat(storyId: string, branchId?: string): Promise<ActiveInteractiveChat> {
+  return requestJSON(`/api/interactive/chat/active?${interactiveChatQuery(storyId, branchId)}`)
+}
+
+export async function streamActiveInteractiveChat(input: { storyId: string; branchId?: string; taskId?: string; signal?: AbortSignal }): Promise<ReadableStream<InteractiveSSEEvent>> {
+  const res = await fetchAPI(`/api/interactive/chat/stream?${interactiveChatQuery(input.storyId, input.branchId, input.taskId)}`, { signal: input.signal })
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.body) throw new Error('No response body')
+  return parseSSEStream(res.body)
+}
+
+function interactiveChatQuery(storyId: string, branchId?: string, taskId?: string) {
+  const params = new URLSearchParams({ story_id: storyId })
+  if (branchId) params.set('branch', branchId)
+  if (taskId) params.set('task_id', taskId)
+  return params.toString()
+}
+
 export function analyzeInteractiveContext(input: { mode: 'story'; story_id: string; branch?: string; message: string; style_scenes?: string[] }): Promise<ContextAnalysis> {
   return requestJSON('/api/interactive/chat/context-analysis', {
     method: 'POST',

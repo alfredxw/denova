@@ -2,7 +2,6 @@ package workspacechange
 
 import (
 	"errors"
-	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -52,10 +51,7 @@ func syncRootDirectory(root *os.Root, rel string) error {
 		return err
 	}
 	defer file.Close()
-	if err := file.Sync(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-		return err
-	}
-	return nil
+	return syncDirectory(file)
 }
 
 // mkdirAllRootDurable creates a private directory chain beneath an opened

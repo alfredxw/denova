@@ -36,6 +36,7 @@ const reviewTemplate = {
 
 describe('AutomationsView', () => {
   it('shows one user catalog grouped by global and every workspace', async () => {
+    const user = userEvent.setup()
     server.use(
       http.get('/api/books', () => HttpResponse.json({ books: [
         { name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
@@ -60,6 +61,17 @@ describe('AutomationsView', () => {
     expect(screen.getByText('Review B')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '工作区' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '用户' })).not.toBeInTheDocument()
+
+    const bookBGroup = screen.getByRole('button', { name: /Book B/ })
+    expect(bookBGroup).toHaveAttribute('aria-expanded', 'true')
+    await user.click(bookBGroup)
+    expect(bookBGroup).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('Review B')).not.toBeInTheDocument()
+    expect(screen.getAllByText('Review A').length).toBeGreaterThan(0)
+
+    await user.click(bookBGroup)
+    expect(bookBGroup).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('Review B')).toBeInTheDocument()
   })
 
   it('creates no task until a chosen template draft is saved', async () => {
