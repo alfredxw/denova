@@ -55,6 +55,20 @@ func TestInteractiveStoryToolMiddlewareBlocksWriteTools(t *testing.T) {
 	}
 }
 
+func TestInteractiveTurnReceiptRecordsDomainOutcomeSeparatelyFromTransport(t *testing.T) {
+	record := ToolExecutionRecord{ToolName: interactiveTurnSubmissionToolName, Status: "success"}
+	applyInteractiveTurnReceiptToExecutionRecord(&record, `{"ready":false,"module_status":{"state_changes":"rejected","choices":"accepted"},"diagnostics":[{"code":"invalid_module"}],"retry_modules":["state_changes"]}`)
+	if record.Status != "success" || record.DomainStatus != "rejected" || record.DomainDiagnosticCount != 1 || len(record.RetryModules) != 1 || record.RetryModules[0] != "state_changes" {
+		t.Fatalf("transport success should retain the rejected domain outcome: %#v", record)
+	}
+
+	accepted := ToolExecutionRecord{ToolName: interactiveTurnSubmissionToolName, Status: "success"}
+	applyInteractiveTurnReceiptToExecutionRecord(&accepted, `{"ready":true,"module_status":{"state_changes":"accepted","choices":"accepted"}}`)
+	if accepted.DomainStatus != "accepted" || accepted.DomainDiagnosticCount != 0 {
+		t.Fatalf("ready receipt should be recorded as domain accepted: %#v", accepted)
+	}
+}
+
 func TestInteractiveStoryToolMiddlewareAllowsReadTools(t *testing.T) {
 	middleware := newInteractiveStoryToolMiddleware()
 	called := false

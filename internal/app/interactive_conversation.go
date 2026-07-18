@@ -145,7 +145,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		return nil, fmt.Errorf("读取资料库 revision 失败: %w", err)
 	}
 	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, interactiveStoryRuntimeContextBytes)
-	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, interactiveStoryRuntimeContextBytes)
+	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, interactiveStoryRuntimeContextBytes, storyCtx.Meta.ChoiceCount)
 	strategyPrompt := interactive.StoryDirectorStrategyPromptMarkdown(storyDirector)
 	runtimeContext := prompts.InteractiveStoryRuntimeContext(prompts.InteractiveStoryPromptInput{
 		Title:                       storyCtx.Meta.Title,
@@ -328,7 +328,7 @@ func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, input in
 		return receipt, nil
 	}
 	stagedResult := prepared.TurnResult()
-	log.Printf("[interactive-agent] updated turn result draft story_id=%s branch_id=%s ready=%t state_updates=%d choices=%d patches_status=%s choices_status=%s diagnostics=%q", c.storyID, c.branchID, receipt.Ready, len(stagedResult.StateUpdates), len(stagedResult.Choices), receipt.ModuleStatus.ActorStatePatches, receipt.ModuleStatus.Choices, interactiveTurnSubmissionDiagnosticSummary(receipt.Diagnostics))
+	log.Printf("[interactive-agent] updated turn result draft story_id=%s branch_id=%s ready=%t state_updates=%d choices=%d state_changes_status=%s choices_status=%s diagnostics=%q", c.storyID, c.branchID, receipt.Ready, len(stagedResult.StateUpdates), len(stagedResult.Choices), receipt.ModuleStatus.StateChanges, receipt.ModuleStatus.Choices, interactiveTurnSubmissionDiagnosticSummary(receipt.Diagnostics))
 	return receipt, nil
 }
 
@@ -589,7 +589,7 @@ func (c *interactiveConversation) AppendAssistantWithMetadata(content, thinking 
 	assistantMetadata := c.assistantMetadataSnapshot()
 	turnResult := c.turnResultSnapshot()
 	if turnResult == nil {
-		return fmt.Errorf("互动回合的 actor_state_patches 或 choices 尚未完整提交，已拒绝写入不完整状态")
+		return fmt.Errorf("互动回合的 state_changes 或 choices 尚未完整提交，已拒绝写入不完整状态")
 	}
 	turn, _, err := c.store.AppendTurnWithState(c.storyID, interactive.AppendTurnWithStateRequest{
 		BranchID:             c.branchID,
@@ -910,8 +910,8 @@ func (c *interactiveConversation) displayEventsSnapshot() []interactive.DisplayE
 const interactiveNarrativeAnchorEventID = "narrative-anchor"
 
 // withInteractiveNarrativeAnchor 在持久化的展示时间线中插入正文锚点，标记正文
-// 实际流出的位置：正文在回合提交工具（submit_actor_state_patches / submit_choices）
-// 之前输出完整，因此锚点插在首个提交工具调用事件前。找不到提交工具事件时
+// 实际流出的位置：正文在 submit_interactive_turn 之前输出完整，因此锚点
+// 插在首个提交工具调用事件前。找不到提交工具事件时
 // （异常或旧数据）不插入锚点，前端按“正文在最后”的旧布局兜底；已含锚点的
 // 事件列表原样返回。
 func withInteractiveNarrativeAnchor(events []interactive.DisplayEvent) []interactive.DisplayEvent {
@@ -982,8 +982,8 @@ func interactiveTurnResultAlreadyAcceptedReceipt() interactive.TurnSubmissionRec
 	return interactive.TurnSubmissionReceipt{
 		Ready: true,
 		ModuleStatus: interactive.TurnSubmissionModuleStatus{
-			ActorStatePatches: interactive.TurnSubmissionModuleAccepted,
-			Choices:           interactive.TurnSubmissionModuleAccepted,
+			StateChanges: interactive.TurnSubmissionModuleAccepted,
+			Choices:      interactive.TurnSubmissionModuleAccepted,
 		},
 		Diagnostics: []interactive.TurnSubmissionDiagnostic{{
 			Module:    "submission",

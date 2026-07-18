@@ -192,6 +192,10 @@ export interface AgentRunTraceSummary {
   tool_errors?: number
   tool_truncated?: number
   invalid_tool_args?: number
+  tool_domain_accepted?: number
+  tool_domain_rejected?: number
+  tool_domain_pending?: number
+  tool_domain_diagnostics?: number
   llm_calls?: number
   prompt_tokens?: number
   cached_prompt_tokens?: number

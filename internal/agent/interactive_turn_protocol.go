@@ -14,13 +14,14 @@ import (
 )
 
 const (
-	interactiveActorStatePatchesToolName = "submit_actor_state_patches"
-	interactiveChoicesToolName           = "submit_choices"
-	interactiveCompletionRetryCode       = "interactive_turn_result_missing"
-	interactiveRetryDraftMaxBytes        = 16 * 1024
-	interactiveRetryFeedbackMaxBytes     = 1024
-	interactiveRetryCandidatePrefix      = "[Retained narrative candidate; source=first accepted model prose;"
-	interactiveRetryFeedbackPrefix       = "[Interactive turn protocol feedback; source=backend completion guard]"
+	interactiveTurnSubmissionToolName = "submit_interactive_turn"
+	legacyActorStatePatchesToolName   = "submit_actor_state_patches"
+	legacyInteractiveChoicesToolName  = "submit_choices"
+	interactiveCompletionRetryCode    = "interactive_turn_result_missing"
+	interactiveRetryDraftMaxBytes     = 16 * 1024
+	interactiveRetryFeedbackMaxBytes  = 1024
+	interactiveRetryCandidatePrefix   = "[Retained narrative candidate; source=first accepted model prose;"
+	interactiveRetryFeedbackPrefix    = "[Interactive turn protocol feedback; source=backend completion guard]"
 )
 
 type interactiveTurnProtocolStateKey struct{}
@@ -85,14 +86,19 @@ type interactiveCompletionRetryReason struct {
 // producing a prose candidate.
 type interactiveTurnProtocolMiddleware struct {
 	*adk.BaseChatModelAgentMiddleware
-	ready func() bool
+	ready              func() bool
+	narrativeMaxTokens int
 }
 
-func newInteractiveTurnProtocolMiddleware(ready func() bool) *interactiveTurnProtocolMiddleware {
-	return &interactiveTurnProtocolMiddleware{
+func newInteractiveTurnProtocolMiddleware(ready func() bool, narrativeMaxTokens ...int) *interactiveTurnProtocolMiddleware {
+	middleware := &interactiveTurnProtocolMiddleware{
 		BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
 		ready:                        ready,
 	}
+	if len(narrativeMaxTokens) > 0 && narrativeMaxTokens[0] > 0 {
+		middleware.narrativeMaxTokens = narrativeMaxTokens[0]
+	}
+	return middleware
 }
 
 func (m *interactiveTurnProtocolMiddleware) BeforeAgent(ctx context.Context, runCtx *adk.ChatModelAgentContext) (context.Context, *adk.ChatModelAgentContext, error) {
@@ -100,10 +106,42 @@ func (m *interactiveTurnProtocolMiddleware) BeforeAgent(ctx context.Context, run
 }
 
 func (m *interactiveTurnProtocolMiddleware) WrapModel(_ context.Context, wrapped model.BaseChatModel, _ *adk.ModelContext) (model.BaseChatModel, error) {
+	if m != nil && m.narrativeMaxTokens > 0 {
+		wrapped = &interactiveNarrativeBudgetModel{BaseChatModel: wrapped, maxTokens: m.narrativeMaxTokens}
+	}
 	if m == nil || m.ready == nil || !m.ready() {
 		return wrapped, nil
 	}
 	return &interactiveNarrativeOnlyModel{BaseChatModel: wrapped}, nil
+}
+
+// interactiveNarrativeBudgetModel applies the story-derived completion reserve
+// only while producing the first visible narrative. Structured retries keep the
+// provider/model limit so a large but valid state submission is not truncated.
+type interactiveNarrativeBudgetModel struct {
+	model.BaseChatModel
+	maxTokens int
+}
+
+func (m *interactiveNarrativeBudgetModel) Generate(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	return m.BaseChatModel.Generate(ctx, messages, interactiveNarrativeBudgetOptions(ctx, m.maxTokens, opts)...)
+}
+
+func (m *interactiveNarrativeBudgetModel) Stream(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	return m.BaseChatModel.Stream(ctx, messages, interactiveNarrativeBudgetOptions(ctx, m.maxTokens, opts)...)
+}
+
+func interactiveNarrativeBudgetOptions(ctx context.Context, maxTokens int, opts []model.Option) []model.Option {
+	state := interactiveTurnProtocolState(ctx)
+	if maxTokens <= 0 || (state != nil && state.narrativeCandidateReady.Load()) {
+		return opts
+	}
+	common := model.GetCommonOptions(&model.Options{}, opts...)
+	if common.MaxTokens != nil && *common.MaxTokens <= maxTokens {
+		return opts
+	}
+	bounded := append([]model.Option(nil), opts...)
+	return append(bounded, model.WithMaxTokens(maxTokens))
 }
 
 func (m *interactiveTurnProtocolMiddleware) AfterModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, _ *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
@@ -165,8 +203,8 @@ func newInteractiveCompletionGuard(ready func() bool) func(context.Context, *adk
 		}
 		feedback, _ := truncateUTF8Bytes(strings.Join([]string{
 			interactiveRetryFeedbackPrefix,
-			"你刚才尝试直接结束本回合，但 actor_state_patches 与 choices 尚未全部成功提交。",
-			"首个正文候选已经锁定并展示。现在只调用 retry_modules 对应的 submit_actor_state_patches 或 submit_choices；已 accepted 的模块不要重交，ready=true 后不要重复输出或改写正文。",
+			"你刚才尝试直接结束本回合，但 state_changes 与 choices 尚未全部成功提交。",
+			"首个正文候选已经锁定并展示。现在只调用 submit_interactive_turn，并只提供 retry_modules 指定的字段；已 accepted 的模块不要重交，ready=true 后不要重复输出或改写正文。",
 			"Do not finish this turn before both submission modules are accepted.",
 		}, "\n"), interactiveRetryFeedbackMaxBytes)
 		messages = append(messages, schema.UserMessage(feedback))
@@ -196,7 +234,7 @@ func interactiveOutputContainsNarrativeCandidate(message *schema.Message) bool {
 // narrative prose, so they anchor the narrative position in display events.
 func IsInteractiveTurnSubmissionTool(name string) bool {
 	switch strings.TrimSpace(name) {
-	case interactiveActorStatePatchesToolName, interactiveChoicesToolName:
+	case interactiveTurnSubmissionToolName, legacyActorStatePatchesToolName, legacyInteractiveChoicesToolName:
 		return true
 	default:
 		return false

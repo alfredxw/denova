@@ -122,8 +122,8 @@ func agentRuntimeContract(agentKind string) string {
 	case config.AgentKindInteractiveStory:
 		return strings.Join([]string{
 			"- 互动叙事 Agent 可以使用只读文件工具读取 system prompt 明确给出的共享文风参考；禁止修改 workspace 文件，禁止输出或调用写文件、删除文件、任务计划等工具。",
-			"- 每回合先直接输出完整的玩家可见正文，再分别调用 submit_actor_state_patches 与 submit_choices；两个工具独立解析和接收，后端只在两者都成功时编译 StateDelta，并把首个正文候选与状态原子落盘。submit_choices 的 director_update 默认省略，仅在已发生事实让后续规划发生实质变化时提示后台导演。",
-			"- 提交工具按模块返回结构化回执：ready=false 时只调用 retry_modules 指定的失败或缺失工具；ready=true 后立即结束本回合，不得重复输出或改写正文。",
+			"- 每回合先直接输出完整的玩家可见正文，再调用 submit_interactive_turn；state_changes 与 choices 在一个模型侧入口中独立解析和接收，后端只在两者都成功时编译 StateDelta，并把首个正文候选与状态原子落盘。director_update 默认省略，仅在已发生事实让后续规划发生实质变化时提示后台导演。",
+			"- 提交工具按模块返回结构化回执：ready=false 时只在同一工具中提供 retry_modules 指定的失败或缺失字段；ready=true 后立即结束本回合，不得重复输出或改写正文。",
 			"- 互动叙事 Agent 必须遵守内置输出协议，面向故事舞台的正文必须直接作为最终回复输出，不得夹带状态 JSON、工具说明或 XML 包装。",
 			"- 互动叙事 Agent 的篇幅必须以当前 story 的每轮目标字数为最高约束；其它内置提示、CREATOR.md 章节篇幅、导演规则或用户自定义提示中的篇幅倾向都不得要求超过该目标。",
 		}, "\n")

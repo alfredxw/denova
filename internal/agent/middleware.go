@@ -145,7 +145,7 @@ func isInteractiveStoryWriteTool(name string) bool {
 }
 
 func interactiveStoryWriteToolBlockedMessage(name string) string {
-	return fmt.Sprintf("[tool error] 游戏模式禁止使用写文件工具 %q。请不要修改 workspace 文件；先直接输出完整故事正文，再分别用 submit_actor_state_patches 与 submit_choices 提交一致的隐藏回合结果。", name)
+	return fmt.Sprintf("[tool error] 游戏模式禁止使用写文件工具 %q。请不要修改 workspace 文件；先直接输出完整故事正文，再用 submit_interactive_turn 提交一致的隐藏回合结果。", name)
 }
 
 type ToolDecision struct {
@@ -164,25 +164,28 @@ type ToolDecision struct {
 }
 
 type ToolExecutionRecord struct {
-	ToolName          string `json:"tool_name"`
-	ToolCallID        string `json:"tool_call_id,omitempty"`
-	Workspace         string `json:"workspace,omitempty"`
-	Status            string `json:"status"`
-	Capability        string `json:"capability,omitempty"`
-	OriginalBytes     int    `json:"original_bytes,omitempty"`
-	ReturnedBytes     int    `json:"returned_bytes,omitempty"`
-	Truncated         bool   `json:"truncated,omitempty"`
-	Target            string `json:"target,omitempty"`
-	IdempotencyKey    string `json:"idempotency_key,omitempty"`
-	Error             string `json:"error,omitempty"`
-	ArgsBytes         int    `json:"args_bytes,omitempty"`
-	ArgsComplete      *bool  `json:"args_complete,omitempty"`
-	ModelFinishReason string `json:"model_finish_reason,omitempty"`
-	ChangeGroupID     string `json:"change_group_id,omitempty"`
-	ReviewThreadID    string `json:"review_thread_id,omitempty"`
-	ChangeSetID       string `json:"change_set_id,omitempty"`
-	BaseRevision      string `json:"base_revision,omitempty"`
-	Revision          string `json:"revision,omitempty"`
+	ToolName              string   `json:"tool_name"`
+	ToolCallID            string   `json:"tool_call_id,omitempty"`
+	Workspace             string   `json:"workspace,omitempty"`
+	Status                string   `json:"status"`
+	DomainStatus          string   `json:"domain_status,omitempty"`
+	DomainDiagnosticCount int      `json:"domain_diagnostic_count,omitempty"`
+	RetryModules          []string `json:"retry_modules,omitempty"`
+	Capability            string   `json:"capability,omitempty"`
+	OriginalBytes         int      `json:"original_bytes,omitempty"`
+	ReturnedBytes         int      `json:"returned_bytes,omitempty"`
+	Truncated             bool     `json:"truncated,omitempty"`
+	Target                string   `json:"target,omitempty"`
+	IdempotencyKey        string   `json:"idempotency_key,omitempty"`
+	Error                 string   `json:"error,omitempty"`
+	ArgsBytes             int      `json:"args_bytes,omitempty"`
+	ArgsComplete          *bool    `json:"args_complete,omitempty"`
+	ModelFinishReason     string   `json:"model_finish_reason,omitempty"`
+	ChangeGroupID         string   `json:"change_group_id,omitempty"`
+	ReviewThreadID        string   `json:"review_thread_id,omitempty"`
+	ChangeSetID           string   `json:"change_set_id,omitempty"`
+	BaseRevision          string   `json:"base_revision,omitempty"`
+	Revision              string   `json:"revision,omitempty"`
 }
 
 func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
@@ -238,9 +241,44 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 			IdempotencyKey: filtered.IdempotencyKey,
 		}
 		applyWorkspaceChangeReceiptToExecutionRecord(&record, result)
+		applyInteractiveTurnReceiptToExecutionRecord(&record, result)
 		observer.RecordToolExecution(record)
 		return filtered.Content, nil
 	}, nil
+}
+
+func applyInteractiveTurnReceiptToExecutionRecord(record *ToolExecutionRecord, result string) {
+	if record == nil || !IsInteractiveTurnSubmissionTool(record.ToolName) {
+		return
+	}
+	var receipt struct {
+		Ready        bool              `json:"ready"`
+		ModuleStatus map[string]string `json:"module_status"`
+		Diagnostics  []json.RawMessage `json:"diagnostics"`
+		RetryModules []string          `json:"retry_modules"`
+	}
+	if err := json.Unmarshal([]byte(result), &receipt); err != nil || receipt.ModuleStatus == nil {
+		return
+	}
+	record.DomainDiagnosticCount = len(receipt.Diagnostics)
+	record.RetryModules = append([]string(nil), receipt.RetryModules...)
+	switch {
+	case receipt.Ready:
+		record.DomainStatus = "accepted"
+	case turnSubmissionReceiptHasStatus(receipt.ModuleStatus, "rejected"):
+		record.DomainStatus = "rejected"
+	default:
+		record.DomainStatus = "pending"
+	}
+}
+
+func turnSubmissionReceiptHasStatus(statuses map[string]string, target string) bool {
+	for _, status := range statuses {
+		if status == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(

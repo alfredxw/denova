@@ -39,7 +39,7 @@ func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t
 	}
 	wrongType := testTurnSubmissionInput([]interactive.StateUpdate{{Op: "replace", Path: "/protagonist/生命值", Value: "很多"}}, true)
 	receipt, err := invalidConversation.SubmitTurnResult(context.Background(), wrongType)
-	if err != nil || receipt.Ready || receipt.ModuleStatus.ActorStatePatches != interactive.TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted || len(receipt.Diagnostics) != 1 || !strings.Contains(receipt.Diagnostics[0].MessageZH, "生命值") {
+	if err != nil || receipt.Ready || receipt.ModuleStatus.StateChanges != interactive.TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted || len(receipt.Diagnostics) != 1 || !strings.Contains(receipt.Diagnostics[0].MessageZH, "生命值") {
 		t.Fatalf("wrong field type should return model-correctable feedback: receipt=%#v err=%v", receipt, err)
 	}
 	if invalidConversation.InteractiveNarrativeReady() {
@@ -52,7 +52,7 @@ func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t
 		{Op: "replace", Path: "/protagonist/body.status", Value: "良好"},
 	}, true)
 	receipt, err = conversation.SubmitTurnResult(context.Background(), withUnknownField)
-	if err != nil || receipt.Ready || receipt.ModuleStatus.ActorStatePatches != interactive.TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != "state_field_not_found" {
+	if err != nil || receipt.Ready || receipt.ModuleStatus.StateChanges != interactive.TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != "state_field_not_found" {
 		t.Fatalf("unknown state path should reject only state_updates: receipt=%#v err=%v", receipt, err)
 	}
 	if conversation.InteractiveNarrativeReady() {
@@ -100,7 +100,7 @@ func TestSubmitTurnResultRequiresAndCommitsStoryContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.Ready || receipt.ModuleStatus.ActorStatePatches != interactive.TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != interactive.TurnSubmissionDiagnosticStoryContextRequired {
+	if receipt.Ready || receipt.ModuleStatus.StateChanges != interactive.TurnSubmissionModuleRejected || receipt.ModuleStatus.Choices != interactive.TurnSubmissionModuleAccepted || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != interactive.TurnSubmissionDiagnosticStoryContextRequired {
 		t.Fatalf("missing story context should request a corrected TurnResult: %#v", receipt)
 	}
 	if missing.InteractiveNarrativeReady() {

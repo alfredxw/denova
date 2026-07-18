@@ -238,6 +238,12 @@ func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) 
 	}
 	ruleSummary := StoryDirectorRuleSummary(director, 8*1024)
 	planningSummary := StoryDirectorPlanningSummary(director, 128*1024)
+	if strings.Contains(ruleSummary, `"state_system"`) {
+		t.Fatalf("game-facing rule summary must not duplicate the schema-derived Actor Markdown guide:\n%s", ruleSummary)
+	}
+	if !strings.Contains(planningSummary, `"state_system"`) {
+		t.Fatalf("director planning summary still needs the frozen state system:\n%s", planningSummary)
+	}
 	for name, summary := range map[string]string{"rule": ruleSummary, "planning": planningSummary} {
 		if strings.Contains(summary, "prompt_markdown") || strings.Contains(summary, "策略策略策略") {
 			t.Fatalf("%s summary should keep markdown prompt out of structured summary:\n%s", name, summary)

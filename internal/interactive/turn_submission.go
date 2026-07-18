@@ -6,16 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 )
 
 const (
-	TurnSubmissionModuleActorStatePatches = "actor_state_patches"
-	TurnSubmissionModuleChoices           = "choices"
-	turnSubmissionDirectorUpdateField     = "director_update"
-
-	turnSubmissionPatchesField = "patches"
+	TurnSubmissionModuleStateChanges  = "state_changes"
+	TurnSubmissionModuleChoices       = "choices"
+	turnSubmissionDirectorUpdateField = "director_update"
 
 	TurnSubmissionModuleAccepted = "accepted"
 	TurnSubmissionModuleRejected = "rejected"
@@ -54,8 +51,8 @@ type TurnSubmissionDiagnostic struct {
 }
 
 type TurnSubmissionModuleStatus struct {
-	ActorStatePatches string `json:"actor_state_patches"`
-	Choices           string `json:"choices"`
+	StateChanges string `json:"state_changes"`
+	Choices      string `json:"choices"`
 }
 
 // TurnSubmissionReceipt reports independent module acceptance. Ready becomes
@@ -69,8 +66,8 @@ type TurnSubmissionReceipt struct {
 	DiagnosticsTruncated bool                       `json:"diagnostics_truncated,omitempty"`
 }
 
-// TurnSubmissionInput holds one independently retryable submission module.
-// Actor state updates and choices are staged by separate tool calls.
+// TurnSubmissionInput holds independently retryable fields decoded from one
+// submit_interactive_turn call. Either field may be absent on a targeted retry.
 type TurnSubmissionInput struct {
 	StateUpdates   *[]StateUpdate
 	Choices        *[]string
@@ -111,71 +108,6 @@ func (s *PreparedTurnSubmission) Ready() bool {
 	return s != nil && s.stateUpdatesAccepted && s.choicesAccepted
 }
 
-// DecodeActorStatePatchesSubmissionInput decodes only the state module. JSON
-// syntax or shape failures are attributed to actor_state_patches and remain
-// retryable without changing an already accepted choices module.
-func DecodeActorStatePatchesSubmissionInput(arguments string) TurnSubmissionInput {
-	raw, diagnostics := decodeTurnSubmissionToolField(arguments, TurnSubmissionModuleActorStatePatches, turnSubmissionPatchesField)
-	input := TurnSubmissionInput{Diagnostics: diagnostics}
-	if raw == nil || len(diagnostics) > 0 {
-		return input
-	}
-	updates, moduleDiagnostics := decodeStateUpdatesModule(raw)
-	input.Diagnostics = append(input.Diagnostics, moduleDiagnostics...)
-	if len(moduleDiagnostics) == 0 {
-		input.StateUpdates = &updates
-	}
-	return input
-}
-
-// DecodeChoicesSubmissionInput decodes only the choices module. It has no
-// shared top-level parser with actor_state_patches.
-func DecodeChoicesSubmissionInput(arguments string) TurnSubmissionInput {
-	invalid := func(code, path, actual, messageZH, messageEN string) TurnSubmissionInput {
-		return TurnSubmissionInput{Diagnostics: []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
-			TurnSubmissionModuleChoices, nil, code, path, "object containing choices and optional director_update", actual, messageZH, messageEN,
-		)}}
-	}
-	if len([]byte(arguments)) > maxTurnSubmissionArgumentsBytes {
-		return invalid("submission_too_large", "", fmt.Sprintf("%d bytes", len([]byte(arguments))), fmt.Sprintf("工具参数超过 %d bytes", maxTurnSubmissionArgumentsBytes), fmt.Sprintf("Tool arguments exceed %d bytes.", maxTurnSubmissionArgumentsBytes))
-	}
-	var root map[string]json.RawMessage
-	if err := decodeStrictJSON([]byte(arguments), &root, false); err != nil {
-		return invalid(TurnSubmissionDiagnosticInvalidJSON, "", "invalid JSON", fmt.Sprintf("choices 工具参数不是有效 JSON：%v", err), fmt.Sprintf("The choices tool arguments are not valid JSON: %v", err))
-	}
-	if root == nil {
-		return invalid(TurnSubmissionDiagnosticInvalidTopLevel, "", "null", "choices 工具参数必须是 object", "The choices tool arguments must be an object.")
-	}
-	unknown := make([]string, 0)
-	for key := range root {
-		if key != TurnSubmissionModuleChoices && key != turnSubmissionDirectorUpdateField {
-			unknown = append(unknown, key)
-		}
-	}
-	if len(unknown) > 0 {
-		sort.Strings(unknown)
-		return invalid(TurnSubmissionDiagnosticInvalidTopLevel, "", strings.Join(unknown, ","), "choices 工具参数只能包含 choices 和可选 director_update", "The choices tool arguments may only contain choices and optional director_update.")
-	}
-	rawChoices, exists := root[TurnSubmissionModuleChoices]
-	if !exists {
-		return invalid(TurnSubmissionDiagnosticInvalidTopLevel, "/choices", "missing field", "choices 工具参数缺少 choices", "The choices tool arguments are missing choices.")
-	}
-	input := TurnSubmissionInput{}
-	choices, diagnostics := decodeChoicesModule(rawChoices)
-	input.Diagnostics = append(input.Diagnostics, diagnostics...)
-	if rawHint, exists := root[turnSubmissionDirectorUpdateField]; exists {
-		hint, hintDiagnostics := decodeDirectorUpdateHint(rawHint)
-		input.Diagnostics = append(input.Diagnostics, hintDiagnostics...)
-		if len(hintDiagnostics) == 0 {
-			input.DirectorUpdate = hint
-		}
-	}
-	if len(input.Diagnostics) == 0 {
-		input.Choices = &choices
-	}
-	return input
-}
-
 func decodeDirectorUpdateHint(raw json.RawMessage) (*DirectorUpdateHint, []TurnSubmissionDiagnostic) {
 	var hint DirectorUpdateHint
 	if err := decodeStrictJSON(raw, &hint, false); err != nil {
@@ -197,47 +129,23 @@ func decodeDirectorUpdateHint(raw json.RawMessage) (*DirectorUpdateHint, []TurnS
 	return normalized, nil
 }
 
-func decodeTurnSubmissionToolField(arguments, module, field string) (json.RawMessage, []TurnSubmissionDiagnostic) {
-	invalid := func(code, actual, messageZH, messageEN string) (json.RawMessage, []TurnSubmissionDiagnostic) {
-		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(module, nil, code, "/"+field, "object containing "+field, actual, messageZH, messageEN)}
-	}
-	if len([]byte(arguments)) > maxTurnSubmissionArgumentsBytes {
-		return invalid("submission_too_large", fmt.Sprintf("%d bytes", len([]byte(arguments))), fmt.Sprintf("工具参数超过 %d bytes", maxTurnSubmissionArgumentsBytes), fmt.Sprintf("Tool arguments exceed %d bytes.", maxTurnSubmissionArgumentsBytes))
-	}
-	var root map[string]json.RawMessage
-	if err := decodeStrictJSON([]byte(arguments), &root, false); err != nil {
-		return invalid(TurnSubmissionDiagnosticInvalidJSON, "invalid JSON", fmt.Sprintf("%s 工具参数不是有效 JSON：%v", module, err), fmt.Sprintf("The %s tool arguments are not valid JSON: %v", module, err))
-	}
-	if root == nil {
-		return invalid(TurnSubmissionDiagnosticInvalidTopLevel, "null", fmt.Sprintf("%s 工具参数必须是 object", module), fmt.Sprintf("The %s tool arguments must be an object.", module))
-	}
-	if len(root) != 1 {
-		return invalid(TurnSubmissionDiagnosticInvalidTopLevel, "unexpected fields", fmt.Sprintf("%s 工具参数只能包含 %s", module, field), fmt.Sprintf("The %s tool arguments may only contain %s.", module, field))
-	}
-	raw, exists := root[field]
-	if !exists {
-		return invalid(TurnSubmissionDiagnosticInvalidTopLevel, "missing field", fmt.Sprintf("%s 工具参数缺少 %s", module, field), fmt.Sprintf("The %s tool arguments are missing %s.", module, field))
-	}
-	return raw, nil
-}
-
 // PrepareTurnSubmission accepts valid modules independently and retains any
-// module accepted by an earlier call. actor_state_patches remains atomic internally.
+// module accepted by an earlier call. state_changes remains atomic internally.
 func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTurnSubmission, input TurnSubmissionInput) (*PreparedTurnSubmission, TurnSubmissionReceipt) {
 	prepared := clonePreparedTurnSubmission(current)
 	diagnostics := make([]TurnSubmissionDiagnostic, 0, len(input.Diagnostics))
 	rejected := map[string]bool{}
 	for _, diagnostic := range input.Diagnostics {
-		if (diagnostic.Module == TurnSubmissionModuleActorStatePatches && prepared.stateUpdatesAccepted) ||
+		if (diagnostic.Module == TurnSubmissionModuleStateChanges && prepared.stateUpdatesAccepted) ||
 			(diagnostic.Module == TurnSubmissionModuleChoices && prepared.choicesAccepted) {
 			continue
 		}
 		diagnostics = append(diagnostics, diagnostic)
-		if diagnostic.Module == TurnSubmissionModuleActorStatePatches || diagnostic.Module == TurnSubmissionModuleChoices {
+		if diagnostic.Module == TurnSubmissionModuleStateChanges || diagnostic.Module == TurnSubmissionModuleChoices {
 			rejected[diagnostic.Module] = true
 		}
 	}
-	if input.StateUpdates != nil && !prepared.stateUpdatesAccepted && !rejected[TurnSubmissionModuleActorStatePatches] {
+	if input.StateUpdates != nil && !prepared.stateUpdatesAccepted && !rejected[TurnSubmissionModuleStateChanges] {
 		updates := normalizeTurnStateUpdates(*input.StateUpdates)
 		compiled, err := CompileTurnStateUpdates(validation.ActorState, validation.CurrentState, updates, TurnStateUpdateCompileOptions{
 			RuleResolution:           validation.RuleResolution,
@@ -245,10 +153,10 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 		})
 		if err != nil {
 			diagnostics = append(diagnostics, diagnosticForStateUpdateError(err))
-			rejected[TurnSubmissionModuleActorStatePatches] = true
+			rejected[TurnSubmissionModuleStateChanges] = true
 		} else if diagnostic := storyContextSubmissionDiagnostic(validation.ActorState, validation.CurrentState, updates); diagnostic != nil {
 			diagnostics = append(diagnostics, *diagnostic)
-			rejected[TurnSubmissionModuleActorStatePatches] = true
+			rejected[TurnSubmissionModuleStateChanges] = true
 		} else {
 			prepared.result.StateUpdates = compiled.Updates
 			prepared.stateUpdatesAccepted = true
@@ -288,10 +196,10 @@ func clonePreparedTurnSubmission(current *PreparedTurnSubmission) *PreparedTurnS
 
 func buildTurnSubmissionReceipt(prepared *PreparedTurnSubmission, rejected map[string]bool, diagnostics []TurnSubmissionDiagnostic) TurnSubmissionReceipt {
 	receipt := TurnSubmissionReceipt{Ready: prepared.Ready()}
-	receipt.ModuleStatus.ActorStatePatches = turnSubmissionModuleStatus(prepared.stateUpdatesAccepted, rejected[TurnSubmissionModuleActorStatePatches])
+	receipt.ModuleStatus.StateChanges = turnSubmissionModuleStatus(prepared.stateUpdatesAccepted, rejected[TurnSubmissionModuleStateChanges])
 	receipt.ModuleStatus.Choices = turnSubmissionModuleStatus(prepared.choicesAccepted, rejected[TurnSubmissionModuleChoices])
-	for _, module := range []string{TurnSubmissionModuleActorStatePatches, TurnSubmissionModuleChoices} {
-		status := receipt.ModuleStatus.ActorStatePatches
+	for _, module := range []string{TurnSubmissionModuleStateChanges, TurnSubmissionModuleChoices} {
+		status := receipt.ModuleStatus.StateChanges
 		if module == TurnSubmissionModuleChoices {
 			status = receipt.ModuleStatus.Choices
 		}
@@ -357,33 +265,6 @@ func validateSubmittedChoices(values []string, configured int, terminal bool) ([
 	return normalized, nil
 }
 
-func decodeStateUpdatesModule(raw json.RawMessage) ([]StateUpdate, []TurnSubmissionDiagnostic) {
-	var items []json.RawMessage
-	if err := decodeStrictJSON(raw, &items, false); err != nil || items == nil {
-		if err == nil {
-			err = errors.New("patches cannot be null")
-		}
-		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(TurnSubmissionModuleActorStatePatches, nil, TurnSubmissionDiagnosticInvalidModule, "/patches", "array", jsonValueKind(raw), fmt.Sprintf("patches 必须是数组：%v", err), fmt.Sprintf("patches must be an array: %v", err))}
-	}
-	if len(items) > maxInteractiveListItems {
-		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(TurnSubmissionModuleActorStatePatches, nil, "too_many_state_updates", "/patches", fmt.Sprintf("at most %d operations", maxInteractiveListItems), fmt.Sprintf("%d operations", len(items)), fmt.Sprintf("patches 不能超过 %d 项", maxInteractiveListItems), fmt.Sprintf("patches cannot exceed %d operations.", maxInteractiveListItems))}
-	}
-	updates := make([]StateUpdate, 0, len(items))
-	diagnostics := make([]TurnSubmissionDiagnostic, 0)
-	for index, item := range items {
-		var update StateUpdate
-		if err := decodeStrictJSON(item, &update, true); err != nil {
-			diagnostics = append(diagnostics, *newTurnSubmissionDiagnostic(TurnSubmissionModuleActorStatePatches, intPointer(index), TurnSubmissionDiagnosticInvalidModule, fmt.Sprintf("/patches/%d", index), "{op,path,value}", jsonValueKind(item), fmt.Sprintf("状态操作结构无效：%v", err), fmt.Sprintf("The state update shape is invalid: %v", err)))
-			continue
-		}
-		updates = append(updates, update)
-	}
-	if len(diagnostics) > 0 {
-		return nil, diagnostics
-	}
-	return updates, nil
-}
-
 func decodeChoicesModule(raw json.RawMessage) ([]string, []TurnSubmissionDiagnostic) {
 	var items []json.RawMessage
 	if err := decodeStrictJSON(raw, &items, false); err != nil || items == nil {
@@ -432,13 +313,13 @@ func decodeStrictJSON(data []byte, target any, useNumber bool) error {
 func diagnosticForStateUpdateError(err error) TurnSubmissionDiagnostic {
 	var validationError *StateUpdateValidationError
 	if !errors.As(err, &validationError) {
-		return *newTurnSubmissionDiagnostic(TurnSubmissionModuleActorStatePatches, nil, "actor_state_patches_invalid", "/patches", "valid atomic actor state patch list", "invalid", trimBytes(err.Error(), maxTurnSubmissionDiagnosticMessage), "The actor_state_patches module is invalid.")
+		return *newTurnSubmissionDiagnostic(TurnSubmissionModuleStateChanges, nil, "state_changes_invalid", "/state_changes", "valid atomic state_changes list", "invalid", trimBytes(err.Error(), maxTurnSubmissionDiagnosticMessage), "The state_changes module is invalid.")
 	}
 	return *newTurnSubmissionDiagnostic(
-		TurnSubmissionModuleActorStatePatches,
+		TurnSubmissionModuleStateChanges,
 		intPointer(validationError.Index),
 		validationError.Code,
-		validationError.Path,
+		fmt.Sprintf("/state_changes/%d", validationError.Index),
 		validationError.Expected,
 		validationError.Actual,
 		trimBytes(validationError.Error(), maxTurnSubmissionDiagnosticMessage),
@@ -449,7 +330,7 @@ func diagnosticForStateUpdateError(err error) TurnSubmissionDiagnostic {
 func stateUpdateDiagnosticEnglish(code string) string {
 	switch code {
 	case "invalid_state_path":
-		return "The state path is not a valid schema-bound JSON Pointer."
+		return "The structured actor_id, field_id, or subpath is invalid."
 	case "invalid_actor_id", "actor_not_found":
 		return "The first path segment must be an existing stable Actor ID, not a display name."
 	case "state_field_not_found":
@@ -459,11 +340,11 @@ func stateUpdateDiagnosticEnglish(code string) string {
 	case "duplicate_rule_state_update":
 		return "RuleResolution already consumes this field in the current turn."
 	case "overlapping_state_path":
-		return "Actor state patch paths in one atomic module must not duplicate or overlap."
+		return "State changes in one atomic module must not duplicate or overlap."
 	case "state_value_too_large":
-		return "The actor state patch value exceeds the bounded payload limit."
+		return "The state change value exceeds the bounded payload limit."
 	default:
-		return "The actor state patch failed frozen-schema validation."
+		return "The state change failed frozen-schema validation."
 	}
 }
 

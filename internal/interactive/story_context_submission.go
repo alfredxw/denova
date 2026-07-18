@@ -11,7 +11,7 @@ const (
 )
 
 // storyContextSubmissionDiagnostic keeps the built-in story_context useful
-// after the model-facing contract was reduced to actor_state_patches and choices.
+// after the model-facing contract was reduced to state_changes and choices.
 func storyContextSubmissionDiagnostic(system StoryDirectorActorStateSystem, currentState map[string]any, updates []StateUpdate) *TurnSubmissionDiagnostic {
 	template := actorStateTemplateByID(system, ActorStateStoryContextTemplateID)
 	if template.ID == "" || !hasStoryContextActor(system, currentState) || len(template.Fields) == 0 {
@@ -21,7 +21,7 @@ func storyContextSubmissionDiagnostic(system StoryDirectorActorStateSystem, curr
 	if _, exists := actorStateFieldByID(template, storyContextCurrentEventField); exists {
 		value, found := submittedStoryContextValue(updates, storyContextCurrentEventField)
 		if !found || !meaningfulStoryContextValue(value) {
-			return newStoryContextRequiredDiagnostic(storyContextCurrentEventField, "本回合 patches 缺少非空的 story/当前事件")
+			return newStoryContextRequiredDiagnostic(storyContextCurrentEventField, "本回合 state_changes 缺少非空的 story/当前事件")
 		}
 	}
 
@@ -34,7 +34,7 @@ func storyContextSubmissionDiagnostic(system StoryDirectorActorStateSystem, curr
 	}
 	value, found := submittedStoryContextValue(updates, storyContextCurrentLocationField)
 	if !found || !meaningfulStoryContextValue(value) {
-		return newStoryContextRequiredDiagnostic(storyContextCurrentLocationField, "story 状态尚未初始化，patches 必须填写非空的 story/当前详细地点")
+		return newStoryContextRequiredDiagnostic(storyContextCurrentLocationField, "story 状态尚未初始化，state_changes 必须填写非空的 story/当前详细地点")
 	}
 	return nil
 }
@@ -75,11 +75,11 @@ func meaningfulStoryContextValue(value any) bool {
 func newStoryContextRequiredDiagnostic(field, reason string) *TurnSubmissionDiagnostic {
 	path := formatStateUpdatePath([]string{DefaultStoryContextActorID, field})
 	return newTurnSubmissionDiagnostic(
-		TurnSubmissionModuleActorStatePatches,
+		TurnSubmissionModuleStateChanges,
 		nil,
 		TurnSubmissionDiagnosticStoryContextRequired,
 		path,
-		fmt.Sprintf(`{"op":"replace","path":%q,"value":"..."}`, path),
+		fmt.Sprintf(`{"op":"replace","actor_id":%q,"field_id":%q,"value":"..."}`, DefaultStoryContextActorID, field),
 		"missing",
 		reason+"；每回合至少维护“当前事件”，首次初始化时还要维护“当前详细地点”，其他未变化字段不要提交空值。",
 		"Every turn must replace story/Current Event, and initialization must also replace story/Current Detailed Location. Do not clear unchanged fields.",

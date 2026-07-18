@@ -80,6 +80,12 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 		"正文 Agent 简报",
 		"source: agent-brief.md",
 		"bounded",
+		"# Actor 状态手册",
+		"Actor ID：`protagonist`",
+		"字段说明：",
+		"更新指引：",
+		"submit_interactive_turn",
+		`"state_changes"`,
 	} {
 		if !strings.Contains(history[3].Content, want) {
 			t.Fatalf("history[3] should include %q: %#v", want, history[3])
@@ -87,6 +93,11 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 	if strings.Contains(history[3].Content, "随机事件率") {
 		t.Fatalf("story prose prompt should not receive event probability controls: %#v", history[2])
+	}
+	for _, rawSchemaMarker := range []string{`"create_templates"`, `"state_system"`, `"writable_fields"`} {
+		if strings.Contains(history[3].Content, rawSchemaMarker) {
+			t.Fatalf("game prompt should contain the Markdown state guide, not duplicated raw schema marker %q", rawSchemaMarker)
+		}
 	}
 	for _, forbidden := range []string{"经典叙事者", "林川：谨慎的幸存者", "世界已进入黄昏末日。"} {
 		if strings.Contains(history[3].Content, forbidden) {
@@ -277,7 +288,7 @@ func TestInteractiveConversationRejectsAssistantWithoutTurnResult(t *testing.T) 
 		t.Fatal(err)
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", story.ReplyTargetChars, nil)
-	if err := conversation.AppendAssistant("主角向前走去。"); err == nil || !strings.Contains(err.Error(), "actor_state_patches") || !strings.Contains(err.Error(), "choices") {
+	if err := conversation.AppendAssistant("主角向前走去。"); err == nil || !strings.Contains(err.Error(), "state_changes") || !strings.Contains(err.Error(), "choices") {
 		t.Fatalf("assistant without TurnResult should be rejected, got %v", err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")

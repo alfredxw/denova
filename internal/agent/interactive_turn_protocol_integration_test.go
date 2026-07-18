@@ -187,12 +187,12 @@ func TestInteractiveTurnProtocolRetriesRejectedModulesBeforeReusingCandidate(t *
 			}
 			retry := []string{}
 			if patchStatus != interactive.TurnSubmissionModuleAccepted {
-				retry = append(retry, interactive.TurnSubmissionModuleActorStatePatches)
+				retry = append(retry, interactive.TurnSubmissionModuleStateChanges)
 			}
 			if choiceStatus != interactive.TurnSubmissionModuleAccepted {
 				retry = append(retry, interactive.TurnSubmissionModuleChoices)
 			}
-			return interactive.TurnSubmissionReceipt{Ready: settled, ModuleStatus: interactive.TurnSubmissionModuleStatus{ActorStatePatches: patchStatus, Choices: choiceStatus}, RetryModules: retry}, nil
+			return interactive.TurnSubmissionReceipt{Ready: settled, ModuleStatus: interactive.TurnSubmissionModuleStatus{StateChanges: patchStatus, Choices: choiceStatus}, RetryModules: retry}, nil
 		},
 	})
 	if err != nil {
@@ -200,15 +200,14 @@ func TestInteractiveTurnProtocolRetriesRejectedModulesBeforeReusingCandidate(t *
 	}
 	chatModel := &interactiveTurnProtocolChatModel{responses: []*schema.Message{
 		schema.AssistantMessage("门后传来锁链拖地的声音。", nil),
-		schema.AssistantMessage("", []schema.ToolCall{
-			{ID: "call-patches-1", Function: schema.FunctionCall{Name: interactiveActorStatePatchesToolName, Arguments: `{"patches":[{"op":"replace","path":"/story/当前事件","value":1}]}`}},
-			{ID: "call-choices", Function: schema.FunctionCall{Name: interactiveChoicesToolName, Arguments: `{"choices":["进入房间","观察门后","检查锁链","询问同伴","退后戒备"]}`}},
-		}),
+		schema.AssistantMessage("", []schema.ToolCall{{
+			ID: "call-submit-1", Function: schema.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":[{"op":"replace","actor_id":"story","field_id":"当前事件","value":1}],"choices":["进入房间","观察门后","检查锁链","询问同伴","退后戒备"]}`},
+		}}),
 		schema.AssistantMessage("", []schema.ToolCall{{
 			ID: "call-submit-2",
 			Function: schema.FunctionCall{
-				Name:      interactiveActorStatePatchesToolName,
-				Arguments: `{"patches":[{"op":"replace","path":"/story/当前事件","value":"石门开启"}]}`,
+				Name:      interactiveTurnSubmissionToolName,
+				Arguments: `{"state_changes":[{"op":"replace","actor_id":"story","field_id":"当前事件","value":"石门开启"}]}`,
 			},
 		}}),
 		schema.AssistantMessage("不应再次生成正文。", nil),
@@ -241,13 +240,13 @@ func TestInteractiveTurnProtocolRetriesRejectedModulesBeforeReusingCandidate(t *
 	}, func(event Event) { events = append(events, event) })
 
 	calls, _, _ := chatModel.snapshot()
-	if calls != 3 || submissions.Load() != 3 || !ready.Load() {
+	if calls != 3 || submissions.Load() != 2 || !ready.Load() {
 		t.Fatalf("module retry did not settle before completion: calls=%d submissions=%d ready=%t", calls, submissions.Load(), ready.Load())
 	}
 	if conversation.assistant != "门后传来锁链拖地的声音。" {
 		t.Fatalf("module retry must reuse the original candidate: %q", conversation.assistant)
 	}
-	if countEventType(events, "tool_result") != 3 {
+	if countEventType(events, "tool_result") != 2 {
 		t.Fatalf("both module receipts must remain visible: %#v", events)
 	}
 }
@@ -264,7 +263,7 @@ func TestInteractiveTurnProtocolLocksFirstCandidateAcrossMalformedModuleAndLater
 			defer mu.Unlock()
 			patchRejected := false
 			for _, diagnostic := range input.Diagnostics {
-				if diagnostic.Module == interactive.TurnSubmissionModuleActorStatePatches {
+				if diagnostic.Module == interactive.TurnSubmissionModuleStateChanges {
 					patchRejected = true
 				}
 			}
@@ -290,7 +289,7 @@ func TestInteractiveTurnProtocolLocksFirstCandidateAcrossMalformedModuleAndLater
 				choiceStatus = interactive.TurnSubmissionModuleAccepted
 			}
 			return interactive.TurnSubmissionReceipt{Ready: settled, ModuleStatus: interactive.TurnSubmissionModuleStatus{
-				ActorStatePatches: patchStatus, Choices: choiceStatus,
+				StateChanges: patchStatus, Choices: choiceStatus,
 			}}, nil
 		},
 	})
@@ -301,13 +300,12 @@ func TestInteractiveTurnProtocolLocksFirstCandidateAcrossMalformedModuleAndLater
 	const laterProseB = "废弃灵木料场里，主角躲在断木桩后，看见十五丈外持破灵镜的瘦高个。"
 	chatModel := &interactiveTurnProtocolChatModel{responses: []*schema.Message{
 		schema.AssistantMessage(candidateA, nil),
-		schema.AssistantMessage("", []schema.ToolCall{
-			{ID: "bad-patches", Function: schema.FunctionCall{Name: interactiveActorStatePatchesToolName, Arguments: `{"patches":[{"op":"replace","path":"/story/当前事件","value":"以"路过的散修"身份"}]}`}},
-			{ID: "good-choices", Function: schema.FunctionCall{Name: interactiveChoicesToolName, Arguments: `{"choices":["继续观察","绕到侧面","悄然后退","制造声响","询问同伴"]}`}},
-		}),
+		schema.AssistantMessage("", []schema.ToolCall{{
+			ID: "bad-state-good-choices", Function: schema.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":"not-an-array","choices":["继续观察","绕到侧面","悄然后退","制造声响","询问同伴"]}`},
+		}}),
 		schema.AssistantMessage(laterProseB, nil),
 		schema.AssistantMessage("", []schema.ToolCall{{
-			ID: "good-patches", Function: schema.FunctionCall{Name: interactiveActorStatePatchesToolName, Arguments: `{"patches":[{"op":"replace","path":"/story/当前事件","value":"主角在乱石坡观察敌情"}]}`},
+			ID: "good-state", Function: schema.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":[{"op":"replace","actor_id":"story","field_id":"当前事件","value":"主角在乱石坡观察敌情"}]}`},
 		}}),
 	}}
 	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
@@ -421,10 +419,9 @@ func (m *interactiveTurnProtocolChatModel) nextMessage(messages []*schema.Messag
 		case 1:
 			message = schema.AssistantMessage("门后传来锁链拖地的声音。", nil)
 		case 2:
-			message = schema.AssistantMessage("", []schema.ToolCall{
-				{ID: "call-patches", Function: schema.FunctionCall{Name: interactiveActorStatePatchesToolName, Arguments: `{"patches":[]}`}},
-				{ID: "call-choices", Function: schema.FunctionCall{Name: interactiveChoicesToolName, Arguments: `{"choices":["进入房间","观察门后","检查锁链","询问同伴","退后戒备"]}`}},
-			})
+			message = schema.AssistantMessage("", []schema.ToolCall{{
+				ID: "call-submit", Function: schema.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":[],"choices":["进入房间","观察门后","检查锁链","询问同伴","退后戒备"]}`},
+			}})
 		default:
 			message = schema.AssistantMessage("石门缓缓开启。", nil)
 		}
@@ -461,7 +458,7 @@ func newProtocolSubmissionCollector(ready *atomic.Bool) func(context.Context, in
 			return interactive.TurnSubmissionModuleMissing
 		}
 		return interactive.TurnSubmissionReceipt{Ready: settled, ModuleStatus: interactive.TurnSubmissionModuleStatus{
-			ActorStatePatches: status(patchesAccepted), Choices: status(choicesAccepted),
+			StateChanges: status(patchesAccepted), Choices: status(choicesAccepted),
 		}}, nil
 	}
 }
