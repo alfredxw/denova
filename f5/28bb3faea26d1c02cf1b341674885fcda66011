@@ -1,0 +1,63 @@
+internal/agent/builder.go
+  s_7ec26d371c44ea::t_62712ad70bda0f 49-50
+internal/agent/interactive_story_tools_test.go
+  s_7ec26d371c44ea::t_33eb246f955a11 1-53
+internal/agent/interactive_turn_protocol.go
+  s_7ec26d371c44ea::t_d1398c4ace712c 17-24,89-90,93-94,98-101,109-111,118-146,206-207,237
+internal/agent/interactive_turn_protocol_integration_test.go
+  s_7ec26d371c44ea::t_a8764c12c2c23f 190,195,203-205,209-210,243,249,266,292,303-305,308,422-424,461
+internal/agent/interactive_turn_protocol_test.go
+  s_7ec26d371c44ea::t_d71ca12aa1b20b 30,64,78,80,85,109-132,135,141,148
+internal/agent/loop_ledger_test.go
+  s_7ec26d371c44ea::t_07f3e20437ba59 165-174,222-224
+internal/agent/middleware.go
+  s_7ec26d371c44ea::t_ad6b78f3bd8d78 148,167-188,244,250-283
+internal/agent/middleware_test.go
+  s_7ec26d371c44ea::t_dffd38f67803ea 58-71
+internal/agent/run_observer.go
+  s_7ec26d371c44ea::t_605c3dbd761ab1 188-192
+internal/agent/run_trace.go
+  s_7ec26d371c44ea::t_e2c19a9cf782b8 23-56,270-279,380-388
+internal/agent/system_prompt.go
+  s_7ec26d371c44ea::t_582f61d97da691 125-126
+internal/app/interactive_agent_test.go
+  s_7ec26d371c44ea::t_3d0d602c7296c7 83-88,97-101,291
+internal/app/interactive_conversation.go
+  s_7ec26d371c44ea::t_d7ddc06538911a 148,331,592,913-914,985-986
+internal/app/interactive_conversation_test.go
+  s_7ec26d371c44ea::t_4edcbffcd3113d 42,55,103
+internal/interactive/actor_state_v2_test.go
+  s_7ec26d371c44ea::t_4892d658af7507 119-155
+internal/interactive/story_context_submission.go
+  s_7ec26d371c44ea::t_be6de69eab04f1 14,24,37,78,82
+internal/interactive/story_directors.go
+  s_7ec26d371c44ea::t_7f64a358f5bfaf 484-486
+internal/interactive/story_directors_test.go
+  s_7ec26d371c44ea::t_98d8d85967f9b1 241-246
+internal/interactive/story_snapshot.go
+  s_7ec26d371c44ea::t_f987828819d467 79-81
+internal/interactive/turn_submission.go
+  s_7ec26d371c44ea::t_a8eccc872a3399 13-15,54-55,69-70,133,139,144,148,156,159,199,201-202,316,319,322,333,343,345,347
+internal/interactive/turn_submission_decode.go
+  s_7ec26d371c44ea::t_8e447c0e338968 1-247
+internal/interactive/turn_submission_test.go
+  s_7ec26d371c44ea::t_3b5883d216cc52 3-7,19,32,47,57,76,87,89-91,93-95,97-121,123-145,152,159,170,183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f528bb3faea26d1c02cf1b341674885fcda66011",
+  "prompts": {},
+  "sessions": {
+    "s_7ec26d371c44ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7454-ae95-7b51-b47e-7087fe51b822",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
