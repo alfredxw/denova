@@ -22,6 +22,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - 资料库正文编辑器改为单一所见即所得 Markdown 编辑器（与章节正文同一 TipTap 引擎），替换此前的「预览 / Raw」切换；目录搜索关键词现在在渲染后的正文中直接高亮并定位到首个匹配，搜索时也可以直接编辑，简介字段保持原文本框搜索高亮不变。
 - The lore content editor is now a single WYSIWYG Markdown editor (the same TipTap engine as chapter editing), replacing the previous Preview/Raw toggle. Directory search keywords are highlighted directly in the rendered content with a jump to the first match, and editing stays available while searching; the brief field keeps its plain-text search highlight.
 
+### Removed
+
+- 移除误放在仓库根目录、仅用于一次性书籍切换器验收的 `design-qa.md`；对应实现仍由自动化测试和正式变更记录覆盖。
+- Removed the one-off `design-qa.md` book-switcher verification artifact from the repository root; automated tests and the formal changelog continue to cover the implementation.
+
 ### Fixed
 
 - 旧故事或尚未冻结 schema 的运行时不再把内置初始 Actor 显示为空：事件回放完成后只在缺失时投影 schema 初始角色，不改写历史 JSONL，也不覆盖已有状态或旧字段迁移。互动 Trace 现在区分工具传输成功与领域 `accepted` / `rejected` / `pending`，并记录诊断数与待重试模块；首段正文同时使用故事目标字数推导的 completion 上限，降低超长回合挤占状态提交的概率。
