@@ -2,6 +2,11 @@ import type { AutomationTask, BookRecord } from '@/lib/api'
 import { automationTaskKey, normalizeAutomationTask } from './automation-catalog'
 import { defaultScheduleTrigger } from './automation-trigger'
 
+// defaultAutomationActionPolicy is the action policy applied to every task. The
+// legacy write_policy field no longer drives this: write_mode/write_scope are
+// the single source of truth, so the action policy is a constant.
+const defaultAutomationActionPolicy = 'auto_run' as const
+
 export function newAutomationTask(target: NonNullable<AutomationTask['target']>, name: string): AutomationTask {
   const schedule = { kind: 'manual', hour: 9, minute: 0, weekday: 1, day_of_month: 1, every_hours: 6 } satisfies AutomationTask['schedule']
   return {
@@ -14,8 +19,7 @@ export function newAutomationTask(target: NonNullable<AutomationTask['target']>,
     model_profile_id: '',
     schedule,
     triggers: [defaultScheduleTrigger(schedule)],
-    default_action_policy: 'auto_run',
-    write_policy: 'read_only',
+    default_action_policy: defaultAutomationActionPolicy,
     write_mode: 'read_only',
     write_scope: 'none',
     output_policy: 'run_record_only',
@@ -28,31 +32,35 @@ export function cloneAutomationTask(task: AutomationTask, workspace: string): Au
   return normalizeAutomationTaskShape(JSON.parse(JSON.stringify(task)) as AutomationTask, workspace)
 }
 
+// normalizeAutomationTaskShape canonicalizes a task for the UI. It still migrates
+// the legacy write_policy field (read-side only) so persisted tasks created before
+// write_mode/write_scope existed render correctly. New tasks and patch builders
+// below never emit write_policy.
 export function normalizeAutomationTaskShape(task: AutomationTask, workspace: string): AutomationTask {
   task = normalizeAutomationTask(task, workspace)
   if (task.write_mode && task.write_scope) {
-    return { ...task, default_action_policy: actionPolicyForWriteMode() }
+    return { ...task, default_action_policy: defaultAutomationActionPolicy }
   }
   const legacy = task.write_policy || 'read_only'
-  if (legacy === 'allow_lore_write') return { ...task, default_action_policy: 'auto_run', write_mode: 'auto_write', write_scope: 'lore' }
-  if (legacy === 'allow_file_write') return { ...task, default_action_policy: 'auto_run', write_mode: 'auto_write', write_scope: 'file' }
-  if (legacy === 'allow_lore_and_file_write') return { ...task, default_action_policy: 'auto_run', write_mode: 'auto_write', write_scope: 'lore_and_file' }
-  return { ...task, default_action_policy: 'auto_run', write_policy: 'read_only', write_mode: 'read_only', write_scope: 'none' }
+  if (legacy === 'allow_lore_write') return { ...task, default_action_policy: defaultAutomationActionPolicy, write_mode: 'auto_write', write_scope: 'lore' }
+  if (legacy === 'allow_file_write') return { ...task, default_action_policy: defaultAutomationActionPolicy, write_mode: 'auto_write', write_scope: 'file' }
+  if (legacy === 'allow_lore_and_file_write') return { ...task, default_action_policy: defaultAutomationActionPolicy, write_mode: 'auto_write', write_scope: 'lore_and_file' }
+  return { ...task, default_action_policy: defaultAutomationActionPolicy, write_mode: 'read_only', write_scope: 'none' }
 }
 
 export function nextAutomationWriteModePatch(task: AutomationTask, writeMode: AutomationTask['write_mode']): Partial<AutomationTask> {
   if (writeMode === 'read_only') {
-    return { default_action_policy: actionPolicyForWriteMode(), write_mode: 'read_only', write_scope: 'none', write_policy: 'read_only' }
+    return { default_action_policy: defaultAutomationActionPolicy, write_mode: 'read_only', write_scope: 'none' }
   }
   const scope = task.write_scope === 'none' ? 'file' : task.write_scope
-  return { default_action_policy: actionPolicyForWriteMode(), write_mode: writeMode, write_scope: scope, write_policy: legacyWritePolicyForScope(scope) }
+  return { default_action_policy: defaultAutomationActionPolicy, write_mode: writeMode, write_scope: scope }
 }
 
 export function nextAutomationWriteScopePatch(task: AutomationTask, writeScope: AutomationTask['write_scope']): Partial<AutomationTask> {
   if (task.write_mode === 'read_only' || writeScope === 'none') {
-    return { write_mode: 'read_only', write_scope: 'none', write_policy: 'read_only' }
+    return { write_mode: 'read_only', write_scope: 'none' }
   }
-  return { write_scope: writeScope, write_policy: legacyWritePolicyForScope(writeScope) }
+  return { write_scope: writeScope }
 }
 
 export function upsertAutomationTask(tasks: AutomationTask[], task: AutomationTask) {
@@ -80,7 +88,6 @@ export function applyAutomationTarget(task: AutomationTask, value: string): Auto
       target: { kind: 'user' },
       template: 'custom_prompt',
       triggers: [scheduleTrigger],
-      write_policy: 'read_only',
       write_mode: 'read_only',
       write_scope: 'none',
       output_policy: 'run_record_only',
@@ -105,15 +112,4 @@ export function automationTargetLabel(task: AutomationTask, books: BookRecord[],
   const workspace = task.target.workspace || ''
   const name = books.find((book) => book.path === workspace)?.name || workspace.split('/').filter(Boolean).at(-1) || workspace
   return t('automations.target.workspace', { name })
-}
-
-function legacyWritePolicyForScope(writeScope: AutomationTask['write_scope']): AutomationTask['write_policy'] {
-  if (writeScope === 'lore') return 'allow_lore_write'
-  if (writeScope === 'file') return 'allow_file_write'
-  if (writeScope === 'lore_and_file') return 'allow_lore_and_file_write'
-  return 'read_only'
-}
-
-function actionPolicyForWriteMode(): AutomationTask['default_action_policy'] {
-  return 'auto_run'
 }

@@ -748,13 +748,8 @@ html[data-nova-motion="off"] *::after {
   height: 100dvh;
 }
 
-[data-nova-app-shell="true"] :where(.overflow-y-auto, [data-slot="scroll-area-viewport"], textarea) {
-  overscroll-behavior-y: contain;
-}
-
-[data-nova-app-shell="true"] :where(.overflow-auto) {
-  overscroll-behavior: contain;
-}
+/* Scroll containment is opt-in via `overscroll-contain`. Nested editors must
+   otherwise be able to hand wheel and touch gestures to their parent scroller. */
 
 .nova-mobile-nav {
   padding-bottom: max(0.375rem, env(safe-area-inset-bottom));

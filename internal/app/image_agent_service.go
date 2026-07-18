@@ -107,7 +107,7 @@ func (s *ImageAppService) agentRuntimeSnapshot() (config.Config, *book.State, *b
 	state := app.bookState
 	bookService := app.bookService
 	workspace := app.workspace
-	novaDir := cfg.NovaDir
+	novaDir := cfg.DataDir()
 	app.mu.RUnlock()
 
 	cfg.Workspace = workspace

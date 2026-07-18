@@ -3,7 +3,7 @@ import { ArrowUpRight, Bell, CheckCheck, Loader2, Star } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { formatDateTime, getResolvedLocale } from '@/i18n'
+import { formatDateTime } from '@/i18n'
 import { getMessages, markAllMessagesRead, markMessageRead } from './api'
 import type { AutomationMessageNavigation, ProductMessage } from './types'
 
@@ -316,13 +316,5 @@ function messageMatchesFilter(item: ProductMessage, filter: MessageFilter) {
 
 function formatMessagePublishedAt(value: string | undefined) {
   if (!value) return ''
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split('-').map(Number)
-    return new Intl.DateTimeFormat(getResolvedLocale(), {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date(year, month - 1, day))
-  }
   return formatDateTime(value)
 }

@@ -35,15 +35,13 @@ func TestAutomationTriggerCoordinatorDoesNotLoseEnqueueDuringIdleExit(t *testing
 			close(secondRun)
 		}
 	}
-	service := &AutomationAppService{
-		app: &App{},
-		snapshot: &automationWorkspaceSnapshot{
-			workspace: workspace,
-			novaDir:   filepath.Join(workspace, "user"),
-			cfg:       config.Config{Workspace: workspace, NovaDir: filepath.Join(workspace, "user")},
-		},
+	service := &AutomationAppService{app: &App{}}
+	snapshot := &automationWorkspaceSnapshot{
+		workspace: workspace,
+		novaDir:   filepath.Join(workspace, "user"),
+		cfg:       config.Config{Workspace: workspace, NovaDir: filepath.Join(workspace, "user")},
 	}
-	if !coordinator.Enqueue(service, "first", []string{"chapters/one.md"}) {
+	if !coordinator.Enqueue(service, snapshot, "first", []string{"chapters/one.md"}) {
 		t.Fatal("first enqueue was rejected")
 	}
 	select {
@@ -53,7 +51,7 @@ func TestAutomationTriggerCoordinatorDoesNotLoseEnqueueDuringIdleExit(t *testing
 	}
 	// The first worker has removed its entry but has not yet returned. The
 	// enqueue must create a distinct worker that the first defer cannot erase.
-	if !coordinator.Enqueue(service, "second", []string{"chapters/two.md"}) {
+	if !coordinator.Enqueue(service, snapshot, "second", []string{"chapters/two.md"}) {
 		t.Fatal("second enqueue was rejected")
 	}
 	select {

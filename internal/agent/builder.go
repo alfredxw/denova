@@ -315,7 +315,7 @@ func newSkillMiddleware(ctx context.Context, cfg *config.Config, agentKind strin
 		return nil, nil
 	}
 	skillBackend := novaskills.NewAgentBackend(
-		novaskills.NewDirectories(cfg.SkillsDir, cfg.NovaDir, cfg.Workspace),
+		novaskills.NewDirectories(cfg.SkillsDir, cfg.DataDir(), cfg.Workspace),
 		agentKind,
 		config.ResolveAgentSkillOverrides(cfg, agentKind),
 	)

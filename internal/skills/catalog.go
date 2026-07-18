@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	einoskill "github.com/cloudwego/eino/adk/middlewares/skill"
 	"gopkg.in/yaml.v3"
@@ -161,7 +162,7 @@ func parseRecord(ctx context.Context, dir Directory, path, data string) (record,
 	info, _ := os.Stat(path)
 	updatedAt := ""
 	if info != nil {
-		updatedAt = info.ModTime().UTC().Format("2006-01-02T15:04:05Z")
+		updatedAt = info.ModTime().UTC().Format(time.RFC3339)
 	}
 	baseDir := filepath.Dir(path)
 	return record{

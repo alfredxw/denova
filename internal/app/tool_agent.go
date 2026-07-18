@@ -46,7 +46,7 @@ func (a *App) toolAgentConfig() (config.Config, string) {
 		runtimeCfg = *a.cfg
 	}
 	workspace := a.workspace
-	novaDir := runtimeCfg.NovaDir
+	novaDir := runtimeCfg.DataDir()
 	a.mu.RUnlock()
 
 	runtimeCfg.Workspace = workspace

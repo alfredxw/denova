@@ -85,6 +85,12 @@ func (s *Store) List() ([]Task, error) {
 // ListForTarget returns the tasks that execute in one explicit context. It is
 // the scheduler-facing view of the user catalog and never falls back to the
 // currently open workspace.
+//
+// ListForTarget keeps each execution target's list exclusive: a workspace
+// target returns only workspace-scoped tasks for that workspace, and the user
+// target returns only user-scoped tasks. Callers that need per-workspace trigger
+// evaluation (where user-scoped content triggers also fire against a specific
+// workspace) should use ListForTriggerEvaluation.
 func (s *Store) ListForTarget(target ExecutionTarget) ([]Task, error) {
 	tasks, err := s.List()
 	if err != nil {
@@ -104,6 +110,40 @@ func (s *Store) ListForTarget(target ExecutionTarget) ([]Task, error) {
 			continue
 		}
 		filtered = append(filtered, task)
+	}
+	return filtered, nil
+}
+
+// ListForTriggerEvaluation returns the tasks that should be evaluated for one
+// execution target. Unlike ListForTarget it also includes user-scoped tasks
+// when evaluating a workspace target: user-scoped automations carry no fixed
+// workspace, so their content triggers (chapter_batch / semantic) are evaluated
+// individually against each workspace and produce per-workspace inbox items and
+// trigger state.
+func (s *Store) ListForTriggerEvaluation(target ExecutionTarget) ([]Task, error) {
+	tasks, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	kind := strings.TrimSpace(target.Kind)
+	if kind == "" {
+		kind = TargetKindUser
+	}
+	workspace := canonicalStoreRoot(target.Workspace)
+	filtered := make([]Task, 0, len(tasks))
+	for _, task := range tasks {
+		if task.Target.Kind == kind {
+			if kind == TargetKindWorkspace && canonicalStoreRoot(task.Target.Workspace) != workspace {
+				continue
+			}
+			filtered = append(filtered, task)
+			continue
+		}
+		// When evaluating a workspace target, also include user-scoped tasks so
+		// their content triggers fire against that workspace.
+		if kind == TargetKindWorkspace && task.Target.Kind == TargetKindUser {
+			filtered = append(filtered, task)
+		}
 	}
 	return filtered, nil
 }
@@ -293,6 +333,13 @@ func (s *Store) taskLocations() []taskStoreLocation {
 }
 
 func taskMatchesID(task Task, id string) bool {
+	return TaskMatchesID(task, id)
+}
+
+// TaskMatchesID reports whether id identifies task. It matches against both the
+// stable per-workspace task ID and the cross-workspace catalog ID so callers can
+// resolve a task regardless of which form they hold.
+func TaskMatchesID(task Task, id string) bool {
 	id = strings.TrimSpace(id)
 	return id != "" && (task.ID == id || task.CatalogID == id)
 }
@@ -430,11 +477,6 @@ func (s *Store) normalizeTaskTarget(task Task) (Task, error) {
 	} else {
 		normalized.Target = ExecutionTarget{Kind: TargetKindUser}
 		normalized.Scope = ScopeUser
-		for _, trigger := range normalized.Triggers {
-			if trigger.Type != TriggerTypeManual && trigger.Type != TriggerTypeSchedule {
-				return Task{}, fmt.Errorf("global automation cannot use workspace content trigger %q", trigger.Type)
-			}
-		}
 		normalized.WriteMode = WriteModeReadOnly
 		normalized.WriteScope = WriteScopeNone
 		normalized.OutputPolicy = OutputPolicyRunRecordOnly

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 )
 
@@ -516,6 +517,6 @@ func skillFileFromInfo(rel string, info os.FileInfo, writable bool) SkillFile {
 		Size:      info.Size(),
 		Entry:     rel == SkillFileName,
 		Editable:  writable && info.Size() <= maxSkillFileBytes,
-		UpdatedAt: info.ModTime().UTC().Format("2006-01-02T15:04:05Z"),
+		UpdatedAt: info.ModTime().UTC().Format(time.RFC3339),
 	}
 }

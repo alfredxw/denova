@@ -20,6 +20,7 @@ import { getActiveAutomationRuns, getAutomationInbox, type ChapterSummary, type 
 import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { formatNumber } from './workbench-utils'
+import { formatDateTime } from '@/i18n'
 
 interface WorkbenchShellProps {
   mode: WorkspaceMode
@@ -545,7 +546,7 @@ export function WorkbenchShell({
       )}
       {mode === 'ide' && currentChapter && (
         <span className="ml-4">
-          {t('editor.updatedAt', { time: currentChapter.updated_at || t('editor.unknownTime') })}
+          {t('editor.updatedAt', { time: currentChapter.updated_at ? formatDateTime(currentChapter.updated_at) : t('editor.unknownTime') })}
           {editorLine !== undefined && ` · ${t('editor.currentLine', { line: formatNumber(editorLine) })}`}
         </span>
       )}

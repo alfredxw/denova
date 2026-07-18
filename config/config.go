@@ -435,6 +435,32 @@ func (cfg *Config) RemoteAccessConfig() RemoteAccessConfig {
 	}
 }
 
+// DataDir returns the canonical Denova data directory. DenovaDir is the
+// authoritative field; the legacy NovaDir name remains accepted only as a
+// deserialization alias for older config files, so this accessor bridges the
+// two during the rename. Runtime code should read through DataDir instead of
+// touching DenovaDir/NovaDir directly so the fallback lives in one seam.
+func (cfg *Config) DataDir() string {
+	if cfg == nil {
+		return ""
+	}
+	if dir := strings.TrimSpace(cfg.DenovaDir); dir != "" {
+		return dir
+	}
+	return strings.TrimSpace(cfg.NovaDir)
+}
+
+// SetDataDir sets the canonical Denova data directory, keeping the deprecated
+// NovaDir field mirrored so any legacy reader still resolves the same value.
+func (cfg *Config) SetDataDir(dir string) {
+	if cfg == nil {
+		return
+	}
+	dir = strings.TrimSpace(dir)
+	cfg.DenovaDir = dir
+	cfg.NovaDir = dir
+}
+
 func defaultNovaDir() string {
 	if dirExists(workspacepath.LegacyDataDirName) && !dirExists(workspacepath.DataDirName) {
 		return "./" + workspacepath.LegacyDataDirName

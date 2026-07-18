@@ -131,7 +131,7 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 		cfg = &config.Config{}
 	}
 	_ = settings
-	novaDir := strings.TrimSpace(cfg.NovaDir)
+	novaDir := strings.TrimSpace(cfg.DataDir())
 	workspace := strings.TrimSpace(cfg.Workspace)
 	automationWorkspaces := append([]string(nil), cfg.AutomationWorkspaces...)
 	builders := []configManagerToolBuilder{
@@ -871,7 +871,7 @@ func skillDirs(cfg *config.Config) []novaskills.Directory {
 	if cfg == nil {
 		return nil
 	}
-	return novaskills.NewDirectories(cfg.SkillsDir, cfg.NovaDir, cfg.Workspace)
+	return novaskills.NewDirectories(cfg.SkillsDir, cfg.DataDir(), cfg.Workspace)
 }
 
 func marshalToolJSON(v any) (string, error) {

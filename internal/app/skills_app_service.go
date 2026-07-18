@@ -157,5 +157,5 @@ func (s *SkillsAppService) directories() []novaskills.Directory {
 	if a.cfg == nil {
 		return nil
 	}
-	return novaskills.NewDirectories(a.cfg.SkillsDir, a.cfg.NovaDir, a.workspace)
+	return novaskills.NewDirectories(a.cfg.SkillsDir, a.cfg.DataDir(), a.workspace)
 }

@@ -62,3 +62,61 @@ func TestAutomationMessagesIncludeCrossWorkspaceCompletionsAndPendingActions(t *
 		t.Fatalf("localized completion body = %q", items[1].Body)
 	}
 }
+
+func TestMergeMessagesDedupesAndSortsByPublishedTime(t *testing.T) {
+	older := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	newer := time.Date(2026, 7, 18, 12, 30, 0, 0, time.UTC).Format(time.RFC3339)
+
+	changelog := []messages.Message{
+		{ID: "changelog:v0.2.0:", Type: messages.MessageTypeChangelog, Title: "v0.2.0", PublishedAt: older},
+	}
+	dynamic := []messages.Message{
+		{ID: "automation-run:run-1", Type: messages.MessageTypeAutomation, Title: "run", PublishedAt: newer},
+		// Duplicate id should be dropped (changelog wins since it's first).
+		{ID: "changelog:v0.2.0:", Type: messages.MessageTypeChangelog, Title: "dup", PublishedAt: newer},
+		// Empty id should be skipped.
+		{ID: "  ", Type: messages.MessageTypeAutomation, Title: "empty"},
+	}
+
+	merged := mergeMessages(changelog, dynamic)
+	if len(merged) != 2 {
+		t.Fatalf("merged length = %d, want 2 (deduped + empty id skipped): %#v", len(merged), merged)
+	}
+	// Sorted newest first.
+	if merged[0].ID != "automation-run:run-1" {
+		t.Fatalf("first merged = %s, want automation-run:run-1", merged[0].ID)
+	}
+	if merged[1].ID != "changelog:v0.2.0:" {
+		t.Fatalf("second merged = %s, want changelog:v0.2.0:", merged[1].ID)
+	}
+	// ReadAt is always nil after merge (applied separately).
+	for _, item := range merged {
+		if item.ReadAt != nil {
+			t.Fatalf("item %s should have nil ReadAt after merge", item.ID)
+		}
+	}
+}
+
+func TestApplyMessageReadStateCountsUnread(t *testing.T) {
+	readTime := time.Date(2026, 7, 18, 12, 30, 0, 0, time.UTC)
+	items := []messages.Message{
+		{ID: "read-1"},
+		{ID: "unread-1"},
+		{ID: "read-2"},
+	}
+	state := map[string]time.Time{
+		"read-1": readTime,
+		"read-2": readTime,
+	}
+
+	unread := applyMessageReadState(items, state)
+	if unread != 1 {
+		t.Fatalf("unread count = %d, want 1", unread)
+	}
+	if items[0].ReadAt == nil || items[2].ReadAt == nil {
+		t.Fatalf("read items should have ReadAt set: %#v", items)
+	}
+	if items[1].ReadAt != nil {
+		t.Fatalf("unread item should have nil ReadAt: %#v", items[1])
+	}
+}

@@ -264,7 +264,7 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 		return nil, err
 	}
 
-	runner, err := buildAgentRunner(context.Background(), &runtime.cfg, runtime.state, runtime.ideTeller)
+	runner, err := buildAgentRunner(ctx, &runtime.cfg, runtime.state, runtime.ideTeller)
 	if err != nil {
 		log.Printf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err)
 		return nil, err
@@ -432,7 +432,7 @@ func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agent.Ch
 	}
 	runtime.cfg.Workspace = runtime.workspace
 	runtime.ideTeller = ideStoryTellerForConfig(&runtime.cfg)
-	novaDir := runtime.cfg.NovaDir
+	novaDir := runtime.cfg.DataDir()
 	a.mu.Unlock()
 
 	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, runtime.workspace); err == nil {
@@ -502,8 +502,8 @@ func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agent.ChatReque
 	}
 	req.ImagePresetID = presetID
 	preset := imagepreset.DefaultPreset()
-	if strings.TrimSpace(runtime.cfg.NovaDir) != "" {
-		loaded, err := imagepreset.NewLibrary(runtime.cfg.NovaDir).Get(presetID)
+	if strings.TrimSpace(runtime.cfg.DataDir()) != "" {
+		loaded, err := imagepreset.NewLibrary(runtime.cfg.DataDir()).Get(presetID)
 		if err != nil {
 			log.Printf("[agent-task] load image preset failed id=%s workspace=%s err=%v; fallback=%s", presetID, runtime.workspace, err, imagepreset.DefaultID)
 		} else {

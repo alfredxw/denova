@@ -30,10 +30,11 @@ type automationTriggerCoordinator struct {
 }
 
 type automationTriggerRequest struct {
-	service *AutomationAppService
-	sources map[string]struct{}
-	targets map[string]struct{}
-	dirty   bool
+	service  *AutomationAppService
+	snapshot *automationWorkspaceSnapshot
+	sources  map[string]struct{}
+	targets  map[string]struct{}
+	dirty    bool
 }
 
 func newAutomationTriggerCoordinator() *automationTriggerCoordinator {
@@ -45,11 +46,11 @@ func newAutomationTriggerCoordinator() *automationTriggerCoordinator {
 	}
 }
 
-func (c *automationTriggerCoordinator) Enqueue(service *AutomationAppService, source string, targets []string) bool {
-	if c == nil || service == nil {
+func (c *automationTriggerCoordinator) Enqueue(service *AutomationAppService, snapshot *automationWorkspaceSnapshot, source string, targets []string) bool {
+	if c == nil || snapshot == nil {
 		return false
 	}
-	workspace := canonicalAutomationWorkspace(service.workspace())
+	workspace := canonicalAutomationWorkspace(snapshot.workspace)
 	if workspace == "" {
 		return false
 	}
@@ -61,9 +62,10 @@ func (c *automationTriggerCoordinator) Enqueue(service *AutomationAppService, so
 	request := c.entries[workspace]
 	if request == nil {
 		request = &automationTriggerRequest{
-			service: service,
-			sources: make(map[string]struct{}),
-			targets: make(map[string]struct{}),
+			service:  service,
+			snapshot: snapshot,
+			sources:  make(map[string]struct{}),
+			targets:  make(map[string]struct{}),
 		}
 		c.entries[workspace] = request
 		c.wg.Add(1)
@@ -72,6 +74,7 @@ func (c *automationTriggerCoordinator) Enqueue(service *AutomationAppService, so
 		// A later immutable snapshot for the same canonical workspace is safe
 		// to prefer and avoids retaining superseded runtime references.
 		request.service = service
+		request.snapshot = snapshot
 	}
 	mergeAutomationTriggerRequest(request, source, targets)
 	request.dirty = true
@@ -116,6 +119,7 @@ func (c *automationTriggerCoordinator) run(workspace string, request *automation
 			return
 		}
 		service := request.service
+		snapshot := request.snapshot
 		source := joinedAutomationTriggerValues(request.sources)
 		targets := sortedAutomationTriggerValues(request.targets)
 		request.sources = make(map[string]struct{})
@@ -123,7 +127,7 @@ func (c *automationTriggerCoordinator) run(workspace string, request *automation
 		request.dirty = false
 		c.mu.Unlock()
 
-		items, runs, err := service.processContentTriggers(c.ctx, time.Now().UTC(), source)
+		items, runs, err := service.processContentTriggers(c.ctx, snapshot, time.Now().UTC(), source)
 		if err != nil {
 			log.Printf("[automation-trigger] mutation check failed source=%s workspace=%q targets=%q err=%v", source, workspace, targets, err)
 		} else if len(items) > 0 || len(runs) > 0 {

@@ -17,9 +17,12 @@ import (
 	"denova/internal/session"
 )
 
+// AutomationAppService is a thin facade over the live App. It never stores a
+// workspace snapshot as a field; instead, snapshots are constructed on demand
+// (runtimeSnapshot for the active workspace, automationSnapshotForTarget for
+// cross-workspace) and passed as parameters to the methods that need them.
 type AutomationAppService struct {
-	app      *App
-	snapshot *automationWorkspaceSnapshot
+	app *App
 }
 
 func (a *App) StartAutomationScheduler(ctx context.Context) {
@@ -57,8 +60,7 @@ func (a *App) Automations() ([]automation.Task, error) {
 }
 
 func (s *AutomationAppService) List() ([]automation.Task, error) {
-	store := s.store()
-	return store.List()
+	return s.storeAllWorkspaces().List()
 }
 
 func (a *App) CreateAutomation(task automation.Task) (automation.Task, error) {
@@ -66,7 +68,7 @@ func (a *App) CreateAutomation(task automation.Task) (automation.Task, error) {
 }
 
 func (s *AutomationAppService) Create(task automation.Task) (automation.Task, error) {
-	return s.store().Create(task)
+	return s.storeAllWorkspaces().Create(task)
 }
 
 func (a *App) UpdateAutomation(id string, task automation.Task) (automation.Task, error) {
@@ -74,7 +76,7 @@ func (a *App) UpdateAutomation(id string, task automation.Task) (automation.Task
 }
 
 func (s *AutomationAppService) Update(id string, task automation.Task) (automation.Task, error) {
-	return s.store().Update(id, task)
+	return s.storeAllWorkspaces().Update(id, task)
 }
 
 func (a *App) DeleteAutomation(id string) error {
@@ -82,32 +84,29 @@ func (a *App) DeleteAutomation(id string) error {
 }
 
 func (s *AutomationAppService) Delete(id string) error {
-	return s.store().Delete(id)
+	return s.storeAllWorkspaces().Delete(id)
 }
 
 func (a *App) RunAutomation(ctx context.Context, id, trigger string) (automation.RunResult, error) {
 	return a.automation().Run(ctx, id, trigger)
 }
 
-func (s *AutomationAppService) Run(ctx context.Context, id, trigger string) (result automation.RunResult, err error) {
-	if s.snapshot == nil {
-		task, getErr := s.store().Get(id)
-		if getErr != nil {
-			return automation.RunResult{}, getErr
-		}
-		scoped, targetErr := s.automationForTask(ctx, task)
-		if targetErr != nil {
-			return automation.RunResult{}, targetErr
-		}
-		return scoped.Run(ctx, task.CatalogID, trigger)
-	}
-	task, err := s.store().Get(id)
+func (s *AutomationAppService) Run(ctx context.Context, id, trigger string) (automation.RunResult, error) {
+	task, err := s.storeAllWorkspaces().Get(id)
 	if err != nil {
 		return automation.RunResult{}, err
 	}
-	run := s.newRunRecord(task, trigger)
+	snap, err := s.automationSnapshotForTarget(ctx, task.Target)
+	if err != nil {
+		return automation.RunResult{}, err
+	}
+	return s.runWithSnapshot(ctx, snap, task, trigger)
+}
+
+func (s *AutomationAppService) runWithSnapshot(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, trigger string) (automation.RunResult, error) {
+	run := s.newRunRecord(snap, task, trigger)
 	conversation := &automationConversation{}
-	return s.runAutomation(ctx, task, run, conversation, nil)
+	return s.runAutomation(ctx, snap, task, run, conversation, nil)
 }
 
 func (a *App) StartAutomationTaskWithEvidence(ctx context.Context, id, trigger string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
@@ -115,30 +114,27 @@ func (a *App) StartAutomationTaskWithEvidence(ctx context.Context, id, trigger s
 }
 
 func (s *AutomationAppService) StartTaskWithEvidence(ctx context.Context, id, trigger string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
-	if s.snapshot == nil {
-		task, getErr := s.store().Get(id)
-		if getErr != nil {
-			return nil, automation.RunRecord{}, getErr
-		}
-		scoped, targetErr := s.automationForTask(ctx, task)
-		if targetErr != nil {
-			return nil, automation.RunRecord{}, targetErr
-		}
-		return scoped.StartTaskWithEvidence(ctx, task.CatalogID, trigger, evidence)
+	task, err := s.storeAllWorkspaces().Get(id)
+	if err != nil {
+		return nil, automation.RunRecord{}, err
 	}
-	return s.startTaskWithSourceRun(ctx, id, trigger, "", evidence)
+	snap, err := s.automationSnapshotForTarget(ctx, task.Target)
+	if err != nil {
+		return nil, automation.RunRecord{}, err
+	}
+	return s.startTaskWithSourceRun(ctx, snap, id, trigger, "", evidence)
 }
 
-func (s *AutomationAppService) startTaskWithSourceRun(ctx context.Context, id, trigger, sourceRunID string, triggerEvidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
-	taskDef, err := s.store().Get(id)
+func (s *AutomationAppService) startTaskWithSourceRun(ctx context.Context, snap *automationWorkspaceSnapshot, id, trigger, sourceRunID string, triggerEvidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
+	taskDef, err := storeForSnapshot(snap).Get(id)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
 	}
 
-	run := s.newRunRecord(taskDef, trigger)
+	run := s.newRunRecord(snap, taskDef, trigger)
 	sourceRunID = strings.TrimSpace(sourceRunID)
 	if trigger == automation.TriggerWriteConfirmation && sourceRunID != "" {
-		sourceRun, sourceErr := s.automationRunByID(sourceRunID)
+		sourceRun, sourceErr := s.automationRunByID(snap, sourceRunID)
 		if sourceErr != nil {
 			return nil, automation.RunRecord{}, sourceErr
 		}
@@ -152,12 +148,12 @@ func (s *AutomationAppService) startTaskWithSourceRun(ctx context.Context, id, t
 		run.SourceRunID = sourceRunID
 	}
 	run.TriggerEvidence = boundedRunTriggerEvidence(triggerEvidence)
-	claim, owner, err := s.reserveActiveAutomationRun(ctx, taskDef.ID, run)
+	claim, owner, err := s.reserveActiveAutomationRun(ctx, snap, taskDef.ID, run)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
 	}
 	if !owner {
-		log.Printf("[automation] attach active run workspace=%q task_id=%s run_id=%s status=%s", claim.workspace, taskDef.ID, claim.run.ID, claim.task.Status())
+		log.Printf("[automation] attach active run workspace=%q task_id=%s run_id=%s status=%s", snap.workspace, taskDef.ID, claim.run.ID, claim.task.Status())
 		return claim.task, claim.run, nil
 	}
 	claimActivated := false
@@ -166,7 +162,7 @@ func (s *AutomationAppService) startTaskWithSourceRun(ctx context.Context, id, t
 			s.releaseAutomationClaim(claim)
 		}
 	}()
-	conversation, err := s.newRunConversation(run, taskDef)
+	conversation, err := s.newRunConversation(snap, run, taskDef)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
 	}
@@ -178,9 +174,9 @@ func (s *AutomationAppService) startTaskWithSourceRun(ctx context.Context, id, t
 		case <-taskCtx.Done():
 			return
 		}
-		defer s.clearActiveAutomationTask(taskDef.ID, run.ID)
+		defer s.clearActiveAutomationTask(snap, taskDef.ID, run.ID)
 		emit(agent.Event{Type: "automation_run", Data: run})
-		result, _ := s.runAutomation(taskCtx, taskDef, run, conversation, emit)
+		result, _ := s.runAutomation(taskCtx, snap, taskDef, run, conversation, emit)
 		if result.Run.ID != "" {
 			emit(agent.Event{Type: "automation_run", Data: result.Run})
 		}
@@ -200,24 +196,6 @@ func (a *App) ContinueAutomationRun(ctx context.Context, runID, message string) 
 }
 
 func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, message string) (*Task, automation.RunRecord, error) {
-	if s.snapshot == nil {
-		if active, run, ok := s.ActiveAutomationTaskByRunID(runID); ok {
-			return active, run, nil
-		}
-		run, findErr := s.automationRunByID(runID)
-		if findErr != nil {
-			return nil, automation.RunRecord{}, findErr
-		}
-		target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
-		if strings.TrimSpace(run.Workspace) != "" {
-			target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: run.Workspace}
-		}
-		scoped, targetErr := s.automationForTarget(ctx, target)
-		if targetErr != nil {
-			return nil, automation.RunRecord{}, targetErr
-		}
-		return scoped.ContinueRun(ctx, runID, message)
-	}
 	message = strings.TrimSpace(message)
 	if message == "" {
 		return nil, automation.RunRecord{}, fmt.Errorf("message is required")
@@ -226,21 +204,40 @@ func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, message s
 		log.Printf("[automation] attach active follow-up run_id=%s status=%s", runID, active.Status())
 		return active, run, nil
 	}
-	run, err := s.automationRunByID(runID)
+	run, err := s.automationRunByID(nil, runID)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
 	}
 	if strings.TrimSpace(run.SessionID) == "" {
 		return nil, automation.RunRecord{}, fmt.Errorf("automation run %s has no session history", runID)
 	}
-	taskDef, err := s.store().Get(run.TaskID)
+	target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
+	if strings.TrimSpace(run.Workspace) != "" {
+		target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: run.Workspace}
+	}
+	snap, err := s.automationSnapshotForTarget(ctx, target)
+	if err != nil {
+		return nil, automation.RunRecord{}, err
+	}
+	return s.continueRunWithSnapshot(ctx, snap, runID, message)
+}
+
+func (s *AutomationAppService) continueRunWithSnapshot(ctx context.Context, snap *automationWorkspaceSnapshot, runID, message string) (*Task, automation.RunRecord, error) {
+	run, err := s.automationRunByID(snap, runID)
+	if err != nil {
+		return nil, automation.RunRecord{}, err
+	}
+	if strings.TrimSpace(run.SessionID) == "" {
+		return nil, automation.RunRecord{}, fmt.Errorf("automation run %s has no session history", runID)
+	}
+	taskDef, err := storeForSnapshot(snap).Get(run.TaskID)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
 	}
 	activeRun := run
 	activeRun.Status = automation.RunStatusRunning
 	activeRun.Error = ""
-	claim, owner, err := s.reserveActiveAutomationRun(ctx, taskDef.ID, activeRun)
+	claim, owner, err := s.reserveActiveAutomationRun(ctx, snap, taskDef.ID, activeRun)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
 	}
@@ -253,7 +250,7 @@ func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, message s
 			s.releaseAutomationClaim(claim)
 		}
 	}()
-	conversation, err := s.newRunConversation(run, taskDef)
+	conversation, err := s.newRunConversation(snap, run, taskDef)
 	if err != nil {
 		return nil, automation.RunRecord{}, err
 	}
@@ -264,9 +261,9 @@ func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, message s
 		case <-taskCtx.Done():
 			return
 		}
-		defer s.clearActiveAutomationTask(taskDef.ID, run.ID)
+		defer s.clearActiveAutomationTask(snap, taskDef.ID, run.ID)
 		emit(agent.Event{Type: "automation_run", Data: activeRun})
-		s.runAutomationFollowUp(taskCtx, taskDef, activeRun, conversation, message, emit)
+		s.runAutomationFollowUp(taskCtx, snap, taskDef, activeRun, conversation, message, emit)
 		finalRun := run
 		if taskCtx.Err() != nil {
 			finalRun.Status = automation.RunStatusAborted
@@ -285,29 +282,30 @@ func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, message s
 }
 
 func (s *AutomationAppService) AutomationRunMessages(runID string) ([]session.HistoryEntry, error) {
-	if s.snapshot == nil {
-		run, err := s.automationRunByID(runID)
-		if err != nil {
-			return nil, err
-		}
-		target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
-		if strings.TrimSpace(run.Workspace) != "" {
-			target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: run.Workspace}
-		}
-		scoped, err := s.automationForTarget(context.Background(), target)
-		if err != nil {
-			return nil, err
-		}
-		return scoped.AutomationRunMessages(runID)
+	run, err := s.automationRunByID(nil, runID)
+	if err != nil {
+		return nil, err
 	}
-	run, err := s.automationRunByID(runID)
+	target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
+	if strings.TrimSpace(run.Workspace) != "" {
+		target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: run.Workspace}
+	}
+	snap, err := s.automationSnapshotForTarget(context.Background(), target)
+	if err != nil {
+		return nil, err
+	}
+	return s.automationRunMessagesWithSnapshot(snap, runID)
+}
+
+func (s *AutomationAppService) automationRunMessagesWithSnapshot(snap *automationWorkspaceSnapshot, runID string) ([]session.HistoryEntry, error) {
+	run, err := s.automationRunByID(snap, runID)
 	if err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(run.SessionID) == "" {
 		return nil, fmt.Errorf("automation run %s has no session history", runID)
 	}
-	store := s.sessionStore()
+	store := snap.sessionStore
 	if store == nil {
 		return nil, ErrNoWorkspace
 	}
@@ -322,7 +320,7 @@ func (a *App) AutomationRunMessages(sessionID string) ([]session.HistoryEntry, e
 	return a.automation().AutomationRunMessages(sessionID)
 }
 
-func (s *AutomationAppService) automationRunByID(runID string) (automation.RunRecord, error) {
+func (s *AutomationAppService) automationRunByID(snap *automationWorkspaceSnapshot, runID string) (automation.RunRecord, error) {
 	runID = strings.TrimSpace(runID)
 	if runID == "" {
 		return automation.RunRecord{}, fmt.Errorf("run_id is required")
@@ -330,14 +328,18 @@ func (s *AutomationAppService) automationRunByID(runID string) (automation.RunRe
 	if _, run, ok := s.ActiveAutomationTaskByRunID(runID); ok {
 		return run, nil
 	}
-	_, run, err := s.store().GetRunByID(runID)
+	store := storeForSnapshot(snap)
+	if snap == nil {
+		store = s.storeAllWorkspaces()
+	}
+	_, run, err := store.GetRunByID(runID)
 	if err != nil {
 		return automation.RunRecord{}, err
 	}
 	return run, nil
 }
 
-func (s *AutomationAppService) runAutomation(ctx context.Context, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, emit func(agent.Event)) (result automation.RunResult, err error) {
+func (s *AutomationAppService) runAutomation(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, emit func(agent.Event)) (result automation.RunResult, err error) {
 	errorForwarded := false
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -348,7 +350,7 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 			run.Status = automation.RunStatusFailed
 			run.Error = err.Error()
 			run.FinishedAt = time.Now().UTC()
-			if updated, appendErr := s.store().AppendRun(task.ID, run); appendErr == nil {
+			if updated, appendErr := storeForSnapshot(snap).AppendRun(task.ID, run); appendErr == nil {
 				result = automation.RunResult{Task: updated, Run: run}
 			}
 			if emit != nil && !errorForwarded {
@@ -358,7 +360,7 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 	}()
 
 	log.Printf("[automation] run begin task_id=%s scope=%s workspace=%q trigger=%s template=%s", task.ID, task.Scope, run.Workspace, run.Trigger, task.Template)
-	runtimeCfg := s.runtimeConfigForTask(task)
+	runtimeCfg := runtimeConfigForTask(snap, task)
 	writeMode, writeScope := effectiveAutomationWriteModeScope(task, run)
 	runtimeCfg = constrainAutomationTools(runtimeCfg, writeMode, writeScope)
 	if task.Target.Kind == automation.TargetKindUser {
@@ -375,7 +377,7 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 		OutputPath:   task.OutputPath,
 		Workspace:    run.Workspace,
 	}
-	runner, buildErr := buildAutomationAgentRunner(ctx, &runtimeCfg, s.bookState(), taskInstruction)
+	runner, buildErr := buildAutomationAgentRunner(ctx, &runtimeCfg, snap.bookState, taskInstruction)
 	if buildErr != nil {
 		err = buildErr
 		return result, err
@@ -395,8 +397,8 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 			emit(ev)
 		}
 	}
-	chatService := s.chatService()
-	bookService := s.bookService()
+	chatService := snap.chatService
+	bookService := snap.bookService
 	if chatService == nil || (task.Target.Kind == automation.TargetKindWorkspace && bookService == nil) {
 		return automation.RunResult{}, ErrNoWorkspace
 	}
@@ -410,7 +412,7 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 		Mode:                "automation",
 		IdleTimeout:         agentIdleTimeout(runtimeCfg),
 		ToolResultMaxBytes:  agentToolResultMaxBytes(runtimeCfg),
-		OnMutationsVerified: s.automationMutationCallback("automation_agent_post_run"),
+		OnMutationsVerified: s.app.automationMutationCallback("automation_agent_post_run"),
 	}, forward)
 	if ctx.Err() != nil {
 		output := conversation.Output()
@@ -418,7 +420,7 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 		run.Status = automation.RunStatusAborted
 		run.Error = ctx.Err().Error()
 		run.FinishedAt = time.Now().UTC()
-		updated, appendErr := s.store().AppendRun(task.ID, run)
+		updated, appendErr := storeForSnapshot(snap).AppendRun(task.ID, run)
 		if appendErr != nil {
 			return automation.RunResult{}, appendErr
 		}
@@ -434,7 +436,7 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 		output = "自动化任务已完成，Agent 未返回文字摘要。"
 	}
 	run.Summary = strings.TrimSpace(output)
-	if path, writeErr := s.writeOptionalOutput(task, output, runtimeCfg, writeMode, writeScope); writeErr != nil {
+	if path, writeErr := s.writeOptionalOutput(snap, task, output, runtimeCfg, writeMode, writeScope); writeErr != nil {
 		err = writeErr
 		return result, err
 	} else if path != "" {
@@ -442,18 +444,18 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 	}
 	run.Status = automation.RunStatusSuccess
 	run.FinishedAt = time.Now().UTC()
-	updated, err := s.store().AppendRun(task.ID, run)
+	updated, err := storeForSnapshot(snap).AppendRun(task.ID, run)
 	if err != nil {
 		return automation.RunResult{}, err
 	}
-	if inboxErr := s.createWriteConfirmationInboxIfNeeded(updated, run, output); inboxErr != nil {
+	if inboxErr := s.createWriteConfirmationInboxIfNeeded(snap, updated, run, output); inboxErr != nil {
 		log.Printf("[automation] create write confirmation inbox failed task_id=%s run_id=%s err=%v", task.ID, run.ID, inboxErr)
 	}
 	log.Printf("[automation] run done task_id=%s scope=%s workspace=%q trigger=%s status=%s output_path=%q", task.ID, task.Scope, run.Workspace, run.Trigger, run.Status, run.OutputPath)
 	return automation.RunResult{Task: updated, Run: run}, nil
 }
 
-func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, message string, emit func(agent.Event)) {
+func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, conversation automationOutputConversation, message string, emit func(agent.Event)) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			log.Printf("[automation] follow-up panic recovered task_id=%s run_id=%s err=%v", task.ID, run.ID, recovered)
@@ -461,7 +463,7 @@ func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, task a
 		}
 	}()
 	log.Printf("[automation] follow-up begin task_id=%s run_id=%s message_len=%d", task.ID, run.ID, len(message))
-	runtimeCfg := s.runtimeConfigForTask(task)
+	runtimeCfg := runtimeConfigForTask(snap, task)
 	writeMode, writeScope := effectiveAutomationWriteModeScope(task, run)
 	runtimeCfg = constrainAutomationTools(runtimeCfg, writeMode, writeScope)
 	if task.Target.Kind == automation.TargetKindUser {
@@ -477,13 +479,13 @@ func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, task a
 		OutputPath:   task.OutputPath,
 		Workspace:    run.Workspace,
 	}
-	runner, err := buildAutomationAgentRunner(ctx, &runtimeCfg, s.bookState(), taskInstruction)
+	runner, err := buildAutomationAgentRunner(ctx, &runtimeCfg, snap.bookState, taskInstruction)
 	if err != nil {
 		emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return
 	}
-	chatService := s.chatService()
-	bookService := s.bookService()
+	chatService := snap.chatService
+	bookService := snap.bookService
 	if chatService == nil || (task.Target.Kind == automation.TargetKindWorkspace && bookService == nil) {
 		emit(agent.Event{Type: "error", Data: map[string]string{"message": ErrNoWorkspace.Error()}})
 		return
@@ -498,7 +500,7 @@ func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, task a
 		Mode:                "automation",
 		IdleTimeout:         agentIdleTimeout(runtimeCfg),
 		ToolResultMaxBytes:  agentToolResultMaxBytes(runtimeCfg),
-		OnMutationsVerified: s.automationMutationCallback("automation_agent_post_run"),
+		OnMutationsVerified: s.app.automationMutationCallback("automation_agent_post_run"),
 	}, emit)
 	log.Printf("[automation] follow-up end task_id=%s run_id=%s", task.ID, run.ID)
 }
@@ -508,32 +510,33 @@ func (a *App) RunDueAutomations(ctx context.Context, now time.Time) []automation
 }
 
 func (s *AutomationAppService) RunDue(ctx context.Context, now time.Time) []automation.RunResult {
-	if s.snapshot == nil {
-		tasks, err := s.store().List()
-		if err != nil {
-			log.Printf("[automation] list scheduler targets failed err=%v", err)
-			return nil
-		}
-		targets := map[string]automation.ExecutionTarget{}
-		for _, task := range tasks {
-			if !task.Enabled {
-				continue
-			}
-			key := task.Target.Kind + "\x00" + canonicalAutomationWorkspace(task.Target.Workspace)
-			targets[key] = task.Target
-		}
-		results := []automation.RunResult{}
-		for _, target := range targets {
-			scoped, targetErr := s.automationForTarget(ctx, target)
-			if targetErr != nil {
-				log.Printf("[automation] resolve scheduler target failed kind=%s workspace=%q err=%v", target.Kind, target.Workspace, targetErr)
-				continue
-			}
-			results = append(results, scoped.RunDue(ctx, now)...)
-		}
-		return results
+	tasks, err := s.storeAllWorkspaces().List()
+	if err != nil {
+		log.Printf("[automation] list scheduler targets failed err=%v", err)
+		return nil
 	}
-	_, results, err := s.processTriggers(ctx, "", now.UTC(), "scheduler")
+	targets := map[string]automation.ExecutionTarget{}
+	for _, task := range tasks {
+		if !task.Enabled {
+			continue
+		}
+		key := task.Target.Kind + "\x00" + canonicalAutomationWorkspace(task.Target.Workspace)
+		targets[key] = task.Target
+	}
+	results := []automation.RunResult{}
+	for _, target := range targets {
+		snap, targetErr := s.automationSnapshotForTarget(ctx, target)
+		if targetErr != nil {
+			log.Printf("[automation] resolve scheduler target failed kind=%s workspace=%q err=%v", target.Kind, target.Workspace, targetErr)
+			continue
+		}
+		results = append(results, s.runDueWithSnapshot(ctx, snap, now)...)
+	}
+	return results
+}
+
+func (s *AutomationAppService) runDueWithSnapshot(ctx context.Context, snap *automationWorkspaceSnapshot, now time.Time) []automation.RunResult {
+	_, results, err := s.processTriggers(ctx, snap, "", now.UTC(), "scheduler")
 	if err != nil {
 		log.Printf("[automation] process due triggers failed err=%v", err)
 		return nil
@@ -541,15 +544,15 @@ func (s *AutomationAppService) RunDue(ctx context.Context, now time.Time) []auto
 	return results
 }
 
-func (s *AutomationAppService) store() *automation.Store {
-	if s.snapshot != nil {
-		return automation.NewStore(s.snapshot.novaDir, s.snapshot.workspace)
-	}
+// storeAllWorkspaces builds a store that includes all known workspaces (from
+// the book registry plus the current workspace). Used by CRUD operations that
+// need visibility across all books.
+func (s *AutomationAppService) storeAllWorkspaces() *automation.Store {
 	a := s.app
 	a.mu.RLock()
 	novaDir := ""
 	if a.cfg != nil {
-		novaDir = a.cfg.NovaDir
+		novaDir = a.cfg.DataDir()
 	}
 	workspace := a.workspace
 	registry := a.bookRegistry
@@ -569,32 +572,20 @@ func (s *AutomationAppService) store() *automation.Store {
 	return store.WithWorkspaces(workspaces...)
 }
 
-func (s *AutomationAppService) workspace() string {
-	if s.snapshot != nil {
-		return s.snapshot.workspace
+// storeForSnapshot builds a store scoped to the snapshot's workspace.
+func storeForSnapshot(snap *automationWorkspaceSnapshot) *automation.Store {
+	if snap == nil {
+		return automation.NewStore("", "")
 	}
-	a := s.app
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.workspace
+	return automation.NewStore(snap.novaDir, snap.workspace)
 }
 
-func (s *AutomationAppService) bookState() *book.State {
-	if s.snapshot != nil {
-		return s.snapshot.bookState
-	}
-	a := s.app
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.bookState
-}
-
-func (s *AutomationAppService) newRunRecord(task automation.Task, trigger string) automation.RunRecord {
+func (s *AutomationAppService) newRunRecord(snap *automationWorkspaceSnapshot, task automation.Task, trigger string) automation.RunRecord {
 	run := automation.RunRecord{
 		ID:        automation.NewRunID(),
 		TaskID:    task.ID,
 		Scope:     task.Scope,
-		Workspace: s.workspace(),
+		Workspace: snap.workspace,
 		Trigger:   normalizeAutomationTrigger(trigger),
 		Status:    automation.RunStatusRunning,
 		StartedAt: time.Now().UTC(),
@@ -603,9 +594,9 @@ func (s *AutomationAppService) newRunRecord(task automation.Task, trigger string
 	return run
 }
 
-func (s *AutomationAppService) newRunConversation(run automation.RunRecord, task automation.Task) (*automationRunConversation, error) {
-	store := s.sessionStore()
-	cfg := s.configSnapshot()
+func (s *AutomationAppService) newRunConversation(snap *automationWorkspaceSnapshot, run automation.RunRecord, task automation.Task) (*automationRunConversation, error) {
+	store := snap.sessionStore
+	cfg := snap.cfg
 	if store == nil {
 		return nil, ErrNoWorkspace
 	}
@@ -710,7 +701,7 @@ func (c *automationRunConversation) UpdateDisplayToolStatus(id, name, status str
 	return c.base.UpdateDisplayToolStatus(id, name, status)
 }
 
-func (c *automationRunConversation) AppendDisplayToolArgs(id, name, delta string) error {
+func (c *automationRunConversation) UpdateDisplayToolArgs(id, name, delta string) error {
 	return c.base.AppendDisplayToolArgs(id, name, delta)
 }
 
@@ -737,44 +728,24 @@ func (c *automationRunConversation) Output() string {
 	return strings.TrimSpace(c.output)
 }
 
-func (s *AutomationAppService) runtimeConfig() config.Config {
-	if s.snapshot != nil {
-		return s.snapshot.cfg
-	}
-	a := s.app
-	a.mu.RLock()
-	runtimeCfg := config.Config{}
-	if a.cfg != nil {
-		runtimeCfg = *a.cfg
-	}
-	workspace := a.workspace
-	novaDir := runtimeCfg.NovaDir
-	a.mu.RUnlock()
-	runtimeCfg.Workspace = workspace
-	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
-		applyLayeredSettingsToConfig(&runtimeCfg, layered)
-	} else {
-		log.Printf("[automation] load layered settings failed workspace=%s err=%v", workspace, err)
-	}
-	return runtimeCfg
-}
-
-func (s *AutomationAppService) runtimeConfigForTask(task automation.Task) config.Config {
-	runtimeCfg := s.runtimeConfig()
+// runtimeConfigForTask returns the runtime config from a snapshot, applying
+// task-specific model profile overrides.
+func runtimeConfigForTask(snap *automationWorkspaceSnapshot, task automation.Task) config.Config {
+	runtimeCfg := snap.cfg
 	if profileID := strings.TrimSpace(task.ModelProfileID); profileID != "" {
 		runtimeCfg.AgentModels.Automation.ProfileID = profileID
 	}
 	return runtimeCfg
 }
 
-func (s *AutomationAppService) createWriteConfirmationInboxIfNeeded(task automation.Task, run automation.RunRecord, output string) error {
+func (s *AutomationAppService) createWriteConfirmationInboxIfNeeded(snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord, output string) error {
 	if task.WriteMode != automation.WriteModeConfirmWrite || run.Trigger == automation.TriggerWriteConfirmation {
 		return nil
 	}
 	if strings.TrimSpace(task.WriteScope) == "" || task.WriteScope == automation.WriteScopeNone {
 		return nil
 	}
-	store := s.store()
+	store := storeForSnapshot(snap)
 	fingerprint := automation.EvidenceFingerprint(task.ID, automation.InboxPurposeWriteConfirmation, run.ID)
 	if existing, ok, err := store.FindOpenInboxItem(task.ID, automation.InboxPurposeWriteConfirmation, fingerprint); err != nil {
 		return err
@@ -807,7 +778,7 @@ func (s *AutomationAppService) createWriteConfirmationInboxIfNeeded(task automat
 	return err
 }
 
-func (s *AutomationAppService) writeOptionalOutput(task automation.Task, output string, cfg config.Config, writeMode, writeScope string) (string, error) {
+func (s *AutomationAppService) writeOptionalOutput(snap *automationWorkspaceSnapshot, task automation.Task, output string, cfg config.Config, writeMode, writeScope string) (string, error) {
 	if task.OutputPolicy != automation.OutputPolicyOptionalFile || strings.TrimSpace(task.OutputPath) == "" {
 		return "", nil
 	}
@@ -817,7 +788,7 @@ func (s *AutomationAppService) writeOptionalOutput(task automation.Task, output 
 	if !config.ResolveAgentTools(&cfg, config.AgentKindAutomation).FileWrite {
 		return "", fmt.Errorf("Automation Agent file_write tool is disabled")
 	}
-	bookService := s.bookService()
+	bookService := snap.bookService
 	if bookService == nil {
 		return "", ErrNoWorkspace
 	}
@@ -933,7 +904,7 @@ func (s *AutomationAppService) buildAutomationUserMessage(task automation.Task, 
 	var confirmedSummary string
 	if run.Trigger == automation.TriggerWriteConfirmation {
 		if sourceRunID := strings.TrimSpace(run.SourceRunID); sourceRunID != "" {
-			if sourceRun, err := s.automationRunByID(sourceRunID); err == nil {
+			if sourceRun, err := s.automationRunByID(nil, sourceRunID); err == nil {
 				confirmedSummary = trimForTriggerSnippet(sourceRun.Summary, 2500)
 			} else if err != nil {
 				log.Printf("[automation] load source run summary failed source_run_id=%s err=%v", sourceRunID, err)

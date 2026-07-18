@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"denova/internal/workspacechange"
 )
@@ -156,6 +157,121 @@ func TestDocumentReviewRepairsTornLedgerTail(t *testing.T) {
 	}
 	if repaired.Size() != complete.Size() {
 		t.Fatalf("torn tail was not truncated: complete=%d repaired=%d", complete.Size(), repaired.Size())
+	}
+}
+
+func TestDocumentReviewEmitsThreadCreatedEvent(t *testing.T) {
+	workspace := t.TempDir()
+	service, err := NewService(workspace)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	snapshot := Snapshot{Content: "需要审阅的正文", Revision: workspacechange.Revision([]byte("需要审阅的正文"))}
+	anchor := testAnchor(snapshot, "需要审阅")
+
+	thread, _, err := service.AddComment(context.Background(), AddCommentRequest{
+		Path: "chapters/ch01.md", Body: "补充细节", Anchor: anchor,
+	}, snapshot)
+	if err != nil {
+		t.Fatalf("add comment: %v", err)
+	}
+
+	events, err := service.store.readAll()
+	if err != nil {
+		t.Fatalf("read all events: %v", err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("event count = %d, want thread_created + comments_upserted: %#v", len(events), events)
+	}
+	if events[0].Type != eventThreadCreated {
+		t.Fatalf("first event = %q, want %q", events[0].Type, eventThreadCreated)
+	}
+	if events[0].Thread == nil || events[0].Thread.ID != thread.ID {
+		t.Fatalf("thread_created event = %#v", events[0].Thread)
+	}
+	if events[1].Type != eventCommentsUpserted {
+		t.Fatalf("second event = %q, want %q", events[1].Type, eventCommentsUpserted)
+	}
+	if events[1].Thread != nil {
+		t.Fatalf("comments_upserted event must not carry thread: %#v", events[1].Thread)
+	}
+}
+
+func TestDocumentReviewIndexSkipsThreadsWithOnlyDeletedComments(t *testing.T) {
+	workspace := t.TempDir()
+	service, err := NewService(workspace)
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+	snapshot := Snapshot{Content: "需要审阅的正文", Revision: workspacechange.Revision([]byte("需要审阅的正文"))}
+	anchor := testAnchor(snapshot, "需要审阅")
+
+	thread, comment, err := service.AddComment(context.Background(), AddCommentRequest{
+		Path: "chapters/ch01.md", Body: "第一条评论", Anchor: anchor,
+	}, snapshot)
+	if err != nil {
+		t.Fatalf("add comment: %v", err)
+	}
+	if _, err := service.ConsumeReviewComments(context.Background(), thread.ID, []string{comment.ID}); err != nil {
+		t.Fatalf("consume comment: %v", err)
+	}
+
+	current, err := service.CurrentThread(context.Background())
+	if err != nil {
+		t.Fatalf("current thread: %v", err)
+	}
+	if current.ID != "" || len(current.Comments) != 0 {
+		t.Fatalf("thread with only deleted comments should be skipped: %#v", current)
+	}
+
+	// A fresh comment after the thread is emptied rotates to a new thread ID.
+	newThread, _, err := service.AddComment(context.Background(), AddCommentRequest{
+		Path: "chapters/ch01.md", Body: "新的评论", Anchor: anchor,
+	}, snapshot)
+	if err != nil {
+		t.Fatalf("add new comment: %v", err)
+	}
+	if newThread.ID == thread.ID {
+		t.Fatalf("expected a new thread after the previous one emptied, got %q", newThread.ID)
+	}
+	if newThread.ID == "" || len(newThread.Comments) != 1 {
+		t.Fatalf("new thread = %#v", newThread)
+	}
+}
+
+func TestDocumentReviewReplaysLegacyThreadEmbeddedInCommentsUpserted(t *testing.T) {
+	workspace := t.TempDir()
+	store, err := newEventStore(workspace)
+	if err != nil {
+		t.Fatalf("new store: %v", err)
+	}
+	now := time.Now().UTC()
+	legacyThread := Thread{ID: "legacy-thread", CreatedAt: now, UpdatedAt: now, Comments: []Comment{}}
+	legacyComment := Comment{
+		ID: "legacy-comment", ThreadID: "legacy-thread", Path: "chapter.md",
+		Body: "旧格式评论", Anchor: Anchor{Kind: AnchorKindTextRange, Encoding: AnchorEncodingUTF8, Revision: "rev", Start: 0, End: 3},
+		CreatedAt: now, UpdatedAt: now,
+	}
+	// Legacy event smuggles the thread inside comments_upserted via the optional
+	// Thread field. New code must still replay this shape.
+	if err := store.append(ledgerEvent{
+		Type: eventCommentsUpserted, CreatedAt: now,
+		Thread: cloneThreadPtr(legacyThread), Comments: []Comment{legacyComment},
+	}); err != nil {
+		t.Fatalf("append legacy event: %v", err)
+	}
+	store.close()
+
+	service, err := NewService(workspace)
+	if err != nil {
+		t.Fatalf("reload service: %v", err)
+	}
+	current, err := service.CurrentThread(context.Background())
+	if err != nil {
+		t.Fatalf("current thread: %v", err)
+	}
+	if current.ID != "legacy-thread" || len(current.Comments) != 1 || current.Comments[0].ID != "legacy-comment" {
+		t.Fatalf("legacy replay thread = %#v", current)
 	}
 }
 

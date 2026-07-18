@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -128,7 +129,7 @@ func (s *Service) Summary() (WorkspaceSummary, error) {
 			Words:        words,
 			Status:       chapterStatus(words, confirmed),
 			Confirmed:    confirmed,
-			UpdatedAt:    info.ModTime().Format(DisplayTimeFormat),
+			UpdatedAt:    info.ModTime().UTC().Format(time.RFC3339),
 		}
 		chapter.Volume, chapter.VolumePath = chapterVolume(chapter.Path)
 		summary.Chapters = append(summary.Chapters, chapter)
@@ -166,7 +167,7 @@ func (s *Service) documentPreview(relPath, fallbackTitle string) *DocumentPrevie
 		Title:     documentTitle(content, fallbackTitle, relPath),
 		Excerpt:   documentExcerpt(content),
 		Words:     countWritingWords(content),
-		UpdatedAt: info.ModTime().Format(DisplayTimeFormat),
+		UpdatedAt: info.ModTime().UTC().Format(time.RFC3339),
 	}
 }
 

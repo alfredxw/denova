@@ -79,7 +79,7 @@ func (a *App) bookCoverConfig(workspace string) (config.Config, error) {
 	a.mu.RLock()
 	novaDir := ""
 	if a.cfg != nil {
-		novaDir = a.cfg.NovaDir
+		novaDir = a.cfg.DataDir()
 	}
 	a.mu.RUnlock()
 	layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace)
@@ -93,7 +93,8 @@ func (a *App) bookCoverConfig(workspace string) (config.Config, error) {
 		ImageAPIModel:            effective.ImageAPIModel,
 		DefaultImageAPIProfileID: effective.DefaultImageAPIProfileID,
 		ImageAPIProfiles:         effective.ImageAPIProfiles,
-		NovaDir:                  layered.Paths.NovaDir,
+		DenovaDir:                layered.Paths.DenovaDir,
+		NovaDir:                  layered.Paths.DenovaDir,
 		Workspace:                workspace,
 		IDEImagePresetID:         effective.IDEImagePresetID,
 	}
@@ -117,10 +118,10 @@ func resolveBookCoverImagePreset(cfg config.Config, requestedID string) (imagepr
 	if presetID == "" {
 		presetID = imagepreset.DefaultID
 	}
-	if strings.TrimSpace(cfg.NovaDir) == "" {
+	if strings.TrimSpace(cfg.DataDir()) == "" {
 		return imagepreset.DefaultPreset(), nil
 	}
-	preset, err := imagepreset.NewLibrary(cfg.NovaDir).Get(presetID)
+	preset, err := imagepreset.NewLibrary(cfg.DataDir()).Get(presetID)
 	if err != nil {
 		return imagepreset.Preset{}, err
 	}

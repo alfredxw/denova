@@ -346,9 +346,9 @@ func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestCont
 	var task *novaApp.Task
 	locale := requestLocale(c)
 	if strings.TrimSpace(body.RegenerateFromTurn) != "" {
-		task = h.app.StartInteractiveRegenerateTask(body.StoryID, body.Branch, body.RegenerateFromTurn, body.Message, body.StyleScenes, locale)
+		task = h.app.StartInteractiveRegenerateTask(ctx, body.StoryID, body.Branch, body.RegenerateFromTurn, body.Message, body.StyleScenes, locale)
 	} else {
-		task = h.app.StartInteractiveTask(body.StoryID, body.Branch, body.Message, body.StyleScenes, locale)
+		task = h.app.StartInteractiveTask(ctx, body.StoryID, body.Branch, body.Message, body.StyleScenes, locale)
 	}
 	if task == nil {
 		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")

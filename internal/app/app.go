@@ -84,8 +84,8 @@ func (a *App) interactiveDirectorGenerator() interactiveDirectorGenerator {
 // New 创建应用运行时。当 workspace 为空且没有上次打开的 workspace 时，App 进入“无书籍”状态，
 // 等待用户在前端书籍管理页选择或新建书籍后再构建 runtime。
 func New(ctx context.Context, cfg *config.Config) (*App, error) {
-	registry := NewBookRegistry(cfg.NovaDir)
-	bookMetaStore := NewBookMetaStore(cfg.NovaDir)
+	registry := NewBookRegistry(cfg.DataDir())
+	bookMetaStore := NewBookMetaStore(cfg.DataDir())
 	workspace := cfg.Workspace
 	if workspace == "" && cfg.ResumeLastWorkspace {
 		if lastWorkspace := registry.Current(); lastWorkspace != "" {

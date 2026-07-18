@@ -66,7 +66,7 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 	if err != nil {
 		return nil, err
 	}
-	interactiveStore := interactive.NewStoreWithNovaDir(absWorkspace, runtimeCfg.NovaDir)
+	interactiveStore := interactive.NewStoreWithNovaDir(absWorkspace, runtimeCfg.DataDir())
 
 	return &runtimeState{
 		workspace:              absWorkspace,
@@ -94,14 +94,14 @@ func buildAgentRunner(ctx context.Context, cfg *config.Config, state *book.State
 }
 
 func ideStoryTellerForConfig(cfg *config.Config) agent.IDEStoryTeller {
-	if cfg == nil || cfg.NovaDir == "" {
+	if cfg == nil || cfg.DataDir() == "" {
 		return agent.IDEStoryTeller{}
 	}
 	tellerID := cfg.IDEStoryTellerID
 	if tellerID == "" {
 		tellerID = "classic"
 	}
-	teller := loadInteractiveTeller(cfg.NovaDir, tellerID)
+	teller := loadInteractiveTeller(cfg.DataDir(), tellerID)
 	if teller.ID == "" {
 		return agent.IDEStoryTeller{}
 	}

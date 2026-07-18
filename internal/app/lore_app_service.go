@@ -266,7 +266,7 @@ func (s *LoreAppService) loreImageRuntimeSnapshot() (*book.LoreStore, config.Con
 	cfg := *a.cfg
 	workspace := a.workspace
 	bookService := a.bookService
-	novaDir := cfg.NovaDir
+	novaDir := cfg.DataDir()
 	a.mu.RUnlock()
 
 	cfg.Workspace = workspace
@@ -286,10 +286,10 @@ func resolveLoreImagePreset(cfg config.Config, requestedID string) (imagepreset.
 	if presetID == "" {
 		presetID = imagepreset.DefaultID
 	}
-	if strings.TrimSpace(cfg.NovaDir) == "" {
+	if strings.TrimSpace(cfg.DataDir()) == "" {
 		return imagepreset.DefaultPreset(), nil
 	}
-	return imagepreset.NewLibrary(cfg.NovaDir).Get(presetID)
+	return imagepreset.NewLibrary(cfg.DataDir()).Get(presetID)
 }
 
 func dedupeLoreImageItemIDs(ids []string) []string {

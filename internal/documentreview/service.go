@@ -43,7 +43,11 @@ type Service struct {
 	mu       sync.RWMutex
 	threads  map[string]*Thread
 	comments map[string]*Comment
-	order    []string
+	// threadComments indexes non-deleted comment IDs by thread ID so
+	// currentThreadLocked can iterate only a thread's own comments instead of
+	// scanning every comment in the workspace (O(threads × comments)).
+	threadComments map[string]map[string]struct{}
+	order          []string
 }
 
 func ForWorkspace(workspace string) (*Service, error) {
@@ -79,10 +83,11 @@ func newService(workspace string) (*Service, error) {
 		return nil, err
 	}
 	service := &Service{
-		workspace: workspace,
-		store:     store,
-		threads:   map[string]*Thread{},
-		comments:  map[string]*Comment{},
+		workspace:      workspace,
+		store:          store,
+		threads:        map[string]*Thread{},
+		comments:       map[string]*Comment{},
+		threadComments: map[string]map[string]struct{}{},
 	}
 	events, err := store.readAll()
 	if err != nil {
@@ -164,10 +169,11 @@ func (s *Service) AddComment(ctx context.Context, req AddCommentRequest, snapsho
 	}
 	now := time.Now().UTC()
 	thread := s.currentThreadLocked()
-	var createdThread *Thread
 	if thread.ID == "" {
 		thread = Thread{ID: newID("review-thread"), CreatedAt: now, UpdatedAt: now, Comments: []Comment{}}
-		createdThread = &thread
+		if err := s.appendAndApply(ledgerEvent{Type: eventThreadCreated, CreatedAt: now, Thread: cloneThreadPtr(thread)}); err != nil {
+			return Thread{}, Comment{}, err
+		}
 	}
 	comment := Comment{
 		ID:        newID("document-comment"),
@@ -178,8 +184,7 @@ func (s *Service) AddComment(ctx context.Context, req AddCommentRequest, snapsho
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	event := ledgerEvent{Type: eventCommentsUpserted, CreatedAt: now, Thread: createdThread, Comments: []Comment{comment}}
-	if err := s.appendAndApply(event); err != nil {
+	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, CreatedAt: now, Comments: []Comment{comment}}); err != nil {
 		return Thread{}, Comment{}, err
 	}
 	log.Printf("[document-review] comment created workspace=%q path=%q thread_id=%s comment_id=%s", s.workspace, comment.Path, comment.ThreadID, comment.ID)
@@ -352,15 +357,43 @@ func (s *Service) appendAndApply(event ledgerEvent) error {
 }
 
 func (s *Service) applyEvent(event ledgerEvent) error {
-	if event.Type != eventCommentsUpserted {
+	switch event.Type {
+	case eventThreadCreated:
+		return s.applyThreadCreated(event)
+	case eventCommentsUpserted:
+		return s.applyCommentsUpserted(event)
+	default:
 		return errors.New("unknown document review ledger event type: " + event.Type)
 	}
+}
+
+// applyThreadCreated seeds a new thread into the read projection. It is also
+// reached while replaying legacy comments_upserted events that smuggled the
+// thread in via the optional Thread field, so older ledgers remain replayable.
+func (s *Service) applyThreadCreated(event ledgerEvent) error {
+	if event.Thread == nil {
+		return newError(ErrorCodeConflict, "document review thread_created event has no thread", nil)
+	}
+	thread := cloneThread(*event.Thread)
+	if s.threads[thread.ID] == nil {
+		s.order = append(s.order, thread.ID)
+	}
+	s.threads[thread.ID] = &thread
+	if s.threadComments[thread.ID] == nil {
+		s.threadComments[thread.ID] = map[string]struct{}{}
+	}
+	return nil
+}
+
+// applyCommentsUpserted projects comment upserts, deletes, and restores into
+// the read projection and keeps the threadComments index consistent.
+func (s *Service) applyCommentsUpserted(event ledgerEvent) error {
+	// Legacy ledgers embedded the thread in the comments_upserted event. Seed it
+	// first so comments can reference it; new ledgers emit a separate thread_created.
 	if event.Thread != nil {
-		thread := cloneThread(*event.Thread)
-		if s.threads[thread.ID] == nil {
-			s.order = append(s.order, thread.ID)
+		if err := s.applyThreadCreated(ledgerEvent{Type: eventThreadCreated, CreatedAt: event.CreatedAt, Thread: event.Thread}); err != nil {
+			return err
 		}
-		s.threads[thread.ID] = &thread
 	}
 	if len(event.Comments) == 0 {
 		return newError(ErrorCodeConflict, "document review ledger event has no comments", nil)
@@ -375,19 +408,32 @@ func (s *Service) applyEvent(event ledgerEvent) error {
 		if comment.UpdatedAt.After(thread.UpdatedAt) {
 			thread.UpdatedAt = comment.UpdatedAt
 		}
+		if s.threadComments[comment.ThreadID] == nil {
+			s.threadComments[comment.ThreadID] = map[string]struct{}{}
+		}
+		if comment.Deleted {
+			delete(s.threadComments[comment.ThreadID], comment.ID)
+		} else {
+			s.threadComments[comment.ThreadID][comment.ID] = struct{}{}
+		}
 	}
 	return nil
 }
 
 func (s *Service) currentThreadLocked() Thread {
 	for index := len(s.order) - 1; index >= 0; index-- {
-		thread := s.threads[s.order[index]]
+		threadID := s.order[index]
+		thread := s.threads[threadID]
 		if thread == nil {
 			continue
 		}
-		comments := make([]Comment, 0)
-		for _, comment := range s.comments {
-			if comment.ThreadID == thread.ID && !comment.Deleted {
+		commentIDs := s.threadComments[threadID]
+		if len(commentIDs) == 0 {
+			continue
+		}
+		comments := make([]Comment, 0, len(commentIDs))
+		for id := range commentIDs {
+			if comment := s.comments[id]; comment != nil && !comment.Deleted {
 				comments = append(comments, *comment)
 			}
 		}
@@ -410,6 +456,11 @@ func (s *Service) currentThreadLocked() Thread {
 func cloneThread(input Thread) Thread {
 	input.Comments = append([]Comment{}, input.Comments...)
 	return input
+}
+
+func cloneThreadPtr(input Thread) *Thread {
+	cloned := cloneThread(input)
+	return &cloned
 }
 
 func validateBody(value string) (string, error) {

@@ -2,7 +2,6 @@ package automation
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -146,15 +145,37 @@ func TestUserCatalogListsInboxItemsAcrossWorkspaces(t *testing.T) {
 	}
 }
 
-func TestGlobalAutomationRejectsWorkspaceContentTriggers(t *testing.T) {
+func TestGlobalAutomationAllowsContentTriggersAsReadOnly(t *testing.T) {
 	store := NewStore(filepath.Join(t.TempDir(), "user"), "")
-	_, err := store.Create(Task{
+	task, err := store.Create(Task{
 		Target:   ExecutionTarget{Kind: TargetKindUser},
 		Name:     "Global research",
 		Template: TemplateCustomPrompt,
+		// Content triggers (semantic / chapter_batch) are allowed for user-scope
+		// automations: they are evaluated per workspace and never mutate content.
 		Triggers: []TriggerDefinition{{Type: TriggerTypeSemantic, Enabled: true}},
 	})
-	if err == nil || !strings.Contains(err.Error(), "global automation") {
-		t.Fatalf("Create error = %v, want global automation trigger validation", err)
+	if err != nil {
+		t.Fatalf("Create error = %v, want user-scope content trigger accepted", err)
+	}
+	if task.Scope != ScopeUser {
+		t.Fatalf("scope = %q, want user", task.Scope)
+	}
+	if task.WriteMode != WriteModeReadOnly || task.WriteScope != WriteScopeNone {
+		t.Fatalf("user-scope automation must stay read-only, got write_mode=%q write_scope=%q", task.WriteMode, task.WriteScope)
+	}
+	// The user-scope task is not part of any single workspace's exclusive list.
+	workspace := filepath.Join(t.TempDir(), "book")
+	wsStore := NewStore(store.userDir, workspace)
+	if tasks, err := wsStore.ListForTarget(ExecutionTarget{Kind: TargetKindWorkspace, Workspace: workspace}); err != nil {
+		t.Fatal(err)
+	} else if hasTaskNamed(tasks, "Global research") {
+		t.Fatalf("workspace target must not include user-scope task: %#v", tasks)
+	}
+	// ... but it IS included when evaluating triggers against a workspace.
+	if tasks, err := wsStore.ListForTriggerEvaluation(ExecutionTarget{Kind: TargetKindWorkspace, Workspace: workspace}); err != nil {
+		t.Fatal(err)
+	} else if !hasTaskNamed(tasks, "Global research") {
+		t.Fatalf("trigger evaluation must include user-scope task: %#v", tasks)
 	}
 }

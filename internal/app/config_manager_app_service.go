@@ -29,11 +29,11 @@ type ConfigManagerRequest struct {
 	Locale      string            `json:"-"`
 }
 
-func (a *App) StartConfigManagerTask(req ConfigManagerRequest) *Task {
-	return a.configManager().StartTask(req)
+func (a *App) StartConfigManagerTask(ctx context.Context, req ConfigManagerRequest) *Task {
+	return a.configManager().StartTask(ctx, req)
 }
 
-func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
+func (s *ConfigManagerAppService) StartTask(ctx context.Context, req ConfigManagerRequest) *Task {
 	a := s.app
 	a.mu.Lock()
 	state := a.bookState
@@ -53,7 +53,7 @@ func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
 			runtimeCfg.AutomationWorkspaces = append(runtimeCfg.AutomationWorkspaces, record.Path)
 		}
 	}
-	if layered, err := config.LoadLayeredWithStartupConfig(runtimeCfg.NovaDir, workspace); err == nil {
+	if layered, err := config.LoadLayeredWithStartupConfig(runtimeCfg.DataDir(), workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {
 		log.Printf("[config-manager] load layered settings failed workspace=%s err=%v", workspace, err)
@@ -69,8 +69,8 @@ func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
 		log.Printf("[config-manager] load session failed session_id=%s err=%v", sessionID, err)
 		return nil
 	}
-	resourceSkills := loadConfigManagerResourceSkills(context.Background(), &runtimeCfg, req)
-	runner, err := buildConfigManagerRunner(context.Background(), &runtimeCfg, state, resourceSkills...)
+	resourceSkills := loadConfigManagerResourceSkills(ctx, &runtimeCfg, req)
+	runner, err := buildConfigManagerRunner(ctx, &runtimeCfg, state, resourceSkills...)
 	if err != nil {
 		log.Printf("[config-manager] build runner failed workspace=%s err=%v", workspace, err)
 		return nil

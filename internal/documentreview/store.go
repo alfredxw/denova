@@ -17,6 +17,7 @@ import (
 )
 
 const (
+	eventThreadCreated    = "thread_created"
 	eventCommentsUpserted = "comments_upserted"
 	maxLedgerEventBytes   = 2 * 1024 * 1024
 )

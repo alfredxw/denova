@@ -12,28 +12,144 @@ import (
 
 const maxAutomationNotificationMessages = 200
 
+// MessagesAppService owns cross-source message merging. It composes changelog
+// messages (from messages.Service) with dynamic automation notices, then
+// applies the shared read state. Keeping the merge in the app layer means
+// messages.Service stays a focused changelog + read-state persistence service.
 func (a *App) Messages(locale string) (messages.ListResult, error) {
-	dynamic, err := a.automationNotificationMessages(locale)
+	changelog, dynamic, err := a.messageSources(locale)
 	if err != nil {
 		return messages.ListResult{}, err
 	}
-	return messages.NewService(a.novaDir()).ListForLocaleWithMessages(locale, dynamic)
+	merged := mergeMessages(changelog, dynamic)
+	state, err := messages.NewService(a.novaDir()).ReadState()
+	if err != nil {
+		return messages.ListResult{}, err
+	}
+	unread := applyMessageReadState(merged, state)
+	return messages.ListResult{Items: merged, UnreadCount: unread}, nil
 }
 
 func (a *App) MarkMessageRead(id, locale string) (messages.Message, error) {
-	dynamic, err := a.automationNotificationMessages(locale)
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return messages.Message{}, fmt.Errorf("message id is required")
+	}
+	changelog, dynamic, err := a.messageSources(locale)
 	if err != nil {
 		return messages.Message{}, err
 	}
-	return messages.NewService(a.novaDir()).MarkReadForLocaleWithMessages(id, locale, dynamic)
+	merged := mergeMessages(changelog, dynamic)
+	var found *messages.Message
+	for i := range merged {
+		if merged[i].ID == id {
+			found = &merged[i]
+			break
+		}
+	}
+	if found == nil {
+		return messages.Message{}, fmt.Errorf("message %s not found", id)
+	}
+	svc := messages.NewService(a.novaDir())
+	state, err := svc.ReadState()
+	if err != nil {
+		return messages.Message{}, err
+	}
+	if t, ok := state[id]; ok {
+		found.ReadAt = &t
+		return *found, nil
+	}
+	readAt, err := svc.MarkRead(id)
+	if err != nil {
+		return messages.Message{}, err
+	}
+	found.ReadAt = &readAt
+	return *found, nil
 }
 
 func (a *App) MarkAllMessagesRead(locale string) (messages.ListResult, error) {
-	dynamic, err := a.automationNotificationMessages(locale)
+	changelog, dynamic, err := a.messageSources(locale)
 	if err != nil {
 		return messages.ListResult{}, err
 	}
-	return messages.NewService(a.novaDir()).MarkAllReadForLocaleWithMessages(locale, dynamic)
+	merged := mergeMessages(changelog, dynamic)
+	ids := make([]string, 0, len(merged))
+	for _, item := range merged {
+		if strings.TrimSpace(item.ID) != "" {
+			ids = append(ids, item.ID)
+		}
+	}
+	if err := messages.NewService(a.novaDir()).MarkAllRead(ids); err != nil {
+		return messages.ListResult{}, err
+	}
+	state, err := messages.NewService(a.novaDir()).ReadState()
+	if err != nil {
+		return messages.ListResult{}, err
+	}
+	applyMessageReadState(merged, state)
+	return messages.ListResult{Items: merged, UnreadCount: 0}, nil
+}
+
+// messageSources fetches both changelog and dynamic messages.
+func (a *App) messageSources(locale string) ([]messages.Message, []messages.Message, error) {
+	svc := messages.NewService(a.novaDir())
+	changelog, err := svc.ChangelogForLocale(locale)
+	if err != nil {
+		return nil, nil, err
+	}
+	dynamic, err := a.automationNotificationMessages(locale)
+	if err != nil {
+		return nil, nil, err
+	}
+	return changelog, dynamic, nil
+}
+
+// mergeMessages combines changelog and dynamic messages, deduplicates by id,
+// and sorts by published time descending (newest first).
+func mergeMessages(changelog, dynamic []messages.Message) []messages.Message {
+	merged := make([]messages.Message, 0, len(changelog)+len(dynamic))
+	seen := make(map[string]struct{}, len(changelog)+len(dynamic))
+	for _, item := range append(changelog, dynamic...) {
+		item.ID = strings.TrimSpace(item.ID)
+		if item.ID == "" {
+			continue
+		}
+		if _, exists := seen[item.ID]; exists {
+			continue
+		}
+		seen[item.ID] = struct{}{}
+		item.ReadAt = nil
+		merged = append(merged, item)
+	}
+	sort.SliceStable(merged, func(i, j int) bool {
+		return messagePublishedTime(merged[i].PublishedAt).After(messagePublishedTime(merged[j].PublishedAt))
+	})
+	return merged
+}
+
+// messagePublishedTime parses a published-at timestamp for sorting.
+func messagePublishedTime(value string) time.Time {
+	for _, layout := range []string{time.RFC3339, time.RFC3339Nano, time.DateOnly} {
+		if parsed, err := time.Parse(layout, strings.TrimSpace(value)); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
+}
+
+// applyMessageReadState sets ReadAt on each message from the read state and
+// returns the number of unread messages.
+func applyMessageReadState(items []messages.Message, state map[string]time.Time) int {
+	unread := 0
+	for i := range items {
+		if readAt, ok := state[items[i].ID]; ok {
+			t := readAt
+			items[i].ReadAt = &t
+			continue
+		}
+		unread++
+	}
+	return unread
 }
 
 func (a *App) automationNotificationMessages(locale string) ([]messages.Message, error) {
@@ -194,7 +310,7 @@ func automationActionLabel(locale string) string {
 }
 
 func automationRunMessageBody(taskName, status, detail, locale string) string {
-	body := fmt.Sprintf("任务“%s”%s。", taskName, strings.TrimPrefix(status, "自动化任务"))
+	body := fmt.Sprintf("任务\"%s\"%s。", taskName, strings.TrimPrefix(status, "自动化任务"))
 	if !isChineseLocale(locale) {
 		body = fmt.Sprintf("Task \"%s\": %s.", taskName, strings.TrimSuffix(status, "."))
 	}
@@ -214,7 +330,7 @@ func boundedAutomationMessageText(value string, limit int) string {
 }
 
 func automationMessageTime(item messages.Message) time.Time {
-	parsed, _ := time.Parse(time.RFC3339Nano, item.PublishedAt)
+	parsed, _ := time.Parse(time.RFC3339, item.PublishedAt)
 	return parsed
 }
 
@@ -222,7 +338,7 @@ func formatAutomationMessageTime(value time.Time) string {
 	if value.IsZero() {
 		return ""
 	}
-	return value.UTC().Format(time.RFC3339Nano)
+	return value.UTC().Format(time.RFC3339)
 }
 
 func isChineseLocale(locale string) bool {
@@ -235,5 +351,5 @@ func (a *App) novaDir() string {
 	if a.cfg == nil {
 		return ""
 	}
-	return a.cfg.NovaDir
+	return a.cfg.DataDir()
 }

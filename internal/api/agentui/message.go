@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"denova/internal/session"
 )
@@ -318,5 +319,5 @@ func formatEntryTime(entry session.HistoryEntry) string {
 	if entry.CreatedAt.IsZero() {
 		return ""
 	}
-	return entry.CreatedAt.Format("2006-01-02T15:04:05Z07:00")
+	return entry.CreatedAt.Format(time.RFC3339)
 }

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +14,10 @@ const stateFileName = "state.json"
 
 var stateMu sync.Mutex
 
+// Service owns changelog parsing and read-state persistence. It does not merge
+// dynamic messages — cross-source merging lives in the app layer
+// (MessagesAppService), which composes changelog + automation notices before
+// applying read state.
 type Service struct {
 	novaDir       string
 	changelogPath string
@@ -32,157 +35,64 @@ func NewServiceWithChangelog(novaDir, changelogPath string) *Service {
 	return &Service{novaDir: novaDir, changelogPath: changelogPath}
 }
 
-func (s *Service) List() (ListResult, error) {
-	return s.ListForLocale("")
+// ChangelogForLocale returns parsed changelog messages for the locale. Read
+// state is not applied here; the caller applies it to the merged list.
+func (s *Service) ChangelogForLocale(locale string) ([]Message, error) {
+	return s.changelogMessages(locale)
 }
 
-func (s *Service) ListForLocale(locale string) (ListResult, error) {
-	return s.ListForLocaleWithMessages(locale, nil)
-}
-
-// ListForLocaleWithMessages merges bounded, caller-derived notices with
-// product changelog messages while keeping read state in one user-level store.
-func (s *Service) ListForLocaleWithMessages(locale string, additional []Message) (ListResult, error) {
-	items, err := s.messages(locale, additional)
-	if err != nil {
-		return ListResult{}, err
-	}
+// ReadState returns the persisted read state (message id → read time).
+func (s *Service) ReadState() (map[string]time.Time, error) {
 	stateMu.Lock()
-	readState, err := s.readState()
-	stateMu.Unlock()
-	if err != nil {
-		return ListResult{}, err
-	}
-	unread := applyReadState(items, readState)
-	return ListResult{Items: items, UnreadCount: unread}, nil
+	defer stateMu.Unlock()
+	return s.readState()
 }
 
-func (s *Service) MarkRead(id string) (Message, error) {
-	return s.MarkReadForLocale(id, "")
-}
-
-func (s *Service) MarkReadForLocale(id, locale string) (Message, error) {
-	return s.MarkReadForLocaleWithMessages(id, locale, nil)
-}
-
-func (s *Service) MarkReadForLocaleWithMessages(id, locale string, additional []Message) (Message, error) {
+// MarkRead marks a single message id as read and persists the state. It works
+// for any id (changelog or dynamic) since read state is keyed by id. Returns
+// the read time that was stored.
+func (s *Service) MarkRead(id string) (time.Time, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return Message{}, fmt.Errorf("message id is required")
-	}
-	items, err := s.messages(locale, additional)
-	if err != nil {
-		return Message{}, err
+		return time.Time{}, fmt.Errorf("message id is required")
 	}
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	state, err := s.readState()
 	if err != nil {
-		return Message{}, err
+		return time.Time{}, err
 	}
-	applyReadState(items, state)
-	var found *Message
-	for i := range items {
-		if items[i].ID == id {
-			found = &items[i]
-			break
-		}
-	}
-	if found == nil {
-		return Message{}, fmt.Errorf("message %s not found", id)
-	}
-	if found.ReadAt != nil {
-		return *found, nil
+	if t, ok := state[id]; ok {
+		return t, nil
 	}
 	now := time.Now().UTC()
 	state[id] = now
 	if err := s.writeState(state); err != nil {
-		return Message{}, err
+		return time.Time{}, err
 	}
-	found.ReadAt = &now
-	return *found, nil
+	return now, nil
 }
 
-func (s *Service) MarkAllRead() (ListResult, error) {
-	return s.MarkAllReadForLocale("")
-}
-
-func (s *Service) MarkAllReadForLocale(locale string) (ListResult, error) {
-	return s.MarkAllReadForLocaleWithMessages(locale, nil)
-}
-
-func (s *Service) MarkAllReadForLocaleWithMessages(locale string, additional []Message) (ListResult, error) {
-	items, err := s.messages(locale, additional)
-	if err != nil {
-		return ListResult{}, err
-	}
+// MarkAllRead marks all given message ids as read and persists the state.
+func (s *Service) MarkAllRead(ids []string) error {
 	stateMu.Lock()
 	defer stateMu.Unlock()
 	state, err := s.readState()
 	if err != nil {
-		return ListResult{}, err
+		return err
 	}
 	now := time.Now().UTC()
-	for _, item := range items {
-		if item.ID == "" {
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
 			continue
 		}
-		if _, ok := state[item.ID]; !ok {
-			state[item.ID] = now
-		}
-	}
-	if err := s.writeState(state); err != nil {
-		return ListResult{}, err
-	}
-	applyReadState(items, state)
-	return ListResult{Items: items, UnreadCount: 0}, nil
-}
-
-func (s *Service) messages(locale string, additional []Message) ([]Message, error) {
-	items, err := s.changelogMessages(locale)
-	if err != nil {
-		return nil, err
-	}
-	seen := make(map[string]struct{}, len(items)+len(additional))
-	merged := make([]Message, 0, len(items)+len(additional))
-	for _, item := range append(items, additional...) {
-		item.ID = strings.TrimSpace(item.ID)
-		if item.ID == "" {
+		if _, ok := state[id]; ok {
 			continue
 		}
-		if _, exists := seen[item.ID]; exists {
-			continue
-		}
-		seen[item.ID] = struct{}{}
-		item.ReadAt = nil
-		merged = append(merged, item)
+		state[id] = now
 	}
-	sort.SliceStable(merged, func(i, j int) bool {
-		return messagePublishedTime(merged[i].PublishedAt).After(messagePublishedTime(merged[j].PublishedAt))
-	})
-	return merged, nil
-}
-
-func messagePublishedTime(value string) time.Time {
-	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, time.DateOnly} {
-		if parsed, err := time.Parse(layout, strings.TrimSpace(value)); err == nil {
-			return parsed
-		}
-	}
-	return time.Time{}
-}
-
-func applyReadState(items []Message, state map[string]time.Time) int {
-	unread := 0
-	for i := range items {
-		if readAt, ok := state[items[i].ID]; ok {
-			t := readAt
-			items[i].ReadAt = &t
-			continue
-		}
-		unread++
-	}
-	return unread
+	return s.writeState(state)
 }
 
 func (s *Service) changelogMessages(locale string) ([]Message, error) {

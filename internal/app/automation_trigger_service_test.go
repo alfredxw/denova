@@ -178,10 +178,10 @@ func TestAutomationChapterBatchTriggerCreatesInboxAtBatchBoundaries(t *testing.T
 	if len(items) != 0 {
 		t.Fatalf("same batch should not retrigger after chapter metadata changes, got %#v", items)
 	}
-	if _, err := app.automation().store().DismissInboxItem(itemsFromFirstBatch(t, app, task.ID)); err != nil {
+	if _, err := app.automation().storeAllWorkspaces().DismissInboxItem(itemsFromFirstBatch(t, app, task.ID)); err != nil {
 		t.Fatalf("dismiss first batch inbox: %v", err)
 	}
-	savedTask, err := app.automation().store().Get(task.ID)
+	savedTask, err := app.automation().storeAllWorkspaces().Get(task.ID)
 	if err != nil {
 		t.Fatalf("load saved task: %v", err)
 	}
@@ -362,12 +362,14 @@ func TestUserScheduleLastRunOnlySuppressesItsOwnWorkspace(t *testing.T) {
 			EveryHours: 1,
 		},
 	}
-	serviceA := automationRegistryTestService(&App{}, workspaceA)
-	if _, _, matched, err := serviceA.evaluateScheduleTrigger(now, task, trigger, automation.TriggerState{}); err != nil || matched {
+	serviceA := automationRegistryTestService(&App{})
+	snapA := automationRegistryTestSnapshot(workspaceA)
+	if _, _, matched, err := serviceA.evaluateScheduleTrigger(snapA, now, task, trigger, automation.TriggerState{}); err != nil || matched {
 		t.Fatalf("workspace A schedule matched=%v err=%v, want suppressed by its recent run", matched, err)
 	}
-	serviceB := automationRegistryTestService(&App{}, workspaceB)
-	if _, _, matched, err := serviceB.evaluateScheduleTrigger(now, task, trigger, automation.TriggerState{}); err != nil || !matched {
+	serviceB := automationRegistryTestService(&App{})
+	snapB := automationRegistryTestSnapshot(workspaceB)
+	if _, _, matched, err := serviceB.evaluateScheduleTrigger(snapB, now, task, trigger, automation.TriggerState{}); err != nil || !matched {
 		t.Fatalf("workspace B schedule matched=%v err=%v, want independent first run", matched, err)
 	}
 }
@@ -490,22 +492,20 @@ func TestUserAutomationTriggerStateAndInboxAreWorkspaceScoped(t *testing.T) {
 		}
 		writeTestChapter(t, workspace, 1)
 	}
-	application := &App{}
+	application := &App{cfg: &config.Config{NovaDir: userDir}}
 	application.ensureServices()
 	defer application.Close()
-	services := make([]*AutomationAppService, 0, len(workspaces))
+	service := &AutomationAppService{app: application}
+	snapshots := make([]*automationWorkspaceSnapshot, 0, len(workspaces))
 	for _, workspace := range workspaces {
-		services = append(services, &AutomationAppService{
-			app: application,
-			snapshot: &automationWorkspaceSnapshot{
-				workspace:   workspace,
-				novaDir:     userDir,
-				cfg:         config.Config{NovaDir: userDir, Workspace: workspace},
-				bookService: book.NewService(workspace),
-			},
+		snapshots = append(snapshots, &automationWorkspaceSnapshot{
+			workspace:   workspace,
+			novaDir:     userDir,
+			cfg:         config.Config{NovaDir: userDir, Workspace: workspace},
+			bookService: book.NewService(workspace),
 		})
 	}
-	task, err := services[0].Create(automation.Task{
+	task, err := service.Create(automation.Task{
 		Scope:      automation.ScopeUser,
 		Enabled:    true,
 		Name:       "Shared user review",
@@ -515,6 +515,7 @@ func TestUserAutomationTriggerStateAndInboxAreWorkspaceScoped(t *testing.T) {
 		Triggers: []automation.TriggerDefinition{{
 			ID:               "chapter_batch_1",
 			Type:             automation.TriggerTypeChapterBatch,
+			ActionPolicy:     automation.ActionPolicyNotifyOnly,
 			Enabled:          true,
 			NotifyPolicy:     automation.NotifyPolicyInbox,
 			ChapterBatchSize: 1,
@@ -524,14 +525,14 @@ func TestUserAutomationTriggerStateAndInboxAreWorkspaceScoped(t *testing.T) {
 		t.Fatalf("create user automation: %v", err)
 	}
 	var wg sync.WaitGroup
-	errs := make(chan error, len(services))
-	for _, service := range services {
+	errs := make(chan error, len(snapshots))
+	for _, snap := range snapshots {
 		wg.Add(1)
-		go func(service *AutomationAppService) {
+		go func(snap *automationWorkspaceSnapshot) {
 			defer wg.Done()
-			_, err := service.CheckContentTriggersForWorkspaceMutation(context.Background(), "test", []string{"chapters/ch01.md"})
+			_, _, err := service.processContentTriggers(context.Background(), snap, time.Now().UTC(), "test")
 			errs <- err
-		}(service)
+		}(snap)
 	}
 	wg.Wait()
 	close(errs)
@@ -541,8 +542,8 @@ func TestUserAutomationTriggerStateAndInboxAreWorkspaceScoped(t *testing.T) {
 		}
 	}
 	fingerprints := map[string]bool{}
-	for index, service := range services {
-		items, err := service.Inbox()
+	for index, snap := range snapshots {
+		items, err := storeForSnapshot(snap).ListInbox()
 		if err != nil {
 			t.Fatalf("workspace %d Inbox failed: %v", index, err)
 		}
@@ -803,20 +804,24 @@ func TestAutomationRuntimeConfigUsesTaskModelProfile(t *testing.T) {
 		workspace: workspace,
 	}
 	app.ensureServices()
+	snap := app.automationSnapshot()
+	if snap == nil {
+		t.Fatal("automation snapshot is nil")
+	}
 
-	cfg := app.automation().runtimeConfigForTask(automation.Task{ModelProfileID: "fast"})
+	cfg := runtimeConfigForTask(snap, automation.Task{ModelProfileID: "fast"})
 	resolved := config.ResolveAgentModel(&cfg, config.AgentKindAutomation)
 	if resolved.ProfileID != "fast" || resolved.OpenAIModel != "fast-model" {
 		t.Fatalf("resolved model = %#v, want fast profile", resolved)
 	}
 
-	cfg = app.automation().runtimeConfigForTask(automation.Task{})
+	cfg = runtimeConfigForTask(snap, automation.Task{})
 	resolved = config.ResolveAgentModel(&cfg, config.AgentKindAutomation)
 	if resolved.ProfileID != "default" || resolved.OpenAIModel != "base-model" {
 		t.Fatalf("resolved inherited model = %#v, want default base model", resolved)
 	}
 
-	cfg = app.automation().runtimeConfigForTask(automation.Task{Template: automation.TemplateReview})
+	cfg = runtimeConfigForTask(snap, automation.Task{Template: automation.TemplateReview})
 	if cfg.MaxIteration != 0 {
 		t.Fatalf("review max iteration should stay unlimited by default, got %d", cfg.MaxIteration)
 	}
@@ -824,7 +829,11 @@ func TestAutomationRuntimeConfigUsesTaskModelProfile(t *testing.T) {
 	if err := config.WriteSettingsFile(config.UserConfigPath(app.cfg.NovaDir), config.Settings{MaxIteration: &maxIteration}); err != nil {
 		t.Fatal(err)
 	}
-	cfg = app.automation().runtimeConfigForTask(automation.Task{Template: automation.TemplateReview})
+	snap = app.automationSnapshot()
+	if snap == nil {
+		t.Fatal("automation snapshot is nil after settings write")
+	}
+	cfg = runtimeConfigForTask(snap, automation.Task{Template: automation.TemplateReview})
 	if cfg.MaxIteration != maxIteration {
 		t.Fatalf("review max iteration = %d, want explicit configured value %d", cfg.MaxIteration, maxIteration)
 	}

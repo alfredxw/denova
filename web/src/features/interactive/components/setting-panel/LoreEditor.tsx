@@ -188,7 +188,7 @@ export function LoreEditor({
               <MarkdownViewToggle preview={bodyPreview} onPreviewChange={setBodyPreview} />
             </div>
             {bodyPreview ? (
-              <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--nova-bg)] px-5 py-4">
+              <div className="min-w-0 bg-[var(--nova-bg)] px-5 py-4">
                 <ThemedMarkdownRenderer content={draft.content || ''} className="max-w-4xl text-xs leading-5" />
               </div>
             ) : (

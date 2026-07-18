@@ -54,7 +54,7 @@ func (s *WorkspaceRuntimeManager) versionSummaryConfig() (config.Config, string)
 		runtimeCfg = *a.cfg
 	}
 	workspace := a.workspace
-	novaDir := runtimeCfg.NovaDir
+	novaDir := runtimeCfg.DataDir()
 	a.mu.RUnlock()
 
 	runtimeCfg.Workspace = workspace

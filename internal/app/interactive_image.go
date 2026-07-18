@@ -38,7 +38,7 @@ func (s *InteractiveAppService) GenerateInteractiveImage(ctx context.Context, st
 	workspace := a.workspace
 	novaDir := ""
 	if a.cfg != nil {
-		novaDir = a.cfg.NovaDir
+		novaDir = a.cfg.DataDir()
 	}
 	a.mu.RUnlock()
 	if store == nil || strings.TrimSpace(workspace) == "" {

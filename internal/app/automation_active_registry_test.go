@@ -17,16 +17,18 @@ func TestActiveAutomationRegistryScopesSameIDsByCanonicalWorkspace(t *testing.T)
 	workspaceB := filepath.Join(root, "b")
 	application := &App{workspace: workspaceA}
 	application.ensureServices()
-	serviceA := automationRegistryTestService(application, workspaceA)
-	serviceB := automationRegistryTestService(application, workspaceB)
+	serviceA := automationRegistryTestService(application)
+	serviceB := automationRegistryTestService(application)
+	snapA := automationRegistryTestSnapshot(workspaceA)
+	snapB := automationRegistryTestSnapshot(workspaceB)
 
 	runA := automation.RunRecord{ID: "same-run", TaskID: "same-task", Workspace: workspaceA, Status: automation.RunStatusRunning}
 	runB := automation.RunRecord{ID: "same-run", TaskID: "same-task", Workspace: workspaceB, Status: automation.RunStatusRunning}
-	claimA, owner, err := serviceA.reserveActiveAutomationRun(context.Background(), runA.TaskID, runA)
+	claimA, owner, err := serviceA.reserveActiveAutomationRun(context.Background(), snapA, runA.TaskID, runA)
 	if err != nil || !owner {
 		t.Fatalf("reserve workspace A owner=%v err=%v", owner, err)
 	}
-	claimB, owner, err := serviceB.reserveActiveAutomationRun(context.Background(), runB.TaskID, runB)
+	claimB, owner, err := serviceB.reserveActiveAutomationRun(context.Background(), snapB, runB.TaskID, runB)
 	if err != nil || !owner {
 		t.Fatalf("reserve workspace B owner=%v err=%v", owner, err)
 	}
@@ -37,24 +39,24 @@ func TestActiveAutomationRegistryScopesSameIDsByCanonicalWorkspace(t *testing.T)
 		t.Fatal("activate claims failed")
 	}
 
-	if runs := serviceA.ActiveAutomationRuns(); len(runs) != 1 || runs[0].Run.Workspace != workspaceA {
+	if runs := serviceA.activeAutomationRuns(snapA); len(runs) != 1 || runs[0].Run.Workspace != workspaceA {
 		t.Fatalf("workspace A active runs = %#v", runs)
 	}
-	if runs := serviceB.ActiveAutomationRuns(); len(runs) != 1 || runs[0].Run.Workspace != workspaceB {
+	if runs := serviceB.activeAutomationRuns(snapB); len(runs) != 1 || runs[0].Run.Workspace != workspaceB {
 		t.Fatalf("workspace B active runs = %#v", runs)
 	}
-	if runs := application.ActiveAutomationRuns(); len(runs) != 2 {
+	if runs := serviceA.activeAutomationRuns(nil); len(runs) != 2 {
 		t.Fatalf("user-level active runs = %#v, want both workspaces", runs)
 	}
-	if task, run, ok := serviceA.ActiveAutomationTaskByRunID("same-run"); !ok || task != taskA || run.Workspace != workspaceA {
+	if task, run, ok := serviceA.activeAutomationTaskByRunID(snapA, "same-run"); !ok || task != taskA || run.Workspace != workspaceA {
 		t.Fatalf("workspace A lookup task=%p run=%#v ok=%v", task, run, ok)
 	}
-	if task, run, ok := serviceB.ActiveAutomationTaskByRunID("same-run"); !ok || task != taskB || run.Workspace != workspaceB {
+	if task, run, ok := serviceB.activeAutomationTaskByRunID(snapB, "same-run"); !ok || task != taskB || run.Workspace != workspaceB {
 		t.Fatalf("workspace B lookup task=%p run=%#v ok=%v", task, run, ok)
 	}
 	close(release)
-	serviceA.clearActiveAutomationTask(runA.TaskID, runA.ID)
-	serviceB.clearActiveAutomationTask(runB.TaskID, runB.ID)
+	serviceA.clearActiveAutomationTask(snapA, runA.TaskID, runA.ID)
+	serviceB.clearActiveAutomationTask(snapB, runB.TaskID, runB.ID)
 }
 
 func TestActiveAutomationReservationAtomicallyAttachesConcurrentCaller(t *testing.T) {
@@ -69,10 +71,12 @@ func TestActiveAutomationReservationAtomicallyAttachesConcurrentCaller(t *testin
 	}
 	application := &App{workspace: workspace}
 	application.ensureServices()
-	service := automationRegistryTestService(application, workspace)
-	aliasService := automationRegistryTestService(application, alias)
+	service := automationRegistryTestService(application)
+	aliasService := automationRegistryTestService(application)
+	snap := automationRegistryTestSnapshot(workspace)
+	aliasSnap := automationRegistryTestSnapshot(alias)
 	firstRun := automation.RunRecord{ID: "first", TaskID: "shared", Workspace: workspace, Status: automation.RunStatusRunning}
-	claim, owner, err := service.reserveActiveAutomationRun(context.Background(), firstRun.TaskID, firstRun)
+	claim, owner, err := service.reserveActiveAutomationRun(context.Background(), snap, firstRun.TaskID, firstRun)
 	if err != nil || !owner {
 		t.Fatalf("first reservation owner=%v err=%v", owner, err)
 	}
@@ -87,7 +91,7 @@ func TestActiveAutomationReservationAtomicallyAttachesConcurrentCaller(t *testin
 	defer cancel()
 	go func() {
 		candidate := automation.RunRecord{ID: "second", TaskID: "shared", Workspace: alias, Status: automation.RunStatusRunning}
-		attached, owns, reserveErr := aliasService.reserveActiveAutomationRun(ctx, candidate.TaskID, candidate)
+		attached, owns, reserveErr := aliasService.reserveActiveAutomationRun(ctx, aliasSnap, candidate.TaskID, candidate)
 		second <- result{claim: attached, owner: owns, err: reserveErr}
 	}()
 
@@ -101,16 +105,15 @@ func TestActiveAutomationReservationAtomicallyAttachesConcurrentCaller(t *testin
 		t.Fatalf("second reservation = %#v owner=%v err=%v", got.claim, got.owner, got.err)
 	}
 	close(release)
-	service.clearActiveAutomationTask(firstRun.TaskID, firstRun.ID)
+	service.clearActiveAutomationTask(snap, firstRun.TaskID, firstRun.ID)
 }
 
-func automationRegistryTestService(application *App, workspace string) *AutomationAppService {
-	return &AutomationAppService{
-		app: application,
-		snapshot: &automationWorkspaceSnapshot{
-			workspace: workspace,
-		},
-	}
+func automationRegistryTestService(application *App) *AutomationAppService {
+	return &AutomationAppService{app: application}
+}
+
+func automationRegistryTestSnapshot(workspace string) *automationWorkspaceSnapshot {
+	return &automationWorkspaceSnapshot{workspace: workspace}
 }
 
 func blockingAutomationRegistryTask(release <-chan struct{}) *Task {

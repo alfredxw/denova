@@ -170,7 +170,7 @@ func loadAgentConfigLayered(cfg *config.Config) (config.LayeredSettings, error) 
 	novaDir := ""
 	workspace := ""
 	if cfg != nil {
-		novaDir = cfg.NovaDir
+		novaDir = cfg.DataDir()
 		workspace = cfg.Workspace
 	}
 	layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace)
@@ -184,7 +184,7 @@ func loadWritableAgentConfigSettings(cfg *config.Config, scope string) (string, 
 	novaDir := ""
 	workspace := ""
 	if cfg != nil {
-		novaDir = cfg.NovaDir
+		novaDir = cfg.DataDir()
 		workspace = cfg.Workspace
 	}
 	switch scope {

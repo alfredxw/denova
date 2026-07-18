@@ -27,9 +27,17 @@ type automationRunClaim struct {
 }
 
 func (s *AutomationAppService) ActiveAutomationRuns() []automation.ActiveRun {
+	snap, err := s.runtimeSnapshot()
+	if err != nil {
+		return nil
+	}
+	return s.activeAutomationRuns(snap)
+}
+
+func (s *AutomationAppService) activeAutomationRuns(snap *automationWorkspaceSnapshot) []automation.ActiveRun {
 	workspace := ""
-	if s.snapshot != nil {
-		workspace = canonicalAutomationWorkspace(s.workspace())
+	if snap != nil {
+		workspace = canonicalAutomationWorkspace(snap.workspace)
 	}
 	s.app.mu.RLock()
 	defer s.app.mu.RUnlock()
@@ -52,6 +60,10 @@ func (a *App) ActiveAutomationRuns() []automation.ActiveRun {
 }
 
 func (s *AutomationAppService) ActiveAutomationTaskByRunID(runID string) (*Task, automation.RunRecord, bool) {
+	return s.activeAutomationTaskByRunID(nil, runID)
+}
+
+func (s *AutomationAppService) activeAutomationTaskByRunID(snap *automationWorkspaceSnapshot, runID string) (*Task, automation.RunRecord, bool) {
 	s.app.mu.RLock()
 	defer s.app.mu.RUnlock()
 	if s.app.activeAutomationRuns == nil {
@@ -59,8 +71,8 @@ func (s *AutomationAppService) ActiveAutomationTaskByRunID(runID string) (*Task,
 	}
 	var state automationRunState
 	found := false
-	if s.snapshot != nil {
-		workspace := canonicalAutomationWorkspace(s.workspace())
+	if snap != nil {
+		workspace := canonicalAutomationWorkspace(snap.workspace)
 		state, found = s.app.activeAutomationRuns[automationRunRegistryKey(workspace, runID)]
 	} else {
 		for _, candidate := range s.app.activeAutomationRuns {
@@ -101,8 +113,8 @@ func (a *App) AbortAutomationRun(runID string) bool {
 // reserveActiveAutomationRun performs the check-and-claim transition under
 // App.mu. Concurrent trigger checks wait for the owner to either publish its
 // Task or release the reservation; they can never start a duplicate run.
-func (s *AutomationAppService) reserveActiveAutomationRun(ctx context.Context, taskID string, run automation.RunRecord) (*automationRunClaim, bool, error) {
-	workspace := canonicalAutomationWorkspace(s.workspace())
+func (s *AutomationAppService) reserveActiveAutomationRun(ctx context.Context, snap *automationWorkspaceSnapshot, taskID string, run automation.RunRecord) (*automationRunClaim, bool, error) {
+	workspace := canonicalAutomationWorkspace(snap.workspace)
 	taskKey := automationTaskRegistryKey(workspace, taskID)
 	for {
 		s.app.mu.Lock()
@@ -182,8 +194,8 @@ func (s *AutomationAppService) releaseAutomationClaim(claim *automationRunClaim)
 	}
 }
 
-func (s *AutomationAppService) clearActiveAutomationTask(taskID, runID string) {
-	workspace := canonicalAutomationWorkspace(s.workspace())
+func (s *AutomationAppService) clearActiveAutomationTask(snap *automationWorkspaceSnapshot, taskID, runID string) {
+	workspace := canonicalAutomationWorkspace(snap.workspace)
 	taskKey := automationTaskRegistryKey(workspace, taskID)
 	s.app.mu.Lock()
 	defer s.app.mu.Unlock()

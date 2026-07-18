@@ -226,7 +226,7 @@ func (s *WorkspaceRuntimeManager) CreateBook(ctx context.Context, parentDir, tit
 	a := s.app
 	novaDir := ""
 	if a.cfg != nil {
-		novaDir = strings.TrimSpace(a.cfg.NovaDir)
+		novaDir = strings.TrimSpace(a.cfg.DataDir())
 	}
 	absParent, err := bookCreationParentDir(parentDir, novaDir)
 	if err != nil {
@@ -301,7 +301,7 @@ func (s *WorkspaceRuntimeManager) Settings() (config.LayeredSettings, error) {
 	novaDir := ""
 	cfg := config.Config{}
 	if a.cfg != nil {
-		novaDir = a.cfg.NovaDir
+		novaDir = a.cfg.DataDir()
 		cfg = *a.cfg
 	}
 	state := a.bookState
@@ -336,7 +336,7 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings, b
 	a.mu.RLock()
 	novaDir := ""
 	if a.cfg != nil {
-		novaDir = a.cfg.NovaDir
+		novaDir = a.cfg.DataDir()
 	}
 	a.mu.RUnlock()
 	path := config.UserConfigPath(novaDir)
@@ -444,8 +444,8 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if cfg.SkillsDir == "" && effective.SkillsDir != "" {
 		cfg.SkillsDir = effective.SkillsDir
 	}
-	if cfg.NovaDir == "" && layered.Paths.NovaDir != "" {
-		cfg.NovaDir = layered.Paths.NovaDir
+	if cfg.DataDir() == "" && layered.Paths.DenovaDir != "" {
+		cfg.SetDataDir(layered.Paths.DenovaDir)
 	}
 	if effective.BackendPort != nil {
 		cfg.BackendPort = appSettingsInt(effective.BackendPort, 8080)

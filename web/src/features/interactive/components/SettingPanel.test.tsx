@@ -954,7 +954,6 @@ describe('SettingPanel', () => {
   })
 
   it('keeps the lore body in the unified editor scroller instead of creating a nested scroll trap', async () => {
-    const user = userEvent.setup()
     const item = {
       ...loreItem('long-lore', '长正文资料'),
       content: '正文段落\n'.repeat(80),
@@ -963,7 +962,7 @@ describe('SettingPanel', () => {
 
     render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[imagePreset('game-cg', '游戏 CG')]} />)
 
-    await user.click(await screen.findByRole('button', { name: /长正文资料/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /长正文资料/ }))
     const editor = screen.getByRole('region', { name: '资料编辑区' })
     const content = within(editor).getByRole('textbox', { name: '正文' }) as HTMLTextAreaElement
     Object.defineProperty(content, 'scrollHeight', { configurable: true, value: 1200 })
@@ -981,6 +980,11 @@ describe('SettingPanel', () => {
     expect(content).not.toHaveClass('h-full')
     expect(content.style.height).toBe('1200px')
     expect(content.style.overflowY).toBe('hidden')
+
+    fireEvent.click(within(editor).getByRole('button', { name: '预览' }))
+    const previewContent = editor.querySelector('.chat-agent-message')
+    expect(previewContent).not.toBeNull()
+    expect(previewContent?.parentElement).not.toHaveClass('overflow-y-auto')
   })
 
   it('saves lore item enabled status from a switch', async () => {

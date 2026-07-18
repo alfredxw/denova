@@ -30,7 +30,7 @@ func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, re
 		return nil
 	}
 	backend := novaskills.NewAgentBackend(
-		novaskills.NewDirectories(cfg.SkillsDir, cfg.NovaDir, cfg.Workspace),
+		novaskills.NewDirectories(cfg.SkillsDir, cfg.DataDir(), cfg.Workspace),
 		config.AgentKindConfigManager,
 		config.ResolveAgentSkillOverrides(cfg, config.AgentKindConfigManager),
 	)

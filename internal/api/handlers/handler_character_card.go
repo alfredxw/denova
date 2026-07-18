@@ -125,10 +125,10 @@ func (h *Handlers) importCharacterCardToNewBook(ctx context.Context, filename st
 	if err != nil {
 		return book.CharacterCardImportResult{}, err
 	}
-	if layered.Paths.NovaDir == "" {
+	if layered.Paths.DenovaDir == "" {
 		return book.CharacterCardImportResult{}, errors.New("Denova 数据目录未配置")
 	}
-	workspace, meta, err := h.app.CreateBook(ctx, layered.Paths.NovaDir, title, "", "")
+	workspace, meta, err := h.app.CreateBook(ctx, layered.Paths.DenovaDir, title, "", "")
 	if err != nil {
 		return book.CharacterCardImportResult{}, err
 	}

@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestParseChangelogMessages(t *testing.T) {
@@ -27,7 +26,7 @@ func TestParseChangelogMessages(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("messages length = %d, want 1", len(items))
 	}
-	if !strings.HasPrefix(items[0].ID, "changelog:v0.1.17:") || items[0].PublishedAt != "2026-06-27" {
+	if !strings.HasPrefix(items[0].ID, "changelog:v0.1.17:") || items[0].PublishedAt != "2026-06-27T00:00:00Z" {
 		t.Fatalf("version message = %#v", items[0])
 	}
 }
@@ -87,198 +86,195 @@ func TestParseChangelogMessagesForLocaleFiltersBilingualContent(t *testing.T) {
 	}
 }
 
-func TestServiceMarksReadPersistently(t *testing.T) {
+func TestServiceChangelogForLocaleIgnoresMissingChangelog(t *testing.T) {
+	service := NewServiceWithChangelog(t.TempDir(), filepath.Join(t.TempDir(), "missing.md"))
+	items, err := service.ChangelogForLocale("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("missing changelog items = %#v", items)
+	}
+}
+
+func TestServiceReadStateIsEmptyForFreshService(t *testing.T) {
 	dir := t.TempDir()
 	changelog := filepath.Join(dir, "CHANGELOG.md")
-	if err := os.WriteFile(changelog, []byte(`## [Unreleased]
-
-### Added
-
-- 第一条消息。
-
-## [v0.2.0] - 2026-07-01
-
-### Added
-
-- 正式发布消息。
-`), 0o644); err != nil {
+	if err := os.WriteFile(changelog, []byte("## [v0.2.0] - 2026-07-01\n\n### Added\n\n- 正式发布消息。\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	service := NewServiceWithChangelog(filepath.Join(dir, "nova"), changelog)
-	list, err := service.List()
+	state, err := service.ReadState()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if list.UnreadCount != 1 || len(list.Items) != 1 || list.Items[0].ReadAt != nil {
-		t.Fatalf("initial list = %#v", list)
+	if len(state) != 0 {
+		t.Fatalf("fresh read state = %#v, want empty", state)
 	}
-	if list.Items[0].Title != "v0.2.0" {
-		t.Fatalf("unreleased changelog should be skipped: %#v", list.Items[0])
+}
+
+func TestServiceMarkReadPersistsAndIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	changelog := filepath.Join(dir, "CHANGELOG.md")
+	if err := os.WriteFile(changelog, []byte("## [v0.2.0] - 2026-07-01\n\n### Added\n\n- 正式发布消息。\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	read, err := service.MarkRead(list.Items[0].ID)
+	novaDir := filepath.Join(dir, "nova")
+	service := NewServiceWithChangelog(novaDir, changelog)
+
+	items, err := service.ChangelogForLocale("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if read.ReadAt == nil {
-		t.Fatalf("read_at not set: %#v", read)
+	if len(items) != 1 {
+		t.Fatalf("changelog items = %d, want 1", len(items))
 	}
-	secondRead, err := service.MarkRead(list.Items[0].ID)
+	id := items[0].ID
+
+	first, err := service.MarkRead(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if secondRead.ReadAt == nil || !secondRead.ReadAt.Equal(*read.ReadAt) {
-		t.Fatalf("idempotent read = %#v, want read_at %v", secondRead, read.ReadAt)
+	if first.IsZero() {
+		t.Fatalf("first read time is zero")
 	}
-	next, err := NewServiceWithChangelog(filepath.Join(dir, "nova"), changelog).List()
+
+	// Idempotent: second read returns the same time.
+	second, err := service.MarkRead(id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if next.UnreadCount != 0 || len(next.Items) != 1 || next.Items[0].ReadAt == nil {
-		t.Fatalf("persisted list = %#v", next)
+	if !first.Equal(second) {
+		t.Fatalf("idempotent read = %v, want %v", second, first)
 	}
-	if _, err := service.MarkRead("changelog:missing"); err == nil {
-		t.Fatalf("missing message should fail")
+
+	// Persisted across service instances.
+	next := NewServiceWithChangelog(novaDir, changelog)
+	state, err := next.ReadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rt, ok := state[id]; !ok || !rt.Equal(first) {
+		t.Fatalf("persisted read state = %#v, want %v", state, first)
+	}
+
+	// Empty id fails.
+	if _, err := service.MarkRead(""); err == nil {
+		t.Fatalf("empty id should fail")
 	}
 }
 
 func TestServiceReadStateIsSharedAcrossLocales(t *testing.T) {
 	dir := t.TempDir()
 	changelog := filepath.Join(dir, "CHANGELOG.md")
-	if err := os.WriteFile(changelog, []byte(`## [v0.2.0] - 2026-07-01
-
-### Brief / 简要说明
-
-#### 中文
-
-- 中文简要。
-
-#### English
-
-- English brief.
-`), 0o644); err != nil {
+	if err := os.WriteFile(changelog, []byte("## [v0.2.0] - 2026-07-01\n\n### Brief / 简要说明\n\n#### 中文\n\n- 中文简要。\n\n#### English\n\n- English brief.\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	service := NewServiceWithChangelog(filepath.Join(dir, "nova"), changelog)
-	zhList, err := service.ListForLocale("zh-CN")
+	novaDir := filepath.Join(dir, "nova")
+	service := NewServiceWithChangelog(novaDir, changelog)
+
+	zhItems, err := service.ChangelogForLocale("zh-CN")
 	if err != nil {
 		t.Fatal(err)
 	}
-	enList, err := service.ListForLocale("en-US")
+	enItems, err := service.ChangelogForLocale("en-US")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(zhList.Items) != 1 || len(enList.Items) != 1 || zhList.Items[0].ID != enList.Items[0].ID {
-		t.Fatalf("localized lists = zh %#v, en %#v", zhList, enList)
+	if len(zhItems) != 1 || len(enItems) != 1 || zhItems[0].ID != enItems[0].ID {
+		t.Fatalf("localized items = zh %#v, en %#v", zhItems, enItems)
 	}
-	if _, err := service.MarkReadForLocale(zhList.Items[0].ID, "zh-CN"); err != nil {
+
+	if _, err := service.MarkRead(zhItems[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	next, err := service.ListForLocale("en-US")
+
+	// Read state is shared: a new service sees the mark regardless of locale.
+	next := NewServiceWithChangelog(novaDir, changelog)
+	state, err := next.ReadState()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if next.UnreadCount != 0 || len(next.Items) != 1 || next.Items[0].ReadAt == nil {
-		t.Fatalf("read state should be shared across locales: %#v", next)
+	if _, ok := state[zhItems[0].ID]; !ok {
+		t.Fatalf("read state should be shared across locales: %#v", state)
 	}
 }
 
-func TestServiceMarksAllReadPersistently(t *testing.T) {
+func TestServiceMarkAllReadPersists(t *testing.T) {
 	dir := t.TempDir()
 	changelog := filepath.Join(dir, "CHANGELOG.md")
-	if err := os.WriteFile(changelog, []byte(`## [Unreleased]
-
-### Added
-
-- 第一条消息。
-
-## [v0.2.0] - 2026-07-01
-
-### Added
-
-- 正式发布消息。
-
-## [v0.1.17] - 2026-06-27
-
-### Fixed
-
-- 第二条消息。
-`), 0o644); err != nil {
+	if err := os.WriteFile(changelog, []byte("## [Unreleased]\n\n### Added\n\n- 第一条消息。\n\n## [v0.2.0] - 2026-07-01\n\n### Added\n\n- 正式发布消息。\n\n## [v0.1.17] - 2026-06-27\n\n### Fixed\n\n- 第二条消息。\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	service := NewServiceWithChangelog(filepath.Join(dir, "nova"), changelog)
-	result, err := service.MarkAllRead()
+	novaDir := filepath.Join(dir, "nova")
+	service := NewServiceWithChangelog(novaDir, changelog)
+
+	items, err := service.ChangelogForLocale("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.UnreadCount != 0 || len(result.Items) != 2 {
-		t.Fatalf("mark all result = %#v", result)
+	if len(items) != 2 {
+		t.Fatalf("changelog items = %d, want 2", len(items))
 	}
-	for _, item := range result.Items {
-		if item.ReadAt == nil {
-			t.Fatalf("message should be read: %#v", item)
+
+	ids := make([]string, len(items))
+	for i, item := range items {
+		ids[i] = item.ID
+	}
+	if err := service.MarkAllRead(ids); err != nil {
+		t.Fatal(err)
+	}
+
+	// Persisted across service instances.
+	next := NewServiceWithChangelog(novaDir, changelog)
+	state, err := next.ReadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range ids {
+		if _, ok := state[id]; !ok {
+			t.Fatalf("id %s not in read state: %#v", id, state)
 		}
 	}
-	next, err := NewServiceWithChangelog(filepath.Join(dir, "nova"), changelog).List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if next.UnreadCount != 0 || len(next.Items) != 2 {
-		t.Fatalf("persisted mark all = %#v", next)
-	}
 }
 
-func TestServiceListIgnoresMissingChangelog(t *testing.T) {
-	service := NewServiceWithChangelog(t.TempDir(), filepath.Join(t.TempDir(), "missing.md"))
-	list, err := service.List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list.Items) != 0 || list.UnreadCount != 0 {
-		t.Fatalf("missing changelog list = %#v", list)
-	}
-}
-
-func TestServiceMergesDynamicMessagesAndPersistsTheirReadState(t *testing.T) {
+func TestServiceMarkAllReadIgnoresEmptyIDs(t *testing.T) {
 	dir := t.TempDir()
 	service := NewServiceWithChangelog(filepath.Join(dir, "nova"), filepath.Join(dir, "missing.md"))
-	publishedAt := time.Date(2026, 7, 18, 12, 30, 0, 0, time.UTC).Format(time.RFC3339)
-	dynamic := []Message{{
-		ID:          "automation-run:run-1",
-		Type:        MessageTypeAutomation,
-		Title:       "整理人物设定",
-		Summary:     "任务已完成",
-		Body:        "已完成后台整理。",
-		PublishedAt: publishedAt,
-		TaskID:      "workspace-a:task-1",
-		RunID:       "run-1",
-		Workspace:   "/books/a",
-		Status:      "succeeded",
-	}}
-
-	initial, err := service.ListForLocaleWithMessages("zh-CN", dynamic)
+	if err := service.MarkAllRead([]string{"", "  ", "valid-id"}); err != nil {
+		t.Fatal(err)
+	}
+	state, err := service.ReadState()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if initial.UnreadCount != 1 || len(initial.Items) != 1 || initial.Items[0].ReadAt != nil {
-		t.Fatalf("initial dynamic list = %#v", initial)
+	if _, ok := state["valid-id"]; !ok {
+		t.Fatalf("valid-id should be marked read: %#v", state)
 	}
-	if initial.Items[0].TaskID != "workspace-a:task-1" || initial.Items[0].RunID != "run-1" {
-		t.Fatalf("dynamic navigation metadata was lost: %#v", initial.Items[0])
+	if len(state) != 1 {
+		t.Fatalf("read state should have 1 entry: %#v", state)
 	}
+}
 
-	read, err := service.MarkReadForLocaleWithMessages(dynamic[0].ID, "en-US", dynamic)
+// TestServiceMarkReadWorksForDynamicIDs verifies that read state works for
+// any id (changelog or dynamic), since read state is keyed by id alone.
+func TestServiceMarkReadWorksForDynamicIDs(t *testing.T) {
+	dir := t.TempDir()
+	service := NewServiceWithChangelog(filepath.Join(dir, "nova"), filepath.Join(dir, "missing.md"))
+
+	readAt, err := service.MarkRead("automation-run:run-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if read.ReadAt == nil {
-		t.Fatalf("dynamic message was not marked read: %#v", read)
+	if readAt.IsZero() {
+		t.Fatalf("read time is zero for dynamic id")
 	}
 
-	next, err := NewServiceWithChangelog(filepath.Join(dir, "nova"), filepath.Join(dir, "missing.md")).ListForLocaleWithMessages("zh-CN", dynamic)
+	state, err := service.ReadState()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if next.UnreadCount != 0 || next.Items[0].ReadAt == nil {
-		t.Fatalf("dynamic read state was not persisted: %#v", next)
+	if rt, ok := state["automation-run:run-1"]; !ok || rt.IsZero() {
+		t.Fatalf("dynamic id not in read state: %#v", state)
 	}
 }
