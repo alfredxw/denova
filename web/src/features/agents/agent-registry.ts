@@ -1,4 +1,4 @@
-import type { ElementType } from 'react'
+import type { LucideIcon } from 'lucide-react'
 import { Archive, Clock, Database, FileText, FolderOpen, Globe2, ImagePlus, ListChecks, MessageSquareText, PenLine, Search, Settings2, Terminal, Wrench } from 'lucide-react'
 import type { AgentModelSettings, AgentSkillSettings, AgentToolOverride } from '@/features/settings/types'
 import type { SkillSummary } from '@/lib/api'
@@ -15,14 +15,14 @@ export interface AgentViewDefinition {
   subtitleKey: string
   groupKey: string
   capabilityMode: AgentCapabilityMode
-  icon: ElementType
+  icon: LucideIcon
 }
 
 export interface AgentToolDefinition {
   key: ToolKey
   titleKey: string
   subtitleKey: string
-  icon: ElementType
+  icon: LucideIcon
 }
 
 export const AGENTS: AgentViewDefinition[] = [

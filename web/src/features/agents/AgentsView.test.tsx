@@ -58,6 +58,7 @@ describe('AgentsView', () => {
   })
 
   it('reloads model profiles when settings are updated elsewhere', async () => {
+    const user = userEvent.setup()
     vi.mocked(fetchSettings)
       .mockResolvedValueOnce(settingsSnapshot({ effective: { openai_model: 'deepseek-chat' } }))
       .mockResolvedValueOnce(settingsSnapshot({
@@ -74,9 +75,9 @@ describe('AgentsView', () => {
 
     window.dispatchEvent(new CustomEvent('nova:settings-updated'))
 
-    await waitFor(() => {
-      expect(screen.getByText('deepseek（DeepSeek V3）')).toBeInTheDocument()
-    })
+    await waitFor(() => expect(vi.mocked(fetchSettings)).toHaveBeenCalledTimes(2))
+    await user.click(screen.getAllByRole('combobox')[0])
+    expect(await screen.findByText('deepseek（DeepSeek V3）')).toBeInTheDocument()
   })
 
   it('shows context compaction prompt and target ratio settings', async () => {

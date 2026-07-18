@@ -8,11 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Home、Settings、Agents、Skills 和 Automations 统一使用共享页面框架、分区导航、表单字段、资源目录、空状态与确认弹窗；资料库和方案预设同时复用自适应面板与移动端入口。
+- Home, Settings, Agents, Skills, and Automations now share page shells, section navigation, form fields, resource directories, empty states, and confirmation dialogs; Lore and Presets also reuse adaptive panes and mobile entry points.
+- 写作与游戏模式的 Agent 对话统一为单一挂载的聊天面板，并共享持久化输入偏好、上下文分析展示、文本测量和底部滚动控制，避免布局切换时重复初始化会话状态。
+- Writing and Game modes now use a single-mounted Agent chat pane with shared persisted composer preferences, context-analysis disclosure, text measurement, and bottom-scroll control, avoiding duplicate session initialization during layout changes.
+- 互动资源选择器和方案预设编辑器统一使用可访问的选择、字段、分区、JSON 校验和状态组件；删除仅供旧实现自身使用的重复面板与辅助组件。
+- Interactive resource pickers and preset editors now share accessible selection, field, section, JSON-validation, and status components; duplicate panels and helpers used only by legacy implementations were removed.
 - 自动化左侧任务目录支持按项目独立展开或折叠；折叠后仍保留运行中数量和任务数量，全局任务组使用同一交互。
 - The Automations task catalog can expand or collapse each project independently while keeping running and task counts visible; the global task group follows the same interaction.
 
 ### Fixed
 
+- 设置与 Agents 的分层草稿、自动保存和输入区偏好持久化现在会串行写入，并在 revision 冲突时按原始基线重新拉取、合并和重试；卸载或过期请求不再回写状态。
+- Layered drafts in Settings and Agents, autosave, and composer preference persistence now serialize writes and refetch, rebase, and retry from the original baseline on revision conflicts; unmounted or stale requests no longer publish state.
+- 自动化后台刷新、运行结束和语言切换不再覆盖未保存任务草稿，乱序工作区响应会被忽略；窄屏操作区、资源选择器和当前项语义也保持完整可用。
+- Automation background refreshes, run completion, and language changes no longer overwrite unsaved task drafts, and out-of-order workspace responses are ignored; narrow-screen actions, resource pickers, and current-item semantics remain fully usable.
 - 游戏模式现在会在刷新页面后重新连接当前故事与分支的活动 Agent 任务，回放本轮玩家输入、思考、工具调用和流式正文，并在持久化确认后继续合并同一回合。
 - Game Mode now reconnects to the active Agent task for the current story and branch after a page refresh, replaying the player action, reasoning, tool calls, and streamed prose before merging the same turn on persistence confirmation.
 - Windows 新建或切换书籍时不再因工作区变更存储对 `.denova` 目录执行不受支持的同步而失败；账本、内容 blob 和作品文件仍保留完整的文件级持久化同步。

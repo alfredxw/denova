@@ -5,8 +5,9 @@ import type { TFunction } from 'i18next'
 import type { ResourceDirectoryItem, ResourceDirectorySection } from '@/components/resource-directory/types'
 import { presetResourceVisibleInMode, type PresetResourceKind, type PresetUsageMode } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
+import { presetStatusLabel } from '../preset-config/preset-status'
 import { enabledImagePresetSlotCount, normalizedImagePresetSlots } from './ImagePresetEditor'
-import { eventPackageSummaryCount, presetKindCreateLabel, presetKindDirectoryLabel, presetStatusLabel, storyDirectorSummaryCount } from './editor-shared'
+import { eventPackageSummaryCount, presetKindCreateLabel, presetKindDirectoryLabel, storyDirectorSummaryCount } from './editor-shared'
 
 const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'actor-state']
 

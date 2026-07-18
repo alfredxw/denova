@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Bot, Download, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { EmptyState } from '@/components/common/EmptyState'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
 import type { ResourceDirectoryBadge, ResourceDirectorySection } from '@/components/resource-directory/types'
 import type { SkillSnapshot } from '@/lib/api'
@@ -100,7 +101,7 @@ export function SkillListPanel({
         </button>
       </div>
       {showSkeleton ? (
-        <div className="space-y-2 p-2">
+        <div className="flex flex-col gap-2 p-2">
           {Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className="h-10 animate-pulse rounded bg-[var(--nova-surface)]" />
           ))}
@@ -111,6 +112,13 @@ export function SkillListPanel({
           activeId={selectedKey}
           onSelect={onSelect}
           searchPlaceholder={t('skills.searchPlaceholder')}
+          emptyContent={(
+            <EmptyState
+              variant="compact"
+              title={t('skills.empty')}
+              className="text-[var(--nova-text-faint)]"
+            />
+          )}
         />
       )}
     </div>

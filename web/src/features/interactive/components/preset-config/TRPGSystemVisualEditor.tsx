@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Copy, Database, Dice5, ExternalLink, Plus, Scale, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,9 @@ import type {
   StoryDirectorActorStateSystem,
   StoryDirectorTRPGSystem,
 } from '../../types'
+import { presetActionButtonClassName as actionButtonClassName, presetDetailScrollPaneClassName as detailScrollPaneClassName, presetFieldGridClassName as fieldGridClassName, presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetNestedEditorShellClassName as nestedEditorShellClassName, presetSelectClassName as selectClassName } from './editor-styles'
+import { JsonFragmentEditor } from './JsonFragmentEditor'
+import { PresetField as Field } from './PresetField'
 import {
   defaultRuleTemplates,
   normalizeRuleTemplate,
@@ -23,19 +26,10 @@ import {
 import { PresetTabsList } from './PresetTabsList'
 import {
   cloneWithNewId,
-  formatPresetJSON,
   itemKey,
   nextPresetId,
   parseNumberInput,
 } from './utils'
-
-const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
-const selectClassName = 'nova-field h-8 w-full text-xs focus:ring-0'
-const iconActionClassName = 'nova-nav-item rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-const actionButtonClassName = 'nova-nav-item gap-1.5 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-const fieldGridClassName = 'grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3'
-const nestedEditorShellClassName = 'grid min-h-0 grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-2'
-const detailScrollPaneClassName = 'min-w-0 overflow-hidden rounded-[14px] bg-[var(--nova-surface)] p-3'
 
 /** Edits one d20 adjudication style through its operational decision flow. */
 export function TRPGSystemVisualEditor({
@@ -233,7 +227,7 @@ function StateBindingEditor({
           <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.trpgRule.stateBindingsDesc')}</div>
         </div>
         <Button type="button" className={actionButtonClassName} variant="outline" size="sm" onClick={addBinding} disabled={value.length >= 12}>
-          <Plus className="h-3.5 w-3.5" />
+          <Plus data-icon="inline-start" />
           {t('settingPanel.trpgRule.addBinding')}
         </Button>
       </div>
@@ -256,8 +250,8 @@ function StateBindingEditor({
           {active ? (
             <div className="grid gap-3">
               <div className="flex justify-end gap-2">
-                <Button type="button" className={iconActionClassName} variant="outline" size="icon" onClick={copyBinding} aria-label={t('settingPanel.presetConfig.copy')}><Copy className="h-3.5 w-3.5" /></Button>
-                <Button type="button" className={iconActionClassName} variant="outline" size="icon" onClick={deleteBinding} aria-label={t('common.delete')}><Trash2 className="h-3.5 w-3.5" /></Button>
+                <Button type="button" className={iconActionClassName} variant="outline" size="icon" onClick={copyBinding} aria-label={t('settingPanel.presetConfig.copy')}><Copy data-icon="inline-start" /></Button>
+                <Button type="button" className={iconActionClassName} variant="outline" size="icon" onClick={deleteBinding} aria-label={t('common.delete')}><Trash2 data-icon="inline-start" /></Button>
               </div>
               <div className={fieldGridClassName}>
                 <Field label={t('settingPanel.presetConfig.id')}><Input className={inputClassName} value={active.id || ''} onChange={(event) => patchActive({ id: event.target.value })} /></Field>
@@ -267,9 +261,9 @@ function StateBindingEditor({
               </div>
               <Field label={t('settingPanel.trpgRule.trigger')}><Textarea autoResize={false} className="nova-field min-h-16 resize-y text-xs leading-5 shadow-none focus-visible:ring-0" value={active.trigger || ''} onChange={(event) => patchActive({ trigger: event.target.value })} /></Field>
               <StateFieldReferenceEditor binding={active} templates={templates} onChange={patchActive} />
-              <JSONFragmentEditor label={t('settingPanel.trpgRule.modifiers')} value={active.modifiers || []} onChange={(modifiers) => patchActive({ modifiers: modifiers as RuleStateBinding['modifiers'] })} onValidChange={setModifiersValid} />
-              <JSONFragmentEditor label={t('settingPanel.trpgRule.narrativeStateRefs')} value={active.narrative_state_refs || []} onChange={(narrative_state_refs) => patchActive({ narrative_state_refs: narrative_state_refs as RuleStateBinding['narrative_state_refs'] })} onValidChange={setRefsValid} />
-              <JSONFragmentEditor label={t('settingPanel.trpgRule.outcomeStateChanges')} value={active.outcome_state_changes || []} onChange={(outcome_state_changes) => patchActive({ outcome_state_changes: outcome_state_changes as RuleStateBinding['outcome_state_changes'] })} onValidChange={setChangesValid} />
+              <JsonFragmentEditor label={t('settingPanel.trpgRule.modifiers')} value={active.modifiers || []} onChange={(modifiers) => patchActive({ modifiers: modifiers as RuleStateBinding['modifiers'] })} onValidChange={setModifiersValid} />
+              <JsonFragmentEditor label={t('settingPanel.trpgRule.narrativeStateRefs')} value={active.narrative_state_refs || []} onChange={(narrative_state_refs) => patchActive({ narrative_state_refs: narrative_state_refs as RuleStateBinding['narrative_state_refs'] })} onValidChange={setRefsValid} />
+              <JsonFragmentEditor label={t('settingPanel.trpgRule.outcomeStateChanges')} value={active.outcome_state_changes || []} onChange={(outcome_state_changes) => patchActive({ outcome_state_changes: outcome_state_changes as RuleStateBinding['outcome_state_changes'] })} onValidChange={setChangesValid} />
             </div>
           ) : <EmptyDetail>{t('settingPanel.trpgRule.emptyBindings')}</EmptyDetail>}
         </div>
@@ -380,7 +374,9 @@ function StateFieldSelect({
       <Select value={current} onValueChange={onChange} disabled={!options.length}>
         <SelectTrigger aria-label={label} className={selectClassName}><SelectValue /></SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          {options.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+          <SelectGroup>
+            {options.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+          </SelectGroup>
         </SelectContent>
       </Select>
     </Field>
@@ -410,8 +406,10 @@ function TemplateSelectField({
       <Select value={selectValue} onValueChange={(next) => onChange(next === '__none__' ? '' : next)}>
         <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          {allowEmpty ? <SelectItem value="__none__">{t('settingPanel.trpgRule.noTargetTemplate')}</SelectItem> : null}
-          {templates.filter((template) => template.id).map((template) => <SelectItem key={template.id} value={template.id}>{template.name || template.id}</SelectItem>)}
+          <SelectGroup>
+            {allowEmpty ? <SelectItem value="__none__">{t('settingPanel.trpgRule.noTargetTemplate')}</SelectItem> : null}
+            {templates.filter((template) => template.id).map((template) => <SelectItem key={template.id} value={template.id}>{template.name || template.id}</SelectItem>)}
+          </SelectGroup>
         </SelectContent>
       </Select>
     </Field>
@@ -430,48 +428,11 @@ function RuleSelectField<T extends readonly string[]>({ label, value, options, l
       <Select value={value} onValueChange={(next) => onChange(next as T[number])}>
         <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
         <SelectContent className="nova-panel border text-[var(--nova-text)]">
-          {options.map((option) => <SelectItem key={option} value={option}>{labelFor(option)}</SelectItem>)}
+          <SelectGroup>
+            {options.map((option) => <SelectItem key={option} value={option}>{labelFor(option)}</SelectItem>)}
+          </SelectGroup>
         </SelectContent>
       </Select>
-    </Field>
-  )
-}
-
-function JSONFragmentEditor({ label, value, onChange, onValidChange }: {
-  label: string
-  value: unknown
-  onChange: (value: unknown) => void
-  onValidChange: (valid: boolean) => void
-}) {
-  const { t } = useTranslation()
-  const valueSignature = useMemo(() => JSON.stringify(value ?? []), [value])
-  const [text, setText] = useState(() => formatPresetJSON(value ?? []))
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    setText(formatPresetJSON(value ?? []))
-    setError('')
-    onValidChange(true)
-  }, [onValidChange, valueSignature])
-
-  const update = (next: string) => {
-    setText(next)
-    try {
-      const parsed = JSON.parse(next)
-      if (!Array.isArray(parsed)) throw new Error(t('settingPanel.presetConfig.jsonArrayRequired'))
-      setError('')
-      onValidChange(true)
-      onChange(parsed)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('settingPanel.storyDirector.invalidJSON'))
-      onValidChange(false)
-    }
-  }
-
-  return (
-    <Field label={label}>
-      <Textarea autoResize={false} className="nova-field min-h-28 resize-y font-mono text-xs leading-5 shadow-none focus-visible:ring-0" value={text} onChange={(event) => update(event.target.value)} />
-      {error ? <div className="mt-1 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1 text-[11px] text-[var(--nova-danger)]">{error}</div> : null}
     </Field>
   )
 }
@@ -482,15 +443,6 @@ function DetailPanel({ children }: { children: ReactNode }) {
 
 function EmptyDetail({ children }: { children: ReactNode }) {
   return <div className="flex min-h-48 items-center justify-center rounded-[12px] border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-8 text-center text-xs text-[var(--nova-text-faint)]">{children}</div>
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="grid min-w-0 gap-1.5 text-xs text-[var(--nova-text-muted)]">
-      <span className="truncate text-[11px] text-[var(--nova-text-faint)]">{label}</span>
-      {children}
-    </label>
-  )
 }
 
 function ruleFailurePolicyLabel(value: string | undefined, t: ReturnType<typeof useTranslation>['t']) {

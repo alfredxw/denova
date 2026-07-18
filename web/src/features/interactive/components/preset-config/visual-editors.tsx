@@ -1,24 +1,21 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Copy, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate, EventPackageModule, StoryDirectorActorStateSystem, TellerEventCard } from '../../types'
+import { presetDetailScrollPaneClassName as detailScrollPaneClassName, presetFieldGridClassName as fieldGridClassName, presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetNestedEditorShellClassName as nestedEditorShellClassName, presetSelectClassName as selectClassName } from './editor-styles'
+import { JsonFragmentEditor } from './JsonFragmentEditor'
+import { PresetField as Field } from './PresetField'
 import { PresetTabsList } from './PresetTabsList'
-import { cloneWithNewId, formatPresetJSON, itemKey, joinListInput, nextPresetId, parseIntegerInput, parseNumberInput, splitListInput } from './utils'
+import { cloneWithNewId, itemKey, joinListInput, nextPresetId, parseIntegerInput, parseNumberInput, splitListInput } from './utils'
 
-const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
-const selectClassName = 'nova-field h-8 w-full text-xs focus:ring-0'
-const iconActionClassName = 'nova-nav-item rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-const fieldGridClassName = 'grid grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3'
 const visualEditorShellClassName = 'preset-visual-editor-shell grid h-full min-h-0 min-w-0 gap-3 overflow-hidden'
-const nestedEditorShellClassName = 'grid min-h-0 grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-2'
-const detailScrollPaneClassName = 'min-w-0 overflow-hidden rounded-[14px] bg-[var(--nova-surface)] p-3'
 
 export function EventPackageVisualEditor({
   value,
@@ -377,12 +374,14 @@ function ActorStateFieldDetails({
           <Select value={field.type || 'number'} onValueChange={(type) => onPatch({ type })}>
             <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
             <SelectContent className="nova-panel border text-[var(--nova-text)]">
-              <SelectItem value="number">number</SelectItem>
-              <SelectItem value="string">string</SelectItem>
-              <SelectItem value="bool">bool</SelectItem>
-              <SelectItem value="enum">enum</SelectItem>
-              <SelectItem value="object">object</SelectItem>
-              <SelectItem value="list">list</SelectItem>
+              <SelectGroup>
+                <SelectItem value="number">number</SelectItem>
+                <SelectItem value="string">string</SelectItem>
+                <SelectItem value="bool">bool</SelectItem>
+                <SelectItem value="enum">enum</SelectItem>
+                <SelectItem value="object">object</SelectItem>
+                <SelectItem value="list">list</SelectItem>
+              </SelectGroup>
             </SelectContent>
           </Select>
         </Field>
@@ -392,9 +391,11 @@ function ActorStateFieldDetails({
           <Select value={field.visibility || 'visible'} onValueChange={(visibility) => onPatch({ visibility: visibility as ActorStateField['visibility'] })}>
             <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
             <SelectContent className="nova-panel border text-[var(--nova-text)]">
-              <SelectItem value="visible">visible</SelectItem>
-              <SelectItem value="hidden">hidden</SelectItem>
-              <SelectItem value="spoiler">spoiler</SelectItem>
+              <SelectGroup>
+                <SelectItem value="visible">visible</SelectItem>
+                <SelectItem value="hidden">hidden</SelectItem>
+                <SelectItem value="spoiler">spoiler</SelectItem>
+              </SelectGroup>
             </SelectContent>
           </Select>
         </Field>
@@ -428,7 +429,7 @@ function ActorStateDefaultValueField({
   }, [onValidChange, type])
   if (type === 'object' || type === 'list') {
     return (
-      <JSONFragmentEditor
+      <JsonFragmentEditor
         label={t('settingPanel.presetConfig.defaultValue')}
         value={field.default ?? (type === 'list' ? [] : {})}
         expected={type === 'list' ? 'array' : 'object'}
@@ -443,8 +444,10 @@ function ActorStateDefaultValueField({
         <Select value={String(field.default === true)} onValueChange={(value) => onPatch({ default: value === 'true' })}>
           <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
           <SelectContent className="nova-panel border text-[var(--nova-text)]">
-            <SelectItem value="true">true</SelectItem>
-            <SelectItem value="false">false</SelectItem>
+            <SelectGroup>
+              <SelectItem value="true">true</SelectItem>
+              <SelectItem value="false">false</SelectItem>
+            </SelectGroup>
           </SelectContent>
         </Select>
       </Field>
@@ -555,7 +558,7 @@ function InitialActorsEditor({
                 <Field label={t('settingPanel.actorState.role')}><Input className={inputClassName} value={activeActor.role || ''} onChange={(event) => patchActor({ role: event.target.value })} /></Field>
                 <Field label={t('common.description')}><Input className={inputClassName} value={activeActor.description || ''} onChange={(event) => patchActor({ description: event.target.value })} /></Field>
               </div>
-              <JSONFragmentEditor
+              <JsonFragmentEditor
                 label={t('settingPanel.actorState.initialState')}
                 value={activeActor.state || {}}
                 expected="object"
@@ -567,53 +570,6 @@ function InitialActorsEditor({
         </div>
       </div>
     </EditorSection>
-  )
-}
-
-function JSONFragmentEditor({
-  label,
-  value,
-  expected,
-  onChange,
-  onValidChange,
-}: {
-  label: string
-  value: unknown
-  expected: 'array' | 'object'
-  onChange: (value: unknown) => void
-  onValidChange: (valid: boolean) => void
-}) {
-  const { t } = useTranslation()
-  const valueSignature = useMemo(() => JSON.stringify(value ?? (expected === 'array' ? [] : {})), [expected, value])
-  const [text, setText] = useState(() => formatPresetJSON(value ?? (expected === 'array' ? [] : {})))
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    setText(JSON.stringify(value ?? (expected === 'array' ? [] : {}), null, 2))
-    setError('')
-    onValidChange(true)
-  }, [expected, onValidChange, valueSignature])
-
-  const update = (next: string) => {
-    setText(next)
-    try {
-      const parsed = JSON.parse(next)
-      if (expected === 'array' && !Array.isArray(parsed)) throw new Error(t('settingPanel.presetConfig.jsonArrayRequired'))
-      if (expected === 'object' && (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))) throw new Error(t('settingPanel.storyDirector.jsonObjectRequired'))
-      setError('')
-      onValidChange(true)
-      onChange(parsed)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('settingPanel.storyDirector.invalidJSON'))
-      onValidChange(false)
-    }
-  }
-
-  return (
-    <Field label={label}>
-      <Textarea autoResize={false} className="nova-field min-h-28 resize-y font-mono text-xs leading-5 shadow-none focus-visible:ring-0" value={text} onChange={(event) => update(event.target.value)} />
-      {error ? <div className="mt-1 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-2 py-1 text-[11px] text-[var(--nova-danger)]">{error}</div> : null}
-    </Field>
   )
 }
 
@@ -724,21 +680,12 @@ function DetailActions({ onCopy, onDelete }: { onCopy?: () => void; onDelete?: (
   return (
     <div className="flex justify-end gap-2">
       <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={!onCopy} onClick={onCopy} aria-label={t('settingPanel.presetConfig.copy')} title={t('settingPanel.presetConfig.copy')}>
-        <Copy className="h-3.5 w-3.5" />
+        <Copy data-icon="inline-start" />
       </Button>
       <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={!onDelete} onClick={onDelete} aria-label={t('common.delete')} title={t('common.delete')}>
-        <Trash2 className="h-3.5 w-3.5" />
+        <Trash2 data-icon="inline-start" />
       </Button>
     </div>
-  )
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="grid min-w-0 gap-1.5 text-xs text-[var(--nova-text-muted)]">
-      <span className="truncate text-[11px] text-[var(--nova-text-faint)]">{label}</span>
-      {children}
-    </label>
   )
 }
 

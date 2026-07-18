@@ -71,6 +71,4 @@ export type StrategySelectOption = {
   descriptionKey: string
 }
 
-export const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
-export const selectClassName = 'nova-field h-8 w-full text-xs focus:ring-0'
 export const consoleSectionClassName = 'rounded-[14px] border border-[var(--preset-line)] bg-[color-mix(in_srgb,var(--preset-surface)_90%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.025)] backdrop-blur'

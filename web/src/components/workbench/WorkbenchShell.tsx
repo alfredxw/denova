@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
@@ -10,6 +10,7 @@ import { BookOpen, Bot, Clock3, Database, History, MessageSquareText, PanelLeft,
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { WorkspaceLayout } from '@/components/layout/workspace-layout'
 import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/workspace-mobile-layout'
+import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { novaSpring } from '@/features/motion/motion-tokens'
 import { MessageCenterButton } from '@/features/messages/MessageCenter'
@@ -135,7 +136,11 @@ export function WorkbenchShell({
   const [activityBarWidth, setActivityBarWidth] = useState(readStoredActivityBarWidth)
   const [automationInboxUnread, setAutomationInboxUnread] = useState(0)
   const [automationRunning, setAutomationRunning] = useState(0)
-  const [mainContentHost] = useState(createWorkbenchMainHost)
+  const [mainContentHost] = useState(() => {
+    const host = createStablePortalHost('h-full min-h-0 w-full min-w-0 overflow-hidden')
+    if (host) host.dataset.novaWorkbenchMainHost = 'true'
+    return host
+  })
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -573,7 +578,15 @@ export function WorkbenchShell({
   // the desktop resizable workspace and the mobile shell. This preserves local
   // editor state when the viewport crosses the mobile breakpoint.
   const mainContentPortal = mainContentHost ? createPortal(main, mainContentHost, 'workbench-main-content') : null
-  const mainContentSlot = <WorkbenchMainSlot host={mainContentHost} fallback={main} />
+  const mainContentSlot = (
+    <StablePortalSlot
+      host={mainContentHost}
+      fallback={main}
+      wrapFallback={false}
+      data-nova-workbench-main-slot="true"
+      className="h-full min-h-0 w-full min-w-0 overflow-hidden"
+    />
+  )
 
   if (isMobile) {
     const compactMobileNavigation = mode === 'interactive' && interactiveSubmode === 'story' && !sharedMenuActive
@@ -736,30 +749,6 @@ export function WorkbenchShell({
       {mainContentPortal}
     </>
   )
-}
-
-function createWorkbenchMainHost() {
-  if (typeof document === 'undefined') return null
-  const host = document.createElement('div')
-  host.dataset.novaWorkbenchMainHost = 'true'
-  host.className = 'h-full min-h-0 w-full min-w-0 overflow-hidden'
-  return host
-}
-
-function WorkbenchMainSlot({ host, fallback }: { host: HTMLDivElement | null; fallback: ReactNode }) {
-  const slotRef = useRef<HTMLDivElement>(null)
-
-  useLayoutEffect(() => {
-    const slot = slotRef.current
-    if (!host || !slot) return
-    slot.appendChild(host)
-    return () => {
-      if (host.parentNode === slot) host.remove()
-    }
-  }, [host])
-
-  if (!host) return fallback
-  return <div ref={slotRef} data-nova-workbench-main-slot="true" className="h-full min-h-0 w-full min-w-0 overflow-hidden" />
 }
 
 function SortableActivityButton({

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, UIEvent, WheelEvent } from 'react'
 import type { VirtuosoHandle } from 'react-virtuoso'
+import { createDeferredBottomScrollScheduler, DEFAULT_BOTTOM_THRESHOLD, isElementNearBottom, UPWARD_SCROLL_KEYS } from '@/lib/bottom-scroll-controller'
 
-export const VIRTUOSO_BOTTOM_THRESHOLD = 12
+export const VIRTUOSO_BOTTOM_THRESHOLD = DEFAULT_BOTTOM_THRESHOLD
 const VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD = 160
-
-const UPWARD_SCROLL_KEYS = new Set(['ArrowUp', 'PageUp', 'Home'])
 
 export interface ScrollElementBottomIntoViewOptions {
   bottomInsetPx?: number
@@ -19,21 +18,13 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
   const lockedRef = useRef(true)
   const lastScrollTopRef = useRef(0)
   const lastLockedBottomScrollTopRef = useRef(0)
-  const scrollRafRef = useRef<number[]>([])
-  const scrollTimerRef = useRef<number | null>(null)
+  const schedulerRef = useRef(createDeferredBottomScrollScheduler())
   const scheduleScrollRef = useRef<() => void>(() => {})
   const detachScrollerListenersRef = useRef<(() => void) | null>(null)
   const [isAwayFromBottom, setIsAwayFromBottom] = useState(false)
 
   const cancelScheduledScroll = useCallback(() => {
-    for (const id of scrollRafRef.current) {
-      cancelAnimationFrame(id)
-    }
-    scrollRafRef.current = []
-    if (scrollTimerRef.current !== null) {
-      window.clearTimeout(scrollTimerRef.current)
-      scrollTimerRef.current = null
-    }
+    schedulerRef.current.cancel()
   }, [])
 
   const currentScrollerElement = useCallback(() => {
@@ -50,7 +41,7 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
   }, [awayFromBottomThreshold, currentScrollerElement, itemCount])
 
   const isNearBottom = useCallback((element: HTMLElement) => (
-    element.scrollHeight - element.scrollTop - element.clientHeight <= VIRTUOSO_BOTTOM_THRESHOLD
+    isElementNearBottom(element, VIRTUOSO_BOTTOM_THRESHOLD)
   ), [])
 
   const scrollToBottomNow = useCallback(() => {
@@ -81,22 +72,8 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
   const scheduleScrollToBottom = useCallback(() => {
     detectManualScrollAway()
     if (!lockedRef.current || itemCount <= 0) return
-    cancelScheduledScroll()
-    scrollToBottomNow()
-    scrollRafRef.current.push(requestAnimationFrame(() => {
-      if (!lockedRef.current) return
-      scrollToBottomNow()
-      scrollRafRef.current.push(requestAnimationFrame(() => {
-        if (!lockedRef.current) return
-        scrollToBottomNow()
-      }))
-    }))
-    scrollTimerRef.current = window.setTimeout(() => {
-      scrollTimerRef.current = null
-      if (!lockedRef.current) return
-      scrollToBottomNow()
-    }, 80)
-  }, [cancelScheduledScroll, detectManualScrollAway, itemCount, scrollToBottomNow])
+    schedulerRef.current.schedule(scrollToBottomNow, () => lockedRef.current && itemCount > 0)
+  }, [detectManualScrollAway, itemCount, scrollToBottomNow])
 
   const unlockFromBottom = useCallback(() => {
     lockedRef.current = false
@@ -105,22 +82,8 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
 
   const scrollToBottom = useCallback(() => {
     lockedRef.current = true
-    cancelScheduledScroll()
-    scrollToBottomNow()
-    scrollRafRef.current.push(requestAnimationFrame(() => {
-      if (!lockedRef.current) return
-      scrollToBottomNow()
-      scrollRafRef.current.push(requestAnimationFrame(() => {
-        if (!lockedRef.current) return
-        scrollToBottomNow()
-      }))
-    }))
-    scrollTimerRef.current = window.setTimeout(() => {
-      scrollTimerRef.current = null
-      if (!lockedRef.current) return
-      scrollToBottomNow()
-    }, 80)
-  }, [cancelScheduledScroll, scrollToBottomNow])
+    schedulerRef.current.schedule(scrollToBottomNow, () => lockedRef.current)
+  }, [scrollToBottomNow])
 
   const scrollElementIntoView = useCallback((element: HTMLElement) => {
     lockedRef.current = false

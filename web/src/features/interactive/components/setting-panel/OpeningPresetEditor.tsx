@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { newBookOpeningPreset, type BookOpeningPreset } from '../../opening'
-import { EmptyState, Field, iconActionClassName, inputClassName } from './editor-shared'
+import { presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName } from '../preset-config/editor-styles'
+import { PresetEmptyState as EmptyState } from '../preset-config/PresetEmptyState'
+import { PresetField as Field } from '../preset-config/PresetField'
 
 export function OpeningPresetEditor({
   presets,
@@ -46,7 +48,7 @@ export function OpeningPresetEditor({
             <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.openingPreset.description')}</div>
           </div>
           <Button className={iconActionClassName} variant="outline" size="sm" onClick={addPreset}>
-            <Plus className="h-3.5 w-3.5" />
+            <Plus data-icon="inline-start" />
             {t('settingPanel.openingPreset.add')}
           </Button>
         </div>
@@ -56,7 +58,7 @@ export function OpeningPresetEditor({
           {presets.length === 0 ? (
             <div className="px-2 py-3 text-xs leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.openingPreset.empty')}</div>
           ) : (
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               {presets.map((preset) => (
                 <button
                   key={preset.id}
@@ -81,7 +83,7 @@ export function OpeningPresetEditor({
                   <Input className={inputClassName} value={activePreset.title} onChange={(event) => updateActivePreset({ title: event.target.value })} placeholder={t('settingPanel.openingPreset.untitled')} />
                 </Field>
                 <Button className={iconActionClassName} variant="outline" size="icon" onClick={deleteActivePreset} aria-label={t('settingPanel.openingPreset.delete')}>
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 data-icon="inline-start" />
                 </Button>
               </div>
               <Textarea

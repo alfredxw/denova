@@ -50,7 +50,10 @@ describe('ResourceDirectory', () => {
 
     await user.click(screen.getByText('凯尔'))
     expect(onSelect).toHaveBeenCalledWith('c2')
-    expect(screen.getByText('艾拉').closest('button')).toHaveClass('is-active')
+    const activeRow = screen.getByText('艾拉').closest('button')
+    expect(activeRow).toHaveClass('is-active')
+    expect(activeRow).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByText('凯尔').closest('button')).not.toHaveAttribute('aria-current')
   })
 
   it('filters items by search and expands collapsed sections while searching', async () => {
@@ -120,6 +123,7 @@ describe('ResourceDirectory', () => {
 
     const pinned = screen.getByText('配置管理 Agent').closest('button')
     expect(pinned).toHaveClass('is-active')
+    expect(pinned).toHaveAttribute('aria-current', 'true')
     await user.click(pinned!)
     expect(onSelect).toHaveBeenCalledWith('__agent__')
   })

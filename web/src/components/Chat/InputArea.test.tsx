@@ -66,6 +66,7 @@ describe('InputArea command menu', () => {
     expect(await within(textbox).findByText('@chapters/ch01.md')).toHaveClass('nova-composer-token')
     expect(document.querySelector('.nova-agent-composer-references')).toBeNull()
 
+    textbox.focus()
     await user.keyboard('{Backspace}{Backspace}')
 
     await waitFor(() => expect(handleRemove).toHaveBeenCalledWith('chapters/ch01.md'))

@@ -1,10 +1,12 @@
-import { Layers3 } from 'lucide-react'
+import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ReactNode } from 'react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { presetInputClassName } from './editor-styles'
+import { PresetField } from './PresetField'
 
-const controlClassName = 'nova-field h-8 min-w-0 text-xs shadow-none focus-visible:ring-0'
+const controlClassName = `${presetInputClassName} min-w-0 shadow-none`
 
 interface PresetMetadataPanelProps {
   name: string
@@ -31,6 +33,8 @@ export function PresetMetadataPanel({
   testId,
 }: PresetMetadataPanelProps) {
   const { t } = useTranslation()
+  const nameId = useId()
+  const descriptionId = useId()
 
   return (
     <section
@@ -38,15 +42,17 @@ export function PresetMetadataPanel({
       data-testid={testId || 'preset-metadata'}
     >
       <div className="preset-metadata-grid">
-        <PresetField className="preset-metadata-name" label={t('settingPanel.field.name')}>
+        <PresetField className="preset-metadata-name" label={t('settingPanel.field.name')} htmlFor={nameId}>
           <Input
+            id={nameId}
             className={controlClassName}
             value={name}
             onChange={(event) => onNameChange(event.target.value)}
           />
         </PresetField>
-        <PresetField className="preset-metadata-description" label={t('settingPanel.field.description')}>
+        <PresetField className="preset-metadata-description" label={t('settingPanel.field.description')} htmlFor={descriptionId}>
           <Input
+            id={descriptionId}
             className={controlClassName}
             value={description}
             onChange={(event) => onDescriptionChange(event.target.value)}
@@ -64,45 +70,5 @@ export function PresetMetadataPanel({
       </div>
       {hint ? <p className="preset-metadata-hint">{hint}</p> : null}
     </section>
-  )
-}
-
-export function PresetField({
-  label,
-  children,
-  className,
-}: {
-  label: string
-  children: ReactNode
-  className?: string
-}) {
-  return (
-    <label className={cn('grid min-w-0 gap-1', className)}>
-      <span className="preset-field-label">{label}</span>
-      {children}
-    </label>
-  )
-}
-
-export function PresetEmptyState({
-  title,
-  description,
-  action,
-}: {
-  title: string
-  description: string
-  action?: ReactNode
-}) {
-  return (
-    <div className="flex min-h-0 flex-1 items-center justify-center p-5 sm:p-8">
-      <div className="preset-empty-state">
-        <span className="preset-empty-state-icon" aria-hidden="true">
-          <Layers3 className="size-5" />
-        </span>
-        <div className="text-sm font-semibold text-[var(--nova-text)]">{title}</div>
-        <div className="max-w-[46ch] text-xs leading-5 text-[var(--nova-text-muted)]">{description}</div>
-        {action}
-      </div>
-    </div>
   )
 }

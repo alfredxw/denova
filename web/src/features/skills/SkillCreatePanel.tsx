@@ -1,13 +1,16 @@
 import { useState } from 'react'
 import { Bot, FileCode2, Loader2, Plus, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { EmptyState } from '@/components/common/EmptyState'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
-import { Input } from '@/components/ui/input'
+import { FormSectionHeader } from '@/components/forms/form-section-header'
+import { Button } from '@/components/ui/button'
 import { createSkill } from '@/lib/api'
 import type { SkillDocument, SkillScope, SkillScopeInfo } from '@/lib/api'
 import { AGENTS } from '@/features/agents/agent-registry'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
-import { Field, PreviewRow, SectionTitle, SkillAgentSelector } from './skill-form-fields'
+import { PreviewRow, SkillAgentSelector } from './skill-form-fields'
+import { SkillIdentityFields } from './SkillIdentityFields'
 import { scopeLabel, skillFilePath, skillNamePattern } from './skill-utils'
 
 interface SkillCreatePanelProps {
@@ -67,64 +70,40 @@ export function SkillCreatePanel({ scopes, defaultScope, onCreated, onAskAgent }
         {error && <InlineErrorNotice message={error} title={t('skills.error')} />}
 
         {scopes.length === 0 ? (
-          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-3 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-            {t('skills.create.noWritableScope')}
-          </div>
+          <EmptyState
+            variant="compact"
+            icon={FileCode2}
+            title={t('skills.create.noWritableScope')}
+            className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-faint)]"
+          />
         ) : (
           <>
-            <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
-              <SectionTitle icon={FileCode2} title={t('skills.create.section.identity')} />
-              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                <Field label={t('skills.create.scope')}>
-                  <div className="flex gap-1">
-                    {scopes.map((item) => (
-                      <button
-                        key={item.scope}
-                        type="button"
-                        onClick={() => setScope(item.scope)}
-                        className={`nova-nav-item h-8 flex-1 rounded-[var(--nova-radius)] px-2 ${scope === item.scope ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
-                      >
-                        {scopeLabel(item.scope, t)}
-                      </button>
-                    ))}
-                  </div>
-                </Field>
-                <Field label={t('skills.create.name')}>
-                  <Input
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    aria-invalid={invalidName}
-                    aria-label={t('skills.create.name')}
-                    placeholder={t('skills.create.namePlaceholder')}
-                    className="nova-field h-8 w-full rounded-[var(--nova-radius)] border px-2.5 font-mono outline-none aria-invalid:border-[var(--nova-danger)]"
-                  />
-                  <div className={`mt-1 text-[11px] ${invalidName ? 'text-[var(--nova-danger)]' : 'text-[var(--nova-text-faint)]'}`}>
-                    {invalidName ? t('skills.create.invalidName') : t('skills.create.nameHint')}
-                  </div>
-                </Field>
-              </div>
-              <Field label={t('skills.create.description')}>
-                <Input
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  aria-label={t('skills.create.description')}
-                  placeholder={t('skills.create.descriptionPlaceholder')}
-                  className="nova-field h-8 w-full rounded-[var(--nova-radius)] border px-2.5 outline-none"
-                />
-                <div className="mt-1 text-[11px] text-[var(--nova-text-faint)]">{t('skills.create.descriptionHint')}</div>
-              </Field>
+            <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
+              <FormSectionHeader icon={FileCode2} title={t('skills.create.section.identity')} />
+              <SkillIdentityFields
+                scopes={scopes}
+                scope={scope}
+                onScopeChange={setScope}
+                name={name}
+                onNameChange={setName}
+                description={description}
+                onDescriptionChange={setDescription}
+                invalidName={invalidName}
+                targetName={targetName}
+                targetPath={targetPath}
+              />
             </section>
 
-            <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
-              <SectionTitle icon={Bot} title={t('skills.create.section.agents')} />
+            <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
+              <FormSectionHeader icon={Bot} title={t('skills.create.section.agents')} />
               <SkillAgentSelector agents={agents} onAgentsChange={setAgents} />
               <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">
                 {agents.length === 0 ? t('skills.create.agentsAllHint') : t('skills.create.agentsHint')}
               </div>
             </section>
 
-            <section className="space-y-3 pb-5">
-              <SectionTitle icon={Sparkles} title={t('skills.create.section.preview')} />
+            <section className="flex flex-col gap-3 pb-5">
+              <FormSectionHeader icon={Sparkles} title={t('skills.create.section.preview')} />
               <div className="grid gap-2 md:grid-cols-2">
                 <PreviewRow label={t('skills.create.preview.command')} value={`/${targetName}`} />
                 <PreviewRow label={t('skills.create.preview.scope')} value={scopeLabel(scope, t)} />
@@ -136,23 +115,27 @@ export function SkillCreatePanel({ scopes, defaultScope, onCreated, onAskAgent }
                 />
               </div>
               <div className="flex flex-wrap gap-2">
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="secondary"
                   onClick={() => void onCreate()}
                   disabled={saving || !trimmedName || invalidName}
-                  className="nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="nova-nav-item h-8 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3"
                 >
-                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Plus data-icon="inline-start" />}
                   {t('skills.create.submit')}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  size="sm"
+                  variant="outline"
                   onClick={onAskAgent}
-                  className="nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3"
+                  className="nova-nav-item h-8 rounded-[var(--nova-radius)] border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3"
                 >
-                  <Bot className="h-3.5 w-3.5" />
+                  <Bot data-icon="inline-start" />
                   {t('skills.create.askAgent')}
-                </button>
+                </Button>
               </div>
             </section>
           </>

@@ -1,22 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Clock3, Inbox, Loader2, MessageSquareText, PanelLeft, Play, Plus, RefreshCw, Save, Settings2, Square, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Clock3, Inbox, Loader2, MessageSquareText, Play, Plus, RefreshCw, Save, Settings2, Square, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { EmptyState } from '@/components/common/EmptyState'
+import { FormField } from '@/components/forms/form-field'
+import { FormSectionHeader } from '@/components/forms/form-section-header'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { FeaturePageShell } from '@/components/layout/feature-page-shell'
+import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { MessageList } from '@/components/Chat/MessageList'
 import { InputArea } from '@/components/Chat/InputArea'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import {
   createAutomation,
   deleteAutomation,
@@ -67,7 +66,7 @@ import {
   upsertAutomationTask,
 } from './automation-task-draft'
 
-const fieldCls = 'nova-field min-h-7 w-full min-w-0 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
+const controlClassName = 'nova-field min-h-7 w-full min-w-0 rounded-[var(--nova-radius)] border text-xs'
 type AutomationPanelView = 'config' | 'inbox' | 'run' | 'agent'
 
 export function AutomationsView({ workspace, onClose }: { workspace: string; onClose?: () => void }) {
@@ -89,8 +88,14 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null)
   const [navigationTarget, setNavigationTarget] = useState<AutomationNavigationTarget | null>(null)
   const [runInputAreaHeight, setRunInputAreaHeight] = useState(0)
+  const mountedRef = useRef(true)
+  const loadSequenceRef = useRef(0)
+  const loadedWorkspaceRef = useRef<string | null>(null)
+  const draftDirtyRef = useRef(false)
 
   const load = useCallback(async () => {
+    const sequence = loadSequenceRef.current + 1
+    loadSequenceRef.current = sequence
     try {
       const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN'
       const [data, taskTemplates, inbox, settings, bookRecords, runningTasks] = await Promise.all([
@@ -101,29 +106,36 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
         getBooks(),
         getActiveAutomationRuns(),
       ])
+      if (!mountedRef.current || sequence !== loadSequenceRef.current) return
       const normalized = data.map((task) => normalizeAutomationTaskShape(task, workspace))
+      const preserveDraft = loadedWorkspaceRef.current === workspace && draftDirtyRef.current
+      loadedWorkspaceRef.current = workspace
       setTasks(normalized)
       setTemplates(taskTemplates)
       setBooks(bookRecords)
       setActiveRuns(runningTasks)
       setInboxItems(inbox)
       setEffectiveSettings(settings.effective)
-      const selected = normalized.find((task) => automationTaskKey(task) === activeIdRef.current)
-        ?? normalized.find((task) => task.target?.kind === 'workspace' && task.target.workspace === workspace)
-        ?? normalized[0]
-      if (selected) {
-        const key = automationTaskKey(selected)
-        activeIdRef.current = key
-        setActiveId(key)
-        setDraft(cloneAutomationTask(selected, workspace))
-        setCreating(false)
-      } else {
-        activeIdRef.current = ''
-        setActiveId('')
-        setDraft(newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName')))
-        setCreating(false)
+      if (!preserveDraft) {
+        const selected = normalized.find((task) => automationTaskKey(task) === activeIdRef.current)
+          ?? normalized.find((task) => task.target?.kind === 'workspace' && task.target.workspace === workspace)
+          ?? normalized[0]
+        draftDirtyRef.current = false
+        if (selected) {
+          const key = automationTaskKey(selected)
+          activeIdRef.current = key
+          setActiveId(key)
+          setDraft(cloneAutomationTask(selected, workspace))
+          setCreating(false)
+        } else {
+          activeIdRef.current = ''
+          setActiveId('')
+          setDraft(newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName')))
+          setCreating(false)
+        }
       }
     } catch (e) {
+      if (!mountedRef.current || sequence !== loadSequenceRef.current) return
       setError((e as Error).message)
     }
   }, [i18n.language, i18n.resolvedLanguage, t, workspace])
@@ -140,7 +152,14 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
   const skillCommands = useSkillCommands({ agentKey: 'automation', workspace: automationWorkspace, fallbackEnabled: true })
   const runMessageListBottomPadding = runInputAreaHeight > 0 ? runInputAreaHeight + 20 : undefined
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    mountedRef.current = true
+    void load()
+    return () => {
+      mountedRef.current = false
+      loadSequenceRef.current += 1
+    }
+  }, [load])
 
   useEffect(() => {
     const receiveNavigation = (event: Event) => {
@@ -165,11 +184,12 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
         if (runs.length === 0) return
         const active = runs[0]
         const task = findAutomationTaskForRun(tasks, active.run)
-        if (task) {
+        if (task && !draftDirtyRef.current) {
           const key = automationTaskKey(task)
           activeIdRef.current = key
           setActiveId(key)
           setDraft(cloneAutomationTask(task, workspace))
+          draftDirtyRef.current = false
           setCreating(false)
         }
         setPanelView('run')
@@ -190,6 +210,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     activeIdRef.current = key
     setActiveId(key)
     setDraft(cloneAutomationTask(task, workspace))
+    draftDirtyRef.current = false
     setCreating(false)
     setPanelView('config')
   }
@@ -204,6 +225,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     setDraft(template
       ? newAutomationTaskFromTemplate(template, target)
       : newAutomationTask(target, t('automations.defaultName')))
+    draftDirtyRef.current = true
     setCreating(true)
     setPanelView('config')
   }
@@ -219,6 +241,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       activeIdRef.current = key
       setActiveId(key)
       setDraft(cloneAutomationTask(normalized, workspace))
+      draftDirtyRef.current = false
       setTasks((current) => upsertAutomationTask(current, normalized))
       setCreating(false)
     } catch (e) {
@@ -246,10 +269,11 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       activeIdRef.current = fallbackID
       setActiveId(fallbackID)
       setDraft(fallback ? cloneAutomationTask(fallback, workspace) : newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName')))
+      draftDirtyRef.current = false
       setCreating(false)
-      setDeleteTarget(null)
     } catch (e) {
       setError((e as Error).message)
+      throw e
     } finally {
       setSaving(false)
     }
@@ -301,6 +325,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     activeIdRef.current = key
     setActiveId(key)
     setDraft(cloneAutomationTask(task, workspace))
+    draftDirtyRef.current = false
     setCreating(false)
     if (navigationTarget.inboxId) {
       setPanelView('inbox')
@@ -359,8 +384,12 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     }
   }
 
-  const setDraftField = (patch: Partial<AutomationTask>) => setDraft((current) => ({ ...current, ...patch }))
+  const setDraftField = (patch: Partial<AutomationTask>) => {
+    draftDirtyRef.current = true
+    setDraft((current) => ({ ...current, ...patch }))
+  }
   const setDraftTriggers = (triggers: AutomationTriggerDefinition[]) => {
+    draftDirtyRef.current = true
     setDraft((current) => {
       const schedule = triggers.find((trigger) => trigger.type === 'schedule')?.schedule ?? current.schedule
       return { ...current, schedule, triggers }
@@ -383,40 +412,38 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
   )
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
-      <div className="nova-topbar flex h-10 shrink-0 flex-nowrap max-md:flex-wrap items-center gap-2 overflow-x-auto max-md:overflow-x-hidden border-b px-3 py-1 text-xs sm:px-4">
-        <Clock3 className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-        <span className="shrink-0 font-medium">{t('automations.title')}</span>
-        <span className="shrink-0 border-l border-[var(--nova-border)] pl-2 text-[11px] text-[var(--nova-text-faint)] sm:ml-3 sm:pl-3">
-          {t('automations.summary', { tasks: tasks.length, running: catalogActiveRuns.length })}
-        </span>
-        <button type="button" onClick={checkTriggers} disabled={!activeId || running || saving} className="nova-nav-item ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1 text-[var(--nova-text-muted)] disabled:opacity-50 sm:px-3">
-          <RefreshCw className="h-3.5 w-3.5" />
-          {t('automations.checkTriggers')}
-        </button>
-        <button type="button" onClick={runNow} disabled={!activeId || running || saving} className="nova-nav-item inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-2.5 py-1 text-[var(--nova-text)] disabled:opacity-50 sm:px-3">
-          <Play className="h-3.5 w-3.5" />
-          {running ? t('automations.running') : t('automations.runNow')}
-        </button>
-        {running && (
-          <button type="button" onClick={runStream.stop} className="nova-nav-item inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-1 text-[var(--nova-text-muted)]">
-            <Square className="h-3.5 w-3.5" />
-            {t('automations.stopRun')}
-          </button>
-        )}
-        <button type="button" onClick={save} disabled={saving || running || !hasEditableDraft} className="nova-nav-item inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50">
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          {t('common.save')}
-        </button>
-        {onClose && (
-          <button type="button" onClick={onClose} className="nova-nav-item flex h-8 w-8 shrink-0 items-center justify-center rounded p-1" aria-label={t('automations.close')} title={t('automations.close')}>
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-
-      {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title={t('automations.error')} />}
-
+    <FeaturePageShell
+      icon={Clock3}
+      title={t('automations.title')}
+      subtitle={t('automations.summary', { tasks: tasks.length, running: catalogActiveRuns.length })}
+      error={error}
+      errorTitle={t('automations.error')}
+      onClose={onClose}
+      closeLabel={t('automations.close')}
+      className="bg-[var(--nova-bg)] text-[var(--nova-text)]"
+      actions={(
+        <>
+          <Button type="button" size="sm" variant="outline" onClick={checkTriggers} disabled={!activeId || running || saving} className="nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]" aria-label={t('automations.checkTriggers')} title={t('automations.checkTriggers')}>
+            <RefreshCw data-icon="inline-start" />
+            <span className="hidden sm:inline">{t('automations.checkTriggers')}</span>
+          </Button>
+          <Button type="button" size="sm" variant="secondary" onClick={runNow} disabled={!activeId || running || saving} className="nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-active)]" aria-label={running ? t('automations.running') : t('automations.runNow')} title={running ? t('automations.running') : t('automations.runNow')}>
+            <Play data-icon="inline-start" />
+            <span className="hidden sm:inline">{running ? t('automations.running') : t('automations.runNow')}</span>
+          </Button>
+          {running ? (
+            <Button type="button" size="sm" variant="outline" onClick={runStream.stop} className="nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]" aria-label={t('automations.stopRun')} title={t('automations.stopRun')}>
+              <Square data-icon="inline-start" />
+              <span className="hidden sm:inline">{t('automations.stopRun')}</span>
+            </Button>
+          ) : null}
+          <Button type="button" size="sm" variant="secondary" onClick={save} disabled={saving || running || !hasEditableDraft} className="nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-active)]" aria-label={t('common.save')} title={t('common.save')}>
+            {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Save data-icon="inline-start" />}
+            <span className="hidden sm:inline">{t('common.save')}</span>
+          </Button>
+        </>
+      )}
+    >
       <AdaptiveSurface
         left={{
           id: 'automation-tasks',
@@ -434,9 +461,12 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
         {({ openLeft }) => (
           <main className="flex h-full min-h-0 flex-col">
             <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 sm:px-4">
-              <button type="button" className="nova-icon-button flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] md:hidden" aria-label={t('workbench.mobile.openSidePanel', { label: t('automations.title') })} onClick={openLeft}>
-                <PanelLeft className="h-4 w-4" />
-              </button>
+              <MobilePaneTrigger
+                side="left"
+                label={t('workbench.mobile.openSidePanel', { label: t('automations.title') })}
+                onClick={openLeft}
+                className="md:hidden"
+              />
               <div className="flex h-7 items-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
                 <button
                   type="button"
@@ -483,103 +513,133 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                       </div>
                     </div>
                     {activeId && (
-                      <button
+                      <Button
                         type="button"
+                        size="sm"
+                        variant="destructive"
                         onClick={requestRemove}
                         disabled={saving || running}
-                        className="nova-nav-item inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 text-[var(--nova-danger)] disabled:cursor-not-allowed disabled:opacity-45"
+                        className="nova-nav-item h-8 shrink-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-3"
                         aria-label={t('automations.deleteTask')}
                         title={t('automations.deleteTask')}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 data-icon="inline-start" />
                         {t('automations.deleteTask')}
-                      </button>
+                      </Button>
                     )}
                   </div>
                 <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 md:grid-cols-2">
-                  <Field label={t('automations.field.name')}>
-                    <input value={draft.name} onChange={(e) => setDraftField({ name: e.target.value })} className={fieldCls} />
-                  </Field>
-                  <Field label={t('automations.field.enabled')}>
-                    <select value={String(draft.enabled)} onChange={(e) => setDraftField({ enabled: e.target.value === 'true' })} className={fieldCls}>
-                      <option value="true">{t('automations.enabled')}</option>
-                      <option value="false">{t('automations.disabled')}</option>
-                    </select>
-                  </Field>
-                  <Field label={t('automations.field.target')}>
-                    <select value={targetValue} disabled className={fieldCls}>
-                      <option value="user">{t('automations.target.global')}</option>
-                      {automationTargetOptions(books, draft).map((book) => <option key={book.path} value={`workspace:${book.path}`}>{t('automations.target.workspace', { name: book.name })}</option>)}
-                    </select>
-                  </Field>
-                  <Field label={t('automations.field.modelProfile')}>
-                    <select value={draft.model_profile_id || ''} onChange={(e) => setDraftField({ model_profile_id: e.target.value })} className={fieldCls}>
-                      <option value="">{t('automations.model.inherit', { label: inheritedAutomationProfile })}</option>
-                      {modelProfileOptions.map((profile) => <option key={profile.id} value={profile.id}>{profile.label}</option>)}
-                    </select>
-                  </Field>
+                  <FormField htmlFor="automation-name" label={t('automations.field.name')}>
+                    <Input id="automation-name" value={draft.name} onChange={(event) => setDraftField({ name: event.target.value })} className={controlClassName} />
+                  </FormField>
+                  <FormField label={t('automations.field.enabled')}>
+                    <div className="flex h-8 items-center gap-2">
+                      <Switch
+                        checked={draft.enabled}
+                        onCheckedChange={(enabled) => setDraftField({ enabled })}
+                        aria-label={t('automations.field.enabled')}
+                      />
+                      <span className="text-[11px] text-muted-foreground">{draft.enabled ? t('automations.enabled') : t('automations.disabled')}</span>
+                    </div>
+                  </FormField>
+                  <FormField label={t('automations.field.target')}>
+                    <Select value={targetValue} disabled>
+                      <SelectTrigger className={controlClassName} aria-label={t('automations.field.target')}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="user">{t('automations.target.global')}</SelectItem>
+                          {automationTargetOptions(books, draft).map((book) => <SelectItem key={book.path} value={`workspace:${book.path}`}>{t('automations.target.workspace', { name: book.name })}</SelectItem>)}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <FormField label={t('automations.field.modelProfile')}>
+                    <Select value={draft.model_profile_id || '__inherit__'} onValueChange={(profileId) => setDraftField({ model_profile_id: profileId === '__inherit__' ? '' : profileId })}>
+                      <SelectTrigger className={controlClassName} aria-label={t('automations.field.modelProfile')}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="__inherit__">{t('automations.model.inherit', { label: inheritedAutomationProfile })}</SelectItem>
+                          {modelProfileOptions.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>)}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
                   <div className="md:col-span-2">
-                    <Field label={t('automations.field.prompt')}>
-                      <Textarea autoResize value={draft.prompt} onChange={(e) => setDraftField({ prompt: e.target.value })} placeholder={t('automations.prompt.placeholder')} className={`${fieldCls} min-h-32 resize-y leading-5 shadow-none focus-visible:ring-0`} />
-                    </Field>
+                    <FormField label={t('automations.field.prompt')}>
+                      <Textarea autoResize value={draft.prompt} onChange={(event) => setDraftField({ prompt: event.target.value })} aria-label={t('automations.field.prompt')} placeholder={t('automations.prompt.placeholder')} className={`${controlClassName} min-h-32 resize-y leading-5 shadow-none focus-visible:ring-0`} />
+                    </FormField>
                   </div>
                 </section>
 
                 <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 md:grid-cols-2">
-                  <Field label={t('automations.field.writeMode')}>
-                    <select value={draft.write_mode} disabled={globalTask} onChange={(e) => setDraftField(nextAutomationWriteModePatch(draft, e.target.value as AutomationTask['write_mode']))} className={fieldCls}>
-                      <option value="read_only">{t('automations.writeMode.readOnly')}</option>
-                      <option value="confirm_write">{t('automations.writeMode.confirmWrite')}</option>
-                      <option value="auto_write">{t('automations.writeMode.autoWrite')}</option>
-                    </select>
-                  </Field>
-                  <Field label={t('automations.field.writeScope')}>
-                    <select value={draft.write_scope} disabled={globalTask || draft.write_mode === 'read_only'} onChange={(e) => setDraftField(nextAutomationWriteScopePatch(draft, e.target.value as AutomationTask['write_scope']))} className={fieldCls}>
-                      <option value="none">{t('automations.writeScope.none')}</option>
-                      <option value="lore">{t('automations.writeScope.lore')}</option>
-                      <option value="file">{t('automations.writeScope.file')}</option>
-                      <option value="lore_and_file">{t('automations.writeScope.loreFile')}</option>
-                    </select>
-                  </Field>
-                  <Field label={t('automations.field.outputPolicy')}>
-                    <select value={draft.output_policy} disabled={globalTask} onChange={(e) => setDraftField({ output_policy: e.target.value as AutomationTask['output_policy'] })} className={fieldCls}>
-                      <option value="run_record_only">{t('automations.output.record')}</option>
-                      <option value="optional_file">{t('automations.output.file')}</option>
-                    </select>
-                  </Field>
+                  <FormField label={t('automations.field.writeMode')}>
+                    <Select value={draft.write_mode} disabled={globalTask} onValueChange={(mode) => setDraftField(nextAutomationWriteModePatch(draft, mode as AutomationTask['write_mode']))}>
+                      <SelectTrigger className={controlClassName} aria-label={t('automations.field.writeMode')}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="read_only">{t('automations.writeMode.readOnly')}</SelectItem>
+                          <SelectItem value="confirm_write">{t('automations.writeMode.confirmWrite')}</SelectItem>
+                          <SelectItem value="auto_write">{t('automations.writeMode.autoWrite')}</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <FormField label={t('automations.field.writeScope')}>
+                    <Select value={draft.write_scope} disabled={globalTask || draft.write_mode === 'read_only'} onValueChange={(scope) => setDraftField(nextAutomationWriteScopePatch(draft, scope as AutomationTask['write_scope']))}>
+                      <SelectTrigger className={controlClassName} aria-label={t('automations.field.writeScope')}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="none">{t('automations.writeScope.none')}</SelectItem>
+                          <SelectItem value="lore">{t('automations.writeScope.lore')}</SelectItem>
+                          <SelectItem value="file">{t('automations.writeScope.file')}</SelectItem>
+                          <SelectItem value="lore_and_file">{t('automations.writeScope.loreFile')}</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                  <FormField label={t('automations.field.outputPolicy')}>
+                    <Select value={draft.output_policy} disabled={globalTask} onValueChange={(policy) => setDraftField({ output_policy: policy as AutomationTask['output_policy'] })}>
+                      <SelectTrigger className={controlClassName} aria-label={t('automations.field.outputPolicy')}><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="run_record_only">{t('automations.output.record')}</SelectItem>
+                          <SelectItem value="optional_file">{t('automations.output.file')}</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormField>
                   <div className="md:col-span-2">
-                    <Field label={t('automations.field.outputPath')}>
-                      <input value={draft.output_path} disabled={globalTask} onChange={(e) => setDraftField({ output_path: e.target.value })} placeholder="reports/automation-review.md" className={fieldCls} />
-                    </Field>
+                    <FormField htmlFor="automation-output-path" label={t('automations.field.outputPath')}>
+                      <Input id="automation-output-path" value={draft.output_path} disabled={globalTask} onChange={(event) => setDraftField({ output_path: event.target.value })} placeholder="reports/automation-review.md" className={controlClassName} />
+                    </FormField>
                   </div>
                   {globalTask && <div className="md:col-span-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('automations.target.globalHelp')}</div>}
                 </section>
 
-                <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
-                  <SectionTitle title={t('automations.section.triggers')} />
+                <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
+                  <FormSectionHeader title={t('automations.section.triggers')} />
                   <TriggerEditor task={draft} onChange={setDraftTriggers} />
                 </section>
 
-                <section className="space-y-3 pb-5">
-                  <SectionTitle title={t('automations.section.runs')} />
+                <section className="flex flex-col gap-3 pb-5">
+                  <FormSectionHeader title={t('automations.section.runs')} />
                   <RunList task={draft} activeRunId={runStream.activeRun?.id || ''} onOpenRun={openRun} />
                 </section>
                 </div>
               </div>
             ) : (
-              <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-4 py-10">
-                <div className="flex max-w-md flex-col items-center text-center">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]">
-                    <Plus className="h-4 w-4" />
-                  </div>
-                  <div className="mt-3 text-sm font-medium text-[var(--nova-text)]">{t('automations.empty.title')}</div>
-                  <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('automations.empty.description')}</div>
-                  <button type="button" onClick={createNew} className="nova-nav-item mt-4 inline-flex h-8 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 text-xs text-[var(--nova-text)]">
-                    <Plus className="h-3.5 w-3.5" />
-                    {t('automations.newTask')}
-                  </button>
-                </div>
-              </div>
+              <EmptyState
+                variant="page"
+                icon={Plus}
+                title={t('automations.empty.title')}
+                description={t('automations.empty.description')}
+                action={{ label: t('automations.newTask'), onClick: createNew }}
+                className="min-h-0 flex-1 overflow-y-auto px-4 py-10"
+              />
             ) : panelView === 'inbox' ? (
             <InboxPanel
               items={inboxItems}
@@ -618,9 +678,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
                   onHeightChange={setRunInputAreaHeight}
                 />
               ) : (
-                <div className="border-t border-[var(--nova-border)] px-4 py-3 text-[11px] text-[var(--nova-text-faint)]">
-                  {t('automations.run.empty')}
-                </div>
+                <EmptyState variant="compact" title={t('automations.run.empty')} className="border-t border-[var(--nova-border)] text-[var(--nova-text-faint)]" />
               )}
             </section>
           ) : (
@@ -649,49 +707,27 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
         onOpenChange={setTemplateDialogOpen}
         onChoose={chooseCreationTemplate}
       />
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => {
-        if (!open && !saving) setDeleteTarget(null)
-      }}>
-        <AlertDialogContent className="border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)]">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('automations.deleteTask.title')}</AlertDialogTitle>
-            <AlertDialogDescription className="text-[var(--nova-text-muted)]">
-              {t('automations.deleteTask.confirm', { name: deleteTarget?.name || '' })}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={saving}>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-[var(--nova-danger-bg)] text-[var(--nova-danger)] hover:bg-[var(--nova-danger-bg)]"
-              disabled={saving || !deleteTarget}
-              onClick={(event) => {
-                event.preventDefault()
-                void confirmRemove()
-              }}
-            >
-              {t('automations.deleteTask')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+        title={t('automations.deleteTask.title')}
+        description={t('automations.deleteTask.confirm', { name: deleteTarget?.name || '' })}
+        confirmLabel={t('automations.deleteTask')}
+        tone="danger"
+        onConfirm={confirmRemove}
+      />
+    </FeaturePageShell>
   )
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="flex min-w-0 flex-col gap-1.5 text-xs"><span className="text-[var(--nova-text-muted)]">{label}</span>{children}</label>
-}
-
-function SectionTitle({ title }: { title: string }) {
-  return <div className="text-xs font-medium text-[var(--nova-text)]">{title}</div>
 }
 
 function RunList({ task, activeRunId, onOpenRun }: { task: AutomationTask; activeRunId: string; onOpenRun: (run: AutomationRunRecord) => void }) {
   const { t } = useTranslation()
   const runs = task.recent_runs || []
-  if (runs.length === 0) return <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-8 text-center text-[var(--nova-text-faint)]">{t('automations.runs.empty')}</div>
+  if (runs.length === 0) {
+    return <EmptyState variant="compact" title={t('automations.runs.empty')} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-faint)]" />
+  }
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       {runs.slice(0, 5).map((run) => (
         <div key={run.id} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
           <div className="flex items-center gap-2">

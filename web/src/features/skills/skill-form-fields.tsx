@@ -1,25 +1,6 @@
-import type { ElementType, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import { groupSkillAgents, skillAgentOptions } from './skill-utils'
-
-export function SectionTitle({ icon: Icon, title }: { icon: ElementType; title: string }) {
-  return (
-    <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
-      <Icon className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-      {title}
-    </div>
-  )
-}
-
-export function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="block">
-      <span className="mb-1.5 block text-[11px] font-medium text-[var(--nova-text-muted)]">{label}</span>
-      {children}
-    </div>
-  )
-}
 
 export function PreviewRow({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
   return (
@@ -48,7 +29,7 @@ export function SkillAgentSelector({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       {agentGroups.map((group) => (
         <div key={group.group}>
           <div className="mb-1.5 text-[11px] font-medium text-[var(--nova-text-faint)]">{t(group.group)}</div>

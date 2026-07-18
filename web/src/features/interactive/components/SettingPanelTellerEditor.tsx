@@ -18,15 +18,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import { getStyleReferences, readStyleReferenceFile, saveStyleReference, updateStyleReferenceFile } from '../api'
 import type { StyleReference, StyleReferenceFileDocument, StyleRule, Teller, TellerPromptSlot } from '../types'
-import { PresetEmptyState, PresetMetadataPanel } from './preset-config/PresetEditorChrome'
+import { presetActionButtonClassName as actionButtonClassName, presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from './preset-config/editor-styles'
+import { PresetEmptyState } from './preset-config/PresetEmptyState'
+import { PresetMetadataPanel } from './preset-config/PresetEditorChrome'
+import { PresetField as Field } from './preset-config/PresetField'
 
 const TELLER_TARGET_OPTIONS = [{ value: 'system' }, { value: 'turn_context' }] as const
 
 type TellerTarget = TellerPromptSlot['target']
-const actionButtonClassName = 'nova-nav-item gap-1.5 border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-const iconActionClassName = 'nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
-const inputClassName = 'nova-field h-8 text-xs focus-visible:ring-0'
-const selectClassName = 'nova-field h-8 w-full text-xs focus:ring-0'
 const STYLE_SOURCE_LIMIT = 40000
 const STYLE_FILE_ACCEPT = '.txt,.md,.markdown,text/plain,text/markdown,text/x-markdown'
 const STYLE_MARKDOWN_TAG = 'style_reference_markdown'
@@ -134,7 +133,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
           <div className="flex h-11 items-center justify-between border-b border-[var(--nova-border)] px-3">
             <div className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.injectRules.title')}</div>
             <Button className={iconActionClassName} variant="outline" size="icon" onClick={addSlot} aria-label={t('settingPanel.injectRules.new')}>
-              <Plus className="h-3.5 w-3.5" />
+              <Plus data-icon="inline-start" />
             </Button>
           </div>
           <ScrollArea className="min-h-0 flex-1">
@@ -204,7 +203,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
                 </div>
                 <div className="flex items-end justify-end">
                   <Button className={iconActionClassName} variant="outline" size="icon" disabled={(draft.slots || []).length <= 1} onClick={deleteSlot} aria-label={t('settingPanel.injectRules.delete')}>
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 data-icon="inline-start" />
                   </Button>
                 </div>
                 <div className="teller-rule-summary">
@@ -256,16 +255,16 @@ function InteractiveStyleReferencesEditor({ references, refreshReferences, globa
     <div className="flex flex-col gap-2">
       <InteractiveGlobalStyleRuleRow references={references} refreshReferences={refreshReferences} refs={globalRefs} onChange={onGlobalRefsChange} />
       {rules.length > 0 && (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           {rules.map((rule, index) => (
             <InteractiveStyleRuleRow key={index} references={references} refreshReferences={refreshReferences} rule={rule} onChange={(patch) => updateRule(index, patch)} onRemove={() => removeRule(index)} />
           ))}
         </div>
       )}
-      <div className="space-y-2">
+      <div className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <Button className={actionButtonClassName} variant="outline" size="sm" onClick={addRule}>
-            <Plus className="h-3.5 w-3.5" />
+            <Plus data-icon="inline-start" />
             {t('settingPanel.style.addRule')}
           </Button>
         </div>
@@ -303,7 +302,7 @@ function InteractiveStyleRuleRow({ references, refreshReferences, rule, onChange
         prefix={<Input className={`${inputClassName} md:min-w-44 md:flex-1`} value={rule.scene} placeholder={t('settingPanel.placeholder.scene')} onChange={(event) => onChange({ scene: event.target.value })} />}
         extraActions={(
           <Button className={`${actionButtonClassName} justify-center hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]`} variant="outline" size="sm" onClick={onRemove}>
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 data-icon="inline-start" />
             {t('common.delete')}
           </Button>
         )}
@@ -533,7 +532,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
         <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
           <PopoverTrigger asChild>
             <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm">
-              <FileText className="h-3.5 w-3.5" />
+              <FileText data-icon="inline-start" />
               {t('settingPanel.style.pickReference')}
             </Button>
           </PopoverTrigger>
@@ -552,7 +551,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
                     </span>
                   </button>
                   <Button className={`${iconActionClassName} m-1 shrink-0`} variant="outline" size="icon" onClick={() => void openStyleEditor(ref.display_path)} aria-label={t('settingPanel.style.editReference', { name: ref.name || ref.display_path })} title={t('settingPanel.style.editReference', { name: ref.name || ref.display_path })}>
-                    <Edit3 className="h-3.5 w-3.5" />
+                    <Edit3 data-icon="inline-start" />
                   </Button>
                 </div>
               )
@@ -560,7 +559,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
           </PopoverContent>
         </Popover>
         <Button className={`${actionButtonClassName} justify-center`} variant="outline" size="sm" onClick={() => openUploadDialog()}>
-          <Upload className="h-3.5 w-3.5" />
+          <Upload data-icon="inline-start" />
           {t('settingPanel.style.upload')}
         </Button>
         {extraActions}
@@ -579,7 +578,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
                   <span className="hidden max-w-56 truncate text-[11px] text-[var(--nova-text-faint)] md:block">{path}</span>
                 </button>
                 <Button className={`${iconActionClassName} hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]`} variant="outline" size="icon" onClick={() => removeRef(path)} aria-label={t('common.delete')}>
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 data-icon="inline-start" />
                 </Button>
               </div>
             )
@@ -590,7 +589,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
               <span className="min-w-0 flex-1 truncate text-[var(--nova-text-muted)]" title={content}>{contentPreview(content)}</span>
               {onContentsChange && (
                 <Button className={`${iconActionClassName} hover:bg-[var(--nova-danger-bg)] hover:text-[var(--nova-danger)]`} variant="outline" size="icon" onClick={() => removeLegacyContent(index)} aria-label={t('common.delete')}>
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 data-icon="inline-start" />
                 </Button>
               )}
             </div>
@@ -610,7 +609,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
             <div className="flex flex-col md:min-h-0">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="h-3.5 w-3.5" />
+                  <Upload data-icon="inline-start" />
                   {t('settingPanel.style.selectFile')}
                 </Button>
                 <span className="text-[11px] text-[var(--nova-text-faint)]">{(uploadDraft?.content || '').length}/{STYLE_SOURCE_LIMIT}</span>
@@ -652,11 +651,11 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
           <DialogFooter className="!mx-0 !mb-0 rounded-none border-t border-[var(--nova-border)] bg-[var(--nova-surface)]/95 !px-4 !py-3">
             <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => setUploadOpen(false)} disabled={uploading !== null}>{t('common.cancel')}</Button>
             <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => void saveUploadDraft()} disabled={!uploadDraft?.content.trim() || uploading !== null}>
-              {uploading === 'direct' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : uploadDocument ? <Save className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}
+              {uploading === 'direct' ? <Loader2 data-icon="inline-start" className="animate-spin" /> : uploadDocument ? <Save data-icon="inline-start" /> : <Upload data-icon="inline-start" />}
               {uploadDocument ? t('common.save') : t('settingPanel.style.directSave')}
             </Button>
             <Button className="nova-nav-item gap-1.5 border border-[var(--nova-accent)]/45 bg-[var(--nova-active)] text-[var(--nova-text)] hover:border-[var(--nova-accent)] hover:bg-[var(--nova-hover)]" size="sm" onClick={() => void extractWithAgent()} disabled={!uploadDraft?.content.trim() || uploading !== null}>
-              {uploading === 'extract' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {uploading === 'extract' ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Sparkles data-icon="inline-start" />}
               {t('settingPanel.style.extractSave')}
             </Button>
           </DialogFooter>
@@ -712,7 +711,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
           <DialogFooter className="!mx-0 !mb-0 rounded-none border-t border-[var(--nova-border)] bg-[var(--nova-surface)]/95 !px-4 !py-3">
             <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => setEditOpen(false)} disabled={editSaving}>{t('common.cancel')}</Button>
             <Button className="nova-nav-item gap-1.5 border border-[var(--nova-accent)]/45 bg-[var(--nova-active)] text-[var(--nova-text)] hover:border-[var(--nova-accent)] hover:bg-[var(--nova-hover)]" size="sm" onClick={() => void saveStyleEditor()} disabled={editLoading || editSaving || !editContent.trim()}>
-              {editSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              {editSaving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Save data-icon="inline-start" />}
               {editSaving ? t('common.saving') : t('common.save')}
             </Button>
           </DialogFooter>
@@ -913,15 +912,6 @@ function stripMarkdownFence(value: string) {
   const trimmed = value.trim()
   const match = trimmed.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/i)
   return match?.[1] || value
-}
-
-function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {
-  return (
-    <label className={`grid gap-1.5 ${className}`}>
-      <span className="text-[11px] text-[var(--nova-text-faint)]">{label}</span>
-      {children}
-    </label>
-  )
 }
 
 function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) {

@@ -17,8 +17,8 @@ describe('StoryDirectorPicker', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '选择故事导演' }))
 
-    expect(screen.getAllByRole('option')).toHaveLength(10)
-    expect(screen.getByRole('option', { name: '导演 10' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /^导演 \d+$/ })).toHaveLength(10)
+    expect(screen.getByRole('button', { name: '导演 10' })).toBeInTheDocument()
   })
 
   it('selects a director and closes the panel', () => {
@@ -33,10 +33,10 @@ describe('StoryDirectorPicker', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: '选择故事导演' }))
-    fireEvent.click(screen.getByRole('option', { name: '玄幻导演' }))
+    fireEvent.click(screen.getByRole('button', { name: '玄幻导演' }))
 
     expect(onChange).toHaveBeenCalledWith('high-fantasy')
-    expect(screen.queryByRole('option', { name: '玄幻导演' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '玄幻导演' })).not.toBeInTheDocument()
   })
 })
 
@@ -46,9 +46,9 @@ function storyDirector(id: string, name: string): StoryDirector {
     id,
     name,
     description: '',
-		strategy: { enabled: true },
-		trpg_system: {},
-		custom: false,
+    strategy: { enabled: true },
+    trpg_system: {},
+    custom: false,
   }
 }
 

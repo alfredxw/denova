@@ -1,10 +1,11 @@
 import { useTranslation } from 'react-i18next'
 import type { ActorStateModule, RuleSystemModule } from '../../types'
 import { PresetConfigSectionEditor } from '../preset-config/PresetConfigSectionEditor'
-import { PresetEmptyState } from '../preset-config/PresetEditorChrome'
+import { PresetEmptyState } from '../preset-config/PresetEmptyState'
+import { PresetModuleEditorShell } from '../preset-config/PresetModuleEditorShell'
 import { normalizeTRPGSystem } from '../preset-config/ruleTemplates'
 import { TRPGSystemVisualEditor } from '../preset-config/TRPGSystemVisualEditor'
-import { ModuleEditorShell, usePresetSectionValidity } from './editor-shared'
+import { usePresetSectionValidity } from '../preset-config/use-preset-section-validity'
 
 export function RuleSystemEditor({
   draft,
@@ -29,7 +30,7 @@ export function RuleSystemEditor({
   }
 
   return (
-    <ModuleEditorShell draft={draft} setDraft={setDraft} metadata="compact">
+    <PresetModuleEditorShell draft={draft} setDraft={setDraft}>
       <PresetConfigSectionEditor
         sectionId="rule-system.trpg-system"
         resetKey={`${draft.id}:trpg_system`}
@@ -51,6 +52,6 @@ export function RuleSystemEditor({
           />
         )}
       </PresetConfigSectionEditor>
-    </ModuleEditorShell>
+    </PresetModuleEditorShell>
   )
 }

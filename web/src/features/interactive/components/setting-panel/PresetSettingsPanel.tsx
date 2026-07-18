@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Compass, Database, Dice5, Loader2, PanelLeft, RotateCcw, Save, ScrollText, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
+import { Bot, Compass, Database, Dice5, Loader2, RotateCcw, Save, ScrollText, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { FeaturePageShell } from '@/components/layout/feature-page-shell'
+import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteRuleSystem, deleteStoryDirector, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../../api'
 import type { PresetResourceKind, PresetUsageMode } from '../../preset-ownership'
@@ -530,7 +532,9 @@ export function PresetSettingsPanel({
   const canRestoreBuiltinPreset = !isTellerConfigAgentActive && currentPresetBuiltinOverridden(presetResourceKind, presetDrafts)
   const presetConfigInvalid = isPresetConfigResourceKind(presetResourceKind) && !presetConfigValid
   const saveDisabled = busy || presetConfigInvalid || !activeDraft
-  const titleIcon = presetResourceIcon(presetResourceKind)
+  const titleIcon = isTellerConfigAgentActive ? Bot : presetResourceIcon(presetResourceKind)
+  const title = isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : presetEditorTitle(presetResourceKind, presetDrafts, t)
+  const subtitle = isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : presetEditorSubtitle(presetResourceKind, presetDrafts, t)
 
   const presetDirectorySections = buildPresetDirectorySections({
     lists: { tellers, storyDirectors, imagePresets, eventPackages, ruleSystems, actorStates },
@@ -580,134 +584,118 @@ export function PresetSettingsPanel({
           closeDirectoryRef.current = closePane
           return (
           <main className="preset-workspace-main flex h-full min-h-0 min-w-0 flex-1 flex-col">
-            <div className="preset-workspace-toolbar flex shrink-0 items-center justify-between gap-3 border-b px-4">
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                {isMobile && (
-                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-[10px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: t('settingPanel.mode.teller') })} onClick={openLeft}>
-                    <PanelLeft className="h-4 w-4" />
-                  </Button>
-                )}
-                <span className="preset-title-icon">{titleIcon}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <h2 className="preset-workspace-title truncate text-sm font-semibold text-[var(--preset-ink)]">{isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : presetEditorTitle(presetResourceKind, presetDrafts, t)}</h2>
-                  </div>
-                  <p className="preset-title-subtitle mt-0.5 truncate text-[11px] text-[var(--nova-text-muted)]">{isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : presetEditorSubtitle(presetResourceKind, presetDrafts, t)}</p>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                {canRestoreBuiltinPreset && (
-                  <Button className={actionButtonClassName} variant="outline" size="sm" disabled={busy} onClick={() => void handleRestoreBuiltinPreset()} aria-label={t('settingPanel.restoreBuiltin')} title={t('settingPanel.restoreBuiltin')}>
-                    <RotateCcw className="h-4 w-4" />
-                    <span className="preset-action-label">{t('settingPanel.restoreBuiltin')}</span>
-                  </Button>
-                )}
-                {!isTellerConfigAgentActive && activeDraft?.custom ? (
-                  <Button className={iconActionClassName} variant="outline" size="icon" disabled={busy} onClick={handleDelete} aria-label={t(PRESET_DELETE_COPY[presetResourceKind].titleKey)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                ) : null}
-                {!isTellerConfigAgentActive && (
-                  <Button className="preset-primary-action gap-1.5" variant="outline" size="sm" disabled={saveDisabled} onClick={handleSave} aria-label={t('common.save')}>
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    <span className="preset-action-label">{t('common.save')}</span>
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {isTellerConfigAgentActive ? (
-              <ConfigManagerChat
-                workspace={workspace}
-                origin="teller"
-                resourceId={TELLER_CONFIG_AGENT_ENTRY_ID}
-                context={{
-                  teller_count: String(tellers.length),
-                  event_package_count: String(eventPackages.length),
-                  rule_system_count: String(ruleSystems.length),
-                  actor_state_count: String(actorStates.length),
-                  story_director_count: String(storyDirectors.length),
-                  image_preset_count: String(imagePresets.length),
-                }}
-                onMutated={() => {
-                  void refreshTellers()
-                  void refreshEventPackages()
-                  void refreshRuleSystems()
-                  void refreshActorStates()
-                  void refreshStoryDirectors()
-                  void refreshImagePresets()
-                }}
-              />
-            ) : (
-              <PresetResourcePane
-                kind={presetResourceKind}
-                workspace={workspace}
-                tellers={tellers}
-                storyDirectors={storyDirectors}
-                imagePresets={imagePresets}
-                eventPackages={eventPackages}
-                ruleSystems={ruleSystems}
-                actorStates={actorStates}
-                tellerDraft={tellerDraft}
-                setTellerDraft={setTellerDraft}
-                activeSlotId={activeSlotId}
-                setActiveSlotId={setActiveSlotId}
-                storyDirectorDraft={storyDirectorDraft}
-                setStoryDirectorDraft={setStoryDirectorDraft}
-                imagePresetDraft={imagePresetDraft}
-                setImagePresetDraft={setImagePresetDraft}
-                eventPackageDraft={eventPackageDraft}
-                setEventPackageDraft={setEventPackageDraft}
-                ruleSystemDraft={ruleSystemDraft}
-                setRuleSystemDraft={setRuleSystemDraft}
-                actorStateDraft={actorStateDraft}
-                setActorStateDraft={setActorStateDraft}
-                onOpenActorState={(id) => selectPresetResource('actor-state', id)}
-                onOpenRuleSystem={(id) => selectPresetResource('rule', id)}
-                onSave={handleSave}
-                onValidityChange={setPresetConfigValid}
-              />
-            )}
+            <FeaturePageShell
+              icon={titleIcon}
+              title={title}
+              subtitle={subtitle}
+              leadingContent={isMobile ? (
+                <MobilePaneTrigger
+                  side="left"
+                  label={t('workbench.mobile.openSidePanel', { label: t('settingPanel.mode.teller') })}
+                  onClick={openLeft}
+                />
+              ) : undefined}
+              actions={(
+                <>
+                  {canRestoreBuiltinPreset && (
+                    <Button className={actionButtonClassName} variant="outline" size="sm" disabled={busy} onClick={() => void handleRestoreBuiltinPreset()} aria-label={t('settingPanel.restoreBuiltin')} title={t('settingPanel.restoreBuiltin')}>
+                      <RotateCcw data-icon="inline-start" />
+                      <span className="preset-action-label">{t('settingPanel.restoreBuiltin')}</span>
+                    </Button>
+                  )}
+                  {!isTellerConfigAgentActive && activeDraft?.custom ? (
+                    <Button className={iconActionClassName} variant="outline" size="icon" disabled={busy} onClick={handleDelete} aria-label={t(PRESET_DELETE_COPY[presetResourceKind].titleKey)}>
+                      <Trash2 data-icon="inline-start" />
+                    </Button>
+                  ) : null}
+                  {!isTellerConfigAgentActive && (
+                    <Button className="preset-primary-action gap-1.5" variant="outline" size="sm" disabled={saveDisabled} onClick={handleSave} aria-label={t('common.save')}>
+                      {busy ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Save data-icon="inline-start" />}
+                      <span className="preset-action-label">{t('common.save')}</span>
+                    </Button>
+                  )}
+                </>
+              )}
+              className="text-[var(--nova-text)]"
+              topbarClassName="preset-workspace-toolbar"
+            >
+              {isTellerConfigAgentActive ? (
+                <ConfigManagerChat
+                  workspace={workspace}
+                  origin="teller"
+                  resourceId={TELLER_CONFIG_AGENT_ENTRY_ID}
+                  context={{
+                    teller_count: String(tellers.length),
+                    event_package_count: String(eventPackages.length),
+                    rule_system_count: String(ruleSystems.length),
+                    actor_state_count: String(actorStates.length),
+                    story_director_count: String(storyDirectors.length),
+                    image_preset_count: String(imagePresets.length),
+                  }}
+                  onMutated={() => {
+                    void refreshTellers()
+                    void refreshEventPackages()
+                    void refreshRuleSystems()
+                    void refreshActorStates()
+                    void refreshStoryDirectors()
+                    void refreshImagePresets()
+                  }}
+                />
+              ) : (
+                <PresetResourcePane
+                  kind={presetResourceKind}
+                  workspace={workspace}
+                  tellers={tellers}
+                  storyDirectors={storyDirectors}
+                  imagePresets={imagePresets}
+                  eventPackages={eventPackages}
+                  ruleSystems={ruleSystems}
+                  actorStates={actorStates}
+                  tellerDraft={tellerDraft}
+                  setTellerDraft={setTellerDraft}
+                  activeSlotId={activeSlotId}
+                  setActiveSlotId={setActiveSlotId}
+                  storyDirectorDraft={storyDirectorDraft}
+                  setStoryDirectorDraft={setStoryDirectorDraft}
+                  imagePresetDraft={imagePresetDraft}
+                  setImagePresetDraft={setImagePresetDraft}
+                  eventPackageDraft={eventPackageDraft}
+                  setEventPackageDraft={setEventPackageDraft}
+                  ruleSystemDraft={ruleSystemDraft}
+                  setRuleSystemDraft={setRuleSystemDraft}
+                  actorStateDraft={actorStateDraft}
+                  setActorStateDraft={setActorStateDraft}
+                  onOpenActorState={(id) => selectPresetResource('actor-state', id)}
+                  onOpenRuleSystem={(id) => selectPresetResource('rule', id)}
+                  onSave={handleSave}
+                  onValidityChange={setPresetConfigValid}
+                />
+              )}
+            </FeaturePageShell>
           </main>
           )
         }}
       </AdaptiveSurface>
-      <AlertDialog open={Boolean(deletePresetTarget)} onOpenChange={(open) => {
-        if (!open && !saving) setDeletePresetTarget(null)
-      }}>
-        <AlertDialogContent className="border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text)]">
-          <AlertDialogHeader>
-            <AlertDialogTitle>{deletePresetTarget ? t(deletePresetTarget.titleKey) : t('common.delete')}</AlertDialogTitle>
-            <AlertDialogDescription className="text-[var(--nova-text-muted)]">
-              {deletePresetTarget ? t(deletePresetTarget.descriptionKey, { name: deletePresetTarget.name }) : ''}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={saving}>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-[var(--nova-danger-bg)] text-[var(--nova-danger)] hover:bg-[var(--nova-danger-bg)]"
-              disabled={saving || !deletePresetTarget}
-              onClick={(event) => {
-                event.preventDefault()
-                void confirmDeletePresetTarget()
-              }}
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              {t('common.delete')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmDialog
+        open={Boolean(deletePresetTarget)}
+        onOpenChange={(open) => {
+          if (!open && !saving) setDeletePresetTarget(null)
+        }}
+        title={deletePresetTarget ? t(deletePresetTarget.titleKey) : t('common.delete')}
+        description={deletePresetTarget ? t(deletePresetTarget.descriptionKey, { name: deletePresetTarget.name }) : ''}
+        confirmLabel={t('common.delete')}
+        tone="danger"
+        onConfirm={confirmDeletePresetTarget}
+      />
     </section>
   )
 }
 
 function presetResourceIcon(kind: PresetResourceKind) {
-  const iconClassName = 'h-4 w-4'
-  if (kind === 'director') return <Compass className={iconClassName} />
-  if (kind === 'image') return <Sparkles className={iconClassName} />
-  if (kind === 'event') return <ScrollText className={iconClassName} />
-  if (kind === 'rule') return <Dice5 className={iconClassName} />
-  if (kind === 'actor-state') return <Database className={iconClassName} />
-  return <SlidersHorizontal className={iconClassName} />
+  if (kind === 'director') return Compass
+  if (kind === 'image') return Sparkles
+  if (kind === 'event') return ScrollText
+  if (kind === 'rule') return Dice5
+  if (kind === 'actor-state') return Database
+  return SlidersHorizontal
 }

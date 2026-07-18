@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeView } from './HomeView'
-import { createBook, downloadBookExport, exportBook, generateBookCover, getBookInfo, setBookSortMode, uploadBookCover } from '@/lib/api'
+import { createBook, downloadBookExport, exportBook, generateBookCover, getBookInfo, removeBook, setBookSortMode, uploadBookCover } from '@/lib/api'
 import { getImagePresets } from '@/features/interactive/api'
 import { fetchSettings } from '@/features/settings/api'
 import { toast } from 'sonner'
@@ -238,6 +238,22 @@ describe('HomeView book covers', () => {
 
     rerender(homeViewElement({ bookSortMode: 'manual', onBooksChange }))
     expect(screen.getByRole('button', { name: '拖拽排序' })).toBeInTheDocument()
+  })
+
+  it('keeps the delete confirmation open when saving before switching is declined', async () => {
+    const user = userEvent.setup()
+    const onBeforeSwitch = vi.fn().mockResolvedValue(false)
+    renderHome({ onBeforeSwitch })
+
+    await user.click(await screen.findByRole('button', { name: '删除书籍' }))
+    const dialog = await screen.findByRole('alertdialog', { name: '删除书籍' })
+    expect(within(dialog).getByText('/books/star')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: '从书架移除' }))
+
+    await waitFor(() => expect(onBeforeSwitch).toHaveBeenCalledTimes(1))
+    expect(removeBook).not.toHaveBeenCalled()
+    expect(screen.getByRole('alertdialog', { name: '删除书籍' })).toBeInTheDocument()
   })
 })
 

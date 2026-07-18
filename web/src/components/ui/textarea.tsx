@@ -1,6 +1,7 @@
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
+import { measureLongestLineWidth, parseCssPixels, resolveCompactTextWidth } from "@/lib/text-input-measurement"
 
 type TextareaProps = React.ComponentProps<"textarea"> & {
   autoResize?: boolean
@@ -10,7 +11,6 @@ type TextareaProps = React.ComponentProps<"textarea"> & {
 }
 
 const DEFAULT_MAX_ROWS = 10
-let textMeasureCanvas: HTMLCanvasElement | null = null
 
 function Textarea({
   className,
@@ -104,42 +104,3 @@ function Textarea({
 }
 
 export { Textarea, type TextareaProps }
-
-function parseCssPixels(value: string) {
-  const parsed = Number.parseFloat(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-function resolveCompactTextWidth(textarea: HTMLTextAreaElement, computed: CSSStyleDeclaration) {
-  const paddingLeft = parseCssPixels(computed.paddingLeft)
-  const paddingRight = parseCssPixels(computed.paddingRight)
-  const composerWidth = resolveComposerCompactInputWidth(textarea)
-  const fallbackWidth = textarea.clientWidth || parseCssPixels(computed.width)
-  return Math.max(0, (composerWidth || fallbackWidth) - paddingLeft - paddingRight)
-}
-
-function resolveComposerCompactInputWidth(textarea: HTMLTextAreaElement) {
-  const toolbar = textarea.closest<HTMLElement>(".nova-agent-composer-toolbar")
-  if (!toolbar) return 0
-
-  const start = toolbar.querySelector<HTMLElement>('[data-slot="agent-composer-start"]')
-  const end = toolbar.querySelector<HTMLElement>('[data-slot="agent-composer-end"]')
-  const toolbarStyle = window.getComputedStyle(toolbar)
-  const gap = parseCssPixels(toolbarStyle.columnGap || toolbarStyle.gap)
-  const toolbarWidth = toolbar.getBoundingClientRect().width || toolbar.clientWidth
-  const startWidth = start?.getBoundingClientRect().width || 0
-  const endWidth = end?.getBoundingClientRect().width || 0
-  return Math.max(0, toolbarWidth - startWidth - endWidth - gap * 2)
-}
-
-function measureLongestLineWidth(value: string, computed: CSSStyleDeclaration) {
-  if (!value) return 0
-  const canvas = textMeasureCanvas ?? (textMeasureCanvas = document.createElement("canvas"))
-  const context = canvas.getContext("2d")
-  if (!context) return 0
-
-  context.font = computed.font || `${computed.fontStyle || "normal"} ${computed.fontVariant || "normal"} ${computed.fontWeight || "400"} ${computed.fontSize || "16px"} ${computed.fontFamily || "sans-serif"}`
-  return value
-    .split(/\r\n|\r|\n/)
-    .reduce((maxWidth, line) => Math.max(maxWidth, context.measureText(line).width), 0)
-}

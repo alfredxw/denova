@@ -35,6 +35,20 @@ describe('AgentPanel', () => {
   beforeEach(() => {
     vi.mocked(fetchSettings).mockClear()
     vi.mocked(updateUserSettings).mockClear()
+    vi.mocked(updateUserSettings).mockImplementation(async (settings) => ({
+      default: {},
+      global: {},
+      user: settings,
+      workspace: {},
+      effective: {
+        ide_story_teller_id: 'classic',
+        ide_image_preset_id: 'game-cg',
+        writing_skill_default: 'novel-lite',
+        ...settings,
+      },
+      revisions: { user: 'r2' },
+      paths: { denova_dir: '', nova_dir: '', user_config: '', workspace_config: '' },
+    }))
     useWritingSkillOptionsMock.mockReset()
     useWorkspaceChangeGroupsMock.mockReset()
     useWorkspaceChangeGroupsMock.mockReturnValue({ data: [] })
@@ -126,6 +140,7 @@ describe('AgentPanel', () => {
     expect(handleDetailsChange).toHaveBeenLastCalledWith(true)
     expect(screen.getAllByText('researcher 子会话').length).toBeGreaterThan(0)
     expect(screen.getByRole('separator', { name: '调整 SubAgent 详情宽度' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: '输入动作' })).toHaveLength(1)
 
     await user.click(screen.getAllByRole('button', { name: '关闭 SubAgent 详情' })[0])
     expect(handleDetailsChange).toHaveBeenLastCalledWith(false)

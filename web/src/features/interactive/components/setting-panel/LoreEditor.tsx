@@ -13,8 +13,11 @@ import { SearchHighlightTextarea } from '@/components/common/SearchHighlightText
 import { MarkdownRichEditor } from '@/components/Editor/MarkdownRichEditor'
 import { workspaceAssetURL, type LoreItem } from '@/lib/api'
 import type { ImagePreset } from '../../types'
+import { presetActionButtonClassName as actionButtonClassName, presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from '../preset-config/editor-styles'
+import { PresetEmptyState as EmptyState } from '../preset-config/PresetEmptyState'
+import { PresetField as Field } from '../preset-config/PresetField'
 import { BooleanSwitchField } from './BooleanSwitchField'
-import { actionButtonClassName, EmptyState, Field, IMPORTANCE_OPTIONS, iconActionClassName, inputClassName, LOAD_MODE_OPTIONS, loadModeDescription, LORE_RESIDENT_TOTAL_WARNING_BYTES, loreImportanceLabel, loreLoadModeLabel, loreTypeLabel, selectClassName, TYPE_OPTIONS } from './editor-shared'
+import { IMPORTANCE_OPTIONS, LOAD_MODE_OPTIONS, loadModeDescription, LORE_RESIDENT_TOTAL_WARNING_BYTES, loreImportanceLabel, loreLoadModeLabel, loreTypeLabel, TYPE_OPTIONS } from './editor-shared'
 
 export function LoreEditor({
   draft,
@@ -68,7 +71,7 @@ export function LoreEditor({
   )
   const imageAction = (
     <Button className={iconActionClassName} variant="outline" size="icon-sm" disabled={imageGenerating} onClick={() => setImageDialogOpen(true)} aria-label={openGenerateLabel} title={openGenerateLabel}>
-      {imageGenerating ? <Loader2 className="animate-spin" /> : <Sparkles />}
+      {imageGenerating ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Sparkles data-icon="inline-start" />}
     </Button>
   )
 
@@ -279,11 +282,13 @@ function LoreImageGenerateDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                {imagePresets.length > 0 ? imagePresets.map((preset) => (
-                  <SelectItem key={preset.id} value={preset.id}>{preset.name}</SelectItem>
-                )) : (
-                  <SelectItem value="game-cg">{t('settingPanel.editor.defaultImagePreset')}</SelectItem>
-                )}
+                <SelectGroup>
+                  {imagePresets.length > 0 ? imagePresets.map((preset) => (
+                    <SelectItem key={preset.id} value={preset.id}>{preset.name}</SelectItem>
+                  )) : (
+                    <SelectItem value="game-cg">{t('settingPanel.editor.defaultImagePreset')}</SelectItem>
+                  )}
+                </SelectGroup>
               </SelectContent>
             </Select>
           </Field>
@@ -303,11 +308,11 @@ function LoreImageGenerateDialog({
             {t('common.close')}
           </Button>
           <Button className={actionButtonClassName} variant="outline" size="sm" disabled={!imagePath || imageGenerating} onClick={onClearImage}>
-            <Trash2 className="h-4 w-4" />
+            <Trash2 data-icon="inline-start" />
             {t('settingPanel.loreImage.clear')}
           </Button>
           <Button className={actionButtonClassName} variant="outline" size="sm" disabled={imageGenerating} onClick={onGenerateImage}>
-            {imageGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {imageGenerating ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Sparkles data-icon="inline-start" />}
             {imagePath ? t('settingPanel.loreImage.regenerate') : t('settingPanel.loreImage.generate')}
           </Button>
         </DialogFooter>

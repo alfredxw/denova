@@ -39,6 +39,12 @@ interface ResourceDirectoryProps {
   expandedSectionId?: string
   /** 空分组沉底展示（资料库语义）；缺省保持传入顺序 */
   emptySectionsLast?: boolean
+  /** Some catalogs need grouping without a search affordance. */
+  showSearch?: boolean
+  /** Domain toolbar rendered before search and pinned entries. */
+  headerContent?: ReactNode
+  /** Empty catalog content; search-empty messaging remains built in. */
+  emptyContent?: ReactNode
 }
 
 /**
@@ -60,6 +66,9 @@ export function ResourceDirectory({
   showExpandCollapseAll = false,
   expandedSectionId,
   emptySectionsLast = false,
+  showSearch = true,
+  headerContent,
+  emptyContent,
 }: ResourceDirectoryProps) {
   const { t } = useTranslation()
   const [query = '', setQuery] = useControllableState({
@@ -113,8 +122,9 @@ export function ResourceDirectory({
 
   return (
     <>
-      <div className="border-b border-[var(--nova-border)] p-2">
-        <div className="flex items-center gap-2">
+      {(headerContent || showSearch || pinnedEntries?.length) && <div className="border-b border-[var(--nova-border)] p-2">
+        {headerContent}
+        {showSearch && <div className={cn('flex items-center gap-2', headerContent && 'mt-2')}>
           <InputGroup className="nova-field min-w-0 flex-1 border-0">
             <InputGroupAddon>
               <Search />
@@ -141,13 +151,13 @@ export function ResourceDirectory({
               aria-label={allCollapsed ? t('common.expandAll') : t('common.collapseAll')}
               title={allCollapsed ? t('common.expandAll') : t('common.collapseAll')}
             >
-              {allCollapsed ? <ChevronsUpDown className="h-3.5 w-3.5" /> : <ChevronsDownUp className="h-3.5 w-3.5" />}
+              {allCollapsed ? <ChevronsUpDown data-icon="inline-start" /> : <ChevronsDownUp data-icon="inline-start" />}
             </Button>
           )}
           {headerActions}
-        </div>
+        </div>}
         {pinnedEntries && pinnedEntries.length > 0 && (
-          <div className="mt-2 space-y-2">
+          <div className="mt-2 flex flex-col gap-2">
             {pinnedEntries.map((entry) => {
               const PinnedIcon = entry.icon
               return (
@@ -155,6 +165,7 @@ export function ResourceDirectory({
                   key={entry.id}
                   type="button"
                   onClick={() => onSelect(entry.id)}
+                  aria-current={activeId === entry.id ? 'true' : undefined}
                   className={cn(
                     'flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition',
                     activeId === entry.id
@@ -164,16 +175,19 @@ export function ResourceDirectory({
                 >
                   <PinnedIcon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
                   <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+                  {entry.summary ? <span className="truncate text-[10px] text-muted-foreground">{entry.summary}</span> : null}
                 </button>
               )
             })}
           </div>
         )}
-      </div>
+      </div>}
       <ScrollArea className="min-h-0 flex-1">
         <div className="w-0 min-w-full p-2">
           {searching && totalVisible === 0 ? (
             <div className="px-2 py-6 text-center text-xs text-[var(--nova-text-faint)]">{t('common.searchNoResults')}</div>
+          ) : totalVisible === 0 && emptyContent ? (
+            emptyContent
           ) : (
             visibleSections.map(({ section, items }) => {
               const SectionIcon = section.icon
@@ -186,11 +200,13 @@ export function ResourceDirectory({
                       className="nova-nav-item rounded p-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
                       onClick={() => toggleSection(section, items)}
                       aria-label={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
+                      aria-expanded={!collapsed}
+                      title={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
                     >
                       <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', collapsed && '-rotate-90')} />
                     </button>
                     {SectionIcon && <SectionIcon className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />}
-                    <span className="min-w-0 flex-1 truncate font-medium">{section.label}</span>
+                    <span className="min-w-0 flex-1 truncate font-medium" title={section.description}>{section.label}</span>
                     <span className="text-[11px] text-[var(--nova-text-faint)]">{items.length}</span>
                     {section.headerMeta}
                     {section.onCreate && (
@@ -206,7 +222,7 @@ export function ResourceDirectory({
                     )}
                   </div>
                   {!collapsed && items.length > 0 && (
-                    <div className="ml-5 space-y-0.5 border-l border-[var(--nova-border)] pl-2">
+                    <div className="ml-5 flex flex-col gap-0.5 border-l border-[var(--nova-border)] pl-2">
                       {items.map((item) => (
                         <DirectoryItemRow
                           key={item.id}
@@ -233,6 +249,7 @@ function DirectoryItemRow({ item, active, onSelect }: { item: ResourceDirectoryI
     <button
       type="button"
       onClick={onSelect}
+      aria-current={active ? 'true' : undefined}
       className={cn(
         'flex w-full items-center gap-2 rounded-md px-2 text-left text-xs transition',
         item.summary ? 'py-1.5' : 'h-8',
@@ -247,8 +264,9 @@ function DirectoryItemRow({ item, active, onSelect }: { item: ResourceDirectoryI
           <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
         </span>
       ) : (
-        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)]">
+        <span className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)]">
           <ItemIcon className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />
+          {item.status ? <StatusIndicator status={item.status} /> : null}
         </span>
       )}
       <span className="min-w-0 flex-1">
@@ -257,6 +275,24 @@ function DirectoryItemRow({ item, active, onSelect }: { item: ResourceDirectoryI
       </span>
       {item.badges?.map((badge, index) => <ItemBadge key={`${badge.label}-${index}`} badge={badge} />)}
     </button>
+  )
+}
+
+function StatusIndicator({ status }: { status: NonNullable<ResourceDirectoryItem['status']> }) {
+  return (
+    <span
+      role="img"
+      aria-label={status.label}
+      title={status.label}
+      className={cn(
+        'absolute -right-1 -top-1 size-2 rounded-full ring-2 ring-background',
+        status.tone === 'success' && 'bg-[var(--nova-success)]',
+        status.tone === 'warning' && 'bg-[var(--nova-warning)]',
+        status.tone === 'danger' && 'bg-destructive',
+        status.tone === 'muted' && 'bg-muted-foreground',
+        (!status.tone || status.tone === 'default') && 'bg-primary',
+      )}
+    />
   )
 }
 

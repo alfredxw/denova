@@ -1,9 +1,10 @@
 import { useTranslation } from 'react-i18next'
 import type { EventPackageModule } from '../../types'
 import { PresetConfigSectionEditor } from '../preset-config/PresetConfigSectionEditor'
-import { PresetEmptyState } from '../preset-config/PresetEditorChrome'
+import { PresetEmptyState } from '../preset-config/PresetEmptyState'
+import { PresetModuleEditorShell } from '../preset-config/PresetModuleEditorShell'
 import { EventPackageVisualEditor } from '../preset-config/visual-editors'
-import { eventPackageSummaryCount, ModuleEditorShell } from './editor-shared'
+import { eventPackageSummaryCount } from './editor-shared'
 
 export function EventPackageEditor({
   draft,
@@ -23,7 +24,7 @@ export function EventPackageEditor({
   }
 
   return (
-    <ModuleEditorShell draft={draft} setDraft={setDraft}>
+    <PresetModuleEditorShell draft={draft} setDraft={setDraft}>
       <PresetConfigSectionEditor
         sectionId="event-package.events"
         resetKey={`${draft.id}:events`}
@@ -37,6 +38,6 @@ export function EventPackageEditor({
       >
         {(props) => <EventPackageVisualEditor {...props} />}
       </PresetConfigSectionEditor>
-    </ModuleEditorShell>
+    </PresetModuleEditorShell>
   )
 }

@@ -5,12 +5,15 @@ import { isSaveShortcut } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { ImagePreset, ImagePresetSlot } from '../../types'
-import { PresetEmptyState, PresetMetadataPanel } from '../preset-config/PresetEditorChrome'
-import { Field, iconActionClassName, inputClassName, presetStatusLabel, selectClassName } from './editor-shared'
+import { presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from '../preset-config/editor-styles'
+import { PresetEmptyState } from '../preset-config/PresetEmptyState'
+import { PresetMetadataPanel } from '../preset-config/PresetEditorChrome'
+import { PresetField as Field } from '../preset-config/PresetField'
+import { presetStatusLabel } from '../preset-config/preset-status'
 
 const IMAGE_PRESET_PROMPT_LIMIT = 4000
 const IMAGE_PRESET_TARGET_OPTIONS = [{ value: 'agent_system' }, { value: 'tool_request' }] as const
@@ -89,7 +92,7 @@ export function ImagePresetEditor({
           <div className="flex h-11 items-center justify-between border-b border-[var(--nova-border)] px-3">
             <div className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.imagePreset.rulesTitle')}</div>
             <Button className={iconActionClassName} variant="outline" size="icon" onClick={addSlot} aria-label={t('settingPanel.injectRules.new')}>
-              <Plus className="h-3.5 w-3.5" />
+              <Plus data-icon="inline-start" />
             </Button>
           </div>
           <ScrollArea className="min-h-0 flex-1">
@@ -132,17 +135,19 @@ export function ImagePresetEditor({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                      {IMAGE_PRESET_TARGET_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {imagePresetTargetLabel(option.value, t)}
-                        </SelectItem>
-                      ))}
+                      <SelectGroup>
+                        {IMAGE_PRESET_TARGET_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {imagePresetTargetLabel(option.value, t)}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
                     </SelectContent>
                   </Select>
                 </Field>
                 <div className="flex items-end justify-end">
                   <Button className={iconActionClassName} variant="outline" size="icon" disabled={slots.length <= 1} onClick={deleteSlot} aria-label={t('settingPanel.injectRules.delete')}>
-                    <Trash2 className="h-4 w-4" />
+                    <Trash2 data-icon="inline-start" />
                   </Button>
                 </div>
                 <div className="image-preset-rule-summary">

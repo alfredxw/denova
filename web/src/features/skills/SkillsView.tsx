@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bot, Loader2, PanelLeft, PanelRight, RefreshCw, Save, Sparkles, X } from 'lucide-react'
+import { Bot, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { FeaturePageShell } from '@/components/layout/feature-page-shell'
+import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
+import { Button } from '@/components/ui/button'
 import { deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
 import type { SkillDocument, SkillFileDocument, SkillInstallResult, SkillScope, SkillSnapshot } from '@/lib/api'
 import { SkillConfigPanel } from './SkillConfigPanel'
@@ -329,38 +331,41 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
   ) : null
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
-      <div className="nova-topbar flex min-h-10 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b px-3 py-1.5 text-xs sm:px-4">
-        <Sparkles className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-        <span className="shrink-0 font-medium">{t('skills.title')}</span>
-        <span className="hidden min-w-0 truncate text-[11px] text-[var(--nova-text-faint)] sm:inline">{t('skills.subtitle')}</span>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="nova-nav-item ml-auto inline-flex shrink-0 items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2.5 py-1 disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          {t('common.refresh')}
-        </button>
-        <button
-          type="button"
-          onClick={() => void onSave()}
-          disabled={mode !== 'editor' || !dirty || saving || fileLoading || !activeEditable}
-          className="nova-nav-item inline-flex shrink-0 items-center gap-1.5 rounded border border-[var(--nova-border)] bg-[var(--nova-active)] px-2.5 py-1 disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          {t('common.save')}
-        </button>
-        {onClose && (
-          <button type="button" onClick={onClose} className="nova-nav-item rounded p-1" aria-label={t('common.close')} title={t('common.close')}>
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-
-      {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title={t('skills.error')} />}
-
+    <FeaturePageShell
+      icon={Sparkles}
+      title={t('skills.title')}
+      subtitle={t('skills.subtitle')}
+      error={error}
+      errorTitle={t('skills.error')}
+      onClose={onClose}
+      className="bg-[var(--nova-bg)] text-[var(--nova-text)]"
+      actions={(
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void load()}
+            disabled={loading}
+            className="nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)]"
+          >
+            <RefreshCw data-icon="inline-start" className={loading ? 'animate-spin' : undefined} />
+            {t('common.refresh')}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => void onSave()}
+            disabled={mode !== 'editor' || !dirty || saving || fileLoading || !activeEditable}
+            className="nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-active)]"
+          >
+            {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Save data-icon="inline-start" />}
+            {t('common.save')}
+          </Button>
+        </>
+      )}
+    >
       <AdaptiveSurface
         left={{
           id: 'skills-list',
@@ -411,14 +416,18 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
         {({ openLeft, openRight }) => (
           <main className="flex h-full min-h-0 flex-col">
             <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 md:hidden">
-              <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: t('skills.title') })} onClick={openLeft}>
-                <PanelLeft className="h-4 w-4" />
-              </button>
+              <MobilePaneTrigger
+                side="left"
+                label={t('workbench.mobile.openSidePanel', { label: t('skills.title') })}
+                onClick={openLeft}
+              />
               <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--nova-text-muted)]">{document?.name || t('skills.title')}</span>
               {agentOpen && (
-                <button type="button" className="nova-icon-button flex h-8 w-8 items-center justify-center rounded-[var(--nova-radius)] border border-[var(--nova-border)] text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]" aria-label={t('workbench.mobile.openSidePanel', { label: t('skills.agent.button') })} onClick={openRight}>
-                  <PanelRight className="h-4 w-4" />
-                </button>
+                <MobilePaneTrigger
+                  side="right"
+                  label={t('workbench.mobile.openSidePanel', { label: t('skills.agent.button') })}
+                  onClick={openRight}
+                />
               )}
             </div>
             {mode === 'create' ? (
@@ -476,6 +485,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
               <EmptyState
                 icon={Sparkles}
                 title={loading ? t('skills.loading') : t('skills.empty')}
+                variant="page"
                 className="h-full text-xs text-[var(--nova-text-faint)]"
               />
             )}
@@ -494,6 +504,6 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
           onConfirm={onConfirmAction}
         />
       )}
-    </div>
+    </FeaturePageShell>
   )
 }

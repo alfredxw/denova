@@ -247,31 +247,6 @@
   }
 }
 
-.preset-empty-state {
-  display: flex;
-  width: min(100%, 440px);
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  border: 1px dashed var(--preset-line);
-  border-radius: 14px;
-  background: var(--preset-surface);
-  padding: 30px 24px;
-  text-align: center;
-}
-
-.preset-empty-state-icon {
-  display: inline-flex;
-  width: 42px;
-  height: 42px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--preset-line);
-  border-radius: 13px;
-  background: var(--preset-raised);
-  color: var(--preset-ink);
-}
-
 /* Every list/detail editor responds to the space left inside the workbench. */
 .preset-config-visual-container {
   container-name: preset-config-editor;

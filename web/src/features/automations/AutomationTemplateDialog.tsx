@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState, type ComponentType } from 'react'
 import { FilePlus2, PenLine, SearchCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { FormField } from '@/components/forms/form-field'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { AutomationExecutionTarget, AutomationTaskTemplate, BookRecord } from '@/lib/api'
 
 interface AutomationTemplateDialogProps {
@@ -53,22 +55,24 @@ export function AutomationTemplateDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 px-4 py-4">
-          <label className="flex min-w-0 flex-col gap-1.5 text-xs">
-            <span className="text-[var(--nova-text-muted)]">{t('automations.field.target')}</span>
-            <select
-              value={targetValue}
-              onChange={(event) => setTargetValue(event.target.value)}
-              className="nova-field min-h-8 w-full rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]"
-            >
-              <option value="user">{t('automations.target.global')}</option>
-              {workspaceOptions.map((book) => (
-                <option key={book.path} value={`workspace:${book.path}`}>
-                  {t('automations.target.workspace', { name: book.name })}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="flex flex-col gap-4 px-4 py-4">
+          <FormField label={t('automations.field.target')}>
+            <Select value={targetValue} onValueChange={setTargetValue}>
+              <SelectTrigger className="nova-field min-h-8 w-full rounded-[var(--nova-radius)] border text-xs" aria-label={t('automations.field.target')}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="user">{t('automations.target.global')}</SelectItem>
+                  {workspaceOptions.map((book) => (
+                    <SelectItem key={book.path} value={`workspace:${book.path}`}>
+                      {t('automations.target.workspace', { name: book.name })}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </FormField>
 
           <div>
             <div className="mb-2 text-xs font-medium text-[var(--nova-text)]">{t('automations.create.chooseTemplate')}</div>

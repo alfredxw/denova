@@ -9,8 +9,8 @@ describe('StoryPicker', () => {
     render(<StoryPicker stories={stories} currentStoryId="st_1" onSelect={onSelect} onCreate={vi.fn()} onDelete={vi.fn()} />)
 
     fireEvent.click(screen.getByRole('button', { name: '选择故事线' }))
-    expect(screen.getAllByRole('option')).toHaveLength(12)
-    fireEvent.click(screen.getByRole('option', { name: '故事线 12' }))
+    expect(screen.getAllByRole('button', { name: /^故事线 \d+$/ })).toHaveLength(12)
+    fireEvent.click(screen.getByRole('button', { name: '故事线 12' }))
     expect(onSelect).toHaveBeenCalledWith('st_12')
   })
 

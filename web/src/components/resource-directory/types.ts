@@ -19,11 +19,18 @@ export interface ResourceDirectoryItem {
   disabled?: boolean
   /** 额外参与默认搜索匹配的文本（默认匹配 title + summary + searchText） */
   searchText?: string
+  /** Optional state dot over the leading icon; label is exposed to assistive technology. */
+  status?: {
+    label: string
+    tone?: 'default' | 'success' | 'warning' | 'danger' | 'muted'
+  }
 }
 
 export interface ResourceDirectorySection {
   id: string
   label: string
+  /** Optional full context shown when a compact section label is truncated. */
+  description?: string
   icon?: LucideIcon
   items: ResourceDirectoryItem[]
   /** 提供时组头展示新建按钮 */
@@ -40,4 +47,5 @@ export interface ResourceDirectoryPinnedEntry {
   id: string
   label: string
   icon: LucideIcon
+  summary?: string
 }

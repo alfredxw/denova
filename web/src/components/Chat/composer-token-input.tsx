@@ -5,6 +5,7 @@ import StarterKit from '@tiptap/starter-kit'
 import { TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
+import { measureLongestLineWidth, parseCssPixels, resolveCompactTextWidth } from '@/lib/text-input-measurement'
 
 type ComposerTokenKind = 'skill' | 'file' | 'lore' | 'style'
 type ComposerTriggerKind = 'slash' | 'reference' | 'style'
@@ -111,8 +112,6 @@ const composerExtensions = [
   tokenExtension,
 ]
 
-let textMeasureCanvas: HTMLCanvasElement | null = null
-
 export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerTokenInputProps>(function ComposerTokenInput({
   value,
   onChange,
@@ -146,8 +145,18 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
   const previousTokenKeysRef = useRef<Set<string>>(new Set())
   const compactTextWidthRef = useRef(0)
   const multilineRef = useRef(false)
+  const heightFrameRef = useRef<number | null>(null)
+  const syncHeightRef = useRef<() => void>(() => undefined)
   const [multiline, setMultiline] = useState(() => multilineMode === 'always')
   const [empty, setEmpty] = useState(() => value.length === 0)
+
+  const scheduleHeightFrame = useCallback(() => {
+    if (heightFrameRef.current !== null) window.cancelAnimationFrame(heightFrameRef.current)
+    heightFrameRef.current = window.requestAnimationFrame(() => {
+      heightFrameRef.current = null
+      syncHeightRef.current()
+    })
+  }, [])
 
   const parseOptions = useMemo<ComposerParseOptions>(() => ({
     skills: uniqueStrings(knownSkills),
@@ -182,7 +191,7 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
       onChangeRef.current(nextValue)
       emitTrigger(nextEditor)
       syncEmptyAndTokens(nextEditor)
-      requestAnimationFrame(syncHeight)
+      scheduleHeightFrame()
     },
     onSelectionUpdate: ({ editor: nextEditor }) => {
       emitTrigger(nextEditor)
@@ -204,6 +213,10 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
   useEffect(() => {
     onEditorKeyDownRef.current = onEditorKeyDown
   }, [onEditorKeyDown])
+
+  useEffect(() => () => {
+    if (heightFrameRef.current !== null) window.cancelAnimationFrame(heightFrameRef.current)
+  }, [])
 
   useEffect(() => {
     disabledRef.current = disabled
@@ -232,7 +245,7 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
     const current = serializeComposerDoc(editor.state.doc)
     if (current === value) {
       setEmpty(value.length === 0)
-      requestAnimationFrame(syncHeight)
+      scheduleHeightFrame()
       return
     }
     if (value === '') {
@@ -243,25 +256,25 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
     previousTokenKeysRef.current = new Set(collectTokenEntries(editor.state.doc).map((token) => token.key))
     emitTrigger(editor)
     syncEmptyAndTokens(editor, false)
-    requestAnimationFrame(syncHeight)
-  }, [editor, parseOptions, value])
+    scheduleHeightFrame()
+  }, [editor, parseOptions, scheduleHeightFrame, value])
 
   useEffect(() => {
     if (!editor || externalTokens.length === 0) return
     ensureTokens(editor, externalTokens)
-    requestAnimationFrame(syncHeight)
-  }, [editor, externalTokens])
+    scheduleHeightFrame()
+  }, [editor, externalTokens, scheduleHeightFrame])
 
   useEffect(() => {
-    requestAnimationFrame(syncHeight)
-  }, [editor, maxRows, minRows, multilineMode, value])
+    scheduleHeightFrame()
+  }, [editor, maxRows, minRows, multilineMode, scheduleHeightFrame, value])
 
   useEffect(() => {
     if (!editor) return
     previousTokenKeysRef.current = new Set(collectTokenEntries(editor.state.doc).map((token) => token.key))
     syncEmptyAndTokens(editor, false)
-    requestAnimationFrame(syncHeight)
-  }, [editor])
+    scheduleHeightFrame()
+  }, [editor, scheduleHeightFrame])
 
   useImperativeHandle(ref, () => ({
     focus: () => editor?.commands.focus(),
@@ -365,7 +378,8 @@ export const ComposerTokenInput = forwardRef<ComposerTokenInputHandle, ComposerT
       : hasValue && (multilineMode === 'sticky-until-empty' && multilineRef.current ? true : wrapped)
     multilineRef.current = nextMultiline
     setMultiline((current) => current === nextMultiline ? current : nextMultiline)
-  }, [editor, maxRows, minRows, value])
+  }, [editor, maxRows, minRows, multilineMode, value])
+  syncHeightRef.current = syncHeight
 
   function handleDefaultKeyDown(event: KeyboardEvent) {
     if (event.key === 'Backspace' && deleteAdjacentToken(editor, 'before')) return true
@@ -806,45 +820,6 @@ function deleteAdjacentToken(editor: Editor | null, direction: 'before' | 'after
   const to = direction === 'before' ? selection.from : selection.from + node.nodeSize
   editor.commands.deleteRange({ from, to })
   return true
-}
-
-function parseCssPixels(value: string) {
-  const parsed = Number.parseFloat(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-function resolveCompactTextWidth(element: HTMLElement, computed: CSSStyleDeclaration) {
-  const paddingLeft = parseCssPixels(computed.paddingLeft)
-  const paddingRight = parseCssPixels(computed.paddingRight)
-  const composerWidth = resolveComposerCompactInputWidth(element)
-  const fallbackWidth = element.clientWidth || parseCssPixels(computed.width)
-  return Math.max(0, (composerWidth || fallbackWidth) - paddingLeft - paddingRight)
-}
-
-function resolveComposerCompactInputWidth(element: HTMLElement) {
-  const toolbar = element.closest<HTMLElement>('.nova-agent-composer-toolbar')
-  if (!toolbar) return 0
-
-  const start = toolbar.querySelector<HTMLElement>('[data-slot="agent-composer-start"]')
-  const end = toolbar.querySelector<HTMLElement>('[data-slot="agent-composer-end"]')
-  const toolbarStyle = window.getComputedStyle(toolbar)
-  const gap = parseCssPixels(toolbarStyle.columnGap || toolbarStyle.gap)
-  const toolbarWidth = toolbar.getBoundingClientRect().width || toolbar.clientWidth
-  const startWidth = start?.getBoundingClientRect().width || 0
-  const endWidth = end?.getBoundingClientRect().width || 0
-  return Math.max(0, toolbarWidth - startWidth - endWidth - gap * 2)
-}
-
-function measureLongestLineWidth(value: string, computed: CSSStyleDeclaration) {
-  if (!value) return 0
-  const canvas = textMeasureCanvas ?? (textMeasureCanvas = document.createElement('canvas'))
-  const context = canvas.getContext('2d')
-  if (!context) return 0
-
-  context.font = computed.font || `${computed.fontStyle || 'normal'} ${computed.fontVariant || 'normal'} ${computed.fontWeight || '400'} ${computed.fontSize || '16px'} ${computed.fontFamily || 'sans-serif'}`
-  return value
-    .split(/\r\n|\r|\n/)
-    .reduce((maxWidth, line) => Math.max(maxWidth, context.measureText(line).width), 0)
 }
 
 function sortLongestFirst(values: string[]) {

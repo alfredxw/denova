@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
+import i18n from '@/i18n'
 import { server } from '@/test/msw/server'
 import { AutomationsView } from './AutomationsView'
 
@@ -107,7 +108,7 @@ describe('AutomationsView', () => {
     await user.click(await screen.findByRole('button', { name: /自动 Review/ }))
     expect(createdTask).toBeNull()
     expect(screen.getByDisplayValue('自动 Review')).toBeInTheDocument()
-    expect(screen.getByLabelText('状态')).toHaveValue('false')
+    expect(screen.getByRole('switch', { name: '状态' })).toHaveAttribute('data-state', 'unchecked')
 
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => expect(createdTask).not.toBeNull())
@@ -118,4 +119,129 @@ describe('AutomationsView', () => {
       triggers: [{ type: 'chapter_batch', chapter_batch_size: 5 }],
     })
   })
+
+  it('keeps the newest workspace result when an earlier load resolves last', async () => {
+    const firstLoad = deferred<Array<Record<string, unknown>>>()
+    let automationRequests = 0
+    server.use(
+      http.get('/api/books', () => HttpResponse.json({ books: [
+        { name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
+        { name: 'Book B', path: '/books/b', author: '', last_opened_at: '' },
+      ] })),
+      http.get('/api/automations', async () => {
+        automationRequests += 1
+        if (automationRequests === 1) {
+          return HttpResponse.json({ tasks: await firstLoad.promise })
+        }
+        return HttpResponse.json({ tasks: [{
+          ...taskBase,
+          id: 'workspace-b',
+          catalog_id: 'workspace-b:workspace-b',
+          scope: 'workspace',
+          name: 'Newest workspace task',
+          target: { kind: 'workspace', workspace: '/books/b', workspace_id: 'workspace-b' },
+        }] })
+      }),
+      http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
+      http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
+      http.get('/api/automations/runs/active', () => HttpResponse.json({ runs: [] })),
+    )
+
+    const view = render(<AutomationsView workspace="/books/a" />)
+    await waitFor(() => expect(automationRequests).toBe(1))
+    view.rerender(<AutomationsView workspace="/books/b" />)
+
+    expect((await screen.findAllByText('Newest workspace task')).length).toBeGreaterThan(0)
+    await act(async () => {
+      firstLoad.resolve([{
+        ...taskBase,
+        id: 'workspace-a',
+        catalog_id: 'workspace-a:workspace-a',
+        scope: 'workspace',
+        name: 'Stale workspace task',
+        target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' },
+      }])
+      await firstLoad.promise
+      await Promise.resolve()
+    })
+
+    expect(screen.getAllByText('Newest workspace task').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Stale workspace task')).not.toBeInTheDocument()
+  })
+
+  it('keeps an unsaved task draft when a background reload completes', async () => {
+    const user = userEvent.setup()
+    const previousLanguage = i18n.language
+    let automationRequests = 0
+    let activeRunResponses = 0
+    server.use(
+      http.get('/api/books', () => HttpResponse.json({ books: [
+        { name: 'Book A', path: '/books/a', author: '', last_opened_at: '' },
+      ] })),
+      http.get('/api/automations', () => {
+        automationRequests += 1
+        return HttpResponse.json({ tasks: [{
+          ...taskBase,
+          id: 'draft-protection',
+          catalog_id: 'workspace-a:draft-protection',
+          scope: 'workspace',
+          name: 'Server task name',
+          target: { kind: 'workspace', workspace: '/books/a', workspace_id: 'workspace-a' },
+        }] })
+      }),
+      http.get('/api/automations/templates', () => HttpResponse.json({ templates: [] })),
+      http.get('/api/automations/inbox', () => HttpResponse.json({ items: [] })),
+      http.get('/api/automations/runs/active', () => {
+        if (activeRunResponses <= 0) return HttpResponse.json({ runs: [] })
+        activeRunResponses -= 1
+        return HttpResponse.json({ runs: [{
+          task_id: 'draft-protection',
+          run: {
+            id: 'background-run',
+            task_id: 'draft-protection',
+            scope: 'workspace',
+            workspace: '/books/a',
+            trigger: 'schedule',
+            status: 'running',
+            started_at: '2026-07-18T12:00:00Z',
+            summary: '',
+            tool_manifest: [],
+          },
+        }] })
+      }),
+      http.get('/api/automations/runs/background-run/stream', () => HttpResponse.text('', {
+        headers: { 'Content-Type': 'text/event-stream' },
+      })),
+    )
+
+    try {
+      render(<AutomationsView workspace="/books/a" />)
+      const nameInput = await screen.findByDisplayValue('Server task name')
+      await user.clear(nameInput)
+      await user.type(nameInput, 'Unsaved local name')
+
+      // One response is consumed by load(); the other exercises active-run resume.
+      activeRunResponses = 2
+      await act(async () => {
+        await i18n.changeLanguage(previousLanguage === 'en-US' ? 'zh-CN' : 'en-US')
+      })
+      await waitFor(() => expect(automationRequests).toBeGreaterThanOrEqual(2))
+      await user.click(screen.getByRole('button', { name: /任务配置|Task Config/ }))
+
+      expect(screen.getByDisplayValue('Unsaved local name')).toBeInTheDocument()
+      expect(screen.queryByDisplayValue('Server task name')).not.toBeInTheDocument()
+    } finally {
+      await act(async () => { await i18n.changeLanguage(previousLanguage) })
+    }
+  })
 })
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}

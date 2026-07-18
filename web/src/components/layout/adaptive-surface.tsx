@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost, type MobilePane, type MobilePaneControls } from './mobile-pane-host'
+import { createStablePortalHost, StablePortalSlot } from './stable-portal-slot'
 
 export interface AdaptiveSurfacePane {
   id: string
@@ -56,7 +57,7 @@ export function AdaptiveSurface({
   const { containerRef, widthCollapsed } = useWidthCollapse(collapseWidth)
   const isMobile = viewportMobile || widthCollapsed
   const panes = [left, right].filter((pane): pane is AdaptiveSurfacePane => Boolean(pane && pane.enabled !== false))
-  const [mainContentHost] = useState(createAdaptiveMainHost)
+  const [mainContentHost] = useState(() => createStablePortalHost('flex h-full min-h-0 w-full min-w-0 flex-col'))
   const [mobileOpenPaneId, setMobileOpenPaneId] = useState<string | null>(null)
   const mobileControlsRef = useRef<MobilePaneControls>(closedControls)
 
@@ -88,7 +89,14 @@ export function AdaptiveSurface({
   }
   const mainContent = renderChildren(isMobile ? mobileControls : closedControls)
   const mainContentPortal = mainContentHost ? createPortal(mainContent, mainContentHost, 'adaptive-main-content') : null
-  const mainContentSlot = <AdaptiveMainSlot host={mainContentHost} fallback={mainContent} className={mainClassName} />
+  const mainContentSlot = (
+    <StablePortalSlot
+      host={mainContentHost}
+      fallback={mainContent}
+      data-nova-adaptive-main="true"
+      className={`flex h-full min-h-0 min-w-0 flex-col ${mainClassName}`}
+    />
+  )
 
   let surface: ReactNode
   if (isMobile) {
@@ -141,30 +149,6 @@ export function AdaptiveSurface({
       {mainContentPortal}
     </>
   )
-}
-
-function createAdaptiveMainHost() {
-  if (typeof document === 'undefined') return null
-  const host = document.createElement('div')
-  host.className = 'flex h-full min-h-0 w-full min-w-0 flex-col'
-  return host
-}
-
-function AdaptiveMainSlot({ host, fallback, className }: { host: HTMLDivElement | null; fallback: ReactNode; className: string }) {
-  const slotRef = useRef<HTMLDivElement>(null)
-
-  useLayoutEffect(() => {
-    const slot = slotRef.current
-    if (!host || !slot) return
-    slot.appendChild(host)
-    return () => {
-      if (host.parentNode === slot) host.remove()
-    }
-  }, [host])
-
-  const slotClassName = `flex h-full min-h-0 min-w-0 flex-col ${className}`
-  if (!host) return <div data-nova-adaptive-main="true" className={slotClassName}>{fallback}</div>
-  return <div ref={slotRef} data-nova-adaptive-main="true" className={slotClassName} />
 }
 
 function AdaptiveMobileMainSlot({

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
 import type { KeyboardEvent, RefObject, UIEvent, WheelEvent } from 'react'
+import { createDeferredBottomScrollScheduler, DEFAULT_BOTTOM_THRESHOLD, isElementNearBottom, UPWARD_SCROLL_KEYS } from '@/lib/bottom-scroll-controller'
 
 interface BottomScrollLockOptions {
   enabled?: boolean
@@ -18,9 +19,6 @@ interface BottomScrollLockHandlers<T extends HTMLElement> {
   isLockedToBottom: () => boolean
 }
 
-const DEFAULT_BOTTOM_THRESHOLD = 12
-const UPWARD_SCROLL_KEYS = new Set(['ArrowUp', 'PageUp', 'Home'])
-
 /**
  * Keeps streaming chat-like panes pinned to the bottom until the user scrolls up.
  * Content growth alone never unlocks the pane; only an upward scroll intent does.
@@ -34,22 +32,14 @@ export function useBottomScrollLock<T extends HTMLElement>({
   const containerRef = useRef<T | null>(null)
   const lockedRef = useRef(true)
   const lastScrollTopRef = useRef(0)
-  const scrollRafRef = useRef<number[]>([])
-  const scrollTimerRef = useRef<number | null>(null)
+  const schedulerRef = useRef(createDeferredBottomScrollScheduler())
 
   const cancelScheduledScroll = useCallback(() => {
-    for (const id of scrollRafRef.current) {
-      cancelAnimationFrame(id)
-    }
-    scrollRafRef.current = []
-    if (scrollTimerRef.current !== null) {
-      window.clearTimeout(scrollTimerRef.current)
-      scrollTimerRef.current = null
-    }
+    schedulerRef.current.cancel()
   }, [])
 
   const isNearBottom = useCallback((el: HTMLElement) => (
-    el.scrollHeight - el.scrollTop - el.clientHeight <= bottomThreshold
+    isElementNearBottom(el, bottomThreshold)
   ), [bottomThreshold])
 
   const scrollToBottomNow = useCallback(() => {
@@ -61,22 +51,8 @@ export function useBottomScrollLock<T extends HTMLElement>({
 
   const scheduleScrollToBottom = useCallback(() => {
     if (!enabled || !lockedRef.current) return
-    cancelScheduledScroll()
-    scrollToBottomNow()
-    scrollRafRef.current.push(requestAnimationFrame(() => {
-      if (!enabled || !lockedRef.current) return
-      scrollToBottomNow()
-      scrollRafRef.current.push(requestAnimationFrame(() => {
-        if (!enabled || !lockedRef.current) return
-        scrollToBottomNow()
-      }))
-    }))
-    scrollTimerRef.current = window.setTimeout(() => {
-      scrollTimerRef.current = null
-      if (!enabled || !lockedRef.current) return
-      scrollToBottomNow()
-    }, 80)
-  }, [cancelScheduledScroll, enabled, scrollToBottomNow])
+    schedulerRef.current.schedule(scrollToBottomNow, () => enabled && lockedRef.current)
+  }, [enabled, scrollToBottomNow])
 
   const lockToBottom = useCallback(() => {
     lockedRef.current = true

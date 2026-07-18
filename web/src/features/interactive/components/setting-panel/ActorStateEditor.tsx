@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button'
 import type { ActorStateModule, RuleSystemModule } from '../../types'
 import { ActorStateExplorer, type ExplorerProps } from '../preset-config/actor-state-explorer'
 import { PresetConfigSectionEditor } from '../preset-config/PresetConfigSectionEditor'
-import { PresetEmptyState } from '../preset-config/PresetEditorChrome'
-import { ModuleEditorShell, usePresetSectionValidity } from './editor-shared'
+import { PresetEmptyState } from '../preset-config/PresetEmptyState'
+import { PresetModuleEditorShell } from '../preset-config/PresetModuleEditorShell'
+import { usePresetSectionValidity } from '../preset-config/use-preset-section-validity'
 
 export function ActorStateEditor({
   draft,
@@ -44,10 +45,9 @@ export function ActorStateEditor({
   const linkedRuleSystems = ruleSystems.filter((rule) => rule.actor_state_id === draft.id)
 
   return (
-    <ModuleEditorShell
+    <PresetModuleEditorShell
       draft={draft}
       setDraft={setDraft}
-      metadata="compact"
       contentClassName="flex min-h-[320px] flex-1 p-0"
     >
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -98,6 +98,6 @@ export function ActorStateEditor({
           )}
         </PresetConfigSectionEditor>
       </div>
-    </ModuleEditorShell>
+    </PresetModuleEditorShell>
   )
 }

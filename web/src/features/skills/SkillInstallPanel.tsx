@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { Download, FileCode2, Link2, Loader2, Search, Upload } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { EmptyState } from '@/components/common/EmptyState'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { FormField } from '@/components/forms/form-field'
+import { FormSectionHeader } from '@/components/forms/form-section-header'
+import { FieldLegend, FieldSet } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { installSkillRemote, installSkillZip, previewSkillRemoteInstall, previewSkillZipInstall } from '@/lib/api'
 import type { SkillInstallCandidate, SkillInstallResult, SkillScope, SkillScopeInfo } from '@/lib/api'
-import { Field, SectionTitle } from './skill-form-fields'
 import type { SkillInstallSource } from './skill-utils'
 import { isInstallableCandidate, requireInstallFile, scopeLabel } from './skill-utils'
 
@@ -125,64 +129,86 @@ export function SkillInstallPanel({ scopes, defaultScope, onInstalled }: SkillIn
         {error && <InlineErrorNotice message={error} title={t('skills.error')} />}
 
         {scopes.length === 0 ? (
-          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-3 text-[11px] leading-5 text-[var(--nova-text-faint)]">
-            {t('skills.create.noWritableScope')}
-          </div>
+          <EmptyState
+            variant="compact"
+            icon={FileCode2}
+            title={t('skills.create.noWritableScope')}
+            className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-faint)]"
+          />
         ) : (
           <>
-            <section className="space-y-3 border-b border-[var(--nova-border)] pb-5">
-              <SectionTitle icon={Search} title={t('skills.install.section.source')} />
+            <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
+              <FormSectionHeader icon={Search} title={t('skills.install.section.source')} />
               <div className="grid gap-3 md:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]">
-                <Field label={t('skills.create.scope')}>
-                  <div className="flex gap-1">
+                <FieldSet className="min-w-0 gap-1.5 text-xs">
+                  <FieldLegend variant="label" className="mb-0 text-[11px] font-normal text-muted-foreground">
+                    {t('skills.create.scope')}
+                  </FieldLegend>
+                  <ToggleGroup
+                    type="single"
+                    value={scope}
+                    onValueChange={(nextScope) => {
+                      if (!nextScope) return
+                      setScope(nextScope as SkillScope)
+                      resetScan()
+                    }}
+                    variant="outline"
+                    size="sm"
+                    spacing={1}
+                    aria-label={t('skills.create.scope')}
+                    className="w-full"
+                  >
                     {scopes.map((item) => (
-                      <button
+                      <ToggleGroupItem
                         key={item.scope}
-                        type="button"
-                        onClick={() => {
-                          setScope(item.scope)
-                          resetScan()
-                        }}
+                        value={item.scope}
                         className={`nova-nav-item h-8 flex-1 rounded-[var(--nova-radius)] px-2 ${scope === item.scope ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
                       >
                         {scopeLabel(item.scope, t)}
-                      </button>
+                      </ToggleGroupItem>
                     ))}
-                  </div>
-                </Field>
-                <Field label={t('skills.install.source')}>
-                  <div className="grid grid-cols-2 gap-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSource('remote')
-                        resetScan()
-                        setError(null)
-                      }}
-                      className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] px-2 ${source === 'remote' ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
+                  </ToggleGroup>
+                </FieldSet>
+                <FieldSet className="min-w-0 gap-1.5 text-xs">
+                  <FieldLegend variant="label" className="mb-0 text-[11px] font-normal text-muted-foreground">
+                    {t('skills.install.source')}
+                  </FieldLegend>
+                  <ToggleGroup
+                    type="single"
+                    value={source}
+                    onValueChange={(nextSource) => {
+                      if (!nextSource) return
+                      setSource(nextSource as SkillInstallSource)
+                      resetScan()
+                      setError(null)
+                    }}
+                    variant="outline"
+                    size="sm"
+                    spacing={1}
+                    aria-label={t('skills.install.source')}
+                    className="grid w-full grid-cols-2"
+                  >
+                    <ToggleGroupItem
+                      value="remote"
+                      className={`nova-nav-item h-8 min-w-0 rounded-[var(--nova-radius)] px-2 ${source === 'remote' ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
                     >
-                      <Link2 className="h-3.5 w-3.5" />
+                      <Link2 data-icon="inline-start" />
                       {t('skills.install.remote')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSource('zip')
-                        resetScan()
-                        setError(null)
-                      }}
-                      className={`nova-nav-item inline-flex h-8 items-center justify-center gap-1.5 rounded-[var(--nova-radius)] px-2 ${source === 'zip' ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
+                    </ToggleGroupItem>
+                    <ToggleGroupItem
+                      value="zip"
+                      className={`nova-nav-item h-8 min-w-0 rounded-[var(--nova-radius)] px-2 ${source === 'zip' ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
                     >
-                      <Upload className="h-3.5 w-3.5" />
+                      <Upload data-icon="inline-start" />
                       {t('skills.install.zip')}
-                    </button>
-                  </div>
-                </Field>
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </FieldSet>
               </div>
 
               {source === 'remote' ? (
                 <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,0.7fr)_minmax(0,0.9fr)]">
-                  <Field label={t('skills.install.remoteUrl')}>
+                  <FormField label={t('skills.install.remoteUrl')}>
                     <Input
                       value={remoteURL}
                       onChange={(event) => setRemoteURL(event.target.value)}
@@ -190,8 +216,8 @@ export function SkillInstallPanel({ scopes, defaultScope, onInstalled }: SkillIn
                       placeholder="owner/repo or https://github.com/owner/repo/tree/main/skills"
                       className="nova-field h-8 w-full rounded-[var(--nova-radius)] border px-2.5 font-mono outline-none"
                     />
-                  </Field>
-                  <Field label={t('skills.install.ref')}>
+                  </FormField>
+                  <FormField label={t('skills.install.ref')}>
                     <Input
                       value={remoteRef}
                       onChange={(event) => setRemoteRef(event.target.value)}
@@ -199,8 +225,8 @@ export function SkillInstallPanel({ scopes, defaultScope, onInstalled }: SkillIn
                       placeholder="main"
                       className="nova-field h-8 w-full rounded-[var(--nova-radius)] border px-2.5 font-mono outline-none"
                     />
-                  </Field>
-                  <Field label={t('skills.install.subdir')}>
+                  </FormField>
+                  <FormField label={t('skills.install.subdir')}>
                     <Input
                       value={remoteSubdir}
                       onChange={(event) => setRemoteSubdir(event.target.value)}
@@ -208,10 +234,10 @@ export function SkillInstallPanel({ scopes, defaultScope, onInstalled }: SkillIn
                       placeholder="skills/foo"
                       className="nova-field h-8 w-full rounded-[var(--nova-radius)] border px-2.5 font-mono outline-none"
                     />
-                  </Field>
+                  </FormField>
                 </div>
               ) : (
-                <Field label={t('skills.install.zipFile')}>
+                <FormField label={t('skills.install.zipFile')}>
                   <Input
                     type="file"
                     accept=".zip,application/zip"
@@ -223,7 +249,7 @@ export function SkillInstallPanel({ scopes, defaultScope, onInstalled }: SkillIn
                     className="nova-field h-8 w-full rounded-[var(--nova-radius)] border px-2.5 py-1 outline-none"
                   />
                   <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">{file?.name || t('skills.install.zipHint')}</div>
-                </Field>
+                </FormField>
               )}
 
               <div className="flex flex-wrap gap-2">
@@ -240,9 +266,9 @@ export function SkillInstallPanel({ scopes, defaultScope, onInstalled }: SkillIn
               </div>
             </section>
 
-            <section className="space-y-3 pb-5">
+            <section className="flex flex-col gap-3 pb-5">
               <div className="flex items-center gap-2">
-                <SectionTitle icon={FileCode2} title={t('skills.install.section.candidates')} />
+                <FormSectionHeader icon={FileCode2} title={t('skills.install.section.candidates')} />
                 {installable.length > 1 && (
                   <button
                     type="button"
@@ -255,11 +281,14 @@ export function SkillInstallPanel({ scopes, defaultScope, onInstalled }: SkillIn
               </div>
 
               {candidates.length === 0 ? (
-                <div className="rounded-[var(--nova-radius)] border border-dashed border-[var(--nova-border)] px-3 py-6 text-center text-[11px] text-[var(--nova-text-faint)]">
-                  {t('skills.install.scanFirst')}
-                </div>
+                <EmptyState
+                  variant="dashed"
+                  icon={Search}
+                  title={t('skills.install.scanFirst')}
+                  className="min-h-28 px-3 py-6 text-[var(--nova-text-faint)]"
+                />
               ) : (
-                <div className="space-y-2">
+                <div className="flex flex-col gap-2">
                   {candidates.map((candidate) => {
                     const installableCandidate = isInstallableCandidate(candidate)
                     const checked = selectedIds.includes(candidate.id)

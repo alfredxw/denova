@@ -87,9 +87,3 @@ export function newEmptyStoryDirectorSections(): {
 export function findById<T extends { id: string }>(items: T[], id: string): T | undefined {
   return items.find((item) => item.id === id)
 }
-
-export function presetStatusLabel(item: { custom?: boolean; builtin_overridden?: boolean }, t: (key: string) => string) {
-  if (item.custom) return t('settingPanel.custom')
-  if (item.builtin_overridden) return t('settingPanel.builtInOverridden')
-  return t('settingPanel.builtIn')
-}

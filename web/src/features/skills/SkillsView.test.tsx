@@ -130,7 +130,7 @@ describe('SkillsView', () => {
     await user.click(await screen.findByRole('button', { name: '配置' }))
     await user.clear(screen.getByLabelText('Skill 名称'))
     await user.type(screen.getByLabelText('Skill 名称'), 'beat-plan')
-    await user.click(screen.getByRole('button', { name: '工作区' }))
+    await user.click(screen.getByRole('radio', { name: '工作区' }))
     await user.clear(screen.getByLabelText('触发说明'))
     await user.type(screen.getByLabelText('触发说明'), 'Beat planning')
     await user.click(screen.getByRole('button', { name: '保存配置' }))
@@ -279,7 +279,7 @@ describe('SkillsView', () => {
     render(<SkillsView workspace="/books/demo" />)
 
     await user.click(await screen.findByRole('button', { name: '导入' }))
-    await user.click(screen.getByRole('button', { name: 'ZIP' }))
+    await user.click(screen.getByRole('radio', { name: 'ZIP' }))
     await user.upload(screen.getByLabelText('ZIP 文件'), file)
     await user.click(screen.getByRole('button', { name: '扫描' }))
 

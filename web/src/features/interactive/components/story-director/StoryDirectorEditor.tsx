@@ -1,16 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, Teller } from '../../types'
+import { presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from '../preset-config/editor-styles'
+import { PresetEmptyState as EmptyState } from '../preset-config/PresetEmptyState'
 import { PresetMetadataPanel } from '../preset-config/PresetEditorChrome'
+import { PresetField as Field } from '../preset-config/PresetField'
+import { PresetSectionHeader as SectionTitle } from '../preset-config/PresetSectionHeader'
+import { presetStatusLabel } from '../preset-config/preset-status'
+import { usePresetSectionValidity } from '../preset-config/use-preset-section-validity'
 import { BooleanSwitchField } from '../setting-panel/BooleanSwitchField'
 import { DirectorModuleConsole } from './ModuleConsole'
-import { consoleSectionClassName, DIRECTOR_AGENT_BRIEF_REQUIRED_HEADINGS, EMPTY_DIRECTOR_PLANNING_TEMPLATES, inputClassName, selectClassName, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_EVENT_FREQUENCY_OPTIONS, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS, STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS, STORY_DIRECTOR_STATE_SCHEMA_ADAPTATION_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StrategySelectOption } from './constants'
-import { EmptyState, Field, SectionTitle } from './shared'
-import { directorResolvedEventPackages, findById, normalizeBranchPlanningTurns, normalizedStoryDirectorRefs, presetStatusLabel, strategyOptionText, utf8ByteLength, validateDirectorPlanningTemplate } from './utils'
+import { consoleSectionClassName, DIRECTOR_AGENT_BRIEF_REQUIRED_HEADINGS, EMPTY_DIRECTOR_PLANNING_TEMPLATES, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_EVENT_FREQUENCY_OPTIONS, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS, STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS, STORY_DIRECTOR_STATE_SCHEMA_ADAPTATION_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StrategySelectOption } from './constants'
+import { directorResolvedEventPackages, findById, normalizeBranchPlanningTurns, normalizedStoryDirectorRefs, strategyOptionText, utf8ByteLength, validateDirectorPlanningTemplate } from './utils'
 
 export function StoryDirectorEditor({
   draft,
@@ -327,18 +332,20 @@ function StrategySelect({
           <SelectValue>{selectedLabel}</SelectValue>
         </SelectTrigger>
         <SelectContent className="nova-panel min-w-72 border text-[var(--nova-text)]">
-          {displayedOptions.map((option) => {
-            const optionLabel = strategyOptionText(t, option.labelKey, option.value)
-            const optionDescription = strategyOptionText(t, option.descriptionKey, option.value)
-            return (
-              <SelectItem key={option.value} value={option.value} textValue={optionLabel} className="items-start py-2">
-                <div className="grid gap-0.5 text-left">
-                  <span className="text-xs text-[var(--nova-text)]">{optionLabel}</span>
-                  <span className="text-[11px] leading-4 text-[var(--nova-text-faint)]">{optionDescription}</span>
-                </div>
-              </SelectItem>
-            )
-          })}
+          <SelectGroup>
+            {displayedOptions.map((option) => {
+              const optionLabel = strategyOptionText(t, option.labelKey, option.value)
+              const optionDescription = strategyOptionText(t, option.descriptionKey, option.value)
+              return (
+                <SelectItem key={option.value} value={option.value} textValue={optionLabel} className="items-start py-2">
+                  <div className="grid gap-0.5 text-left">
+                    <span className="text-xs text-[var(--nova-text)]">{optionLabel}</span>
+                    <span className="text-[11px] leading-4 text-[var(--nova-text-faint)]">{optionDescription}</span>
+                  </div>
+                </SelectItem>
+              )
+            })}
+          </SelectGroup>
         </SelectContent>
       </Select>
       <span className="text-[11px] leading-5 text-[var(--nova-text-faint)]">{selectedDescription}</span>
@@ -408,23 +415,4 @@ function PlanningTemplateTextarea({ label, value, validity, onChange }: {
       ) : null}
     </label>
   )
-}
-
-function usePresetSectionValidity(resetKey: string, onValidityChange?: (valid: boolean) => void) {
-  const [validity, setValidity] = useState<Record<string, boolean>>({})
-
-  useEffect(() => {
-    setValidity({})
-  }, [resetKey])
-
-  useEffect(() => {
-    onValidityChange?.(Object.values(validity).every((valid) => valid !== false))
-  }, [onValidityChange, validity])
-
-  return useCallback((section: string, valid: boolean) => {
-    setValidity((current) => {
-      if (current[section] === valid) return current
-      return { ...current, [section]: valid }
-    })
-  }, [])
 }

@@ -1,16 +1,20 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useState, useCallback } from 'react'
 import { toast } from 'sonner'
 import type { ReactNode } from 'react'
-import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, PanelLeft, Plus, RefreshCw, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, Plus, RefreshCw, Save, Settings as SettingsIcon, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { ImageAPIProfileSettings, LayeredSettings, ModelProfileSettings, Settings, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
-import { applyUpdate, checkForUpdate, fetchSettings, installUpdateStream, updateUserSettings } from './api'
+import type { ImageAPIProfileSettings, ModelProfileSettings, Settings, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
+import { applyUpdate, checkForUpdate, installUpdateStream } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
-import { useAutoSaveSettings } from './use-auto-save-settings'
+import { useLayeredSettingsDraft } from './use-layered-settings-draft'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
+import { SettingsFieldRow } from '@/components/forms/settings-field-row'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
+import { FeaturePageShell } from '@/components/layout/feature-page-shell'
+import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
+import { SectionedNavigation } from '@/components/navigation/sectioned-navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -36,7 +40,6 @@ type SettingsSection = {
 }
 
 const fieldCls = 'nova-field min-h-7 flex-1 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
-const iconButtonCls = 'nova-nav-item rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
 const DEFAULT_CONTEXT_WINDOW_TOKENS = 400000
 const MIN_CONTEXT_WINDOW_TOKENS = 1024
 const MAX_CONTEXT_WINDOW_TOKENS = 2000000
@@ -54,24 +57,17 @@ const TRACE_CAPTURE_OPTIONS = [
 const TRACE_EXPORTER_OPTIONS = [
   { value: 'local', labelKey: 'settings.debug.traceExporterLocal' },
 ] as const
-let nextSettingsEventSourceID = 1
-
 export function SettingsView({ onClose }: { onClose?: () => void }) {
   const { t } = useTranslation()
-  const [layered, setLayered] = useState<LayeredSettings | null>(null)
-  const [draft, setDraft] = useState<Settings>({})
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { layered, draft, setDraft, saving, error, saveNow } = useLayeredSettingsDraft({
+    layer: 'user',
+    sourcePrefix: 'settings-view',
+  })
   const [availableTellers, setAvailableTellers] = useState<Teller[]>([])
   const [updateStatus, setUpdateStatus] = useState<UpdateCheckResult | null>(null)
   const [updateInstallResult, setUpdateInstallResult] = useState<UpdateInstallResult | null>(null)
   const [updateApplyResult, setUpdateApplyResult] = useState<UpdateApplyResult | null>(null)
   const [updateInstallProgress, setUpdateInstallProgress] = useState<UpdateInstallProgress | null>(null)
-  const [settingsEventSource] = useState(() => {
-    const source = `settings-view-${nextSettingsEventSourceID}`
-    nextSettingsEventSourceID += 1
-    return source
-  })
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [installingUpdate, setInstallingUpdate] = useState(false)
   const [applyingUpdate, setApplyingUpdate] = useState(false)
@@ -93,28 +89,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   })
   const contentRef = useRef<HTMLDivElement | null>(null)
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({})
-
-  const load = useCallback(async () => {
-    try {
-      const data = await fetchSettings()
-      setLayered(data)
-      setDraft(data.user)
-    } catch (e) {
-      setError((e as Error).message)
-    }
-  }, [])
-
-  useEffect(() => { void load() }, [load])
-
-  useEffect(() => {
-    const onSettingsUpdated = (event: Event) => {
-      const source = (event as CustomEvent<{ source?: string }>).detail?.source
-      if (source === settingsEventSource) return
-      void load()
-    }
-    window.addEventListener('nova:settings-updated', onSettingsUpdated)
-    return () => window.removeEventListener('nova:settings-updated', onSettingsUpdated)
-  }, [load, settingsEventSource])
 
   useEffect(() => {
     getInteractiveTellers()
@@ -192,30 +166,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     }
   }, [])
 
-  const saveDraft = useCallback(async (settings: Settings, baseRevision?: string) => {
-    return updateUserSettings(settings, baseRevision)
-  }, [])
-
-  const applySavedSettings = useCallback((next: LayeredSettings) => {
-    setLayered(next)
-    // 通知应用层重新读取分层配置（如 max_open_tabs 等需要立即生效的设置）
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: settingsEventSource } }))
-    }
-  }, [settingsEventSource])
-
   const onSave = async () => {
-    setSaving(true)
-    setError(null)
     try {
-      const next = await saveDraft(draft, layered?.revisions?.user)
-      applySavedSettings(next)
+      await saveNow()
       toast.success(t('common.saved'))
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setSaving(false)
-    }
+    } catch { /* useLayeredSettingsDraft exposes the localized page error state. */ }
   }
 
   const setField = <K extends keyof Settings>(k: K, v: Settings[K]) =>
@@ -241,17 +196,6 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       image_api_profiles: profiles,
     }))
   }
-
-  useAutoSaveSettings({
-    draft,
-    saved: layered?.user ?? {},
-    baseRevision: layered?.revisions?.user,
-    ready: Boolean(layered),
-    save: saveDraft,
-    onSavingChange: setSaving,
-    onSaved: applySavedSettings,
-    onError: setError,
-  })
 
   const placeholderFor = (k: keyof Settings): string => {
     const v = effective[k]
@@ -594,58 +538,41 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     return groups
   }, [])
   const navPanel = (
-    <nav className="h-full min-h-0 space-y-4 overflow-y-auto bg-[var(--nova-surface-2)] px-2 py-4 sm:px-3">
-      {navGroups.map((group) => (
-        <div key={group.group}>
-          <div className="mb-1.5 px-2 text-[11px] font-medium text-[var(--nova-text-faint)]">{group.group}</div>
-          <div className="space-y-1">
-            {group.items.map((section) => (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() => jumpToSection(section.id)}
-                className={`nova-nav-item flex w-full items-center rounded-[var(--nova-radius)] px-2.5 py-1.5 text-left ${
-                  activeSection === section.id ? 'is-active' : ''
-                }`}
-              >
-                <span className="truncate">{section.title}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-    </nav>
+    <SectionedNavigation
+      groups={navGroups.map((group) => ({
+        id: group.group,
+        title: group.group,
+        items: group.items.map((section) => ({ id: section.id, title: section.title })),
+      }))}
+      activeId={activeSection}
+      onSelect={jumpToSection}
+      className="h-full min-h-0 overflow-y-auto bg-[var(--nova-surface-2)] px-2 py-4 sm:px-3"
+      itemClassName="font-normal"
+    />
   )
 
   return (
-    <div className="nova-settings-view flex h-full min-h-0 w-full flex-col text-[var(--nova-text)]">
-      <div className="nova-topbar flex min-h-10 shrink-0 flex-nowrap items-center gap-2 overflow-x-auto border-b px-3 py-1.5 text-xs sm:px-4">
-        <SettingsIcon className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
-        <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('settings.title')}</span>
-        <button
+    <FeaturePageShell
+      icon={SettingsIcon}
+      title={t('settings.title')}
+      className="nova-settings-view"
+      error={error}
+      errorTitle={t('settings.error.save')}
+      onClose={onClose}
+      closeLabel={t('settings.close')}
+      actions={(
+        <Button
           type="button"
           onClick={onSave}
           disabled={saving}
-          className="nova-nav-item ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1 text-[var(--nova-text)] disabled:opacity-50"
+          variant="secondary"
+          size="sm"
         >
-          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          {saving ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Save data-icon="inline-start" />}
           {t('common.save')}
-        </button>
-        {onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className={`${iconButtonCls} p-1`}
-            aria-label={t('settings.close')}
-            title={t('settings.close')}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        )}
-      </div>
-
-      {error && <InlineErrorNotice className="mx-3 mt-2" message={error} title={t('settings.error.save')} />}
-
+        </Button>
+      )}
+    >
       <AdaptiveSurface
         left={{
           id: 'settings-nav',
@@ -662,10 +589,14 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       >
         {({ openLeft }) => (
           <div ref={contentRef} data-nova-settings-content="true" onScroll={onContentScroll} className="h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
-            <button type="button" className="nova-icon-button mb-3 flex h-8 items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-2 text-[var(--nova-text-muted)] hover:text-[var(--nova-text)] md:hidden" aria-label={t('workbench.mobile.openSidePanel', { label: t('settings.title') })} onClick={openLeft}>
-              <PanelLeft className="h-4 w-4" />
-              <span className="text-xs">{t('settings.title')}</span>
-            </button>
+            <MobilePaneTrigger
+              side="left"
+              label={t('workbench.mobile.openSidePanel', { label: t('settings.title') })}
+              onClick={openLeft}
+              className="mb-3 md:hidden"
+            >
+              {t('settings.title')}
+            </MobilePaneTrigger>
             <div className="mx-auto w-full min-w-0 max-w-5xl">
               {sections.map((section) => (
                 <Section
@@ -686,7 +617,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           </div>
         )}
       </AdaptiveSurface>
-    </div>
+    </FeaturePageShell>
   )
 }
 
@@ -774,7 +705,7 @@ function Section({
         )}
       </button>
       {expanded && (
-        <div className="nova-settings-section-card space-y-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3">{children}</div>
+        <div className="nova-settings-section-card flex flex-col gap-2 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] p-3">{children}</div>
       )}
     </section>
   )
@@ -816,7 +747,7 @@ export function UpdatePanel({
   return (
     <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-3">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="min-w-0 space-y-1">
+        <div className="min-w-0 flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-[var(--nova-text)]">{status ? updateStatusLabel(status, t) : t('settings.updates.notChecked')}</span>
             {status?.update_available && (
@@ -837,7 +768,7 @@ export function UpdatePanel({
             </div>
           )}
           {installProgress && (
-            <div className="mt-2 space-y-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2">
+            <div className="mt-2 flex flex-col gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2">
               <div className="flex items-center justify-between gap-3 text-[var(--nova-text-muted)]">
                 <span>{progressLabel}</span>
                 <span>{t('settings.updates.progressPercent', { percent: Math.round(progressPercent) })}</span>
@@ -976,20 +907,35 @@ function formatBytes(value: number) {
 }
 
 function FieldRow({ label, children }: { label: string; children: ReactNode }) {
+  const generatedID = useId()
+  const childID = isValidElement<{ id?: string }>(children) ? children.props.id : undefined
+  const controlID = childID || generatedID
+  const control = isValidElement<{ id?: string }>(children)
+    ? cloneElement(children, { id: controlID })
+    : children
   return (
-    <label className="nova-settings-row flex flex-col gap-1.5 rounded-md px-2 py-1.5 sm:flex-row sm:items-center sm:gap-3">
-      <span className="w-44 shrink-0 text-[var(--nova-text-muted)]">{label}</span>
-      {children}
-    </label>
+    <SettingsFieldRow
+      title={label}
+      htmlFor={controlID}
+      className="nova-settings-row rounded-md border-0 bg-transparent px-2 py-1.5"
+      contentClassName="sm:w-44 sm:flex-none"
+      controlClassName="flex-1"
+    >
+      {control}
+    </SettingsFieldRow>
   )
 }
 
 function ValueRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="nova-settings-row flex flex-col gap-1.5 rounded-md px-2 py-1.5 sm:flex-row sm:items-center sm:gap-3">
-      <span className="w-44 shrink-0 text-[var(--nova-text-muted)]">{label}</span>
+    <SettingsFieldRow
+      title={label}
+      className="nova-settings-row rounded-md border-0 bg-transparent px-2 py-1.5"
+      contentClassName="sm:w-44 sm:flex-none"
+      controlClassName="flex-1"
+    >
       {children}
-    </div>
+    </SettingsFieldRow>
   )
 }
 
