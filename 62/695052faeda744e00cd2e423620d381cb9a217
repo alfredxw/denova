@@ -1,0 +1,21 @@
+CHANGELOG.md
+  s_7ec26d371c44ea::t_8b0a69b691efd0 25-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "62695052faeda744e00cd2e423620d381cb9a217",
+  "prompts": {},
+  "sessions": {
+    "s_7ec26d371c44ea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7454-ae95-7b51-b47e-7087fe51b822",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
