@@ -309,7 +309,7 @@ func (s *ChatAppService) StartTaskWithError(req agent.ChatRequest) (*Task, error
 			AgentKind:              agent.AgentKindIDE,
 			TaskID:                 task.ID(),
 			SessionID:              runtime.sess.ID,
-			ReviewThreadID:         req.ResolvedReviewFeedback.ReviewThreadID,
+			ReviewThreadID:         req.ResolvedReviewFeedback.PrimaryReviewThreadID(),
 			Workspace:              runtime.workspace,
 			Mode:                   "ide",
 			IdleTimeout:            agentIdleTimeout(runtime.cfg),

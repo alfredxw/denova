@@ -57,11 +57,11 @@ interface AgentChatRequestBody {
   writing_skill?: string
   image_preset_id?: string
   teller_id?: string
-  review_feedback?: {
+  review_feedback?: Array<{
     source?: 'workspace_change' | 'document'
     review_thread_id: string
     comment_ids: string[]
-  }
+  }>
 }
 
 export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
@@ -93,6 +93,7 @@ export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
 }
 
 export function buildAgentChatRequestBody(body: AgentChatRequestBody): AgentChatRequestBody {
+  const reviewFeedback = normalizeReviewFeedbackRefs(body.review_feedback)
   return {
     references: body.references || [],
     lore_references: body.lore_references || [],
@@ -103,14 +104,26 @@ export function buildAgentChatRequestBody(body: AgentChatRequestBody): AgentChat
     writing_skill: body.writing_skill || undefined,
     image_preset_id: body.image_preset_id || undefined,
     teller_id: body.teller_id || undefined,
-    review_feedback: body.review_feedback?.review_thread_id && body.review_feedback.comment_ids.length
-      ? {
-          ...(body.review_feedback.source ? { source: body.review_feedback.source } : {}),
-          review_thread_id: body.review_feedback.review_thread_id,
-          comment_ids: Array.from(new Set(body.review_feedback.comment_ids)),
-        }
-      : undefined,
+    review_feedback: reviewFeedback.length ? reviewFeedback : undefined,
   }
+}
+
+function normalizeReviewFeedbackRefs(feedback: AgentChatRequestBody['review_feedback']): NonNullable<AgentChatRequestBody['review_feedback']> {
+  const merged = new Map<string, NonNullable<AgentChatRequestBody['review_feedback']>[number]>()
+  for (const selection of feedback ?? []) {
+    const reviewThreadID = selection.review_thread_id.trim()
+    const commentIDs = selection.comment_ids.map((id) => id.trim()).filter(Boolean)
+    if (!reviewThreadID || !commentIDs.length) continue
+    const source = selection.source || 'workspace_change'
+    const key = `${source}\u0000${reviewThreadID}`
+    const current = merged.get(key)
+    merged.set(key, {
+      ...(selection.source ? { source: selection.source } : {}),
+      review_thread_id: reviewThreadID,
+      comment_ids: Array.from(new Set([...(current?.comment_ids ?? []), ...commentIDs])),
+    })
+  }
+  return [...merged.values()]
 }
 
 export function normalizeAgentUIMessages(messages: AgentUIMessage[]): AgentUIMessage[] {

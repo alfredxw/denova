@@ -202,31 +202,6 @@ func utf8ByteBoundary(content string, offset int) bool {
 	return offset == 0 || offset == len(content) || (offset > 0 && offset < len(content) && utf8.RuneStart(content[offset]))
 }
 
-func (s *Service) ResolveComment(ctx context.Context, req ResolveCommentRequest) (Comment, error) {
-	if s == nil {
-		return Comment{}, newError(ErrorCodeConflict, "change service is nil", nil)
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.contextError(ctx); err != nil {
-		return Comment{}, err
-	}
-	if err := s.reconcilePendingDurabilityLocked(); err != nil {
-		return Comment{}, err
-	}
-	current := s.comments[strings.TrimSpace(req.ID)]
-	if current == nil || current.Deleted {
-		return Comment{}, newError(ErrorCodeNotFound, "comment not found", map[string]any{"comment_id": req.ID})
-	}
-	next := *current
-	next.Resolved = req.Resolved
-	next.UpdatedAt = time.Now().UTC()
-	if err := s.appendAndApply(ledgerEvent{Type: eventCommentUpserted, Comment: &next}); err != nil {
-		return Comment{}, err
-	}
-	return next, nil
-}
-
 func (s *Service) DeleteComment(ctx context.Context, req DeleteCommentRequest) (Comment, error) {
 	if s == nil {
 		return Comment{}, newError(ErrorCodeConflict, "change service is nil", nil)

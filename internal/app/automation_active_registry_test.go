@@ -43,6 +43,9 @@ func TestActiveAutomationRegistryScopesSameIDsByCanonicalWorkspace(t *testing.T)
 	if runs := serviceB.ActiveAutomationRuns(); len(runs) != 1 || runs[0].Run.Workspace != workspaceB {
 		t.Fatalf("workspace B active runs = %#v", runs)
 	}
+	if runs := application.ActiveAutomationRuns(); len(runs) != 2 {
+		t.Fatalf("user-level active runs = %#v, want both workspaces", runs)
+	}
 	if task, run, ok := serviceA.ActiveAutomationTaskByRunID("same-run"); !ok || task != taskA || run.Workspace != workspaceA {
 		t.Fatalf("workspace A lookup task=%p run=%#v ok=%v", task, run, ok)
 	}

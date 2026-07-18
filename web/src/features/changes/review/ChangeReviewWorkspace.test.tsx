@@ -8,7 +8,6 @@ const apiMocks = vi.hoisted(() => ({
   createWorkspaceChangeComment: vi.fn(),
   deleteWorkspaceChangeComment: vi.fn(),
   redoWorkspaceChangeGroup: vi.fn(),
-  resolveWorkspaceChangeComment: vi.fn(),
   reviewWorkspaceChangeGroup: vi.fn(),
   undoWorkspaceChangeGroup: vi.fn(),
   updateWorkspaceChangeComment: vi.fn(),

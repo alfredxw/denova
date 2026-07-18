@@ -475,15 +475,11 @@ func TestCommentsAreAppendOnlyAndReloaded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	comment, err = service.ResolveComment(context.Background(), ResolveCommentRequest{ID: comment.ID, Resolved: true})
-	if err != nil {
-		t.Fatal(err)
-	}
 	comment, err = service.DeleteComment(context.Background(), DeleteCommentRequest{ID: comment.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !comment.Resolved || !comment.Deleted {
+	if !comment.Deleted {
 		t.Fatalf("unexpected final comment: %#v", comment)
 	}
 	reloaded, err := NewService(service.workspace)

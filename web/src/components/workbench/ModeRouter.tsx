@@ -19,6 +19,7 @@ import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import { useWritingChangeReview } from '@/features/changes/use-writing-change-review'
+import type { ReviewFeedbackBatch, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { useDocumentReview } from '@/features/document-review/use-document-review'
 import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
 import type { Tab } from './TabController'
@@ -362,24 +363,30 @@ export function ModeRouter(props: ModeRouterProps) {
     agentVisible: aiVisible,
     onShowAgent: showAgent,
   })
-  const reviewFeedback = changeReviewFeedback || documentReview.feedback
+  const reviewFeedback = useMemo<ReviewFeedbackBatch>(() => (
+    [changeReviewFeedback, documentReview.feedback].filter((feedback): feedback is ReviewFeedbackSelection => Boolean(feedback))
+  ), [changeReviewFeedback, documentReview.feedback])
   const documentReviewController = useMemo(() => ({
     comments: documentReview.thread.comments,
     onCreate: documentReview.addComment,
     onUpdate: documentReview.editComment,
     onDelete: documentReview.removeComment,
   }), [documentReview.addComment, documentReview.editComment, documentReview.removeComment, documentReview.thread.comments])
-  const removeActiveReviewFeedback = useCallback((commentID: string) => {
-    if (reviewFeedback?.source === 'document') documentReview.removeFeedback(commentID)
+  const removeActiveReviewFeedback = useCallback((selection: ReviewFeedbackSelection, commentID: string) => {
+    if (selection.source === 'document') documentReview.removeFeedback(commentID)
     else removeReviewFeedback(commentID)
-  }, [documentReview.removeFeedback, removeReviewFeedback, reviewFeedback?.source])
-  const submitActiveReviewFeedback = useCallback((feedback: NonNullable<typeof reviewFeedback>) => {
-    if (feedback.source === 'document') documentReview.submitFeedback(feedback)
-    else submitReviewFeedback(feedback)
+  }, [documentReview.removeFeedback, removeReviewFeedback])
+  const submitActiveReviewFeedback = useCallback((feedback: ReviewFeedbackBatch) => {
+    for (const selection of feedback) {
+      if (selection.source === 'document') documentReview.submitFeedback(selection)
+      else submitReviewFeedback(selection)
+    }
   }, [documentReview.submitFeedback, submitReviewFeedback])
-  const restoreActiveReviewFeedback = useCallback((feedback: NonNullable<typeof reviewFeedback>) => {
-    if (feedback.source === 'document') documentReview.restoreFeedback(feedback)
-    else restoreReviewFeedback(feedback)
+  const restoreActiveReviewFeedback = useCallback((feedback: ReviewFeedbackBatch) => {
+    for (const selection of feedback) {
+      if (selection.source === 'document') documentReview.restoreFeedback(selection)
+      else restoreReviewFeedback(selection)
+    }
   }, [documentReview.restoreFeedback, restoreReviewFeedback])
   const reviewVisible = Boolean(activeReviewThreadID)
   const closeBooks = () => {

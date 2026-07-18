@@ -27,12 +27,15 @@ type automationRunClaim struct {
 }
 
 func (s *AutomationAppService) ActiveAutomationRuns() []automation.ActiveRun {
-	workspace := canonicalAutomationWorkspace(s.workspace())
+	workspace := ""
+	if s.snapshot != nil {
+		workspace = canonicalAutomationWorkspace(s.workspace())
+	}
 	s.app.mu.RLock()
 	defer s.app.mu.RUnlock()
 	result := make([]automation.ActiveRun, 0, len(s.app.activeAutomationRuns))
 	for _, state := range s.app.activeAutomationRuns {
-		if state.Workspace != workspace {
+		if workspace != "" && state.Workspace != workspace {
 			continue
 		}
 		task := s.app.activeAutomationTasks[state.TaskKey]
@@ -49,15 +52,26 @@ func (a *App) ActiveAutomationRuns() []automation.ActiveRun {
 }
 
 func (s *AutomationAppService) ActiveAutomationTaskByRunID(runID string) (*Task, automation.RunRecord, bool) {
-	workspace := canonicalAutomationWorkspace(s.workspace())
-	runKey := automationRunRegistryKey(workspace, runID)
 	s.app.mu.RLock()
 	defer s.app.mu.RUnlock()
 	if s.app.activeAutomationRuns == nil {
 		return nil, automation.RunRecord{}, false
 	}
-	state, ok := s.app.activeAutomationRuns[runKey]
-	if !ok {
+	var state automationRunState
+	found := false
+	if s.snapshot != nil {
+		workspace := canonicalAutomationWorkspace(s.workspace())
+		state, found = s.app.activeAutomationRuns[automationRunRegistryKey(workspace, runID)]
+	} else {
+		for _, candidate := range s.app.activeAutomationRuns {
+			if candidate.Run.ID == strings.TrimSpace(runID) {
+				state = candidate
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
 		return nil, automation.RunRecord{}, false
 	}
 	task := s.app.activeAutomationTasks[state.TaskKey]

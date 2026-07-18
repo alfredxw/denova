@@ -29,7 +29,6 @@ interface ReviewFileDiffSectionProps {
   onDraftChange: (hasDraft: boolean) => void
   onCreateComment: (request: CreateWorkspaceChangeCommentRequest) => Promise<void>
   onUpdateComment: (comment: WorkspaceChangeComment, body: string) => Promise<void>
-  onResolveComment: (comment: WorkspaceChangeComment, resolved: boolean) => Promise<void>
   onDeleteComment: (comment: WorkspaceChangeComment) => Promise<void>
 }
 
@@ -50,7 +49,6 @@ export function ReviewFileDiffSection({
   onDraftChange,
   onCreateComment,
   onUpdateComment,
-  onResolveComment,
   onDeleteComment,
 }: ReviewFileDiffSectionProps) {
   const { t } = useTranslation()
@@ -143,7 +141,6 @@ export function ReviewFileDiffSection({
                 onDraftChange={onDraftChange}
                 onCreateComment={onCreateComment}
                 onUpdateComment={onUpdateComment}
-                onResolveComment={onResolveComment}
                 onDeleteComment={onDeleteComment}
               />
             </Suspense>

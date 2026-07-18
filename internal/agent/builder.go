@@ -453,11 +453,11 @@ func buildSubAgentInstruction(parent deepAgentSpec, sub config.SubAgentConfig) s
 }
 
 func loreToolsFactory(cfg *config.Config, forceReadOnly bool) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-	return func(_ config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-		if cfg == nil {
+	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+		if cfg == nil || (!settings.LoreRead && !settings.LoreWrite) {
 			return nil, nil
 		}
-		allowWrite := !forceReadOnly
+		allowWrite := !forceReadOnly && settings.LoreWrite
 		return newLoreTools(cfg.Workspace, allowWrite)
 	}
 }

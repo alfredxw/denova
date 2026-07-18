@@ -133,6 +133,7 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 	_ = settings
 	novaDir := strings.TrimSpace(cfg.NovaDir)
 	workspace := strings.TrimSpace(cfg.Workspace)
+	automationWorkspaces := append([]string(nil), cfg.AutomationWorkspaces...)
 	builders := []configManagerToolBuilder{
 		{build: func() (tool.BaseTool, error) { return newListStyleReferencesTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newWriteStyleReferencesTool(novaDir) }},
@@ -151,9 +152,11 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 		{build: func() (tool.BaseTool, error) { return newListImagePresetsTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newReadImagePresetsTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newWriteImagePresetsTool(novaDir) }},
-		{build: func() (tool.BaseTool, error) { return newListAutomationsTool(novaDir, workspace) }},
-		{build: func() (tool.BaseTool, error) { return newReadAutomationsTool(novaDir, workspace) }},
-		{build: func() (tool.BaseTool, error) { return newWriteAutomationsTool(novaDir, workspace) }},
+		{build: func() (tool.BaseTool, error) { return newListAutomationsTool(novaDir, workspace, automationWorkspaces) }},
+		{build: func() (tool.BaseTool, error) { return newReadAutomationsTool(novaDir, workspace, automationWorkspaces) }},
+		{build: func() (tool.BaseTool, error) {
+			return newWriteAutomationsTool(novaDir, workspace, automationWorkspaces)
+		}},
 		{build: func() (tool.BaseTool, error) { return newListSkillsTool(cfg) }},
 		{build: func() (tool.BaseTool, error) { return newReadSkillsTool(cfg) }},
 		{build: func() (tool.BaseTool, error) { return newWriteSkillsTool(cfg) }},
@@ -715,18 +718,18 @@ func newWriteStoryDirectorsTool(novaDir string) (tool.BaseTool, error) {
 	})
 }
 
-func newListAutomationsTool(novaDir, workspace string) (tool.BaseTool, error) {
-	return utils.InferTool("list_automations", "列出自动化任务索引，返回 ID、名称、启用状态、模板、触发器和写入策略；需要完整配置时再调用 read_automations。", func(ctx context.Context, input struct{}) (string, error) {
+func newListAutomationsTool(novaDir, workspace string, workspaces []string) (tool.BaseTool, error) {
+	return utils.InferTool("list_automations", "列出用户的全局自动化任务索引，按显式执行目标返回 catalog_id、名称、启用状态、模板、触发器和写入策略；需要完整配置时再调用 read_automations。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
-		tasks, err := automation.NewStore(novaDir, workspace).List()
+		tasks, err := configManagerAutomationStore(novaDir, workspace, workspaces).List()
 		if err != nil {
 			return "", err
 		}
 		var sb strings.Builder
 		sb.WriteString("# 自动化任务索引\n\n")
 		for _, task := range tasks {
-			fmt.Fprintf(&sb, "- id: %s\n  名称: %s\n  scope: %s\n  启用: %t\n  模板: %s\n  触发器: %d\n  写入: %s/%s\n\n", task.ID, task.Name, task.Scope, task.Enabled, task.Template, len(task.Triggers), task.WriteMode, task.WriteScope)
+			fmt.Fprintf(&sb, "- catalog_id: %s\n  id: %s\n  名称: %s\n  target: %s\n  workspace: %s\n  启用: %t\n  模板: %s\n  触发器: %d\n  写入: %s/%s\n\n", task.CatalogID, task.ID, task.Name, task.Target.Kind, task.Target.Workspace, task.Enabled, task.Template, len(task.Triggers), task.WriteMode, task.WriteScope)
 		}
 		if len(tasks) == 0 {
 			return "暂无自动化任务。", nil
@@ -735,10 +738,10 @@ func newListAutomationsTool(novaDir, workspace string) (tool.BaseTool, error) {
 	})
 }
 
-func newReadAutomationsTool(novaDir, workspace string) (tool.BaseTool, error) {
-	return utils.InferTool("read_automations", "按自动化任务 ID 批量读取完整任务配置。", func(ctx context.Context, input idListInput) (string, error) {
+func newReadAutomationsTool(novaDir, workspace string, workspaces []string) (tool.BaseTool, error) {
+	return utils.InferTool("read_automations", "按自动化任务 catalog_id 批量读取完整任务配置。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
-		store := automation.NewStore(novaDir, workspace)
+		store := configManagerAutomationStore(novaDir, workspace, workspaces)
 		tasks := []automation.Task{}
 		for _, id := range input.IDs {
 			task, err := store.Get(strings.TrimSpace(id))
@@ -751,26 +754,29 @@ func newReadAutomationsTool(novaDir, workspace string) (tool.BaseTool, error) {
 	})
 }
 
-func newWriteAutomationsTool(novaDir, workspace string) (tool.BaseTool, error) {
-	return utils.InferTool("write_automations", "批量创建、更新或删除自动化任务。删除必须来自用户明确指令。", func(ctx context.Context, input automationWriteInput) (string, error) {
+func newWriteAutomationsTool(novaDir, workspace string, workspaces []string) (tool.BaseTool, error) {
+	return utils.InferTool("write_automations", "批量创建、更新或删除用户自动化任务；create 必须显式指定 target，update/delete 使用 catalog_id。删除必须来自用户明确指令。", func(ctx context.Context, input automationWriteInput) (string, error) {
 		_ = ctx
-		store := automation.NewStore(novaDir, workspace)
+		store := configManagerAutomationStore(novaDir, workspace, workspaces)
 		result := map[string][]string{"created": []string{}, "updated": []string{}, "deleted": []string{}}
 		for i, op := range input.Operations {
 			switch strings.TrimSpace(op.Op) {
 			case "create":
+				if strings.TrimSpace(op.Task.Target.Kind) == "" {
+					return "", fmt.Errorf("自动化操作 #%d create %q 必须显式指定 target.kind", i+1, op.Task.Name)
+				}
 				task, err := store.Create(op.Task)
 				if err != nil {
 					return "", fmt.Errorf("自动化操作 #%d create %q 配置无效: %w", i+1, op.Task.Name, err)
 				}
-				result["created"] = append(result["created"], task.ID)
+				result["created"] = append(result["created"], task.CatalogID)
 			case "update":
 				id := firstConfigNonEmpty(op.ID, op.Task.ID)
 				task, err := store.Update(id, op.Task)
 				if err != nil {
 					return "", fmt.Errorf("自动化操作 #%d update %q 配置无效: %w", i+1, id, err)
 				}
-				result["updated"] = append(result["updated"], task.ID)
+				result["updated"] = append(result["updated"], task.CatalogID)
 			case "delete":
 				id := strings.TrimSpace(op.ID)
 				if err := store.Delete(id); err != nil {
@@ -783,6 +789,11 @@ func newWriteAutomationsTool(novaDir, workspace string) (tool.BaseTool, error) {
 		}
 		return formatBatchResult(firstConfigNonEmpty(input.Message, "自动化任务已更新"), result), nil
 	})
+}
+
+func configManagerAutomationStore(novaDir, workspace string, workspaces []string) *automation.Store {
+	all := append([]string{workspace}, workspaces...)
+	return automation.NewStore(novaDir, workspace).WithWorkspaces(all...)
 }
 
 func newListSkillsTool(cfg *config.Config) (tool.BaseTool, error) {

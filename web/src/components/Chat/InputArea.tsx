@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { ReviewFeedbackTray, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -84,8 +84,8 @@ interface InputAreaProps {
   styleSceneSuggestions?: string[]
   textSelections?: TextSelection[]
   onTextSelectionRemove?: (index: number) => void
-  reviewFeedback?: ReviewFeedbackSelection | null
-  onReviewFeedbackRemove?: (commentID: string) => void
+  reviewFeedback?: ReviewFeedbackBatch | null
+  onReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
   skills?: SkillCommand[]
   commandsEnabled?: boolean
   commandScope?: CommandScope
@@ -206,7 +206,7 @@ export function InputArea({
   const filteredSkillCommands = useMemo(() => filteredCommands
     .map((command, index) => ({ command, index }))
     .filter(({ command }) => command.source === 'skill'), [filteredCommands])
-  const hasReviewFeedback = Boolean(reviewFeedback?.comments.length)
+  const hasReviewFeedback = Boolean(reviewFeedback && reviewFeedbackCommentCount(reviewFeedback) > 0)
   const hasReferences = textSelections.length > 0 || hasReviewFeedback
   const knownFileTokens = useMemo(() => Array.from(new Set([...fileSuggestions, ...referencedFiles])), [fileSuggestions, referencedFiles])
   const knownLoreTokens = useMemo(() => {

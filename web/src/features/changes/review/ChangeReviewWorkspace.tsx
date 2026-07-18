@@ -10,7 +10,6 @@ import {
   createWorkspaceChangeComment,
   deleteWorkspaceChangeComment,
   redoWorkspaceChangeGroup,
-  resolveWorkspaceChangeComment,
   reviewWorkspaceChangeGroup,
   undoWorkspaceChangeGroup,
   updateWorkspaceChangeComment,
@@ -68,7 +67,6 @@ type HistoryVariables = {
 type CommentVariables =
   | { action: 'create'; workspace: string; request: CreateWorkspaceChangeCommentRequest }
   | { action: 'update'; workspace: string; comment: WorkspaceChangeComment; body: string }
-  | { action: 'resolve'; workspace: string; comment: WorkspaceChangeComment; resolved: boolean }
   | { action: 'delete'; workspace: string; comment: WorkspaceChangeComment }
 
 /** Full-width, server-projected review surface rendered in the central editor region. */
@@ -241,8 +239,6 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
           return createWorkspaceChangeComment(variables.workspace, variables.request)
         case 'update':
           return updateWorkspaceChangeComment(variables.workspace, variables.comment.id, variables.body)
-        case 'resolve':
-          return resolveWorkspaceChangeComment(variables.workspace, variables.comment.id, variables.resolved)
         case 'delete':
           return deleteWorkspaceChangeComment(variables.workspace, variables.comment.id)
       }
@@ -441,7 +437,6 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
                 onDraftChange={(hasDraft) => handleDraftChange(file.path, hasDraft)}
                 onCreateComment={(request) => commentMutation.mutateAsync({ action: 'create', workspace, request }).then(() => undefined)}
                 onUpdateComment={(comment, body) => commentMutation.mutateAsync({ action: 'update', workspace, comment, body }).then(() => undefined)}
-                onResolveComment={(comment, resolved) => commentMutation.mutateAsync({ action: 'resolve', workspace, comment, resolved }).then(() => undefined)}
                 onDeleteComment={(comment) => commentMutation.mutateAsync({ action: 'delete', workspace, comment }).then(() => undefined)}
               />
             ))
@@ -466,7 +461,7 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
 /** Derives UI-only path/line metadata while preserving the ledger comment as source of truth. */
 export function deriveFeedbackComments(thread: ReviewThread): WorkspaceChangeComment[] {
   return thread.comments
-    .filter((comment) => !comment.deleted && !comment.resolved)
+    .filter((comment) => !comment.deleted)
     .map((comment) => {
       const candidates = thread.files.filter((file) => comment.change_set_id
         ? file.change_set_ids.includes(comment.change_set_id)

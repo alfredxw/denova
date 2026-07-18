@@ -57,7 +57,6 @@ export function useWritingChangeReview({ workspace, contextKey, ideActive, selec
   const selectReviewFeedback = useCallback((reviewThreadID: string, comments: WorkspaceChangeComment[]) => {
     const pending = comments.filter((comment) => (
       !comment.deleted
-      && !comment.resolved
       && suppressedFeedbackRef.current.get(feedbackKey(reviewThreadID, comment.id)) !== feedbackVersion(comment)
     ))
     setReviewFeedback(pending.length ? { source: 'workspace_change', reviewThreadId: reviewThreadID, comments: pending } : null)

@@ -63,20 +63,20 @@ func (s *Service) ListGroups(ctx context.Context, filter ChangeFilter) ([]Change
 func (s *Service) groupSummaryLocked(group *ChangeGroup, paths []string) ChangeGroupSummary {
 	canUndo, canRedo := s.liveHistoryCapabilities(group)
 	return ChangeGroupSummary{
-		ID:                     group.ID,
-		Origin:                 group.Origin,
-		ReviewThreadID:         reviewThreadID(group),
-		RunID:                  group.RunID,
-		SessionID:              group.SessionID,
-		CreatedAt:              group.CreatedAt,
-		ReviewStatus:           group.ReviewStatus,
-		ApplyState:             group.ApplyState,
-		CanUndo:                canUndo,
-		CanRedo:                canRedo,
-		PendingEditCount:       group.PendingEditCount,
-		UnresolvedCommentCount: group.UnresolvedCommentCount,
-		ChangeSetCount:         len(group.ChangeSets),
-		Paths:                  append([]string(nil), paths...),
+		ID:               group.ID,
+		Origin:           group.Origin,
+		ReviewThreadID:   reviewThreadID(group),
+		RunID:            group.RunID,
+		SessionID:        group.SessionID,
+		CreatedAt:        group.CreatedAt,
+		ReviewStatus:     group.ReviewStatus,
+		ApplyState:       group.ApplyState,
+		CanUndo:          canUndo,
+		CanRedo:          canRedo,
+		PendingEditCount: group.PendingEditCount,
+		CommentCount:     group.CommentCount,
+		ChangeSetCount:   len(group.ChangeSets),
+		Paths:            append([]string(nil), paths...),
 	}
 }
 

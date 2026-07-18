@@ -6,6 +6,9 @@ const (
 	ScopeUser      = "user"
 	ScopeWorkspace = "workspace"
 
+	TargetKindUser      = "user"
+	TargetKindWorkspace = "workspace"
+
 	TemplateMemoryConsolidation = "memory_consolidation"
 	TemplateReview              = "review"
 	TemplateContinueWriting     = "continue_writing"
@@ -60,6 +63,15 @@ const (
 	InboxPurposeWriteConfirmation = "write_confirmation"
 )
 
+// ExecutionTarget identifies the context in which an automation executes.
+// Every task is user-managed; workspace is an explicit target rather than an
+// implicit dependency on whichever book happens to be open.
+type ExecutionTarget struct {
+	Kind        string `json:"kind"`
+	WorkspaceID string `json:"workspace_id,omitempty"`
+	Workspace   string `json:"workspace,omitempty"`
+}
+
 const (
 	MaxRecentRuns = 20
 	MaxInboxItems = 100
@@ -68,7 +80,9 @@ const (
 // Task describes one bounded, permission-aware automation definition.
 type Task struct {
 	ID                  string                  `json:"id"`
+	CatalogID           string                  `json:"catalog_id,omitempty"`
 	Scope               string                  `json:"scope"`
+	Target              ExecutionTarget         `json:"target"`
 	Enabled             bool                    `json:"enabled"`
 	Name                string                  `json:"name"`
 	Template            string                  `json:"template"`

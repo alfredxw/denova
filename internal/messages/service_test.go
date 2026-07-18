@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseChangelogMessages(t *testing.T) {
@@ -234,5 +235,50 @@ func TestServiceListIgnoresMissingChangelog(t *testing.T) {
 	}
 	if len(list.Items) != 0 || list.UnreadCount != 0 {
 		t.Fatalf("missing changelog list = %#v", list)
+	}
+}
+
+func TestServiceMergesDynamicMessagesAndPersistsTheirReadState(t *testing.T) {
+	dir := t.TempDir()
+	service := NewServiceWithChangelog(filepath.Join(dir, "nova"), filepath.Join(dir, "missing.md"))
+	publishedAt := time.Date(2026, 7, 18, 12, 30, 0, 0, time.UTC).Format(time.RFC3339)
+	dynamic := []Message{{
+		ID:          "automation-run:run-1",
+		Type:        MessageTypeAutomation,
+		Title:       "整理人物设定",
+		Summary:     "任务已完成",
+		Body:        "已完成后台整理。",
+		PublishedAt: publishedAt,
+		TaskID:      "workspace-a:task-1",
+		RunID:       "run-1",
+		Workspace:   "/books/a",
+		Status:      "succeeded",
+	}}
+
+	initial, err := service.ListForLocaleWithMessages("zh-CN", dynamic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initial.UnreadCount != 1 || len(initial.Items) != 1 || initial.Items[0].ReadAt != nil {
+		t.Fatalf("initial dynamic list = %#v", initial)
+	}
+	if initial.Items[0].TaskID != "workspace-a:task-1" || initial.Items[0].RunID != "run-1" {
+		t.Fatalf("dynamic navigation metadata was lost: %#v", initial.Items[0])
+	}
+
+	read, err := service.MarkReadForLocaleWithMessages(dynamic[0].ID, "en-US", dynamic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.ReadAt == nil {
+		t.Fatalf("dynamic message was not marked read: %#v", read)
+	}
+
+	next, err := NewServiceWithChangelog(filepath.Join(dir, "nova"), filepath.Join(dir, "missing.md")).ListForLocaleWithMessages("zh-CN", dynamic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.UnreadCount != 0 || next.Items[0].ReadAt == nil {
+		t.Fatalf("dynamic read state was not persisted: %#v", next)
 	}
 }

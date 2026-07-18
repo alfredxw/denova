@@ -1680,6 +1680,12 @@ html[data-nova-motion="off"] *::after {
   text-decoration-thickness: 2px;
 }
 
+.editor-content .tiptap .nova-document-review-highlight:focus-visible {
+  border-radius: 0.2rem;
+  outline: 2px solid var(--nova-warning);
+  outline-offset: 2px;
+}
+
 .editor-content .tiptap .nova-document-review-widget {
   display: block;
   width: 100%;

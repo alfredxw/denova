@@ -115,9 +115,6 @@ func (h *Handlers) HandleAutomationRun(ctx context.Context, c *app.RequestContex
 }
 
 func (h *Handlers) HandleAutomationRunStream(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
 	var req struct {
 		TriggerEvidence []automation.TriggerEvidence `json:"trigger_evidence"`
 	}
@@ -151,9 +148,6 @@ func (h *Handlers) HandleAutomationRunStreamByID(ctx context.Context, c *app.Req
 }
 
 func (h *Handlers) HandleAutomationRunChatStream(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
 	var req struct {
 		Message string `json:"message"`
 	}

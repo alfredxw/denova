@@ -65,7 +65,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
 }, ref) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<DraftComment | null>(null)
-  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(() => new Set())
   const [preparing, setPreparing] = useState(false)
   const [quickAction, setQuickAction] = useState<{ top: number; left: number; range: EditorReviewRange } | null>(null)
   const preparationRequestRef = useRef(0)
@@ -119,7 +119,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
   useEffect(() => {
     preparationRequestRef.current += 1
     setDraft(null)
-    setExpandedKey(null)
+    setExpandedKeys(new Set())
     setPreparing(false)
     setQuickAction(null)
     return () => {
@@ -128,9 +128,14 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
   }, [fileName])
 
   const toggleExpandedComment = useCallback((key: string) => {
-    setExpandedKey((current) => current === key ? null : key)
+    setExpandedKeys((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
   }, [])
-  const groups = useMemo(() => buildGroups(editor, comments, draft, expandedKey), [comments, draft, editor, expandedKey])
+  const groups = useMemo(() => buildGroups(editor, comments, draft, expandedKeys), [comments, draft, editor, expandedKeys])
   const decorationLayoutKey = JSON.stringify(groups.map((group) => [
     group.key,
     group.outdated ? null : group.range.from,
@@ -159,9 +164,11 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
       enabled: true,
       decorations: reviewDecorations,
       onHighlightClick: toggleExpandedComment,
+      expandLabel: t('editor.review.expandComment'),
+      collapseLabel: t('editor.review.collapseComment'),
     }
     if (!editor.isDestroyed) editor.view.dispatch(editor.state.tr.setMeta(documentReviewPluginKey, true))
-  }, [decorationStateRef, editor, reviewDecorations, toggleExpandedComment])
+  }, [decorationStateRef, editor, reviewDecorations, t, toggleExpandedComment])
 
   useEffect(() => {
     return () => {
@@ -171,8 +178,12 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
   }, [decorationStateRef, editor])
 
   useEffect(() => {
-    if (expandedKey && !groups.some((group) => group.key === expandedKey)) setExpandedKey(null)
-  }, [expandedKey, groups])
+    const availableKeys = new Set(groups.map((group) => group.key))
+    setExpandedKeys((current) => {
+      const next = new Set([...current].filter((key) => availableKeys.has(key)))
+      return next.size === current.size ? current : next
+    })
+  }, [groups])
 
   useLayoutEffect(() => {
     if (!portalTargets.length) return
@@ -241,7 +252,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     setDraft((current) => current ? { ...current, submitting: true } : current)
     try {
       const created = await onCreate({ path: fileName, body: draft.body.trim(), anchor: draft.anchor })
-      setExpandedKey(documentCommentGroupKey(created))
+      setExpandedKeys((current) => new Set(current).add(documentCommentGroupKey(created)))
       setDraft(null)
     } catch (error) {
       console.error('创建正文审阅评论失败', { fileName, error })
@@ -300,6 +311,14 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
                   throw error
                 }
               }}
+              onCollapse={!group.outdated && !group.draft ? () => {
+                setExpandedKeys((current) => {
+                  if (!current.has(group.key)) return current
+                  const next = new Set(current)
+                  next.delete(group.key)
+                  return next
+                })
+              } : undefined}
             />
           </div>,
           target,
@@ -310,7 +329,7 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
   )
 })
 
-function buildGroups(editor: Editor, comments: DocumentReviewComment[], draft: DraftComment | null, expandedKey: string | null): AnnotationGroup[] {
+function buildGroups(editor: Editor, comments: DocumentReviewComment[], draft: DraftComment | null, expandedKeys: ReadonlySet<string>): AnnotationGroup[] {
   const groups = new Map<string, AnnotationGroup>()
   for (const comment of comments) {
     const key = documentCommentGroupKey(comment)
@@ -332,7 +351,7 @@ function buildGroups(editor: Editor, comments: DocumentReviewComment[], draft: D
       comments: [comment],
       quote: displayQuote,
       outdated: !validRange,
-      showWidget: !validRange || key === expandedKey,
+      showWidget: !validRange || expandedKeys.has(key),
       range: {
         from: validRange ? from : 0,
         to: validRange ? to : 0,

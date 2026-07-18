@@ -4,6 +4,7 @@ const common = {
   'common.baseUrl': 'Base URL',
   'common.cancel': 'Cancel',
   'common.close': 'Close',
+  'common.collapse': 'Collapse',
   'common.confirm': 'Confirm',
   'common.create': 'Create',
   'common.creating': 'Creating...',

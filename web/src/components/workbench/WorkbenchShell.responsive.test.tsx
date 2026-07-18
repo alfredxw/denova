@@ -29,6 +29,7 @@ vi.mock('@/features/messages/MessageCenter', () => ({
 
 vi.mock('@/lib/api', () => ({
   getAutomationInbox: vi.fn().mockResolvedValue([]),
+  getActiveAutomationRuns: vi.fn().mockResolvedValue([]),
 }))
 
 describe('WorkbenchShell responsive main content', () => {

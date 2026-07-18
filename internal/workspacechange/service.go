@@ -520,13 +520,13 @@ func (s *Service) refreshGroup(groupID string) {
 	group.ApplyState = aggregateChangeApplyState(group.ChangeSets)
 	group.CanUndo, group.CanRedo = s.liveHistoryCapabilities(group)
 	group.PendingEditCount = countPendingReviewEdits(group.ChangeSets)
-	group.UnresolvedCommentCount = countUnresolvedComments(group.Comments)
+	group.CommentCount = countComments(group.Comments)
 }
 
-func countUnresolvedComments(comments []Comment) int {
+func countComments(comments []Comment) int {
 	count := 0
 	for _, comment := range comments {
-		if !comment.Deleted && !comment.Resolved {
+		if !comment.Deleted {
 			count++
 		}
 	}

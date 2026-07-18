@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Check, Inbox, MessageSquareText, Play, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AutomationInboxItem, AutomationTask } from '@/lib/api'
+import { findAutomationTaskByTarget } from './automation-catalog'
 
 export function InboxPanel({
   items,
@@ -19,7 +20,7 @@ export function InboxPanel({
   onOpenRun: (runId: string) => void
 }) {
   const { t } = useTranslation()
-  const taskNames = useMemo(() => new Map(tasks.map((task) => [task.id || '', task.name])), [tasks])
+  const taskNames = useMemo(() => new Map(items.map((item) => [item.id, findAutomationTaskByTarget(tasks, item.task_id, item.workspace)?.name || item.task_id])), [items, tasks])
   if (items.length === 0) {
     return <div className="flex min-h-0 flex-1 items-center justify-center text-xs text-[var(--nova-text-faint)]">{t('automations.inbox.empty')}</div>
   }
@@ -35,7 +36,7 @@ export function InboxPanel({
                   <span className="font-medium text-[var(--nova-text)]">{item.title}</span>
                   <span className="rounded border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{inboxPurposeLabel(item.purpose || 'trigger', t)}</span>
                   <span className="rounded border border-[var(--nova-border)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-faint)]">{inboxStatusLabel(item.status, t)}</span>
-                  <span className="text-[11px] text-[var(--nova-text-faint)]">{taskNames.get(item.task_id) || item.task_id}</span>
+                  <span className="text-[11px] text-[var(--nova-text-faint)]">{taskNames.get(item.id) || item.task_id}</span>
                   <span className="ml-auto text-[11px] text-[var(--nova-text-faint)]">{new Date(item.created_at).toLocaleString()}</span>
                 </div>
                 <div className="mt-1 whitespace-pre-wrap leading-5 text-[var(--nova-text-muted)]">{item.summary}</div>

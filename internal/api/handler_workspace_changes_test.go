@@ -105,25 +105,25 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 
 	feedbackResp := performJSONRequest(t, server, http.MethodPost, "/api/chat/context-analysis", map[string]any{
 		"message": "请处理审阅意见",
-		"review_feedback": map[string]any{
+		"review_feedback": []map[string]any{{
 			"review_thread_id": "run-1",
 			"comment_ids":      []string{commentBody.Comment.ID},
 			"comments":         []map[string]string{{"body": "FORGED CLIENT COMMENT"}},
-		},
+		}},
 	})
 	if feedbackResp.Code != http.StatusOK {
 		t.Fatalf("review feedback analysis status=%d body=%s", feedbackResp.Code, feedbackResp.Body.String())
 	}
-	if body := feedbackResp.Body.String(); !strings.Contains(body, "这里的人称需要确认") || !strings.Contains(body, "durable change ledger") || strings.Contains(body, "FORGED CLIENT COMMENT") {
+	if body := feedbackResp.Body.String(); !strings.Contains(body, "这里的人称需要确认") || !strings.Contains(body, `"source":"workspace_change"`) || strings.Contains(body, "FORGED CLIENT COMMENT") {
 		t.Fatalf("review feedback was not resolved exclusively from the ledger: %s", body)
 	}
 
 	forgedFeedbackResp := performJSONRequest(t, server, http.MethodPost, "/api/chat/context-analysis", map[string]any{
 		"message": "请处理审阅意见",
-		"review_feedback": map[string]any{
+		"review_feedback": []map[string]any{{
 			"review_thread_id": "run-1",
 			"comment_ids":      []string{"forged-comment"},
-		},
+		}},
 	})
 	if forgedFeedbackResp.Code != http.StatusNotFound || !strings.Contains(forgedFeedbackResp.Body.String(), `"code":"not_found"`) {
 		t.Fatalf("forged review feedback status=%d body=%s", forgedFeedbackResp.Code, forgedFeedbackResp.Body.String())
@@ -134,12 +134,6 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 	})
 	if updateCommentResp.Code != http.StatusOK {
 		t.Fatalf("update comment status=%d body=%s", updateCommentResp.Code, updateCommentResp.Body.String())
-	}
-	resolveCommentResp := performWorkspaceChangeRequest(t, server, http.MethodPost, "/api/workspace/change-comments/"+commentBody.Comment.ID+"/resolve", workspace, map[string]any{
-		"resolved": true,
-	})
-	if resolveCommentResp.Code != http.StatusOK {
-		t.Fatalf("resolve comment status=%d body=%s", resolveCommentResp.Code, resolveCommentResp.Body.String())
 	}
 	deleteCommentResp := performWorkspaceChangeRequest(t, server, http.MethodDelete, "/api/workspace/change-comments/"+commentBody.Comment.ID, workspace, nil)
 	if deleteCommentResp.Code != http.StatusOK {
@@ -171,6 +165,22 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 	content, err = application.BookService().ReadFile("chapters/ch01.md")
 	if err != nil || content != "第一段\nAgent 第二段" {
 		t.Fatalf("redo content=%q err=%v", content, err)
+	}
+}
+
+func TestWorkspaceChangeResolveCommentRouteIsRemoved(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	response := performWorkspaceChangeRequest(
+		t,
+		server,
+		http.MethodPost,
+		"/api/workspace/change-comments/comment-1/resolve",
+		application.Workspace(),
+		map[string]any{"resolved": true},
+	)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("removed resolve comment route status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

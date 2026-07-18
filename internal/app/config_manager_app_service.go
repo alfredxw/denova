@@ -48,6 +48,11 @@ func (s *ConfigManagerAppService) StartTask(req ConfigManagerRequest) *Task {
 	}
 	runtimeCfg := *cfg
 	runtimeCfg.Workspace = workspace
+	if a.bookRegistry != nil {
+		for _, record := range a.bookRegistry.List() {
+			runtimeCfg.AutomationWorkspaces = append(runtimeCfg.AutomationWorkspaces, record.Path)
+		}
+	}
 	if layered, err := config.LoadLayeredWithStartupConfig(runtimeCfg.NovaDir, workspace); err == nil {
 		applyLayeredSettingsToConfig(&runtimeCfg, layered)
 	} else {

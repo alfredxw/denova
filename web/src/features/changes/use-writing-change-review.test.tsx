@@ -29,7 +29,7 @@ describe('useWritingChangeReview', () => {
     expect(result.current.activeReviewThreadID).toBe('')
   })
 
-  it('selects unresolved comments for the next Agent turn and opens Agent when hidden', () => {
+  it('selects active comments for the next Agent turn and opens Agent when hidden', () => {
     const showAgent = vi.fn()
     const { result } = renderHook(() => useWritingChangeReview({
       workspace: '/book',
@@ -43,7 +43,7 @@ describe('useWritingChangeReview', () => {
 
     act(() => result.current.selectReviewFeedback('thread-1', [
       { id: 'pending', group_id: 'group-1', body: 'revise this' },
-      { id: 'resolved', group_id: 'group-1', body: 'done', resolved: true },
+      { id: 'deleted', group_id: 'group-1', body: 'done', deleted: true },
     ]))
     expect(result.current.reviewFeedback?.comments.map((comment) => comment.id)).toEqual(['pending'])
     expect(showAgent).toHaveBeenCalledTimes(1)

@@ -128,16 +128,6 @@ export async function deleteWorkspaceChangeComment(workspace: string, id: string
   return data as WorkspaceChangeComment
 }
 
-export async function resolveWorkspaceChangeComment(workspace: string, id: string, resolved: boolean): Promise<WorkspaceChangeComment> {
-  const data = await requestJSON<{ workspace?: string; comment?: WorkspaceChangeComment } | WorkspaceChangeComment>(`/api/workspace/change-comments/${encodeURIComponent(id)}/resolve`, {
-    method: 'POST',
-    headers: workspaceChangeHeaders(workspace, true),
-    body: JSON.stringify({ resolved }),
-  })
-  if ('comment' in data && data.comment) return { ...data.comment, workspace: data.workspace }
-  return data as WorkspaceChangeComment
-}
-
 function workspaceChangeHeaders(workspace: string, includeJSON = false): HeadersInit {
   return {
     ...(includeJSON ? jsonHeaders : {}),

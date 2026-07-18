@@ -4,6 +4,7 @@ const common = {
   'common.baseUrl': 'Base URL',
   'common.cancel': '取消',
   'common.close': '关闭',
+  'common.collapse': '折叠',
   'common.confirm': '确认',
   'common.create': '创建',
   'common.creating': '创建中...',

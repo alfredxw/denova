@@ -207,30 +207,6 @@ func (h *Handlers) HandleWorkspaceChangeCommentUpdate(ctx context.Context, c *ap
 	writeJSON(c, consts.StatusOK, map[string]any{"workspace": workspace, "comment": comment})
 }
 
-func (h *Handlers) HandleWorkspaceChangeCommentResolve(ctx context.Context, c *app.RequestContext) {
-	if !h.requireWorkspace(c) {
-		return
-	}
-	req := workspacechange.ResolveCommentRequest{ID: c.Param("id"), Resolved: true}
-	if len(c.Request.Body()) > 0 {
-		if err := c.BindJSON(&req); err != nil {
-			writeError(c, consts.StatusBadRequest, err.Error())
-			return
-		}
-		req.ID = c.Param("id")
-	}
-	var comment workspacechange.Comment
-	workspace, ok := h.withWorkspaceChangeService(c, func(service *workspacechange.Service) error {
-		var err error
-		comment, err = service.ResolveComment(ctx, req)
-		return err
-	})
-	if !ok {
-		return
-	}
-	writeJSON(c, consts.StatusOK, map[string]any{"workspace": workspace, "comment": comment})
-}
-
 func (h *Handlers) HandleWorkspaceChangeCommentDelete(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return

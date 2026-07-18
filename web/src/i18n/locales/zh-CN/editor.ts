@@ -57,6 +57,8 @@ const editor = {
   'editor.review.addComment': '添加评论',
   'editor.review.commentSelection': '评论选中内容 (⌘⇧L)',
   'editor.review.commentCurrentLine': '评论当前行',
+  'editor.review.expandComment': '展开正文评论',
+  'editor.review.collapseComment': '折叠正文评论',
   'editor.review.outdated': '原文已变化',
   'editor.review.prepareFailed': '无法添加评论，请确认正文已保存且未被外部修改后重试',
   'editor.review.createFailed': '添加正文评论失败',

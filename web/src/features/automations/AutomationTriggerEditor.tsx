@@ -8,20 +8,23 @@ import type {
   AutomationTriggerDefinition,
   AutomationTriggerType,
 } from '@/lib/api'
+import { defaultScheduleTrigger } from './automation-trigger'
 
 const fieldCls = 'nova-field min-h-7 rounded-[var(--nova-radius)] border px-2.5 py-1.5 outline-none placeholder:text-[var(--nova-text-faint)] focus:border-[var(--nova-field-focus-border)] focus:bg-[var(--nova-surface-3)]'
 
-const triggerTypes: AutomationTriggerType[] = ['schedule', 'chapter_batch', 'semantic']
+const workspaceTriggerTypes: AutomationTriggerType[] = ['schedule', 'chapter_batch', 'semantic']
 
 export function TriggerEditor({ task, onChange }: { task: AutomationTask; onChange: (triggers: AutomationTriggerDefinition[]) => void }) {
   const { t } = useTranslation()
   const triggers = task.triggers?.length ? task.triggers : [defaultScheduleTrigger(task.schedule)]
-  const [newType, setNewType] = useState<AutomationTriggerType>('semantic')
+  const triggerTypes = task.target?.kind === 'user' ? ['schedule'] as AutomationTriggerType[] : workspaceTriggerTypes
+  const [newType, setNewType] = useState<AutomationTriggerType>('schedule')
+  const selectedNewType = triggerTypes.includes(newType) ? newType : triggerTypes[0]
   const updateTrigger = (id: string, patch: Partial<AutomationTriggerDefinition>) => {
     onChange(triggers.map((trigger) => trigger.id === id ? normalizeDraftTrigger({ ...trigger, ...patch }, task.schedule) : trigger))
   }
   const removeTrigger = (id: string) => onChange(triggers.filter((trigger) => trigger.id !== id))
-  const addTrigger = () => onChange([...triggers, newTrigger(newType, task.schedule)])
+  const addTrigger = () => onChange([...triggers, newTrigger(selectedNewType, task.schedule)])
   return (
     <div className="space-y-3">
       {triggers.map((trigger) => {
@@ -86,7 +89,7 @@ export function TriggerEditor({ task, onChange }: { task: AutomationTask; onChan
         )
       })}
       <div className="flex items-center gap-2">
-        <select value={newType} onChange={(e) => setNewType(e.target.value as AutomationTriggerType)} className={fieldCls}>
+        <select value={selectedNewType} onChange={(e) => setNewType(e.target.value as AutomationTriggerType)} className={fieldCls}>
           {triggerTypes.map((type) => <option key={type} value={type}>{triggerTypeLabel(type, t)}</option>)}
         </select>
         <button type="button" onClick={addTrigger} className="nova-nav-item inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-active)] px-3 py-1.5 text-[var(--nova-text)]">
@@ -119,16 +122,6 @@ function ScheduleEditor({ schedule, onChange }: { schedule: AutomationTask['sche
       {schedule.kind !== 'manual' && <NumberInput label={t('automations.schedule.minute')} value={schedule.minute} min={0} max={59} onChange={(v) => patch({ minute: v })} />}
     </div>
   )
-}
-
-export function defaultScheduleTrigger(schedule: AutomationTask['schedule']): AutomationTriggerDefinition {
-  return {
-    id: 'schedule',
-    type: 'schedule',
-    enabled: schedule.kind !== 'manual',
-    notify_policy: 'silent',
-    schedule,
-  }
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) {

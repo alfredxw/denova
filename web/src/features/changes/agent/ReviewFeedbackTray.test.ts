@@ -3,7 +3,7 @@ import { MAX_REVIEW_FEEDBACK_CONTEXT_BYTES, reviewFeedbackContextBytes } from '.
 
 describe('reviewFeedbackContextBytes', () => {
   it('accounts for UTF-8 and rejects payloads beyond the server context budget', () => {
-    const bytes = reviewFeedbackContextBytes({
+    const bytes = reviewFeedbackContextBytes([{
       reviewThreadId: 'thread-1',
       comments: [{
         id: 'comment-1',
@@ -11,7 +11,7 @@ describe('reviewFeedbackContextBytes', () => {
         body: '😀'.repeat(70_000),
         review_path: 'chapters/ch01.md',
       }],
-    })
+    }])
     expect(bytes).toBeGreaterThan(MAX_REVIEW_FEEDBACK_CONTEXT_BYTES)
   })
 })

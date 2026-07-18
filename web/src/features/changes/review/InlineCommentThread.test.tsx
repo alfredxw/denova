@@ -13,7 +13,7 @@ describe('InlineCommentThread', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '修改评论' }))
+    await user.click(screen.getByRole('button', { name: '编辑' }))
     expect(screen.getByRole('textbox')).toHaveClass(
       'nova-review-inline-editor',
       'rounded-none',
@@ -56,7 +56,7 @@ describe('InlineCommentThread', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '修改评论' }))
+    await user.click(screen.getByRole('button', { name: '编辑' }))
 
     await waitFor(() => expect(focus).toHaveBeenCalledWith({ preventScroll: true }))
 
@@ -87,7 +87,7 @@ describe('InlineCommentThread', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '修改评论' }))
+    await user.click(screen.getByRole('button', { name: '编辑' }))
     const textbox = screen.getByRole('textbox')
     await user.clear(textbox)
     await user.type(textbox, '不要丢失这段意见')
@@ -103,7 +103,7 @@ describe('InlineCommentThread', () => {
     const onUpdate = vi.fn().mockResolvedValue(undefined)
     render(<InlineCommentThread comments={[comment]} onUpdate={onUpdate} />)
 
-    await user.click(screen.getByRole('button', { name: '修改评论' }))
+    await user.click(screen.getByRole('button', { name: '编辑' }))
     const textbox = screen.getByRole('textbox')
     await user.clear(textbox)
     await user.type(textbox, '精简评论')
@@ -124,13 +124,34 @@ describe('InlineCommentThread', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '修改评论' }))
+    await user.click(screen.getByRole('button', { name: '编辑' }))
     expect(onEditingChange).toHaveBeenLastCalledWith(true)
     await user.click(screen.getByRole('button', { name: '取消' }))
     expect(onEditingChange).toHaveBeenLastCalledWith(false)
 
-    await user.click(screen.getByRole('button', { name: '修改评论' }))
+    await user.click(screen.getByRole('button', { name: '编辑' }))
     view.unmount()
     expect(onEditingChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('labels the comment count and exposes explicit edit, delete, and collapse actions', async () => {
+    const user = userEvent.setup()
+    const onDelete = vi.fn()
+    const onCollapse = vi.fn()
+    render(
+      <InlineCommentThread
+        comments={[{ id: 'comment-1', group_id: 'group-1', body: '原评论' }]}
+        onUpdate={vi.fn()}
+        onDelete={onDelete}
+        onCollapse={onCollapse}
+      />,
+    )
+
+    expect(screen.getByText('1 条评论')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '编辑' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '删除' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '解决评论' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '折叠' }))
+    expect(onCollapse).toHaveBeenCalledTimes(1)
   })
 })

@@ -39,7 +39,6 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.POST("/workspace/change-groups/:id/redo", apiHandlers.HandleWorkspaceChangeRedo)
 		api.POST("/workspace/change-comments", apiHandlers.HandleWorkspaceChangeCommentCreate)
 		api.PATCH("/workspace/change-comments/:id", apiHandlers.HandleWorkspaceChangeCommentUpdate)
-		api.POST("/workspace/change-comments/:id/resolve", apiHandlers.HandleWorkspaceChangeCommentResolve)
 		api.DELETE("/workspace/change-comments/:id", apiHandlers.HandleWorkspaceChangeCommentDelete)
 		api.GET("/workspace/document-review", apiHandlers.HandleDocumentReview)
 		api.POST("/workspace/document-comments", apiHandlers.HandleDocumentCommentCreate)

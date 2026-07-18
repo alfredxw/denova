@@ -233,10 +233,10 @@ describe('AgentPanel', () => {
       onSend: handleSend,
       onReviewFeedbackSubmitted: handleSubmitted,
       onReviewFeedbackSubmissionFailed: handleSubmissionFailed,
-      reviewFeedback: {
+      reviewFeedback: [{
         reviewThreadId: 'thread-1',
         comments: [{ id: 'comment-1', group_id: 'group-1', body: '把这里写得更克制' }],
-      },
+      }],
     })
 
     await user.click(screen.getByRole('button', { name: '发送' }))
@@ -249,20 +249,55 @@ describe('AgentPanel', () => {
     expect(handleSubmissionFailed).toHaveBeenCalledTimes(1)
   })
 
+  it('同时提交正文与 Diff 审阅意见并保留各自来源', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn().mockResolvedValue(true)
+    renderAgentPanel({
+      onSend: handleSend,
+      onReviewFeedbackRemove: vi.fn(),
+      reviewFeedback: [
+        {
+          source: 'workspace_change',
+          reviewThreadId: 'diff-thread',
+          comments: [{ id: 'diff-comment', body: '调整 Diff 里的转场', review_path: 'chapters/ch01.md' }],
+        },
+        {
+          source: 'document',
+          reviewThreadId: 'document-thread',
+          comments: [{ id: 'document-comment', body: '正文这里需要更克制', path: 'chapters/ch02.md' }],
+        },
+      ],
+    })
+
+    expect(screen.getByTitle('调整 Diff 里的转场')).toHaveTextContent('Diff · chapters/ch01.md')
+    expect(screen.getByTitle('正文这里需要更克制')).toHaveTextContent('正文 · chapters/ch02.md')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    await waitFor(() => expect(handleSend).toHaveBeenCalledWith(
+      '请处理这 2 条审阅意见。',
+      expect.objectContaining({
+        reviewFeedback: [
+          { source: 'workspace_change', reviewThreadId: 'diff-thread', commentIds: ['diff-comment'] },
+          { source: 'document', reviewThreadId: 'document-thread', commentIds: ['document-comment'] },
+        ],
+      }),
+    ))
+  })
+
   it('在超过单次评论上限时保留反馈并阻止发送', async () => {
     const user = userEvent.setup()
     const handleSend = vi.fn().mockResolvedValue(true)
     renderAgentPanel({
       onSend: handleSend,
       onReviewFeedbackRemove: vi.fn(),
-      reviewFeedback: {
+      reviewFeedback: [{
         reviewThreadId: 'thread-1',
         comments: Array.from({ length: 257 }, (_, index) => ({
           id: `comment-${index}`,
           group_id: 'group-1',
           body: `意见 ${index}`,
         })),
-      },
+      }],
     })
 
     expect(screen.getByRole('alert')).toHaveTextContent('一次最多提交 256 条审阅意见')

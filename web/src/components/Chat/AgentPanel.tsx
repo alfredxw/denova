@@ -27,7 +27,7 @@ import {
 import { formatPlanDiscussionMessage } from '@/lib/plan-mode'
 import { useWorkspaceChangeGroups } from '@/features/changes/use-change-review'
 import { AgentChangeSummaryCard } from '@/features/changes/agent/AgentChangeSummaryCard'
-import { MAX_REVIEW_FEEDBACK_COMMENT_COUNT, MAX_REVIEW_FEEDBACK_CONTEXT_BYTES, reviewFeedbackContextBytes, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import { MAX_REVIEW_FEEDBACK_COMMENT_COUNT, MAX_REVIEW_FEEDBACK_CONTEXT_BYTES, reviewFeedbackCommentCount, reviewFeedbackContextBytes, type ReviewFeedbackBatch, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { toast } from 'sonner'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 
@@ -74,10 +74,10 @@ interface AgentPanelProps {
   onSubmitPlanQuestion: (ref: AgentPartRef, content: string, preview: string) => void
   onApproveProposedPlan: (ref: AgentPartRef) => void
   onExitPlanMode: () => void
-  reviewFeedback?: ReviewFeedbackSelection | null
-  onReviewFeedbackRemove?: (commentID: string) => void
-  onReviewFeedbackSubmitted?: (feedback: ReviewFeedbackSelection) => void
-  onReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackSelection) => void
+  reviewFeedback?: ReviewFeedbackBatch | null
+  onReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
+  onReviewFeedbackSubmitted?: (feedback: ReviewFeedbackBatch) => void
+  onReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackBatch) => void
   onOpenChangeReview?: (reviewThreadID: string, groupID: string) => void
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
   onClose: () => void
@@ -287,32 +287,33 @@ export function AgentPanel({
   ), [activeRunID, changeGroupsQuery.data, isStreaming, onOpenChangeReview, onWorkspaceChanged, workspace])
 
   const sendWithWritingSkill = async (message: string) => {
-    const feedbackSelection = reviewFeedback?.comments.length ? reviewFeedback : null
-    const feedback = reviewFeedback?.comments.length ? {
-      source: reviewFeedback.source || 'workspace_change' as const,
-      reviewThreadId: reviewFeedback.reviewThreadId,
-      commentIds: reviewFeedback.comments.map((comment) => comment.id),
-    } : undefined
+    const feedbackSelection = reviewFeedback?.filter((selection) => selection.comments.length) ?? []
+    const feedback = feedbackSelection.length ? feedbackSelection.map((selection) => ({
+      source: selection.source || 'workspace_change' as const,
+      reviewThreadId: selection.reviewThreadId,
+      commentIds: selection.comments.map((comment) => comment.id),
+    })) : undefined
+    const feedbackCount = reviewFeedbackCommentCount(feedbackSelection)
     const effectiveMessage = message.trim() || (feedback
-      ? t('changes.feedback.defaultMessage', { count: feedback.commentIds.length })
+      ? t('changes.feedback.defaultMessage', { count: feedbackCount })
       : message)
-    if (feedback && feedback.commentIds.length > MAX_REVIEW_FEEDBACK_COMMENT_COUNT) {
+    if (feedbackCount > MAX_REVIEW_FEEDBACK_COMMENT_COUNT) {
       toast.error(t('changes.feedback.tooMany', { maximum: MAX_REVIEW_FEEDBACK_COMMENT_COUNT }))
       return false
     }
-    if (reviewFeedback && reviewFeedbackContextBytes(reviewFeedback) > MAX_REVIEW_FEEDBACK_CONTEXT_BYTES) {
+    if (feedbackSelection.length && reviewFeedbackContextBytes(feedbackSelection) > MAX_REVIEW_FEEDBACK_CONTEXT_BYTES) {
       toast.error(t('changes.feedback.tooLarge'))
       return false
     }
     let submissionStarted = false
     let submissionRestored = false
     const handleSubmissionStart = () => {
-      if (!feedbackSelection || submissionStarted) return
+      if (!feedbackSelection.length || submissionStarted) return
       submissionStarted = true
       onReviewFeedbackSubmitted?.(feedbackSelection)
     }
     const handleSubmissionError = () => {
-      if (!feedbackSelection || !submissionStarted || submissionRestored) return
+      if (!feedbackSelection.length || !submissionStarted || submissionRestored) return
       submissionRestored = true
       onReviewFeedbackSubmissionFailed?.(feedbackSelection)
     }
@@ -322,12 +323,12 @@ export function AgentPanel({
       imagePresetId,
       tellerId: ideTellerId,
       reviewFeedback: feedback,
-      reviewFeedbackDisplay: feedbackSelection || undefined,
+      reviewFeedbackDisplay: feedbackSelection.length ? { comments: feedbackSelection.flatMap((selection) => selection.comments) } : undefined,
       loreReferenceLabels,
       onSubmissionStart: handleSubmissionStart,
       onSubmissionError: handleSubmissionError,
     })
-    if (feedbackSelection && accepted && !submissionStarted) handleSubmissionStart()
+    if (feedbackSelection.length && accepted && !submissionStarted) handleSubmissionStart()
     if (!accepted) handleSubmissionError()
     return accepted
   }

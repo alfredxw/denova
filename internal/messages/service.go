@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -36,7 +37,13 @@ func (s *Service) List() (ListResult, error) {
 }
 
 func (s *Service) ListForLocale(locale string) (ListResult, error) {
-	items, err := s.changelogMessages(locale)
+	return s.ListForLocaleWithMessages(locale, nil)
+}
+
+// ListForLocaleWithMessages merges bounded, caller-derived notices with
+// product changelog messages while keeping read state in one user-level store.
+func (s *Service) ListForLocaleWithMessages(locale string, additional []Message) (ListResult, error) {
+	items, err := s.messages(locale, additional)
 	if err != nil {
 		return ListResult{}, err
 	}
@@ -55,11 +62,15 @@ func (s *Service) MarkRead(id string) (Message, error) {
 }
 
 func (s *Service) MarkReadForLocale(id, locale string) (Message, error) {
+	return s.MarkReadForLocaleWithMessages(id, locale, nil)
+}
+
+func (s *Service) MarkReadForLocaleWithMessages(id, locale string, additional []Message) (Message, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return Message{}, fmt.Errorf("message id is required")
 	}
-	items, err := s.changelogMessages(locale)
+	items, err := s.messages(locale, additional)
 	if err != nil {
 		return Message{}, err
 	}
@@ -97,7 +108,11 @@ func (s *Service) MarkAllRead() (ListResult, error) {
 }
 
 func (s *Service) MarkAllReadForLocale(locale string) (ListResult, error) {
-	items, err := s.changelogMessages(locale)
+	return s.MarkAllReadForLocaleWithMessages(locale, nil)
+}
+
+func (s *Service) MarkAllReadForLocaleWithMessages(locale string, additional []Message) (ListResult, error) {
+	items, err := s.messages(locale, additional)
 	if err != nil {
 		return ListResult{}, err
 	}
@@ -121,6 +136,40 @@ func (s *Service) MarkAllReadForLocale(locale string) (ListResult, error) {
 	}
 	applyReadState(items, state)
 	return ListResult{Items: items, UnreadCount: 0}, nil
+}
+
+func (s *Service) messages(locale string, additional []Message) ([]Message, error) {
+	items, err := s.changelogMessages(locale)
+	if err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{}, len(items)+len(additional))
+	merged := make([]Message, 0, len(items)+len(additional))
+	for _, item := range append(items, additional...) {
+		item.ID = strings.TrimSpace(item.ID)
+		if item.ID == "" {
+			continue
+		}
+		if _, exists := seen[item.ID]; exists {
+			continue
+		}
+		seen[item.ID] = struct{}{}
+		item.ReadAt = nil
+		merged = append(merged, item)
+	}
+	sort.SliceStable(merged, func(i, j int) bool {
+		return messagePublishedTime(merged[i].PublishedAt).After(messagePublishedTime(merged[j].PublishedAt))
+	})
+	return merged, nil
+}
+
+func messagePublishedTime(value string) time.Time {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, time.DateOnly} {
+		if parsed, err := time.Parse(layout, strings.TrimSpace(value)); err == nil {
+			return parsed
+		}
+	}
+	return time.Time{}
 }
 
 func applyReadState(items []Message, state map[string]time.Time) int {

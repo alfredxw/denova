@@ -7,7 +7,7 @@ import (
 )
 
 func userMessageReferencesForRequest(req ChatRequest) []session.UserMessageReference {
-	result := make([]session.UserMessageReference, 0, len(req.References)+len(req.LoreReferences)+len(req.StyleScenes)+len(req.Selections)+len(req.ResolvedReviewFeedback.Comments))
+	result := make([]session.UserMessageReference, 0, len(req.References)+len(req.LoreReferences)+len(req.StyleScenes)+len(req.Selections)+req.ResolvedReviewFeedback.CommentCount())
 	for _, path := range req.References {
 		if label := strings.TrimSpace(path); label != "" {
 			result = append(result, session.UserMessageReference{Kind: "file", Label: label})
@@ -36,20 +36,22 @@ func userMessageReferencesForRequest(req ChatRequest) []session.UserMessageRefer
 			EndLine:   selection.EndLine,
 		})
 	}
-	for _, comment := range req.ResolvedReviewFeedback.Comments {
-		label := strings.TrimSpace(comment.Path)
-		if label == "" {
-			label = strings.TrimSpace(comment.ID)
+	for _, feedback := range req.ResolvedReviewFeedback {
+		for _, comment := range feedback.Comments {
+			label := strings.TrimSpace(comment.Path)
+			if label == "" {
+				label = strings.TrimSpace(comment.ID)
+			}
+			if label == "" {
+				continue
+			}
+			result = append(result, session.UserMessageReference{
+				Kind:   "review_comment",
+				ID:     strings.TrimSpace(comment.ID),
+				Label:  label,
+				Detail: comment.Body,
+			})
 		}
-		if label == "" {
-			continue
-		}
-		result = append(result, session.UserMessageReference{
-			Kind:   "review_comment",
-			ID:     strings.TrimSpace(comment.ID),
-			Label:  label,
-			Detail: comment.Body,
-		})
 	}
 	return result
 }

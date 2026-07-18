@@ -33,17 +33,17 @@ func TestReviewThreadAggregatesRunsFiltersCommentsAndKeepsUndoBoundary(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	unresolved, err := service.AddComment(ctx, AddCommentRequest{
+	pending, err := service.AddComment(ctx, AddCommentRequest{
 		GroupID: "group-one", ChangeSetID: first.ID, Body: "Tighten the opening.",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, err := service.AddComment(ctx, AddCommentRequest{GroupID: "group-two", Body: "Already handled."})
+	deleted, err := service.AddComment(ctx, AddCommentRequest{GroupID: "group-two", Body: "Already handled."})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ResolveComment(ctx, ResolveCommentRequest{ID: resolved.ID, Resolved: true}); err != nil {
+	if _, err := service.DeleteComment(ctx, DeleteCommentRequest{ID: deleted.ID}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -54,7 +54,7 @@ func TestReviewThreadAggregatesRunsFiltersCommentsAndKeepsUndoBoundary(t *testin
 	if thread.ID != "thread-one" || len(thread.Groups) != 2 || thread.LatestGroupID != "group-two" {
 		t.Fatalf("unexpected thread identity: %#v", thread)
 	}
-	if thread.PendingEditCount != 2 || thread.UnresolvedCommentCount != 1 || len(thread.Comments) != 2 {
+	if thread.PendingEditCount != 2 || thread.CommentCount != 1 || len(thread.Comments) != 2 {
 		t.Fatalf("unexpected thread counts: %#v", thread)
 	}
 	if len(thread.Files) != 1 {
@@ -103,16 +103,16 @@ func TestReviewThreadAggregatesRunsFiltersCommentsAndKeepsUndoBoundary(t *testin
 		}
 	}
 	groupOne, err := service.GetGroup(ctx, "group-one")
-	if err != nil || groupOne.UnresolvedCommentCount != 2 {
-		t.Fatalf("group comment count = %d, err=%v", groupOne.UnresolvedCommentCount, err)
+	if err != nil || groupOne.CommentCount != 2 {
+		t.Fatalf("group comment count = %d, err=%v", groupOne.CommentCount, err)
 	}
 
-	feedback, err := service.GetReviewComments(ctx, "thread-one", "session-one", []string{unresolved.ID, unresolved.ID})
-	if err != nil || len(feedback) != 1 || feedback[0].Path != path || feedback[0].Comment.Body != unresolved.Body {
+	feedback, err := service.GetReviewComments(ctx, "thread-one", "session-one", []string{pending.ID, pending.ID})
+	if err != nil || len(feedback) != 1 || feedback[0].Path != path || feedback[0].Comment.Body != pending.Body {
 		t.Fatalf("feedback = %#v, err=%v", feedback, err)
 	}
-	if _, err := service.GetReviewComments(ctx, "thread-one", "session-one", []string{resolved.ID}); err == nil {
-		t.Fatal("resolved comment was accepted as feedback")
+	if _, err := service.GetReviewComments(ctx, "thread-one", "session-one", []string{deleted.ID}); err == nil {
+		t.Fatal("deleted comment was accepted as feedback")
 	}
 	otherPath := "chapters/other.md"
 	writeTestFile(t, service.workspace, otherPath, "other")
@@ -132,7 +132,7 @@ func TestReviewThreadAggregatesRunsFiltersCommentsAndKeepsUndoBoundary(t *testin
 	if _, err := service.GetReviewComments(ctx, "thread-one", "session-one", []string{otherComment.ID}); err == nil {
 		t.Fatal("comment from another review thread was accepted as feedback")
 	}
-	if _, err := service.GetReviewComments(ctx, "thread-one", "session-two", []string{unresolved.ID}); err == nil {
+	if _, err := service.GetReviewComments(ctx, "thread-one", "session-two", []string{pending.ID}); err == nil {
 		t.Fatal("comment from another session was accepted as feedback")
 	}
 

@@ -147,37 +147,37 @@ type ChangeFilter struct {
 }
 
 type ChangeGroupSummary struct {
-	ID                     string    `json:"id"`
-	Origin                 string    `json:"origin"`
-	ReviewThreadID         string    `json:"review_thread_id"`
-	RunID                  string    `json:"run_id,omitempty"`
-	SessionID              string    `json:"session_id,omitempty"`
-	CreatedAt              time.Time `json:"created_at"`
-	ReviewStatus           string    `json:"review_status"`
-	ApplyState             string    `json:"apply_state"`
-	CanUndo                bool      `json:"can_undo"`
-	CanRedo                bool      `json:"can_redo"`
-	PendingEditCount       int       `json:"pending_edit_count"`
-	UnresolvedCommentCount int       `json:"unresolved_comment_count"`
-	ChangeSetCount         int       `json:"change_set_count"`
-	Paths                  []string  `json:"paths,omitempty"`
+	ID               string    `json:"id"`
+	Origin           string    `json:"origin"`
+	ReviewThreadID   string    `json:"review_thread_id"`
+	RunID            string    `json:"run_id,omitempty"`
+	SessionID        string    `json:"session_id,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+	ReviewStatus     string    `json:"review_status"`
+	ApplyState       string    `json:"apply_state"`
+	CanUndo          bool      `json:"can_undo"`
+	CanRedo          bool      `json:"can_redo"`
+	PendingEditCount int       `json:"pending_edit_count"`
+	CommentCount     int       `json:"comment_count"`
+	ChangeSetCount   int       `json:"change_set_count"`
+	Paths            []string  `json:"paths,omitempty"`
 }
 
 type ChangeGroup struct {
-	ID                     string      `json:"id"`
-	Origin                 string      `json:"origin"`
-	ReviewThreadID         string      `json:"review_thread_id"`
-	RunID                  string      `json:"run_id,omitempty"`
-	SessionID              string      `json:"session_id,omitempty"`
-	CreatedAt              time.Time   `json:"created_at"`
-	ReviewStatus           string      `json:"review_status"`
-	ApplyState             string      `json:"apply_state"`
-	CanUndo                bool        `json:"can_undo"`
-	CanRedo                bool        `json:"can_redo"`
-	PendingEditCount       int         `json:"pending_edit_count"`
-	UnresolvedCommentCount int         `json:"unresolved_comment_count"`
-	ChangeSets             []ChangeSet `json:"change_sets"`
-	Comments               []Comment   `json:"comments"`
+	ID               string      `json:"id"`
+	Origin           string      `json:"origin"`
+	ReviewThreadID   string      `json:"review_thread_id"`
+	RunID            string      `json:"run_id,omitempty"`
+	SessionID        string      `json:"session_id,omitempty"`
+	CreatedAt        time.Time   `json:"created_at"`
+	ReviewStatus     string      `json:"review_status"`
+	ApplyState       string      `json:"apply_state"`
+	CanUndo          bool        `json:"can_undo"`
+	CanRedo          bool        `json:"can_redo"`
+	PendingEditCount int         `json:"pending_edit_count"`
+	CommentCount     int         `json:"comment_count"`
+	ChangeSets       []ChangeSet `json:"change_sets"`
+	Comments         []Comment   `json:"comments"`
 }
 
 const (
@@ -189,17 +189,17 @@ const (
 // the independent history/undo boundary; the thread only composes their review
 // presentation and feedback.
 type ReviewThread struct {
-	ID                     string               `json:"id"`
-	CreatedAt              time.Time            `json:"created_at"`
-	UpdatedAt              time.Time            `json:"updated_at"`
-	LatestGroupID          string               `json:"latest_group_id"`
-	ReviewStatus           string               `json:"review_status"`
-	ApplyState             string               `json:"apply_state"`
-	PendingEditCount       int                  `json:"pending_edit_count"`
-	UnresolvedCommentCount int                  `json:"unresolved_comment_count"`
-	Groups                 []ChangeGroupSummary `json:"groups"`
-	Comments               []Comment            `json:"comments"`
-	Files                  []ReviewThreadFile   `json:"files"`
+	ID               string               `json:"id"`
+	CreatedAt        time.Time            `json:"created_at"`
+	UpdatedAt        time.Time            `json:"updated_at"`
+	LatestGroupID    string               `json:"latest_group_id"`
+	ReviewStatus     string               `json:"review_status"`
+	ApplyState       string               `json:"apply_state"`
+	PendingEditCount int                  `json:"pending_edit_count"`
+	CommentCount     int                  `json:"comment_count"`
+	Groups           []ChangeGroupSummary `json:"groups"`
+	Comments         []Comment            `json:"comments"`
+	Files            []ReviewThreadFile   `json:"files"`
 }
 
 // ReviewThreadFile exposes the latest contiguous cumulative segment for one
@@ -283,7 +283,6 @@ type Comment struct {
 	Author      string        `json:"author,omitempty"`
 	CreatedAt   time.Time     `json:"created_at"`
 	UpdatedAt   time.Time     `json:"updated_at"`
-	Resolved    bool          `json:"resolved,omitempty"`
 	Deleted     bool          `json:"deleted,omitempty"`
 	Anchor      CommentAnchor `json:"anchor,omitempty"`
 }
@@ -303,11 +302,6 @@ type UpdateCommentRequest struct {
 	Body   string         `json:"body"`
 	Author string         `json:"author,omitempty"`
 	Anchor *CommentAnchor `json:"anchor,omitempty"`
-}
-
-type ResolveCommentRequest struct {
-	ID       string `json:"id"`
-	Resolved bool   `json:"resolved"`
 }
 
 type DeleteCommentRequest struct {

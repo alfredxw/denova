@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"denova/internal/agent"
@@ -21,51 +22,52 @@ func (s *ChatAppService) resolveReviewFeedback(runtime ideChatRuntime, req *agen
 	if req == nil {
 		return nil
 	}
-	threadID := strings.TrimSpace(req.ReviewFeedback.ReviewThreadID)
-	requestedIDs := normalizeReviewFeedbackCommentIDs(req.ReviewFeedback.CommentIDs)
-	if threadID == "" && len(requestedIDs) == 0 {
-		req.ReviewFeedback = agent.ReviewFeedbackRef{}
-		req.ResolvedReviewFeedback = agent.ReviewFeedbackContext{}
+	refs, err := normalizeReviewFeedbackRefs(req.ReviewFeedback)
+	if err != nil {
+		return err
+	}
+	if len(refs) == 0 {
+		req.ReviewFeedback = nil
+		req.ResolvedReviewFeedback = nil
 		return nil
 	}
-	source, validSource := agent.NormalizeReviewFeedbackSource(req.ReviewFeedback.Source)
-	if !validSource {
-		return invalidReviewFeedbackError("review feedback source is invalid", map[string]any{"source": req.ReviewFeedback.Source})
+	totalComments := 0
+	for _, ref := range refs {
+		totalComments += len(ref.CommentIDs)
+		if ref.Source == agent.ReviewFeedbackSourceWorkspaceChange && (runtime.sess == nil || strings.TrimSpace(runtime.sess.ID) == "") {
+			return invalidReviewFeedbackError("the active session identity is unavailable", nil)
+		}
 	}
-	if threadID == "" || len(requestedIDs) == 0 {
-		return invalidReviewFeedbackError("review_thread_id and comment_ids must be provided together", nil)
-	}
-	if len(requestedIDs) > maxReviewFeedbackCommentIDs {
+	if totalComments > maxReviewFeedbackCommentIDs {
 		return invalidReviewFeedbackError("too many review comments were referenced", map[string]any{
 			"maximum": maxReviewFeedbackCommentIDs,
-			"actual":  len(requestedIDs),
+			"actual":  totalComments,
 		})
 	}
-	if source == agent.ReviewFeedbackSourceWorkspaceChange && (runtime.sess == nil || strings.TrimSpace(runtime.sess.ID) == "") {
-		return invalidReviewFeedbackError("the active session identity is unavailable", nil)
-	}
 
-	feedback := agent.ReviewFeedbackContext{
-		Source:         source,
-		ReviewThreadID: threadID,
-		Comments:       make([]agent.ReviewFeedbackComment, 0, len(requestedIDs)),
-	}
-	if source == agent.ReviewFeedbackSourceDocument {
-		if err := s.resolveDocumentReviewFeedback(runtime, threadID, requestedIDs, &feedback); err != nil {
+	resolved := make(agent.ReviewFeedbackContexts, 0, len(refs))
+	for _, ref := range refs {
+		feedback := agent.ReviewFeedbackContext{
+			Source:         ref.Source,
+			ReviewThreadID: ref.ReviewThreadID,
+			Comments:       make([]agent.ReviewFeedbackComment, 0, len(ref.CommentIDs)),
+		}
+		if ref.Source == agent.ReviewFeedbackSourceDocument {
+			if err := s.resolveDocumentReviewFeedback(runtime, ref.ReviewThreadID, ref.CommentIDs, &feedback); err != nil {
+				return err
+			}
+		} else if err := s.resolveWorkspaceChangeReviewFeedback(runtime, ref.ReviewThreadID, ref.CommentIDs, &feedback); err != nil {
 			return err
 		}
-	} else {
-		if err := s.resolveWorkspaceChangeReviewFeedback(runtime, threadID, requestedIDs, &feedback); err != nil {
-			return err
-		}
+		resolved = append(resolved, feedback)
 	}
-	if feedback.EncodedSize() > agent.MaxReviewFeedbackContextBytes {
+	if resolved.EncodedSize() > agent.MaxReviewFeedbackContextBytes {
 		return invalidReviewFeedbackError("review feedback context exceeds the allowed size", map[string]any{
 			"maximum_bytes": agent.MaxReviewFeedbackContextBytes,
 		})
 	}
-	req.ReviewFeedback = agent.ReviewFeedbackRef{Source: source, ReviewThreadID: threadID, CommentIDs: requestedIDs}
-	req.ResolvedReviewFeedback = feedback
+	req.ReviewFeedback = refs
+	req.ResolvedReviewFeedback = resolved
 	return nil
 }
 
@@ -143,20 +145,143 @@ func (s *ChatAppService) consumeResolvedReviewFeedback(runtime ideChatRuntime, r
 	if req.ResolvedReviewFeedback.Empty() {
 		return nil
 	}
-	if req.ResolvedReviewFeedback.Source == agent.ReviewFeedbackSourceDocument {
-		_, err := s.app.WithDocumentReviewService(runtime.workspace, func(service *documentreview.Service, _ *book.Service) error {
-			_, consumeErr := service.ConsumeReviewComments(context.Background(), req.ResolvedReviewFeedback.ReviewThreadID, req.ReviewFeedback.CommentIDs)
-			return consumeErr
+	consumptions := make([]reviewFeedbackConsumption, 0, len(req.ResolvedReviewFeedback))
+	scope := reviewFeedbackServiceScope{}
+	for _, feedback := range req.ResolvedReviewFeedback {
+		commentIDs := reviewFeedbackCommentIDs(req.ReviewFeedback, feedback)
+		if len(commentIDs) == 0 {
+			return invalidReviewFeedbackError("resolved review feedback lost its comment references", map[string]any{"review_thread_id": feedback.ReviewThreadID})
+		}
+		switch feedback.Source {
+		case agent.ReviewFeedbackSourceDocument:
+			scope.documents = true
+		case agent.ReviewFeedbackSourceWorkspaceChange:
+			scope.workspaceChanges = true
+		default:
+			return invalidReviewFeedbackError("resolved review feedback source is invalid", map[string]any{"source": feedback.Source})
+		}
+		consumptions = append(consumptions, reviewFeedbackConsumption{
+			source: feedback.Source, threadID: feedback.ReviewThreadID, commentIDs: commentIDs,
 		})
-		return err
 	}
-	if runtime.sess == nil || strings.TrimSpace(runtime.sess.ID) == "" {
+	sessionID := ""
+	if runtime.sess != nil {
+		sessionID = strings.TrimSpace(runtime.sess.ID)
+	}
+	if scope.workspaceChanges && sessionID == "" {
 		return invalidReviewFeedbackError("the active session identity is unavailable", nil)
 	}
-	return s.app.WithWorkspaceChangeService(runtime.workspace, func(service *workspacechange.Service) error {
-		_, err := service.ConsumeReviewComments(context.Background(), req.ResolvedReviewFeedback.ReviewThreadID, runtime.sess.ID, req.ReviewFeedback.CommentIDs)
-		return err
+
+	ctx := context.Background()
+	return s.app.withReviewFeedbackServices(runtime.workspace, scope, func(changes *workspacechange.Service, documents *documentreview.Service) error {
+		// Validate every ledger before the first append. Domain services validate
+		// again while consuming to protect against concurrent mutations.
+		for _, consumption := range consumptions {
+			var err error
+			switch consumption.source {
+			case agent.ReviewFeedbackSourceDocument:
+				_, err = documents.GetReviewComments(ctx, consumption.threadID, consumption.commentIDs)
+			case agent.ReviewFeedbackSourceWorkspaceChange:
+				_, err = changes.GetReviewComments(ctx, consumption.threadID, sessionID, consumption.commentIDs)
+			}
+			if err != nil {
+				return err
+			}
+		}
+
+		applied := make([]reviewFeedbackConsumption, 0, len(consumptions))
+		for _, consumption := range consumptions {
+			var err error
+			switch consumption.source {
+			case agent.ReviewFeedbackSourceDocument:
+				consumption.documentComments, err = documents.ConsumeReviewComments(ctx, consumption.threadID, consumption.commentIDs)
+			case agent.ReviewFeedbackSourceWorkspaceChange:
+				consumption.workspaceComments, err = changes.ConsumeReviewComments(ctx, consumption.threadID, sessionID, consumption.commentIDs)
+			}
+			if err == nil {
+				applied = append(applied, consumption)
+				continue
+			}
+			rollbackErr := rollbackReviewFeedbackConsumptions(ctx, changes, documents, sessionID, applied)
+			if rollbackErr != nil {
+				log.Printf("[review-feedback] mixed batch compensation failed workspace=%q applied_batches=%d error=%v rollback_error=%v", runtime.workspace, len(applied), err, rollbackErr)
+				return errors.Join(err, fmt.Errorf("restore partially consumed review feedback: %w", rollbackErr))
+			}
+			log.Printf("[review-feedback] mixed batch consumption rolled back workspace=%q applied_batches=%d error=%v", runtime.workspace, len(applied), err)
+			return err
+		}
+		return nil
 	})
+}
+
+type reviewFeedbackConsumption struct {
+	source            string
+	threadID          string
+	commentIDs        []string
+	workspaceComments []workspacechange.Comment
+	documentComments  []documentreview.Comment
+}
+
+func rollbackReviewFeedbackConsumptions(
+	ctx context.Context,
+	changes *workspacechange.Service,
+	documents *documentreview.Service,
+	sessionID string,
+	consumptions []reviewFeedbackConsumption,
+) error {
+	errs := make([]error, 0)
+	for index := len(consumptions) - 1; index >= 0; index-- {
+		consumption := consumptions[index]
+		var err error
+		switch consumption.source {
+		case agent.ReviewFeedbackSourceDocument:
+			_, err = documents.RestoreConsumedReviewComments(ctx, consumption.threadID, consumption.documentComments)
+		case agent.ReviewFeedbackSourceWorkspaceChange:
+			_, err = changes.RestoreConsumedReviewComments(ctx, consumption.threadID, sessionID, consumption.workspaceComments)
+		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("restore %s review thread %s: %w", consumption.source, consumption.threadID, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+func normalizeReviewFeedbackRefs(values agent.ReviewFeedbackRefs) (agent.ReviewFeedbackRefs, error) {
+	result := make(agent.ReviewFeedbackRefs, 0, len(values))
+	indexByKey := make(map[string]int, len(values))
+	for _, value := range values {
+		threadID := strings.TrimSpace(value.ReviewThreadID)
+		commentIDs := normalizeReviewFeedbackCommentIDs(value.CommentIDs)
+		if threadID == "" && len(commentIDs) == 0 {
+			continue
+		}
+		source, validSource := agent.NormalizeReviewFeedbackSource(value.Source)
+		if !validSource {
+			return nil, invalidReviewFeedbackError("review feedback source is invalid", map[string]any{"source": value.Source})
+		}
+		if threadID == "" || len(commentIDs) == 0 {
+			return nil, invalidReviewFeedbackError("review_thread_id and comment_ids must be provided together", nil)
+		}
+		key := source + "\x00" + threadID
+		if index, exists := indexByKey[key]; exists {
+			result[index].CommentIDs = normalizeReviewFeedbackCommentIDs(append(result[index].CommentIDs, commentIDs...))
+			continue
+		}
+		indexByKey[key] = len(result)
+		result = append(result, agent.ReviewFeedbackRef{Source: source, ReviewThreadID: threadID, CommentIDs: commentIDs})
+	}
+	return result, nil
+}
+
+func reviewFeedbackCommentIDs(refs agent.ReviewFeedbackRefs, feedback agent.ReviewFeedbackContext) []string {
+	wantedSource, _ := agent.NormalizeReviewFeedbackSource(feedback.Source)
+	for _, ref := range refs {
+		source, _ := agent.NormalizeReviewFeedbackSource(ref.Source)
+		if source == wantedSource && ref.ReviewThreadID == feedback.ReviewThreadID {
+			return ref.CommentIDs
+		}
+	}
+	return nil
 }
 
 func normalizeReviewFeedbackCommentIDs(values []string) []string {

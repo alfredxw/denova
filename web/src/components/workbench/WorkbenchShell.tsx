@@ -13,8 +13,10 @@ import { WorkspaceMobileLayout, type MobileNavItem } from '@/components/layout/w
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { novaSpring } from '@/features/motion/motion-tokens'
 import { MessageCenterButton } from '@/features/messages/MessageCenter'
+import type { AutomationMessageNavigation } from '@/features/messages/types'
+import { requestAutomationNavigation } from '@/features/automations/automation-navigation'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { getAutomationInbox, type ChapterSummary, type WorkspaceSummary } from '@/lib/api'
+import { getActiveAutomationRuns, getAutomationInbox, type ChapterSummary, type WorkspaceSummary } from '@/lib/api'
 import { useWorkspaceStore, type RightPanel, type WorkspaceMode } from '@/stores/workspace-store'
 import type { InteractiveSubmode } from '@/features/interactive/types'
 import { formatNumber } from './workbench-utils'
@@ -126,6 +128,7 @@ export function WorkbenchShell({
   const [activityOrders, setActivityOrders] = useState<Record<ActivityOrderScope, ActivityItemId[]>>(readStoredActivityOrders)
   const [activityBarWidth, setActivityBarWidth] = useState(readStoredActivityBarWidth)
   const [automationInboxUnread, setAutomationInboxUnread] = useState(0)
+  const [automationRunning, setAutomationRunning] = useState(0)
   const [mainContentHost] = useState(createWorkbenchMainHost)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -143,21 +146,19 @@ export function WorkbenchShell({
 
   useEffect(() => {
     let cancelled = false
-    async function loadAutomationInboxCount() {
-      try {
-        const items = await getAutomationInbox()
-        if (!cancelled) setAutomationInboxUnread(items.filter((item) => item.status === 'pending' && !item.read_at).length)
-      } catch {
-        if (!cancelled) setAutomationInboxUnread(0)
-      }
+    async function loadAutomationActivity() {
+      const [inboxResult, runsResult] = await Promise.allSettled([getAutomationInbox(), getActiveAutomationRuns()])
+      if (cancelled) return
+      setAutomationInboxUnread(inboxResult.status === 'fulfilled' ? inboxResult.value.filter((item) => item.status === 'pending' && !item.read_at).length : 0)
+      setAutomationRunning(runsResult.status === 'fulfilled' ? runsResult.value.length : 0)
     }
-    void loadAutomationInboxCount()
-    const timer = window.setInterval(loadAutomationInboxCount, 30000)
+    void loadAutomationActivity()
+    const timer = window.setInterval(loadAutomationActivity, 30000)
     return () => {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [workspace])
+  }, [])
 
   const loreVisible = rightPanel === 'lore'
   const tellerVisible = rightPanel === 'teller'
@@ -260,6 +261,13 @@ export function WorkbenchShell({
     onSetMode('automations')
   }
 
+  const openAutomationNotification = (target: AutomationMessageNavigation) => {
+    closeSettingsIfOpen()
+    if (versionsVisible) onSetRightPanel(null)
+    requestAutomationNavigation(target)
+    onSetMode('automations')
+  }
+
   const ideActivityItems: ActivityItem[] = [
     {
       id: 'writing',
@@ -349,7 +357,7 @@ export function WorkbenchShell({
       label: t('workbench.activity.automations'),
       onClick: openAutomations,
       active: automationsActive,
-      icon: <ActivityIconBadge count={automationInboxUnread}><Clock3 className="size-3" /></ActivityIconBadge>,
+      icon: <ActivityIconBadge count={automationInboxUnread} running={automationRunning > 0}><Clock3 className="size-3" /></ActivityIconBadge>,
     },
   ]
 
@@ -358,7 +366,7 @@ export function WorkbenchShell({
       ...(navigationMode === 'interactive' ? interactiveActivityItems : ideActivityItems),
       ...sharedActivityItems,
     ], activityOrder, defaultActivityOrderForScope(activityOrderScope)),
-    [activityOrder, activityOrderScope, agentsActive, automationInboxUnread, automationsActive, booksReturnMode, ideModeActive, interactiveModeActive, interactiveSubmode, loreVisible, mode, navigationMode, settingsOpen, skillsActive, tellerVisible, versionsVisible],
+    [activityOrder, activityOrderScope, agentsActive, automationInboxUnread, automationRunning, automationsActive, booksReturnMode, ideModeActive, interactiveModeActive, interactiveSubmode, loreVisible, mode, navigationMode, settingsOpen, skillsActive, tellerVisible, versionsVisible],
   )
 
   const handleActivityDragEnd = (event: DragEndEvent) => {
@@ -449,7 +457,7 @@ export function WorkbenchShell({
         <span className="truncate font-medium text-[var(--nova-text)]">{currentBookName}</span>
       </div>
       <div className="nova-ui-compact flex items-center justify-end gap-2 text-[var(--nova-text-faint)]">
-        <MessageCenterButton className="h-7 w-7" />
+        <MessageCenterButton className="h-7 w-7" onOpenAutomation={openAutomationNotification} />
         <span>{modeLabel}</span>
       </div>
     </header>
@@ -564,7 +572,7 @@ export function WorkbenchShell({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
-            <MessageCenterButton className="h-8 w-8" />
+            <MessageCenterButton className="h-8 w-8" onOpenAutomation={openAutomationNotification} />
             <button
               type="button"
               onClick={() => setCommandOpen(true)}
@@ -848,10 +856,11 @@ function UpdateNoticePill({
   )
 }
 
-function ActivityIconBadge({ count, children }: { count: number; children: ReactNode }) {
+function ActivityIconBadge({ count, running, children }: { count: number; running?: boolean; children: ReactNode }) {
   return (
     <span className="relative inline-flex size-3 items-center justify-center">
       {children}
+      {running && <span className="absolute -bottom-1 -left-1 h-2 w-2 rounded-full bg-[var(--nova-success)] ring-2 ring-[var(--nova-surface)]" />}
       {count > 0 && (
         <span className="absolute -right-1.5 -top-1.5 min-w-3 rounded-full bg-[var(--nova-danger-border)] px-0.5 text-center text-[8px] leading-3 text-white">
           {count > 9 ? '9+' : count}

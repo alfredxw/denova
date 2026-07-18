@@ -91,11 +91,15 @@ func (a *App) RunAutomation(ctx context.Context, id, trigger string) (automation
 
 func (s *AutomationAppService) Run(ctx context.Context, id, trigger string) (result automation.RunResult, err error) {
 	if s.snapshot == nil {
-		scoped := s.workspaceScoped()
-		if scoped == nil {
-			return automation.RunResult{}, ErrNoWorkspace
+		task, getErr := s.store().Get(id)
+		if getErr != nil {
+			return automation.RunResult{}, getErr
 		}
-		return scoped.Run(ctx, id, trigger)
+		scoped, targetErr := s.automationForTask(ctx, task)
+		if targetErr != nil {
+			return automation.RunResult{}, targetErr
+		}
+		return scoped.Run(ctx, task.CatalogID, trigger)
 	}
 	task, err := s.store().Get(id)
 	if err != nil {
@@ -112,11 +116,15 @@ func (a *App) StartAutomationTaskWithEvidence(ctx context.Context, id, trigger s
 
 func (s *AutomationAppService) StartTaskWithEvidence(ctx context.Context, id, trigger string, evidence []automation.TriggerEvidence) (*Task, automation.RunRecord, error) {
 	if s.snapshot == nil {
-		scoped := s.workspaceScoped()
-		if scoped == nil {
-			return nil, automation.RunRecord{}, ErrNoWorkspace
+		task, getErr := s.store().Get(id)
+		if getErr != nil {
+			return nil, automation.RunRecord{}, getErr
 		}
-		return scoped.StartTaskWithEvidence(ctx, id, trigger, evidence)
+		scoped, targetErr := s.automationForTask(ctx, task)
+		if targetErr != nil {
+			return nil, automation.RunRecord{}, targetErr
+		}
+		return scoped.StartTaskWithEvidence(ctx, task.CatalogID, trigger, evidence)
 	}
 	return s.startTaskWithSourceRun(ctx, id, trigger, "", evidence)
 }
@@ -193,9 +201,20 @@ func (a *App) ContinueAutomationRun(ctx context.Context, runID, message string) 
 
 func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, message string) (*Task, automation.RunRecord, error) {
 	if s.snapshot == nil {
-		scoped := s.workspaceScoped()
-		if scoped == nil {
-			return nil, automation.RunRecord{}, ErrNoWorkspace
+		if active, run, ok := s.ActiveAutomationTaskByRunID(runID); ok {
+			return active, run, nil
+		}
+		run, findErr := s.automationRunByID(runID)
+		if findErr != nil {
+			return nil, automation.RunRecord{}, findErr
+		}
+		target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
+		if strings.TrimSpace(run.Workspace) != "" {
+			target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: run.Workspace}
+		}
+		scoped, targetErr := s.automationForTarget(ctx, target)
+		if targetErr != nil {
+			return nil, automation.RunRecord{}, targetErr
 		}
 		return scoped.ContinueRun(ctx, runID, message)
 	}
@@ -266,6 +285,21 @@ func (s *AutomationAppService) ContinueRun(ctx context.Context, runID, message s
 }
 
 func (s *AutomationAppService) AutomationRunMessages(runID string) ([]session.HistoryEntry, error) {
+	if s.snapshot == nil {
+		run, err := s.automationRunByID(runID)
+		if err != nil {
+			return nil, err
+		}
+		target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
+		if strings.TrimSpace(run.Workspace) != "" {
+			target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: run.Workspace}
+		}
+		scoped, err := s.automationForTarget(context.Background(), target)
+		if err != nil {
+			return nil, err
+		}
+		return scoped.AutomationRunMessages(runID)
+	}
 	run, err := s.automationRunByID(runID)
 	if err != nil {
 		return nil, err
@@ -302,7 +336,7 @@ func (s *AutomationAppService) automationRunByID(runID string) (automation.RunRe
 	}
 	for _, task := range tasks {
 		for _, run := range task.RecentRuns {
-			if run.ID == runID && canonicalAutomationWorkspace(run.Workspace) == canonicalAutomationWorkspace(s.workspace()) {
+			if run.ID == runID && (s.snapshot == nil || canonicalAutomationWorkspace(run.Workspace) == canonicalAutomationWorkspace(s.workspace())) {
 				return run, nil
 			}
 		}
@@ -334,6 +368,9 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 	runtimeCfg := s.runtimeConfigForTask(task)
 	writeMode, writeScope := effectiveAutomationWriteModeScope(task, run)
 	runtimeCfg = constrainAutomationTools(runtimeCfg, writeMode, writeScope)
+	if task.Target.Kind == automation.TargetKindUser {
+		runtimeCfg = constrainGlobalAutomationTools(runtimeCfg)
+	}
 	run.ToolManifest = automationToolManifest(&runtimeCfg)
 	taskInstruction := agent.AutomationTaskInstruction{
 		Name:         task.Name,
@@ -367,7 +404,7 @@ func (s *AutomationAppService) runAutomation(ctx context.Context, task automatio
 	}
 	chatService := s.chatService()
 	bookService := s.bookService()
-	if chatService == nil || bookService == nil {
+	if chatService == nil || (task.Target.Kind == automation.TargetKindWorkspace && bookService == nil) {
 		return automation.RunResult{}, ErrNoWorkspace
 	}
 	chatService.RunWithOptions(ctx, runner, conversation, bookService, agent.ChatRequest{
@@ -434,6 +471,9 @@ func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, task a
 	runtimeCfg := s.runtimeConfigForTask(task)
 	writeMode, writeScope := effectiveAutomationWriteModeScope(task, run)
 	runtimeCfg = constrainAutomationTools(runtimeCfg, writeMode, writeScope)
+	if task.Target.Kind == automation.TargetKindUser {
+		runtimeCfg = constrainGlobalAutomationTools(runtimeCfg)
+	}
 	taskInstruction := agent.AutomationTaskInstruction{
 		Name:         task.Name,
 		Template:     task.Template,
@@ -451,7 +491,7 @@ func (s *AutomationAppService) runAutomationFollowUp(ctx context.Context, task a
 	}
 	chatService := s.chatService()
 	bookService := s.bookService()
-	if chatService == nil || bookService == nil {
+	if chatService == nil || (task.Target.Kind == automation.TargetKindWorkspace && bookService == nil) {
 		emit(agent.Event{Type: "error", Data: map[string]string{"message": ErrNoWorkspace.Error()}})
 		return
 	}
@@ -476,11 +516,29 @@ func (a *App) RunDueAutomations(ctx context.Context, now time.Time) []automation
 
 func (s *AutomationAppService) RunDue(ctx context.Context, now time.Time) []automation.RunResult {
 	if s.snapshot == nil {
-		scoped := s.workspaceScoped()
-		if scoped == nil {
+		tasks, err := s.store().List()
+		if err != nil {
+			log.Printf("[automation] list scheduler targets failed err=%v", err)
 			return nil
 		}
-		return scoped.RunDue(ctx, now)
+		targets := map[string]automation.ExecutionTarget{}
+		for _, task := range tasks {
+			if !task.Enabled {
+				continue
+			}
+			key := task.Target.Kind + "\x00" + canonicalAutomationWorkspace(task.Target.Workspace)
+			targets[key] = task.Target
+		}
+		results := []automation.RunResult{}
+		for _, target := range targets {
+			scoped, targetErr := s.automationForTarget(ctx, target)
+			if targetErr != nil {
+				log.Printf("[automation] resolve scheduler target failed kind=%s workspace=%q err=%v", target.Kind, target.Workspace, targetErr)
+				continue
+			}
+			results = append(results, scoped.RunDue(ctx, now)...)
+		}
+		return results
 	}
 	_, results, err := s.processTriggers(ctx, "", now.UTC(), "scheduler")
 	if err != nil {
@@ -501,8 +559,21 @@ func (s *AutomationAppService) store() *automation.Store {
 		novaDir = a.cfg.NovaDir
 	}
 	workspace := a.workspace
+	registry := a.bookRegistry
 	a.mu.RUnlock()
-	return automation.NewStore(novaDir, workspace)
+	store := automation.NewStore(novaDir, workspace)
+	if registry == nil {
+		return store
+	}
+	books := registry.List()
+	workspaces := make([]string, 0, len(books)+1)
+	for _, book := range books {
+		workspaces = append(workspaces, book.Path)
+	}
+	if strings.TrimSpace(workspace) != "" {
+		workspaces = append(workspaces, workspace)
+	}
+	return store.WithWorkspaces(workspaces...)
 }
 
 func (s *AutomationAppService) workspace() string {
@@ -823,6 +894,21 @@ func constrainAutomationTools(cfg config.Config, writeMode, writeScope string) c
 	return cfg
 }
 
+func constrainGlobalAutomationTools(cfg config.Config) config.Config {
+	resolved := config.ResolveAgentTools(&cfg, config.AgentKindAutomation)
+	cfg.AgentTools.Automation = config.AgentToolOverride{
+		FileRead:     boolPointer(false),
+		FileWrite:    boolPointer(false),
+		ShellExecute: boolPointer(false),
+		Skills:       boolPointer(resolved.Skills),
+		LoreRead:     boolPointer(false),
+		LoreWrite:    boolPointer(false),
+		Todo:         boolPointer(resolved.Todo),
+		WebSearch:    boolPointer(resolved.WebSearch),
+	}
+	return cfg
+}
+
 func automationToolManifest(cfg *config.Config) []automation.ToolManifestItem {
 	tools := config.ResolveAgentTools(cfg, config.AgentKindAutomation)
 	capabilities := config.ResolveAgentToolManifest(tools)
@@ -887,7 +973,11 @@ func (s *AutomationAppService) buildAutomationUserMessage(task automation.Task, 
 	} else {
 		sb.WriteString(automation.GenericTaskPrompt)
 	}
-	sb.WriteString("\n\n请你自行使用可用工具读取完成任务所需的工作区文件、资料库和状态；先定位范围，再读取和写入。")
+	if task.Target.Kind == automation.TargetKindUser {
+		sb.WriteString("\n\n这是用户全局任务，没有书籍工作区。只使用本轮启用的用户级 Skills、Todo 或 Web 能力；不得读取或修改作品文件、资料库和项目状态。")
+	} else {
+		sb.WriteString("\n\n请你自行使用可用工具读取完成任务所需的工作区文件、资料库和状态；先定位范围，再读取和写入。")
+	}
 	return sb.String()
 }
 

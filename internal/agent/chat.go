@@ -36,7 +36,7 @@ type ChatRequest struct {
 	StyleScenes    []string           `json:"style_scenes"`
 	Selections     []TextSelectionRef `json:"selections"`
 	IDEContext     IDEContextRef      `json:"ide_context,omitempty"`
-	ReviewFeedback ReviewFeedbackRef  `json:"review_feedback,omitempty"`
+	ReviewFeedback ReviewFeedbackRefs `json:"review_feedback,omitempty"`
 	PlanMode       bool               `json:"plan_mode"`
 	WritingSkill   string             `json:"writing_skill"`
 	ImagePresetID  string             `json:"image_preset_id"`
@@ -52,7 +52,7 @@ type ChatRequest struct {
 
 	// ResolvedReviewFeedback is populated by the app layer from a canonical
 	// workspace review ledger. Clients may submit IDs only, never comment text.
-	ResolvedReviewFeedback ReviewFeedbackContext `json:"-"`
+	ResolvedReviewFeedback ReviewFeedbackContexts `json:"-"`
 }
 
 // StyleRule 是 prompts.StyleRule 的镜像，避免调用方直接依赖 prompts 包。

@@ -2,6 +2,7 @@ package automation
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -15,8 +16,29 @@ import (
 )
 
 type Store struct {
-	userDir   string
-	workspace string
+	userDir         string
+	workspace       string
+	knownWorkspaces []string
+}
+
+// WithWorkspaces returns the same user-level automation store configured to
+// discover tasks from every registered workspace. Paths are canonicalized and
+// deduplicated so aliases never create duplicate catalog entries.
+func (s *Store) WithWorkspaces(workspaces ...string) *Store {
+	if s == nil {
+		return s
+	}
+	seen := map[string]bool{}
+	s.knownWorkspaces = s.knownWorkspaces[:0]
+	for _, workspace := range workspaces {
+		canonical := canonicalStoreRoot(workspace)
+		if canonical == "" || seen[canonical] {
+			continue
+		}
+		seen[canonical] = true
+		s.knownWorkspaces = append(s.knownWorkspaces, canonical)
+	}
+	return s
 }
 
 const workspaceDefaultAutomationSeedVersion = 2
@@ -39,12 +61,16 @@ func (s *Store) List() ([]Task, error) {
 		return nil, err
 	}
 	workspaceTasks := []Task{}
-	if strings.TrimSpace(s.workspace) != "" {
-		var err error
-		workspaceTasks, err = s.readScopeLocked(ScopeWorkspace)
-		if err != nil {
-			return nil, err
+	workspaces := s.knownWorkspaces
+	if len(workspaces) == 0 && strings.TrimSpace(s.workspace) != "" {
+		workspaces = []string{s.workspace}
+	}
+	for _, workspace := range workspaces {
+		tasks, readErr := NewStore(s.userDir, workspace).readScopeLocked(ScopeWorkspace)
+		if readErr != nil {
+			return nil, readErr
 		}
+		workspaceTasks = append(workspaceTasks, tasks...)
 	}
 	tasks := append(userTasks, workspaceTasks...)
 	sort.SliceStable(tasks, func(i, j int) bool {
@@ -56,27 +82,57 @@ func (s *Store) List() ([]Task, error) {
 	return tasks, nil
 }
 
+// ListForTarget returns the tasks that execute in one explicit context. It is
+// the scheduler-facing view of the user catalog and never falls back to the
+// currently open workspace.
+func (s *Store) ListForTarget(target ExecutionTarget) ([]Task, error) {
+	tasks, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	kind := strings.TrimSpace(target.Kind)
+	if kind == "" {
+		kind = TargetKindUser
+	}
+	workspace := canonicalStoreRoot(target.Workspace)
+	filtered := make([]Task, 0, len(tasks))
+	for _, task := range tasks {
+		if task.Target.Kind != kind {
+			continue
+		}
+		if kind == TargetKindWorkspace && canonicalStoreRoot(task.Target.Workspace) != workspace {
+			continue
+		}
+		filtered = append(filtered, task)
+	}
+	return filtered, nil
+}
+
 func (s *Store) Create(task Task) (Task, error) {
 	now := time.Now().UTC()
 	task.ID = newID("auto")
 	task.CreatedAt = now
 	task.UpdatedAt = now
-	normalized, err := NormalizeTask(task)
+	normalized, err := s.normalizeTaskTarget(task)
 	if err != nil {
 		return Task{}, err
 	}
-	path, err := s.pathForScope(normalized.Scope)
+	destination := s
+	if normalized.Target.Kind == TargetKindWorkspace {
+		destination = NewStore(s.userDir, normalized.Target.Workspace)
+	}
+	path, err := destination.pathForScope(normalized.Scope)
 	if err != nil {
 		return Task{}, err
 	}
 	unlock := storePathLocks.lock(path)
 	defer unlock()
-	tasks, err := s.readScope(normalized.Scope)
+	tasks, err := destination.readScope(normalized.Scope)
 	if err != nil {
 		return Task{}, err
 	}
 	tasks = append(tasks, normalized)
-	if err := s.writeScope(normalized.Scope, tasks); err != nil {
+	if err := destination.writeScope(normalized.Scope, tasks); err != nil {
 		return Task{}, err
 	}
 	return normalized, nil
@@ -86,31 +142,32 @@ func (s *Store) Update(id string, patch Task) (Task, error) {
 	if strings.TrimSpace(id) == "" {
 		return Task{}, fmt.Errorf("task id is required")
 	}
-	for _, scope := range s.availableScopes() {
-		path, err := s.pathForScope(scope)
+	for _, location := range s.taskLocations() {
+		path, err := location.store.pathForScope(location.scope)
 		if err != nil {
 			return Task{}, err
 		}
 		unlock := storePathLocks.lock(path)
-		tasks, err := s.readScope(scope)
+		tasks, err := location.store.readScope(location.scope)
 		if err != nil {
 			unlock()
 			return Task{}, err
 		}
 		for i := range tasks {
-			if tasks[i].ID != id {
+			if !taskMatchesID(tasks[i], id) {
 				continue
 			}
 			next := mergeTaskPatch(tasks[i], patch)
 			next.Scope = tasks[i].Scope
+			next.Target = tasks[i].Target
 			next.UpdatedAt = time.Now().UTC()
-			normalized, err := NormalizeTask(next)
+			normalized, err := location.store.normalizeTaskTarget(next)
 			if err != nil {
 				unlock()
 				return Task{}, err
 			}
 			tasks[i] = normalized
-			if err := s.writeScope(scope, tasks); err != nil {
+			if err := location.store.writeScope(location.scope, tasks); err != nil {
 				unlock()
 				return Task{}, err
 			}
@@ -126,13 +183,13 @@ func (s *Store) Delete(id string) error {
 	if strings.TrimSpace(id) == "" {
 		return fmt.Errorf("task id is required")
 	}
-	for _, scope := range s.availableScopes() {
-		path, err := s.pathForScope(scope)
+	for _, location := range s.taskLocations() {
+		path, err := location.store.pathForScope(location.scope)
 		if err != nil {
 			return err
 		}
 		unlock := storePathLocks.lock(path)
-		tasks, err := s.readScope(scope)
+		tasks, err := location.store.readScope(location.scope)
 		if err != nil {
 			unlock()
 			return err
@@ -140,14 +197,14 @@ func (s *Store) Delete(id string) error {
 		next := tasks[:0]
 		found := false
 		for _, task := range tasks {
-			if task.ID == id {
+			if taskMatchesID(task, id) {
 				found = true
 				continue
 			}
 			next = append(next, task)
 		}
 		if found {
-			err := s.writeScope(scope, next)
+			err := location.store.writeScope(location.scope, next)
 			unlock()
 			return err
 		}
@@ -157,19 +214,19 @@ func (s *Store) Delete(id string) error {
 }
 
 func (s *Store) Get(id string) (Task, error) {
-	for _, scope := range s.availableScopes() {
-		path, err := s.pathForScope(scope)
+	for _, location := range s.taskLocations() {
+		path, err := location.store.pathForScope(location.scope)
 		if err != nil {
 			return Task{}, err
 		}
 		unlock := storePathLocks.lock(path)
-		tasks, err := s.readScope(scope)
+		tasks, err := location.store.readScope(location.scope)
 		if err != nil {
 			unlock()
 			return Task{}, err
 		}
 		for _, task := range tasks {
-			if task.ID == id {
+			if taskMatchesID(task, id) {
 				unlock()
 				return task, nil
 			}
@@ -177,6 +234,34 @@ func (s *Store) Get(id string) (Task, error) {
 		unlock()
 	}
 	return Task{}, fmt.Errorf("automation task %s not found", id)
+}
+
+type taskStoreLocation struct {
+	store *Store
+	scope string
+}
+
+func (s *Store) taskLocations() []taskStoreLocation {
+	locations := []taskStoreLocation{{store: NewStore(s.userDir, ""), scope: ScopeUser}}
+	seen := map[string]bool{}
+	appendWorkspace := func(workspace string) {
+		canonical := canonicalStoreRoot(workspace)
+		if canonical == "" || seen[canonical] {
+			return
+		}
+		seen[canonical] = true
+		locations = append(locations, taskStoreLocation{store: NewStore(s.userDir, canonical), scope: ScopeWorkspace})
+	}
+	appendWorkspace(s.workspace)
+	for _, workspace := range s.knownWorkspaces {
+		appendWorkspace(workspace)
+	}
+	return locations
+}
+
+func taskMatchesID(task Task, id string) bool {
+	id = strings.TrimSpace(id)
+	return id != "" && (task.ID == id || task.CatalogID == id)
 }
 
 func (s *Store) availableScopes() []string {
@@ -190,19 +275,19 @@ func (s *Store) AppendRun(id string, run RunRecord) (Task, error) {
 	if strings.TrimSpace(id) == "" {
 		return Task{}, fmt.Errorf("task id is required")
 	}
-	for _, scope := range s.availableScopes() {
-		path, err := s.pathForScope(scope)
+	for _, location := range s.taskLocations() {
+		path, err := location.store.pathForScope(location.scope)
 		if err != nil {
 			return Task{}, err
 		}
 		unlock := storePathLocks.lock(path)
-		tasks, err := s.readScope(scope)
+		tasks, err := location.store.readScope(location.scope)
 		if err != nil {
 			unlock()
 			return Task{}, err
 		}
 		for i := range tasks {
-			if tasks[i].ID != id {
+			if !taskMatchesID(tasks[i], id) {
 				continue
 			}
 			task := tasks[i]
@@ -219,13 +304,13 @@ func (s *Store) AppendRun(id string, run RunRecord) (Task, error) {
 				task.RecentRuns = task.RecentRuns[:MaxRecentRuns]
 			}
 			task.UpdatedAt = time.Now().UTC()
-			normalized, normalizeErr := NormalizeTask(task)
+			normalized, normalizeErr := location.store.normalizeTaskTarget(task)
 			if normalizeErr != nil {
 				unlock()
 				return Task{}, normalizeErr
 			}
 			tasks[i] = normalized
-			if writeErr := s.writeScope(scope, tasks); writeErr != nil {
+			if writeErr := location.store.writeScope(location.scope, tasks); writeErr != nil {
 				unlock()
 				return Task{}, writeErr
 			}
@@ -261,7 +346,7 @@ func (s *Store) readScope(scope string) ([]Task, error) {
 				return nil, writeErr
 			}
 		}
-		return normalizeTaskList(path, file.Tasks)
+		return s.normalizeTaskList(path, scope, file.Tasks)
 	}
 	if err != nil {
 		return nil, err
@@ -276,19 +361,77 @@ func (s *Store) readScope(scope string) ([]Task, error) {
 			return nil, writeErr
 		}
 	}
-	return normalizeTaskList(path, file.Tasks)
+	return s.normalizeTaskList(path, scope, file.Tasks)
 }
 
-func normalizeTaskList(path string, tasks []Task) ([]Task, error) {
+func (s *Store) normalizeTaskList(path, scope string, tasks []Task) ([]Task, error) {
 	out := make([]Task, 0, len(tasks))
 	for _, task := range tasks {
-		normalized, err := NormalizeTask(task)
+		if task.Scope == "" {
+			task.Scope = scope
+		}
+		normalized, err := s.normalizeTaskTarget(task)
 		if err != nil {
 			return nil, fmt.Errorf("invalid automation task %s: %w", task.ID, err)
 		}
 		out = append(out, normalized)
 	}
 	return out, nil
+}
+
+func (s *Store) normalizeTaskTarget(task Task) (Task, error) {
+	normalized, err := NormalizeTask(task)
+	if err != nil {
+		return Task{}, err
+	}
+	if normalized.Target.Kind == TargetKindWorkspace {
+		if strings.TrimSpace(normalized.Target.Workspace) == "" {
+			normalized.Target.Workspace = s.workspace
+		}
+		normalized.Target.Workspace = canonicalStoreRoot(normalized.Target.Workspace)
+		if normalized.Target.Workspace == "" {
+			return Task{}, fmt.Errorf("workspace target is required")
+		}
+		normalized.Target.WorkspaceID = workspaceTargetID(normalized.Target.Workspace)
+		normalized.Scope = ScopeWorkspace
+	} else {
+		normalized.Target = ExecutionTarget{Kind: TargetKindUser}
+		normalized.Scope = ScopeUser
+		for _, trigger := range normalized.Triggers {
+			if trigger.Type != TriggerTypeManual && trigger.Type != TriggerTypeSchedule {
+				return Task{}, fmt.Errorf("global automation cannot use workspace content trigger %q", trigger.Type)
+			}
+		}
+		normalized.WriteMode = WriteModeReadOnly
+		normalized.WriteScope = WriteScopeNone
+		normalized.WritePolicy = WritePolicyReadOnly
+		normalized.OutputPolicy = OutputPolicyRunRecordOnly
+		normalized.OutputPath = ""
+	}
+	normalized.CatalogID = catalogTaskID(normalized)
+	return normalized, nil
+}
+
+func catalogTaskID(task Task) string {
+	if task.Target.Kind == TargetKindWorkspace {
+		workspaceID := strings.TrimSpace(task.Target.WorkspaceID)
+		if workspaceID == "" {
+			workspaceID = workspaceTargetID(task.Target.Workspace)
+		}
+		if workspaceID != "" {
+			return workspaceID + ":" + strings.TrimSpace(task.ID)
+		}
+	}
+	return strings.TrimSpace(task.ID)
+}
+
+func workspaceTargetID(workspace string) string {
+	canonical := canonicalStoreRoot(workspace)
+	if canonical == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(canonical))
+	return "workspace-" + hex.EncodeToString(sum[:8])
 }
 
 func (s *Store) writeScope(scope string, tasks []Task) error {
@@ -419,6 +562,26 @@ func NormalizeTask(task Task) (Task, error) {
 	if task.Scope != ScopeUser && task.Scope != ScopeWorkspace {
 		return Task{}, fmt.Errorf("invalid scope %q", task.Scope)
 	}
+	task.Target.Kind = strings.TrimSpace(task.Target.Kind)
+	if task.Target.Kind == "" {
+		if task.Scope == ScopeUser {
+			task.Target.Kind = TargetKindUser
+		} else {
+			task.Target.Kind = TargetKindWorkspace
+		}
+	}
+	if task.Target.Kind != TargetKindUser && task.Target.Kind != TargetKindWorkspace {
+		return Task{}, fmt.Errorf("invalid target kind %q", task.Target.Kind)
+	}
+	if task.Target.Kind == TargetKindUser {
+		task.Scope = ScopeUser
+		task.Target.Workspace = ""
+		task.Target.WorkspaceID = ""
+	} else {
+		task.Scope = ScopeWorkspace
+		task.Target.Workspace = strings.TrimSpace(task.Target.Workspace)
+		task.Target.WorkspaceID = strings.TrimSpace(task.Target.WorkspaceID)
+	}
 	task.Name = strings.TrimSpace(task.Name)
 	if task.Name == "" {
 		task.Name = "Automation"
@@ -468,6 +631,9 @@ func mergeTaskPatch(current, patch Task) Task {
 	next := current
 	if patch.Scope != "" {
 		next.Scope = patch.Scope
+	}
+	if patch.Target.Kind != "" {
+		next.Target = patch.Target
 	}
 	next.Enabled = patch.Enabled
 	if patch.Name != "" {

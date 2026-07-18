@@ -127,7 +127,7 @@ describe('InputArea command menu', () => {
       <InputArea
         onSend={handleSend}
         disabled={false}
-        reviewFeedback={{
+        reviewFeedback={[{
           reviewThreadId: 'review-1',
           comments: [{
             id: 'comment-1',
@@ -136,7 +136,7 @@ describe('InputArea command menu', () => {
             review_path: 'chapters/ch01.md',
             review_line: 12,
           }],
-        }}
+        }]}
         onReviewFeedbackRemove={handleRemove}
       />,
     )
@@ -146,7 +146,7 @@ describe('InputArea command menu', () => {
     expect(handleSend).toHaveBeenCalledWith('')
 
     await user.click(screen.getByRole('button', { name: '移出本次提交' }))
-    expect(handleRemove).toHaveBeenCalledWith('comment-1')
+    expect(handleRemove).toHaveBeenCalledWith(expect.objectContaining({ reviewThreadId: 'review-1' }), 'comment-1')
   })
 
   it('restores supplemental instructions when a review-feedback request is rejected', async () => {
@@ -170,10 +170,10 @@ describe('InputArea command menu', () => {
       <InputArea
         onSend={handleSend}
         disabled={false}
-        reviewFeedback={{
+        reviewFeedback={[{
           reviewThreadId: 'review-1',
           comments: [{ id: 'comment-1', group_id: 'group-1', body: '调整这一行' }],
-        }}
+        }]}
         onReviewFeedbackRemove={vi.fn()}
       />,
     )

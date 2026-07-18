@@ -57,6 +57,8 @@ const editor = {
   'editor.review.addComment': 'Add comment',
   'editor.review.commentSelection': 'Comment on selection (⌘⇧L)',
   'editor.review.commentCurrentLine': 'Comment on the current line',
+  'editor.review.expandComment': 'Expand document comment',
+  'editor.review.collapseComment': 'Collapse document comment',
   'editor.review.outdated': 'Source text changed',
   'editor.review.prepareFailed': 'Could not add the comment. Make sure the document is saved and has not changed elsewhere, then try again.',
   'editor.review.createFailed': 'Could not add the document comment',

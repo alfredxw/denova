@@ -19,7 +19,7 @@ describe('agent-ui', () => {
       writing_skill: 'draft',
       image_preset_id: 'preset-1',
       teller_id: 'teller-1',
-      review_feedback: { review_thread_id: 'review-1', comment_ids: ['comment-1', 'comment-1', 'comment-2'] },
+      review_feedback: [{ review_thread_id: 'review-1', comment_ids: ['comment-1', 'comment-1', 'comment-2'] }],
     })).toEqual({
       references: ['chapters/a.md'],
       lore_references: ['lore-1'],
@@ -30,22 +30,34 @@ describe('agent-ui', () => {
       writing_skill: 'draft',
       image_preset_id: 'preset-1',
       teller_id: 'teller-1',
-      review_feedback: { review_thread_id: 'review-1', comment_ids: ['comment-1', 'comment-2'] },
+      review_feedback: [{ review_thread_id: 'review-1', comment_ids: ['comment-1', 'comment-2'] }],
     })
   })
 
   it('保留正文审阅来源并去重评论 ID', () => {
     expect(buildAgentChatRequestBody({
-      review_feedback: {
+      review_feedback: [{
         source: 'document',
         review_thread_id: 'document-review-1',
         comment_ids: ['comment-1', 'comment-1', 'comment-2'],
-      },
-    }).review_feedback).toEqual({
+      }],
+    }).review_feedback).toEqual([{
       source: 'document',
       review_thread_id: 'document-review-1',
       comment_ids: ['comment-1', 'comment-2'],
-    })
+    }])
+  })
+
+  it('同时保留正文与 Diff 审阅来源', () => {
+    expect(buildAgentChatRequestBody({
+      review_feedback: [
+        { review_thread_id: 'diff-review-1', comment_ids: ['diff-comment'] },
+        { source: 'document', review_thread_id: 'document-review-1', comment_ids: ['document-comment'] },
+      ],
+    }).review_feedback).toEqual([
+      { review_thread_id: 'diff-review-1', comment_ids: ['diff-comment'] },
+      { source: 'document', review_thread_id: 'document-review-1', comment_ids: ['document-comment'] },
+    ])
   })
 
   it('通过唯一 view 模块将 AgentUIMessage parts 转为展示模型', () => {

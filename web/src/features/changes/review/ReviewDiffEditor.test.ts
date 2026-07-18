@@ -100,7 +100,6 @@ describe('ReviewDiffEditor comment drafts', () => {
       layout: 'unified',
       onCreateComment: vi.fn().mockResolvedValue(undefined),
       onUpdateComment: vi.fn().mockResolvedValue(undefined),
-      onResolveComment: vi.fn().mockResolvedValue(undefined),
       onDeleteComment: vi.fn().mockResolvedValue(undefined),
     }))
 
@@ -114,8 +113,9 @@ describe('ReviewDiffEditor comment drafts', () => {
     expect(screen.getAllByRole('textbox')[0]).toHaveValue('第一条草稿')
     expect(adapterHarness.updates.at(-1)).toMatchObject({ commentingDisabled: false })
 
-    fireEvent.click(screen.getByRole('button', { name: '修改评论' }))
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }))
     expect(screen.getAllByRole('textbox')).toHaveLength(3)
+    expect(screen.queryByRole('button', { name: '解决评论' })).not.toBeInTheDocument()
   })
 })
 

@@ -8,7 +8,6 @@ import {
   getWorkspaceChangeReviewThread,
   listWorkspaceChangeGroups,
   redoWorkspaceChangeGroup,
-  resolveWorkspaceChangeComment,
   reviewWorkspaceChangeGroup,
   undoWorkspaceChangeGroup,
   updateWorkspaceChangeComment,
@@ -151,10 +150,6 @@ describe('workspace change API', () => {
         await record('/comment-update', request)
         return HttpResponse.json({ workspace, comment: { id: 'comment-1', group_id: 'group-1', body: '更新评论' } })
       }),
-      http.post('/api/workspace/change-comments/comment-1/resolve', async ({ request }) => {
-        await record('/resolve', request)
-        return HttpResponse.json({ workspace, comment: { id: 'comment-1', group_id: 'group-1', body: '调整人称', resolved: true } })
-      }),
       http.delete('/api/workspace/change-comments/comment-1', async ({ request }) => {
         await record('/comment-delete', request)
         return HttpResponse.json({ workspace, comment: { id: 'comment-1', group_id: 'group-1', body: '调整人称', deleted: true } })
@@ -172,7 +167,6 @@ describe('workspace change API', () => {
       anchor: { side: 'after', encoding: 'utf8-bytes-v1', revision: 'after', start: 3, end: 7, quote: '😀' },
     })
     await updateWorkspaceChangeComment(workspace, 'comment-1', '更新评论')
-    await resolveWorkspaceChangeComment(workspace, 'comment-1', true)
     await deleteWorkspaceChangeComment(workspace, 'comment-1')
 
     expect(requests).toEqual([
@@ -181,7 +175,6 @@ describe('workspace change API', () => {
       { path: '/redo', body: undefined, workspace: encodeURIComponent(workspace) },
       { path: '/comments', body: { group_id: 'group-1', change_set_id: 'set-1', edit_id: 'edit-1', body: '调整人称', anchor: { side: 'after', encoding: 'utf8-bytes-v1', revision: 'after', start: 3, end: 7, quote: '😀' } }, workspace: encodeURIComponent(workspace) },
       { path: '/comment-update', body: { body: '更新评论' }, workspace: encodeURIComponent(workspace) },
-      { path: '/resolve', body: { resolved: true }, workspace: encodeURIComponent(workspace) },
       { path: '/comment-delete', body: undefined, workspace: encodeURIComponent(workspace) },
     ])
   })

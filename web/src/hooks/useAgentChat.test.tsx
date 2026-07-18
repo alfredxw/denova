@@ -63,7 +63,7 @@ describe('useAgentChat submitted references', () => {
     let sendResult!: Promise<boolean>
     act(() => {
       sendResult = result.current.send('请统一修改', {
-        reviewFeedback: { reviewThreadId: 'thread-1', commentIds: ['comment-1'] },
+        reviewFeedback: [{ reviewThreadId: 'thread-1', commentIds: ['comment-1'] }],
         reviewFeedbackDisplay: {
           comments: [{ id: 'comment-1', body: '需要增加爽点', review_path: 'setting/progress.md', review_line: 24 }],
         },

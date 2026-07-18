@@ -40,11 +40,11 @@ export interface ChatSendOptions {
   planMode?: boolean
   displayMessage?: string
   hideUserMessage?: boolean
-  reviewFeedback?: {
+  reviewFeedback?: Array<{
     source?: 'workspace_change' | 'document'
     reviewThreadId: string
     commentIds: string[]
-  }
+  }>
   reviewFeedbackDisplay?: {
     comments: Array<{ id: string; body: string; path?: string; review_path?: string; review_line?: number }>
   }
@@ -237,11 +237,11 @@ export function useAgentChat(options: ChatOptions = {}) {
       writing_skill: sendOptions.writingSkill,
       image_preset_id: sendOptions.imagePresetId,
       teller_id: sendOptions.tellerId,
-      review_feedback: sendOptions.reviewFeedback ? {
-        source: sendOptions.reviewFeedback.source,
-        review_thread_id: sendOptions.reviewFeedback.reviewThreadId,
-        comment_ids: sendOptions.reviewFeedback.commentIds,
-      } : undefined,
+      review_feedback: sendOptions.reviewFeedback?.map((feedback) => ({
+        source: feedback.source,
+        review_thread_id: feedback.reviewThreadId,
+        comment_ids: feedback.commentIds,
+      })),
     } as Parameters<typeof buildAgentChatRequestBody>[0] & { message: string }) as Record<string, unknown>
     body.message = prepared.message
 

@@ -260,6 +260,54 @@ func (s *Service) ConsumeReviewComments(ctx context.Context, threadID string, co
 	return append([]Comment{}, consumed...), nil
 }
 
+// RestoreConsumedReviewComments compensates a failed cross-ledger feedback
+// batch. It only restores the exact comment versions returned by consumption.
+func (s *Service) RestoreConsumedReviewComments(ctx context.Context, threadID string, consumed []Comment) ([]Comment, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
+	threadID = strings.TrimSpace(threadID)
+	if s.threads[threadID] == nil {
+		return nil, newError(ErrorCodeNotFound, "document review thread not found", map[string]any{"review_thread_id": threadID})
+	}
+	now := time.Now().UTC()
+	restored := make([]Comment, 0, len(consumed))
+	seen := make(map[string]bool, len(consumed))
+	for _, consumedComment := range consumed {
+		id := strings.TrimSpace(consumedComment.ID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		current := s.comments[id]
+		if current == nil || current.ThreadID != threadID {
+			return nil, newError(ErrorCodeConflict, "consumed document review comment changed threads", map[string]any{
+				"review_thread_id": threadID, "comment_id": id,
+			})
+		}
+		if !current.Deleted {
+			continue
+		}
+		if !current.UpdatedAt.Equal(consumedComment.UpdatedAt) {
+			return nil, newError(ErrorCodeConflict, "consumed document review comment changed after consumption", map[string]any{"comment_id": id})
+		}
+		next := *current
+		next.Deleted = false
+		next.UpdatedAt = now
+		restored = append(restored, next)
+	}
+	if len(restored) == 0 {
+		return nil, nil
+	}
+	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, CreatedAt: now, Comments: restored}); err != nil {
+		return nil, err
+	}
+	log.Printf("[document-review] feedback consumption restored workspace=%q thread_id=%s comment_count=%d", s.workspace, threadID, len(restored))
+	return append([]Comment{}, restored...), nil
+}
+
 func (s *Service) reviewCommentsLocked(threadID string, commentIDs []string) ([]Comment, error) {
 	threadID = strings.TrimSpace(threadID)
 	if s.threads[threadID] == nil {

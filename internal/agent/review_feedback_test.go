@@ -8,11 +8,11 @@ import (
 func TestComposeAgentInputInjectsOnlyResolvedReviewFeedbackWithSource(t *testing.T) {
 	req := ChatRequest{
 		Message: "Please revise this draft.",
-		ReviewFeedback: ReviewFeedbackRef{
+		ReviewFeedback: ReviewFeedbackRefs{{
 			ReviewThreadID: "thread-client",
 			CommentIDs:     []string{"forged-client-id"},
-		},
-		ResolvedReviewFeedback: ReviewFeedbackContext{
+		}},
+		ResolvedReviewFeedback: ReviewFeedbackContexts{{
 			ReviewThreadID: "thread-ledger",
 			Comments: []ReviewFeedbackComment{{
 				ID:          "comment-ledger",
@@ -29,18 +29,27 @@ func TestComposeAgentInputInjectsOnlyResolvedReviewFeedbackWithSource(t *testing
 					Quote:    "the quoted sentence",
 				},
 			}},
-		},
+		}, {
+			Source:         ReviewFeedbackSourceDocument,
+			ReviewThreadID: "document-thread",
+			Comments: []ReviewFeedbackComment{{
+				ID: "document-comment", Path: "chapters/ch02.md", Body: "Make the image more concrete.",
+			}},
+		}},
 	}
 
 	composition := composeAgentInput(req, nil, nil, DefaultLoopPolicy())
 	for _, expected := range []string{
-		"Source: the active workspace's durable change ledger",
+		`"source":"workspace_change"`,
 		`"review_thread_id":"thread-ledger"`,
 		`"comment_id":"comment-ledger"`,
 		`"path":"chapters/ch01.md"`,
 		`"side":"after"`,
 		`"encoding":"utf8-bytes-v1"`,
 		"Keep the point of view consistent.",
+		`"source":"document"`,
+		`"review_thread_id":"document-thread"`,
+		"Make the image more concrete.",
 	} {
 		if !strings.Contains(composition.AgentMessage, expected) {
 			t.Fatalf("agent message is missing %q: %s", expected, composition.AgentMessage)
@@ -55,14 +64,14 @@ func TestComposeAgentInputInjectsOnlyResolvedReviewFeedbackWithSource(t *testing
 }
 
 func TestReviewFeedbackContextEnforcesWholeBlockByteLimit(t *testing.T) {
-	feedback := ReviewFeedbackContext{
+	feedback := ReviewFeedbackContexts{{
 		ReviewThreadID: "thread-1",
 		Comments: []ReviewFeedbackComment{{
 			ID:      "comment-1",
 			GroupID: "group-1",
 			Body:    strings.Repeat("界", MaxReviewFeedbackContextBytes),
 		}},
-	}
+	}}
 	if got := feedback.EncodedSize(); got <= MaxReviewFeedbackContextBytes {
 		t.Fatalf("oversized feedback reported %d bytes", got)
 	}
@@ -70,7 +79,7 @@ func TestReviewFeedbackContextEnforcesWholeBlockByteLimit(t *testing.T) {
 		t.Fatal("oversized feedback should not be partially injected")
 	}
 
-	feedback.Comments[0].Body = "concise"
+	feedback[0].Comments[0].Body = "concise"
 	block, err := reviewFeedbackContextBlock(feedback)
 	if err != nil {
 		t.Fatal(err)

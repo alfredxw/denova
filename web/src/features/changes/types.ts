@@ -75,7 +75,6 @@ export interface WorkspaceChangeComment {
   hunk_id?: string
   body: string
   author?: string
-  resolved?: boolean
   deleted?: boolean
   anchor?: WorkspaceChangeCommentAnchor
   /** Derived UI metadata for Agent feedback chips; not required in the ledger. */
@@ -100,7 +99,7 @@ export interface WorkspaceChangeGroup {
   can_undo?: boolean
   can_redo?: boolean
   pending_edit_count?: number
-  unresolved_comment_count?: number
+  comment_count?: number
 }
 
 export interface WorkspaceChangeGroupSummary {
@@ -115,7 +114,7 @@ export interface WorkspaceChangeGroupSummary {
   change_sets?: WorkspaceChangeSet[]
   change_set_count?: number
   paths?: string[]
-  unresolved_comment_count?: number
+  comment_count?: number
   can_undo?: boolean
   can_redo?: boolean
   pending_edit_count?: number
@@ -160,7 +159,7 @@ export interface ReviewThread {
   review_status?: ChangeReviewStatus
   apply_state?: ChangeApplyState
   pending_edit_count?: number
-  unresolved_comment_count?: number
+  comment_count?: number
 }
 
 export interface WorkspaceChangeEvent {

@@ -717,6 +717,12 @@ export type AutomationNotifyPolicy = 'inbox' | 'silent'
 type AutomationInboxStatus = 'pending' | 'dismissed' | 'confirmed' | 'auto_run'
 type AutomationInboxPurpose = 'trigger' | 'write_confirmation'
 
+export interface AutomationExecutionTarget {
+  kind: 'user' | 'workspace'
+  workspace_id?: string
+  workspace?: string
+}
+
 interface AutomationSchedule {
   kind: AutomationScheduleKind
   every_hours?: number
@@ -766,7 +772,9 @@ export interface AutomationRunRecord {
 
 export interface AutomationTask {
   id?: string
+  catalog_id?: string
   scope: AutomationScope
+  target?: AutomationExecutionTarget
   enabled: boolean
   name: string
   template: AutomationTemplate

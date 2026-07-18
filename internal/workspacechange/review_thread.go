@@ -59,8 +59,8 @@ func (s *Service) GetReviewThread(ctx context.Context, id string) (ReviewThread,
 		}
 		for _, comment := range group.Comments {
 			thread.Comments = append(thread.Comments, comment)
-			if !comment.Deleted && !comment.Resolved {
-				thread.UnresolvedCommentCount++
+			if !comment.Deleted {
+				thread.CommentCount++
 			}
 			if comment.UpdatedAt.After(thread.UpdatedAt) {
 				thread.UpdatedAt = comment.UpdatedAt
@@ -186,7 +186,7 @@ func (s *Service) reviewThreadFileLocked(path string, changes []*ChangeSet) (Rev
 	return file, nil
 }
 
-// GetReviewComments resolves trusted, unresolved ledger comments for one Agent
+// GetReviewComments resolves trusted, pending ledger comments for one Agent
 // feedback turn. Duplicate IDs are returned once in caller order.
 func (s *Service) GetReviewComments(ctx context.Context, threadID, sessionID string, commentIDs []string) ([]ReviewFeedbackComment, error) {
 	if s == nil {
@@ -236,6 +236,71 @@ func (s *Service) ConsumeReviewComments(ctx context.Context, threadID, sessionID
 	return consumed, nil
 }
 
+// RestoreConsumedReviewComments compensates a failed cross-ledger feedback
+// batch. It only restores the exact comment versions returned by consumption.
+func (s *Service) RestoreConsumedReviewComments(ctx context.Context, threadID, sessionID string, consumed []Comment) ([]Comment, error) {
+	if s == nil {
+		return nil, newError(ErrorCodeConflict, "change service is nil", nil)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.contextError(ctx); err != nil {
+		return nil, err
+	}
+	if err := s.reconcilePendingDurabilityLocked(); err != nil {
+		return nil, err
+	}
+	threadID = strings.TrimSpace(threadID)
+	sessionID = strings.TrimSpace(sessionID)
+	groups := s.reviewThreadGroupsLocked(threadID)
+	if len(groups) == 0 {
+		return nil, newError(ErrorCodeNotFound, "review thread not found", map[string]any{"review_thread_id": threadID})
+	}
+	for _, group := range groups {
+		if sessionID == "" || group.SessionID != sessionID {
+			return nil, newError(ErrorCodeConflict, "review thread does not belong to the active session", map[string]any{
+				"review_thread_id": threadID, "session_id": sessionID,
+			})
+		}
+	}
+
+	now := time.Now().UTC()
+	restored := make([]Comment, 0, len(consumed))
+	seen := make(map[string]bool, len(consumed))
+	for _, consumedComment := range consumed {
+		id := strings.TrimSpace(consumedComment.ID)
+		if id == "" || seen[id] {
+			continue
+		}
+		seen[id] = true
+		current := s.comments[id]
+		if current == nil {
+			return nil, newError(ErrorCodeNotFound, "consumed review comment not found", map[string]any{"comment_id": id})
+		}
+		group := s.groups[current.GroupID]
+		if group == nil || reviewThreadID(group) != threadID {
+			return nil, newError(ErrorCodeConflict, "consumed review comment changed threads", map[string]any{"comment_id": id})
+		}
+		if !current.Deleted {
+			continue
+		}
+		if !current.UpdatedAt.Equal(consumedComment.UpdatedAt) {
+			return nil, newError(ErrorCodeConflict, "consumed review comment changed after consumption", map[string]any{"comment_id": id})
+		}
+		next := *current
+		next.Deleted = false
+		next.UpdatedAt = now
+		restored = append(restored, next)
+	}
+	if len(restored) == 0 {
+		return nil, nil
+	}
+	if err := s.appendAndApply(ledgerEvent{Type: eventCommentsUpserted, Comments: restored}); err != nil {
+		return nil, err
+	}
+	return restored, nil
+}
+
 func (s *Service) reviewCommentsLocked(threadID, sessionID string, commentIDs []string) ([]ReviewFeedbackComment, error) {
 	threadID = strings.TrimSpace(threadID)
 	sessionID = strings.TrimSpace(sessionID)
@@ -272,9 +337,6 @@ func (s *Service) reviewCommentsLocked(threadID, sessionID string, commentIDs []
 				"comment_id":       id,
 				"review_thread_id": threadID,
 			})
-		}
-		if comment.Resolved {
-			return nil, newError(ErrorCodeConflict, "review comment is already resolved", map[string]any{"comment_id": id})
 		}
 		resolved := ReviewFeedbackComment{Comment: *comment}
 		if comment.ChangeSetID != "" {

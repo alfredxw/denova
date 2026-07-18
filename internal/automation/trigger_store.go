@@ -64,13 +64,13 @@ func (s *Store) UpdateTriggerState(id string, triggerID string, state TriggerSta
 
 func (s *Store) ListInbox() ([]TriggerInboxItem, error) {
 	items := []TriggerInboxItem{}
-	for _, scope := range s.availableScopes() {
-		path, err := s.inboxPathForScope(scope)
+	for _, location := range s.inboxLocations() {
+		path, err := location.store.inboxPathForScope(location.scope)
 		if err != nil {
 			return nil, err
 		}
 		unlock := storePathLocks.lock(path)
-		scopeItems, err := s.readInboxScope(scope)
+		scopeItems, err := location.store.readInboxScope(location.scope)
 		unlock()
 		if err != nil {
 			return nil, err
@@ -95,13 +95,17 @@ func (s *Store) CreateInboxItem(item TriggerInboxItem) (TriggerInboxItem, error)
 	if err != nil {
 		return TriggerInboxItem{}, err
 	}
-	path, err := s.inboxPathForScope(normalized.Scope)
+	destination := s
+	if normalized.Scope == ScopeWorkspace && strings.TrimSpace(normalized.Workspace) != "" {
+		destination = NewStore(s.userDir, normalized.Workspace)
+	}
+	path, err := destination.inboxPathForScope(normalized.Scope)
 	if err != nil {
 		return TriggerInboxItem{}, err
 	}
 	unlock := storePathLocks.lock(path)
 	defer unlock()
-	items, err := s.readInboxScope(normalized.Scope)
+	items, err := destination.readInboxScope(normalized.Scope)
 	if err != nil {
 		return TriggerInboxItem{}, err
 	}
@@ -112,7 +116,7 @@ func (s *Store) CreateInboxItem(item TriggerInboxItem) (TriggerInboxItem, error)
 	if len(items) > MaxInboxItems {
 		items = items[:MaxInboxItems]
 	}
-	if err := s.writeInboxScope(normalized.Scope, items); err != nil {
+	if err := destination.writeInboxScope(normalized.Scope, items); err != nil {
 		return TriggerInboxItem{}, err
 	}
 	return normalized, nil
@@ -123,13 +127,13 @@ func (s *Store) GetInboxItem(id string) (TriggerInboxItem, error) {
 	if id == "" {
 		return TriggerInboxItem{}, fmt.Errorf("inbox item id is required")
 	}
-	for _, scope := range s.availableScopes() {
-		path, err := s.inboxPathForScope(scope)
+	for _, location := range s.inboxLocations() {
+		path, err := location.store.inboxPathForScope(location.scope)
 		if err != nil {
 			return TriggerInboxItem{}, err
 		}
 		unlock := storePathLocks.lock(path)
-		items, err := s.readInboxScope(scope)
+		items, err := location.store.readInboxScope(location.scope)
 		if err != nil {
 			unlock()
 			return TriggerInboxItem{}, err
@@ -299,13 +303,13 @@ func (s *Store) updateInboxItem(id string, update func(TriggerInboxItem, time.Ti
 	if id == "" {
 		return TriggerInboxItem{}, fmt.Errorf("inbox item id is required")
 	}
-	for _, scope := range s.availableScopes() {
-		path, err := s.inboxPathForScope(scope)
+	for _, location := range s.inboxLocations() {
+		path, err := location.store.inboxPathForScope(location.scope)
 		if err != nil {
 			return TriggerInboxItem{}, err
 		}
 		unlock := storePathLocks.lock(path)
-		items, err := s.readInboxScope(scope)
+		items, err := location.store.readInboxScope(location.scope)
 		if err != nil {
 			unlock()
 			return TriggerInboxItem{}, err
@@ -323,7 +327,7 @@ func (s *Store) updateInboxItem(id string, update func(TriggerInboxItem, time.Ti
 				return TriggerInboxItem{}, err
 			}
 			items[i] = normalized
-			if err := s.writeInboxScope(scope, items); err != nil {
+			if err := location.store.writeInboxScope(location.scope, items); err != nil {
 				unlock()
 				return TriggerInboxItem{}, err
 			}
@@ -336,10 +340,31 @@ func (s *Store) updateInboxItem(id string, update func(TriggerInboxItem, time.Ti
 }
 
 func (s *Store) visibleInboxItem(item TriggerInboxItem) bool {
+	if len(s.knownWorkspaces) > 0 {
+		return true
+	}
 	if item.Scope != ScopeUser || strings.TrimSpace(s.workspace) == "" {
 		return true
 	}
 	return canonicalStoreRoot(item.Workspace) == canonicalStoreRoot(s.workspace)
+}
+
+func (s *Store) inboxLocations() []taskStoreLocation {
+	locations := []taskStoreLocation{{store: NewStore(s.userDir, ""), scope: ScopeUser}}
+	seen := map[string]bool{}
+	appendWorkspace := func(workspace string) {
+		canonical := canonicalStoreRoot(workspace)
+		if canonical == "" || seen[canonical] {
+			return
+		}
+		seen[canonical] = true
+		locations = append(locations, taskStoreLocation{store: NewStore(s.userDir, canonical), scope: ScopeWorkspace})
+	}
+	appendWorkspace(s.workspace)
+	for _, workspace := range s.knownWorkspaces {
+		appendWorkspace(workspace)
+	}
+	return locations
 }
 
 func (s *Store) inboxPathForScope(scope string) (string, error) {

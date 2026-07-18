@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Check, MessageSquarePlus, Pencil, RefreshCw, Trash2, X } from 'lucide-react'
+import { Check, ChevronUp, MessageSquarePlus, Pencil, Trash2, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -9,7 +9,6 @@ const INLINE_COMMENT_EDITOR_CLASS = 'nova-review-inline-editor min-h-0 resize-no
 export interface InlineReviewComment {
   id: string
   body: string
-  resolved?: boolean
 }
 
 interface InlineCommentThreadProps<T extends InlineReviewComment> {
@@ -25,13 +24,13 @@ interface InlineCommentThreadProps<T extends InlineReviewComment> {
     onCancel: () => void
   }
   onUpdate?: (comment: T, body: string) => Promise<void> | void
-  onResolve?: (comment: T, resolved: boolean) => Promise<void> | void
   onDelete?: (comment: T) => Promise<void> | void
+  onCollapse?: () => void
   onEditingChange?: (editing: boolean) => void
 }
 
 /** Shared inline thread used by diff review and author document review. */
-export function InlineCommentThread<T extends InlineReviewComment>({ comments = [], anchorLabel, quote, disabled = false, draft, onUpdate, onResolve, onDelete, onEditingChange }: InlineCommentThreadProps<T>) {
+export function InlineCommentThread<T extends InlineReviewComment>({ comments = [], anchorLabel, quote, disabled = false, draft, onUpdate, onDelete, onCollapse, onEditingChange }: InlineCommentThreadProps<T>) {
   const { t } = useTranslation()
   const [editingID, setEditingID] = useState('')
   const [editBody, setEditBody] = useState('')
@@ -75,7 +74,12 @@ export function InlineCommentThread<T extends InlineReviewComment>({ comments = 
       <div className="flex min-h-8 items-center gap-2 border-b border-[var(--nova-border)] px-3 py-1.5 text-[10px] text-[var(--nova-text-faint)]">
         <MessageSquarePlus className="h-3.5 w-3.5" />
         <span className="min-w-0 flex-1 truncate">{anchorLabel || t('changes.comments')}</span>
-        {comments.length > 0 && <span>{comments.length}</span>}
+        {comments.length > 0 && <span className="whitespace-nowrap">{t(comments.length === 1 ? 'changes.commentCount.one' : 'changes.commentCount.other', { count: comments.length })}</span>}
+        {onCollapse && (
+          <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={onCollapse}>
+            <ChevronUp />{t('common.collapse')}
+          </Button>
+        )}
       </div>
       {quote && (
         <blockquote className="mx-3 mt-2 line-clamp-3 border-l-2 border-[var(--nova-border-strong)] pl-2 text-[11px] leading-5 text-[var(--nova-text-muted)]" title={quote}>
@@ -84,7 +88,7 @@ export function InlineCommentThread<T extends InlineReviewComment>({ comments = 
       )}
 
       {comments.map((comment) => (
-        <div key={comment.id} className={`border-b border-[var(--nova-border-soft)] px-3 py-2 last:border-b-0 ${comment.resolved ? 'opacity-60' : ''}`}>
+        <div key={comment.id} className="border-b border-[var(--nova-border-soft)] px-3 py-2 last:border-b-0">
           {editingID === comment.id ? (
             <>
               <Textarea ref={editorRef} value={editBody} disabled={busy} onChange={(event) => setEditBody(event.target.value)} minRows={1} maxRows={8} className={INLINE_COMMENT_EDITOR_CLASS} />
@@ -99,9 +103,8 @@ export function InlineCommentThread<T extends InlineReviewComment>({ comments = 
             <>
               <p className="whitespace-pre-wrap break-words leading-5">{comment.body}</p>
               <div className="mt-1.5 flex flex-wrap items-center justify-end gap-1">
-                {onUpdate && <Button type="button" size="icon-xs" variant="ghost" disabled={busy} aria-label={t('changes.editComment')} onClick={() => { setEditing(comment.id); setEditBody(comment.body) }}><Pencil /></Button>}
-                {onResolve && <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => void run(comment.id, () => onResolve(comment, !comment.resolved))}>{comment.resolved ? <RefreshCw /> : <Check />}{t(comment.resolved ? 'changes.reopen' : 'changes.resolve')}</Button>}
-                {onDelete && <Button type="button" size="icon-xs" variant="ghost" disabled={busy} className="text-[var(--nova-danger)]" aria-label={t('common.delete')} onClick={() => void run(comment.id, () => onDelete(comment))}><Trash2 /></Button>}
+                {onUpdate && <Button type="button" size="xs" variant="ghost" disabled={busy} onClick={() => { setEditing(comment.id); setEditBody(comment.body) }}><Pencil />{t('common.edit')}</Button>}
+                {onDelete && <Button type="button" size="xs" variant="ghost" disabled={busy} className="text-[var(--nova-danger)]" onClick={() => void run(comment.id, () => onDelete(comment))}><Trash2 />{t('common.delete')}</Button>}
               </div>
             </>
           )}

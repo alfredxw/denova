@@ -40,7 +40,6 @@ interface ReviewDiffEditorProps {
   onHeightChange?: (height: number) => void
   onCreateComment: (request: CreateWorkspaceChangeCommentRequest) => Promise<void>
   onUpdateComment: (comment: WorkspaceChangeComment, body: string) => Promise<void>
-  onResolveComment: (comment: WorkspaceChangeComment, resolved: boolean) => Promise<void>
   onDeleteComment: (comment: WorkspaceChangeComment) => Promise<void>
 }
 
@@ -53,7 +52,7 @@ interface CommentDraft {
   anchor: WorkspaceChangeCommentAnchor
 }
 
-export function ReviewDiffEditor({ threadID, file, comments, layout, busy = false, onDraftChange, initialHeight = 240, onHeightChange, onCreateComment, onUpdateComment, onResolveComment, onDeleteComment }: ReviewDiffEditorProps) {
+export function ReviewDiffEditor({ threadID, file, comments, layout, busy = false, onDraftChange, initialHeight = 240, onHeightChange, onCreateComment, onUpdateComment, onDeleteComment }: ReviewDiffEditorProps) {
   const { t } = useTranslation()
   const { resolvedTheme } = useTheme()
   const splitAdapterRef = useRef<ReviewEditorAdapter | null>(null)
@@ -326,7 +325,6 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
             disabled={busy}
             onEditingChange={(editing) => handleThreadEditingChange('outdated', editing)}
             onUpdate={onUpdateComment}
-            onResolve={onResolveComment}
             onDelete={onDeleteComment}
           />
         </div>
@@ -471,7 +469,6 @@ export function ReviewDiffEditor({ threadID, file, comments, layout, busy = fals
             disabled={busy}
             onEditingChange={(editing) => handleThreadEditingChange(thread.key, editing)}
             onUpdate={onUpdateComment}
-            onResolve={onResolveComment}
             onDelete={onDeleteComment}
           />,
           target.domNode,

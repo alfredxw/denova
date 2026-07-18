@@ -765,6 +765,15 @@ func TestAutomationWriteModeToolConstraints(t *testing.T) {
 		t.Fatalf("lore_and_file tools = %#v, want both write tools", loreAndFileTools)
 	}
 
+	global := constrainGlobalAutomationTools(config.Config{})
+	globalTools := config.ResolveAgentTools(&global, config.AgentKindAutomation)
+	if globalTools.FileRead || globalTools.FileWrite || globalTools.ShellExecute || globalTools.LoreRead || globalTools.LoreWrite {
+		t.Fatalf("global automation exposed workspace tools: %#v", globalTools)
+	}
+	if !globalTools.Skills || !globalTools.Todo || !globalTools.WebSearch {
+		t.Fatalf("global automation omitted user-level tools: %#v", globalTools)
+	}
+
 	firstRun := automation.RunRecord{Trigger: automation.TriggerCondition}
 	mode, scope := effectiveAutomationWriteModeScope(automation.Task{WriteMode: automation.WriteModeConfirmWrite, WriteScope: automation.WriteScopeFile}, firstRun)
 	if mode != automation.WriteModeReadOnly || scope != automation.WriteScopeNone {
@@ -873,6 +882,26 @@ func TestAutomationMessageDoesNotFallbackToTemplatePrompt(t *testing.T) {
 	}
 	if !strings.Contains(message, automation.GenericTaskPrompt) {
 		t.Fatalf("empty task prompt should use generic fallback:\n%s", message)
+	}
+}
+
+func TestGlobalAutomationMessageDoesNotRequestWorkspaceContext(t *testing.T) {
+	service := &AutomationAppService{}
+	task := automation.Task{
+		Name:         "Global research",
+		Target:       automation.ExecutionTarget{Kind: automation.TargetKindUser},
+		Template:     automation.TemplateCustomPrompt,
+		Prompt:       "检索公开资料并整理摘要",
+		WriteMode:    automation.WriteModeReadOnly,
+		WriteScope:   automation.WriteScopeNone,
+		OutputPolicy: automation.OutputPolicyRunRecordOnly,
+	}
+	message := service.buildAutomationUserMessage(task, automation.RunRecord{Trigger: automation.TriggerManual}, automation.WriteModeReadOnly, automation.WriteScopeNone)
+	if strings.Contains(message, "读取完成任务所需的工作区文件") {
+		t.Fatalf("global task message requested workspace files:\n%s", message)
+	}
+	if !strings.Contains(message, "全局任务") || !strings.Contains(message, "用户级") {
+		t.Fatalf("global task message did not state its execution boundary:\n%s", message)
 	}
 }
 

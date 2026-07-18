@@ -40,11 +40,15 @@ func (a *App) CheckAutomationTriggers(ctx context.Context, id string) ([]automat
 
 func (s *AutomationAppService) CheckTriggers(ctx context.Context, id string) ([]automation.TriggerInboxItem, error) {
 	if s.snapshot == nil {
-		scoped := s.workspaceScoped()
-		if scoped == nil {
-			return nil, ErrNoWorkspace
+		task, getErr := s.store().Get(id)
+		if getErr != nil {
+			return nil, getErr
 		}
-		return scoped.CheckTriggers(ctx, id)
+		scoped, targetErr := s.automationForTask(ctx, task)
+		if targetErr != nil {
+			return nil, targetErr
+		}
+		return scoped.CheckTriggers(ctx, task.ID)
 	}
 	items, _, err := s.processTriggers(ctx, strings.TrimSpace(id), time.Now().UTC(), "manual_check")
 	return items, err
@@ -84,9 +88,17 @@ func (a *App) ConfirmAutomationInboxItem(ctx context.Context, id string) (automa
 
 func (s *AutomationAppService) ConfirmInboxItem(ctx context.Context, id string) (automation.InboxActionResult, error) {
 	if s.snapshot == nil {
-		scoped := s.workspaceScoped()
-		if scoped == nil {
-			return automation.InboxActionResult{}, ErrNoWorkspace
+		item, getErr := s.store().GetInboxItem(id)
+		if getErr != nil {
+			return automation.InboxActionResult{}, getErr
+		}
+		target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
+		if strings.TrimSpace(item.Workspace) != "" {
+			target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: item.Workspace}
+		}
+		scoped, targetErr := s.automationForTarget(ctx, target)
+		if targetErr != nil {
+			return automation.InboxActionResult{}, targetErr
 		}
 		return scoped.ConfirmInboxItem(ctx, id)
 	}
@@ -148,7 +160,11 @@ func (s *AutomationAppService) processContentTriggers(ctx context.Context, now t
 func (s *AutomationAppService) processTriggersMatching(ctx context.Context, onlyTaskID string, now time.Time, source string, includeTrigger func(automation.TriggerDefinition) bool) ([]automation.TriggerInboxItem, []automation.RunResult, error) {
 	unlock := triggerExecutionLocks.lock(s.workspace())
 	defer unlock()
-	tasks, err := s.List()
+	target := automation.ExecutionTarget{Kind: automation.TargetKindUser}
+	if workspace := strings.TrimSpace(s.workspace()); workspace != "" {
+		target = automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: workspace}
+	}
+	tasks, err := s.store().ListForTarget(target)
 	if err != nil {
 		return nil, nil, err
 	}
