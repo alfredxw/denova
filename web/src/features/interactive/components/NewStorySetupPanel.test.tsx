@@ -47,10 +47,10 @@ describe('NewStorySetupPanel', () => {
     render(<NewStorySetupPanel stories={[]} tellers={[]} directors={[directorWithEvents]} imagePresets={[]} onCancel={vi.fn()} onCreate={vi.fn()} />)
 
     expect(await screen.findByText('按导演默认 · 均衡 DM 检定')).toBeInTheDocument()
-    expect(screen.getByText('按导演默认 · 默认状态系统')).toBeInTheDocument()
+    expect(screen.getByText('默认状态系统')).toBeInTheDocument()
     expect(screen.getByText('按导演默认 · 默认事件包')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('combobox', { name: '角色状态' }))
+    await user.click(screen.getByRole('combobox', { name: '基础状态模板' }))
     expect(await screen.findByRole('option', { name: '修仙状态系统' })).toBeInTheDocument()
   })
 
@@ -68,6 +68,22 @@ describe('NewStorySetupPanel', () => {
       choice_count: 7,
       reply_target_chars: 2400,
       module_refs: expect.objectContaining({ actor_state_id: 'actors' }),
+      state_schema_policy: { mode: 'adapt_template' },
+    })))
+  })
+
+  it('switches to generated schema without submitting a state preset', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+    render(<NewStorySetupPanel stories={[]} tellers={[]} directors={[director]} imagePresets={[]} onCancel={vi.fn()} onCreate={onCreate} />)
+
+    await user.click(screen.getByRole('radio', { name: /为故事动态生成/ }))
+    expect(screen.queryByRole('combobox', { name: '基础状态模板' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '继续选择开场方式' }))
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      state_schema_policy: { mode: 'generate' },
+      module_refs: expect.objectContaining({ actor_state_disabled: true }),
     })))
   })
 
@@ -90,11 +106,12 @@ describe('NewStorySetupPanel', () => {
   })
 
   it('prefills an existing empty story when returning from opening', () => {
-    render(<NewStorySetupPanel stories={[]} story={{ id: 'st_1', title: '返程故事', origin: '已有简介', story_teller_id: 'classic', story_director_id: 'default', module_refs: { rule_system_id: 'rules' }, choice_count: 6, reply_target_chars: 1800, opening: { mode: 'ai' }, created_at: '', updated_at: '', branches: 1, events: 0 }} tellers={[]} directors={[director]} imagePresets={[]} onCancel={vi.fn()} onCreate={vi.fn()} />)
+    render(<NewStorySetupPanel stories={[]} story={{ id: 'st_1', title: '返程故事', origin: '已有简介', story_teller_id: 'classic', story_director_id: 'default', module_refs: { rule_system_id: 'rules' }, state_schema_policy: { mode: 'fixed_template' }, choice_count: 6, reply_target_chars: 1800, opening: { mode: 'ai' }, created_at: '', updated_at: '', branches: 1, events: 0 }} tellers={[]} directors={[director]} imagePresets={[]} onCancel={vi.fn()} onCreate={vi.fn()} />)
     expect(screen.getByRole('heading', { name: '编辑故事线配置' })).toBeInTheDocument()
     expect(screen.getByLabelText('故事线名称')).toHaveValue('返程故事')
     expect(screen.getByPlaceholderText('开端描述')).toHaveValue('已有简介')
     expect(screen.getByLabelText('每轮目标字数')).toHaveValue(1800)
     expect(screen.getByLabelText(/\u884c\u52a8\u5efa\u8bae\u6570\u91cf/)).toHaveValue(6)
+    expect(screen.getByRole('radio', { name: /固定使用模板/ })).toBeChecked()
   })
 })

@@ -28,11 +28,10 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 				Value: map[string]any{
 					"template_id": "protagonist",
 					"name":        "林风",
-					"state": map[string]any{"状态": map[string]any{
-						"资源": map[string]any{},
-						"效果": map[string]any{"burn_recovery": map[string]any{"名称": "掌心灼伤缓解", "类型": "伤势", "影响": "体力恢复"}},
-						"冷却": map[string]any{},
-					}},
+					"state": map[string]any{
+						"生命":   "10/10",
+						"持续效果": []any{"掌心灼伤｜轻微影响抓握｜休息后解除"},
+					},
 				},
 			}},
 			Choices: testTurnChoices(),
@@ -51,17 +50,17 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 	if delta == nil || turn.StateDelta == nil || len(turn.StateDelta.ActorOps) == 0 {
 		t.Fatalf("expected atomic state delta: turn=%#v delta=%#v", turn.StateDelta, delta)
 	}
-	foundCurrentStatus := false
+	foundEffectState := false
 	for _, op := range turn.StateDelta.ActorOps {
 		if op.SourceKind != StateOpSourceTurnResult || op.SourceID != turn.ID || op.SourceTurnID != turn.ID {
 			t.Fatalf("turn result state op source mismatch: %#v", op)
 		}
-		if op.ActorID == "protagonist" && op.FieldID == "状态" {
-			foundCurrentStatus = true
+		if op.ActorID == "protagonist" && op.FieldID == "持续效果" {
+			foundEffectState = true
 		}
 	}
-	if !foundCurrentStatus {
-		t.Fatalf("current status op missing: %#v", turn.StateDelta.ActorOps)
+	if !foundEffectState {
+		t.Fatalf("effect state op missing: %#v", turn.StateDelta.ActorOps)
 	}
 	if turn.StateStatus != "ready" {
 		t.Fatalf("turn state status mismatch: %q", turn.StateStatus)
@@ -74,13 +73,12 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, ok := actorStateFieldValue(snapshot.State, "protagonist", "状态").(map[string]any)
+	effects, ok := actorStateFieldValue(snapshot.State, "protagonist", "持续效果").([]any)
 	if !ok {
-		t.Fatalf("dynamic status = %#v", actorStateFieldValue(snapshot.State, "protagonist", "状态"))
+		t.Fatalf("dynamic effects = %#v", actorStateFieldValue(snapshot.State, "protagonist", "持续效果"))
 	}
-	effects, ok := status["效果"].(map[string]any)
-	if !ok || effects["burn_recovery"] == nil {
-		t.Fatalf("dynamic status effects = %#v", status)
+	if len(effects) != 1 || effects[0] != "掌心灼伤｜轻微影响抓握｜休息后解除" {
+		t.Fatalf("dynamic effects = %#v", effects)
 	}
 }
 

@@ -62,14 +62,16 @@ type StoryDirector struct {
 }
 
 type StoryDirectorStrategy struct {
-	Enabled                   bool                           `json:"enabled"`
-	MainlineStrength          string                         `json:"mainline_strength,omitempty"`
-	FailurePolicy             string                         `json:"failure_policy,omitempty"`
-	PacingCurve               string                         `json:"pacing_curve,omitempty"`
-	EventFrequency            string                         `json:"event_frequency,omitempty"`
-	DirectorAgentMode         string                         `json:"director_agent_mode,omitempty"`
-	RuleStateConsumptionMode  string                         `json:"rule_state_consumption_mode,omitempty"`
-	RuleVisibilityMode        string                         `json:"rule_visibility_mode,omitempty"`
+	Enabled                  bool   `json:"enabled"`
+	MainlineStrength         string `json:"mainline_strength,omitempty"`
+	FailurePolicy            string `json:"failure_policy,omitempty"`
+	PacingCurve              string `json:"pacing_curve,omitempty"`
+	EventFrequency           string `json:"event_frequency,omitempty"`
+	DirectorAgentMode        string `json:"director_agent_mode,omitempty"`
+	RuleStateConsumptionMode string `json:"rule_state_consumption_mode,omitempty"`
+	RuleVisibilityMode       string `json:"rule_visibility_mode,omitempty"`
+	// StateSchemaAdaptationMode is retained only for decoding legacy Director
+	// presets. New stories use their own StoryStateSchemaPolicy instead.
 	StateSchemaAdaptationMode string                         `json:"state_schema_adaptation_mode,omitempty"`
 	PromptMarkdown            string                         `json:"prompt_markdown,omitempty"`
 	BranchPlanningTurns       int                            `json:"branch_planning_turns,omitempty"`

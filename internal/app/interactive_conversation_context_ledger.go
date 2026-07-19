@@ -72,7 +72,7 @@ func interactiveCompactionResultForMessages(result agent.ContextCompactionResult
 	return result
 }
 
-func interactiveStoryContextSources(title, origin string, teller interactive.Teller, historyCheckpoint, directorPlanVisible, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, strategyPrompt string, turnHistory interactiveTurnHistory, userAction string) []interactiveContextSource {
+func interactiveStoryContextSources(title, origin string, teller interactive.Teller, historyCheckpoint, directorPlanVisible, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, strategyPrompt string, turnHistory interactiveTurnHistory, userAction string) []interactiveContextSource {
 	parts := []interactiveContextSource{
 		{Source: "互动故事", Title: "故事标题", Content: title, Note: "metadata_only", MetadataOnly: true},
 		{Source: "互动故事", Title: "开端", Content: origin, Note: "metadata_only", MetadataOnly: true},
@@ -120,6 +120,12 @@ func interactiveStoryContextSources(title, origin string, teller interactive.Tel
 		parts = append(parts, interactiveContextSource{
 			Source: "ActorState", Title: "当前 Actor 状态手册", Purpose: "turn-scoped state write guide",
 			Content: actorStateRuntime, Note: "source=effective Actor schema + Snapshot.State.actors; missing initial Actors projected in memory; bounded", Limit: interactiveStoryRuntimeContextBytes,
+		})
+	}
+	if strings.TrimSpace(stateSchemaInitialization) != "" {
+		parts = append(parts, interactiveContextSource{
+			Source: "StoryMeta.state_schema_policy", Title: "开局状态结构契约", Purpose: "opening-only schema initialization protocol",
+			Content: stateSchemaInitialization, Note: "source=story policy + initialization status; bounded", Limit: interactiveStoryRuntimeContextBytes,
 		})
 	}
 	if strings.TrimSpace(strategyPrompt) != "" {

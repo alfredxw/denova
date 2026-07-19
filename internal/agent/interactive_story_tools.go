@@ -143,6 +143,7 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 	if ctx.SubmitTurnResult != nil {
 		desc := strings.Join([]string{
 			"在完整玩家可见正文已经输出后，通过一个入口提交本回合 state_changes 与 choices。首次调用同时提供两者；工具返回 ready=false 时，只重交 retry_modules 指定的字段，已 accepted 的模块会保留。ready=true 后立即结束，不要重复或改写正文。",
+			"如果当前回合提供 initialize_story_state_schema，必须在输出正文前先让结构草案 finalized=true；本工具不会代替结构初始化。",
 			"state_changes 是增量数组，只填写正文中确实发生变化的字段。replace 写入本轮结束后的完整值，delta 只增减已有数值，create 创建确有必要长期追踪的新 Actor。使用 Actor 状态手册中的精确 actor_id、field_id、template_id；object 子字段用 subpath 字符串数组，不要自行拼接路径字符串。不要重复 RuleResolution 已消费的字段。",
 			"story_context 每回合至少 replace actor_id=story、field_id=当前事件；当前详细地点尚未初始化或正文确定地点变化时，同时 replace 当前详细地点。没有变化的其他字段不要写空值。",
 			"choices 必须与已输出正文结尾一致，并提供当前故事配置要求的恰好数量个不同建议；只有 prepare_interactive_turn 返回 terminal_candidate 的终局回合才提交空数组。",

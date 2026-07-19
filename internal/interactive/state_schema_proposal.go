@@ -22,8 +22,9 @@ const (
 	StateSchemaLoreReadMaxTotalBytes   = 2 * StateSchemaLoreReadMaxResultBytes
 )
 
-// ActorStateSchemaProposal is the Director-owned, backend-validated review
-// submitted after the opening or during an explicit later re-review.
+// ActorStateSchemaProposal is a backend-validated, run-local schema review.
+// Opening Game Agent proposals are structure-only; legacy explicit reviews may
+// still use the broader migration fields while old Beta stories are upgraded.
 type ActorStateSchemaProposal struct {
 	Summary      string                              `json:"summary,omitempty"`
 	Requirements []ActorStateSchemaRequirementReview `json:"requirements,omitempty"`
@@ -117,6 +118,24 @@ func ValidateActorStateSchemaProposal(base StoryDirectorActorStateSystem, trpg S
 		InitialActorOps: len(adaptation.InitialActorOps),
 		ActorOps:        len(adaptation.ActorOps),
 	}, nil
+}
+
+// ValidateOpeningGameStateSchemaProposal enforces the Game Agent boundary:
+// this tool may only define templates and fields. Actor creation and values
+// belong to submit_interactive_turn.state_changes in the same atomic commit.
+func ValidateOpeningGameStateSchemaProposal(base StoryDirectorActorStateSystem, trpg StoryDirectorTRPGSystem, proposal ActorStateSchemaProposal) (ActorStateSchemaProposal, ActorStateSchemaProposalPreview, error) {
+	if len(proposal.Adaptation.InitialActorOps) > 0 {
+		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("开局 Game Agent 状态结构提案不能修改 initial_actors；请用 state_changes create 创建 Actor")
+	}
+	if len(proposal.Adaptation.ActorOps) > 0 {
+		return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("开局 Game Agent 状态结构提案不能写 Actor 值；请用 submit_interactive_turn.state_changes 初始化")
+	}
+	for _, requirement := range proposal.Requirements {
+		if strings.TrimSpace(requirement.ValuePolicy) != ActorStateSchemaValuePolicySchemaOnly {
+			return ActorStateSchemaProposal{}, ActorStateSchemaProposalPreview{}, fmt.Errorf("开局 Game Agent 状态结构需求只能使用 value_policy=schema_only")
+		}
+	}
+	return ValidateActorStateSchemaProposal(base, trpg, proposal)
 }
 
 func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaProposal, target StoryDirectorActorStateSystem) error {

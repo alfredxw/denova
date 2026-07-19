@@ -29,6 +29,7 @@ type InteractiveStoryPromptInput struct {
 	DirectorPlanVisible         string
 	StoryDirectorRules          string
 	ActorState                  string
+	StateSchemaInitialization   string
 	StoryDirectorStrategyPrompt string
 	PreviousTurnsSummary        string
 	LoreContext                 string
@@ -157,6 +158,9 @@ func InteractiveStoryRuntimeContext(in InteractiveStoryPromptInput) string {
 	}
 	if strings.TrimSpace(in.ActorState) != "" {
 		writeBlock(&sb, "Actor 状态手册（source: Snapshot.State.actors + effective Actor schema, bounded Markdown）", in.ActorState)
+	}
+	if strings.TrimSpace(in.StateSchemaInitialization) != "" {
+		writeBlock(&sb, "开局状态结构契约（source: StoryMeta.state_schema_policy + state_schema_initialization, bounded）", in.StateSchemaInitialization)
 	}
 	if strings.TrimSpace(in.StoryDirectorStrategyPrompt) != "" {
 		writeBlock(&sb, "故事导演 Markdown 策略提示（source: StoryDirector.strategy.prompt_markdown, bounded）", strategyPromptWithPriorityNote(in.StoryDirectorStrategyPrompt))

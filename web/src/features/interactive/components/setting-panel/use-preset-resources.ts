@@ -24,7 +24,7 @@ export function usePresetResources({
   onImagePresetsChange?: (presets: ImagePreset[]) => void
 }) {
   const [tellers, setTellers] = useState<Teller[]>(externalTellers)
-  const [activeTellerId, setActiveTellerId] = useState('')
+  const [activeTellerId, setActiveTellerId] = useState(TELLER_CONFIG_AGENT_ENTRY_ID)
   const [tellerDraft, setTellerDraft] = useState<Teller | null>(null)
   const [activeSlotId, setActiveSlotId] = useState('')
   const [storyDirectors, setStoryDirectors] = useState<StoryDirector[]>(externalStoryDirectors)

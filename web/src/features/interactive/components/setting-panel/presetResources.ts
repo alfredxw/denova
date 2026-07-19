@@ -172,7 +172,6 @@ export function newStoryDirectorDraft(t?: PresetDraftTranslator): Partial<StoryD
       pacing_curve: 'goal-pressure-payoff',
 			event_frequency: 'balanced',
       director_agent_mode: 'triggered',
-		state_schema_adaptation_mode: 'after_opening',
       rule_state_consumption_mode: 'hybrid_auto',
       rule_visibility_mode: 'audit_only',
       branch_planning_turns: 5,

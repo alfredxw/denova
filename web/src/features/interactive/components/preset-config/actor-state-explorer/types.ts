@@ -3,6 +3,7 @@ import type { ActorStateField, ActorStateInitialActor, ActorStateTemplate, Actor
 export type TreeNodeKind =
   | 'group'
   | 'template'
+  | 'field-group'
   | 'field'
   | 'actors-group'
   | 'actor'

@@ -1,12 +1,18 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   closestCenter,
   DndContext,
+  DragOverlay,
   KeyboardSensor,
+  MeasuringStrategy,
   PointerSensor,
+  pointerWithin,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -18,6 +24,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, GripVertical, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogClose,
@@ -30,6 +37,7 @@ import {
 import {
   moveStoryStateLayoutField,
   moveStoryStateLayoutGroup,
+  previewStoryStateLayoutDrag,
   reconcileStoryStateLayout,
   type StoryStateTemplateLayout,
 } from './layout-preference'
@@ -51,35 +59,81 @@ interface StateLayoutEditorProps {
 export function StateLayoutEditor({ open, title, groups, value, onOpenChange, onChange, onReset }: StateLayoutEditorProps) {
   const { t } = useTranslation()
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
-  const layout = useMemo(() => reconcileStoryStateLayout(groups, value), [groups, value])
+  const baseLayout = useMemo(() => reconcileStoryStateLayout(groups, value), [groups, value])
+  const [dragLayout, setDragLayout] = useState<StoryStateTemplateLayout | null>(null)
+  const [activeDragId, setActiveDragId] = useState('')
+  const dragStartLayoutRef = useRef<StoryStateTemplateLayout | null>(null)
+  const dragLayoutRef = useRef<StoryStateTemplateLayout | null>(null)
+  const layout = dragLayout || baseLayout
   const fieldLabels = useMemo(() => new Map(groups.flatMap((group) => group.fields.map((field) => [field.id, field.label] as const))), [groups])
+  const collisionDetection = useCallback<CollisionDetection>((args) => {
+    const activeKind = args.active.data.current?.kind
+    const groupContainers = args.droppableContainers.filter((container) => container.data.current?.kind === 'group')
+    if (activeKind === 'group') {
+      return closestCenter({ ...args, droppableContainers: groupContainers })
+    }
+
+    const fieldContainers = args.droppableContainers.filter((container) => container.data.current?.kind === 'field')
+    const groupHits = pointerWithin({ ...args, droppableContainers: groupContainers })
+    const hoveredGroup = groupHits[0]?.data?.droppableContainer.data.current?.groupKey
+    if (typeof hoveredGroup === 'string') {
+      const hoveredFields = fieldContainers.filter((container) => container.data.current?.groupKey === hoveredGroup)
+      if (hoveredFields.length === 0) return groupHits.slice(0, 1)
+      const directFieldHits = pointerWithin({ ...args, droppableContainers: hoveredFields })
+      return directFieldHits.length > 0
+        ? directFieldHits
+        : closestCenter({ ...args, droppableContainers: hoveredFields })
+    }
+    return closestCenter({ ...args, droppableContainers: fieldContainers })
+  }, [])
+
+  const clearDrag = () => {
+    dragStartLayoutRef.current = null
+    dragLayoutRef.current = null
+    setDragLayout(null)
+    setActiveDragId('')
+  }
+
+  const handleDragStart = ({ active }: DragStartEvent) => {
+    dragStartLayoutRef.current = baseLayout
+    dragLayoutRef.current = baseLayout
+    setDragLayout(baseLayout)
+    setActiveDragId(String(active.id))
+  }
+
+  const handleDragOver = ({ active, over }: DragOverEvent) => {
+    if (!over || active.id === over.id) return
+    const startLayout = dragStartLayoutRef.current || baseLayout
+    const next = previewStoryStateLayoutDrag(
+      startLayout,
+      String(active.id),
+      String(over.id),
+      shouldInsertAfter(active.rect.current.translated, over.rect, String(over.id)),
+    )
+    if (storyStateLayoutsEqual(next, dragLayoutRef.current)) return
+    dragLayoutRef.current = next
+    setDragLayout(next)
+  }
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
-    if (!over || active.id === over.id) return
-    const activeId = String(active.id)
-    const overId = String(over.id)
-    if (activeId.startsWith('group:')) {
-      const activeKey = activeId.slice('group:'.length)
-      const overKey = overId.startsWith('group:')
-        ? overId.slice('group:'.length)
-        : groupForField(layout, overId.slice('field:'.length))
-      if (overKey) onChange(moveStoryStateLayoutGroup(layout, activeKey, overKey))
+    if (!over) {
+      clearDrag()
       return
     }
-    if (!activeId.startsWith('field:')) return
-    const fieldId = activeId.slice('field:'.length)
-    const targetGroup = overId.startsWith('group:')
-      ? overId.slice('group:'.length)
-      : groupForField(layout, overId.slice('field:'.length))
-    if (!targetGroup) return
-    const targetFields = layout.groups.find((group) => group.key === targetGroup)?.field_ids || []
-    const targetIndex = overId.startsWith('field:')
-      ? Math.max(0, targetFields.indexOf(overId.slice('field:'.length)))
-      : targetFields.length
-    onChange(moveStoryStateLayoutField(layout, fieldId, targetGroup, targetIndex))
+    const startLayout = dragStartLayoutRef.current || baseLayout
+    const finalLayout = active.id === over.id
+      ? (dragLayoutRef.current || startLayout)
+      : previewStoryStateLayoutDrag(
+        startLayout,
+        String(active.id),
+        String(over.id),
+        shouldInsertAfter(active.rect.current.translated, over.rect, String(over.id)),
+      )
+    if (!storyStateLayoutsEqual(finalLayout, baseLayout)) onChange(finalLayout)
+    clearDrag()
   }
 
   const moveGroup = (groupIndex: number, delta: number) => {
@@ -112,7 +166,15 @@ export function StateLayoutEditor({ open, title, groups, value, onOpenChange, on
           <DialogTitle>{t('storyStage.state.layout.title', { name: title })}</DialogTitle>
           <DialogDescription>{t('storyStage.state.layout.description')}</DialogDescription>
         </DialogHeader>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={collisionDetection}
+          measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragEnd={handleDragEnd}
+          onDragCancel={clearDrag}
+        >
           <SortableContext items={layout.groups.map((group) => groupDragId(group.key))} strategy={verticalListSortingStrategy}>
             <div className="min-h-0 space-y-2 overflow-y-auto px-4 pb-2">
               {layout.groups.map((group, groupIndex) => (
@@ -129,6 +191,13 @@ export function StateLayoutEditor({ open, title, groups, value, onOpenChange, on
               ))}
             </div>
           </SortableContext>
+          <DragOverlay zIndex={80}>
+            {activeDragId ? (
+              <div className="max-w-[24rem] rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-xs font-medium text-[var(--nova-text)] shadow-xl">
+                {dragOverlayLabel(activeDragId, fieldLabels, t)}
+              </div>
+            ) : null}
+          </DragOverlay>
         </DndContext>
         <DialogFooter className="m-0">
           <Button type="button" variant="outline" onClick={onReset}>
@@ -154,11 +223,19 @@ function SortableLayoutGroup({ group, groupIndex, groupCount, fieldLabels, onMov
   onMoveFieldAcrossGroup: (groupIndex: number, fieldIndex: number, delta: number) => void
 }) {
   const { t } = useTranslation()
-  const sortable = useSortable({ id: groupDragId(group.key) })
+  const sortable = useSortable({ id: groupDragId(group.key), data: { kind: 'group', groupKey: group.key } })
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition }
   const label = builtinGroupLabel(group.key, t)
   return (
-    <section ref={sortable.setNodeRef} style={style} className="rounded-xl border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
+    <section
+      ref={sortable.setNodeRef}
+      style={style}
+      className={cn(
+        'rounded-xl border border-[var(--nova-border)] bg-[var(--nova-surface)] p-2 transition-[border-color,background-color,opacity]',
+        sortable.isOver && 'border-[var(--nova-accent)] bg-[var(--nova-active)]',
+        sortable.isDragging && 'opacity-35',
+      )}
+    >
       <header className="mb-2 flex min-w-0 items-center gap-1.5">
         <button
           ref={sortable.setActivatorNodeRef}
@@ -176,7 +253,10 @@ function SortableLayoutGroup({ group, groupIndex, groupCount, fieldLabels, onMov
         <MoveButton icon={ArrowDown} label={t('storyStage.state.layout.moveGroupDown', { name: label })} disabled={groupIndex === groupCount - 1} onClick={() => onMoveGroup(groupIndex, 1)} />
       </header>
       <SortableContext items={group.field_ids.map(fieldDragId)} strategy={verticalListSortingStrategy}>
-        <div className="space-y-1">
+        <div className={cn('space-y-1 rounded-lg', group.field_ids.length === 0 && 'flex min-h-10 items-center justify-center border border-dashed border-[var(--nova-border)]')}>
+          {group.field_ids.length === 0 ? (
+            <span className="text-[10px] text-[var(--nova-text-faint)]">{t('storyStage.state.layout.emptyGroup')}</span>
+          ) : null}
           {group.field_ids.map((fieldId, fieldIndex) => (
             <SortableLayoutField
               key={fieldId}
@@ -188,6 +268,7 @@ function SortableLayoutGroup({ group, groupIndex, groupCount, fieldLabels, onMov
               fieldCount={group.field_ids.length}
               onMove={onMoveField}
               onMoveAcrossGroup={onMoveFieldAcrossGroup}
+              groupKey={group.key}
             />
           ))}
         </div>
@@ -196,9 +277,10 @@ function SortableLayoutGroup({ group, groupIndex, groupCount, fieldLabels, onMov
   )
 }
 
-function SortableLayoutField({ fieldId, label, groupIndex, groupCount, fieldIndex, fieldCount, onMove, onMoveAcrossGroup }: {
+function SortableLayoutField({ fieldId, label, groupKey, groupIndex, groupCount, fieldIndex, fieldCount, onMove, onMoveAcrossGroup }: {
   fieldId: string
   label: string
+  groupKey: string
   groupIndex: number
   groupCount: number
   fieldIndex: number
@@ -207,10 +289,18 @@ function SortableLayoutField({ fieldId, label, groupIndex, groupCount, fieldInde
   onMoveAcrossGroup: (groupIndex: number, fieldIndex: number, delta: number) => void
 }) {
   const { t } = useTranslation()
-  const sortable = useSortable({ id: fieldDragId(fieldId) })
+  const sortable = useSortable({ id: fieldDragId(fieldId), data: { kind: 'field', fieldId, groupKey } })
   const style = { transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition }
   return (
-    <div ref={sortable.setNodeRef} style={style} className="flex min-w-0 items-center gap-1 rounded-lg border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] px-1.5 py-1">
+    <div
+      ref={sortable.setNodeRef}
+      style={style}
+      className={cn(
+        'flex min-w-0 items-center gap-1 rounded-lg border border-[var(--nova-border-soft)] bg-[var(--nova-surface-2)] px-1.5 py-1 transition-[border-color,background-color,opacity]',
+        sortable.isOver && 'border-[var(--nova-accent)] bg-[var(--nova-active)]',
+        sortable.isDragging && 'opacity-25',
+      )}
+    >
       <button
         ref={sortable.setActivatorNodeRef}
         type="button"
@@ -238,8 +328,33 @@ function MoveButton({ icon: Icon, label, disabled, onClick }: { icon: typeof Arr
   )
 }
 
-function groupForField(layout: StoryStateTemplateLayout, fieldId: string) {
-  return layout.groups.find((group) => group.field_ids.includes(fieldId))?.key || ''
+function shouldInsertAfter(
+  translated: { top: number; height: number } | null,
+  overRect: { top: number; height: number },
+  overId: string,
+) {
+  if (!translated || !overId.startsWith('field:')) return false
+  return translated.top + translated.height / 2 > overRect.top + overRect.height / 2
+}
+
+function dragOverlayLabel(activeId: string, fieldLabels: Map<string, string>, t: ReturnType<typeof useTranslation>['t']) {
+  if (activeId.startsWith('group:')) return builtinGroupLabel(activeId.slice('group:'.length), t)
+  if (activeId.startsWith('field:')) {
+    const fieldId = activeId.slice('field:'.length)
+    return fieldLabels.get(fieldId) || fieldId
+  }
+  return activeId
+}
+
+function storyStateLayoutsEqual(left: StoryStateTemplateLayout | null, right: StoryStateTemplateLayout | null) {
+  if (left === right) return true
+  if (!left || !right || left.groups.length !== right.groups.length) return false
+  return left.groups.every((group, groupIndex) => {
+    const candidate = right.groups[groupIndex]
+    return group.key === candidate?.key
+      && group.field_ids.length === candidate.field_ids.length
+      && group.field_ids.every((fieldId, fieldIndex) => fieldId === candidate.field_ids[fieldIndex])
+  })
 }
 
 function builtinGroupLabel(key: string, t: ReturnType<typeof useTranslation>['t']) {

@@ -36,12 +36,12 @@ func TestApplyActorStateSchemaAdaptationSupportsStorySpecificDimensions(t *testi
 			name:       "numeric trpg character sheet",
 			templateID: DefaultActorID,
 			fields: []ActorStateField{
-				{Name: "力量", Type: "number", Default: float64(10), Min: floatPointer(1), Max: floatPointer(20), Visibility: "visible"},
-				{Name: "等级", Type: "number", Default: float64(1), Min: floatPointer(1), Visibility: "visible"},
-				{Name: "生命值", Type: "number", Default: float64(10), Min: floatPointer(0), Visibility: "visible"},
+				{Name: "幸运", Type: "number", Default: float64(10), Min: floatPointer(1), Max: floatPointer(20), Visibility: "visible"},
+				{Name: "先攻", Type: "number", Default: float64(0), Min: floatPointer(-10), Max: floatPointer(20), Visibility: "visible"},
+				{Name: "护盾值", Type: "number", Default: float64(0), Min: floatPointer(0), Visibility: "visible"},
 				{Name: "法术位", Type: "number", Default: float64(0), Min: floatPointer(0), Visibility: "visible"},
 			},
-			want: []string{"力量", "等级", "生命值", "法术位"},
+			want: []string{"幸运", "先攻", "护盾值", "法术位"},
 		},
 		{
 			name:       "adult relationship state",
@@ -83,8 +83,6 @@ func TestApplyActorStateSchemaAdaptationSupportsStorySpecificDimensions(t *testi
 
 func TestApplyActorStateSchemaAdaptationRejectsBrokenTRPGBinding(t *testing.T) {
 	base := defaultActorStateSystem()
-	index := actorStateTemplateIndex(base.Templates, DefaultActorID)
-	base.Templates[index].Fields = append(base.Templates[index].Fields, ActorStateField{Name: "力量", Type: "number", Default: float64(10), Visibility: "visible"})
 	trpg := StoryDirectorTRPGSystem{RuleTemplates: []RuleCheck{{
 		ID: "attribute-check",
 		StateBindings: []RuleStateBinding{{

@@ -66,7 +66,7 @@ describe('ActorStateExplorer', () => {
           templates: [{
             id: 'protagonist',
             name: '主角状态',
-            fields: [{ id: 'health', name: '身体状态', path: 'current.health', type: 'string', visibility: 'visible' }],
+            fields: [{ id: 'health', name: '身体状态', path: 'current.health', type: 'string', visibility: 'visible', group: '状态' }],
           }],
           initial_actors: [],
           trait_pools: [],
@@ -91,8 +91,11 @@ describe('ActorStateExplorer', () => {
     expect(templateItem).toHaveAttribute('tabindex', '0')
     expect(templateItem.querySelector(':scope > div')?.className).not.toContain('inset_3px_0_0')
     expect(container.querySelector('.state-tree-branch')).toBeInTheDocument()
+    const fieldGroup = screen.getByRole('treeitem', { name: '状态' })
+    expect(fieldGroup).toHaveAttribute('aria-expanded', 'true')
+    expect(fieldGroup).toHaveAttribute('aria-level', '3')
     const fieldItem = screen.getByRole('treeitem', { name: '身体状态' })
-    expect(fieldItem).toHaveAttribute('aria-level', '3')
+    expect(fieldItem).toHaveAttribute('aria-level', '4')
 
     templateItem.focus()
     await user.keyboard('{ArrowDown}')

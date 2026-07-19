@@ -61,6 +61,7 @@ const storyStage = {
   'storyStage.state.layout.moveFieldDown': 'Move field down: {{name}}',
   'storyStage.state.layout.moveFieldPreviousGroup': 'Move {{name}} to the previous section',
   'storyStage.state.layout.moveFieldNextGroup': 'Move {{name}} to the next section',
+  'storyStage.state.layout.emptyGroup': 'Drop a field here',
   'storyStage.turnNavigator.label': 'Story turn navigator',
   'storyStage.turnNavigator.goto': 'Go to turn {{index}}',
   'storyStage.turnNavigator.emptyUser': 'Empty user input',

@@ -190,6 +190,7 @@ const settingPanel = {
   'settingPanel.actorState.explorer.visibility': '可见性',
   'settingPanel.actorState.explorer.displayGroup': '展示分组',
   'settingPanel.actorState.explorer.displayGroupPlaceholder': '留空自动分组',
+  'settingPanel.actorState.explorer.ungroupedFields': '未分组字段',
   'settingPanel.actorState.explorer.display': '展示方式',
   'settingPanel.actorState.explorer.display.auto': '自动',
   'settingPanel.actorState.explorer.display.stat': '数值仪表',

@@ -50,6 +50,8 @@ type interactiveConversation struct {
 	directorTasks           *workspaceDirectorTaskGroup
 	directorGenerator       interactiveDirectorGenerator
 	customDirectorGenerator bool
+	openingStateSchemaDraft *interactive.ActorStateSchemaBatchDraft
+	openingStateSchemaAudit interactive.ActorStateSchemaBatchAudit
 }
 
 type interactiveDirectorGenerator func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error)
@@ -82,6 +84,102 @@ func (c *interactiveConversation) withBaseParentID(parentID string) *interactive
 		c.baseParentID = &parentID
 	}
 	return c
+}
+
+func (c *interactiveConversation) withOpeningStateSchema(storyCtx interactive.StoryContext) *interactiveConversation {
+	if c == nil || !interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(storyCtx.Meta.StateSchemaPolicy) || storyCtx.Meta.StateSchemaInitialization == nil || storyCtx.Meta.StateSchemaInitialization.Status != interactive.StateSchemaInitializationWaitingOpening || storyCtx.Meta.ActorStateSchema == nil || len(storyCtx.Snapshot.Turns) > 0 {
+		return c
+	}
+	trpgSourceIDs := make([]string, 0, len(storyCtx.Meta.ActorStateSchema.TRPGSystem.RuleTemplates))
+	for _, rule := range storyCtx.Meta.ActorStateSchema.TRPGSystem.RuleTemplates {
+		if id := strings.TrimSpace(rule.ID); id != "" {
+			trpgSourceIDs = append(trpgSourceIDs, id)
+		}
+	}
+	c.mu.Lock()
+	c.openingStateSchemaDraft = interactive.NewOpeningActorStateSchemaBatchDraft(storyCtx.Meta.ActorStateSchema.System, storyCtx.Meta.ActorStateSchema.TRPGSystem)
+	c.openingStateSchemaAudit = interactive.ActorStateSchemaBatchAudit{
+		OpeningSourceIDs: []string{"opening-draft"},
+		TRPGSourceIDs:    trpgSourceIDs,
+		CurrentState:     storyCtx.Snapshot.State,
+	}
+	c.mu.Unlock()
+	log.Printf("[interactive-agent] enabled opening state schema draft story_id=%s branch_id=%s mode=%s base_revision=%d", c.storyID, storyCtx.Snapshot.BranchID, storyCtx.Meta.StateSchemaPolicy.Mode, storyCtx.Meta.ActorStateSchema.Revision)
+	return c
+}
+
+func (c *interactiveConversation) SubmitOpeningStateSchemaBatch(ctx context.Context, batch interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error) {
+	if c == nil {
+		return interactive.ActorStateSchemaBatchResult{}, fmt.Errorf("互动故事不存在")
+	}
+	select {
+	case <-ctx.Done():
+		return interactive.ActorStateSchemaBatchResult{}, ctx.Err()
+	default:
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.openingStateSchemaDraft == nil {
+		return interactive.ActorStateSchemaBatchResult{}, fmt.Errorf("当前故事不需要 Game Agent 初始化状态结构")
+	}
+	result := c.openingStateSchemaDraft.SubmitStructureOnly(batch, c.openingStateSchemaAudit)
+	log.Printf("[interactive-agent] staged opening state schema story_id=%s branch_id=%s accepted=%d rejected=%d blocked=%d finalized=%t draft_items=%d", c.storyID, c.branchID, len(result.Accepted), len(result.Rejected), len(result.Blocked), result.Finalized, result.DraftAcceptedItems)
+	return result, nil
+}
+
+func (c *interactiveConversation) openingStateSchemaProposalSnapshot() *interactive.ActorStateSchemaProposal {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	proposal, ok := c.openingStateSchemaDraft.FinalProposal()
+	if !ok {
+		return nil
+	}
+	return &proposal
+}
+
+func (c *interactiveConversation) effectiveTurnState(storyCtx interactive.StoryContext) (interactive.StoryDirectorActorStateSystem, map[string]any, error) {
+	actorState := interactive.StoryDirectorActorStateSystem{}
+	if storyCtx.Meta.ActorStateSchema != nil {
+		actorState = storyCtx.Meta.ActorStateSchema.System
+	} else {
+		actorState = c.storyDirectorForMeta(storyCtx.Meta).ActorState
+	}
+	state := storyCtx.Snapshot.State
+	c.mu.Lock()
+	proposal, hasProposal := c.openingStateSchemaDraft.FinalProposal()
+	draftRequired := c.openingStateSchemaDraft != nil
+	c.mu.Unlock()
+	if draftRequired && !hasProposal {
+		return interactive.StoryDirectorActorStateSystem{}, nil, fmt.Errorf("请先调用 initialize_story_state_schema 并完成 finalize，再提交开局状态")
+	}
+	if hasProposal {
+		if storyCtx.Meta.ActorStateSchema == nil {
+			return interactive.StoryDirectorActorStateSystem{}, nil, fmt.Errorf("故事缺少开局状态结构基线")
+		}
+		target, _, err := interactive.ApplyActorStateSchemaAdaptation(storyCtx.Meta.ActorStateSchema.System, storyCtx.Meta.ActorStateSchema.TRPGSystem, proposal.Adaptation)
+		if err != nil {
+			return interactive.StoryDirectorActorStateSystem{}, nil, err
+		}
+		initialState, err := interactive.BuildActorStateInitialSnapshot(target, storyCtx.Meta.InitialTraitRolls)
+		if err != nil {
+			return interactive.StoryDirectorActorStateSystem{}, nil, err
+		}
+		return target, initialState, nil
+	}
+	if interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(storyCtx.Meta.StateSchemaPolicy) {
+		rawActors, _ := state["actors"].(map[string]any)
+		if len(rawActors) == 0 {
+			initialState, err := interactive.BuildActorStateInitialSnapshot(actorState, storyCtx.Meta.InitialTraitRolls)
+			if err != nil {
+				return interactive.StoryDirectorActorStateSystem{}, nil, err
+			}
+			state = initialState
+		}
+	}
+	return actorState, state, nil
 }
 
 func (c *interactiveConversation) directorTaskHint() string {
@@ -146,6 +244,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	}
 	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, interactiveStoryRuntimeContextBytes)
 	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, interactiveStoryRuntimeContextBytes, storyCtx.Meta.ChoiceCount)
+	stateSchemaInitialization := interactive.OpeningGameStateSchemaInstruction(storyCtx.Meta)
 	strategyPrompt := interactive.StoryDirectorStrategyPromptMarkdown(storyDirector)
 	runtimeContext := prompts.InteractiveStoryRuntimeContext(prompts.InteractiveStoryPromptInput{
 		Title:                       storyCtx.Meta.Title,
@@ -158,6 +257,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 		DirectorPlanVisible:         directorPlanVisible,
 		StoryDirectorRules:          ruleSummary,
 		ActorState:                  actorStateRuntime,
+		StateSchemaInitialization:   stateSchemaInitialization,
 		StoryDirectorStrategyPrompt: strategyPrompt,
 		PreviousTurnsSummary:        turnHistory.PreviousSummary,
 		LoreContext:                 loreRuntime,
@@ -181,7 +281,7 @@ func (c *interactiveConversation) PrepareMessages(originalMessage, agentMessage 
 	}
 	history = agent.ApplyToolResultContextPolicyForConversation(history, c.ToolResultContextPolicy())
 	history = append(history, schema.UserMessage(prompts.InteractiveStoryTurnInstruction(agentMessage, tellerTurnContextPrompt, runtimeContext)))
-	sourceParts := interactiveStoryContextSources(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, checkpointSummary, directorPlanVisible, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, strategyPrompt, turnHistory, agentMessage)
+	sourceParts := interactiveStoryContextSources(storyCtx.Meta.Title, storyCtx.Meta.Origin, teller, checkpointSummary, directorPlanVisible, residentLore, loreRevision, loreRuntime, ruleSummary, actorStateRuntime, stateSchemaInitialization, strategyPrompt, turnHistory, agentMessage)
 	sourceSummary := interactiveContextSourceListSummary(sourceParts)
 	contextLedgerParts := interactiveContextLedgerParts(sourceParts, history, c.ToolResultContextPolicy())
 	c.mu.Lock()
@@ -274,8 +374,13 @@ func (c *interactiveConversation) PrepareInteractiveTurn(ctx context.Context, re
 		return interactive.RuleResolution{}, ctx.Err()
 	default:
 	}
+	actorState, currentState, err := c.effectiveTurnState(storyCtx)
+	if err != nil {
+		return interactive.RuleResolution{}, err
+	}
 	storyDirector := storyDirectorForSnapshot(c.storyDirectorForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
-	resolution, err := interactive.ResolveTurnRulesWithDirector(c.storyID, storyCtx.Snapshot.BranchID, storyCtx.Snapshot.State, storyDirector, request)
+	storyDirector.ActorState = actorState
+	resolution, err := interactive.ResolveTurnRulesWithDirector(c.storyID, storyCtx.Snapshot.BranchID, currentState, storyDirector, request)
 	if err != nil {
 		return interactive.RuleResolution{}, err
 	}
@@ -304,18 +409,16 @@ func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, input in
 	if err != nil {
 		return interactive.TurnSubmissionReceipt{}, err
 	}
-	actorState := interactive.StoryDirectorActorStateSystem{}
-	if storyCtx.Meta.ActorStateSchema != nil {
-		actorState = storyCtx.Meta.ActorStateSchema.System
-	} else {
-		actorState = c.storyDirectorForMeta(storyCtx.Meta).ActorState
+	actorState, currentState, err := c.effectiveTurnState(storyCtx)
+	if err != nil {
+		return interactive.TurnSubmissionReceipt{}, err
 	}
 	director := c.storyDirectorForMeta(storyCtx.Meta)
 	c.mu.Lock()
 	current := c.turnProtocol.draft()
 	prepared, receipt := interactive.PrepareTurnSubmission(interactive.TurnSubmissionContext{
 		ActorState:               actorState,
-		CurrentState:             storyCtx.Snapshot.State,
+		CurrentState:             currentState,
 		ChoiceCount:              storyCtx.Meta.ChoiceCount,
 		RuleResolution:           c.ruleResolution,
 		RuleStateConsumptionMode: director.Strategy.RuleStateConsumptionMode,
@@ -604,6 +707,7 @@ func (c *interactiveConversation) AppendAssistantWithMetadata(content, thinking 
 		RuleResolution:       c.ruleResolutionSnapshot(),
 		TurnResult:           turnResult,
 		TerminalOutcome:      c.terminalOutcomeSnapshot(narrative),
+		StateSchemaProposal:  c.openingStateSchemaProposalSnapshot(),
 	})
 	if err == nil {
 		c.mu.Lock()

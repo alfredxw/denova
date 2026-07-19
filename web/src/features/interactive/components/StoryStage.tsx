@@ -1163,7 +1163,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   const stageControls = (
     <>
-      <StoryPicker stories={stories} currentStoryId={storyId} onSelect={(id) => { setCreatingStory(false); setEditingStorySetup(false); onStorySelect(id) }} onCreate={() => { setEditingStorySetup(false); setCreatingStory(true) }} onDelete={onStoryDelete} />
+      <StoryPicker stories={stories} currentStoryId={storyId} onSelect={(id) => { setStageControlsOpen(false); setCreatingStory(false); setEditingStorySetup(false); onStorySelect(id) }} onCreate={() => { setStageControlsOpen(false); setEditingStorySetup(false); setCreatingStory(true) }} onDelete={onStoryDelete} />
       {isMobile ? <StoryDirectorPicker story={story} storyDirectors={storyDirectors} onChange={onDirectorChange} /> : null}
       {isMobile ? <ReplyTargetCharsControl story={story} onChange={onReplyTargetCharsChange} /> : null}
       {onToggleDirectorPanel && (

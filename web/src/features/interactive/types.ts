@@ -13,10 +13,17 @@ export interface StorySummary {
   choice_count: number
   image_settings?: StoryImageSettings
   opening: StoryOpeningConfig
+  state_schema_policy?: StoryStateSchemaPolicy
   created_at: string
   updated_at: string
   branches: number
   events: number
+}
+
+export type StoryStateSchemaMode = 'adapt_template' | 'fixed_template' | 'generate'
+
+export interface StoryStateSchemaPolicy {
+  mode: StoryStateSchemaMode
 }
 
 type StoryImageMode = 'manual' | 'interval'
@@ -181,6 +188,7 @@ interface StoryDirectorStrategy {
   director_agent_mode?: 'triggered' | 'every_turn' | 'off' | string
   rule_state_consumption_mode?: 'hybrid_auto' | 'director_only' | string
   rule_visibility_mode?: 'audit_only' | 'public_roll' | string
+  /** Legacy preset data only; new stories use state_schema_policy. */
   state_schema_adaptation_mode?: 'after_opening' | 'off' | string
   branch_planning_turns?: number
   planning_templates?: DirectorPlanningTemplates

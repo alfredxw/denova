@@ -575,7 +575,6 @@ export function PresetSettingsPanel({
   const presetDirectorySections = buildPresetDirectorySections({
     lists: { tellers, storyDirectors, imagePresets, eventPackages, ruleSystems, actorStates },
     presetUsageMode,
-    presetResourceKind,
     onCreateKind: (kind) => void createPresetResource(kind),
     t,
   })

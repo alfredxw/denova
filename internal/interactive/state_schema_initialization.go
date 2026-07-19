@@ -29,7 +29,7 @@ func (s *Store) StateSchemaInitializationStatus(storyID string) (StateSchemaInit
 		return StateSchemaInitializationStatus{}, err
 	}
 	if meta.StateSchemaInitialization == nil {
-		return StateSchemaInitializationStatus{Mode: StateSchemaAdaptationModeOff, Status: StateSchemaInitializationSkipped}, nil
+		return StateSchemaInitializationStatus{Mode: StoryStateSchemaModeFixedTemplate, Status: StateSchemaInitializationReady, Outcome: "fixed"}, nil
 	}
 	return *meta.StateSchemaInitialization, nil
 }
@@ -41,8 +41,8 @@ func (s *Store) ClaimStateSchemaInitialization(storyID, sourceTurnID string) (St
 	if err != nil {
 		return StateSchemaInitializationStatus{}, false, err
 	}
-	if meta.StateSchemaInitialization == nil || meta.StateSchemaInitialization.Mode == StateSchemaAdaptationModeOff {
-		return StateSchemaInitializationStatus{Mode: StateSchemaAdaptationModeOff, Status: StateSchemaInitializationSkipped}, false, nil
+	if meta.StateSchemaInitialization == nil || stateSchemaInitializationModeIsFixed(meta.StateSchemaInitialization.Mode) {
+		return StateSchemaInitializationStatus{Mode: StoryStateSchemaModeFixedTemplate, Status: StateSchemaInitializationReady, Outcome: "fixed"}, false, nil
 	}
 	status := *meta.StateSchemaInitialization
 	// Only a waiting task may be claimed automatically. Failed tasks retain
@@ -106,7 +106,7 @@ func (s *Store) ResetStateSchemaInitialization(storyID string) (StateSchemaIniti
 	if err != nil {
 		return StateSchemaInitializationStatus{}, err
 	}
-	if meta.StateSchemaInitialization == nil || meta.StateSchemaInitialization.Mode == StateSchemaAdaptationModeOff {
+	if meta.StateSchemaInitialization == nil || stateSchemaInitializationModeIsFixed(meta.StateSchemaInitialization.Mode) {
 		return StateSchemaInitializationStatus{}, fmt.Errorf("当前故事已固定使用原始状态预设")
 	}
 	status := *meta.StateSchemaInitialization
@@ -139,7 +139,7 @@ func (s *Store) ReopenStateSchemaReview(storyID string) (StateSchemaInitializati
 	if err != nil {
 		return StateSchemaInitializationStatus{}, err
 	}
-	if meta.StateSchemaInitialization == nil || meta.StateSchemaInitialization.Mode == StateSchemaAdaptationModeOff {
+	if meta.StateSchemaInitialization == nil || stateSchemaInitializationModeIsFixed(meta.StateSchemaInitialization.Mode) {
 		return StateSchemaInitializationStatus{}, fmt.Errorf("当前故事已固定使用原始状态预设")
 	}
 	status := *meta.StateSchemaInitialization
@@ -239,6 +239,144 @@ func (s *Store) SkipStateSchemaInitialization(storyID string) (StateSchemaInitia
 // review without advancing the schema revision when the contract is unchanged.
 func (s *Store) ApplyStateSchemaProposal(storyID, branchID, sourceTurnID string, proposal ActorStateSchemaProposal) (StateSchemaInitializationStatus, error) {
 	return s.applyStateSchemaInitialization(storyID, branchID, sourceTurnID, proposal)
+}
+
+// prepareOpeningGameStateSchemaCommit prepares the schema and initial Actor
+// state in memory. The caller persists the returned operations together with
+// the opening Turn, so any later validation or write error leaves both schema
+// and state untouched on disk.
+func prepareOpeningGameStateSchemaCommit(meta *StoryMeta, events []StoryEventRecord, state map[string]any, actorState StoryDirectorActorStateSystem, branchID, sourceTurnID, now string, proposal *ActorStateSchemaProposal) (StoryDirectorActorStateSystem, []StateOp, []ActorStateOp, error) {
+	if meta == nil {
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("故事元信息不存在")
+	}
+	policy := meta.StateSchemaPolicy
+	if !storyStateSchemaPolicyRequiresOpeningDraft(policy) {
+		if proposal != nil {
+			return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("固定状态模板故事不能提交开局结构提案")
+		}
+		return actorState, nil, nil, nil
+	}
+	if meta.ActorStateSchema == nil {
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("故事缺少冻结状态结构")
+	}
+	actorState = meta.ActorStateSchema.System
+	if meta.StateSchemaInitialization == nil {
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("故事缺少状态结构初始化状态")
+	}
+	status := *meta.StateSchemaInitialization
+	rawActors, _ := state[actorStateRoot].(map[string]any)
+	hasActors := len(rawActors) > 0
+	if status.Status == StateSchemaInitializationReady {
+		if proposal != nil {
+			return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("故事状态结构已经冻结，不能再次提交开局结构提案")
+		}
+		if hasActors {
+			return actorState, nil, nil, nil
+		}
+		ops, actorOps, err := BuildActorStateInitialChanges(actorState, meta.InitialTraitRolls)
+		if err != nil {
+			return StoryDirectorActorStateSystem{}, nil, nil, err
+		}
+		markOpeningStateBootstrapSources(ops, actorOps, sourceTurnID)
+		for _, op := range ops {
+			applyStateOp(state, op)
+		}
+		for _, op := range actorOps {
+			applyActorStateOp(state, op)
+		}
+		return actorState, normalizeStateOps(ops), normalizeActorStateOps(actorOps), nil
+	}
+	if status.Status != StateSchemaInitializationWaitingOpening {
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("状态结构初始化状态不允许提交开局: %s", status.Status)
+	}
+	if proposal == nil {
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("开局 Game Agent 尚未完成状态结构草案")
+	}
+	if hasActors {
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("动态状态结构故事在开局提交前不应存在已物化 Actor")
+	}
+	if len(meta.Branches) != 1 || branchID != meta.CurrentBranch {
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("状态结构只能在唯一的初始分支上完成")
+	}
+	if storyContainsTurn(events) {
+		return StoryDirectorActorStateSystem{}, nil, nil, fmt.Errorf("状态结构只能随首个故事回合原子提交")
+	}
+	normalized, _, err := ValidateOpeningGameStateSchemaProposal(meta.ActorStateSchema.System, meta.ActorStateSchema.TRPGSystem, *proposal)
+	if err != nil {
+		return StoryDirectorActorStateSystem{}, nil, nil, err
+	}
+	targetSystem, record, err := ApplyActorStateSchemaAdaptation(meta.ActorStateSchema.System, meta.ActorStateSchema.TRPGSystem, normalized.Adaptation)
+	if err != nil {
+		return StoryDirectorActorStateSystem{}, nil, nil, err
+	}
+	schemaChanged := !reflect.DeepEqual(normalizeActorStateSystem(meta.ActorStateSchema.System), normalizeActorStateSystem(targetSystem))
+	_, _, aliases, warnings, err := buildStateSchemaMigration(meta.ActorStateSchema.System, targetSystem, state, normalized.Adaptation, sourceTurnID)
+	if err != nil {
+		return StoryDirectorActorStateSystem{}, nil, nil, err
+	}
+	record.Source = "game_agent"
+	record.SourceTurnID = sourceTurnID
+	record.Summary = firstNonEmptyString(normalized.Summary, record.Summary)
+	record.LoreRevision = strings.TrimSpace(normalized.SourceLoreRevision)
+	record.ReviewedLoreIDs = append([]string(nil), normalized.ReviewedLoreIDs...)
+	record.Requirements = append([]ActorStateSchemaRequirementReview(nil), normalized.Requirements...)
+	record.Changes = stateSchemaAdaptationChanges(normalized.Adaptation)
+	record.Warnings = warnings
+	target := FreezeActorStateSchemaWithRules(targetSystem, meta.ActorStateSchema.TRPGSystem, false)
+	target.Revision = status.BaseRevision
+	if target.Revision <= 0 {
+		target.Revision = actorStateSchemaRevision(meta.ActorStateSchema)
+	}
+	if schemaChanged {
+		target.Revision++
+	}
+	target.Adaptation = &record
+	target.LegacyFieldPaths = mergeLegacyFieldAliases(meta.ActorStateSchema.LegacyFieldPaths, aliases)
+	target.FieldMigrations = mergeActorStateFieldMigrations(meta.ActorStateSchema.FieldMigrations, stateSchemaFieldMigrations(normalized.Adaptation))
+	ops, actorOps, err := BuildActorStateInitialChanges(targetSystem, meta.InitialTraitRolls)
+	if err != nil {
+		return StoryDirectorActorStateSystem{}, nil, nil, err
+	}
+	markOpeningStateBootstrapSources(ops, actorOps, sourceTurnID)
+	for _, op := range ops {
+		applyStateOp(state, op)
+	}
+	for _, op := range actorOps {
+		applyActorStateOp(state, op)
+	}
+	status.Status = StateSchemaInitializationReady
+	status.Outcome = "unchanged"
+	if schemaChanged {
+		status.Outcome = "changed"
+	}
+	status.SourceTurnID = sourceTurnID
+	status.TargetRevision = target.Revision
+	status.Summary = record.Summary
+	status.Error = ""
+	status.LoreRevision = record.LoreRevision
+	status.ReviewedLoreIDs = append([]string(nil), record.ReviewedLoreIDs...)
+	status.Requirements = append([]ActorStateSchemaRequirementReview(nil), record.Requirements...)
+	status.Changes = append([]ActorStateSchemaAdaptationChange(nil), record.Changes...)
+	status.Warnings = append([]string(nil), warnings...)
+	status.StartedAt = now
+	status.CompletedAt = now
+	status.UpdatedAt = now
+	meta.ActorStateSchema = target
+	meta.StateSchemaInitialization = &status
+	return targetSystem, normalizeStateOps(ops), normalizeActorStateOps(actorOps), nil
+}
+
+func markOpeningStateBootstrapSources(ops []StateOp, actorOps []ActorStateOp, sourceTurnID string) {
+	for index := range ops {
+		ops[index].SourceKind = stateSchemaMigrationSourceKind
+		ops[index].SourceID = "opening_state_schema"
+		ops[index].SourceTurnID = sourceTurnID
+	}
+	for index := range actorOps {
+		actorOps[index].SourceKind = stateSchemaMigrationSourceKind
+		actorOps[index].SourceID = "opening_state_schema"
+		actorOps[index].SourceTurnID = sourceTurnID
+	}
 }
 
 func (s *Store) applyStateSchemaInitialization(storyID, branchID, sourceTurnID string, proposal ActorStateSchemaProposal) (StateSchemaInitializationStatus, error) {

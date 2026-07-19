@@ -2,27 +2,25 @@ package interactive
 
 func xiuxianActorStatePresetSpec() actorStatePresetSpec {
 	return actorStatePresetSpec{
-		ID:                     ActorStateXiuxianID,
-		Name:                   "修仙状态系统",
-		Description:            "面向境界、灵根与特殊体质、功法法宝、宗门关系和天地异变；面板只保留设定真正量化的修行项，不套用通用六维。",
-		PanelDescription:       "记录会影响检定的当前境界显示与作品明确量化的修行面板；灵根、特殊体质和血脉仍使用文本维护。",
-		PanelUpdateInstruction: "默认只保留境界显示。只有作品明确提供数值规则时，才按基础值、当前值、修正说明增加神识、术法强度等检定项；不要自行把身法、体魄或根骨数值化。",
-		PanelDefault:           map[string]any{"境界": map[string]any{"显示值": "未定", "修正说明": ""}},
-		StateDescription:       "维护境界进度、灵力等动态资源，以及伤势、封印、增益、异常和功法法宝冷却。",
-		StateUpdateInstruction: "固定使用资源、效果、冷却三个分区。境界进度使用当前值、上限与单位；其他资源只在设定存在时增加。伤势、封印和增益写入效果；功法、术法或法宝冷却使用对应 ability/item ID。",
-		StateDefault: map[string]any{
-			"资源": map[string]any{"境界进度": map[string]any{"当前值": float64(0), "上限": float64(100), "单位": "%"}},
-			"效果": map[string]any{},
-			"冷却": map[string]any{},
+		ID:          ActorStateXiuxianID,
+		Name:        "修仙状态系统",
+		Description: "面向境界、灵根与特殊体质、功法法宝、宗门关系和天地异变；只使用设定真正需要的面板与状态字段，不套用通用六维。",
+		PanelFields: []ActorStateField{
+			textStateFieldWithDefaultInstruction("panel.realm", "当前境界", "记录作品采用的完整境界称谓、层次或小境界；不自行换算成战力数值。", "visible", "面板", "inline", "未定", "只在正式突破、跌境、封印导致境界称谓变化，或设定被明确补充时更新。"),
+		},
+		StateFields: []ActorStateField{
+			scaledNumberStateField("state.realm_progress", "境界进度", "当前小境界或突破准备的相对进度，不等同于胜负或绝对战力。", "状态", 0, 0, 100, "0–20 初入；21–50 积累；51–80 深化；81–99 临界；100 具备突破条件。", "只有修炼、机缘、损伤或突破结算明确影响进度时更新；突破后按新境界规则重置。"),
+			listStateFieldWithInstruction("state.effects", "持续状态", "只列仍会影响修行或行动的伤势、封印、增益与异常。", "visible", "状态", "每项使用“名称｜影响｜解除条件或时长”；结束后移除，不记录已经结算的瞬时变化。"),
+			listStateFieldWithInstruction("state.cooldowns", "冷却状态", "只列尚未恢复的功法、术法、神通或法宝。", "visible", "状态", "每项写名称与剩余时间、次数或恢复条件；恢复后移除。"),
 		},
 		ProtagonistFields: []ActorStateField{
 			textStateField("cultivation.foundation", "灵根与特殊体质", "记录灵根、血脉、特殊体质、道基等会决定修行路径的根本特征；没有对应设定时保持空白。", "visible", "题材设定", "block"),
 		},
 		ImportantCharacterFields: []ActorStateField{
-			textStateField("cultivation.profile", "根基与传承", "记录已知灵根、特殊体质和主要传承；境界显示放入面板，伤势与临时异常放入状态，未知部分不估算。", "spoiler", "题材设定", "block"),
+			textStateField("cultivation.profile", "根基与传承", "记录已知灵根、特殊体质和主要传承；境界、伤势与临时异常由对应分组字段维护，未知部分不估算。", "spoiler", "题材设定", "block"),
 		},
 		OpponentFields: []ActorStateField{
-			textStateField("cultivation.threat_profile", "本相与传承特征", "记录已确认的妖身、法相、传承特征和境界压制方式；境界显示放入面板，具体招式放入技能与能力。", "spoiler", "题材设定", "block"),
+			textStateField("cultivation.threat_profile", "本相与传承特征", "记录已确认的妖身、法相、传承特征和境界压制方式；具体招式放入技能与能力。", "spoiler", "题材设定", "block"),
 		},
 		StoryFields: []ActorStateField{
 			textStateField("cultivation_world.state", "修行世界状态", "合并记录天地灵气、天道或飞升规则、宗门秩序及正在影响多地的修行界异变。", "spoiler", "题材状态", "block"),
@@ -38,22 +36,20 @@ func xiuxianActorStatePresetSpec() actorStatePresetSpec {
 
 func westernFantasyActorStatePresetSpec() actorStatePresetSpec {
 	return actorStatePresetSpec{
-		ID:                     ActorStateWesternFantasyID,
-		Name:                   "西幻状态系统",
-		Description:            "面向职业与超凡位阶、魔法神术、种族血脉、装备、阵营势力和冒险任务；面板只提供职业等级与 AC/DC 骨架，其他属性按作品规则增加。",
-		PanelDescription:       "记录职业等级、作品实际采用的检定属性、攻击 AC 与防御 DC 等结算后有效值。",
-		PanelUpdateInstruction: "职业等级、攻击 AC 与防御 DC 使用基础值、当前值、修正说明。力量等属性只有当前作品明确采用时才增加；装备、祝福或诅咒改变有效值时同步更新当前值与来源。",
-		PanelDefault: map[string]any{
-			"职业等级": panelNumber(1, "1–4 初阶；5–10 中阶；11–16 高阶；17 及以上传奇。作品另有等级规则时以作品为准。"),
-			"攻击AC": panelNumber(10, "1–5 极低；6–9 偏低；10–13 常规；14–17 高；18 及以上极高。"),
-			"防御DC": panelNumber(10, "1–5 极低；6–9 偏低；10–13 常规；14–17 高；18 及以上极高。"),
+		ID:          ActorStateWesternFantasyID,
+		Name:        "西幻状态系统",
+		Description: "面向职业与超凡位阶、魔法神术、种族血脉、装备、阵营势力和冒险任务；默认提供职业、等级与 AC/DC，其他属性按作品规则增加。",
+		PanelFields: []ActorStateField{
+			textStateFieldWithDefaultInstruction("panel.profession", "职业", "记录当前主要职业、兼职或等价成长路径。", "visible", "面板", "inline", "未定", "转职、兼职或职业身份正式变化时更新，不把临时伪装写入。"),
+			scaledNumberStateField("panel.level", "等级", "当前职业体系采用的有效等级。", "面板", 1, 1, 20, "1–4 初阶；5–10 中阶；11–16 高阶；17–20 传奇。", "只随正式升级、降级或规则结算更新。"),
+			scaledNumberStateField("panel.attack_ac", "攻击 AC", "参与攻击相关检定的有效值。", "面板", 10, 0, 30, "0–5 极低；6–9 偏低；10–13 常规；14–17 高；18–30 极高。", "装备、等级、祝福或诅咒改变攻击结算时更新。"),
+			scaledNumberStateField("panel.defense_dc", "防御 DC", "参与防御相关检定的有效值。", "面板", 10, 0, 30, "0–5 极低；6–9 偏低；10–13 常规；14–17 高；18–30 极高。", "装备、等级、祝福或诅咒改变防御结算时更新。"),
 		},
-		StateDescription:       "维护生命、法力或法术位等动态资源，以及祝福、诅咒、专注和技能物品冷却。",
-		StateUpdateInstruction: "固定使用资源、效果、冷却三个分区。生命默认存在；法力、法术位和充能仅在设定采用时增加。祝福、诅咒与专注写入效果；能力和物品冷却使用对应 ability/item ID。",
-		StateDefault: map[string]any{
-			"资源": map[string]any{"生命": map[string]any{"当前值": float64(10), "上限": float64(10)}},
-			"效果": map[string]any{},
-			"冷却": map[string]any{},
+		StateFields: []ActorStateField{
+			textStateFieldWithDefaultInstruction("state.health", "生命", "使用“当前值/上限”表达生命或等价耐久资源。", "visible", "状态", "inline", "10/10", "受伤、治疗或上限改变时更新。"),
+			textStateFieldWithDefaultInstruction("state.spell_resource", "施法资源", "合并记录作品实际采用的法力、法术位、神术次数或充能；没有时留空。", "visible", "状态", "block", "", "施法、恢复或上限变化时更新；只写当前作品真实采用的资源。"),
+			listStateFieldWithInstruction("state.effects", "持续效果", "只列仍在生效的祝福、诅咒、专注、伤势与异常。", "visible", "状态", "每项写名称、影响及剩余条件或时长；结束后移除。"),
+			listStateFieldWithInstruction("state.cooldowns", "冷却状态", "只列尚未恢复的职业能力、法术或物品。", "visible", "状态", "每项写名称与剩余回合、时间、次数或恢复条件；恢复后移除。"),
 		},
 		ProtagonistFields: []ActorStateField{
 			textStateField("fantasy.progression", "超凡来源与血脉契约", "记录魔法、神术或其他超凡来源，以及会持续影响能力的血脉与契约；职业等级放入面板。", "visible", "题材设定", "block"),
@@ -78,15 +74,14 @@ func westernFantasyActorStatePresetSpec() actorStatePresetSpec {
 
 func apocalypseActorStatePresetSpec() actorStatePresetSpec {
 	return actorStatePresetSpec{
-		ID:                     ActorStateApocalypseID,
-		Name:                   "末世状态系统",
-		Description:            "面向灾变求生、感染异变、稀缺资源、基地与幸存者冲突；不为饥饿、口渴、疲劳逐项造字段，也不预设通用六维。",
-		PanelDescription:       "只记录当前作品规则明确量化、会参与生存或战斗检定的固定面板；没有数值规则时保持空 object。",
-		PanelUpdateInstruction: "不要默认创建通用六维或生存属性。只有规则明确给出等级、命中、防护或专长数值时，才按基础值、当前值、修正说明增加对应项。",
-		PanelDefault:           map[string]any{},
-		StateDescription:       "集中维护生命、感染、污染、伤势、临时增益与技能物品冷却；普通生理压力只在确实影响行动时合并记录。",
-		StateUpdateInstruction: "固定使用资源、效果、冷却三个分区。资源仅保留规则实际消耗的聚合资源；感染、污染、伤势与异常写入效果并注明阶段和影响；不为饥饿、口渴、疲劳各建一项。",
-		StateDefault:           map[string]any{"资源": map[string]any{}, "效果": map[string]any{}, "冷却": map[string]any{}},
+		ID:          ActorStateApocalypseID,
+		Name:        "末世状态系统",
+		Description: "面向灾变求生、感染异变、稀缺资源、基地与幸存者冲突；默认不创建数值面板，也不为饥饿、口渴、疲劳逐项造字段。",
+		StateFields: []ActorStateField{
+			textStateFieldWithDefaultInstruction("state.survival_condition", "生存状态", "合并记录当前伤势、疲劳、饥渴、感染或污染中真正会影响行动的部分。", "visible", "状态", "block", "稳定", "只在生理或环境压力已经造成行动影响时写入，并注明影响与缓解条件；无影响时使用“稳定”。"),
+			listStateFieldWithInstruction("state.effects", "持续效果", "只列仍在生效的增益、异常、药物效果或变异影响。", "visible", "状态", "每项写名称、行动影响及解除条件或时长；结束后移除。"),
+			listStateFieldWithInstruction("state.cooldowns", "冷却状态", "只列尚未恢复的技能、装备或消耗品能力。", "visible", "状态", "每项写名称与剩余时间、次数或恢复条件；恢复后移除。"),
+		},
 		ImportantCharacterFields: []ActorStateField{
 			textStateField("survival.profile", "生存专长与职责", "记录关键生存专长，以及其在队伍或基地中的职责；感染、污染和伤势放入状态。", "spoiler", "题材设定", "block"),
 		},
@@ -108,15 +103,17 @@ func apocalypseActorStatePresetSpec() actorStatePresetSpec {
 
 func infiniteFlowActorStatePresetSpec() actorStatePresetSpec {
 	return actorStatePresetSpec{
-		ID:                     ActorStateInfiniteFlowID,
-		Name:                   "无限流状态系统",
-		Description:            "面向副本规则、任务结算、空间资源、规则污染、队伍博弈和异常实体；面板只承接空间明确公布的评级或属性。",
-		PanelDescription:       "只记录轮回空间或作品规则明确公布、会参与检定的等级、评级或属性；没有公开量化规则时保持空 object。",
-		PanelUpdateInstruction: "不要自行创建六维或战力评分。空间明确公布数值后，按基础值、当前值、修正说明维护；装备、血统与规则污染造成的修正必须注明来源。",
-		PanelDefault:           map[string]any{},
-		StateDescription:       "维护生命、精神、积分等作品实际采用的动态资源，以及规则污染、死亡标记、增益异常和技能物品冷却。",
-		StateUpdateInstruction: "固定使用资源、效果、冷却三个分区。资源只增加当前作品明确采用的生命、精神或积分等项；规则污染与死亡标记写入效果；能力和道具冷却使用对应 ability/item ID。",
-		StateDefault:           map[string]any{"资源": map[string]any{}, "效果": map[string]any{}, "冷却": map[string]any{}},
+		ID:          ActorStateInfiniteFlowID,
+		Name:        "无限流状态系统",
+		Description: "面向副本规则、任务结算、空间资源、规则污染、队伍博弈和异常实体；面板只承接空间明确公布的评级，不自行套用六维。",
+		PanelFields: []ActorStateField{
+			textStateFieldWithDefaultInstruction("panel.space_rating", "空间评级", "记录轮回空间或副本系统明确公布的等级、阶位或综合评级。", "visible", "面板", "inline", "未公布", "只在空间正式公布、结算或修正评级时更新；没有公开评级时保持“未公布”。"),
+		},
+		StateFields: []ActorStateField{
+			textStateFieldWithDefaultInstruction("state.current_resources", "当前资源", "合并记录当前副本实际采用的生命、精神、积分或次数资源；没有的项目不写。", "visible", "状态", "block", "", "资源消耗、恢复或上限变化时更新，使用“名称 当前值/上限”逐项表达。"),
+			listStateFieldWithInstruction("state.rule_effects", "规则影响", "只列正在作用于当前 Actor 的污染、死亡标记、规则限制、增益与异常。", "visible", "状态", "每项写名称、影响及解除条件或时限；已经结算或解除后移除。"),
+			listStateFieldWithInstruction("state.cooldowns", "冷却状态", "只列尚未恢复的技能、血统能力或道具。", "visible", "状态", "每项写名称与剩余时间、次数或恢复条件；恢复后移除。"),
+		},
 		ProtagonistFields: []ActorStateField{
 			textStateField("infinite_space.profile", "空间身份", "记录权限、队伍身份和已完成副本等长期信息；评级放入面板，积分与规则污染放入状态。", "visible", "题材设定", "block"),
 		},

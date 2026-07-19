@@ -85,20 +85,22 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		title = defaultStoryTitle(index.Stories)
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	stateSchemaPolicy := cloneStoryStateSchemaPolicy(req.StateSchemaPolicy)
 	story := StorySummary{
-		ID:               newID("st"),
-		Title:            title,
-		Origin:           strings.TrimSpace(req.Origin),
-		StoryTellerID:    strings.TrimSpace(req.StoryTellerID),
-		StoryDirectorID:  NormalizeStoryDirectorID(req.StoryDirectorID),
-		ModuleRefs:       cloneStoryDirectorModuleRefs(req.ModuleRefs),
-		ReplyTargetChars: normalizeStoryReplyTargetChars(req.ReplyTargetChars),
-		ChoiceCount:      normalizeStoryChoiceCount(req.ChoiceCount),
-		Opening:          normalizeStoryOpeningConfig(req.Opening),
-		ImageSettings:    normalizeStoryImageSettings(req.ImageSettings),
-		CreatedAt:        now,
-		UpdatedAt:        now,
-		Branches:         1,
+		ID:                newID("st"),
+		Title:             title,
+		Origin:            strings.TrimSpace(req.Origin),
+		StoryTellerID:     strings.TrimSpace(req.StoryTellerID),
+		StoryDirectorID:   NormalizeStoryDirectorID(req.StoryDirectorID),
+		ModuleRefs:        cloneStoryDirectorModuleRefs(req.ModuleRefs),
+		ReplyTargetChars:  normalizeStoryReplyTargetChars(req.ReplyTargetChars),
+		ChoiceCount:       normalizeStoryChoiceCount(req.ChoiceCount),
+		Opening:           normalizeStoryOpeningConfig(req.Opening),
+		ImageSettings:     normalizeStoryImageSettings(req.ImageSettings),
+		StateSchemaPolicy: cloneStoryStateSchemaPolicy(stateSchemaPolicy),
+		CreatedAt:         now,
+		UpdatedAt:         now,
+		Branches:          1,
 	}
 	if err := validateStoryChoiceCount(story.ChoiceCount); err != nil {
 		return StorySummary{}, err
@@ -111,19 +113,21 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	}
 
 	meta := StoryMeta{
-		V:                schemaVersion,
-		Type:             StoryEventTypeMeta,
-		StoryID:          story.ID,
-		Title:            story.Title,
-		Origin:           story.Origin,
-		StoryTellerID:    story.StoryTellerID,
-		StoryDirectorID:  story.StoryDirectorID,
-		ModuleRefs:       cloneStoryDirectorModuleRefs(story.ModuleRefs),
-		ReplyTargetChars: story.ReplyTargetChars,
-		ChoiceCount:      story.ChoiceCount,
-		Opening:          story.Opening,
-		ImageSettings:    story.ImageSettings,
-		CurrentBranch:    "main",
+		V:                 schemaVersion,
+		Type:              StoryEventTypeMeta,
+		StoryID:           story.ID,
+		Title:             story.Title,
+		Origin:            story.Origin,
+		StoryTellerID:     story.StoryTellerID,
+		StoryDirectorID:   story.StoryDirectorID,
+		ModuleRefs:        cloneStoryDirectorModuleRefs(story.ModuleRefs),
+		ReplyTargetChars:  story.ReplyTargetChars,
+		ChoiceCount:       story.ChoiceCount,
+		Opening:           story.Opening,
+		ImageSettings:     story.ImageSettings,
+		StateSchemaPolicy: cloneStoryStateSchemaPolicy(stateSchemaPolicy),
+		InitialTraitRolls: append([]InitialActorTraitRoll(nil), req.InitialTraitRolls...),
+		CurrentBranch:     "main",
 		Branches: map[string]BranchMeta{
 			"main": {CreatedAt: now},
 		},
@@ -133,10 +137,27 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	if req.StateSchemaInitialization != nil {
 		initialization := *req.StateSchemaInitialization
 		initialization.UpdatedAt = now
-		if initialization.Status == StateSchemaInitializationSkipped {
+		if initialization.Status == StateSchemaInitializationSkipped || initialization.Status == StateSchemaInitializationReady {
 			initialization.CompletedAt = now
 		}
 		meta.StateSchemaInitialization = &initialization
+	} else if storyStateSchemaPolicyRequiresOpeningDraft(stateSchemaPolicy) {
+		meta.StateSchemaInitialization = &StateSchemaInitializationStatus{
+			Mode:         stateSchemaPolicy.Mode,
+			Status:       StateSchemaInitializationWaitingOpening,
+			BaseRevision: 1,
+			UpdatedAt:    now,
+		}
+	} else {
+		meta.StateSchemaInitialization = &StateSchemaInitializationStatus{
+			Mode:           StoryStateSchemaModeFixedTemplate,
+			Status:         StateSchemaInitializationReady,
+			Outcome:        "fixed",
+			BaseRevision:   1,
+			TargetRevision: 1,
+			CompletedAt:    now,
+			UpdatedAt:      now,
+		}
 	}
 	actorState := StoryDirectorActorStateSystem{}
 	trpgSystem := StoryDirectorTRPGSystem{}
@@ -160,10 +181,13 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 			meta.ActorStateSchema.Adaptation = &record
 		}
 	}
+	if stateSchemaPolicy != nil && meta.ActorStateSchema == nil {
+		return StorySummary{}, fmt.Errorf("状态结构初始化策略缺少可冻结的基础状态系统 / State schema policy requires a freezable base state system")
+	}
 	initialStateOps := normalizeStateOps(req.InitialStateOps)
 	generatedOps := []StateOp(nil)
 	initialActorOps := []ActorStateOp(nil)
-	if meta.ActorStateSchema != nil {
+	if meta.ActorStateSchema != nil && !storyStateSchemaPolicyRequiresOpeningDraft(stateSchemaPolicy) {
 		generatedOps, initialActorOps, err = BuildActorStateInitialChanges(meta.ActorStateSchema.System, req.InitialTraitRolls)
 		if err != nil {
 			return StorySummary{}, err
@@ -254,8 +278,63 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	if req.ImageSettings != nil {
 		meta.ImageSettings = normalizeStoryImageSettings(*req.ImageSettings)
 	}
+	rebuiltEvents := []any(nil)
+	rebuiltEventCount := -1
+	if req.StateSchemaPolicy != nil {
+		if storyContainsTurn(lines) {
+			return StorySummary{}, fmt.Errorf("首回合提交后不能修改状态结构初始化策略")
+		}
+		if len(meta.Branches) != 1 {
+			return StorySummary{}, fmt.Errorf("故事已有多个分支，不能重建开局状态结构")
+		}
+		if req.ActorState == nil || actorStateEmpty(*req.ActorState) {
+			return StorySummary{}, fmt.Errorf("状态结构初始化策略缺少可冻结的基础状态系统")
+		}
+		if err := validateActorStateSystem(*req.ActorState); err != nil {
+			return StorySummary{}, fmt.Errorf("更新故事的状态系统无效 / Invalid state system for story update: %w", err)
+		}
+		policy := NormalizeStoryStateSchemaPolicy(*req.StateSchemaPolicy)
+		meta.StateSchemaPolicy = &policy
+		trpgSystem := StoryDirectorTRPGSystem{}
+		if req.TRPGSystem != nil {
+			trpgSystem = *req.TRPGSystem
+		}
+		meta.ActorStateSchema = FreezeActorStateSchemaWithRules(*req.ActorState, trpgSystem, false)
+		if req.StateSchemaInitialization != nil {
+			initialization := *req.StateSchemaInitialization
+			initialization.UpdatedAt = now
+			if initialization.Status == StateSchemaInitializationReady || initialization.Status == StateSchemaInitializationSkipped {
+				initialization.CompletedAt = now
+			}
+			meta.StateSchemaInitialization = &initialization
+		} else if storyStateSchemaPolicyRequiresOpeningDraft(&policy) {
+			meta.StateSchemaInitialization = &StateSchemaInitializationStatus{Mode: policy.Mode, Status: StateSchemaInitializationWaitingOpening, BaseRevision: 1, UpdatedAt: now}
+		} else {
+			meta.StateSchemaInitialization = &StateSchemaInitializationStatus{Mode: policy.Mode, Status: StateSchemaInitializationReady, Outcome: "fixed", BaseRevision: 1, TargetRevision: 1, CompletedAt: now, UpdatedAt: now}
+		}
+		lines = nil
+		branch := meta.Branches[meta.CurrentBranch]
+		branch.Head = ""
+		meta.Branches[meta.CurrentBranch] = branch
+		rebuiltEventCount = 0
+		if !storyStateSchemaPolicyRequiresOpeningDraft(&policy) {
+			initialOps, initialActorOps, err := BuildActorStateInitialChanges(meta.ActorStateSchema.System, meta.InitialTraitRolls)
+			if err != nil {
+				return StorySummary{}, err
+			}
+			initialOps = normalizeStateOps(initialOps)
+			initialActorOps = normalizeActorStateOps(initialActorOps)
+			if len(initialOps) > 0 || len(initialActorOps) > 0 {
+				deltaID := newID("sd")
+				branch.Head = deltaID
+				meta.Branches[meta.CurrentBranch] = branch
+				rebuiltEvents = append(rebuiltEvents, newStateDeltaEventWithActorOps(deltaID, "", meta.CurrentBranch, now, initialOps, initialActorOps))
+				rebuiltEventCount = 1
+			}
+		}
+	}
 	meta.UpdatedAt = now
-	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
+	if err := s.rewriteStoryLocked(storyID, meta, lines, rebuiltEvents...); err != nil {
 		return StorySummary{}, err
 	}
 	index, err := s.readIndexLocked()
@@ -273,6 +352,10 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 			index.Stories[i].ChoiceCount = meta.ChoiceCount
 			index.Stories[i].Opening = meta.Opening
 			index.Stories[i].ImageSettings = meta.ImageSettings
+			index.Stories[i].StateSchemaPolicy = cloneStoryStateSchemaPolicy(meta.StateSchemaPolicy)
+			if rebuiltEventCount >= 0 {
+				index.Stories[i].Events = rebuiltEventCount
+			}
 			index.Stories[i].UpdatedAt = now
 			if err := s.writeIndexLocked(index); err != nil {
 				return StorySummary{}, err
@@ -535,8 +618,12 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 		TerminalOutcome:      normalizeTerminalOutcomePointer(req.TerminalOutcome),
 		Flags:                map[string]bool{"pinned": false, "locked": false},
 	}
-	ops := normalizeStateOps(req.Ops)
-	actorOps := normalizeActorStateOps(req.ActorOps)
+	actorState, openingOps, openingActorOps, err := prepareOpeningGameStateSchemaCommit(&meta, lines, state, actorState, branchID, turn.ID, now, req.StateSchemaProposal)
+	if err != nil {
+		return TurnEvent{}, nil, err
+	}
+	ops := normalizeStateOps(append(openingOps, req.Ops...))
+	actorOps := normalizeActorStateOps(append(openingActorOps, req.ActorOps...))
 	if turn.TurnResult != nil && len(turn.TurnResult.StateUpdates) > 0 {
 		compiled, err := CompileTurnStateUpdates(actorState, state, turn.TurnResult.StateUpdates, TurnStateUpdateCompileOptions{
 			SourceTurnID:             turn.ID,
@@ -1352,6 +1439,7 @@ func normalizeStorySummary(story StorySummary) StorySummary {
 	story.Opening = normalizeStoryOpeningConfig(story.Opening)
 	story.ImageSettings = normalizeStoryImageSettings(story.ImageSettings)
 	story.ModuleRefs = cloneStoryDirectorModuleRefs(story.ModuleRefs)
+	story.StateSchemaPolicy = cloneStoryStateSchemaPolicy(story.StateSchemaPolicy)
 	return story
 }
 
@@ -1363,7 +1451,17 @@ func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	meta.ImageSettings = normalizeStoryImageSettings(meta.ImageSettings)
 	meta.ActorStateSchema = normalizeActorStateSchemaSnapshot(meta.ActorStateSchema)
 	meta.ModuleRefs = cloneStoryDirectorModuleRefs(meta.ModuleRefs)
+	meta.StateSchemaPolicy = cloneStoryStateSchemaPolicy(meta.StateSchemaPolicy)
 	return meta
+}
+
+func storyContainsTurn(events []StoryEventRecord) bool {
+	for _, event := range events {
+		if event.Envelope.Type == StoryEventTypeTurn {
+			return true
+		}
+	}
+	return false
 }
 
 func cloneStoryDirectorModuleRefs(refs *StoryDirectorModuleRefs) *StoryDirectorModuleRefs {

@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next'
-import type { InitialActorTraitRoll, StoryDirectorModuleRefs, StoryImageSettings, StoryOpeningConfig, StorySummary } from './types'
+import type { InitialActorTraitRoll, StoryDirectorModuleRefs, StoryImageSettings, StoryOpeningConfig, StoryStateSchemaPolicy, StorySummary } from './types'
 
 export interface StoryCreateInput {
   title: string
@@ -12,6 +12,7 @@ export interface StoryCreateInput {
   image_settings?: StoryImageSettings
   opening?: StoryOpeningConfig
   initial_trait_rolls?: InitialActorTraitRoll[]
+  state_schema_policy?: StoryStateSchemaPolicy
 }
 
 const STORY_OPENING_TEXT_LIMIT = 4000

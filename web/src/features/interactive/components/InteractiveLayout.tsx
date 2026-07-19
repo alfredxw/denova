@@ -188,6 +188,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
       reply_target_chars: input.reply_target_chars,
       choice_count: input.choice_count,
       image_settings: input.image_settings,
+      state_schema_policy: input.state_schema_policy,
     })
     await reloadStories()
     await reloadSnapshot(undefined, currentStoryId, { silent: true })

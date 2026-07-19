@@ -27,7 +27,17 @@ type interactiveDirectorMaintenanceResult struct {
 
 func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, runPlan bool) <-chan struct{} {
 	tasks := directorTasksForConversation(conversation)
-	schemaDone := startInteractiveStateSchemaTask(cfg, state, conversation, turn, sessionStore)
+	closedSchemaDone := make(chan struct{})
+	close(closedSchemaDone)
+	var schemaDone <-chan struct{} = closedSchemaDone
+	// Stories created before story-level schema policies retain the legacy
+	// background migration path. New stories always initialize schema inside
+	// the foreground Game Agent's opening atomic commit.
+	if conversation != nil && conversation.store != nil {
+		if storyCtx, err := conversation.store.StoryContext(conversation.storyID, turn.BranchID); err == nil && storyCtx.Meta.StateSchemaPolicy == nil {
+			schemaDone = startInteractiveStateSchemaTask(cfg, state, conversation, turn, sessionStore)
+		}
+	}
 	done, started := tasks.GoKeyed(interactiveDerivedMaintenanceKey(conversation, turn.BranchID), func(ctx context.Context) {
 		defer func() {
 			if recovered := recover(); recovered != nil {

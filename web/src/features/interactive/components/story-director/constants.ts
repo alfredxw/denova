@@ -53,10 +53,6 @@ export const STORY_DIRECTOR_AGENT_MODE_OPTIONS = [
   { value: 'every_turn', labelKey: 'settingPanel.storyDirector.strategy.agentMode.everyTurn', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.everyTurnDesc' },
   { value: 'off', labelKey: 'settingPanel.storyDirector.strategy.agentMode.off', descriptionKey: 'settingPanel.storyDirector.strategy.agentMode.offDesc' },
 ] as const
-export const STORY_DIRECTOR_STATE_SCHEMA_ADAPTATION_OPTIONS = [
-  { value: 'after_opening', labelKey: 'settingPanel.storyDirector.strategy.stateSchemaAdaptation.afterOpening', descriptionKey: 'settingPanel.storyDirector.strategy.stateSchemaAdaptation.afterOpeningDesc' },
-  { value: 'off', labelKey: 'settingPanel.storyDirector.strategy.stateSchemaAdaptation.off', descriptionKey: 'settingPanel.storyDirector.strategy.stateSchemaAdaptation.offDesc' },
-] as const
 export const STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS = [
   { value: 'hybrid_auto', labelKey: 'settingPanel.storyDirector.strategy.ruleState.hybridAuto', descriptionKey: 'settingPanel.storyDirector.strategy.ruleState.hybridAutoDesc' },
   { value: 'director_only', labelKey: 'settingPanel.storyDirector.strategy.ruleState.directorOnly', descriptionKey: 'settingPanel.storyDirector.strategy.ruleState.directorOnlyDesc' },

@@ -81,6 +81,33 @@ func TestInteractiveStateSchemaToolUsesIncrementalBatchContract(t *testing.T) {
 	}
 }
 
+func TestOpeningGameStateSchemaToolUsesDedicatedStructureOnlyEntry(t *testing.T) {
+	called := false
+	tools, err := newInteractiveOpeningStateSchemaTools(InteractiveStoryToolContext{
+		SubmitStateSchemaBatch: func(_ context.Context, batch interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error) {
+			called = batch.Finalize
+			return interactive.ActorStateSchemaBatchResult{Accepted: []interactive.ActorStateSchemaBatchAccepted{}, Rejected: []interactive.ActorStateSchemaBatchIssue{}, Blocked: []interactive.ActorStateSchemaBatchIssue{}, Finalized: true}, nil
+		},
+	})
+	if err != nil || len(tools) != 1 {
+		t.Fatalf("build opening Game Agent schema tool: tools=%d err=%v", len(tools), err)
+	}
+	info, err := tools[0].Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name != initializeStoryStateSchemaToolName || !strings.Contains(info.Desc, "schema_only") || !strings.Contains(info.Desc, "禁止 initial_actor_ops") || !strings.Contains(info.Desc, "原子落盘") {
+		t.Fatalf("unexpected opening schema tool contract: %#v", info)
+	}
+	invokable := tools[0].(tool.InvokableTool)
+	if _, err := invokable.InvokableRun(context.Background(), `{"items":[],"finalize":true}`); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("opening schema tool did not forward the finalize request")
+	}
+}
+
 func schemaContainsRequirementItemID(value any) bool {
 	switch typed := value.(type) {
 	case map[string]any:

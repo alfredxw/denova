@@ -61,6 +61,7 @@ const storyStage = {
   'storyStage.state.layout.moveFieldDown': '下移字段：{{name}}',
   'storyStage.state.layout.moveFieldPreviousGroup': '将 {{name}} 移到上一个分区',
   'storyStage.state.layout.moveFieldNextGroup': '将 {{name}} 移到下一个分区',
+  'storyStage.state.layout.emptyGroup': '拖动字段到这里',
   'storyStage.turnNavigator.label': '剧情轮次导航',
   'storyStage.turnNavigator.goto': '跳转到第 {{index}} 轮',
   'storyStage.turnNavigator.emptyUser': '用户输入为空',

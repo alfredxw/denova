@@ -76,8 +76,14 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			snapshot.ContextCompactionRemoval = &removal
 		}
 	}
-	if err := applyFrozenMissingInitialActors(state, meta.ActorStateSchema); err != nil {
-		return Snapshot{}, fmt.Errorf("补全冻结初始 Actor 失败: %w", err)
+	initializeActors := true
+	if storyStateSchemaPolicyRequiresOpeningDraft(meta.StateSchemaPolicy) && meta.StateSchemaInitialization != nil && meta.StateSchemaInitialization.Status == StateSchemaInitializationWaitingOpening {
+		initializeActors = false
+	}
+	if initializeActors {
+		if err := applyFrozenMissingInitialActors(state, meta.ActorStateSchema); err != nil {
+			return Snapshot{}, fmt.Errorf("补全冻结初始 Actor 失败: %w", err)
+		}
 	}
 	applyLegacyActorStateAliases(state, meta.ActorStateSchema)
 	if snapshot.CurrentTurn != nil && (snapshot.CurrentTurn.TurnResult == nil || len(snapshot.CurrentTurn.TurnResult.Choices) == 0) && snapshot.CurrentTurn.HotState == nil {

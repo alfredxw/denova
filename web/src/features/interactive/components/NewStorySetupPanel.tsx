@@ -1,15 +1,17 @@
-import { ChevronDown, Image, Loader2, Package, Scale, Sparkles, UserRound } from 'lucide-react'
+import { ChevronDown, GitBranch, Image, Loader2, Lock, Package, Scale, Sparkles, UserRound, WandSparkles } from 'lucide-react'
 import type { ElementType } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { cn } from '@/lib/utils'
 import { getActorStates, getEventPackages, getRuleSystems } from '../api'
 import { DEFAULT_INTERACTIVE_CHOICE_COUNT, DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, MAX_INTERACTIVE_CHOICE_COUNT, MIN_INTERACTIVE_CHOICE_COUNT, type StoryCreateInput } from '../opening'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StorySummary, Teller } from '../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryStateSchemaMode, StorySummary, Teller } from '../types'
 
 interface NewStorySetupPanelProps {
   stories: StorySummary[]
@@ -24,7 +26,6 @@ interface NewStorySetupPanelProps {
 const moduleFields: Array<{ id: keyof StoryDirectorModuleRefs; disabled: keyof StoryDirectorModuleRefs; label: string; icon: ElementType }> = [
   { id: 'narrative_style_id', disabled: 'narrative_style_disabled', label: 'narrativeStyle', icon: Sparkles },
   { id: 'rule_system_id', disabled: 'rule_system_disabled', label: 'ruleSystem', icon: Scale },
-  { id: 'actor_state_id', disabled: 'actor_state_disabled', label: 'actorState', icon: UserRound },
   { id: 'image_preset_id', disabled: 'image_preset_disabled', label: 'imagePreset', icon: Image },
 ]
 
@@ -38,6 +39,7 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
   const [replyTargetChars, setReplyTargetChars] = useState(String(story?.reply_target_chars || DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS))
   const [choiceCount, setChoiceCount] = useState(String(story?.choice_count || DEFAULT_INTERACTIVE_CHOICE_COUNT))
   const [moduleRefs, setModuleRefs] = useState<StoryDirectorModuleRefs>(() => ({ ...(story?.module_refs || initialDirector?.module_refs || {}) }))
+  const [stateSchemaMode, setStateSchemaMode] = useState<StoryStateSchemaMode>(story?.state_schema_policy?.mode || 'adapt_template')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const [moduleCatalog, setModuleCatalog] = useState<DirectorModuleCatalog>({ eventPackages: [], ruleSystems: [], actorStates: [] })
@@ -67,6 +69,12 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
       const tellerID = moduleRefs.narrative_style_disabled ? 'classic' : moduleRefs.narrative_style_id || tellers[0]?.id || 'classic'
       const normalizedChoiceCount = parseChoiceCount(choiceCount)
       if (normalizedChoiceCount === null) throw new Error(t('storyPicker.choiceCountError'))
+      const selectedActorStateID = moduleRefs.actor_state_id || director?.module_refs?.actor_state_id
+      const submittedModuleRefs: StoryDirectorModuleRefs = {
+        ...moduleRefs,
+        actor_state_id: selectedActorStateID,
+        actor_state_disabled: stateSchemaMode === 'generate',
+      }
       await onCreate({
         title: title.trim() || defaultStoryTitle(stories, t),
         origin: origin.trim(),
@@ -74,7 +82,8 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
         story_director_id: directorId,
         reply_target_chars: normalizeReplyTargetChars(replyTargetChars),
         choice_count: normalizedChoiceCount,
-        module_refs: moduleRefs,
+        module_refs: submittedModuleRefs,
+        state_schema_policy: { mode: stateSchemaMode },
         image_settings: { mode: 'manual', interval_turns: 3, preset_id: moduleRefs.image_preset_id || 'game-cg' },
       })
     } catch (reason) {
@@ -111,7 +120,9 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
           <section className="border-t border-[var(--nova-border)] pt-5">
             <div><h3 className="text-sm font-medium text-[var(--nova-text)]">{t('storyPicker.setup.modules')}</h3><p className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('storyPicker.setup.modulesHint', { director: director?.name || directorId })}</p></div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {moduleFields.map((field) => <ModuleSelectCard key={field.label} field={field} refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleOptions[field.id]} onChange={setModuleRefs} t={t} />)}
+              {moduleFields.slice(0, 2).map((field) => <ModuleSelectCard key={field.label} field={field} refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleOptions[field.id]} onChange={setModuleRefs} t={t} />)}
+              <StateSchemaPolicyCard mode={stateSchemaMode} onModeChange={setStateSchemaMode} refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleOptions.actor_state_id} onRefsChange={setModuleRefs} t={t} />
+              {moduleFields.slice(2).map((field) => <ModuleSelectCard key={field.label} field={field} refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleOptions[field.id]} onChange={setModuleRefs} t={t} />)}
               <EventPackagesCard refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleCatalog.eventPackages.map(moduleOption)} onChange={setModuleRefs} t={t} />
             </div>
           </section>
@@ -149,6 +160,47 @@ function collectModuleOptions(directors: StoryDirector[], tellers: Teller[], ima
 }
 
 function moduleOption(item: { id: string; name: string }) { return { id: item.id, label: item.name || item.id } }
+
+const stateSchemaModes: Array<{ mode: StoryStateSchemaMode; icon: ElementType }> = [
+  { mode: 'adapt_template', icon: GitBranch },
+  { mode: 'fixed_template', icon: Lock },
+  { mode: 'generate', icon: WandSparkles },
+]
+
+function StateSchemaPolicyCard({ mode, onModeChange, refs, directorRefs, options, onRefsChange, t }: { mode: StoryStateSchemaMode; onModeChange: (mode: StoryStateSchemaMode) => void; refs: StoryDirectorModuleRefs; directorRefs: StoryDirectorModuleRefs; options: Array<{ id: string; label: string }>; onRefsChange: React.Dispatch<React.SetStateAction<StoryDirectorModuleRefs>>; t: (key: string, options?: Record<string, unknown>) => string }) {
+  const directorID = directorRefs.actor_state_id || ''
+  const currentID = refs.actor_state_id || directorID
+  const visibleOptions = [...options]
+  for (const id of [directorID, currentID]) if (id && !visibleOptions.some((option) => option.id === id)) visibleOptions.push({ id, label: id })
+  return (
+    <section className="min-w-0 rounded-[12px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-3.5 sm:col-span-2 lg:col-span-3" aria-labelledby="state-schema-policy-title">
+      <div className="flex items-start gap-2.5">
+        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)]"><UserRound className="size-3.5 text-[var(--nova-accent)]" /></span>
+        <div className="min-w-0"><h4 id="state-schema-policy-title" className="text-xs font-medium text-[var(--nova-text)]">{t('storyPicker.setup.stateSchema.title')}</h4><p className="mt-0.5 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('storyPicker.setup.stateSchema.description')}</p></div>
+      </div>
+      <RadioGroup value={mode} onValueChange={(value) => onModeChange(value as StoryStateSchemaMode)} className="mt-3 grid gap-2.5 md:grid-cols-3" aria-label={t('storyPicker.setup.stateSchema.title')}>
+        {stateSchemaModes.map(({ mode: optionMode, icon: Icon }) => {
+          const selected = mode === optionMode
+          return (
+            <label key={optionMode} htmlFor={`state-schema-${optionMode}`} className={cn('relative flex cursor-pointer items-start gap-2.5 rounded-[10px] border p-3 transition-colors', selected ? 'border-[var(--nova-field-focus-border)] bg-[var(--nova-surface)]' : 'border-[var(--nova-border)] bg-transparent hover:bg-[var(--nova-surface)]/60')}>
+              <RadioGroupItem id={`state-schema-${optionMode}`} value={optionMode} className="mt-0.5 border-[var(--nova-border)] text-[var(--nova-accent)]" />
+              <span className="min-w-0"><span className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-[var(--nova-text)]"><Icon className="size-3.5 text-[var(--nova-text-muted)]" />{t(`storyPicker.setup.stateSchema.${optionMode}.title`)}{optionMode === 'adapt_template' ? <span className="rounded-full bg-[var(--nova-accent)]/10 px-1.5 py-0.5 text-[9px] font-medium text-[var(--nova-accent)]">{t('storyPicker.setup.stateSchema.recommended')}</span> : null}</span><span className="mt-1 block text-[10px] leading-4 text-[var(--nova-text-faint)]">{t(`storyPicker.setup.stateSchema.${optionMode}.description`)}</span></span>
+            </label>
+          )
+        })}
+      </RadioGroup>
+      {mode !== 'generate' ? (
+        <label className="mt-3 block border-t border-[var(--nova-border)] pt-3 text-[11px] font-medium text-[var(--nova-text-muted)]">
+          <span className="mb-1.5 block">{t('storyPicker.setup.stateSchema.template')}</span>
+          <Select value={currentID} onValueChange={(actor_state_id) => onRefsChange((current) => ({ ...current, actor_state_id, actor_state_disabled: false }))}>
+            <SelectTrigger size="sm" aria-label={t('storyPicker.setup.stateSchema.template')} className="nova-field h-8 w-full bg-[var(--nova-surface)] px-2 text-xs sm:max-w-sm"><SelectValue placeholder={t('storyPicker.setup.stateSchema.templatePlaceholder')} /></SelectTrigger>
+            <SelectContent position="popper" className="nova-panel border text-[var(--nova-text)]">{visibleOptions.map((option) => <SelectItem key={option.id} value={option.id}>{option.label}</SelectItem>)}</SelectContent>
+          </Select>
+        </label>
+      ) : <p className="mt-3 border-t border-[var(--nova-border)] pt-3 text-[10px] leading-4 text-[var(--nova-text-faint)]">{t('storyPicker.setup.stateSchema.generateCore')}</p>}
+    </section>
+  )
+}
 
 function ModuleSelectCard({ field, refs, directorRefs, options, onChange, t }: { field: (typeof moduleFields)[number]; refs: StoryDirectorModuleRefs; directorRefs: StoryDirectorModuleRefs; options: Array<{ id: string; label: string }>; onChange: React.Dispatch<React.SetStateAction<StoryDirectorModuleRefs>>; t: (key: string, options?: Record<string, unknown>) => string }) {
   const Icon = field.icon

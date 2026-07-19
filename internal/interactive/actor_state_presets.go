@@ -18,15 +18,11 @@ const (
 // All presets keep the same five-template boundary so genre additions do not
 // reintroduce fragmented global ledgers.
 type actorStatePresetSpec struct {
-	ID                     string
-	Name                   string
-	Description            string
-	PanelDescription       string
-	PanelUpdateInstruction string
-	PanelDefault           map[string]any
-	StateDescription       string
-	StateUpdateInstruction string
-	StateDefault           map[string]any
+	ID          string
+	Name        string
+	Description string
+	PanelFields []ActorStateField
+	StateFields []ActorStateField
 
 	ProtagonistFields        []ActorStateField
 	ImportantCharacterFields []ActorStateField

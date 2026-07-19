@@ -7,6 +7,7 @@ import { StateTreeGroupHeader } from './StateTreeGroupHeader'
 const KIND_ICONS: Record<TreeNodeKind, LucideIcon> = {
   group: Database,
   template: FileSpreadsheet,
+  'field-group': Layers,
   field: Hash,
   'actors-group': Users,
   actor: User,
@@ -44,7 +45,7 @@ export function StateTreeNode({
 }: StateTreeNodeProps) {
   const { t } = useTranslation()
   // Group nodes use the group header component
-  if (node.kind === 'group' || node.kind === 'actors-group' || node.kind === 'trait-library') {
+  if (node.kind === 'group' || node.kind === 'field-group' || node.kind === 'actors-group' || node.kind === 'trait-library') {
     const expanded = expandedIds.has(node.id)
     const addHandler = getGroupAddHandler(node, { onAddTemplate, onAddField, onAddActor, onAddPool, onAddTrait })
 

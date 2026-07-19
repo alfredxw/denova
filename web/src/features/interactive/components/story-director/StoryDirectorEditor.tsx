@@ -14,7 +14,7 @@ import { presetStatusLabel } from '../preset-config/preset-status'
 import { usePresetSectionValidity } from '../preset-config/use-preset-section-validity'
 import { BooleanSwitchField } from '../setting-panel/BooleanSwitchField'
 import { DirectorModuleConsole } from './ModuleConsole'
-import { consoleSectionClassName, DIRECTOR_AGENT_BRIEF_REQUIRED_HEADINGS, EMPTY_DIRECTOR_PLANNING_TEMPLATES, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_EVENT_FREQUENCY_OPTIONS, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS, STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS, STORY_DIRECTOR_STATE_SCHEMA_ADAPTATION_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StrategySelectOption } from './constants'
+import { consoleSectionClassName, DIRECTOR_AGENT_BRIEF_REQUIRED_HEADINGS, EMPTY_DIRECTOR_PLANNING_TEMPLATES, STORY_DIRECTOR_AGENT_MODE_OPTIONS, STORY_DIRECTOR_BRANCH_PLANNING_TURNS_FALLBACK, STORY_DIRECTOR_EVENT_FREQUENCY_OPTIONS, STORY_DIRECTOR_FAILURE_OPTIONS, STORY_DIRECTOR_MAINLINE_OPTIONS, STORY_DIRECTOR_PACING_OPTIONS, STORY_DIRECTOR_PLANNING_TEMPLATE_LIMIT, STORY_DIRECTOR_RULE_STATE_CONSUMPTION_OPTIONS, STORY_DIRECTOR_RULE_VISIBILITY_OPTIONS, STORY_DIRECTOR_STRATEGY_PROMPT_LIMIT, type StrategySelectOption } from './constants'
 import { directorResolvedEventPackages, findById, normalizeBranchPlanningTurns, normalizedStoryDirectorRefs, strategyOptionText, utf8ByteLength, validateDirectorPlanningTemplate } from './utils'
 
 export function StoryDirectorEditor({
@@ -180,13 +180,6 @@ export function StoryDirectorEditor({
               fallbackValue="triggered"
               options={STORY_DIRECTOR_AGENT_MODE_OPTIONS}
               onChange={(director_agent_mode) => updateStrategy({ director_agent_mode })}
-            />
-            <StrategySelect
-              label={t('settingPanel.storyDirector.stateSchemaAdaptation')}
-              value={draft.strategy?.state_schema_adaptation_mode === 'auto' ? 'after_opening' : draft.strategy?.state_schema_adaptation_mode || ''}
-              fallbackValue="after_opening"
-              options={STORY_DIRECTOR_STATE_SCHEMA_ADAPTATION_OPTIONS}
-              onChange={(state_schema_adaptation_mode) => updateStrategy({ state_schema_adaptation_mode })}
             />
             <StrategySelect
               label={t('settingPanel.storyDirector.ruleStateConsumption')}

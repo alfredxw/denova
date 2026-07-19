@@ -232,6 +232,14 @@ describe('SettingPanel', () => {
     vi.mocked(getStyleReferences).mockResolvedValue([])
   })
 
+  it('opens the presets config Agent by default', () => {
+    render(<PresetPanelHarness />)
+
+    expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '配置管理 Agent' })).toHaveAttribute('aria-current', 'true')
+    expect(screen.queryByRole('heading', { name: '经典叙事' })).not.toBeInTheDocument()
+  })
+
   it('keeps the presets config Agent open after its tools refresh narrative styles', async () => {
     const user = userEvent.setup()
     render(<PresetPanelHarness />)
@@ -396,7 +404,7 @@ describe('SettingPanel', () => {
 
     await user.click(screen.getByRole('button', { name: /经典叙事/ }))
     fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '切换前自动保存' } })
-    await user.click(sectionToggle('图像方案'))
+    expandSection('图像方案')
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
 
     await waitFor(() => expect(updateInteractiveTeller).toHaveBeenCalled())
@@ -429,7 +437,7 @@ describe('SettingPanel', () => {
     flushSettingPanelAutosave()
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('自动保存失败'))
 
-    await user.click(sectionToggle('图像方案'))
+    expandSection('图像方案')
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
 
     await waitFor(() => expect(updateInteractiveTeller).toHaveBeenCalledTimes(2))
@@ -455,6 +463,10 @@ describe('SettingPanel', () => {
     try {
       render(<CustomTellerRoundTripHarness initialTellers={[customA, customB]} />)
 
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /自定义 A/ }))
+        await Promise.resolve()
+      })
       fireEvent.change(screen.getByDisplayValue('自定义 A'), { target: { value: 'A 首次保存' } })
       await act(async () => { await vi.advanceTimersByTimeAsync(1300) })
       expect(updateInteractiveTeller).toHaveBeenCalledTimes(1)
@@ -501,6 +513,7 @@ describe('SettingPanel', () => {
       />,
     )
 
+    fireEvent.click(screen.getByRole('button', { name: /自定义 A/ }))
     await screen.findByDisplayValue('自定义 A')
     view.rerender(
       <SettingPanel
@@ -532,6 +545,7 @@ describe('SettingPanel', () => {
       />,
     )
 
+    fireEvent.click(screen.getByRole('button', { name: /自定义 A/ }))
     const name = await screen.findByDisplayValue('自定义 A')
     fireEvent.change(name, { target: { value: '本地改名 A' } })
     view.rerender(
@@ -574,6 +588,7 @@ describe('SettingPanel', () => {
     }
     const view = render(<SettingPanel {...props} tellers={[initial]} />)
 
+    fireEvent.click(screen.getByRole('button', { name: /自定义 A/ }))
     const name = await screen.findByDisplayValue('自定义 A')
     fireEvent.change(name, { target: { value: '归档前的本地改名' } })
     view.rerender(<SettingPanel {...props} tellers={[external]} />)
@@ -612,6 +627,7 @@ describe('SettingPanel', () => {
       />,
     )
 
+    fireEvent.click(screen.getByRole('button', { name: /自定义 A/ }))
     const name = await screen.findByDisplayValue('自定义 A')
     fireEvent.change(name, { target: { value: '本地改名 A' } })
     flushSettingPanelAutosave()
@@ -641,6 +657,7 @@ describe('SettingPanel', () => {
       />,
     )
 
+    await user.click(screen.getByRole('button', { name: /覆盖后的经典叙事/ }))
     await waitFor(() => expect(screen.getAllByText('内置覆盖').length).toBeGreaterThan(0))
     await user.click(screen.getByRole('button', { name: '恢复内置' }))
 
@@ -655,7 +672,7 @@ describe('SettingPanel', () => {
     vi.mocked(getImagePresets).mockResolvedValue([imagePreset('game-cg', '游戏 CG')])
     render(<PresetPanelHarness />)
 
-    await user.click(sectionToggle('图像方案'))
+    expandSection('图像方案')
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
     fireEvent.change(screen.getByDisplayValue('游戏 CG'), { target: { value: '覆盖后的图像方案' } })
     flushSettingPanelAutosave()
@@ -686,7 +703,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetPanelHarness />)
 
-    await user.click(sectionToggle('图像方案'))
+    expandSection('图像方案')
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
     expect(screen.getByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
 
@@ -715,13 +732,19 @@ describe('SettingPanel', () => {
     expect(sectionToggle('叙事风格')).toBeInTheDocument()
     expect(sectionToggle('图像方案')).toBeInTheDocument()
     expect(sectionToggle('故事导演')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /默认导演/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /经典叙事/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建故事导演' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建叙事风格' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /默认事件包/ })).not.toBeInTheDocument()
-    expect(sectionHeader('故事导演').compareDocumentPosition(sectionHeader('叙事风格')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(sectionHeader('故事导演').compareDocumentPosition(sectionHeader('图像方案')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(await screen.findByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /均衡 DM 检定/ })).toBeInTheDocument()
+    const expectedSectionOrder = ['故事导演', '叙事风格', '状态系统', 'TRPG 检定', '图像方案', '事件包']
+    for (const [index, name] of expectedSectionOrder.entries()) {
+      const nextName = expectedSectionOrder[index + 1]
+      if (nextName) {
+        expect(sectionHeader(name).compareDocumentPosition(sectionHeader(nextName)) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      }
+    }
 
     await user.click(screen.getByRole('button', { name: '收起全部' }))
     expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
@@ -736,7 +759,7 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: '收起全部' }))
     expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /经典叙事/ })).not.toBeInTheDocument()
-    await user.click(sectionToggle('故事导演'))
+    expandSection('故事导演')
 
     await selectDefaultDirector(user)
     expect(screen.queryByRole('tablist', { name: '导演资源' })).not.toBeInTheDocument()
@@ -745,7 +768,7 @@ describe('SettingPanel', () => {
     expect(screen.queryByRole('tab', { name: /开局选择/ })).not.toBeInTheDocument()
     expect(screen.queryByTestId('preset-config-visual-editor')).not.toBeInTheDocument()
 
-    await user.click(sectionToggle('事件包'))
+    expandSection('事件包')
 
     expect(screen.getByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建事件包' })).toBeInTheDocument()
@@ -786,7 +809,7 @@ describe('SettingPanel', () => {
     render(<PresetModeRoundTripHarness />)
 
     // 游戏模式下选中事件包
-    fireEvent.click(sectionToggle('事件包'))
+    expandSection('事件包')
     fireEvent.click(await screen.findByRole('button', { name: /默认事件包/ }))
     expect(await screen.findByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
 
@@ -795,7 +818,7 @@ describe('SettingPanel', () => {
     expect(await screen.findByRole('heading', { name: '经典叙事' })).toBeInTheDocument()
 
     // 写作模式下改选图像方案
-    fireEvent.click(sectionToggle('图像方案'))
+    expandSection('图像方案')
     fireEvent.click(screen.getByRole('button', { name: /游戏 CG/ }))
     expect(await screen.findByRole('heading', { name: '游戏 CG' })).toBeInTheDocument()
 
@@ -812,7 +835,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(sectionToggle('事件包'))
+    expandSection('事件包')
     await user.click(await screen.findByRole('button', { name: /默认事件包/ }))
     await user.click(await screen.findByRole('button', { name: '新增事件卡' }))
     expect(screen.getByTestId('event-package-card-editor')).toHaveClass('grid')
@@ -1040,7 +1063,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(sectionToggle('事件包'))
+    expandSection('事件包')
     await user.click(await screen.findByRole('button', { name: /默认事件包/ }))
     await user.click(screen.getByRole('button', { name: 'JSON' }))
     fireEvent.change(screen.getByTestId('monaco-json-editor'), { target: { value: '{' } })
@@ -1048,7 +1071,7 @@ describe('SettingPanel', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('修复配置后将自动保存'))
     expect(screen.getByText('请先修复 JSON，再切回可视化视图。')).toBeInTheDocument()
 
-    await user.click(sectionToggle('TRPG 检定'))
+    expandSection('TRPG 检定')
     await user.click(await screen.findByRole('button', { name: /均衡 DM 检定/ }))
     expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: '均衡 DM 检定' })).not.toBeInTheDocument()
@@ -1073,12 +1096,12 @@ describe('SettingPanel', () => {
       .mockResolvedValue([eventPackage('default', '默认事件包')])
     render(<PresetModeHarness />)
 
-    await user.click(sectionToggle('事件包'))
+    expandSection('事件包')
     await user.click(await screen.findByRole('button', { name: /默认事件包/ }))
     await user.click(screen.getByRole('button', { name: 'JSON' }))
     fireEvent.change(screen.getByTestId('monaco-json-editor'), { target: { value: '{' } })
 
-    await user.click(sectionToggle('TRPG 检定'))
+    expandSection('TRPG 检定')
     await user.click(await screen.findByRole('button', { name: /均衡 DM 检定/ }))
 
     expect(screen.getByRole('heading', { name: '默认事件包' })).toBeInTheDocument()
@@ -1105,8 +1128,8 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
-    await user.click(sectionToggle('TRPG 检定'))
-    await user.click(screen.getByRole('button', { name: /均衡 DM 检定/ }))
+    expandSection('TRPG 检定')
+    await user.click(await screen.findByRole('button', { name: /均衡 DM 检定/ }))
 
     expect(screen.getByRole('heading', { name: '均衡 DM 检定' })).toBeInTheDocument()
     expect(screen.getByDisplayValue('均衡 d20 检定')).toBeInTheDocument()
@@ -1470,6 +1493,7 @@ describe('SettingPanel', () => {
       />,
     )
 
+    await user.click(screen.getByRole('button', { name: /黑色幽默/ }))
     expect(await screen.findByRole('heading', { name: '黑色幽默' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '删除叙事风格' }))
 
@@ -1531,6 +1555,11 @@ function sectionHeader(name: string) {
 
 function sectionToggle(name: string) {
   return screen.getByRole('button', { name: new RegExp(`^(展开|折叠)${name}$`) })
+}
+
+function expandSection(name: string) {
+  const toggle = sectionToggle(name)
+  if (toggle.getAttribute('aria-expanded') === 'false') fireEvent.click(toggle)
 }
 
 async function selectDefaultDirector(user: ReturnType<typeof userEvent.setup>) {

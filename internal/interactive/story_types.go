@@ -11,6 +11,7 @@ type CreateStoryRequest struct {
 	Opening                   StoryOpeningConfig                `json:"opening,omitempty"`
 	ImageSettings             StoryImageSettings                `json:"image_settings,omitempty"`
 	InitialTraitRolls         []InitialActorTraitRoll           `json:"initial_trait_rolls,omitempty"`
+	StateSchemaPolicy         *StoryStateSchemaPolicy           `json:"state_schema_policy,omitempty"`
 	ActorState                *StoryDirectorActorStateSystem    `json:"-"`
 	TRPGSystem                *StoryDirectorTRPGSystem          `json:"-"`
 	ActorStateAdaptation      *ActorStateSchemaAdaptationRecord `json:"-"`
@@ -29,20 +30,21 @@ type AppendTurnRequest struct {
 }
 
 type AppendTurnWithStateRequest struct {
-	BranchID             string                `json:"branch_id"`
-	ExpectedParentID     *string               `json:"expected_parent_id,omitempty"`
-	User                 string                `json:"user"`
-	Narrative            string                `json:"narrative"`
-	Thinking             string                `json:"thinking,omitempty"`
-	RunID                string                `json:"run_id,omitempty"`
-	AgentKind            string                `json:"agent_kind,omitempty"`
-	DisplayEvents        []DisplayEvent        `json:"display_events,omitempty"`
-	ModelContextMessages []ModelContextMessage `json:"model_context_messages,omitempty"`
-	Ops                  []StateOp             `json:"ops,omitempty"`
-	ActorOps             []ActorStateOp        `json:"actor_ops,omitempty"`
-	RuleResolution       *RuleResolution       `json:"rule_resolution,omitempty"`
-	TurnResult           *TurnResult           `json:"turn_result,omitempty"`
-	TerminalOutcome      *TerminalOutcome      `json:"terminal_outcome,omitempty"`
+	BranchID             string                    `json:"branch_id"`
+	ExpectedParentID     *string                   `json:"expected_parent_id,omitempty"`
+	User                 string                    `json:"user"`
+	Narrative            string                    `json:"narrative"`
+	Thinking             string                    `json:"thinking,omitempty"`
+	RunID                string                    `json:"run_id,omitempty"`
+	AgentKind            string                    `json:"agent_kind,omitempty"`
+	DisplayEvents        []DisplayEvent            `json:"display_events,omitempty"`
+	ModelContextMessages []ModelContextMessage     `json:"model_context_messages,omitempty"`
+	Ops                  []StateOp                 `json:"ops,omitempty"`
+	ActorOps             []ActorStateOp            `json:"actor_ops,omitempty"`
+	RuleResolution       *RuleResolution           `json:"rule_resolution,omitempty"`
+	TurnResult           *TurnResult               `json:"turn_result,omitempty"`
+	TerminalOutcome      *TerminalOutcome          `json:"terminal_outcome,omitempty"`
+	StateSchemaProposal  *ActorStateSchemaProposal `json:"-"`
 }
 
 type RuleResolutionRerollRequest struct {
@@ -99,15 +101,19 @@ type MarkStateFailedRequest struct {
 }
 
 type UpdateStoryRequest struct {
-	Title            string                   `json:"title"`
-	Origin           *string                  `json:"origin,omitempty"`
-	StoryTellerID    string                   `json:"story_teller_id"`
-	StoryDirectorID  string                   `json:"story_director_id,omitempty"`
-	ModuleRefs       *StoryDirectorModuleRefs `json:"module_refs,omitempty"`
-	ReplyTargetChars *int                     `json:"reply_target_chars,omitempty"`
-	ChoiceCount      *int                     `json:"choice_count,omitempty"`
-	Opening          *StoryOpeningConfig      `json:"opening,omitempty"`
-	ImageSettings    *StoryImageSettings      `json:"image_settings,omitempty"`
+	Title                     string                           `json:"title"`
+	Origin                    *string                          `json:"origin,omitempty"`
+	StoryTellerID             string                           `json:"story_teller_id"`
+	StoryDirectorID           string                           `json:"story_director_id,omitempty"`
+	ModuleRefs                *StoryDirectorModuleRefs         `json:"module_refs,omitempty"`
+	ReplyTargetChars          *int                             `json:"reply_target_chars,omitempty"`
+	ChoiceCount               *int                             `json:"choice_count,omitempty"`
+	Opening                   *StoryOpeningConfig              `json:"opening,omitempty"`
+	ImageSettings             *StoryImageSettings              `json:"image_settings,omitempty"`
+	StateSchemaPolicy         *StoryStateSchemaPolicy          `json:"state_schema_policy,omitempty"`
+	ActorState                *StoryDirectorActorStateSystem   `json:"-"`
+	TRPGSystem                *StoryDirectorTRPGSystem         `json:"-"`
+	StateSchemaInitialization *StateSchemaInitializationStatus `json:"-"`
 }
 
 type CreateBranchRequest struct {
@@ -121,20 +127,21 @@ type Index struct {
 }
 
 type StorySummary struct {
-	ID               string                   `json:"id"`
-	Title            string                   `json:"title"`
-	Origin           string                   `json:"origin"`
-	StoryTellerID    string                   `json:"story_teller_id"`
-	StoryDirectorID  string                   `json:"story_director_id"`
-	ModuleRefs       *StoryDirectorModuleRefs `json:"module_refs,omitempty"`
-	ReplyTargetChars int                      `json:"reply_target_chars"`
-	ChoiceCount      int                      `json:"choice_count"`
-	Opening          StoryOpeningConfig       `json:"opening"`
-	ImageSettings    StoryImageSettings       `json:"image_settings"`
-	CreatedAt        string                   `json:"created_at"`
-	UpdatedAt        string                   `json:"updated_at"`
-	Branches         int                      `json:"branches"`
-	Events           int                      `json:"events"`
+	ID                string                   `json:"id"`
+	Title             string                   `json:"title"`
+	Origin            string                   `json:"origin"`
+	StoryTellerID     string                   `json:"story_teller_id"`
+	StoryDirectorID   string                   `json:"story_director_id"`
+	ModuleRefs        *StoryDirectorModuleRefs `json:"module_refs,omitempty"`
+	ReplyTargetChars  int                      `json:"reply_target_chars"`
+	ChoiceCount       int                      `json:"choice_count"`
+	Opening           StoryOpeningConfig       `json:"opening"`
+	ImageSettings     StoryImageSettings       `json:"image_settings"`
+	StateSchemaPolicy *StoryStateSchemaPolicy  `json:"state_schema_policy,omitempty"`
+	CreatedAt         string                   `json:"created_at"`
+	UpdatedAt         string                   `json:"updated_at"`
+	Branches          int                      `json:"branches"`
+	Events            int                      `json:"events"`
 }
 
 type StoryOpeningConfig struct {
@@ -181,6 +188,8 @@ type StoryMeta struct {
 	ChoiceCount               int                              `json:"choice_count"`
 	Opening                   StoryOpeningConfig               `json:"opening"`
 	ImageSettings             StoryImageSettings               `json:"image_settings"`
+	StateSchemaPolicy         *StoryStateSchemaPolicy          `json:"state_schema_policy,omitempty"`
+	InitialTraitRolls         []InitialActorTraitRoll          `json:"initial_trait_rolls,omitempty"`
 	ActorStateSchema          *ActorStateSchemaSnapshot        `json:"actor_state_schema,omitempty"`
 	StateSchemaInitialization *StateSchemaInitializationStatus `json:"state_schema_initialization,omitempty"`
 	CurrentBranch             string                           `json:"current_branch"`

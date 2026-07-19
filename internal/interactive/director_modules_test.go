@@ -121,14 +121,18 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 		t.Fatalf("Get default actor state failed: %v", err)
 	}
 	if actorStateTemplateHasField(defaultActorState, "protagonist", "current.status") ||
-		!actorStateTemplateHasField(defaultActorState, "protagonist", "mechanics.panel") ||
-		!actorStateTemplateHasField(defaultActorState, "protagonist", "current.dynamic_state") ||
+		actorStateTemplateHasField(defaultActorState, "protagonist", "mechanics.panel") ||
+		actorStateTemplateHasField(defaultActorState, "protagonist", "current.dynamic_state") ||
 		!actorStateTemplateHasField(defaultActorState, "protagonist", "abilities.records") ||
 		!actorStateTemplateHasField(defaultActorState, "protagonist", "assets.important_items") ||
 		!actorStateTemplateHasField(defaultActorState, "protagonist", "relations.records") ||
 		!actorStateTemplateHasField(defaultActorState, ActorStateStoryContextTemplateID, "scene.current_event") ||
+		!actorStateTemplateHasField(defaultActorState, ActorStateStoryContextTemplateID, "scene.continuation_hook") ||
 		!actorStateTemplateHasField(defaultActorState, ActorStateStoryContextTemplateID, "world.situation") ||
 		!actorStateTemplateHasField(defaultActorState, ActorStateStoryContextTemplateID, "tasks.current") ||
+		actorStateTemplateHasField(defaultActorState, ActorStateStoryContextTemplateID, "scene.elements") ||
+		actorStateTemplateHasField(defaultActorState, ActorStateStoryContextTemplateID, "rules.active") ||
+		actorStateTemplateHasField(defaultActorState, ActorStateStoryContextTemplateID, "world.setting") ||
 		!actorStateTemplateHasField(defaultActorState, ActorStateImportantCharacterTemplateID, "identity.appearance_style") ||
 		!actorStateTemplateHasField(defaultActorState, ActorStateImportantCharacterTemplateID, "protagonist_relation.favorability") ||
 		!actorStateTemplateHasField(defaultActorState, ActorStateImportantCharacterTemplateID, "knowledge.about_protagonist") ||
@@ -140,34 +144,27 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 		t.Fatalf("default actor state should expose centralized story, actor-owned, and world-entity fields: %#v", defaultActorState.ActorState.Templates)
 	}
 	wantDefaultFieldCounts := map[string]int{
-		DefaultActorID:                         10,
-		ActorStateStoryContextTemplateID:       9,
-		ActorStateImportantCharacterTemplateID: 13,
-		ActorStateOpponentTemplateID:           10,
+		DefaultActorID:                         21,
+		ActorStateStoryContextTemplateID:       7,
+		ActorStateImportantCharacterTemplateID: 24,
+		ActorStateOpponentTemplateID:           21,
 		ActorStateWorldEntitiesTemplateID:      2,
 	}
 	protagonist := actorStateTemplateByID(defaultActorState.ActorState, DefaultActorID)
-	panel, ok := actorStateFieldByPath(protagonist, "mechanics.panel")
-	if !ok || panel.Type != "object" {
-		t.Fatalf("default protagonist should expose one object panel field: %#v", protagonist.Fields)
-	}
-	panelDefault, ok := panel.Default.(map[string]any)
-	if !ok {
-		t.Fatalf("default TRPG panel should have structured defaults: %#v", panel.Default)
-	}
-	for _, key := range []string{"等级", "力量", "敏捷", "体质", "智力", "感知", "魅力", "攻击AC", "防御DC"} {
-		entry, exists := panelDefault[key].(map[string]any)
-		if !exists || entry["当前值"] == nil || entry["基础值"] == nil || entry["量表说明"] == nil {
-			t.Fatalf("default TRPG panel is missing %s base/current values: %#v", key, panelDefault)
+	for _, fieldPath := range []string{
+		"panel.level", "panel.strength", "panel.dexterity", "panel.constitution", "panel.intelligence",
+		"panel.wisdom", "panel.charisma", "panel.attack_ac", "panel.defense_dc",
+	} {
+		field, ok := actorStateFieldByPath(protagonist, fieldPath)
+		if !ok || field.Type != "number" || field.Group != "面板" {
+			t.Fatalf("default TRPG panel should use grouped ordinary number fields; %s = %#v", fieldPath, field)
 		}
 	}
-	dynamicState, ok := actorStateFieldByPath(protagonist, "current.dynamic_state")
-	if !ok || dynamicState.Type != "object" {
-		t.Fatalf("default protagonist should expose one object dynamic-state field: %#v", protagonist.Fields)
-	}
-	dynamicDefault, ok := dynamicState.Default.(map[string]any)
-	if !ok || dynamicDefault["资源"] == nil || dynamicDefault["效果"] == nil || dynamicDefault["冷却"] == nil {
-		t.Fatalf("dynamic state should centralize resources, effects, and cooldowns: %#v", dynamicState.Default)
+	for _, fieldPath := range []string{"state.health", "state.mana", "state.effects", "state.cooldowns"} {
+		field, ok := actorStateFieldByPath(protagonist, fieldPath)
+		if !ok || field.Group != "状态" || field.Type == "object" {
+			t.Fatalf("default dynamic state should use grouped ordinary fields; %s = %#v", fieldPath, field)
+		}
 	}
 	for _, template := range defaultActorState.ActorState.Templates {
 		if want := wantDefaultFieldCounts[template.ID]; len(template.Fields) != want {
@@ -189,32 +186,43 @@ func TestActorStateLibraryMaterializesGenreBuiltins(t *testing.T) {
 			t.Fatalf("genre actor state %s missing field %s/%s: %#v", expected.id, expected.templateID, expected.fieldPath, byID[expected.id].ActorState.Templates)
 		}
 	}
-	genrePanelCases := []struct {
-		id        string
-		wantKeys  []string
-		avoidKeys []string
+	genreMechanicCases := []struct {
+		id         string
+		wantPaths  []string
+		avoidPaths []string
 	}{
-		{id: ActorStateXiuxianID, wantKeys: []string{"境界"}, avoidKeys: []string{"力量", "敏捷", "体质", "智力", "感知", "魅力"}},
-		{id: ActorStateWesternFantasyID, wantKeys: []string{"职业等级", "攻击AC", "防御DC"}, avoidKeys: []string{"力量", "敏捷", "体质", "智力", "感知", "魅力"}},
-		{id: ActorStateApocalypseID, avoidKeys: []string{"力量", "饥饿", "口渴", "疲劳"}},
-		{id: ActorStateInfiniteFlowID, avoidKeys: []string{"力量", "敏捷", "体质", "智力", "感知", "魅力"}},
+		{
+			id:         ActorStateXiuxianID,
+			wantPaths:  []string{"panel.realm", "state.realm_progress", "state.effects", "state.cooldowns"},
+			avoidPaths: []string{"panel.strength", "panel.dexterity", "state.health", "state.mana"},
+		},
+		{
+			id:         ActorStateWesternFantasyID,
+			wantPaths:  []string{"panel.profession", "panel.level", "panel.attack_ac", "panel.defense_dc", "state.health", "state.spell_resource", "state.effects", "state.cooldowns"},
+			avoidPaths: []string{"panel.strength", "panel.dexterity", "panel.constitution"},
+		},
+		{
+			id:         ActorStateApocalypseID,
+			wantPaths:  []string{"state.survival_condition", "state.effects", "state.cooldowns"},
+			avoidPaths: []string{"panel.level", "panel.strength", "state.hunger", "state.thirst", "state.fatigue"},
+		},
+		{
+			id:         ActorStateInfiniteFlowID,
+			wantPaths:  []string{"panel.space_rating", "state.current_resources", "state.rule_effects", "state.cooldowns"},
+			avoidPaths: []string{"panel.strength", "panel.dexterity", "panel.constitution", "state.health", "state.mana"},
+		},
 	}
-	for _, testCase := range genrePanelCases {
-		panel := actorStatePresetObjectDefault(t, byID[testCase.id], DefaultActorID, "mechanics.panel")
-		for _, key := range testCase.wantKeys {
-			if _, ok := panel[key]; !ok {
-				t.Fatalf("genre actor state %s panel missing setting-specific key %s: %#v", testCase.id, key, panel)
+	for _, testCase := range genreMechanicCases {
+		for _, templateID := range []string{DefaultActorID, ActorStateImportantCharacterTemplateID, ActorStateOpponentTemplateID} {
+			for _, path := range testCase.wantPaths {
+				if !actorStateTemplateHasField(byID[testCase.id], templateID, path) {
+					t.Fatalf("genre actor state %s template %s missing setting-specific field %s", testCase.id, templateID, path)
+				}
 			}
-		}
-		for _, key := range testCase.avoidKeys {
-			if _, ok := panel[key]; ok {
-				t.Fatalf("genre actor state %s panel should not blindly include %s: %#v", testCase.id, key, panel)
-			}
-		}
-		state := actorStatePresetObjectDefault(t, byID[testCase.id], DefaultActorID, "current.dynamic_state")
-		for _, key := range []string{"资源", "效果", "冷却"} {
-			if _, ok := state[key]; !ok {
-				t.Fatalf("genre actor state %s dynamic state missing %s: %#v", testCase.id, key, state)
+			for _, path := range testCase.avoidPaths {
+				if actorStateTemplateHasField(byID[testCase.id], templateID, path) {
+					t.Fatalf("genre actor state %s template %s should not blindly include %s", testCase.id, templateID, path)
+				}
 			}
 		}
 	}
@@ -378,7 +386,7 @@ func requireWritableActorStatePresetFields(t *testing.T, item ActorStateModule) 
 		"knowledge.misunderstood_about_protagonist": true,
 	}
 	for _, template := range item.ActorState.Templates {
-		if len(template.Fields) == 0 || len(template.Fields) > 14 {
+		if len(template.Fields) == 0 || len(template.Fields) > 32 {
 			t.Fatalf("genre actor state %s template %s has invalid field count: %d", item.ID, template.ID, len(template.Fields))
 		}
 		if len(template.DisplayGroups) != 0 {
@@ -394,25 +402,23 @@ func requireWritableActorStatePresetFields(t *testing.T, item ActorStateModule) 
 			if strings.HasPrefix(field.Path, "attributes.") || forbiddenPaths[field.Path] {
 				t.Fatalf("genre actor state %s retains a fragmented or generic field %s: %#v", item.ID, field.Path, field)
 			}
+			if field.Group == "" {
+				t.Fatalf("genre actor state %s field %s should be visible in the grouped structure: %#v", item.ID, field.Path, field)
+			}
+			if (field.Path == "mechanics.panel" || field.Path == "current.dynamic_state") && field.Type == "object" {
+				t.Fatalf("genre actor state %s should not hide panel or status fields inside JSON: %#v", item.ID, field)
+			}
 			if strings.Contains(field.UpdateInstruction, "只记录正文、规则检定") {
 				t.Fatalf("genre actor state %s field %s retains boilerplate update guidance: %#v", item.ID, field.Path, field)
 			}
 			if field.Type == "number" {
-				if field.Path != "protagonist_relation.favorability" ||
-					!strings.Contains(field.Description, "0–20") ||
-					!strings.Contains(field.Description, "91–100") ||
-					field.Min == nil || *field.Min != 0 || field.Max == nil || *field.Max != 100 {
+				if !strings.Contains(field.Description, "–") ||
+					field.Min == nil || field.Max == nil || *field.Min >= *field.Max {
 					t.Fatalf("genre actor state %s numeric field must provide a meaningful scale: %#v", item.ID, field)
 				}
 			}
 		}
 		if template.ID == DefaultActorID || template.ID == ActorStateImportantCharacterTemplateID || template.ID == ActorStateOpponentTemplateID {
-			if _, ok := actorStateFieldByPath(template, "mechanics.panel"); !ok {
-				t.Fatalf("genre actor state %s template %s is missing its adaptive panel object", item.ID, template.ID)
-			}
-			if _, ok := actorStateFieldByPath(template, "current.dynamic_state"); !ok {
-				t.Fatalf("genre actor state %s template %s is missing its adaptive dynamic-state object", item.ID, template.ID)
-			}
 			if _, ok := actorStateFieldByPath(template, "current.status"); ok {
 				t.Fatalf("genre actor state %s template %s still has the replaced text status field", item.ID, template.ID)
 			}
@@ -435,20 +441,6 @@ func actorStateTemplateHasField(item ActorStateModule, templateID, fieldPath str
 		}
 	}
 	return false
-}
-
-func actorStatePresetObjectDefault(t *testing.T, item ActorStateModule, templateID, fieldPath string) map[string]any {
-	t.Helper()
-	template := actorStateTemplateByID(item.ActorState, templateID)
-	field, ok := actorStateFieldByPath(template, fieldPath)
-	if !ok || field.Type != "object" {
-		t.Fatalf("actor state %s missing object field %s/%s", item.ID, templateID, fieldPath)
-	}
-	value, ok := field.Default.(map[string]any)
-	if !ok {
-		t.Fatalf("actor state %s object field %s/%s has invalid default: %#v", item.ID, templateID, fieldPath, field.Default)
-	}
-	return value
 }
 
 func TestDirectorEventCatalogUsesOnlyExplicitConfiguredEventCards(t *testing.T) {

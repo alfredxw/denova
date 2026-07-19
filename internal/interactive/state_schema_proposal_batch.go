@@ -82,12 +82,24 @@ type actorStateSchemaDraftItem struct {
 // ActorStateSchemaBatchDraft owns accepted items for one Agent run. Callers
 // should serialize access; the app already shares its Lore-read audit mutex.
 type ActorStateSchemaBatchDraft struct {
-	base      StoryDirectorActorStateSystem
-	trpg      StoryDirectorTRPGSystem
-	summary   string
-	order     []string
-	items     map[string]actorStateSchemaDraftItem
-	finalized *ActorStateSchemaProposal
+	base            StoryDirectorActorStateSystem
+	trpg            StoryDirectorTRPGSystem
+	incrementalTRPG *StoryDirectorTRPGSystem
+	summary         string
+	order           []string
+	items           map[string]actorStateSchemaDraftItem
+	finalized       *ActorStateSchemaProposal
+}
+
+// NewOpeningActorStateSchemaBatchDraft allows a generated schema to satisfy
+// several TRPG bindings across independently retryable items. Intermediate
+// items validate their own schema shape; finalize still validates the complete
+// proposal against every frozen TRPG binding.
+func NewOpeningActorStateSchemaBatchDraft(base StoryDirectorActorStateSystem, trpg StoryDirectorTRPGSystem) *ActorStateSchemaBatchDraft {
+	draft := NewActorStateSchemaBatchDraft(base, trpg)
+	empty := StoryDirectorTRPGSystem{}
+	draft.incrementalTRPG = &empty
+	return draft
 }
 
 func NewActorStateSchemaBatchDraft(base StoryDirectorActorStateSystem, trpg StoryDirectorTRPGSystem) *ActorStateSchemaBatchDraft {
@@ -206,7 +218,7 @@ func (d *ActorStateSchemaBatchDraft) Submit(batch ActorStateSchemaBatch, audit A
 			before := d.mergedProposal(nil, audit)
 			itemProposal := actorStateSchemaProposalFromBatchItem(candidate.item)
 			combined := mergeActorStateSchemaProposals(before, itemProposal)
-			normalized, _, err := ValidateActorStateSchemaProposal(d.base, d.trpg, combined)
+			normalized, _, err := ValidateActorStateSchemaProposal(d.base, d.incrementalValidationTRPG(), combined)
 			if err != nil {
 				issue := actorStateSchemaBatchIssue(candidate.item.ItemID, actorStateSchemaBatchValidationCode(err), actorStateSchemaBatchValidationPath(path, candidate.item, err), err.Error())
 				result.Rejected = append(result.Rejected, issue)
@@ -214,7 +226,7 @@ func (d *ActorStateSchemaBatchDraft) Submit(batch ActorStateSchemaBatch, audit A
 				continue
 			}
 			normalizedItem := actorStateSchemaProposalTail(normalized, before, candidate.item.Summary)
-			targetSystem, _, targetErr := ApplyActorStateSchemaAdaptation(d.base, d.trpg, normalized.Adaptation)
+			targetSystem, _, targetErr := ApplyActorStateSchemaAdaptation(d.base, d.incrementalValidationTRPG(), normalized.Adaptation)
 			if targetErr != nil {
 				result.Rejected = append(result.Rejected, actorStateSchemaBatchIssue(candidate.item.ItemID, "validation_failed", path+".adaptation", targetErr.Error()))
 				madeProgress = true
@@ -268,6 +280,54 @@ func (d *ActorStateSchemaBatchDraft) Submit(batch ActorStateSchemaBatch, audit A
 	d.finalized = &normalized
 	result.Finalized = true
 	result.Preview = &preview
+	return result
+}
+
+func (d *ActorStateSchemaBatchDraft) incrementalValidationTRPG() StoryDirectorTRPGSystem {
+	if d != nil && d.incrementalTRPG != nil {
+		return *d.incrementalTRPG
+	}
+	if d == nil {
+		return StoryDirectorTRPGSystem{}
+	}
+	return d.trpg
+}
+
+// SubmitStructureOnly stages an opening Game Agent batch while rejecting
+// Actor definitions and values item-by-item. Invalid items never enter the
+// run-local draft, and a mixed batch cannot finalize accidentally.
+func (d *ActorStateSchemaBatchDraft) SubmitStructureOnly(batch ActorStateSchemaBatch, audit ActorStateSchemaBatchAudit) ActorStateSchemaBatchResult {
+	valid := batch
+	valid.Items = make([]ActorStateSchemaBatchItem, 0, len(batch.Items))
+	issues := make([]ActorStateSchemaBatchIssue, 0)
+	for index, item := range batch.Items {
+		path := fmt.Sprintf("items[%d]", index)
+		switch {
+		case len(item.Adaptation.InitialActorOps) > 0:
+			issues = append(issues, actorStateSchemaBatchIssue(strings.TrimSpace(item.ItemID), "actor_values_not_allowed", path+".adaptation.initial_actor_ops", "开局结构工具不能修改 initial_actors；Actor 创建和值请在 submit_interactive_turn.state_changes 中提交"))
+			continue
+		case len(item.Adaptation.ActorOps) > 0:
+			issues = append(issues, actorStateSchemaBatchIssue(strings.TrimSpace(item.ItemID), "actor_values_not_allowed", path+".adaptation.actor_ops", "开局结构工具不能写 Actor 值；初始状态请在 submit_interactive_turn.state_changes 中提交"))
+			continue
+		}
+		invalidPolicy := false
+		for requirementIndex, requirement := range item.Requirements {
+			if strings.TrimSpace(requirement.ValuePolicy) == ActorStateSchemaValuePolicySchemaOnly {
+				continue
+			}
+			issues = append(issues, actorStateSchemaBatchIssue(strings.TrimSpace(item.ItemID), "value_policy_not_allowed", fmt.Sprintf("%s.requirements[%d].value_policy", path, requirementIndex), "开局结构工具的 requirement 只能使用 value_policy=schema_only"))
+			invalidPolicy = true
+			break
+		}
+		if !invalidPolicy {
+			valid.Items = append(valid.Items, item)
+		}
+	}
+	if len(issues) > 0 {
+		valid.Finalize = false
+	}
+	result := d.Submit(valid, audit)
+	result.Rejected = append(result.Rejected, issues...)
 	return result
 }
 

@@ -507,6 +507,11 @@ func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...Interactiv
 				return nil, err
 			}
 			tools = append(tools, historyTools...)
+			stateSchemaTools, err := newInteractiveOpeningStateSchemaTools(toolContexts[0])
+			if err != nil {
+				return nil, err
+			}
+			tools = append(tools, stateSchemaTools...)
 			turnTools, err := newInteractiveTurnTools(toolContexts[0])
 			if err != nil {
 				return nil, err

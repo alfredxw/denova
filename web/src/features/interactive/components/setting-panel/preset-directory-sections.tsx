@@ -9,7 +9,7 @@ import { presetStatusLabel } from '../preset-config/preset-status'
 import { enabledImagePresetSlotCount, normalizedImagePresetSlots } from './ImagePresetEditor'
 import { eventPackageSummaryCount, presetKindCreateLabel, presetKindDirectoryLabel, storyDirectorSummaryCount } from './editor-shared'
 
-const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'image', 'event', 'rule', 'actor-state']
+const PRESET_DIRECTORY_ORDER: PresetResourceKind[] = ['director', 'teller', 'actor-state', 'rule', 'image', 'event']
 
 const PRESET_DIRECTORY_ICONS: Record<PresetResourceKind, LucideIcon> = {
   director: Compass,
@@ -44,13 +44,11 @@ interface PresetDirectoryLists {
 export function buildPresetDirectorySections({
   lists,
   presetUsageMode,
-  presetResourceKind,
   onCreateKind,
   t,
 }: {
   lists: PresetDirectoryLists
   presetUsageMode: PresetUsageMode
-  presetResourceKind: PresetResourceKind
   onCreateKind: (kind: PresetResourceKind) => void
   t: TFunction
 }): ResourceDirectorySection[] {
@@ -63,7 +61,7 @@ export function buildPresetDirectorySections({
       items: presetDirectoryItemsForKind(kind, lists, t),
       onCreate: () => onCreateKind(kind),
       createLabel: presetKindCreateLabel(kind, t),
-      defaultCollapsed: kind !== presetResourceKind,
+      defaultCollapsed: false,
     }))
 }
 

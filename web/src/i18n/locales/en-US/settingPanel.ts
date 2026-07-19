@@ -190,6 +190,7 @@ const settingPanel = {
   'settingPanel.actorState.explorer.visibility': 'Visibility',
   'settingPanel.actorState.explorer.displayGroup': 'Display Group',
   'settingPanel.actorState.explorer.displayGroupPlaceholder': 'Leave empty for auto grouping',
+  'settingPanel.actorState.explorer.ungroupedFields': 'Ungrouped Fields',
   'settingPanel.actorState.explorer.display': 'Display',
   'settingPanel.actorState.explorer.display.auto': 'Auto',
   'settingPanel.actorState.explorer.display.stat': 'Stat meter',
