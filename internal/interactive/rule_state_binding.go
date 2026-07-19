@@ -18,15 +18,16 @@ type RuleStateBinding struct {
 }
 
 type RuleStateBindingModifier struct {
-	Source   string   `json:"source,omitempty"`
-	FieldID  string   `json:"field_id,omitempty"`
-	Effect   string   `json:"effect,omitempty"`
-	Scale    float64  `json:"scale,omitempty"`
-	Offset   float64  `json:"offset,omitempty"`
-	Min      *float64 `json:"min,omitempty"`
-	Max      *float64 `json:"max,omitempty"`
-	Rounding string   `json:"rounding,omitempty"`
-	Required *bool    `json:"required,omitempty"`
+	Source    string   `json:"source,omitempty"`
+	FieldID   string   `json:"field_id,omitempty"`
+	ValuePath []string `json:"value_path,omitempty"`
+	Effect    string   `json:"effect,omitempty"`
+	Scale     float64  `json:"scale,omitempty"`
+	Offset    float64  `json:"offset,omitempty"`
+	Min       *float64 `json:"min,omitempty"`
+	Max       *float64 `json:"max,omitempty"`
+	Rounding  string   `json:"rounding,omitempty"`
+	Required  *bool    `json:"required,omitempty"`
 }
 
 type RuleNarrativeStateRef struct {
@@ -57,10 +58,11 @@ type RuleStateChangeFormula struct {
 }
 
 type RuleStateFormulaTerm struct {
-	Source  string  `json:"source,omitempty"`
-	FieldID string  `json:"field_id,omitempty"`
-	Scale   float64 `json:"scale,omitempty"`
-	Offset  float64 `json:"offset,omitempty"`
+	Source    string   `json:"source,omitempty"`
+	FieldID   string   `json:"field_id,omitempty"`
+	ValuePath []string `json:"value_path,omitempty"`
+	Scale     float64  `json:"scale,omitempty"`
+	Offset    float64  `json:"offset,omitempty"`
 }
 
 type RuleStateBindingAudit struct {
@@ -81,13 +83,14 @@ type RuleStateBindingAudit struct {
 }
 
 type RuleStateBindingInput struct {
-	Source        string  `json:"source,omitempty"`
-	ActorID       string  `json:"actor_id,omitempty"`
-	TemplateID    string  `json:"template_id,omitempty"`
-	FieldID       string  `json:"field_id,omitempty"`
-	RawValue      float64 `json:"raw_value"`
-	ComputedValue float64 `json:"computed_value"`
-	Effect        string  `json:"effect,omitempty"`
+	Source        string   `json:"source,omitempty"`
+	ActorID       string   `json:"actor_id,omitempty"`
+	TemplateID    string   `json:"template_id,omitempty"`
+	FieldID       string   `json:"field_id,omitempty"`
+	ValuePath     []string `json:"value_path,omitempty"`
+	RawValue      float64  `json:"raw_value"`
+	ComputedValue float64  `json:"computed_value"`
+	Effect        string   `json:"effect,omitempty"`
 }
 
 type RuleStateBindingWarning struct {
@@ -182,6 +185,7 @@ func normalizeRuleStateBindingModifiers(values []RuleStateBindingModifier) []Rul
 	for _, value := range values {
 		value.Source = normalizeRuleBindingSource(value.Source)
 		value.FieldID = normalizeActorStateFieldName(value.FieldID)
+		value.ValuePath = normalizeRuleStateValuePath(value.ValuePath)
 		value.Effect = normalizeRuleBindingEffect(value.Effect)
 		if value.Scale == 0 {
 			value.Scale = 1
@@ -268,6 +272,7 @@ func normalizeRuleStateChangeFormula(value RuleStateChangeFormula) RuleStateChan
 	for _, term := range value.Terms {
 		term.Source = normalizeRuleBindingSource(term.Source)
 		term.FieldID = normalizeActorStateFieldName(term.FieldID)
+		term.ValuePath = normalizeRuleStateValuePath(term.ValuePath)
 		if term.Scale == 0 {
 			term.Scale = 1
 		}
@@ -348,6 +353,7 @@ func normalizeRuleStateBindingInputs(values []RuleStateBindingInput) []RuleState
 		value.ActorID = normalizeActorStateID(value.ActorID)
 		value.TemplateID = normalizeActorStateID(value.TemplateID)
 		value.FieldID = normalizeActorStateFieldName(value.FieldID)
+		value.ValuePath = normalizeRuleStateValuePath(value.ValuePath)
 		value.Effect = normalizeRuleBindingEffect(value.Effect)
 		if value.Source == "" && value.FieldID == "" {
 			continue
@@ -433,7 +439,7 @@ func resolveRuleStateBinding(state map[string]any, director StoryDirector, req T
 		NarrativeStateRefs: append([]RuleNarrativeStateRef(nil), binding.NarrativeStateRefs...),
 	}
 	for _, modifier := range binding.Modifiers {
-		value, fieldTemplateID, _, ok, err := readBindingNumber(state, director.ActorState, actorID, targetActorID, modifier.Source, modifier.FieldID)
+		value, fieldTemplateID, _, ok, err := readBindingNumber(state, director.ActorState, actorID, targetActorID, modifier.Source, modifier.FieldID, modifier.ValuePath)
 		if err != nil {
 			if ruleBindingRequired(modifier.Required) {
 				return nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s modifier %s.%s: %w", bindingID, modifier.Source, modifier.FieldID, err)
@@ -462,6 +468,7 @@ func resolveRuleStateBinding(state map[string]any, director StoryDirector, req T
 			ActorID:       inputActorID,
 			TemplateID:    firstNonEmptyString(fieldTemplateID, actorTemplateID),
 			FieldID:       modifier.FieldID,
+			ValuePath:     append([]string(nil), modifier.ValuePath...),
 			RawValue:      value,
 			ComputedValue: computed,
 			Effect:        modifier.Effect,
@@ -562,7 +569,7 @@ func computeBindingOutcomeStateChanges(state map[string]any, system StoryDirecto
 func computeBindingFormula(state map[string]any, system StoryDirectorActorStateSystem, actorID, targetActorID string, formula RuleStateChangeFormula) (float64, error) {
 	total := formula.Base
 	for _, term := range formula.Terms {
-		value, _, _, ok, err := readBindingNumber(state, system, actorID, targetActorID, term.Source, term.FieldID)
+		value, _, _, ok, err := readBindingNumber(state, system, actorID, targetActorID, term.Source, term.FieldID, term.ValuePath)
 		if err != nil {
 			return 0, err
 		}
@@ -589,7 +596,7 @@ func validateBindingActor(state map[string]any, system StoryDirectorActorStateSy
 	return templateID, nil
 }
 
-func readBindingNumber(state map[string]any, system StoryDirectorActorStateSystem, actorID, targetActorID, source, fieldPath string) (float64, string, string, bool, error) {
+func readBindingNumber(state map[string]any, system StoryDirectorActorStateSystem, actorID, targetActorID, source, fieldPath string, valuePath []string) (float64, string, string, bool, error) {
 	readActorID := actorID
 	if source == "target" {
 		readActorID = targetActorID
@@ -601,21 +608,69 @@ func readBindingNumber(state map[string]any, system StoryDirectorActorStateSyste
 	if err != nil {
 		return 0, "", "", false, err
 	}
-	if field.Type != "number" {
+	valuePath = normalizeRuleStateValuePath(valuePath)
+	if len(valuePath) == 0 && field.Type != "number" {
 		return 0, templateID, actorStateFieldPath(readActorID, fieldPath), false, fmt.Errorf("字段不是 number 类型: %s", fieldPath)
 	}
+	if len(valuePath) > 0 && field.Type != "object" {
+		return 0, templateID, actorStateFieldPath(readActorID, fieldPath), false, fmt.Errorf("value_path 只能读取 object 字段: %s", fieldPath)
+	}
 	path := actorStateFieldPath(readActorID, actorStateFieldID(field))
-	value, ok := actorStateNumber(actorStateFieldValue(state, readActorID, actorStateFieldID(field)))
+	rawValue := actorStateFieldValue(state, readActorID, actorStateFieldID(field))
+	if len(valuePath) > 0 {
+		rawValue, _ = ruleStateValueAtPath(rawValue, valuePath)
+	}
+	value, ok := actorStateNumber(rawValue)
 	if !ok && strings.TrimSpace(field.LegacyPath) != "" {
-		value, ok = actorStateNumber(getPath(state, actorStateFieldPath(readActorID, field.LegacyPath)))
+		legacyValue := getPath(state, actorStateFieldPath(readActorID, field.LegacyPath))
+		if len(valuePath) > 0 {
+			legacyValue, _ = ruleStateValueAtPath(legacyValue, valuePath)
+		}
+		value, ok = actorStateNumber(legacyValue)
 	}
 	if ok {
 		return value, templateID, path, true, nil
 	}
-	if defaultValue, defaultOK := actorStateNumber(field.Default); defaultOK {
+	defaultValueSource := field.Default
+	if len(valuePath) > 0 {
+		defaultValueSource, _ = ruleStateValueAtPath(defaultValueSource, valuePath)
+	}
+	if defaultValue, defaultOK := actorStateNumber(defaultValueSource); defaultOK {
 		return defaultValue, templateID, path, true, nil
 	}
 	return 0, templateID, path, false, nil
+}
+
+func normalizeRuleStateValuePath(value []string) []string {
+	if len(value) > maxInteractiveListItems {
+		value = value[:maxInteractiveListItems]
+	}
+	out := make([]string, 0, len(value))
+	for _, segment := range value {
+		segment = normalizeActorStateFieldName(segment)
+		if segment != "" {
+			out = append(out, segment)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func ruleStateValueAtPath(value any, valuePath []string) (any, bool) {
+	current := value
+	for _, segment := range valuePath {
+		record, ok := current.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current, ok = record[segment]
+		if !ok {
+			return nil, false
+		}
+	}
+	return current, true
 }
 
 func bindingNumberField(system StoryDirectorActorStateSystem, state map[string]any, actorID, fieldPath string) (ActorStateField, string, error) {

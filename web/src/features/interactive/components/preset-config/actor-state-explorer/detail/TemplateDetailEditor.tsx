@@ -63,7 +63,6 @@ export function TemplateDetailEditor({
       name: t('settingPanel.actorState.explorer.newField', { count: fields.length + 1 }),
       type: 'string',
       visibility: 'visible',
-      order: fields.length,
     }
     updateTemplate({ fields: [...fields, newField] })
   }
@@ -160,6 +159,7 @@ export function TemplateDetailEditor({
           </div>
         </section>
 
+        <div className="space-y-6">
         <section className="space-y-2">
           <SectionHeader
             title={t('settingPanel.actorState.explorer.templateTraitRules')}
@@ -226,6 +226,7 @@ export function TemplateDetailEditor({
             ) : null}
           </div>
         </section>
+        </div>
       </DetailResponsiveGrid>
     </DetailStack>
   )

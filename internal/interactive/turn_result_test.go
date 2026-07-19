@@ -28,7 +28,11 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 				Value: map[string]any{
 					"template_id": "protagonist",
 					"name":        "林风",
-					"state":       map[string]any{"当前身体状态": "掌心灼伤缓解，体力恢复"},
+					"state": map[string]any{"状态": map[string]any{
+						"资源": map[string]any{},
+						"效果": map[string]any{"burn_recovery": map[string]any{"名称": "掌心灼伤缓解", "类型": "伤势", "影响": "体力恢复"}},
+						"冷却": map[string]any{},
+					}},
 				},
 			}},
 			Choices: testTurnChoices(),
@@ -47,17 +51,17 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 	if delta == nil || turn.StateDelta == nil || len(turn.StateDelta.ActorOps) == 0 {
 		t.Fatalf("expected atomic state delta: turn=%#v delta=%#v", turn.StateDelta, delta)
 	}
-	foundBodyStatus := false
+	foundCurrentStatus := false
 	for _, op := range turn.StateDelta.ActorOps {
 		if op.SourceKind != StateOpSourceTurnResult || op.SourceID != turn.ID || op.SourceTurnID != turn.ID {
 			t.Fatalf("turn result state op source mismatch: %#v", op)
 		}
-		if op.ActorID == "protagonist" && op.FieldID == "当前身体状态" {
-			foundBodyStatus = true
+		if op.ActorID == "protagonist" && op.FieldID == "状态" {
+			foundCurrentStatus = true
 		}
 	}
-	if !foundBodyStatus {
-		t.Fatalf("body status op missing: %#v", turn.StateDelta.ActorOps)
+	if !foundCurrentStatus {
+		t.Fatalf("current status op missing: %#v", turn.StateDelta.ActorOps)
 	}
 	if turn.StateStatus != "ready" {
 		t.Fatalf("turn state status mismatch: %q", turn.StateStatus)
@@ -70,8 +74,13 @@ func TestAppendTurnWithStatePersistsTurnResultAndActorStateAtomically(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := actorStateFieldValue(snapshot.State, "protagonist", "当前身体状态"); got != "掌心灼伤缓解，体力恢复" {
-		t.Fatalf("body status = %#v", got)
+	status, ok := actorStateFieldValue(snapshot.State, "protagonist", "状态").(map[string]any)
+	if !ok {
+		t.Fatalf("dynamic status = %#v", actorStateFieldValue(snapshot.State, "protagonist", "状态"))
+	}
+	effects, ok := status["效果"].(map[string]any)
+	if !ok || effects["burn_recovery"] == nil {
+		t.Fatalf("dynamic status effects = %#v", status)
 	}
 }
 

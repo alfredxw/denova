@@ -78,8 +78,6 @@ export function actorFieldEntries(
   const state = isRecord(actor.state) ? actor.state : {}
   const visibleFields = (schemaFields || [])
     .filter((field) => field.visibility !== 'hidden')
-    .slice()
-    .sort((left, right) => (left.order || 0) - (right.order || 0) || left.name.localeCompare(right.name))
   if (schemaFields !== undefined) {
     return visibleFields.map((field) => ({
       field,
@@ -88,8 +86,8 @@ export function actorFieldEntries(
   }
 
   const directState = Object.fromEntries(Object.entries(actor).filter(([key]) => !['name', 'role', 'template_id', 'state', 'traits'].includes(key)))
-  return Object.entries({ ...directState, ...state }).map(([name, value], index) => ({
-    field: { name: humanizeStateKey(name), type: inferredFieldType(value), order: index * 10 } satisfies ActorStateField,
+  return Object.entries({ ...directState, ...state }).map(([name, value]) => ({
+    field: { name: humanizeStateKey(name), type: inferredFieldType(value) } satisfies ActorStateField,
     value,
   }))
 }
@@ -205,7 +203,8 @@ export interface LedgerFieldGroup {
 /**
  * buildLedgerGroups resolves each field's renderer + group (template hints
  * first, shape heuristics as fallback) and attaches the classified turn
- * change. Groups keep first-seen field order; the spoiler group goes last.
+ * change. The schema's field array is the fallback order; any user ordering
+ * is applied later as a UI-only preference.
  */
 export function buildLedgerGroups(entries: LedgerFieldEntry[], changes: StoryStateChange[]): LedgerFieldGroup[] {
   const groups: LedgerFieldGroup[] = []
@@ -225,7 +224,44 @@ export function buildLedgerGroups(entries: LedgerFieldEntry[], changes: StorySta
       change: mergeFieldChanges(fieldChanges, typeof entry.value === 'number'),
     })
   }
-  return groups.sort((left, right) => Number(left.key === 'spoiler') - Number(right.key === 'spoiler'))
+  return groups.sort((left, right) => (
+    ledgerGroupPriority(left) - ledgerGroupPriority(right)
+  ))
+}
+
+const BUILTIN_GROUP_PRIORITY: Record<string, number> = {
+  overview: 0,
+  holdings: 1,
+  details: 3,
+  spoiler: 4,
+}
+
+/** Custom groups sit between holdings and details and keep first-seen field order. */
+function ledgerGroupPriority(group: LedgerFieldGroup) {
+  if (group.custom) return 2
+  return BUILTIN_GROUP_PRIORITY[group.key] ?? 2
+}
+
+/**
+ * splitLedgerGroupsForPreview cuts the one-page sections into the glanceable
+ * preview (overview + holdings) and the sections hidden behind "show all".
+ * A template with no structured sections previews its first group instead.
+ */
+export function splitLedgerGroupsForPreview(groups: LedgerFieldGroup[]): { preview: LedgerFieldGroup[]; hidden: LedgerFieldGroup[] } {
+  const preview = groups.filter((group) => (
+    (!group.custom && (group.key === 'overview' || group.key === 'holdings'))
+    || (group.custom && isPanelOrStateGroup(group.key))
+  ))
+  if (preview.length === 0 && groups.length > 0) {
+    return { preview: [groups[0]], hidden: groups.slice(1) }
+  }
+  const previewKeys = new Set(preview.map((group) => group.key))
+  return { preview, hidden: groups.filter((group) => !previewKeys.has(group.key)) }
+}
+
+function isPanelOrStateGroup(key: string) {
+  const normalized = key.trim().toLocaleLowerCase()
+  return normalized === '面板' || normalized === '状态' || normalized === 'panel' || normalized === 'state'
 }
 
 function matchFieldChanges(changes: StoryStateChange[], entry: LedgerFieldEntry) {

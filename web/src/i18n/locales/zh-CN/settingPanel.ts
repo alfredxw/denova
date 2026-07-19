@@ -198,7 +198,6 @@ const settingPanel = {
   'settingPanel.actorState.explorer.display.list': '列表',
   'settingPanel.actorState.explorer.minimum': '最小值',
   'settingPanel.actorState.explorer.maximum': '最大值',
-  'settingPanel.actorState.explorer.order': '排序',
   'settingPanel.actorState.explorer.optionsLabel': '选项（逗号分隔）',
   'settingPanel.actorState.explorer.optionsPlaceholder': '选项 1，选项 2，选项 3',
   'settingPanel.actorState.explorer.defaultValue': '默认值',

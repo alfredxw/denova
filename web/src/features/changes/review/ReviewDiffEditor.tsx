@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { DiffEditor, Editor, type DiffOnMount, type Monaco, type OnMount } from '@monaco-editor/react'
+import { DiffEditor, Editor, loader, type DiffOnMount, type Monaco, type OnMount } from '@monaco-editor/react'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { useTranslation } from 'react-i18next'
@@ -50,6 +50,10 @@ interface ResolvedCommentThread extends ReviewZoneDescriptor {
 interface CommentDraft {
   key: string
   anchor: WorkspaceChangeCommentAnchor
+}
+
+export async function preloadReviewMonaco(): Promise<void> {
+  await loader.init()
 }
 
 export function ReviewDiffEditor({ threadID, file, comments, layout, busy = false, onDraftChange, initialHeight = 240, onHeightChange, onCreateComment, onUpdateComment, onDeleteComment }: ReviewDiffEditorProps) {

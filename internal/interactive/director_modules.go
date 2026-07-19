@@ -712,13 +712,7 @@ func builtinRuleSystemModule(id, name, description string, check RuleCheck) Rule
 }
 
 func DefaultActorStateModule() ActorStateModule {
-	return normalizeActorStateModule(ActorStateModule{
-		Version:     storyDirectorModuleVersion,
-		ID:          DefaultActorStateModuleID,
-		Name:        "默认状态系统",
-		Description: "以主角等关键状态对象为起点维护结构化字段和可复用词条库，供规则检定、资源消耗和长期承接读取；可按作品需要扩展其他状态表模板。",
-		ActorState:  defaultActorStateSystem(),
-	})
+	return actorStatePresetModule(defaultActorStatePresetSpec())
 }
 
 func IsBuiltinEventPackageID(id string) bool {

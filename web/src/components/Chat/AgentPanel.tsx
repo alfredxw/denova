@@ -247,7 +247,7 @@ export function AgentPanel({
   const timelineAttachments = useMemo(() => (
     (changeGroupsQuery.data ?? [])
       .filter((summary) => Boolean(summary.run_id) && summary.run_id !== activeRunID)
-      .map((summary) => ({
+      .map((summary, index) => ({
         id: summary.id,
         runId: summary.run_id || '',
         content: (
@@ -255,6 +255,7 @@ export function AgentPanel({
             workspace={workspace}
             summary={summary}
             disabled={isStreaming}
+            eagerPreload={!isStreaming && index === 0}
             onReview={(reviewThreadID, groupID) => onOpenChangeReview?.(reviewThreadID, groupID)}
             onWorkspaceChanged={onWorkspaceChanged}
           />

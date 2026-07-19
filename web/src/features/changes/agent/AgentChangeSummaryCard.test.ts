@@ -1,6 +1,41 @@
-import { describe, expect, it } from 'vitest'
-import { canUndoAgentChange, summarizeGroupFiles } from './AgentChangeSummaryCard'
+import { createElement } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { fireEvent, render, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { AgentChangeSummaryCard, canUndoAgentChange, summarizeGroupFiles } from './AgentChangeSummaryCard'
 import type { WorkspaceChangeGroup, WorkspaceChangeGroupSummary } from '../types'
+
+const apiMocks = vi.hoisted(() => ({
+  getWorkspaceChangeGroup: vi.fn(),
+  getWorkspaceChangeReviewThread: vi.fn(),
+  listWorkspaceChangeGroups: vi.fn(),
+  undoWorkspaceChangeGroup: vi.fn(),
+}))
+const preloadReviewDiffEditorMock = vi.hoisted(() => vi.fn())
+
+vi.mock('../api', () => apiMocks)
+vi.mock('../review/review-editor-loader', () => ({
+  preloadReviewDiffEditor: preloadReviewDiffEditorMock,
+}))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  apiMocks.getWorkspaceChangeGroup.mockResolvedValue({
+    id: 'group-1',
+    created_at: '2026-07-16T00:00:00Z',
+    review_status: 'pending',
+    apply_state: 'applied',
+    change_sets: [],
+  })
+  apiMocks.getWorkspaceChangeReviewThread.mockResolvedValue({
+    id: 'thread-1',
+    latest_group_id: 'group-1',
+    groups: [],
+    comments: [],
+    files: [],
+  })
+  preloadReviewDiffEditorMock.mockResolvedValue(undefined)
+})
 
 describe('summarizeGroupFiles', () => {
   it('uses the first before and last after for repeated edits in one run', () => {
@@ -41,6 +76,51 @@ describe('canUndoAgentChange', () => {
     expect(canUndoAgentChange(summary, false)).toBe(true)
   })
 })
+
+describe('AgentChangeSummaryCard review preload', () => {
+  it('warms the newest review thread and editor as soon as its card mounts', async () => {
+    renderSummaryCard(true)
+
+    await waitFor(() => expect(apiMocks.getWorkspaceChangeReviewThread).toHaveBeenCalledWith('/book', 'thread-1'))
+    expect(preloadReviewDiffEditorMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('waits for user intent before warming an older review card', async () => {
+    const { container } = renderSummaryCard(false)
+    await waitFor(() => expect(apiMocks.getWorkspaceChangeGroup).toHaveBeenCalled())
+    expect(apiMocks.getWorkspaceChangeReviewThread).not.toHaveBeenCalled()
+    expect(preloadReviewDiffEditorMock).not.toHaveBeenCalled()
+
+    fireEvent.pointerEnter(container.querySelector('[data-change-summary-card="group-1"]')!)
+
+    await waitFor(() => expect(apiMocks.getWorkspaceChangeReviewThread).toHaveBeenCalledWith('/book', 'thread-1'))
+    expect(preloadReviewDiffEditorMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+function renderSummaryCard(eagerPreload: boolean) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  const summary = {
+    id: 'group-1',
+    review_thread_id: 'thread-1',
+    run_id: 'run-1',
+    created_at: '2026-07-16T00:00:00Z',
+    review_status: 'pending',
+    apply_state: 'applied',
+    change_set_count: 1,
+    paths: ['draft.md'],
+  } satisfies WorkspaceChangeGroupSummary
+  return render(createElement(
+    QueryClientProvider,
+    { client: queryClient },
+    createElement(AgentChangeSummaryCard, {
+      workspace: '/book',
+      summary,
+      eagerPreload,
+      onReview: vi.fn(),
+    }),
+  ))
+}
 
 function changeSet(id: string, sequence: number, path: string, before: string, after: string) {
   return {

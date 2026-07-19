@@ -14,6 +14,22 @@ export const workspaceChangeKeys = {
   reviewThread: (workspace: string, id: string) => [...workspaceChangeKeys.reviewThreads(), workspace, id] as const,
 }
 
+const REVIEW_THREAD_STALE_TIME = 5_000
+
+function workspaceChangeReviewThreadQueryOptions(workspace: string, id: string) {
+  return {
+    queryKey: workspaceChangeKeys.reviewThread(workspace, id),
+    queryFn: () => getWorkspaceChangeReviewThread(workspace, id),
+    staleTime: REVIEW_THREAD_STALE_TIME,
+  }
+}
+
+/** Warms the same cache entry consumed by the full review surface. */
+export function prefetchWorkspaceChangeReviewThread(queryClient: QueryClient, workspace: string, id: string) {
+  if (!workspace || !id) return Promise.resolve()
+  return queryClient.prefetchQuery(workspaceChangeReviewThreadQueryOptions(workspace, id))
+}
+
 type WorkspaceChangeSubscription = {
   consumers: number
   listener: (event: Event) => void
@@ -75,10 +91,8 @@ export function useWorkspaceChangeGroups(workspace: string, options: ListWorkspa
 export function useWorkspaceChangeReviewThread(workspace: string, id: string) {
   const queryClient = useQueryClient()
   const query = useQuery({
-    queryKey: workspaceChangeKeys.reviewThread(workspace, id),
-    queryFn: () => getWorkspaceChangeReviewThread(workspace, id),
+    ...workspaceChangeReviewThreadQueryOptions(workspace, id),
     enabled: Boolean(workspace && id),
-    staleTime: 5_000,
   })
 
   useEffect(() => subscribeWorkspaceChangeEvents(queryClient), [queryClient])

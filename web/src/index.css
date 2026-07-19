@@ -2193,12 +2193,74 @@ html[data-nova-motion="off"] *::after {
   color: var(--nova-text-muted);
 }
 
+/* One-page group sections: distinct bordered blocks with titled headers. */
+.story-state-ledger__sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 10px 10px;
+}
+
+.story-state-ledger__section[data-decorated] {
+  padding: 8px 10px 10px;
+  border: 1px solid var(--nova-border-soft);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--nova-surface-2) 30%, transparent);
+}
+
+.story-state-ledger__section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.story-state-ledger__section-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--nova-text-faint);
+}
+
+.story-state-ledger__section-title {
+  overflow: hidden;
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--nova-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-state-ledger__section-count {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--nova-text-faint);
+}
+
+.story-state-ledger__mode-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px;
+  border: 1px dashed var(--nova-border);
+  border-radius: 8px;
+  font-size: 11px;
+  color: var(--nova-text-faint);
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.story-state-ledger__mode-toggle:hover {
+  border-color: var(--nova-text-faint);
+  color: var(--nova-text);
+}
+
 /* Dense auto-fill field grid; column basis adapts per group kind. */
 .story-state-ledger__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
   gap: 10px 20px;
-  padding: 10px;
 }
 
 .story-state-ledger__grid[data-group='overview'] {

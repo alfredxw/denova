@@ -10,8 +10,9 @@ import type {
 } from '../types'
 import type { ReviewDiffLayout } from './monaco/review-editor-adapter'
 import { estimateUnifiedReviewLineCount } from './monaco/unified-review-projection'
+import { loadReviewDiffEditor } from './review-editor-loader'
 
-const ReviewDiffEditor = lazy(() => import('./ReviewDiffEditor').then((module) => ({ default: module.ReviewDiffEditor })))
+const ReviewDiffEditor = lazy(() => loadReviewDiffEditor().then((module) => ({ default: module.ReviewDiffEditor })))
 
 interface ReviewFileDiffSectionProps {
   threadID: string

@@ -183,14 +183,7 @@ function ObjectValue({ value }: { value: unknown }) {
     return <span className="break-words [overflow-wrap:anywhere]">{JSON.stringify(value)}</span>
   }
   if (isRecord(value)) {
-    return (
-      <span className="break-words [overflow-wrap:anywhere]">
-        {Object.entries(value)
-          .map(([key, item]) => [humanizeStateKey(key), formatLeaf(item)].filter(Boolean).join(' '))
-          .filter(Boolean)
-          .join(' · ')}
-      </span>
-    )
+    return <span className="break-words [overflow-wrap:anywhere]">{formatNestedRecord(value) || '—'}</span>
   }
   return <span>{String(value)}</span>
 }
@@ -230,8 +223,26 @@ function truncateEnd(text: string, max: number) {
   return text.length > max ? `${text.slice(0, max)}…` : text
 }
 
-function formatLeaf(value: unknown): string {
-  if (value === null || value === undefined || typeof value === 'object') return ''
+function formatNestedRecord(value: Record<string, unknown>, depth = 0): string {
+  return Object.entries(value)
+    .slice(0, 12)
+    .map(([key, item]) => {
+      const formatted = formatNestedValue(item, depth + 1)
+      if (!formatted) return ''
+      return isRecord(item)
+        ? `${humanizeStateKey(key)}（${formatted}）`
+        : `${humanizeStateKey(key)} ${formatted}`
+    })
+    .filter(Boolean)
+    .join(' · ')
+}
+
+function formatNestedValue(value: unknown, depth: number): string {
+  if (value === null || value === undefined || value === '') return ''
+  if (typeof value === 'object' && depth >= 3) return '…'
+  if (Array.isArray(value)) return value.map((item) => formatNestedValue(item, depth + 1)).filter(Boolean).join('、')
+  if (isRecord(value)) return formatNestedRecord(value, depth)
+  if (typeof value === 'boolean') return value ? '✓' : '—'
   return String(value)
 }
 

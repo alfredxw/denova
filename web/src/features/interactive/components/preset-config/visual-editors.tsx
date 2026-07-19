@@ -13,7 +13,7 @@ import { presetDetailScrollPaneClassName as detailScrollPaneClassName, presetFie
 import { JsonFragmentEditor } from './JsonFragmentEditor'
 import { PresetField as Field } from './PresetField'
 import { PresetTabsList } from './PresetTabsList'
-import { cloneWithNewId, itemKey, joinListInput, nextPresetId, parseIntegerInput, parseNumberInput, splitListInput } from './utils'
+import { cloneWithNewId, itemKey, joinListInput, nextPresetId, parseNumberInput, splitListInput } from './utils'
 
 const visualEditorShellClassName = 'preset-visual-editor-shell grid h-full min-h-0 min-w-0 gap-3 overflow-hidden'
 
@@ -272,7 +272,7 @@ function ActorStateTemplateDetails({
     setFields(fields.map((field, index) => (index === activeIndex ? nextField : field)))
   }
   const addField = () => {
-		const field: ActorStateField = { name: '', type: 'number', visibility: 'visible', order: (fields.length + 1) * 10 }
+		const field: ActorStateField = { name: '', type: 'number', visibility: 'visible' }
     setFields([...fields, field])
 		setActiveFieldId(actorStateFieldKey(field, fields.length))
   }
@@ -399,7 +399,6 @@ function ActorStateFieldDetails({
             </SelectContent>
           </Select>
         </Field>
-        <Field label={t('settingPanel.presetConfig.order')}><Input className={inputClassName} inputMode="numeric" value={String(field.order ?? '')} onChange={(event) => onPatch({ order: parseIntegerInput(event.target.value) })} /></Field>
         <Field label={t('settingPanel.actorState.options')}><Input className={inputClassName} value={joinListInput(field.options)} onChange={(event) => onPatch({ options: splitListInput(event.target.value) })} /></Field>
       </div>
       <ActorStateDefaultValueField field={field} onPatch={onPatch} onValidChange={onValidChange} />

@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import type { Snapshot } from '../../types'
-import { buildStoryStateModel } from './model'
+import { buildLedgerGroups, buildStoryStateModel, splitLedgerGroupsForPreview } from './model'
 
 describe('buildStoryStateModel', () => {
+  it('treats explicit panel and state sections as the glanceable preview', () => {
+    const groups = buildLedgerGroups([
+      { id: 'profile', label: '基本身份', field: { name: '基本身份', type: 'string', group: '人物设定' }, value: '游侠' },
+      { id: 'panel', label: '面板', field: { name: '面板', type: 'object', group: '面板' }, value: { 力量: 12 } },
+      { id: 'state', label: '状态', field: { name: '状态', type: 'object', group: '状态' }, value: { 生命: 10 } },
+    ], [])
+
+    const preview = splitLedgerGroupsForPreview(groups)
+
+    expect(preview.preview.map((group) => group.key)).toEqual(['面板', '状态'])
+    expect(preview.hidden.map((group) => group.key)).toEqual(['人物设定'])
+  })
+
   it('does not expose legacy empty containers or an empty story context as world facts', () => {
     const snapshot: Snapshot = {
       story_id: 'story',

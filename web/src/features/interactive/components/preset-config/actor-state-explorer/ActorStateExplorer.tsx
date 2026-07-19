@@ -66,7 +66,6 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
       name: t('settingPanel.actorState.explorer.newField', { count: fields.length + 1 }),
       type: 'string',
       visibility: 'visible',
-      order: fields.length,
     }
     fields.push(newField)
     tpl.fields = fields

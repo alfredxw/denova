@@ -263,6 +263,63 @@ describe('ActorStateExplorer', () => {
     })
   })
 
+  it('keeps section and renderer hints in the schema without exposing UI ordering controls', async () => {
+    render(
+      <StatefulExplorer
+        initialValue={{
+          templates: [{
+            id: 'protagonist',
+            name: '主角状态',
+            fields: [
+              { name: '称号', type: 'string', group: '身份' },
+              { name: '声望', type: 'string', group: '人际' },
+            ],
+          }],
+          initial_actors: [],
+          trait_pools: [],
+        }}
+        onChange={() => undefined}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /下移分组|Move group down/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/^排序$|^Order$/)).not.toBeInTheDocument()
+  })
+
+  it('opens nested object defaults as JSON so panel values stay readable and editable', async () => {
+    const user = userEvent.setup()
+    const panelDefault = {
+      力量: { 基础值: 10, 当前值: 12, 修正说明: '装备 +2' },
+    }
+    render(
+      <ActorStateExplorer
+        value={{
+          templates: [{
+            id: 'protagonist',
+            name: '主角状态',
+            fields: [{ name: '面板', type: 'object', default: panelDefault }],
+          }],
+          initial_actors: [],
+          trait_pools: [],
+        }}
+        onChange={vi.fn()}
+        onValidityChange={vi.fn()}
+      />,
+    )
+
+    const panelItem = screen.getByRole('treeitem', { name: '面板' })
+    await user.click(within(panelItem).getByTitle(/^面板/))
+
+    const expectedJSON = JSON.stringify(panelDefault, null, 2)
+    const jsonEditor = screen.getAllByRole('textbox').find((element) => (
+      element.tagName === 'TEXTAREA' && (element as HTMLTextAreaElement).value === expectedJSON
+    ))
+    expect(jsonEditor).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('[object Object]')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /JSON/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /结构化|Structured/ })).toBeDisabled()
+  })
+
   it('keeps a trait pool and trait selected while IDs change and cascades template rules', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()

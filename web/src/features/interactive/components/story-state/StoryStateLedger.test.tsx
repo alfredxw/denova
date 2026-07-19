@@ -1,6 +1,6 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import i18n, { setConfiguredLocale } from '@/i18n'
 import type { Snapshot, TurnEvent } from '../../types'
 import { StoryStateLedger } from './StoryStateLedger'
@@ -15,6 +15,11 @@ function expectVitalityHidden() {
   expect(screen.queryAllByText('生命')).toHaveLength(0)
 }
 
+function sectionLabels(container: HTMLElement) {
+  return Array.from(container.querySelectorAll('.story-state-ledger__section'))
+    .map((section) => section.getAttribute('aria-label'))
+}
+
 afterEach(async () => {
   cleanup()
   vi.restoreAllMocks()
@@ -22,67 +27,180 @@ afterEach(async () => {
   await i18n.changeLanguage('zh-CN')
 })
 
+beforeEach(() => window.localStorage.clear())
+
 describe('StoryStateLedger', () => {
-  it('groups fields by shape and switches groups with tabs showing field counts', async () => {
-    render(
+  it('lays fields out as decorated one-page sections with titled headers', () => {
+    const { container } = render(
       <StoryStateLedger
         snapshot={richStoryStateSnapshot()}
-        displayPreference="visible"
+        displayPreference="expanded"
         onDisplayPreferenceChange={() => undefined}
       />,
     )
 
-    const groupTabs = screen.getByRole('tablist', { name: '状态字段分组' })
-    const tabs = within(groupTabs).getAllByRole('tab')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['概览4', '详情1', '持有与资源2', '隐藏信息1'])
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '详情', '隐藏信息'])
+    const sections = container.querySelectorAll('.story-state-ledger__section[data-decorated]')
+    expect(sections).toHaveLength(4)
+    const headers = container.querySelectorAll('.story-state-ledger__section-header')
+    expect(headers).toHaveLength(4)
+    expect(headers[0].textContent).toContain('概览')
+    expect(headers[0].textContent).toContain('4')
 
-    expect(screen.getByRole('tab', { name: /概览/ })).toHaveAttribute('aria-selected', 'true')
-    expect(within(screen.getByRole('tabpanel', { name: /概览/ })).getByText('生命')).toBeInTheDocument()
-    expect(screen.queryByText(LONG_DETAIL_TEXT)).not.toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('tab', { name: /详情/ }))
-    const detailsPanel = screen.getByRole('tabpanel', { name: /详情/ })
-    expect(within(detailsPanel).getByText(LONG_DETAIL_TEXT)).toBeInTheDocument()
-    expect(within(detailsPanel).queryByText('生命')).not.toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('tab', { name: /持有与资源/ }))
-    const holdingsPanel = screen.getByRole('tabpanel', { name: /持有与资源/ })
-    expect(within(holdingsPanel).getByText('敛息诀')).toBeInTheDocument()
-    expect(within(holdingsPanel).getByText('下品灵石')).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('tab', { name: /隐藏信息/ }))
-    expect(within(screen.getByRole('tabpanel', { name: /隐藏信息/ })).getByText('被赵师兄盯上')).toBeInTheDocument()
+    // No second tab switch: all groups render their fields on one page.
+    expectVitalityVisible()
+    expect(screen.getByText(LONG_DETAIL_TEXT)).toBeInTheDocument()
+    expect(screen.getByText('敛息诀')).toBeInTheDocument()
+    expect(screen.getByText('下品灵石')).toBeInTheDocument()
+    expect(screen.getByText('被赵师兄盯上')).toBeInTheDocument()
   })
 
-  it('renders a declared custom group with its template-given name', async () => {
+  it('persists user-defined group order and can restore the schema fallback', async () => {
     const snapshot = richStoryStateSnapshot()
     const template = snapshot.actor_state_schema?.system.templates?.[0]
     const actors = snapshot.state.actors as Record<string, { state?: Record<string, unknown> }>
-    template?.fields?.push({ name: '称号', type: 'string', order: 36, group: '身份' })
+    template?.fields?.push(
+      { name: '称号', type: 'string', order: 36, group: '身份' },
+      { name: '阵营声望', type: 'string', order: 37, group: '人际' },
+    )
     actors.protagonist.state!['称号'] = '外门弟子'
+    actors.protagonist.state!['阵营声望'] = '冷淡'
+    const { container, unmount } = render(
+      <StoryStateLedger
+        snapshot={snapshot}
+        displayPreference="expanded"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '身份', '人际', '详情', '隐藏信息'])
+    expect(screen.getByText('外门弟子')).toBeInTheDocument()
+    expect(screen.getByText('冷淡')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '状态显示偏好' }))
+    await userEvent.click(screen.getByText('自定义布局'))
+    await userEvent.click(screen.getByRole('button', { name: '下移分区：身份' }))
+    await userEvent.click(screen.getByRole('button', { name: '关闭' }))
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '人际', '身份', '详情', '隐藏信息'])
+
+    unmount()
+    const next = render(
+      <StoryStateLedger
+        snapshot={snapshot}
+        displayPreference="expanded"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+    expect(sectionLabels(next.container)).toEqual(['概览', '持有与资源', '人际', '身份', '详情', '隐藏信息'])
+
+    await userEvent.click(screen.getByRole('button', { name: '状态显示偏好' }))
+    await userEvent.click(screen.getByText('自定义布局'))
+    await userEvent.click(screen.getByRole('button', { name: '恢复默认布局' }))
+    await userEvent.click(screen.getByRole('button', { name: '关闭' }))
+    expect(sectionLabels(next.container)).toEqual(['概览', '持有与资源', '身份', '人际', '详情', '隐藏信息'])
+  })
+
+  it('shows only the glanceable sections in preview and expands on demand', async () => {
+    const { container, rerender } = render(
+      <StoryStateLedger
+        snapshot={richStoryStateSnapshot()}
+        displayPreference="preview"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源'])
+    expectVitalityVisible()
+    expect(screen.queryByText(LONG_DETAIL_TEXT)).not.toBeInTheDocument()
+    expect(screen.queryByText('被赵师兄盯上')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '展开全部（还有 2 个分区）' }))
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '详情', '隐藏信息'])
+    expect(screen.getByText(LONG_DETAIL_TEXT)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '收起为预览' }))
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源'])
+
+    // Manual expansion survives same-turn updates but resets on a new turn.
+    await userEvent.click(screen.getByRole('button', { name: '展开全部（还有 2 个分区）' }))
+    rerender(
+      <StoryStateLedger
+        snapshot={richStoryStateSnapshot()}
+        displayPreference="preview"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '详情', '隐藏信息'])
+
+    rerender(
+      <StoryStateLedger
+        snapshot={richStoryStateSnapshot('turn-2')}
+        displayPreference="preview"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源'])
+  })
+
+  it('previews the first section when a template has no structured sections', () => {
+    const snapshot = richStoryStateSnapshot()
+    const template = snapshot.actor_state_schema?.system.templates?.[0]
+    // Drop every overview/holdings field so only details + spoiler remain.
+    if (!template) throw new Error('Expected template fixture')
+    template.fields = (template.fields || []).filter((field) => ['伤势详情', '隐藏风险'].includes(field.name))
+
+    const { container } = render(
+      <StoryStateLedger
+        snapshot={snapshot}
+        displayPreference="preview"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+
+    expect(sectionLabels(container)).toEqual(['详情'])
+    expect(screen.getByText(LONG_DETAIL_TEXT)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '展开全部（还有 1 个分区）' })).toBeInTheDocument()
+  })
+
+  it('renders nested dynamic resources, effects, and cooldowns without flattening them to blanks', () => {
+    const snapshot = storyStateSnapshot()
+    const template = snapshot.actor_state_schema?.system.templates?.[0]
+    const actors = snapshot.state.actors as Record<string, { state?: Record<string, unknown> }>
+    if (!template || !actors.protagonist.state) throw new Error('Expected Actor State fixture')
+    template.fields = [{ name: '状态', type: 'object', group: '状态' }]
+    actors.protagonist.state = {
+      状态: {
+        资源: { 生命: { 当前值: 18, 上限: 30 } },
+        效果: { poison_001: { 名称: '中毒', 剩余: '3轮' } },
+        冷却: { ability_fireball: { 名称: '火球术', 剩余: 2, 单位: '轮' } },
+      },
+    }
 
     render(
       <StoryStateLedger
         snapshot={snapshot}
-        displayPreference="visible"
+        displayPreference="preview"
         onDisplayPreferenceChange={() => undefined}
       />,
     )
 
-    await userEvent.click(screen.getByRole('tab', { name: /身份/ }))
-    expect(within(screen.getByRole('tabpanel', { name: /身份/ })).getByText('外门弟子')).toBeInTheDocument()
+    expect(screen.getByText(/生命（当前值 18 · 上限 30）/)).toBeInTheDocument()
+    expect(screen.getByText(/Poison 001（名称 中毒 · 剩余 3轮）/)).toBeInTheDocument()
+    expect(screen.getByText(/Ability fireball（名称 火球术 · 剩余 2 · 单位 轮）/)).toBeInTheDocument()
   })
 
-  it('skips the group tab bar when all fields land in a single group', () => {
-    render(
+  it('skips section headers when all fields land in a single group', () => {
+    const { container } = render(
       <StoryStateLedger
         snapshot={storyStateSnapshot()}
-        displayPreference="visible"
+        displayPreference="expanded"
         onDisplayPreferenceChange={() => undefined}
       />,
     )
 
-    expect(screen.queryByRole('tablist', { name: '状态字段分组' })).not.toBeInTheDocument()
+    expect(container.querySelector('.story-state-ledger__section-header')).not.toBeInTheDocument()
+    expect(container.querySelector('.story-state-ledger__section[data-decorated]')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /展开全部/ })).not.toBeInTheDocument()
     const actorPanel = screen.getByRole('tabpanel', { name: /林风/ })
     expect(within(actorPanel).getByText('生命')).toBeInTheDocument()
     expect(within(actorPanel).getByText('7 / 10')).toBeInTheDocument()
@@ -94,7 +212,7 @@ describe('StoryStateLedger', () => {
     const { rerender } = render(
       <StoryStateLedger
         snapshot={storyStateSnapshot()}
-        displayPreference="visible"
+        displayPreference="expanded"
         onDisplayPreferenceChange={() => undefined}
       />,
     )
@@ -110,7 +228,7 @@ describe('StoryStateLedger', () => {
     rerender(
       <StoryStateLedger
         snapshot={withoutWorld}
-        displayPreference="visible"
+        displayPreference="expanded"
         onDisplayPreferenceChange={() => undefined}
       />,
     )
@@ -122,7 +240,7 @@ describe('StoryStateLedger', () => {
     render(
       <StoryStateLedger
         snapshot={storyStateSnapshot()}
-        displayPreference="visible"
+        displayPreference="expanded"
         onDisplayPreferenceChange={() => undefined}
       />,
     )
@@ -131,7 +249,7 @@ describe('StoryStateLedger', () => {
     expect(screen.getAllByText('-3').length).toBeGreaterThanOrEqual(2)
     expect(screen.queryByText('本回合已更新')).not.toBeInTheDocument()
 
-    const vitalityField = screen.getAllByLabelText('生命').find((element) => element.tagName === 'SECTION')
+    const vitalityField = screen.getAllByLabelText('生命').find((element) => element.dataset.renderer !== undefined)
     expect(vitalityField).toBeDefined()
     expect(within(vitalityField as HTMLElement).getByText('-3')).toBeInTheDocument()
     expect(vitalityField).toHaveAttribute('data-change-tone', 'negative')
@@ -173,11 +291,11 @@ describe('StoryStateLedger', () => {
     expectVitalityHidden()
   })
 
-  it('restores the visible default only when a new turn begins', async () => {
+  it('restores the expanded default only when a new turn begins', async () => {
     const { rerender } = render(
       <StoryStateLedger
         snapshot={storyStateSnapshot()}
-        displayPreference="visible"
+        displayPreference="expanded"
         onDisplayPreferenceChange={() => undefined}
       />,
     )
@@ -189,7 +307,7 @@ describe('StoryStateLedger', () => {
     rerender(
       <StoryStateLedger
         snapshot={storyStateSnapshot()}
-        displayPreference="visible"
+        displayPreference="expanded"
         onDisplayPreferenceChange={() => undefined}
       />,
     )
@@ -198,7 +316,7 @@ describe('StoryStateLedger', () => {
     rerender(
       <StoryStateLedger
         snapshot={storyStateSnapshot('turn-2')}
-        displayPreference="visible"
+        displayPreference="expanded"
         onDisplayPreferenceChange={() => undefined}
       />,
     )
@@ -217,40 +335,39 @@ describe('StoryStateLedger', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('exposes the three display preferences from the stage menu', async () => {
+  it('exposes the four display preferences from the stage menu', async () => {
     const onChange = vi.fn()
     render(
       <StoryStateLedger
         snapshot={storyStateSnapshot()}
-        displayPreference="visible"
+        displayPreference="preview"
         onDisplayPreferenceChange={onChange}
       />,
     )
 
     await userEvent.click(screen.getByRole('button', { name: '状态显示偏好' }))
-    expect(screen.getByText('默认显示')).toBeInTheDocument()
+    expect(screen.getByText('默认预览')).toBeInTheDocument()
+    expect(screen.getByText('默认展开')).toBeInTheDocument()
     expect(screen.getByText('默认折叠')).toBeInTheDocument()
     expect(screen.getByText('仅导演台')).toBeInTheDocument()
-    expect(screen.queryByText('默认预览')).not.toBeInTheDocument()
     await userEvent.click(screen.getByText('默认折叠'))
     expect(onChange).toHaveBeenCalledWith('collapsed')
   })
 
-  it('localizes the summary and groups in English', async () => {
+  it('localizes the summary and sections in English', async () => {
     setConfiguredLocale('en-US')
     await i18n.changeLanguage('en-US')
 
-    render(
+    const { container } = render(
       <StoryStateLedger
         snapshot={richStoryStateSnapshot()}
-        displayPreference="visible"
+        displayPreference="expanded"
         onDisplayPreferenceChange={() => undefined}
       />,
     )
 
     expect(screen.getByText('2 changes this turn')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /Overview/ })).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: /Hidden Info/ })).toBeInTheDocument()
+    expect(sectionLabels(container)).toEqual(['Overview', 'Holdings', 'Details', 'Hidden Info'])
   })
 })
 

@@ -98,6 +98,7 @@ function normalizeModifiers(value: unknown): RuleStateBindingModifier[] | undefi
     return {
       source: stringOption(source.source, ['actor', 'target'], 'actor'),
       field_id: fieldId,
+      value_path: normalizeValuePath(source.value_path),
       effect: stringOption(source.effect, ['advantage', 'resistance'], 'advantage'),
       scale: numberOrDefault(source.scale, 1),
       offset: numberOrDefault(source.offset, 0),
@@ -178,6 +179,7 @@ function normalizeFormulaTerms(value: unknown): RuleStateFormulaTerm[] | undefin
     return {
       source: stringOption(source.source, ['actor', 'target'], 'actor'),
       field_id: fieldId,
+      value_path: normalizeValuePath(source.value_path),
       scale: numberOrDefault(source.scale, 1),
       offset: numberOrDefault(source.offset, 0),
     }
@@ -188,6 +190,15 @@ function normalizeFormulaTerms(value: unknown): RuleStateFormulaTerm[] | undefin
 function optionalNumber(value: unknown): number | undefined {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function normalizeValuePath(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const path = value
+    .slice(0, 24)
+    .map((segment) => String(segment || '').normalize('NFKC').trim())
+    .filter(Boolean)
+  return path.length ? path : undefined
 }
 
 function stringOption<T extends string>(value: unknown, options: readonly T[], fallback: T): T {

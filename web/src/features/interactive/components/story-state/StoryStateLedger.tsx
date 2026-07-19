@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ChevronDown, ChevronUp, CircleCheck, Globe2, Loader2, PanelRight, Sparkles } from 'lucide-react'
+import { AlignLeft, AlertCircle, ChevronDown, ChevronUp, CircleCheck, EyeOff, Gauge, Globe2, Loader2, Package, PanelRight, Sparkles, Tag } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Snapshot } from '../../types'
 import { ChangesSummary } from './ChangesSummary'
 import type { StoryStateDisplayPreference } from './display-preference'
+import { applyStoryStateLayout, readStoryStateLayouts, writeStoryStateTemplateLayout, type StoryStateLayouts, type StoryStateTemplateLayout } from './layout-preference'
 import { LedgerFieldView } from './ledger-fields'
 import {
   actorFieldEntries,
@@ -17,14 +18,25 @@ import {
   buildLedgerGroups,
   buildStoryStateModel,
   humanizeStateKey,
+  splitLedgerGroupsForPreview,
   visibleActorTraits,
   type LedgerFieldEntry,
   type LedgerFieldGroup,
   type StoryStateChange,
 } from './model'
 import { StateDisplayPreferenceMenu } from './StateDisplayPreferenceMenu'
+import { StateLayoutEditor } from './StateLayoutEditor'
 
 const WORLD_STATE_TAB = '__world_state__'
+
+type StoryStatePanelMode = 'collapsed' | 'preview' | 'expanded'
+
+const PANEL_MODE_BY_PREFERENCE: Record<StoryStateDisplayPreference, StoryStatePanelMode> = {
+  preview: 'preview',
+  expanded: 'expanded',
+  collapsed: 'collapsed',
+  'director-only': 'collapsed',
+}
 
 interface StoryStateLedgerProps {
   snapshot: Snapshot | null
@@ -33,20 +45,39 @@ interface StoryStateLedgerProps {
   onOpenDirectorState?: () => void
 }
 
+interface StateLedgerPresentation {
+  id: string
+  name: string
+  templateId: string
+  groups: LedgerFieldGroup[]
+  traits: ReturnType<typeof visibleActorTraits>
+}
+
 /**
  * StoryStateLedger is the compact state panel pinned after the latest prose.
- * Fields are clustered into switchable groups (template-declared or inferred
- * from value shape) and rendered on a dense auto-fill grid; the turn's state
- * delta surfaces once in the summary row plus per-field change chips.
+ * Fields lay out as bordered group sections on one page. Schema hints provide
+ * the fallback grouping, while a story + template UI preference controls the
+ * final section and field order. Preview mode shows only glanceable sections
+ * with a "show all" affordance; the turn's state delta surfaces once in the
+ * summary row plus per-field change chips.
  */
 export function StoryStateLedger({ snapshot, displayPreference, onDisplayPreferenceChange, onOpenDirectorState }: StoryStateLedgerProps) {
   const { t } = useTranslation()
   const model = useMemo(() => buildStoryStateModel(snapshot), [snapshot])
-  const actorTabs = useMemo(() => model.actors.map(([actorId, actor]) => ({ id: actorId, name: actorName(actorId, actor) })), [model.actors])
+  const actorLedgers = useMemo(() => model.actors.map(([actorId, actor]) => buildActorLedger(actorId, actor, snapshot, model.changes)), [model.actors, model.changes, snapshot])
+  const worldLedger = useMemo(() => buildWorldLedger(model.worldFacts, model.changes), [model.changes, model.worldFacts])
+  const actorTabs = useMemo(() => actorLedgers.map((ledger) => ({ id: ledger.id, name: ledger.name })), [actorLedgers])
   const hasWorldFacts = model.worldFacts.length > 0
   const [selectedTab, setSelectedTab] = useState(actorTabs[0]?.id || WORLD_STATE_TAB)
+  const storyId = snapshot?.story_id || ''
+  const [layoutState, setLayoutState] = useState<{ storyId: string; layouts: StoryStateLayouts }>(() => ({ storyId, layouts: readStoryStateLayouts(storyId) }))
+  const [layoutEditorOpen, setLayoutEditorOpen] = useState(false)
   const turnKey = `${snapshot?.story_id || ''}:${snapshot?.branch_id || ''}:${snapshot?.current_turn?.id || ''}`
-  const [open, setOpen] = useState(displayPreference !== 'collapsed')
+  const [panelMode, setPanelMode] = useState<StoryStatePanelMode>(PANEL_MODE_BY_PREFERENCE[displayPreference])
+  const layouts = layoutState.storyId === storyId ? layoutState.layouts : {}
+  const selectedLedger = selectedTab === WORLD_STATE_TAB
+    ? worldLedger
+    : actorLedgers.find((ledger) => ledger.id === selectedTab)
 
   useEffect(() => {
     if (selectedTab === WORLD_STATE_TAB && hasWorldFacts) return
@@ -55,15 +86,27 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
   }, [actorTabs, hasWorldFacts, selectedTab])
 
   useEffect(() => {
-    setOpen(displayPreference !== 'collapsed')
+    setPanelMode(PANEL_MODE_BY_PREFERENCE[displayPreference])
   }, [displayPreference, turnKey])
+
+  useEffect(() => {
+    setLayoutState({ storyId, layouts: readStoryStateLayouts(storyId) })
+    setLayoutEditorOpen(false)
+  }, [storyId])
 
   if (!model.hasState || displayPreference === 'director-only') return null
 
+  const collapsed = panelMode === 'collapsed'
+
   return (
-    <Collapsible open={open} onOpenChange={setOpen} asChild>
+    <Collapsible
+      open={!collapsed}
+      onOpenChange={(nextOpen) => setPanelMode(nextOpen ? 'preview' : 'collapsed')}
+      asChild
+    >
       <section
         aria-label={t('storyStage.state.current')}
+        data-state-panel-mode={panelMode}
         className="story-state-ledger mt-3 overflow-hidden rounded-xl border border-[var(--nova-border)] bg-[var(--story-state-canvas)]"
       >
         <header className="flex h-10 min-w-0 items-center gap-2 px-2.5">
@@ -72,7 +115,12 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
             <h2 className="shrink-0 text-[13px] font-semibold tracking-tight text-[var(--nova-text)]">{t('storyStage.state.current')}</h2>
             <p className="min-w-0 truncate text-[11px] text-[var(--nova-text-faint)]">{turnStatusLabel(snapshot, t)}</p>
           </div>
-          <StateDisplayPreferenceMenu value={displayPreference} onChange={onDisplayPreferenceChange} compact />
+          <StateDisplayPreferenceMenu
+            value={displayPreference}
+            onChange={onDisplayPreferenceChange}
+            onCustomizeLayout={selectedLedger?.groups.length ? () => setLayoutEditorOpen(true) : undefined}
+            compact
+          />
           {onOpenDirectorState ? (
             <Button
               type="button"
@@ -91,10 +139,10 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label={open ? t('storyStage.state.collapse') : t('storyStage.state.expand')}
-              title={open ? t('storyStage.state.collapse') : t('storyStage.state.expand')}
+              aria-label={collapsed ? t('storyStage.state.expand') : t('storyStage.state.collapse')}
+              title={collapsed ? t('storyStage.state.expand') : t('storyStage.state.collapse')}
             >
-              {open ? <ChevronUp data-icon="inline-start" /> : <ChevronDown data-icon="inline-start" />}
+              {collapsed ? <ChevronDown data-icon="inline-start" /> : <ChevronUp data-icon="inline-start" />}
             </Button>
           </CollapsibleTrigger>
         </header>
@@ -105,25 +153,48 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
           ) : null}
           <Tabs value={selectedTab} onValueChange={setSelectedTab} className="gap-0">
             <StateEntityTabs actors={actorTabs} showWorld={hasWorldFacts} />
-            {model.actors.map(([actorId, actor]) => (
-              <TabsContent key={actorId} value={actorId} className="mt-0">
+            {actorLedgers.map((ledger) => (
+              <TabsContent key={ledger.id} value={ledger.id} className="mt-0">
                 <ActorLedgerBody
-                  actor={actor}
-                  snapshot={snapshot}
-                  changes={model.changes.filter((change) => change.actorId === actorId)}
+                  ledger={ledger}
+                  layout={layouts[ledger.templateId]}
+                  panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
+                  onPanelModeChange={setPanelMode}
                 />
               </TabsContent>
             ))}
             {hasWorldFacts ? (
               <TabsContent value={WORLD_STATE_TAB} className="mt-0">
                 <WorldLedgerBody
-                  facts={model.worldFacts}
-                  changes={model.changes.filter((change) => !change.actorId)}
+                  ledger={worldLedger}
+                  layout={layouts[worldLedger.templateId]}
+                  panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
+                  onPanelModeChange={setPanelMode}
                 />
               </TabsContent>
             ) : null}
           </Tabs>
         </CollapsibleContent>
+        {selectedLedger ? (
+          <StateLayoutEditor
+            open={layoutEditorOpen}
+            title={selectedLedger.id === WORLD_STATE_TAB ? t('storyStage.state.world') : selectedLedger.name}
+            groups={selectedLedger.groups}
+            value={layouts[selectedLedger.templateId]}
+            onOpenChange={setLayoutEditorOpen}
+            onChange={(layout) => {
+              const next = { ...layouts, [selectedLedger.templateId]: layout }
+              setLayoutState({ storyId, layouts: next })
+              writeStoryStateTemplateLayout(storyId, selectedLedger.templateId, layout)
+            }}
+            onReset={() => {
+              const next = { ...layouts }
+              delete next[selectedLedger.templateId]
+              setLayoutState({ storyId, layouts: next })
+              writeStoryStateTemplateLayout(storyId, selectedLedger.templateId, null)
+            }}
+          />
+        ) : null}
       </section>
     </Collapsible>
   )
@@ -197,8 +268,7 @@ function StateEntityTabs({ actors, showWorld }: { actors: Array<{ id: string; na
   )
 }
 
-function ActorLedgerBody({ actor, snapshot, changes }: { actor: Record<string, unknown>; snapshot: Snapshot | null; changes: StoryStateChange[] }) {
-  const { t } = useTranslation()
+function buildActorLedger(actorId: string, actor: Record<string, unknown>, snapshot: Snapshot | null, changes: StoryStateChange[]): StateLedgerPresentation {
   const template = actorTemplate(actor, snapshot?.actor_state_schema)
   const entries: LedgerFieldEntry[] = actorFieldEntries(actor, template?.fields).map(({ field, value }) => ({
     id: field.id || field.path || field.name,
@@ -206,19 +276,17 @@ function ActorLedgerBody({ actor, snapshot, changes }: { actor: Record<string, u
     field,
     value: value ?? field.default ?? null,
   }))
-  const groups = buildLedgerGroups(entries, changes)
-  const traits = visibleActorTraits(actor)
-
-  return (
-    <div>
-      {traits.length > 0 ? <ActorTraits traits={traits} /> : null}
-      {groups.length > 0 ? <LedgerGroupTabs groups={groups} /> : <StateSectionEmpty label={t('storyStage.state.actorEmpty')} />}
-    </div>
-  )
+  const rawTemplateId = typeof actor.template_id === 'string' ? actor.template_id.trim() : ''
+  return {
+    id: actorId,
+    name: actorName(actorId, actor),
+    templateId: template?.id || rawTemplateId || `actor:${actorId}`,
+    groups: buildLedgerGroups(entries, changes.filter((change) => change.actorId === actorId)),
+    traits: visibleActorTraits(actor),
+  }
 }
 
-function WorldLedgerBody({ facts, changes }: { facts: Array<[string, unknown]>; changes: StoryStateChange[] }) {
-  const { t } = useTranslation()
+function buildWorldLedger(facts: Array<[string, unknown]>, changes: StoryStateChange[]): StateLedgerPresentation {
   // Record-valued facts (e.g. the story-context object) are exploded one
   // level so each nested value routes to its own renderer and group instead
   // of flattening into one unreadable mega-row.
@@ -232,48 +300,108 @@ function WorldLedgerBody({ facts, changes }: { facts: Array<[string, unknown]>; 
     }
     return [{ id: key, label: humanizeStateKey(key), value }]
   })
-  const groups = buildLedgerGroups(entries, changes)
-  if (groups.length === 0) return <StateSectionEmpty label={t('storyStage.state.worldEmpty')} />
-  return <LedgerGroupTabs groups={groups} />
+  return {
+    id: WORLD_STATE_TAB,
+    name: 'world',
+    templateId: WORLD_STATE_TAB,
+    groups: buildLedgerGroups(entries, changes.filter((change) => !change.actorId)),
+    traits: [],
+  }
 }
 
-/** LedgerGroupTabs renders one dense grid per group; a single group skips the tab bar. */
-function LedgerGroupTabs({ groups }: { groups: LedgerFieldGroup[] }) {
+function ActorLedgerBody({ ledger, layout, panelMode, onPanelModeChange }: { ledger: StateLedgerPresentation; layout?: StoryStateTemplateLayout; panelMode: 'preview' | 'expanded'; onPanelModeChange: (mode: StoryStatePanelMode) => void }) {
   const { t } = useTranslation()
-  const [selectedGroup, setSelectedGroup] = useState(groups[0]?.key || '')
-  const activeGroup = groups.some((group) => group.key === selectedGroup) ? selectedGroup : groups[0]?.key || ''
-
-  if (groups.length === 1) {
-    return <LedgerGroupGrid group={groups[0]} />
-  }
+  const groups = applyStoryStateLayout(ledger.groups, layout)
 
   return (
-    <Tabs value={activeGroup} onValueChange={setSelectedGroup} className="gap-0">
-      <div className="story-state-ledger__tabs-scroll overflow-x-auto overflow-y-hidden border-b border-[var(--nova-border-soft)] px-2.5">
-        <TabsList
-          variant="line"
-          aria-label={t('storyStage.state.groups')}
-          className="h-8 w-max max-w-none justify-start gap-3 p-0"
-        >
-          {groups.map((group) => (
-            <TabsTrigger
-              key={group.key}
-              value={group.key}
-              className="h-8 min-w-12 max-w-40 flex-none rounded-none px-1 text-[11px] after:bottom-0"
-            >
-              <span className="truncate">{group.custom ? group.key : t(`storyStage.state.group.${group.key}`)}</span>
-              <span className="ml-1 shrink-0 text-[10px] text-[var(--nova-text-faint)]">{group.fields.length}</span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </div>
-      {groups.map((group) => (
-        <TabsContent key={group.key} value={group.key} className="mt-0">
-          <LedgerGroupGrid group={group} />
-        </TabsContent>
-      ))}
-    </Tabs>
+    <div>
+      {ledger.traits.length > 0 ? <ActorTraits traits={ledger.traits} /> : null}
+      {groups.length > 0
+        ? <LedgerSections groups={groups} mode={panelMode} onModeChange={onPanelModeChange} />
+        : <StateSectionEmpty label={t('storyStage.state.actorEmpty')} />}
+    </div>
   )
+}
+
+function WorldLedgerBody({ ledger, layout, panelMode, onPanelModeChange }: { ledger: StateLedgerPresentation; layout?: StoryStateTemplateLayout; panelMode: 'preview' | 'expanded'; onPanelModeChange: (mode: StoryStatePanelMode) => void }) {
+  const { t } = useTranslation()
+  const groups = applyStoryStateLayout(ledger.groups, layout)
+  if (groups.length === 0) return <StateSectionEmpty label={t('storyStage.state.worldEmpty')} />
+  return <LedgerSections groups={groups} mode={panelMode} onModeChange={onPanelModeChange} />
+}
+
+/**
+ * LedgerSections lays groups out as visually distinct blocks on one page. In
+ * preview mode only the glanceable sections show, with a mode toggle that
+ * reveals the rest without any height-clamped tricks.
+ */
+function LedgerSections({ groups, mode, onModeChange }: { groups: LedgerFieldGroup[]; mode: 'preview' | 'expanded'; onModeChange: (mode: StoryStatePanelMode) => void }) {
+  const { t } = useTranslation()
+  const { preview, hidden } = useMemo(() => splitLedgerGroupsForPreview(groups), [groups])
+  const expanded = mode === 'expanded'
+  const visibleGroups = expanded ? groups : preview
+  const decorated = groups.length > 1
+  return (
+    <div className="story-state-ledger__sections">
+      {visibleGroups.map((group) => (
+        <LedgerSectionBlock key={group.key} group={group} decorated={decorated} />
+      ))}
+      {!expanded && hidden.length > 0 ? (
+        <button
+          type="button"
+          className="story-state-ledger__mode-toggle"
+          onClick={() => onModeChange('expanded')}
+        >
+          <ChevronDown aria-hidden="true" className="size-3.5" />
+          {t('storyStage.state.expandAll', { count: hidden.length })}
+        </button>
+      ) : null}
+      {expanded && hidden.length > 0 ? (
+        <button
+          type="button"
+          className="story-state-ledger__mode-toggle"
+          onClick={() => onModeChange('preview')}
+        >
+          <ChevronUp aria-hidden="true" className="size-3.5" />
+          {t('storyStage.state.collapseToPreview')}
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+function LedgerSectionBlock({ group, decorated }: { group: LedgerFieldGroup; decorated: boolean }) {
+  const { t } = useTranslation()
+  const label = group.custom ? group.key : t(`storyStage.state.group.${group.key}`)
+  return (
+    <section aria-label={label} data-decorated={decorated || undefined} className="story-state-ledger__section">
+      {decorated ? (
+        <header className="story-state-ledger__section-header">
+          <LedgerGroupIcon group={group} />
+          <h3 className="story-state-ledger__section-title">{label}</h3>
+          <span className="story-state-ledger__section-count">{group.fields.length}</span>
+        </header>
+      ) : null}
+      <LedgerGroupGrid group={group} />
+    </section>
+  )
+}
+
+function LedgerGroupIcon({ group }: { group: LedgerFieldGroup }) {
+  const className = 'story-state-ledger__section-icon'
+  if (group.custom) return <Tag aria-hidden="true" className={className} />
+  switch (group.key) {
+    case 'overview':
+      return <Gauge aria-hidden="true" className={className} />
+    case 'holdings':
+      return <Package aria-hidden="true" className={className} />
+    case 'details':
+      return <AlignLeft aria-hidden="true" className={className} />
+    case 'spoiler':
+      return <EyeOff aria-hidden="true" className={className} />
+    default:
+      return <Tag aria-hidden="true" className={className} />
+  }
 }
 
 function LedgerGroupGrid({ group }: { group: LedgerFieldGroup }) {

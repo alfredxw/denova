@@ -198,7 +198,6 @@ const settingPanel = {
   'settingPanel.actorState.explorer.display.list': 'List',
   'settingPanel.actorState.explorer.minimum': 'Minimum',
   'settingPanel.actorState.explorer.maximum': 'Maximum',
-  'settingPanel.actorState.explorer.order': 'Order',
   'settingPanel.actorState.explorer.optionsLabel': 'Options (comma separated)',
   'settingPanel.actorState.explorer.optionsPlaceholder': 'Option 1, Option 2, Option 3',
   'settingPanel.actorState.explorer.defaultValue': 'Default Value',

@@ -9,17 +9,15 @@ import {
 describe('story state display preference', () => {
   beforeEach(() => window.localStorage.clear())
 
-  it('defaults to visible and ignores unknown persisted values', () => {
+  it('defaults to preview and ignores unknown persisted values', () => {
     expect(readStoryStateDisplayPreference()).toBe(DEFAULT_STORY_STATE_DISPLAY)
     window.localStorage.setItem(STORY_STATE_DISPLAY_STORAGE_KEY, 'legacy-unknown')
-    expect(readStoryStateDisplayPreference()).toBe('visible')
+    expect(readStoryStateDisplayPreference()).toBe('preview')
   })
 
-  it('folds legacy preview/expanded values into visible', () => {
-    window.localStorage.setItem(STORY_STATE_DISPLAY_STORAGE_KEY, 'preview')
-    expect(readStoryStateDisplayPreference()).toBe('visible')
-    window.localStorage.setItem(STORY_STATE_DISPLAY_STORAGE_KEY, 'expanded')
-    expect(readStoryStateDisplayPreference()).toBe('visible')
+  it('folds the short-lived visible value into expanded', () => {
+    window.localStorage.setItem(STORY_STATE_DISPLAY_STORAGE_KEY, 'visible')
+    expect(readStoryStateDisplayPreference()).toBe('expanded')
   })
 
   it('persists the explicit user choice', () => {
@@ -27,5 +25,7 @@ describe('story state display preference', () => {
     expect(readStoryStateDisplayPreference()).toBe('director-only')
     writeStoryStateDisplayPreference('collapsed')
     expect(readStoryStateDisplayPreference()).toBe('collapsed')
+    writeStoryStateDisplayPreference('preview')
+    expect(readStoryStateDisplayPreference()).toBe('preview')
   })
 })

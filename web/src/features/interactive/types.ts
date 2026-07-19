@@ -203,6 +203,8 @@ export interface ActorStateTemplate {
   description?: string
   fields?: ActorStateField[]
   trait_rules?: ActorTraitRule[]
+  /** Legacy Beta input retained for API compatibility; normalized schemas ignore it. */
+  display_groups?: string[]
 }
 
 export interface ActorTraitRule {
@@ -260,6 +262,7 @@ export interface ActorStateField {
   visibility?: 'visible' | 'hidden' | 'spoiler'
   description?: string
   update_instruction?: string
+  /** Legacy Beta input retained for API compatibility; field array order is the fallback. */
   order?: number
   /** Optional presentation hint: cluster fields under one named ledger section. */
   group?: string
@@ -636,6 +639,7 @@ export interface RuleStateBinding {
 export interface RuleStateBindingModifier {
   source?: 'actor' | 'target' | string
   field_id?: string
+  value_path?: string[]
   effect?: 'advantage' | 'resistance' | string
   scale?: number
   offset?: number
@@ -675,6 +679,7 @@ export interface RuleStateChangeFormula {
 export interface RuleStateFormulaTerm {
   source?: 'actor' | 'target' | string
   field_id?: string
+  value_path?: string[]
   scale?: number
   offset?: number
 }

@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useWorkspaceChangeGroup, useWorkspaceChangeGroups, useWorkspaceChangeReviewThread } from './use-change-review'
+import { prefetchWorkspaceChangeReviewThread, useWorkspaceChangeGroup, useWorkspaceChangeGroups, useWorkspaceChangeReviewThread } from './use-change-review'
 
 const apiMocks = vi.hoisted(() => ({
   listWorkspaceChangeGroups: vi.fn(),
@@ -68,6 +68,20 @@ describe('useWorkspaceChangeGroups', () => {
 
     window.dispatchEvent(new CustomEvent('nova:workspace-change', { detail: { workspace: '/books/current' } }))
     await waitFor(() => expect(apiMocks.getWorkspaceChangeReviewThread).toHaveBeenCalledTimes(2))
+  })
+
+  it('reuses a prefetched review thread when the review surface mounts', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await prefetchWorkspaceChangeReviewThread(queryClient, '/books/current', 'thread-1')
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ThreadHarness workspace="/books/current" threadID="thread-1" />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => expect(apiMocks.getWorkspaceChangeReviewThread).toHaveBeenCalledTimes(1))
+    expect(apiMocks.getWorkspaceChangeReviewThread).toHaveBeenCalledWith('/books/current', 'thread-1')
   })
 
   it('loads one historical review group and refreshes it from the shared workspace event', async () => {

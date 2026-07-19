@@ -8,17 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- 状态模板字段新增可选的展示提示 `group` 与 `display`：模板作者可为字段声明分组名与展示方式（数值仪表/短值行/段落块/列表），未声明时按字段类型与值形状自动推断；预设编辑器字段详情页新增对应配置。
-- Actor state template fields now accept optional `group` and `display` presentation hints: template authors can declare a section name and renderer (stat meter/inline value/paragraph block/list), while unset fields fall back to type- and shape-based inference. The preset editor's field detail pane exposes both settings.
+- 状态模板字段新增可选的 `group` 与 `display` 展示提示；状态面板新增“自定义布局”，可通过鼠标或键盘拖动分区和字段、跨分区移动字段、在窄屏使用方向按钮并恢复默认。布局按“故事 + 模板”保存在本地 UI 偏好中，同模板 Actor 共享且不会进入模型上下文；Schema 字段数组仅作为兜底顺序，旧 Beta `order` / `display_groups` 输入会被忽略。
+- Actor state fields now accept optional `group` and `display` presentation hints, while the stage ledger adds a custom layout editor for pointer/keyboard section and field sorting, cross-section moves, narrow-screen direction controls, and reset. Layouts persist locally by story + template, are shared by Actors using that template, and never enter model context; the schema field array is only the fallback order, and legacy Beta `order` / `display_groups` inputs are ignored.
+- TRPG 状态绑定的 modifier 与公式项新增 `value_path`，可从 object 面板中读取嵌套数值（例如 `面板 → 力量 → 当前值`），并在校验、计算和审计结果中保留结构化来源。
+- TRPG state-binding modifiers and formula terms now support `value_path` for nested numeric reads from object panels (for example, `Panel → Strength → Current`), with structured-source validation, computation, and audit output.
 
 ### Changed
 
-- 游戏模式正文后的状态面板重新设计：字段按“概览/详情/持有与资源/隐藏信息”分组并用分组页签切换，组内使用自适应多列网格（数值仪表、短值行、段落、无边框列表、窄标签定义表各归其位）；世界状态的对象值会展开为独立字段参与分组，空世界页签不再渲染。
-- The state panel after game-mode prose is redesigned: fields cluster into Overview/Details/Holdings/Hidden Info groups behind switchable tabs, each rendered on a dense auto-fill grid (stat meters, inline values, paragraphs, borderless lists, narrow-label definition tables); record-valued world facts expand into individually grouped fields, and the empty World tab no longer renders.
+- 五套内置状态系统预设重构为精简的集中式结构：只预建故事、主角和世界实体三个 Actor；场景、世界与任务归入故事状态，地点与势力归入世界实体，技能、物品和关系归入所属角色。主角、重要角色和敌对对象统一使用“面板”object 承接检定有效值，使用“状态”object 集中承接动态资源、效果和冷却，并保留“当前处境”叙事字段；重要角色明确维护对主角好感度及已知信息。默认 TRPG 提供等级、六维、攻击 AC、防御 DC，修仙、西幻、末世和无限流则按题材分别配置或留空，不再机械继承同一套数值。
+- The five built-in actor-state presets now use a lean centralized structure with only three initial Actors (story, protagonist, and world entities). Scene, world, and quests live in story state; locations and factions share the world entity; abilities, items, and relationships live on their owning Actor. Protagonists, important characters, and opponents use a Panel object for check-facing effective values and a State object for dynamic resources, effects, and cooldowns, while keeping Current Situation narrative. The default TRPG preset includes level, six attributes, attack AC, and defense DC; cultivation, Western fantasy, apocalypse, and infinite-flow presets adapt or leave these structures empty instead of inheriting one numeric sheet blindly.
+- 兼容性说明：内置状态预设的 Beta Schema 变更只影响新故事及主动恢复内置预设的配置；已有故事继续使用冻结的故事级 Schema，不会自动重写状态。
+- Compatibility note: this Beta schema change affects new stories and configurations explicitly restored to a built-in preset; existing stories continue using their frozen story-local schema and are not rewritten automatically.
+- 游戏模式正文后的状态面板按分区一页平铺，每个分区使用带图标标题与字段数的独立区块，组内使用自适应多列网格；默认分区来自字段形状及 `group` / `display` 提示，用户布局可覆盖最终顺序。预览态显示可快速浏览的分区并可一键展开全部；世界状态的对象值会展开为独立字段参与分组，空世界页签不再渲染。
+- The state panel after game-mode prose lays sections out on one page with icon headers, field counts, and adaptive grids. Default grouping comes from value shape plus `group` / `display` hints, while the user's layout controls final ordering. Preview keeps glanceable sections with one-click expansion; record-valued world facts expand into individual grouped fields, and empty World tabs are omitted.
 - 本回合状态变化收敛为头部一行摘要（数值 ±delta、增删项、已更新），变更字段以左侧色条和值旁 chip 标记，不再为每个字段重复展示“本回合已更新”说明行。
 - Turn state changes now collapse into a one-line header summary (numeric ±delta, added/removed items, updated) with changed fields marked by a left accent bar and an inline chip, replacing the repeated per-field “updated this turn” notes.
-- 兼容性说明：状态显示偏好简化为“默认显示/默认折叠/仅导演台”三档，旧的“默认预览/默认展开”偏好自动并入“默认显示”；面板不再提供按高度裁剪的预览态。
-- Compatibility note: the state display preference now offers Visible/Collapsed/Director-only; legacy Preview/Expanded preferences migrate to Visible automatically, and the height-clamped preview mode is gone.
+- 兼容性说明：状态显示偏好为“默认预览/默认展开/默认折叠/仅导演台”四档，预览态由旧的按高度裁剪改为按分区切割；旧版“默认显示”偏好自动并入“默认展开”。
+- Compatibility note: the state display preference offers Preview/Expanded/Collapsed/Director-only, and the preview mode now cuts by section instead of clamping height; the short-lived "Visible" preference migrates to "Expanded" automatically.
 - 自动保存统一到一套 after-delay 内核与场景适配层：仅在用户停止编辑达到配置延迟后写入，同一资源最多一个请求执行中，并把后续修改合并为最新待保存快照；手动保存、切换前 flush 与自动保存共享同一队列。
 - Autosave now uses one after-delay core with thin scenario adapters: writes start only after the configured quiet period, each resource permits one in-flight request, later edits collapse to the latest pending snapshot, and manual save plus navigation flush share that queue.
 - 资料库与方案预设移除重复的写作工作区标题栏，关闭入口并入当前资源工具栏；配置管理 Agent 统一置于目录搜索之前，资料库不再重复展示目录说明。
@@ -42,6 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 状态预设编辑器遇到“面板/状态”这类嵌套 object 默认值时改用 JSON 编辑，浅层 object 仍保留结构化编辑，不再把嵌套内容显示或误写为 `[object Object]`。
+- The actor-state preset editor now uses JSON editing for nested Panel/State object defaults while preserving structured editing for shallow objects, preventing nested values from appearing or being overwritten as `[object Object]`.
 - Agent 会话列表现在整行单击即可切换；生成中切换会立即停止旧流并显示目标会话，不再需要反复点击。会话统计保持固定宽度，过长的当前会话标题会在剩余空间内截断，不再挤压计数。
 - Agent session rows now switch from a single click anywhere on the main row. Switching during generation stops the old stream and selects the target immediately instead of requiring retries. Session counts keep their width while long current-session titles truncate within the remaining space.
 - 点击创作 Agent 输入区的待提交正文评论引用，现在会先打开评论所属章节，再按持久化文本锚点将对应评论滚动到可视区域并展开；同一章节内重复点击也会重新定位。

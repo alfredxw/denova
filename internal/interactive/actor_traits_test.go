@@ -243,6 +243,30 @@ func TestActorStateRuntimeContextFiltersVisibilityAndLibrary(t *testing.T) {
 	}
 }
 
+func TestBuiltinActorStateRuntimeContextsKeepCentralizedSchemaWithinLimit(t *testing.T) {
+	for _, module := range builtinActorStateModules() {
+		context := ActorStateRuntimeContext(module.ActorState, nil, DirectorContextMaxBytes)
+		if strings.Contains(context, actorStateRuntimeTruncatedNotice) {
+			t.Fatalf("built-in actor state %s should fit its complete centralized schema in the runtime context: bytes=%d", module.ID, len(context))
+		}
+		for _, expected := range []string{
+			"Actor ID：`protagonist`",
+			"Actor ID：`story`",
+			"Actor ID：`world`",
+			"Template ID：`important_character`",
+			"Template ID：`opponent`",
+			"Template ID：`world_entities`",
+			"字段 ID：`技能与能力`",
+			"字段 ID：`当前任务`",
+			"字段 ID：`地点记录`",
+		} {
+			if !strings.Contains(context, expected) {
+				t.Fatalf("built-in actor state %s runtime context missing %q: bytes=%d", module.ID, expected, len(context))
+			}
+		}
+	}
+}
+
 func TestActorTraitSnapshotsReplayIdenticallyAcrossBranches(t *testing.T) {
 	system := actorTraitTestSystem()
 	root := t.TempDir()

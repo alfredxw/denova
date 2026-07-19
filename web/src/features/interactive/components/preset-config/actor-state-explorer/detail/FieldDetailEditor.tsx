@@ -187,7 +187,7 @@ export function FieldDetailEditor({
                 transition={{ duration: 0.15, ease: novaEase }}
                 className="overflow-hidden"
               >
-                <div className="grid gap-3 pt-1 sm:grid-cols-3">
+                <div className="grid gap-3 pt-1 sm:grid-cols-2">
                   <FormField label={t('settingPanel.actorState.explorer.minimum')}>
                     <Input
                       className="nova-field h-8 text-xs focus-visible:ring-0"
@@ -202,14 +202,6 @@ export function FieldDetailEditor({
                       inputMode="decimal"
                       value={field.max !== undefined ? String(field.max) : ''}
                       onChange={(e) => updateField({ max: parseNumberInput(e.target.value) })}
-                    />
-                  </FormField>
-                  <FormField label={t('settingPanel.actorState.explorer.order')}>
-                    <Input
-                      className="nova-field h-8 text-xs focus-visible:ring-0"
-                      inputMode="numeric"
-                      value={field.order !== undefined ? String(field.order) : ''}
-                      onChange={(e) => updateField({ order: parseNumberInput(e.target.value) })}
                     />
                   </FormField>
                 </div>
@@ -258,6 +250,7 @@ export function FieldDetailEditor({
               </span>
             </div>
             <StateValueEditor
+              key={`${template.id}:${fieldIndex}:${field.type}`}
               type={field.type}
               value={field.default}
               onChange={(v) => updateField({ default: v })}

@@ -1,13 +1,13 @@
-import { Check, SlidersHorizontal } from 'lucide-react'
+import { Check, LayoutDashboard, SlidersHorizontal } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import type { StoryStateDisplayPreference } from './display-preference'
 
-const DISPLAY_OPTIONS: StoryStateDisplayPreference[] = ['visible', 'collapsed', 'director-only']
+const DISPLAY_OPTIONS: StoryStateDisplayPreference[] = ['preview', 'expanded', 'collapsed', 'director-only']
 
-export function StateDisplayPreferenceMenu({ value, onChange, compact = false }: { value: StoryStateDisplayPreference; onChange: (value: StoryStateDisplayPreference) => void; compact?: boolean }) {
+export function StateDisplayPreferenceMenu({ value, onChange, onCustomizeLayout, compact = false }: { value: StoryStateDisplayPreference; onChange: (value: StoryStateDisplayPreference) => void; onCustomizeLayout?: () => void; compact?: boolean }) {
   const { t } = useTranslation()
   return (
     <DropdownMenu>
@@ -39,6 +39,15 @@ export function StateDisplayPreferenceMenu({ value, onChange, compact = false }:
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>
+        {onCustomizeLayout ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onCustomizeLayout} className="cursor-pointer gap-2 px-2 py-2">
+              <LayoutDashboard className="text-muted-foreground" />
+              <span className="text-xs font-medium">{t('storyStage.state.layout.customize')}</span>
+            </DropdownMenuItem>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   )

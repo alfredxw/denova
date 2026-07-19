@@ -110,14 +110,11 @@ func TestDefaultActorStateIncludesStoryContextStateObject(t *testing.T) {
 		TemplateID: ActorStateStoryContextTemplateID,
 		Role:       "story_context",
 		State: map[string]any{
-			"故事开局日期": "2026-07-09",
 			"当前详细地点": "黄泉酒馆门口",
-			"当前剧内时间": "子时",
-			"当前天数":   "第 1 天",
-			"当前事件":   "主角抵达黄泉酒馆",
-			"当前场景压力": "门内有人等待主角表态",
+			"当前时间":   "七月初九子时",
+			"当前事件":   "主角抵达黄泉酒馆，门内有人等待主角表态",
 		},
-		Reason: "本回合确认当前场景、时间和事件。",
+		Reason: "本回合确认当前地点、时间和事件压力。",
 	}}, turn.ID)
 	if err != nil {
 		t.Fatalf("default story context patch should pass: %v", err)
@@ -132,9 +129,66 @@ func TestDefaultActorStateIncludesStoryContextStateObject(t *testing.T) {
 	if got := actorStateFieldValue(snapshot.State, "story", "当前详细地点"); got != "黄泉酒馆门口" {
 		t.Fatalf("story context location should replay, got %#v", got)
 	}
-	if got := actorStateFieldValue(snapshot.State, "story", "当前事件"); got != "主角抵达黄泉酒馆" {
+	if got := actorStateFieldValue(snapshot.State, "story", "当前事件"); got != "主角抵达黄泉酒馆，门内有人等待主角表态" {
 		t.Fatalf("story context event should replay, got %#v", got)
 	}
+}
+
+func TestDefaultActorStateCentralizedRecordsUseNestedUpdates(t *testing.T) {
+	system := defaultActorStateSystem()
+	store := NewStore(t.TempDir())
+	story, err := store.CreateStory(CreateStoryRequest{
+		Title:         "集中状态记录",
+		StoryTellerID: "classic",
+		ActorState:    &system,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := getPath(snapshot.State, "actors.world.template_id"); got != ActorStateWorldEntitiesTemplateID {
+		t.Fatalf("world entity actor should be initialized, got %#v state=%#v", got, snapshot.State)
+	}
+
+	updates := []StateUpdate{
+		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultActorID, "技能与能力", "ability_001"}), Value: map[string]any{"名称": "洞察", "类型": "探索", "当前状态": "可用"}},
+		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultActorID, "重要物品", "item_001"}), Value: map[string]any{"名称": "旧钥匙", "类型": "线索", "数量": float64(1)}},
+		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultActorID, "关系", "npc_guide"}), Value: map[string]any{"关系类型": "同伴", "好感度": float64(60), "当前态度": "愿意合作"}},
+		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultStoryContextActorID, "当前任务", "quest_main_001"}), Value: map[string]any{"任务名称": "进入遗迹", "当前状态": "进行中"}},
+		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultWorldEntitiesActorID, "地点记录", "location_001"}), Value: map[string]any{"地点名称": "沉没遗迹", "探索状态": "已发现"}},
+		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultWorldEntitiesActorID, "势力记录", "faction_001"}), Value: map[string]any{"势力名称": "灰塔协会", "对主角立场": "观望"}},
+	}
+	compiled, err := CompileTurnStateUpdates(system, snapshot.State, updates, TurnStateUpdateCompileOptions{SourceTurnID: "turn-centralized"})
+	if err != nil {
+		t.Fatalf("centralized object records should use the existing nested update protocol: %v", err)
+	}
+	if len(compiled.Updates) != len(updates) || len(compiled.ActorOps) != len(updates) {
+		t.Fatalf("unexpected centralized update compilation: %#v", compiled)
+	}
+	working := cloneActorStateRoot(snapshot.State)
+	for _, op := range compiled.ActorOps {
+		applyActorStateOp(working, op)
+	}
+	assertActorObjectRecord := func(actorID, fieldID, recordID, key string, want any) {
+		t.Helper()
+		field, ok := actorStateFieldValue(working, actorID, fieldID).(map[string]any)
+		if !ok {
+			t.Fatalf("field %s/%s should be an object, got %#v", actorID, fieldID, actorStateFieldValue(working, actorID, fieldID))
+		}
+		record, ok := field[recordID].(map[string]any)
+		if !ok || record[key] != want {
+			t.Fatalf("record %s/%s/%s mismatch: %#v", actorID, fieldID, recordID, field)
+		}
+	}
+	assertActorObjectRecord(DefaultActorID, "技能与能力", "ability_001", "名称", "洞察")
+	assertActorObjectRecord(DefaultActorID, "重要物品", "item_001", "名称", "旧钥匙")
+	assertActorObjectRecord(DefaultActorID, "关系", "npc_guide", "关系类型", "同伴")
+	assertActorObjectRecord(DefaultStoryContextActorID, "当前任务", "quest_main_001", "任务名称", "进入遗迹")
+	assertActorObjectRecord(DefaultWorldEntitiesActorID, "地点记录", "location_001", "地点名称", "沉没遗迹")
+	assertActorObjectRecord(DefaultWorldEntitiesActorID, "势力记录", "faction_001", "势力名称", "灰塔协会")
 }
 
 func TestActorStateSupportsCustomNonCharacterStateObjects(t *testing.T) {

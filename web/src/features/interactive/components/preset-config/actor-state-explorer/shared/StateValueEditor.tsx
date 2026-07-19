@@ -33,7 +33,9 @@ export function StateValueEditor({
   compact = false,
 }: StateValueEditorProps) {
   const { t } = useTranslation()
-  const [viewMode, setViewMode] = useState<'structured' | 'json'>('structured')
+  const [viewMode, setViewMode] = useState<'structured' | 'json'>(() => (
+    valueNeedsJsonEditor(type, value) ? 'json' : 'structured'
+  ))
   const [jsonText, setJsonText] = useState(() => formatPresetJSON(value ?? getDefaultForType(type)))
   const [jsonError, setJsonError] = useState('')
 
@@ -43,6 +45,8 @@ export function StateValueEditor({
   }, [type, value])
 
   const needsJsonFallback = type === 'object' || type === 'list'
+  const requiresJsonEditor = valueNeedsJsonEditor(type, value)
+  const displayedViewMode = requiresJsonEditor ? 'json' : viewMode
 
   const handleJsonChange = (text: string) => {
     setJsonText(text)
@@ -61,34 +65,30 @@ export function StateValueEditor({
     }
   }
 
-  if (needsJsonFallback && viewMode === 'json') {
-    return (
-      <div className="space-y-1.5">
-        {label ? <FieldLabel>{label}</FieldLabel> : null}
+  return (
+    <div className="space-y-1.5">
+      {label ? <FieldLabel>{label}</FieldLabel> : null}
+      {needsJsonFallback ? (
         <div className="flex items-center justify-end gap-1">
-          <button
-            type="button"
-            className={cn(
-              'flex h-7 items-center gap-1 rounded-full px-2 text-[10px] transition-colors',
-              'text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]',
-            )}
+          <EditorModeButton
+            active={displayedViewMode === 'structured'}
+            disabled={requiresJsonEditor}
+            icon={<Eye className="h-3 w-3" />}
             onClick={() => setViewMode('structured')}
           >
-            <Eye className="h-3 w-3" />
             {t('settingPanel.actorState.explorer.structured')}
-          </button>
-          <button
-            type="button"
-            className={cn(
-              'flex h-7 items-center gap-1 rounded-full px-2 text-[10px] transition-colors',
-              'bg-[var(--nova-text)] text-[var(--nova-surface)]',
-            )}
+          </EditorModeButton>
+          <EditorModeButton
+            active={displayedViewMode === 'json'}
+            icon={<Braces className="h-3 w-3" />}
             onClick={() => setViewMode('json')}
           >
-            <Braces className="h-3 w-3" />
             JSON
-          </button>
+          </EditorModeButton>
         </div>
+      ) : null}
+      {needsJsonFallback && displayedViewMode === 'json' ? (
+        <>
         <Textarea
           className="nova-field min-h-24 resize-y font-mono text-xs leading-5 shadow-none focus-visible:ring-0"
           value={jsonText}
@@ -99,33 +99,60 @@ export function StateValueEditor({
             {jsonError}
           </div>
         ) : null}
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-1.5">
-      {label ? <FieldLabel>{label}</FieldLabel> : null}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={type}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -4 }}
-          transition={{ duration: 0.15, ease: novaEase }}
-        >
-          <ValueInputByType
-            type={type}
-            value={value}
-            onChange={onChange}
-            options={options}
-            min={min}
-            max={max}
-            compact={compact}
-          />
-        </motion.div>
-      </AnimatePresence>
+        </>
+      ) : (
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={type}
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.15, ease: novaEase }}
+          >
+            <ValueInputByType
+              type={type}
+              value={value}
+              onChange={onChange}
+              options={options}
+              min={min}
+              max={max}
+              compact={compact}
+            />
+          </motion.div>
+        </AnimatePresence>
+      )}
     </div>
+  )
+}
+
+function EditorModeButton({
+  active,
+  disabled = false,
+  icon,
+  onClick,
+  children,
+}: {
+  active: boolean
+  disabled?: boolean
+  icon: React.ReactNode
+  onClick: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'flex h-7 items-center gap-1 rounded-full px-2 text-[10px] transition-colors',
+        active
+          ? 'bg-[var(--nova-text)] text-[var(--nova-surface)]'
+          : 'text-[var(--nova-text-faint)] hover:text-[var(--nova-text)]',
+      )}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {icon}
+      {children}
+    </button>
   )
 }
 
@@ -265,6 +292,16 @@ function getDefaultForType(type: string): unknown {
     case 'list': return []
     default: return ''
   }
+}
+
+function valueNeedsJsonEditor(type: string, value: unknown): boolean {
+  if (type !== 'object' && type !== 'list') return false
+  const entries = Array.isArray(value)
+    ? value
+    : value && typeof value === 'object'
+      ? Object.values(value as Record<string, unknown>)
+      : []
+  return entries.some((entry) => entry !== null && typeof entry === 'object')
 }
 
 function objectToEntries(value: unknown): KeyValEntry[] {

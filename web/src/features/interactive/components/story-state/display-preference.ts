@@ -1,9 +1,9 @@
 export const STORY_STATE_DISPLAY_STORAGE_KEY = 'nova.interactive.storyStateDisplay.v1'
 
 /** Sets the main-stage default for each new turn; manual panel state remains local to that turn. */
-export type StoryStateDisplayPreference = 'visible' | 'collapsed' | 'director-only'
+export type StoryStateDisplayPreference = 'preview' | 'expanded' | 'collapsed' | 'director-only'
 
-export const DEFAULT_STORY_STATE_DISPLAY: StoryStateDisplayPreference = 'visible'
+export const DEFAULT_STORY_STATE_DISPLAY: StoryStateDisplayPreference = 'preview'
 
 export function readStoryStateDisplayPreference(): StoryStateDisplayPreference {
   if (typeof window === 'undefined') return DEFAULT_STORY_STATE_DISPLAY
@@ -25,9 +25,9 @@ export function writeStoryStateDisplayPreference(value: StoryStateDisplayPrefere
   }
 }
 
-/** Legacy 'preview'/'expanded' values fold into 'visible' since the grouped ledger replaced the height-clamped preview. */
+/** The short-lived 'visible' value folds into 'expanded' (both showed all sections). */
 function normalizeStoryStateDisplayPreference(value: string | null): StoryStateDisplayPreference | null {
-  if (value === 'visible' || value === 'collapsed' || value === 'director-only') return value
-  if (value === 'preview' || value === 'expanded') return 'visible'
+  if (value === 'preview' || value === 'expanded' || value === 'collapsed' || value === 'director-only') return value
+  if (value === 'visible') return 'expanded'
   return null
 }

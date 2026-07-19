@@ -111,7 +111,7 @@ describe('TRPGSystemVisualEditor', () => {
             id: 'binding_one',
             label: 'Hero binding',
             actor_template_id: 'hero',
-            modifiers: [{ source: 'actor', field_id: '当前体力', effect: 'advantage' }],
+            modifiers: [{ source: 'actor', field_id: '当前体力', value_path: ['力量', '当前值'], effect: 'advantage' }],
           }],
         }],
       })
@@ -133,6 +133,9 @@ describe('TRPGSystemVisualEditor', () => {
     await user.click(screen.getByRole('combobox', { name: '数值修正 1' }))
     await user.click(screen.getByRole('option', { name: '行动/状态.值' }))
 
-    expect(latest.rule_templates?.[0].state_bindings?.[0].modifiers?.[0]).toMatchObject({ field_id: '行动/状态.值' })
+    expect(latest.rule_templates?.[0].state_bindings?.[0].modifiers?.[0]).toMatchObject({
+      field_id: '行动/状态.值',
+      value_path: ['力量', '当前值'],
+    })
   })
 })

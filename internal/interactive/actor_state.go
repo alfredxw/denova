@@ -30,6 +30,9 @@ type ActorStateTemplate struct {
 	Description string            `json:"description,omitempty"`
 	Fields      []ActorStateField `json:"fields,omitempty"`
 	TraitRules  []ActorTraitRule  `json:"trait_rules,omitempty"`
+	// DisplayGroups is retained only for decoding older Beta presets. The stage
+	// ignores it and stores user layout by story + template outside the schema.
+	DisplayGroups []string `json:"display_groups,omitempty"`
 }
 
 // ActorTraitRule declares which reusable trait pool is available to actors
@@ -93,7 +96,9 @@ type ActorStateField struct {
 	Visibility        string   `json:"visibility,omitempty"`
 	Description       string   `json:"description,omitempty"`
 	UpdateInstruction string   `json:"update_instruction,omitempty"`
-	Order             int      `json:"order,omitempty"`
+	// Order is retained only for decoding older Beta presets. Field array order
+	// is the fallback; final layout belongs to the user's stage preference.
+	Order int `json:"order,omitempty"`
 	// Group and Display are optional presentation hints for the stage state
 	// ledger. Group clusters fields under one named ledger section; Display
 	// pins the field renderer (stat/inline/block/list). Both fall back to
@@ -268,6 +273,7 @@ func normalizeActorStateTemplates(templates []ActorStateTemplate) []ActorStateTe
 		template.Description = trimBytes(template.Description, maxInteractiveTextBytes)
 		template.Fields = normalizeActorStateFields(template.Fields)
 		template.TraitRules = normalizeActorTraitRules(template.TraitRules)
+		template.DisplayGroups = nil
 		out = append(out, template)
 	}
 	return out
@@ -281,7 +287,7 @@ func normalizeActorStateFields(fields []ActorStateField) []ActorStateField {
 		fields = fields[:maxActorStateFields]
 	}
 	out := make([]ActorStateField, 0, len(fields))
-	for i, field := range fields {
+	for _, field := range fields {
 		field.LegacyPath = strings.TrimSpace(firstNonEmptyString(field.LegacyPath, field.Path))
 		field.Path = field.LegacyPath
 		field.Name = normalizeActorStateFieldName(firstNonEmptyString(field.Name, field.ID, field.LegacyPath))
@@ -296,17 +302,9 @@ func normalizeActorStateFields(fields []ActorStateField) []ActorStateField {
 		field.Options = normalizeStringListLimit(field.Options, maxInteractiveListItems)
 		field.Group = trimBytes(field.Group, 64)
 		field.Display = normalizeActorStateFieldDisplay(field.Display)
-		if field.Order == 0 {
-			field.Order = (i + 1) * 10
-		}
+		field.Order = 0
 		out = append(out, field)
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Order != out[j].Order {
-			return out[i].Order < out[j].Order
-		}
-		return out[i].Name < out[j].Name
-	})
 	return out
 }
 
@@ -710,15 +708,7 @@ func actorStateEmpty(system StoryDirectorActorStateSystem) bool {
 }
 
 func defaultActorStateSystem() StoryDirectorActorStateSystem {
-	return normalizeActorStateSystem(StoryDirectorActorStateSystem{
-		Templates: []ActorStateTemplate{
-			actorStateTemplate(DefaultActorID, "默认主角状态表", "记录主角当前可行动、可检定、可结算的通用互动状态；用户可按作品需要新增世界、故事倒计时、特定角色、势力、基地、副本等自定义状态表。", commonProtagonistStateFields()),
-			defaultStoryContextTemplate(),
-			actorStateTemplate(ActorStateImportantCharacterTemplateID, "默认重要角色状态表", "记录反复登场且会影响互动承接的重要角色状态；特定角色线可以另建独立状态表。", commonImportantCharacterStateFields()),
-			actorStateTemplate(ActorStateOpponentTemplateID, "默认敌人/怪物状态表", "记录敌人、怪物、反派、Boss 或异常实体的当前对抗状态；危机、势力或副本也可另建状态表。", commonOpponentStateFields()),
-		},
-		InitialActors: defaultActorStateInitialActors(),
-	})
+	return actorStateSystemForPreset(defaultActorStatePresetSpec())
 }
 
 func actorStateActorPath(actorID, field string) string {

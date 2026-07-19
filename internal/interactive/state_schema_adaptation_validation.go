@@ -160,7 +160,7 @@ func validateActorStateTRPGReferences(system StoryDirectorActorStateSystem, trpg
 				}
 			}
 			for _, modifier := range binding.Modifiers {
-				if err := validateTRPGBindingField(system, binding, modifier.Source, modifier.FieldID, true); err != nil {
+				if err := validateTRPGBindingField(system, binding, modifier.Source, modifier.FieldID, modifier.ValuePath, true); err != nil {
 					return fmt.Errorf("TRPG binding %s modifier: %w", binding.ID, err)
 				}
 			}
@@ -168,17 +168,17 @@ func validateActorStateTRPGReferences(system StoryDirectorActorStateSystem, trpg
 				if ref.Source == "scene" {
 					continue
 				}
-				if err := validateTRPGBindingField(system, binding, ref.Source, ref.FieldID, false); err != nil {
+				if err := validateTRPGBindingField(system, binding, ref.Source, ref.FieldID, nil, false); err != nil {
 					return fmt.Errorf("TRPG binding %s narrative_state_ref: %w", binding.ID, err)
 				}
 			}
 			for _, group := range binding.OutcomeStateChanges {
 				for _, change := range group.StateChanges {
-					if err := validateTRPGBindingField(system, binding, change.Source, change.FieldID, true); err != nil {
+					if err := validateTRPGBindingField(system, binding, change.Source, change.FieldID, nil, true); err != nil {
 						return fmt.Errorf("TRPG binding %s outcome_state_change: %w", binding.ID, err)
 					}
 					for _, term := range change.ChangeFormula.Terms {
-						if err := validateTRPGBindingField(system, binding, term.Source, term.FieldID, true); err != nil {
+						if err := validateTRPGBindingField(system, binding, term.Source, term.FieldID, term.ValuePath, true); err != nil {
 							return fmt.Errorf("TRPG binding %s change_formula: %w", binding.ID, err)
 						}
 					}
@@ -196,7 +196,7 @@ func validateTRPGBindingTemplate(system StoryDirectorActorStateSystem, bindingID
 	return nil
 }
 
-func validateTRPGBindingField(system StoryDirectorActorStateSystem, binding RuleStateBinding, source, fieldID string, numberRequired bool) error {
+func validateTRPGBindingField(system StoryDirectorActorStateSystem, binding RuleStateBinding, source, fieldID string, valuePath []string, numberRequired bool) error {
 	templateID := binding.ActorTemplateID
 	if source == "target" {
 		templateID = binding.TargetTemplateID
@@ -206,8 +206,12 @@ func validateTRPGBindingField(system StoryDirectorActorStateSystem, binding Rule
 	if !ok {
 		return fmt.Errorf("字段不存在: template=%s field=%s", templateID, fieldID)
 	}
-	if numberRequired && field.Type != "number" {
-		return fmt.Errorf("字段必须是 number: template=%s field=%s type=%s", templateID, fieldID, field.Type)
+	valuePath = normalizeRuleStateValuePath(valuePath)
+	if numberRequired && len(valuePath) == 0 && field.Type != "number" {
+		return fmt.Errorf("字段必须是 number，object 数值需提供 value_path: template=%s field=%s type=%s", templateID, fieldID, field.Type)
+	}
+	if numberRequired && len(valuePath) > 0 && field.Type != "object" {
+		return fmt.Errorf("value_path 只能读取 object 字段: template=%s field=%s type=%s", templateID, fieldID, field.Type)
 	}
 	return nil
 }

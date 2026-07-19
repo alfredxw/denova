@@ -1,19 +1,21 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, ChevronDown, ChevronUp, FileDiff, Loader2, RefreshCw, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { getWorkspaceChangeGroup, undoWorkspaceChangeGroup } from '../api'
-import { invalidateWorkspaceChangeQueries, workspaceChangeKeys } from '../use-change-review'
+import { invalidateWorkspaceChangeQueries, prefetchWorkspaceChangeReviewThread, workspaceChangeKeys } from '../use-change-review'
 import type { WorkspaceChangeGroup, WorkspaceChangeGroupSummary, WorkspaceChangeSet } from '../types'
 import { logWorkspaceChangeError, workspaceChangeErrorMessage } from '../errors'
 import { lineDiffStats } from '../diff-stats'
+import { preloadReviewDiffEditor } from '../review/review-editor-loader'
 
 interface AgentChangeSummaryCardProps {
   workspace: string
   summary: WorkspaceChangeGroupSummary
   disabled?: boolean
+  eagerPreload?: boolean
   onReview: (reviewThreadID: string, groupID: string) => void
   onWorkspaceChanged?: (paths: string[]) => void | Promise<void>
 }
@@ -25,7 +27,7 @@ interface FileChangeSummary {
 }
 
 /** Codex-style, durable summary for one Agent run. */
-export function AgentChangeSummaryCard({ workspace, summary, disabled = false, onReview, onWorkspaceChanged }: AgentChangeSummaryCardProps) {
+export function AgentChangeSummaryCard({ workspace, summary, disabled = false, eagerPreload = false, onReview, onWorkspaceChanged }: AgentChangeSummaryCardProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
   const [expanded, setExpanded] = useState(false)
@@ -42,6 +44,24 @@ export function AgentChangeSummaryCard({ workspace, summary, disabled = false, o
   ), [files])
   const visibleFiles = expanded ? files : files.slice(0, 3)
   const reviewThreadID = summary.review_thread_id || groupQuery.data?.review_thread_id || summary.id
+  const preloadReview = useCallback(() => {
+    if (!workspace || !reviewThreadID) return
+    void Promise.all([
+      prefetchWorkspaceChangeReviewThread(queryClient, workspace, reviewThreadID),
+      preloadReviewDiffEditor(),
+    ]).catch((error) => {
+      console.warn('[AgentChangeSummaryCard.tsx] failed to preload Diff review; the click path will retry', {
+        workspace,
+        reviewThreadID,
+        error,
+      })
+    })
+  }, [queryClient, reviewThreadID, workspace])
+
+  useEffect(() => {
+    if (eagerPreload) preloadReview()
+  }, [eagerPreload, preloadReview])
+
   useEffect(() => {
     if (groupQuery.isError) logWorkspaceChangeError('Agent 变更摘要加载失败', groupQuery.error)
   }, [groupQuery.error, groupQuery.isError])
@@ -65,10 +85,16 @@ export function AgentChangeSummaryCard({ workspace, summary, disabled = false, o
   })
 
   const fileCount = files.length || summary.paths?.length || summary.change_set_count || 0
+  const openReview = () => {
+    preloadReview()
+    onReview(reviewThreadID, summary.id)
+  }
 
   return (
     <section
       data-change-summary-card={summary.id}
+      onPointerEnter={preloadReview}
+      onFocusCapture={preloadReview}
       className="overflow-hidden rounded-xl border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-xs text-[var(--nova-text)] shadow-[0_12px_34px_rgba(0,0,0,0.18)]"
       aria-label={t('changes.summary.title', { count: fileCount })}
     >
@@ -107,7 +133,7 @@ export function AgentChangeSummaryCard({ workspace, summary, disabled = false, o
           {undoMutation.isPending ? <Loader2 className="animate-spin" /> : <RotateCcw />}
           {t('changes.undo')}
         </Button>
-        <Button type="button" size="sm" variant="outline" onClick={() => onReview(reviewThreadID, summary.id)} className="shrink-0">
+        <Button type="button" size="sm" variant="outline" onClick={openReview} className="shrink-0">
           {t('changes.review')}
         </Button>
       </header>
@@ -118,7 +144,7 @@ export function AgentChangeSummaryCard({ workspace, summary, disabled = false, o
             <button
               key={file.path}
               type="button"
-              onClick={() => onReview(reviewThreadID, summary.id)}
+              onClick={openReview}
               className="flex w-full items-center gap-3 border-b border-[var(--nova-border-soft)] px-3 py-2 text-left last:border-b-0 hover:bg-[var(--nova-hover)]"
             >
               <span className="min-w-0 flex-1 truncate">{file.path}</span>
