@@ -1,0 +1,51 @@
+CHANGELOG.md
+  s_8b3830028beccf::t_09f090fe57744c 45-48
+web/src/components/Chat/AgentPanel.test.tsx
+  s_8b3830028beccf::t_5a90e281e1a342 344-362
+web/src/components/Chat/AgentPanel.tsx
+  s_8b3830028beccf::t_e6ed1ce5b8cba5 25,82,134,357
+web/src/components/Chat/InputArea.test.tsx
+  s_8b3830028beccf::t_800007ec85c19d 127-136,141-142,148-150
+web/src/components/Chat/InputArea.tsx
+  s_8b3830028beccf::t_d82905520b97f8 31,88,132,554
+web/src/components/Chat/SessionManagementPanel.test.tsx
+  s_8b3830028beccf::t_762aa54388a5a6 1-56
+web/src/components/Chat/SessionManagementPanel.tsx
+  s_8b3830028beccf::t_dfbdea7f4fbe14 33,42-43,78-92,94,121-123,135,137-144,155-171,173-187
+web/src/components/Editor/DocumentReviewAnnotations.test.tsx
+  s_8b3830028beccf::t_8fbcef6c977d2a 125-187
+web/src/components/Editor/DocumentReviewAnnotations.tsx
+  s_8b3830028beccf::t_f53da445abe4e8 21,72,74,120-130,215-226
+web/src/components/Editor/MarkdownEditor.test.tsx
+  s_8b3830028beccf::t_9f8dc7dd0c6e2c 1,16,118,120,122-125,139,1214-1251
+web/src/components/Editor/MarkdownEditor.tsx
+  s_8b3830028beccf::t_c97593fec0c21e 58-62,84,113,128,179-185
+web/src/components/workbench/ModeRouter.test.tsx
+  s_8b3830028beccf::t_fb60058844a4d4 3,9,17-47,76,80-91,98-108,161-222
+web/src/components/workbench/ModeRouter.tsx
+  s_8b3830028beccf::t_023518840f6dd7 10,24,245-247,281-285,434-465,633,772
+web/src/features/changes/agent/ReviewFeedbackTray.tsx
+  s_8b3830028beccf::t_dd148ce1211e52 44,48,76-89,105-115
+web/src/hooks/useAgentChat.test.tsx
+  s_8b3830028beccf::t_9e3aae66b5336b 3,12,24,46,50-74
+web/src/hooks/useAgentChat.ts
+  s_8b3830028beccf::t_7bd82a0d5a3325 332-343,347
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "09d1ae10ead2e7d3e4563902fdc4eeb0e36bc414",
+  "prompts": {},
+  "sessions": {
+    "s_8b3830028beccf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f75b5-a505-7b03-ada9-c88e17162030",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
