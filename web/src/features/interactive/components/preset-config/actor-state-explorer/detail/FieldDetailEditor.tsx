@@ -16,6 +16,7 @@ import { actorStateFieldNameHasPathSeparator } from '../validation'
 
 const FIELD_TYPES = ['number', 'string', 'bool', 'enum', 'object', 'list'] as const
 const VISIBILITY_OPTIONS = ['visible', 'hidden', 'spoiler'] as const
+const DISPLAY_OPTIONS = ['auto', 'stat', 'inline', 'block', 'list'] as const
 
 interface FieldDetailEditorProps {
   field: ActorStateField
@@ -137,6 +138,36 @@ export function FieldDetailEditor({
                     {VISIBILITY_OPTIONS.map((visibility) => (
                       <SelectItem key={visibility} value={visibility}>
                         {t(`settingPanel.actorState.explorer.${visibility}`)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </FormField>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormField label={t('settingPanel.actorState.explorer.displayGroup')}>
+              <Input
+                className="nova-field h-8 text-xs focus-visible:ring-0"
+                value={field.group || ''}
+                onChange={(e) => updateField({ group: e.target.value })}
+                placeholder={t('settingPanel.actorState.explorer.displayGroupPlaceholder')}
+              />
+            </FormField>
+            <FormField label={t('settingPanel.actorState.explorer.display')}>
+              <Select
+                value={field.display || 'auto'}
+                onValueChange={(v) => updateField({ display: v === 'auto' ? undefined : v as ActorStateField['display'] })}
+              >
+                <SelectTrigger className="nova-field h-8 text-xs focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="nova-panel border text-[var(--nova-text)]">
+                  <SelectGroup>
+                    {DISPLAY_OPTIONS.map((display) => (
+                      <SelectItem key={display} value={display}>
+                        {t(`settingPanel.actorState.explorer.display.${display}`)}
                       </SelectItem>
                     ))}
                   </SelectGroup>

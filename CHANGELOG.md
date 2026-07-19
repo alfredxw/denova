@@ -6,8 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- 状态模板字段新增可选的展示提示 `group` 与 `display`：模板作者可为字段声明分组名与展示方式（数值仪表/短值行/段落块/列表），未声明时按字段类型与值形状自动推断；预设编辑器字段详情页新增对应配置。
+- Actor state template fields now accept optional `group` and `display` presentation hints: template authors can declare a section name and renderer (stat meter/inline value/paragraph block/list), while unset fields fall back to type- and shape-based inference. The preset editor's field detail pane exposes both settings.
+
 ### Changed
 
+- 游戏模式正文后的状态面板重新设计：字段按“概览/详情/持有与资源/隐藏信息”分组并用分组页签切换，组内使用自适应多列网格（数值仪表、短值行、段落、无边框列表、窄标签定义表各归其位）；世界状态的对象值会展开为独立字段参与分组，空世界页签不再渲染。
+- The state panel after game-mode prose is redesigned: fields cluster into Overview/Details/Holdings/Hidden Info groups behind switchable tabs, each rendered on a dense auto-fill grid (stat meters, inline values, paragraphs, borderless lists, narrow-label definition tables); record-valued world facts expand into individually grouped fields, and the empty World tab no longer renders.
+- 本回合状态变化收敛为头部一行摘要（数值 ±delta、增删项、已更新），变更字段以左侧色条和值旁 chip 标记，不再为每个字段重复展示“本回合已更新”说明行。
+- Turn state changes now collapse into a one-line header summary (numeric ±delta, added/removed items, updated) with changed fields marked by a left accent bar and an inline chip, replacing the repeated per-field “updated this turn” notes.
+- 兼容性说明：状态显示偏好简化为“默认显示/默认折叠/仅导演台”三档，旧的“默认预览/默认展开”偏好自动并入“默认显示”；面板不再提供按高度裁剪的预览态。
+- Compatibility note: the state display preference now offers Visible/Collapsed/Director-only; legacy Preview/Expanded preferences migrate to Visible automatically, and the height-clamped preview mode is gone.
 - 自动保存统一到一套 after-delay 内核与场景适配层：仅在用户停止编辑达到配置延迟后写入，同一资源最多一个请求执行中，并把后续修改合并为最新待保存快照；手动保存、切换前 flush 与自动保存共享同一队列。
 - Autosave now uses one after-delay core with thin scenario adapters: writes start only after the configured quiet period, each resource permits one in-flight request, later edits collapse to the latest pending snapshot, and manual save plus navigation flush share that queue.
 - 资料库与方案预设移除重复的写作工作区标题栏，关闭入口并入当前资源工具栏；配置管理 Agent 统一置于目录搜索之前，资料库不再重复展示目录说明。

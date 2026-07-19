@@ -215,7 +215,7 @@ func PrependFinalUserSource(agentMessage, title, content string) string {
 	sb.WriteString("# ")
 	sb.WriteString(title)
 	sb.WriteString("\n\n")
-	sb.WriteString("以下内容来自当前 workspace 的有界状态快照，随作品进展变化，只用于本轮判断。需要更完整或最新内容时，按来源路径使用工具读取确认。\n\n")
+	sb.WriteString("状态快照可能过期，以工具读取为准。\n\n")
 	sb.WriteString(content)
 	sb.WriteString("\n\n---\n\n# 本轮用户请求（最高优先级）\n\n")
 	sb.WriteString(strings.TrimSpace(agentMessage))
@@ -249,7 +249,7 @@ func PrependFinalUserSources(agentMessage string, sources []Source) string {
 		sb.WriteString("# ")
 		sb.WriteString(title)
 		sb.WriteString("\n\n")
-		sb.WriteString("以下内容来自当前 workspace 的有界状态快照，随作品进展变化，只用于本轮判断。需要更完整或最新内容时，按来源路径使用工具读取确认。\n\n")
+		sb.WriteString("状态快照可能过期，以工具读取为准。\n\n")
 		sb.WriteString(strings.TrimSpace(source.Content))
 	}
 	sb.WriteString("\n\n---\n\n# 本轮用户请求（最高优先级）\n\n")

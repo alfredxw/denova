@@ -228,7 +228,7 @@ func TestLoreStoreProgressiveContextSplitsResidentAndIndex(t *testing.T) {
 func TestLoreStoreCompactIndexOmitsHeavyFieldsAndDisabledItems(t *testing.T) {
 	store := NewLoreStore(t.TempDir())
 	disabled := false
-	if _, err := store.Create(LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: LoreLoadModeAuto, Tags: []string{"据点"}, Keywords: []string{"黄泉"}, BriefDescription: "地点 黄泉酒馆。索引简介。上下文出现相关内容时，一定要参考本项详情。", Content: "据点完整正文"}); err != nil {
+	if _, err := store.Create(LoreItemInput{ID: "base", Type: "location", Name: "黄泉酒馆", Importance: "important", LoadMode: LoreLoadModeAuto, Tags: []string{"据点"}, Keywords: []string{"黄泉"}, BriefDescription: "地点 黄泉酒馆。索引简介。", Content: "据点完整正文"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Create(LoreItemInput{ID: "hidden", Enabled: &disabled, Type: "rule", Name: "禁用规则", Importance: "important", LoadMode: LoreLoadModeAuto, BriefDescription: "禁用规则简介", Content: "禁用正文"}); err != nil {
@@ -253,7 +253,7 @@ func TestLoreStoreCompactIndexOmitsHeavyFieldsAndDisabledItems(t *testing.T) {
 
 func TestLoreStoreCompactIndexMatchesMultipleKeywordsWithAnyAndAll(t *testing.T) {
 	store := NewLoreStore(t.TempDir())
-	if _, err := store.Create(LoreItemInput{ID: "archive", Type: "location", Name: "旧档案室", Importance: "important", LoadMode: LoreLoadModeAuto, Keywords: []string{"档案柜"}, BriefDescription: "地点 旧档案室。只有尘封档案。上下文出现相关内容时，一定要参考本项详情。", Content: "暗门后藏着完整原文线索。"}); err != nil {
+	if _, err := store.Create(LoreItemInput{ID: "archive", Type: "location", Name: "旧档案室", Importance: "important", LoadMode: LoreLoadModeAuto, Keywords: []string{"档案柜"}, BriefDescription: "地点 旧档案室。只有尘封档案。", Content: "暗门后藏着完整原文线索。"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.Create(LoreItemInput{ID: "hero", Type: "character", Name: "林川", Importance: "major", LoadMode: LoreLoadModeAuto, Tags: []string{"主角"}, BriefDescription: "角色 林川。故事开场时抵达旧城。", Content: "林川不了解档案柜。"}); err != nil {
@@ -506,7 +506,7 @@ func TestLoreStoreCreateUpdateDelete(t *testing.T) {
 	if item.ID != "林川" {
 		t.Fatalf("generated ID should be based on the lore item name without random suffix, got %s", item.ID)
 	}
-	if item.BriefDescription == "" || !strings.Contains(item.BriefDescription, "角色 林川。") || !strings.Contains(item.BriefDescription, "一定要参考本项详情") {
+	if item.BriefDescription == "" || !strings.Contains(item.BriefDescription, "角色 林川。") {
 		t.Fatalf("brief description should be generated: %#v", item)
 	}
 	if _, err := store.Create(LoreItemInput{ID: item.ID, Type: "character", Name: "重复林川"}); err == nil || !strings.Contains(err.Error(), "资料 ID 已存在") {

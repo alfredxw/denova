@@ -609,7 +609,7 @@ function LoreSettingPanel({
         importance: section.createType === 'character' ? 'major' : 'important',
         load_mode: section.createType === 'character' ? 'resident' : 'auto',
         tags: section.tag ? [section.tag] : [],
-        brief_description: `${loreTypeLabel(section.createType, t)} ${createName}。用 3-5 句概括本项的身份、别名、关键事实、适用场景和触发词。上下文出现相关内容时，一定要参考本项详情。`,
+        brief_description: `${loreTypeLabel(section.createType, t)} ${createName}。用 3-5 句概括本项的身份、别名、关键事实、适用场景和触发词。`,
         content: `## ${createName}\n\n`,
       })
       await refreshItems(item.id)

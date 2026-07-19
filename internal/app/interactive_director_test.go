@@ -30,7 +30,7 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 		Name:             "沈凝",
 		Importance:       "major",
 		LoadMode:         book.LoreLoadModeAuto,
-		BriefDescription: "角色 沈凝。外门比试的关键见证者，与主角关系存在转折空间。上下文出现相关内容时，一定要参考本项详情。",
+		BriefDescription: "角色 沈凝。外门比试的关键见证者，与主角关系存在转折空间。",
 		Content:          "沈凝表面冷淡，实际在暗中调查外门资源分配不公。她不会无故帮助主角，但会被公开证据和胆识触动。",
 	}); err != nil {
 		t.Fatal(err)
@@ -278,7 +278,7 @@ func TestAnalyzeInteractiveDirectorContextUsesCurrentDirectorInputs(t *testing.T
 		Type:             "character",
 		Name:             "沈凝",
 		Importance:       "major",
-		BriefDescription: "角色 沈凝。外门比试的关键见证者。上下文出现沈凝相关内容时，一定要参考本项详情。",
+		BriefDescription: "角色 沈凝。外门比试的关键见证者。",
 		Content:          "沈凝是外门比试的关键见证者，会被公开证据触动。",
 	}); err != nil {
 		t.Fatal(err)

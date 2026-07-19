@@ -94,6 +94,12 @@ type ActorStateField struct {
 	Description       string   `json:"description,omitempty"`
 	UpdateInstruction string   `json:"update_instruction,omitempty"`
 	Order             int      `json:"order,omitempty"`
+	// Group and Display are optional presentation hints for the stage state
+	// ledger. Group clusters fields under one named ledger section; Display
+	// pins the field renderer (stat/inline/block/list). Both fall back to
+	// shape-based heuristics when empty and never affect state updates.
+	Group   string `json:"group,omitempty"`
+	Display string `json:"display,omitempty"`
 }
 
 const ActorStateSchemaVersion = 3
@@ -288,6 +294,8 @@ func normalizeActorStateFields(fields []ActorStateField) []ActorStateField {
 		field.Description = trimBytes(field.Description, maxInteractiveTextBytes)
 		field.UpdateInstruction = trimBytes(field.UpdateInstruction, maxInteractiveTextBytes)
 		field.Options = normalizeStringListLimit(field.Options, maxInteractiveListItems)
+		field.Group = trimBytes(field.Group, 64)
+		field.Display = normalizeActorStateFieldDisplay(field.Display)
 		if field.Order == 0 {
 			field.Order = (i + 1) * 10
 		}
@@ -341,6 +349,17 @@ func normalizeActorStateFieldType(value string) string {
 		return strings.TrimSpace(value)
 	default:
 		return "string"
+	}
+}
+
+// normalizeActorStateFieldDisplay keeps only the renderer hints the stage
+// state ledger understands; anything else falls back to heuristics.
+func normalizeActorStateFieldDisplay(value string) string {
+	switch strings.TrimSpace(value) {
+	case "stat", "inline", "block", "list":
+		return strings.TrimSpace(value)
+	default:
+		return ""
 	}
 }
 

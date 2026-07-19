@@ -2139,8 +2139,6 @@ html[data-nova-motion="off"] *::after {
 /* Story state ledger: current committed state placed after the latest prose. */
 .story-state-ledger {
   --story-state-canvas: var(--nova-surface);
-  --story-state-panel: var(--nova-surface);
-  --story-state-field-hover: var(--nova-surface-2);
   --story-state-positive: var(--nova-success);
   --story-state-positive-soft: var(--nova-success-bg);
   --story-state-negative: var(--nova-danger);
@@ -2149,7 +2147,6 @@ html[data-nova-motion="off"] *::after {
   --story-state-pending-soft: var(--nova-warning-bg);
   --story-state-meter: var(--nova-text-muted);
   --story-state-tabs-bg: oklch(0.2 0 0);
-  --story-state-preview-height: min(45dvh, 440px);
   container-name: story-state-ledger;
   container-type: inline-size;
   background: var(--story-state-canvas);
@@ -2176,68 +2173,162 @@ html[data-nova-motion="off"] *::after {
   display: none;
 }
 
-.story-state-ledger__content-shell {
-  position: relative;
-}
-
-.story-state-ledger__content-shell[data-panel-mode='preview'] .story-state-ledger__content-viewport {
-  max-height: var(--story-state-preview-height);
-  overflow: hidden;
-}
-
-.story-state-ledger__preview-action {
-  pointer-events: none;
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
+/* Turn-change digest: one compact row under the header. */
+.story-state-ledger__summary {
   display: flex;
-  justify-content: center;
-  padding: 48px 12px 12px;
-  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--story-state-canvas) 92%, transparent) 58%, var(--story-state-canvas));
-}
-
-.story-state-ledger__preview-action > button {
-  pointer-events: auto;
-  background: var(--story-state-panel);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--nova-bg) 64%, transparent);
-}
-
-.story-state-ledger__expanded-action {
-  display: flex;
-  justify-content: center;
+  align-items: baseline;
+  gap: 8px;
   border-top: 1px solid var(--nova-border-soft);
-  padding: 6px 12px;
-  background: var(--story-state-panel);
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 16px;
 }
 
-.story-state-ledger__flow-grid {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 1px;
-  border-bottom: 1px solid var(--nova-border-soft);
-  background: var(--nova-border-soft);
+.story-state-ledger__summary-title {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  color: var(--nova-text-muted);
 }
 
-.story-state-ledger__metric-grid > [data-state-metric] {
-  flex: 1 1 150px;
+/* Dense auto-fill field grid; column basis adapts per group kind. */
+.story-state-ledger__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 10px 20px;
+  padding: 10px;
 }
 
-.story-state-ledger__field-grid[data-state-field-group='compact'] > [data-state-field] {
-  flex: 1 1 140px;
+.story-state-ledger__grid[data-group='overview'] {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
 }
 
-.story-state-ledger__stack-grid {
+.story-state-ledger__grid[data-group='details'] {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+}
+
+.story-state-ledger__field {
+  position: relative;
+  min-width: 0;
+  padding: 2px 0 2px 9px;
+}
+
+.story-state-ledger__field::before {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  content: '';
+}
+
+.story-state-ledger__field[data-change-tone='positive']::before {
+  background: var(--story-state-positive);
+}
+
+.story-state-ledger__field[data-change-tone='negative']::before {
+  background: var(--story-state-negative);
+}
+
+.story-state-ledger__field[data-change-tone='neutral']::before {
+  background: var(--nova-text-faint);
+}
+
+.story-state-ledger__field-label {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--nova-text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-state-ledger__block-text {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--nova-text);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.story-state-ledger__block-text--clamped {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 8;
+}
+
+.story-state-ledger__item-list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  border-bottom: 1px solid var(--nova-border-soft);
-  background: var(--nova-border-soft);
+  gap: 2px;
 }
 
-.story-state-ledger__structured-panel {
-  border-bottom: 1px solid var(--nova-border-soft);
+.story-state-ledger__item-row {
+  position: relative;
+  padding-left: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--nova-text);
+  overflow-wrap: anywhere;
+}
+
+.story-state-ledger__item-row::before {
+  position: absolute;
+  left: 0;
+  color: var(--nova-text-faint);
+  content: '·';
+}
+
+.story-state-ledger__object-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.story-state-ledger__object-row {
+  display: grid;
+  grid-template-columns: minmax(3em, 8em) minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.story-state-ledger__object-row > dt {
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--nova-text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.story-state-ledger__object-row > dd {
+  line-height: 1.6;
+  color: var(--nova-text);
+}
+
+.story-state-ledger__change-chip {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.story-state-ledger__change-chip--positive {
+  color: var(--story-state-positive);
+}
+
+.story-state-ledger__change-chip--negative {
+  color: var(--story-state-negative);
+}
+
+.story-state-ledger__change-chip--neutral {
+  color: var(--nova-text-faint);
 }
 
 .story-state-ledger__metric-progress [data-slot='progress-indicator'] {
@@ -2247,14 +2338,6 @@ html[data-nova-motion="off"] *::after {
 @container story-state-ledger (min-width: 560px) {
   .story-state-ledger__director-label {
     display: inline;
-  }
-
-  .story-state-ledger__metric-grid > [data-state-metric] {
-    flex-basis: 200px;
-  }
-
-  .story-state-ledger__field-grid[data-state-field-group='compact'] > [data-state-field] {
-    flex-basis: 180px;
   }
 }
 

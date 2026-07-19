@@ -261,6 +261,10 @@ export interface ActorStateField {
   description?: string
   update_instruction?: string
   order?: number
+  /** Optional presentation hint: cluster fields under one named ledger section. */
+  group?: string
+  /** Optional presentation hint: pin the field renderer; falls back to heuristics when empty. */
+  display?: 'stat' | 'inline' | 'block' | 'list'
 }
 
 export interface ActorStateInitialActor {

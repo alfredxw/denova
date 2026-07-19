@@ -20,7 +20,7 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 		Name:             "林川",
 		Importance:       "major",
 		Tags:             []string{"主角", "火光"},
-		BriefDescription: "角色 林川。谨慎的幸存者。上下文出现林川、角色相关内容时，一定要参考本项详情。",
+		BriefDescription: "角色 林川。谨慎的幸存者。",
 		Content:          "完整正文不应出现在索引里。档案柜线索只存在于正文。",
 	}); err != nil {
 		t.Fatal(err)

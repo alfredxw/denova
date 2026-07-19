@@ -226,6 +226,43 @@ describe('ActorStateExplorer', () => {
     expect(screen.getByRole('treeitem', { name: 'Actor B' })).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('edits field display group and display hint from the field detail pane', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <StatefulExplorer
+        initialValue={{
+          templates: [{
+            id: 'protagonist',
+            name: '主角状态',
+            fields: [{ name: '当前处境', type: 'string', visibility: 'visible' }],
+          }],
+          initial_actors: [],
+          trait_pools: [],
+        }}
+        onChange={onChange}
+      />,
+    )
+
+    const fieldItem = screen.getByRole('treeitem', { name: '当前处境' })
+    await user.click(within(fieldItem).getByTitle(/^当前处境/))
+
+    const groupInput = await screen.findByPlaceholderText(/留空自动分组|auto grouping/i)
+    await user.type(groupInput, '战斗')
+    expect(onChange.mock.lastCall?.[0]).toMatchObject({
+      templates: [{ fields: [{ name: '当前处境', group: '战斗' }] }],
+    })
+
+    const displayLabel = screen.getByText(/^展示方式$|^Display$/)
+    const displaySelect = displayLabel.parentElement?.querySelector('button[role="combobox"]')
+    expect(displaySelect).not.toBeNull()
+    await user.click(displaySelect as HTMLElement)
+    await user.click(await screen.findByRole('option', { name: /段落块|Paragraph block/ }))
+    expect(onChange.mock.lastCall?.[0]).toMatchObject({
+      templates: [{ fields: [{ name: '当前处境', display: 'block' }] }],
+    })
+  })
+
   it('keeps a trait pool and trait selected while IDs change and cascades template rules', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()

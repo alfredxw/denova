@@ -1,4 +1,7 @@
 import type { ActorStateField, ActorStateSchemaSnapshot, ActorTraitInstance, Snapshot, TurnEvent } from '../../types'
+import type { ClassifiedStateChange } from './changes'
+import { mergeFieldChanges } from './changes'
+import { resolveStateFieldLayout, type StateFieldRenderer } from './field-layout'
 
 export type ActorStateEntry = [string, Record<string, unknown>]
 
@@ -176,6 +179,85 @@ function isActorTrait(value: unknown): value is ActorTraitInstance {
     && typeof value.pool_id === 'string'
     && typeof value.trait_id === 'string'
     && typeof value.name === 'string'
+}
+
+// --- Ledger field grouping -------------------------------------------------
+
+export interface LedgerFieldEntry {
+  id: string
+  label: string
+  field?: ActorStateField
+  value: unknown
+}
+
+export interface LedgerFieldItem extends LedgerFieldEntry {
+  renderer: StateFieldRenderer
+  change: ClassifiedStateChange | null
+}
+
+export interface LedgerFieldGroup {
+  /** Builtin group key or the template-declared group name. */
+  key: string
+  custom: boolean
+  fields: LedgerFieldItem[]
+}
+
+/**
+ * buildLedgerGroups resolves each field's renderer + group (template hints
+ * first, shape heuristics as fallback) and attaches the classified turn
+ * change. Groups keep first-seen field order; the spoiler group goes last.
+ */
+export function buildLedgerGroups(entries: LedgerFieldEntry[], changes: StoryStateChange[]): LedgerFieldGroup[] {
+  const groups: LedgerFieldGroup[] = []
+  const byKey = new Map<string, LedgerFieldGroup>()
+  for (const entry of entries) {
+    const layout = resolveStateFieldLayout(entry.field, entry.value)
+    let group = byKey.get(layout.group)
+    if (!group) {
+      group = { key: layout.group, custom: layout.customGroup, fields: [] }
+      byKey.set(layout.group, group)
+      groups.push(group)
+    }
+    const fieldChanges = matchFieldChanges(changes, entry)
+    group.fields.push({
+      ...entry,
+      renderer: layout.renderer,
+      change: mergeFieldChanges(fieldChanges, typeof entry.value === 'number'),
+    })
+  }
+  return groups.sort((left, right) => Number(left.key === 'spoiler') - Number(right.key === 'spoiler'))
+}
+
+function matchFieldChanges(changes: StoryStateChange[], entry: LedgerFieldEntry) {
+  const candidates = entry.field ? actorFieldPaths(entry.field) : [entry.id]
+  return changes.filter((change) => candidates.some((path) => sameFieldPath(change.path, path) || change.path.startsWith(`${path}.`)))
+}
+
+export function actorFieldPaths(field: ActorStateField) {
+  return [field.id, field.path, field.name]
+    .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
+}
+
+export function sameFieldPath(left: string, right: string) {
+  const normalizedLeft = humanizeStateKey(left.trim()).toLocaleLowerCase()
+  const normalizedRight = humanizeStateKey(right.trim()).toLocaleLowerCase()
+  return normalizedLeft === normalizedRight
+}
+
+/**
+ * changeFieldLabel resolves a change to its template field name so the
+ * summary row shows localized names instead of raw field ids.
+ */
+export function changeFieldLabel(change: StoryStateChange, actors: ActorStateEntry[], schema?: ActorStateSchemaSnapshot): string {
+  if (change.actorId) {
+    const actor = actors.find(([actorId]) => actorId === change.actorId)?.[1]
+    const template = actor ? actorTemplate(actor, schema) : undefined
+    const field = template?.fields?.find((candidate) => actorFieldPaths(candidate).some((path) => sameFieldPath(path, change.path)))
+    if (field) return field.name
+    return humanizeStateKey(change.path)
+  }
+  const segments = change.path.split('.').filter(Boolean)
+  return humanizeStateKey(segments[segments.length - 1] || change.path)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
