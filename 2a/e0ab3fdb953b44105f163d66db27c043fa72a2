@@ -1,0 +1,133 @@
+CHANGELOG.md
+  s_23188fde43bd80::t_5bd31c538f6ede 11-16,20-27
+docs/status/actor-state-presets-v2-design.md
+  s_55930a8f479e5c::t_961168c5f49be2 1,7,9,13,15-22,24,26-109,115-118,131,133,135,137-142,144,146-152,154,156,158-163,165,167,169,171-179,181,183-185,187-201,203,205,207-210,212,214-222,224-228,241,243-247,249,251-257,259,272-296,301-306
+internal/agent/builder.go
+  s_23188fde43bd80::t_dbd6a090327cb7 510-514
+internal/agent/interactive_state_schema_tools.go
+  s_23188fde43bd80::t_547b3f5aa41236 14-40
+internal/agent/interactive_state_schema_tools_test.go
+  s_23188fde43bd80::t_ef4d1416d40166 84-110
+internal/agent/interactive_story_tools.go
+  s_23188fde43bd80::t_a1e57628ae7669 146
+internal/agent/system_prompt.go
+  s_23188fde43bd80::t_70348e856a572f 125
+internal/app/interactive_app_service.go
+  s_23188fde43bd80::t_5c0e6959be1750 146-158,161-164,167,169,172-174,201-207,211-254,859-863,865-871
+internal/app/interactive_conversation.go
+  s_23188fde43bd80::t_38c9213063137d 53-54,89-184,247,260,284,377-380,382-383,412-414,421,710
+internal/app/interactive_conversation_context_ledger.go
+  s_23188fde43bd80::t_98ce87854a4dcd 75,125-130
+internal/app/interactive_director.go
+  s_23188fde43bd80::t_33251ed47aba3b 30-40
+internal/interactive/actor_state_preset_fields.go
+  s_55930a8f479e5c::t_0b4dafb7fbec59 9-19,93,156-159,162-164,166-182,185-190,204-209,216-221,237-245
+internal/interactive/actor_state_preset_genres.go
+  s_55930a8f479e5c::t_4e60c8e322bbf8 5-14,20,23,39-52,77-84,106-116
+internal/interactive/actor_state_presets.go
+  s_55930a8f479e5c::t_514199a4ce0392 21-25
+internal/interactive/director_modules_test.go
+  s_55930a8f479e5c::t_164e999343679b 124-125,130,133-135,147-150,154-160,163-167,189-192,194-220,222-225,389,405-410,415-416
+internal/interactive/opening_state_schema_commit_test.go
+  s_23188fde43bd80::t_9ef84cd88cd692 1-230
+internal/interactive/state_schema_adaptation_test.go
+  s_55930a8f479e5c::t_f4f280a5f29a83 39-41,44
+internal/interactive/state_schema_initialization.go
+  s_23188fde43bd80::t_5f328b289b568e 32,44-45,109,142,244-381
+internal/interactive/state_schema_policy.go
+  s_23188fde43bd80::t_1eb4009405a510 1-139
+internal/interactive/state_schema_proposal.go
+  s_23188fde43bd80::t_355071728e986c 25-27,123-140
+internal/interactive/state_schema_proposal_batch.go
+  s_23188fde43bd80::t_7406f5b7fbb2d2 85-102,221,229,286-333
+internal/interactive/story.go
+  s_23188fde43bd80::t_205c4fb1440fc6 88,90-103,116-130,140,144-160,184-186,190,281-335,337,355-358,621-626,1442,1454,1458-1466
+internal/interactive/story_directors.go
+  s_23188fde43bd80::t_b3bee3402fa478 65-74
+internal/interactive/story_snapshot.go
+  s_23188fde43bd80::t_478a37c65fca32 79-86
+internal/interactive/story_types.go
+  s_23188fde43bd80::t_9caf957e99d50e 14,33-47,104-116,130-144,191-192
+internal/interactive/turn_result_test.go
+  s_55930a8f479e5c::t_b8114749d51982 31-34,53,58-59,62-63,76,78,80-81
+internal/prompts/interactive.go
+  s_23188fde43bd80::t_8a84a321f0ee2f 32,162-164
+web/src/components/ui/radio-group.tsx
+  s_23188fde43bd80::t_674981c4ee3125 1-27
+web/src/features/interactive/api.ts
+  s_23188fde43bd80::t_14952099fce275 3,17,45
+web/src/features/interactive/components/InteractiveLayout.tsx
+  s_23188fde43bd80::t_4fb0df770ed3be 191
+web/src/features/interactive/components/NewStorySetupPanel.test.tsx
+  s_23188fde43bd80::t_05c7ef7605ed6e 50,53,71-86,109,115
+web/src/features/interactive/components/NewStorySetupPanel.tsx
+  s_23188fde43bd80::t_ca23aec8365755 1,7,11,14,42,72-77,85-86,123-125,164-204
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_55930a8f479e5c::t_32af05ce4e712f 235-242,407,440,466-469,516,548,591,630,660,675,706,735,739-747,762,771,812,821,838,1066,1074,1099,1104,1131-1132,1496,1560-1564
+web/src/features/interactive/components/StoryStage.tsx
+  s_23188fde43bd80::t_87029b1a6a072d 1166
+web/src/features/interactive/components/preset-config/actor-state-explorer/ActorStateExplorer.test.tsx
+  s_55930a8f479e5c::t_c883addd799dbe 69,94-96,98
+web/src/features/interactive/components/preset-config/actor-state-explorer/build-tree.ts
+  s_55930a8f479e5c::t_b68740dd9ab562 16-38,47,130-133,194,204-208
+web/src/features/interactive/components/preset-config/actor-state-explorer/tree/StateTreeNode.tsx
+  s_55930a8f479e5c::t_afc2771b92540e 10,48
+web/src/features/interactive/components/preset-config/actor-state-explorer/types.ts
+  s_55930a8f479e5c::t_80f4733b1f5e65 6
+web/src/features/interactive/components/setting-panel/preset-directory-sections.tsx
+  s_55930a8f479e5c::t_4ce577dd3d1fda 12,64
+web/src/features/interactive/components/setting-panel/use-preset-resources.ts
+  s_55930a8f479e5c::t_3e70fc3d2f553b 27
+web/src/features/interactive/components/story-director/StoryDirectorEditor.test.tsx
+  s_23188fde43bd80::t_e70438d86ee2ee 7,33
+web/src/features/interactive/components/story-director/StoryDirectorEditor.tsx
+  s_23188fde43bd80::t_8b4a2a471868b2 17
+web/src/features/interactive/components/story-state/StateLayoutEditor.tsx
+  s_55930a8f479e5c::t_03c7e98e10ca5b 1,5,7,9,12,14-15,27,40,62,65-70,72-77,79-107,109-123,126-136,169-177,194-200,226,230-238,256-259,271,280,283,292,295-303,331-357
+web/src/features/interactive/components/story-state/layout-preference.test.ts
+  s_55930a8f479e5c::t_c7490bc9c59729 7,67-95
+web/src/features/interactive/components/story-state/layout-preference.ts
+  s_55930a8f479e5c::t_1da5f6bdaf59ce 96-124,194-197
+web/src/features/interactive/opening.ts
+  s_23188fde43bd80::t_63d9ff4284734c 2,15
+web/src/features/interactive/types.ts
+  s_23188fde43bd80::t_21854da1a4a0ce 16,23-28,191
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_55930a8f479e5c::t_d7ad921f29a2bb 193
+web/src/i18n/locales/en-US/storyPicker.ts
+  s_23188fde43bd80::t_55437817ed3153 21-32
+web/src/i18n/locales/en-US/storyStage.ts
+  s_55930a8f479e5c::t_a88c58fbb6f2de 64
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_55930a8f479e5c::t_3ae15996f96043 193
+web/src/i18n/locales/zh-CN/storyPicker.ts
+  s_23188fde43bd80::t_1baad1f5b1cb86 21-32
+web/src/i18n/locales/zh-CN/storyStage.ts
+  s_55930a8f479e5c::t_f7174b7430cc55 64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2ae0ab3fdb953b44105f163d66db27c043fa72a2",
+  "prompts": {},
+  "sessions": {
+    "s_23188fde43bd80": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7a75-d901-7031-b67e-2d58a0128573",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_55930a8f479e5c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f78f6-2fce-7302-943e-3d5ce944dbd6",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
