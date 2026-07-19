@@ -102,6 +102,11 @@ func TestUnifiedTurnSubmissionDecodesStructuredStateChangesAndIsolatesFailures(t
 		t.Fatalf("model-facing receipt should use the unified state_changes vocabulary: %s", receiptJSON)
 	}
 
+	serialized := DecodeInteractiveTurnSubmissionInput(`{"state_changes":"[{\"op\":\"replace\",\"actor_id\":\"protagonist\",\"field_id\":\"当前处境\",\"value\":\"废弃哨站\"}]"}`)
+	if serialized.StateUpdates == nil || len(*serialized.StateUpdates) != 1 || (*serialized.StateUpdates)[0].Path != "/protagonist/当前处境" || len(serialized.Diagnostics) != 0 {
+		t.Fatalf("one-layer string-encoded array should be decoded without losing the intended state fact: %#v", serialized)
+	}
+
 	malformed := DecodeInteractiveTurnSubmissionInput(`{"state_changes":"not-an-array","choices":["左路","右路","检查地图","询问同伴","原地观察"]}`)
 	if malformed.StateUpdates != nil || len(malformed.Diagnostics) != 1 || malformed.Diagnostics[0].Module != TurnSubmissionModuleStateChanges {
 		t.Fatalf("malformed state_changes must be isolated while valid choices remain available: %#v", malformed)

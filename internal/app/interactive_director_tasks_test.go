@@ -4,7 +4,44 @@ import (
 	"context"
 	"fmt"
 	"testing"
+
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/book"
+	"denova/internal/interactive"
 )
+
+func TestLegacyStoryDirectorMaintenanceKeepsStateSchemaFixed(t *testing.T) {
+	workspace := t.TempDir()
+	store := interactive.NewStore(workspace)
+	stateSystem := interactive.GeneratedStoryActorStateCore()
+	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "旧故事", ActorState: &stateSystem})
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, _, err := store.AppendTurnWithState(story.ID, interactive.AppendTurnWithStateRequest{BranchID: "main", User: "继续", Narrative: "故事继续。"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var maintenanceTasks []string
+	generator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
+		maintenanceTasks = append(maintenanceTasks, toolContext.MaintenanceTask)
+		return "", fmt.Errorf("stop after inspecting Director maintenance task")
+	}
+	conversation := newInteractiveConversation(store, "", workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{}).bindDirectorRuntime(newWorkspaceDirectorTaskGroup(), generator)
+	<-startInteractiveDirectorMaintenanceTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil, true)
+
+	if len(maintenanceTasks) != 1 || maintenanceTasks[0] != interactiveDirectorTaskDirectorPlanUpdate {
+		t.Fatalf("legacy story Director tasks = %#v, want only %q", maintenanceTasks, interactiveDirectorTaskDirectorPlanUpdate)
+	}
+	storyCtx, err := store.StoryContext(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if storyCtx.Meta.StateSchemaPolicy == nil || storyCtx.Meta.StateSchemaPolicy.Mode != interactive.StoryStateSchemaModeFixedTemplate || storyCtx.Meta.ActorStateSchema == nil || storyCtx.Meta.ActorStateSchema.Revision != 1 {
+		t.Fatalf("legacy story must keep revision 1 fixed schema: %#v", storyCtx.Meta)
+	}
+}
 
 func TestWorkspaceDirectorTaskGroupCancelsAndWaits(t *testing.T) {
 	tasks := newWorkspaceDirectorTaskGroup()
@@ -85,51 +122,5 @@ func TestWorkspaceDirectorTaskGroupWaitKeyWaitsForQueuedWork(t *testing.T) {
 	if err := <-waitDone; err != nil {
 		t.Fatal(err)
 	}
-	tasks.Close()
-}
-
-func TestInteractiveForegroundWaitsForSchemaLaneButNotDerivedMaintenance(t *testing.T) {
-	tasks := newWorkspaceDirectorTaskGroup()
-	conversation := &interactiveConversation{storyID: "story-1"}
-	schemaKey := interactiveStateSchemaMaintenanceKey(conversation, "main")
-	derivedKey := interactiveDerivedMaintenanceKey(conversation, "main")
-	if schemaKey == derivedKey {
-		t.Fatalf("maintenance lanes must be distinct: %s", schemaKey)
-	}
-
-	releaseSchema := make(chan struct{})
-	releaseDerived := make(chan struct{})
-	derivedStarted := make(chan struct{})
-	_, _ = tasks.GoKeyed(schemaKey, func(context.Context) { <-releaseSchema })
-	derivedDone, _ := tasks.GoKeyed(derivedKey, func(context.Context) {
-		close(derivedStarted)
-		<-releaseDerived
-	})
-	<-derivedStarted
-	waitDone := make(chan error, 1)
-	go func() {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				waitDone <- fmt.Errorf("schema lane wait panic: %v", recovered)
-			}
-		}()
-		waitDone <- tasks.WaitKey(context.Background(), schemaKey)
-	}()
-	select {
-	case err := <-waitDone:
-		t.Fatalf("schema wait returned before schema completion: %v", err)
-	default:
-	}
-	close(releaseSchema)
-	if err := <-waitDone; err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-derivedDone:
-		t.Fatal("schema wait should not require derived Director/Memory maintenance")
-	default:
-	}
-	close(releaseDerived)
-	<-derivedDone
 	tasks.Close()
 }

@@ -126,15 +126,17 @@ describe('DirectorBackstage', () => {
     expect(screen.getByText(/修行者/)).toBeInTheDocument()
   })
 
-  it('状态结构初始化失败时自动展开并提示', () => {
+  it('旧故事的固定状态结构保持只读', async () => {
     renderBackstage({
       snapshot: {
         story_id: 'story', branch_id: 'main', turns: [], state: {},
-        state_schema_initialization: { mode: 'after_opening', status: 'failed', error: '模型不可用' },
+        state_schema_initialization: { mode: 'fixed_template', status: 'ready', outcome: 'fixed' },
       } as never,
     })
 
-    expect(screen.getByText('模型不可用')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '重试适配' })).toBeInTheDocument()
+    expect(screen.queryByText('固定结构')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '故事状态结构' }))
+    expect(screen.getByText('本故事的状态结构已经冻结。')).toBeInTheDocument()
+    expect(screen.queryByText('重试适配')).not.toBeInTheDocument()
   })
 })

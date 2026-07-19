@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
@@ -13,46 +14,106 @@ import (
 
 const initializeStoryStateSchemaToolName = "initialize_story_state_schema"
 
+type openingStateSchemaBatchToolInput struct {
+	Summary  string                                 `json:"summary,omitempty" jsonschema_description:"本次开局状态结构审查的简短摘要。"`
+	Items    []openingStateSchemaBatchItemToolInput `json:"items" jsonschema:"maxItems=16" jsonschema_description:"本次新增或重试的独立提案项。只重传 rejected/blocked 项；已 accepted 的 item_id 不要重传。"`
+	Finalize bool                                   `json:"finalize" jsonschema_description:"本批成功后是否完成草稿。存在 rejected/blocked 项时后端不会 finalize。"`
+}
+
+type openingStateSchemaBatchItemToolInput struct {
+	ItemID       string                                         `json:"item_id" jsonschema_description:"稳定且唯一的幂等 ID，仅使用字母、数字、点、下划线、冒号或短横线。"`
+	DependsOn    []string                                       `json:"depends_on,omitempty" jsonschema:"maxItems=16" jsonschema_description:"本项依赖的其他 item_id。"`
+	Summary      string                                         `json:"summary,omitempty" jsonschema_description:"本项审查或结构调整的简短摘要。"`
+	Requirements []openingStateSchemaRequirementReviewToolInput `json:"requirements" jsonschema:"minItems=1,maxItems=64" jsonschema_description:"本项自包含的来源化字段审查。covered/add/replace 必须填写 template_id、field_id 和 expected_type。"`
+	Adaptation   openingStateSchemaAdaptationToolInput          `json:"adaptation" jsonschema_description:"只允许 template_ops；Actor 创建和值必须稍后通过 submit_interactive_turn.state_changes 提交。"`
+}
+
+type openingStateSchemaRequirementSourceToolInput struct {
+	Kind string `json:"kind" jsonschema:"enum=opening,enum=lore,enum=trpg" jsonschema_description:"来源类型。开局草案固定使用 opening；仅已读取资料可使用 lore；规则模板使用 trpg。"`
+	ID   string `json:"id" jsonschema_description:"来源稳定 ID。kind=opening 时必须逐字填写 opening-draft。"`
+}
+
+type openingStateSchemaRequirementReviewToolInput struct {
+	Source       openingStateSchemaRequirementSourceToolInput `json:"source"`
+	Requirement  string                                       `json:"requirement" jsonschema_description:"为什么本故事需要这个长期状态字段，以及它将承接什么信息。"`
+	EvidenceKind string                                       `json:"evidence_kind" jsonschema:"enum=confirmed,enum=inferred,enum=default" jsonschema_description:"confirmed=来源明确确认；inferred=合理推断；default=规则级默认。"`
+	ValuePolicy  string                                       `json:"value_policy" jsonschema:"enum=schema_only" jsonschema_description:"开局结构工具固定为 schema_only；不得在此写 Actor 值。"`
+	ExpectedType string                                       `json:"expected_type,omitempty" jsonschema:"enum=number,enum=string,enum=bool,enum=enum,enum=object,enum=list" jsonschema_description:"covered/add/replace 必填，且必须与目标字段类型一致。ignored 时省略。"`
+	Min          *float64                                     `json:"min,omitempty" jsonschema_description:"仅当来源明确要求数值下界时填写，并与目标字段一致。"`
+	Max          *float64                                     `json:"max,omitempty" jsonschema_description:"仅当来源明确要求数值上界时填写，并与目标字段一致。"`
+	Decision     string                                       `json:"decision" jsonschema:"enum=covered,enum=add,enum=replace,enum=ignored" jsonschema_description:"covered=现有字段足够；add/replace=需要对应 template_ops；ignored=明确不进入长期状态并填写 reason。"`
+	TemplateID   string                                       `json:"template_id,omitempty" jsonschema_description:"covered/add/replace 必填，逐字使用 Actor 状态手册中的 Template ID。"`
+	FieldID      string                                       `json:"field_id,omitempty" jsonschema_description:"covered/add/replace 必填，逐字使用目标字段 ID；add 时填写要新增的字段 ID。"`
+	Reason       string                                       `json:"reason,omitempty" jsonschema_description:"ignored 必填；其它决策仅在需要补充取舍时填写。"`
+}
+
+type openingStateSchemaAdaptationToolInput struct {
+	Summary     string                                   `json:"summary,omitempty" jsonschema_description:"结构 diff 的简短摘要。"`
+	TemplateOps []interactive.ActorStateTemplateSchemaOp `json:"template_ops,omitempty" jsonschema:"maxItems=64" jsonschema_description:"满足本项 requirements 所需的最小模板/字段 diff；covered 时为空数组。"`
+}
+
+func (input openingStateSchemaBatchToolInput) batch() interactive.ActorStateSchemaBatch {
+	batch := interactive.ActorStateSchemaBatch{
+		Summary:  input.Summary,
+		Items:    make([]interactive.ActorStateSchemaBatchItem, 0, len(input.Items)),
+		Finalize: input.Finalize,
+	}
+	for _, item := range input.Items {
+		converted := interactive.ActorStateSchemaBatchItem{
+			ItemID:       item.ItemID,
+			DependsOn:    append([]string(nil), item.DependsOn...),
+			Summary:      item.Summary,
+			Requirements: make([]interactive.ActorStateSchemaRequirementReview, 0, len(item.Requirements)),
+			Adaptation: interactive.ActorStateSchemaAdaptation{
+				Summary:     item.Adaptation.Summary,
+				TemplateOps: append([]interactive.ActorStateTemplateSchemaOp(nil), item.Adaptation.TemplateOps...),
+			},
+		}
+		for _, requirement := range item.Requirements {
+			converted.Requirements = append(converted.Requirements, interactive.ActorStateSchemaRequirementReview{
+				Source: interactive.ActorStateSchemaRequirementSource{
+					Kind: requirement.Source.Kind,
+					ID:   requirement.Source.ID,
+				},
+				Requirement:  requirement.Requirement,
+				EvidenceKind: requirement.EvidenceKind,
+				ValuePolicy:  requirement.ValuePolicy,
+				ExpectedType: requirement.ExpectedType,
+				Min:          requirement.Min,
+				Max:          requirement.Max,
+				Decision:     requirement.Decision,
+				TemplateID:   requirement.TemplateID,
+				FieldID:      requirement.FieldID,
+				Reason:       requirement.Reason,
+			})
+		}
+		batch.Items = append(batch.Items, converted)
+	}
+	return batch
+}
+
 func newInteractiveOpeningStateSchemaTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
 	if ctx.SubmitStateSchemaBatch == nil {
 		return nil, nil
 	}
+	description := strings.Join([]string{
+		"仅在故事首回合正文之前，增量暂存本故事的状态模板与字段结构。模型可见参数是开局专用的 structure-only 契约；不要提交 Actor、initial_actor_ops 或 actor_ops。",
+		"开局草案来源必须精确写为 source={\"kind\":\"opening\",\"id\":\"opening-draft\"}。evidence_kind 只能是 confirmed/inferred/default，value_policy 固定为 schema_only；covered/add/replace 必须填写现有或目标 template_id、field_id 与合法 expected_type。",
+		"已有字段足够时只需一个具体字段的 covered 审查项并使用空 template_ops，不要为了完整感逐模板重复审查。工具分别返回 accepted、rejected、blocked；只重试失败项，finalized=true 后再输出开局正文。",
+		"最小可照抄示例：{\"summary\":\"现有字段覆盖开局需求\",\"items\":[{\"item_id\":\"schema-covered-review\",\"summary\":\"审查主角姓名字段\",\"requirements\":[{\"source\":{\"kind\":\"opening\",\"id\":\"opening-draft\"},\"requirement\":\"主角姓名需要长期记录，现有字段已覆盖\",\"evidence_kind\":\"confirmed\",\"value_policy\":\"schema_only\",\"expected_type\":\"string\",\"decision\":\"covered\",\"template_id\":\"protagonist\",\"field_id\":\"姓名\"}],\"adaptation\":{\"template_ops\":[]}}],\"finalize\":true}",
+		"草稿不会单独写入；只有结构、正文、初始状态和 choices 全部通过时才原子落盘。Actor 创建与所有初始值稍后通过 submit_interactive_turn.state_changes 提交。",
+	}, "\n")
 	submitTool, err := utils.InferTool(
 		initializeStoryStateSchemaToolName,
-		"仅在故事首回合正文之前，增量暂存本故事的状态模板与字段结构。每个 item 使用稳定 item_id，并用 opening/opening-draft（或工具允许的 trpg ID）填写来源化 requirement；value_policy 必须是 schema_only。adaptation 只能包含 template_ops，禁止 initial_actor_ops 和 actor_ops：Actor 创建与所有初始值必须稍后通过 submit_interactive_turn.state_changes 提交。工具分别返回 accepted、rejected、blocked；只重试失败项，finalized=true 后再输出开局正文。草稿不会单独写入，只有正文、初始状态和 choices 全部通过时才原子落盘。已有字段足够时，提交 decision=covered 的有来源审查项并使用空 adaptation 后 finalize。",
-		func(callCtx context.Context, input interactive.ActorStateSchemaBatch) (string, error) {
-			result, err := ctx.SubmitStateSchemaBatch(callCtx, input)
+		description,
+		func(callCtx context.Context, input openingStateSchemaBatchToolInput) (string, error) {
+			result, err := ctx.SubmitStateSchemaBatch(callCtx, input.batch())
 			if err != nil {
 				return "", err
 			}
 			data, err := json.MarshalIndent(result, "", "  ")
 			if err != nil {
 				return "", fmt.Errorf("序列化开局状态结构 Batch 结果失败: %w", err)
-			}
-			return string(data), nil
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-	return []tool.BaseTool{submitTool}, nil
-}
-
-func newInteractiveStateSchemaTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
-	if ctx.SubmitStateSchemaBatch == nil {
-		return nil, nil
-	}
-	submitTool, err := utils.InferTool(
-		"submit_state_schema_adaptation",
-		"增量提交首轮后或用户显式复审时的状态结构 Batch。每个 item 使用稳定 item_id，自包含来源化 requirement 与对应最小 diff；每个 requirement 必须声明 value_policy，initialize 必须在同一 item 用字段级 actor_ops set 提交可靠非空值。工具分别返回 accepted、rejected、blocked 及精确错误路径，重试时只发送失败或阻塞项。finalize 成功前不修改故事，最终迁移由后端原子完成。",
-		func(callCtx context.Context, input interactive.ActorStateSchemaBatch) (string, error) {
-			result, err := ctx.SubmitStateSchemaBatch(callCtx, input)
-			if err != nil {
-				return "", err
-			}
-			data, err := json.MarshalIndent(result, "", "  ")
-			if err != nil {
-				return "", fmt.Errorf("序列化状态结构 Batch 结果失败: %w", err)
 			}
 			return string(data), nil
 		},

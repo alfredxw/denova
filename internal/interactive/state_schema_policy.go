@@ -24,9 +24,9 @@ func NormalizeStoryStateSchemaPolicy(policy StoryStateSchemaPolicy) StoryStateSc
 	mode := strings.TrimSpace(policy.Mode)
 	switch mode {
 	case StoryStateSchemaModeAdaptTemplate, StoryStateSchemaModeFixedTemplate, StoryStateSchemaModeGenerate:
-	case StateSchemaAdaptationModeAfterOpening:
-		mode = StoryStateSchemaModeAdaptTemplate
-	case StateSchemaAdaptationModeOff:
+	case "after_opening", "off":
+		// These values belonged to the removed Director-owned flow. Stories that
+		// still contain either value keep their already-frozen schema unchanged.
 		mode = StoryStateSchemaModeFixedTemplate
 	default:
 		mode = StoryStateSchemaModeAdaptTemplate
@@ -40,6 +40,30 @@ func cloneStoryStateSchemaPolicy(policy *StoryStateSchemaPolicy) *StoryStateSche
 	}
 	normalized := NormalizeStoryStateSchemaPolicy(*policy)
 	return &normalized
+}
+
+func fixedStoryStateSchemaPolicy() *StoryStateSchemaPolicy {
+	return &StoryStateSchemaPolicy{Mode: StoryStateSchemaModeFixedTemplate}
+}
+
+func normalizeFixedStoryStateSchemaInitialization(meta *StoryMeta) {
+	if meta == nil || meta.StateSchemaPolicy == nil || NormalizeStoryStateSchemaPolicy(*meta.StateSchemaPolicy).Mode != StoryStateSchemaModeFixedTemplate {
+		return
+	}
+	revision := actorStateSchemaRevision(meta.ActorStateSchema)
+	completedAt := firstNonEmptyString(meta.UpdatedAt, meta.CreatedAt)
+	if meta.StateSchemaInitialization != nil {
+		completedAt = firstNonEmptyString(meta.StateSchemaInitialization.CompletedAt, completedAt)
+	}
+	meta.StateSchemaInitialization = &StateSchemaInitializationStatus{
+		Mode:           StoryStateSchemaModeFixedTemplate,
+		Status:         StateSchemaInitializationReady,
+		Outcome:        "fixed",
+		BaseRevision:   revision,
+		TargetRevision: revision,
+		CompletedAt:    completedAt,
+		UpdatedAt:      completedAt,
+	}
 }
 
 func storyStateSchemaPolicyRequiresOpeningDraft(policy *StoryStateSchemaPolicy) bool {
@@ -68,16 +92,11 @@ func OpeningGameStateSchemaInstruction(meta StoryMeta) string {
 		return ""
 	}
 	mode := NormalizeStoryStateSchemaPolicy(*meta.StateSchemaPolicy).Mode
-	base := "本故事的首回合必须先调用 initialize_story_state_schema，并在工具 finalized=true 后再输出正文。结构工具只定义模板与字段：所有 requirement 使用 value_policy=schema_only，并以 opening/opening-draft 作为本轮开局来源；不要提交 initial_actor_ops 或 actor_ops。随后通过 submit_interactive_turn.state_changes 创建必要 Actor 并写入初始值。结构草案、开局正文、初始状态和 choices 只会在本轮成功结束时一起原子落盘。"
+	base := "本故事的首回合必须先调用 initialize_story_state_schema，并在工具 finalized=true 后再输出正文。结构工具只定义模板与字段：开局来源必须精确填写 source.kind=opening、source.id=opening-draft；evidence_kind 只能是 confirmed/inferred/default，value_policy 固定为 schema_only；covered/add/replace 必须填写 template_id、field_id 与 number/string/bool/enum/object/list 之一的 expected_type。不要提交 initial_actor_ops 或 actor_ops。已有字段足够时只提交一个具体字段的 covered 审查项，不要逐模板重复审查。随后通过 submit_interactive_turn.state_changes 创建必要 Actor 并写入初始值。结构草案、开局正文、初始状态和 choices 只会在本轮成功结束时一起原子落盘。"
 	if mode == StoryStateSchemaModeGenerate {
 		return base + " 当前手册只有 Denova 不可删除的主角与故事连续性核心；请根据实际开局补齐真正需要长期追踪的模板和字段，不要为了完整感添加无用途字段。"
 	}
 	return base + " 当前手册来自用户选择的状态模板；只添加、替换或移除对本故事确有必要的字段，已有覆盖充分时也要提交一个有来源的 covered 审查项并 finalize。"
-}
-
-func stateSchemaInitializationModeIsFixed(mode string) bool {
-	mode = strings.TrimSpace(mode)
-	return mode == StateSchemaAdaptationModeOff || mode == StoryStateSchemaModeFixedTemplate
 }
 
 // GeneratedStoryActorStateCore is the non-removable platform contract used by

@@ -234,7 +234,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 }
 
-func TestInteractiveStoryKeepsOpeningAndPresetWhenAsyncStateSchemaInitializationFails(t *testing.T) {
+func TestInteractiveStoryStateSchemaRunRouteIsRemoved(t *testing.T) {
 	application := newTestApplication(t)
 	calls := 0
 	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
@@ -261,72 +261,24 @@ func TestInteractiveStoryKeepsOpeningAndPresetWhenAsyncStateSchemaInitialization
 		t.Fatal(err)
 	}
 	runResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/state-schema/run", nil)
-	if runResp.Code != http.StatusAccepted {
-		t.Fatalf("retry state schema status=%d body=%s", runResp.Code, runResp.Body.String())
+	if runResp.Code != http.StatusNotFound {
+		t.Fatalf("removed Director state schema route status=%d body=%s", runResp.Code, runResp.Body.String())
 	}
-	snapshot := waitForStateSchemaStatusAPI(t, server, created.ID, interactive.StateSchemaInitializationFailed)
+	snapshot, err := application.InteractiveSnapshot(created.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.Narrative != "主角走入晨雾。" || snapshot.ActorStateSchema == nil || snapshot.ActorStateSchema.Revision != 1 {
-		t.Fatalf("failed adaptation must preserve opening and preset schema: %#v", snapshot)
+		t.Fatalf("removed Director route must leave story and schema untouched: %#v", snapshot)
 	}
 }
 
-func TestInteractiveStoryCreateAdaptsAndFreezesStoryStateSchema(t *testing.T) {
+func TestInteractiveStoryStateSchemaReviewRoutesAreRemoved(t *testing.T) {
 	application := newTestApplication(t)
-	var instruction string
-	schemaRuns := 0
-	minProgress, maxProgress := 0.0, 100.0
-	minFavor, maxFavor := -100.0, 100.0
-	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(callCtx context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, input string) (string, error) {
-		if toolContext.MaintenanceTask != "state_schema_initialization" {
-			return "测试后台导演完成。", nil
-		}
-		instruction = input
-		schemaRuns++
-		proposal := interactive.ActorStateSchemaProposal{
-			Summary: "为修仙群像与关系玩法补充长期可计算状态",
-			Requirements: []interactive.ActorStateSchemaRequirementReview{
-				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "长期追踪主角修行境界", ExpectedType: "string", Decision: "add", TemplateID: "protagonist", FieldID: "境界", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly, Reason: "故事明确采用修仙成长玩法"},
-				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "以 0 到 100 的数值追踪突破进度", ExpectedType: "number", Min: &minProgress, Max: &maxProgress, Decision: "add", TemplateID: "protagonist", FieldID: "修为进度", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly, Reason: "修炼需要可计算进度"},
-				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "长期记录主角持有法宝", ExpectedType: "list", Decision: "add", TemplateID: "protagonist", FieldID: "法宝", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly, Reason: "法宝会影响秘境探索"},
-				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "长期记录主角掌握功法", ExpectedType: "list", Decision: "add", TemplateID: "protagonist", FieldID: "功法", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly, Reason: "功法会影响修炼与检定"},
-				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "以 -100 到 100 的数值追踪重要角色好感", ExpectedType: "number", Min: &minFavor, Max: &maxFavor, Decision: "add", TemplateID: "important_character", FieldID: "好感度", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly, Reason: "故事明确包含成年角色关系玩法"},
-				{Source: interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: "story-origin"}, Requirement: "追踪重要角色关系阶段", ExpectedType: "enum", Decision: "add", TemplateID: "important_character", FieldID: "关系阶段", ValuePolicy: interactive.ActorStateSchemaValuePolicySchemaOnly, Reason: "关系阶段影响后续选择"},
-			},
-			Adaptation: interactive.ActorStateSchemaAdaptation{TemplateOps: []interactive.ActorStateTemplateSchemaOp{
-				{Op: "fields", TemplateID: "protagonist", FieldOps: []interactive.ActorStateFieldSchemaOp{
-					{Op: "add", Field: interactive.ActorStateField{Name: "境界", Type: "string", Default: "炼气一层", Visibility: "visible", Description: "主角当前修行境界", Order: 110}},
-					{Op: "add", Field: interactive.ActorStateField{Name: "修为进度", Type: "number", Default: 0, Min: &minProgress, Max: &maxProgress, Visibility: "visible", Description: "突破前的修为积累", Order: 120}},
-					{Op: "add", Field: interactive.ActorStateField{Name: "法宝", Type: "list", Default: []any{}, Visibility: "visible", Order: 130}},
-					{Op: "add", Field: interactive.ActorStateField{Name: "功法", Type: "list", Default: []any{}, Visibility: "visible", Order: 140}},
-				}},
-				{Op: "fields", TemplateID: "important_character", FieldOps: []interactive.ActorStateFieldSchemaOp{
-					{Op: "add", Field: interactive.ActorStateField{Name: "好感度", Type: "number", Default: 0, Min: &minFavor, Max: &maxFavor, Visibility: "spoiler", Order: 110}},
-					{Op: "add", Field: interactive.ActorStateField{Name: "关系阶段", Type: "enum", Default: "陌生", Options: []string{"陌生", "熟悉", "暧昧", "恋人"}, Visibility: "spoiler", Order: 120}},
-				}},
-			}},
-		}
-		if schemaRuns > 1 {
-			proposal.Summary = "复审确认现有结构已完整覆盖"
-			proposal.Adaptation = interactive.ActorStateSchemaAdaptation{}
-			for index := range proposal.Requirements {
-				proposal.Requirements[index].Decision = "covered"
-			}
-		}
-		for index := range proposal.Requirements {
-			proposal.Requirements[index].EvidenceKind = "confirmed"
-		}
-		result, err := toolContext.SubmitStateSchemaBatch(callCtx, interactive.ActorStateSchemaBatch{
-			Summary: proposal.Summary,
-			Items: []interactive.ActorStateSchemaBatchItem{{
-				ItemID: "api-state-schema-review", Summary: proposal.Summary,
-				Requirements: proposal.Requirements, Adaptation: proposal.Adaptation,
-			}},
-			Finalize: true,
-		})
-		if err != nil || !result.Finalized {
-			return "", errors.New("状态结构 Batch 未完成")
-		}
-		return "状态结构提案已提交。", nil
+	directorCalls := 0
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+		directorCalls++
+		return "测试后台导演完成。", nil
 	})
 	t.Cleanup(restoreDirector)
 	server := NewServer(application, "0")
@@ -339,8 +291,8 @@ func TestInteractiveStoryCreateAdaptsAndFreezesStoryStateSchema(t *testing.T) {
 	if createResp.Code != http.StatusOK {
 		t.Fatalf("create adapted story status=%d body=%s", createResp.Code, createResp.Body.String())
 	}
-	if instruction != "" {
-		t.Fatalf("story creation must not invoke state schema Director: %s", instruction)
+	if directorCalls != 0 {
+		t.Fatalf("story creation must not invoke Director, calls=%d", directorCalls)
 	}
 	var created interactive.StorySummary
 	decodeResponse(t, createResp.Body.Bytes(), &created)
@@ -354,64 +306,26 @@ func TestInteractiveStoryCreateAdaptsAndFreezesStoryStateSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	runResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/state-schema/run", nil)
-	if runResp.Code != http.StatusAccepted {
-		t.Fatalf("run state schema status=%d body=%s", runResp.Code, runResp.Body.String())
-	}
-	snapshot := waitForStateSchemaStatusAPI(t, server, created.ID, interactive.StateSchemaInitializationReady)
-	if !strings.Contains(instruction, "青云问情录") || !strings.Contains(instruction, "山门在云海间开启") || !strings.Contains(instruction, "state_preset") || !strings.Contains(instruction, "max_non_state_prompt_bytes") {
-		t.Fatalf("initializer instruction must contain bounded opening context: %s", instruction)
-	}
-	if snapshot.ActorStateSchema == nil || snapshot.ActorStateSchema.Version != interactive.ActorStateSchemaVersion || snapshot.ActorStateSchema.Revision != 2 || snapshot.ActorStateSchema.Adaptation == nil {
-		t.Fatalf("adapted schema audit missing: %#v", snapshot.ActorStateSchema)
-	}
-	if snapshot.ActorStateSchema.Adaptation.FieldOps != 6 || snapshot.ActorStateSchema.Adaptation.Source != "director_agent" {
-		t.Fatalf("adaptation audit mismatch: %#v", snapshot.ActorStateSchema.Adaptation)
-	}
-	if len(snapshot.StateSchemaInitialization.Requirements) != 6 || snapshot.StateSchemaInitialization.Outcome != "changed" {
-		t.Fatalf("state schema coverage audit mismatch: %#v", snapshot.StateSchemaInitialization)
-	}
-	templateFields := map[string]map[string]bool{}
-	for _, template := range snapshot.ActorStateSchema.System.Templates {
-		templateFields[template.ID] = map[string]bool{}
-		for _, field := range template.Fields {
-			templateFields[template.ID][field.Name] = true
-		}
-	}
-	for _, fieldID := range []string{"境界", "修为进度", "法宝", "功法"} {
-		if !templateFields["protagonist"][fieldID] {
-			t.Fatalf("protagonist schema missing %s: %#v", fieldID, templateFields["protagonist"])
-		}
-	}
-	for _, fieldID := range []string{"好感度", "关系阶段"} {
-		if !templateFields["important_character"][fieldID] {
-			t.Fatalf("important character schema missing %s: %#v", fieldID, templateFields["important_character"])
-		}
-	}
-	actors, _ := snapshot.State["actors"].(map[string]any)
-	protagonist, _ := actors["protagonist"].(map[string]any)
-	state, _ := protagonist["state"].(map[string]any)
-	if state["境界"] != "炼气一层" || state["修为进度"] != float64(0) {
-		t.Fatalf("adapted defaults must materialize with initial actor state: %#v", state)
+	if runResp.Code != http.StatusNotFound {
+		t.Fatalf("removed Director state schema run route status=%d body=%s", runResp.Code, runResp.Body.String())
 	}
 	reviewResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/state-schema/review", nil)
-	if reviewResp.Code != http.StatusAccepted {
-		t.Fatalf("manual state schema review status=%d body=%s", reviewResp.Code, reviewResp.Body.String())
+	if reviewResp.Code != http.StatusNotFound {
+		t.Fatalf("removed Director state schema review route status=%d body=%s", reviewResp.Code, reviewResp.Body.String())
 	}
-	reviewed := waitForStateSchemaStatusAPI(t, server, created.ID, interactive.StateSchemaInitializationReady)
-	if reviewed.ActorStateSchema == nil || reviewed.ActorStateSchema.Revision != 2 || reviewed.StateSchemaInitialization == nil || reviewed.StateSchemaInitialization.Outcome != "unchanged" || schemaRuns != 2 {
-		t.Fatalf("manual re-review should keep an unchanged schema revision: runs=%d snapshot=%#v", schemaRuns, reviewed.StateSchemaInitialization)
+	if directorCalls != 0 {
+		t.Fatalf("removed routes must not invoke Director, calls=%d", directorCalls)
 	}
 }
 
-func TestInteractiveStoryCreateCanDisableStateSchemaAdaptation(t *testing.T) {
+func TestInteractiveStoryCreateCanUseFixedStateSchemaPolicy(t *testing.T) {
 	application := newTestApplication(t)
 	director, err := application.CreateStoryDirector(interactive.StoryDirector{
 		ID:         "preset-only-director",
 		Name:       "直接使用预设",
 		ModuleRefs: interactive.DefaultStoryDirectorModuleRefs(),
 		Strategy: interactive.StoryDirectorStrategy{
-			Enabled:                   true,
-			StateSchemaAdaptationMode: interactive.StateSchemaAdaptationModeOff,
+			Enabled: true,
 		},
 	})
 	if err != nil {
@@ -425,17 +339,20 @@ func TestInteractiveStoryCreateCanDisableStateSchemaAdaptation(t *testing.T) {
 	t.Cleanup(restoreDirector)
 	server := NewServer(application, "0")
 
-	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]string{
+	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]any{
 		"title":             "原始预设故事",
 		"origin":            "直接使用状态预设。",
 		"story_teller_id":   "classic",
 		"story_director_id": director.ID,
+		"state_schema_policy": map[string]string{
+			"mode": interactive.StoryStateSchemaModeFixedTemplate,
+		},
 	})
 	if createResp.Code != http.StatusOK {
 		t.Fatalf("create preset-only story status=%d body=%s", createResp.Code, createResp.Body.String())
 	}
 	if calls != 0 {
-		t.Fatalf("disabled state schema adaptation must not call Director, calls=%d", calls)
+		t.Fatalf("fixed state schema policy must not call Director, calls=%d", calls)
 	}
 }
 
@@ -503,6 +420,9 @@ func TestInteractiveActorTraitRollAndInitialStateAPI(t *testing.T) {
 		"title":             "带主角词条",
 		"story_teller_id":   "classic",
 		"story_director_id": director.ID,
+		"state_schema_policy": map[string]any{
+			"mode": interactive.StoryStateSchemaModeFixedTemplate,
+		},
 		"initial_trait_rolls": []map[string]any{{
 			"actor_id": "protagonist", "seed": 42,
 			"selections": []map[string]any{{"pool_id": "origin", "trait_ids": []string{"scholar"}}},
@@ -544,6 +464,7 @@ func TestInteractiveActorTraitRollAndInitialStateAPI(t *testing.T) {
 
 	autoCreateResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]any{
 		"title": "后端自动抽取", "story_teller_id": "classic", "story_director_id": director.ID,
+		"state_schema_policy": map[string]any{"mode": interactive.StoryStateSchemaModeFixedTemplate},
 	})
 	if autoCreateResp.Code != http.StatusOK {
 		t.Fatalf("automatic trait creation status=%d body=%s", autoCreateResp.Code, autoCreateResp.Body.String())
@@ -623,6 +544,9 @@ func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
 	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]any{
 		"title":             "关闭模块故事",
 		"story_director_id": "detached",
+		"state_schema_policy": map[string]any{
+			"mode": interactive.StoryStateSchemaModeFixedTemplate,
+		},
 	})
 	if createResp.Code != http.StatusOK {
 		t.Fatalf("create detached story status = %d body=%s", createResp.Code, createResp.Body.String())
@@ -728,28 +652,6 @@ func waitForDirectorStatusAPI(t *testing.T, server *Server, storyID, status stri
 		select {
 		case <-t.Context().Done():
 			t.Fatalf("director status did not reach %q before test cancellation: %#v", status, current)
-		case <-ticker.C:
-		}
-	}
-}
-
-func waitForStateSchemaStatusAPI(t *testing.T, server *Server, storyID, status string) interactive.Snapshot {
-	t.Helper()
-	ticker := time.NewTicker(5 * time.Millisecond)
-	defer ticker.Stop()
-	var snapshot interactive.Snapshot
-	for {
-		resp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories/"+storyID+"/snapshot?branch=main", nil)
-		if resp.Code != http.StatusOK {
-			t.Fatalf("state schema status polling = %d body=%s", resp.Code, resp.Body.String())
-		}
-		decodeResponse(t, resp.Body.Bytes(), &snapshot)
-		if snapshot.StateSchemaInitialization != nil && snapshot.StateSchemaInitialization.Status == status {
-			return snapshot
-		}
-		select {
-		case <-t.Context().Done():
-			t.Fatalf("state schema status did not reach %q before test cancellation: %#v", status, snapshot.StateSchemaInitialization)
 		case <-ticker.C:
 		}
 	}

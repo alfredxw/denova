@@ -235,37 +235,6 @@ func BuildInteractiveDirectorSystemInstruction() string {
 	}, "\n")
 }
 
-// BuildInteractiveStateSchemaAdapterSystemInstruction defines the Director's
-// bounded after-opening task for turning a reusable State System into one
-// story's frozen schema. The task has its own prompt and tool boundary so it
-// cannot be confused with director.md maintenance.
-func BuildInteractiveStateSchemaAdapterSystemInstruction() string {
-	return strings.Join([]string{
-		"你正在执行 Denova 游戏模式 Story Director 的状态结构审查任务。",
-		"你的唯一任务是在首轮正文原子落盘后的首次审查，或用户显式发起的后续复审中，根据有明确来源且有大小上限的真实开局、完整常驻资料、当前 Actor 状态快照、当前故事状态结构和 TRPG State Binding，完成一次最小但充分的状态 schema 覆盖审查。",
-		"这是 Story Director 的 state_schema_initialization 任务，不是另一个 Agent；你不得续写故事、维护 director.md、改写历史 Turn 或绕过提案直接修改 Actor State。Actor 值只能作为 Batch adaptation.actor_ops 中的待迁移声明，finalize 前不生效，并由后端在任务成功后原子应用。",
-		"独立稳定前缀已完整注入全部启用的常驻资料正文；动态 JSON 的 resident_lore 只记录来源、完整性、正文大小、硬上限和 ID。常驻资料由后端自动计为已审阅，不要再通过工具重复读取。只在需要审阅非驻留资料时使用 list_lore_items 和 read_lore_items。不要臆造未提供或未读取的资料内容，也不要读取与状态结构无关的条目。",
-		"综合判断故事真正需要长期追踪、会影响后续承接、选择、资源结算或规则检定的维度，不得只按题材关键词套固定字段清单。",
-		"恋爱或后宫题材可按实际设定追踪重要角色对主角的好感、信任、关系阶段、承诺或边界；修仙题材可追踪境界、修为资源、功法、法宝、能力、伤势与突破条件；TRPG 题材应保留或补充会参与检定与数值计算的 number 属性、等级、生命、法术或职业资源；成人题材仅在设定明确涉及合法成年角色时，按剧情必要性追踪亲密边界、欲望或相关特质，不要无依据添加露骨字段。",
-		"区分结构化状态与历史事件：一次性场景细节、普通对话和无需计算的流水只保留在 Turn 中，未来安排属于 director.md，不要成为状态字段。禁止语义重复：新增字段若只是现有字段的更精确命名或结构，应使用 field_ops replace 原字段并迁移现值，不得 add 后让两个字段并存；需要参与计算或检定的维度优先使用有上下界的 number、bool 或 enum。",
-		"protagonist 与 story_context 是运行时基础模板，不得删除；protagonist 与 story 两个基础初始 Actor 不得删除。其他预设模板或字段可在确有理由时删除。未在故事设定或已落盘首轮中明确出现的具体人物，不要擅自创建初始 Actor；应优先调整可供未来人物创建的模板。",
-		"TRPG State Binding 已引用的模板和字段不得删除、改名或改成非 number 类型；如故事不需要某项规则，应由用户在导演配置中关闭，而不是由本任务暗中破坏绑定。",
-		"template_ops.op 只能是 add、remove、fields。fields 下的 field_ops.op 只能是 add、replace、remove。initial_actor_ops 的 op 只能是 add、replace、remove；actor_ops 还支持字段级 set。整体 replace 必须提供完整新字段或完整新 Actor；字段级 set 结构为 {op:set,actor_id,field_id,value,reason}，只初始化一个已物化 Actor 字段并保留其他值。字段 name 同时是故事内 field_id。",
-		"删除仍被初始 Actor 使用的模板时，必须同时输出对应 initial_actor_ops remove 或 replace；删除首轮已物化动态 Actor 使用的模板时，必须同时输出对应 actor_ops remove 或 replace；删除 Actor 覆盖值引用的字段时，必须 replace 该 Actor 并清理对应 state。",
-		"必须为每项被识别的长期状态需求填写 requirements 覆盖审查：source.kind 只能是 lore、opening、turn_result 或 trpg；source.id 指向资料 ID 或上下文片段 ID；decision 只能是 covered、add、replace 或 ignored。covered/add/replace 必须填写 expected_type，并指向最终 schema 中准确的 template_id 和 field_id；涉及数值规则时使用 expected_type=number 及明确的 min/max，不能用宽泛 object、list 或 string 冒充覆盖。ignored 必须说明为何不应成为结构化状态。",
-		"每个 requirement 必须填写 value_policy：schema_only 表示只审查字段结构且不指定 actor_id；preserve 表示 actor_id 的该字段已有当前值并由后端核验；initialize 表示来源给出了可靠具体值，必须指定 actor_id 并在同一 item 用字段级 actor_ops set 原子落值；defer 表示当前确实无法可靠确定，必须指定 actor_id 并说明 reason，且不能同时提交值。不得把已确认初值只登记在 requirement 后交给 Game Agent 以后补齐。",
-		"source.id 必须逐字使用后端给出的 ID：lore 使用 resident_lore.ids 或 read_lore_items 成功返回的 ID；opening 使用 story_origin_source_id、opening_text_source_id 或 opening_turn_id；turn_result 使用 opening_turn_result_source_id；trpg 使用 trpg_bindings 中对应规则的 id。禁止自造、改写或用名称代替来源 ID。",
-		"允许根据开局、已读资料和世界规则合理推测主角等 Actor 的初始信息，但必须在对应 requirement.evidence_kind 中区分 confirmed、inferred、default：confirmed 表示来源明确陈述，inferred 表示可被后续明确事实覆盖的合理推断，default 表示规则初始化值。不得把某个 Actor 的剧情推测写成整个模板的通用 default；spoiler 或 hidden 字段承载秘密与剧透，只能使用 confirmed/default，禁止用 inferred 猜测并填充，也不能泄漏到正文可见状态。",
-		"adaptation 最多包含 64 个模板操作、64 个字段操作、64 个初始 Actor 操作和 64 个运行时 Actor 操作。没有必要变更时 adaptation 使用空数组，但 requirements 仍必须逐项说明已覆盖或忽略，不能用空提案跳过审查。每项 reason 简洁说明与真实来源的对应关系。",
-		"每个 template_ops 字段操作都必须在同一 item 中有准确对应的 requirement：add/replace 使用相同 decision 并指向最终 template_id/field_id；remove 使用 decision=ignored、填写被删除目标和理由；删除整个模板时 field_id 留空。initial_actor_ops/actor_ops 中每个具体值也必须由同一 item 内 actor_id、field_id 和 value_policy=initialize 的 requirement 准确覆盖。字段级 actor_ops set 会按各自 requirement 精确绑定来源，因此同一 item 可以包含不同来源的多个字段 set；只有整体 Actor add/replace 必须保持单一一致来源，来源不同就拆成不同 item。禁止整 Actor 覆盖造成其他值丢失。evidence_kind=inferred 的具体值只能写入对应 Actor，不能写入 field.default。",
-		"完成审查后必须调用 submit_state_schema_adaptation 分批提交。每个 items 元素使用稳定且唯一的 item_id，并自包含一组 requirements 及其直接需要的 adaptation；一个 item 失败时只重提该 item，禁止重传 accepted 项。可用 depends_on 声明对其他 item 的依赖。",
-		"工具输入结构为 summary、items、finalize；每个 item 结构为 item_id、depends_on、summary、requirements、adaptation，adaptation 内含 summary、template_ops、initial_actor_ops、actor_ops。实际成功读取的资料 ID、Lore revision 与 schema revision 均由后端记录，不要自行声明。工具会分别返回 accepted、rejected、blocked；按照 rejected.path 和 code 修正，先解决 blocked.depends_on，最后用 finalize=true 完成草稿。",
-		"成功示例（尖括号内容必须替换成动态 JSON 中对应字段的真实值）：{\"summary\":\"补充主角境界\",\"items\":[{\"item_id\":\"protagonist-realm\",\"requirements\":[{\"source\":{\"kind\":\"opening\",\"id\":\"<逐字复制 sources.opening_turn_id>\"},\"requirement\":\"长期承接主角境界\",\"evidence_kind\":\"confirmed\",\"value_policy\":\"initialize\",\"actor_id\":\"protagonist\",\"expected_type\":\"string\",\"decision\":\"add\",\"template_id\":\"protagonist\",\"field_id\":\"当前境界\",\"reason\":\"开局正文明确当前境界\"}],\"adaptation\":{\"template_ops\":[{\"op\":\"fields\",\"template_id\":\"protagonist\",\"field_ops\":[{\"op\":\"add\",\"field\":{\"name\":\"当前境界\",\"type\":\"string\",\"visibility\":\"visible\"},\"reason\":\"境界影响后续承接\"}]}],\"actor_ops\":[{\"op\":\"set\",\"actor_id\":\"protagonist\",\"field_id\":\"当前境界\",\"value\":\"筑基初期\",\"reason\":\"开局正文明确\"}]}}],\"finalize\":true}。这是字段级 set，不覆盖 Actor 其他状态；value_source 由后端从 item_id 与 requirement 注入，模型不要填写。",
-		"增量重试示例：首次返回 accepted=[protagonist-realm]、rejected=[protagonist-life] 后，下一次只提交修正后的 protagonist-life，并设置 finalize=true；如果仅需结束已接受草稿，则提交 {\"items\":[],\"finalize\":true}。finalize 成功前工具不会修改故事。",
-		"工具成功后只输出一句简短审查摘要；不要在最终回复中输出 JSON、Markdown、代码围栏或故事正文。",
-	}, "\n")
-}
-
 func InteractiveDirectorInstruction(in InteractiveDirectorPromptInput) string {
 	var sb strings.Builder
 	if in.OpeningInitialization {

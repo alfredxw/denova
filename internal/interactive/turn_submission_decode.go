@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 )
@@ -99,11 +100,8 @@ func DecodeInteractiveTurnSubmissionInput(arguments string) TurnSubmissionInput 
 }
 
 func decodeStructuredStateChangesModule(raw json.RawMessage) ([]StateUpdate, []TurnSubmissionDiagnostic) {
-	var items []json.RawMessage
-	if err := decodeStrictJSON(raw, &items, false); err != nil || items == nil {
-		if err == nil {
-			err = errors.New("state_changes cannot be null")
-		}
+	items, err := decodeStructuredStateChangeItems(raw)
+	if err != nil {
 		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
 			TurnSubmissionModuleStateChanges,
 			nil,
@@ -111,8 +109,8 @@ func decodeStructuredStateChangesModule(raw json.RawMessage) ([]StateUpdate, []T
 			"/state_changes",
 			"array",
 			jsonValueKind(raw),
-			fmt.Sprintf("state_changes 必须是数组：%v", err),
-			fmt.Sprintf("state_changes must be an array: %v", err),
+			fmt.Sprintf("state_changes 必须是原生数组；仅兼容一层包含合法数组 JSON 的字符串：%v", err),
+			fmt.Sprintf("state_changes must be a native array; only one string layer containing valid array JSON is tolerated: %v", err),
 		)}
 	}
 	if len(items) > maxInteractiveListItems {
@@ -164,6 +162,43 @@ func decodeStructuredStateChangesModule(raw json.RawMessage) ([]StateUpdate, []T
 		return nil, diagnostics
 	}
 	return updates, nil
+}
+
+// decodeStructuredStateChangeItems keeps the model-facing contract strict while
+// tolerating the one legacy shape observed in real runs: an otherwise valid
+// array JSON value encoded once as a string. It intentionally does not recurse,
+// repair malformed pseudo-JSON, or accept null so invalid facts still trigger a
+// targeted state_changes retry.
+func decodeStructuredStateChangeItems(raw json.RawMessage) ([]json.RawMessage, error) {
+	var items []json.RawMessage
+	directErr := decodeStrictJSON(raw, &items, false)
+	if directErr == nil && items != nil {
+		return items, nil
+	}
+	if jsonValueKind(raw) != "string" {
+		if directErr != nil {
+			return nil, directErr
+		}
+		return nil, errors.New("state_changes cannot be null")
+	}
+
+	var encoded string
+	if err := decodeStrictJSON(raw, &encoded, false); err != nil {
+		return nil, err
+	}
+	encoded = strings.TrimSpace(encoded)
+	if encoded == "" {
+		return nil, errors.New("state_changes string cannot be empty")
+	}
+	items = nil
+	if err := decodeStrictJSON([]byte(encoded), &items, false); err != nil {
+		return nil, fmt.Errorf("state_changes string does not contain valid array JSON: %w", err)
+	}
+	if items == nil {
+		return nil, errors.New("state_changes string cannot contain null")
+	}
+	log.Printf("[interactive-turn-submission] accepted one-layer string-encoded state_changes bytes=%d location=internal/interactive/turn_submission_decode.go", len(encoded))
+	return items, nil
 }
 
 func stateUpdateFromStructuredInput(change TurnStateChangeInput) (StateUpdate, error) {

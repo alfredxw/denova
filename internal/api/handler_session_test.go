@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -325,27 +324,6 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 	}
 	t.Cleanup(application.Close)
 	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(callCtx context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
-		if toolContext.MaintenanceTask == "state_schema_initialization" {
-			result, err := toolContext.SubmitStateSchemaBatch(callCtx, interactive.ActorStateSchemaBatch{
-				Summary: "测试保持预设状态结构",
-				Items: []interactive.ActorStateSchemaBatchItem{{
-					ItemID: "keep-preset-state",
-					Requirements: []interactive.ActorStateSchemaRequirementReview{{
-						Source:       interactive.ActorStateSchemaRequirementSource{Kind: "opening", ID: toolContext.TurnID},
-						Requirement:  "测试已审阅开局且不需要新增结构化状态",
-						EvidenceKind: "confirmed",
-						Decision:     "ignored",
-						ValuePolicy:  interactive.ActorStateSchemaValuePolicySchemaOnly,
-						Reason:       "测试开局没有建立长期状态规则",
-					}},
-				}},
-				Finalize: true,
-			})
-			if err != nil || !result.Finalized {
-				return "", fmt.Errorf("测试状态结构 Batch 未完成: result=%#v err=%v", result, err)
-			}
-			return "测试状态结构审查完成。", nil
-		}
 		if toolContext.MaintenanceTask == "director_plan_update" || toolContext.MaintenanceTask == "opening_plan" {
 			_, err := toolContext.SubmitDirectorPlanUpdate(callCtx, interactive.DirectorPlanUpdateSubmission{
 				Decision: interactive.PlanDecision{Mode: interactive.PlanDecisionKeep, Reason: "测试初始化导演规划完成。"},

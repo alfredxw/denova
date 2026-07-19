@@ -188,8 +188,6 @@ interface StoryDirectorStrategy {
   director_agent_mode?: 'triggered' | 'every_turn' | 'off' | string
   rule_state_consumption_mode?: 'hybrid_auto' | 'director_only' | string
   rule_visibility_mode?: 'audit_only' | 'public_roll' | string
-  /** Legacy preset data only; new stories use state_schema_policy. */
-  state_schema_adaptation_mode?: 'after_opening' | 'off' | string
   branch_planning_turns?: number
   planning_templates?: DirectorPlanningTemplates
   prompt_markdown?: string
@@ -917,22 +915,21 @@ export interface ActorStateSchemaAdaptationChange {
 }
 
 export interface StateSchemaInitializationStatus {
-	mode: 'after_opening' | 'off' | string
-	status: 'waiting_opening' | 'running' | 'ready' | 'failed' | 'skipped' | string
-	outcome?: 'changed' | 'unchanged' | string
-	source_turn_id?: string
-	base_revision?: number
-	target_revision?: number
-	summary?: string
-	error?: string
-	lore_revision?: string
-	reviewed_lore_ids?: string[]
-	requirements?: ActorStateSchemaRequirementReview[]
-	changes?: ActorStateSchemaAdaptationChange[]
-	warnings?: string[]
-	started_at?: string
-	completed_at?: string
-	updated_at?: string
+  mode: StoryStateSchemaMode
+  status: 'waiting_opening' | 'ready'
+  outcome?: 'changed' | 'unchanged' | 'fixed'
+  source_turn_id?: string
+  base_revision?: number
+  target_revision?: number
+  summary?: string
+  lore_revision?: string
+  reviewed_lore_ids?: string[]
+  requirements?: ActorStateSchemaRequirementReview[]
+  changes?: ActorStateSchemaAdaptationChange[]
+  warnings?: string[]
+  started_at?: string
+  completed_at?: string
+  updated_at?: string
 }
 
 interface ContextCompactionEvent {

@@ -84,33 +84,6 @@ func (h *Handlers) HandleInteractiveSnapshot(ctx context.Context, c *app.Request
 	writeJSON(c, consts.StatusOK, snapshot)
 }
 
-func (h *Handlers) HandleInteractiveStateSchemaRun(ctx context.Context, c *app.RequestContext) {
-	status, err := h.app.RetryInteractiveStateSchema(c.Param("id"))
-	if err != nil {
-		writeError(c, consts.StatusConflict, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusAccepted, status)
-}
-
-func (h *Handlers) HandleInteractiveStateSchemaReview(ctx context.Context, c *app.RequestContext) {
-	status, err := h.app.ReviewInteractiveStateSchema(c.Param("id"))
-	if err != nil {
-		writeError(c, consts.StatusConflict, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusAccepted, status)
-}
-
-func (h *Handlers) HandleInteractiveStateSchemaSkip(ctx context.Context, c *app.RequestContext) {
-	status, err := h.app.SkipInteractiveStateSchema(c.Param("id"))
-	if err != nil {
-		writeError(c, consts.StatusConflict, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, status)
-}
-
 func (h *Handlers) HandleInteractiveRuleResolutionReroll(ctx context.Context, c *app.RequestContext) {
 	var body interactive.RuleResolutionRerollRequest
 	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {

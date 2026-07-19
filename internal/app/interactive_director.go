@@ -27,17 +27,6 @@ type interactiveDirectorMaintenanceResult struct {
 
 func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, runPlan bool) <-chan struct{} {
 	tasks := directorTasksForConversation(conversation)
-	closedSchemaDone := make(chan struct{})
-	close(closedSchemaDone)
-	var schemaDone <-chan struct{} = closedSchemaDone
-	// Stories created before story-level schema policies retain the legacy
-	// background migration path. New stories always initialize schema inside
-	// the foreground Game Agent's opening atomic commit.
-	if conversation != nil && conversation.store != nil {
-		if storyCtx, err := conversation.store.StoryContext(conversation.storyID, turn.BranchID); err == nil && storyCtx.Meta.StateSchemaPolicy == nil {
-			schemaDone = startInteractiveStateSchemaTask(cfg, state, conversation, turn, sessionStore)
-		}
-	}
 	done, started := tasks.GoKeyed(interactiveDerivedMaintenanceKey(conversation, turn.BranchID), func(ctx context.Context) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
@@ -52,11 +41,6 @@ func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.Sta
 		}()
 
 		if conversation == nil || conversation.store == nil || cfg == nil {
-			return
-		}
-		select {
-		case <-schemaDone:
-		case <-ctx.Done():
 			return
 		}
 		if !runPlan {
@@ -119,26 +103,6 @@ func prepareInteractiveDirectorBeforeOpening(ctx context.Context, cfg *config.Co
 	return true, nil
 }
 
-func startInteractiveStateSchemaTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store) <-chan struct{} {
-	tasks := directorTasksForConversation(conversation)
-	done, started := tasks.GoKeyed(interactiveStateSchemaMaintenanceKey(conversation, turn.BranchID), func(ctx context.Context) {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				err := fmt.Errorf("状态结构初始化异常中断: %v", recovered)
-				log.Printf("[interactive-state-schema] panic recovered story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
-				_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, err)
-			}
-		}()
-		if err := runInteractiveStateSchemaInitialization(ctx, cfg, state, conversation, turn, sessionStore); err != nil {
-			log.Printf("[interactive-state-schema] manual initialization failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
-		}
-	})
-	if !started {
-		_ = conversation.store.MarkStateSchemaInitializationFailed(conversation.storyID, turn.ID, context.Canceled)
-	}
-	return done
-}
-
 func startInteractiveDirectorTask(cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, prestartedTokens ...interactive.DirectorPlanRunToken) <-chan struct{} {
 	tasks := directorTasksForConversation(conversation)
 	done, started := tasks.GoKeyed(interactiveDerivedMaintenanceKey(conversation, turn.BranchID), func(ctx context.Context) {
@@ -175,10 +139,6 @@ func interactiveBranchMaintenanceKey(conversation *interactiveConversation, bran
 		storyID = strings.TrimSpace(conversation.storyID)
 	}
 	return storyID + ":" + strings.TrimSpace(branchID) + ":" + lane
-}
-
-func interactiveStateSchemaMaintenanceKey(conversation *interactiveConversation, branchID string) string {
-	return interactiveBranchMaintenanceKey(conversation, branchID, "state_schema")
 }
 
 func interactiveDerivedMaintenanceKey(conversation *interactiveConversation, branchID string) string {

@@ -30,9 +30,6 @@ func (s *Store) UpdateTurnNarrative(storyID string, req UpdateTurnNarrativeReque
 	if err != nil {
 		return UpdateTurnNarrativeResult{}, err
 	}
-	if err := rejectMutationDuringStateSchemaInitialization(meta); err != nil {
-		return UpdateTurnNarrativeResult{}, err
-	}
 	branchID := strings.TrimSpace(req.BranchID)
 	if branchID == "" {
 		branchID = meta.CurrentBranch

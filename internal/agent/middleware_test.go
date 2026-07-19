@@ -152,43 +152,6 @@ func TestInteractiveDirectorPlanMiddlewareAllowsStructuredSubmitAndBlocksFiles(t
 	}
 }
 
-func TestInteractiveStateSchemaMiddlewareAllowsReviewToolsOnly(t *testing.T) {
-	middleware := newInteractiveDirectorPlanFileMiddleware("state_schema_initialization")
-	for _, tc := range []struct {
-		name    string
-		allowed bool
-	}{
-		{name: "list_lore_items", allowed: true},
-		{name: "read_lore_items", allowed: true},
-		{name: "submit_state_schema_adaptation", allowed: true},
-		{name: "apply_actor_state_patch", allowed: false},
-		{name: "write_file", allowed: false},
-	} {
-		called := false
-		endpoint, err := middleware.WrapInvokableToolCall(
-			context.Background(),
-			func(context.Context, string, ...tool.Option) (string, error) {
-				called = true
-				return "ok", nil
-			},
-			&adk.ToolContext{Name: tc.name},
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		result, err := endpoint(context.Background(), `{}`)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if tc.allowed && (!called || result != "ok") {
-			t.Fatalf("%s should pass through, called=%v result=%s", tc.name, called, result)
-		}
-		if !tc.allowed && (called || !strings.Contains(result, "状态结构审查只能使用")) {
-			t.Fatalf("%s should be blocked, called=%v result=%s", tc.name, called, result)
-		}
-	}
-}
-
 func TestInteractiveDirectorPlanFileMiddlewareBlocksUnauthorizedTools(t *testing.T) {
 	middleware := newInteractiveDirectorPlanFileMiddleware()
 	called := false

@@ -137,7 +137,7 @@ export function DirectorBackstage({ storyId, branchId, snapshot, loading = false
                 <RuleAuditCard ruleResolution={ruleResolution} terminalOutcome={terminalOutcome} error={ruleError} rerolling={rerolling} onReroll={() => void rerollRules()} />
               ) : null}
               <DirectorProcessCard status={directorStatus} metadata={directorMetadata} loading={busy} displayEvents={directorDisplayEvents} />
-              <StateSchemaCard storyId={storyId} snapshot={snapshot} onRefresh={onSnapshotRefresh} />
+              <StateSchemaCard snapshot={snapshot} />
             </div>
           </div>
         </div>

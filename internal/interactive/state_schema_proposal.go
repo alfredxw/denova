@@ -16,15 +16,8 @@ const (
 	ActorStateSchemaValuePolicyDefer      = "defer"
 )
 
-const (
-	StateSchemaLoreReadMaxItemsPerCall = 4
-	StateSchemaLoreReadMaxResultBytes  = DirectorContextMaxBytes
-	StateSchemaLoreReadMaxTotalBytes   = 2 * StateSchemaLoreReadMaxResultBytes
-)
-
-// ActorStateSchemaProposal is a backend-validated, run-local schema review.
-// Opening Game Agent proposals are structure-only; legacy explicit reviews may
-// still use the broader migration fields while old Beta stories are upgraded.
+// ActorStateSchemaProposal is the backend-validated, run-local opening schema
+// draft produced by the foreground Game Agent.
 type ActorStateSchemaProposal struct {
 	Summary      string                              `json:"summary,omitempty"`
 	Requirements []ActorStateSchemaRequirementReview `json:"requirements,omitempty"`
@@ -33,7 +26,7 @@ type ActorStateSchemaProposal struct {
 	// than accepted from the model.
 	ReviewedLoreIDs []string `json:"-"`
 	// SourceLoreRevision is captured by the app, not supplied by the model.
-	// It records which lore catalog the Director reviewed.
+	// It records which lore catalog the opening Game Agent reviewed.
 	SourceLoreRevision string `json:"-"`
 }
 
@@ -68,8 +61,8 @@ type ActorStateSchemaRequirementReview struct {
 	Reason       string   `json:"reason,omitempty"`
 }
 
-// ActorStateSchemaProposalPreview is returned to the Director after validating
-// a staged proposal. Applying it remains the Store's responsibility.
+// ActorStateSchemaProposalPreview describes a validated, run-local opening
+// draft. Persisting it remains the Store's responsibility.
 type ActorStateSchemaProposalPreview struct {
 	Summary         string `json:"summary,omitempty"`
 	TemplateOps     int    `json:"template_ops,omitempty"`

@@ -1,6 +1,98 @@
 package interactive
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
+
+func TestLegacyStoryWithoutPolicyKeepsExistingSchemaFixed(t *testing.T) {
+	base := GeneratedStoryActorStateCore()
+	frozen := FreezeActorStateSchemaWithRules(base, StoryDirectorTRPGSystem{}, true)
+	frozen.Revision = 4
+	meta := normalizeStoryMeta(StoryMeta{
+		ActorStateSchema: frozen,
+		StateSchemaInitialization: &StateSchemaInitializationStatus{
+			Mode: "after_opening", Status: "running", BaseRevision: 4, TargetRevision: 5,
+		},
+		CreatedAt: "2026-01-01T00:00:00Z",
+		UpdatedAt: "2026-01-02T00:00:00Z",
+	})
+
+	if meta.StateSchemaPolicy == nil || meta.StateSchemaPolicy.Mode != StoryStateSchemaModeFixedTemplate {
+		t.Fatalf("legacy story policy = %#v, want fixed_template", meta.StateSchemaPolicy)
+	}
+	if meta.StateSchemaInitialization == nil || meta.StateSchemaInitialization.Mode != StoryStateSchemaModeFixedTemplate || meta.StateSchemaInitialization.Status != StateSchemaInitializationReady || meta.StateSchemaInitialization.TargetRevision != 4 {
+		t.Fatalf("legacy initialization = %#v, want fixed ready revision 4", meta.StateSchemaInitialization)
+	}
+	if meta.ActorStateSchema == nil || meta.ActorStateSchema.Revision != 4 || !reflect.DeepEqual(meta.ActorStateSchema.System, frozen.System) {
+		t.Fatalf("legacy frozen schema changed: got=%#v want=%#v", meta.ActorStateSchema, frozen)
+	}
+
+	summary := normalizeStorySummary(StorySummary{})
+	if summary.StateSchemaPolicy == nil || summary.StateSchemaPolicy.Mode != StoryStateSchemaModeFixedTemplate {
+		t.Fatalf("legacy story summary policy = %#v, want fixed_template", summary.StateSchemaPolicy)
+	}
+}
+
+func TestRemovedDirectorSchemaModeKeepsExistingSchemaFixed(t *testing.T) {
+	frozen := FreezeActorStateSchemaWithRules(GeneratedStoryActorStateCore(), StoryDirectorTRPGSystem{}, true)
+	frozen.Revision = 5
+	meta := normalizeStoryMeta(StoryMeta{
+		ActorStateSchema:  frozen,
+		StateSchemaPolicy: &StoryStateSchemaPolicy{Mode: "after_opening"},
+		StateSchemaInitialization: &StateSchemaInitializationStatus{
+			Mode: "after_opening", Status: "failed", BaseRevision: 4, TargetRevision: 5,
+		},
+		CreatedAt: "2026-01-01T00:00:00Z",
+		UpdatedAt: "2026-01-02T00:00:00Z",
+	})
+
+	if meta.StateSchemaPolicy == nil || meta.StateSchemaPolicy.Mode != StoryStateSchemaModeFixedTemplate {
+		t.Fatalf("removed Director mode policy = %#v, want fixed_template", meta.StateSchemaPolicy)
+	}
+	status := meta.StateSchemaInitialization
+	if status == nil || status.Mode != StoryStateSchemaModeFixedTemplate || status.Status != StateSchemaInitializationReady || status.BaseRevision != 5 || status.TargetRevision != 5 {
+		t.Fatalf("removed Director mode status = %#v, want fixed ready revision 5", status)
+	}
+	if meta.ActorStateSchema == nil || meta.ActorStateSchema.Revision != 5 || !reflect.DeepEqual(meta.ActorStateSchema.System, frozen.System) {
+		t.Fatalf("removed Director mode changed frozen schema: got=%#v want=%#v", meta.ActorStateSchema, frozen)
+	}
+}
+
+func TestLegacyStorySidecarRevisionStaysFixed(t *testing.T) {
+	store := NewStore(t.TempDir())
+	storyID := "legacy-sidecar"
+	meta := StoryMeta{
+		V:             schemaVersion,
+		Type:          StoryEventTypeMeta,
+		StoryID:       storyID,
+		Title:         "旧故事",
+		CurrentBranch: "main",
+		Branches:      map[string]BranchMeta{"main": {CreatedAt: "2026-01-01T00:00:00Z"}},
+		CreatedAt:     "2026-01-01T00:00:00Z",
+		UpdatedAt:     "2026-01-02T00:00:00Z",
+	}
+	if err := writeJSONL(store.storyPath(storyID), []any{meta}); err != nil {
+		t.Fatal(err)
+	}
+	frozen := FreezeActorStateSchemaWithRules(GeneratedStoryActorStateCore(), StoryDirectorTRPGSystem{}, true)
+	frozen.Revision = 7
+	if err := store.writeActorStateSchemaSnapshot(storyID, frozen); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, _, err := store.readStoryLocked(storyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.ActorStateSchema == nil || loaded.ActorStateSchema.Revision != 7 {
+		t.Fatalf("legacy sidecar schema = %#v, want revision 7", loaded.ActorStateSchema)
+	}
+	status := loaded.StateSchemaInitialization
+	if status == nil || status.Mode != StoryStateSchemaModeFixedTemplate || status.Status != StateSchemaInitializationReady || status.BaseRevision != 7 || status.TargetRevision != 7 {
+		t.Fatalf("legacy sidecar status = %#v, want fixed ready revision 7", status)
+	}
+}
 
 func TestCreateStorySchemaPolicyRequiresBaseStateSystem(t *testing.T) {
 	store := NewStore(t.TempDir())

@@ -152,10 +152,14 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 	if policy.Mode == interactive.StoryStateSchemaModeGenerate {
 		actorState = interactive.GeneratedStoryActorStateCore()
 	}
-	if len(actorState.Templates) == 0 {
+	if len(actorState.Templates) == 0 && interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(&policy) {
 		return req, fmt.Errorf("故事状态模板不可用 / Story state template is unavailable")
 	}
-	req.ActorState = &actorState
+	if len(actorState.Templates) > 0 {
+		req.ActorState = &actorState
+	} else {
+		req.ActorState = nil
+	}
 	req.TRPGSystem = &director.TRPGSystem
 	status := interactive.StateSchemaInitializationWaitingOpening
 	outcome := ""
@@ -233,11 +237,15 @@ func (s *InteractiveAppService) withStoryStateSchemaUpdateDefaults(req interacti
 	if policy.Mode == interactive.StoryStateSchemaModeGenerate {
 		actorState = interactive.GeneratedStoryActorStateCore()
 	}
-	if len(actorState.Templates) == 0 {
+	if len(actorState.Templates) == 0 && interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(&policy) {
 		return req, fmt.Errorf("故事状态模板不可用 / Story state template is unavailable")
 	}
 	req.StateSchemaPolicy = &policy
-	req.ActorState = &actorState
+	if len(actorState.Templates) > 0 {
+		req.ActorState = &actorState
+	} else {
+		req.ActorState = nil
+	}
 	req.TRPGSystem = &director.TRPGSystem
 	status := interactive.StateSchemaInitializationWaitingOpening
 	outcome := ""
@@ -279,105 +287,11 @@ func (a *App) InteractiveSnapshot(storyID, branchID string) (interactive.Snapsho
 }
 
 func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (interactive.Snapshot, error) {
-	a := s.app
-	a.mu.RLock()
-	store := a.interactive
-	cfg := a.cfg
-	workspace := a.workspace
-	bookState := a.bookState
-	sessionStore := a.sessionStore
-	a.mu.RUnlock()
+	store := s.store()
 	if store == nil {
 		return interactive.Snapshot{}, ErrNoWorkspace
 	}
-	snapshot, err := store.Snapshot(storyID, branchID)
-	if err != nil || cfg == nil || bookState == nil || snapshot.CurrentTurn == nil || snapshot.StateSchemaInitialization == nil {
-		return snapshot, err
-	}
-	status := snapshot.StateSchemaInitialization.Status
-	if status != interactive.StateSchemaInitializationRunning {
-		return snapshot, nil
-	}
-	runtimeCfg := *cfg
-	runtimeCfg.Workspace = workspace
-	turn := *snapshot.CurrentTurn
-	conversation := newInteractiveConversation(store, runtimeCfg.DataDir(), workspace, storyID, snapshot.BranchID, turn.User, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg).bindDirectorRuntime(a.directorTasksForWorkspace(workspace), a.interactiveDirectorGenerator())
-	tasks := directorTasksForConversation(conversation)
-	key := interactiveStateSchemaMaintenanceKey(conversation, snapshot.BranchID)
-	if tasks.HasKey(key) {
-		return snapshot, nil
-	}
-	if _, resumeErr := store.ResumeInterruptedStateSchemaInitialization(storyID); resumeErr != nil {
-		log.Printf("[interactive-state-schema] resume state reset failed story_id=%s branch_id=%s err=%v", storyID, snapshot.BranchID, resumeErr)
-		return snapshot, nil
-	}
-	log.Printf("[interactive-state-schema] resume interrupted initialization story_id=%s branch_id=%s turn_id=%s", storyID, snapshot.BranchID, turn.ID)
-	startInteractiveStateSchemaTask(&runtimeCfg, bookState, conversation, turn, sessionStore)
-	return snapshot, nil
-}
-
-func (a *App) RetryInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
-	return a.interactiveService().RetryInteractiveStateSchema(storyID)
-}
-
-func (s *InteractiveAppService) RetryInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
-	return s.startInteractiveStateSchemaReview(storyID, (*interactive.Store).ResetStateSchemaInitialization)
-}
-
-func (a *App) ReviewInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
-	return a.interactiveService().ReviewInteractiveStateSchema(storyID)
-}
-
-func (s *InteractiveAppService) ReviewInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
-	return s.startInteractiveStateSchemaReview(storyID, (*interactive.Store).ReopenStateSchemaReview)
-}
-
-type stateSchemaReviewPreparer func(*interactive.Store, string) (interactive.StateSchemaInitializationStatus, error)
-
-func (s *InteractiveAppService) startInteractiveStateSchemaReview(storyID string, prepare stateSchemaReviewPreparer) (interactive.StateSchemaInitializationStatus, error) {
-	a := s.app
-	a.mu.RLock()
-	store := a.interactive
-	cfg := a.cfg
-	workspace := a.workspace
-	bookState := a.bookState
-	sessionStore := a.sessionStore
-	a.mu.RUnlock()
-	if store == nil || cfg == nil || bookState == nil {
-		return interactive.StateSchemaInitializationStatus{}, ErrNoWorkspace
-	}
-	status, err := prepare(store, storyID)
-	if err != nil {
-		return status, err
-	}
-	storyCtx, err := store.StoryContext(storyID, "")
-	if err != nil {
-		return status, err
-	}
-	if storyCtx.Snapshot.CurrentTurn == nil {
-		return status, fmt.Errorf("首轮正文尚未完成，状态结构将在首轮落盘后自动适配")
-	}
-	runtimeCfg := *cfg
-	runtimeCfg.Workspace = workspace
-	turn := *storyCtx.Snapshot.CurrentTurn
-	if len(storyCtx.Snapshot.Turns) > 0 {
-		turn = storyCtx.Snapshot.Turns[0]
-	}
-	conversation := newInteractiveConversation(store, runtimeCfg.DataDir(), workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg).bindDirectorRuntime(a.directorTasksForWorkspace(workspace), a.interactiveDirectorGenerator())
-	startInteractiveStateSchemaTask(&runtimeCfg, bookState, conversation, turn, sessionStore)
-	return status, nil
-}
-
-func (a *App) SkipInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
-	return a.interactiveService().SkipInteractiveStateSchema(storyID)
-}
-
-func (s *InteractiveAppService) SkipInteractiveStateSchema(storyID string) (interactive.StateSchemaInitializationStatus, error) {
-	store := s.store()
-	if store == nil {
-		return interactive.StateSchemaInitializationStatus{}, ErrNoWorkspace
-	}
-	return store.SkipStateSchemaInitialization(storyID)
+	return store.Snapshot(storyID, branchID)
 }
 
 func (a *App) RerollInteractiveRuleResolution(storyID, resolutionID string, req interactive.RuleResolutionRerollRequest) (interactive.RuleResolution, error) {
@@ -888,14 +802,6 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 	}
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[interactive-agent-task] run begin id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_scenes=%d", task.ID(), storyID, branchID, rewindTurnID, len(message), len(styleScenes))
-		maintenanceKey := interactiveStateSchemaMaintenanceKey(conversation, storyCtx.Snapshot.BranchID)
-		if tasks := directorTasksForConversation(conversation); tasks != nil {
-			if err := tasks.WaitKey(ctx, maintenanceKey); err != nil {
-				log.Printf("[interactive-agent-task] wait previous branch maintenance failed story_id=%s branch_id=%s err=%v", storyID, storyCtx.Snapshot.BranchID, err)
-				emit(agent.Event{Type: "error", Data: map[string]string{"message": "等待上一回合后台维护失败：" + err.Error()}})
-				return
-			}
-		}
 		if strings.TrimSpace(rewindTurnID) != "" {
 			if err := store.RewindToTurnParent(storyID, interactive.RewindTurnRequest{BranchID: branchID, TurnID: rewindTurnID}); err != nil {
 				log.Printf("[interactive-agent-task] 回退互动故事分支失败 story_id=%s branch_id=%s turn_id=%s err=%v", storyID, branchID, rewindTurnID, err)

@@ -237,6 +237,9 @@ func TestActorStateRuntimeContextFiltersVisibilityAndLibrary(t *testing.T) {
 	if strings.Count(context, "{{next_action_") != 3 {
 		t.Fatalf("submission example must match the story's configured choice count: %s", context)
 	}
+	if strings.Count(context, "主角当前能够被剧情直接观察到的状态。") != 1 || strings.Count(context, "仅在正文已经明确改变该状态时更新。") != 1 {
+		t.Fatalf("field semantics should appear once in template definitions instead of being duplicated for every current Actor: %s", context)
+	}
 	bounded := ActorStateRuntimeContext(system, state, 512)
 	if bounded == "" || len(bounded) > 512 || json.Valid([]byte(bounded)) || !strings.Contains(bounded, "内容已按上下文上限截断") {
 		t.Fatalf("small runtime context must remain bounded Markdown with an explicit truncation marker: bytes=%d context=%s", len(bounded), bounded)

@@ -1,36 +1,12 @@
-import { useState } from 'react'
-import { AlertTriangle, CheckCircle2, Clock3, Database, ListChecks, RefreshCw } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock3, Database, ListChecks } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/ui/button'
-import { retryInteractiveStateSchema, reviewInteractiveStateSchema, skipInteractiveStateSchema } from '../../api'
 import type { ActorStateField, ActorStateSchemaRequirementReview, ActorStateSchemaSnapshot, StateSchemaInitializationStatus } from '../../types'
 
-export function StateSchemaOverview({ storyId, schema, initialization, canReview = true, onRefresh }: {
-  storyId?: string
+export function StateSchemaOverview({ schema, initialization }: {
   schema?: ActorStateSchemaSnapshot
   initialization?: StateSchemaInitializationStatus
-  canReview?: boolean
-  onRefresh?: () => void | Promise<unknown>
 }) {
   const { t } = useTranslation()
-  const [action, setAction] = useState<'retry' | 'review' | 'skip' | ''>('')
-  const [actionError, setActionError] = useState('')
-
-  const runAction = async (kind: 'retry' | 'review' | 'skip') => {
-    if (!storyId || action) return
-    setAction(kind)
-    setActionError('')
-    try {
-      if (kind === 'retry') await retryInteractiveStateSchema(storyId)
-      else if (kind === 'review') await reviewInteractiveStateSchema(storyId)
-      else await skipInteractiveStateSchema(storyId)
-      await onRefresh?.()
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : t('directorPanel.stateSchema.actionFailed'))
-    } finally {
-      setAction('')
-    }
-  }
 
   const requirements = initialization?.requirements?.length
     ? initialization.requirements
@@ -54,28 +30,6 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
                 </span>
               </div>
               <p className="mt-1 text-[11px] leading-4 opacity-80">{initializationDescription(initialization, t)}</p>
-              {initialization.error ? <p className="mt-1.5 break-words text-[10px] leading-4">{initialization.error}</p> : null}
-              {initialization.status === 'failed' ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button size="xs" variant="outline" disabled={!storyId || Boolean(action)} onClick={() => void runAction('retry')}>
-                    <RefreshCw className={`mr-1 h-3 w-3 ${action === 'retry' ? 'animate-spin' : ''}`} />
-                    {t('directorPanel.stateSchema.retry')}
-                  </Button>
-                  <Button size="xs" variant="ghost" disabled={!storyId || Boolean(action)} onClick={() => void runAction('skip')}>
-                    {t('directorPanel.stateSchema.usePreset')}
-                  </Button>
-                </div>
-              ) : null}
-              {initialization.status === 'ready' ? (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button size="xs" variant="outline" disabled={!storyId || !canReview || Boolean(action)} onClick={() => void runAction('review')}>
-                    <RefreshCw className={`mr-1 h-3 w-3 ${action === 'review' ? 'animate-spin' : ''}`} />
-                    {t('directorPanel.stateSchema.review')}
-                  </Button>
-                </div>
-              ) : null}
-              {initialization.status === 'ready' && !canReview ? <p className="mt-1.5 text-[10px] leading-4 opacity-70">{t('directorPanel.stateSchema.reviewMultiBranchUnavailable')}</p> : null}
-              {actionError ? <p className="mt-2 text-[10px] text-[var(--nova-danger)]">{actionError}</p> : null}
             </div>
           </div>
         </section>
@@ -185,13 +139,11 @@ export function StateSchemaOverview({ storyId, schema, initialization, canReview
 }
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === 'ready' || status === 'skipped') return <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-  if (status === 'failed') return <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-  return <Clock3 className={`mt-0.5 h-4 w-4 shrink-0 ${status === 'running' ? 'animate-pulse' : ''}`} />
+  if (status === 'ready') return <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+  return <Clock3 className="mt-0.5 h-4 w-4 shrink-0" />
 }
 
 function statusClass(status: string) {
-  if (status === 'failed') return 'border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[var(--nova-danger)]'
   if (status === 'ready') return 'border-[var(--nova-success)]/25 bg-[var(--nova-success-bg)] text-[var(--nova-success)]'
   return 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'
 }

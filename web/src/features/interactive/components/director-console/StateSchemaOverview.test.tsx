@@ -1,14 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
 import i18n, { setConfiguredLocale } from '@/i18n'
+import type { StateSchemaInitializationStatus } from '../../types'
 import { StateSchemaOverview } from './StateSchemaOverview'
 
-const retryMock = vi.fn()
-const reviewMock = vi.fn()
-const skipMock = vi.fn()
-
-const evidenceInitialization = {
-  mode: 'after_opening',
+const evidenceInitialization: StateSchemaInitializationStatus = {
+  mode: 'adapt_template',
   status: 'ready',
   requirements: [
     { source: { kind: 'opening', id: 'confirmed-source' }, requirement: '明确事实', evidence_kind: 'confirmed', decision: 'covered' },
@@ -17,19 +14,7 @@ const evidenceInitialization = {
   ],
 }
 
-vi.mock('../../api', () => ({
-  retryInteractiveStateSchema: (...args: unknown[]) => retryMock(...args),
-  reviewInteractiveStateSchema: (...args: unknown[]) => reviewMock(...args),
-  skipInteractiveStateSchema: (...args: unknown[]) => skipMock(...args),
-}))
-
 describe('StateSchemaOverview', () => {
-  beforeEach(() => {
-    retryMock.mockReset().mockResolvedValue({ status: 'running' })
-    reviewMock.mockReset().mockResolvedValue({ status: 'running' })
-    skipMock.mockReset().mockResolvedValue({ status: 'skipped' })
-  })
-
   afterEach(async () => {
     setConfiguredLocale('zh-CN')
     await i18n.changeLanguage('zh-CN')
@@ -37,7 +22,6 @@ describe('StateSchemaOverview', () => {
 
   it('shows the current revision, visible schema, adaptation changes, and warnings', () => {
     render(<StateSchemaOverview
-      storyId="story-1"
       schema={{
         version: 3,
         revision: 2,
@@ -50,7 +34,7 @@ describe('StateSchemaOverview', () => {
         },
       }}
       initialization={{
-        mode: 'after_opening', status: 'ready', outcome: 'changed', target_revision: 2, lore_revision: 'lore-rev-2',
+        mode: 'adapt_template', status: 'ready', outcome: 'changed', target_revision: 2, lore_revision: 'lore-rev-2',
         reviewed_lore_ids: ['numeric-rule'],
         requirements: [{
           source: { kind: 'lore', id: 'numeric-rule' },
@@ -91,31 +75,10 @@ describe('StateSchemaOverview', () => {
     expect(screen.getByText('Rule default')).toBeInTheDocument()
   })
 
-  it('retries or locks the preset after a failed adaptation', async () => {
-    const onRefresh = vi.fn()
-    render(<StateSchemaOverview storyId="story-1" initialization={{ mode: 'after_opening', status: 'failed', error: '模型不可用' }} onRefresh={onRefresh} />)
+  it('renders a frozen legacy schema without Director review actions', () => {
+    render(<StateSchemaOverview initialization={{ mode: 'fixed_template', status: 'ready', outcome: 'fixed' }} />)
 
-    fireEvent.click(screen.getByRole('button', { name: '重试适配' }))
-    await waitFor(() => expect(retryMock).toHaveBeenCalledWith('story-1'))
-    expect(onRefresh).toHaveBeenCalled()
-
-    fireEvent.click(screen.getByRole('button', { name: '固定使用当前预设' }))
-    await waitFor(() => expect(skipMock).toHaveBeenCalledWith('story-1'))
-  })
-
-  it('can explicitly review a completed state schema again', async () => {
-    const onRefresh = vi.fn()
-    render(<StateSchemaOverview storyId="story-1" initialization={{ mode: 'after_opening', status: 'ready', outcome: 'unchanged' }} onRefresh={onRefresh} />)
-
-    fireEvent.click(screen.getByRole('button', { name: '重新审查' }))
-    await waitFor(() => expect(reviewMock).toHaveBeenCalledWith('story-1'))
-    expect(onRefresh).toHaveBeenCalled()
-  })
-
-  it('explains why a multi-branch story cannot be reviewed again', () => {
-    render(<StateSchemaOverview storyId="story-1" canReview={false} initialization={{ mode: 'after_opening', status: 'ready' }} />)
-
-    expect(screen.getByRole('button', { name: '重新审查' })).toBeDisabled()
-    expect(screen.getByText('当前故事已有多个分支，暂不能安全迁移共享状态结构。')).toBeInTheDocument()
+    expect(screen.getByText('故事状态结构')).toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 })
