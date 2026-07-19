@@ -55,6 +55,11 @@ export interface DocumentReviewController {
   onDelete: (comment: DocumentReviewComment) => Promise<DocumentReviewComment>
 }
 
+export interface DocumentReviewNavigationIntent {
+  commentID: string
+  nonce: number
+}
+
 interface MarkdownEditorProps {
   /** Canonical workspace identity. Save tasks never cross this boundary. */
   workspace?: string
@@ -76,6 +81,7 @@ interface MarkdownEditorProps {
   /** Registers the navigation guard used by tabs, previews, and workspace switches. */
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
   documentReview?: DocumentReviewController
+  documentReviewNavigationIntent?: DocumentReviewNavigationIntent | null
 }
 
 interface EditorSearchIntent {
@@ -104,6 +110,7 @@ export function MarkdownEditor({
   onExternalConflict,
   onFlushHandlerChange,
   documentReview,
+  documentReviewNavigationIntent,
 }: MarkdownEditorProps) {
   const { t } = useTranslation()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -118,6 +125,7 @@ export function MarkdownEditor({
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastIllustrationInsertNonceRef = useRef<number | null>(null)
   const lastSearchIntentNonceRef = useRef<number | null>(null)
+  const lastDocumentReviewNavigationNonceRef = useRef<number | null>(null)
   const searchStateRef = useRef<SearchState>({ query: '', index: 0 })
   const searchExtension = useMemo(() => createSearchHighlightExtension(searchStateRef), [])
   const dialogueHighlightExtension = useMemo(() => createDialogueHighlightExtension(), [])
@@ -167,6 +175,13 @@ export function MarkdownEditor({
       },
     },
   })
+
+  useEffect(() => {
+    if (!documentReviewNavigationIntent) return
+    if (lastDocumentReviewNavigationNonceRef.current === documentReviewNavigationIntent.nonce) return
+    const revealed = reviewAnnotationsRef.current?.revealComment(documentReviewNavigationIntent.commentID)
+    if (revealed) lastDocumentReviewNavigationNonceRef.current = documentReviewNavigationIntent.nonce
+  }, [documentReview?.comments, documentReviewNavigationIntent])
 
   const themeStyle = THEME_STYLES[settings.theme]
 

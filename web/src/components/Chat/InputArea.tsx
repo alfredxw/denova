@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -85,6 +85,7 @@ interface InputAreaProps {
   textSelections?: TextSelection[]
   onTextSelectionRemove?: (index: number) => void
   reviewFeedback?: ReviewFeedbackBatch | null
+  onReviewFeedbackOpen?: (selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => void
   onReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
   skills?: SkillCommand[]
   commandsEnabled?: boolean
@@ -128,6 +129,7 @@ export function InputArea({
   textSelections = [],
   onTextSelectionRemove,
   reviewFeedback,
+  onReviewFeedbackOpen,
   onReviewFeedbackRemove,
   skills = [],
   commandsEnabled = true,
@@ -549,7 +551,7 @@ export function InputArea({
         references={hasReferences ? (
           <>
             {reviewFeedback && onReviewFeedbackRemove ? (
-              <ReviewFeedbackTray feedback={reviewFeedback} onRemove={onReviewFeedbackRemove} />
+              <ReviewFeedbackTray feedback={reviewFeedback} onOpen={onReviewFeedbackOpen} onRemove={onReviewFeedbackRemove} />
             ) : null}
             {textSelections.length > 0 && (
               <div className="mb-2 flex flex-wrap gap-1.5">

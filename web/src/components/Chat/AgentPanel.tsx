@@ -22,7 +22,7 @@ import { WritingComposerSettingsMenu } from './WritingComposerSettingsMenu'
 import { formatPlanDiscussionMessage } from '@/lib/plan-mode'
 import { useWorkspaceChangeGroups } from '@/features/changes/use-change-review'
 import { AgentChangeSummaryCard } from '@/features/changes/agent/AgentChangeSummaryCard'
-import { MAX_REVIEW_FEEDBACK_COMMENT_COUNT, MAX_REVIEW_FEEDBACK_CONTEXT_BYTES, reviewFeedbackCommentCount, reviewFeedbackContextBytes, type ReviewFeedbackBatch, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import { MAX_REVIEW_FEEDBACK_COMMENT_COUNT, MAX_REVIEW_FEEDBACK_CONTEXT_BYTES, reviewFeedbackCommentCount, reviewFeedbackContextBytes, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { toast } from 'sonner'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 
@@ -79,6 +79,7 @@ interface AgentPanelProps {
   onApproveProposedPlan: (ref: AgentPartRef) => void
   onExitPlanMode: () => void
   reviewFeedback?: ReviewFeedbackBatch | null
+  onReviewFeedbackOpen?: (selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => void
   onReviewFeedbackRemove?: (selection: ReviewFeedbackSelection, commentID: string) => void
   onReviewFeedbackSubmitted?: (feedback: ReviewFeedbackBatch) => void
   onReviewFeedbackSubmissionFailed?: (feedback: ReviewFeedbackBatch) => void
@@ -130,6 +131,7 @@ export function AgentPanel({
   onApproveProposedPlan,
   onExitPlanMode,
   reviewFeedback,
+  onReviewFeedbackOpen,
   onReviewFeedbackRemove,
   onReviewFeedbackSubmitted,
   onReviewFeedbackSubmissionFailed,
@@ -352,6 +354,7 @@ export function AgentPanel({
     textSelections,
     onTextSelectionRemove,
     reviewFeedback,
+    onReviewFeedbackOpen,
     onReviewFeedbackRemove,
     skills: skillCommands,
     onContextAnalyze: openContextAnalysis,

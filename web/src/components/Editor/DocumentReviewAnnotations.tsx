@@ -18,6 +18,7 @@ import { documentReviewRangeAtCoordinates } from './documentReviewHover'
 
 export interface DocumentReviewAnnotationsHandle {
   startSelectionComment: () => void
+  revealComment: (commentID: string) => boolean
 }
 
 interface DocumentReviewAnnotationsProps {
@@ -68,7 +69,9 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
   const [expandedKeys, setExpandedKeys] = useState<ReadonlySet<string>>(() => new Set())
   const [preparing, setPreparing] = useState(false)
   const [quickAction, setQuickAction] = useState<{ top: number; left: number; range: EditorReviewRange } | null>(null)
+  const [revealSignal, setRevealSignal] = useState(0)
   const preparationRequestRef = useRef(0)
+  const pendingRevealKeyRef = useRef('')
   const decorationLayoutCacheRef = useRef<{ key: string; decorations: DocumentReviewDecoration[] }>({ key: '', decorations: [] })
 
   const startDraft = useCallback(async (range: EditorReviewRange) => {
@@ -114,7 +117,17 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     void startDraft({ from, to, widgetPos: commentWidgetPosition(editor.state.doc, to), kind: 'text-range', displayQuote })
   }, [editor, startDraft])
 
-  useImperativeHandle(ref, () => ({ startSelectionComment }), [startSelectionComment])
+  const revealComment = useCallback((commentID: string) => {
+    const comment = comments.find((item) => item.id === commentID)
+    if (!comment) return false
+    const key = documentCommentGroupKey(comment)
+    pendingRevealKeyRef.current = key
+    setExpandedKeys((current) => current.has(key) ? current : new Set(current).add(key))
+    setRevealSignal((current) => current + 1)
+    return true
+  }, [comments])
+
+  useImperativeHandle(ref, () => ({ revealComment, startSelectionComment }), [revealComment, startSelectionComment])
 
   useEffect(() => {
     preparationRequestRef.current += 1
@@ -198,6 +211,18 @@ export const DocumentReviewAnnotations = forwardRef<DocumentReviewAnnotationsHan
     resizeObserver?.observe(editor.view.dom)
     return () => resizeObserver?.disconnect()
   }, [editor, portalTargets])
+
+  useLayoutEffect(() => {
+    const key = pendingRevealKeyRef.current
+    if (!key || !expandedKeys.has(key)) return
+    const highlight = Array.from(editor.view.dom.querySelectorAll<HTMLElement>('[data-document-review-keys]'))
+      .find((element) => documentReviewKeysFromElement(element).includes(key))
+    const target = highlight || portalTargets.find((item) => item.key === key)?.element
+    if (!target) return
+    pendingRevealKeyRef.current = ''
+    target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+    highlight?.focus({ preventScroll: true })
+  }, [editor, expandedKeys, portalTargets, revealSignal])
 
   useEffect(() => {
     if (draft || preparing) return

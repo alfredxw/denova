@@ -1,16 +1,48 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ComponentProps } from 'react'
+import { useState, type ComponentProps, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import { ModeRouter } from './ModeRouter'
 
 const toastMock = vi.hoisted(() => ({ warning: vi.fn() }))
+const useDocumentReviewMock = vi.hoisted(() => vi.fn())
 
 vi.mock('sonner', () => ({ toast: toastMock }))
 
 vi.mock('@/hooks/usePersistedUserSettings', () => ({
   usePersistedUserSettings: vi.fn(),
+}))
+
+vi.mock('@/components/Chat/AgentPanel', () => ({
+  WRITING_COMPOSER_SETTING_DEFAULTS: {
+    ide_story_teller_id: 'classic',
+    ide_image_preset_id: 'game-cg',
+    writing_skill_default: 'novel-lite',
+  },
+  AgentPanel: ({ reviewFeedback, onReviewFeedbackOpen }: {
+    reviewFeedback?: Array<{ comments: Array<{ id: string }> }>
+    onReviewFeedbackOpen?: (selection: unknown, comment: unknown) => void
+  }) => {
+    const selection = reviewFeedback?.[0]
+    const comment = selection?.comments[0]
+    return (
+      <button type="button" disabled={!selection || !comment} onClick={() => onReviewFeedbackOpen?.(selection, comment)}>
+        open document feedback
+      </button>
+    )
+  },
+}))
+
+vi.mock('@/components/Editor/MarkdownEditor', () => ({
+  MarkdownEditor: ({ fileName, documentReviewNavigationIntent }: {
+    fileName: string | null
+    documentReviewNavigationIntent?: { commentID: string; nonce: number } | null
+  }) => (
+    <div data-testid="markdown-editor-navigation">
+      {fileName || 'none'}|{documentReviewNavigationIntent?.commentID || 'none'}|{documentReviewNavigationIntent?.nonce || 0}
+    </div>
+  ),
 }))
 
 vi.mock('@/features/interactive/api', () => ({
@@ -41,29 +73,39 @@ vi.mock('@/features/changes/use-writing-change-review', () => ({
 }))
 
 vi.mock('@/features/document-review/use-document-review', () => ({
-  useDocumentReview: () => ({
-    feedback: null,
-    thread: { comments: [] },
-    addComment: vi.fn(),
-    editComment: vi.fn(),
-    removeComment: vi.fn(),
-    removeFeedback: vi.fn(),
-    submitFeedback: vi.fn(),
-    restoreFeedback: vi.fn(),
-  }),
+  useDocumentReview: useDocumentReviewMock,
 }))
 
 vi.mock('./WorkbenchShell', () => ({
-  WorkbenchShell: ({ onQuickSwitchBook }: { onQuickSwitchBook: (path: string) => Promise<boolean> }) => (
-    <button type="button" onClick={() => { void onQuickSwitchBook('/book-b') }}>
-      quick switch
-    </button>
+  WorkbenchShell: ({ onQuickSwitchBook, main, rightPanelContent }: {
+    onQuickSwitchBook: (path: string) => Promise<boolean>
+    main: ReactNode
+    rightPanelContent: ReactNode
+  }) => (
+    <>
+      <button type="button" onClick={() => { void onQuickSwitchBook('/book-b') }}>
+        quick switch
+      </button>
+      {main}
+      {rightPanelContent}
+    </>
   ),
 }))
 
 describe('ModeRouter autosave navigation policy', () => {
   beforeEach(() => {
     toastMock.warning.mockReset()
+    useDocumentReviewMock.mockReset()
+    useDocumentReviewMock.mockReturnValue({
+      feedback: null,
+      thread: { comments: [] },
+      addComment: vi.fn(),
+      editComment: vi.fn(),
+      removeComment: vi.fn(),
+      removeFeedback: vi.fn(),
+      submitFeedback: vi.fn(),
+      restoreFeedback: vi.fn(),
+    })
     vi.mocked(usePersistedUserSettings).mockReturnValue({
       values: {
         ide_story_teller_id: 'classic',
@@ -115,6 +157,68 @@ describe('ModeRouter autosave navigation policy', () => {
 
     resolveFlush(false)
     await waitFor(() => expect(toastMock.warning).toHaveBeenCalled())
+  })
+
+  it('opens the referenced chapter before revealing its document review comment', async () => {
+    const user = userEvent.setup()
+    const comment = {
+      id: 'document-comment',
+      thread_id: 'document-thread',
+      path: 'chapters/ch02.md',
+      body: '正文这里需要更克制',
+      created_at: '',
+      updated_at: '',
+      review_line: 111,
+    }
+    const feedback = {
+      source: 'document' as const,
+      reviewThreadId: 'document-thread',
+      comments: [comment],
+    }
+    useDocumentReviewMock.mockReturnValue({
+      feedback,
+      thread: { comments: [comment] },
+      addComment: vi.fn(),
+      editComment: vi.fn(),
+      removeComment: vi.fn(),
+      removeFeedback: vi.fn(),
+      submitFeedback: vi.fn(),
+      restoreFeedback: vi.fn(),
+    })
+    const handleSelectFile = vi.fn(async (_path: string) => true)
+
+    function Harness() {
+      const [selectedFile, setSelectedFile] = useState('chapters/ch03.md')
+      return (
+        <ModeRouter
+          {...modeRouterProps({
+            rightPanel: 'ai',
+            selectedFile,
+            openTabs: [{ kind: 'file', path: 'chapters/ch03.md' }],
+            activeTabKey: 'file:chapters/ch03.md',
+            onSelectFile: async (path) => {
+              const navigated = await handleSelectFile(path)
+              if (navigated !== false) setSelectedFile(path)
+              return navigated
+            },
+          })}
+        />
+      )
+    }
+
+    render(<Harness />)
+    await user.click(screen.getByRole('button', { name: 'open document feedback' }))
+
+    await waitFor(() => expect(handleSelectFile).toHaveBeenCalledWith(comment.path))
+    await waitFor(() => expect(screen.getByTestId('markdown-editor-navigation')).toHaveTextContent(
+      `${comment.path}|${comment.id}|1`,
+    ))
+
+    await user.click(screen.getByRole('button', { name: 'open document feedback' }))
+    await waitFor(() => expect(screen.getByTestId('markdown-editor-navigation')).toHaveTextContent(
+      `${comment.path}|${comment.id}|2`,
+    ))
+    expect(handleSelectFile).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -30,6 +30,7 @@ export function SessionManagementPanel({
   const [query, setQuery] = useState('')
   const [editingId, setEditingId] = useState('')
   const [draftTitle, setDraftTitle] = useState('')
+  const [switchingId, setSwitchingId] = useState('')
 
   const filteredSessions = useMemo(() => {
     const keyword = query.trim().toLowerCase()
@@ -38,7 +39,8 @@ export function SessionManagementPanel({
     return sorted.filter((session) => displaySessionTitle(session, t).toLowerCase().includes(keyword))
   }, [query, sessions, t])
 
-  const activeSession = sessions.find((session) => session.id === activeSessionId) ||
+  const displayedActiveSessionId = switchingId || activeSessionId || sessions.find((session) => session.active)?.id || sessions[0]?.id || ''
+  const activeSession = sessions.find((session) => session.id === displayedActiveSessionId) ||
     sessions.find((session) => session.active) ||
     sessions[0]
 
@@ -73,10 +75,23 @@ export function SessionManagementPanel({
     await onDelete(id)
   }
 
+  const switchToSession = async (id: string): Promise<boolean> => {
+    if (!id || switchingId) return false
+    if (id === displayedActiveSessionId) return true
+    setSwitchingId(id)
+    try {
+      await onSwitch(id)
+      return true
+    } catch (error) {
+      console.error('[SessionManagementPanel.tsx] failed to switch chat session', { sessionID: id, error })
+      return false
+    } finally {
+      setSwitchingId('')
+    }
+  }
+
   const enterSession = async (id: string) => {
-    if (disabled) return
-    if (id !== activeSessionId) await onSwitch(id)
-    onEnterChat()
+    if (await switchToSession(id)) onEnterChat()
   }
 
   return (
@@ -103,9 +118,9 @@ export function SessionManagementPanel({
             {t('chat.new')}
           </button>
         </div>
-        <div className="mt-2 flex items-center justify-between text-[11px] text-[var(--nova-text-faint)]">
-          <span>{t('chat.sessionRatio', { filtered: filteredSessions.length, total: sessions.length })}</span>
-          <span className="truncate">{t('chat.currentSession', { title: activeSession ? displaySessionTitle(activeSession, t) : t('chat.noSession') })}</span>
+        <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--nova-text-faint)]">
+          <span className="shrink-0 whitespace-nowrap">{t('chat.sessionRatio', { filtered: filteredSessions.length, total: sessions.length })}</span>
+          <span className="min-w-0 flex-1 truncate text-right">{t('chat.currentSession', { title: activeSession ? displaySessionTitle(activeSession, t) : t('chat.noSession') })}</span>
         </div>
       </div>
 
@@ -117,8 +132,16 @@ export function SessionManagementPanel({
         ) : (
           <div className="space-y-1.5">
             {filteredSessions.map((session) => {
-              const active = session.id === activeSessionId || session.active
+              const active = session.id === displayedActiveSessionId
               const editing = editingId === session.id
+              const title = displaySessionTitle(session, t)
+              const metadata = (
+                <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-normal text-[var(--nova-text-faint)]">
+                  <span>{t('common.messages', { count: session.message_count })}</span>
+                  <span>{formatSessionTime(session.updated_at || session.created_at, t)}</span>
+                  {active && <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{t('common.current')}</span>}
+                </span>
+              )
               return (
                 <div
                   key={session.id}
@@ -129,37 +152,39 @@ export function SessionManagementPanel({
                   }`}
                 >
                   <div className="flex min-w-0 items-start gap-2">
-                    <MessageSquareText className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-                    <div className="min-w-0 flex-1">
-                      {editing ? (
-                        <input
-                          autoFocus
-                          value={draftTitle}
-                          onChange={(event) => setDraftTitle(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') void submitRename(session.id)
-                            if (event.key === 'Escape') cancelRename()
-                          }}
-                          className="nova-field h-7 w-full rounded border px-2 text-xs outline-none"
-                          aria-label={t('chat.sessionTitle')}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={disabled}
-                          onClick={() => void onSwitch(session.id)}
-                          className="block max-w-full truncate text-left text-xs font-medium text-[var(--nova-text)] disabled:cursor-not-allowed"
-                          title={displaySessionTitle(session, t)}
-                        >
-                          {displaySessionTitle(session, t)}
-                        </button>
-                      )}
-                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-[var(--nova-text-faint)]">
-                        <span>{t('common.messages', { count: session.message_count })}</span>
-                        <span>{formatSessionTime(session.updated_at || session.created_at, t)}</span>
-                        {active && <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{t('common.current')}</span>}
+                    {editing ? (
+                      <div className="flex min-w-0 flex-1 items-start gap-2">
+                        <MessageSquareText className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
+                        <div className="min-w-0 flex-1">
+                          <input
+                            autoFocus
+                            value={draftTitle}
+                            onChange={(event) => setDraftTitle(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') void submitRename(session.id)
+                              if (event.key === 'Escape') cancelRename()
+                            }}
+                            className="nova-field h-7 w-full rounded border px-2 text-xs outline-none"
+                            aria-label={t('chat.sessionTitle')}
+                          />
+                          {metadata}
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void switchToSession(session.id)}
+                        aria-current={active ? 'true' : undefined}
+                        className="flex min-w-0 flex-1 items-start gap-2 rounded-sm text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--nova-accent)]"
+                        title={title}
+                      >
+                        <MessageSquareText className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs font-medium text-[var(--nova-text)]">{title}</span>
+                          {metadata}
+                        </span>
+                      </button>
+                    )}
 
                     <div className="flex shrink-0 items-center gap-0.5">
                       {editing ? (

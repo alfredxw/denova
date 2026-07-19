@@ -7,7 +7,7 @@ import { FileTree } from '@/components/Sidebar/FileTree'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS } from '@/components/Chat/AgentPanel'
 import { FilePreview } from '@/components/workbench/FilePreview'
-import { MarkdownEditor, type EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
+import { MarkdownEditor, type DocumentReviewNavigationIntent, type EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
 import { BookSettingsShortcuts } from '@/components/workbench/BookSettingsShortcuts'
 import { getImagePresets, getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
@@ -21,7 +21,7 @@ import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
 import { useWritingChangeReview } from '@/features/changes/use-writing-change-review'
-import type { ReviewFeedbackBatch, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { useDocumentReview } from '@/features/document-review/use-document-review'
 import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
 import type { Tab } from './TabController'
@@ -242,6 +242,9 @@ export function ModeRouter(props: ModeRouterProps) {
   const [imagePresets, setImagePresets] = useState<ImagePreset[]>([])
   const [agentSubAgentDetailsOpen, setAgentSubAgentDetailsOpen] = useState(false)
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
+  const [documentReviewNavigationTarget, setDocumentReviewNavigationTarget] = useState<(DocumentReviewNavigationIntent & { path: string }) | null>(null)
+  const documentReviewNavigationRequestRef = useRef(0)
+  const documentReviewNavigationNonceRef = useRef(0)
   const [editorLine, setEditorLine] = useState(1)
   // The router is the lifecycle owner: the settings lane survives AgentPanel close/unmount.
   const composerSettings = usePersistedUserSettings({ workspace, defaults: WRITING_COMPOSER_SETTING_DEFAULTS })
@@ -274,6 +277,11 @@ export function ModeRouter(props: ModeRouterProps) {
   useEffect(() => {
     setEditorLine(1)
   }, [selectedFile])
+
+  useEffect(() => {
+    documentReviewNavigationRequestRef.current += 1
+    setDocumentReviewNavigationTarget(null)
+  }, [workspace])
 
   useEffect(() => {
     let cancelled = false
@@ -423,6 +431,38 @@ export function ModeRouter(props: ModeRouterProps) {
       else restoreReviewFeedback(selection)
     }
   }, [documentReview.restoreFeedback, restoreReviewFeedback])
+  const openActiveReviewFeedback = useCallback((selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => {
+    if (selection.source !== 'document') {
+      void openChangeReview(selection.reviewThreadId, comment.group_id || '')
+      return
+    }
+    const targetPath = comment.path
+    if (!targetPath) return
+
+    const requestID = ++documentReviewNavigationRequestRef.current
+    const reveal = () => {
+      if (documentReviewNavigationRequestRef.current !== requestID) return
+      documentReviewNavigationNonceRef.current += 1
+      setDocumentReviewNavigationTarget({
+        path: targetPath,
+        commentID: comment.id,
+        nonce: documentReviewNavigationNonceRef.current,
+      })
+    }
+    if (selectedFile === targetPath) {
+      reveal()
+      return
+    }
+    void Promise.resolve(onSelectFile(targetPath)).then((navigated) => {
+      if (navigated !== false) reveal()
+    }).catch((error) => {
+      console.error('[ModeRouter.tsx] failed to open document review target', {
+        commentID: comment.id,
+        path: targetPath,
+        error,
+      })
+    })
+  }, [onSelectFile, openChangeReview, selectedFile])
   const reviewVisible = Boolean(activeReviewThreadID)
   const closeBooks = () => {
     if (booksReturnMode === 'interactive') {
@@ -590,6 +630,7 @@ export function ModeRouter(props: ModeRouterProps) {
                     onLineChange={setEditorLine}
                     onFlushHandlerChange={onEditorFlushHandlerChange}
                     documentReview={documentReviewController}
+                    documentReviewNavigationIntent={documentReviewNavigationTarget?.path === selectedFile ? documentReviewNavigationTarget : null}
                   />
                 )
               ) : (
@@ -728,6 +769,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onApproveProposedPlan={onApproveProposedPlan}
       onExitPlanMode={onExitChatPlanMode}
       reviewFeedback={reviewFeedback}
+      onReviewFeedbackOpen={openActiveReviewFeedback}
       onReviewFeedbackRemove={removeActiveReviewFeedback}
       onReviewFeedbackSubmitted={submitActiveReviewFeedback}
       onReviewFeedbackSubmissionFailed={restoreActiveReviewFeedback}

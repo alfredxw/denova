@@ -42,6 +42,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Agent 会话列表现在整行单击即可切换；生成中切换会立即停止旧流并显示目标会话，不再需要反复点击。会话统计保持固定宽度，过长的当前会话标题会在剩余空间内截断，不再挤压计数。
+- Agent session rows now switch from a single click anywhere on the main row. Switching during generation stops the old stream and selects the target immediately instead of requiring retries. Session counts keep their width while long current-session titles truncate within the remaining space.
+- 点击创作 Agent 输入区的待提交正文评论引用，现在会先打开评论所属章节，再按持久化文本锚点将对应评论滚动到可视区域并展开；同一章节内重复点击也会重新定位。
+- Clicking a pending document-review reference in the Writing Agent composer now opens its chapter first, then scrolls to and expands the exact comment from its durable text anchor; repeated clicks within the same chapter locate it again.
 - Automations 配置现在携带稳定 revision 并由后端 CAS 校验；外部文件更新会自动 reload，冲突时先三方合并并归档双方版本，再以本地优先结果重试，不再静默后写覆盖。
 - Automation definitions now carry stable revisions enforced by backend CAS. External file changes reload automatically; conflicts are three-way merged and both versions are archived before retrying the local-preferred result instead of silently applying last-write-wins.
 - 编辑器跨文档兜底保存改为按文档键批量排队：单个后台文档失败不会阻断后续文档，失败项会保留并提示重试；关闭当前文档自动保存也不会取消其他文档的待保存草稿。

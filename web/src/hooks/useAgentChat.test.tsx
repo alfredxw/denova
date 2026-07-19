@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getMessages, getSessions, switchSession, type SessionSummary } from '@/lib/api'
 import { useAgentChat } from './useAgentChat'
 
 const chatMock = vi.hoisted(() => ({
@@ -8,6 +9,7 @@ const chatMock = vi.hoisted(() => ({
   setMessages: vi.fn(),
   resumeStream: vi.fn(),
   stop: vi.fn(),
+  status: 'ready' as 'ready' | 'submitted' | 'streaming',
 }))
 
 vi.mock('@ai-sdk/react', () => ({
@@ -19,7 +21,7 @@ vi.mock('@ai-sdk/react', () => ({
       sendMessage: chatMock.sendMessage,
       resumeStream: chatMock.resumeStream,
       stop: chatMock.stop,
-      status: 'ready',
+      status: chatMock.status,
     }
   },
 }))
@@ -41,10 +43,35 @@ vi.mock('@/features/settings/api', () => ({
   fetchSettings: vi.fn().mockResolvedValue({ effective: {} }),
 }))
 
-describe('useAgentChat submitted references', () => {
+describe('useAgentChat', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     chatMock.options = null
+    chatMock.status = 'ready'
+  })
+
+  it('stops the old stream and selects the target immediately when switching sessions', async () => {
+    chatMock.status = 'streaming'
+    let finishSwitch!: (session: SessionSummary) => void
+    vi.mocked(switchSession).mockReturnValue(new Promise((resolve) => { finishSwitch = resolve }))
+    vi.mocked(getSessions).mockResolvedValue([
+      { id: 'target', title: 'just say hello', active: true, message_count: 17, created_at: '2026-07-02T13:26:00Z', updated_at: '2026-07-02T13:26:00Z' },
+    ])
+    vi.mocked(getMessages).mockResolvedValue([])
+    const { result } = renderHook(() => useAgentChat())
+
+    let request!: Promise<void>
+    act(() => {
+      request = result.current.switchChatSession('target')
+    })
+
+    expect(chatMock.stop).toHaveBeenCalledTimes(1)
+    expect(result.current.activeSessionId).toBe('target')
+
+    await act(async () => {
+      finishSwitch({ id: 'target', title: 'just say hello', active: true, message_count: 17, created_at: '2026-07-02T13:26:00Z', updated_at: '2026-07-02T13:26:00Z' })
+      await request
+    })
   })
 
   it('moves the submitted reference snapshot into the user message immediately', async () => {

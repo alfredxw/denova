@@ -41,10 +41,11 @@ export interface ReviewFeedbackComment {
 interface ReviewFeedbackTrayProps {
   feedback: ReviewFeedbackBatch
   onRemove: (selection: ReviewFeedbackSelection, commentID: string) => void
+  onOpen?: (selection: ReviewFeedbackSelection, comment: ReviewFeedbackComment) => void
 }
 
 /** Pending inline review comments selected for the next Agent turn. */
-export function ReviewFeedbackTray({ feedback, onRemove }: ReviewFeedbackTrayProps) {
+export function ReviewFeedbackTray({ feedback, onRemove, onOpen }: ReviewFeedbackTrayProps) {
   const { t } = useTranslation()
   const selectedComments = feedback.flatMap((selection) => selection.comments.map((comment) => ({ selection, comment })))
   if (!selectedComments.length) return null
@@ -72,12 +73,20 @@ export function ReviewFeedbackTray({ feedback, onRemove }: ReviewFeedbackTrayPro
             key={`${selection.source || 'workspace_change'}:${selection.reviewThreadId}:${comment.id}`}
             className="inline-flex max-w-full items-center gap-1 rounded-md border border-[var(--nova-border)] bg-[var(--nova-bg)] px-2 py-1 text-[11px] text-[var(--nova-text)]"
           >
-            <span className="max-w-56 truncate" title={comment.body}>
-              {t(selection.source === 'document' ? 'changes.feedback.source.document' : 'changes.feedback.source.diff')}
-              {' · '}{comment.review_path || comment.path || comment.change_set_id || t('changes.comment')}
-              {comment.review_line !== undefined ? ` · ${t('changes.feedback.line', { line: comment.review_line })}` : ''}
-              {' — '}{comment.body}
-            </span>
+            {onOpen ? (
+              <button
+                type="button"
+                onClick={() => onOpen(selection, comment)}
+                className="max-w-56 truncate rounded-sm text-left hover:text-[var(--nova-accent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--nova-accent)]"
+                title={comment.body}
+              >
+                {reviewFeedbackCommentLabel(selection, comment, t)}
+              </button>
+            ) : (
+              <span className="max-w-56 truncate" title={comment.body}>
+                {reviewFeedbackCommentLabel(selection, comment, t)}
+              </span>
+            )}
             <button
               type="button"
               onClick={() => onRemove(selection, comment.id)}
@@ -91,6 +100,17 @@ export function ReviewFeedbackTray({ feedback, onRemove }: ReviewFeedbackTrayPro
       </div>
     </div>
   )
+}
+
+function reviewFeedbackCommentLabel(
+  selection: ReviewFeedbackSelection,
+  comment: ReviewFeedbackComment,
+  t: ReturnType<typeof useTranslation>['t'],
+): string {
+  const source = t(selection.source === 'document' ? 'changes.feedback.source.document' : 'changes.feedback.source.diff')
+  const target = comment.review_path || comment.path || comment.change_set_id || t('changes.comment')
+  const line = comment.review_line !== undefined ? ` · ${t('changes.feedback.line', { line: comment.review_line })}` : ''
+  return `${source} · ${target}${line} — ${comment.body}`
 }
 
 /** Mirrors the trusted server payload with a small safety allowance for its prompt wrapper. */

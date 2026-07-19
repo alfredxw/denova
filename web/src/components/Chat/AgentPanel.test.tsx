@@ -341,6 +341,25 @@ describe('AgentPanel', () => {
     ))
   })
 
+  it('将正文审阅引用点击交给工作台导航', async () => {
+    const user = userEvent.setup()
+    const handleOpen = vi.fn()
+    const selection = {
+      source: 'document' as const,
+      reviewThreadId: 'document-thread',
+      comments: [{ id: 'document-comment', body: '正文这里需要更克制', path: 'chapters/ch02.md', review_line: 111 }],
+    }
+    renderAgentPanel({
+      onReviewFeedbackOpen: handleOpen,
+      onReviewFeedbackRemove: vi.fn(),
+      reviewFeedback: [selection],
+    })
+
+    await user.click(screen.getByRole('button', { name: /正文 · chapters\/ch02\.md · 第 111 行 — 正文这里需要更克制/ }))
+
+    expect(handleOpen).toHaveBeenCalledWith(selection, selection.comments[0])
+  })
+
   it('在超过单次评论上限时保留反馈并阻止发送', async () => {
     const user = userEvent.setup()
     const handleSend = vi.fn().mockResolvedValue(true)

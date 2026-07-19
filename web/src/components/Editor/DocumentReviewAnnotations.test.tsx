@@ -122,6 +122,69 @@ describe('DocumentReviewAnnotations', () => {
     })
   })
 
+  it('reveals a requested comment and scrolls its anchored text into view', async () => {
+    const markdown = 'Intro text\n\nTarget review line\n\nEnding text\n'
+    const revision = 'sha256:review-navigation'
+    const decorationStateRef = { current: { enabled: false, decorations: [] } as DocumentReviewDecorationState }
+    let updatePortalTargets: (targets: DocumentReviewPortalTarget[]) => void = () => undefined
+    editor = new Editor({
+      extensions: [StarterKit, Markdown, createDocumentReviewExtension(decorationStateRef, (targets) => updatePortalTargets(targets))],
+      content: markdown,
+      contentType: 'markdown',
+    })
+    const target = textRange(editor, 'Target review line')
+    const comment = reviewComment('comment-target', 'Revise this line', markdown, revision, target, 'Target review line')
+    const annotationRef = { current: null as DocumentReviewAnnotationsHandle | null }
+
+    function Harness() {
+      const [portalTargets, setPortalTargets] = useState<DocumentReviewPortalTarget[]>([])
+      const containerRef = useRef<HTMLDivElement | null>(null)
+      useLayoutEffect(() => {
+        updatePortalTargets = (targets) => act(() => setPortalTargets(targets))
+        return () => { updatePortalTargets = () => undefined }
+      }, [])
+      return (
+        <div ref={containerRef}>
+          <div ref={(node) => {
+            if (node && editor && editor.view.dom.parentNode !== node) node.append(editor.view.dom)
+          }} />
+          <DocumentReviewAnnotations
+            ref={(handle) => { annotationRef.current = handle }}
+            editor={editor!}
+            fileName="chapters/ch01.md"
+            containerRef={containerRef}
+            comments={[comment]}
+            decorationStateRef={decorationStateRef}
+            portalTargets={portalTargets}
+            onPrepareSnapshot={async () => ({ content: markdown, revision })}
+            onCreate={vi.fn()}
+            onUpdate={vi.fn()}
+            onDelete={vi.fn()}
+          />
+        </div>
+      )
+    }
+
+    render(<Harness />)
+    const key = `comment:${revision}:${markdown.indexOf('Target review line')}:${markdown.indexOf('Target review line') + 'Target review line'.length}`
+    await waitFor(() => expect(findHighlight(editor!, key)).toBeDefined())
+    const highlight = findHighlight(editor, key)!
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(highlight, 'scrollIntoView', { configurable: true, value: scrollIntoView })
+
+    act(() => {
+      expect(annotationRef.current?.revealComment(comment.id)).toBe(true)
+    })
+
+    await screen.findByText('Revise this line')
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center', inline: 'nearest' }))
+
+    act(() => {
+      expect(annotationRef.current?.revealComment(comment.id)).toBe(true)
+    })
+    await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(2))
+  })
+
   it('opens one draft when a multi-block selection contains multiple existing comments', async () => {
     const markdown = 'Intro Alpha text tail\n\nMiddle text\n\nPrefix Gamma text outro\n'
     const revision = 'sha256:overlapping-review-state'

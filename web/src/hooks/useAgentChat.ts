@@ -329,11 +329,22 @@ export function useAgentChat(options: ChatOptions = {}) {
 
   const switchChatSession = useCallback(async (id: string) => {
     if (!id || id === activeSessionId) return
-    const session = await switchSession(id)
+    const previousSessionId = activeSessionId
+    if (isStreaming) stopAIStream()
+    setActiveSessionId(id)
+
+    let session: SessionSummary
+    try {
+      session = await switchSession(id)
+    } catch (error) {
+      setActiveSessionId((current) => current === id ? previousSessionId : current)
+      throw error
+    }
+
     setActiveSessionId(session.id)
     await Promise.all([loadSessions(), loadHistory(session.id)])
     await resumeActiveChat()
-  }, [activeSessionId, loadHistory, loadSessions, resumeActiveChat])
+  }, [activeSessionId, isStreaming, loadHistory, loadSessions, resumeActiveChat, stopAIStream])
 
   const renameChatSession = useCallback(async (id: string, title: string) => {
     await renameSession(id, title)

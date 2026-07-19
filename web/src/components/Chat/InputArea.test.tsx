@@ -124,25 +124,30 @@ describe('InputArea command menu', () => {
     const user = userEvent.setup()
     const handleSend = vi.fn()
     const handleRemove = vi.fn()
+    const handleOpen = vi.fn()
+    const feedback = {
+      source: 'document' as const,
+      reviewThreadId: 'review-1',
+      comments: [{
+        id: 'comment-1',
+        body: '把这一段写得更克制',
+        path: 'chapters/ch01.md',
+      }],
+    }
     render(
       <InputArea
         onSend={handleSend}
         disabled={false}
-        reviewFeedback={[{
-          reviewThreadId: 'review-1',
-          comments: [{
-            id: 'comment-1',
-            group_id: 'group-1',
-            body: '把这一段写得更克制',
-            review_path: 'chapters/ch01.md',
-            review_line: 12,
-          }],
-        }]}
+        reviewFeedback={[feedback]}
+        onReviewFeedbackOpen={handleOpen}
         onReviewFeedbackRemove={handleRemove}
       />,
     )
 
     expect(screen.getByText(/把这一段写得更克制/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /正文 · chapters\/ch01\.md.*把这一段写得更克制/ }))
+    expect(handleOpen).toHaveBeenCalledWith(feedback, feedback.comments[0])
+
     await user.click(screen.getByRole('button', { name: '发送' }))
     expect(handleSend).toHaveBeenCalledWith('')
 

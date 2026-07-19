@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
@@ -13,6 +13,7 @@ const editorStateMock = vi.hoisted(() => ({ create: vi.fn((config: unknown) => c
 const workspaceApiMock = vi.hoisted(() => ({ readFile: vi.fn() }))
 const documentReviewAnnotationsMock = vi.hoisted(() => ({
   prepareSnapshot: null as null | (() => Promise<{ content: string; revision: string }>),
+  revealComment: vi.fn(),
 }))
 const conflictArchiveMock = vi.hoisted(() => ({
   preserve: vi.fn().mockResolvedValue({ id: 'conflict-1', path: '/conflicts/conflict-1.json', storage: 'server' }),
@@ -114,10 +115,14 @@ vi.mock('sonner', () => ({ toast: toastMock }))
 vi.mock('@/lib/api-client/workspace', () => ({ readFile: workspaceApiMock.readFile }))
 vi.mock('@/lib/api-client/autosave-conflicts', () => ({ preserveAutosaveConflict: conflictArchiveMock.preserve }))
 vi.mock('./DocumentReviewAnnotations', async () => {
-  const { forwardRef } = await import('react')
+  const { forwardRef, useImperativeHandle } = await import('react')
   return {
-    DocumentReviewAnnotations: forwardRef<unknown, { onPrepareSnapshot: () => Promise<{ content: string; revision: string }> }>((props, _ref) => {
+    DocumentReviewAnnotations: forwardRef<unknown, { onPrepareSnapshot: () => Promise<{ content: string; revision: string }> }>((props, ref) => {
       documentReviewAnnotationsMock.prepareSnapshot = props.onPrepareSnapshot
+      useImperativeHandle(ref, () => ({
+        revealComment: documentReviewAnnotationsMock.revealComment,
+        startSelectionComment: vi.fn(),
+      }))
       return null
     }),
   }
@@ -131,6 +136,7 @@ describe('MarkdownEditor', () => {
     workspaceApiMock.readFile.mockReset()
     conflictArchiveMock.preserve.mockReset().mockResolvedValue({ id: 'conflict-1', path: '/conflicts/conflict-1.json', storage: 'server' })
     documentReviewAnnotationsMock.prepareSnapshot = null
+    documentReviewAnnotationsMock.revealComment.mockReset().mockReturnValue(true)
   })
 
   afterEach(() => {
@@ -1203,6 +1209,44 @@ describe('MarkdownEditor', () => {
     expect(screen.getByRole('button', { name: '保存' })).toBeInTheDocument()
     expect(tiptapMock.editor.view.dom).not.toHaveAttribute('aria-readonly')
     expect(tiptapMock.editor.setEditable).not.toHaveBeenCalled()
+  })
+
+  it('将正文评论导航意图交给当前文件的评论注释层', async () => {
+    const comment = {
+      id: 'comment-1',
+      thread_id: 'review-1',
+      path: 'chapters/ch01.md',
+      body: '调整这里',
+      created_at: '',
+      updated_at: '',
+      anchor: {
+        kind: 'text-range' as const,
+        encoding: 'utf8-bytes-v1' as const,
+        revision: 'sha256:chapter',
+        start: 0,
+        end: 2,
+        quote: '正文',
+        display_quote: '正文',
+      },
+    }
+
+    render(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content="正文"
+        onSave={vi.fn().mockResolvedValue(true)}
+        documentReviewNavigationIntent={{ commentID: comment.id, nonce: 1 }}
+        documentReview={{
+          comments: [comment],
+          onCreate: vi.fn(),
+          onUpdate: vi.fn(),
+          onDelete: vi.fn(),
+        }}
+      />,
+    )
+
+    await waitFor(() => expect(documentReviewAnnotationsMock.revealComment).toHaveBeenCalledWith(comment.id))
   })
 
   it('原始 Markdown 与 TipTap 仅格式化不同也能准备正文评论快照', async () => {
