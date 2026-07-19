@@ -1,16 +1,16 @@
 package config
 
 import (
-	"crypto/sha256"
+	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 
 	toml "github.com/pelletier/go-toml/v2"
 
+	"denova/internal/revisionfile"
 	"denova/internal/workspacepath"
 )
 
@@ -397,13 +397,17 @@ type SettingsRuntime struct {
 
 // ReadSettingsFile 读取 TOML，文件不存在时返回零值且无错误。
 func ReadSettingsFile(path string) (Settings, error) {
-	data, err := os.ReadFile(path)
+	snapshot, err := revisionfile.Read(context.Background(), path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return Settings{}, nil
-		}
 		return Settings{}, fmt.Errorf("读取 %s 失败: %w", path, err)
 	}
+	if !snapshot.Exists {
+		return Settings{}, nil
+	}
+	return decodeSettingsFile(path, snapshot.Content)
+}
+
+func decodeSettingsFile(path string, data []byte) (Settings, error) {
 	var s Settings
 	if err := toml.Unmarshal(data, &s); err != nil {
 		return Settings{}, fmt.Errorf("解析 %s 失败: %w", path, err)
@@ -418,39 +422,76 @@ func WriteSettingsFile(path string, s Settings) error {
 
 // WriteSettingsFileIfRevision 写入配置；expectedRevision 非空时要求磁盘文件未被外部改动。
 func WriteSettingsFileIfRevision(path string, s Settings, expectedRevision string) error {
-	if expectedRevision != "" {
-		current, err := SettingsFileRevision(path)
-		if err != nil {
-			return err
-		}
-		if current != expectedRevision {
-			return ErrSettingsRevisionConflict
-		}
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("创建目录失败: %w", err)
-	}
 	data, err := toml.Marshal(sanitizeEditableSettings(s))
 	if err != nil {
 		return fmt.Errorf("序列化失败: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if _, err := revisionfile.ReplaceIfRevision(
+		context.Background(),
+		path,
+		expectedRevision,
+		data,
+		revisionfile.Options{FileMode: 0o644, DirectoryMode: 0o755},
+	); err != nil {
+		if errors.Is(err, revisionfile.ErrRevisionConflict) {
+			return ErrSettingsRevisionConflict
+		}
 		return fmt.Errorf("写入 %s 失败: %w", path, err)
 	}
 	return nil
 }
 
+// MutateSettingsFile locks one settings path across reading, preparing and
+// committing the next TOML snapshot. Callers use it for read-modify-write
+// policies that must not be prepared from stale settings.
+func MutateSettingsFile(
+	path string,
+	expectedRevision string,
+	mutate func(Settings) (Settings, error),
+) (string, error) {
+	if mutate == nil {
+		return "", errors.New("settings mutator is nil")
+	}
+	result, err := revisionfile.Mutate(
+		context.Background(),
+		path,
+		revisionfile.Options{FileMode: 0o644, DirectoryMode: 0o755},
+		func(snapshot revisionfile.Snapshot) ([]byte, error) {
+			if expectedRevision != "" && snapshot.Revision != expectedRevision {
+				return nil, ErrSettingsRevisionConflict
+			}
+			current := Settings{}
+			if snapshot.Exists {
+				var decodeErr error
+				current, decodeErr = decodeSettingsFile(path, snapshot.Content)
+				if decodeErr != nil {
+					return nil, decodeErr
+				}
+			}
+			next, mutateErr := mutate(current)
+			if mutateErr != nil {
+				return nil, mutateErr
+			}
+			data, marshalErr := toml.Marshal(sanitizeEditableSettings(next))
+			if marshalErr != nil {
+				return nil, fmt.Errorf("序列化失败: %w", marshalErr)
+			}
+			return data, nil
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+	return result.Revision, nil
+}
+
 // SettingsFileRevision 返回配置文件内容版本；缺失文件使用 stable sentinel。
 func SettingsFileRevision(path string) (string, error) {
-	data, err := os.ReadFile(path)
+	snapshot, err := revisionfile.Read(context.Background(), path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "missing", nil
-		}
 		return "", fmt.Errorf("读取 %s 版本失败: %w", path, err)
 	}
-	sum := sha256.Sum256(data)
-	return fmt.Sprintf("sha256:%x", sum), nil
+	return snapshot.Revision, nil
 }
 
 // UserConfigPath 计算用户级配置路径。novaDir 已经过 normalizePath 处理。

@@ -3,6 +3,8 @@ package skills
 import (
 	"context"
 	cryptorand "crypto/rand"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -16,6 +18,9 @@ import (
 )
 
 const maxSkillFileBytes int64 = 512 * 1024
+
+// ErrRevisionConflict prevents an autosave based on stale file content.
+var ErrRevisionConflict = errors.New("skill file was updated by another operation")
 
 func ReadDocument(ctx context.Context, dirs []Directory, scope Scope, name string) (Document, error) {
 	if err := ValidateName(name); err != nil {
@@ -46,7 +51,7 @@ func ReadDocument(ctx context.Context, dirs []Directory, scope Scope, name strin
 	if err != nil {
 		return Document{}, err
 	}
-	return Document{SkillSummary: rec.summary, Content: string(data), Files: files}, nil
+	return Document{SkillSummary: rec.summary, Content: string(data), Revision: skillContentRevision(data), Files: files}, nil
 }
 
 func CreateDocument(ctx context.Context, dirs []Directory, scope Scope, name, description string, agents ...string) (Document, error) {
@@ -62,11 +67,19 @@ func CreateDocument(ctx context.Context, dirs []Directory, scope Scope, name, de
 }
 
 func SaveDocument(ctx context.Context, dirs []Directory, scope Scope, name, content string) (Document, error) {
+	return SaveDocumentIfRevision(ctx, dirs, scope, name, content, "")
+}
+
+// SaveDocumentIfRevision updates SKILL.md only when its exact content still matches baseRevision.
+func SaveDocumentIfRevision(ctx context.Context, dirs []Directory, scope Scope, name, content, baseRevision string) (Document, error) {
 	if err := ValidateName(name); err != nil {
 		return Document{}, err
 	}
 	dir, err := writableDirectoryForScope(dirs, scope)
 	if err != nil {
+		return Document{}, err
+	}
+	if err := validateSkillFileRevision(dir, name, SkillFileName, baseRevision); err != nil {
 		return Document{}, err
 	}
 	return writeDocument(ctx, dirs, dir, name, content, true)
@@ -76,6 +89,11 @@ func SaveDocument(ctx context.Context, dirs []Directory, scope Scope, name, cont
 // sources are moved after the new copy has been validated and written; read-only
 // sources are copied so built-in Skills can be overridden without losing files.
 func SaveDocumentAs(ctx context.Context, dirs []Directory, sourceScope Scope, sourceName string, targetScope Scope, targetName, content string) (Document, error) {
+	return SaveDocumentAsIfRevision(ctx, dirs, sourceScope, sourceName, targetScope, targetName, content, "")
+}
+
+// SaveDocumentAsIfRevision moves or copies a Skill only when the source entry still matches baseRevision.
+func SaveDocumentAsIfRevision(ctx context.Context, dirs []Directory, sourceScope Scope, sourceName string, targetScope Scope, targetName, content, baseRevision string) (Document, error) {
 	sourceName = strings.TrimSpace(sourceName)
 	targetName = strings.TrimSpace(targetName)
 	if targetScope == "" {
@@ -85,7 +103,7 @@ func SaveDocumentAs(ctx context.Context, dirs []Directory, sourceScope Scope, so
 		targetName = sourceName
 	}
 	if sourceScope == targetScope && sourceName == targetName {
-		return SaveDocument(ctx, dirs, sourceScope, sourceName, content)
+		return SaveDocumentIfRevision(ctx, dirs, sourceScope, sourceName, content, baseRevision)
 	}
 	if err := ValidateName(sourceName); err != nil {
 		return Document{}, err
@@ -95,6 +113,9 @@ func SaveDocumentAs(ctx context.Context, dirs []Directory, sourceScope Scope, so
 	}
 	sourceDir, err := directoryForScope(dirs, sourceScope)
 	if err != nil {
+		return Document{}, err
+	}
+	if err := validateSkillFileRevision(sourceDir, sourceName, SkillFileName, baseRevision); err != nil {
 		return Document{}, err
 	}
 	targetDir, err := writableDirectoryForScope(dirs, targetScope)
@@ -235,13 +256,19 @@ func ReadSkillFile(ctx context.Context, dirs []Directory, scope Scope, name, fil
 		return FileDocument{}, err
 	}
 	return FileDocument{
-		Skill:   doc.SkillSummary,
-		File:    skillFileFromInfo(rel, info, dir.Writable),
-		Content: string(data),
+		Skill:    doc.SkillSummary,
+		File:     skillFileFromInfo(rel, info, dir.Writable),
+		Content:  string(data),
+		Revision: skillContentRevision(data),
 	}, nil
 }
 
 func SaveSkillFile(ctx context.Context, dirs []Directory, scope Scope, name, filePath, content string) (FileDocument, error) {
+	return SaveSkillFileIfRevision(ctx, dirs, scope, name, filePath, content, "")
+}
+
+// SaveSkillFileIfRevision updates a supporting file only when its exact content still matches baseRevision.
+func SaveSkillFileIfRevision(ctx context.Context, dirs []Directory, scope Scope, name, filePath, content, baseRevision string) (FileDocument, error) {
 	if ctx.Err() != nil {
 		return FileDocument{}, ctx.Err()
 	}
@@ -271,6 +298,15 @@ func SaveSkillFile(ctx context.Context, dirs []Directory, scope Scope, name, fil
 	if info.IsDir() || !info.Mode().IsRegular() {
 		return FileDocument{}, fmt.Errorf("skill path is not a regular file: %s", rel)
 	}
+	if baseRevision != "" {
+		current, err := skillRoot.ReadFile(filepath.FromSlash(rel))
+		if err != nil {
+			return FileDocument{}, err
+		}
+		if skillContentRevision(current) != baseRevision {
+			return FileDocument{}, ErrRevisionConflict
+		}
+	}
 	if err := atomicWriteSkillFile(skillRoot, rel, []byte(content), info.Mode().Perm()); err != nil {
 		return FileDocument{}, err
 	}
@@ -283,10 +319,34 @@ func SaveSkillFile(ctx context.Context, dirs []Directory, scope Scope, name, fil
 		return FileDocument{}, err
 	}
 	return FileDocument{
-		Skill:   doc.SkillSummary,
-		File:    skillFileFromInfo(rel, info, dir.Writable),
-		Content: content,
+		Skill:    doc.SkillSummary,
+		File:     skillFileFromInfo(rel, info, dir.Writable),
+		Content:  content,
+		Revision: skillContentRevision([]byte(content)),
 	}, nil
+}
+
+func validateSkillFileRevision(dir Directory, name, filePath, expected string) error {
+	if expected == "" {
+		return nil
+	}
+	root, err := openScopedSkillRoot(dir, name)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	data, err := root.ReadFile(filepath.FromSlash(filePath))
+	if err != nil {
+		return err
+	}
+	if skillContentRevision(data) != expected {
+		return ErrRevisionConflict
+	}
+	return nil
+}
+
+func skillContentRevision(data []byte) string {
+	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
 func DeleteDocument(ctx context.Context, dirs []Directory, scope Scope, name string) error {

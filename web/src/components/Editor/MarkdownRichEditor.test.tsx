@@ -9,14 +9,23 @@ const tiptapMock = vi.hoisted(() => {
     run: vi.fn(() => true),
   }
   const editor = {
+    commands: {
+      focus: vi.fn(),
+      setTextSelection: vi.fn(),
+    },
     chain: vi.fn(() => chainApi),
     isDestroyed: false,
     getMarkdown: vi.fn(() => tiptapMock.markdown),
     state: {
-      doc: {},
+      doc: { content: { size: 100 } },
+      selection: { from: 1, to: 1 },
       tr: { setMeta: vi.fn(() => 'tr-with-search-meta') },
     },
-    view: { dispatch: vi.fn(), dom: document.createElement('div') },
+    view: {
+      dispatch: vi.fn(),
+      dom: document.createElement('div'),
+      hasFocus: vi.fn(() => false),
+    },
   }
   interface CapturedOptions {
     content?: string
@@ -27,6 +36,7 @@ const tiptapMock = vi.hoisted(() => {
         view: unknown,
         event: { key: string; metaKey: boolean; ctrlKey: boolean; altKey: boolean; preventDefault?: () => void; stopPropagation?: () => void },
       ) => boolean
+      handleClick?: unknown
     }
     onUpdate?: (args: { editor: unknown }) => void
   }
@@ -38,7 +48,9 @@ const tiptapMock = vi.hoisted(() => {
     reset() {
       this.markdown = ''
       this.useEditorOptions = null
+      editor.state.selection = { from: 1, to: 1 }
       vi.clearAllMocks()
+      editor.view.hasFocus.mockReturnValue(false)
     },
   }
 })
@@ -100,6 +112,7 @@ describe('MarkdownRichEditor', () => {
     expect(options?.contentType).toBe('markdown')
     expect(options?.editorProps?.attributes?.['aria-label']).toBe('正文')
     expect(options?.editorProps?.attributes?.role).toBe('textbox')
+    expect(options?.editorProps?.handleClick).toBeTypeOf('function')
   })
 
   it('文档更新时把规范化后的 markdown 传给 onChange', () => {
@@ -153,6 +166,18 @@ describe('MarkdownRichEditor', () => {
 
     expect(tiptapMock.chainApi.setMeta).toHaveBeenCalledWith('addToHistory', false)
     expect(tiptapMock.chainApi.setContent).toHaveBeenCalledWith('新内容', { emitUpdate: false, contentType: 'markdown' })
+  })
+
+  it('外部内容回灌时保留已聚焦的光标位置', () => {
+    tiptapMock.markdown = '旧内容'
+    tiptapMock.editor.state.selection = { from: 4, to: 4 }
+    tiptapMock.editor.view.hasFocus.mockReturnValue(true)
+    const { rerender } = render(<MarkdownRichEditor value="旧内容" onChange={vi.fn()} />)
+
+    rerender(<MarkdownRichEditor value="前缀旧内容" onChange={vi.fn()} />)
+
+    expect(tiptapMock.editor.commands.setTextSelection).toHaveBeenCalledWith({ from: 4, to: 4 })
+    expect(tiptapMock.editor.commands.focus).toHaveBeenCalled()
   })
 
   it('自己输入产生的 value 回灌不会重写文档', () => {

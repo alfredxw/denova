@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { APIError } from '@/lib/api-client'
+import { saveWithRevisionRecovery } from '@/lib/revision-conflict'
+import { rebaseJSONValue } from '@/lib/three-way-rebase'
+import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { fetchSettings, updateUserSettings, updateWorkspaceSettings } from './api'
 import type { LayeredSettings, Settings, SettingsLayer } from './types'
 import { settingsForLayer, settingsRevisionForLayer, useAutoSaveSettings } from './use-auto-save-settings'
@@ -44,6 +46,7 @@ export function useLayeredSettingsDraft({
   const draftsRef = useRef<LayerValues<Settings>>(emptyDrafts())
   const baselinesRef = useRef<LayerValues<Settings>>(emptyDrafts())
   const loadSequenceRef = useRef(0)
+  const applySequenceRef = useRef(0)
 
   layeredRef.current = layered
   draftsRef.current = drafts
@@ -53,14 +56,45 @@ export function useLayeredSettingsDraft({
     window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: eventSource } }))
   }, [eventSource])
 
-  const applySnapshot = useCallback((next: LayeredSettings, shouldNotify = false) => {
+  const applySnapshot = useCallback(async (next: LayeredSettings, shouldNotify = false) => {
+    const applySequence = applySequenceRef.current + 1
+    applySequenceRef.current = applySequence
     const nextBaselines: LayerValues<Settings> = { user: next.user, workspace: next.workspace }
-    const nextDrafts = readyRef.current
-      ? {
-          user: rebaseSettingsDraft(baselinesRef.current.user, draftsRef.current.user, next.user),
-          workspace: rebaseSettingsDraft(baselinesRef.current.workspace, draftsRef.current.workspace, next.workspace),
-        }
-      : nextBaselines
+    const previousSnapshot = layeredRef.current
+    const capturedBaselines = baselinesRef.current
+    const capturedDrafts = draftsRef.current
+    let nextDrafts = nextBaselines
+    if (readyRef.current) {
+      const rebaseLayer = (targetLayer: SettingsLayer) => rebaseJSONWithRecovery({
+        resource: 'settings',
+        scope: `${sourcePrefix}:${targetLayer}`,
+        id: targetLayer,
+        baseline: {
+          revision: settingsRevisionForLayer(previousSnapshot, targetLayer),
+          value: capturedBaselines[targetLayer],
+        },
+        local: {
+          revision: settingsRevisionForLayer(previousSnapshot, targetLayer),
+          value: capturedDrafts[targetLayer],
+        },
+        external: {
+          revision: settingsRevisionForLayer(next, targetLayer),
+          value: nextBaselines[targetLayer],
+        },
+      })
+      const [user, workspace] = await Promise.all([rebaseLayer('user'), rebaseLayer('workspace')])
+      nextDrafts = { user, workspace }
+    }
+
+    if (!mountedRef.current || applySequence !== applySequenceRef.current) return false
+    // A user edit may land while an overlapping conflict is being archived. Replay
+    // that newer edit over the prepared snapshot instead of replacing it.
+    if (draftsRef.current !== capturedDrafts) {
+      nextDrafts = {
+        user: rebaseJSONValue(capturedDrafts.user, draftsRef.current.user, nextDrafts.user),
+        workspace: rebaseJSONValue(capturedDrafts.workspace, draftsRef.current.workspace, nextDrafts.workspace),
+      }
+    }
 
     readyRef.current = true
     layeredRef.current = next
@@ -72,7 +106,8 @@ export function useLayeredSettingsDraft({
     setSyncVersions((current) => ({ user: current.user + 1, workspace: current.workspace + 1 }))
     setError(null)
     if (shouldNotify) notifyUpdated()
-  }, [notifyUpdated])
+    return true
+  }, [notifyUpdated, sourcePrefix])
 
   const reload = useCallback(async () => {
     const sequence = loadSequenceRef.current + 1
@@ -80,8 +115,8 @@ export function useLayeredSettingsDraft({
     try {
       const next = await (loadSettings ?? fetchSettings)()
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return null
-      applySnapshot(next)
-      return next
+      const applied = await applySnapshot(next)
+      return applied ? next : null
     } catch (cause) {
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return null
       const message = cause instanceof Error ? cause.message : String(cause)
@@ -97,6 +132,7 @@ export function useLayeredSettingsDraft({
     return () => {
       mountedRef.current = false
       loadSequenceRef.current += 1
+      applySequenceRef.current += 1
     }
   }, [reload])
 
@@ -127,22 +163,41 @@ export function useLayeredSettingsDraft({
     // advance baselinesRef while that request is in flight, but it must not change
     // how the original draft is interpreted during a conflict retry.
     const saveBaseline = baselinesRef.current[targetLayer]
-    try {
-      return baseRevision ? await updater(settings, baseRevision) : await updater(settings)
-    } catch (cause) {
-      if (!(cause instanceof APIError) || (cause.status !== 409 && cause.status !== 412)) throw cause
-
-      const latest = await (loadSettings ?? fetchSettings)()
-      const latestLayer = settingsForLayer(latest, targetLayer)
-      const rebased = rebaseSettingsDraft(saveBaseline, settings, latestLayer)
-      const revision = settingsRevisionForLayer(latest, targetLayer)
-      return revision ? updater(rebased, revision) : updater(rebased)
-    }
-  }, [loadSettings, saveUserSettings, saveWorkspaceSettings])
+    let recoveryBaselineRevision = baseRevision
+    let latestRevision: string | undefined
+    return saveWithRevisionRecovery({
+      baseline: saveBaseline,
+      draft: settings,
+      revision: baseRevision,
+      save: (nextDraft, revision) => revision ? updater(nextDraft, revision) : updater(nextDraft),
+      loadLatest: async () => {
+        const latest = await (loadSettings ?? fetchSettings)()
+        latestRevision = settingsRevisionForLayer(latest, targetLayer)
+        return {
+          value: settingsForLayer(latest, targetLayer),
+          revision: latestRevision,
+        }
+      },
+      rebase: async (baseline, draft, latest) => {
+        const rebased = await rebaseJSONWithRecovery({
+          resource: 'settings',
+          scope: `${sourcePrefix}:${targetLayer}`,
+          id: targetLayer,
+          baseline: { revision: recoveryBaselineRevision, value: baseline },
+          local: { revision: recoveryBaselineRevision, value: draft },
+          external: { revision: latestRevision, value: latest },
+        })
+        recoveryBaselineRevision = latestRevision
+        return rebased
+      },
+    })
+  }, [loadSettings, saveUserSettings, saveWorkspaceSettings, sourcePrefix])
 
   const saveUser = useCallback((settings: Settings, revision?: string) => saveLayer('user', settings, revision), [saveLayer])
   const saveWorkspace = useCallback((settings: Settings, revision?: string) => saveLayer('workspace', settings, revision), [saveLayer])
-  const applySavedSettings = useCallback((next: LayeredSettings) => applySnapshot(next, true), [applySnapshot])
+  const applySavedSettings = useCallback(async (next: LayeredSettings) => {
+    await applySnapshot(next, true)
+  }, [applySnapshot])
   const updateSavingLayer = useCallback((targetLayer: SettingsLayer, saving: boolean) => {
     if (!mountedRef.current) return
     setSavingLayers((current) => current[targetLayer] === saving ? current : { ...current, [targetLayer]: saving })
@@ -156,6 +211,7 @@ export function useLayeredSettingsDraft({
     draft: drafts.user,
     saved: layered?.user ?? {},
     baseRevision: layered?.revisions?.user,
+    savedRevision: (next) => settingsRevisionForLayer(next, 'user'),
     ready,
     resetKey: 'user',
     syncKey: syncVersions.user,
@@ -169,6 +225,7 @@ export function useLayeredSettingsDraft({
     draft: drafts.workspace,
     saved: layered?.workspace ?? {},
     baseRevision: layered?.revisions?.workspace,
+    savedRevision: (next) => settingsRevisionForLayer(next, 'workspace'),
     ready,
     resetKey: 'workspace',
     syncKey: syncVersions.workspace,
@@ -181,77 +238,29 @@ export function useLayeredSettingsDraft({
 
   const saveNow = useCallback(async () => {
     setError(null)
-    const controller = layer === 'user' ? userAutoSave : workspaceAutoSave
+    const flush = layer === 'user' ? userAutoSave.flush : workspaceAutoSave.flush
     try {
-      return await controller.flush()
+      return await flush()
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause)
       if (mountedRef.current) setError(message)
       throw cause
     }
-  }, [layer, userAutoSave, workspaceAutoSave])
+  }, [layer, userAutoSave.flush, workspaceAutoSave.flush])
+
+  const activeAutoSave = layer === 'user' ? userAutoSave : workspaceAutoSave
 
   return {
     layered,
     draft: drafts[layer],
     setDraft,
     saving: savingLayers.user || savingLayers.workspace,
+    autosaveStatus: activeAutoSave.status,
+    autosaveError: activeAutoSave.error,
     error,
     setError,
     reload,
     notifyUpdated,
     saveNow,
   }
-}
-
-function rebaseSettingsDraft(previousSaved: Settings, currentDraft: Settings, nextSaved: Settings): Settings {
-  return rebaseJSONRecord(
-    previousSaved as Record<string, unknown>,
-    currentDraft as Record<string, unknown>,
-    nextSaved as Record<string, unknown>,
-  ) as Settings
-}
-
-function rebaseJSONRecord(
-  previous: Record<string, unknown>,
-  current: Record<string, unknown>,
-  next: Record<string, unknown>,
-): Record<string, unknown> {
-  const rebased: Record<string, unknown> = { ...next }
-  const keys = new Set([...Object.keys(previous), ...Object.keys(current)])
-  for (const key of keys) {
-    const previousHasKey = Object.prototype.hasOwnProperty.call(previous, key)
-    const currentHasKey = Object.prototype.hasOwnProperty.call(current, key)
-    const previousValue = previous[key]
-    const currentValue = current[key]
-    if (previousHasKey === currentHasKey && jsonValueEqual(previousValue, currentValue)) continue
-    if (!currentHasKey) {
-      delete rebased[key]
-      continue
-    }
-    const nextValue = next[key]
-    rebased[key] = isJSONRecord(previousValue) && isJSONRecord(currentValue) && isJSONRecord(nextValue)
-      ? rebaseJSONRecord(previousValue, currentValue, nextValue)
-      : currentValue
-  }
-  return rebased
-}
-
-function isJSONRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
-}
-
-function jsonValueEqual(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left)
-      && Array.isArray(right)
-      && left.length === right.length
-      && left.every((value, index) => jsonValueEqual(value, right[index]))
-  }
-  if (!isJSONRecord(left) || !isJSONRecord(right)) return false
-  const leftKeys = Object.keys(left)
-  const rightKeys = Object.keys(right)
-  return leftKeys.length === rightKeys.length
-    && leftKeys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && jsonValueEqual(left[key], right[key]))
 }

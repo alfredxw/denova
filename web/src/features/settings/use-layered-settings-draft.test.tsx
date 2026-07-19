@@ -1,10 +1,19 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { APIError } from '@/lib/api-client'
+import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import type { LayeredSettings, Settings, SettingsLayer } from './types'
 import { useLayeredSettingsDraft } from './use-layered-settings-draft'
 
+vi.mock('@/lib/api-client/autosave-conflicts', () => ({
+  preserveAutosaveConflict: vi.fn(async () => ({ id: 'conflict-1', path: '/conflicts/conflict-1.json', storage: 'server' as const })),
+}))
+
 describe('useLayeredSettingsDraft', () => {
+  beforeEach(() => {
+    vi.mocked(preserveAutosaveConflict).mockClear()
+  })
+
   afterEach(() => {
     vi.useRealTimers()
   })
@@ -235,6 +244,35 @@ describe('useLayeredSettingsDraft', () => {
         image: { profile_id: 'image-b' },
       },
     }, 'r2')
+  })
+
+  it('archives an overlapping external edit before keeping the local settings value', async () => {
+    const initial = snapshot({ user: { theme: 'dark' }, revisions: { user: 'r1' } })
+    const external = snapshot({ user: { theme: 'light' }, revisions: { user: 'r2' } })
+    const loadSettings = vi.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(external)
+    const { result } = renderHook(() => useLayeredSettingsDraft({
+      layer: 'user',
+      sourcePrefix: 'test-settings',
+      loadSettings,
+      saveUserSettings: vi.fn(),
+      saveWorkspaceSettings: vi.fn(),
+    }))
+    await waitFor(() => expect(result.current.draft).toEqual(initial.user))
+
+    act(() => result.current.setDraft({ theme: 'system' }))
+    act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'other-view' } })))
+
+    await waitFor(() => expect(result.current.draft).toEqual({ theme: 'system' }))
+    expect(preserveAutosaveConflict).toHaveBeenCalledWith(expect.objectContaining({
+      resource: 'settings',
+      scope: 'test-settings:user',
+      id: 'user',
+      base: { revision: 'r1', value: { theme: 'dark' } },
+      local: { revision: 'r1', value: { theme: 'system' } },
+      external: { revision: 'r2', value: { theme: 'light' } },
+      merged: { revision: 'r2', value: { theme: 'system' } },
+      conflict_paths: [['theme']],
+    }))
   })
 
   it('uses the autosave queue for manual save and clears the pending timer', async () => {

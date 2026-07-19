@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Check, ChevronDown, Edit3, FileText, Loader2, Plus, Save, Sparkles, Trash2, Upload } from 'lucide-react'
+import { Check, ChevronDown, Edit3, FileText, Loader2, Plus, Sparkles, Trash2, Upload } from 'lucide-react'
 import { readUIMessageStream } from 'ai'
 import { useTranslation } from 'react-i18next'
 import { runConfigManagerStream } from '@/lib/api'
 import { isSaveShortcut } from '@/lib/keyboard'
 import { readTextFile } from '@/lib/text-file'
+import { rebaseText } from '@/lib/three-way-rebase'
+import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { MessageList } from '@/components/Chat/MessageList'
+import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { agentViewContent, buildAgentMessageViews } from '@/lib/agent-message-view'
 import { normalizeAgentUIMessages, type AgentUIMessage } from '@/lib/agent-ui'
 import { createAgentDataMessage, createAgentTextMessage } from '@/hooks/useAgentUIMessageStream'
@@ -16,12 +19,13 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
-import { getStyleReferences, readStyleReferenceFile, saveStyleReference, updateStyleReferenceFile } from '../api'
+import { getStyleReferences, readStyleReferenceFile, saveStyleReference } from '../api'
 import type { StyleReference, StyleReferenceFileDocument, StyleRule, Teller, TellerPromptSlot } from '../types'
 import { presetActionButtonClassName as actionButtonClassName, presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from './preset-config/editor-styles'
 import { PresetEmptyState } from './preset-config/PresetEmptyState'
 import { PresetMetadataPanel } from './preset-config/PresetEditorChrome'
 import { PresetField as Field } from './preset-config/PresetField'
+import { useStyleReferenceAutosave } from './setting-panel/use-style-reference-autosave'
 
 const TELLER_TARGET_OPTIONS = [{ value: 'system' }, { value: 'turn_context' }] as const
 
@@ -103,16 +107,16 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
 
   return (
     <div data-testid="teller-editor" className="teller-editor flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <PresetMetadataPanel
-        name={draft.name}
-        description={draft.description}
-        status={draft.custom ? t('settingPanel.custom') : draft.builtin_overridden ? t('settingPanel.builtInOverridden') : t('settingPanel.builtIn')}
-        hint={editHint}
-        onNameChange={(name) => setDraft({ ...draft, name })}
-        onDescriptionChange={(description) => setDraft({ ...draft, description })}
-	/>
-
       <div data-testid="teller-content-scroll" className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+        <PresetMetadataPanel
+          name={draft.name}
+          description={draft.description}
+          status={draft.custom ? t('settingPanel.custom') : draft.builtin_overridden ? t('settingPanel.builtInOverridden') : t('settingPanel.builtIn')}
+          hint={editHint}
+          onNameChange={(name) => setDraft({ ...draft, name })}
+          onDescriptionChange={(description) => setDraft({ ...draft, description })}
+        />
+
         <section className="shrink-0 border-b border-[var(--preset-line)] bg-[var(--preset-surface)] p-3 sm:p-4">
           <div className="mb-3">
             <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.styleRules.title')}</div>
@@ -128,7 +132,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
           />
         </section>
 
-        <div className="teller-injection-layout grid min-h-[320px] min-w-0 flex-1">
+        <div className="teller-injection-layout grid min-h-[320px] min-w-0 flex-1 shrink-0">
         <aside className="teller-injection-rules flex max-h-56 min-h-0 min-w-0 flex-col overflow-hidden border-b border-[var(--preset-line)] bg-[var(--preset-surface)]">
           <div className="flex h-11 items-center justify-between border-b border-[var(--nova-border)] px-3">
             <div className="text-xs font-medium text-[var(--nova-text-muted)]">{t('settingPanel.injectRules.title')}</div>
@@ -159,7 +163,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
         </aside>
 
         {activeSlot ? (
-          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+          <section className="flex min-h-0 min-w-0 flex-col">
             <div className="shrink-0 border-b border-[var(--preset-line)] bg-[var(--preset-surface)] p-3 sm:p-4">
               <div className="teller-rule-grid grid min-w-0 gap-3">
                 <Field label={t('settingPanel.field.ruleName')}>
@@ -324,12 +328,44 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
   const [uploadDocument, setUploadDocument] = useState<StyleReferenceFileDocument | null>(null)
   const [editOpen, setEditOpen] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
-  const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
   const [editDocument, setEditDocument] = useState<StyleReferenceFileDocument | null>(null)
   const [editContent, setEditContent] = useState('')
   const [editPath, setEditPath] = useState('')
+  const editBaselineContentRef = useRef('')
+  const editBaselineRevisionRef = useRef('')
+  const editContentRef = useRef('')
+  const editPathRef = useRef('')
+  editContentRef.current = editContent
+  editPathRef.current = editPath
   const summary = refs.length === 0 && contents.length === 0 ? t('settingPanel.style.noSelected') : t('settingPanel.style.button', { count: refs.length + contents.length })
+
+  const uploadAutosave = useStyleReferenceAutosave({
+    document: uploadDocument,
+    content: uploadDraft?.content || '',
+    active: uploadOpen && uploading === null,
+    onSaved: (saved, submittedContent) => {
+      setUploadDocument(saved)
+      setUploadDraft((current) => current?.content === submittedContent
+        ? { ...current, content: saved.content }
+        : current)
+      void refreshReferences()
+    },
+    onError: setUploadError,
+  })
+  const editAutosave = useStyleReferenceAutosave({
+    document: editDocument,
+    content: editContent,
+    active: editOpen && !editLoading,
+    onSaved: (saved, submittedContent) => {
+      editBaselineContentRef.current = saved.content
+      editBaselineRevisionRef.current = saved.revision
+      setEditDocument(saved)
+      setEditContent((current) => current === submittedContent ? saved.content : current)
+      void refreshReferences()
+    },
+    onError: setEditError,
+  })
 
   const addRef = (path: string) => {
     const normalized = path.trim()
@@ -365,13 +401,14 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
     setPickerOpen(false)
     setEditOpen(true)
     setEditLoading(true)
-    setEditSaving(false)
     setEditError('')
     setEditDocument(null)
     setEditContent('')
     setEditPath(normalized)
     try {
       const doc = await readStyleReferenceFile(normalized)
+      editBaselineContentRef.current = doc.content
+      editBaselineRevisionRef.current = doc.revision
       setEditDocument(doc)
       setEditContent(doc.content)
       setEditPath(doc.reference.display_path || normalized)
@@ -382,30 +419,57 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
     }
   }
 
-  const saveStyleEditor = async () => {
-    if (!editPath || editLoading || editSaving) return
-    if (!editContent.trim()) {
-      setEditError(t('settingPanel.style.editEmpty'))
-      return
-    }
-    setEditSaving(true)
+  const closeStyleEditor = async () => {
+    if (!await editAutosave.flush()) return
+    setEditOpen(false)
     setEditError('')
-    try {
-      await updateStyleReferenceFile({
-        path: editDocument?.reference.display_path || editPath,
-        content: editContent,
-        base_revision: editDocument?.revision || '',
-      })
-      await refreshReferences()
-      setEditOpen(false)
-      setEditDocument(null)
-      setEditContent('')
-      setEditPath('')
-    } catch (err) {
-      setEditError(err instanceof Error ? err.message : t('settingPanel.style.editSaveFailed'))
-    } finally {
-      setEditSaving(false)
+    setEditDocument(null)
+    setEditContent('')
+    setEditPath('')
+    editBaselineContentRef.current = ''
+    editBaselineRevisionRef.current = ''
+  }
+
+  useEffect(() => {
+    if (!editOpen || !editPath) return
+    const onWorkspaceChange = (event: Event) => {
+      const paths = (event as CustomEvent<{ paths?: string[] }>).detail?.paths
+      if (paths && !paths.includes(editPath)) return
+      const requestedPath = editPath
+      void readStyleReferenceFile(requestedPath)
+        .then(async (latest) => {
+          if (editPathRef.current !== requestedPath) return
+          const capturedDraft = editContentRef.current
+          let rebased = await rebaseTextWithRecovery({
+            resource: 'style_reference',
+            scope: 'workspace',
+            id: requestedPath,
+            baseline: { revision: editBaselineRevisionRef.current, value: editBaselineContentRef.current },
+            local: { revision: editBaselineRevisionRef.current, value: capturedDraft },
+            external: { revision: latest.revision, value: latest.content },
+          })
+          if (editPathRef.current !== requestedPath) return
+          if (editContentRef.current !== capturedDraft) {
+            rebased = rebaseText(capturedDraft, editContentRef.current, rebased)
+          }
+          setEditContent(rebased)
+          editBaselineContentRef.current = latest.content
+          editBaselineRevisionRef.current = latest.revision
+          setEditDocument(latest)
+        })
+        .catch((error) => console.warn('[teller-editor] 重新加载外部文风参考更新失败', error))
     }
+    window.addEventListener('nova:workspace-change', onWorkspaceChange)
+    return () => window.removeEventListener('nova:workspace-change', onWorkspaceChange)
+  }, [editOpen, editPath])
+
+  const closeUploadDialog = async () => {
+    if (uploading || !await uploadAutosave.flush()) return
+    setUploadOpen(false)
+    setUploadError('')
+    setUploadNotice('')
+    setUploadDraft(null)
+    setUploadDocument(null)
   }
 
   const handleFileSelected = async (file: File | undefined) => {
@@ -428,26 +492,15 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
   }
 
   const saveUploadDraft = async () => {
-    if (!uploadDraft || uploading) return
+    if (!uploadDraft || uploadDocument || uploading) return
     setUploading('direct')
     setUploadError('')
     setUploadNotice('')
     try {
       const request = normalizeStyleUploadDraft(uploadDraft)
-      if (uploadDocument) {
-        const doc = await updateStyleReferenceFile({
-          path: uploadDocument.reference.display_path,
-          content: request.content,
-          base_revision: uploadDocument.revision || '',
-        })
-        await refreshReferences()
-        addRef(doc.reference.display_path)
-        setUploadDocument(doc)
-      } else {
-        const ref = await saveStyleReference(request)
-        await refreshReferences()
-        addRef(ref.display_path)
-      }
+      const ref = await saveStyleReference(request)
+      await refreshReferences()
+      addRef(ref.display_path)
       setUploadOpen(false)
       setUploadDraft(null)
       setUploadDocument(null)
@@ -597,10 +650,18 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
         </div>
       )}
       <Dialog open={uploadOpen} onOpenChange={(open) => {
-        if (!open && uploading) return
-        setUploadOpen(open)
+        if (open) setUploadOpen(true)
+        else void closeUploadDialog()
       }}>
-        <DialogContent className="nova-panel flex max-h-[min(760px,calc(100vh-2rem))] w-[min(980px,calc(100vw-2rem))] max-w-[min(980px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)]">
+        <DialogContent
+          className="nova-panel flex max-h-[min(760px,calc(100vh-2rem))] w-[min(980px,calc(100vw-2rem))] max-w-[min(980px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)]"
+          onKeyDownCapture={(event) => {
+            if (!uploadDocument || !isSaveShortcut(event)) return
+            event.preventDefault()
+            event.stopPropagation()
+            void uploadAutosave.flush(true)
+          }}
+        >
           <div className="border-b border-[var(--nova-border)] px-4 py-3">
             <DialogTitle className="text-sm font-semibold text-[var(--nova-text)]">{t('settingPanel.style.uploadDialogTitle')}</DialogTitle>
             <DialogDescription className="mt-1 text-xs text-[var(--nova-text-faint)]">{t('settingPanel.style.uploadDialogDesc')}</DialogDescription>
@@ -622,10 +683,8 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
                   <Input
                     className={inputClassName}
                     value={uploadDraft?.filename || ''}
-                    onChange={(event) => {
-                      setUploadDocument(null)
-                      setUploadDraft((draft) => draft ? { ...draft, filename: markdownFilename(event.target.value) } : draft)
-                    }}
+                    disabled={Boolean(uploadDocument)}
+                    onChange={(event) => setUploadDraft((draft) => draft ? { ...draft, filename: markdownFilename(event.target.value) } : draft)}
                   />
                 </Field>
               </div>
@@ -649,11 +708,15 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
             <StyleExtractionChatPanel messages={extractMessages} active={uploading === 'extract'} />
           </div>
           <DialogFooter className="!mx-0 !mb-0 rounded-none border-t border-[var(--nova-border)] bg-[var(--nova-surface)]/95 !px-4 !py-3">
-            <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => setUploadOpen(false)} disabled={uploading !== null}>{t('common.cancel')}</Button>
-            <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => void saveUploadDraft()} disabled={!uploadDraft?.content.trim() || uploading !== null}>
-              {uploading === 'direct' ? <Loader2 data-icon="inline-start" className="animate-spin" /> : uploadDocument ? <Save data-icon="inline-start" /> : <Upload data-icon="inline-start" />}
-              {uploadDocument ? t('common.save') : t('settingPanel.style.directSave')}
-            </Button>
+            <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => void closeUploadDialog()} disabled={uploading !== null}>{uploadDocument ? t('common.close') : t('common.cancel')}</Button>
+            {uploadDocument ? (
+              <AutosaveStatusIndicator status={uploadAutosave.status} error={uploadAutosave.error} onRetry={uploadAutosave.retry} />
+            ) : (
+              <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => void saveUploadDraft()} disabled={!uploadDraft?.content.trim() || uploading !== null}>
+                {uploading === 'direct' ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Upload data-icon="inline-start" />}
+                {t('settingPanel.style.directSave')}
+              </Button>
+            )}
             <Button className="nova-nav-item gap-1.5 border border-[var(--nova-accent)]/45 bg-[var(--nova-active)] text-[var(--nova-text)] hover:border-[var(--nova-accent)] hover:bg-[var(--nova-hover)]" size="sm" onClick={() => void extractWithAgent()} disabled={!uploadDraft?.content.trim() || uploading !== null}>
               {uploading === 'extract' ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Sparkles data-icon="inline-start" />}
               {t('settingPanel.style.extractSave')}
@@ -662,14 +725,8 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
         </DialogContent>
       </Dialog>
       <Dialog open={editOpen} onOpenChange={(open) => {
-        if (!open && editSaving) return
-        setEditOpen(open)
-        if (!open) {
-          setEditError('')
-          setEditDocument(null)
-          setEditContent('')
-          setEditPath('')
-        }
+        if (open) setEditOpen(true)
+        else void closeStyleEditor()
       }}>
         <DialogContent className="nova-panel flex max-h-[min(760px,calc(100vh-2rem))] w-[min(860px,calc(100vw-2rem))] max-w-[min(860px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0 text-[var(--nova-text)] shadow-[var(--nova-shadow)]">
           <div className="border-b border-[var(--nova-border)] px-4 py-3">
@@ -696,7 +753,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
                     if (isSaveShortcut(event)) {
                       event.preventDefault()
                       event.stopPropagation()
-                      void saveStyleEditor()
+                      void editAutosave.flush(true)
                     }
                   }}
                   placeholder={t('settingPanel.style.editPlaceholder')}
@@ -709,11 +766,10 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
             )}
           </div>
           <DialogFooter className="!mx-0 !mb-0 rounded-none border-t border-[var(--nova-border)] bg-[var(--nova-surface)]/95 !px-4 !py-3">
-            <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => setEditOpen(false)} disabled={editSaving}>{t('common.cancel')}</Button>
-            <Button className="nova-nav-item gap-1.5 border border-[var(--nova-accent)]/45 bg-[var(--nova-active)] text-[var(--nova-text)] hover:border-[var(--nova-accent)] hover:bg-[var(--nova-hover)]" size="sm" onClick={() => void saveStyleEditor()} disabled={editLoading || editSaving || !editContent.trim()}>
-              {editSaving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Save data-icon="inline-start" />}
-              {editSaving ? t('common.saving') : t('common.save')}
-            </Button>
+            {!editLoading && editDocument ? (
+              <AutosaveStatusIndicator status={editAutosave.status} error={editAutosave.error} onRetry={editAutosave.retry} />
+            ) : null}
+            <Button className={actionButtonClassName} variant="outline" size="sm" onClick={() => void closeStyleEditor()}>{t('common.close')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

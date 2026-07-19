@@ -2,9 +2,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchSettings, updateUserSettings } from '@/features/settings/api'
-import { AgentPanel } from './AgentPanel'
+import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
+import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS, type WritingComposerSettingsController } from './AgentPanel'
 
 const useWritingSkillOptionsMock = vi.hoisted(() => vi.fn())
 const useWorkspaceChangeGroupsMock = vi.hoisted(() => vi.fn())
@@ -58,6 +59,10 @@ describe('AgentPanel', () => {
       { name: 'novel-heavy', description: 'Heavy', scope: 'builtin', path: '/skills/novel-heavy/SKILL.md', active: true, agent: 'ide' },
       { name: 'slow-burn', description: '慢热写作', scope: 'workspace', path: '/book/.nova/skills/slow-burn/SKILL.md', active: true, agent: 'ide' },
     ])
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('创作 Agent 顶部切换器不再展示 Review tab，并在输入选项中切换写作 Skill', async () => {
@@ -230,6 +235,43 @@ describe('AgentPanel', () => {
     })
   })
 
+  it('关闭面板后由稳定 owner 完成仍在 afterDelay 中的偏好保存', async () => {
+    const overrides: AgentPanelOverrides = {
+      tellers: [
+        { id: 'classic', name: '默认叙事', style_rules: [] } as any,
+        { id: 'slow-burn', name: '慢热叙事', style_rules: [] } as any,
+      ],
+    }
+    function Owner({ open }: { open: boolean }) {
+      const composerSettings = usePersistedUserSettings({ workspace: '/workspace', defaults: WRITING_COMPOSER_SETTING_DEFAULTS })
+      return open ? <AgentPanel {...defaultAgentPanelProps(overrides, composerSettings)} /> : null
+    }
+
+    const view = render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 52 }}>
+        <Owner open />
+      </VirtuosoMockContext.Provider>,
+    )
+    await waitFor(() => expect(screen.getByRole('button', { name: '输入动作' })).toBeEnabled())
+
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: '输入动作' }))
+    await user.hover(screen.getByText('叙事'))
+    const slowBurnItem = await screen.findByText('慢热叙事')
+    vi.useFakeTimers()
+    fireEvent.click(slowBurnItem.closest('[role="menuitem"]') || slowBurnItem)
+    expect(updateUserSettings).not.toHaveBeenCalled()
+
+    view.rerender(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 52 }}>
+        <Owner open={false} />
+      </VirtuosoMockContext.Provider>,
+    )
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(updateUserSettings).toHaveBeenCalledWith(expect.objectContaining({ ide_story_teller_id: 'slow-burn' }))
+  })
+
   it('发送开始时移走审阅意见，并在请求失败时恢复', async () => {
     const user = userEvent.setup()
     const handleSend = vi.fn()
@@ -321,47 +363,64 @@ describe('AgentPanel', () => {
   })
 })
 
-function renderAgentPanel(overrides: Partial<ComponentProps<typeof AgentPanel>> = {}) {
+type AgentPanelOverrides = Partial<Omit<ComponentProps<typeof AgentPanel>, 'composerSettings'>>
+
+function renderAgentPanel(overrides: AgentPanelOverrides = {}) {
+  function Owner() {
+    const composerSettings = usePersistedUserSettings({
+      workspace: overrides.workspace || '/workspace',
+      defaults: WRITING_COMPOSER_SETTING_DEFAULTS,
+    })
+    return <AgentPanel {...defaultAgentPanelProps(overrides, composerSettings)} />
+  }
   return render(
     <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 52 }}>
-      <AgentPanel
-        workspace="/workspace"
-        selectedFile={null}
-        tellers={[{ id: 'classic', name: '默认叙事', style_rules: [] } as any]}
-        messages={[]}
-        sessions={[{ id: 'session-1', title: '当前会话', active: true, message_count: 0, created_at: '', updated_at: '' }]}
-        activeSessionId="session-1"
-        isStreaming={false}
-        activityContent=""
-        references={[]}
-        loreReferences={[]}
-        loreReferenceLabels={{}}
-        loreSuggestions={[]}
-        styleScenes={[]}
-        textSelections={[]}
-        planMode={false}
-        fileSuggestions={[]}
-        onCreateSession={vi.fn()}
-        onSwitchSession={vi.fn()}
-        onRenameSession={vi.fn()}
-        onDeleteSession={vi.fn()}
-        onSend={vi.fn()}
-        onAnalyzeContext={vi.fn().mockResolvedValue({} as any)}
-        onStop={vi.fn()}
-        onReferenceRemove={vi.fn()}
-        onLoreReferenceAdd={vi.fn()}
-        onLoreReferenceRemove={vi.fn()}
-        onStyleSceneAdd={vi.fn()}
-        onStyleSceneRemove={vi.fn()}
-        onTextSelectionRemove={vi.fn()}
-        onPlanModeChange={vi.fn()}
-        onPlanModeToggle={vi.fn()}
-        onSubmitPlanQuestion={vi.fn()}
-        onApproveProposedPlan={vi.fn()}
-        onExitPlanMode={vi.fn()}
-        onClose={vi.fn()}
-        {...overrides}
-      />
+      <Owner />
     </VirtuosoMockContext.Provider>,
   )
+}
+
+function defaultAgentPanelProps(
+  overrides: AgentPanelOverrides,
+  composerSettings: WritingComposerSettingsController,
+): ComponentProps<typeof AgentPanel> {
+  return {
+    workspace: '/workspace',
+    composerSettings,
+    selectedFile: null,
+    tellers: [{ id: 'classic', name: '默认叙事', style_rules: [] } as any],
+    messages: [],
+    sessions: [{ id: 'session-1', title: '当前会话', active: true, message_count: 0, created_at: '', updated_at: '' }],
+    activeSessionId: 'session-1',
+    isStreaming: false,
+    activityContent: '',
+    references: [],
+    loreReferences: [],
+    loreReferenceLabels: {},
+    loreSuggestions: [],
+    styleScenes: [],
+    textSelections: [],
+    planMode: false,
+    fileSuggestions: [],
+    onCreateSession: vi.fn(),
+    onSwitchSession: vi.fn(),
+    onRenameSession: vi.fn(),
+    onDeleteSession: vi.fn(),
+    onSend: vi.fn(),
+    onAnalyzeContext: vi.fn().mockResolvedValue({} as any),
+    onStop: vi.fn(),
+    onReferenceRemove: vi.fn(),
+    onLoreReferenceAdd: vi.fn(),
+    onLoreReferenceRemove: vi.fn(),
+    onStyleSceneAdd: vi.fn(),
+    onStyleSceneRemove: vi.fn(),
+    onTextSelectionRemove: vi.fn(),
+    onPlanModeChange: vi.fn(),
+    onPlanModeToggle: vi.fn(),
+    onSubmitPlanQuestion: vi.fn(),
+    onApproveProposedPlan: vi.fn(),
+    onExitPlanMode: vi.fn(),
+    onClose: vi.fn(),
+    ...overrides,
+  }
 }

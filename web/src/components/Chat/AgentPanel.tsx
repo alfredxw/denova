@@ -11,7 +11,7 @@ import type { AgentUIMessage } from '@/lib/agent-ui'
 import { agentSubAgentSessionKey, agentViewContent, buildAgentMessageViews, selectAgentTokenUsageRecords, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { DEFAULT_WRITING_SKILL, useWritingSkillOptions } from '@/hooks/useWritingSkillOptions'
-import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
+import type { PersistedUserSettingsController } from '@/hooks/usePersistedUserSettings'
 import { AgentChatPane } from './AgentChatPane'
 import { SessionManagementPanel } from './SessionManagementPanel'
 import { AgentTracePanel } from './AgentTracePanel'
@@ -29,14 +29,18 @@ import type { ChatSendOptions } from '@/hooks/useAgentChat'
 type AgentPanelView = 'chat' | 'sessions' | 'traces'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
-const WRITING_COMPOSER_SETTING_DEFAULTS = {
+export const WRITING_COMPOSER_SETTING_DEFAULTS = {
   ide_story_teller_id: 'classic',
   ide_image_preset_id: 'game-cg',
   writing_skill_default: DEFAULT_WRITING_SKILL,
 } as const
 
+export type WritingComposerSettingsController = PersistedUserSettingsController<typeof WRITING_COMPOSER_SETTING_DEFAULTS>
+
 interface AgentPanelProps {
   workspace: string
+  /** Owned above the conditional panel so closing the panel cannot discard delayed saves. */
+  composerSettings: WritingComposerSettingsController
   currentChapter?: ChapterSummary
   selectedFile: string | null
   tellers: Teller[]
@@ -87,6 +91,7 @@ interface AgentPanelProps {
 /** IDE 右侧创作 Agent 面板，内部支持在对话与完整会话管理之间切换。 */
 export function AgentPanel({
   workspace,
+  composerSettings: persistedSettings,
   currentChapter,
   selectedFile,
   tellers,
@@ -144,7 +149,6 @@ export function AgentPanel({
   const [selectedTraceRunId, setSelectedTraceRunId] = useState('')
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const [chatPaneHost] = useState(() => createStablePortalHost('relative flex h-full min-h-0 w-full min-w-0 flex-col'))
-  const persistedSettings = usePersistedUserSettings({ workspace, defaults: WRITING_COMPOSER_SETTING_DEFAULTS })
   const ideTellerId = persistedSettings.values.ide_story_teller_id
   const imagePresetId = persistedSettings.values.ide_image_preset_id
   const writingSkill = persistedSettings.values.writing_skill_default

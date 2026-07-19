@@ -83,8 +83,16 @@ func (a *App) UpdateAutomation(id string, task automation.Task) (automation.Task
 	return a.automation().Update(id, task)
 }
 
+func (a *App) UpdateAutomationIfRevision(id string, task automation.Task, baseRevision string) (automation.Task, error) {
+	return a.automation().UpdateIfRevision(id, task, baseRevision)
+}
+
 func (s *AutomationAppService) Update(id string, task automation.Task) (automation.Task, error) {
 	return s.storeAllWorkspaces().Update(id, task)
+}
+
+func (s *AutomationAppService) UpdateIfRevision(id string, task automation.Task, baseRevision string) (automation.Task, error) {
+	return s.storeAllWorkspaces().UpdateIfRevision(id, task, baseRevision)
 }
 
 func (a *App) DeleteAutomation(id string) error {

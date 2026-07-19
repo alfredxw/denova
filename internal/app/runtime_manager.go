@@ -358,15 +358,9 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings, b
 	}
 	a.mu.RUnlock()
 	path := config.UserConfigPath(novaDir)
-	existing, err := config.ReadSettingsFile(path)
-	if err != nil {
-		return config.LayeredSettings{}, err
-	}
-	prepared, err := config.PrepareUserSettingsForWrite(existing, settings)
-	if err != nil {
-		return config.LayeredSettings{}, err
-	}
-	if err := config.WriteSettingsFileIfRevision(path, prepared, baseRevision); err != nil {
+	if _, err := config.MutateSettingsFile(path, baseRevision, func(existing config.Settings) (config.Settings, error) {
+		return config.PrepareUserSettingsForWrite(existing, settings)
+	}); err != nil {
 		return config.LayeredSettings{}, err
 	}
 	log.Printf("[settings] 用户配置已保存 path=%s", path)
@@ -395,12 +389,9 @@ func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settin
 		return config.LayeredSettings{}, ErrNoWorkspaceOpen
 	}
 	path := config.WorkspaceConfigPath(workspace)
-	existing, err := config.ReadSettingsFile(path)
-	if err != nil {
-		return config.LayeredSettings{}, err
-	}
-	prepared := config.PrepareWorkspaceAgentSettingsForWrite(existing, settings)
-	if err := config.WriteSettingsFileIfRevision(path, prepared, baseRevision); err != nil {
+	if _, err := config.MutateSettingsFile(path, baseRevision, func(existing config.Settings) (config.Settings, error) {
+		return config.PrepareWorkspaceAgentSettingsForWrite(existing, settings), nil
+	}); err != nil {
 		return config.LayeredSettings{}, err
 	}
 	log.Printf("[settings] 工作区 Agent 定制已保存 path=%s", path)

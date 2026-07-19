@@ -57,13 +57,15 @@ type Snapshot struct {
 // Document is a single editable SKILL.md payload.
 type Document struct {
 	SkillSummary
-	Content string      `json:"content"`
-	Files   []SkillFile `json:"files,omitempty"`
+	Content  string      `json:"content"`
+	Revision string      `json:"revision"`
+	Files    []SkillFile `json:"files,omitempty"`
 }
 
 // FileDocument is a single supporting file payload inside a Skill directory.
 type FileDocument struct {
-	Skill   SkillSummary `json:"skill"`
-	File    SkillFile    `json:"file"`
-	Content string       `json:"content"`
+	Skill    SkillSummary `json:"skill"`
+	File     SkillFile    `json:"file"`
+	Content  string       `json:"content"`
+	Revision string       `json:"revision"`
 }

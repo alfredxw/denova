@@ -19,6 +19,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 	apiHandlers := handlers.New(s.app)
 	api := h.Group("/api")
 	{
+		api.POST("/autosave-conflicts", apiHandlers.HandleAutosaveConflictCreate)
 		api.GET("/workspace/tree", apiHandlers.HandleWorkspaceTree)
 		api.GET("/workspace/summary", apiHandlers.HandleWorkspaceSummary)
 		api.PATCH("/workspace/chapter-status", apiHandlers.HandleWorkspaceChapterStatus)

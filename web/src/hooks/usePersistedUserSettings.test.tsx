@@ -1,13 +1,18 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchSettings, updateUserSettings } from '@/features/settings/api'
 import type { LayeredSettings } from '@/features/settings/types'
 import { APIError } from '@/lib/api-client'
+import { preserveAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import { usePersistedUserSettings } from './usePersistedUserSettings'
 
 vi.mock('@/features/settings/api', () => ({
   fetchSettings: vi.fn(),
   updateUserSettings: vi.fn(),
+}))
+
+vi.mock('@/lib/api-client/autosave-conflicts', () => ({
+  preserveAutosaveConflict: vi.fn(async () => ({ id: 'settings-conflict', path: '/conflicts/settings-conflict.json', storage: 'server' as const })),
 }))
 
 const defaults = {
@@ -19,6 +24,11 @@ describe('usePersistedUserSettings', () => {
   beforeEach(() => {
     vi.mocked(fetchSettings).mockReset()
     vi.mocked(updateUserSettings).mockReset()
+    vi.mocked(preserveAutosaveConflict).mockClear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('loads all configured values from one settings snapshot', async () => {
@@ -36,7 +46,82 @@ describe('usePersistedUserSettings', () => {
     expect(fetchSettings).toHaveBeenCalledOnce()
   })
 
-  it('serializes different setting writes and rebases each patch on the latest revision', async () => {
+  it('updates optimistically but persists only after the edit delay', async () => {
+    const initial = snapshot({
+      user: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
+      effective: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r1' },
+    })
+    const saved = snapshot({
+      user: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'game-cg' },
+      effective: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r2' },
+    })
+    vi.mocked(fetchSettings).mockResolvedValue(initial)
+    vi.mocked(updateUserSettings).mockResolvedValue(saved)
+
+    const { result } = renderHook(() => usePersistedUserSettings({ workspace: '/book', defaults }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    vi.useFakeTimers()
+
+    let save!: Promise<boolean>
+    act(() => { save = result.current.persist('ide_story_teller_id', 'slow-burn') })
+    expect(result.current.values.ide_story_teller_id).toBe('slow-burn')
+
+    await vi.advanceTimersByTimeAsync(999)
+    expect(updateUserSettings).not.toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(1)
+    await act(async () => expect(await save).toBe(true))
+    expect(updateUserSettings).toHaveBeenCalledOnce()
+  })
+
+  it('coalesces different pending preferences into one latest settings patch', async () => {
+    let current = snapshot({
+      user: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
+      effective: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r1' },
+    })
+    vi.mocked(fetchSettings).mockImplementation(async () => current)
+    vi.mocked(updateUserSettings).mockImplementation(async (settings) => {
+      current = snapshot({
+        user: settings,
+        effective: settings,
+        revisions: { user: 'r2' },
+      })
+      return current
+    })
+
+    const { result } = renderHook(() => usePersistedUserSettings({ workspace: '/book', defaults }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    vi.useFakeTimers()
+
+    let tellerSave!: Promise<boolean>
+    let presetSave!: Promise<boolean>
+    act(() => {
+      tellerSave = result.current.persist('ide_story_teller_id', 'slow-burn')
+      presetSave = result.current.persist('ide_image_preset_id', 'cinematic')
+    })
+
+    expect(result.current.values).toEqual({
+      ide_story_teller_id: 'slow-burn',
+      ide_image_preset_id: 'cinematic',
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(await tellerSave).toBe(true)
+      expect(await presetSave).toBe(true)
+    })
+
+    expect(fetchSettings).toHaveBeenCalledTimes(2)
+    expect(updateUserSettings).toHaveBeenCalledOnce()
+    expect(updateUserSettings).toHaveBeenCalledWith({
+      ide_story_teller_id: 'slow-burn',
+      ide_image_preset_id: 'cinematic',
+    }, 'r1')
+  })
+
+  it('keeps one request in flight and saves only the latest edit waiting behind it', async () => {
     let current = snapshot({
       user: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
       effective: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
@@ -47,30 +132,27 @@ describe('usePersistedUserSettings', () => {
     vi.mocked(updateUserSettings)
       .mockImplementationOnce(() => firstUpdate.promise)
       .mockImplementationOnce(async (settings) => {
-        current = snapshot({
-          user: settings,
-          effective: settings,
-          revisions: { user: 'r3' },
-        })
+        current = snapshot({ user: settings, effective: settings, revisions: { user: 'r3' } })
         return current
       })
 
     const { result } = renderHook(() => usePersistedUserSettings({ workspace: '/book', defaults }))
     await waitFor(() => expect(result.current.loading).toBe(false))
+    vi.useFakeTimers()
 
-    let tellerSave!: Promise<boolean>
-    let presetSave!: Promise<boolean>
+    let firstSave!: Promise<boolean>
+    act(() => { firstSave = result.current.persist('ide_story_teller_id', 'slow-burn') })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(updateUserSettings).toHaveBeenCalledOnce()
+
+    let middleSave!: Promise<boolean>
+    let latestSave!: Promise<boolean>
     act(() => {
-      tellerSave = result.current.persist('ide_story_teller_id', 'slow-burn')
-      presetSave = result.current.persist('ide_image_preset_id', 'cinematic')
+      middleSave = result.current.persist('ide_story_teller_id', 'epic')
+      latestSave = result.current.persist('ide_story_teller_id', 'minimal')
     })
-
-    await waitFor(() => expect(updateUserSettings).toHaveBeenCalledTimes(1))
-    expect(fetchSettings).toHaveBeenCalledTimes(2)
-    expect(result.current.values).toEqual({
-      ide_story_teller_id: 'slow-burn',
-      ide_image_preset_id: 'cinematic',
-    })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(updateUserSettings).toHaveBeenCalledOnce()
 
     current = snapshot({
       user: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'game-cg' },
@@ -79,16 +161,52 @@ describe('usePersistedUserSettings', () => {
     })
     await act(async () => {
       firstUpdate.resolve(current)
-      expect(await tellerSave).toBe(true)
+      expect(await firstSave).toBe(true)
+      await vi.advanceTimersByTimeAsync(0)
     })
 
-    await waitFor(() => expect(updateUserSettings).toHaveBeenCalledTimes(2))
-    expect(fetchSettings).toHaveBeenCalledTimes(3)
-    expect(updateUserSettings).toHaveBeenNthCalledWith(2, {
-      ide_story_teller_id: 'slow-burn',
-      ide_image_preset_id: 'cinematic',
+    expect(updateUserSettings).toHaveBeenCalledTimes(2)
+    expect(updateUserSettings).toHaveBeenLastCalledWith({
+      ide_story_teller_id: 'minimal',
+      ide_image_preset_id: 'game-cg',
     }, 'r2')
-    await act(async () => expect(await presetSave).toBe(true))
+    await act(async () => {
+      expect(await middleSave).toBe(true)
+      expect(await latestSave).toBe(true)
+    })
+  })
+
+  it('keeps an after-delay user preference when the stable owner changes workspace', async () => {
+    const initial = snapshot({
+      user: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
+      effective: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r1' },
+    })
+    const saved = snapshot({
+      user: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'game-cg' },
+      effective: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r2' },
+    })
+    vi.mocked(fetchSettings).mockResolvedValue(initial)
+    vi.mocked(updateUserSettings).mockResolvedValue(saved)
+
+    const { result, rerender } = renderHook(
+      ({ workspace }) => usePersistedUserSettings({ workspace, defaults }),
+      { initialProps: { workspace: '/book-a' } },
+    )
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    vi.useFakeTimers()
+
+    let operation!: Promise<boolean>
+    act(() => { operation = result.current.persist('ide_story_teller_id', 'slow-burn') })
+    rerender({ workspace: '/book-b' })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(await operation).toBe(true)
+    })
+
+    expect(updateUserSettings).toHaveBeenCalledWith(expect.objectContaining({ ide_story_teller_id: 'slow-burn' }), 'r1')
+    expect(result.current.values.ide_story_teller_id).toBe('slow-burn')
   })
 
   it('keeps optimistic values while an external reload arrives during a save', async () => {
@@ -103,24 +221,29 @@ describe('usePersistedUserSettings', () => {
 
     const { result } = renderHook(() => usePersistedUserSettings({ workspace: '/book', defaults }))
     await waitFor(() => expect(result.current.loading).toBe(false))
+    vi.useFakeTimers()
 
     let save!: Promise<boolean>
     act(() => {
       save = result.current.persist('ide_story_teller_id', 'slow-burn')
     })
-    await waitFor(() => expect(updateUserSettings).toHaveBeenCalledOnce())
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(updateUserSettings).toHaveBeenCalledOnce()
 
     current = snapshot({
       user: { ide_story_teller_id: 'classic', ide_image_preset_id: 'cinematic' },
       effective: { ide_story_teller_id: 'classic', ide_image_preset_id: 'cinematic' },
       revisions: { user: 'r2' },
     })
-    act(() => window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'settings-page' } })))
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: 'settings-page' } }))
+      await Promise.resolve()
+    })
 
-    await waitFor(() => expect(result.current.values).toEqual({
+    expect(result.current.values).toEqual({
       ide_story_teller_id: 'slow-burn',
       ide_image_preset_id: 'cinematic',
-    }))
+    })
 
     current = snapshot({
       user: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'cinematic' },
@@ -160,10 +283,14 @@ describe('usePersistedUserSettings', () => {
 
     const { result } = renderHook(() => usePersistedUserSettings({ workspace: '/book', defaults }))
     await waitFor(() => expect(result.current.loading).toBe(false))
+    vi.useFakeTimers()
 
     let save!: Promise<boolean>
     act(() => { save = result.current.persist('ide_story_teller_id', 'slow-burn') })
-    await act(async () => expect(await save).toBe(true))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(await save).toBe(true)
+    })
 
     expect(updateUserSettings).toHaveBeenNthCalledWith(1, {
       ide_story_teller_id: 'slow-burn',
@@ -177,6 +304,137 @@ describe('usePersistedUserSettings', () => {
       ide_story_teller_id: 'slow-burn',
       ide_image_preset_id: 'cinematic',
     })
+  })
+
+  it('archives a same-key external edit detected during the delay before applying the local preference', async () => {
+    const initial = snapshot({
+      user: { ide_story_teller_id: 'classic' },
+      effective: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r1' },
+    })
+    const external = snapshot({
+      user: { ide_story_teller_id: 'epic' },
+      effective: { ide_story_teller_id: 'epic', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r2' },
+    })
+    const saved = snapshot({
+      user: { ide_story_teller_id: 'slow-burn' },
+      effective: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r3' },
+    })
+    vi.mocked(fetchSettings).mockResolvedValueOnce(initial).mockResolvedValueOnce(external)
+    vi.mocked(updateUserSettings).mockResolvedValue(saved)
+
+    const { result } = renderHook(() => usePersistedUserSettings({ workspace: '/book', defaults }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    vi.useFakeTimers()
+
+    let operation!: Promise<boolean>
+    act(() => { operation = result.current.persist('ide_story_teller_id', 'slow-burn') })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(await operation).toBe(true)
+    })
+
+    expect(preserveAutosaveConflict).toHaveBeenCalledWith(expect.objectContaining({
+      resource: 'settings',
+      scope: '/book:user',
+      id: 'user',
+      base: { revision: 'r1', value: expect.objectContaining({ ide_story_teller_id: 'classic' }) },
+      local: { revision: 'r1', value: expect.objectContaining({ ide_story_teller_id: 'slow-burn' }) },
+      external: { revision: 'r2', value: expect.objectContaining({ ide_story_teller_id: 'epic' }) },
+      merged: { revision: 'r2', value: expect.objectContaining({ ide_story_teller_id: 'slow-burn' }) },
+      conflict_paths: [['ide_story_teller_id']],
+    }))
+    expect(updateUserSettings).toHaveBeenCalledWith({ ide_story_teller_id: 'slow-burn' }, 'r2')
+  })
+
+  it('does not overwrite or clear a local preference when conflict preservation fails', async () => {
+    const initial = snapshot({
+      user: { ide_story_teller_id: 'classic' },
+      effective: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r1' },
+    })
+    const external = snapshot({
+      user: { ide_story_teller_id: 'epic' },
+      effective: { ide_story_teller_id: 'epic', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r2' },
+    })
+    const saved = snapshot({
+      user: { ide_story_teller_id: 'slow-burn' },
+      effective: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r3' },
+    })
+    vi.mocked(fetchSettings).mockResolvedValueOnce(initial).mockResolvedValue(external)
+    vi.mocked(preserveAutosaveConflict)
+      .mockRejectedValueOnce(new Error('archive offline'))
+      .mockResolvedValueOnce({ id: 'settings-conflict', path: '/conflicts/settings-conflict.json', storage: 'server' })
+    vi.mocked(updateUserSettings).mockResolvedValue(saved)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const { result } = renderHook(() => usePersistedUserSettings({ workspace: '/book', defaults }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    vi.useFakeTimers()
+
+    let operation!: Promise<boolean>
+    let settled = false
+    act(() => { operation = result.current.persist('ide_story_teller_id', 'slow-burn') })
+    void operation.then(() => { settled = true })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+
+    expect(settled).toBe(false)
+    expect(result.current.values.ide_story_teller_id).toBe('slow-burn')
+    expect(result.current.isSaving('ide_story_teller_id')).toBe(true)
+    expect(updateUserSettings).not.toHaveBeenCalled()
+
+    await act(async () => {
+      expect(await result.current.flushPending()).toBe(true)
+      expect(await operation).toBe(true)
+    })
+    expect(preserveAutosaveConflict).toHaveBeenCalledTimes(2)
+    expect(updateUserSettings).toHaveBeenCalledWith({ ide_story_teller_id: 'slow-burn' }, 'r2')
+    warn.mockRestore()
+  })
+
+  it('keeps a failed delayed preference pending and retries it without rolling back the local value', async () => {
+    const initial = snapshot({
+      user: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
+      effective: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r1' },
+    })
+    const saved = snapshot({
+      user: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'game-cg' },
+      effective: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r2' },
+    })
+    vi.mocked(fetchSettings).mockResolvedValue(initial)
+    vi.mocked(updateUserSettings)
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(saved)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+
+    const { result } = renderHook(() => usePersistedUserSettings({ workspace: '/book', defaults }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    vi.useFakeTimers()
+
+    let save!: Promise<boolean>
+    let settled = false
+    act(() => { save = result.current.persist('ide_story_teller_id', 'slow-burn') })
+    void save.then(() => { settled = true })
+    expect(result.current.isSaving('ide_story_teller_id')).toBe(true)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+
+    expect(settled).toBe(false)
+    expect(result.current.values.ide_story_teller_id).toBe('slow-burn')
+    expect(result.current.isSaving('ide_story_teller_id')).toBe(true)
+
+    await act(async () => {
+      expect(await result.current.flushPending()).toBe(true)
+      expect(await save).toBe(true)
+    })
+    expect(updateUserSettings).toHaveBeenCalledTimes(2)
+    expect(result.current.isSaving('ide_story_teller_id')).toBe(false)
+    warn.mockRestore()
   })
 })
 

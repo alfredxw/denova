@@ -8,7 +8,7 @@ const onboarding = {
   'onboarding.waiting': 'Waiting',
   'onboarding.action.openModule': 'Open',
   'onboarding.step.model.title': 'Configure a language model first',
-  'onboarding.step.model.body': 'Writing and chat need a usable language model. Add an API Key and model name, save, and the guide will continue automatically.',
+  'onboarding.step.model.body': 'Writing and chat need a usable language model. Add an API Key and model name; the configuration will autosave and the guide will continue automatically.',
   'onboarding.step.model.action': 'Configure',
   'onboarding.step.book.title': 'Create your first book',
   'onboarding.step.book.body': 'Denova organizes chapters, settings, versions, and interactive stories around books. Create one book to enter the writing flow.',

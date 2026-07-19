@@ -1,14 +1,9 @@
 /** 方案预设 6 类资源的数据层：列表/选中 id/草稿 state、加载与外部同步、保存合并与刷新。 */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
 import { getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors } from '../../api'
-import type { PresetResourceKind } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
-import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneRuleSystem, cloneStoryDirector, cloneTeller, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, presetResourceDraftSignature, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDrafts } from './presetResources'
-
-interface AutosavedListEntry {
-  id: string
-  signature: string
-}
+import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneRuleSystem, cloneStoryDirector, cloneTeller, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDrafts } from './presetResources'
 
 /** 外部传入列表优先；未传入时按 workspace 自行加载。 */
 export function usePresetResources({
@@ -28,8 +23,6 @@ export function usePresetResources({
   onStoryDirectorsChange?: (directors: StoryDirector[]) => void
   onImagePresetsChange?: (presets: ImagePreset[]) => void
 }) {
-  const autosavedListEntriesRef = useRef<Partial<Record<PresetResourceKind, AutosavedListEntry>>>({})
-
   const [tellers, setTellers] = useState<Teller[]>(externalTellers)
   const [activeTellerId, setActiveTellerId] = useState('')
   const [tellerDraft, setTellerDraft] = useState<Teller | null>(null)
@@ -49,36 +42,6 @@ export function usePresetResources({
   const [actorStates, setActorStates] = useState<ActorStateModule[]>(EMPTY_ACTOR_STATES)
   const [activeActorStateId, setActiveActorStateId] = useState('')
   const [actorStateDraft, setActorStateDraft] = useState<ActorStateModule | null>(null)
-
-  const markAutosavedListEntry = (kind: PresetResourceKind, item: { id: string } & object) => {
-    autosavedListEntriesRef.current[kind] = {
-      id: item.id,
-      signature: presetResourceDraftSignature(item),
-    }
-  }
-
-  const clearAutosavedListEntry = (kind: PresetResourceKind) => {
-    delete autosavedListEntriesRef.current[kind]
-  }
-
-  const shouldPreserveAutosavedDraft = (kind: PresetResourceKind, item: ({ id: string } & object) | null, draftId?: string) => {
-    const autosavedEntry = autosavedListEntriesRef.current[kind]
-    if (!autosavedEntry) return false
-    if (
-      !item
-      || item.id !== autosavedEntry.id
-      || draftId !== item.id
-      || presetResourceDraftSignature(item) !== autosavedEntry.signature
-    ) {
-      delete autosavedListEntriesRef.current[kind]
-      return false
-    }
-    return true
-  }
-
-  useEffect(() => {
-    autosavedListEntriesRef.current = {}
-  }, [workspace])
 
   useEffect(() => {
     if (onTellersChange || externalTellers.length > 0 || !workspace) return
@@ -189,11 +152,6 @@ export function usePresetResources({
       if (current && externalTellers.some((teller) => teller.id === current)) return current
       return externalTellers[0]?.id || ''
     })
-    const activeExternalTeller = externalTellers.find((teller) => teller.id === activeTellerId) || null
-    if (!shouldPreserveAutosavedDraft('teller', activeExternalTeller, tellerDraft?.id)) {
-      setTellerDraft(null)
-      setActiveSlotId('')
-    }
   }, [externalTellers, workspace])
 
   useEffect(() => {
@@ -202,10 +160,6 @@ export function usePresetResources({
       if (current && externalStoryDirectors.some((director) => director.id === current)) return current
       return externalStoryDirectors[0]?.id || ''
     })
-    const activeExternalDirector = externalStoryDirectors.find((director) => director.id === activeStoryDirectorId) || null
-    if (!shouldPreserveAutosavedDraft('director', activeExternalDirector, storyDirectorDraft?.id)) {
-      setStoryDirectorDraft(null)
-    }
   }, [externalStoryDirectors, workspace])
 
   useEffect(() => {
@@ -214,10 +168,6 @@ export function usePresetResources({
       if (current && externalImagePresets.some((preset) => preset.id === current)) return current
       return externalImagePresets[0]?.id || ''
     })
-    const activeExternalPreset = externalImagePresets.find((preset) => preset.id === activeImagePresetId) || null
-    if (!shouldPreserveAutosavedDraft('image', activeExternalPreset, imagePresetDraft?.id)) {
-      setImagePresetDraft(null)
-    }
   }, [externalImagePresets, workspace])
 
   useEffect(() => {
@@ -253,56 +203,37 @@ export function usePresetResources({
     actorState: actorStateDraft,
   }), [actorStateDraft, eventPackageDraft, imagePresetDraft, ruleSystemDraft, storyDirectorDraft, tellerDraft])
 
-  const mergeSavedTeller = (teller: Teller, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('teller', teller)
-    else clearAutosavedListEntry('teller')
-    setTellers((current) => {
-      const next = current.map((entry) => (entry.id === teller.id ? teller : entry))
-      onTellersChange?.(next)
-      return next
-    })
+  const mergeSavedTeller = (teller: Teller) => {
+    const next = tellers.map((entry) => (entry.id === teller.id ? teller : entry))
+    setTellers(next)
+    onTellersChange?.(next)
   }
 
-  const mergeSavedStoryDirector = (director: StoryDirector, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('director', director)
-    else clearAutosavedListEntry('director')
-    setStoryDirectors((current) => {
-      const next = current.map((entry) => (entry.id === director.id ? director : entry))
-      onStoryDirectorsChange?.(next)
-      return next
-    })
+  const mergeSavedStoryDirector = (director: StoryDirector) => {
+    const next = storyDirectors.map((entry) => (entry.id === director.id ? director : entry))
+    setStoryDirectors(next)
+    onStoryDirectorsChange?.(next)
   }
 
-  const mergeSavedImagePreset = (preset: ImagePreset, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('image', preset)
-    else clearAutosavedListEntry('image')
-    setImagePresets((current) => {
-      const next = current.map((entry) => (entry.id === preset.id ? preset : entry))
-      onImagePresetsChange?.(next)
-      return next
-    })
+  const mergeSavedImagePreset = (preset: ImagePreset) => {
+    const next = imagePresets.map((entry) => (entry.id === preset.id ? preset : entry))
+    setImagePresets(next)
+    onImagePresetsChange?.(next)
   }
 
-  const mergeSavedEventPackage = (item: EventPackageModule, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('event', item)
-    else clearAutosavedListEntry('event')
+  const mergeSavedEventPackage = (item: EventPackageModule) => {
     setEventPackages((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
   }
 
-  const mergeSavedRuleSystem = (item: RuleSystemModule, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('rule', item)
-    else clearAutosavedListEntry('rule')
+  const mergeSavedRuleSystem = (item: RuleSystemModule) => {
     setRuleSystems((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
   }
 
-  const mergeSavedActorState = (item: ActorStateModule, preserveDraft = false) => {
-    if (preserveDraft) markAutosavedListEntry('actor-state', item)
-    else clearAutosavedListEntry('actor-state')
+  const mergeSavedActorState = (item: ActorStateModule) => {
     setActorStates((current) => current.map((entry) => (entry.id === item.id ? item : entry)))
   }
 
   const refreshTellers = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('teller')
     const data = await getInteractiveTellers()
     setTellers(data)
     onTellersChange?.(data)
@@ -315,7 +246,6 @@ export function usePresetResources({
   }
 
   const refreshStoryDirectors = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('director')
     const data = await getStoryDirectors()
     setStoryDirectors(data)
     onStoryDirectorsChange?.(data)
@@ -327,7 +257,6 @@ export function usePresetResources({
   }
 
   const refreshImagePresets = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('image')
     const data = await getImagePresets()
     setImagePresets(data)
     onImagePresetsChange?.(data)
@@ -339,7 +268,6 @@ export function usePresetResources({
   }
 
   const refreshEventPackages = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('event')
     const data = await getEventPackages()
     setEventPackages(data)
     setActiveEventPackageId((current) => {
@@ -350,7 +278,6 @@ export function usePresetResources({
   }
 
   const refreshRuleSystems = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('rule')
     const data = await getRuleSystems()
     setRuleSystems(data)
     setActiveRuleSystemId((current) => {
@@ -361,7 +288,6 @@ export function usePresetResources({
   }
 
   const refreshActorStates = async (nextActiveId?: string) => {
-    clearAutosavedListEntry('actor-state')
     const data = await getActorStates()
     setActorStates(data)
     setActiveActorStateId((current) => {
@@ -372,6 +298,7 @@ export function usePresetResources({
   }
 
   return {
+    workspace,
     tellers,
     activeTellerId,
     setActiveTellerId,
@@ -405,7 +332,6 @@ export function usePresetResources({
     actorStateDraft,
     setActorStateDraft,
     presetDrafts,
-    shouldPreserveAutosavedDraft,
     mergeSavedTeller,
     mergeSavedStoryDirector,
     mergeSavedImagePreset,
@@ -435,6 +361,7 @@ interface DraftSyncAutosaves {
 /** 草稿同步：activeId/列表变化时克隆草稿并对齐 autosave 基线（config agent 伪条目清空草稿）。 */
 export function usePresetDraftSync(resources: PresetResources, autosaves: DraftSyncAutosaves) {
   const {
+    workspace,
     tellers,
     activeTellerId,
     tellerDraft,
@@ -460,64 +387,100 @@ export function usePresetDraftSync(resources: PresetResources, autosaves: DraftS
     activeActorStateId,
     actorStateDraft,
     setActorStateDraft,
-    shouldPreserveAutosavedDraft,
   } = resources
 
+  const teller = activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
+    ? null
+    : tellers.find((entry) => entry.id === activeTellerId) || null
+  const director = storyDirectors.find((entry) => entry.id === activeStoryDirectorId) || null
+  const imagePreset = imagePresets.find((entry) => entry.id === activeImagePresetId) || null
+  const eventPackage = eventPackages.find((entry) => entry.id === activeEventPackageId) || null
+  const ruleSystem = ruleSystems.find((entry) => entry.id === activeRuleSystemId) || null
+  const actorState = actorStates.find((entry) => entry.id === activeActorStateId) || null
+
+  useRebasedPresetDraft({ resource: 'teller', scopeKey: workspace, baseline: teller, draft: tellerDraft, setDraft: setTellerDraft, clone: cloneTeller, resetBaseline: autosaves.teller.resetBaseline })
+  useRebasedPresetDraft({ resource: 'story_director', scopeKey: workspace, baseline: director, draft: storyDirectorDraft, setDraft: setStoryDirectorDraft, clone: cloneStoryDirector, resetBaseline: autosaves.director.resetBaseline })
+  useRebasedPresetDraft({ resource: 'image_preset', scopeKey: workspace, baseline: imagePreset, draft: imagePresetDraft, setDraft: setImagePresetDraft, clone: cloneImagePreset, resetBaseline: autosaves.image.resetBaseline })
+  useRebasedPresetDraft({ resource: 'event_package', scopeKey: workspace, baseline: eventPackage, draft: eventPackageDraft, setDraft: setEventPackageDraft, clone: cloneEventPackage, resetBaseline: autosaves.event.resetBaseline })
+  useRebasedPresetDraft({ resource: 'rule_system', scopeKey: workspace, baseline: ruleSystem, draft: ruleSystemDraft, setDraft: setRuleSystemDraft, clone: cloneRuleSystem, resetBaseline: autosaves.rule.resetBaseline })
+  useRebasedPresetDraft({ resource: 'actor_state', scopeKey: workspace, baseline: actorState, draft: actorStateDraft, setDraft: setActorStateDraft, clone: cloneActorState, resetBaseline: autosaves['actor-state'].resetBaseline })
+
   useEffect(() => {
-    if (activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID) {
-      setTellerDraft(null)
-      autosaves.teller.resetBaseline(null)
-      setActiveSlotId('')
-      return
-    }
-    const teller = tellers.find((entry) => entry.id === activeTellerId) || null
-    if (shouldPreserveAutosavedDraft('teller', teller, tellerDraft?.id)) return
-    const nextDraft = teller ? cloneTeller(teller) : null
-    setTellerDraft(nextDraft)
     setActiveSlotId((current) => {
-      if (current && teller?.slots?.some((slot) => slot.id === current)) return current
-      return teller?.slots?.[0]?.id || ''
+      if (current && tellerDraft?.slots?.some((slot) => slot.id === current)) return current
+      return tellerDraft?.slots?.[0]?.id || ''
     })
-    autosaves.teller.resetBaseline(nextDraft)
-  }, [activeTellerId, tellers, autosaves.teller.resetBaseline])
+  }, [setActiveSlotId, tellerDraft])
+}
+
+function useRebasedPresetDraft<T extends { id: string; updated_at?: string }>({
+  resource,
+  scopeKey,
+  baseline,
+  draft,
+  setDraft,
+  clone,
+  resetBaseline,
+}: {
+  resource: string
+  scopeKey: string
+  baseline: T | null
+  draft: T | null
+  setDraft: Dispatch<SetStateAction<T | null>>
+  clone: (value: T) => T
+  resetBaseline: (draft: T | null) => void
+}) {
+  const previousBaselineRef = useRef<T | null>(null)
+  const scopeKeyRef = useRef(scopeKey)
+  const draftRef = useRef(draft)
+  draftRef.current = draft
 
   useEffect(() => {
-    const preset = imagePresets.find((entry) => entry.id === activeImagePresetId) || null
-    if (shouldPreserveAutosavedDraft('image', preset, imagePresetDraft?.id)) return
-    const nextDraft = preset ? cloneImagePreset(preset) : null
-    setImagePresetDraft(nextDraft)
-    autosaves.image.resetBaseline(nextDraft)
-  }, [activeImagePresetId, imagePresets, autosaves.image.resetBaseline])
-
-  useEffect(() => {
-    const director = storyDirectors.find((entry) => entry.id === activeStoryDirectorId) || null
-    if (shouldPreserveAutosavedDraft('director', director, storyDirectorDraft?.id)) return
-    const nextDraft = director ? cloneStoryDirector(director) : null
-    setStoryDirectorDraft(nextDraft)
-    autosaves.director.resetBaseline(nextDraft)
-  }, [activeStoryDirectorId, storyDirectors, autosaves.director.resetBaseline])
-
-  useEffect(() => {
-    const item = eventPackages.find((entry) => entry.id === activeEventPackageId) || null
-    if (shouldPreserveAutosavedDraft('event', item, eventPackageDraft?.id)) return
-    const nextDraft = item ? cloneEventPackage(item) : null
-    setEventPackageDraft(nextDraft)
-    autosaves.event.resetBaseline(nextDraft)
-  }, [activeEventPackageId, eventPackages, autosaves.event.resetBaseline])
-
-  useEffect(() => {
-    const item = ruleSystems.find((entry) => entry.id === activeRuleSystemId) || null
-    if (shouldPreserveAutosavedDraft('rule', item, ruleSystemDraft?.id)) return
-    const nextDraft = item ? cloneRuleSystem(item) : null
-    setRuleSystemDraft(nextDraft)
-    autosaves.rule.resetBaseline(nextDraft)
-  }, [activeRuleSystemId, ruleSystems, autosaves.rule.resetBaseline])
-
-  useEffect(() => {
-    const item = actorStates.find((entry) => entry.id === activeActorStateId) || null
-    if (shouldPreserveAutosavedDraft('actor-state', item, actorStateDraft?.id)) return
-    const nextDraft = item ? cloneActorState(item) : null
-    setActorStateDraft(nextDraft)
-    autosaves['actor-state'].resetBaseline(nextDraft)
-  }, [activeActorStateId, actorStates, autosaves['actor-state'].resetBaseline])
+    let cancelled = false
+    if (scopeKeyRef.current !== scopeKey) {
+      scopeKeyRef.current = scopeKey
+      previousBaselineRef.current = null
+    }
+    const nextBaseline = baseline ? clone(baseline) : null
+    const previousBaseline = previousBaselineRef.current
+    const currentDraft = draftRef.current
+    void (async () => {
+      let rebasedFromDraft = currentDraft
+      let nextDraft = nextBaseline
+        ? previousBaseline?.id === nextBaseline.id && currentDraft?.id === nextBaseline.id
+          ? await rebaseJSONWithRecovery({
+              resource,
+              scope: scopeKey,
+              id: nextBaseline.id,
+              baseline: { revision: previousBaseline.updated_at, value: previousBaseline },
+              local: { revision: previousBaseline.updated_at, value: currentDraft },
+              external: { revision: nextBaseline.updated_at, value: nextBaseline },
+            })
+          : nextBaseline
+        : null
+      // Conflict preservation can await storage. Fold every edit made during that
+      // wait over the reconciled result before committing it, and repeat if a
+      // second overlap also had to be archived.
+      while (!cancelled && nextDraft && rebasedFromDraft?.id === nextDraft.id) {
+        const latestDraft = draftRef.current
+        if (!latestDraft || latestDraft.id !== nextDraft.id || Object.is(latestDraft, rebasedFromDraft)) break
+        nextDraft = await rebaseJSONWithRecovery({
+          resource,
+          scope: scopeKey,
+          id: nextDraft.id,
+          baseline: { revision: rebasedFromDraft.updated_at, value: rebasedFromDraft },
+          local: { revision: rebasedFromDraft.updated_at, value: latestDraft },
+          external: { revision: nextBaseline?.updated_at, value: nextDraft },
+        })
+        rebasedFromDraft = latestDraft
+      }
+      if (cancelled) return
+      previousBaselineRef.current = nextBaseline
+      resetBaseline(nextBaseline)
+      setDraft(nextDraft)
+    })().catch((error) => console.error(`[preset-autosave] failed to reconcile external ${resource} update`, error))
+    return () => {
+      cancelled = true
+    }
+  }, [baseline, clone, resetBaseline, resource, scopeKey, setDraft])
 }

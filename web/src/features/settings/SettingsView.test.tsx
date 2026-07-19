@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchSettings, updateUserSettings } from './api'
 import { modelProfilesForEditor, SettingsView, UpdatePanel } from './SettingsView'
@@ -143,16 +143,17 @@ describe('SettingsView user scope', () => {
     expect(screen.getByText('默认叙事')).toBeInTheDocument()
     expect(screen.getByText('定时自动保存版本')).toBeInTheDocument()
     expect(screen.getByText('故事舞台行间距')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
 
+    vi.useFakeTimers()
     fireEvent.change(screen.getByLabelText('定时保存间隔 (分钟)'), { target: { value: '20' } })
-    fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    expect(screen.getByRole('status')).toHaveTextContent('等待自动保存')
+    await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
 
-    await waitFor(() => {
-      expect(updateUserSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ version_timed_interval_minutes: 20 }),
-        'user-rev',
-      )
-    })
+    expect(updateUserSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ version_timed_interval_minutes: 20 }),
+      'user-rev',
+    )
   })
 })
 

@@ -28,12 +28,12 @@ func (a *App) CreateSkillDocument(ctx context.Context, scope novaskills.Scope, n
 	return a.skills().Create(ctx, scope, name, description, agents)
 }
 
-func (a *App) SaveSkillFileDocument(ctx context.Context, scope novaskills.Scope, name, path, content string) (novaskills.FileDocument, error) {
-	return a.skills().SaveFile(ctx, scope, name, path, content)
+func (a *App) SaveSkillFileDocument(ctx context.Context, scope novaskills.Scope, name, path, content, baseRevision string) (novaskills.FileDocument, error) {
+	return a.skills().SaveFile(ctx, scope, name, path, content, baseRevision)
 }
 
-func (a *App) SaveSkillDocumentAs(ctx context.Context, scope novaskills.Scope, name string, targetScope novaskills.Scope, targetName, content string) (novaskills.Document, error) {
-	return a.skills().SaveAs(ctx, scope, name, targetScope, targetName, content)
+func (a *App) SaveSkillDocumentAs(ctx context.Context, scope novaskills.Scope, name string, targetScope novaskills.Scope, targetName, content, baseRevision string) (novaskills.Document, error) {
+	return a.skills().SaveAs(ctx, scope, name, targetScope, targetName, content, baseRevision)
 }
 
 func (a *App) DeleteSkillDocument(ctx context.Context, scope novaskills.Scope, name string) error {
@@ -85,8 +85,8 @@ func (s *SkillsAppService) Create(ctx context.Context, scope novaskills.Scope, n
 	return doc, nil
 }
 
-func (s *SkillsAppService) SaveFile(ctx context.Context, scope novaskills.Scope, name, path, content string) (novaskills.FileDocument, error) {
-	doc, err := novaskills.SaveSkillFile(ctx, s.directories(), scope, name, path, content)
+func (s *SkillsAppService) SaveFile(ctx context.Context, scope novaskills.Scope, name, path, content, baseRevision string) (novaskills.FileDocument, error) {
+	doc, err := novaskills.SaveSkillFileIfRevision(ctx, s.directories(), scope, name, path, content, baseRevision)
 	if err != nil {
 		return novaskills.FileDocument{}, err
 	}
@@ -94,8 +94,8 @@ func (s *SkillsAppService) SaveFile(ctx context.Context, scope novaskills.Scope,
 	return doc, nil
 }
 
-func (s *SkillsAppService) SaveAs(ctx context.Context, scope novaskills.Scope, name string, targetScope novaskills.Scope, targetName, content string) (novaskills.Document, error) {
-	doc, err := novaskills.SaveDocumentAs(ctx, s.directories(), scope, name, targetScope, targetName, content)
+func (s *SkillsAppService) SaveAs(ctx context.Context, scope novaskills.Scope, name string, targetScope novaskills.Scope, targetName, content, baseRevision string) (novaskills.Document, error) {
+	doc, err := novaskills.SaveDocumentAsIfRevision(ctx, s.directories(), scope, name, targetScope, targetName, content, baseRevision)
 	if err != nil {
 		return novaskills.Document{}, err
 	}

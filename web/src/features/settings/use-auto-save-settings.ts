@@ -1,15 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useSaveLane } from '@/hooks/use-save-lane'
 import type { LayeredSettings, Settings, SettingsLayer } from './types'
 
 const AUTO_SAVE_DELAY_MS = 1000
 
 type SaveSettings = (settings: Settings, baseRevision?: string) => Promise<LayeredSettings>
 
-/** One serialized autosave lane. Manual flushes share the same timer, queue, and revision. */
+interface SettingsSaveRequest {
+  draft: Settings
+  key: string
+  generation: number
+}
+
+/** Settings adapter over the shared after-delay, latest-only save lane. */
 export function useAutoSaveSettings({
   draft,
   saved,
   baseRevision,
+  savedRevision,
   ready,
   resetKey = 'default',
   syncKey = 0,
@@ -22,139 +30,94 @@ export function useAutoSaveSettings({
   draft: Settings
   saved: Settings
   baseRevision?: string
+  /** Reads the next lane revision from a successful response before queued writes continue. */
+  savedRevision?: (next: LayeredSettings) => string | undefined
   ready: boolean
   resetKey?: string
   /** Increment when the caller atomically applies a fresh server snapshot and rebased draft. */
   syncKey?: string | number
   save: SaveSettings
   onSavingChange: (saving: boolean) => void
-  onSaved: (next: LayeredSettings) => void
+  onSaved: (next: LayeredSettings) => void | Promise<void>
   /** Reconcile a successful write whose response was superseded by a newer server sync. */
   onStaleSuccess?: (next: LayeredSettings) => void | Promise<void>
   onError: (message: string) => void
 }) {
   const draftKey = useMemo(() => stableStringifySettings(draft), [draft])
   const savedKey = useMemo(() => stableStringifySettings(saved), [saved])
+  const laneScopeKey = `${resetKey}\u0000${String(syncKey)}`
   const baselineRef = useRef(savedKey)
   const initializedRef = useRef(false)
-  const waitingForDraftSyncRef = useRef(false)
   const mountedRef = useRef(true)
-  const readyRef = useRef(ready)
+  const waitingForDraftSyncRef = useRef(false)
   const latestDraftRef = useRef(draft)
   const latestDraftKeyRef = useRef(draftKey)
+  const readyRef = useRef(ready)
   const baseRevisionRef = useRef(baseRevision || '')
   const blockedDraftKeyRef = useRef('')
-  const timerRef = useRef<number | null>(null)
+  const observedDraftKeyRef = useRef('')
   const generationRef = useRef(0)
   const resetKeyRef = useRef(resetKey)
   const syncKeyRef = useRef(syncKey)
   const saveRef = useRef(save)
+  const savedRevisionRef = useRef(savedRevision)
   const onSavingChangeRef = useRef(onSavingChange)
   const onSavedRef = useRef(onSaved)
   const onStaleSuccessRef = useRef(onStaleSuccess)
   const onErrorRef = useRef(onError)
-  const inFlightRef = useRef<Promise<LayeredSettings | null> | null>(null)
-  const pendingAfterSaveRef = useRef(false)
-  const runSaveRef = useRef<(force?: boolean) => Promise<LayeredSettings | null>>(async () => null)
-  const scheduleSaveRef = useRef<() => void>(() => undefined)
 
-  readyRef.current = ready
   latestDraftRef.current = draft
   latestDraftKeyRef.current = draftKey
-  baseRevisionRef.current = baseRevision || ''
+  readyRef.current = ready
   saveRef.current = save
+  savedRevisionRef.current = savedRevision
   onSavingChangeRef.current = onSavingChange
   onSavedRef.current = onSaved
   onStaleSuccessRef.current = onStaleSuccess
   onErrorRef.current = onError
   if (draftKey !== blockedDraftKeyRef.current) blockedDraftKeyRef.current = ''
 
-  const clearTimer = useCallback(() => {
-    if (timerRef.current === null) return
-    window.clearTimeout(timerRef.current)
-    timerRef.current = null
-  }, [])
-
-  scheduleSaveRef.current = () => {
-    clearTimer()
-    timerRef.current = window.setTimeout(() => {
-      timerRef.current = null
-      void runSaveRef.current(false).catch(() => undefined)
-    }, AUTO_SAVE_DELAY_MS)
-  }
-
-  runSaveRef.current = async (force = false): Promise<LayeredSettings | null> => {
-    clearTimer()
-    if (!readyRef.current || waitingForDraftSyncRef.current) return null
-
-    if (inFlightRef.current) {
-      pendingAfterSaveRef.current = true
+  const lane = useSaveLane<SettingsSaveRequest, LayeredSettings>({
+    scopeKey: laneScopeKey,
+    delayMs: AUTO_SAVE_DELAY_MS,
+    save: async ({ value: request }) => {
+      const revision = baseRevisionRef.current
+      if (mountedRef.current) onSavingChangeRef.current(true)
       try {
-        await inFlightRef.current
-      } catch {
-        // The original caller receives the error; a forced retry may continue below.
-      }
-      if (force && latestDraftKeyRef.current !== baselineRef.current) {
-        blockedDraftKeyRef.current = ''
-        return runSaveRef.current(true)
-      }
-      return null
-    }
-
-    const snapshot = latestDraftRef.current
-    const snapshotKey = latestDraftKeyRef.current
-    if (force) blockedDraftKeyRef.current = ''
-    if (snapshotKey === baselineRef.current || snapshotKey === blockedDraftKeyRef.current) return null
-
-    const generation = generationRef.current
-    const revision = baseRevisionRef.current
-    onSavingChangeRef.current(true)
-    const operation = (async () => {
-      try {
-        const next = revision ? await saveRef.current(snapshot, revision) : await saveRef.current(snapshot)
-        baselineRef.current = snapshotKey
-        blockedDraftKeyRef.current = ''
+        const next = revision
+          ? await saveRef.current(request.draft, revision)
+          : await saveRef.current(request.draft)
         if (!mountedRef.current) return next
-        if (generation !== generationRef.current) {
+        if (request.generation !== generationRef.current) {
           await onStaleSuccessRef.current?.(next)
           return next
         }
-        onSavedRef.current(next)
+        baselineRef.current = request.key
+        baseRevisionRef.current = savedRevisionRef.current?.(next) || baseRevisionRef.current
+        blockedDraftKeyRef.current = ''
+        await onSavedRef.current(next)
         return next
       } catch (error) {
-        if (generation === generationRef.current) {
-          blockedDraftKeyRef.current = snapshotKey
-          onErrorRef.current(error instanceof Error ? error.message : String(error))
+        if (mountedRef.current && request.generation === generationRef.current) {
+          blockedDraftKeyRef.current = request.key
+          const message = error instanceof Error ? error.message : String(error)
+          onErrorRef.current(message)
         }
         throw error
       } finally {
-        inFlightRef.current = null
-        if (mountedRef.current) {
-          onSavingChangeRef.current(false)
-          const shouldSchedule = readyRef.current
-            && !waitingForDraftSyncRef.current
-            && latestDraftKeyRef.current !== baselineRef.current
-            && latestDraftKeyRef.current !== blockedDraftKeyRef.current
-          if (pendingAfterSaveRef.current || shouldSchedule) {
-            pendingAfterSaveRef.current = false
-            if (shouldSchedule) scheduleSaveRef.current()
-          }
-        }
+        if (mountedRef.current) onSavingChangeRef.current(false)
       }
-    })()
-    inFlightRef.current = operation
-    return operation
-  }
+    },
+  })
+  const { cancel, edit, flush: flushLane, getSnapshot, hasWork, reset } = lane
 
   useEffect(() => {
     mountedRef.current = true
     return () => {
       mountedRef.current = false
       generationRef.current += 1
-      pendingAfterSaveRef.current = false
-      clearTimer()
     }
-  }, [clearTimer])
+  }, [])
 
   useEffect(() => {
     const resetChanged = resetKeyRef.current !== resetKey
@@ -163,48 +126,68 @@ export function useAutoSaveSettings({
     resetKeyRef.current = resetKey
     syncKeyRef.current = syncKey
     generationRef.current += 1
-    clearTimer()
     baselineRef.current = savedKey
+    baseRevisionRef.current = baseRevision || ''
     initializedRef.current = true
     waitingForDraftSyncRef.current = resetChanged && !syncChanged
-    pendingAfterSaveRef.current = false
     blockedDraftKeyRef.current = ''
-  }, [clearTimer, resetKey, savedKey, syncKey])
+    observedDraftKeyRef.current = ''
+    reset(laneScopeKey)
+  }, [baseRevision, laneScopeKey, reset, resetKey, savedKey, syncKey])
 
   useEffect(() => {
     if (!ready) return
     if (!initializedRef.current) {
       baselineRef.current = savedKey
+      baseRevisionRef.current = baseRevision || ''
       waitingForDraftSyncRef.current = draftKey !== savedKey
       initializedRef.current = true
       return
     }
-    if (latestDraftKeyRef.current === baselineRef.current) baselineRef.current = savedKey
-  }, [draftKey, ready, savedKey])
+    if (latestDraftKeyRef.current === baselineRef.current) {
+      baselineRef.current = savedKey
+      baseRevisionRef.current = baseRevision || baseRevisionRef.current
+    }
+  }, [baseRevision, draftKey, ready, savedKey])
 
   useEffect(() => {
-    if (!ready) return
+    if (!ready) {
+      observedDraftKeyRef.current = ''
+      cancel()
+      return
+    }
     if (waitingForDraftSyncRef.current) {
       if (draftKey === baselineRef.current) waitingForDraftSyncRef.current = false
       return
     }
-    if (draftKey === baselineRef.current || draftKey === blockedDraftKeyRef.current) {
-      clearTimer()
+    if (draftKey === baselineRef.current) {
+      observedDraftKeyRef.current = draftKey
+      if (!hasWork()) cancel()
       return
     }
-    if (inFlightRef.current) {
-      pendingAfterSaveRef.current = true
-      return
+    if (draftKey === blockedDraftKeyRef.current || observedDraftKeyRef.current === draftKey) return
+    observedDraftKeyRef.current = draftKey
+    edit({ draft, key: draftKey, generation: generationRef.current })
+  }, [cancel, draft, draftKey, edit, hasWork, ready, syncKey])
+
+  const flush = useCallback(async () => {
+    if (!readyRef.current || waitingForDraftSyncRef.current) return null
+    const key = latestDraftKeyRef.current
+    if (key !== baselineRef.current && (!hasWork() || getSnapshot().status === 'error')) {
+      blockedDraftKeyRef.current = ''
+      observedDraftKeyRef.current = key
+      edit({ draft: latestDraftRef.current, key, generation: generationRef.current })
     }
-    scheduleSaveRef.current()
-  }, [clearTimer, draftKey, ready, syncKey])
+    const result = await flushLane()
+    const snapshot = getSnapshot()
+    if (snapshot.status === 'error') throw snapshot.error
+    return result
+  }, [edit, flushLane, getSnapshot, hasWork])
 
-  const flush = useCallback(() => {
-    clearTimer()
-    return runSaveRef.current(true)
-  }, [clearTimer])
-
-  return { flush }
+  const error = lane.error instanceof Error
+    ? lane.error.message
+    : lane.error === null ? null : String(lane.error)
+  return { flush, status: lane.status, error }
 }
 
 export function settingsForLayer(layered: LayeredSettings, layer: SettingsLayer): Settings {

@@ -4,6 +4,7 @@ import { X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { Button } from '@/components/ui/button'
+import { isSaveShortcut } from '@/lib/keyboard'
 import { cn } from '@/lib/utils'
 
 interface FeaturePageShellProps {
@@ -14,6 +15,8 @@ interface FeaturePageShellProps {
   leadingContent?: ReactNode
   headerContent?: ReactNode
   actions?: ReactNode
+  /** Flushes autosave on Cmd/Ctrl+S without exposing a redundant save button. */
+  onSaveShortcut?: () => void | Promise<unknown>
   error?: string | null
   errorTitle?: string
   onClose?: () => void
@@ -31,6 +34,7 @@ export function FeaturePageShell({
   leadingContent,
   headerContent,
   actions,
+  onSaveShortcut,
   error,
   errorTitle,
   onClose,
@@ -43,7 +47,15 @@ export function FeaturePageShell({
   const resolvedCloseLabel = closeLabel ?? t('common.close')
 
   return (
-    <div className={cn('flex h-full min-h-0 w-full flex-col text-foreground', className)}>
+    <div
+      className={cn('flex h-full min-h-0 w-full flex-col text-foreground', className)}
+      onKeyDownCapture={onSaveShortcut ? (event) => {
+        if (!isSaveShortcut(event)) return
+        event.preventDefault()
+        event.stopPropagation()
+        void Promise.resolve(onSaveShortcut()).catch(() => undefined)
+      } : undefined}
+    >
       <header className={cn(
         'nova-topbar flex min-h-10 shrink-0 flex-nowrap items-center gap-2 overflow-hidden border-b px-3 py-1.5 text-xs sm:px-4',
         topbarClassName,

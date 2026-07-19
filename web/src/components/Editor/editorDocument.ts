@@ -1,7 +1,8 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import Image from '@tiptap/extension-image'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
-import { EditorState } from '@tiptap/pm/state'
+import { EditorState, Selection } from '@tiptap/pm/state'
+import type { EditorView } from '@tiptap/pm/view'
 import type { Editor } from '@tiptap/react'
 
 import { workspaceAssetURL } from '@/lib/api'
@@ -95,6 +96,48 @@ export function resetEditorStateHistory(editor: Editor) {
     selection: state.selection,
     plugins: state.plugins,
   }))
+}
+
+interface ReplaceEditorDocumentOptions {
+  contentType: 'html' | 'markdown'
+  preserveSelection: boolean
+}
+
+/**
+ * Replaces an editor document without adding an undo step. Same-document refreshes retain the
+ * current caret/selection, while callers can opt out when switching to another document.
+ */
+export function replaceEditorDocument(
+  editor: Editor,
+  content: string,
+  { contentType, preserveSelection }: ReplaceEditorDocumentOptions,
+) {
+  const previousSelection = preserveSelection
+    ? { from: editor.state.selection.from, to: editor.state.selection.to }
+    : null
+  const restoreFocus = preserveSelection && editor.view.hasFocus()
+
+  editor.chain()
+    .setMeta('addToHistory', false)
+    .setContent(content, { emitUpdate: false, contentType })
+    .run()
+
+  if (!previousSelection) return
+  const maxPosition = Math.max(1, editor.state.doc.content.size - 1)
+  const from = Math.min(Math.max(1, previousSelection.from), maxPosition)
+  const to = Math.min(Math.max(from, previousSelection.to), maxPosition)
+  editor.commands.setTextSelection({ from, to })
+  if (restoreFocus) editor.commands.focus()
+}
+
+/** Places a collapsed caret at ProseMirror's click position without disturbing range selection. */
+export function placeEditorCaretAtClick(view: EditorView, position: number, event?: MouseEvent) {
+  if (!view.state.selection.empty || event?.shiftKey || event?.metaKey || event?.ctrlKey || event?.altKey) return false
+  const boundedPosition = Math.min(Math.max(0, position), view.state.doc.content.size)
+  const selection = Selection.near(view.state.doc.resolve(boundedPosition))
+  view.dispatch(view.state.tr.setSelection(selection))
+  view.focus()
+  return true
 }
 
 export function normalizeEditorText(text: string): string {

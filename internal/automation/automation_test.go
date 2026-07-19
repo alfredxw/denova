@@ -2,6 +2,7 @@ package automation
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,76 @@ import (
 	"testing"
 	"time"
 )
+
+func TestStoreUpdateIfRevisionRejectsStaleDefinition(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
+	created, err := store.Create(Task{
+		Scope:    ScopeWorkspace,
+		Name:     "Review",
+		Template: TemplateReview,
+		Prompt:   "original",
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	if created.Revision == "" {
+		t.Fatal("created task should expose a definition revision")
+	}
+
+	agent, err := store.Update(created.ID, Task{Prompt: "agent update"})
+	if err != nil {
+		t.Fatalf("agent Update failed: %v", err)
+	}
+	if agent.Revision == created.Revision {
+		t.Fatalf("definition revision did not change: %q", agent.Revision)
+	}
+
+	_, err = store.UpdateIfRevision(created.ID, Task{Prompt: "stale editor"}, created.Revision)
+	if !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("stale UpdateIfRevision error = %v, want ErrRevisionConflict", err)
+	}
+	latest, getErr := store.Get(created.ID)
+	if getErr != nil {
+		t.Fatalf("Get failed: %v", getErr)
+	}
+	if latest.Prompt != "agent update" {
+		t.Fatalf("stale update overwrote agent content: %q", latest.Prompt)
+	}
+}
+
+func TestStoreUpdateIfRevisionPreservesSchedulerRuntimeState(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
+	created, err := store.Create(Task{
+		Scope:    ScopeWorkspace,
+		Name:     "Review",
+		Template: TemplateReview,
+		Prompt:   "original",
+	})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+	runtimeState := TriggerState{LastEvidenceFingerprint: "scheduler-new-state"}
+	withRuntime, err := store.UpdateTriggerState(created.ID, "schedule", runtimeState)
+	if err != nil {
+		t.Fatalf("UpdateTriggerState failed: %v", err)
+	}
+	if withRuntime.Revision != created.Revision {
+		t.Fatalf("runtime-only update changed definition revision: got %q want %q", withRuntime.Revision, created.Revision)
+	}
+
+	staleFullTask := created
+	staleFullTask.Prompt = "definition update"
+	staleFullTask.TriggerState = map[string]TriggerState{"schedule": {LastEvidenceFingerprint: "stale-state"}}
+	updated, err := store.UpdateIfRevision(created.ID, staleFullTask, created.Revision)
+	if err != nil {
+		t.Fatalf("UpdateIfRevision failed: %v", err)
+	}
+	if got := updated.TriggerState["schedule"].LastEvidenceFingerprint; got != "scheduler-new-state" {
+		t.Fatalf("definition update replayed stale scheduler state: %q", got)
+	}
+}
 
 func TestStoreSeparatesUserAndWorkspaceTasks(t *testing.T) {
 	root := t.TempDir()

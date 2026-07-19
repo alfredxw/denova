@@ -1,10 +1,11 @@
-import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, Database, FileText, Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, FileText, Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import { FileTree } from '@/components/Sidebar/FileTree'
 import { SearchPanel } from '@/components/Sidebar/SearchPanel'
-import { AgentPanel } from '@/components/Chat/AgentPanel'
+import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS } from '@/components/Chat/AgentPanel'
 import { FilePreview } from '@/components/workbench/FilePreview'
 import { MarkdownEditor, type EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
 import { BookSettingsShortcuts } from '@/components/workbench/BookSettingsShortcuts'
@@ -15,6 +16,7 @@ import type { FileNode } from '@/hooks/useWorkspace'
 import type { BookRecord, BookSortMode, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
+import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
@@ -61,6 +63,7 @@ interface ModeRouterProps {
   loading: boolean
   selectedFile: string | null
   fileContent: string
+  fileRevision: string
   openTabs: Tab[]
   activeTabKey: string | null
   sidebarView: 'outline' | 'files' | 'search'
@@ -104,7 +107,7 @@ interface ModeRouterProps {
   onMoveItem: (from: string, to: string) => Promise<void>
   onActivateTab: (tab: Tab) => void
   onCloseTab: (tab: Tab) => void
-  onSaveCurrentFile: (path: string, content: string) => Promise<boolean>
+  onSaveCurrentFile: (path: string, content: string, baseRevision: string) => Promise<{ revision?: string }>
   onEditorFlushHandlerChange: (handler: EditorFlushHandler | null) => void
   onWorkspaceChanged: (paths: string[]) => void | Promise<void>
   onQuoteSelection: (selection: TextSelection) => void
@@ -153,6 +156,7 @@ export function ModeRouter(props: ModeRouterProps) {
     loading,
     selectedFile,
     fileContent,
+    fileRevision,
     openTabs,
     activeTabKey,
     sidebarView,
@@ -239,6 +243,33 @@ export function ModeRouter(props: ModeRouterProps) {
   const [agentSubAgentDetailsOpen, setAgentSubAgentDetailsOpen] = useState(false)
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
   const [editorLine, setEditorLine] = useState(1)
+  // The router is the lifecycle owner: the settings lane survives AgentPanel close/unmount.
+  const composerSettings = usePersistedUserSettings({ workspace, defaults: WRITING_COMPOSER_SETTING_DEFAULTS })
+  const flushComposerSettings = composerSettings.flushPending
+
+  const flushComposerSettingsBestEffort = useCallback(() => {
+    void flushComposerSettings().then((saved) => {
+      if (saved) return
+      toast.warning(t('common.autosave.preferencesPending'), {
+        description: t('common.autosave.preferencesPendingDetail'),
+      })
+    }).catch((error) => {
+      console.warn('[ModeRouter.tsx] preference autosave flush failed during navigation; pending edits remain owned', { error })
+      toast.warning(t('common.autosave.preferencesPending'), {
+        description: t('common.autosave.preferencesPendingDetail'),
+      })
+    })
+  }, [flushComposerSettings, t])
+
+  const flushBeforeWorkspaceSwitch = useCallback(async (): Promise<boolean> => {
+    flushComposerSettingsBestEffort()
+    return onBeforeWorkspaceSwitch()
+  }, [flushComposerSettingsBestEffort, onBeforeWorkspaceSwitch])
+
+  const quickSwitchBook = useCallback(async (path: string): Promise<boolean> => {
+    flushComposerSettingsBestEffort()
+    return onQuickSwitchBook(path)
+  }, [flushComposerSettingsBestEffort, onQuickSwitchBook])
 
   useEffect(() => {
     setEditorLine(1)
@@ -359,7 +390,7 @@ export function ModeRouter(props: ModeRouterProps) {
     ideActive: mode === 'ide' && !settingsOpen && !versionsVisible && !ideWorkspacePanel,
     selectedFile,
     agentVisible: aiVisible,
-    onBeforeOpen: onBeforeWorkspaceSwitch,
+    onBeforeOpen: flushBeforeWorkspaceSwitch,
     onShowAgent: showAgent,
   })
   const documentReview = useDocumentReview({
@@ -545,6 +576,7 @@ export function ModeRouter(props: ModeRouterProps) {
                     workspace={workspace}
                     fileName={selectedFile}
                     content={fileContent}
+                    revision={fileRevision}
                     onSave={onSaveCurrentFile}
                     onQuoteSelection={onQuoteSelection}
                     saveSignal={saveSignal}
@@ -606,24 +638,12 @@ export function ModeRouter(props: ModeRouterProps) {
       )}
       {mountedRoutes.has('ide-lore') && (
         <MainRouteLayer visible={visibleMainRoute === 'ide-lore'}>
-          <IdeWorkspacePanel
-            title={t('workbench.activity.lore')}
-            icon={<Database className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
-            onClose={() => onSetRightPanel(null)}
-          >
-            <SettingPanel mode="lore" workspace={workspace} />
-          </IdeWorkspacePanel>
+          <SettingPanel mode="lore" workspace={workspace} onClose={() => onSetRightPanel(null)} />
         </MainRouteLayer>
       )}
       {mountedRoutes.has('ide-teller') && (
         <MainRouteLayer visible={visibleMainRoute === 'ide-teller'}>
-          <IdeWorkspacePanel
-            title={t('workbench.activity.teller')}
-            icon={<SlidersHorizontal className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />}
-            onClose={() => onSetRightPanel(null)}
-          >
-            <SettingPanel mode="teller" workspace={workspace} presetUsageMode="writing" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} />
-          </IdeWorkspacePanel>
+          <SettingPanel mode="teller" workspace={workspace} presetUsageMode="writing" tellers={tellers} imagePresets={imagePresets} onTellersChange={setTellers} onImagePresetsChange={setImagePresets} onClose={() => onSetRightPanel(null)} />
         </MainRouteLayer>
       )}
 
@@ -635,7 +655,7 @@ export function ModeRouter(props: ModeRouterProps) {
             books={books}
             bookSortMode={bookSortMode}
             onSwitch={onSwitchBook}
-            onBeforeSwitch={onBeforeWorkspaceSwitch}
+            onBeforeSwitch={flushBeforeWorkspaceSwitch}
             onBooksChange={onBooksChange}
             onOpenCharacterCardImport={onOpenCharacterCardImport}
             onClose={closeBooks}
@@ -669,6 +689,7 @@ export function ModeRouter(props: ModeRouterProps) {
   const rightPanelContent = rightPanel === 'ai' ? (
     <AgentPanel
       workspace={workspace}
+      composerSettings={composerSettings}
       currentChapter={currentChapter}
       selectedFile={selectedFile}
       tellers={tellers}
@@ -746,7 +767,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onSetRightPanel={onSetRightPanel}
       onToggleSettings={onToggleSettings}
       onCloseSettings={onCloseSettings}
-      onQuickSwitchBook={onQuickSwitchBook}
+      onQuickSwitchBook={quickSwitchBook}
       onDismissUpdateNotice={onDismissUpdateNotice}
     />
   )
@@ -800,34 +821,6 @@ function IdeWritingInfoActions({
         <AgentIcon className="h-3.5 w-3.5" />
       </button>
     </>
-  )
-}
-
-function IdeWorkspacePanel({
-  title,
-  icon,
-  children,
-  onClose,
-}: {
-  title: string
-  icon: ReactNode
-  children: ReactNode
-  onClose: () => void
-}) {
-  const { t } = useTranslation()
-  return (
-    <section className="flex h-full min-h-0 flex-col bg-[var(--nova-bg)] text-[var(--nova-text)]">
-      <div className="nova-topbar flex h-10 shrink-0 items-center justify-between border-b border-[var(--nova-border)] px-3">
-        <div className="flex items-center gap-2 text-xs font-medium text-[var(--nova-text)]">
-          {icon}
-          {title}
-        </div>
-        <button type="button" onClick={onClose} className="nova-nav-item rounded px-1 text-xs" aria-label={`${t('common.close')} ${title}`}>×</button>
-      </div>
-      <div className="min-h-0 flex-1">
-        {children}
-      </div>
-    </section>
   )
 }
 

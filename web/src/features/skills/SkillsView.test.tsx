@@ -1,7 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSkill, deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, installSkillRemote, installSkillZip, previewSkillRemoteInstall, previewSkillZipInstall, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
+import { APIError } from '@/lib/api-client'
 import type { SkillDocument, SkillFileDocument, SkillSnapshot } from '@/lib/api'
 import { SkillsView } from './SkillsView'
 
@@ -43,6 +44,16 @@ describe('SkillsView', () => {
       description,
       agent: agents.join(','),
     }))
+  })
+
+  it('opens the Config Agent in a resizable desktop pane', async () => {
+    const user = userEvent.setup()
+    render(<SkillsView workspace="/books/demo" />)
+
+    await user.click(await screen.findByRole('button', { name: '配置 Agent' }))
+
+    expect(screen.getByTestId('config-manager-chat')).toBeInTheDocument()
+    expect(screen.getByRole('separator', { name: '调整右侧面板宽度' })).toBeVisible()
   })
 
   it('creates new Skills in user scope by default', async () => {
@@ -98,8 +109,55 @@ describe('SkillsView', () => {
     await user.click(await screen.findByRole('button', { name: '创建用户覆盖' }))
 
     await waitFor(() => {
-      expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledWith('builtin', 'outline', content, { scope: 'user', name: 'outline' })
+      expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledWith('builtin', 'outline', content, { scope: 'user', name: 'outline' }, 'skill-r1')
     })
+  })
+
+  it('transparently rebases a built-in Skill override when its revision changed', async () => {
+    const user = userEvent.setup()
+    const initialContent = '---\nname: outline\ndescription: Built-in outline\n---\n\nOriginal body.\n'
+    const externalContent = '---\nname: outline\ndescription: Built-in outline\n---\n\nUpdated built-in body.\n'
+    const initial = skillDocument({
+      name: 'outline',
+      description: 'Built-in outline',
+      scope: 'builtin',
+      path: '/app/skills/outline/SKILL.md',
+      editable: false,
+      active: true,
+      content: initialContent,
+      revision: 'skill-r1',
+    })
+    const external = { ...initial, content: externalContent, revision: 'skill-r2' }
+    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [initial] }))
+    vi.mocked(getSkillDocument)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(external)
+    vi.mocked(saveSkillDocument)
+      .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
+      .mockImplementationOnce(async (_scope, name, savedContent, target) => skillDocument({
+        ...external,
+        scope: target?.scope || 'user',
+        name,
+        path: `/nova/skills/${name}/SKILL.md`,
+        editable: true,
+        content: savedContent,
+        revision: 'skill-r3',
+      }))
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    await user.click(await screen.findByRole('button', { name: '创建用户覆盖' }))
+
+    await waitFor(() => expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(saveSkillDocument)).toHaveBeenNthCalledWith(
+      2,
+      'builtin',
+      'outline',
+      externalContent,
+      { scope: 'user', name: 'outline' },
+      'skill-r2',
+    )
+    expect(screen.queryByText('revision conflict')).not.toBeInTheDocument()
   })
 
   it('renames and moves editable Skills from the config panel', async () => {
@@ -133,7 +191,8 @@ describe('SkillsView', () => {
     await user.click(screen.getByRole('radio', { name: '工作区' }))
     await user.clear(screen.getByLabelText('触发说明'))
     await user.type(screen.getByLabelText('触发说明'), 'Beat planning')
-    await user.click(screen.getByRole('button', { name: '保存配置' }))
+    expect(screen.queryByRole('button', { name: '保存配置' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '应用重命名/迁移' }))
 
     await waitFor(() => {
       expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledWith(
@@ -141,9 +200,222 @@ describe('SkillsView', () => {
         'draft-plan',
         expect.stringContaining('name: "beat-plan"'),
         { scope: 'workspace', name: 'beat-plan' },
+        'skill-r1',
       )
     })
     expect(vi.mocked(saveSkillDocument).mock.calls[0][2]).toContain('description: "Beat planning"')
+  })
+
+  it('transparently rebases and retries a Skill rename conflict', async () => {
+    const user = userEvent.setup()
+    const doc = skillDocument({
+      name: 'draft-plan',
+      description: 'Planning',
+      scope: 'user',
+      path: '/nova/skills/draft-plan/SKILL.md',
+      editable: true,
+      active: true,
+      content: '---\nname: draft-plan\ndescription: Planning\n---\n\nOld body.\n',
+      revision: 'skill-r1',
+    })
+    const external = {
+      ...doc,
+      content: '---\nname: draft-plan\ndescription: Planning\n---\n\nExternal body.\n',
+      revision: 'skill-r2',
+    }
+    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [doc] }))
+    vi.mocked(getSkillDocument)
+      .mockResolvedValueOnce(doc)
+      .mockResolvedValueOnce(external)
+    vi.mocked(saveSkillDocument)
+      .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
+      .mockImplementationOnce(async (_scope, _name, content, target) => skillDocument({
+        ...external,
+        scope: target?.scope || 'user',
+        name: target?.name || 'draft-plan',
+        content,
+        revision: 'skill-r3',
+      }))
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    await user.click(await screen.findByRole('button', { name: '配置' }))
+    await user.clear(screen.getByLabelText('Skill 名称'))
+    await user.type(screen.getByLabelText('Skill 名称'), 'beat-plan')
+    await user.click(screen.getByRole('button', { name: '应用重命名/迁移' }))
+
+    await waitFor(() => expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledTimes(2))
+    const retry = vi.mocked(saveSkillDocument).mock.calls[1]
+    expect(retry?.slice(0, 2)).toEqual(['user', 'draft-plan'])
+    expect(retry?.[2]).toContain('name: "beat-plan"')
+    expect(retry?.[2]).toContain('External body.')
+    expect(retry?.slice(3)).toEqual([{ scope: 'user', name: 'beat-plan' }, 'skill-r2'])
+    expect(screen.queryByText('revision conflict')).not.toBeInTheDocument()
+  })
+
+  it('autosaves non-identity Skill config changes without a Save Config button', async () => {
+    const user = userEvent.setup()
+    const doc = skillDocument({
+      name: 'draft-plan',
+      description: 'Planning',
+      scope: 'user',
+      path: '/nova/skills/draft-plan/SKILL.md',
+      editable: true,
+      active: true,
+      content: '---\nname: draft-plan\ndescription: Planning\nagent: ide\n---\n\n# Draft Plan\n',
+    })
+    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [doc] }))
+    vi.mocked(getSkillDocument).mockResolvedValue(doc)
+    vi.mocked(saveSkillDocument).mockImplementation(async (scope, name, savedContent) => skillDocument({
+      ...doc,
+      scope,
+      name,
+      description: 'Beat planning',
+      content: savedContent,
+    }))
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    await user.click(await screen.findByRole('button', { name: '配置' }))
+    const description = screen.getByLabelText('触发说明')
+    await user.clear(description)
+    await user.type(description, 'Beat planning')
+    expect(screen.queryByRole('button', { name: '保存配置' })).not.toBeInTheDocument()
+    fireEvent.keyDown(description, { key: 's', ctrlKey: true })
+
+    await waitFor(() => {
+      expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledWith(
+        'user',
+        'draft-plan',
+        expect.stringContaining('description: "Beat planning"'),
+        undefined,
+        'skill-r1',
+      )
+    })
+  })
+
+  it('rebases Skill metadata autosave over an external content update', async () => {
+    const initialContent = '---\nname: draft-plan\ndescription: Planning\nagent: ide\n---\n\nBody old.\n'
+    const externalContent = '---\nname: draft-plan\ndescription: Planning\nagent: ide\n---\n\nBody updated externally.\n'
+    const initial = skillDocument({ agent: 'ide', content: initialContent, revision: 'skill-r1' })
+    const external = skillDocument({ agent: 'ide', content: externalContent, revision: 'skill-r2' })
+    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [initial] }))
+    vi.mocked(getSkillDocument)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(external)
+    vi.mocked(saveSkillDocument)
+      .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
+      .mockImplementationOnce(async (scope, name, content) => skillDocument({
+        ...external,
+        scope,
+        name,
+        content,
+        description: 'Beat planning',
+        revision: 'skill-r3',
+      }))
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    await userEvent.click(await screen.findByRole('button', { name: '配置' }))
+    const description = screen.getByLabelText('触发说明')
+    await userEvent.clear(description)
+    await userEvent.type(description, 'Beat planning')
+    fireEvent.keyDown(description, { key: 's', ctrlKey: true })
+
+    await waitFor(() => expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledTimes(2))
+    const retry = vi.mocked(saveSkillDocument).mock.calls[1]
+    expect(retry?.slice(0, 2)).toEqual(['user', 'draft-plan'])
+    expect(retry?.[2]).toContain('description: "Beat planning"')
+    expect(retry?.[2]).toContain('agent: "ide"')
+    expect(retry?.[2]).toContain('Body updated externally.')
+    expect(retry?.slice(3)).toEqual([undefined, 'skill-r2'])
+    expect(screen.getByRole('status')).toHaveAccessibleName('所有更改均已保存')
+  })
+
+  it('reloads the selected document when refreshing an unchanged skill list', async () => {
+    const user = userEvent.setup()
+    const initial = skillDocument({
+      description: 'Initial',
+      content: '---\nname: draft-plan\ndescription: Initial\n---\n\n# Initial\n',
+      revision: 'skill-r1',
+    })
+    const refreshed = skillDocument({
+      description: 'External update',
+      content: '---\nname: draft-plan\ndescription: External update\n---\n\n# Refreshed externally\n',
+      revision: 'skill-r2',
+    })
+    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [initial] }))
+    vi.mocked(getSkillDocument)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(refreshed)
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    expect(await screen.findByRole('heading', { name: 'Initial' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '刷新' }))
+
+    expect(await screen.findByRole('heading', { name: 'Refreshed externally' })).toBeInTheDocument()
+    expect(vi.mocked(getSkillDocument)).toHaveBeenCalledTimes(2)
+  })
+
+  it('automatically loads an external Skill update when the editor is clean', async () => {
+    const initial = skillDocument({
+      description: 'Initial',
+      content: '---\nname: draft-plan\ndescription: Initial\n---\n\n# Initial\n',
+      revision: 'skill-r1',
+    })
+    const external = skillDocument({
+      description: 'External update',
+      content: '---\nname: draft-plan\ndescription: External update\n---\n\n# Updated elsewhere\n',
+      revision: 'skill-r2',
+    })
+    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [initial] }))
+    vi.mocked(getSkillDocument)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(external)
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    expect(await screen.findByRole('heading', { name: 'Initial' })).toBeInTheDocument()
+    window.dispatchEvent(new CustomEvent('nova:skills-updated', { detail: { source: 'another-editor' } }))
+
+    expect(await screen.findByRole('heading', { name: 'Updated elsewhere' })).toBeInTheDocument()
+    expect(vi.mocked(saveSkillDocument)).not.toHaveBeenCalled()
+  })
+
+  it('automatically rebases and retries a dirty Skill after a revision conflict', async () => {
+    const initialContent = '---\nname: draft-plan\ndescription: Initial\n---\n\nExternal section: old\n'
+    const localContent = '---\nname: draft-plan\ndescription: Local edit\n---\n\nExternal section: old\n'
+    const externalContent = '---\nname: draft-plan\ndescription: Initial\n---\n\nExternal section: updated elsewhere\n'
+    const mergedContent = '---\nname: draft-plan\ndescription: Local edit\n---\n\nExternal section: updated elsewhere\n'
+    const initial = skillDocument({ content: initialContent, revision: 'skill-r1' })
+    const external = skillDocument({ content: externalContent, revision: 'skill-r2' })
+    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [initial] }))
+    vi.mocked(getSkillDocument)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(external)
+    vi.mocked(saveSkillDocument)
+      .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
+      .mockImplementationOnce(async (scope, name, content) => skillDocument({
+        ...external,
+        scope,
+        name,
+        content,
+        revision: 'skill-r3',
+      }))
+
+    const { container } = render(<SkillsView workspace="/books/demo" />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Raw' }))
+    const editor = container.querySelector('textarea') as HTMLTextAreaElement
+    fireEvent.change(editor, { target: { value: localContent } })
+    fireEvent.keyDown(editor, { key: 's', ctrlKey: true })
+
+    await waitFor(() => expect(vi.mocked(saveSkillDocument)).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(saveSkillDocument)).toHaveBeenNthCalledWith(1, 'user', 'draft-plan', localContent, undefined, 'skill-r1')
+    expect(vi.mocked(saveSkillDocument)).toHaveBeenNthCalledWith(2, 'user', 'draft-plan', mergedContent, undefined, 'skill-r2')
+    await waitFor(() => expect(editor.value).toBe(mergedContent))
+    expect(screen.getByRole('status')).toHaveAccessibleName('所有更改均已保存')
   })
 
   it('opens and saves supporting files inside a Skill directory', async () => {
@@ -189,10 +461,11 @@ describe('SkillsView', () => {
     })
     await user.clear(editor)
     await user.type(editor, '# Updated\n')
-    await user.click(screen.getByRole('button', { name: '保存' }))
+    expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'SKILL.md' }))
 
     await waitFor(() => {
-      expect(vi.mocked(saveSkillFileDocument)).toHaveBeenCalledWith('user', 'draft-plan', 'references/style.md', '# Updated\n')
+      expect(vi.mocked(saveSkillFileDocument)).toHaveBeenCalledWith('user', 'draft-plan', 'references/style.md', '# Updated\n', 'file-r1')
     })
     expect(vi.mocked(saveSkillDocument)).not.toHaveBeenCalled()
   })
@@ -377,6 +650,7 @@ function skillDocument(patch: Partial<SkillDocument>): SkillDocument {
     editable: true,
     active: true,
     content: '---\nname: draft-plan\ndescription: Planning\n---\n',
+    revision: 'skill-r1',
     files: [{ path: 'SKILL.md', size: 48, entry: true, editable: true }],
     ...patch,
   }
@@ -388,6 +662,7 @@ function skillFileDocument(patch: Partial<SkillFileDocument>): SkillFileDocument
     skill: baseSkill,
     file: { path: 'references/style.md', size: 0, entry: false, editable: true },
     content: '',
+    revision: 'file-r1',
     ...patch,
   }
 }

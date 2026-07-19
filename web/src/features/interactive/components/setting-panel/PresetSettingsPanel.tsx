@@ -1,22 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Compass, Database, Dice5, Loader2, RotateCcw, Save, ScrollText, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
+import { Bot, Compass, Database, Dice5, RotateCcw, ScrollText, SlidersHorizontal, Sparkles, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
+import type { AutosaveStatus } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
 import { Button } from '@/components/ui/button'
-import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteRuleSystem, deleteStoryDirector, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../../api'
+import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteRuleSystem, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../../api'
 import type { PresetResourceKind, PresetUsageMode } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
 import { PresetResourcePane } from './PresetResourcePane'
 import { buildPresetDirectorySections, presetDirectoryEntryId } from './preset-directory-sections'
 import { usePresetDraftSync, usePresetResources } from './use-preset-resources'
 import { usePresetSelection } from './use-preset-selection'
-import { usePresetResourceAutosave } from './usePresetResourceAutosave'
+import { createPresetConflictResolver, usePresetResourceAutosave } from './usePresetResourceAutosave'
 import { currentPresetBuiltinOverridden, EMPTY_IMAGE_PRESETS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, isPresetConfigResourceKind, makeActorStatePayload, makeEventPackagePayload, makeImagePresetPayload, makeRuleSystemPayload, makeStoryDirectorPayload, makeTellerPayload, newActorStateDraft, newEventPackageDraft, newImagePresetDraft, newRuleSystemDraft, newStoryDirectorDraft, newTellerDraft, presetEditorSubtitle, presetEditorTitle, presetResourceDraftSignature, PRESET_DELETE_COPY, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDeleteTarget } from './presetResources'
 
 interface PresetSettingsPanelProps {
@@ -29,12 +31,15 @@ interface PresetSettingsPanelProps {
   onStoryDirectorsChange?: (directors: StoryDirector[]) => void
   onImagePresetsChange?: (presets: ImagePreset[]) => void
   embedded?: boolean
+  onClose?: () => void
 }
 
 interface AutosaveController {
   cancelPending: () => void
   flushPending: () => Promise<unknown> | null
   saveNow: (mode: 'manual' | 'auto') => Promise<unknown>
+  status: AutosaveStatus
+  error: string | null
 }
 
 const actionButtonClassName = 'gap-1.5 border-[var(--preset-line)] bg-[var(--preset-raised)] text-[var(--nova-text-muted)] shadow-none hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
@@ -51,6 +56,7 @@ export function PresetSettingsPanel({
   onStoryDirectorsChange,
   onImagePresetsChange,
   embedded = false,
+  onClose,
 }: PresetSettingsPanelProps) {
   const { t } = useTranslation()
   const [saving, setSaving] = useState(false)
@@ -132,11 +138,15 @@ export function PresetSettingsPanel({
     scopeKey: workspace,
     active: presetResourceKind === 'teller' && activeTellerId !== TELLER_CONFIG_AGENT_ENTRY_ID,
     makePayload: makeTellerPayload,
+    baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
     save: (id, payload, baseRevision) => updateInteractiveTeller(id, payload, baseRevision, workspace),
-    onSaved: (teller, mode) => {
-      mergeSavedTeller(teller, mode === 'auto')
-    },
+    resolveConflict: createPresetConflictResolver(
+      getInteractiveTellers,
+      makeTellerPayload,
+      { resource: 'interactive_teller', scope: workspace },
+    ),
+    onSaved: mergeSavedTeller,
     onAutoSaveError: (err) => {
       console.warn('[teller-editor] 自动保存叙事风格失败', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
@@ -150,11 +160,15 @@ export function PresetSettingsPanel({
     active: presetResourceKind === 'director',
     valid: presetConfigValid,
     makePayload: makeStoryDirectorPayload,
+    baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
     save: (id, payload, baseRevision) => updateStoryDirector(id, payload, baseRevision, workspace),
-    onSaved: (director, mode) => {
-      mergeSavedStoryDirector(director, mode === 'auto')
-    },
+    resolveConflict: createPresetConflictResolver(
+      getStoryDirectors,
+      makeStoryDirectorPayload,
+      { resource: 'story_director', scope: workspace },
+    ),
+    onSaved: mergeSavedStoryDirector,
     onAutoSaveError: (err) => {
       console.warn('[story-director-editor] 自动保存故事导演失败', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
@@ -167,11 +181,15 @@ export function PresetSettingsPanel({
     scopeKey: workspace,
     active: presetResourceKind === 'image',
     makePayload: makeImagePresetPayload,
+    baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
     save: (id, payload, baseRevision) => updateImagePreset(id, payload, baseRevision, workspace),
-    onSaved: (preset, mode) => {
-      mergeSavedImagePreset(preset, mode === 'auto')
-    },
+    resolveConflict: createPresetConflictResolver(
+      getImagePresets,
+      makeImagePresetPayload,
+      { resource: 'image_preset', scope: workspace },
+    ),
+    onSaved: mergeSavedImagePreset,
     onAutoSaveError: (err) => {
       console.warn('[image-preset-editor] 自动保存图像方案失败', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
@@ -185,11 +203,15 @@ export function PresetSettingsPanel({
     active: presetResourceKind === 'event',
     valid: presetConfigValid,
     makePayload: makeEventPackagePayload,
+    baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
     save: (id, payload, baseRevision) => updateEventPackage(id, payload, baseRevision, workspace),
-    onSaved: (item, mode) => {
-      mergeSavedEventPackage(item, mode === 'auto')
-    },
+    resolveConflict: createPresetConflictResolver(
+      getEventPackages,
+      makeEventPackagePayload,
+      { resource: 'event_package', scope: workspace },
+    ),
+    onSaved: mergeSavedEventPackage,
     onAutoSaveError: (err) => {
       console.warn('[event-package-editor] 自动保存事件包失败', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
@@ -203,11 +225,15 @@ export function PresetSettingsPanel({
     active: presetResourceKind === 'rule',
     valid: presetConfigValid,
     makePayload: makeRuleSystemPayload,
+    baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
     save: (id, payload, baseRevision) => updateRuleSystem(id, payload, baseRevision, workspace),
-    onSaved: (item, mode) => {
-      mergeSavedRuleSystem(item, mode === 'auto')
-    },
+    resolveConflict: createPresetConflictResolver(
+      getRuleSystems,
+      makeRuleSystemPayload,
+      { resource: 'rule_system', scope: workspace },
+    ),
+    onSaved: mergeSavedRuleSystem,
     onAutoSaveError: (err) => {
       console.warn('[rule-system-editor] 自动保存 TRPG 检定失败', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
@@ -221,11 +247,15 @@ export function PresetSettingsPanel({
     active: presetResourceKind === 'actor-state',
     valid: presetConfigValid,
     makePayload: makeActorStatePayload,
+    baselineFromSaved: (saved) => saved,
     signature: presetResourceDraftSignature,
     save: (id, payload, baseRevision) => updateActorState(id, payload, baseRevision, workspace),
-    onSaved: (item, mode) => {
-      mergeSavedActorState(item, mode === 'auto')
-    },
+    resolveConflict: createPresetConflictResolver(
+      getActorStates,
+      makeActorStatePayload,
+      { resource: 'actor_state', scope: workspace },
+    ),
+    onSaved: mergeSavedActorState,
     onAutoSaveError: (err) => {
       console.warn('[actor-state-editor] 自动保存状态系统失败', err)
       toast.error((err as Error).message || t('editor.saveFailed'))
@@ -281,11 +311,13 @@ export function PresetSettingsPanel({
 
   async function flushPresetResourceAutoSave() {
     if (!canLeavePresetResource()) return false
-    const pendingSave = autosaveForKind(presetResourceKind).flushPending()
-    if (!pendingSave) return true
+    const controller = autosaveForKind(presetResourceKind)
+    const pendingSave = controller.flushPending()
+    const save = pendingSave ?? (controller.status === 'error' ? controller.saveNow('manual') : null)
+    if (!save) return true
     setTransitioning(true)
     try {
-      await pendingSave
+      await save
       return true
     } catch (err) {
       console.warn('[preset-settings] 切换资源前保存失败，已保留当前编辑器', err)
@@ -502,7 +534,7 @@ export function PresetSettingsPanel({
     }
   }
 
-  const handleSave = async () => {
+  const flushActivePresetAutosave = async () => {
     if (isPresetConfigResourceKind(presetResourceKind) && !presetConfigValidRef.current) {
       showInvalidPresetConfigNotice()
       return
@@ -517,6 +549,11 @@ export function PresetSettingsPanel({
     }
   }
 
+  const closePanel = async () => {
+    if (!onClose || !(await flushPresetResourceAutoSave())) return
+    onClose()
+  }
+
   const currentPresetDraft = () => {
     if (presetResourceKind === 'director') return storyDirectorDraft
     if (presetResourceKind === 'image') return imagePresetDraft
@@ -528,10 +565,9 @@ export function PresetSettingsPanel({
 
   const isTellerConfigAgentActive = activeTellerId === TELLER_CONFIG_AGENT_ENTRY_ID
   const activeDraft = currentPresetDraft()
+  const activeAutosave = autosaveForKind(presetResourceKind)
   const busy = saving || transitioning
   const canRestoreBuiltinPreset = !isTellerConfigAgentActive && currentPresetBuiltinOverridden(presetResourceKind, presetDrafts)
-  const presetConfigInvalid = isPresetConfigResourceKind(presetResourceKind) && !presetConfigValid
-  const saveDisabled = busy || presetConfigInvalid || !activeDraft
   const titleIcon = isTellerConfigAgentActive ? Bot : presetResourceIcon(presetResourceKind)
   const title = isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : presetEditorTitle(presetResourceKind, presetDrafts, t)
   const subtitle = isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : presetEditorSubtitle(presetResourceKind, presetDrafts, t)
@@ -595,8 +631,17 @@ export function PresetSettingsPanel({
                   onClick={openLeft}
                 />
               ) : undefined}
+              onSaveShortcut={isTellerConfigAgentActive ? undefined : flushActivePresetAutosave}
+              onClose={onClose ? () => void closePanel() : undefined}
               actions={(
                 <>
+                  {!isTellerConfigAgentActive && activeDraft ? (
+                    <AutosaveStatusIndicator
+                      status={activeAutosave.status}
+                      error={activeAutosave.error}
+                      onRetry={flushActivePresetAutosave}
+                    />
+                  ) : null}
                   {canRestoreBuiltinPreset && (
                     <Button className={actionButtonClassName} variant="outline" size="sm" disabled={busy} onClick={() => void handleRestoreBuiltinPreset()} aria-label={t('settingPanel.restoreBuiltin')} title={t('settingPanel.restoreBuiltin')}>
                       <RotateCcw data-icon="inline-start" />
@@ -608,12 +653,6 @@ export function PresetSettingsPanel({
                       <Trash2 data-icon="inline-start" />
                     </Button>
                   ) : null}
-                  {!isTellerConfigAgentActive && (
-                    <Button className="preset-primary-action gap-1.5" variant="outline" size="sm" disabled={saveDisabled} onClick={handleSave} aria-label={t('common.save')}>
-                      {busy ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Save data-icon="inline-start" />}
-                      <span className="preset-action-label">{t('common.save')}</span>
-                    </Button>
-                  )}
                 </>
               )}
               className="text-[var(--nova-text)]"
@@ -667,7 +706,7 @@ export function PresetSettingsPanel({
                   setActorStateDraft={setActorStateDraft}
                   onOpenActorState={(id) => selectPresetResource('actor-state', id)}
                   onOpenRuleSystem={(id) => selectPresetResource('rule', id)}
-                  onSave={handleSave}
+                  onSave={flushActivePresetAutosave}
                   onValidityChange={setPresetConfigValid}
                 />
               )}

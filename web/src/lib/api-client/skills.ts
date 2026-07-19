@@ -40,7 +40,7 @@ export async function createSkill(scope: SkillScope, name: string, description =
   })
 }
 
-export async function saveSkillDocument(scope: SkillScope, name: string, content: string, target?: SkillSaveTarget): Promise<SkillDocument> {
+export async function saveSkillDocument(scope: SkillScope, name: string, content: string, target?: SkillSaveTarget, baseRevision?: string): Promise<SkillDocument> {
   const data = await requestJSON<SkillDocument>('/api/skills/document', {
     method: 'PUT',
     headers: jsonHeaders,
@@ -50,16 +50,17 @@ export async function saveSkillDocument(scope: SkillScope, name: string, content
       content,
       target_scope: target?.scope,
       target_name: target?.name,
+      base_revision: baseRevision,
     }),
   })
   return { ...data, files: data.files || [] }
 }
 
-export async function saveSkillFileDocument(scope: SkillScope, name: string, path: string, content: string): Promise<SkillFileDocument> {
+export async function saveSkillFileDocument(scope: SkillScope, name: string, path: string, content: string, baseRevision?: string): Promise<SkillFileDocument> {
   return requestJSON('/api/skills/file', {
     method: 'PUT',
     headers: jsonHeaders,
-    body: JSON.stringify({ scope, name, path, content }),
+    body: JSON.stringify({ scope, name, path, content, base_revision: baseRevision }),
   })
 }
 

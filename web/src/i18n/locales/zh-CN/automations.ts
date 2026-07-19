@@ -5,7 +5,7 @@ const automations = {
   'automations.newTask': '新建自动化',
   'automations.defaultName': '未命名自动化',
   'automations.create.title': '新建自动化',
-  'automations.create.description': '先选择执行位置和起始模板。只有保存后才会创建任务，所有模板默认停用。',
+  'automations.create.description': '先选择执行位置和起始模板。点击创建后才会新增任务，所有模板默认停用。',
   'automations.create.chooseTemplate': '选择起始模板',
   'automations.deleteTask': '删除任务',
   'automations.deleteTask.title': '删除自动化任务',

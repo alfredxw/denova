@@ -182,20 +182,15 @@ export function LoreEditor({
               </div>
             </div>
           </div>
-          <div className="min-h-[420px] flex-1 p-3 sm:p-4">
-            <div className="mb-2 text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.field.content')}</div>
-            <div className="min-w-0 bg-[var(--nova-bg)] px-5 py-4">
-              <MarkdownRichEditor
-                key={draft.id}
-                value={draft.content || ''}
-                onChange={(content) => setDraft({ ...draft, content })}
-                highlightQuery={searchQuery}
-                onSaveShortcut={onSave}
-                aria-label={t('settingPanel.field.content')}
-                className="max-w-4xl text-xs leading-5"
-              />
-            </div>
-          </div>
+          <MarkdownRichEditor
+            key={draft.id}
+            value={draft.content || ''}
+            onChange={(content) => setDraft({ ...draft, content })}
+            highlightQuery={searchQuery}
+            onSaveShortcut={onSave}
+            aria-label={t('settingPanel.field.content')}
+            className="flex min-h-[420px] min-w-0 flex-1 flex-col bg-[var(--nova-bg)] text-xs leading-5 [&_.tiptap]:min-h-[420px] [&_.tiptap]:min-w-0 [&_.tiptap]:flex-1 [&_.tiptap]:px-5 [&_.tiptap]:py-4 sm:[&_.tiptap]:px-6"
+          />
         </div>
       </ScrollArea>
       <LoreImageGenerateDialog

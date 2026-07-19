@@ -26,6 +26,25 @@ describe('AdaptiveSurface', () => {
     expect(container.querySelector('[data-nova-adaptive-container="true"]')).not.toBeInTheDocument()
   })
 
+  it('lets desktop users resize an enabled right pane', () => {
+    render(
+      <AdaptiveSurface
+        right={{ id: 'config-agent', title: 'Config Agent', side: 'right', content: <div>Agent chat</div> }}
+        rightResize={{
+          layoutKey: 'test-config-agent-layout',
+          label: 'Resize Config Agent',
+          defaultSize: '420px',
+          minSize: '300px',
+          maxSize: '65%',
+        }}
+      >
+        <div>Main content</div>
+      </AdaptiveSurface>,
+    )
+
+    expect(screen.getByRole('separator', { name: 'Resize Config Agent' })).toBeVisible()
+  })
+
   it('keeps the main slot height-constrained on desktop', () => {
     render(adaptiveSurface())
 

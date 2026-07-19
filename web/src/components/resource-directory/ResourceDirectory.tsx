@@ -124,7 +124,32 @@ export function ResourceDirectory({
     <>
       {(headerContent || showSearch || pinnedEntries?.length) && <div className="border-b border-[var(--nova-border)] p-2">
         {headerContent}
-        {showSearch && <div className={cn('flex items-center gap-2', headerContent && 'mt-2')}>
+        {pinnedEntries && pinnedEntries.length > 0 && (
+          <div className={cn('flex flex-col gap-2', headerContent && 'mt-2')}>
+            {pinnedEntries.map((entry) => {
+              const PinnedIcon = entry.icon
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => onSelect(entry.id)}
+                  aria-current={activeId === entry.id ? 'true' : undefined}
+                  className={cn(
+                    'flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition',
+                    activeId === entry.id
+                      ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]'
+                      : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
+                  )}
+                >
+                  <PinnedIcon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                  <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+                  {entry.summary ? <span className="truncate text-[10px] text-muted-foreground">{entry.summary}</span> : null}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {showSearch && <div className={cn('flex items-center gap-2', (headerContent || pinnedEntries?.length) && 'mt-2')}>
           <InputGroup className="nova-field min-w-0 flex-1 border-0">
             <InputGroupAddon>
               <Search />
@@ -156,31 +181,6 @@ export function ResourceDirectory({
           )}
           {headerActions}
         </div>}
-        {pinnedEntries && pinnedEntries.length > 0 && (
-          <div className="mt-2 flex flex-col gap-2">
-            {pinnedEntries.map((entry) => {
-              const PinnedIcon = entry.icon
-              return (
-                <button
-                  key={entry.id}
-                  type="button"
-                  onClick={() => onSelect(entry.id)}
-                  aria-current={activeId === entry.id ? 'true' : undefined}
-                  className={cn(
-                    'flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs transition',
-                    activeId === entry.id
-                      ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]'
-                      : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
-                  )}
-                >
-                  <PinnedIcon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                  <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-                  {entry.summary ? <span className="truncate text-[10px] text-muted-foreground">{entry.summary}</span> : null}
-                </button>
-              )
-            })}
-          </div>
-        )}
       </div>}
       <ScrollArea className="min-h-0 flex-1">
         <div className="w-0 min-w-full p-2">

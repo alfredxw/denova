@@ -687,6 +687,7 @@ export interface SkillSnapshot {
 
 export interface SkillDocument extends SkillSummary {
   content: string
+  revision: string
   files?: SkillFile[]
 }
 
@@ -694,6 +695,7 @@ export interface SkillFileDocument {
   skill: SkillSummary
   file: SkillFile
   content: string
+  revision: string
 }
 
 export interface SkillInstallCandidate {
@@ -784,6 +786,7 @@ export interface AutomationRunRecord {
 export interface AutomationTask {
   id?: string
   catalog_id?: string
+  revision?: string
   scope: AutomationScope
   target?: AutomationExecutionTarget
   enabled: boolean
@@ -805,6 +808,22 @@ export interface AutomationTask {
   created_at?: string
   updated_at?: string
 }
+
+/** User-editable task definition. Runtime trigger/run state is intentionally excluded. */
+export type AutomationTaskUpdate = Pick<AutomationTask,
+  | 'enabled'
+  | 'name'
+  | 'template'
+  | 'prompt'
+  | 'model_profile_id'
+  | 'schedule'
+  | 'triggers'
+  | 'default_action_policy'
+  | 'write_mode'
+  | 'write_scope'
+  | 'output_policy'
+  | 'output_path'
+>
 
 export type AutomationTaskTemplateDefaults = Pick<AutomationTask,
   | 'enabled'

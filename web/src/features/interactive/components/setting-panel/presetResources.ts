@@ -38,7 +38,12 @@ export interface PresetDrafts {
 }
 
 export function presetResourceDraftSignature(item: object) {
-  return JSON.stringify(item)
+  const {
+    created_at: _createdAt,
+    updated_at: _updatedAt,
+    ...editable
+  } = item as Record<string, unknown>
+  return JSON.stringify(editable)
 }
 
 export function cloneTeller(teller: Teller): Teller {

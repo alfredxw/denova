@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"strings"
 
@@ -91,12 +92,35 @@ func (h *Handlers) HandleAutomationCreate(ctx context.Context, c *app.RequestCon
 func (h *Handlers) HandleAutomationUpdate(ctx context.Context, c *app.RequestContext) {
 	id := c.Param("id")
 	var req automation.Task
-	if err := c.BindJSON(&req); err != nil {
+	body := c.Request.Body()
+	if err := json.Unmarshal(body, &req); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
-	task, err := h.app.UpdateAutomation(id, req)
+	var metadata struct {
+		BaseRevision string `json:"base_revision"`
+	}
+	if err := json.Unmarshal(body, &metadata); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	baseRevision := strings.TrimSpace(metadata.BaseRevision)
+	if baseRevision == "" {
+		writeJSON(c, consts.StatusBadRequest, map[string]any{
+			"error": messageKey(c, "api.automation.baseRevisionRequired"),
+			"code":  "base_revision_required",
+		})
+		return
+	}
+	task, err := h.app.UpdateAutomationIfRevision(id, req, baseRevision)
 	if err != nil {
+		if errors.Is(err, automation.ErrRevisionConflict) {
+			writeJSON(c, consts.StatusConflict, map[string]any{
+				"error": messageKey(c, "api.resource.revisionConflict"),
+				"code":  "revision_conflict",
+			})
+			return
+		}
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}

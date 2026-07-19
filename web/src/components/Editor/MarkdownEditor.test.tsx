@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 import { MarkdownEditor } from './MarkdownEditor'
 
 const toastMock = vi.hoisted(() => ({
@@ -12,6 +13,9 @@ const editorStateMock = vi.hoisted(() => ({ create: vi.fn((config: unknown) => c
 const workspaceApiMock = vi.hoisted(() => ({ readFile: vi.fn() }))
 const documentReviewAnnotationsMock = vi.hoisted(() => ({
   prepareSnapshot: null as null | (() => Promise<{ content: string; revision: string }>),
+}))
+const conflictArchiveMock = vi.hoisted(() => ({
+  preserve: vi.fn().mockResolvedValue({ id: 'conflict-1', path: '/conflicts/conflict-1.json', storage: 'server' }),
 }))
 
 const tiptapMock = vi.hoisted(() => {
@@ -27,6 +31,7 @@ const tiptapMock = vi.hoisted(() => {
     commands: {
       setContent: vi.fn(),
       focus: vi.fn(),
+      setTextSelection: vi.fn(),
     },
     chain: vi.fn(() => chainApi),
     storage: {
@@ -36,6 +41,7 @@ const tiptapMock = vi.hoisted(() => {
     },
     state: {
       doc: {
+        content: { size: 100 },
         textContent: '',
         forEach: vi.fn(),
       },
@@ -46,6 +52,7 @@ const tiptapMock = vi.hoisted(() => {
       dispatch: vi.fn(),
       updateState: vi.fn(),
       dom: document.createElement('div'),
+      hasFocus: vi.fn(() => false),
     },
     isDestroyed: false,
     setEditable: vi.fn(),
@@ -79,6 +86,7 @@ const tiptapMock = vi.hoisted(() => {
       editor.state.selection = { from: 0, to: 0, head: 0, empty: true }
       editor.state.doc.forEach.mockReset()
       vi.clearAllMocks()
+      editor.view.hasFocus.mockReturnValue(false)
     },
   }
 })
@@ -104,6 +112,7 @@ vi.mock('@tiptap/extension-table', () => ({ TableKit: { configure: vi.fn((option
 vi.mock('@tiptap/markdown', () => ({ Markdown: { configure: () => ({}) } }))
 vi.mock('sonner', () => ({ toast: toastMock }))
 vi.mock('@/lib/api-client/workspace', () => ({ readFile: workspaceApiMock.readFile }))
+vi.mock('@/lib/api-client/autosave-conflicts', () => ({ preserveAutosaveConflict: conflictArchiveMock.preserve }))
 vi.mock('./DocumentReviewAnnotations', async () => {
   const { forwardRef } = await import('react')
   return {
@@ -120,6 +129,7 @@ describe('MarkdownEditor', () => {
     window.localStorage.clear()
     tiptapMock.reset()
     workspaceApiMock.readFile.mockReset()
+    conflictArchiveMock.preserve.mockReset().mockResolvedValue({ id: 'conflict-1', path: '/conflicts/conflict-1.json', storage: 'server' })
     documentReviewAnnotationsMock.prepareSnapshot = null
   })
 
@@ -211,6 +221,19 @@ describe('MarkdownEditor', () => {
     )
   })
 
+  it('注册点击光标定位处理器', () => {
+    render(
+      <MarkdownEditor
+        fileName="chapters/ch01.md"
+        content="第一章"
+        onSave={vi.fn()}
+      />,
+    )
+
+    const options = tiptapMock.useEditorOptions as { editorProps?: { handleClick?: unknown } }
+    expect(options.editorProps?.handleClick).toBeTypeOf('function')
+  })
+
   it('默认对白高亮跟随编辑器背景主题变化，手动颜色优先', async () => {
     const user = userEvent.setup()
 
@@ -263,7 +286,7 @@ describe('MarkdownEditor', () => {
     })
 
     expect(onSave).toHaveBeenCalledTimes(1)
-    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第一版\n')
+    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第一版\n', '')
 
     act(() => {
       tiptapMock.markdown = '第二版'
@@ -280,7 +303,44 @@ describe('MarkdownEditor', () => {
     })
 
     expect(onSave).toHaveBeenCalledTimes(2)
-    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第二版\n')
+    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第二版\n', '')
+  })
+
+  it('前一次保存返回新 revision 后，排队的编辑在真正发送时沿用该 revision', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<{ revision: string }>()
+    const onSave = vi.fn((_path: string, content: string) => (
+      content === '第一版\n' ? firstSave.promise : Promise.resolve({ revision: 'r3' })
+    ))
+
+    render(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content="初始"
+        revision="r1"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+    act(() => {
+      tiptapMock.markdown = '第一版'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+      tiptapMock.markdown = '第二版'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+    expect(onSave).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      firstSave.resolve({ revision: 'r2' })
+      await firstSave.promise
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledTimes(2)
+    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第二版\n', 'r2')
   })
 
   it('切换 workspace 后丢弃旧工作区中尚未执行的保存', async () => {
@@ -338,7 +398,7 @@ describe('MarkdownEditor', () => {
       vi.advanceTimersByTime(1200)
     })
 
-    expect(saveOutline).toHaveBeenCalledWith('setting/outline.md', '大纲修改后\n')
+    expect(saveOutline).toHaveBeenCalledWith('setting/outline.md', '大纲修改后\n', '')
 
     rerender(
       <MarkdownEditor
@@ -365,7 +425,264 @@ describe('MarkdownEditor', () => {
 
     expect(saveOutline).toHaveBeenCalledTimes(1)
     expect(saveProgress).toHaveBeenCalledTimes(1)
-    expect(saveProgress).toHaveBeenCalledWith('setting/progress.md', '进度修改后\n')
+    expect(saveProgress).toHaveBeenCalledWith('setting/progress.md', '进度修改后\n', '')
+  })
+
+  it('保存进行中连续切换多个文件时不会让后一个草稿覆盖中间文件', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<boolean>()
+    const onSave = vi.fn((path: string) => (
+      path === 'setting/a.md' ? firstSave.promise : Promise.resolve(true)
+    ))
+    const { rerender } = render(
+      <MarkdownEditor
+        fileName="setting/a.md"
+        content="A 初始"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = 'A 修改后'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+    expect(onSave).toHaveBeenCalledWith('setting/a.md', 'A 修改后\n', '')
+
+    rerender(
+      <MarkdownEditor fileName="setting/b.md" content="B 初始" onSave={onSave} autoSaveDelayMs={100} />,
+    )
+    act(() => {
+      tiptapMock.markdown = 'B 修改后'
+      tiptapMock.emit('update')
+    })
+    rerender(
+      <MarkdownEditor fileName="setting/c.md" content="C 初始" onSave={onSave} autoSaveDelayMs={100} />,
+    )
+    act(() => {
+      tiptapMock.markdown = 'C 修改后'
+      tiptapMock.emit('update')
+    })
+
+    await act(async () => {
+      firstSave.resolve(true)
+      await firstSave.promise
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledTimes(3)
+    expect(onSave).toHaveBeenCalledWith('setting/b.md', 'B 修改后\n', '')
+    expect(onSave).toHaveBeenCalledWith('setting/c.md', 'C 修改后\n', '')
+  })
+
+  it('跨文档批次中一个后台草稿失败时仍保存后续文档并保留失败项重试', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<boolean>()
+    let bAttempts = 0
+    let flush: (() => Promise<boolean>) | null = null
+    const onSave = vi.fn((path: string) => {
+      if (path === 'setting/a.md') return firstSave.promise
+      if (path === 'setting/b.md' && ++bAttempts === 1) return Promise.reject(new Error('B save failed'))
+      return Promise.resolve(true)
+    })
+    const { rerender } = render(
+      <MarkdownEditor
+        fileName="setting/a.md"
+        content="A 初始"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+        onFlushHandlerChange={(handler) => { flush = handler }}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = 'A 修改后'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+    rerender(
+      <MarkdownEditor fileName="setting/b.md" content="B 初始" onSave={onSave} autoSaveDelayMs={100} onFlushHandlerChange={(handler) => { flush = handler }} />,
+    )
+    act(() => {
+      tiptapMock.markdown = 'B 修改后'
+      tiptapMock.emit('update')
+    })
+    rerender(
+      <MarkdownEditor fileName="setting/c.md" content="C 初始" onSave={onSave} autoSaveDelayMs={100} onFlushHandlerChange={(handler) => { flush = handler }} />,
+    )
+    act(() => {
+      tiptapMock.markdown = 'C 修改后'
+      tiptapMock.emit('update')
+    })
+
+    await act(async () => {
+      firstSave.resolve(true)
+      await firstSave.promise
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledWith('setting/c.md', 'C 修改后\n', '')
+    expect(toastMock.error).toHaveBeenCalled()
+
+    let retried = false
+    await act(async () => {
+      retried = await flush!()
+    })
+    expect(retried).toBe(true)
+    expect(bAttempts).toBe(2)
+  })
+
+  it('后台文档 revision 冲突时自行合并外部修改并继续保存后续文档', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<{ revision: string }>()
+    const onSave = vi.fn((path: string, _content: string, baseRevision: string) => {
+      if (path === 'setting/a.md') return firstSave.promise
+      if (path === 'setting/b.md' && baseRevision === 'b1') {
+        return Promise.reject(new WorkspaceFileRevisionConflictError(
+          new Error('revision conflict'),
+          {
+            workspace: '/books/demo',
+            content: 'B 基线第一行\nB 不变中间行\nB 外部第三行\n',
+            revision: 'b2',
+          },
+        ))
+      }
+      return Promise.resolve({ revision: `${baseRevision}-saved` })
+    })
+    const { rerender } = render(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="setting/a.md"
+        content="A 初始"
+        revision="a1"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = 'A 修改后'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+    rerender(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="setting/b.md"
+        content={'B 基线第一行\nB 不变中间行\nB 基线第三行\n'}
+        revision="b1"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+    act(() => {
+      tiptapMock.markdown = 'B 本地第一行\nB 不变中间行\nB 基线第三行'
+      tiptapMock.emit('update')
+    })
+    rerender(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="setting/c.md"
+        content="C 初始"
+        revision="c1"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+    act(() => {
+      tiptapMock.markdown = 'C 修改后'
+      tiptapMock.emit('update')
+    })
+
+    await act(async () => {
+      firstSave.resolve({ revision: 'a2' })
+      await firstSave.promise
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledWith(
+      'setting/b.md',
+      'B 本地第一行\nB 不变中间行\nB 外部第三行\n',
+      'b2',
+    )
+    expect(onSave).toHaveBeenCalledWith('setting/c.md', 'C 修改后\n', 'c1')
+    expect(conflictArchiveMock.preserve).not.toHaveBeenCalled()
+  })
+
+  it('关闭当前文档自动保存不会取消其他文档已排队的兜底保存', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<boolean>()
+    const onSave = vi.fn((path: string) => (
+      path === 'setting/a.md' ? firstSave.promise : Promise.resolve(true)
+    ))
+    const { rerender } = render(
+      <MarkdownEditor fileName="setting/a.md" content="A 初始" onSave={onSave} autoSaveDelayMs={100} />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = 'A 修改后'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+    rerender(
+      <MarkdownEditor fileName="setting/b.md" content="B 初始" onSave={onSave} autoSaveDelayMs={100} />,
+    )
+    act(() => {
+      tiptapMock.markdown = 'B 修改后'
+      tiptapMock.emit('update')
+    })
+    rerender(
+      <MarkdownEditor fileName="setting/c.md" content="C 初始" onSave={onSave} autoSaveEnabled={false} autoSaveDelayMs={100} />,
+    )
+
+    await act(async () => {
+      firstSave.resolve(true)
+      await firstSave.promise
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledWith('setting/b.md', 'B 修改后\n', '')
+  })
+
+  it('关闭自动保存不会取消当前文档已排队的手动保存', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<boolean>()
+    const onSave = vi.fn((path: string) => (
+      path === 'setting/a.md' ? firstSave.promise : Promise.resolve(true)
+    ))
+    const { rerender } = render(
+      <MarkdownEditor fileName="setting/a.md" content="A 初始" onSave={onSave} autoSaveDelayMs={100} />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = 'A 修改后'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+    rerender(
+      <MarkdownEditor fileName="setting/b.md" content="B 初始" onSave={onSave} autoSaveDelayMs={100} />,
+    )
+    act(() => {
+      tiptapMock.markdown = 'B 修改后'
+      tiptapMock.emit('update')
+    })
+    rerender(
+      <MarkdownEditor fileName="setting/c.md" content="C 初始" onSave={onSave} autoSaveDelayMs={100} />,
+    )
+    rerender(
+      <MarkdownEditor fileName="setting/b.md" content="B 初始" onSave={onSave} autoSaveEnabled={false} autoSaveDelayMs={100} />,
+    )
+
+    await act(async () => {
+      firstSave.resolve(true)
+      await firstSave.promise
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledWith('setting/b.md', 'B 修改后\n', '')
   })
 
   it('自动保存延迟期间切换文件会立即保存旧文件草稿', async () => {
@@ -400,7 +717,7 @@ describe('MarkdownEditor', () => {
     })
 
     expect(onSave).toHaveBeenCalledTimes(1)
-    expect(onSave).toHaveBeenCalledWith('setting/outline.md', '大纲尚未到保存时间\n')
+    expect(onSave).toHaveBeenCalledWith('setting/outline.md', '大纲尚未到保存时间\n', '')
   })
 
   it('用户修改后按配置延迟自动保存，不按周期重复保存', async () => {
@@ -430,7 +747,7 @@ describe('MarkdownEditor', () => {
     })
 
     expect(onSave).toHaveBeenCalledTimes(1)
-    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '修改后\n')
+    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '修改后\n', '')
 
     await act(async () => {
       vi.advanceTimersByTime(5000)
@@ -459,7 +776,7 @@ describe('MarkdownEditor', () => {
 
     await user.click(screen.getByRole('button', { name: '保存' }))
 
-    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '修改后\n')
+    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '修改后\n', '')
     expect(toastMock.success).not.toHaveBeenCalled()
   })
 
@@ -508,7 +825,7 @@ describe('MarkdownEditor', () => {
     })
 
     expect(saved).toBe(true)
-    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '导航前草稿\n')
+    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '导航前草稿\n', '')
   })
 
   it('关闭自动保存后直接切换文件仍会保存旧文件草稿', async () => {
@@ -526,7 +843,7 @@ describe('MarkdownEditor', () => {
       await Promise.resolve()
     })
 
-    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '第一章未保存草稿\n')
+    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '第一章未保存草稿\n', '')
   })
 
   it('编辑器卸载时兜底保存尚未 flush 的草稿', async () => {
@@ -544,7 +861,7 @@ describe('MarkdownEditor', () => {
       await Promise.resolve()
     })
 
-    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '关闭 Tab 前草稿\n')
+    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '关闭 Tab 前草稿\n', '')
   })
 
   it('外部内容同步不会触发自动保存', () => {
@@ -580,7 +897,92 @@ describe('MarkdownEditor', () => {
     )
   })
 
-  it('本地草稿未保存时保留内容并提示外部更新冲突', async () => {
+  it('同一章节的外部内容回灌保留已聚焦的光标位置', () => {
+    tiptapMock.editor.state.selection = { from: 5, to: 5, head: 5, empty: true }
+    tiptapMock.editor.state.doc.content = { size: 100 }
+    tiptapMock.editor.view.hasFocus.mockReturnValue(true)
+    const { rerender } = render(
+      <MarkdownEditor fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+
+    rerender(
+      <MarkdownEditor fileName="chapters/ch01.md" content="Agent 更新后的第一章" onSave={vi.fn()} />,
+    )
+
+    expect(tiptapMock.editor.commands.setTextSelection).toHaveBeenCalledWith({ from: 5, to: 5 })
+    expect(tiptapMock.editor.commands.focus).toHaveBeenCalled()
+  })
+
+  it('切换章节时不继承上一个文档的光标位置', () => {
+    const { rerender } = render(
+      <MarkdownEditor fileName="chapters/ch01.md" content="第一章" onSave={vi.fn()} />,
+    )
+    tiptapMock.editor.state.selection = { from: 5, to: 5, head: 5, empty: true }
+    tiptapMock.editor.view.hasFocus.mockReturnValue(true)
+    tiptapMock.editor.commands.setTextSelection.mockClear()
+
+    rerender(
+      <MarkdownEditor fileName="chapters/ch02.md" content="第二章" onSave={vi.fn()} />,
+    )
+
+    expect(tiptapMock.editor.commands.setTextSelection).not.toHaveBeenCalled()
+  })
+
+  it('dirty 草稿收到 Agent 非重叠更新时自然合并，并沿用原用户编辑的 afterDelay', async () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn().mockResolvedValue({ revision: 'rev-3' })
+    const { rerender } = render(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content={'第一行\n中间行\n第二行\n'}
+        revision="rev-1"
+        onSave={onSave}
+        autoSaveDelayMs={1000}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '本地第一行\n中间行\n第二行'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(600)
+    })
+    act(() => {
+      rerender(
+        <MarkdownEditor
+          workspace="/books/demo"
+          fileName="chapters/ch01.md"
+          content={'第一行\n中间行\nAgent 第二行\n'}
+          revision="rev-2"
+          onSave={onSave}
+          autoSaveDelayMs={1000}
+        />,
+      )
+    })
+
+    expect(tiptapMock.chainApi.setContent).toHaveBeenLastCalledWith(
+      '本地第一行\n中间行\nAgent 第二行\n',
+      { emitUpdate: false, contentType: 'markdown' },
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(conflictArchiveMock.preserve).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(399)
+    })
+    expect(onSave).not.toHaveBeenCalled()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1)
+    })
+
+    expect(onSave).toHaveBeenCalledWith(
+      'chapters/ch01.md',
+      '本地第一行\n中间行\nAgent 第二行\n',
+      'rev-2',
+    )
+  })
+
+  it('本地草稿与外部更新重叠时保留双方版本但不阻塞编辑器', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn(() => Promise.resolve(true))
     const { rerender } = render(
@@ -594,7 +996,8 @@ describe('MarkdownEditor', () => {
     })
     rerender(<MarkdownEditor fileName="chapters/ch01.md" content="Agent 新版本" onSave={onSave} autoSaveEnabled={false} />)
 
-    expect(screen.getByRole('alert')).toHaveTextContent('工作区版本已发生变化')
+    expect(screen.getByRole('alert')).toHaveTextContent('检测到并发编辑')
+    expect(conflictArchiveMock.preserve).toHaveBeenCalledOnce()
     expect(tiptapMock.chainApi.setContent).not.toHaveBeenCalledWith('Agent 新版本', expect.anything())
 
     await user.click(screen.getByRole('button', { name: '载入工作区版本' }))
@@ -604,7 +1007,44 @@ describe('MarkdownEditor', () => {
     expect(tiptapMock.chainApi.setContent).toHaveBeenLastCalledWith('Agent 新版本', { emitUpdate: false, contentType: 'markdown' })
   })
 
-  it('保留本地版本会显式保存，失败时保留冲突提示以便重试', async () => {
+  it('重叠修改归档后按原 afterDelay 自动保存默认合并结果并收起提示', async () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn().mockResolvedValue({ revision: 'rev-3' })
+    const { rerender } = render(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content="初始"
+        revision="rev-1"
+        onSave={onSave}
+        autoSaveDelayMs={1000}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '本地草稿'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(600)
+    })
+    rerender(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content="Agent 新版本"
+        revision="rev-2"
+        onSave={onSave}
+        autoSaveDelayMs={1000}
+      />,
+    )
+
+    expect(screen.getByRole('alert')).toHaveTextContent('检测到并发编辑')
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+
+    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '本地草稿\n', 'rev-2')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('保留合并结果会显式保存，失败时保留冲突提示以便重试', async () => {
     const user = userEvent.setup()
     const onSave = vi.fn()
       .mockResolvedValueOnce(false)
@@ -619,13 +1059,42 @@ describe('MarkdownEditor', () => {
     })
     rerender(<MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="Agent 新版本" onSave={onSave} autoSaveEnabled={false} />)
 
-    await user.click(screen.getByRole('button', { name: '保留草稿并覆盖' }))
-    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '本地草稿\n')
+    await user.click(screen.getByRole('button', { name: '保留合并结果' }))
+    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '本地草稿\n', '')
     expect(screen.getByRole('alert')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '保留草稿并覆盖' }))
+    await user.click(screen.getByRole('button', { name: '保留合并结果' }))
     expect(onSave).toHaveBeenCalledTimes(2)
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('冲突归档失败后可重试归档，成功前不会覆盖工作区版本', async () => {
+    const user = userEvent.setup()
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    conflictArchiveMock.preserve
+      .mockRejectedValueOnce(new Error('archive offline'))
+      .mockResolvedValueOnce({ id: 'conflict-retry', path: '/conflicts/conflict-retry.json', storage: 'server' })
+    const onSave = vi.fn().mockResolvedValue(true)
+    const { rerender } = render(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="初始" onSave={onSave} autoSaveEnabled={false} />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '本地草稿'
+      tiptapMock.emit('update')
+    })
+    rerender(
+      <MarkdownEditor workspace="/books/demo" fileName="chapters/ch01.md" content="Agent 新版本" onSave={onSave} autoSaveEnabled={false} />,
+    )
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+    expect(onSave).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: '保留合并结果' }))
+
+    expect(conflictArchiveMock.preserve).toHaveBeenCalledTimes(2)
+    expect(onSave).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    log.mockRestore()
   })
 
   it('切换文件时清空本地历史，外部同步事务不进入 undo 栈', () => {

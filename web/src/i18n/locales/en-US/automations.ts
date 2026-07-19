@@ -5,7 +5,7 @@ const automations = {
   'automations.newTask': 'New automation',
   'automations.defaultName': 'Untitled automation',
   'automations.create.title': 'New automation',
-  'automations.create.description': 'Choose an execution target and starting template. No task is created until you save, and every template starts disabled.',
+  'automations.create.description': 'Choose an execution target and starting template. No task is added until you create it, and every template starts disabled.',
   'automations.create.chooseTemplate': 'Choose a starting template',
   'automations.deleteTask': 'Delete task',
   'automations.deleteTask.title': 'Delete automation task',

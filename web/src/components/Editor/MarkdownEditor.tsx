@@ -25,6 +25,8 @@ import {
   hasNativeIndent,
   isMarkdownFile,
   isTxtFile,
+  placeEditorCaretAtClick,
+  replaceEditorDocument,
   resetEditorStateHistory,
   updateCharacterStats,
 } from './editorDocument'
@@ -58,7 +60,8 @@ interface MarkdownEditorProps {
   workspace?: string
   fileName: string | null
   content: string
-  onSave: (fileName: string, content: string) => Promise<boolean>
+  revision?: string
+  onSave: (fileName: string, content: string, baseRevision: string) => Promise<boolean | { revision?: string }>
   onQuoteSelection?: (sel: QuoteSelection) => void
   saveSignal?: number
   autoSaveEnabled?: boolean
@@ -86,6 +89,7 @@ export function MarkdownEditor({
   workspace = '',
   fileName,
   content,
+  revision = '',
   onSave,
   onQuoteSelection,
   saveSignal = 0,
@@ -155,6 +159,13 @@ export function MarkdownEditor({
     ],
     content,
     contentType: 'markdown',
+    editorProps: {
+      handleClick: (view, position, event) => {
+        placeEditorCaretAtClick(view, position, event)
+        // Keep review-highlight and future extension click handlers in the same event chain.
+        return false
+      },
+    },
   })
 
   const themeStyle = THEME_STYLES[settings.theme]
@@ -173,16 +184,25 @@ export function MarkdownEditor({
     }
   }, [editor])
 
-  const applyExternalContent = useCallback((nextFile: string | null, nextContent: string, clearHistory: boolean) => {
+  const applyExternalContent = useCallback((
+    nextFile: string | null,
+    nextContent: string,
+    options: { resetHistory: boolean; preserveSelection: boolean },
+  ) => {
     if (!editor || editor.isDestroyed) return
-    const chain = editor.chain().setMeta('addToHistory', false)
     if (isTxtFile(nextFile)) {
       const html = nextContent.split('\n').map((line) => `<p>${line || '<br>'}</p>`).join('')
-      chain.setContent(html, { emitUpdate: false, contentType: 'html' }).run()
+      replaceEditorDocument(editor, html, {
+        contentType: 'html',
+        preserveSelection: options.preserveSelection,
+      })
     } else {
-      chain.setContent(nextContent, { emitUpdate: false, contentType: 'markdown' }).run()
+      replaceEditorDocument(editor, nextContent, {
+        contentType: 'markdown',
+        preserveSelection: options.preserveSelection,
+      })
     }
-    if (clearHistory) resetEditorStateHistory(editor)
+    if (options.resetHistory) resetEditorStateHistory(editor)
     setNativeIndent(hasNativeIndent(nextContent))
     updateCharacterStats(editor, setSelectedCharacters)
     onLineChange?.(getLineNumber(editor.state.doc, editor.state.selection.head))
@@ -201,6 +221,7 @@ export function MarkdownEditor({
     workspace,
     fileName,
     content,
+    revision,
     editor,
     editorContainerRef,
     onSave,
@@ -414,6 +435,11 @@ export function MarkdownEditor({
           <div className="min-w-[180px] flex-1">
             <div className="font-medium text-[var(--nova-text)]">{t('editor.externalConflict.title')}</div>
             <div className="mt-0.5 text-[var(--nova-text-faint)]">{t('editor.externalConflict.description')}</div>
+            {externalConflict.recoveryID ? (
+              <div className="mt-0.5 font-mono text-[10px] text-[var(--nova-text-faint)]">
+                {t('editor.externalConflict.recovery', { id: externalConflict.recoveryID })}
+              </div>
+            ) : null}
           </div>
           <Button type="button" size="xs" variant="outline" disabled={externalConflictSaving} onClick={() => void keepLocalVersion()}>{t('editor.externalConflict.keepLocal')}</Button>
           <Button type="button" size="xs" disabled={externalConflictSaving} onClick={loadExternalVersion}>{t('editor.externalConflict.loadExternal')}</Button>

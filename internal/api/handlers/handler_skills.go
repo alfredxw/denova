@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"strings"
 
@@ -23,18 +24,20 @@ type skillCreateRequest struct {
 }
 
 type skillSaveRequest struct {
-	Scope       novaskills.Scope `json:"scope"`
-	Name        string           `json:"name"`
-	Content     string           `json:"content"`
-	TargetScope novaskills.Scope `json:"target_scope"`
-	TargetName  string           `json:"target_name"`
+	Scope        novaskills.Scope `json:"scope"`
+	Name         string           `json:"name"`
+	Content      string           `json:"content"`
+	TargetScope  novaskills.Scope `json:"target_scope"`
+	TargetName   string           `json:"target_name"`
+	BaseRevision string           `json:"base_revision"`
 }
 
 type skillFileSaveRequest struct {
-	Scope   novaskills.Scope `json:"scope"`
-	Name    string           `json:"name"`
-	Path    string           `json:"path"`
-	Content string           `json:"content"`
+	Scope        novaskills.Scope `json:"scope"`
+	Name         string           `json:"name"`
+	Path         string           `json:"path"`
+	Content      string           `json:"content"`
+	BaseRevision string           `json:"base_revision"`
 }
 
 type skillInstallRemoteRequest struct {
@@ -117,8 +120,12 @@ func (h *Handlers) HandleSkillSave(ctx context.Context, c *app.RequestContext) {
 	if body.TargetName == "" {
 		body.TargetName = body.Name
 	}
-	doc, err := h.app.SaveSkillDocumentAs(ctx, body.Scope, body.Name, body.TargetScope, body.TargetName, body.Content)
+	doc, err := h.app.SaveSkillDocumentAs(ctx, body.Scope, body.Name, body.TargetScope, body.TargetName, body.Content, strings.TrimSpace(body.BaseRevision))
 	if err != nil {
+		if errors.Is(err, novaskills.ErrRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
+			return
+		}
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}
@@ -138,8 +145,12 @@ func (h *Handlers) HandleSkillFileSave(ctx context.Context, c *app.RequestContex
 		writeErrorKey(c, consts.StatusBadRequest, "api.skills.scopeNamePathRequired")
 		return
 	}
-	doc, err := h.app.SaveSkillFileDocument(ctx, body.Scope, body.Name, body.Path, body.Content)
+	doc, err := h.app.SaveSkillFileDocument(ctx, body.Scope, body.Name, body.Path, body.Content, strings.TrimSpace(body.BaseRevision))
 	if err != nil {
+		if errors.Is(err, novaskills.ErrRevisionConflict) {
+			writeErrorKey(c, consts.StatusConflict, "api.resource.revisionConflict")
+			return
+		}
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return
 	}

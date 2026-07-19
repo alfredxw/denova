@@ -3,8 +3,10 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -285,6 +287,75 @@ func TestWriteAgentConfigsPreservesUnrelatedSettings(t *testing.T) {
 	}
 }
 
+func TestMutateAgentConfigsPreservesAConcurrentSettingsMutation(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := t.TempDir()
+	path := config.UserConfigPath(novaDir)
+	if err := config.WriteSettingsFile(path, config.Settings{Theme: "dark"}); err != nil {
+		t.Fatal(err)
+	}
+	layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	firstEntered := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	secondStarted := make(chan struct{})
+	errs := make([]error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				errs[0] = fmt.Errorf("concurrent settings mutation panic: %v", recovered)
+			}
+		}()
+		_, errs[0] = config.MutateSettingsFile(path, "", func(current config.Settings) (config.Settings, error) {
+			close(firstEntered)
+			<-releaseFirst
+			current.AgentPrompts.ConfigManager.SystemPrompt = "concurrent prompt"
+			return current, nil
+		})
+	}()
+	<-firstEntered
+	off := false
+	go func() {
+		defer wg.Done()
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				errs[1] = fmt.Errorf("agent settings mutation panic: %v", recovered)
+			}
+		}()
+		close(secondStarted)
+		_, errs[1] = mutateAgentConfigSettings(path, "user", layered, []agentConfigWriteOperation{{
+			Op:    "set_agent_override",
+			Agent: config.AgentKindIDE,
+			Tools: &config.AgentToolOverride{FileWrite: &off},
+		}})
+	}()
+	<-secondStarted
+	close(releaseFirst)
+	wg.Wait()
+	for _, err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent mutation failed: %v", err)
+		}
+	}
+
+	persisted, err := config.ReadSettingsFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persisted.AgentPrompts.ConfigManager.SystemPrompt != "concurrent prompt" {
+		t.Fatalf("Agent write lost the concurrent prompt: %#v", persisted.AgentPrompts.ConfigManager)
+	}
+	if persisted.AgentTools.IDE.FileWrite == nil || *persisted.AgentTools.IDE.FileWrite {
+		t.Fatalf("Agent tool override was not persisted: %#v", persisted.AgentTools.IDE)
+	}
+}
+
 func TestWriteAutomationsRequiresExplicitCreateTarget(t *testing.T) {
 	writeTool, err := newWriteAutomationsTool(t.TempDir(), t.TempDir(), nil)
 	if err != nil {
@@ -305,6 +376,49 @@ func TestWriteAutomationsRequiresExplicitCreateTarget(t *testing.T) {
 	}`)
 	if err == nil || !strings.Contains(err.Error(), "target") {
 		t.Fatalf("automation create should require an explicit target, got %v", err)
+	}
+}
+
+func TestWriteAutomationsRejectsAStaleAgentDefinition(t *testing.T) {
+	novaDir := filepath.Join(t.TempDir(), "user")
+	workspace := filepath.Join(t.TempDir(), "book")
+	store := automation.NewStore(novaDir, workspace)
+	created, err := store.Create(automation.Task{
+		Scope:    automation.ScopeWorkspace,
+		Name:     "Original",
+		Template: automation.TemplateReview,
+		Prompt:   "original prompt",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateIfRevision(created.ID, automation.Task{Prompt: "user autosave"}, created.Revision); err != nil {
+		t.Fatal(err)
+	}
+	staleAgentTask := created
+	staleAgentTask.Name = "stale Agent name"
+	payload, err := json.Marshal(automationWriteInput{Operations: []automationWriteOperation{{
+		Op:   "update",
+		ID:   created.CatalogID,
+		Task: staleAgentTask,
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTool, err := newWriteAutomationsTool(novaDir, workspace, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = writeTool.(tool.InvokableTool).InvokableRun(context.Background(), string(payload))
+	if err == nil || !strings.Contains(err.Error(), "revision conflict") {
+		t.Fatalf("stale Agent update should fail with revision conflict, got %v", err)
+	}
+	latest, err := store.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if latest.Prompt != "user autosave" || latest.Name == "stale Agent name" {
+		t.Fatalf("stale Agent update overwrote user definition: %#v", latest)
 	}
 }
 

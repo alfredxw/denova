@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 自动保存统一到一套 after-delay 内核与场景适配层：仅在用户停止编辑达到配置延迟后写入，同一资源最多一个请求执行中，并把后续修改合并为最新待保存快照；手动保存、切换前 flush 与自动保存共享同一队列。
+- Autosave now uses one after-delay core with thin scenario adapters: writes start only after the configured quiet period, each resource permits one in-flight request, later edits collapse to the latest pending snapshot, and manual save plus navigation flush share that queue.
+- 资料库与方案预设移除重复的写作工作区标题栏，关闭入口并入当前资源工具栏；配置管理 Agent 统一置于目录搜索之前，资料库不再重复展示目录说明。
+- Lore and Presets no longer show a duplicate writing-workspace title bar; closing now lives in the active resource toolbar, Config Manager is consistently placed before directory search, and Lore no longer repeats its directory description.
+- Agents 与 Skills 的配置 Agent 面板现在支持键盘和鼠标拖拽调宽，并分别记忆用户调整后的宽度。
+- Config Agent panes in Agents and Skills can now be resized with the keyboard or pointer and remember their widths independently.
+- Settings、Agents、资料库、方案预设、创作者设定、开场方案、Automations、Skills、共享文风参考和回复目标字数统一改为自动保存，并移除重复的通用“保存”按钮；新建、导入、重命名/迁移、删除及运行时文档提交仍保留为明确操作。
+- Settings, Agents, Lore, Presets, creator configuration, opening presets, Automations, Skills, shared style references, and reply-length targets now autosave without redundant generic Save buttons; create, import, rename/move, delete, and runtime-document submission remain explicit actions.
+- 配置页共享“等待 / 保存中 / 已保存 / 校验阻止 / 失败重试”状态，并把 Cmd/Ctrl+S 统一为不可见的立即 flush 命令；Skills 文档与目录文件 API 新增精确内容 revision，以保护外部编辑。
+- Configuration surfaces share pending, saving, saved, validation-blocked, and retryable-error feedback, while Cmd/Ctrl+S consistently flushes without exposing a button. Skill documents and supporting-file APIs now include exact content revisions to protect external edits.
+- 兼容性说明：Automations 更新接口现在必须携带 `base_revision`；配置管理 Agent 的 `write_automations` update 必须携带 `read_automations` 返回的 `revision`。旧调用方需先读取最新任务再更新。
+- Compatibility note: Automation updates now require `base_revision`, and Config Manager Agent `write_automations` updates must carry the `revision` returned by `read_automations`. Existing callers must read the latest task before updating it.
 - Home、Settings、Agents、Skills 和 Automations 统一使用共享页面框架、分区导航、表单字段、资源目录、空状态与确认弹窗；资料库和方案预设同时复用自适应面板与移动端入口。
 - Home, Settings, Agents, Skills, and Automations now share page shells, section navigation, form fields, resource directories, empty states, and confirmation dialogs; Lore and Presets also reuse adaptive panes and mobile entry points.
 - 写作与游戏模式的 Agent 对话统一为单一挂载的聊天面板，并共享持久化输入偏好、上下文分析展示、文本测量和底部滚动控制，避免布局切换时重复初始化会话状态。
@@ -19,6 +31,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Automations 配置现在携带稳定 revision 并由后端 CAS 校验；外部文件更新会自动 reload，冲突时先三方合并并归档双方版本，再以本地优先结果重试，不再静默后写覆盖。
+- Automation definitions now carry stable revisions enforced by backend CAS. External file changes reload automatically; conflicts are three-way merged and both versions are archived before retrying the local-preferred result instead of silently applying last-write-wins.
+- 编辑器跨文档兜底保存改为按文档键批量排队：单个后台文档失败不会阻断后续文档，失败项会保留并提示重试；关闭当前文档自动保存也不会取消其他文档的待保存草稿。
+- Editor fallback saves now use a document-keyed batch: one background failure no longer blocks later documents, failed drafts remain retryable with visible feedback, and disabling autosave for the current document no longer cancels other queued drafts.
+- Agent 输入偏好保存失败会保留本地值和待保存请求；关闭面板或切换工作区不会丢失 after-delay 草稿，切换操作也不会被无关偏好保存失败硬阻塞。
+- Failed Agent composer-preference saves retain their local value and queued request. Closing the panel or switching workspaces no longer drops after-delay drafts, and unrelated preference failures no longer hard-block navigation.
+- Agent/外部文件更新会先 reload，并以草稿自身绑定的 revision 做三方合并；非重叠修改静默合并，真正重叠时先把 base、用户稿、外部稿和默认本地优先结果原子写入恢复记录，再继续保存并提示用户，不再用弹窗硬阻塞编辑。
+- Agent and external file updates now reload first and three-way merge against the revision bound to the draft. Non-overlapping edits merge silently; true overlaps atomically archive the base, local, external, and local-preferred merged versions before saving and notifying the user, without a blocking conflict dialog.
+- 设置文件与 Agent 配置写入共享按规范路径串行的 revision/原子替换内核，锁内读取并变更最新内容；并发修改不再用旧快照覆盖无关字段，失败写入也不会留下半文件。
+- Settings and Agent configuration writes now share a canonical-path revision and atomic-replacement core that mutates the latest content under one lock, preventing stale snapshots from dropping unrelated concurrent fields or leaving partial files.
+- 叙事风格方案右侧除顶部工具栏外统一为单一连续滚动区；名称、描述、文风参考、注入规则和规则正文会一起滚动，并铺满可用高度，不再把正文裁切在狭窄的嵌套面板中。
+- Narrative-style presets now use one continuous scroll surface below the top toolbar, so metadata, style references, injection rules, and rule content move together, fill the available height, and no longer clip the editor inside a narrow nested pane.
+- 资料库正文移除重复的“正文”外框，点击段落后的光标会精确落在所点位置，外部内容回灌也不再把光标移到文末；主写作编辑器同步保护同一文档的当前选区。
+- The Lore body no longer has a redundant Content frame. Clicks now place the caret at the selected paragraph, external refreshes no longer move it to the document end, and the main writing editor preserves the current selection during same-document syncs as well.
+- 自动保存按资源和设置层串行执行，在切换条目、配置类型、页面或进入删除确认前 flush，并在前一次写入后立即沿用新 revision；失败的方案保存会先重试再允许切换，迟到响应不会覆盖更新的本地草稿。
+- Autosave now serializes per resource and settings layer, flushes before resource, configuration-kind, page, or delete-confirmation transitions, and immediately advances revisions between queued writes. Failed preset saves retry before navigation, and late responses cannot replace newer local drafts.
+- 未编辑的配置会直接加载外部最新值且绝不触发回写；编辑中的文本和结构化草稿会在 revision 变化时按原始基线三方合并，并自动携带最新 revision 重试，不再要求用户刷新页面处理常规冲突。
+- Clean configuration drafts now load external updates without writing anything back. Dirty text and structured drafts three-way rebase from their original baseline and transparently retry with the latest revision, so ordinary conflicts no longer require a page refresh.
+- Automations 配置写入不再回传触发状态、最近运行等服务端运行时字段；Skills 刷新会重新读取当前文档，过期 revision 返回 409 而不会静默覆盖磁盘上的外部修改。
+- Automation configuration writes no longer echo server-owned trigger state or recent runs. Skills refresh reloads the selected document, and stale revisions return 409 instead of silently overwriting external file changes.
 - 设置与 Agents 的分层草稿、自动保存和输入区偏好持久化现在会串行写入，并在 revision 冲突时按原始基线重新拉取、合并和重试；卸载或过期请求不再回写状态。
 - Layered drafts in Settings and Agents, autosave, and composer preference persistence now serialize writes and refetch, rebase, and retry from the original baseline on revision conflicts; unmounted or stale requests no longer publish state.
 - 自动化后台刷新、运行结束和语言切换不再覆盖未保存任务草稿，乱序工作区响应会被忽略；窄屏操作区、资源选择器和当前项语义也保持完整可用。

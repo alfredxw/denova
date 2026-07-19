@@ -37,6 +37,10 @@ import { RemoteAccessLogin } from '@/components/RemoteAccessLogin'
 import { OnboardingGuide, type OnboardingNavigationTarget } from '@/features/onboarding/OnboardingGuide'
 import { SETTINGS_SECTION_EVENT, WRITING_AGENT_INIT_EVENT } from '@/features/onboarding/events'
 import { isWorkspaceChangeForWorkspace, type WorkspaceChangeEvent } from '@/features/changes/types'
+import {
+  AUTOSAVE_CONFLICT_PRESERVED_EVENT,
+  type AutosaveConflictPreservedDetail,
+} from '@/lib/autosave/rebase-with-recovery'
 
 const PROJECT_VISIBLE_KEY = 'nova.layout.projectVisible'
 const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
@@ -110,8 +114,8 @@ function App() {
   }, [mode])
 
   const {
-    tree, loading, selectedFile, fileContent, workspace, workspaceLoaded, summary, books, bookSortMode,
-    selectFile, clearSelectedFile, saveFileContent, createItem, deleteItem, renameItem, copyItem, moveItem,
+    tree, loading, selectedFile, fileContent, fileRevision, workspace, workspaceLoaded, summary, books, bookSortMode,
+    selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
   } = useWorkspace({ autoRefreshEnabled: workspaceAutoRefreshEnabled })
 
@@ -293,6 +297,18 @@ function App() {
   }, [applyUpdateCheckResult])
 
   useEffect(() => {
+    const onConflictPreserved = (event: Event) => {
+      const detail = (event as CustomEvent<AutosaveConflictPreservedDetail>).detail
+      if (!detail?.id) return
+      toast.warning(t('common.autosave.conflictPreserved'), {
+        description: t('common.autosave.conflictPreservedDetail', { id: detail.id }),
+      })
+    }
+    window.addEventListener(AUTOSAVE_CONFLICT_PRESERVED_EVENT, onConflictPreserved)
+    return () => window.removeEventListener(AUTOSAVE_CONFLICT_PRESERVED_EVENT, onConflictPreserved)
+  }, [t])
+
+  useEffect(() => {
     if (updateCheckEnabled !== true || updateCheckInFlightRef.current || !shouldRunAutoUpdateCheck()) return
     updateCheckInFlightRef.current = true
     checkForUpdate()
@@ -403,11 +419,11 @@ function App() {
     }
   }, [flushEditorDraft, notifyVersionChange, refreshAll, setWorkspace, t, workspace])
 
-  const handleSaveCurrentFile = useCallback(async (path: string, content: string) => {
-    const saved = await saveFileContent(path, content)
-    if (saved) notifyVersionChange()
+  const handleSaveCurrentFile = useCallback(async (path: string, content: string, baseRevision: string) => {
+    const saved = await saveFileDraft(path, content, baseRevision)
+    notifyVersionChange()
     return saved
-  }, [notifyVersionChange, saveFileContent])
+  }, [notifyVersionChange, saveFileDraft])
 
   const handleCreateItem = useCallback(async (path: string, type: 'file' | 'dir') => {
     await createItem(path, type)
@@ -754,6 +770,7 @@ function App() {
         loading={loading}
         selectedFile={selectedFile}
         fileContent={fileContent}
+        fileRevision={fileRevision}
         openTabs={openTabs}
         activeTabKey={activeTabKey}
         sidebarView={sidebarView}

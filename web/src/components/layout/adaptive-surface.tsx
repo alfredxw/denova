@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { Group, Panel, Separator, type Layout } from 'react-resizable-panels'
 import { useTranslation } from 'react-i18next'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost, type MobilePane, type MobilePaneControls } from './mobile-pane-host'
@@ -31,8 +32,19 @@ interface AdaptiveSurfaceProps {
   className?: string
   mainClassName?: string
   desktopGridClassName?: string
+  /** Turns the desktop main/right split into an accessible, persisted resize group. */
+  rightResize?: AdaptiveSurfaceRightResize
   /** Collapse side panes into drawers when this surface is narrower than the given pixel width. */
   collapseAt?: number
+}
+
+export interface AdaptiveSurfaceRightResize {
+  layoutKey: string
+  label: string
+  defaultSize?: string
+  minSize?: string
+  maxSize?: string
+  mainMinSize?: string
 }
 
 const closedControls: MobilePaneControls = {
@@ -49,6 +61,7 @@ export function AdaptiveSurface({
   className = 'h-full min-h-0',
   mainClassName = 'min-h-0 min-w-0',
   desktopGridClassName,
+  rightResize,
   collapseAt,
 }: AdaptiveSurfaceProps) {
   const { t } = useTranslation()
@@ -126,15 +139,50 @@ export function AdaptiveSurface({
       </MobilePaneHost>
     )
   } else {
-    const gridClassName = desktopGridClassName || defaultDesktopGridClassName(Boolean(left && left.enabled !== false), Boolean(right && right.enabled !== false))
-
-    surface = (
-      <div className={`grid h-full min-h-0 ${className} ${gridClassName}`}>
-        {left && left.enabled !== false ? <div className={left.desktopClassName}>{left.content}</div> : null}
-        {mainContentSlot}
-        {right && right.enabled !== false ? <div className={right.desktopClassName}>{right.content}</div> : null}
-      </div>
-    )
+    const desktopLeft = left && left.enabled !== false ? left : null
+    const desktopRight = right && right.enabled !== false ? right : null
+    if (desktopRight && rightResize) {
+      surface = (
+        <div className={`flex h-full min-h-0 min-w-0 ${className}`} data-nova-adaptive-resizable="true">
+          {desktopLeft ? <div className={desktopLeft.desktopClassName}>{desktopLeft.content}</div> : null}
+          <Group
+            id={rightResize.layoutKey}
+            orientation="horizontal"
+            resizeTargetMinimumSize={{ coarse: 16, fine: 1 }}
+            defaultLayout={readStoredLayout(rightResize.layoutKey)}
+            onLayoutChanged={(layout) => storeLayout(rightResize.layoutKey, layout)}
+            className="min-h-0 min-w-0 flex-1"
+          >
+            <Panel id="main" minSize={rightResize.mainMinSize ?? '240px'} className="min-w-0">
+              {mainContentSlot}
+            </Panel>
+            <Separator
+              aria-label={rightResize.label}
+              className="nova-resize-handle relative z-30 -mx-1 w-2 shrink-0 touch-none cursor-col-resize select-none bg-transparent transition-colors focus-visible:bg-[var(--nova-active)] focus-visible:outline-none"
+            />
+            <Panel
+              id="right"
+              defaultSize={rightResize.defaultSize ?? '420px'}
+              minSize={rightResize.minSize ?? '300px'}
+              maxSize={rightResize.maxSize ?? '65%'}
+              groupResizeBehavior="preserve-pixel-size"
+              className="min-w-0"
+            >
+              <div className={`h-full min-h-0 ${desktopRight.desktopClassName ?? ''}`}>{desktopRight.content}</div>
+            </Panel>
+          </Group>
+        </div>
+      )
+    } else {
+      const gridClassName = desktopGridClassName || defaultDesktopGridClassName(Boolean(desktopLeft), Boolean(desktopRight))
+      surface = (
+        <div className={`grid h-full min-h-0 ${className} ${gridClassName}`}>
+          {desktopLeft ? <div className={desktopLeft.desktopClassName}>{desktopLeft.content}</div> : null}
+          {mainContentSlot}
+          {desktopRight ? <div className={desktopRight.desktopClassName}>{desktopRight.content}</div> : null}
+        </div>
+      )
+    }
   }
 
   const renderedSurface = collapseWidth === null ? surface : (
@@ -212,4 +260,23 @@ function defaultDesktopGridClassName(hasLeft: boolean, hasRight: boolean) {
   if (hasLeft) return 'grid-cols-[18rem_minmax(0,1fr)]'
   if (hasRight) return 'grid-cols-[minmax(0,1fr)_minmax(320px,28rem)]'
   return 'grid-cols-[minmax(0,1fr)]'
+}
+
+function readStoredLayout(key: string): Layout | undefined {
+  if (typeof window === 'undefined') return undefined
+  try {
+    const value = window.localStorage.getItem(key)
+    return value ? JSON.parse(value) as Layout : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function storeLayout(key: string, layout: Layout) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, JSON.stringify(layout))
+  } catch {
+    // Private browsing and storage policies may disable persistence; resizing still works.
+  }
 }

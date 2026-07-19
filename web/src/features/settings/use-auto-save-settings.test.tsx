@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, render } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { StrictMode } from 'react'
 import type { LayeredSettings, Settings } from './types'
 import { useAutoSaveSettings } from './use-auto-save-settings'
@@ -7,6 +7,39 @@ import { useAutoSaveSettings } from './use-auto-save-settings'
 describe('useAutoSaveSettings', () => {
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('exposes pending, saving, and saved states for page-level feedback', async () => {
+    vi.useFakeTimers()
+    const pendingSave = deferred<LayeredSettings>()
+    const view = render(
+      <HookHarness
+        draft={{ language: 'zh-CN' }}
+        saved={{ language: 'zh-CN' }}
+        save={() => pendingSave.promise}
+        onSaved={() => undefined}
+      />,
+    )
+
+    expect(screen.getByTestId('autosave-status')).toHaveTextContent('saved')
+    view.rerender(
+      <HookHarness
+        draft={{ language: 'en-US' }}
+        saved={{ language: 'zh-CN' }}
+        save={() => pendingSave.promise}
+        onSaved={() => undefined}
+      />,
+    )
+    expect(screen.getByTestId('autosave-status')).toHaveTextContent('pending')
+
+    await advanceAutoSaveTimer()
+    expect(screen.getByTestId('autosave-status')).toHaveTextContent('saving')
+
+    await act(async () => {
+      pendingSave.resolve(layered({ language: 'en-US' }))
+      await pendingSave.promise
+    })
+    expect(screen.getByTestId('autosave-status')).toHaveTextContent('saved')
   })
 
   it('waits for draft to sync before saving user edits', async () => {
@@ -140,6 +173,56 @@ describe('useAutoSaveSettings', () => {
     expect(save).toHaveBeenCalledTimes(2)
     expect(save).toHaveBeenLastCalledWith({ language: 'auto' })
     expect(onSavingChange).toHaveBeenLastCalledWith(false)
+  })
+
+  it('advances the revision before a manual flush continues an in-flight save', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<LayeredSettings>()
+    const save = vi.fn((settings: Settings, _revision?: string) => {
+      if (settings.language === 'en-US') return firstSave.promise
+      return Promise.resolve({ ...layered(settings), revisions: { user: 'r3' } })
+    })
+    const view = render(
+      <HookHarness
+        draft={{ language: 'zh-CN' }}
+        saved={{ language: 'zh-CN' }}
+        baseRevision="r1"
+        savedRevision={(next) => next.revisions?.user}
+        save={save}
+        onSaved={() => undefined}
+      />,
+    )
+
+    view.rerender(
+      <HookHarness
+        draft={{ language: 'en-US' }}
+        saved={{ language: 'zh-CN' }}
+        baseRevision="r1"
+        savedRevision={(next) => next.revisions?.user}
+        save={save}
+        onSaved={() => undefined}
+      />,
+    )
+    await advanceAutoSaveTimer()
+    view.rerender(
+      <HookHarness
+        draft={{ language: 'auto' }}
+        saved={{ language: 'zh-CN' }}
+        baseRevision="r1"
+        savedRevision={(next) => next.revisions?.user}
+        save={save}
+        onSaved={() => undefined}
+      />,
+    )
+    screen.getByRole('button', { name: 'flush' }).click()
+
+    await act(async () => {
+      firstSave.resolve({ ...layered({ language: 'en-US' }), revisions: { user: 'r2' } })
+      await firstSave.promise
+      await Promise.resolve()
+    })
+
+    expect(save).toHaveBeenLastCalledWith({ language: 'auto' }, 'r2')
   })
 
   it('resets saving state after StrictMode remount checks', async () => {
@@ -399,6 +482,7 @@ function HookHarness({
   draft,
   saved,
   baseRevision,
+  savedRevision,
   resetKey,
   syncKey,
   ready = true,
@@ -411,6 +495,7 @@ function HookHarness({
   draft: Settings
   saved: Settings
   baseRevision?: string
+  savedRevision?: (next: LayeredSettings) => string | undefined
   resetKey?: string
   syncKey?: string | number
   ready?: boolean
@@ -420,10 +505,11 @@ function HookHarness({
   onSavingChange?: (saving: boolean) => void
   onError?: (message: string) => void
 }) {
-  useAutoSaveSettings({
+  const autosave = useAutoSaveSettings({
     draft,
     saved,
     baseRevision,
+    savedRevision,
     ready,
     resetKey,
     syncKey,
@@ -433,7 +519,12 @@ function HookHarness({
     onStaleSuccess,
     onError,
   })
-  return null
+  return (
+    <>
+      <output data-testid="autosave-status">{autosave.status}</output>
+      <button type="button" onClick={() => void autosave.flush()}>flush</button>
+    </>
+  )
 }
 
 async function advanceAutoSaveTimer() {

@@ -1,21 +1,35 @@
 import { useEffect } from 'react'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 import { useWorkspace } from './useWorkspace'
 
-const apiMock = vi.hoisted(() => ({
-  copyWorkspaceItem: vi.fn(),
-  createWorkspaceItem: vi.fn(),
-  deleteWorkspaceItem: vi.fn(),
-  getBookshelf: vi.fn(),
-  getCurrentWorkspace: vi.fn(),
-  getWorkspaceSummary: vi.fn(),
-  getWorkspaceTree: vi.fn(),
-  moveWorkspaceItem: vi.fn(),
-  readFile: vi.fn(),
-  renameWorkspaceItem: vi.fn(),
-  saveFile: vi.fn(),
-}))
+const apiMock = vi.hoisted(() => {
+  class MockAPIError extends Error {
+    readonly status: number
+    readonly code?: string
+
+    constructor(message: string, options: { status: number; code?: string }) {
+      super(message)
+      this.status = options.status
+      this.code = options.code
+    }
+  }
+  return {
+    APIError: MockAPIError,
+    copyWorkspaceItem: vi.fn(),
+    createWorkspaceItem: vi.fn(),
+    deleteWorkspaceItem: vi.fn(),
+    getBookshelf: vi.fn(),
+    getCurrentWorkspace: vi.fn(),
+    getWorkspaceSummary: vi.fn(),
+    getWorkspaceTree: vi.fn(),
+    moveWorkspaceItem: vi.fn(),
+    readFile: vi.fn(),
+    renameWorkspaceItem: vi.fn(),
+    saveFile: vi.fn(),
+  }
+})
 
 vi.mock('@/lib/api', () => apiMock)
 
@@ -168,7 +182,7 @@ describe('useWorkspace', () => {
 
     let workspace: ReturnType<typeof useWorkspace> | null = null
     render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
-    await waitFor(() => expect(apiMock.getCurrentWorkspace).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('/books/demo'))
     await act(async () => {
       await workspace?.selectFile('chapters/ch01.md')
     })
@@ -228,6 +242,68 @@ describe('useWorkspace', () => {
     })
 
     expect(apiMock.saveFile).toHaveBeenLastCalledWith('chapters/ch01.md', '基于 Agent 版本继续保存', 'rev-3', '/books/demo')
+  })
+
+  it('编辑器草稿保存使用草稿自己的 baseline revision，不被 Agent reload 偷换', async () => {
+    apiMock.readFile
+      .mockResolvedValueOnce({ workspace: '/books/demo', path: 'chapters/ch01.md', content: '初始', revision: 'rev-1' })
+      .mockResolvedValueOnce({ workspace: '/books/demo', path: 'chapters/ch01.md', content: 'Agent 新内容', revision: 'rev-2' })
+    apiMock.saveFile.mockResolvedValue({ path: 'chapters/ch01.md', message: 'ok', revision: 'rev-3' })
+
+    let workspace: ReturnType<typeof useWorkspace> | null = null
+    render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
+    await waitFor(() => expect(apiMock.getCurrentWorkspace).toHaveBeenCalled())
+    await act(async () => {
+      await workspace?.selectFile('chapters/ch01.md')
+      await workspace?.refreshAfterAgentFileChange('chapters/ch01.md')
+    })
+
+    await act(async () => {
+      await workspace?.saveFileDraft('chapters/ch01.md', '基于旧草稿的本地内容', 'rev-1')
+    })
+
+    expect(apiMock.saveFile).toHaveBeenLastCalledWith(
+      'chapters/ch01.md',
+      '基于旧草稿的本地内容',
+      'rev-1',
+      '/books/demo',
+    )
+  })
+
+  it('revision 冲突时把重新读取的完整快照交给编辑器适配层', async () => {
+    apiMock.readFile.mockReset()
+    apiMock.saveFile.mockReset()
+    apiMock.readFile
+      .mockResolvedValueOnce({ workspace: '/books/demo', path: 'chapters/ch01.md', content: '基线', revision: 'rev-1' })
+      .mockResolvedValueOnce({ workspace: '/books/demo', path: 'chapters/ch01.md', content: 'Agent 新内容', revision: 'rev-2' })
+    apiMock.saveFile.mockRejectedValue(new apiMock.APIError('revision conflict', {
+      status: 409,
+      code: 'revision_conflict',
+    }))
+
+    let workspace: ReturnType<typeof useWorkspace> | null = null
+    render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
+    await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('/books/demo'))
+    await act(async () => {
+      await workspace?.selectFile('chapters/ch01.md')
+    })
+
+    let caught: unknown
+    await act(async () => {
+      try {
+        await workspace?.saveFileDraft('chapters/ch01.md', '本地内容', 'rev-1')
+      } catch (error) {
+        caught = error
+      }
+    })
+
+    expect(caught).toBeInstanceOf(WorkspaceFileRevisionConflictError)
+    expect((caught as WorkspaceFileRevisionConflictError).latest).toEqual({
+      workspace: '/books/demo',
+      content: 'Agent 新内容',
+      revision: 'rev-2',
+    })
+    expect(screen.getByTestId('workspace-state')).toHaveTextContent('Agent 新内容')
   })
 
   it('工作区切换后目录和统计的旧响应不会落入新工作区', async () => {
@@ -315,7 +391,7 @@ function WorkspaceHarness({
   useEffect(() => onChange(workspace), [onChange, workspace])
   return (
     <>
-      <div data-testid="workspace-state">{workspace.selectedFile}|{workspace.fileContent}</div>
+      <div data-testid="workspace-state">{workspace.selectedFile}|{workspace.fileContent}|{workspace.fileRevision}</div>
       <div data-testid="workspace-meta">{workspace.workspace}|{workspace.tree.map((node) => node.name).join(',')}|{workspace.summary?.title ?? ''}|{workspace.bookSortMode}</div>
     </>
   )

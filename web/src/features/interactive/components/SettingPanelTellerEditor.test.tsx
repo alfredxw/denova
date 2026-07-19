@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { useState } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runConfigManagerStream } from '@/lib/api'
+import { APIError } from '@/lib/api-client'
 import { ImagePresetEditor } from './setting-panel/ImagePresetEditor'
 import { TellerEditor } from './SettingPanelTellerEditor'
 import { getStyleReferences, readStyleReferenceFile, saveStyleReference, updateStyleReferenceFile } from '../api'
@@ -115,7 +116,7 @@ describe('TellerEditor style contents', () => {
 
     await waitFor(() => expect(screen.getByText('导入文风参考')).toBeInTheDocument())
     expect(screen.getByText('40000/40000')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '直接保存' }))
+    fireEvent.click(screen.getByRole('button', { name: '直接导入' }))
 
     await waitFor(() => {
       const saved = currentDraft.style_rules?.[0]?.style_refs?.[0] || ''
@@ -171,7 +172,7 @@ describe('TellerEditor style contents', () => {
     const editor = within(dialog).getAllByRole('textbox').find((node) => node.tagName.toLowerCase() === 'textarea')
     if (!editor) throw new Error('textarea editor missing')
     fireEvent.change(editor, { target: { value: '克制短句，动作承载情绪。' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: '直接保存' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: '直接导入' }))
 
     await waitFor(() => {
       expect(currentDraft.style_refs?.[0]).toMatch(/^\.denova\/styles\/style-\d+\.md$/)
@@ -230,7 +231,8 @@ describe('TellerEditor style contents', () => {
     expect(saveStyleReference).not.toHaveBeenCalled()
 
     fireEvent.change(editor, { target: { value: '# 克制雨夜\n\n编辑后的文风规则。' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+    expect(within(dialog).queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
+    fireEvent.keyDown(editor, { key: 's', ctrlKey: true })
 
     await waitFor(() => {
       expect(updateStyleReferenceFile).toHaveBeenCalledWith({
@@ -262,7 +264,8 @@ describe('TellerEditor style contents', () => {
     const editor = await within(dialog).findByPlaceholderText('编辑 Markdown 文风参考内容。')
     expect(readStyleReferenceFile).toHaveBeenCalledWith(existing.display_path)
     fireEvent.change(editor, { target: { value: '# 新文风\n\n对白更锋利。' } })
-    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }))
+    expect(within(dialog).queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
+    fireEvent.keyDown(editor, { key: 's', ctrlKey: true })
 
     await waitFor(() => {
       expect(updateStyleReferenceFile).toHaveBeenCalledWith({
@@ -270,9 +273,70 @@ describe('TellerEditor style contents', () => {
         content: '# 新文风\n\n对白更锋利。',
         base_revision: 'r1',
       })
-      expect(screen.queryByText('编辑文风参考')).not.toBeInTheDocument()
     })
+    expect(screen.getByText('编辑文风参考')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: '关闭' }))
+    await waitFor(() => expect(screen.queryByText('编辑文风参考')).not.toBeInTheDocument())
     expect(currentDraft.style_refs).toEqual([existing.display_path])
+  })
+
+  it('transparently rebases and retries a shared style revision conflict', async () => {
+    const existing = styleReference()
+    vi.mocked(getStyleReferences).mockResolvedValue([existing])
+    vi.mocked(readStyleReferenceFile)
+      .mockResolvedValueOnce({
+        reference: existing,
+        content: '# Original\n\nOld detail\n',
+        revision: 'r1',
+      })
+      .mockResolvedValueOnce({
+        reference: existing,
+        content: '# Original\n\nExternal detail\n',
+        revision: 'r2',
+      })
+    vi.mocked(updateStyleReferenceFile)
+      .mockRejectedValueOnce(new APIError('revision conflict', { status: 409 }))
+      .mockImplementationOnce(async (input) => ({
+        reference: existing,
+        content: input.content,
+        revision: 'r3',
+      }))
+    render(<Harness initial={{ ...teller(), style_refs: [existing.display_path] }} onChange={() => {}} onSave={() => {}} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑 克制细腻' }))
+    const dialog = await screen.findByRole('dialog')
+    const editor = await within(dialog).findByPlaceholderText('编辑 Markdown 文风参考内容。')
+    fireEvent.change(editor, { target: { value: '# Local\n\nOld detail\n' } })
+    fireEvent.keyDown(editor, { key: 's', ctrlKey: true })
+
+    await waitFor(() => expect(updateStyleReferenceFile).toHaveBeenCalledTimes(2))
+    expect(updateStyleReferenceFile).toHaveBeenNthCalledWith(2, {
+      path: existing.display_path,
+      content: '# Local\n\nExternal detail\n',
+      base_revision: 'r2',
+    })
+    await waitFor(() => expect(editor).toHaveValue('# Local\n\nExternal detail\n'))
+    expect(within(dialog).getByRole('status')).toHaveAccessibleName('所有更改均已保存')
+  })
+
+  it('loads an external shared style update without writing when the editor is clean', async () => {
+    const existing = styleReference()
+    vi.mocked(getStyleReferences).mockResolvedValue([existing])
+    vi.mocked(readStyleReferenceFile)
+      .mockResolvedValueOnce({ reference: existing, content: '# Initial\n', revision: 'r1' })
+      .mockResolvedValueOnce({ reference: existing, content: '# External\n', revision: 'r2' })
+    render(<Harness initial={{ ...teller(), style_refs: [existing.display_path] }} onChange={() => {}} onSave={() => {}} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: '编辑 克制细腻' }))
+    const dialog = await screen.findByRole('dialog')
+    const editor = await within(dialog).findByPlaceholderText('编辑 Markdown 文风参考内容。')
+    expect(editor).toHaveValue('# Initial\n')
+    window.dispatchEvent(new CustomEvent('nova:workspace-change', {
+      detail: { paths: [existing.display_path] },
+    }))
+
+    await waitFor(() => expect(editor).toHaveValue('# External\n'))
+    expect(updateStyleReferenceFile).not.toHaveBeenCalled()
   })
 
   it('opens picker style reference editing without toggling selection', async () => {
@@ -305,10 +369,11 @@ describe('TellerEditor style contents', () => {
 
     const contentScroll = screen.getByTestId('teller-content-scroll')
     expect(contentScroll).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto')
+    expect(within(contentScroll).getByTestId('preset-metadata')).toBeInTheDocument()
     expect(within(contentScroll).getByText('文风参考')).toBeInTheDocument()
 
     const injectGrid = container.querySelector('.teller-injection-layout')
-    expect(injectGrid).toHaveClass('flex-1')
+    expect(injectGrid).toHaveClass('shrink-0')
     expect(injectGrid).toHaveClass('min-w-0')
     expect(injectGrid).not.toHaveClass('overflow-y-auto')
     expect(injectGrid).not.toHaveClass('lg:grid-cols-[280px_minmax(0,1fr)]')
@@ -316,6 +381,26 @@ describe('TellerEditor style contents', () => {
     const sceneInput = screen.getByPlaceholderText('场景描述，如：激烈打斗 / 日常对话 / 压抑悬疑')
     expect(sceneInput).toHaveClass('md:flex-1')
     expect(sceneInput.parentElement).toHaveClass('md:flex-wrap')
+  })
+
+  it('uses one scroll surface for all content below the preset topbar', () => {
+    render(<Harness initial={teller()} onChange={() => {}} onSave={() => {}} />)
+
+    const contentScroll = screen.getByTestId('teller-content-scroll')
+    const ruleNameInput = screen.getByRole('textbox', { name: '规则名称' })
+    const ruleEditor = ruleNameInput.closest('section')
+
+    expect(contentScroll).toContainElement(ruleEditor)
+    expect(ruleEditor).not.toBeNull()
+    expect(ruleEditor).not.toHaveClass('overflow-y-auto')
+    expect(ruleEditor).not.toHaveClass('overflow-hidden')
+  })
+
+  it('fills unused preset height without shrinking the injection editor', () => {
+    const { container } = render(<Harness initial={teller()} onChange={() => {}} onSave={() => {}} />)
+
+    const injectGrid = container.querySelector('.teller-injection-layout')
+    expect(injectGrid).toHaveClass('flex-1', 'shrink-0')
   })
 
 	it('keeps event cadence controls out of narrative styles', () => {

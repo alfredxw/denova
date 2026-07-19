@@ -48,4 +48,19 @@ describe('FeaturePageShell', () => {
     expect(leading.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(heading.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
+
+  it('turns Cmd/Ctrl+S into an invisible autosave flush command', () => {
+    const onSaveShortcut = vi.fn()
+    render(
+      <FeaturePageShell icon={Settings} title="Settings" onSaveShortcut={onSaveShortcut}>
+        <input aria-label="Draft" />
+      </FeaturePageShell>,
+    )
+
+    const event = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true })
+    screen.getByLabelText('Draft').dispatchEvent(event)
+
+    expect(event.defaultPrevented).toBe(true)
+    expect(onSaveShortcut).toHaveBeenCalledOnce()
+  })
 })

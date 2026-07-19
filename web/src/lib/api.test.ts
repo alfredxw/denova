@@ -105,7 +105,7 @@ describe('api', () => {
     await expect(executeCommand('status')).resolves.toBe('executed:status')
   })
 
-  it('保存 Skill 配置时可提交目标 scope 和名称', async () => {
+  it('保存 Skill 配置时可提交目标 scope、名称和基础 revision', async () => {
     let requestBody: unknown
     server.use(
       http.put('/api/skills/document', async ({ request }) => {
@@ -118,11 +118,12 @@ describe('api', () => {
           editable: true,
           active: true,
           content: '---\nname: beat-plan\ndescription: Beat planning\n---\n',
+          revision: 'skill-r2',
         })
       }),
     )
 
-    await expect(saveSkillDocument('user', 'draft-plan', 'content', { scope: 'workspace', name: 'beat-plan' })).resolves.toMatchObject({
+    await expect(saveSkillDocument('user', 'draft-plan', 'content', { scope: 'workspace', name: 'beat-plan' }, 'skill-r1')).resolves.toMatchObject({
       scope: 'workspace',
       name: 'beat-plan',
     })
@@ -132,6 +133,7 @@ describe('api', () => {
       content: 'content',
       target_scope: 'workspace',
       target_name: 'beat-plan',
+      base_revision: 'skill-r1',
     })
   })
 

@@ -21,7 +21,6 @@ interface SkillEditorProps {
   fileDocument: SkillFileDocument | null
   draft: string
   fileDraft: string
-  dirty: boolean
   selectedFilePath: string
   viewMode: SkillContentViewMode
   fileTreeOpen: boolean
@@ -47,7 +46,6 @@ export function SkillEditor({
   fileDocument,
   draft,
   fileDraft,
-  dirty,
   selectedFilePath,
   viewMode,
   fileTreeOpen,
@@ -93,7 +91,6 @@ export function SkillEditor({
           <div className="mt-0.5 truncate text-[11px] text-[var(--nova-text-faint)]" title={activeDisplayPath}>{activeDisplayPath}</div>
         </div>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 max-sm:w-full max-sm:justify-start">
-          {dirty && <span className="text-[11px] text-[var(--nova-warning)]">{t('skills.unsaved')}</span>}
           {document.editable && (
             <>
               <button

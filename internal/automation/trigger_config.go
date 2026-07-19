@@ -81,8 +81,12 @@ func normalizeTriggerDefinition(trigger TriggerDefinition, index int, fallbackSc
 	}
 	trigger.Name = strings.TrimSpace(trigger.Name)
 	trigger.SemanticCondition = strings.TrimSpace(trigger.SemanticCondition)
-	if trigger.ChapterBatchSize < 1 {
-		trigger.ChapterBatchSize = 5
+	if trigger.Type == TriggerTypeChapterBatch || trigger.Type == TriggerTypeSemantic {
+		if trigger.ChapterBatchSize < 1 {
+			trigger.ChapterBatchSize = 5
+		}
+	} else {
+		trigger.ChapterBatchSize = 0
 	}
 	trigger.ActionPolicy = ""
 	trigger.NotifyPolicy = normalizeNotifyPolicy(trigger.NotifyPolicy, defaultNotifyPolicyForTrigger(trigger.Type))

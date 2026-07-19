@@ -8,7 +8,7 @@ const onboarding = {
   'onboarding.waiting': '等待完成',
   'onboarding.action.openModule': '打开看看',
   'onboarding.step.model.title': '先配置语言模型',
-  'onboarding.step.model.body': '写作和对话需要可用的语言模型。填写 API Key 和模型名并保存后，引导会自动进入下一步。',
+  'onboarding.step.model.body': '写作和对话需要可用的语言模型。填写 API Key 和模型名后，配置会自动保存，引导也会自动进入下一步。',
   'onboarding.step.model.action': '去配置',
   'onboarding.step.book.title': '创建你的第一本书',
   'onboarding.step.book.body': 'Denova 以书籍为工作区组织章节、设定、版本和互动故事。先新建一本书进入创作流程。',

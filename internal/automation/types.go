@@ -85,6 +85,7 @@ const (
 type Task struct {
 	ID                  string                  `json:"id"`
 	CatalogID           string                  `json:"catalog_id,omitempty"`
+	Revision            string                  `json:"revision,omitempty"`
 	Scope               string                  `json:"scope"`
 	Target              ExecutionTarget         `json:"target"`
 	Enabled             bool                    `json:"enabled"`

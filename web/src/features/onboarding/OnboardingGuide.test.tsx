@@ -22,7 +22,7 @@ describe('OnboardingGuide', () => {
     renderGuide()
 
     expect(await screen.findByText('先配置语言模型')).toBeInTheDocument()
-    expect(screen.getByText('写作和对话需要可用的语言模型。填写 API Key 和模型名并保存后，引导会自动进入下一步。')).toBeInTheDocument()
+    expect(screen.getByText('写作和对话需要可用的语言模型。填写 API Key 和模型名后，配置会自动保存，引导也会自动进入下一步。')).toBeInTheDocument()
   })
 
   it('persists skip locally and closes the guide', async () => {

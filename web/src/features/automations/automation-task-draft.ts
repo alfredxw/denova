@@ -1,4 +1,4 @@
-import type { AutomationTask, AutomationTaskTemplate, BookRecord } from '@/lib/api'
+import type { AutomationTask, AutomationTaskTemplate, AutomationTaskUpdate, BookRecord } from '@/lib/api'
 import { automationTaskKey, normalizeAutomationTask } from './automation-catalog'
 import { defaultScheduleTrigger } from './automation-trigger'
 
@@ -6,6 +6,28 @@ import { defaultScheduleTrigger } from './automation-trigger'
 // legacy write_policy field no longer drives this: write_mode/write_scope are
 // the single source of truth, so the action policy is a constant.
 const defaultAutomationActionPolicy = 'auto_run' as const
+
+/** Strips server-owned run and trigger state before a configuration PATCH. */
+export function automationTaskUpdate(task: AutomationTask): AutomationTaskUpdate {
+  return {
+    enabled: task.enabled,
+    name: task.name,
+    template: task.template,
+    prompt: task.prompt,
+    model_profile_id: task.model_profile_id,
+    schedule: task.schedule,
+    triggers: task.triggers,
+    default_action_policy: task.default_action_policy,
+    write_mode: task.write_mode,
+    write_scope: task.write_scope,
+    output_policy: task.output_policy,
+    output_path: task.output_path,
+  }
+}
+
+export function automationTaskDraftSignature(task: Partial<AutomationTask> | AutomationTaskUpdate): string {
+  return JSON.stringify(automationTaskUpdate(task as AutomationTask))
+}
 
 export function newAutomationTask(target: NonNullable<AutomationTask['target']>, name: string): AutomationTask {
   const schedule = { kind: 'manual', hour: 9, minute: 0, weekday: 1, day_of_month: 1, every_hours: 6 } satisfies AutomationTask['schedule']

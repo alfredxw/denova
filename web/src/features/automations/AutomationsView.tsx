@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Clock3, Inbox, Loader2, MessageSquareText, Play, Plus, RefreshCw, Save, Settings2, Square, Trash2 } from 'lucide-react'
+import { Clock3, Inbox, Loader2, MessageSquareText, Play, Plus, RefreshCw, Settings2, Square } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
-import { FormField } from '@/components/forms/form-field'
-import { FormSectionHeader } from '@/components/forms/form-section-header'
+import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
@@ -12,10 +11,6 @@ import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { MessageList } from '@/components/Chat/MessageList'
 import { InputArea } from '@/components/Chat/InputArea'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
 import {
   createAutomation,
   deleteAutomation,
@@ -28,7 +23,6 @@ import {
   getActiveAutomationRuns,
   getBooks,
   markAutomationInboxItemRead,
-  updateAutomation,
   type AutomationActiveRun,
   type AutomationInboxItem,
   type AutomationRunRecord,
@@ -39,11 +33,12 @@ import {
 } from '@/lib/api'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { fetchSettings } from '@/features/settings/api'
-import type { Settings, ModelProfileSettings } from '@/features/settings/types'
-import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
+import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
+import { rebaseJSONValue } from '@/lib/three-way-rebase'
+import type { Settings } from '@/features/settings/types'
 import { useAutomationRunStream } from './useAutomationRunStream'
 import { InboxPanel } from './AutomationInboxPanel'
-import { TriggerEditor } from './AutomationTriggerEditor'
+import { AutomationConfigPanel } from './AutomationConfigPanel'
 import { AutomationTaskCatalog } from './AutomationTaskCatalog'
 import { AutomationTemplateDialog } from './AutomationTemplateDialog'
 import { automationTaskKey, findAutomationTaskByTarget, findAutomationTaskForRun } from './automation-catalog'
@@ -53,20 +48,17 @@ import {
   type AutomationNavigationTarget,
 } from './automation-navigation'
 import {
-  automationTargetLabel,
-  automationTargetOptions,
-  automationTargetValue,
+  automationTaskDraftSignature,
   cloneAutomationTask,
   defaultAutomationTarget,
   newAutomationTask,
   newAutomationTaskFromTemplate,
-  nextAutomationWriteModePatch,
-  nextAutomationWriteScopePatch,
   normalizeAutomationTaskShape,
   upsertAutomationTask,
 } from './automation-task-draft'
+import { useAutomationAutosave } from './use-automation-autosave'
+import { buildAutomationModelProfileOptions, inheritedAutomationModelProfileLabel } from './automation-model-profiles'
 
-const controlClassName = 'nova-field min-h-7 w-full min-w-0 rounded-[var(--nova-radius)] border text-xs'
 type AutomationPanelView = 'config' | 'inbox' | 'run' | 'agent'
 
 export function AutomationsView({ workspace, onClose }: { workspace: string; onClose?: () => void }) {
@@ -90,8 +82,12 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
   const [runInputAreaHeight, setRunInputAreaHeight] = useState(0)
   const mountedRef = useRef(true)
   const loadSequenceRef = useRef(0)
-  const loadedWorkspaceRef = useRef<string | null>(null)
   const draftDirtyRef = useRef(false)
+  const draftRef = useRef(draft)
+  const taskBaselineRef = useRef<AutomationTask | null>(null)
+  const creatingRef = useRef(creating)
+  draftRef.current = draft
+  creatingRef.current = creating
 
   const load = useCallback(async () => {
     const sequence = loadSequenceRef.current + 1
@@ -108,29 +104,58 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       ])
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return
       const normalized = data.map((task) => normalizeAutomationTaskShape(task, workspace))
-      const preserveDraft = loadedWorkspaceRef.current === workspace && draftDirtyRef.current
-      loadedWorkspaceRef.current = workspace
+      // Automation tasks have explicit targets and may be global. A book switch
+      // must not discard an existing or not-yet-created dirty definition.
+      const preserveDraft = draftDirtyRef.current && Boolean(activeIdRef.current || creatingRef.current)
       setTasks(normalized)
       setTemplates(taskTemplates)
       setBooks(bookRecords)
       setActiveRuns(runningTasks)
       setInboxItems(inbox)
       setEffectiveSettings(settings.effective)
-      if (!preserveDraft) {
-        const selected = normalized.find((task) => automationTaskKey(task) === activeIdRef.current)
-          ?? normalized.find((task) => task.target?.kind === 'workspace' && task.target.workspace === workspace)
-          ?? normalized[0]
+      const selected = normalized.find((task) => automationTaskKey(task) === activeIdRef.current)
+        ?? normalized.find((task) => task.target?.kind === 'workspace' && task.target.workspace === workspace)
+        ?? normalized[0]
+      if (preserveDraft && selected && automationTaskKey(selected) === activeIdRef.current) {
+        const previousBaseline = taskBaselineRef.current
+        const draftAtReloadStart = draftRef.current
+        const nextDraft = previousBaseline && automationTaskKey(previousBaseline) === activeIdRef.current
+          ? await rebaseJSONWithRecovery({
+              resource: 'automation',
+              scope: workspace,
+              id: activeIdRef.current,
+              baseline: { revision: previousBaseline.revision, value: previousBaseline },
+              local: { revision: draftAtReloadStart.revision, value: draftAtReloadStart },
+              external: { revision: selected.revision, value: selected },
+            })
+          : draftRef.current
+        if (!mountedRef.current || sequence !== loadSequenceRef.current) return
+        taskBaselineRef.current = cloneAutomationTask(selected, workspace)
+        const latestDraft = draftRef.current
+        const draftWithNewerEdits = latestDraft === draftAtReloadStart
+          ? nextDraft
+          : rebaseJSONValue(draftAtReloadStart, latestDraft, nextDraft)
+        const clonedDraft = cloneAutomationTask(draftWithNewerEdits, workspace)
+        draftRef.current = clonedDraft
+        setDraft(clonedDraft)
+      } else if (!preserveDraft) {
         draftDirtyRef.current = false
         if (selected) {
           const key = automationTaskKey(selected)
           activeIdRef.current = key
           setActiveId(key)
-          setDraft(cloneAutomationTask(selected, workspace))
+          taskBaselineRef.current = cloneAutomationTask(selected, workspace)
+          const clonedDraft = cloneAutomationTask(selected, workspace)
+          draftRef.current = clonedDraft
+          setDraft(clonedDraft)
           setCreating(false)
         } else {
           activeIdRef.current = ''
           setActiveId('')
-          setDraft(newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName')))
+          taskBaselineRef.current = null
+          const emptyDraft = newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName'))
+          draftRef.current = emptyDraft
+          setDraft(emptyDraft)
           setCreating(false)
         }
       }
@@ -174,6 +199,19 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
   }, [])
 
   useEffect(() => {
+    const reloadChangedAutomation = (event: Event) => {
+      const detail = (event as CustomEvent<{ paths?: unknown }>).detail
+      const paths = Array.isArray(detail?.paths)
+        ? detail.paths.filter((path): path is string => typeof path === 'string')
+        : []
+      if (paths.length > 0 && !paths.some(isAutomationTaskFile)) return
+      void load()
+    }
+    window.addEventListener('nova:workspace-change', reloadChangedAutomation)
+    return () => window.removeEventListener('nova:workspace-change', reloadChangedAutomation)
+  }, [load])
+
+  useEffect(() => {
     if (running || tasks.length === 0) return
     let cancelled = false
     void (async () => {
@@ -188,7 +226,10 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
           const key = automationTaskKey(task)
           activeIdRef.current = key
           setActiveId(key)
-          setDraft(cloneAutomationTask(task, workspace))
+          const nextDraft = cloneAutomationTask(task, workspace)
+          taskBaselineRef.current = nextDraft
+          draftRef.current = nextDraft
+          setDraft(nextDraft)
           draftDirtyRef.current = false
           setCreating(false)
         }
@@ -202,46 +243,88 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
   }, [resumeAutomationRun, running, t, tasks, workspace])
 
   const unreadInboxCount = useMemo(() => inboxItems.filter((item) => !item.read_at && item.status === 'pending').length, [inboxItems])
-  const modelProfileOptions = useMemo(() => buildModelProfileOptions(effectiveSettings, draft.model_profile_id, t), [draft.model_profile_id, effectiveSettings, t])
-  const inheritedAutomationProfile = useMemo(() => inheritedAutomationProfileLabel(effectiveSettings, t), [effectiveSettings, t])
+  const modelProfileOptions = useMemo(() => buildAutomationModelProfileOptions(effectiveSettings, draft.model_profile_id, t), [draft.model_profile_id, effectiveSettings, t])
+  const inheritedAutomationProfile = useMemo(() => inheritedAutomationModelProfileLabel(effectiveSettings, t), [effectiveSettings, t])
 
-  const selectTask = (task: AutomationTask) => {
+  const automationAutosave = useAutomationAutosave({
+    activeId,
+    creating,
+    draft,
+    tasks,
+    workspace,
+    onSaved: (saved, _submitted, submittedIsCurrent) => {
+      setTasks((current) => upsertAutomationTask(current, saved))
+      taskBaselineRef.current = cloneAutomationTask(saved, workspace)
+      if (submittedIsCurrent) {
+        const nextDraft = cloneAutomationTask(saved, workspace)
+        draftRef.current = nextDraft
+        setDraft(nextDraft)
+        draftDirtyRef.current = false
+      }
+    },
+    onError: (cause) => {
+      console.error('[automations] failed to autosave task configuration', cause)
+      setError(cause instanceof Error ? cause.message : String(cause))
+    },
+  })
+  const flushAutomationAutosave = useCallback(() => {
+    setError(null)
+    return automationAutosave.flush()
+  }, [automationAutosave.flush])
+
+  const selectTask = async (task: AutomationTask) => {
+    if (!(await flushAutomationAutosave())) return
     const key = automationTaskKey(task)
     activeIdRef.current = key
     setActiveId(key)
-    setDraft(cloneAutomationTask(task, workspace))
+    const nextDraft = cloneAutomationTask(task, workspace)
+    taskBaselineRef.current = nextDraft
+    draftRef.current = nextDraft
+    setDraft(nextDraft)
     draftDirtyRef.current = false
     setCreating(false)
     setPanelView('config')
   }
 
-  const createNew = () => {
+  const createNew = async () => {
+    if (!(await flushAutomationAutosave())) return
     setTemplateDialogOpen(true)
   }
 
   const chooseCreationTemplate = (template: AutomationTaskTemplate | null, target: NonNullable<AutomationTask['target']>) => {
     activeIdRef.current = ''
     setActiveId('')
-    setDraft(template
+    taskBaselineRef.current = null
+    const nextDraft = template
       ? newAutomationTaskFromTemplate(template, target)
-      : newAutomationTask(target, t('automations.defaultName')))
+      : newAutomationTask(target, t('automations.defaultName'))
+    draftRef.current = nextDraft
+    setDraft(nextDraft)
     draftDirtyRef.current = true
     setCreating(true)
     setPanelView('config')
   }
 
-  const save = async () => {
-    if (!activeId && !creating) return
+  const createDraft = async () => {
+    if (!creating) return
+    const submitted = draftRef.current
     setSaving(true)
     setError(null)
     try {
-      const saved = activeId ? await updateAutomation(activeId, draft) : await createAutomation(draft)
+      const saved = await createAutomation(submitted)
       const normalized = normalizeAutomationTaskShape(saved, workspace)
       const key = automationTaskKey(normalized)
       activeIdRef.current = key
       setActiveId(key)
-      setDraft(cloneAutomationTask(normalized, workspace))
-      draftDirtyRef.current = false
+      const canonical = cloneAutomationTask(normalized, workspace)
+      taskBaselineRef.current = canonical
+      const latestDraft = draftRef.current
+      const nextDraft = latestDraft === submitted
+        ? canonical
+        : cloneAutomationTask(rebaseJSONValue(submitted, latestDraft, canonical), workspace)
+      draftRef.current = nextDraft
+      setDraft(nextDraft)
+      draftDirtyRef.current = automationTaskDraftSignature(nextDraft) !== automationTaskDraftSignature(canonical)
       setTasks((current) => upsertAutomationTask(current, normalized))
       setCreating(false)
     } catch (e) {
@@ -251,8 +334,9 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
     }
   }
 
-  const requestRemove = () => {
+  const requestRemove = async () => {
     if (!activeId) return
+    if (!(await flushAutomationAutosave())) return
     setDeleteTarget({ id: activeId, name: draft.name || activeId })
   }
 
@@ -268,7 +352,10 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       const fallbackID = fallback ? automationTaskKey(fallback) : ''
       activeIdRef.current = fallbackID
       setActiveId(fallbackID)
-      setDraft(fallback ? cloneAutomationTask(fallback, workspace) : newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName')))
+      const nextDraft = fallback ? cloneAutomationTask(fallback, workspace) : newAutomationTask(defaultAutomationTarget(workspace), t('automations.defaultName'))
+      taskBaselineRef.current = fallback ? nextDraft : null
+      draftRef.current = nextDraft
+      setDraft(nextDraft)
       draftDirtyRef.current = false
       setCreating(false)
     } catch (e) {
@@ -281,6 +368,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
   const runNow = async () => {
     if (!activeId) return
+    if (!(await flushAutomationAutosave())) return
     setError(null)
     setPanelView('run')
     try {
@@ -292,6 +380,7 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
   const checkTriggers = async () => {
     if (!activeId) return
+    if (!(await flushAutomationAutosave())) return
     setSaving(true)
     setError(null)
     try {
@@ -318,26 +407,34 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
   useEffect(() => {
     if (!navigationTarget || tasks.length === 0) return
-    const task = tasks.find((candidate) => automationTaskKey(candidate) === navigationTarget.taskId)
-      || findAutomationTaskByTarget(tasks, navigationTarget.taskId, navigationTarget.workspace)
-    if (!task) return
-    const key = automationTaskKey(task)
-    activeIdRef.current = key
-    setActiveId(key)
-    setDraft(cloneAutomationTask(task, workspace))
-    draftDirtyRef.current = false
-    setCreating(false)
-    if (navigationTarget.inboxId) {
-      setPanelView('inbox')
-    } else if (navigationTarget.runId) {
-      const run = task.recent_runs?.find((candidate) => candidate.id === navigationTarget.runId)
-      if (run) void openRun(run)
-      else setPanelView('run')
-    } else {
-      setPanelView('config')
-    }
-    setNavigationTarget(null)
-  }, [navigationTarget, openRun, tasks, workspace])
+    let cancelled = false
+    void (async () => {
+      if (!await flushAutomationAutosave() || cancelled) return
+      const task = tasks.find((candidate) => automationTaskKey(candidate) === navigationTarget.taskId)
+        || findAutomationTaskByTarget(tasks, navigationTarget.taskId, navigationTarget.workspace)
+      if (!task || cancelled) return
+      const key = automationTaskKey(task)
+      activeIdRef.current = key
+      setActiveId(key)
+      const nextDraft = cloneAutomationTask(task, workspace)
+      taskBaselineRef.current = nextDraft
+      draftRef.current = nextDraft
+      setDraft(nextDraft)
+      draftDirtyRef.current = false
+      setCreating(false)
+      if (navigationTarget.inboxId) {
+        setPanelView('inbox')
+      } else if (navigationTarget.runId) {
+        const run = task.recent_runs?.find((candidate) => candidate.id === navigationTarget.runId)
+        if (run) void openRun(run)
+        else setPanelView('run')
+      } else {
+        setPanelView('config')
+      }
+      setNavigationTarget(null)
+    })()
+    return () => { cancelled = true }
+  }, [flushAutomationAutosave, navigationTarget, openRun, tasks, workspace])
 
   const sendRunMessage = async (message: string) => {
     setError(null)
@@ -386,18 +483,22 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
 
   const setDraftField = (patch: Partial<AutomationTask>) => {
     draftDirtyRef.current = true
-    setDraft((current) => ({ ...current, ...patch }))
+    setDraft((current) => {
+      const next = { ...current, ...patch }
+      draftRef.current = next
+      return next
+    })
   }
   const setDraftTriggers = (triggers: AutomationTriggerDefinition[]) => {
     draftDirtyRef.current = true
     setDraft((current) => {
       const schedule = triggers.find((trigger) => trigger.type === 'schedule')?.schedule ?? current.schedule
-      return { ...current, schedule, triggers }
+      const next = { ...current, schedule, triggers }
+      draftRef.current = next
+      return next
     })
   }
-  const globalTask = draft.target?.kind === 'user'
   const hasEditableDraft = Boolean(activeId) || creating
-  const targetValue = automationTargetValue(draft)
   const taskListPanel = (
     <AutomationTaskCatalog
       tasks={tasks}
@@ -418,11 +519,21 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
       subtitle={t('automations.summary', { tasks: tasks.length, running: catalogActiveRuns.length })}
       error={error}
       errorTitle={t('automations.error')}
-      onClose={onClose}
+      onClose={onClose ? () => {
+        void flushAutomationAutosave().then((flushed) => { if (flushed) onClose() })
+      } : undefined}
       closeLabel={t('automations.close')}
+      onSaveShortcut={activeId && !creating ? flushAutomationAutosave : undefined}
       className="bg-[var(--nova-bg)] text-[var(--nova-text)]"
       actions={(
         <>
+          {activeId && !creating ? (
+            <AutosaveStatusIndicator
+              status={automationAutosave.status}
+              error={automationAutosave.error}
+              onRetry={flushAutomationAutosave}
+            />
+          ) : null}
           <Button type="button" size="sm" variant="outline" onClick={checkTriggers} disabled={!activeId || running || saving} className="nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]" aria-label={t('automations.checkTriggers')} title={t('automations.checkTriggers')}>
             <RefreshCw data-icon="inline-start" />
             <span className="hidden sm:inline">{t('automations.checkTriggers')}</span>
@@ -437,10 +548,12 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
               <span className="hidden sm:inline">{t('automations.stopRun')}</span>
             </Button>
           ) : null}
-          <Button type="button" size="sm" variant="secondary" onClick={save} disabled={saving || running || !hasEditableDraft} className="nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-active)]" aria-label={t('common.save')} title={t('common.save')}>
-            {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Save data-icon="inline-start" />}
-            <span className="hidden sm:inline">{t('common.save')}</span>
-          </Button>
+          {creating ? (
+            <Button type="button" size="sm" variant="secondary" onClick={createDraft} disabled={saving || running} className="nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-active)]" aria-label={t('common.create')} title={t('common.create')}>
+              {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Plus data-icon="inline-start" />}
+              <span className="hidden sm:inline">{saving ? t('common.creating') : t('common.create')}</span>
+            </Button>
+          ) : null}
         </>
       )}
     >
@@ -503,134 +616,20 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
             </div>
 
             {panelView === 'config' ? hasEditableDraft ? (
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--nova-border)] pb-4">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-[var(--nova-text)]">{draft.name || t('automations.newTask')}</div>
-                      <div className="mt-1 truncate text-[11px] text-[var(--nova-text-faint)]">
-                        {automationTargetLabel(draft, books, t)} · {draft.enabled ? t('automations.enabled') : t('automations.disabled')}
-                      </div>
-                    </div>
-                    {activeId && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="destructive"
-                        onClick={requestRemove}
-                        disabled={saving || running}
-                        className="nova-nav-item h-8 shrink-0 rounded-[var(--nova-radius)] border border-[var(--nova-border)] px-3"
-                        aria-label={t('automations.deleteTask')}
-                        title={t('automations.deleteTask')}
-                      >
-                        <Trash2 data-icon="inline-start" />
-                        {t('automations.deleteTask')}
-                      </Button>
-                    )}
-                  </div>
-                <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 md:grid-cols-2">
-                  <FormField htmlFor="automation-name" label={t('automations.field.name')}>
-                    <Input id="automation-name" value={draft.name} onChange={(event) => setDraftField({ name: event.target.value })} className={controlClassName} />
-                  </FormField>
-                  <FormField label={t('automations.field.enabled')}>
-                    <div className="flex h-8 items-center gap-2">
-                      <Switch
-                        checked={draft.enabled}
-                        onCheckedChange={(enabled) => setDraftField({ enabled })}
-                        aria-label={t('automations.field.enabled')}
-                      />
-                      <span className="text-[11px] text-muted-foreground">{draft.enabled ? t('automations.enabled') : t('automations.disabled')}</span>
-                    </div>
-                  </FormField>
-                  <FormField label={t('automations.field.target')}>
-                    <Select value={targetValue} disabled>
-                      <SelectTrigger className={controlClassName} aria-label={t('automations.field.target')}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="user">{t('automations.target.global')}</SelectItem>
-                          {automationTargetOptions(books, draft).map((book) => <SelectItem key={book.path} value={`workspace:${book.path}`}>{t('automations.target.workspace', { name: book.name })}</SelectItem>)}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </FormField>
-                  <FormField label={t('automations.field.modelProfile')}>
-                    <Select value={draft.model_profile_id || '__inherit__'} onValueChange={(profileId) => setDraftField({ model_profile_id: profileId === '__inherit__' ? '' : profileId })}>
-                      <SelectTrigger className={controlClassName} aria-label={t('automations.field.modelProfile')}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="__inherit__">{t('automations.model.inherit', { label: inheritedAutomationProfile })}</SelectItem>
-                          {modelProfileOptions.map((profile) => <SelectItem key={profile.id} value={profile.id}>{profile.label}</SelectItem>)}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </FormField>
-                  <div className="md:col-span-2">
-                    <FormField label={t('automations.field.prompt')}>
-                      <Textarea autoResize value={draft.prompt} onChange={(event) => setDraftField({ prompt: event.target.value })} aria-label={t('automations.field.prompt')} placeholder={t('automations.prompt.placeholder')} className={`${controlClassName} min-h-32 resize-y leading-5 shadow-none focus-visible:ring-0`} />
-                    </FormField>
-                  </div>
-                </section>
-
-                <section className="grid gap-3 border-b border-[var(--nova-border)] pb-5 md:grid-cols-2">
-                  <FormField label={t('automations.field.writeMode')}>
-                    <Select value={draft.write_mode} disabled={globalTask} onValueChange={(mode) => setDraftField(nextAutomationWriteModePatch(draft, mode as AutomationTask['write_mode']))}>
-                      <SelectTrigger className={controlClassName} aria-label={t('automations.field.writeMode')}><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="read_only">{t('automations.writeMode.readOnly')}</SelectItem>
-                          <SelectItem value="confirm_write">{t('automations.writeMode.confirmWrite')}</SelectItem>
-                          <SelectItem value="auto_write">{t('automations.writeMode.autoWrite')}</SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </FormField>
-                  <FormField label={t('automations.field.writeScope')}>
-                    <Select value={draft.write_scope} disabled={globalTask || draft.write_mode === 'read_only'} onValueChange={(scope) => setDraftField(nextAutomationWriteScopePatch(draft, scope as AutomationTask['write_scope']))}>
-                      <SelectTrigger className={controlClassName} aria-label={t('automations.field.writeScope')}><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="none">{t('automations.writeScope.none')}</SelectItem>
-                          <SelectItem value="lore">{t('automations.writeScope.lore')}</SelectItem>
-                          <SelectItem value="file">{t('automations.writeScope.file')}</SelectItem>
-                          <SelectItem value="lore_and_file">{t('automations.writeScope.loreFile')}</SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </FormField>
-                  <FormField label={t('automations.field.outputPolicy')}>
-                    <Select value={draft.output_policy} disabled={globalTask} onValueChange={(policy) => setDraftField({ output_policy: policy as AutomationTask['output_policy'] })}>
-                      <SelectTrigger className={controlClassName} aria-label={t('automations.field.outputPolicy')}><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          <SelectItem value="run_record_only">{t('automations.output.record')}</SelectItem>
-                          <SelectItem value="optional_file">{t('automations.output.file')}</SelectItem>
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </FormField>
-                  <div className="md:col-span-2">
-                    <FormField htmlFor="automation-output-path" label={t('automations.field.outputPath')}>
-                      <Input id="automation-output-path" value={draft.output_path} disabled={globalTask} onChange={(event) => setDraftField({ output_path: event.target.value })} placeholder="reports/automation-review.md" className={controlClassName} />
-                    </FormField>
-                  </div>
-                  {globalTask && <div className="md:col-span-2 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('automations.target.globalHelp')}</div>}
-                </section>
-
-                <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
-                  <FormSectionHeader title={t('automations.section.triggers')} />
-                  <TriggerEditor task={draft} onChange={setDraftTriggers} />
-                </section>
-
-                <section className="flex flex-col gap-3 pb-5">
-                  <FormSectionHeader title={t('automations.section.runs')} />
-                  <RunList task={draft} activeRunId={runStream.activeRun?.id || ''} onOpenRun={openRun} />
-                </section>
-                </div>
-              </div>
+              <AutomationConfigPanel
+                activeId={activeId}
+                activeRunId={runStream.activeRun?.id || ''}
+                books={books}
+                draft={draft}
+                inheritedModelProfile={inheritedAutomationProfile}
+                modelProfileOptions={modelProfileOptions}
+                running={running}
+                saving={saving}
+                onChange={setDraftField}
+                onOpenRun={openRun}
+                onRemove={() => void requestRemove()}
+                onTriggersChange={setDraftTriggers}
+              />
             ) : (
               <EmptyState
                 variant="page"
@@ -720,68 +719,12 @@ export function AutomationsView({ workspace, onClose }: { workspace: string; onC
   )
 }
 
-function RunList({ task, activeRunId, onOpenRun }: { task: AutomationTask; activeRunId: string; onOpenRun: (run: AutomationRunRecord) => void }) {
-  const { t } = useTranslation()
-  const runs = task.recent_runs || []
-  if (runs.length === 0) {
-    return <EmptyState variant="compact" title={t('automations.runs.empty')} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] text-[var(--nova-text-faint)]" />
-  }
-  return (
-    <div className="flex flex-col gap-2">
-      {runs.slice(0, 5).map((run) => (
-        <div key={run.id} className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2">
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{run.status}</span>
-            <span className="text-[11px] text-[var(--nova-text-faint)]">{new Date(run.started_at).toLocaleString()}</span>
-            {run.output_path && <span className="ml-auto truncate text-[11px] text-[var(--nova-text-faint)]">{run.output_path}</span>}
-            {run.session_id && (
-              <button
-                type="button"
-                onClick={() => onOpenRun(run)}
-                className={`nova-nav-item ml-auto rounded-[var(--nova-radius)] px-2 py-0.5 text-[11px] ${activeRunId === run.id ? 'is-active' : 'text-[var(--nova-text-muted)]'}`}
-              >
-                {t('automations.runs.viewTimeline')}
-              </button>
-            )}
-          </div>
-          <div className="mt-1 line-clamp-3 whitespace-pre-wrap text-[11px] leading-5 text-[var(--nova-text-muted)]">{run.error || run.summary}</div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function buildModelProfileOptions(settings: Settings | null, selectedID: string | undefined, t: (key: string, options?: Record<string, unknown>) => string): Array<{ id: string; label: string }> {
-  const labels = modelProfileLabels(settings, t)
-  const selected = selectedID?.trim()
-  if (selected && !labels.has(selected)) {
-    labels.set(selected, t('automations.model.unknownProfile', { id: selected }))
-  }
-  return Array.from(labels.entries()).map(([id, label]) => ({
-    id,
-    label: id === 'default' ? t('automations.model.defaultProfile', { label }) : t('automations.model.profile', { id, label }),
-  }))
-}
-
-function inheritedAutomationProfileLabel(settings: Settings | null, t: (key: string, options?: Record<string, unknown>) => string) {
-  const labels = modelProfileLabels(settings, t)
-  const inheritedID = settings?.agent_models?.automation?.profile_id || settings?.agent_models?.default?.profile_id || 'default'
-  return labels.get(inheritedID) || t('automations.model.unknownProfile', { id: inheritedID })
-}
-
-function modelProfileLabels(settings: Settings | null, t: (key: string, options?: Record<string, unknown>) => string) {
-  const profiles = new Map<string, string>()
-  const add = (profile?: ModelProfileSettings) => {
-    const id = modelProfileID(profile)
-    if (!id) return
-    profiles.set(id, modelProfileLabel(profile))
-  }
-  modelProfilesWithDefault(settings ?? undefined).forEach(add)
-  if (!profiles.has('default')) profiles.set('default', t('automations.model.defaultModel'))
-  return profiles
-}
-
 function buildRunUserMessage(task: AutomationTask, t: (key: string, options?: Record<string, unknown>) => string) {
   const prompt = task.prompt?.trim() || task.name
   return `${t('automations.run.userMessage', { name: task.name })}\n\n${prompt}`
+}
+
+function isAutomationTaskFile(path: string): boolean {
+  const normalized = path.replaceAll('\\', '/').toLowerCase()
+  return normalized === 'automations/tasks.json' || normalized.endsWith('/automations/tasks.json')
 }

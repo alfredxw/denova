@@ -17,6 +17,8 @@ import {
   createIndentedHardBreakExtension,
   createWorkspaceImageExtension,
   normalizeEditorText,
+  placeEditorCaretAtClick,
+  replaceEditorDocument,
 } from './editorDocument'
 
 interface MarkdownRichEditorProps {
@@ -90,6 +92,7 @@ export function MarkdownRichEditor({
         onSaveShortcutRef.current?.()
         return true
       },
+      handleClick: placeEditorCaretAtClick,
     },
     onUpdate: ({ editor: instance }) => {
       const markdown = normalizeEditorText(instance.getMarkdown())
@@ -105,7 +108,10 @@ export function MarkdownRichEditor({
     const current = normalizeEditorText(editor.getMarkdown())
     lastEmittedRef.current = value
     if (value === current) return
-    editor.chain().setMeta('addToHistory', false).setContent(value, { emitUpdate: false, contentType: 'markdown' }).run()
+    replaceEditorDocument(editor, value, {
+      contentType: 'markdown',
+      preserveSelection: true,
+    })
   }, [editor, value])
 
   // 外部搜索词变化时刷新高亮并定位到首个匹配。

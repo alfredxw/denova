@@ -2,6 +2,7 @@ package skills
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -141,6 +142,75 @@ func TestReadAndSaveSkillFile(t *testing.T) {
 	}
 	if string(data) != "# Updated\n" {
 		t.Fatalf("file content = %q", string(data))
+	}
+}
+
+func TestSaveDocumentIfRevisionRejectsExternalUpdate(t *testing.T) {
+	ctx := context.Background()
+	user := filepath.Join(t.TempDir(), "skills")
+	dirs := []Directory{{Scope: ScopeUser, Path: user, Writable: true}}
+	writeSkillFile(t, user, "outline", "outline", "original")
+
+	doc, err := ReadDocument(ctx, dirs, ScopeUser, "outline")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Revision == "" {
+		t.Fatal("ReadDocument() revision is empty")
+	}
+	path := filepath.Join(user, "outline", SkillFileName)
+	external := DefaultContent("outline", "external")
+	if err := os.WriteFile(path, []byte(external), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = SaveDocumentIfRevision(ctx, dirs, ScopeUser, "outline", DefaultContent("outline", "stale editor"), doc.Revision)
+	if !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("SaveDocumentIfRevision() error = %v, want ErrRevisionConflict", err)
+	}
+	data, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(data) != external {
+		t.Fatalf("stale save overwrote external content: %q", data)
+	}
+}
+
+func TestSaveSkillFileIfRevisionRejectsExternalUpdate(t *testing.T) {
+	ctx := context.Background()
+	user := filepath.Join(t.TempDir(), "skills")
+	dirs := []Directory{{Scope: ScopeUser, Path: user, Writable: true}}
+	writeSkillFile(t, user, "outline", "outline", "original")
+	refPath := filepath.Join(user, "outline", "references", "style.md")
+	if err := os.MkdirAll(filepath.Dir(refPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(refPath, []byte("# Original\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	doc, err := ReadSkillFile(ctx, dirs, ScopeUser, "outline", "references/style.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.Revision == "" {
+		t.Fatal("ReadSkillFile() revision is empty")
+	}
+	if err := os.WriteFile(refPath, []byte("# External\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = SaveSkillFileIfRevision(ctx, dirs, ScopeUser, "outline", "references/style.md", "# Stale\n", doc.Revision)
+	if !errors.Is(err, ErrRevisionConflict) {
+		t.Fatalf("SaveSkillFileIfRevision() error = %v, want ErrRevisionConflict", err)
+	}
+	data, readErr := os.ReadFile(refPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(data) != "# External\n" {
+		t.Fatalf("stale save overwrote external content: %q", data)
 	}
 }
 

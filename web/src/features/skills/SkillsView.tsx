@@ -1,16 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Bot, Loader2, RefreshCw, Save, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Bot, RefreshCw, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { EmptyState } from '@/components/common/EmptyState'
+import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { Button } from '@/components/ui/button'
+import { useResourceAutosave } from '@/hooks/use-resource-autosave'
 import { deleteSkillDocument, getSkillDocument, getSkillFileDocument, getSkills, saveSkillDocument, saveSkillFileDocument } from '@/lib/api'
-import type { SkillDocument, SkillFileDocument, SkillInstallResult, SkillScope, SkillSnapshot } from '@/lib/api'
-import { SkillConfigPanel } from './SkillConfigPanel'
+import { isRevisionConflict, saveWithRevisionRecovery } from '@/lib/revision-conflict'
+import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
+import type { SkillDocument, SkillFileDocument, SkillInstallResult, SkillScope, SkillSnapshot, SkillSummary } from '@/lib/api'
+import { SkillConfigPanel, type SkillConfigPanelHandle } from './SkillConfigPanel'
 import { SkillCreatePanel } from './SkillCreatePanel'
 import { SkillEditor } from './SkillEditor'
 import { SkillInstallPanel } from './SkillInstallPanel'
@@ -22,11 +26,51 @@ interface SkillsViewProps {
   onClose?: () => void
 }
 
-/** 待确认动作：discard 记录待切换的文件路径，delete/restore 快照名称避免文档变化影响弹窗文案 */
+interface SkillContentAutosaveDraft {
+  id: string
+  updated_at?: string
+  scope: SkillScope
+  name: string
+  path: string
+  content: string
+}
+
+interface SkillContentAutosaveSaved extends SkillContentAutosaveDraft {
+  document?: SkillDocument
+  fileDocument?: SkillFileDocument
+}
+
+let nextSkillsViewSourceID = 1
+
+/** Delete/restore snapshot the display values so later state changes cannot alter dialog copy. */
 type ConfirmRequest =
-  | { kind: 'discard'; path: string }
   | { kind: 'delete'; name: string }
   | { kind: 'restore'; name: string; scope: string }
+
+function skillContentDraft(
+  document: SkillDocument,
+  path: string,
+  content: string,
+  updatedAt = document.revision,
+): SkillContentAutosaveDraft {
+  return {
+    id: `${document.scope}:${document.name}:${path}`,
+    updated_at: updatedAt,
+    scope: document.scope,
+    name: document.name,
+    path,
+    content,
+  }
+}
+
+function skillContentSignature(value: Partial<SkillContentAutosaveDraft>) {
+  return `${value.scope || ''}\u0000${value.name || ''}\u0000${value.path || ''}\u0000${value.content || ''}`
+}
+
+function skillSummaryOf(value: SkillSummary): SkillSummary {
+  const { name, description, context, agent, model, scope, path, editable, active, updated_at } = value
+  return { name, description, context, agent, model, scope, path, editable, active, updated_at }
+}
 
 export function SkillsView({ workspace, onClose }: SkillsViewProps) {
   const { t } = useTranslation()
@@ -46,10 +90,17 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
   const [mode, setMode] = useState<SkillsMode>('editor')
   const [agentOpen, setAgentOpen] = useState(false)
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null)
+  const [documentReloadVersion, setDocumentReloadVersion] = useState(0)
+  const [eventSource] = useState(() => `skills-view-${nextSkillsViewSourceID++}`)
+  const configPanelRef = useRef<SkillConfigPanelHandle | null>(null)
+  const notifySkillsUpdated = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('nova:skills-updated', { detail: { source: eventSource } }))
+  }, [eventSource])
 
   const selectedSkill = useMemo(() => snapshot.skills.find((skill) => keyOf(skill) === selectedKey) ?? null, [selectedKey, snapshot.skills])
+  const selectedSkillScope = selectedSkill?.scope
+  const selectedSkillName = selectedSkill?.name
   const editingEntryFile = selectedFilePath === skillEntryFile
-  const dirty = document ? (editingEntryFile ? draft !== document.content : Boolean(fileDocument && fileDraft !== fileDocument.content)) : false
   const activeEditable = editingEntryFile ? Boolean(document?.editable) : Boolean(fileDocument?.file.editable)
   const writableScopes = useMemo(() => snapshot.scopes.filter((scope) => scope.writable), [snapshot.scopes])
   const builtinOverrideScope = useMemo(() => preferredBuiltinOverrideScope(snapshot.scopes), [snapshot.scopes])
@@ -63,6 +114,122 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     if (!document || document.scope === 'builtin') return null
     return snapshot.skills.find((skill) => skill.scope === 'builtin' && skill.name === document.name) ?? null
   }, [document, snapshot.skills])
+
+  const autosaveDraft = useMemo<SkillContentAutosaveDraft | null>(() => {
+    if (!document || mode !== 'editor') return null
+    if (editingEntryFile) return skillContentDraft(document, skillEntryFile, draft)
+    if (!fileDocument) return null
+    return skillContentDraft(document, selectedFilePath, fileDraft, fileDocument.revision)
+  }, [document, draft, editingEntryFile, fileDocument, fileDraft, mode, selectedFilePath])
+
+  const contentAutosave = useResourceAutosave<SkillContentAutosaveDraft, SkillContentAutosaveDraft, SkillContentAutosaveSaved>({
+    draft: autosaveDraft,
+    active: Boolean(autosaveDraft && activeEditable && !fileLoading),
+    scopeKey: `${workspace}\u0000${autosaveDraft?.id || selectedKey || ''}`,
+    makePayload: (value) => value,
+    baselineFromSaved: (saved) => saved,
+    signature: skillContentSignature,
+    save: async (_id, payload, baseRevision) => {
+      if (payload.path === skillEntryFile) {
+        const saved = await saveSkillDocument(payload.scope, payload.name, payload.content, undefined, baseRevision)
+        return { ...payload, updated_at: saved.revision, document: saved }
+      }
+      const saved = await saveSkillFileDocument(payload.scope, payload.name, payload.path, payload.content, baseRevision)
+      return { ...payload, updated_at: saved.revision, fileDocument: saved }
+    },
+    resolveConflict: async ({ error: saveError, baseline, draft: submitted }) => {
+      if (!isRevisionConflict(saveError)) return null
+      if (submitted.path === skillEntryFile) {
+        const latest = await getSkillDocument(submitted.scope, submitted.name)
+        const content = await rebaseTextWithRecovery({
+          resource: 'skill_document',
+          scope: `${workspace}:${submitted.scope}`,
+          id: submitted.id,
+          baseline: { revision: baseline?.updated_at, value: baseline?.content ?? latest.content },
+          local: { revision: baseline?.updated_at, value: submitted.content },
+          external: { revision: latest.revision, value: latest.content },
+        })
+        return {
+          payload: {
+            ...submitted,
+            content,
+            updated_at: latest.revision,
+          },
+          baseRevision: latest.revision,
+        }
+      }
+      const latest = await getSkillFileDocument(submitted.scope, submitted.name, submitted.path)
+      const content = await rebaseTextWithRecovery({
+        resource: 'skill_file',
+        scope: `${workspace}:${submitted.scope}`,
+        id: submitted.id,
+        baseline: { revision: baseline?.updated_at, value: baseline?.content ?? latest.content },
+        local: { revision: baseline?.updated_at, value: submitted.content },
+        external: { revision: latest.revision, value: latest.content },
+      })
+      return {
+        payload: {
+          ...submitted,
+          content,
+          updated_at: latest.revision,
+        },
+        baseRevision: latest.revision,
+      }
+    },
+    onSaved: (saved, _mode, submitted) => {
+      if (saved.document) {
+        setDocument(saved.document)
+        setDraft((current) => current === submitted.content ? saved.document!.content : current)
+      } else if (saved.fileDocument) {
+        setFileDocument(saved.fileDocument)
+        setFileDraft((current) => current === submitted.content ? saved.fileDocument!.content : current)
+        setDocument((current) => {
+          if (!current || current.scope !== saved.scope || current.name !== saved.name) return current
+          const files = current.files?.map((file) => file.path === saved.path ? saved.fileDocument!.file : file)
+          return { ...current, ...saved.fileDocument!.skill, content: current.content, files }
+        })
+      }
+      const summary = saved.document ? skillSummaryOf(saved.document) : saved.fileDocument?.skill
+      if (summary) {
+        setSnapshot((current) => ({
+          ...current,
+          skills: current.skills.map((skill) => keyOf(skill) === keyOf(summary) ? { ...skill, ...summary } : skill),
+        }))
+      }
+      notifySkillsUpdated()
+    },
+  })
+
+  const baselineDraft = useMemo<SkillContentAutosaveDraft | null>(() => {
+    if (!document) return null
+    if (editingEntryFile) return skillContentDraft(document, skillEntryFile, document.content)
+    if (!fileDocument) return null
+    return skillContentDraft(document, selectedFilePath, fileDocument.content, fileDocument.revision)
+  }, [document, editingEntryFile, fileDocument, selectedFilePath])
+
+  useEffect(() => {
+    contentAutosave.resetBaseline(baselineDraft)
+  }, [baselineDraft, contentAutosave.resetBaseline])
+
+  const flushContentAutosave = useCallback(async (force = false) => {
+    try {
+      const pending = contentAutosave.flushPending()
+      if (pending) {
+        await pending
+      } else if (force || contentAutosave.status === 'error') {
+        await contentAutosave.saveNow('manual')
+      }
+      return true
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError))
+      return false
+    }
+  }, [contentAutosave.flushPending, contentAutosave.saveNow, contentAutosave.status])
+
+  const flushActiveAutosave = useCallback(async (force = false) => {
+    if (mode === 'config') return configPanelRef.current?.flush() ?? true
+    return flushContentAutosave(force)
+  }, [flushContentAutosave, mode])
 
   const load = useCallback(async (): Promise<SkillSnapshot | null> => {
     setLoading(true)
@@ -88,7 +255,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
 
   useEffect(() => {
     let cancelled = false
-    if (!selectedSkill) {
+    if (!selectedSkillScope || !selectedSkillName) {
       setDocument(null)
       setDraft('')
       setSelectedFilePath(skillEntryFile)
@@ -97,7 +264,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
       return () => { cancelled = true }
     }
     setError(null)
-    getSkillDocument(selectedSkill.scope, selectedSkill.name)
+    getSkillDocument(selectedSkillScope, selectedSkillName)
       .then((doc) => {
         if (cancelled) return
         setDocument(doc)
@@ -119,7 +286,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
         }
       })
     return () => { cancelled = true }
-  }, [selectedSkill])
+  }, [documentReloadVersion, selectedSkillName, selectedSkillScope, workspace])
 
   const resetFileState = () => {
     setSelectedFilePath(skillEntryFile)
@@ -127,7 +294,6 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     setFileDraft('')
   }
 
-  /** 切文件实际逻辑，不检查脏状态；脏检查与确认弹窗在 selectSkillFile */
   const switchSkillFile = async (path: string) => {
     if (!document || path === selectedFilePath) return
     setError(null)
@@ -150,40 +316,8 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
 
   const selectSkillFile = async (path: string) => {
     if (!document || path === selectedFilePath) return
-    if (dirty) {
-      setConfirmRequest({ kind: 'discard', path })
-      return
-    }
+    if (!await flushContentAutosave()) return
     await switchSkillFile(path)
-  }
-
-  const onSave = async () => {
-    if (!document || !activeEditable) return
-    setSaving(true)
-    setError(null)
-    try {
-      if (editingEntryFile) {
-        const doc = await saveSkillDocument(document.scope, document.name, draft)
-        setDocument(doc)
-        setDraft(doc.content)
-        setSelectedKey(keyOf(doc))
-        resetFileState()
-        window.dispatchEvent(new CustomEvent('nova:skills-updated'))
-        await load()
-      } else {
-        const fileDoc = await saveSkillFileDocument(document.scope, document.name, selectedFilePath, fileDraft)
-        setFileDocument(fileDoc)
-        setFileDraft(fileDoc.content)
-        const refreshed = await getSkillDocument(document.scope, document.name)
-        setDocument(refreshed)
-        setDraft(refreshed.content)
-        window.dispatchEvent(new CustomEvent('nova:skills-updated'))
-      }
-    } catch (e) {
-      setError((e as Error).message)
-    } finally {
-      setSaving(false)
-    }
   }
 
   const onCreateBuiltinOverride = async () => {
@@ -201,13 +335,43 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     setSaving(true)
     setError(null)
     try {
-      const doc = await saveSkillDocument(document.scope, document.name, draft, { scope: builtinOverrideScope.scope, name: document.name })
+      let recoveryBaselineRevision = document.revision
+      let latestRevision: string | undefined
+      const doc = await saveWithRevisionRecovery({
+        baseline: document.content,
+        draft,
+        revision: document.revision,
+        save: (content, revision) => saveSkillDocument(
+          document.scope,
+          document.name,
+          content,
+          { scope: builtinOverrideScope.scope, name: document.name },
+          revision,
+        ),
+        loadLatest: async () => {
+          const latest = await getSkillDocument(document.scope, document.name)
+          latestRevision = latest.revision
+          return { value: latest.content, revision: latest.revision }
+        },
+        rebase: async (baseline, local, external) => {
+          const content = await rebaseTextWithRecovery({
+            resource: 'skill_document',
+            scope: `${workspace}:${document.scope}`,
+            id: `${document.scope}:${document.name}:override`,
+            baseline: { revision: recoveryBaselineRevision, value: baseline },
+            local: { revision: recoveryBaselineRevision, value: local },
+            external: { revision: latestRevision, value: external },
+          })
+          recoveryBaselineRevision = latestRevision || recoveryBaselineRevision
+          return content
+        },
+      })
       setDocument(doc)
       setDraft(doc.content)
       resetFileState()
       setSelectedKey(keyOf(doc))
       setMode('editor')
-      window.dispatchEvent(new CustomEvent('nova:skills-updated'))
+      notifySkillsUpdated()
       await load()
     } catch (e) {
       setError((e as Error).message)
@@ -216,13 +380,15 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     }
   }
 
-  const requestDelete = () => {
+  const requestDelete = async () => {
     if (!document?.editable) return
+    if (!await flushActiveAutosave()) return
     setConfirmRequest({ kind: 'delete', name: document.name })
   }
 
-  const requestRestoreBuiltin = () => {
+  const requestRestoreBuiltin = async () => {
     if (!document?.editable || !builtinPeer) return
+    if (!await flushActiveAutosave()) return
     setConfirmRequest({ kind: 'restore', name: document.name, scope: scopeLabel(document.scope, t) })
   }
 
@@ -237,7 +403,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
       setDraft('')
       resetFileState()
       setMode('editor')
-      window.dispatchEvent(new CustomEvent('nova:skills-updated'))
+      notifySkillsUpdated()
       return await load()
     } catch (e) {
       setError((e as Error).message)
@@ -258,17 +424,12 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
 
   const confirmContent = useMemo(() => {
     if (!confirmRequest) return null
-    if (confirmRequest.kind === 'discard') return { title: t('skills.unsaved'), description: t('skills.files.discardConfirm'), confirmLabel: undefined, tone: 'default' as const }
     if (confirmRequest.kind === 'delete') return { title: t('skills.delete.action'), description: t('skills.delete.confirm', { name: confirmRequest.name }), confirmLabel: t('skills.delete.action'), tone: 'danger' as const }
     return { title: t('skills.restoreBuiltin.action'), description: t('skills.restoreBuiltin.confirm', { name: confirmRequest.name, scope: confirmRequest.scope }), confirmLabel: t('skills.restoreBuiltin.action'), tone: 'danger' as const }
   }, [confirmRequest, t])
 
   const onConfirmAction = async () => {
     if (!confirmRequest) return
-    if (confirmRequest.kind === 'discard') {
-      await switchSkillFile(confirmRequest.path)
-      return
-    }
     if (confirmRequest.kind === 'delete') {
       await deleteCurrentDocument()
       return
@@ -278,7 +439,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
 
   const onCreated = async (doc: SkillDocument) => {
     setMode('editor')
-    window.dispatchEvent(new CustomEvent('nova:skills-updated'))
+    notifySkillsUpdated()
     await load()
     setSelectedKey(keyOf(doc))
   }
@@ -286,19 +447,63 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
   const onInstalled = async (result: SkillInstallResult) => {
     const first = result.installed[0]
     setMode('editor')
-    window.dispatchEvent(new CustomEvent('nova:skills-updated'))
+    notifySkillsUpdated()
     await load()
     if (first) setSelectedKey(keyOf(first))
   }
 
-  const onConfigSaved = async (doc: SkillDocument) => {
+  const onConfigUpdated = (doc: SkillDocument) => {
+    const summary = skillSummaryOf(doc)
+    setDocument(doc)
+    setDraft(doc.content)
+    setSnapshot((current) => ({
+      ...current,
+      skills: current.skills.map((skill) => keyOf(skill) === keyOf(summary) ? { ...skill, ...summary } : skill),
+    }))
+    notifySkillsUpdated()
+  }
+
+  const onConfigIdentityChanged = async (doc: SkillDocument) => {
     setDocument(doc)
     setDraft(doc.content)
     resetFileState()
     setMode('editor')
-    window.dispatchEvent(new CustomEvent('nova:skills-updated'))
+    notifySkillsUpdated()
     await load()
     setSelectedKey(keyOf(doc))
+  }
+
+  const refreshSkills = useCallback(async () => {
+    if (!await flushActiveAutosave()) return
+    if (await load()) setDocumentReloadVersion((current) => current + 1)
+  }, [flushActiveAutosave, load])
+
+  useEffect(() => {
+    const onSkillsUpdated = (event: Event) => {
+      const source = (event as CustomEvent<{ source?: string }>).detail?.source
+      if (source === eventSource) return
+      void refreshSkills()
+    }
+    window.addEventListener('nova:skills-updated', onSkillsUpdated)
+    return () => window.removeEventListener('nova:skills-updated', onSkillsUpdated)
+  }, [eventSource, refreshSkills])
+
+  const openMode = async (nextMode: SkillsMode) => {
+    if (!await flushActiveAutosave()) return
+    setMode(nextMode)
+    setError(null)
+  }
+
+  const selectSkill = async (key: string) => {
+    if (!await flushActiveAutosave()) return
+    setSelectedKey(key)
+    setMode('editor')
+    setError(null)
+  }
+
+  const closeSkills = async () => {
+    if (!onClose || !await flushActiveAutosave()) return
+    onClose()
   }
 
   const agentContext = useMemo(() => {
@@ -323,8 +528,8 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
         resourceId={agentContext.skill_name}
         context={agentContext}
         onMutated={() => {
-          window.dispatchEvent(new CustomEvent('nova:skills-updated'))
-          void load()
+          notifySkillsUpdated()
+          void refreshSkills()
         }}
       />
     </div>
@@ -337,31 +542,28 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
       subtitle={t('skills.subtitle')}
       error={error}
       errorTitle={t('skills.error')}
-      onClose={onClose}
+      onClose={onClose ? () => void closeSkills() : undefined}
+      onSaveShortcut={() => flushActiveAutosave(true)}
       className="bg-[var(--nova-bg)] text-[var(--nova-text)]"
       actions={(
         <>
+          {mode === 'editor' && document && activeEditable && (
+            <AutosaveStatusIndicator
+              status={contentAutosave.status}
+              error={contentAutosave.error}
+              onRetry={contentAutosave.retry}
+            />
+          )}
           <Button
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => void load()}
+            onClick={() => void refreshSkills()}
             disabled={loading}
             className="nova-nav-item border-[var(--nova-border)] bg-[var(--nova-surface-2)]"
           >
             <RefreshCw data-icon="inline-start" className={loading ? 'animate-spin' : undefined} />
             {t('common.refresh')}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => void onSave()}
-            disabled={mode !== 'editor' || !dirty || saving || fileLoading || !activeEditable}
-            className="nova-nav-item border border-[var(--nova-border)] bg-[var(--nova-active)]"
-          >
-            {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Save data-icon="inline-start" />}
-            {t('common.save')}
           </Button>
         </>
       )}
@@ -380,21 +582,12 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
               agentOpen={agentOpen}
               mode={mode}
               onToggleAgent={() => setAgentOpen((value) => !value)}
-              onCreate={() => {
-                setMode('create')
-                setError(null)
-              }}
-              onInstall={() => {
-                setMode('install')
-                setError(null)
-              }}
-              onSelect={(key) => {
-                setSelectedKey(key)
-                setMode('editor')
-              }}
+              onCreate={() => void openMode('create')}
+              onInstall={() => void openMode('install')}
+              onSelect={(key) => void selectSkill(key)}
             />
           ),
-          desktopClassName: 'min-h-0 border-r border-[var(--nova-border)]',
+          desktopClassName: 'w-80 shrink-0 min-h-0 border-r border-[var(--nova-border)]',
           mobileClassName: 'w-[min(90vw,380px)]',
         }}
         right={
@@ -412,6 +605,14 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
         className="flex-1 text-xs"
         mainClassName="min-h-0 min-w-0"
         desktopGridClassName={agentOpen ? 'grid-cols-[20rem_minmax(0,1fr)_minmax(320px,28rem)]' : 'grid-cols-[20rem_minmax(0,1fr)]'}
+        rightResize={{
+          layoutKey: 'nova-skills-config-agent-layout',
+          label: t('layout.resize.right'),
+          defaultSize: '420px',
+          minSize: '300px',
+          maxSize: '65%',
+          mainMinSize: '240px',
+        }}
       >
         {({ openLeft, openRight }) => (
           <main className="flex h-full min-h-0 flex-col">
@@ -445,12 +646,14 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
               />
             ) : mode === 'config' && document ? (
               <SkillConfigPanel
+                ref={configPanelRef}
                 document={document}
                 content={draft}
                 scopes={writableScopes}
-                onSaved={onConfigSaved}
+                onUpdated={onConfigUpdated}
+                onIdentityChanged={onConfigIdentityChanged}
                 onCancel={() => setMode('editor')}
-                onDelete={requestDelete}
+                onDelete={() => void requestDelete()}
               />
             ) : document ? (
               <SkillEditor
@@ -458,12 +661,11 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
                 fileDocument={fileDocument}
                 draft={draft}
                 fileDraft={fileDraft}
-                dirty={dirty}
                 selectedFilePath={selectedFilePath}
                 viewMode={contentViewMode}
                 fileTreeOpen={fileTreeOpen}
                 fileLoading={fileLoading}
-                saving={saving}
+                saving={saving || contentAutosave.status === 'saving'}
                 builtinOverride={builtinOverride}
                 builtinOverrideScope={builtinOverrideScope}
                 builtinPeer={builtinPeer}
@@ -474,11 +676,10 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
                 onViewModeChange={setContentViewMode}
                 onOpenConfig={() => {
                   if (!document.editable) return
-                  setMode('config')
-                  setError(null)
+                  void openMode('config')
                 }}
-                onDelete={requestDelete}
-                onRestoreBuiltin={requestRestoreBuiltin}
+                onDelete={() => void requestDelete()}
+                onRestoreBuiltin={() => void requestRestoreBuiltin()}
                 onCreateBuiltinOverride={() => void onCreateBuiltinOverride()}
               />
             ) : (

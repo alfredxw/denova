@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +20,28 @@ type Store struct {
 	userDir         string
 	workspace       string
 	knownWorkspaces []string
+}
+
+// ErrRevisionConflict identifies a stale automation definition update.
+var ErrRevisionConflict = errors.New("automation revision conflict")
+
+// RevisionConflictError describes the task definition observed by a rejected
+// compare-and-swap update without exposing persistence implementation details.
+type RevisionConflictError struct {
+	TaskID   string
+	Expected string
+	Actual   string
+}
+
+func (e *RevisionConflictError) Error() string {
+	if e == nil {
+		return ErrRevisionConflict.Error()
+	}
+	return fmt.Sprintf("%s: task_id=%s expected=%s actual=%s", ErrRevisionConflict, e.TaskID, e.Expected, e.Actual)
+}
+
+func (e *RevisionConflictError) Unwrap() error {
+	return ErrRevisionConflict
 }
 
 // WithWorkspaces returns the same user-level automation store configured to
@@ -177,6 +200,26 @@ func (s *Store) Create(task Task) (Task, error) {
 }
 
 func (s *Store) Update(id string, patch Task) (Task, error) {
+	return s.update(id, patch, "")
+}
+
+// UpdateIfRevision applies a task-definition patch only when the caller still
+// owns the current definition revision. Trusted runtime callers that do not
+// mutate definitions may continue to use Update or the runtime-specific APIs.
+func (s *Store) UpdateIfRevision(id string, patch Task, expectedRevision string) (Task, error) {
+	return s.update(id, definitionOnlyPatch(patch), strings.TrimSpace(expectedRevision))
+}
+
+// definitionOnlyPatch prevents user/API or Agent definition updates from
+// replaying stale scheduler-owned dedupe state and run history.
+func definitionOnlyPatch(patch Task) Task {
+	patch.TriggerState = nil
+	patch.LastRun = nil
+	patch.RecentRuns = nil
+	return patch
+}
+
+func (s *Store) update(id string, patch Task, expectedRevision string) (Task, error) {
 	if strings.TrimSpace(id) == "" {
 		return Task{}, fmt.Errorf("task id is required")
 	}
@@ -194,6 +237,11 @@ func (s *Store) Update(id string, patch Task) (Task, error) {
 		for i := range tasks {
 			if !taskMatchesID(tasks[i], id) {
 				continue
+			}
+			if expectedRevision != "" && tasks[i].Revision != expectedRevision {
+				actual := tasks[i].Revision
+				unlock()
+				return Task{}, &RevisionConflictError{TaskID: id, Expected: expectedRevision, Actual: actual}
 			}
 			next := mergeTaskPatch(tasks[i], patch)
 			next.Scope = tasks[i].Scope
@@ -478,7 +526,48 @@ func (s *Store) normalizeTaskTarget(task Task) (Task, error) {
 		normalized.OutputPath = ""
 	}
 	normalized.CatalogID = catalogTaskID(normalized)
+	revision, err := taskDefinitionRevision(normalized)
+	if err != nil {
+		return Task{}, err
+	}
+	normalized.Revision = revision
 	return normalized, nil
+}
+
+func taskDefinitionRevision(task Task) (string, error) {
+	definition := struct {
+		Enabled             bool                `json:"enabled"`
+		Name                string              `json:"name"`
+		Template            string              `json:"template"`
+		Prompt              string              `json:"prompt"`
+		ModelProfileID      string              `json:"model_profile_id,omitempty"`
+		Schedule            Schedule            `json:"schedule"`
+		Triggers            []TriggerDefinition `json:"triggers"`
+		DefaultActionPolicy string              `json:"default_action_policy"`
+		WriteMode           string              `json:"write_mode"`
+		WriteScope          string              `json:"write_scope"`
+		OutputPolicy        string              `json:"output_policy"`
+		OutputPath          string              `json:"output_path"`
+	}{
+		Enabled:             task.Enabled,
+		Name:                task.Name,
+		Template:            task.Template,
+		Prompt:              task.Prompt,
+		ModelProfileID:      task.ModelProfileID,
+		Schedule:            task.Schedule,
+		Triggers:            task.Triggers,
+		DefaultActionPolicy: task.DefaultActionPolicy,
+		WriteMode:           task.WriteMode,
+		WriteScope:          task.WriteScope,
+		OutputPolicy:        task.OutputPolicy,
+		OutputPath:          task.OutputPath,
+	}
+	data, err := json.Marshal(definition)
+	if err != nil {
+		return "", fmt.Errorf("marshal normalized automation definition: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
 func catalogTaskID(task Task) string {
@@ -513,7 +602,12 @@ func (s *Store) writeScopeFile(scope string, file storeFile) error {
 	if err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(file, "", "  ")
+	persisted := storeFile{SeedVersion: file.SeedVersion, Tasks: make([]Task, len(file.Tasks))}
+	copy(persisted.Tasks, file.Tasks)
+	for i := range persisted.Tasks {
+		persisted.Tasks[i].Revision = ""
+	}
+	data, err := json.MarshalIndent(persisted, "", "  ")
 	if err != nil {
 		return err
 	}

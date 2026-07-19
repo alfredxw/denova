@@ -755,7 +755,7 @@ func newReadAutomationsTool(novaDir, workspace string, workspaces []string) (too
 }
 
 func newWriteAutomationsTool(novaDir, workspace string, workspaces []string) (tool.BaseTool, error) {
-	return utils.InferTool("write_automations", "批量创建、更新或删除用户自动化任务；create 必须显式指定 target，update/delete 使用 catalog_id。删除必须来自用户明确指令。", func(ctx context.Context, input automationWriteInput) (string, error) {
+	return utils.InferTool("write_automations", "批量创建、更新或删除用户自动化任务；create 必须显式指定 target，update 必须携带 read_automations 返回的 revision，update/delete 使用 catalog_id。删除必须来自用户明确指令。", func(ctx context.Context, input automationWriteInput) (string, error) {
 		_ = ctx
 		store := configManagerAutomationStore(novaDir, workspace, workspaces)
 		result := map[string][]string{"created": []string{}, "updated": []string{}, "deleted": []string{}}
@@ -772,7 +772,11 @@ func newWriteAutomationsTool(novaDir, workspace string, workspaces []string) (to
 				result["created"] = append(result["created"], task.CatalogID)
 			case "update":
 				id := firstConfigNonEmpty(op.ID, op.Task.ID)
-				task, err := store.Update(id, op.Task)
+				baseRevision := strings.TrimSpace(op.Task.Revision)
+				if baseRevision == "" {
+					return "", fmt.Errorf("自动化操作 #%d update %q 缺少 revision，请先用 read_automations 读取最新配置", i+1, id)
+				}
+				task, err := store.UpdateIfRevision(id, op.Task, baseRevision)
 				if err != nil {
 					return "", fmt.Errorf("自动化操作 #%d update %q 配置无效: %w", i+1, id, err)
 				}
