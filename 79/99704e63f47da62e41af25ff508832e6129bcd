@@ -1,0 +1,41 @@
+internal/agent/context/context.go
+  s_8d92ddc845bfce::t_7e77d39d5218be 218,252
+internal/agent/lore_tools.go
+  s_8d92ddc845bfce::t_035a6372a3d34b 45,230
+internal/agent/lore_tools_test.go
+  s_8d92ddc845bfce::t_710e9135e80cf9 23
+internal/app/interactive_director_test.go
+  s_8d92ddc845bfce::t_193a2c0a5e8919 33,281
+internal/book/lore.go
+  s_8d92ddc845bfce::t_04d9cc295c4ba5 1004,1009,1012,1014
+internal/book/lore_test.go
+  s_8d92ddc845bfce::t_2321e98eb6ff6f 231,256,509
+internal/prompts/system.go
+  s_8d92ddc845bfce::t_046619e8e506a6 150
+skills/lore/SKILL.md
+  s_8d92ddc845bfce::t_07271d44d3de95 49,70
+web/src/features/interactive/components/SettingPanel.tsx
+  s_8d92ddc845bfce::t_6107f53b994a1f 612
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_8d92ddc845bfce::t_01f692275b5136 191-198,313
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_8d92ddc845bfce::t_a61f902cb26c19 191-198,313
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7999704e63f47da62e41af25ff508832e6129bcd",
+  "prompts": {},
+  "sessions": {
+    "s_8d92ddc845bfce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5300bfc7-4a4c-40e9-9c19-b008e1463759",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
