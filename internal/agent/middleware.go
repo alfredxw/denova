@@ -33,19 +33,14 @@ type interactiveStoryToolMiddleware struct {
 
 type interactiveDirectorPlanFileMiddleware struct {
 	*adk.BaseChatModelAgentMiddleware
-	task string
 }
 
 func newInteractiveStoryToolMiddleware() *interactiveStoryToolMiddleware {
 	return &interactiveStoryToolMiddleware{}
 }
 
-func newInteractiveDirectorPlanFileMiddleware(tasks ...string) *interactiveDirectorPlanFileMiddleware {
-	task := ""
-	if len(tasks) > 0 {
-		task = strings.TrimSpace(tasks[0])
-	}
-	return &interactiveDirectorPlanFileMiddleware{task: task}
+func newInteractiveDirectorPlanFileMiddleware() *interactiveDirectorPlanFileMiddleware {
+	return &interactiveDirectorPlanFileMiddleware{}
 }
 
 func (m *interactiveDirectorPlanFileMiddleware) WrapInvokableToolCall(
@@ -76,14 +71,6 @@ func (m *interactiveDirectorPlanFileMiddleware) WrapStreamableToolCall(
 
 func (m *interactiveDirectorPlanFileMiddleware) blockedDirectorToolMessage(name, _ string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
-	if m != nil && m.task == "state_schema_initialization" {
-		switch name {
-		case "list_lore_items", "read_lore_items", "submit_state_schema_adaptation":
-			return ""
-		default:
-			return fmt.Sprintf("[tool error] 状态结构审查只能使用 list_lore_items、read_lore_items 和 submit_state_schema_adaptation，拒绝工具: %s", name)
-		}
-	}
 	switch name {
 	case "read_event_cards", "list_lore_items", "read_lore_items", "search_story_history", submitDirectorPlanUpdateToolName:
 		return ""

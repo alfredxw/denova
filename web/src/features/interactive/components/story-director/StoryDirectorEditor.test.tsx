@@ -4,7 +4,7 @@ import type { StoryDirector } from '../../types'
 import { StoryDirectorEditor } from './StoryDirectorEditor'
 
 describe('StoryDirectorEditor', () => {
-  it('does not expose legacy story schema policy as a director setting', () => {
+  it('does not expose story schema policy as a director setting', () => {
     const draft: StoryDirector = {
       version: 1,
 		id: 'custom-director',
@@ -12,7 +12,6 @@ describe('StoryDirectorEditor', () => {
       description: '',
       strategy: {
         enabled: true,
-		state_schema_adaptation_mode: 'after_opening',
       },
       trpg_system: {},
 	  custom: true,

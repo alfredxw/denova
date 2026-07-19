@@ -22,11 +22,8 @@ func TestStoryDirectorLibraryCRUDAndRevisionConflict(t *testing.T) {
 	if directors[0].ModuleRefs.NarrativeStyleDisabled || directors[0].ModuleRefs.EventPackagesDisabled || directors[0].ModuleRefs.RuleSystemDisabled || directors[0].ModuleRefs.ActorStateDisabled || directors[0].ModuleRefs.ImagePresetDisabled {
 		t.Fatalf("default story director modules should start enabled: %#v", directors[0].ModuleRefs)
 	}
-	if directors[0].Strategy.DirectorAgentMode != DirectorAgentModeTriggered || directors[0].Strategy.StateSchemaAdaptationMode != StateSchemaAdaptationModeAfterOpening || directors[0].Strategy.BranchPlanningTurns != defaultBranchPlanningTurns {
+	if directors[0].Strategy.DirectorAgentMode != DirectorAgentModeTriggered || directors[0].Strategy.BranchPlanningTurns != defaultBranchPlanningTurns {
 		t.Fatalf("default story director should use triggered background director schedule: %#v", directors[0].Strategy)
-	}
-	if normalized := NormalizeStoryDirectorStrategy(StoryDirectorStrategy{StateSchemaAdaptationMode: StateSchemaAdaptationModeOff}); normalized.StateSchemaAdaptationMode != StateSchemaAdaptationModeOff {
-		t.Fatalf("story director should preserve disabled state schema adaptation: %#v", normalized)
 	}
 
 	actorStateModule, err := NewActorStateLibrary(novaDir).Create(ActorStateModule{
@@ -251,8 +248,11 @@ func TestStoryDirectorStrategyPromptMarkdownNormalizeAndSummaries(t *testing.T) 
 		if !strings.Contains(summary, `"strategy"`) || !strings.Contains(summary, `"mainline_strength"`) {
 			t.Fatalf("%s summary should retain structured strategy fields:\n%s", name, summary)
 		}
-		if !strings.Contains(summary, `"director_agent_mode"`) || !strings.Contains(summary, `"branch_planning_turns"`) || !strings.Contains(summary, `"rule_visibility_mode"`) || !strings.Contains(summary, `"state_schema_adaptation_mode"`) {
+		if !strings.Contains(summary, `"director_agent_mode"`) || !strings.Contains(summary, `"branch_planning_turns"`) || !strings.Contains(summary, `"rule_visibility_mode"`) {
 			t.Fatalf("%s summary should retain background director schedule:\n%s", name, summary)
+		}
+		if strings.Contains(summary, `"state_schema_adaptation_mode"`) {
+			t.Fatalf("%s summary must not expose story-owned schema policy as Director strategy:\n%s", name, summary)
 		}
 		if !strings.Contains(summary, `"difficulty_guidance"`) || !strings.Contains(summary, `"state_effect_guidance"`) || !strings.Contains(summary, `"must_check_examples"`) || !strings.Contains(summary, `"skip_check_examples"`) || strings.Contains(summary, `"impact"`) {
 			t.Fatalf("%s summary should expose natural-language rule guidance without legacy impact:\n%s", name, summary)

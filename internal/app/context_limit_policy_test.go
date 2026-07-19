@@ -13,11 +13,6 @@ func TestCompleteGameAndSkillContextLimitsAreAtLeast128KB(t *testing.T) {
 		"game resolved lore context":          interactiveResolvedLoreContextMaxBytes,
 		"director context fragment":           interactive.DirectorContextMaxBytes,
 		"director active lore":                interactive.DirectorLoreActiveContextMaxBytes,
-		"state schema non-state prompt":       maxInteractiveStateSchemaNonStatePromptBytes,
-		"state schema current Actor state":    maxInteractiveStateSchemaCurrentActorStateBytes,
-		"state schema total prompt":           maxInteractiveStateSchemaTotalPromptBytes,
-		"state schema lore result":            interactive.StateSchemaLoreReadMaxResultBytes,
-		"state schema lore task total":        interactive.StateSchemaLoreReadMaxTotalBytes,
 		"config manager resource skill":       configManagerResourceSkillMaxBytes,
 		"config manager resource skill total": configManagerResourceSkillMaxTotalBytes,
 	}

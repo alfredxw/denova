@@ -153,13 +153,12 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
     const branchID = snapshot?.branch_id
     const directorStatus = snapshot?.director_plan_status?.status || ''
     const directorPending = directorStatus === 'running' || (directorStatus === 'waiting_opening' && (snapshot?.turns?.length || 0) > 0)
-    const stateSchemaPending = snapshot?.state_schema_initialization?.status === 'running'
-    if (!branchID || (snapshot?.current_turn?.state_status !== 'pending' && !directorPending && !stateSchemaPending)) return
+    if (!branchID || (snapshot?.current_turn?.state_status !== 'pending' && !directorPending)) return
     const timer = window.setInterval(() => {
       void reloadSnapshot(branchID)
     }, 1000)
     return () => window.clearInterval(timer)
-  }, [reloadSnapshot, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status, snapshot?.director_plan_status?.status, snapshot?.state_schema_initialization?.status, snapshot?.turns?.length])
+  }, [reloadSnapshot, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status, snapshot?.director_plan_status?.status, snapshot?.turns?.length])
 
   useEffect(() => {
     if (!isMobile || submode !== 'story') setMobileSnapshotOpen(false)

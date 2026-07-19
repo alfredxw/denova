@@ -68,7 +68,7 @@ func TestApplyActorStateSchemaAdaptationSupportsStorySpecificDimensions(t *testi
 			if err != nil {
 				t.Fatalf("ApplyActorStateSchemaAdaptation failed: %v", err)
 			}
-			if record.FieldOps != len(tt.fields) || record.Source != "director_agent" {
+			if record.FieldOps != len(tt.fields) || record.Source != "game_agent" {
 				t.Fatalf("unexpected adaptation record: %#v", record)
 			}
 			template := actorStateTemplateByID(system, tt.templateID)

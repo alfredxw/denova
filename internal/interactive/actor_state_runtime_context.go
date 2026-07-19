@@ -45,6 +45,7 @@ func actorStateRuntimeMarkdownBlocks(system StoryDirectorActorStateSystem, state
 		"- 只提交本轮正文中已经发生的变化；未变化字段不要重复提交，也不要用空值清除。",
 		"- `actor_id`、`template_id`、`field_id` 必须逐字使用下文反引号中的稳定 ID，不能使用展示名称代替。",
 		"- `description` 解释字段含义；`update_instruction` 决定何时、如何更新。两者都必须遵守。",
+		"- “当前状态”只列本轮可写值；字段语义和更新规则统一见后面的“新 Actor 可用模板”，避免重复上下文。",
 		"- `replace` 写入本轮结束后的完整值；`delta` 只用于已有数值；规则检定已消费的字段不要重复提交。",
 	}, "\n")}
 
@@ -115,12 +116,6 @@ func actorStateRuntimeActorMarkdown(system StoryDirectorActorStateSystem, state 
 		fmt.Fprintf(&sb, "- 字段 ID：%s\n", actorStateRuntimeCode(fieldID))
 		fmt.Fprintf(&sb, "- 当前值：%s\n", actorStateRuntimeValue(value))
 		fmt.Fprintf(&sb, "- 类型：%s%s\n", actorStateRuntimeCode(field.Type), actorStateRuntimeConstraints(field))
-		if description := actorStateRuntimeText(field.Description); description != "" {
-			fmt.Fprintf(&sb, "- 字段说明：%s\n", description)
-		}
-		if instruction := actorStateRuntimeText(field.UpdateInstruction); instruction != "" {
-			fmt.Fprintf(&sb, "- 更新指引：%s\n", instruction)
-		}
 	}
 
 	traits := actorTraitInstancesFromState(state, actorID)

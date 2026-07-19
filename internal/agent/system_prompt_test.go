@@ -86,7 +86,7 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 		config.AgentKindInteractiveStory:    "只输出本回合可展示在故事舞台上的故事正文",
 		config.AgentKindImage:               "图像 Agent",
 		config.AgentKindConfigManager:       "配置管理 Agent",
-		config.AgentKindInteractiveDirector: "Director 的状态结构审查与分支规划互斥",
+		config.AgentKindInteractiveDirector: "不负责状态结构初始化或复审",
 		config.AgentKindVersionSummary:      "版本说明 Agent",
 		config.AgentKindToolAgent:           "model-only",
 		config.AgentKindAutomation:          "自动化Agent",
@@ -107,11 +107,16 @@ func TestRuntimeContractsCoverAllAgentKinds(t *testing.T) {
 	}
 }
 
-func TestInteractiveDirectorStateSchemaContractAllowsOnlyStagedActorInitialization(t *testing.T) {
+func TestInteractiveDirectorContractRejectsStateSchemaOwnership(t *testing.T) {
 	instruction := protectedSystemInstruction(&config.Config{}, config.AgentKindInteractiveDirector, "BUILT IN PROMPT")
-	for _, required := range []string{"state_schema_initialization", "Batch actor_ops", "finalize 前不生效", "后端原子应用"} {
+	for _, required := range []string{"不负责状态结构初始化或复审", "不得调整已经冻结的状态结构", "开局 Game Agent"} {
 		if !strings.Contains(instruction, required) {
-			t.Fatalf("interactive Director state-schema contract missing %q:\n%s", required, instruction)
+			t.Fatalf("interactive Director boundary missing %q:\n%s", required, instruction)
+		}
+	}
+	for _, forbidden := range []string{"state_schema_initialization", "submit_state_schema_adaptation", "Batch actor_ops"} {
+		if strings.Contains(instruction, forbidden) {
+			t.Fatalf("interactive Director must not retain schema task %q:\n%s", forbidden, instruction)
 		}
 	}
 }

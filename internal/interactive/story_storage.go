@@ -128,6 +128,10 @@ func (s *Store) readStoryLocked(storyID string) (StoryMeta, []StoryEventRecord, 
 	if err := s.freezeLegacyActorStateSchemaLocked(storyID, &meta, lines); err != nil {
 		return StoryMeta{}, nil, err
 	}
+	// A legacy sidecar may carry a revision that was not available while the
+	// JSONL metadata was normalized. Keep the fixed status aligned with the
+	// actual frozen schema without changing the schema itself.
+	normalizeFixedStoryStateSchemaInitialization(&meta)
 	return meta, lines, nil
 }
 

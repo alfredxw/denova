@@ -3,12 +3,14 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/components/tool/utils"
 	"github.com/cloudwego/eino/schema"
+	contribjsonschema "github.com/eino-contrib/jsonschema"
 
 	"denova/internal/interactive"
 )
@@ -144,9 +146,10 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 		desc := strings.Join([]string{
 			"在完整玩家可见正文已经输出后，通过一个入口提交本回合 state_changes 与 choices。首次调用同时提供两者；工具返回 ready=false 时，只重交 retry_modules 指定的字段，已 accepted 的模块会保留。ready=true 后立即结束，不要重复或改写正文。",
 			"如果当前回合提供 initialize_story_state_schema，必须在输出正文前先让结构草案 finalized=true；本工具不会代替结构初始化。",
-			"state_changes 是增量数组，只填写正文中确实发生变化的字段。replace 写入本轮结束后的完整值，delta 只增减已有数值，create 创建确有必要长期追踪的新 Actor。使用 Actor 状态手册中的精确 actor_id、field_id、template_id；object 子字段用 subpath 字符串数组，不要自行拼接路径字符串。不要重复 RuleResolution 已消费的字段。",
+			"state_changes 必须直接提交原生 JSON array，禁止把数组 JSON.stringify 后作为 string；单次最多 24 项。每一项严格三选一：replace={op,actor_id,field_id,value,可选 subpath}，delta={op,actor_id,field_id,value,可选 subpath}，create={op,actor_id,template_id,可选 name/role/description/initial_state}。create 的 schema 中不存在 field_id、subpath 或 value；新 Actor 的初始字段全部合并进同一个 create.initial_state，不要先对尚未创建的 Actor 连续 replace。只填写正文中确实发生变化的字段，使用 Actor 状态手册中的精确 ID；不要重复 RuleResolution 已消费的字段。",
 			"story_context 每回合至少 replace actor_id=story、field_id=当前事件；当前详细地点尚未初始化或正文确定地点变化时，同时 replace 当前详细地点。没有变化的其他字段不要写空值。",
 			"choices 必须与已输出正文结尾一致，并提供当前故事配置要求的恰好数量个不同建议；只有 prepare_interactive_turn 返回 terminal_candidate 的终局回合才提交空数组。",
+			"模块被 rejected 时修复同一批原定状态事实，不要通过删除已在正文成立的重要角色、能力、物品、地点或局势来绕过校验；可以合并同一新 Actor 的 initial_state 或压缩冗余描述。",
 			"director_update 是可选的低频导演更新提示。普通承接、同一场景内的小变化、常规资源消耗或既定冲突推进必须省略。只有当前目标或阶段改变、关键关系/势力发生重大变化、重要秘密揭示、不可逆结果，或现有简报已经无法指导下一回合时才设置 needed=true，并只说明已发生事实；不要替 Director 决定 patch/replan 或具体文件。",
 			"完整参数模板、当前可用 ID、字段类型，以及与本故事 choice_count 一致的 choices 占位数量，均以本轮 Actor 状态手册为准。",
 		}, "\n")
@@ -160,9 +163,38 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 }
 
 type submitInteractiveTurnToolSchema struct {
-	StateChanges   []interactive.TurnStateChangeInput `json:"state_changes,omitempty" jsonschema:"description=本轮正文已经发生的增量 Actor 状态变化；没有变化时提交空数组"`
-	Choices        []string                           `json:"choices,omitempty" jsonschema:"description=当前故事配置数量的不同下一步行动建议；仅 RuleResolution 已声明 terminal_candidate 时为空数组"`
-	DirectorUpdate *interactive.DirectorUpdateHint    `json:"director_update,omitempty" jsonschema:"description=仅在本轮已发生事实让后续规划发生实质变化时提交；普通回合必须省略"`
+	StateChanges   []interactive.TurnStateChangeInput `json:"state_changes,omitempty" jsonschema:"maxItems=24" jsonschema_description:"本轮正文已经发生的增量 Actor 状态变化。必须直接提交 JSON array，不能提交序列化后的 string；没有变化时提交空数组，单次最多 24 项。"`
+	Choices        []string                           `json:"choices,omitempty" jsonschema_description:"当前故事配置数量的不同下一步行动建议；仅 RuleResolution 已声明 terminal_candidate 时为空数组。"`
+	DirectorUpdate *interactive.DirectorUpdateHint    `json:"director_update,omitempty" jsonschema_description:"仅在本轮已发生事实让后续规划发生实质变化时提交；普通回合必须省略。"`
+}
+
+// The provider receives these three disjoint variants as state_changes.items
+// oneOf. Runtime decoding remains centralized in interactive.TurnStateChangeInput,
+// while the model cannot infer that create accepts replace-only fields.
+type submitInteractiveTurnReplaceChangeSchema struct {
+	Op      string   `json:"op" jsonschema:"required,enum=replace" jsonschema_description:"固定为 replace。"`
+	ActorID string   `json:"actor_id" jsonschema:"required" jsonschema_description:"Actor 状态手册中的稳定 Actor ID。"`
+	FieldID string   `json:"field_id" jsonschema:"required" jsonschema_description:"目标 Actor 模板中的精确 Field ID。"`
+	Subpath []string `json:"subpath,omitempty" jsonschema:"maxItems=16" jsonschema_description:"仅 object 字段的嵌套更新使用；按层级填写字符串段。"`
+	Value   any      `json:"value" jsonschema:"required" jsonschema_description:"本轮结束后的完整非空字段值，类型必须匹配 schema。"`
+}
+
+type submitInteractiveTurnDeltaChangeSchema struct {
+	Op      string   `json:"op" jsonschema:"required,enum=delta" jsonschema_description:"固定为 delta。"`
+	ActorID string   `json:"actor_id" jsonschema:"required" jsonschema_description:"Actor 状态手册中的稳定 Actor ID。"`
+	FieldID string   `json:"field_id" jsonschema:"required" jsonschema_description:"目标 Actor 模板中的精确 number Field ID。"`
+	Subpath []string `json:"subpath,omitempty" jsonschema:"maxItems=16" jsonschema_description:"仅 object 内已有数值的嵌套更新使用；按层级填写字符串段。"`
+	Value   float64  `json:"value" jsonschema:"required" jsonschema_description:"对已有数值增加或减少的有限数值。"`
+}
+
+type submitInteractiveTurnCreateChangeSchema struct {
+	Op           string         `json:"op" jsonschema:"required,enum=create" jsonschema_description:"固定为 create。"`
+	ActorID      string         `json:"actor_id" jsonschema:"required" jsonschema_description:"新 Actor 的稳定 ASCII ID。"`
+	TemplateID   string         `json:"template_id" jsonschema:"required" jsonschema_description:"新 Actor 可用模板中的精确 Template ID。"`
+	Name         string         `json:"name,omitempty" jsonschema_description:"新 Actor 的用户可见名称。"`
+	Role         string         `json:"role,omitempty" jsonschema_description:"新 Actor 在当前故事中的定位。"`
+	Description  string         `json:"description,omitempty" jsonschema_description:"新 Actor 的简短说明。"`
+	InitialState map[string]any `json:"initial_state,omitempty" jsonschema:"maxProperties=64" jsonschema_description:"所有可靠初始字段值；key 必须是所选模板中的精确 Field ID。"`
 }
 
 type submitInteractiveTurnTool struct {
@@ -175,7 +207,47 @@ func newSubmitInteractiveTurnTool(description string, submit func(context.Contex
 	if err != nil {
 		return nil, err
 	}
+	parameters, err := info.ParamsOneOf.ToJSONSchema()
+	if err != nil {
+		return nil, err
+	}
+	if parameters == nil || parameters.Properties == nil {
+		return nil, fmt.Errorf("submit_interactive_turn schema missing root properties")
+	}
+	stateChanges, ok := parameters.Properties.Get("state_changes")
+	if !ok || stateChanges == nil {
+		return nil, fmt.Errorf("submit_interactive_turn schema missing state_changes")
+	}
+	replaceVariant, err := turnToolParameterSchema[submitInteractiveTurnReplaceChangeSchema]()
+	if err != nil {
+		return nil, err
+	}
+	deltaVariant, err := turnToolParameterSchema[submitInteractiveTurnDeltaChangeSchema]()
+	if err != nil {
+		return nil, err
+	}
+	createVariant, err := turnToolParameterSchema[submitInteractiveTurnCreateChangeSchema]()
+	if err != nil {
+		return nil, err
+	}
+	stateChanges.Items = &contribjsonschema.Schema{
+		OneOf:       []*contribjsonschema.Schema{replaceVariant, deltaVariant, createVariant},
+		Description: "严格选择 replace、delta、create 之一；不得混用不同操作的字段。",
+	}
+	info.ParamsOneOf = schema.NewParamsOneOfByJSONSchema(parameters)
 	return &submitInteractiveTurnTool{info: info, submit: submit}, nil
+}
+
+func turnToolParameterSchema[T any]() (*contribjsonschema.Schema, error) {
+	params, err := utils.GoStruct2ParamsOneOf[T]()
+	if err != nil {
+		return nil, fmt.Errorf("build submit_interactive_turn variant schema: %w", err)
+	}
+	result, err := params.ToJSONSchema()
+	if err != nil {
+		return nil, fmt.Errorf("convert submit_interactive_turn variant schema: %w", err)
+	}
+	return result, nil
 }
 
 func (t *submitInteractiveTurnTool) Info(context.Context) (*schema.ToolInfo, error) {

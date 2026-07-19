@@ -25,10 +25,10 @@ type StoryDirectorActorStateSystem struct {
 }
 
 type ActorStateTemplate struct {
-	ID          string            `json:"id"`
-	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
-	Fields      []ActorStateField `json:"fields,omitempty"`
+	ID          string            `json:"id" jsonschema_description:"稳定的 ASCII Template ID。"`
+	Name        string            `json:"name" jsonschema_description:"用户可见模板名称。"`
+	Description string            `json:"description,omitempty" jsonschema_description:"模板职责的简短说明。"`
+	Fields      []ActorStateField `json:"fields,omitempty" jsonschema:"maxItems=64" jsonschema_description:"模板字段；只添加确有长期追踪价值的字段。"`
 	TraitRules  []ActorTraitRule  `json:"trait_rules,omitempty"`
 	// DisplayGroups is retained only for decoding older Beta presets. The stage
 	// ignores it and stores user layout by story + template outside the schema.
@@ -87,15 +87,15 @@ type ActorStateField struct {
 	ID                string   `json:"-"`
 	Path              string   `json:"-"`
 	LegacyPath        string   `json:"-"`
-	Name              string   `json:"name"`
-	Type              string   `json:"type"`
+	Name              string   `json:"name" jsonschema_description:"稳定 Field ID 与用户可见名称；同一模板内唯一。"`
+	Type              string   `json:"type" jsonschema:"enum=number,enum=string,enum=bool,enum=enum,enum=object,enum=list" jsonschema_description:"字段值类型，只能使用列出的六种类型。"`
 	Default           any      `json:"default,omitempty"`
 	Min               *float64 `json:"min,omitempty"`
 	Max               *float64 `json:"max,omitempty"`
-	Options           []string `json:"options,omitempty"`
-	Visibility        string   `json:"visibility,omitempty"`
-	Description       string   `json:"description,omitempty"`
-	UpdateInstruction string   `json:"update_instruction,omitempty"`
+	Options           []string `json:"options,omitempty" jsonschema:"maxItems=24" jsonschema_description:"type=enum 时的有限合法值。"`
+	Visibility        string   `json:"visibility,omitempty" jsonschema:"enum=visible,enum=spoiler,enum=hidden" jsonschema_description:"省略时默认 visible。"`
+	Description       string   `json:"description,omitempty" jsonschema_description:"字段承接的信息及语义。"`
+	UpdateInstruction string   `json:"update_instruction,omitempty" jsonschema_description:"何时更新以及写入完整值还是增量。"`
 	// Order is retained only for decoding older Beta presets. Field array order
 	// is the fallback; final layout belongs to the user's stage preference.
 	Order int `json:"order,omitempty"`
@@ -104,7 +104,7 @@ type ActorStateField struct {
 	// pins the field renderer (stat/inline/block/list). Both fall back to
 	// shape-based heuristics when empty and never affect state updates.
 	Group   string `json:"group,omitempty"`
-	Display string `json:"display,omitempty"`
+	Display string `json:"display,omitempty" jsonschema:"enum=stat,enum=inline,enum=block,enum=list" jsonschema_description:"可选展示提示；省略时由值形状推断。"`
 }
 
 const ActorStateSchemaVersion = 3

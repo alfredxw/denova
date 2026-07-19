@@ -17,8 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- 新故事的状态结构初始化从后台 Director 移交给前台 Game Agent：动态模式先通过专用结构工具暂存模板/字段，再通过 `state_changes` 初始化 Actor 与值；结构、开局正文、初始状态和行动建议在首回合一次性原子提交，失败不会留下半成品。固定模板模式不暴露结构工具，开局前返回配置页会安全重建冻结结构，首回合提交后策略即锁定。兼容性说明：故事导演中的旧 `state_schema_adaptation_mode` 仅保留旧 Beta 数据读取，不再决定新故事行为。
-- New stories move state-schema initialization from the background Director to the foreground Game Agent: dynamic modes stage templates and fields through a dedicated tool, then initialize Actors and values through `state_changes`. Schema, opening prose, initial state, and choices commit atomically with the first turn, leaving no partial result on failure. Fixed mode exposes no schema tool; returning to setup before the opening safely rebuilds the frozen schema, and the policy locks after the first turn. Compatibility note: legacy Director `state_schema_adaptation_mode` is retained only for old Beta data and no longer controls new stories.
+- 状态结构初始化从后台 Director 完整移交给前台 Game Agent：动态模式先通过专用结构工具暂存模板/字段，再通过 `state_changes` 初始化 Actor 与值；结构、开局正文、初始状态和行动建议在首回合一次性原子提交，失败不会留下半成品。固定模板模式不暴露结构工具，开局前返回配置页会安全重建冻结结构，首回合提交后策略即锁定。Beta 不兼容：旧故事统一固定使用已有冻结结构，不再启动 Director 迁移或复审；旧 `state_schema_adaptation_mode` 配置、后台运行 API 和复审操作已移除。
+- State-schema initialization moves completely from the background Director to the foreground Game Agent: dynamic modes stage templates and fields through a dedicated tool, then initialize Actors and values through `state_changes`. Schema, opening prose, initial state, and choices commit atomically with the first turn, leaving no partial result on failure. Fixed mode exposes no schema tool; returning to setup before the opening safely rebuilds the frozen schema, and the policy locks after the first turn. Beta breaking: old stories keep their existing frozen schema and never start a Director migration or review; the legacy `state_schema_adaptation_mode`, background run APIs, and review actions are removed.
 - 方案预设刷新后默认定位到配置管理 Agent，同时展开当前模式下的全部资源分组，并按“故事导演 → 叙事风格 → 状态系统 → TRPG 检定 → 图像方案 → 事件包”排列；用户仍可单独折叠分组或一键收起全部。
 - Presets now open on Config Manager Agent after refresh, expand every resource group visible in the current mode, and order them as Story Director → Narrative Style → State System → TRPG Checks → Image Presets → Event Packages; users can still collapse individual groups or collapse all at once.
 - 五套内置状态系统预设重构为精简的集中式结构：只预建故事、主角和世界实体三个 Actor；场景、世界与任务归入故事状态，地点与势力归入世界实体，技能、物品和关系归入所属角色。“面板”和“状态”改为普通字段分组，不再要求用户编辑纯 JSON；默认 TRPG 提供等级、六维、攻击 AC、防御 DC、生命与法力，修仙、西幻、末世和无限流分别生成符合题材的字段，末世不会制造空面板。故事状态移除场景要素、生效规则和世界背景三个重复字段，并新增可直接承接下一段的“可承接钩子”。
@@ -56,6 +56,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 游戏首回合的状态结构与回合提交工具现在提供开局来源、证据类型、字段类型、决策枚举及列表上限的严格 schema；`state_changes` 明确要求原生 JSON 数组并对合法的单层字符串编码数组做有界兼容，重试提示会保留正文已经成立的状态事实，减少反复工具报错和状态丢失。
+- Opening Game turns now expose strict schemas for source provenance, evidence kinds, field types, decisions, and list bounds. `state_changes` explicitly requires a native JSON array while tolerating one valid string-encoded array layer, and retry guidance preserves state facts already established in prose to reduce repeated tool failures and dropped state.
 - 状态预设编辑器遇到“面板/状态”这类嵌套 object 默认值时改用 JSON 编辑，浅层 object 仍保留结构化编辑，不再把嵌套内容显示或误写为 `[object Object]`。
 - The actor-state preset editor now uses JSON editing for nested Panel/State object defaults while preserving structured editing for shallow objects, preventing nested values from appearing or being overwritten as `[object Object]`.
 - Agent 会话列表现在整行单击即可切换；生成中切换会立即停止旧流并显示目标会话，不再需要反复点击。会话统计保持固定宽度，过长的当前会话标题会在剩余空间内截断，不再挤压计数。
