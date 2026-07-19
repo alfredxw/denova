@@ -115,9 +115,10 @@ func appendUniqueRetainedValue(values []string, value string) []string {
 
 func filterSemanticToolContextMessages(messages []*schema.Message, policy ToolResultContextPolicy) []*schema.Message {
 	type retainedCall struct {
-		toolName string
-		retain   bool
-		valid    bool
+		toolName  string
+		arguments string
+		retain    bool
+		valid     bool
 	}
 	callsByID := make(map[string]retainedCall)
 	resultCountsByID := make(map[string]int)
@@ -137,10 +138,12 @@ func filterSemanticToolContextMessages(messages []*schema.Message, policy ToolRe
 					callsByID[callID] = existing
 					continue
 				}
+				arguments, valid := retainedToolCallArguments(call.Function.Arguments, toolName, callID, policy.PreviewChars)
 				callsByID[callID] = retainedCall{
-					toolName: toolName,
-					retain:   retainToolContextAcrossTurns(toolName, policy),
-					valid:    true,
+					toolName:  toolName,
+					arguments: arguments,
+					retain:    retainToolContextAcrossTurns(toolName, policy),
+					valid:     valid,
 				}
 			}
 			continue
@@ -172,7 +175,7 @@ func filterSemanticToolContextMessages(messages []*schema.Message, policy ToolRe
 				if callID == "" || !knownCall || !callPolicy.valid || resultCountsByID[callID] != 1 || !callPolicy.retain {
 					continue
 				}
-				call.Function.Arguments = limitContextText(call.Function.Arguments, policy.PreviewChars, "\n[Denova tool call args truncated for retained context]")
+				call.Function.Arguments = callPolicy.arguments
 				next.ToolCalls = append(next.ToolCalls, call)
 			}
 			if len(next.ToolCalls) > 0 || strings.TrimSpace(next.Content) != "" {
