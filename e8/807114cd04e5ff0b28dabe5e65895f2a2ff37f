@@ -1,0 +1,333 @@
+CHANGELOG.md
+  s_814b47595c140c::t_8835febb028283 11-22,34-53
+config/settings.go
+  s_40d4c8cfbf8f3d::t_b6cd0ba1aee2d5 4,13,400,404-410,429-438,444-487,490,494
+config/settings_mutation_test.go
+  s_40d4c8cfbf8f3d::t_b3f3ee92982e2c 1-119
+internal/agent/config_manager_agent_config_tools.go
+  s_40d4c8cfbf8f3d::t_c6fd59c527d353 140,144,148-149,170,179,182,184,186-216,218
+internal/agent/config_manager_tools.go
+  s_814b47595c140c::t_707c6207b3e8ec 758,775-779
+internal/agent/config_manager_tools_test.go
+  s_814b47595c140c::t_52e5d138cbe1ff 6,9,290-358,382-424
+internal/api/handler_automations_test.go
+  s_c5a3fba2fad9a5::t_3044820093dd69 1-89
+internal/api/handler_skills_test.go
+  s_ee914713373b23::t_331f4af660b6de 1-40
+internal/api/handlers/handler_automations.go
+  s_c5a3fba2fad9a5::t_853fbf4fdd23b7 6,95-96,100-115,117-123
+internal/api/handlers/handler_autosave_conflicts.go
+  s_61d5de88b3fc67::t_f10286fb3f73a3 1-35
+internal/api/handlers/handler_skills.go
+  s_ee914713373b23::t_a8f62504b03867 6,27-32,36-40,123,125-128,148,150-153
+internal/api/routes.go
+  s_61d5de88b3fc67::t_1e9823502cf3bf 22
+internal/app/automation_app_service.go
+  s_814b47595c140c::t_8096b3a3a34266 86-89,94-97
+internal/app/autosave_conflicts.go
+  s_61d5de88b3fc67::t_2a5e7fc614f175 1-33
+internal/app/runtime_manager.go
+  s_40d4c8cfbf8f3d::t_d66819a04dac07 361-363,392-394
+internal/app/settings_test.go
+  s_40d4c8cfbf8f3d::t_f4eb8e060fe5b0 5,7,195-297
+internal/app/skills_app_service.go
+  s_ee914713373b23::t_8f6a11ec689892 31-32,35-36,88-89,97-98
+internal/automation/automation_test.go
+  s_814b47595c140c::t_2fd9ef8acab8ef 5,15-84
+internal/automation/store.go
+  s_814b47595c140c::t_8e46a697e50280 8,25-46,203-222,241-245,529-533,537-572,605-610
+internal/automation/trigger_config.go
+  s_814b47595c140c::t_63cb67f22c6347 84-89
+internal/automation/types.go
+  s_27d99c6562d6d5::t_eecde60d3a638a 88
+internal/autosaveconflict/directory_sync_nonwindows.go
+  s_40d4c8cfbf8f3d::t_72a7fdbda68841 1-16
+internal/autosaveconflict/directory_sync_windows.go
+  s_40d4c8cfbf8f3d::t_08d84341732d2c 1-11
+internal/autosaveconflict/store.go
+  s_40d4c8cfbf8f3d::t_871fec1ecb3459 1-244
+internal/autosaveconflict/store_test.go
+  s_40d4c8cfbf8f3d::t_e10a8488aa8262 1-214
+internal/autosaveconflict/types.go
+  s_40d4c8cfbf8f3d::t_19cb7d3eee1440 1-58
+internal/i18n/i18n.go
+  s_c5a3fba2fad9a5::t_827ae5674dbeea 136,229
+internal/revisionfile/atomic.go
+  s_40d4c8cfbf8f3d::t_d85d8af45fcbfd 1-47
+internal/revisionfile/path.go
+  s_40d4c8cfbf8f3d::t_99334aeea6ae78 1-36
+internal/revisionfile/revisionfile.go
+  s_40d4c8cfbf8f3d::t_0ec9cf2eedfea8 1-180
+internal/revisionfile/revisionfile_test.go
+  s_40d4c8cfbf8f3d::t_958cf58807f91e 1-105
+internal/skills/document.go
+  s_ee914713373b23::t_d046e6bee0bfe2 6-7,22-24,54,70-74,82-84,92-96,106,118-120,259-262,267-271,301-309,322-325,329-351
+internal/skills/skills_test.go
+  s_ee914713373b23::t_e751764393c17a 5,148-216
+internal/skills/types.go
+  s_ee914713373b23::t_c9c5f7c8619bed 60-62,67-70
+web/package.json
+  s_ee914713373b23::t_4d7dfa025f2a54 60
+web/src/App.tsx
+  s_814b47595c140c::t_8fc57f36d34f83 40-43,117-118,299-310,422-424,426,773
+web/src/components/Chat/AgentPanel.test.tsx
+  s_27d99c6562d6d5::t_67eb4b3051ec17 5,7-8,64-67,238-274,366-375,378,382-426
+web/src/components/Chat/AgentPanel.tsx
+  s_c5a3fba2fad9a5::t_efa2e480c533bb 14,32,38-39,42-43,94
+web/src/components/Editor/MarkdownEditor.test.tsx
+  s_814b47595c140c::t_f3aad6a9dd55e3 4,17-19,34,44,55,89,115,132,224-236,289,306-343,401,428-685,720,750,779,828,846,864,900-985,999-1000,1010-1047,1062-1063,1066,1071-1099
+web/src/components/Editor/MarkdownEditor.tsx
+  s_814b47595c140c::t_d3a692eee78451 28-29,63-64,92,162-168,187-191,195-198,200-203,205,224,438-442
+web/src/components/Editor/MarkdownRichEditor.test.tsx
+  s_8b3830028beccf::t_e01e386b8d56e3 12-15,20-21,24-28,39,51,53,115,171-182
+web/src/components/Editor/MarkdownRichEditor.tsx
+  s_8b3830028beccf::t_778458561c23be 20-21,95,111-114
+web/src/components/Editor/editorDocument.test.ts
+  s_8b3830028beccf::t_9bdae8adb360ab 1-74
+web/src/components/Editor/editorDocument.ts
+  s_8b3830028beccf::t_efbad88b999833 4-5,101-142
+web/src/components/Editor/useEditorDraftPersistence.ts
+  s_814b47595c140c::t_b6a822c4a2526a 6-7,9-15,19-20,25-26,28-33,36-66,72,74-76,83,86,90-94,110-111,118,122-167,172,189-191,195,198-204,206,208-210,212-216,218-224,226-237,239-241,243,245-417,419-421,423-426,433-450,452,454-487,489-490,492-493,501-511,513-515,517-519,521-522,526,528-562,566-567,569-571,576,583-586,588,590-593,598,602,607-610,612,615-625,627-628,635-636,642-644,656-657,666-672,678,681-683,685-686,690-691,694-695,697-698,700
+web/src/components/forms/autosave-status.test.tsx
+  s_ee914713373b23::t_c83de9b7640d7d 1-33
+web/src/components/forms/autosave-status.tsx
+  s_ee914713373b23::t_d922308cdaf426 1-59
+web/src/components/layout/adaptive-surface.test.tsx
+  s_8b3830028beccf::t_823c51db503727 29-47
+web/src/components/layout/adaptive-surface.tsx
+  s_8b3830028beccf::t_1f32042f65134e 3,35-36,41-49,64,142-185,264-282
+web/src/components/layout/feature-page-shell.test.tsx
+  s_ee914713373b23::t_0515d4a1691d56 51-65
+web/src/components/layout/feature-page-shell.tsx
+  s_ee914713373b23::t_2abd9531e67841 7,18-19,37,50-58
+web/src/components/resource-directory/ResourceDirectory.tsx
+  s_8b3830028beccf::t_6ac24231ae4a43 127-152
+web/src/components/workbench/ModeRouter.test.tsx
+  s_814b47595c140c::t_ea3974cff5514a 1-212
+web/src/components/workbench/ModeRouter.tsx
+  s_814b47595c140c::t_b4b835eb5925e5 1,5,8,19,66,110,159,246-272,393,579,641,646,658,692,770
+web/src/features/agents/AgentsView.test.tsx
+  s_8b3830028beccf::t_352ea631583bde 190,224,263,314,401,443,469,487-490
+web/src/features/agents/AgentsView.tsx
+  s_8b3830028beccf::t_84363ca5a5c4b6 4,7,34,89-99,102-105,186-188,190,199,209-213,234,259-266
+web/src/features/automations/AutomationConfigPanel.tsx
+  s_814b47595c140c::t_1679f89d150b0f 1-224
+web/src/features/automations/AutomationsView.test.tsx
+  s_814b47595c140c::t_550565922781ab 1,98,113,123-301,368,413-515,517
+web/src/features/automations/AutomationsView.tsx
+  s_814b47595c140c::t_dab93dde8e5ece 2,6,36-38,41,51,59-60,86-90,107-109,116-141,147-150,155-158,201-213,229-232,246-273,275-276,280-283,289-290,297-298,300-302,308-310,314,319-327,337,339,355-358,371,383,410-437,486-490,496-498,522-524,526,530-536,551-556,619-632,726-730
+web/src/features/automations/automation-model-profiles.ts
+  s_ee914713373b23::t_a13e1d8ec85b7f 1-34
+web/src/features/automations/automation-task-draft.test.ts
+  s_ee914713373b23::t_6f6274f3d3bed6 3,39-72
+web/src/features/automations/automation-task-draft.ts
+  s_ee914713373b23::t_b8e28e40af3634 1,10-31
+web/src/features/automations/use-automation-autosave.ts
+  s_814b47595c140c::t_b0eb72fc669e11 1-122
+web/src/features/interactive/components/ReplyTargetCharsControl.test.tsx
+  s_ee914713373b23::t_0a641f989f07a6 1-65
+web/src/features/interactive/components/ReplyTargetCharsControl.tsx
+  s_814b47595c140c::t_77df1d1af1cc86 1-2,4,8-9,13-30,36-37,39-82,91,93-102,104-108,112-115,124-141,143-146
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_814b47595c140c::t_b73413ba09827a 7,80-83,104,107-115,172-177,255,262-317,319-336,339,355-361,377,387,409,415-438,489-629,644,661,671,675,824,827,842,862,896,933,1002,1019,1034-1035,1048,1059,1150,1244,1248-1250,1266-1355,1375,1394-1395,1521-1527
+web/src/features/interactive/components/SettingPanel.tsx
+  s_9cd17b4e056d36::t_593d279dad7f71 1-2,5-7,14,36-37,61,75,90,94,103,110,147-154,157-302,333,339-340,342,344-402,404,414-416,425-426,430-440,442-443,449,454-456,466-467,483-491,500-509,519-543,594,597,631-632,642-649,652-653,656-657,659,663,666,670-672,675-688,698,718,816-825,911,957-958,961-967,1000,1002,1004,1008
+web/src/features/interactive/components/SettingPanelTellerEditor.test.tsx
+  s_8b3830028beccf::t_f00ea18d453e6f 5,119,175,234-235,267-268,277-279,283-341,372,376,386-405
+web/src/features/interactive/components/SettingPanelTellerEditor.tsx
+  s_814b47595c140c::t_98ea9968c549bc 2,8-9,11,22,28,111-119,135,166,335-340,343-369,410-411,422-424,426-460,462-472,495,501-503,653-654,656-664,686-687,711-719,728-729,756,769-772
+web/src/features/interactive/components/setting-panel/LoreEditor.tsx
+  s_8b3830028beccf::t_5b3e120749956c 185-193
+web/src/features/interactive/components/setting-panel/PresetSettingsPanel.tsx
+  s_814b47595c140c::t_2b66343c9f1b6f 2,7-8,14,21,34,41-42,59,141,144-149,163,166-171,184,187-192,206,209-214,228,231-236,250,253-258,314-317,320,537,552-556,568,634-635,638-644,709
+web/src/features/interactive/components/setting-panel/presetResources.ts
+  s_8b3830028beccf::t_472b0fc7b47ece 41-46
+web/src/features/interactive/components/setting-panel/use-lore-item-autosave.test.tsx
+  s_61d5de88b3fc67::t_dafb638f04ca02 1-142
+web/src/features/interactive/components/setting-panel/use-lore-item-autosave.ts
+  s_814b47595c140c::t_dabf8d5c6006a3 1-131
+web/src/features/interactive/components/setting-panel/use-preset-resources.ts
+  s_814b47595c140c::t_34251dfc1df111 2-3,6,206-209,212-215,218-221,224,228,232,301,364,392-407,410-411,413-414,416-436,439-485
+web/src/features/interactive/components/setting-panel/use-style-reference-autosave.test.tsx
+  s_61d5de88b3fc67::t_6046825275199e 1-85
+web/src/features/interactive/components/setting-panel/use-style-reference-autosave.ts
+  s_814b47595c140c::t_ea8fb0963d79be 1-130
+web/src/features/interactive/components/setting-panel/use-workspace-file-autosave.test.tsx
+  s_61d5de88b3fc67::t_000d910a3a16ea 1-127
+web/src/features/interactive/components/setting-panel/use-workspace-file-autosave.ts
+  s_814b47595c140c::t_c3aa19132aa72a 1-85
+web/src/features/interactive/components/setting-panel/usePresetResourceAutosave.test.tsx
+  s_814b47595c140c::t_e2746f84e8f35c 1,4-10,15,19-63,70-126,141-248,258-269,397-423,457-523,569-696,740,742,751,753-759,765,769,771,782
+web/src/features/interactive/components/setting-panel/usePresetResourceAutosave.ts
+  s_61d5de88b3fc67::t_bb83c65115090a 1-4,6,8-10,13-45,47-49,53
+web/src/features/onboarding/OnboardingGuide.test.tsx
+  s_ee914713373b23::t_ce91fea97e0fa6 25
+web/src/features/settings/SettingsView.test.tsx
+  s_ee914713373b23::t_de9aff15bc3127 1,146,148,150-151,153-156
+web/src/features/settings/SettingsView.tsx
+  s_ee914713373b23::t_71818cd4529e18 3,12,62,554-556,558,560-564
+web/src/features/settings/use-auto-save-settings.test.tsx
+  s_dcba0af0df462c::t_f0ace5ad663d61 2,12-44,178-227,485,498,508,512,522-527
+web/src/features/settings/use-auto-save-settings.ts
+  s_814b47595c140c::t_d05b8e1a7c03ec 2,9-15,20,33-34,41,48,52,55,58,63,71,73,80-85,87-89,91,95-98,101-104,108,110-112,120,130,134-136,142,147-151,154-156,159-160,163-165,168-171,173-190
+web/src/features/settings/use-layered-settings-draft.test.tsx
+  s_814b47595c140c::t_98335784cd2dbd 2,4,8-11,13-16,249-277
+web/src/features/settings/use-layered-settings-draft.ts
+  s_61d5de88b3fc67::t_1ae7d0e6dab3cf 3-5,49,59-61,63-97,109-110,118-119,135,166-194,198-200,214,228,241,243,249-251,258-259
+web/src/features/skills/SkillConfigPanel.tsx
+  s_814b47595c140c::t_f77c1a9e820cfc 1-2,5,9-13,20,23-24,29-58,64,72-81,83-151,164,168-202,204,208-212,221,225-231,263-279,284,294,304
+web/src/features/skills/SkillsView.test.tsx
+  s_ee914713373b23::t_63e459f4276aec 1,5,49-58,112,116-162,194-195,203,209-420,464-465,468,653,665
+web/src/features/skills/SkillsView.tsx
+  s_814b47595c140c::t_f13a0786138a8f 1-2,7,12,14-17,29-45,50-74,93-98,101-102,118-233,258,267,289,319,338-368,374,383,385,389,391,406,442,450,455-466,471,476-508,531-532,545-546,550-556,561,585-587,590,608-615,649,653-654,656,668,679,681-682
+web/src/hooks/use-resource-autosave.ts
+  s_814b47595c140c::t_5792c0b4cf7948 1-399
+web/src/hooks/use-save-lane.ts
+  s_814b47595c140c::t_97f0b4025c2882 1-91
+web/src/hooks/usePersistedUserSettings.test.tsx
+  s_27d99c6562d6d5::t_66efa321566729 2,6,14-17,27-31,49-79,86-90,92-93,97,110-155,164-165,168-171,173-209,224,230-231,238-241,243,246,286,290-293,308-438
+web/src/hooks/usePersistedUserSettings.ts
+  s_27d99c6562d6d5::t_4e72aa8bd74099 4-8,15,24-55,59-60,65,78-80,82,95,102-151,188-192,204,206-223,227,229-231,233,235-238,240-246,253-256,261-277,279-280,282-290,292-325
+web/src/hooks/useWorkspace.test.tsx
+  s_814b47595c140c::t_58f29936e92c74 4,7-32,185,247-308,394
+web/src/hooks/useWorkspace.ts
+  s_814b47595c140c::t_ff800183187730 18,27-31,49-51,60,71,74-78,90,94,121,126,257,268,273,278-279,302,311,316,318-320,323,325-356,359-372,388,395,400,413,416,466,474
+web/src/i18n/locales/en-US/automations.ts
+  s_ee914713373b23::t_81551538495a49 8
+web/src/i18n/locales/en-US/common.ts
+  s_27d99c6562d6d5::t_8d8bea2f300993 24-34
+web/src/i18n/locales/en-US/editor.ts
+  s_814b47595c140c::t_a7825722878fe4 49-51,54-55
+web/src/i18n/locales/en-US/onboarding.ts
+  s_ee914713373b23::t_3eacd9fc27f2ea 11
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_ee914713373b23::t_5a13697e1baa0c 538,626,766,769
+web/src/i18n/locales/en-US/skills.ts
+  s_ee914713373b23::t_61a9678bfd70dc 72-74
+web/src/i18n/locales/zh-CN/automations.ts
+  s_ee914713373b23::t_c8a3474d92732d 8
+web/src/i18n/locales/zh-CN/common.ts
+  s_27d99c6562d6d5::t_392c3b27e50cb7 24-34
+web/src/i18n/locales/zh-CN/editor.ts
+  s_814b47595c140c::t_2c47b8f46fd27b 49-51,54-55
+web/src/i18n/locales/zh-CN/onboarding.ts
+  s_ee914713373b23::t_e07b65c7d978eb 11
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_ee914713373b23::t_90e4c206e06baa 538,626,766,769
+web/src/i18n/locales/zh-CN/skills.ts
+  s_ee914713373b23::t_63f75b20aea25e 72-74
+web/src/lib/api-client/automations.ts
+  s_27d99c6562d6d5::t_3fe94f7c94375e 3,46,50
+web/src/lib/api-client/autosave-conflicts.test.ts
+  s_814b47595c140c::t_bc7438b18e8603 1-50
+web/src/lib/api-client/autosave-conflicts.ts
+  s_814b47595c140c::t_5d10c977967fcc 1-53
+web/src/lib/api-client/index.ts
+  s_814b47595c140c::t_14b11eee0434bc 10
+web/src/lib/api-client/skills.ts
+  s_ee914713373b23::t_5c53344fc9b2c1 43,53,59,63
+web/src/lib/api-client/types.ts
+  s_27d99c6562d6d5::t_8877890f8307e4 690,698,789,812-827
+web/src/lib/api.test.ts
+  s_ee914713373b23::t_18149f2fca3d8d 108,121,126,136
+web/src/lib/autosave/rebase-with-recovery.test.ts
+  s_814b47595c140c::t_9aad13a386375a 1-43
+web/src/lib/autosave/rebase-with-recovery.ts
+  s_814b47595c140c::t_54c992ee3f04be 1-64
+web/src/lib/autosave/save-lane.test.ts
+  s_814b47595c140c::t_f5df1376e89ea9 1-370
+web/src/lib/autosave/save-lane.ts
+  s_814b47595c140c::t_4683c5eb6b4df2 1-297
+web/src/lib/autosave/workspace-file-revision-conflict.ts
+  s_814b47595c140c::t_73394ca12425a7 1-21
+web/src/lib/revision-conflict.test.ts
+  s_814b47595c140c::t_d91305caa59b90 1-78
+web/src/lib/revision-conflict.ts
+  s_814b47595c140c::t_6376e92c393ae8 1-50
+web/src/lib/three-way-rebase.test.ts
+  s_814b47595c140c::t_97c5f979c6c1c1 1-88
+web/src/lib/three-way-rebase.ts
+  s_814b47595c140c::t_6950d7de376ae9 1-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e8807114cd04e5ff0b28dabe5e65895f2a2ff37f",
+  "prompts": {},
+  "sessions": {
+    "s_27d99c6562d6d5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f764a-2527-7780-9513-1580ceaa831f",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_40d4c8cfbf8f3d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f760b-bd0e-71c0-8de8-97cec278832a",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_61d5de88b3fc67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f760b-82e9-7c10-afec-28bfeaa60395",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_814b47595c140c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f75ee-22a6-7633-9af5-3b72c64139e6",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_8b3830028beccf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f75b5-a505-7b03-ada9-c88e17162030",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_9cd17b4e056d36": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7649-f6f1-71b0-8352-8822eedf2d4a",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_c5a3fba2fad9a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7649-bd4e-7673-87d9-51e3ce202444",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_dcba0af0df462c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f75a2-d165-79a2-9535-90b9ab90cc86",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_ee914713373b23": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f752a-8e74-7842-adb1-75cf38b4d571",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
