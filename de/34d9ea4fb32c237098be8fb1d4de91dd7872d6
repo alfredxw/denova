@@ -1,0 +1,111 @@
+.gitignore
+  s_55930a8f479e5c::t_cc8eab72566417 22-24
+CHANGELOG.md
+  s_55930a8f479e5c::t_055fcb3b2bd984 11-14,18-23,26-27,51-52
+docs/status/actor-state-presets-v2-design.md
+  s_55930a8f479e5c::t_ecf7cfea643dd4 1-298
+internal/interactive/actor_state.go
+  s_55930a8f479e5c::t_4b25da7a210934 33-35,99-101,276,290,305,711
+internal/interactive/actor_state_preset_fields.go
+  s_55930a8f479e5c::t_7f43ab6831aaa0 1-247
+internal/interactive/actor_state_preset_genres.go
+  s_55930a8f479e5c::t_381318e04f9526 1-140
+internal/interactive/actor_state_presets.go
+  s_55930a8f479e5c::t_d3e6c0b048b248 12,14,17-43,65,69,73,77,80,83-86,90-100,106-110,114,117-124,129
+internal/interactive/actor_state_test.go
+  s_55930a8f479e5c::t_999b407065f58c 114-115,117,132,137-193
+internal/interactive/actor_traits_test.go
+  s_55930a8f479e5c::t_94584ca129dcae 246-269
+internal/interactive/director_modules.go
+  s_55930a8f479e5c::t_3b20580d946f4e 715
+internal/interactive/director_modules_test.go
+  s_55930a8f479e5c::t_1246eb12aa5814 103-107,111-114,116,123-128,130-224,231,249,264,368,370-379,381-386,388-417,421-423,440-453
+internal/interactive/rule_state_binding.go
+  s_55930a8f479e5c::t_33ac80c4e9b531 21-30,61-65,86-93,188,275,356,442,471,572,599,611-612,615-617,619-623,625-629,634-638,644-675
+internal/interactive/rule_state_binding_value_path_test.go
+  s_55930a8f479e5c::t_bb920a55523a4c 1-64
+internal/interactive/state_schema_adaptation_validation.go
+  s_55930a8f479e5c::t_fc57a438dca98a 163,171,177,181,199,209-214
+internal/interactive/turn_result_test.go
+  s_55930a8f479e5c::t_ec4e1f10ecf08f 31-35,54,59-60,63-64,77-83
+web/src/components/Chat/AgentPanel.tsx
+  s_97dcfdf4daf38f::t_e4b672f343cff4 250,258
+web/src/features/changes/agent/AgentChangeSummaryCard.test.ts
+  s_97dcfdf4daf38f::t_1b5a275b2761d2 1-5,8-39,80-124
+web/src/features/changes/agent/AgentChangeSummaryCard.tsx
+  s_97dcfdf4daf38f::t_63f1b2646f5100 1,8,12,18,30,47-64,88-91,96-97,136,147
+web/src/features/changes/review/ReviewDiffEditor.tsx
+  s_97dcfdf4daf38f::t_6e3a79a90c4a3f 3,55-58
+web/src/features/changes/review/ReviewFileDiffSection.tsx
+  s_97dcfdf4daf38f::t_d989a6cc32c611 13,15
+web/src/features/changes/review/review-editor-loader.ts
+  s_97dcfdf4daf38f::t_7c9153a4d70fd8 1-14
+web/src/features/changes/use-change-review.test.tsx
+  s_97dcfdf4daf38f::t_beaade1175c8f9 4,73-86
+web/src/features/changes/use-change-review.ts
+  s_97dcfdf4daf38f::t_c7f8e5be70ae2d 17-32,94
+web/src/features/interactive/components/preset-config/TRPGSystemVisualEditor.test.tsx
+  s_55930a8f479e5c::t_c454105678f6b5 114,136-139
+web/src/features/interactive/components/preset-config/actor-state-explorer/ActorStateExplorer.test.tsx
+  s_55930a8f479e5c::t_2d750bd307270a 266-322
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/FieldDetailEditor.tsx
+  s_55930a8f479e5c::t_58f33faa92434e 190,253
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/TemplateDetailEditor.tsx
+  s_55930a8f479e5c::t_b523775145e9a1 162,229
+web/src/features/interactive/components/preset-config/actor-state-explorer/shared/StateValueEditor.tsx
+  s_55930a8f479e5c::t_8206d9aa2502f1 36-38,48-49,68-71,73-76,80-83,87,89-91,102-126,128-140,142-155,297-306
+web/src/features/interactive/components/preset-config/ruleTemplates.ts
+  s_55930a8f479e5c::t_0256d21bf21aeb 101,182,195-203
+web/src/features/interactive/components/preset-config/visual-editors.tsx
+  s_55930a8f479e5c::t_40dc2668b6f72e 16,275
+web/src/features/interactive/components/story-state/StateDisplayPreferenceMenu.tsx
+  s_55930a8f479e5c::t_0f582da26a8d99 1,4,8,10,42-50
+web/src/features/interactive/components/story-state/StateLayoutEditor.tsx
+  s_55930a8f479e5c::t_454529f512b5c0 1-249
+web/src/features/interactive/components/story-state/StoryStateLedger.test.tsx
+  s_55930a8f479e5c::t_07a8c800c7f6f4 3,18-22,30-31,33-34,37,42-110,112-113,115,117-119,121-122,124-142,145,148-167,169-177,182,187-189,192-193,196,201-203,215,231,243,252,294,298,310,319,338,343,349-350,357,361,364,370
+web/src/features/interactive/components/story-state/StoryStateLedger.tsx
+  s_55930a8f479e5c::t_5b2dbd4c7e9ab5 2,12,21,28,32-40,48-55,58-62,67-69,72-74,76-80,89,92-96,99-100,102-106,109,118-123,142-143,145,156-157,159-162,169-172,178-197,271,279-286,289,303-309,312,314,316-331,333-343,345-347,349-369,373-406
+web/src/features/interactive/components/story-state/layout-preference.test.ts
+  s_55930a8f479e5c::t_7b6b5b55e183bf 1-81
+web/src/features/interactive/components/story-state/layout-preference.ts
+  s_55930a8f479e5c::t_9a16537e47f6c6 1-167
+web/src/features/interactive/components/story-state/ledger-fields.tsx
+  s_55930a8f479e5c::t_76f7044f6d2161 186,226-245
+web/src/features/interactive/components/story-state/model.test.ts
+  s_55930a8f479e5c::t_aec25870c9a876 3,6-18
+web/src/features/interactive/components/story-state/model.ts
+  s_55930a8f479e5c::t_2096e129798227 89-90,206-207,227-264
+web/src/features/interactive/types.ts
+  s_55930a8f479e5c::t_fc0e012d82434d 206-207,265,642,682
+web/src/i18n/locales/en-US/storyStage.ts
+  s_55930a8f479e5c::t_b939279a1f6804 20-21,44-47,52-63
+web/src/i18n/locales/zh-CN/storyStage.ts
+  s_55930a8f479e5c::t_b0ca6d6fdaa0b1 20-21,44-47,52-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "de34d9ea4fb32c237098be8fb1d4de91dd7872d6",
+  "prompts": {},
+  "sessions": {
+    "s_55930a8f479e5c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f78f6-2fce-7302-943e-3d5ce944dbd6",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_97dcfdf4daf38f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f78ba-5cf2-7103-9932-4ecbbdaecec1",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
