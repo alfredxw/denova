@@ -570,7 +570,7 @@ describe('StoryStage streaming rendering', () => {
 				stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '石门后亮起一盏灯。' }) })
 				await Promise.resolve()
 			})
-			expect(await screen.findByText('正在回忆石门后的布局。')).toBeInTheDocument()
+			await expectVisibleText('正在回忆石门后的布局。')
 			await waitFor(() => expect(screen.getByText('石门后亮起一盏灯。')).toBeInTheDocument())
 
 			const persisted = persistedTurnEvent()
@@ -674,8 +674,8 @@ describe('StoryStage streaming rendering', () => {
 
       act(() => runAnimationFrames(frames))
 
-      expect(container.querySelector('.nova-streaming-markdown-reserve')).toHaveTextContent('青石镇外风声忽然停了。')
-      expect(container.querySelector('.nova-streaming-markdown-overlay')).not.toHaveTextContent('青石镇外风声忽然停了。')
+      expect(container.querySelector('.nova-streaming-content-reserve')).toHaveTextContent('青石镇外风声忽然停了。')
+      expect(container.querySelector('.nova-streaming-content-overlay')).not.toHaveTextContent('青石镇外风声忽然停了。')
 
       act(() => runAnimationFrames(frames))
 
@@ -683,6 +683,51 @@ describe('StoryStage streaming rendering', () => {
 			stream.enqueue({ event: 'interactive_turn_persisted', data: JSON.stringify(persistedTurnEvent()) })
       stream.enqueue({ event: 'done', data: '{}' })
       stream.close()
+    } finally {
+      stream.close()
+      window.requestAnimationFrame = originalRequestAnimationFrame
+      window.cancelAnimationFrame = originalCancelAnimationFrame
+    }
+  })
+
+  it('reserves live thinking height before revealing the new text', async () => {
+    const user = userEvent.setup()
+    const stream = controllableInteractiveStream()
+    const originalRequestAnimationFrame = window.requestAnimationFrame
+    const originalCancelAnimationFrame = window.cancelAnimationFrame
+    const frames = new Map<number, FrameRequestCallback>()
+    let nextFrameId = 1
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      const id = nextFrameId
+      nextFrameId += 1
+      frames.set(id, callback)
+      return id
+    })
+    window.cancelAnimationFrame = vi.fn((id: number) => {
+      frames.delete(id)
+    })
+
+    try {
+      sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+      const { container } = render(<StoryStageHarness />)
+
+      await user.type(screen.getByPlaceholderText('你要做什么？'), '继续前进')
+      await user.click(screen.getByRole('button', { name: '发送' }))
+
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
+      act(() => runAnimationFrames(frames))
+      stream.enqueue({ event: 'thinking', data: JSON.stringify({ content: '正在检查门后的动静。' }) })
+      await waitFor(() => expect(frames.size).toBeGreaterThan(0))
+
+      act(() => runAnimationFrames(frames))
+
+      const stage = container.querySelector('.nova-streaming-content-stage')
+      expect(stage?.querySelector('.nova-streaming-content-reserve')).toHaveTextContent('正在检查门后的动静。')
+      expect(stage?.querySelector('.nova-streaming-content-overlay')).not.toHaveTextContent('正在检查门后的动静。')
+
+      act(() => runAnimationFrames(frames))
+
+      expect(await screen.findByText('正在检查门后的动静。')).toBeInTheDocument()
     } finally {
       stream.close()
       window.requestAnimationFrame = originalRequestAnimationFrame
@@ -706,7 +751,7 @@ describe('StoryStage streaming rendering', () => {
       act(() => {
         stream.enqueue({ event: 'thinking', data: JSON.stringify({ content: providerThinking }) })
       })
-      expect(await screen.findByText(providerThinking)).toBeInTheDocument()
+      await expectVisibleText(providerThinking)
 
       act(() => {
         stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '门后传来脚步声。' }) })
@@ -1497,6 +1542,13 @@ function runAnimationFrames(frames: Map<number, FrameRequestCallback>) {
   for (const [, callback] of callbacks) {
     callback(performance.now())
   }
+}
+
+async function expectVisibleText(text: string) {
+  await waitFor(() => {
+    const visible = screen.getAllByText(text).find((element) => !element.closest('[aria-hidden="true"]'))
+    expect(visible).toBeVisible()
+  })
 }
 
 function deferred<T>() {

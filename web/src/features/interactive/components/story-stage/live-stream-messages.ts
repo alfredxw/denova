@@ -16,13 +16,13 @@ export function appendBufferedLiveMessage(messages: ChatMessage[], { role, conte
   if (role === 'thinking' && last?.role === 'thinking' && sameLiveMessageSource(last, metadata)) {
     return [
       ...messages.slice(0, -1),
-      { ...last, content: `${last.content || ''}${content}`, streaming: true },
+      { ...last, streaming_target_content: `${last.streaming_target_content || last.content || ''}${content}`, streaming: true },
     ]
   }
   if (role === 'assistant') {
     return [...messages, { role, content: '', streaming_target_content: content, streaming: true, ...metadata }]
   }
-  return [...messages, { role, content, streaming: true, ...metadata }]
+  return [...messages, { role, content: '', streaming_target_content: content, streaming: true, ...metadata }]
 }
 
 export function promoteMessageTargets(messages: ChatMessage[]) {

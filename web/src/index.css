@@ -1836,29 +1836,29 @@ html[data-nova-motion="off"] *::after {
   margin-bottom: 0;
 }
 
-.nova-streaming-markdown-stage {
+.nova-streaming-content-stage {
   position: relative;
   min-width: 0;
 }
 
-.nova-streaming-markdown-reserve {
+.nova-streaming-content-reserve {
   visibility: hidden;
   pointer-events: none;
 }
 
-.nova-streaming-markdown-overlay {
+.nova-streaming-content-overlay {
   position: absolute;
   inset-inline: 0;
   top: 0;
 }
 
-.nova-streaming-markdown-reserve > :first-child,
-.nova-streaming-markdown-overlay > :first-child {
+.nova-streaming-content-reserve > :first-child,
+.nova-streaming-content-overlay > :first-child {
   margin-top: 0;
 }
 
-.nova-streaming-markdown-reserve > :last-child,
-.nova-streaming-markdown-overlay > :last-child {
+.nova-streaming-content-reserve > :last-child,
+.nova-streaming-content-overlay > :last-child {
   margin-bottom: 0;
 }
 

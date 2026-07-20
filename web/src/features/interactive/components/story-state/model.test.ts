@@ -3,7 +3,7 @@ import type { Snapshot } from '../../types'
 import { buildLedgerGroups, buildStoryStateModel, splitLedgerGroupsForPreview } from './model'
 
 describe('buildStoryStateModel', () => {
-  it('treats explicit panel and state sections as the glanceable preview', () => {
+  it('takes the first two ordered groups for the preview', () => {
     const groups = buildLedgerGroups([
       { id: 'profile', label: '基本身份', field: { name: '基本身份', type: 'string', group: '人物设定' }, value: '游侠' },
       { id: 'panel', label: '面板', field: { name: '面板', type: 'object', group: '面板' }, value: { 力量: 12 } },
@@ -12,8 +12,8 @@ describe('buildStoryStateModel', () => {
 
     const preview = splitLedgerGroupsForPreview(groups)
 
-    expect(preview.preview.map((group) => group.key)).toEqual(['面板', '状态'])
-    expect(preview.hidden.map((group) => group.key)).toEqual(['人物设定'])
+    expect(preview.preview.map((group) => group.key)).toEqual(['人物设定', '面板'])
+    expect(preview.hidden.map((group) => group.key)).toEqual(['状态'])
   })
 
   it('does not expose legacy empty containers or an empty story context as world facts', () => {

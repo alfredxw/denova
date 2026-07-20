@@ -143,7 +143,7 @@ describe('StoryStateLedger', () => {
     expect(sectionLabels(container)).toEqual(['概览', '持有与资源'])
   })
 
-  it('keeps preview sections in place when revealing sections that were hidden above them', async () => {
+  it('previews the first two ordered sections and preserves that order when expanding', async () => {
     const snapshot = storyStateSnapshot()
     const template = snapshot.actor_state_schema?.system.templates?.[0]
     const actors = snapshot.state.actors as Record<string, { state?: Record<string, unknown> }>
@@ -167,12 +167,12 @@ describe('StoryStateLedger', () => {
       />,
     )
 
-    expect(sectionLabels(container)).toEqual(['面板', '状态'])
+    expect(sectionLabels(container)).toEqual(['人物设定', '面板'])
     await userEvent.click(screen.getByRole('button', { name: '展开全部（还有 1 个分区）' }))
-    expect(sectionLabels(container)).toEqual(['面板', '状态', '人物设定'])
+    expect(sectionLabels(container)).toEqual(['人物设定', '面板', '状态'])
   })
 
-  it('previews the first section when a template has no structured sections', () => {
+  it('previews up to the first two sections when a template has no structured sections', () => {
     const snapshot = richStoryStateSnapshot()
     const template = snapshot.actor_state_schema?.system.templates?.[0]
     // Drop every overview/holdings field so only details + spoiler remain.
@@ -187,9 +187,10 @@ describe('StoryStateLedger', () => {
       />,
     )
 
-    expect(sectionLabels(container)).toEqual(['详情'])
+    expect(sectionLabels(container)).toEqual(['详情', '隐藏信息'])
     expect(screen.getByText(LONG_DETAIL_TEXT)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '展开全部（还有 1 个分区）' })).toBeInTheDocument()
+    expect(screen.getByText('被赵师兄盯上')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /展开全部/ })).not.toBeInTheDocument()
   })
 
   it('renders nested dynamic resources, effects, and cooldowns without flattening them to blanks', () => {

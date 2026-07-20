@@ -13,12 +13,12 @@ export interface ScrollElementBottomIntoViewOptions {
   lockAfterScroll?: boolean
 }
 
-export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFromBottomThreshold = VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD, resolveScroller }: { resetKey?: string; contentKey: string; itemCount: number; awayFromBottomThreshold?: number; resolveScroller?: () => HTMLElement | null }) {
+export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, autoFollowEnabled, awayFromBottomThreshold = VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD, resolveScroller }: { resetKey?: string; contentKey: string; itemCount: number; autoFollowEnabled: boolean; awayFromBottomThreshold?: number; resolveScroller?: () => HTMLElement | null }) {
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
   const scrollerElementRef = useRef<HTMLElement | null>(null)
   const lockedRef = useRef(true)
   const afterContentInteractionRef = useRef(false)
-  const preservedInteractionScrollTopRef = useRef(0)
+  const previousAutoFollowEnabledRef = useRef(autoFollowEnabled)
   const lastScrollTopRef = useRef(0)
   const lastLockedBottomScrollTopRef = useRef(0)
   const schedulerRef = useRef(createDeferredBottomScrollScheduler())
@@ -74,9 +74,13 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
 
   const scheduleScrollToBottom = useCallback(() => {
     detectManualScrollAway()
+    if (!autoFollowEnabled) {
+      cancelScheduledScroll()
+      return
+    }
     if (!lockedRef.current || itemCount <= 0) return
-    schedulerRef.current.schedule(scrollToBottomNow, () => lockedRef.current && itemCount > 0)
-  }, [detectManualScrollAway, itemCount, scrollToBottomNow])
+    schedulerRef.current.schedule(scrollToBottomNow, () => autoFollowEnabled && lockedRef.current && itemCount > 0)
+  }, [autoFollowEnabled, cancelScheduledScroll, detectManualScrollAway, itemCount, scrollToBottomNow])
 
   const unlockFromBottom = useCallback(() => {
     lockedRef.current = false
@@ -84,10 +88,9 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
   }, [cancelScheduledScroll])
 
   const releaseBottomLock = useCallback(() => {
-    preservedInteractionScrollTopRef.current = currentScrollerElement()?.scrollTop ?? lastScrollTopRef.current
     afterContentInteractionRef.current = true
     unlockFromBottom()
-  }, [currentScrollerElement, unlockFromBottom])
+  }, [unlockFromBottom])
 
   const scrollToBottom = useCallback(() => {
     afterContentInteractionRef.current = false
@@ -149,23 +152,8 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
   }, [cancelScheduledScroll, itemCount, updateAwayFromBottom])
 
   const handleScrollElement = useCallback((element: HTMLElement) => {
-    let currentTop = element.scrollTop
+    const currentTop = element.scrollTop
     if (afterContentInteractionRef.current) {
-      const preservedTop = Math.min(
-        preservedInteractionScrollTopRef.current,
-        Math.max(0, element.scrollHeight - element.clientHeight),
-      )
-      if (currentTop > preservedTop + 1) {
-        // Virtuoso can issue a delayed bottom adjustment after its footer has
-        // been remeasured. Restore the viewport captured by the direct panel
-        // interaction instead of allowing that internal scroll to win.
-        element.scrollTop = preservedTop
-        currentTop = preservedTop
-      } else {
-        // Content can become shorter when changing tabs, so retain the native
-        // clamp as the new position to preserve for the next layout change.
-        preservedInteractionScrollTopRef.current = currentTop
-      }
       lockedRef.current = false
       lastScrollTopRef.current = currentTop
       updateAwayFromBottom(element)
@@ -230,8 +218,8 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
     detectManualScrollAway()
     // `atBottom` describes the layout before newly revealed footer content is
     // measured. An explicit interaction unlock must win over that stale value.
-    return lockedRef.current && !afterContentInteractionRef.current ? 'auto' : false
-  }, [detectManualScrollAway])
+    return autoFollowEnabled && lockedRef.current && !afterContentInteractionRef.current ? 'auto' : false
+  }, [autoFollowEnabled, detectManualScrollAway])
 
   const scrollerRef = useCallback((ref: HTMLElement | Window | null) => {
     detachScrollerListenersRef.current?.()
@@ -264,9 +252,28 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
     }
   }, [handleScrollElement, unlockFromBottom, updateAwayFromBottom])
 
-  useEffect(() => {
-    scheduleScrollRef.current = scheduleScrollToBottom
-  }, [scheduleScrollToBottom])
+  useLayoutEffect(() => {
+    // Resetting a list is an explicit one-shot navigation and remains separate
+    // from automatic following, which is active only while output is streaming.
+    scheduleScrollRef.current = scrollToBottom
+  }, [scrollToBottom])
+
+  useLayoutEffect(() => {
+    const wasEnabled = previousAutoFollowEnabledRef.current
+    previousAutoFollowEnabledRef.current = autoFollowEnabled
+    if (!autoFollowEnabled || wasEnabled) return
+    afterContentInteractionRef.current = false
+    const element = currentScrollerElement()
+    lockedRef.current = !element || isNearBottom(element)
+    if (element) {
+      lastScrollTopRef.current = element.scrollTop
+      if (lockedRef.current) lastLockedBottomScrollTopRef.current = element.scrollTop
+    }
+  }, [autoFollowEnabled, currentScrollerElement, isNearBottom])
+
+  useLayoutEffect(() => {
+    scheduleScrollToBottom()
+  }, [contentKey, scheduleScrollToBottom])
 
   useLayoutEffect(() => {
     afterContentInteractionRef.current = false
@@ -274,10 +281,6 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
     scheduleScrollRef.current()
     return cancelScheduledScroll
   }, [cancelScheduledScroll, resetKey])
-
-  useLayoutEffect(() => {
-    scheduleScrollToBottom()
-  }, [contentKey, scheduleScrollToBottom])
 
   useEffect(() => {
     updateAwayFromBottom()

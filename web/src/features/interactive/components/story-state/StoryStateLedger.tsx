@@ -57,8 +57,8 @@ interface StateLedgerPresentation {
  * StoryStateLedger is the compact state panel pinned after the latest prose.
  * Fields lay out as bordered group sections on one page. Schema hints provide
  * the fallback grouping, while a story + template UI preference controls the
- * final section and field order. Preview mode shows only glanceable sections
- * with a "show all" affordance; the turn's state delta surfaces once in the
+ * final section and field order. Preview mode shows the first two ordered
+ * sections with a "show all" affordance; the turn's state delta surfaces once in the
  * summary row plus per-field change chips.
  */
 export function StoryStateLedger({ snapshot, displayPreference, onDisplayPreferenceChange, onOpenDirectorState }: StoryStateLedgerProps) {
@@ -343,7 +343,7 @@ function WorldLedgerBody({ ledger, layout, panelMode, onPanelModeChange }: { led
 
 /**
  * LedgerSections lays groups out as visually distinct blocks on one page. In
- * preview mode only the glanceable sections show, with a mode toggle that
+ * preview mode only the first two ordered sections show, with a mode toggle that
  * reveals the rest without any height-clamped tricks.
  */
 function LedgerSections({ groups, mode, onModeChange }: { groups: LedgerFieldGroup[]; mode: 'preview' | 'expanded'; onModeChange: (mode: StoryStatePanelMode) => void }) {

@@ -21,6 +21,7 @@ import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-e
 import { Plan, PlanContent, PlanHeader } from '@/components/ai-elements/plan'
 import { Tool, ToolContent } from '@/components/ai-elements/tool'
 import { Shimmer } from '@/components/ai-elements/shimmer'
+import { StreamingContentStage } from './StreamingContentStage'
 
 interface MessageItemProps {
   message: ChatMessage
@@ -1558,21 +1559,12 @@ function StreamingPlaceholder() {
   )
 }
 
-/** 流式 Markdown 由上层先提交 target 高度，随后再把 target 提升为可见 content。 */
+/** 流式 Markdown 与纯文本共用“预留目标高度后再揭示”的帧序。 */
 function StreamingMarkdown({ content, targetContent, highlightDialogue }: { content: string; targetContent?: string; highlightDialogue: boolean }) {
-  if (!targetContent || targetContent === content) {
-    return <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
-  }
-
   return (
-    <div className="nova-streaming-markdown-stage">
-      <div className="nova-streaming-markdown-reserve" aria-hidden="true">
-        <MarkdownContent content={targetContent} highlightDialogue={highlightDialogue} />
-      </div>
-      <div className="nova-streaming-markdown-overlay">
-        <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
-      </div>
-    </div>
+    <StreamingContentStage content={content} targetContent={targetContent} streaming>
+      {(value) => <MarkdownContent content={value} highlightDialogue={highlightDialogue} />}
+    </StreamingContentStage>
   )
 }
 
@@ -1695,7 +1687,9 @@ function ThinkingBlock({ message, content, streaming }: { message: ChatMessage; 
             {message.subagent && <AgentSourceBadge message={message} compact />}
           </ReasoningTrigger>
           <ReasoningContent className="mt-0 border-l border-[var(--nova-border)] px-3 py-2 text-xs text-[var(--nova-text-muted)] whitespace-pre-wrap">
-            {content}
+            <StreamingContentStage content={content} targetContent={streaming ? message.streaming_target_content : undefined} streaming={streaming}>
+              {(value) => value}
+            </StreamingContentStage>
           </ReasoningContent>
         </Reasoning>
       </div>

@@ -242,26 +242,9 @@ function ledgerGroupPriority(group: LedgerFieldGroup) {
   return BUILTIN_GROUP_PRIORITY[group.key] ?? 2
 }
 
-/**
- * splitLedgerGroupsForPreview cuts the one-page sections into the glanceable
- * preview (overview + holdings) and the sections hidden behind "show all".
- * A template with no structured sections previews its first group instead.
- */
+/** Splits the current ordered layout into its first two preview groups and the remainder. */
 export function splitLedgerGroupsForPreview(groups: LedgerFieldGroup[]): { preview: LedgerFieldGroup[]; hidden: LedgerFieldGroup[] } {
-  const preview = groups.filter((group) => (
-    (!group.custom && (group.key === 'overview' || group.key === 'holdings'))
-    || (group.custom && isPanelOrStateGroup(group.key))
-  ))
-  if (preview.length === 0 && groups.length > 0) {
-    return { preview: [groups[0]], hidden: groups.slice(1) }
-  }
-  const previewKeys = new Set(preview.map((group) => group.key))
-  return { preview, hidden: groups.filter((group) => !previewKeys.has(group.key)) }
-}
-
-function isPanelOrStateGroup(key: string) {
-  const normalized = key.trim().toLocaleLowerCase()
-  return normalized === '面板' || normalized === '状态' || normalized === 'panel' || normalized === 'state'
+  return { preview: groups.slice(0, 2), hidden: groups.slice(2) }
 }
 
 function matchFieldChanges(changes: StoryStateChange[], entry: LedgerFieldEntry) {
