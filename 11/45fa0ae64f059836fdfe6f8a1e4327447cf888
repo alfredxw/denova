@@ -1,0 +1,177 @@
+AGENTS.md
+  s_ceb05d815b475c::t_ec90979c7f3e28 46,76,90
+CHANGELOG.md
+  s_6acaa75901ba69::t_873d9635b3d043 11-14,63-70
+config.toml
+  s_ceb05d815b475c::t_b70de2e74a5a84 15
+config/settings.go
+  s_ceb05d815b475c::t_048cc3edcdb35e 154-158
+config/settings_test.go
+  s_ceb05d815b475c::t_4ba45b9904e52e 61-63
+internal/agent/chat_stream.go
+  s_ceb05d815b475c::t_6234ec08b76ef7 61,69-70,79-84,87-89,163-164,229,240
+internal/agent/chat_stream_test.go
+  s_ceb05d815b475c::t_685c64e00c0c32 12-75
+internal/agent/context_analysis.go
+  s_6acaa75901ba69::t_8bc150de9101e1 63-64,309-313
+internal/agent/context_analysis_interactive_parts.go
+  s_6acaa75901ba69::t_aacfac46902420 1-220
+internal/agent/context_analysis_test.go
+  s_6acaa75901ba69::t_d3795f941a1d4d 51-112
+internal/agent/interactive_state_schema_tools.go
+  s_ceb05d815b475c::t_677d3bd9579068 102-106
+internal/agent/interactive_state_schema_tools_test.go
+  s_ceb05d815b475c::t_2587c21d3b39cb 29
+internal/agent/interactive_story_tools.go
+  s_ceb05d815b475c::t_dc2ce84684e997 148-150,193,195
+internal/agent/interactive_story_tools_test.go
+  s_ceb05d815b475c::t_80574decc0a68d 85-97,105,108-110
+internal/agent/plan_protocol.go
+  s_ceb05d815b475c::t_1502a6d365f802 92,228-229,281
+internal/agent/plan_protocol_test.go
+  s_ceb05d815b475c::t_83deb7f340de9f 4,67,72,74,79-80,82-98
+internal/agent/thinking_stream.go
+  s_ceb05d815b475c::t_9ae2c94f0840c5 1-22
+internal/app/interactive_conversation.go
+  s_ceb05d815b475c::t_4888c42556a161 420-425
+internal/interactive/actor_state.go
+  s_ceb05d815b475c::t_4416f315107d55 8,326,420,716,734-745,783
+internal/interactive/actor_state_preset_fields.go
+  s_ceb05d815b475c::t_ffe60be9583209 92,128,132,136,144,148,152-156
+internal/interactive/actor_state_preset_genres.go
+  s_6acaa75901ba69::t_bc5249d89f6635 93,128
+internal/interactive/actor_state_runtime_context.go
+  s_ceb05d815b475c::t_7c987bf0e1892a 46-47,192,194
+internal/interactive/actor_state_test.go
+  s_ceb05d815b475c::t_22f0fc8bc42820 157-162,186-191
+internal/interactive/actor_traits.go
+  s_6acaa75901ba69::t_e0ff0f53b6c37d 157,317
+internal/interactive/opening_state_initialization.go
+  s_ceb05d815b475c::t_d0fabd35b36a19 1-117
+internal/interactive/orchestration.go
+  s_6acaa75901ba69::t_aa1d2d2d27a416 258-259,474,491,509
+internal/interactive/rule_state_binding.go
+  s_ceb05d815b475c::t_f1ad88131361b8 334-335,353,375,415,423
+internal/interactive/rule_state_consumption.go
+  s_6acaa75901ba69::t_9f8a26e1b1501f 191
+internal/interactive/state_panel_name_id.go
+  s_ceb05d815b475c::t_953b508212aa46 1-46
+internal/interactive/state_panel_name_id_test.go
+  s_ceb05d815b475c::t_8c899c0bd114d4 1-150
+internal/interactive/state_schema_adaptation.go
+  s_ceb05d815b475c::t_d67d73ef66251c 174,181,183,370,387,389,391,399,438,440
+internal/interactive/state_schema_adaptation_validation.go
+  s_ceb05d815b475c::t_42997fa8fabc80 89,115
+internal/interactive/state_schema_policy.go
+  s_ceb05d815b475c::t_ef787666cf77ae 95,99
+internal/interactive/state_schema_proposal.go
+  s_ceb05d815b475c::t_ea7f86ba9f87f9 152
+internal/interactive/state_schema_proposal_batch.go
+  s_ceb05d815b475c::t_bb80bb7a7da320 69-75,304-307,309,337-347,351-387
+internal/interactive/state_schema_proposal_batch_test.go
+  s_ceb05d815b475c::t_51f48291260348 44-119
+internal/interactive/state_schema_proposal_batch_validation.go
+  s_ceb05d815b475c::t_1063393eb7cdec 193,198,309,314,393,400,441,444
+internal/interactive/state_schema_value_policy_validation.go
+  s_6acaa75901ba69::t_56e8720528404b 10,92,97,105,137,148,151,159
+internal/interactive/story_schema.go
+  s_ceb05d815b475c::t_1e6c6fb1d3e0ba 250
+internal/interactive/story_state.go
+  s_ceb05d815b475c::t_49289fdd48b5df 291,338
+internal/interactive/turn_state_updates.go
+  s_ceb05d815b475c::t_1d23e37857546f 79-80,98-104,156-158,334
+internal/interactive/turn_state_updates_test.go
+  s_ceb05d815b475c::t_b88118cdbc15fc 77,82-83,95-98,105
+internal/interactive/turn_submission.go
+  s_ceb05d815b475c::t_b4f3757f6ad474 21-28,82-87,160-175,347-354
+internal/interactive/turn_submission_decode.go
+  s_ceb05d815b475c::t_98b48107d163f3 19,24,236-238
+internal/interactive/turn_submission_test.go
+  s_ceb05d815b475c::t_1ff7bfabaaaf78 87-133,188
+internal/prompts/interactive.go
+  s_ceb05d815b475c::t_f406040ad904bd 110,122,124-125,218
+internal/prompts/interactive_test.go
+  s_ceb05d815b475c::t_e005bcc6e10522 81-106
+internal/session/display.go
+  s_ceb05d815b475c::t_f9364f4d8754da 94,100
+internal/session/store_test.go
+  s_ceb05d815b475c::t_a0ce5812720814 430,443,463-464
+web/src/components/Chat/AgentMessageList.test.tsx
+  s_6acaa75901ba69::t_a2dccb7c66d8f9 35-67
+web/src/components/Chat/AgentMessageList.tsx
+  s_6acaa75901ba69::t_cf66cfede9eaac 94,139-145,242,277-287
+web/src/components/Chat/ContextAnalysisDialog.test.tsx
+  s_6acaa75901ba69::t_e141ab5d56f85e 3,7-8,74-123,162
+web/src/components/Chat/ContextAnalysisDialog.tsx
+  s_6acaa75901ba69::t_07d33528a2c190 8,26,47-62,81,134-146,152,167-169,179,191,197-198,206-210,230,233,245-255,302-303,330,347-357,380-387,421,425-426,440-450
+web/src/components/Chat/ContextCopyButton.tsx
+  s_6acaa75901ba69::t_8fa4be2865b9d5 1-92
+web/src/components/Chat/MessageItem.test.tsx
+  s_ceb05d815b475c::t_c64ba1f419ec76 533-536,551,572
+web/src/components/Chat/MessageItem.tsx
+  s_ceb05d815b475c::t_975da489f6c9c6 17,623,661,800,817,1528-1535
+web/src/components/Chat/useVirtuosoBottomLock.test.tsx
+  s_6acaa75901ba69::t_8f455422464c90 1-20
+web/src/components/Chat/useVirtuosoBottomLock.ts
+  s_6acaa75901ba69::t_8dfca12bddd111 2,8,20-21,86-91,93,99,112,140,152-173,191,196-199,203-206,209-212,221-224,229,231-233,246,250-253,272,297,302,308-311
+web/src/components/common/ConfirmDialog.tsx
+  s_6acaa75901ba69::t_b6f78600fc6f35 79
+web/src/features/interactive/components/CompactResourcePicker.tsx
+  s_6acaa75901ba69::t_4fd85c04abdc12 2,21-22,27-34,50,81,95,97-112,129
+web/src/features/interactive/components/InteractiveLayout.test.tsx
+  s_6acaa75901ba69::t_077d4a30c1eee8 5,51,68-73,99,106,172-196
+web/src/features/interactive/components/InteractiveLayout.tsx
+  s_6acaa75901ba69::t_d005f334700f85 174-179,181-187,307,334
+web/src/features/interactive/components/StoryPicker.test.tsx
+  s_6acaa75901ba69::t_ecb61503a44d26 1-3,6-10,15,25,30-80
+web/src/features/interactive/components/StoryPicker.tsx
+  s_6acaa75901ba69::t_e4e8465b34334c 1-2,5,14,19,21-25,28-54,56-148
+web/src/features/interactive/components/StoryStage.test.tsx
+  s_ceb05d815b475c::t_06474ae52a60fd 696,707,709,716,1018,1030,1039
+web/src/features/interactive/components/StoryStage.tsx
+  s_6acaa75901ba69::t_fa4f08697bf41d 69,1166
+web/src/features/interactive/components/story-state/StoryStateLedger.test.tsx
+  s_6acaa75901ba69::t_ba629ca5fa767b 19-20,146-174,269-284
+web/src/features/interactive/components/story-state/StoryStateLedger.tsx
+  s_6acaa75901ba69::t_ca64e448a008a2 157-163,173-178,353-356
+web/src/i18n/locales/en-US/chat.ts
+  s_6acaa75901ba69::t_f5558f7bf65a43 227-232
+web/src/i18n/locales/en-US/storyPicker.ts
+  s_6acaa75901ba69::t_f1b01434c79faf 70-77
+web/src/i18n/locales/zh-CN/chat.ts
+  s_6acaa75901ba69::t_9e0b0263950982 227-232
+web/src/i18n/locales/zh-CN/storyPicker.ts
+  s_6acaa75901ba69::t_43bee5dcbe91aa 70-77
+web/src/lib/api-client/types.ts
+  s_6acaa75901ba69::t_0d85f2a4215ff6 239-240
+web/src/lib/plan-mode.test.ts
+  s_ceb05d815b475c::t_e42feaa52cd55f 5,59,61,64
+web/src/lib/plan-mode.ts
+  s_ceb05d815b475c::t_bf02c6ac75647a 94-95
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1145fa0ae64f059836fdfe6f8a1e4327447cf888",
+  "prompts": {},
+  "sessions": {
+    "s_6acaa75901ba69": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7b3d-b64f-72a0-8d2f-3a39493f7cfd",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_ceb05d815b475c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7ae8-31c7-77e0-84fd-9331d4138209",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
