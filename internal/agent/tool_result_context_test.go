@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -88,11 +89,83 @@ func TestToolResultContextRecorderBoundsLargeResults(t *testing.T) {
 		Type: "function",
 		Function: schema.FunctionCall{
 			Name:      "write_file",
-			Arguments: strings.Repeat("x", 20),
+			Arguments: `{"content":"` + strings.Repeat("x", 20) + `"}`,
 		},
 	}}), ToolResultContextPolicy{PreviewChars: 6})
-	if call == nil || len(call.ToolCalls) != 1 || !strings.Contains(call.ToolCalls[0].Function.Arguments, "tool call args truncated") {
-		t.Fatalf("large tool args should be bounded: %#v", call)
+	if call == nil || len(call.ToolCalls) != 1 || !strings.Contains(call.ToolCalls[0].Function.Arguments, "tool_call.args_omitted.v1") {
+		t.Fatalf("large tool args should be replaced with a valid receipt: %#v", call)
+	}
+	if err := validateToolArgumentsJSON(call.ToolCalls[0].Function.Arguments); err != nil {
+		t.Fatalf("retained tool arguments must stay valid JSON: %v", err)
+	}
+}
+
+func TestToolResultContextRecorderSkipsMalformedCallAndResult(t *testing.T) {
+	conversation := &recordedToolContextConversation{
+		policy: ToolResultContextPolicy{Enabled: true, PreviewChars: 100},
+	}
+	recorder := newToolResultContextRecorder(conversation)
+	recorder.RecordAssistantToolCalls(schema.AssistantMessage("", []schema.ToolCall{{
+		ID:   "call-invalid",
+		Type: "function",
+		Function: schema.FunctionCall{
+			Name:      "write_file",
+			Arguments: `{"content":`,
+		},
+	}}), agentEventMetadata{})
+	recorder.RecordToolResult("write_file", "call-invalid", "invalid arguments", agentEventMetadata{})
+
+	if len(conversation.messages) != 0 {
+		t.Fatalf("malformed tool call and result must not persist into future context: %#v", conversation.messages)
+	}
+}
+
+func TestApplyToolResultContextPolicyDropsMalformedLegacyToolPair(t *testing.T) {
+	messages := []*schema.Message{
+		schema.AssistantMessage("", []schema.ToolCall{{
+			ID:   "call-invalid",
+			Type: "function",
+			Function: schema.FunctionCall{
+				Name:      "read_file",
+				Arguments: `{"path":`,
+			},
+		}}),
+		schema.ToolMessage("invalid arguments", "call-invalid", schema.WithToolName("read_file")),
+		schema.UserMessage("继续"),
+	}
+
+	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true, BudgetBytes: 1024, PreviewChars: 100})
+	if len(filtered) != 1 || filtered[0].Role != schema.User || filtered[0].Content != "继续" {
+		t.Fatalf("legacy malformed tool pair must be excluded from the next request: %#v", filtered)
+	}
+}
+
+func TestApplyToolResultContextPolicyUsesValidArgumentsReceipt(t *testing.T) {
+	messages := []*schema.Message{
+		schema.AssistantMessage("", []schema.ToolCall{{
+			ID:   "call-large",
+			Type: "function",
+			Function: schema.FunctionCall{
+				Name:      "read_file",
+				Arguments: `{"path":"` + strings.Repeat("a", 100) + `"}`,
+			},
+		}}),
+		schema.ToolMessage("content", "call-large", schema.WithToolName("read_file")),
+	}
+
+	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true, BudgetBytes: 1024, PreviewChars: 20})
+	if len(filtered) != 2 || len(filtered[0].ToolCalls) != 1 {
+		t.Fatalf("large retained tool pair should remain available: %#v", filtered)
+	}
+	arguments := filtered[0].ToolCalls[0].Function.Arguments
+	if err := validateToolArgumentsJSON(arguments); err != nil {
+		t.Fatalf("retained arguments must be valid JSON: %v", err)
+	}
+	var receipt struct {
+		Schema string `json:"schema"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &receipt); err != nil || receipt.Schema != "tool_call.args_omitted.v1" {
+		t.Fatalf("expected a retained arguments receipt, got %q err=%v", arguments, err)
 	}
 }
 
@@ -223,4 +296,19 @@ func TestToolResultContextKeepsLoreErrorsInsteadOfPositiveReceipt(t *testing.T) 
 	if content != raw {
 		t.Fatalf("failed reads should remain an error instead of becoming a receipt: %q", content)
 	}
+}
+
+type recordedToolContextConversation struct {
+	Conversation
+	messages []*schema.Message
+	policy   ToolResultContextPolicy
+}
+
+func (c *recordedToolContextConversation) AppendContextMessage(msg *schema.Message) error {
+	c.messages = append(c.messages, msg)
+	return nil
+}
+
+func (c *recordedToolContextConversation) ToolResultContextPolicy() ToolResultContextPolicy {
+	return c.policy
 }

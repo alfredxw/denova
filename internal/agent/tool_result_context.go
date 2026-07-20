@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -52,8 +53,9 @@ type toolResultContextConversation interface {
 }
 
 type toolResultContextRecorder struct {
-	conversation toolResultContextConversation
-	policy       ToolResultContextPolicy
+	conversation    toolResultContextConversation
+	policy          ToolResultContextPolicy
+	retainedCallIDs map[string]struct{}
 }
 
 func newToolResultContextRecorder(conversation Conversation) *toolResultContextRecorder {
@@ -78,17 +80,34 @@ func (r *toolResultContextRecorder) RecordAssistantToolCalls(msg *schema.Message
 	}
 	if err := r.conversation.AppendContextMessage(next); err != nil {
 		logAgentContextPersistError("assistant_tool_calls", err)
+		return
+	}
+	if r.retainedCallIDs == nil {
+		r.retainedCallIDs = make(map[string]struct{}, len(next.ToolCalls))
+	}
+	for _, call := range next.ToolCalls {
+		if callID := strings.TrimSpace(call.ID); callID != "" {
+			r.retainedCallIDs[callID] = struct{}{}
+		}
 	}
 }
 
 func (r *toolResultContextRecorder) RecordToolResult(toolName, toolCallID, content string, meta agentEventMetadata) {
-	if r == nil || r.conversation == nil || meta.SubAgent || isPlanProtocolToolName(toolName) || !retainToolContextAcrossTurns(toolName, r.policy) {
+	if r == nil || r.conversation == nil || meta.SubAgent || isPlanProtocolToolName(toolName) || !retainToolContextAcrossTurns(toolName, r.policy) || !r.retainedCall(toolCallID) {
 		return
 	}
 	msg := schema.ToolMessage(toolResultContextContent(toolName, toolCallID, content, r.policy), toolCallID, schema.WithToolName(toolName))
 	if err := r.conversation.AppendContextMessage(msg); err != nil {
 		logAgentContextPersistError("tool_result", err)
 	}
+}
+
+func (r *toolResultContextRecorder) retainedCall(toolCallID string) bool {
+	if r == nil {
+		return false
+	}
+	_, ok := r.retainedCallIDs[strings.TrimSpace(toolCallID)]
+	return ok
 }
 
 func logAgentContextPersistError(kind string, err error) {
@@ -105,19 +124,47 @@ func assistantToolContextMessage(msg *schema.Message, policy ToolResultContextPo
 			continue
 		}
 		next := call
-		next.Function.Arguments = limitContextText(next.Function.Arguments, policy.PreviewChars, fmt.Sprintf(
-			"\n[Denova tool call args truncated for context]\ntool_name: %s\ntool_call_id: %s\noriginal_chars: %d\npreview_chars: %d",
-			next.Function.Name,
-			next.ID,
-			countRunes(next.Function.Arguments),
-			policy.PreviewChars,
-		))
+		arguments, valid := retainedToolCallArguments(next.Function.Arguments, next.Function.Name, next.ID, policy.PreviewChars)
+		if !valid {
+			continue
+		}
+		next.Function.Arguments = arguments
 		calls = append(calls, next)
 	}
 	if len(calls) == 0 {
 		return nil
 	}
 	return schema.AssistantMessage("", calls)
+}
+
+func retainedToolCallArguments(arguments, toolName, toolCallID string, previewChars int) (string, bool) {
+	arguments = strings.TrimSpace(arguments)
+	if err := validateToolArgumentsJSON(arguments); err != nil {
+		return "", false
+	}
+	if arguments == "" {
+		return "{}", true
+	}
+	if previewChars <= 0 || countRunes(arguments) <= previewChars {
+		return arguments, true
+	}
+	receipt, err := json.Marshal(struct {
+		Schema        string `json:"schema"`
+		ToolName      string `json:"tool_name"`
+		ToolCallID    string `json:"tool_call_id"`
+		OriginalChars int    `json:"original_chars"`
+		Note          string `json:"note"`
+	}{
+		Schema:        "tool_call.args_omitted.v1",
+		ToolName:      strings.TrimSpace(toolName),
+		ToolCallID:    strings.TrimSpace(toolCallID),
+		OriginalChars: countRunes(arguments),
+		Note:          "Original tool arguments were omitted from retained context. Re-run the tool if exact arguments are required.",
+	})
+	if err != nil {
+		return "", false
+	}
+	return string(receipt), true
 }
 
 func toolResultContextContent(toolName, toolCallID, content string, policy ToolResultContextPolicy) string {
