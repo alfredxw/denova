@@ -145,8 +145,9 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 	if ctx.SubmitTurnResult != nil {
 		desc := strings.Join([]string{
 			"在完整玩家可见正文已经输出后，通过一个入口提交本回合 state_changes 与 choices。首次调用同时提供两者；工具返回 ready=false 时，只重交 retry_modules 指定的字段，已 accepted 的模块会保留。ready=true 后立即结束，不要重复或改写正文。",
-			"如果当前回合提供 initialize_story_state_schema，必须在输出正文前先让结构草案 finalized=true；本工具不会代替结构初始化。",
-			"state_changes 必须直接提交原生 JSON array，禁止把数组 JSON.stringify 后作为 string；单次最多 24 项。每一项严格三选一：replace={op,actor_id,field_id,value,可选 subpath}，delta={op,actor_id,field_id,value,可选 subpath}，create={op,actor_id,template_id,可选 name/role/description/initial_state}。create 的 schema 中不存在 field_id、subpath 或 value；新 Actor 的初始字段全部合并进同一个 create.initial_state，不要先对尚未创建的 Actor 连续 replace。只填写正文中确实发生变化的字段，使用 Actor 状态手册中的精确 ID；不要重复 RuleResolution 已消费的字段。",
+			"如果当前回合提供 initialize_story_state_schema，必须在输出正文前先让结构草案 finalized=true；首次 state_changes 必须一次填写其回执 initialization_guide.required_state_changes 列出的全部字段，连同正文已经确定的其它主要状态，不能用空字符串、未设置、未知或待定占位。本工具不会代替结构初始化。",
+			"state_changes 必须直接提交原生 JSON array，禁止把数组 JSON.stringify 后作为 string；单次最多 24 项。每一项严格三选一：replace={op,actor_id,field_id,value,可选 subpath}，delta={op,actor_id,field_id,value,可选 subpath}，create={op,actor_id,template_id,name,可选 role/description/initial_state}。create 的 schema 中不存在 field_id、subpath 或 value；新 Actor 的初始字段全部合并进同一个 create.initial_state，不要先对尚未创建的 Actor 连续 replace。只填写正文中确实发生变化的字段，使用 Actor 状态手册中的精确 ID；不要重复 RuleResolution 已消费的字段。",
+			"新建 Actor 时 name 必填，actor_id 与 name 必须完全相同，直接使用故事语言中的角色名称，不得另造英文、拼音或 slug ID；引用已有 Actor 时逐字复用状态手册中的现有 actor_id。",
 			"story_context 每回合至少 replace actor_id=story、field_id=当前事件；当前详细地点尚未初始化或正文确定地点变化时，同时 replace 当前详细地点。没有变化的其他字段不要写空值。",
 			"choices 必须与已输出正文结尾一致，并提供当前故事配置要求的恰好数量个不同建议；只有 prepare_interactive_turn 返回 terminal_candidate 的终局回合才提交空数组。",
 			"模块被 rejected 时修复同一批原定状态事实，不要通过删除已在正文成立的重要角色、能力、物品、地点或局势来绕过校验；可以合并同一新 Actor 的 initial_state 或压缩冗余描述。",
@@ -189,9 +190,9 @@ type submitInteractiveTurnDeltaChangeSchema struct {
 
 type submitInteractiveTurnCreateChangeSchema struct {
 	Op           string         `json:"op" jsonschema:"required,enum=create" jsonschema_description:"固定为 create。"`
-	ActorID      string         `json:"actor_id" jsonschema:"required" jsonschema_description:"新 Actor 的稳定 ASCII ID。"`
+	ActorID      string         `json:"actor_id" jsonschema:"required" jsonschema_description:"直接使用故事语言中的角色名称，并与 name 完全相同。"`
 	TemplateID   string         `json:"template_id" jsonschema:"required" jsonschema_description:"新 Actor 可用模板中的精确 Template ID。"`
-	Name         string         `json:"name,omitempty" jsonschema_description:"新 Actor 的用户可见名称。"`
+	Name         string         `json:"name" jsonschema:"required" jsonschema_description:"故事语言中的角色名称，必须与 actor_id 完全相同。"`
 	Role         string         `json:"role,omitempty" jsonschema_description:"新 Actor 在当前故事中的定位。"`
 	Description  string         `json:"description,omitempty" jsonschema_description:"新 Actor 的简短说明。"`
 	InitialState map[string]any `json:"initial_state,omitempty" jsonschema:"maxProperties=64" jsonschema_description:"所有可靠初始字段值；key 必须是所选模板中的精确 Field ID。"`

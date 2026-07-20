@@ -76,8 +76,8 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 			return CompiledTurnStateUpdates{}, stateUpdateError(index, "invalid_state_path", update.Path, "schema-bound JSON Pointer", update.Path, err)
 		}
 		actorID := segments[0]
-		if actorID == "" || normalizeActorStateID(actorID) != actorID {
-			return CompiledTurnStateUpdates{}, stateUpdateError(index, "invalid_actor_id", update.Path, "stable ASCII actor_id", actorID, fmt.Errorf("状态路径必须使用稳定 actor_id，不能使用展示名称: %q", actorID))
+		if actorID == "" || normalizeStatePanelActorID(actorID) != actorID {
+			return CompiledTurnStateUpdates{}, stateUpdateError(index, "invalid_actor_id", update.Path, "normalized actor_id", actorID, fmt.Errorf("状态路径包含无效 actor_id: %q", actorID))
 		}
 		if err := validateStateUpdateValueSize(update.Value); err != nil {
 			return CompiledTurnStateUpdates{}, stateUpdateError(index, "state_value_too_large", update.Path, fmt.Sprintf("at most %d JSON bytes", maxTurnStateUpdateValueBytes), stateUpdateActual(update.Value), err)
@@ -94,6 +94,13 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 			patch, err := actorPatchFromCreateUpdate(actorID, update.Value)
 			if err != nil {
 				return CompiledTurnStateUpdates{}, stateUpdateError(index, "invalid_actor_create", update.Path, "actor create object", stateUpdateActual(update.Value), err)
+			}
+			configuredInitialActor := actorStateInitialActorIndex(system.InitialActors, actorID) >= 0
+			if !configuredInitialActor && (patch.ActorName == "" || normalizeStatePanelActorID(patch.ActorName) != actorID) {
+				return CompiledTurnStateUpdates{}, stateUpdateError(index, "actor_name_id_mismatch", update.Path, "actor_id identical to name", patch.ActorName, fmt.Errorf("新建 Actor 的 actor_id 必须与 name 完全相同，并直接使用故事语言中的角色名称: actor_id=%q name=%q", actorID, patch.ActorName))
+			}
+			if !configuredInitialActor {
+				patch.ActorName = actorID
 			}
 			patch.SourceTurnID = options.SourceTurnID
 			normalized, ops, actorOps, _, _, err := validateActorStatePatch(system, workingState, patch)
@@ -145,6 +152,9 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 				code = "delta_target_not_number"
 			}
 			return CompiledTurnStateUpdates{}, stateUpdateError(index, code, update.Path, stateUpdateExpected(field, segments[2:], update.Op), stateUpdateActual(currentValue), err)
+		}
+		if err := validateStatePanelRecordNameIDs(fieldID, nextValue); err != nil {
+			return CompiledTurnStateUpdates{}, stateUpdateError(index, "state_record_name_id_mismatch", update.Path, "record ID identical to its name", stateUpdateActual(nextValue), err)
 		}
 		if reflect.DeepEqual(currentValue, nextValue) {
 			continue
@@ -321,7 +331,7 @@ func stateUpdateConflictsWithRuleResolution(options TurnStateUpdateCompileOption
 		return false
 	}
 	for _, change := range normalizeTurnStateChanges(options.RuleResolution.Result.StateChanges) {
-		if normalizeActorStateID(change.ActorID) == actorID && actorStateFieldNameKey(change.FieldID) == actorStateFieldNameKey(fieldID) {
+		if normalizeStatePanelActorID(change.ActorID) == actorID && actorStateFieldNameKey(change.FieldID) == actorStateFieldNameKey(fieldID) {
 			return true
 		}
 	}

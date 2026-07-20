@@ -149,7 +149,7 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		review.Requirement = trimBytes(review.Requirement, maxInteractiveTextBytes)
 		review.EvidenceKind = strings.TrimSpace(review.EvidenceKind)
 		review.ValuePolicy = strings.TrimSpace(review.ValuePolicy)
-		review.ActorID = normalizeActorStateID(review.ActorID)
+		review.ActorID = normalizeStatePanelActorID(review.ActorID)
 		review.ExpectedType = strings.TrimSpace(review.ExpectedType)
 		review.Decision = strings.TrimSpace(review.Decision)
 		review.TemplateID = normalizeActorStateID(review.TemplateID)

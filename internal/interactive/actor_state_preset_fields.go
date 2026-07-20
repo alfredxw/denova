@@ -89,7 +89,7 @@ func storyContextStateTemplate(spec actorStatePresetSpec) ActorStateTemplate {
 		textStateField("scene.current_time", "当前时间", "按世界观记录当前日期、时段或阶段；只保留对行动有意义的精度。", "visible", "当前场景", "inline"),
 		textStateField("scene.location", "当前详细地点", "用一个字段表达当前具体地点及必要的上级范围，不再拆分大区、区域和房间。", "visible", "当前场景", "inline"),
 		textStateField("scene.current_event", "当前事件", "合并记录正在发生的事件、直接压力和下一步必须面对的问题。", "visible", "当前场景", "block"),
-		listStateField("scene.present_actors", "在场角色", "使用稳定 Actor ID，只保留当前可感知或正在互动的角色。", "visible", "当前场景"),
+		listStateField("scene.present_actors", "在场角色", "使用 Actor 状态中已有的精确 ID；新建 Actor 直接使用故事语言中的角色名称，Actor 名称即 ID。只保留当前可感知或正在互动的角色。", "visible", "当前场景"),
 		textStateFieldWithInstruction("scene.continuation_hook", "可承接钩子", "保留一个下一段可以直接承接的未完成动作、对话、发现或迫近威胁；它不是剧情总结或选项列表。", "visible", "当前场景", "block", "只写一个当前最直接的承接点。原钩子已经兑现、失效或被更强的新钩子替代时更新；使用具体对象与动作，不写泛泛的“继续探索”或多个备选项。"),
 		textStateField("world.situation", "世界局势", "合并记录当前阶段、环境变化、跨场景威胁与倒计时；只写仍会影响后续剧情的变化。", "spoiler", "世界状态", "block"),
 		objectStateFieldWithInstruction("tasks.current", "当前任务", "记录已经成立且仍需推进的任务。", "visible", "当前任务", questRecordUpdateInstruction(spec)),
@@ -125,15 +125,15 @@ func actorOwnedRecordFields(spec actorStatePresetSpec, abilityLimit, itemLimit, 
 }
 
 func abilityRecordUpdateInstruction(spec actorStatePresetSpec, limit int) string {
-	return fmt.Sprintf("键使用稳定 ability ID；每项只写名称、类型、掌握或当前状态、效果、代价与限制、来源，最多 %d 条。删除记录时 replace 整个 object。%s", limit, spec.AbilityGuidance)
+	return fmt.Sprintf("%s每项只写名称、类型、掌握或当前状态、效果、代价与限制、来源，最多 %d 条。删除记录时 replace 整个 object。%s", statePanelRecordNameIDInstruction("名称"), limit, spec.AbilityGuidance)
 }
 
 func itemRecordUpdateInstruction(spec actorStatePresetSpec, limit int) string {
-	return fmt.Sprintf("键使用稳定 item ID；当前 Actor 即持有者；每项只写名称、类型、数量或状态、作用、限制与来源，最多 %d 条。物品转移时同轮从原持有者移除并写入新持有者；删除记录时 replace 整个 object。%s", limit, spec.ItemGuidance)
+	return fmt.Sprintf("%s当前 Actor 即持有者；每项只写名称、类型、数量或状态、作用、限制与来源，最多 %d 条。物品转移时同轮从原持有者移除并写入新持有者；删除记录时 replace 整个 object。%s", statePanelRecordNameIDInstruction("名称"), limit, spec.ItemGuidance)
 }
 
 func relationshipRecordUpdateInstruction(spec actorStatePresetSpec, limit int, scope string) string {
-	instruction := fmt.Sprintf("键使用目标 Actor ID 或 faction ID；只表示当前 Actor 对目标的单向关系，不自动镜像；每项只写关系类型、阶段、好感度、当前态度、边界或承诺、主要矛盾，最多 %d 条。好感度区间：%s 普通同场或闲聊不自动增加；删除记录时 replace 整个 object。%s", limit, actorStateFavorabilityBands, spec.RelationshipGuidance)
+	instruction := fmt.Sprintf("键使用目标 Actor 或势力的精确 ID；新建目标直接使用故事语言中的名称，目标 Actor 或势力的名称即 ID，不得翻译成英文、转写拼音或生成 slug。只表示当前 Actor 对目标的单向关系，不自动镜像；每项只写关系类型、阶段、好感度、当前态度、边界或承诺、主要矛盾，最多 %d 条。好感度区间：%s 普通同场或闲聊不自动增加；删除记录时 replace 整个 object。%s", limit, actorStateFavorabilityBands, spec.RelationshipGuidance)
 	if scope != "" {
 		instruction += " " + scope
 	}
@@ -141,15 +141,19 @@ func relationshipRecordUpdateInstruction(spec actorStatePresetSpec, limit int, s
 }
 
 func questRecordUpdateInstruction(spec actorStatePresetSpec) string {
-	return "键使用稳定 quest ID；每项只写任务名称、类型、状态、目标与进度、时限、明确的奖惩和关联对象 ID，最多 8 条。任务结算且结果已进入正文后删除；删除记录时 replace 整个 object。" + spec.QuestGuidance
+	return statePanelRecordNameIDInstruction("任务名称") + "每项只写任务名称、类型、状态、目标与进度、时限、明确的奖惩和关联对象名称/ID，最多 8 条；关联对象引用已有状态面板名称/ID。任务结算且结果已进入正文后删除；删除记录时 replace 整个 object。" + spec.QuestGuidance
 }
 
 func locationRecordUpdateInstruction(spec actorStatePresetSpec) string {
-	return "键使用稳定 location ID；每项只写地点名称、类型、所属范围、当前状态、风险、关键特征与通路，最多 16 条。风险使用低、中、高、致命等文字等级，不保存画布坐标；删除记录时 replace 整个 object。" + spec.LocationGuidance
+	return statePanelRecordNameIDInstruction("地点名称") + "每项只写地点名称、类型、所属范围、当前状态、风险、关键特征与通路，最多 16 条。风险使用低、中、高、致命等文字等级，不保存画布坐标；删除记录时 replace 整个 object。" + spec.LocationGuidance
 }
 
 func factionRecordUpdateInstruction(spec actorStatePresetSpec) string {
-	return "键使用稳定 faction ID；每项只写势力名称、类型、核心特征、存续状态、对主角立场、主要范围和当前行动，最多 8 条。删除记录时 replace 整个 object。" + spec.FactionGuidance
+	return statePanelRecordNameIDInstruction("势力名称") + "每项只写势力名称、类型、核心特征、存续状态、对主角立场、主要范围和当前行动，最多 8 条。删除记录时 replace 整个 object。" + spec.FactionGuidance
+}
+
+func statePanelRecordNameIDInstruction(nameField string) string {
+	return fmt.Sprintf("键直接使用故事语言中的“%s”，名称即 ID；不得翻译成英文、转写拼音或生成 slug。", nameField)
 }
 
 func actorPanelAndStateFields(spec actorStatePresetSpec) []ActorStateField {

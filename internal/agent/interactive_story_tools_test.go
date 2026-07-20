@@ -82,6 +82,19 @@ func TestInteractiveTurnToolsExposeOneStructuredSubmissionTool(t *testing.T) {
 			if _, exists := variant.Properties.Get("initial_state"); !exists {
 				t.Fatalf("create variant must expose initial_state: %#v", variant)
 			}
+			if _, exists := variant.Properties.Get("name"); !exists {
+				t.Fatalf("create variant must expose name: %#v", variant)
+			}
+			nameRequired := false
+			for _, required := range variant.Required {
+				if required == "name" {
+					nameRequired = true
+					break
+				}
+			}
+			if !nameRequired {
+				t.Fatalf("create variant must require name so it can equal actor_id: %#v", variant)
+			}
 		default:
 			t.Fatalf("unexpected state change variant op %q: %#v", op, variant)
 		}
@@ -89,8 +102,11 @@ func TestInteractiveTurnToolsExposeOneStructuredSubmissionTool(t *testing.T) {
 	if !variants["replace"] || !variants["delta"] || !variants["create"] {
 		t.Fatalf("state change variants incomplete: %#v", variants)
 	}
-	if !strings.Contains(info.Desc, "JSON.stringify") || !strings.Contains(info.Desc, "同一个 create.initial_state") || !strings.Contains(info.Desc, "不要通过删除") {
+	if !strings.Contains(info.Desc, "JSON.stringify") || !strings.Contains(info.Desc, "同一个 create.initial_state") || !strings.Contains(info.Desc, "不要通过删除") || !strings.Contains(info.Desc, "actor_id 与 name 必须完全相同") {
 		t.Fatalf("submission tool must explain native arrays and fact-preserving retries: %s", info.Desc)
+	}
+	if strings.Contains(parameterText, "ASCII ID") {
+		t.Fatalf("submission tool must not ask for ASCII Actor IDs: %s", parameterText)
 	}
 
 	turnTool, ok := tools[0].(*submitInteractiveTurnTool)

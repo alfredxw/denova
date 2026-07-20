@@ -171,9 +171,20 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
     await reloadStories(story)
   }
 
-  const handleDeleteStory = async (storyId: string) => {
-    await deleteInteractiveStory(storyId)
+  const handleDeleteStories = async (storyIds: string[]) => {
+    const uniqueStoryIds = Array.from(new Set(storyIds.filter(Boolean)))
+    if (uniqueStoryIds.length === 0) return
+
+    console.info('[interactive-layout] 开始删除故事线', { count: uniqueStoryIds.length, storyIds: uniqueStoryIds })
+    const results = await Promise.allSettled(uniqueStoryIds.map((storyId) => deleteInteractiveStory(storyId)))
     await reloadStories()
+    const failed = results.flatMap((result, index) => result.status === 'rejected' ? [{ storyId: uniqueStoryIds[index], reason: result.reason }] : [])
+    if (failed.length > 0) {
+      console.error('[interactive-layout] 删除故事线失败', { requested: uniqueStoryIds.length, failed })
+      const reason = failed[0].reason
+      throw reason instanceof Error ? reason : new Error(String(reason))
+    }
+    console.info('[interactive-layout] 故事线删除完成', { count: uniqueStoryIds.length })
   }
 
   const handleStorySetupUpdate = async (input: StoryCreateInput) => {
@@ -293,7 +304,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
       onStorySelect={setCurrentStoryId}
       onStoryCreate={handleCreateStory}
       onStorySetupUpdate={handleStorySetupUpdate}
-      onStoryDelete={handleDeleteStory}
+      onStoryDelete={handleDeleteStories}
       onDirectorChange={handleDirectorChange}
       onReplyTargetCharsChange={handleReplyTargetCharsChange}
       onImageSettingsChange={handleImageSettingsChange}
@@ -320,7 +331,7 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
               ) : submode === 'director' ? (
                 <DirectorBackstage storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />
               ) : submode === 'timeline' ? (
-                <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} onSelect={setCurrentStoryId} onCreate={() => undefined} onDelete={handleDeleteStory} hideCreate />} />
+                <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} onSelect={setCurrentStoryId} onCreate={() => undefined} onDeleteStories={handleDeleteStories} hideCreate />} />
               ) : isMobile ? (
                 <MobilePaneHost
                   panes={[{

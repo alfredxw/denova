@@ -427,7 +427,7 @@ func TestDisplayToolArgsDeltasArePersistedOnFinalResult(t *testing.T) {
 	}
 }
 
-func TestDisplayToolArgsPreviewIsBounded(t *testing.T) {
+func TestDisplayToolArgsArePersistedWithoutTruncation(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)
 	if err != nil {
@@ -440,7 +440,7 @@ func TestDisplayToolArgsPreviewIsBounded(t *testing.T) {
 	if err := sess.AppendDisplayEvent(DisplayEvent{ID: "call-1", Role: "tool_call", Name: "write_file", Content: "write_file", Status: "running"}); err != nil {
 		t.Fatal(err)
 	}
-	largeArgs := `{"path":"chapters/ch01.md","content":"` + strings.Repeat("长内容", displayToolArgsPreviewBytes) + `"}`
+	largeArgs := `{"path":"chapters/ch01.md","content":"` + strings.Repeat("长内容", 20*1024) + `工具输入尾部必须完整恢复"}`
 	if err := sess.AppendDisplayToolArgs("call-1", "write_file", largeArgs); err != nil {
 		t.Fatal(err)
 	}
@@ -460,11 +460,8 @@ func TestDisplayToolArgsPreviewIsBounded(t *testing.T) {
 	if len(history) != 1 {
 		t.Fatalf("历史应只包含工具展示事件: %#v", history)
 	}
-	if len(history[0].Args) > displayToolArgsPreviewBytes {
-		t.Fatalf("工具参数预览应有硬上限: %d", len(history[0].Args))
-	}
-	if !strings.HasSuffix(history[0].Args, displayToolArgsTruncatedHint) {
-		t.Fatalf("超长工具参数应标记为已截断: %q", history[0].Args[len(history[0].Args)-80:])
+	if history[0].Args != largeArgs {
+		t.Fatalf("工具参数应完整持久化: got_bytes=%d want_bytes=%d", len(history[0].Args), len(largeArgs))
 	}
 }
 

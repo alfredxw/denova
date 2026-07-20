@@ -247,7 +247,7 @@ func validateActorStateOp(op ActorStateOp) error {
 	default:
 		return fmt.Errorf("未知 Actor 状态操作: %q", op.Op)
 	}
-	if normalizeActorStateID(op.ActorID) == "" {
+	if normalizeStatePanelActorID(op.ActorID) == "" {
 		return fmt.Errorf("Actor 状态操作缺少 actor_id")
 	}
 	if normalizeActorStateFieldName(op.FieldID) == "" {

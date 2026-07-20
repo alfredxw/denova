@@ -1,8 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ContextAnalysis, ContextAnalysisPart } from '@/lib/api'
 import { ContextAnalysisDialog } from './ContextAnalysisDialog'
+
+const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
 
 describe('ContextAnalysisDialog', () => {
   it('renders a single-part final message group without a duplicate nested card', async () => {
@@ -69,6 +71,56 @@ describe('ContextAnalysisDialog', () => {
     expect(screen.getByText('我要前进')).toBeInTheDocument()
     expect(screen.getByText('助手回应')).toBeInTheDocument()
   })
+
+  it('copies the full model context and the exact raw content of one message group', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    const currentTurnContent = '[互动输入]\n用户本回合行动：\n我推开门'
+    render(
+      <ContextAnalysisDialog
+        open
+        loading={false}
+        error={null}
+        analysis={analysisFixture([
+          partFixture({
+            id: 'current_turn',
+            source: '本轮互动指令',
+            title: '本轮互动指令与动态上下文',
+            role: 'user',
+            kind: 'body',
+            content: currentTurnContent,
+            parts: [
+              partFixture({ source: '本轮行动', title: '当前用户行动', content: '我推开门' }),
+              partFixture({ source: 'agent-brief.md', title: '正文 Agent 简报', content: '守住当前目标' }),
+            ],
+          }),
+        ])}
+        onOpenChange={() => {}}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: '复制全部上下文' }))
+    expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining('[system]\nsystem'))
+    expect(writeText).toHaveBeenLastCalledWith(expect.stringContaining(`[user]\n${currentTurnContent}`))
+
+    await userEvent.click(screen.getByRole('button', { name: '复制本组' }))
+    expect(writeText).toHaveBeenLastCalledWith(currentTurnContent)
+
+    await userEvent.click(screen.getByRole('button', { name: /本轮对话/ }))
+    expect(screen.getByText('正文 Agent 简报')).toBeInTheDocument()
+    const copyPartButtons = screen.getAllByRole('button', { name: '复制片段' })
+    await userEvent.click(copyPartButtons[copyPartButtons.length - 1])
+    expect(writeText).toHaveBeenLastCalledWith('守住当前目标')
+  })
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  if (originalClipboardDescriptor) Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor)
+  else Reflect.deleteProperty(navigator, 'clipboard')
 })
 
 function analysisFixture(contextMessages: ContextAnalysisPart[]): ContextAnalysis {
@@ -107,6 +159,7 @@ function partFixture(input: Partial<ContextAnalysisPart>): ContextAnalysisPart {
     tool_call_id: input.tool_call_id || '',
     content,
     note: input.note || '',
+    parts: input.parts,
     bytes: input.bytes ?? content.length,
     chars: input.chars ?? content.length,
   }

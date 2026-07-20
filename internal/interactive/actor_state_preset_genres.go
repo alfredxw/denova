@@ -90,7 +90,7 @@ func apocalypseActorStatePresetSpec() actorStatePresetSpec {
 		},
 		StoryFields: []ActorStateField{
 			textStateField("apocalypse.situation", "灾变与生存局势", "合并记录灾变类型、感染或变异扩散、基础设施、区域污染和跨地点资源压力。", "spoiler", "题材状态", "block"),
-			objectStateFieldWithInstruction("apocalypse.base", "基地状态", "基地存在时记录其当前运行状态；未建立基地时保持空 object。", "visible", "题材状态", "object 只写基地名称与地点ID、存续与安全状态、人员、关键储备、设施能力、当前威胁和紧急需求。安全状态使用崩溃、危险、勉强、稳定、安全等文字等级；删除基地时 replace 为空 object。"),
+			objectStateFieldWithInstruction("apocalypse.base", "基地状态", "基地存在时记录其当前运行状态；未建立基地时保持空 object。", "visible", "题材状态", "object 只写基地名称与地点名称（名称即 ID）、存续与安全状态、人员、关键储备、设施能力、当前威胁和紧急需求。地点名称使用故事语言并与地点记录一致。安全状态使用崩溃、危险、勉强、稳定、安全等文字等级；删除基地时 replace 为空 object。"),
 		},
 		AbilityGuidance:      "类型可使用生存、医疗、维修、战斗、驾驶、侦察、制造或谈判。",
 		ItemGuidance:         "类型可使用武器、弹药、食物、饮水、药品、燃料、工具、防具或任务物；记录数量、耐久、弹药、保质或污染等实际状态。",
@@ -125,7 +125,7 @@ func infiniteFlowActorStatePresetSpec() actorStatePresetSpec {
 		},
 		StoryFields: []ActorStateField{
 			textStateField("infinite_space.status", "轮回空间状态", "记录跨副本长期生效的空间规则、权限体系、结算秩序和当前整体局势。", "spoiler", "题材状态", "block"),
-			objectStateFieldWithInstruction("infinite_space.current_instance", "当前副本", "记录当前副本的阶段、规则、时限和结算条件。", "visible", "题材状态", "object 只写副本名称、类型与难度、当前阶段与区域、剩余时间、任务ID、已确认规则、违规记录、核心威胁、结算和逃离条件。稳定程度使用稳定、波动、崩坏等文字状态；副本结算后 replace 为空 object。"),
+			objectStateFieldWithInstruction("infinite_space.current_instance", "当前副本", "记录当前副本的阶段、规则、时限和结算条件。", "visible", "题材状态", "object 只写副本名称、类型与难度、当前阶段与区域、剩余时间、任务名称（名称即 ID）、已确认规则、违规记录、核心威胁、结算和逃离条件。任务名称使用故事语言并与当前任务记录一致。稳定程度使用稳定、波动、崩坏等文字状态；副本结算后 replace 为空 object。"),
 		},
 		AbilityGuidance:      "类型可使用主动技能、被动技能、血统、天赋、临时能力或职业能力；记录次数、冷却、积分代价和规则限制等实际存在的约束。",
 		ItemGuidance:         "类型可使用道具、消耗品、诅咒物、线索物、兑换物、任务物或装备；记录剩余次数、绑定、污染和诅咒等实际状态。",

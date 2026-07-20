@@ -288,7 +288,7 @@ func applyStateOp(state map[string]any, op StateOp) {
 }
 
 func applyActorStateOp(state map[string]any, op ActorStateOp) {
-	actorID := normalizeActorStateID(op.ActorID)
+	actorID := normalizeStatePanelActorID(op.ActorID)
 	fieldID := normalizeActorStateFieldName(op.FieldID)
 	if actorID == "" || fieldID == "" {
 		return
@@ -335,7 +335,7 @@ func normalizeActorStateOps(ops []ActorStateOp) []ActorStateOp {
 	result := make([]ActorStateOp, 0, len(ops))
 	for _, op := range ops {
 		op.Op = strings.TrimSpace(op.Op)
-		op.ActorID = normalizeActorStateID(op.ActorID)
+		op.ActorID = normalizeStatePanelActorID(op.ActorID)
 		op.FieldID = normalizeActorStateFieldName(op.FieldID)
 		op.Reason = trimBytes(op.Reason, maxInteractiveTextBytes)
 		op.SourceTurnID = trimBytes(op.SourceTurnID, 128)

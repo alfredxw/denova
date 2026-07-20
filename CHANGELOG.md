@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 上下文分析器新增全上下文、SystemPrompt 区、消息组与来源片段的一键复制；游戏模式的“本轮互动指令与动态上下文”会在保留模型实际收到的完整原文同时，继续按本轮行动、导演本轮规则、`agent-brief.md`、`StoryDirector`、Actor 状态手册、动态策略等来源展开。
+- Context Analysis now supports one-click copying for the full context, the SystemPrompt section, message groups, and individual source parts. In Game Mode, the current-turn instruction and dynamic context retain the exact model-visible message while expanding into sources such as the current action, turn-specific director rules, `agent-brief.md`, `StoryDirector`, the Actor state guide, and dynamic strategy prompts.
+- 游戏模式的故事线选择器新增批量删除：可在同一面板中多选或全选故事线，查看受影响清单后统一确认删除；操作支持中英文、明暗主题和窄屏布局。
+- The Game Mode story picker now supports batch deletion: select multiple or all stories in one panel, review the affected list, and confirm once, with bilingual, light/dark, and narrow-screen support.
 - 游戏模式的新故事线配置新增故事级“状态结构”策略：可选择“按模板动态适配”“固定使用模板”或“为故事动态生成”，并在同一区域选择基础状态模板；配置支持中英文、明暗主题与自适应布局。
 - New Game Mode story setup adds a story-level State Schema policy with Adapt a Template, Use a Fixed Template, and Generate for This Story modes, plus an integrated base-template picker with bilingual, theme-aware, adaptive UI.
 - 状态模板字段新增可选的 `group` 与 `display` 展示提示，状态结构树按“模板 → 分组 → 字段”展示；状态面板新增“自定义布局”，可通过鼠标或键盘拖动分区和字段、跨分区移动字段、在窄屏使用方向按钮并恢复默认。布局按“故事 + 模板”保存在本地 UI 偏好中，同模板 Actor 共享且不会进入模型上下文；Schema 字段数组仅作为兜底顺序，旧 Beta `order` / `display_groups` 输入会被忽略。
@@ -56,6 +60,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 状态面板中的名称型记录现在统一“名称即 ID”：新建 Actor、技能、物品、任务、地点与势力直接使用故事语言中的名称，不再生成英文、拼音或 slug 标识；回合提交会拒绝 Actor `actor_id/name` 或对象记录键/名称不一致的数据并要求重试。已有故事状态不会被自动改写，后续引用仍逐字使用现有 ID。
+- Named state-panel records now consistently use the visible name as the ID: newly created Actors, abilities, items, quests, locations, and factions use the story-language name directly instead of an English, transliterated, or slug identifier. Turn submission rejects mismatched Actor `actor_id`/`name` or object-key/name pairs and requests a retry. Existing story state is not rewritten automatically, and existing IDs remain exact references.
+- 游戏模式正文后的状态面板会预先挂载全部 Actor 与世界页签内容，切换页签不再因首次加载重置消息区滚动；展开全部会保持预览分区在原位并将其余分区追加在后，切换页签、展开或折叠等直接查看操作也不会再触发自动锁底。
+- The state panel after Game Mode prose now mounts every Actor and World tab up front, preventing first-load scroll resets when switching tabs. Expand All keeps preview sections in place and appends the remaining sections, while direct viewing actions such as switching, expanding, or collapsing no longer trigger bottom-following.
+- 游戏新故事开局会按独立变化边界审查状态结构，氧气、完整度、警戒值和倒计时等资源不再被通用叙事字段错误覆盖；结构工具在一次 finalize 回执中给出精确的初值清单，首个 `submit_interactive_turn` 会原子校验所有可写初始字段均有具体值。开局结构项若误用可唯一映射的初始 Actor ID，会安全归一化并始终保存规范 Template ID，避免 `story` / `story_context` 混淆触发无意义重试。
+- New Game openings now review state schemas by independent change boundaries, so resources such as oxygen, integrity, alert levels, and countdowns are no longer hidden in generic narrative fields. The schema tool returns an exact initialization checklist in its first finalized receipt, and the first `submit_interactive_turn` atomically verifies that every writable initial field has a concrete value. Opening schema items that use an unambiguously mapped initial Actor ID are safely canonicalized and always persist the canonical Template ID, avoiding pointless `story` / `story_context` retries.
+- 游戏 Agent 默认仍关闭供应商扩展 thinking（可在 Agents 配置中显式开启），但只要 Provider 实际返回 thinking，前台就会逐帧原样展示并完整持久化；简短规划与意图分析只通过提示词约束，不再由输出链路截断或改写。工具输入也移除了非流式 200 字节、会话恢复 32 KiB、Plan 展示 32 KiB/12,000 字符和写文件流式预览 500 字符等隐式上限，展开、完成及恢复时均保留完整原文；仅下一轮模型上下文中的副本继续按独立策略保持有界。
+- The Game Agent still disables provider-specific extended thinking by default, with an explicit Agents override, but any thinking actually returned by the provider is now streamed verbatim and persisted in full. Concise planning and intent analysis are guided only by the prompt rather than output rewriting. Tool inputs also no longer have the implicit 200-byte non-streaming, 32 KiB session/Plan, 12,000-character Plan-card, or 500-character live write-preview display limits; expanded, completed, and restored views retain the full original input, while the separate copy retained for the next model turn remains bounded by its context policy.
 - 游戏首回合的状态结构与回合提交工具现在提供开局来源、证据类型、字段类型、决策枚举及列表上限的严格 schema；`state_changes` 明确要求原生 JSON 数组并对合法的单层字符串编码数组做有界兼容，重试提示会保留正文已经成立的状态事实，减少反复工具报错和状态丢失。
 - Opening Game turns now expose strict schemas for source provenance, evidence kinds, field types, decisions, and list bounds. `state_changes` explicitly requires a native JSON array while tolerating one valid string-encoded array layer, and retry guidance preserves state facts already established in prose to reduce repeated tool failures and dropped state.
 - 状态预设编辑器遇到“面板/状态”这类嵌套 object 默认值时改用 JSON 编辑，浅层 object 仍保留结构化编辑，不再把嵌套内容显示或误写为 `[object Object]`。

@@ -188,7 +188,7 @@ func normalizeRuleStateConsumptionPointer(value *RuleStateConsumption) *RuleStat
 	}
 	warnings := make([]RuleStateConsumptionWarning, 0, len(next.Warnings))
 	for _, warning := range next.Warnings {
-		warning.ActorID = normalizeActorStateID(warning.ActorID)
+		warning.ActorID = normalizeStatePanelActorID(warning.ActorID)
 		warning.FieldID = normalizeActorStateFieldName(warning.FieldID)
 		warning.Reason = trimBytes(warning.Reason, 1024)
 		if warning.ActorID == "" && warning.FieldID == "" && warning.Reason == "" {

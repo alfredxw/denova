@@ -16,12 +16,12 @@ const turnSubmissionStateChangesField = "state_changes"
 // Pointer; the backend compiles this shape to the persisted StateUpdate.
 type TurnStateChangeInput struct {
 	Op           string         `json:"op" jsonschema:"enum=replace,enum=delta,enum=create" jsonschema_description:"replace 写入字段完整新值，delta 增减已有数值，create 创建新的 Actor。"`
-	ActorID      string         `json:"actor_id" jsonschema_description:"Actor 状态手册中反引号标记的稳定 Actor ID；create 时填写新的稳定 ASCII ID。"`
+	ActorID      string         `json:"actor_id" jsonschema_description:"引用已有 Actor 时逐字使用状态手册中的 ID；create 时直接使用故事语言中的角色名称，并与 name 完全相同。"`
 	FieldID      string         `json:"field_id,omitempty" jsonschema_description:"replace/delta 必填，逐字使用 Actor 状态手册中的字段 ID。"`
 	Subpath      []string       `json:"subpath,omitempty" jsonschema_description:"仅 object 字段的嵌套更新使用；按层级填写字符串段，不要自行拼接路径字符串。"`
 	Value        any            `json:"value,omitempty" jsonschema_description:"replace 的完整新值或 delta 的数值变化量；类型必须匹配字段说明。"`
 	TemplateID   string         `json:"template_id,omitempty" jsonschema_description:"仅 create 必填，逐字使用新 Actor 可用模板中的 Template ID。"`
-	Name         string         `json:"name,omitempty" jsonschema_description:"仅 create 使用的角色展示名称。"`
+	Name         string         `json:"name,omitempty" jsonschema_description:"create 必填；直接使用故事语言中的角色名称，并与 actor_id 完全相同。"`
 	Role         string         `json:"role,omitempty" jsonschema_description:"仅 create 使用的角色定位。"`
 	Description  string         `json:"description,omitempty" jsonschema_description:"仅 create 使用的简短角色说明。"`
 	InitialState map[string]any `json:"initial_state,omitempty" jsonschema_description:"仅 create 使用；key 必须是所选模板的精确字段 ID。"`
@@ -232,6 +232,9 @@ func stateUpdateFromStructuredInput(change TurnStateChangeInput) (StateUpdate, e
 	case TurnStateUpdateCreate:
 		if change.TemplateID == "" {
 			return StateUpdate{}, fmt.Errorf("create 状态变化缺少 template_id")
+		}
+		if strings.TrimSpace(change.Name) == "" {
+			return StateUpdate{}, fmt.Errorf("create 状态变化缺少 name；新建 Actor 的 name 必须与 actor_id 完全相同")
 		}
 		if change.FieldID != "" || len(change.Subpath) > 0 || change.Value != nil {
 			return StateUpdate{}, fmt.Errorf("create 不能包含 field_id、subpath 或 value")

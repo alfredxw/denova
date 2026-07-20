@@ -78,6 +78,32 @@ func TestInteractiveStoryPromptUsesDirectNarrativeOutputContract(t *testing.T) {
 	}
 }
 
+func TestInteractiveStoryPromptKeepsThinkingToPlanningInsteadOfNarrativeDrafts(t *testing.T) {
+	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{})
+	for _, want := range []string{"thinking", "规划与意图分析", "不要在 thinking 中试写", "完整正文", "完整工具 JSON"} {
+		if !strings.Contains(system, want) {
+			t.Fatalf("interactive system prompt must bound pre-narrative reasoning with %q:\n%s", want, system)
+		}
+	}
+}
+
+func TestInteractiveStoryPromptUsesStatePanelNamesAsIDs(t *testing.T) {
+	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{})
+	turn := InteractiveStoryTurnInstruction("我推开门", "", "")
+	for name, output := range map[string]string{"system": system, "turn": turn} {
+		for _, want := range []string{"actor_id 与 name", "故事语言", "状态面板 object 记录", "完全相同"} {
+			if !strings.Contains(output, want) {
+				t.Fatalf("%s prompt should keep state panel names and IDs identical; missing %q:\n%s", name, want, output)
+			}
+		}
+	}
+	for _, forbidden := range []string{"禁止用角色展示名称代替稳定 ID", "稳定 ASCII ID"} {
+		if strings.Contains(system, forbidden) {
+			t.Fatalf("interactive prompt still asks for opaque state panel IDs %q:\n%s", forbidden, system)
+		}
+	}
+}
+
 func TestInteractiveStoryPromptRequiresStoryContextUpdateEveryTurn(t *testing.T) {
 	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{})
 	turn := InteractiveStoryTurnInstruction("我推开门", "", "")

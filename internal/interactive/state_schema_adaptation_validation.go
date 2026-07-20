@@ -86,7 +86,7 @@ func validateActorStateAdaptationField(field ActorStateField) error {
 
 func validateActorStateRuntimeSchemaOps(target StoryDirectorActorStateSystem, ops []ActorStateRuntimeSchemaOp) error {
 	for index, op := range ops {
-		actorID := normalizeActorStateID(firstNonEmptyString(op.ActorID, op.Actor.ID))
+		actorID := normalizeStatePanelActorID(firstNonEmptyString(op.ActorID, op.Actor.ID))
 		if actorID == "" {
 			return fmt.Errorf("运行时 Actor 操作缺少 actor_id: index=%d", index)
 		}
@@ -112,7 +112,7 @@ func validateActorStateRuntimeSchemaOps(target StoryDirectorActorStateSystem, op
 			return fmt.Errorf("运行时 Actor 操作无效: %s", op.Op)
 		}
 		actor := op.Actor
-		actor.ID = normalizeActorStateID(actor.ID)
+		actor.ID = normalizeStatePanelActorID(actor.ID)
 		if actor.ID == "" {
 			return fmt.Errorf("运行时 Actor %s 的 actor.id 不能为空", actorID)
 		}

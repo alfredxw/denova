@@ -58,10 +58,7 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 		}
 		chunks = append(chunks, frame)
 		if frame.ReasoningContent != "" {
-			if fullThinking != nil && !meta.SubAgent {
-				fullThinking.WriteString(frame.ReasoningContent)
-			}
-			emit(Event{Type: "thinking", Data: meta.appendTo(map[string]interface{}{"content": frame.ReasoningContent})})
+			emitThinkingContent(fullThinking, frame.ReasoningContent, meta, "thinking", emit)
 		}
 		if len(frame.ToolCalls) > 0 {
 			accumulatedToolCalls = mergeToolCalls(accumulatedToolCalls, frame.ToolCalls)
@@ -69,9 +66,8 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 		if isInteractiveRoot && !interactiveContentReclassified && interactiveToolCallsRequireReclassification(accumulatedToolCalls, false) {
 			interactiveContentReclassified = true
 			if interactiveContent.Len() > 0 {
-				emit(Event{Type: interactiveContentReclassifiedEvent, Data: meta.appendTo(map[string]interface{}{
-					"content": interactiveContent.String(),
-				})})
+				emitThinkingContent(fullThinking, interactiveContent.String(), meta, interactiveContentReclassifiedEvent, emit)
+				interactiveContent.Reset()
 			}
 		}
 		if frame.Content != "" {
@@ -80,18 +76,17 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 				content = planParser.Push(frame.Content)
 			}
 			if content != "" {
-				if isInteractiveRoot && acceptInteractiveCandidate {
-					interactiveContent.WriteString(content)
-				} else if isInteractiveRoot {
-					if fullThinking != nil {
-						fullThinking.WriteString(content)
+				if isInteractiveRoot {
+					if acceptInteractiveCandidate && !interactiveContentReclassified {
+						interactiveContent.WriteString(content)
+						emit(Event{Type: "chunk", Data: meta.appendTo(map[string]interface{}{"content": content})})
+					} else {
+						emitThinkingContent(fullThinking, content, meta, "thinking", emit)
 					}
-				} else if !meta.SubAgent {
-					fullContent.WriteString(content)
-				}
-				if isInteractiveRoot && (!acceptInteractiveCandidate || interactiveContentReclassified) {
-					emit(Event{Type: "thinking", Data: meta.appendTo(map[string]interface{}{"content": content})})
 				} else {
+					if !meta.SubAgent {
+						fullContent.WriteString(content)
+					}
 					emit(Event{Type: "chunk", Data: meta.appendTo(map[string]interface{}{"content": content})})
 				}
 			}
@@ -165,9 +160,8 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 	if isInteractiveRoot && !interactiveContentReclassified && interactiveToolCallsRequireReclassification(accumulatedToolCalls, true) {
 		interactiveContentReclassified = true
 		if interactiveContent.Len() > 0 {
-			emit(Event{Type: interactiveContentReclassifiedEvent, Data: meta.appendTo(map[string]interface{}{
-				"content": interactiveContent.String(),
-			})})
+			emitThinkingContent(fullThinking, interactiveContent.String(), meta, interactiveContentReclassifiedEvent, emit)
+			interactiveContent.Reset()
 		}
 	}
 	if acceptInteractiveCandidate {
@@ -232,10 +226,7 @@ func concatStreamingChunks(chunks []*schema.Message) (*schema.Message, error) {
 // processNonStreamingEvent 处理非流式助手消息，输出领域事件。
 func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, toolResultMaxBytes int, meta agentEventMetadata, narrativeReady bool, planParser *planProtocolParser, emit func(Event)) {
 	if mv.Message.ReasoningContent != "" {
-		if fullThinking != nil && !meta.SubAgent {
-			fullThinking.WriteString(mv.Message.ReasoningContent)
-		}
-		emit(Event{Type: "thinking", Data: meta.appendTo(map[string]interface{}{"content": mv.Message.ReasoningContent})})
+		emitThinkingContent(fullThinking, mv.Message.ReasoningContent, meta, "thinking", emit)
 	}
 	if mv.Message.Content != "" {
 		content := mv.Message.Content
@@ -246,10 +237,7 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 			isInteractiveRoot := meta.AgentKind == AgentKindInteractiveStory && !meta.SubAgent
 			isInteractiveThinking := isInteractiveRoot && ((!narrativeReady && fullContent.Len() > 0) || interactiveToolCallsRequireReclassification(mv.Message.ToolCalls, true))
 			if isInteractiveThinking {
-				if fullThinking != nil {
-					fullThinking.WriteString(content)
-				}
-				emit(Event{Type: "thinking", Data: meta.appendTo(map[string]interface{}{"content": content})})
+				emitThinkingContent(fullThinking, content, meta, "thinking", emit)
 			} else {
 				if !meta.SubAgent {
 					fullContent.WriteString(content)
@@ -276,9 +264,6 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 			logToolPath(name, tc.ID, path)
 		}
 		manifest := manifestForToolEvent(name, toolResultMaxBytes)
-		if len(args) > 200 {
-			args = args[:200] + "..."
-		}
 		data := meta.appendTo(map[string]interface{}{
 			"id":                  tc.ID,
 			"name":                name,

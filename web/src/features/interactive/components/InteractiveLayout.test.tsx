@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { InteractiveLayout } from './InteractiveLayout'
 import { useInteractiveStore } from '../stores/interactive-store'
-import { createInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, updateInteractiveStory } from '../api'
+import { createInteractiveStory, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, updateInteractiveStory } from '../api'
 import type { StoryDirector, StorySummary, Teller } from '../types'
 
 vi.mock('@/hooks/useIsMobile', () => ({
@@ -48,6 +48,7 @@ vi.mock('./StoryStage', () => ({
     stories: StorySummary[]
     storyId: string
     onStoryCreate: (input: { title: string; origin?: string; story_teller_id: string; story_director_id?: string; choice_count: number; reply_target_chars?: number }) => Promise<void>
+    onStoryDelete: (storyIds: string[]) => Promise<void>
     onDirectorChange: (directorId: string) => Promise<void>
   }) => (
     <div data-testid="story-stage-probe" data-story-id={props.storyId}>
@@ -63,6 +64,12 @@ vi.mock('./StoryStage', () => ({
         })}
       >
         mock create story
+      </button>
+      <button
+        type="button"
+        onClick={() => void props.onStoryDelete(['st_1', 'st_2'])}
+      >
+        mock delete stories
       </button>
       <button
         type="button"
@@ -89,12 +96,14 @@ beforeEach(() => {
     submode: 'story',
   })
   vi.mocked(createInteractiveStory).mockReset()
+  vi.mocked(deleteInteractiveStory).mockReset()
   vi.mocked(getInteractiveStories).mockReset()
   vi.mocked(getInteractiveTellers).mockReset()
   vi.mocked(getStoryDirectors).mockReset()
   vi.mocked(getInteractiveSnapshot).mockReset()
   vi.mocked(getInteractiveBranches).mockReset()
   vi.mocked(updateInteractiveStory).mockReset()
+  vi.mocked(deleteInteractiveStory).mockResolvedValue(undefined)
   vi.mocked(getInteractiveTellers).mockResolvedValue([])
   vi.mocked(getStoryDirectors).mockResolvedValue([])
   vi.mocked(getInteractiveSnapshot).mockResolvedValue({ story_id: 'st_new', branch_id: 'main', turns: [], state: {} })
@@ -158,6 +167,31 @@ describe('InteractiveLayout story creation', () => {
         story_director_id: 'director-alt',
         story_teller_id: 'alt-style',
       })
+    })
+  })
+
+  it('deletes multiple stories and reloads the story index only once', async () => {
+    vi.mocked(getInteractiveStories)
+      .mockResolvedValueOnce({
+        current_story_id: 'st_1',
+        stories: [story('st_1', '主线'), story('st_2', '黑暗线'), story('st_3', '光明线')],
+      })
+      .mockResolvedValueOnce({
+        current_story_id: 'st_3',
+        stories: [story('st_3', '光明线')],
+      })
+
+    render(<InteractiveLayout workspace="/workspace" />)
+
+    await waitFor(() => expect(screen.getByTestId('story-stage-probe')).toHaveAttribute('data-story-id', 'st_1'))
+    fireEvent.click(screen.getByRole('button', { name: 'mock delete stories' }))
+
+    await waitFor(() => {
+      expect(deleteInteractiveStory).toHaveBeenCalledTimes(2)
+      expect(deleteInteractiveStory).toHaveBeenNthCalledWith(1, 'st_1')
+      expect(deleteInteractiveStory).toHaveBeenNthCalledWith(2, 'st_2')
+      expect(getInteractiveStories).toHaveBeenCalledTimes(2)
+      expect(screen.getByTestId('story-list')).toHaveTextContent('光明线')
     })
   })
 })

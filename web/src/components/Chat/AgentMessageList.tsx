@@ -91,6 +91,7 @@ interface MessageListVirtuosoContext {
   bottomPaddingClassName: string
   bottomPaddingPx?: number
   afterContent?: ReactNode
+  onAfterContentInteraction: () => void
 }
 
 export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, afterContentKey, timelineAttachments = [], messageStyle, collapseTraceGroups = false, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
@@ -135,8 +136,13 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
   )
   const lastPlanCardAnchorKeyRef = useRef<string | null>(null)
   const virtuosoContext = useMemo<MessageListVirtuosoContext>(
-    () => ({ bottomPaddingClassName, bottomPaddingPx, afterContent }),
-    [afterContent, bottomPaddingClassName, bottomPaddingPx],
+    () => ({
+      bottomPaddingClassName,
+      bottomPaddingPx,
+      afterContent,
+      onAfterContentInteraction: scrollLock.releaseBottomLock,
+    }),
+    [afterContent, bottomPaddingClassName, bottomPaddingPx, scrollLock.releaseBottomLock],
   )
   const scrollButtonBottomOffset = typeof bottomPaddingPx === 'number' ? Math.max(24, bottomPaddingPx + 12) : 24
   const anchorLatestPlanCardBottom = useCallback(() => {
@@ -233,6 +239,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         onScroll={scrollLock.onScroll}
         onWheel={scrollLock.onWheel}
         onKeyDown={scrollLock.onKeyDown}
+        onPointerDown={scrollLock.onPointerDown}
         atBottomStateChange={scrollLock.onAtBottomStateChange}
         atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
         followOutput={scrollLock.followOutput}
@@ -267,7 +274,17 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   const hasMeasuredPadding = typeof context.bottomPaddingPx === 'number'
   return (
     <>
-      {context.afterContent ? <div data-nova-chat-after-content className="px-3 pb-4 sm:px-6">{context.afterContent}</div> : null}
+      {context.afterContent ? (
+        <div
+          data-nova-chat-after-content
+          className="px-3 pb-4 sm:px-6"
+          onPointerDownCapture={context.onAfterContentInteraction}
+          onKeyDownCapture={context.onAfterContentInteraction}
+          onClickCapture={context.onAfterContentInteraction}
+        >
+          {context.afterContent}
+        </div>
+      ) : null}
       <div
         aria-hidden="true"
         data-nova-chat-bottom-spacer

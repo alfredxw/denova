@@ -66,7 +66,7 @@ interface StoryStageProps {
   onStorySelect?: (storyId: string) => void
   onStoryCreate?: (input: StoryCreateInput) => void | Promise<void>
   onStorySetupUpdate?: (input: StoryCreateInput) => void | Promise<void>
-  onStoryDelete?: (storyId: string) => void
+  onStoryDelete?: (storyIds: string[]) => void | Promise<void>
   onDirectorChange?: (directorId: string) => void
   onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
   onImageSettingsChange?: (settings: StoryImageSettings) => void | Promise<void>
@@ -1163,7 +1163,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
 
   const stageControls = (
     <>
-      <StoryPicker stories={stories} currentStoryId={storyId} onSelect={(id) => { setStageControlsOpen(false); setCreatingStory(false); setEditingStorySetup(false); onStorySelect(id) }} onCreate={() => { setStageControlsOpen(false); setEditingStorySetup(false); setCreatingStory(true) }} onDelete={onStoryDelete} />
+      <StoryPicker stories={stories} currentStoryId={storyId} onSelect={(id) => { setStageControlsOpen(false); setCreatingStory(false); setEditingStorySetup(false); onStorySelect(id) }} onCreate={() => { setStageControlsOpen(false); setEditingStorySetup(false); setCreatingStory(true) }} onDeleteStories={onStoryDelete} />
       {isMobile ? <StoryDirectorPicker story={story} storyDirectors={storyDirectors} onChange={onDirectorChange} /> : null}
       {isMobile ? <ReplyTargetCharsControl story={story} onChange={onReplyTargetCharsChange} /> : null}
       {onToggleDirectorPanel && (

@@ -18,13 +18,14 @@ const (
 	TurnSubmissionModuleRejected = "rejected"
 	TurnSubmissionModuleMissing  = "missing"
 
-	TurnSubmissionDiagnosticInvalidJSON          = "invalid_json"
-	TurnSubmissionDiagnosticInvalidTopLevel      = "invalid_top_level"
-	TurnSubmissionDiagnosticInvalidModule        = "invalid_module"
-	TurnSubmissionDiagnosticChoiceCountMismatch  = "choice_count_mismatch"
-	TurnSubmissionDiagnosticDuplicateChoice      = "duplicate_choice"
-	TurnSubmissionDiagnosticEmptyChoice          = "empty_choice"
-	TurnSubmissionDiagnosticStoryContextRequired = "story_context_required"
+	TurnSubmissionDiagnosticInvalidJSON            = "invalid_json"
+	TurnSubmissionDiagnosticInvalidTopLevel        = "invalid_top_level"
+	TurnSubmissionDiagnosticInvalidModule          = "invalid_module"
+	TurnSubmissionDiagnosticChoiceCountMismatch    = "choice_count_mismatch"
+	TurnSubmissionDiagnosticDuplicateChoice        = "duplicate_choice"
+	TurnSubmissionDiagnosticEmptyChoice            = "empty_choice"
+	TurnSubmissionDiagnosticStoryContextRequired   = "story_context_required"
+	TurnSubmissionDiagnosticInitialStateIncomplete = "initial_state_incomplete"
 
 	turnSubmissionSeverityError = "error"
 
@@ -78,11 +79,12 @@ type TurnSubmissionInput struct {
 // TurnSubmissionContext contains all story-scoped validation inputs. IDs and
 // current state are backend-bound and never supplied by the model.
 type TurnSubmissionContext struct {
-	ActorState               StoryDirectorActorStateSystem
-	CurrentState             map[string]any
-	ChoiceCount              int
-	RuleResolution           *RuleResolution
-	RuleStateConsumptionMode string
+	ActorState                  StoryDirectorActorStateSystem
+	CurrentState                map[string]any
+	ChoiceCount                 int
+	RuleResolution              *RuleResolution
+	RuleStateConsumptionMode    string
+	RequireCompleteInitialState bool
 }
 
 // PreparedTurnSubmission holds accepted modules while failed modules are
@@ -154,12 +156,23 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 		if err != nil {
 			diagnostics = append(diagnostics, diagnosticForStateUpdateError(err))
 			rejected[TurnSubmissionModuleStateChanges] = true
-		} else if diagnostic := storyContextSubmissionDiagnostic(validation.ActorState, validation.CurrentState, updates); diagnostic != nil {
-			diagnostics = append(diagnostics, *diagnostic)
-			rejected[TurnSubmissionModuleStateChanges] = true
 		} else {
-			prepared.result.StateUpdates = compiled.Updates
-			prepared.stateUpdatesAccepted = true
+			moduleDiagnostics := make([]TurnSubmissionDiagnostic, 0, 2)
+			if diagnostic := storyContextSubmissionDiagnostic(validation.ActorState, validation.CurrentState, updates); diagnostic != nil {
+				moduleDiagnostics = append(moduleDiagnostics, *diagnostic)
+			}
+			if validation.RequireCompleteInitialState {
+				if diagnostic := openingInitialStateSubmissionDiagnostic(validation.ActorState, validation.CurrentState, compiled); diagnostic != nil {
+					moduleDiagnostics = append(moduleDiagnostics, *diagnostic)
+				}
+			}
+			if len(moduleDiagnostics) > 0 {
+				diagnostics = append(diagnostics, moduleDiagnostics...)
+				rejected[TurnSubmissionModuleStateChanges] = true
+			} else {
+				prepared.result.StateUpdates = compiled.Updates
+				prepared.stateUpdatesAccepted = true
+			}
 		}
 	}
 
@@ -331,8 +344,14 @@ func stateUpdateDiagnosticEnglish(code string) string {
 	switch code {
 	case "invalid_state_path":
 		return "The structured actor_id, field_id, or subpath is invalid."
-	case "invalid_actor_id", "actor_not_found":
-		return "The first path segment must be an existing stable Actor ID, not a display name."
+	case "invalid_actor_id":
+		return "actor_id must be a normalized state-panel Actor ID."
+	case "actor_not_found":
+		return "The referenced Actor ID does not exist in the current state."
+	case "actor_name_id_mismatch":
+		return "A newly created Actor must use its story-language name unchanged as both actor_id and name."
+	case "state_record_name_id_mismatch":
+		return "A named state-panel record must use the same story-language text for its object key ID and name field."
 	case "state_field_not_found":
 		return "The state field does not exist in the Actor's frozen schema."
 	case "delta_target_not_number":

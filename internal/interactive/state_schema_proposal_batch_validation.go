@@ -190,12 +190,12 @@ func actorStateSchemaBatchHasWholeActorOps(adaptation ActorStateSchemaAdaptation
 }
 
 func actorStateSchemaBatchActorFieldValueSource(item ActorStateSchemaBatchItem, actorID, fieldID string) (ActorStateSchemaActorValueSource, bool) {
-	actorID = normalizeActorStateID(actorID)
+	actorID = normalizeStatePanelActorID(actorID)
 	fieldID = normalizeActorStateFieldName(fieldID)
 	var source ActorStateSchemaActorValueSource
 	key := ""
 	for _, requirement := range item.Requirements {
-		if strings.TrimSpace(requirement.ValuePolicy) != ActorStateSchemaValuePolicyInitialize || normalizeActorStateID(requirement.ActorID) != actorID || normalizeActorStateFieldName(requirement.FieldID) != fieldID {
+		if strings.TrimSpace(requirement.ValuePolicy) != ActorStateSchemaValuePolicyInitialize || normalizeStatePanelActorID(requirement.ActorID) != actorID || normalizeActorStateFieldName(requirement.FieldID) != fieldID {
 			continue
 		}
 		nextKey := strings.TrimSpace(requirement.Source.Kind) + "\x00" + strings.TrimSpace(requirement.Source.ID) + "\x00" + strings.TrimSpace(requirement.EvidenceKind)
@@ -306,12 +306,12 @@ func actorStateSchemaBatchTargetClaims(adaptation ActorStateSchemaAdaptation, ba
 		}
 	}
 	for index, op := range adaptation.InitialActorOps {
-		if actorID := normalizeActorStateID(firstNonEmptyString(op.ActorID, op.Actor.ID)); actorID != "" {
+		if actorID := normalizeStatePanelActorID(firstNonEmptyString(op.ActorID, op.Actor.ID)); actorID != "" {
 			claims = append(claims, actorStateSchemaBatchTargetClaim{key: "actor:" + actorID, actorID: actorID, whole: true, path: fmt.Sprintf("%s.initial_actor_ops[%d]", basePath, index)})
 		}
 	}
 	for index, op := range adaptation.ActorOps {
-		if actorID := normalizeActorStateID(firstNonEmptyString(op.ActorID, op.Actor.ID)); actorID != "" {
+		if actorID := normalizeStatePanelActorID(firstNonEmptyString(op.ActorID, op.Actor.ID)); actorID != "" {
 			if op.Op == "set" {
 				fieldID := normalizeActorStateFieldName(op.FieldID)
 				claims = append(claims, actorStateSchemaBatchTargetClaim{key: "actor_field:" + actorID + ":" + fieldID, actorID: actorID, path: fmt.Sprintf("%s.actor_ops[%d]", basePath, index)})
@@ -390,14 +390,14 @@ func validateActorStateSchemaBatchActorValueVisibility(itemID string, proposal A
 
 func validateActorStateSchemaBatchActorValueSources(itemID string, proposal ActorStateSchemaProposal, basePath string) *ActorStateSchemaBatchIssue {
 	hasReview := func(actorID, templateID, fieldID string) bool {
-		actorID = normalizeActorStateID(actorID)
+		actorID = normalizeStatePanelActorID(actorID)
 		templateID = normalizeActorStateID(templateID)
 		fieldID = normalizeActorStateFieldName(fieldID)
 		for _, review := range proposal.Requirements {
 			if strings.TrimSpace(review.Decision) == "ignored" {
 				continue
 			}
-			if strings.TrimSpace(review.ValuePolicy) == ActorStateSchemaValuePolicyInitialize && normalizeActorStateID(review.ActorID) == actorID && normalizeActorStateID(review.TemplateID) == templateID && normalizeActorStateFieldName(review.FieldID) == fieldID {
+			if strings.TrimSpace(review.ValuePolicy) == ActorStateSchemaValuePolicyInitialize && normalizeStatePanelActorID(review.ActorID) == actorID && normalizeActorStateID(review.TemplateID) == templateID && normalizeActorStateFieldName(review.FieldID) == fieldID {
 				return true
 			}
 		}
@@ -438,10 +438,10 @@ func validateActorStateSchemaBatchActorValueSources(itemID string, proposal Acto
 }
 
 func actorStateSchemaBatchActorFieldReview(reviews []ActorStateSchemaRequirementReview, actorID, fieldID string) (ActorStateSchemaRequirementReview, bool) {
-	actorID = normalizeActorStateID(actorID)
+	actorID = normalizeStatePanelActorID(actorID)
 	fieldID = normalizeActorStateFieldName(fieldID)
 	for _, review := range reviews {
-		if strings.TrimSpace(review.Decision) == "ignored" || normalizeActorStateID(review.ActorID) != actorID || normalizeActorStateFieldName(review.FieldID) != fieldID {
+		if strings.TrimSpace(review.Decision) == "ignored" || normalizeStatePanelActorID(review.ActorID) != actorID || normalizeActorStateFieldName(review.FieldID) != fieldID {
 			continue
 		}
 		return review, true

@@ -26,7 +26,7 @@ func TestOpeningGameStateSchemaToolUsesDedicatedStructureOnlyEntry(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Name != initializeStoryStateSchemaToolName || !strings.Contains(info.Desc, "schema_only") || !strings.Contains(info.Desc, `source={"kind":"opening","id":"opening-draft"}`) || !strings.Contains(info.Desc, "最小可照抄示例") || !strings.Contains(info.Desc, "原子落盘") {
+	if info.Name != initializeStoryStateSchemaToolName || !strings.Contains(info.Desc, "schema_only") || !strings.Contains(info.Desc, `source={"kind":"opening","id":"opening-draft"}`) || !strings.Contains(info.Desc, "story 是 actor_id") || !strings.Contains(info.Desc, "template_id 是 story_context") || !strings.Contains(info.Desc, "独立消耗") || !strings.Contains(info.Desc, "initialization_guide") || !strings.Contains(info.Desc, "原子落盘") {
 		t.Fatalf("unexpected opening schema tool contract: %#v", info)
 	}
 	parameters, err := info.ParamsOneOf.ToJSONSchema()

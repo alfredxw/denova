@@ -417,11 +417,12 @@ func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, input in
 	c.mu.Lock()
 	current := c.turnProtocol.draft()
 	prepared, receipt := interactive.PrepareTurnSubmission(interactive.TurnSubmissionContext{
-		ActorState:               actorState,
-		CurrentState:             currentState,
-		ChoiceCount:              storyCtx.Meta.ChoiceCount,
-		RuleResolution:           c.ruleResolution,
-		RuleStateConsumptionMode: director.Strategy.RuleStateConsumptionMode,
+		ActorState:                  actorState,
+		CurrentState:                currentState,
+		ChoiceCount:                 storyCtx.Meta.ChoiceCount,
+		RuleResolution:              c.ruleResolution,
+		RuleStateConsumptionMode:    director.Strategy.RuleStateConsumptionMode,
+		RequireCompleteInitialState: c.openingStateSchemaDraft != nil && len(storyCtx.Snapshot.Turns) == 0,
 	}, current, input)
 	staged := c.turnProtocol.update(prepared)
 	c.mu.Unlock()

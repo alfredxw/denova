@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
@@ -322,7 +323,7 @@ func normalizeActorStateInitialActors(actors []ActorStateInitialActor, templates
 	out := make([]ActorStateInitialActor, 0, len(actors))
 	seen := map[string]bool{}
 	for _, actor := range actors {
-		actor.ID = normalizeActorStateID(actor.ID)
+		actor.ID = normalizeStatePanelActorID(actor.ID)
 		if actor.ID == "" || seen[actor.ID] {
 			continue
 		}
@@ -416,7 +417,7 @@ func actorStateFieldByID(template ActorStateTemplate, fieldID string) (ActorStat
 }
 
 func actorStateFieldValue(state map[string]any, actorID, fieldID string) any {
-	actor, _ := getPath(state, actorStateRoot+"."+normalizeActorStateID(actorID)).(map[string]any)
+	actor, _ := getPath(state, actorStateRoot+"."+normalizeStatePanelActorID(actorID)).(map[string]any)
 	if actor == nil {
 		return nil
 	}
@@ -712,7 +713,7 @@ func defaultActorStateSystem() StoryDirectorActorStateSystem {
 }
 
 func actorStateActorPath(actorID, field string) string {
-	return actorStateRoot + "." + normalizeActorStateID(actorID) + "." + strings.TrimSpace(field)
+	return actorStateRoot + "." + normalizeStatePanelActorID(actorID) + "." + strings.TrimSpace(field)
 }
 
 func actorStateFieldPath(actorID, fieldPath string) string {
@@ -728,6 +729,18 @@ func normalizeActorStateID(id string) string {
 		}
 	}
 	return sb.String()
+}
+
+func normalizeStatePanelActorID(id string) string {
+	id = strings.TrimSpace(norm.NFKC.String(id))
+	var sb strings.Builder
+	for _, r := range id {
+		if unicode.IsControl(r) || r == '.' {
+			continue
+		}
+		sb.WriteRune(r)
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 func canonicalStatePath(path string) string {
@@ -767,7 +780,7 @@ func actorStateTemplateByID(system StoryDirectorActorStateSystem, id string) Act
 
 func validateActorStatePatch(system StoryDirectorActorStateSystem, currentState map[string]any, patch ActorStatePatch) (ActorStatePatch, []StateOp, []ActorStateOp, bool, []ActorTraitInstance, error) {
 	system = normalizeActorStateSystem(system)
-	patch.ActorID = normalizeActorStateID(patch.ActorID)
+	patch.ActorID = normalizeStatePanelActorID(patch.ActorID)
 	if patch.ActorID == "" {
 		return patch, nil, nil, false, nil, fmt.Errorf("Actor 状态更新缺少 actor_id")
 	}

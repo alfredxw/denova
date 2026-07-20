@@ -12,7 +12,7 @@
 
 # 语言模型。默认模型也放在 model_profiles 列表里，id 固定为 default，name 可作为显示别名。
 # 不配置 temperature 时使用平台/模型默认值。
-# 快捷选项 Agent 和版本说明 Agent 内置默认 enable_thinking=false，其他 Agent 默认不传思考参数。
+# 游戏正文、快捷选项和版本说明 Agent 内置默认 enable_thinking=false；写作与配置 Agent 默认启用。各 Agent 均可单独覆盖。
 [[model_profiles]]
 id = "default"
 name = "DeepSeek 写作"
