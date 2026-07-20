@@ -9,6 +9,7 @@ import { findDialogueHighlightRanges } from '@/lib/dialogue-highlight'
 export interface SearchState {
   query: string
   index: number
+  useRegex: boolean
 }
 
 export interface SearchMatch {
@@ -83,7 +84,7 @@ function createDialogueDecorations(doc: ProseMirrorNode) {
 }
 
 function createSearchDecorations(doc: ProseMirrorNode, searchState: SearchState) {
-  const matches = findSearchMatchesInDoc(doc, searchState.query)
+  const matches = findSearchMatchesInDoc(doc, searchState.query, searchState.useRegex)
   if (matches.length === 0) return DecorationSet.empty
 
   const currentIndex = clampIndex(searchState.index, matches.length)
@@ -95,28 +96,53 @@ function createSearchDecorations(doc: ProseMirrorNode, searchState: SearchState)
   return DecorationSet.create(doc, decorations)
 }
 
-export function findSearchMatches(editor: Editor, query: string): SearchMatch[] {
-  return findSearchMatchesInDoc(editor.state.doc, query)
+export function findSearchMatches(editor: Editor, query: string, useRegex = false): SearchMatch[] {
+  return findSearchMatchesInDoc(editor.state.doc, query, useRegex)
 }
 
-function findSearchMatchesInDoc(doc: ProseMirrorNode, query: string): SearchMatch[] {
-  const normalizedQuery = query.trim().toLowerCase()
-  if (!normalizedQuery) return []
+function findSearchMatchesInDoc(doc: ProseMirrorNode, query: string, useRegex: boolean): SearchMatch[] {
+  const trimmedQuery = query.trim()
+  if (!trimmedQuery) return []
+
+  let regex: RegExp | null = null
+  if (useRegex) {
+    try {
+      regex = new RegExp(trimmedQuery, 'gi')
+    } catch {
+      return []
+    }
+  }
 
   const matches: SearchMatch[] = []
   doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return
 
-    const normalizedText = node.text.toLowerCase()
-    let searchFrom = 0
-    while (searchFrom < normalizedText.length) {
-      const index = normalizedText.indexOf(normalizedQuery, searchFrom)
-      if (index === -1) break
-      matches.push({
-        from: pos + index,
-        to: pos + index + normalizedQuery.length,
-      })
-      searchFrom = index + normalizedQuery.length
+    if (regex) {
+      regex.lastIndex = 0
+      let match: RegExpExecArray | null
+      while ((match = regex.exec(node.text)) !== null) {
+        if (match[0].length === 0) {
+          regex.lastIndex++
+          continue
+        }
+        matches.push({
+          from: pos + match.index,
+          to: pos + match.index + match[0].length,
+        })
+      }
+    } else {
+      const lowerText = node.text.toLowerCase()
+      const lowerQuery = trimmedQuery.toLowerCase()
+      let searchFrom = 0
+      while (searchFrom < lowerText.length) {
+        const index = lowerText.indexOf(lowerQuery, searchFrom)
+        if (index === -1) break
+        matches.push({
+          from: pos + index,
+          to: pos + index + lowerQuery.length,
+        })
+        searchFrom = index + lowerQuery.length
+      }
     }
   })
   return matches
@@ -130,6 +156,69 @@ export function selectSearchMatch(editor: Editor, match: SearchMatch) {
     const el = editor.view.dom.querySelector('.nova-search-current') as HTMLElement | null
     el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   })
+}
+
+/** 编译搜索正则；无效正则返回 null。 */
+function compileSearchRegex(query: string): RegExp | null {
+  const trimmed = query.trim()
+  if (!trimmed) return null
+  try {
+    return new RegExp(trimmed, 'gi')
+  } catch {
+    return null
+  }
+}
+
+/** 根据匹配文本和替换模板生成最终替换文本（正则模式下支持 $1 等捕获组引用）。 */
+function buildReplacementText(matchedText: string, query: string, replacement: string, useRegex: boolean): string {
+  if (!useRegex) return replacement
+  const regex = compileSearchRegex(query)
+  if (!regex) return replacement
+  regex.lastIndex = 0
+  return matchedText.replace(regex, replacement)
+}
+
+/** 替换当前选中的匹配项，返回是否执行了替换。 */
+export function replaceCurrentSearchMatch(
+  editor: Editor,
+  query: string,
+  replacement: string,
+  useRegex: boolean,
+  currentIndex: number,
+): boolean {
+  const matches = findSearchMatches(editor, query, useRegex)
+  if (matches.length === 0) return false
+
+  const index = clampIndex(currentIndex, matches.length)
+  const match = matches[index]
+  const matchedText = editor.state.doc.textBetween(match.from, match.to)
+  const newText = buildReplacementText(matchedText, query, replacement, useRegex)
+
+  const tr = editor.state.tr
+  tr.replaceRangeWith(match.from, match.to, editor.state.schema.text(newText))
+  editor.view.dispatch(tr)
+  return true
+}
+
+/** 批量替换所有匹配项，返回替换数量。从后向前替换以避免位置偏移。 */
+export function replaceAllSearchMatches(
+  editor: Editor,
+  query: string,
+  replacement: string,
+  useRegex: boolean,
+): number {
+  const matches = findSearchMatches(editor, query, useRegex)
+  if (matches.length === 0) return 0
+
+  const tr = editor.state.tr
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const match = matches[i]
+    const matchedText = editor.state.doc.textBetween(match.from, match.to)
+    const newText = buildReplacementText(matchedText, query, replacement, useRegex)
+    tr.replaceRangeWith(match.from, match.to, editor.state.schema.text(newText))
+  }
+  editor.view.dispatch(tr)
+  return matches.length
 }
 
 export function clampIndex(index: number, length: number) {
