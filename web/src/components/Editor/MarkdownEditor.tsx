@@ -35,6 +35,8 @@ import {
   createDialogueHighlightExtension,
   createSearchHighlightExtension,
   findSearchMatches,
+  replaceAllSearchMatches,
+  replaceCurrentSearchMatch,
   searchPluginKey,
   selectSearchMatch,
 } from './editorDecorations'
@@ -121,12 +123,15 @@ export function MarkdownEditor({
   const [searchQuery, setSearchQuery] = useState('')
   const [searchIndex, setSearchIndex] = useState(0)
   const [searchMatches, setSearchMatches] = useState<SearchMatch[]>([])
+  const [useRegex, setUseRegex] = useState(false)
+  const [replaceOpen, setReplaceOpen] = useState(false)
+  const [replaceText, setReplaceText] = useState('')
   const [reviewPortalTargets, setReviewPortalTargets] = useState<DocumentReviewPortalTarget[]>([])
   const searchInputRef = useRef<HTMLInputElement>(null)
   const lastIllustrationInsertNonceRef = useRef<number | null>(null)
   const lastSearchIntentNonceRef = useRef<number | null>(null)
   const lastDocumentReviewNavigationNonceRef = useRef<number | null>(null)
-  const searchStateRef = useRef<SearchState>({ query: '', index: 0 })
+  const searchStateRef = useRef<SearchState>({ query: '', index: 0, useRegex: false })
   const searchExtension = useMemo(() => createSearchHighlightExtension(searchStateRef), [])
   const dialogueHighlightExtension = useMemo(() => createDialogueHighlightExtension(), [])
   const workspaceImageExtension = useMemo(() => createWorkspaceImageExtension(), [])
@@ -187,17 +192,17 @@ export function MarkdownEditor({
 
   const updateSearch = useCallback((query: string, nextIndex = 0) => {
     if (!editor) return
-    const matches = findSearchMatches(editor, query)
+    const matches = findSearchMatches(editor, query, useRegex)
     const normalizedIndex = matches.length === 0 ? 0 : clampIndex(nextIndex, matches.length)
     setSearchQuery(query)
-    searchStateRef.current = { query, index: normalizedIndex }
+    searchStateRef.current = { query, index: normalizedIndex, useRegex }
     setSearchMatches(matches)
     setSearchIndex(normalizedIndex)
     editor.view.dispatch(editor.state.tr.setMeta(searchPluginKey, true))
     if (matches.length > 0) {
       selectSearchMatch(editor, matches[normalizedIndex])
     }
-  }, [editor])
+  }, [editor, useRegex])
 
   const applyExternalContent = useCallback((
     nextFile: string | null,
@@ -301,13 +306,13 @@ export function MarkdownEditor({
     if (lastSearchIntentNonceRef.current === searchIntent.nonce) return
     lastSearchIntentNonceRef.current = searchIntent.nonce
 
-    const matches = findSearchMatches(editor, searchIntent.query)
+    const matches = findSearchMatches(editor, searchIntent.query, useRegex)
     const targetIndex = searchIntent.line > 0
       ? matches.findIndex((match) => getLineNumber(editor.state.doc, match.from) === searchIntent.line)
       : -1
     setSearchOpen(true)
     updateSearch(searchIntent.query, targetIndex >= 0 ? targetIndex : 0)
-  }, [editor, searchIntent, updateSearch])
+  }, [editor, searchIntent, updateSearch, useRegex])
 
   useEffect(() => {
     if (!editor || !illustrationInsertSignal) return
@@ -401,24 +406,70 @@ export function MarkdownEditor({
   const goToSearchMatch = useCallback((direction: 1 | -1) => {
     if (!editor || searchMatches.length === 0) return
     const nextIndex = clampIndex(searchIndex + direction, searchMatches.length)
-    searchStateRef.current = { query: searchQuery, index: nextIndex }
+    searchStateRef.current = { query: searchQuery, index: nextIndex, useRegex }
     setSearchIndex(nextIndex)
     editor.view.dispatch(editor.state.tr.setMeta(searchPluginKey, true))
     selectSearchMatch(editor, searchMatches[nextIndex])
-  }, [editor, searchIndex, searchMatches, searchQuery])
+  }, [editor, searchIndex, searchMatches, searchQuery, useRegex])
+
+  /** 切换正则匹配模式并刷新搜索结果。 */
+  const toggleRegex = useCallback(() => {
+    setUseRegex((prev) => {
+      const next = !prev
+      searchStateRef.current = { ...searchStateRef.current, useRegex: next }
+      return next
+    })
+  }, [])
+
+  /** 切换替换栏展开状态。 */
+  const toggleReplace = useCallback(() => {
+    setReplaceOpen((prev) => !prev)
+  }, [])
+
+  /** 替换当前匹配项并刷新搜索结果。 */
+  const handleReplace = useCallback(() => {
+    if (!editor) return
+    const replaced = replaceCurrentSearchMatch(editor, searchQuery, replaceText, useRegex, searchIndex)
+    if (!replaced) return
+    // 替换后文档变化，重新计算匹配并定位到下一处
+    const matches = findSearchMatches(editor, searchQuery, useRegex)
+    const nextIndex = matches.length === 0 ? 0 : clampIndex(searchIndex, matches.length)
+    searchStateRef.current = { query: searchQuery, index: nextIndex, useRegex }
+    setSearchMatches(matches)
+    setSearchIndex(nextIndex)
+    editor.view.dispatch(editor.state.tr.setMeta(searchPluginKey, true))
+    if (matches.length > 0) {
+      selectSearchMatch(editor, matches[nextIndex])
+    }
+  }, [editor, searchQuery, replaceText, useRegex, searchIndex])
+
+  /** 批量替换所有匹配项。 */
+  const handleReplaceAll = useCallback(() => {
+    if (!editor) return
+    const count = replaceAllSearchMatches(editor, searchQuery, replaceText, useRegex)
+    if (count === 0) return
+    // 替换完成后清空匹配高亮
+    searchStateRef.current = { query: searchQuery, index: 0, useRegex }
+    setSearchMatches([])
+    setSearchIndex(0)
+    editor.view.dispatch(editor.state.tr.setMeta(searchPluginKey, true))
+    toast.success(t('editor.replaceAllDone', { count }))
+  }, [editor, searchQuery, replaceText, useRegex, t])
 
   /** 关闭搜索栏并清除高亮。 */
   const closeSearch = useCallback(() => {
     if (editor) {
-      searchStateRef.current = { query: '', index: 0 }
+      searchStateRef.current = { query: '', index: 0, useRegex }
       editor.view.dispatch(editor.state.tr.setMeta(searchPluginKey, true))
     }
     setSearchOpen(false)
     setSearchQuery('')
     setSearchIndex(0)
     setSearchMatches([])
+    setReplaceOpen(false)
+    setReplaceText('')
     editor?.commands.focus()
-  }, [editor])
+  }, [editor, useRegex])
 
   // 未选中文件时显示占位
   if (!fileName) {
@@ -472,9 +523,17 @@ export function MarkdownEditor({
           query: searchQuery,
           matchIndex: searchIndex,
           matchCount: searchMatches.length,
+          useRegex,
+          replaceOpen,
+          replaceText,
           onQueryChange: (query) => updateSearch(query, 0),
           onNavigate: goToSearchMatch,
           onClose: closeSearch,
+          onToggleRegex: toggleRegex,
+          onToggleReplace: toggleReplace,
+          onReplaceChange: setReplaceText,
+          onReplace: handleReplace,
+          onReplaceAll: handleReplaceAll,
         }}
         showSelectionToolbar={selectedCharacters > 0 && (documentCommentsAvailable || Boolean(onQuoteSelection))}
         selectionToolbarMode={documentCommentsAvailable ? 'comment' : 'quote'}

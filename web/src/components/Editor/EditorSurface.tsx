@@ -23,9 +23,17 @@ interface EditorSurfaceProps {
     query: string
     matchIndex: number
     matchCount: number
+    useRegex: boolean
+    replaceOpen: boolean
+    replaceText: string
     onQueryChange: (query: string) => void
     onNavigate: (direction: 1 | -1) => void
     onClose: () => void
+    onToggleRegex: () => void
+    onToggleReplace: () => void
+    onReplaceChange: (text: string) => void
+    onReplace: () => void
+    onReplaceAll: () => void
   }
   showSelectionToolbar: boolean
   selectionToolbarMode?: 'quote' | 'comment'
@@ -64,9 +72,17 @@ export function EditorSurface({
           query={search.query}
           matchIndex={search.matchIndex}
           matchCount={search.matchCount}
+          useRegex={search.useRegex}
+          replaceOpen={search.replaceOpen}
+          replaceText={search.replaceText}
           onQueryChange={search.onQueryChange}
           onNavigate={search.onNavigate}
           onClose={search.onClose}
+          onToggleRegex={search.onToggleRegex}
+          onToggleReplace={search.onToggleReplace}
+          onReplaceChange={search.onReplaceChange}
+          onReplace={search.onReplace}
+          onReplaceAll={search.onReplaceAll}
         />
       )}
       <EditorContent editor={editor} className={`editor-content editor-theme-${settings.theme}${nativeIndent ? ' native-indent' : ''}`} />

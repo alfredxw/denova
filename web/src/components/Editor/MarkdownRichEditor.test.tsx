@@ -56,7 +56,7 @@ const tiptapMock = vi.hoisted(() => {
 })
 
 const decorationsMock = vi.hoisted(() => ({
-  searchStateRef: null as { current: { query: string; index: number } } | null,
+  searchStateRef: null as { current: { query: string; index: number; useRegex: boolean } } | null,
   matches: [] as Array<{ from: number; to: number }>,
   findSearchMatches: vi.fn(),
   selectSearchMatch: vi.fn(),
@@ -76,7 +76,7 @@ vi.mock('@tiptap/extension-image', () => ({ default: { extend: () => ({ configur
 vi.mock('@tiptap/markdown', () => ({ Markdown: { configure: () => ({}) } }))
 
 vi.mock('./editorDecorations', () => ({
-  createSearchHighlightExtension: (ref: { current: { query: string; index: number } }) => {
+  createSearchHighlightExtension: (ref: { current: { query: string; index: number; useRegex: boolean } }) => {
     decorationsMock.searchStateRef = ref
     return { name: 'novaSearchHighlight' }
   },
@@ -129,7 +129,7 @@ describe('MarkdownRichEditor', () => {
     decorationsMock.matches = [{ from: 2, to: 5 }]
     render(<MarkdownRichEditor value="林川的设定" onChange={vi.fn()} highlightQuery="林川" />)
 
-    expect(decorationsMock.searchStateRef?.current).toEqual({ query: '林川', index: 0 })
+    expect(decorationsMock.searchStateRef?.current).toEqual({ query: '林川', index: 0, useRegex: false })
     expect(tiptapMock.editor.view.dispatch).toHaveBeenCalled()
     expect(decorationsMock.selectSearchMatch).toHaveBeenCalledWith(tiptapMock.editor, { from: 2, to: 5 })
   })
@@ -137,7 +137,7 @@ describe('MarkdownRichEditor', () => {
   it('搜索词为空时清除高亮且不定位匹配', () => {
     render(<MarkdownRichEditor value="内容" onChange={vi.fn()} highlightQuery="  " />)
 
-    expect(decorationsMock.searchStateRef?.current).toEqual({ query: '', index: 0 })
+    expect(decorationsMock.searchStateRef?.current).toEqual({ query: '', index: 0, useRegex: false })
     expect(tiptapMock.editor.view.dispatch).toHaveBeenCalled()
     expect(decorationsMock.selectSearchMatch).not.toHaveBeenCalled()
   })

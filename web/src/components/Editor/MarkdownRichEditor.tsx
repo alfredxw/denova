@@ -51,7 +51,7 @@ export function MarkdownRichEditor({
   className,
   'aria-label': ariaLabel,
 }: MarkdownRichEditorProps) {
-  const searchStateRef = useRef<SearchState>({ query: '', index: 0 })
+  const searchStateRef = useRef<SearchState>({ query: '', index: 0, useRegex: false })
   // 记录编辑器最近发出/接收的内容：onChange 回灌的 value 不再写回文档，真正的外部变更才 setContent。
   const lastEmittedRef = useRef<string>(value)
   const onChangeRef = useRef(onChange)
@@ -118,7 +118,7 @@ export function MarkdownRichEditor({
   useEffect(() => {
     if (!editor || editor.isDestroyed) return
     const query = highlightQuery?.trim() || ''
-    searchStateRef.current = { query, index: 0 }
+    searchStateRef.current = { query, index: 0, useRegex: false }
     editor.view.dispatch(editor.state.tr.setMeta(searchPluginKey, true))
     if (!query) return
     const matches = findSearchMatches(editor, query)
