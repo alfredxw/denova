@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Virtuoso } from 'react-virtuoso'
 import type { Components } from 'react-virtuoso'
 import type { AgentUIMessage } from '@/lib/agent-ui'
-import { agentSubAgentSessionKey, agentViewContent, buildAgentMessageViews, type AgentMessageView } from '@/lib/agent-message-view'
+import { agentSubAgentSessionKey, agentViewLayoutContent, buildAgentMessageViews, type AgentMessageView } from '@/lib/agent-message-view'
 import { AgentMessageItem } from './AgentMessageItem'
 import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock } from './useVirtuosoBottomLock'
 import { ScrollToBottomButton } from './ScrollToBottomButton'
@@ -37,12 +37,13 @@ export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highl
     view.kind || '',
     view.status || '',
     view.streaming ? 'streaming' : '',
-    agentViewContent(view).length,
+    agentViewLayoutContent(view).length,
   ].join(':')).join('|'), [sessionViews])
   const scrollLock = useVirtuosoBottomLock({
     resetKey: sessionKey,
     contentKey: scrollContentKey,
     itemCount: sessionViews.length,
+    autoFollowEnabled: running,
   })
   const itemContent = useCallback((index: number, view?: AgentMessageView) => {
     const resolvedView = view || sessionViews[index]
@@ -95,7 +96,7 @@ export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highl
             onKeyDown={scrollLock.onKeyDown}
             atBottomStateChange={scrollLock.onAtBottomStateChange}
             atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
-            followOutput={scrollLock.followOutput}
+            followOutput={running ? scrollLock.followOutput : false}
             initialItemCount={Math.min(sessionViews.length, 40)}
             data={sessionViews}
             components={SUBAGENT_SESSION_COMPONENTS}

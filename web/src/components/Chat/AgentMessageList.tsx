@@ -11,6 +11,7 @@ import {
   agentSubAgentSessionKey,
   agentViewToRenderMessage,
   agentViewContent,
+  agentViewLayoutContent,
   agentViewNavigationAnchor,
   agentViewStableKey,
   buildAgentMessageViews,
@@ -25,6 +26,7 @@ import { VIRTUOSO_BOTTOM_THRESHOLD, useVirtuosoBottomLock, type ScrollElementBot
 import { ScrollToBottomButton } from './ScrollToBottomButton'
 import { AgentMessageItem } from './AgentMessageItem'
 import { AgentActivityShimmer, MessageItem } from './MessageItem'
+import { StreamingContentStage } from './StreamingContentStage'
 
 interface MessageListProps {
   messages: AgentUIMessage[]
@@ -130,6 +132,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
     resetKey: scrollResetKey,
     contentKey: scrollContentKey,
     itemCount: listItems.length,
+    autoFollowEnabled: isStreaming,
     resolveScroller: resolveMessageScroller,
   })
   const latestPlanCardAnchor = useMemo(
@@ -245,7 +248,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         onPointerDown={scrollLock.onPointerDown}
         atBottomStateChange={scrollLock.onAtBottomStateChange}
         atBottomThreshold={VIRTUOSO_BOTTOM_THRESHOLD}
-        followOutput={scrollLock.followOutput}
+        followOutput={isStreaming ? scrollLock.followOutput : false}
         initialItemCount={Math.min(listItems.length, 40)}
         data={listItems}
         context={virtuosoContext}
@@ -485,7 +488,7 @@ function buildMessageListScrollKey(items: AgentChatListItem[], bottomPaddingPx?:
         view.kind,
         view.status || '',
         view.streaming ? 'streaming' : '',
-        agentViewContent(view).length,
+        agentViewLayoutContent(view).length,
         readString(view.data.plan_action),
         readString(view.data.thinking_preview).length,
         stringifyLength(view.input),
@@ -499,7 +502,7 @@ function buildMessageListScrollKey(items: AgentChatListItem[], bottomPaddingPx?:
       return `${item.key}:${message.role || ''}:${message.status || ''}:${(message.streaming_target_content || message.content || '').length}:${(message.result || '').length}`
     }
     if (item.kind === 'trace') {
-      return `${item.key}:${item.activeStreamingTrace ? 'active' : 'idle'}:${item.views.length}:${item.views.map((view) => `${view.partId}:${view.kind}:${view.status || ''}:${agentViewContent(view).length}:${stringifyLength(view.output)}`).join(',')}`
+      return `${item.key}:${item.activeStreamingTrace ? 'active' : 'idle'}:${item.views.length}:${item.views.map((view) => `${view.partId}:${view.kind}:${view.status || ''}:${agentViewLayoutContent(view).length}:${stringifyLength(view.output)}`).join(',')}`
     }
     if (item.kind === 'activity') return `${item.key}:${item.content.length}`
     if (item.kind === 'attachment') return `${item.key}:${item.runId}`
@@ -619,7 +622,13 @@ function TraceGroup({ views, activeStreamingTrace, activeTraceDisplay, highlight
               view.kind === 'reasoning'
                 ? (
                   <div key={view.partId || index} className="text-xs leading-relaxed text-[var(--nova-text-muted)] whitespace-pre-wrap">
-                    {agentViewContent(view)}
+                    <StreamingContentStage
+                      content={agentViewContent(view)}
+                      targetContent={view.streaming ? view.metadata.streaming_target_content : undefined}
+                      streaming={view.streaming}
+                    >
+                      {(value) => value}
+                    </StreamingContentStage>
                   </div>
                 )
                 : (

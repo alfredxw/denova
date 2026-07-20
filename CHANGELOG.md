@@ -31,8 +31,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - State-layout dragging now resolves section and field collisions separately, uses a local live preview and independent drag overlay, persists only once on drop, and keeps an explicit drop zone for emptied sections to reduce nested-drag jitter and position jumps.
 - 兼容性说明：内置状态预设的 Beta Schema 变更只影响新故事及主动恢复内置预设的配置；已有故事继续使用冻结的故事级 Schema，不会自动重写状态。
 - Compatibility note: this Beta schema change affects new stories and configurations explicitly restored to a built-in preset; existing stories continue using their frozen story-local schema and are not rewritten automatically.
-- 游戏模式正文后的状态面板按分区一页平铺，每个分区使用带图标标题与字段数的独立区块，组内使用自适应多列网格；默认分区来自字段形状及 `group` / `display` 提示，用户布局可覆盖最终顺序。预览态显示可快速浏览的分区并可一键展开全部；世界状态的对象值会展开为独立字段参与分组，空世界页签不再渲染。
-- The state panel after game-mode prose lays sections out on one page with icon headers, field counts, and adaptive grids. Default grouping comes from value shape plus `group` / `display` hints, while the user's layout controls final ordering. Preview keeps glanceable sections with one-click expansion; record-valued world facts expand into individual grouped fields, and empty World tabs are omitted.
+- 游戏模式正文后的状态面板按分区一页平铺，每个分区使用带图标标题与字段数的独立区块，组内使用自适应多列网格；默认分区来自字段形状及 `group` / `display` 提示，用户布局可覆盖最终顺序。预览态展示当前布局排序最前的两个分区并可一键展开全部；世界状态的对象值会展开为独立字段参与分组，空世界页签不再渲染。
+- The state panel after game-mode prose lays sections out on one page with icon headers, field counts, and adaptive grids. Default grouping comes from value shape plus `group` / `display` hints, while the user's layout controls final ordering. Preview shows the first two sections in the current layout with one-click expansion; record-valued world facts expand into individual grouped fields, and empty World tabs are omitted.
 - 本回合状态变化收敛为头部一行摘要（数值 ±delta、增删项、已更新），变更字段以左侧色条和值旁 chip 标记，不再为每个字段重复展示“本回合已更新”说明行。
 - Turn state changes now collapse into a one-line header summary (numeric ±delta, added/removed items, updated) with changed fields marked by a left accent bar and an inline chip, replacing the repeated per-field “updated this turn” notes.
 - 兼容性说明：状态显示偏好为“默认预览/默认展开/默认折叠/仅导演台”四档，预览态由旧的按高度裁剪改为按分区切割；旧版“默认显示”偏好自动并入“默认展开”。
@@ -60,6 +60,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 状态面板预览不再固定优先“概览/持有”或“面板/状态”，而是严格展示当前排序最前的两个分区；展开全部继续沿用同一顺序，不会改变用户的布局配置。
+- The state-panel preview no longer hard-codes Overview/Holdings or Panel/State; it strictly shows the first two sections in the current order, and Expand All preserves that order without modifying the saved layout.
+- 流式 thinking 与正文现在统一先以不可见目标内容预留下一帧高度，在消息列表完成锁底后再揭示新增文字；写作、游戏及子 Agent 消息共用同一暂存层，避免新行先出现在视口下方再被瞬间抬升。
+- Streaming reasoning and prose now reserve the next frame's target height invisibly and reveal new text only after the message list reaches the bottom. Writing, Game, and sub-agent messages share the same staging layer, preventing new lines from flashing below the viewport before jumping upward.
+- 消息列表在没有活跃流式输出时会完全关闭自动锁底与内容增高跟随，状态面板展开、折叠或切换页签不再先跳到底部再复位；流式输出期间的底部跟随、切换会话时的一次性定位和用户显式“回到底部”仍保持原有行为。
+- Message lists now fully disable automatic bottom-following and size-growth scrolling while no output is actively streaming, so expanding, collapsing, or switching tabs in the state panel no longer jumps to the bottom and then snaps back. Streaming follow, one-shot positioning after session switches, and explicit Back to Bottom actions retain their existing behavior.
 - 写作模式创作 Agent 的运行中思考与工具轨迹改为默认收起并保留动态状态提示，仍可按需完整展开；流式消息去重与展示模型现在复用未变化的历史消息引用，避免超长 thinking 持续挂载并触发整段历史 Markdown 重渲染导致浏览器失去响应。游戏模式保留运行中实时展开行为，所有 thinking 与工具内容均未截断。
 - In Writing Mode, active reasoning and tool traces now stay collapsed by default with a live status indicator while remaining fully expandable on demand. Streaming deduplication and view projection preserve unchanged historical message identities, preventing very long thinking output from staying mounted and repeatedly re-rendering the entire Markdown history. Game Mode retains its live expanded traces, and no thinking or tool content is truncated.
 - 状态面板中的名称型记录现在统一“名称即 ID”：新建 Actor、技能、物品、任务、地点与势力直接使用故事语言中的名称，不再生成英文、拼音或 slug 标识；回合提交会拒绝 Actor `actor_id/name` 或对象记录键/名称不一致的数据并要求重试。已有故事状态不会被自动改写，后续引用仍逐字使用现有 ID。

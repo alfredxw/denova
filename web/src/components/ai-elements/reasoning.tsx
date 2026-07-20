@@ -196,7 +196,7 @@ export const ReasoningTrigger = memo(
 export type ReasoningContentProps = ComponentProps<
   typeof CollapsibleContent
 > & {
-  children: string;
+  children: ReactNode;
 };
 
 export const ReasoningContent = memo(

@@ -99,6 +99,14 @@ export function agentViewContent(view: AgentMessageView) {
   return view.content || readString(view.data.content) || readString(view.data.message) || readString(view.data.error)
 }
 
+/** Content whose full height must be reserved for the next visible streaming frame. */
+export function agentViewLayoutContent(view: AgentMessageView) {
+  if (view.streaming && view.metadata.streaming_target_content !== undefined) {
+    return view.metadata.streaming_target_content
+  }
+  return agentViewContent(view)
+}
+
 export function agentViewNavigationAnchor(view: AgentMessageView) {
   return view.metadata.navigation_turn_id || view.metadata.turn_id || ''
 }

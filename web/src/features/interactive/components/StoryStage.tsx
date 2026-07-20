@@ -1666,7 +1666,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     if (buffered.length === 0) return
     liveMessageBufferRef.current = []
     setStageLiveMessages((prev) => buffered.reduce(appendBufferedLiveMessage, prev))
-    if (buffered.some((message) => message.role === 'assistant')) {
+    if (buffered.some((message) => message.role === 'assistant' || message.role === 'thinking')) {
       scheduleLiveMessagePromotion()
     }
   }

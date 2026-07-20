@@ -32,7 +32,7 @@ describe('Agent MessageList', () => {
     expect(state.closest('[data-nova-chat-after-content]')?.nextElementSibling).toHaveAttribute('data-nova-chat-bottom-spacer')
   })
 
-  it('releases bottom following before an interaction inside stage content changes its height', () => {
+  it('does not apply a compensating scroll after an idle stage interaction', () => {
     const renderList = (afterContentKey: string) => (
       <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
         <MessageList
@@ -57,12 +57,13 @@ describe('Agent MessageList', () => {
     scrollHeight = 700
     rerender(renderList('expanded'))
 
-    // Virtuoso can issue a second, delayed scroll after measuring the taller
-    // footer. The direct interaction must keep winning over that adjustment.
+    // Idle footer following is disabled at the virtualizer boundary. If a
+    // scroll event still occurs, the lock must not create a second visible
+    // jump by writing the previously captured position back afterward.
     scroller.scrollTop = 600
     fireEvent.scroll(scroller)
 
-    expect(scroller.scrollTop).toBe(400)
+    expect(scroller.scrollTop).toBe(600)
   })
 
   it('有可见流式 thinking 时不再追加会被动态内容推动的活动卡片', () => {
