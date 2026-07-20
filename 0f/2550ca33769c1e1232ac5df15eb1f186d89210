@@ -1,0 +1,79 @@
+CHANGELOG.md
+  s_312b3f46cb80b9::t_f44c19671b6b7f 26-27,67-70
+internal/api/handler_interactive_test.go
+  s_71508ed8da3cb1::t_a64c369e385a42 146-180
+internal/api/handlers/handler_interactive.go
+  s_71508ed8da3cb1::t_85bd320bbd99d7 70-77
+internal/api/routes.go
+  s_71508ed8da3cb1::t_93f398a5550a4d 82
+internal/app/interactive_app_service.go
+  s_71508ed8da3cb1::t_de13739049de47 53-69
+internal/interactive/actor_state_runtime_context.go
+  s_312b3f46cb80b9::t_e1b293c22c3da3 189-190,192-202
+internal/interactive/actor_traits_test.go
+  s_312b3f46cb80b9::t_f3485966f09a09 249-267
+internal/interactive/state_panel_name_id.go
+  s_312b3f46cb80b9::t_0ede42a01fca11 5,17-64,86-93,104-117
+internal/interactive/story.go
+  s_71508ed8da3cb1::t_f986864653bc99 72-95
+internal/interactive/story_test.go
+  s_71508ed8da3cb1::t_a3407222336af5 53-80
+internal/interactive/turn_state_update_diagnostics.go
+  s_312b3f46cb80b9::t_8f06fed72623de 1-266
+internal/interactive/turn_state_updates.go
+  s_312b3f46cb80b9::t_030fbbcb52544a 6,33-39,52-78,100-106,141-146,152-154,184-186,194-199,205,208-232
+internal/interactive/turn_state_value_normalization.go
+  s_312b3f46cb80b9::t_abdc5a95a1e80d 1-69
+internal/interactive/turn_submission.go
+  s_312b3f46cb80b9::t_13885393ad5485 152,155-156,158-166
+internal/interactive/turn_submission_decode.go
+  s_312b3f46cb80b9::t_36f730ad24966f 22,27
+internal/interactive/turn_submission_diagnostics_test.go
+  s_312b3f46cb80b9::t_39d748dbff0fe7 1-145
+internal/interactive/turn_submission_tolerance_test.go
+  s_312b3f46cb80b9::t_31901d1964aa56 1-439
+web/src/features/interactive/api.ts
+  s_71508ed8da3cb1::t_32b7f4955929a0 55-60
+web/src/features/interactive/components/InteractiveLayout.test.tsx
+  s_71508ed8da3cb1::t_1c781be84f9e26 6,27,54,83-85,109,116,276-294
+web/src/features/interactive/components/InteractiveLayout.tsx
+  s_71508ed8da3cb1::t_1e58718d989c3a 9,90,240-251,382,412
+web/src/features/interactive/components/story-state/StoryStateLedger.test.tsx
+  s_71508ed8da3cb1::t_9263b64309dacb 55,196,218-232
+web/src/features/interactive/components/story-state/ledger-fields.test.tsx
+  s_71508ed8da3cb1::t_d95216765e1ed0 1-33
+web/src/features/interactive/components/story-state/ledger-fields.tsx
+  s_71508ed8da3cb1::t_7cc71a1419eb4c 12-13,150,158,161-162,165,171-180,183-184,189-209
+web/src/features/interactive/stores/interactive-store.test.ts
+  s_71508ed8da3cb1::t_ea3d68ffa5e468 103-104,106,116-135,267-283
+web/src/features/interactive/stores/interactive-store.ts
+  s_71508ed8da3cb1::t_6c05a3a3de4c8d 117-118
+web/src/index.css
+  s_71508ed8da3cb1::t_3862705487f1ef 2323,2326-2327,2331-2333,2336-2344,2349-2351,2355-2386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0f2550ca33769c1e1232ac5df15eb1f186d89210",
+  "prompts": {},
+  "sessions": {
+    "s_312b3f46cb80b9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7ee9-cb24-77c0-a132-489ecb63ff90",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_71508ed8da3cb1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7ee7-2475-7151-9203-ecc2ceb41bc7",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
