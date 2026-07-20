@@ -19,12 +19,12 @@ type TurnStateChangeInput struct {
 	ActorID      string         `json:"actor_id" jsonschema_description:"引用已有 Actor 时逐字使用状态手册中的 ID；create 时直接使用故事语言中的角色名称，并与 name 完全相同。"`
 	FieldID      string         `json:"field_id,omitempty" jsonschema_description:"replace/delta 必填，逐字使用 Actor 状态手册中的字段 ID。"`
 	Subpath      []string       `json:"subpath,omitempty" jsonschema_description:"仅 object 字段的嵌套更新使用；按层级填写字符串段，不要自行拼接路径字符串。"`
-	Value        any            `json:"value,omitempty" jsonschema_description:"replace 的完整新值或 delta 的数值变化量；类型必须匹配字段说明。"`
+	Value        any            `json:"value,omitempty" jsonschema_description:"replace 的完整新值或 delta 的数值变化量；类型必须匹配字段说明，number、bool、object、list 必须使用原生 JSON 值，不能写成带引号的字符串。"`
 	TemplateID   string         `json:"template_id,omitempty" jsonschema_description:"仅 create 必填，逐字使用新 Actor 可用模板中的 Template ID。"`
 	Name         string         `json:"name,omitempty" jsonschema_description:"create 必填；直接使用故事语言中的角色名称，并与 actor_id 完全相同。"`
 	Role         string         `json:"role,omitempty" jsonschema_description:"仅 create 使用的角色定位。"`
 	Description  string         `json:"description,omitempty" jsonschema_description:"仅 create 使用的简短角色说明。"`
-	InitialState map[string]any `json:"initial_state,omitempty" jsonschema_description:"仅 create 使用；key 必须是所选模板的精确字段 ID。"`
+	InitialState map[string]any `json:"initial_state,omitempty" jsonschema_description:"仅 create 使用；key 必须是所选模板的精确字段 ID，number、bool、object、list 必须使用原生 JSON 值，不能写成带引号的字符串。"`
 }
 
 // DecodeInteractiveTurnSubmissionInput independently decodes state_changes

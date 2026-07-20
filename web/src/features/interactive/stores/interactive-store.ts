@@ -114,7 +114,8 @@ export const useInteractiveStore = create<InteractiveStore>((set) => ({
   currentBranchId: 'main',
   submode: readRememberedSubmode(),
   setStories: (stories, currentStoryId) => set((state) => {
-    const storyId = rememberedStoryId(stories) || currentStoryId || state.currentStoryId || stories[0]?.id || ''
+    const indexedStoryId = currentStoryId && stories.some((story) => story.id === currentStoryId) ? currentStoryId : ''
+    const storyId = indexedStoryId || rememberedStoryId(stories) || state.currentStoryId || stories[0]?.id || ''
     const branchId = storyId ? rememberedBranchFor(storyId) || (storyId === state.currentStoryId ? state.currentBranchId : 'main') : 'main'
     rememberCurrentStory(storyId)
     return {

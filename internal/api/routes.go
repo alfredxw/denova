@@ -79,6 +79,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.GET("/interactive/stories", apiHandlers.HandleInteractiveStories)
 		api.POST("/interactive/stories", apiHandlers.HandleInteractiveStoryCreate)
 		api.PATCH("/interactive/stories/:id", apiHandlers.HandleInteractiveStoryUpdate)
+		api.POST("/interactive/stories/:id/select", apiHandlers.HandleInteractiveStorySelect)
 		api.DELETE("/interactive/stories/:id", apiHandlers.HandleInteractiveStoryDelete)
 		api.GET("/interactive/stories/:id/snapshot", apiHandlers.HandleInteractiveSnapshot)
 		api.POST("/interactive/stories/:id/rules/resolutions/:resolution_id/reroll", apiHandlers.HandleInteractiveRuleResolutionReroll)

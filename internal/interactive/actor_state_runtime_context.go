@@ -186,13 +186,20 @@ func actorStateRuntimeSubmissionTemplate(system StoryDirectorActorStateSystem, r
 	data, _ := json.MarshalIndent(example, "", "  ")
 	sb.Write(data)
 	sb.WriteString("\n```\n\n")
-	sb.WriteString("没有状态变化时提交 `\"state_changes\": []`。创建新 Actor 时使用：\n\n```json\n")
+	sb.WriteString("没有状态变化时提交 `\"state_changes\": []`。创建新 Actor 时使用：\n\n")
+	sb.WriteString("`initial_state` 必须使用目标模板中的真实 Field ID；下面的 key 只是类型占位，不要照抄。number、bool、object、list 必须使用原生 JSON 值，不能写成带引号的字符串；有默认值且没有可靠新事实的字段直接省略。\n\n```json\n")
 	create := map[string]any{
-		"op":            TurnStateUpdateCreate,
-		"actor_id":      "{{new_actor_name}}",
-		"template_id":   "{{template_id}}",
-		"name":          "{{new_actor_name}}",
-		"initial_state": map[string]any{"{{field_id}}": "{{initial_value_matching_field_type}}"},
+		"op":          TurnStateUpdateCreate,
+		"actor_id":    "{{new_actor_name}}",
+		"template_id": "{{template_id}}",
+		"name":        "{{new_actor_name}}",
+		"initial_state": map[string]any{
+			"{{string_field_id}}": "{{text_value}}",
+			"{{number_field_id}}": float64(0),
+			"{{bool_field_id}}":   false,
+			"{{object_field_id}}": map[string]any{},
+			"{{list_field_id}}":   []any{},
+		},
 	}
 	data, _ = json.MarshalIndent(create, "", "  ")
 	sb.Write(data)

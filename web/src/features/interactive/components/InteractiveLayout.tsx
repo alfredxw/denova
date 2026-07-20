@@ -6,7 +6,7 @@ import { Group, Panel, Separator } from 'react-resizable-panels'
 import type { Layout } from 'react-resizable-panels'
 import { useShallow } from 'zustand/react/shallow'
 import { readFile } from '@/lib/api'
-import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, switchInteractiveBranch, updateInteractiveStory } from '../api'
+import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, selectInteractiveStory, switchInteractiveBranch, updateInteractiveStory } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { BranchTimeline } from './BranchTimeline'
 import { DirectorBackstage } from './director-backstage/DirectorBackstage'
@@ -87,6 +87,7 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
   const storyIndexRequestSeqRef = useRef(0)
   const snapshotStoryIdRef = useRef('')
   const snapshotRequestSeqRef = useRef(0)
+  const storySelectionQueueRef = useRef<Promise<void>>(Promise.resolve())
   const lastStableSnapshotRef = useRef<Snapshot | null>(null)
   const [snapshotLoading, setSnapshotLoading] = useState(false)
   const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false)
@@ -236,6 +237,18 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
     await reloadStories(story)
   }
 
+  const handleStorySelect = useCallback((storyId: string) => {
+    if (!storyId || storyId === useInteractiveStore.getState().currentStoryId) return
+    setCurrentStoryId(storyId)
+    const persisted = storySelectionQueueRef.current
+      .catch(() => undefined)
+      .then(() => selectInteractiveStory(storyId))
+    storySelectionQueueRef.current = persisted
+    void persisted.catch((error) => {
+      console.error('[interactive-layout] 持久化当前故事线失败', { storyId, error })
+    })
+  }, [setCurrentStoryId])
+
   const handleDeleteStories = async (storyIds: string[]) => {
     const uniqueStoryIds = Array.from(new Set(storyIds.filter(Boolean)))
     if (uniqueStoryIds.length === 0) return
@@ -366,7 +379,7 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
       bookOpeningPresets={bookOpeningPresets}
       directorPanelVisible={directorPanelVisible}
       stateDisplayPreference={storyStateDisplayPreference}
-      onStorySelect={setCurrentStoryId}
+      onStorySelect={handleStorySelect}
       onStoryCreate={handleCreateStory}
       onStorySetupUpdate={handleStorySetupUpdate}
       onStoryDelete={handleDeleteStories}
@@ -396,7 +409,7 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
               ) : submode === 'director' ? (
                 <DirectorBackstage storyId={currentStoryId} branchId={currentBranchId} snapshot={displaySnapshot} loading={snapshotPending} onSnapshotRefresh={() => reloadSnapshot(currentBranchId, currentStoryId, { silent: true })} />
               ) : submode === 'timeline' ? (
-                <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} onSelect={setCurrentStoryId} onCreate={() => undefined} onDeleteStories={handleDeleteStories} hideCreate />} />
+                <BranchTimeline snapshot={displaySnapshot} branches={branches} currentBranchId={currentBranchId} onSwitchBranch={handleSwitchBranch} onCreateBranch={handleCreateBranch} onDeleteBranch={handleDeleteBranch} fill variant="workspace" onBackToStory={() => setSubmode('story')} headerControls={<StoryPicker stories={stories} currentStoryId={currentStoryId} onSelect={handleStorySelect} onCreate={() => undefined} onDeleteStories={handleDeleteStories} hideCreate />} />
               ) : isMobile ? (
                 <MobilePaneHost
                   panes={[{

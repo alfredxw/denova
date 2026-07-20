@@ -67,6 +67,14 @@ func (h *Handlers) HandleInteractiveStoryUpdate(ctx context.Context, c *app.Requ
 	writeJSON(c, consts.StatusOK, story)
 }
 
+func (h *Handlers) HandleInteractiveStorySelect(ctx context.Context, c *app.RequestContext) {
+	if err := h.app.SelectInteractiveStory(c.Param("id")); err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *Handlers) HandleInteractiveStoryDelete(ctx context.Context, c *app.RequestContext) {
 	if err := h.app.DeleteInteractiveStory(c.Param("id")); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())

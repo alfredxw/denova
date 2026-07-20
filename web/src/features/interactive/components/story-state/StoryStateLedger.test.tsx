@@ -52,7 +52,7 @@ describe('StoryStateLedger', () => {
     expectVitalityVisible()
     expect(screen.getByText(LONG_DETAIL_TEXT)).toBeInTheDocument()
     expect(screen.getByText('敛息诀')).toBeInTheDocument()
-    expect(screen.getByText('下品灵石')).toBeInTheDocument()
+    expect(screen.getByTitle('下品灵石')).toBeInTheDocument()
     expect(screen.getByText('被赵师兄盯上')).toBeInTheDocument()
   })
 
@@ -193,7 +193,7 @@ describe('StoryStateLedger', () => {
     expect(screen.queryByRole('button', { name: /展开全部/ })).not.toBeInTheDocument()
   })
 
-  it('renders nested dynamic resources, effects, and cooldowns without flattening them to blanks', () => {
+  it('renders nested dynamic resources, effects, and cooldowns as structured lists', () => {
     const snapshot = storyStateSnapshot()
     const template = snapshot.actor_state_schema?.system.templates?.[0]
     const actors = snapshot.state.actors as Record<string, { state?: Record<string, unknown> }>
@@ -215,9 +215,21 @@ describe('StoryStateLedger', () => {
       />,
     )
 
-    expect(screen.getByText(/生命（当前值 18 · 上限 30）/)).toBeInTheDocument()
-    expect(screen.getByText(/Poison 001（名称 中毒 · 剩余 3轮）/)).toBeInTheDocument()
-    expect(screen.getByText(/Ability fireball（名称 火球术 · 剩余 2 · 单位 轮）/)).toBeInTheDocument()
+    const vitality = screen.getByTitle('生命').closest('li')
+    const poison = screen.getByTitle('Poison 001').closest('li')
+    const fireball = screen.getByTitle('Ability fireball').closest('li')
+    expect(vitality).not.toBeNull()
+    expect(poison).not.toBeNull()
+    expect(fireball).not.toBeNull()
+    expect(within(vitality!).getByText('当前值:')).toBeInTheDocument()
+    expect(within(vitality!).getByText('18')).toBeInTheDocument()
+    expect(within(vitality!).getByText('上限:')).toBeInTheDocument()
+    expect(within(vitality!).getByText('30')).toBeInTheDocument()
+    expect(within(poison!).getByText('中毒')).toBeInTheDocument()
+    expect(within(poison!).getByText('3轮')).toBeInTheDocument()
+    expect(within(fireball!).getByText('火球术')).toBeInTheDocument()
+    expect(within(fireball!).getByText('2')).toBeInTheDocument()
+    expect(within(fireball!).getByText('轮')).toBeInTheDocument()
   })
 
   it('skips section headers when all fields land in a single group', () => {

@@ -2320,31 +2320,68 @@ html[data-nova-motion="off"] *::after {
   content: '·';
 }
 
-.story-state-ledger__object-grid {
+.story-state-ledger__nested-object-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  min-width: 0;
   font-size: 12px;
 }
 
-.story-state-ledger__object-row {
-  display: grid;
-  grid-template-columns: minmax(3em, 8em) minmax(0, 1fr);
-  gap: 8px;
-  align-items: baseline;
+.story-state-ledger__nested-object-list--nested {
+  margin-top: 1px;
+  padding-left: 10px;
 }
 
-.story-state-ledger__object-row > dt {
-  overflow: hidden;
+.story-state-ledger__nested-object-item {
+  min-width: 0;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.story-state-ledger__nested-object-key {
+  display: inline;
+  margin-right: 0.45em;
   font-size: 11px;
   color: var(--nova-text-faint);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.story-state-ledger__object-row > dd {
-  line-height: 1.6;
+.story-state-ledger__nested-object-value {
+  display: inline;
+  min-width: 0;
   color: var(--nova-text);
+}
+
+.story-state-ledger__nested-object-item--branch > .story-state-ledger__nested-object-key {
+  display: block;
+  margin-right: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--nova-text-muted);
+}
+
+.story-state-ledger__nested-object-item--branch > .story-state-ledger__nested-object-value {
+  display: block;
+}
+
+.story-state-ledger__object-value-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.story-state-ledger__object-value-item {
+  position: relative;
+  min-width: 0;
+  padding-left: 10px;
+  overflow-wrap: anywhere;
+}
+
+.story-state-ledger__object-value-item::before {
+  position: absolute;
+  left: 0;
+  color: var(--nova-text-faint);
+  content: '·';
 }
 
 .story-state-ledger__change-chip {

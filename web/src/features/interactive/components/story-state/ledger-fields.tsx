@@ -9,6 +9,8 @@ import { humanizeStateKey } from './model'
 /** Long text beyond this length is clamped with an inline expand toggle. */
 const BLOCK_CLAMP_LENGTH = 300
 const OBJECT_ENTRY_LIMIT = 20
+const OBJECT_ARRAY_LIMIT = 8
+const MAX_OBJECT_DEPTH = 3
 
 /**
  * LedgerFieldView renders one state field with the renderer resolved by
@@ -145,7 +147,7 @@ function ObjectFieldBody({ value }: { value: unknown }) {
     return (
       <div className="flex flex-col gap-2">
         {items.slice(0, 8).map((item, index) => (
-          <ObjectEntryGrid key={index} value={item} />
+          <ObjectEntryList key={index} value={item} />
         ))}
       </div>
     )
@@ -153,39 +155,56 @@ function ObjectFieldBody({ value }: { value: unknown }) {
   if (!isRecord(value) || Object.keys(value).length === 0) {
     return <span className="text-xs text-[var(--nova-text-faint)]">{t('directorPanel.stateValue.empty')}</span>
   }
-  return <ObjectEntryGrid value={value} />
+  return <ObjectEntryList value={value} />
 }
 
-function ObjectEntryGrid({ value }: { value: Record<string, unknown> }) {
-  const entries = Object.entries(value).filter(([, item]) => item !== undefined)
-  return (
-    <dl className="story-state-ledger__object-grid">
-      {entries.slice(0, OBJECT_ENTRY_LIMIT).map(([key, item]) => (
-        <div key={key} className="story-state-ledger__object-row">
-          <dt title={humanizeStateKey(key)}>{humanizeStateKey(key)}</dt>
-          <dd className="min-w-0"><ObjectValue value={item} /></dd>
-        </div>
-      ))}
-    </dl>
-  )
+function ObjectEntryList({ value }: { value: Record<string, unknown> }) {
+  return <NestedObjectList value={value} depth={0} />
 }
 
-function ObjectValue({ value }: { value: unknown }) {
+function ObjectValue({ value, depth = 0 }: { value: unknown; depth?: number }) {
   if (value === null || value === undefined || value === '') return <span className="text-[var(--nova-text-faint)]">—</span>
   if (typeof value === 'boolean') return <span>{value ? '✓' : '—'}</span>
   if (typeof value === 'number') return <span className="font-mono tabular-nums">{formatLedgerNumber(value)}</span>
   if (typeof value === 'string') return <span className="break-words [overflow-wrap:anywhere]">{value}</span>
   if (Array.isArray(value)) {
-    const simple = value.every((item) => item === null || ['string', 'number', 'boolean'].includes(typeof item))
-    if (simple) {
-      return <span className="break-words [overflow-wrap:anywhere]">{value.map((item) => (item === null ? '—' : String(item))).join('、')}</span>
-    }
-    return <span className="break-words [overflow-wrap:anywhere]">{JSON.stringify(value)}</span>
+    if (value.length === 0) return <span className="text-[var(--nova-text-faint)]">—</span>
+    return (
+      <ul className="story-state-ledger__object-value-list">
+        {value.slice(0, OBJECT_ARRAY_LIMIT).map((item, index) => (
+          <li key={index} className="story-state-ledger__object-value-item">
+            <ObjectValue value={item} depth={depth + 1} />
+          </li>
+        ))}
+      </ul>
+    )
   }
   if (isRecord(value)) {
-    return <span className="break-words [overflow-wrap:anywhere]">{formatNestedRecord(value) || '—'}</span>
+    if (depth >= MAX_OBJECT_DEPTH) return <span className="text-[var(--nova-text-faint)]">…</span>
+    return <NestedObjectList value={value} depth={depth} />
   }
   return <span>{String(value)}</span>
+}
+
+function NestedObjectList({ value, depth }: { value: Record<string, unknown>; depth: number }) {
+  const entries = Object.entries(value).filter(([, item]) => item !== undefined)
+  if (entries.length === 0) return <span className="text-[var(--nova-text-faint)]">—</span>
+  return (
+    <ul className={cn('story-state-ledger__nested-object-list', depth > 0 && 'story-state-ledger__nested-object-list--nested')} data-depth={depth}>
+      {entries.slice(0, OBJECT_ENTRY_LIMIT).map(([key, item]) => {
+        const structured = Array.isArray(item) || isRecord(item)
+        const label = humanizeStateKey(key)
+        return (
+          <li key={key} className={cn('story-state-ledger__nested-object-item', structured && 'story-state-ledger__nested-object-item--branch')}>
+            <span className="story-state-ledger__nested-object-key" title={label}>{label}:</span>
+            <div className="story-state-ledger__nested-object-value">
+              <ObjectValue value={item} depth={depth + 1} />
+            </div>
+          </li>
+        )
+      })}
+    </ul>
+  )
 }
 
 /** FieldChangeChip renders the compact per-field turn-change marker. */
@@ -221,29 +240,6 @@ function formatLedgerNumber(value: number) {
 
 function truncateEnd(text: string, max: number) {
   return text.length > max ? `${text.slice(0, max)}…` : text
-}
-
-function formatNestedRecord(value: Record<string, unknown>, depth = 0): string {
-  return Object.entries(value)
-    .slice(0, 12)
-    .map(([key, item]) => {
-      const formatted = formatNestedValue(item, depth + 1)
-      if (!formatted) return ''
-      return isRecord(item)
-        ? `${humanizeStateKey(key)}（${formatted}）`
-        : `${humanizeStateKey(key)} ${formatted}`
-    })
-    .filter(Boolean)
-    .join(' · ')
-}
-
-function formatNestedValue(value: unknown, depth: number): string {
-  if (value === null || value === undefined || value === '') return ''
-  if (typeof value === 'object' && depth >= 3) return '…'
-  if (Array.isArray(value)) return value.map((item) => formatNestedValue(item, depth + 1)).filter(Boolean).join('、')
-  if (isRecord(value)) return formatNestedRecord(value, depth)
-  if (typeof value === 'boolean') return value ? '✓' : '—'
-  return String(value)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

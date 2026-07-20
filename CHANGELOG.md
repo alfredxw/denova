@@ -23,6 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 游戏模式状态面板的 Object 字段不再把嵌套对象与数组拼成一行文字；叶子项改用紧凑的 `key: value` 列表，只有下一层对象才缩进，长内容可使用完整字段宽度换行，并保持明暗主题一致。
+- Object fields in the Game Mode state panel no longer flatten nested objects and arrays into one text line. Leaf entries now use compact `key: value` lists, only deeper objects are indented, long content wraps across the full field width, and light/dark theming stays consistent.
 - 状态结构初始化从后台 Director 完整移交给前台 Game Agent：动态模式先通过专用结构工具暂存模板/字段，再通过 `state_changes` 初始化 Actor 与值；结构、开局正文、初始状态和行动建议在首回合一次性原子提交，失败不会留下半成品。固定模板模式不暴露结构工具，开局前返回配置页会安全重建冻结结构，首回合提交后策略即锁定。Beta 不兼容：旧故事统一固定使用已有冻结结构，不再启动 Director 迁移或复审；旧 `state_schema_adaptation_mode` 配置、后台运行 API 和复审操作已移除。
 - State-schema initialization moves completely from the background Director to the foreground Game Agent: dynamic modes stage templates and fields through a dedicated tool, then initialize Actors and values through `state_changes`. Schema, opening prose, initial state, and choices commit atomically with the first turn, leaving no partial result on failure. Fixed mode exposes no schema tool; returning to setup before the opening safely rebuilds the frozen schema, and the policy locks after the first turn. Beta breaking: old stories keep their existing frozen schema and never start a Director migration or review; the legacy `state_schema_adaptation_mode`, background run APIs, and review actions are removed.
 - 方案预设刷新后默认定位到配置管理 Agent，同时展开当前模式下的全部资源分组，并按“故事导演 → 叙事风格 → 状态系统 → TRPG 检定 → 图像方案 → 事件包”排列；用户仍可单独折叠分组或一键收起全部。
@@ -62,6 +64,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 游戏模式的 `submit_interactive_turn` 现在会在冻结 Schema 校验前，将可无歧义解释的数字、布尔、object 和 list 字符串编码规范为原生 JSON，并从同名对象记录 ID 补齐模板要求的名称字段；冲突或模糊值仍会原子拒绝。一次提交中的独立状态错误会合并到同一回执并精确定位 `initial_state` 字段，工具说明也改用原生 JSON 示例，避免弱模型逐字段重试。
+- Game Mode's `submit_interactive_turn` now normalizes unambiguous string encodings of numbers, booleans, objects, and lists into native JSON before frozen-schema validation, and derives required record-name fields from identical object-key IDs; conflicting or ambiguous values remain atomically rejected. Independent state errors from one submission are returned together with precise `initial_state` paths, and the tool guide now uses native JSON examples to avoid field-by-field retries from weaker models.
+- 游戏模式切换故事线时会将当前选择写入工作区故事索引，并在加载时优先采用该共享值；同一工作区从其他浏览器打开时会恢复最后选择的故事线，不再被各浏览器独立的本地缓存覆盖。
+- Switching stories in Game Mode now persists the current selection in the workspace story index and treats that shared value as authoritative on load. Opening the same workspace in another browser restores the last selected story instead of being overridden by per-browser local cache.
 - 状态面板预览不再固定优先“概览/持有”或“面板/状态”，而是严格展示当前排序最前的两个分区；展开全部继续沿用同一顺序，不会改变用户的布局配置。
 - The state-panel preview no longer hard-codes Overview/Holdings or Panel/State; it strictly shows the first two sections in the current order, and Expand All preserves that order without modifying the saved layout.
 - 流式 thinking 与正文现在统一先以不可见目标内容预留下一帧高度，在消息列表完成锁底后再揭示新增文字；写作、游戏及子 Agent 消息共用同一暂存层，避免新行先出现在视口下方再被瞬间抬升。

@@ -50,6 +50,34 @@ func TestCreateStoryInitializesIndexAndStoryFile(t *testing.T) {
 	assertContains(t, string(data), fmt.Sprintf(`"choice_count":%d`, DefaultStoryChoiceCount))
 }
 
+func TestSelectStoryPersistsCurrentStoryInWorkspaceIndex(t *testing.T) {
+	store := NewStore(t.TempDir())
+	first, err := store.CreateStory(CreateStoryRequest{Title: "第一条故事线"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := store.CreateStory(CreateStoryRequest{Title: "第二条故事线"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ID == first.ID {
+		t.Fatal("created stories should have distinct IDs")
+	}
+
+	if err := store.SelectStory(first.ID); err != nil {
+		t.Fatalf("SelectStory failed: %v", err)
+	}
+
+	reopened := NewStore(store.Root())
+	index, err := reopened.Index()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if index.CurrentStoryID != first.ID {
+		t.Fatalf("persisted current story = %q, want %q", index.CurrentStoryID, first.ID)
+	}
+}
+
 func TestCreateAndUpdateStoryChoiceCount(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "七选一", ChoiceCount: 7})
