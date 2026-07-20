@@ -1,0 +1,23 @@
+web/src/features/interactive/components/StoryStage.test.tsx
+  s_71508ed8da3cb1::t_115bbbea712459 79-102
+web/src/features/interactive/components/StoryStage.tsx
+  s_71508ed8da3cb1::t_918c59b3a4d1d5 1565
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0709f19eb69f54098d513c9fb69b7101ff80be50",
+  "prompts": {},
+  "sessions": {
+    "s_71508ed8da3cb1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7ee7-2475-7151-9203-ecc2ceb41bc7",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
