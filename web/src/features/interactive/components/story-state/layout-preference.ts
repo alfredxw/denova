@@ -93,35 +93,6 @@ export function moveStoryStateLayoutField(layout: StoryStateTemplateLayout, fiel
   return { groups }
 }
 
-/** Resolves one nested DnD hover into a stable layout preview. */
-export function previewStoryStateLayoutDrag(
-  layout: StoryStateTemplateLayout,
-  activeDragId: string,
-  overDragId: string,
-  insertAfter = false,
-): StoryStateTemplateLayout {
-  if (!activeDragId || !overDragId || activeDragId === overDragId) return normalizeTemplateLayout(layout)
-  if (activeDragId.startsWith('group:')) {
-    const activeGroup = activeDragId.slice('group:'.length)
-    const overGroup = overDragId.startsWith('group:')
-      ? overDragId.slice('group:'.length)
-      : groupForLayoutField(layout, overDragId.slice('field:'.length))
-    return overGroup ? moveStoryStateLayoutGroup(layout, activeGroup, overGroup) : normalizeTemplateLayout(layout)
-  }
-  if (!activeDragId.startsWith('field:')) return normalizeTemplateLayout(layout)
-
-  const fieldId = activeDragId.slice('field:'.length)
-  const targetGroup = overDragId.startsWith('group:')
-    ? overDragId.slice('group:'.length)
-    : groupForLayoutField(layout, overDragId.slice('field:'.length))
-  if (!targetGroup) return normalizeTemplateLayout(layout)
-  const targetFields = layout.groups.find((group) => group.key === targetGroup)?.field_ids || []
-  const targetIndex = overDragId.startsWith('field:')
-    ? Math.max(0, targetFields.indexOf(overDragId.slice('field:'.length))) + (insertAfter ? 1 : 0)
-    : targetFields.length
-  return moveStoryStateLayoutField(layout, fieldId, targetGroup, targetIndex)
-}
-
 export function readStoryStateLayouts(storyId: string): StoryStateLayouts {
   if (typeof window === 'undefined' || !storyId) return {}
   try {
@@ -189,10 +160,6 @@ function normalizeTemplateLayout(value: unknown): StoryStateTemplateLayout {
 
 function unique(values: string[]) {
   return Array.from(new Set(values))
-}
-
-function groupForLayoutField(layout: StoryStateTemplateLayout, fieldId: string) {
-  return layout.groups.find((group) => group.field_ids.includes(fieldId))?.key || ''
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -4,7 +4,6 @@ import {
   applyStoryStateLayout,
   defaultStoryStateLayout,
   moveStoryStateLayoutField,
-  previewStoryStateLayoutDrag,
   readStoryStateLayouts,
   writeStoryStateTemplateLayout,
 } from './layout-preference'
@@ -62,35 +61,6 @@ describe('story state template layout preference', () => {
     ])
 
     expect(moveStoryStateLayoutField(initial, 'strength', 'removed-group', 0)).toEqual(initial)
-  })
-
-  it('previews nested field dragging in the hovered section without mutating the source layout', () => {
-    const initial = defaultStoryStateLayout([
-      group('overview', ['level', 'strength']),
-      group('holdings', ['items', 'coins']),
-    ])
-
-    const movedAcross = previewStoryStateLayoutDrag(initial, 'field:strength', 'field:coins', false)
-    const movedWithin = previewStoryStateLayoutDrag(initial, 'field:level', 'field:strength', true)
-
-    expect(movedAcross.groups).toEqual([
-      { key: 'overview', field_ids: ['level'] },
-      { key: 'holdings', field_ids: ['items', 'strength', 'coins'] },
-    ])
-    expect(movedWithin.groups[0].field_ids).toEqual(['strength', 'level'])
-    expect(initial.groups[0].field_ids).toEqual(['level', 'strength'])
-  })
-
-  it('uses a section drop target as the end of that section', () => {
-    const initial = defaultStoryStateLayout([
-      group('overview', ['level', 'strength']),
-      group('holdings', ['items']),
-    ])
-
-    expect(previewStoryStateLayoutDrag(initial, 'field:strength', 'group:holdings').groups).toEqual([
-      { key: 'overview', field_ids: ['level'] },
-      { key: 'holdings', field_ids: ['items', 'strength'] },
-    ])
   })
 
   it('persists layouts by story and template and removes only the reset template', () => {
