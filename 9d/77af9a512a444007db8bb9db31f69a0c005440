@@ -1,0 +1,35 @@
+CHANGELOG.md
+  s_292fbaf6d019fa::t_ce449c5d1d5e89 63-64
+web/src/components/Chat/AgentMessageList.test.tsx
+  s_292fbaf6d019fa::t_e62d652eb8f69c 74,87-88,236,242,256-262,272,296,312
+web/src/components/Chat/AgentMessageList.tsx
+  s_292fbaf6d019fa::t_e9f328ea34372a 43-44,99,215,235,301,305,358,575,578,591-594,598,606,609,613
+web/src/components/Chat/AgentPanel.tsx
+  s_292fbaf6d019fa::t_c9187de60eb605 324
+web/src/lib/agent-message-view.test.ts
+  s_292fbaf6d019fa::t_58e4dd76f37c29 6-33
+web/src/lib/agent-message-view.ts
+  s_292fbaf6d019fa::t_31e7022145133c 66-69,73-87
+web/src/lib/agent-ui.test.ts
+  s_292fbaf6d019fa::t_86eb75d2b978fe 11-34
+web/src/lib/agent-ui.ts
+  s_292fbaf6d019fa::t_ddfc12bdd33f1e 150,152,154,164-178,183-190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9d77af9a512a444007db8bb9db31f69a0c005440",
+  "prompts": {},
+  "sessions": {
+    "s_292fbaf6d019fa": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7d8c-f417-74b2-84e7-d1e34d88ac40",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
