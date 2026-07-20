@@ -553,6 +553,7 @@ export function ModeRouter(props: ModeRouterProps) {
           <SearchPanel
             workspace={workspace}
             onSelectResult={onSelectSearchResult}
+            onWorkspaceChanged={onWorkspaceChanged}
           />
         ) : tree.length === 0 ? (
           <div className="py-4 text-center text-[var(--nova-text-muted)]">{t('router.noFiles')}</div>

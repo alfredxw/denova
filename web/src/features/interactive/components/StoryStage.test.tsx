@@ -76,6 +76,30 @@ describe('StoryStage store subscriptions', () => {
 })
 
 describe('StoryStage TurnResult choices', () => {
+	it('places the model selector before the choice control and send action', async () => {
+		render(
+			<VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+				<StoryStage
+					workspace="/tmp/book"
+					stories={[story()]}
+					story={story()}
+					tellers={[]}
+					storyId="story-1"
+					branchId="main"
+					snapshot={{ story_id: 'story-1', branch_id: 'main', turns: [], state: {} }}
+					onDone={() => undefined}
+				/>
+			</VirtuosoMockContext.Provider>,
+		)
+
+		const modelSelector = await screen.findByRole('button', { name: /切换模型/ })
+		const choiceControl = screen.getByRole('button', { name: '获取行动选择' })
+		const sendAction = screen.getByRole('button', { name: '发送' })
+
+		expect(modelSelector.compareDocumentPosition(choiceControl)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+		expect(choiceControl.compareDocumentPosition(sendAction)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+	})
+
 	it('uses persisted TurnResult choices and only reveals them after the user opens the panel', async () => {
 		const user = userEvent.setup()
 		const turn = {

@@ -6,6 +6,7 @@ import type {
   CreateFileRequest,
   FileOperationResult,
   RenameRequest,
+  WorkspaceReplaceResult,
   WorkspaceSearchResult,
   WorkspaceSummary,
 } from './types'
@@ -59,10 +60,19 @@ export function workspaceAssetURL(path: string): string {
   return `/api/workspace/asset?path=${encodeURIComponent(path)}`
 }
 
-export async function searchWorkspace(query: string, limit = 100): Promise<WorkspaceSearchResult[]> {
+export async function searchWorkspace(query: string, limit = 100, options: { regex?: boolean } = {}): Promise<WorkspaceSearchResult[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) })
+  if (options.regex) params.set('regex', '1')
   const data = await requestJSON<{ results: WorkspaceSearchResult[] }>(`/api/workspace/search?${params.toString()}`)
   return Array.isArray(data.results) ? data.results : []
+}
+
+export async function replaceWorkspace(req: { query: string; replacement: string; regex: boolean; workspace: string }): Promise<WorkspaceReplaceResult> {
+  return requestJSON('/api/workspace/replace', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(req),
+  })
 }
 
 export async function saveFile(path: string, content: string, baseRevision: string, workspace: string): Promise<{ path: string; message: string; revision?: string }> {

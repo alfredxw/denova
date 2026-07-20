@@ -278,3 +278,134 @@ func TestWorkspaceAssetServesWorkspaceImages(t *testing.T) {
 		}
 	}
 }
+
+func TestWorkspaceReplaceLiteralAndRegex(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	workspace := application.Workspace()
+	if err := application.BookService().Create("chapters/ch01.md", "file", "林川和韩月进城。\n林川和韩月出城。\n"); err != nil {
+		t.Fatalf("创建测试文件失败: %v", err)
+	}
+	if err := application.BookService().Create("notes.txt", "file", "ABC abc"); err != nil {
+		t.Fatalf("创建测试文件失败: %v", err)
+	}
+
+	// 字面量替换：大小写不敏感，命中同文件多处。
+	literalResp := performJSONRequest(t, server, http.MethodPost, "/api/workspace/replace", map[string]any{
+		"query":       "abc",
+		"replacement": "xyz",
+		"regex":       false,
+		"workspace":   workspace,
+	})
+	if literalResp.Code != http.StatusOK {
+		t.Fatalf("literal replace status = %d body=%s", literalResp.Code, literalResp.Body.String())
+	}
+	var literalBody struct {
+		TotalReplacements int `json:"total_replacements"`
+		Files             []struct {
+			Path         string `json:"path"`
+			Replacements int    `json:"replacements"`
+		} `json:"files"`
+		Skipped []string `json:"skipped"`
+	}
+	decodeResponse(t, literalResp.Body.Bytes(), &literalBody)
+	if literalBody.TotalReplacements != 2 || len(literalBody.Files) != 1 || literalBody.Files[0].Path != "notes.txt" || len(literalBody.Skipped) != 0 {
+		t.Fatalf("字面量替换响应不符合预期: %s", literalResp.Body.String())
+	}
+	got, err := application.BookService().ReadFile("notes.txt")
+	if err != nil || got != "xyz xyz" {
+		t.Fatalf("字面量替换结果不符合预期: content=%q err=%v", got, err)
+	}
+
+	// 正则替换：捕获组引用（$2与$1 需按 JS 语义展开）。
+	regexResp := performJSONRequest(t, server, http.MethodPost, "/api/workspace/replace", map[string]any{
+		"query":       `(林川)和(韩月)`,
+		"replacement": "$2与$1",
+		"regex":       true,
+		"workspace":   workspace,
+	})
+	if regexResp.Code != http.StatusOK {
+		t.Fatalf("regex replace status = %d body=%s", regexResp.Code, regexResp.Body.String())
+	}
+	var regexBody struct {
+		TotalReplacements int `json:"total_replacements"`
+	}
+	decodeResponse(t, regexResp.Body.Bytes(), &regexBody)
+	if regexBody.TotalReplacements != 2 {
+		t.Fatalf("正则替换应替换两处，实际: %s", regexResp.Body.String())
+	}
+	got, err = application.BookService().ReadFile("chapters/ch01.md")
+	if err != nil || got != "韩月与林川进城。\n韩月与林川出城。\n" {
+		t.Fatalf("正则替换结果不符合预期: content=%q err=%v", got, err)
+	}
+
+	// 替换前应创建可恢复版本。
+	history, err := application.VersionHistory(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("读取版本历史失败: %v", err)
+	}
+	foundBackup := false
+	for _, item := range history {
+		if item.Message == "全局替换前自动备份" {
+			foundBackup = true
+			break
+		}
+	}
+	if !foundBackup {
+		t.Fatalf("替换前应创建可恢复版本，历史: %#v", history)
+	}
+}
+
+func TestWorkspaceReplaceValidatesRequest(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	workspace := application.Workspace()
+	if err := application.BookService().Create("chapters/ch01.md", "file", "正文 abc"); err != nil {
+		t.Fatalf("创建测试文件失败: %v", err)
+	}
+
+	emptyQuery := performJSONRequest(t, server, http.MethodPost, "/api/workspace/replace", map[string]any{
+		"query": "", "replacement": "x", "workspace": workspace,
+	})
+	if emptyQuery.Code != http.StatusBadRequest {
+		t.Fatalf("空 query 应返回 400，实际 = %d body=%s", emptyQuery.Code, emptyQuery.Body.String())
+	}
+
+	invalidRegex := performJSONRequest(t, server, http.MethodPost, "/api/workspace/replace", map[string]any{
+		"query": "(未闭合", "replacement": "x", "regex": true, "workspace": workspace,
+	})
+	if invalidRegex.Code != http.StatusBadRequest {
+		t.Fatalf("非法正则应返回 400，实际 = %d body=%s", invalidRegex.Code, invalidRegex.Body.String())
+	}
+
+	emptyMatch := performJSONRequest(t, server, http.MethodPost, "/api/workspace/replace", map[string]any{
+		"query": "a*", "replacement": "x", "regex": true, "workspace": workspace,
+	})
+	if emptyMatch.Code != http.StatusBadRequest {
+		t.Fatalf("可匹配空串的正则应返回 400，实际 = %d body=%s", emptyMatch.Code, emptyMatch.Body.String())
+	}
+
+	// 无匹配：200 且不替换、不创建备份版本。
+	noMatch := performJSONRequest(t, server, http.MethodPost, "/api/workspace/replace", map[string]any{
+		"query": "不存在的词", "replacement": "x", "workspace": workspace,
+	})
+	if noMatch.Code != http.StatusOK {
+		t.Fatalf("无匹配替换应返回 200，实际 = %d body=%s", noMatch.Code, noMatch.Body.String())
+	}
+	var noMatchBody struct {
+		TotalReplacements int `json:"total_replacements"`
+	}
+	decodeResponse(t, noMatch.Body.Bytes(), &noMatchBody)
+	if noMatchBody.TotalReplacements != 0 {
+		t.Fatalf("无匹配时不应替换，实际: %s", noMatch.Body.String())
+	}
+	history, err := application.VersionHistory(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("读取版本历史失败: %v", err)
+	}
+	for _, item := range history {
+		if item.Message == "全局替换前自动备份" {
+			t.Fatalf("无匹配时不应创建备份版本，历史: %#v", history)
+		}
+	}
+}
