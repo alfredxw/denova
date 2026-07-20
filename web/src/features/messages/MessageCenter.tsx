@@ -8,6 +8,7 @@ import { getMessages, markAllMessagesRead, markMessageRead } from './api'
 import type { AutomationMessageNavigation, ProductMessage } from './types'
 
 const DENOVA_GITHUB_URL = 'https://github.com/alfredxw/denova'
+const MESSAGE_CENTER_REFRESH_INTERVAL_MS = 30000
 
 type MessageFilter = 'all' | 'action' | 'automation' | 'product'
 
@@ -45,9 +46,43 @@ export function MessageCenterButton({ className = '', onOpenAutomation }: { clas
   }, [t])
 
   useEffect(() => {
-    void load()
-    const timer = window.setInterval(() => { void load() }, 30000)
-    return () => window.clearInterval(timer)
+    let cancelled = false
+    let running = false
+    let timer: number | null = null
+    const clearTimer = () => {
+      if (timer === null) return
+      window.clearTimeout(timer)
+      timer = null
+    }
+    const scheduleNext = () => {
+      clearTimer()
+      if (cancelled || document.visibilityState !== 'visible') return
+      timer = window.setTimeout(() => {
+        timer = null
+        void run()
+      }, MESSAGE_CENTER_REFRESH_INTERVAL_MS)
+    }
+    const run = async () => {
+      if (cancelled || running || document.visibilityState !== 'visible') return
+      running = true
+      try {
+        await load()
+      } finally {
+        running = false
+        scheduleNext()
+      }
+    }
+    const handleVisibilityChange = () => {
+      clearTimer()
+      if (document.visibilityState === 'visible') void run()
+    }
+    void run()
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      cancelled = true
+      clearTimer()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [load])
 
   const selectMessage = useCallback((id: string) => {

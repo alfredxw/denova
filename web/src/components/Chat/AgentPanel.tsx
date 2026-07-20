@@ -58,11 +58,14 @@ interface AgentPanelProps {
   textSelections: TextSelection[]
   ideContext?: IDEContext
   planMode: boolean
+  hasEarlierMessages: boolean
+  isLoadingEarlierHistory: boolean
   fileSuggestions: string[]
   onCreateSession: (title?: string) => void | Promise<void>
   onSwitchSession: (id: string) => void | Promise<void>
   onRenameSession: (id: string, title: string) => void | Promise<void>
   onDeleteSession: (id: string) => void | Promise<void>
+  onLoadEarlierHistory: () => void | Promise<void>
   onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
@@ -110,11 +113,14 @@ export function AgentPanel({
   textSelections,
   ideContext,
   planMode,
+  hasEarlierMessages,
+  isLoadingEarlierHistory,
   fileSuggestions,
   onCreateSession,
   onSwitchSession,
   onRenameSession,
   onDeleteSession,
+  onLoadEarlierHistory,
   onSend,
   onAnalyzeContext,
   onStop,
@@ -322,6 +328,9 @@ export function AgentPanel({
     bottomPaddingPx: messageListBottomPadding,
     collapseTraceGroups: true,
     activeTraceDisplay: 'collapsed' as const,
+    hasEarlierMessages,
+    isLoadingEarlierMessages: isLoadingEarlierHistory,
+    onLoadEarlierMessages: onLoadEarlierHistory,
     timelineAttachments,
     onOpenSubAgentSession: openSubAgentSession,
     onInsertIllustration,

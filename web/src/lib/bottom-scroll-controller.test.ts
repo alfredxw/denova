@@ -14,8 +14,7 @@ describe('bottom scroll controller', () => {
     expect(isElementNearBottom(element, 12)).toBe(false)
   })
 
-  it('runs immediately, across two frames, and once after layout settles', () => {
-    vi.useFakeTimers()
+  it('coalesces bottom scrolling into one animation-frame write', () => {
     const frames: FrameRequestCallback[] = []
     vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
       frames.push(callback)
@@ -26,12 +25,28 @@ describe('bottom scroll controller', () => {
     const scheduler = createDeferredBottomScrollScheduler()
 
     scheduler.schedule(scrollNow, () => true)
+    expect(scrollNow).not.toHaveBeenCalled()
+    frames.shift()?.(0)
     expect(scrollNow).toHaveBeenCalledTimes(1)
-    frames.shift()?.(0)
-    frames.shift()?.(0)
-    expect(scrollNow).toHaveBeenCalledTimes(3)
-    vi.advanceTimersByTime(80)
-    expect(scrollNow).toHaveBeenCalledTimes(4)
+  })
+
+  it('keeps only the latest pending scroll request in the same frame', () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      frames.push(callback)
+      return frames.length
+    }))
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    const first = vi.fn()
+    const latest = vi.fn()
+    const scheduler = createDeferredBottomScrollScheduler()
+
+    scheduler.schedule(first, () => true)
+    scheduler.schedule(latest, () => true)
+    frames.forEach((callback) => callback(0))
+
+    expect(first).not.toHaveBeenCalled()
+    expect(latest).toHaveBeenCalledTimes(1)
   })
 
   it('cancels deferred work when the lock is released', () => {
@@ -48,9 +63,9 @@ describe('bottom scroll controller', () => {
 
     scheduler.schedule(scrollNow, () => true)
     scheduler.cancel()
-    vi.advanceTimersByTime(80)
+    frames.shift()?.(0)
 
     expect(cancelFrame).toHaveBeenCalledWith(1)
-    expect(scrollNow).toHaveBeenCalledTimes(1)
+    expect(scrollNow).not.toHaveBeenCalled()
   })
 })

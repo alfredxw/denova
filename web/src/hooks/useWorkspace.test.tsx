@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 import { useWorkspace } from './useWorkspace'
@@ -54,6 +54,32 @@ describe('useWorkspace', () => {
     await waitFor(() => expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(1))
     expect(apiMock.getWorkspaceSummary).toHaveBeenCalledTimes(1)
     expect(setIntervalSpy.mock.calls.some(([, timeout]) => timeout === TREE_AUTO_REFRESH_INTERVAL_MS_FOR_TEST)).toBe(false)
+  })
+
+  it('合并自动刷新期间的重复唤醒，避免目录和统计请求重叠', async () => {
+    render(<WorkspaceHarness onChange={() => {}} />)
+    await waitFor(() => expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(1))
+
+    const treeRefresh = deferred<unknown[]>()
+    const summaryRefresh = deferred<{ title: string; author: string; chapter_count: number; total_words: number; chapters: unknown[] }>()
+    apiMock.getWorkspaceTree.mockClear()
+    apiMock.getWorkspaceSummary.mockClear()
+    apiMock.getWorkspaceTree.mockReturnValue(treeRefresh.promise)
+    apiMock.getWorkspaceSummary.mockReturnValue(summaryRefresh.promise)
+
+    act(() => {
+      fireEvent.focus(window)
+      fireEvent.focus(window)
+    })
+
+    expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(1)
+    expect(apiMock.getWorkspaceSummary).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      treeRefresh.resolve([])
+      summaryRefresh.resolve({ title: '', author: '', chapter_count: 0, total_words: 0, chapters: [] })
+      await Promise.all([treeRefresh.promise, summaryRefresh.promise])
+    })
   })
 
   it('暴露书架与快捷切换器共用的排序模式', async () => {

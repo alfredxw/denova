@@ -1,8 +1,18 @@
 import type { ChatMessage } from './api-client/types'
 import { normalizeAgentUIMessages, type AgentDataParts, type AgentMessageMetadata, type AgentUIMessage } from './agent-ui'
 
+const legacyMessageCache = new WeakMap<ChatMessage, { index: number; message: AgentUIMessage | null }>()
+
 export function chatMessagesToAgentUIMessages(messages: ChatMessage[]): AgentUIMessage[] {
-  return normalizeAgentUIMessages(messages.map(chatMessageToAgentUIMessage).filter((message): message is AgentUIMessage => Boolean(message)))
+  return normalizeAgentUIMessages(messages.map(cachedChatMessageToAgentUIMessage).filter((message): message is AgentUIMessage => Boolean(message)))
+}
+
+function cachedChatMessageToAgentUIMessage(message: ChatMessage, index: number) {
+  const cached = legacyMessageCache.get(message)
+  if (cached && (message.id || message.render_key || cached.index === index)) return cached.message
+  const converted = chatMessageToAgentUIMessage(message, index)
+  legacyMessageCache.set(message, { index, message: converted })
+  return converted
 }
 
 export function chatMessageToAgentUIMessage(message: ChatMessage, index = 0): AgentUIMessage | null {

@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Profiler } from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InteractiveLayout } from './InteractiveLayout'
 import { useInteractiveStore } from '../stores/interactive-store'
 import { createInteractiveStory, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, updateInteractiveStory } from '../api'
-import type { StoryDirector, StorySummary, Teller } from '../types'
+import type { Snapshot, StoryDirector, StorySummary, Teller } from '../types'
 
 vi.mock('@/hooks/useIsMobile', () => ({
   useIsMobile: () => false,
@@ -110,6 +111,75 @@ beforeEach(() => {
   vi.mocked(getInteractiveBranches).mockResolvedValue([{ id: 'main', head: '', title: '主线', created_at: '2026-07-04T00:00:00Z', current: true }])
 })
 
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+describe('InteractiveLayout polling lifecycle', () => {
+  it('does not poll a pending snapshot while the retained route is inactive', async () => {
+    vi.useFakeTimers()
+    const pendingSnapshot = pendingInteractiveSnapshot()
+    useInteractiveStore.setState({
+      stories: [story('st_new', '故事')],
+      currentStoryId: 'st_new',
+      currentBranchId: 'main',
+      snapshot: pendingSnapshot,
+    })
+    vi.mocked(getInteractiveStories).mockResolvedValue({ current_story_id: 'st_new', stories: useInteractiveStore.getState().stories })
+    vi.mocked(getInteractiveSnapshot).mockResolvedValue(pendingSnapshot)
+
+    render(<InteractiveLayout workspace="/workspace" active={false} />)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    const callsAfterInitialLoad = vi.mocked(getInteractiveSnapshot).mock.calls.length
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+
+    expect(vi.mocked(getInteractiveSnapshot)).toHaveBeenCalledTimes(callsAfterInitialLoad)
+  })
+
+  it('waits for the previous pending snapshot poll before scheduling another', async () => {
+    vi.useFakeTimers()
+    const pendingSnapshot = pendingInteractiveSnapshot()
+    useInteractiveStore.setState({
+      stories: [story('st_new', '故事')],
+      currentStoryId: 'st_new',
+      currentBranchId: 'main',
+      snapshot: pendingSnapshot,
+    })
+    vi.mocked(getInteractiveStories).mockResolvedValue({ current_story_id: 'st_new', stories: useInteractiveStore.getState().stories })
+    vi.mocked(getInteractiveSnapshot).mockResolvedValue(pendingSnapshot)
+
+    render(<InteractiveLayout workspace="/workspace" active />)
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const poll = deferred<typeof pendingSnapshot>()
+    vi.mocked(getInteractiveSnapshot).mockClear()
+    vi.mocked(getInteractiveSnapshot).mockReturnValue(poll.promise)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+      await vi.advanceTimersByTimeAsync(5000)
+    })
+    expect(vi.mocked(getInteractiveSnapshot)).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      poll.resolve(pendingSnapshot)
+      await poll.promise
+      await Promise.resolve()
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(vi.mocked(getInteractiveSnapshot)).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('InteractiveLayout story creation', () => {
   it('selects and lists a newly created story even when stale story indexes resolve later', async () => {
     const initialIndex = deferred<{ current_story_id: string; stories: StorySummary[] }>()
@@ -196,6 +266,31 @@ describe('InteractiveLayout story creation', () => {
   })
 })
 
+describe('InteractiveLayout store subscriptions', () => {
+  it('does not rerender for live messages owned by StoryStage', async () => {
+    vi.mocked(getInteractiveStories).mockResolvedValue({ current_story_id: '', stories: [] })
+    let commits = 0
+    render(
+      <Profiler id="interactive-layout" onRender={() => { commits += 1 }}>
+        <InteractiveLayout workspace="/workspace" />
+      </Profiler>,
+    )
+    await waitFor(() => expect(getInteractiveStories).toHaveBeenCalled())
+    await act(async () => undefined)
+    commits = 0
+
+    act(() => {
+      useInteractiveStore.getState().setStoryStageRun('other-stage', {
+        streaming: true,
+        activityContent: '',
+        liveMessages: [],
+      })
+    })
+
+    expect(commits).toBe(0)
+  })
+})
+
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (error?: unknown) => void
@@ -204,6 +299,25 @@ function deferred<T>() {
     reject = innerReject
   })
   return { promise, resolve, reject }
+}
+
+function pendingInteractiveSnapshot(): Snapshot {
+  const turn = {
+    id: 'turn-1',
+    parent_id: null,
+    branch_id: 'main',
+    ts: '2026-07-04T00:00:00Z',
+    user: '继续',
+    narrative: '待处理',
+    state_status: 'pending' as const,
+  }
+  return {
+    story_id: 'st_new',
+    branch_id: 'main',
+    turns: [turn],
+    state: {},
+    current_turn: turn,
+  }
 }
 
 function story(id: string, title: string): StorySummary {

@@ -32,6 +32,30 @@ describe('agent-ui', () => {
     expect(normalized[1].parts[0]).toBe(streamingPart)
   })
 
+  it('不重复读取未变化历史消息的正文来生成去重指纹', () => {
+    let textReads = 0
+    const part = { type: 'text' } as Record<string, unknown>
+    Object.defineProperty(part, 'text', {
+      enumerable: true,
+      get: () => {
+        textReads += 1
+        return '稳定的历史正文'
+      },
+    })
+    const message = {
+      id: 'history-assistant',
+      role: 'assistant',
+      metadata: { run_id: 'run-history' },
+      parts: [part],
+    } as unknown as AgentUIMessage
+
+    normalizeAgentUIMessages([message])
+    const readsAfterFirstNormalization = textReads
+    normalizeAgentUIMessages([message])
+
+    expect(textReads).toBe(readsAfterFirstNormalization)
+  })
+
   it('保留单轮请求 extras，不回传完整 UI 历史', () => {
     expect(buildAgentChatRequestBody({
       references: ['chapters/a.md'],

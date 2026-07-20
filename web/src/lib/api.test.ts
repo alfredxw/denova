@@ -6,6 +6,7 @@ import {
   executeCommand,
   getActiveChatTask,
   getMessages,
+  getMessagesPage,
   getSessions,
   getWorkspaceSummary,
   renameSession,
@@ -99,6 +100,27 @@ describe('api', () => {
       { id: 'message-1', role: 'assistant', parts: [{ type: 'text', text: '你好', state: 'done' }] },
     ])
     expect(requests).toEqual(['/api/session/messages?session_id=session-ui'])
+  })
+
+  it('从最新消息向前分页读取会话展示历史', async () => {
+    let requestPath = ''
+    server.use(
+      http.get('/api/session/messages', ({ request }) => {
+        requestPath = new URL(request.url).pathname + new URL(request.url).search
+        return HttpResponse.json({
+          messages: [{ id: 'message-older', role: 'user', parts: [{ type: 'text', text: '更早消息' }] }],
+          page: { next_before: '25', has_more: true, total: 125 },
+        })
+      }),
+    )
+
+    await expect(getMessagesPage('session-ui', { limit: 50, before: '75' })).resolves.toEqual({
+      messages: [{ id: 'message-older', role: 'user', parts: [{ type: 'text', text: '更早消息' }] }],
+      nextBefore: '25',
+      hasMore: true,
+      total: 125,
+    })
+    expect(requestPath).toBe('/api/session/messages?session_id=session-ui&limit=50&before=75')
   })
 
   it('发送命令时返回后端结果', async () => {

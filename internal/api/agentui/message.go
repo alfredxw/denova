@@ -36,9 +36,15 @@ type Message struct {
 // MessagesFromHistory converts the existing session history into AI SDK UI
 // messages at read time. It does not mutate stored session data.
 func MessagesFromHistory(entries []session.HistoryEntry) []Message {
+	return MessagesFromHistoryAtOffset(entries, 0)
+}
+
+// MessagesFromHistoryAtOffset preserves IDs derived from a message's position
+// when converting a window from the full session history.
+func MessagesFromHistoryAtOffset(entries []session.HistoryEntry, offset int) []Message {
 	result := make([]Message, 0, len(entries))
 	for index, entry := range entries {
-		msg, ok := messageFromHistoryEntry(entry, index)
+		msg, ok := messageFromHistoryEntry(entry, offset+index)
 		if ok {
 			result = append(result, msg)
 		}

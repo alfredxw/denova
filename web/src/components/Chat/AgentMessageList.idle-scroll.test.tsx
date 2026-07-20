@@ -52,7 +52,7 @@ describe('Agent MessageList bottom following', () => {
     expect(virtuosoBoundary.scrollToIndex).not.toHaveBeenCalled()
   })
 
-  it('follows the reserved target height before streaming thinking is revealed', () => {
+  it('delegates streaming size changes to the virtualizer bottom lock', () => {
     const renderList = (targetContent?: string) => (
       <MessageList
         isStreaming
@@ -69,10 +69,10 @@ describe('Agent MessageList bottom following', () => {
       />
     )
     const { rerender } = render(renderList())
-    virtuosoBoundary.scrollToIndex.mockClear()
 
     rerender(renderList('正在分析下一条线索'))
 
-    expect(virtuosoBoundary.scrollToIndex).toHaveBeenCalledWith({ index: 'LAST', align: 'end', behavior: 'auto' })
+    expect(virtuosoBoundary.followOutput).toBeTypeOf('function')
+    expect((virtuosoBoundary.followOutput as (atBottom: boolean) => 'auto' | false)(true)).toBe('auto')
   })
 })

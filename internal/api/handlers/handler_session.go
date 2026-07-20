@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,9 +38,27 @@ type sessionRenameRequest struct {
 	Title string `json:"title"`
 }
 
+const maxSessionMessagePageSize = 500
+
+type sessionMessagesPageDTO struct {
+	Messages []agentui.Message      `json:"messages"`
+	Page     sessionMessagePageMeta `json:"page"`
+}
+
+type sessionMessagePageMeta struct {
+	NextBefore string `json:"next_before"`
+	HasMore    bool   `json:"has_more"`
+	Total      int    `json:"total"`
+}
+
 // handleSessionMessages GET /api/session/messages — 返回当前或指定会话历史消息。
 func (h *Handlers) HandleSessionMessages(ctx context.Context, c *app.RequestContext) {
+	limitRaw := strings.TrimSpace(c.Query("limit"))
 	if !h.app.HasWorkspace() {
+		if limitRaw != "" {
+			writeJSON(c, consts.StatusOK, sessionMessagesPageDTO{Messages: []agentui.Message{}})
+			return
+		}
 		writeJSON(c, consts.StatusOK, []agentui.Message{})
 		return
 	}
@@ -49,7 +68,36 @@ func (h *Handlers) HandleSessionMessages(ctx context.Context, c *app.RequestCont
 		writeError(c, consts.StatusNotFound, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, agentui.MessagesFromHistory(entries))
+	if limitRaw == "" {
+		writeJSON(c, consts.StatusOK, agentui.MessagesFromHistory(entries))
+		return
+	}
+	limit, parseErr := strconv.Atoi(limitRaw)
+	if parseErr != nil || limit <= 0 {
+		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidQuery")
+		return
+	}
+	if limit > maxSessionMessagePageSize {
+		limit = maxSessionMessagePageSize
+	}
+	end := len(entries)
+	if beforeRaw := strings.TrimSpace(c.Query("before")); beforeRaw != "" {
+		before, beforeErr := strconv.Atoi(beforeRaw)
+		if beforeErr != nil || before < 0 {
+			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidQuery")
+			return
+		}
+		end = min(before, len(entries))
+	}
+	start := max(0, end-limit)
+	writeJSON(c, consts.StatusOK, sessionMessagesPageDTO{
+		Messages: agentui.MessagesFromHistoryAtOffset(entries[start:end], start),
+		Page: sessionMessagePageMeta{
+			NextBefore: strconv.Itoa(start),
+			HasMore:    start > 0,
+			Total:      len(entries),
+		},
+	})
 }
 
 // handleSessions GET /api/sessions — 返回当前 workspace 下的会话列表。

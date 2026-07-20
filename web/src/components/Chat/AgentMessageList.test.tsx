@@ -14,6 +14,38 @@ function renderMessageList(ui: ReactElement) {
 }
 
 describe('Agent MessageList', () => {
+  it('在历史窗口顶部按需加载更早消息', () => {
+    const loadEarlier = vi.fn()
+    renderMessageList(
+      <MessageList
+        isStreaming={false}
+        activityContent=""
+        messages={agentTurnMessages()}
+        hasEarlierMessages
+        onLoadEarlierMessages={loadEarlier}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '加载更早消息' }))
+    expect(loadEarlier).toHaveBeenCalledTimes(1)
+  })
+
+  it('前置更早消息时保持原首条消息的虚拟索引', () => {
+    const current = { id: 'current-message', role: 'assistant', parts: [{ type: 'text', text: '当前窗口首条' }] } as AgentUIMessage
+    const earlier = { id: 'earlier-message', role: 'user', parts: [{ type: 'text', text: '更早窗口消息' }] } as AgentUIMessage
+    const list = (messages: AgentUIMessage[]) => (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList isStreaming={false} activityContent="" messages={messages} scrollResetKey="session-a" />
+      </VirtuosoMockContext.Provider>
+    )
+    const { rerender } = render(list([current]))
+    const indexBefore = screen.getByText('当前窗口首条').closest('[data-item-index]')?.getAttribute('data-item-index')
+
+    rerender(list([earlier, current]))
+
+    expect(screen.getByText('当前窗口首条').closest('[data-item-index]')).toHaveAttribute('data-item-index', indexBefore)
+  })
+
   it('renders optional stage content after the latest message and before the composer spacer', () => {
     renderMessageList(
       <MessageList
@@ -312,6 +344,51 @@ describe('Agent MessageList', () => {
 
     await waitFor(() => expect(screen.getByText('正在检查资料')).toBeInTheDocument())
     expect(screen.getByText('资料检查完成。')).toBeInTheDocument()
+  })
+
+  it('未指定展示策略时保留原有的运行中 trace 展开行为', () => {
+    renderMessageList(
+      <MessageList
+        isStreaming
+        activityContent=""
+        collapseTraceGroups
+        messages={[{
+          id: 'assistant-running-default',
+          role: 'assistant',
+          parts: [{ type: 'reasoning', text: '正在分析', state: 'streaming' }],
+        }] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: /思考过程/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('正在分析')).toBeInTheDocument()
+  })
+
+  it('折叠 trace 的滚动检测不序列化大型工具输出', () => {
+    const toJSON = vi.fn(() => ({ payload: 'large result' }))
+
+    renderMessageList(
+      <MessageList
+        isStreaming
+        activityContent=""
+        collapseTraceGroups
+        activeTraceDisplay="collapsed"
+        messages={[{
+          id: 'assistant-tool-output',
+          role: 'assistant',
+          parts: [{
+            type: 'dynamic-tool',
+            toolName: 'read_file',
+            toolCallId: 'tool-output',
+            state: 'output-available',
+            input: { path: 'large.md' },
+            output: { toJSON },
+          }],
+        }] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(toJSON).not.toHaveBeenCalled()
   })
 
   it('新一轮 streaming 不会重新展开历史 trace', async () => {
