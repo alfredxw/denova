@@ -1,0 +1,23 @@
+web/package.json
+  s_eb34a7d7f9dcb4::t_6107ee45fe5e64 36
+web/pnpm-lock.yaml
+  s_eb34a7d7f9dcb4::t_b14e7adb36f612 26-28,485-490,2320-2322,3543-3545,3590-3601,3663-3665,4649-4660,6423-6426,7838-7839,7890-7898,7956-7957
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ab865517d085b8fddb3687f5b2fce7171564743b",
+  "prompts": {},
+  "sessions": {
+    "s_eb34a7d7f9dcb4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7e53-5319-7292-8578-5578db95361f",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
