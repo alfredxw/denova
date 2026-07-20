@@ -321,6 +321,7 @@ export function AgentPanel({
     bottomPaddingClassName: 'pb-36',
     bottomPaddingPx: messageListBottomPadding,
     collapseTraceGroups: true,
+    activeTraceDisplay: 'collapsed' as const,
     timelineAttachments,
     onOpenSubAgentSession: openSubAgentSession,
     onInsertIllustration,

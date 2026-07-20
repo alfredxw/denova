@@ -3,6 +3,34 @@ import type { AgentUIMessage } from './agent-ui'
 import { buildAgentMessageViews, selectAgentTokenUsageRecords } from './agent-message-view'
 
 describe('agent-message-view', () => {
+  it('复用未变化消息的 view，只重建正在变化的流式消息', () => {
+    const [historyMessage, firstStreamingMessage] = [
+      {
+        id: 'history-assistant',
+        role: 'assistant',
+        parts: [{ type: 'text', text: '已经渲染的历史正文' }],
+      },
+      {
+        id: 'active-assistant',
+        role: 'assistant',
+        parts: [{ type: 'text', text: '第一段', state: 'streaming' }],
+      },
+    ] as AgentUIMessage[]
+
+    const firstViews = buildAgentMessageViews([historyMessage, firstStreamingMessage])
+    const secondViews = buildAgentMessageViews([
+      historyMessage,
+      {
+        ...firstStreamingMessage,
+        parts: [{ type: 'text', text: '第一段，继续生成', state: 'streaming' }],
+      },
+    ] as AgentUIMessage[])
+
+    expect(secondViews[0]).toBe(firstViews[0])
+    expect(secondViews[1]).not.toBe(firstViews[1])
+    expect(secondViews[1].content).toBe('第一段，继续生成')
+  })
+
   it('从 AgentUIMessage parts 生成稳定渲染 view', () => {
     const messages: AgentUIMessage[] = [
       { id: 'hidden-user', role: 'user', metadata: { display_hidden: true }, parts: [{ type: 'text', text: 'hidden' }] },

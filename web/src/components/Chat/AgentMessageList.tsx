@@ -40,6 +40,8 @@ interface MessageListProps {
   messageStyle?: CSSProperties
   /** 开启后，连续的 thinking/工具调用 trace 统一折叠为一个分组（含正文之后、回合末尾的 trace）。 */
   collapseTraceGroups?: boolean
+  /** 运行中的 trace 初始展示方式；用户手动切换后保留其选择。 */
+  activeTraceDisplay?: 'expanded' | 'collapsed'
   onEditMessage?: (view: AgentMessageView) => void
   onEditAssistantReply?: (view: AgentMessageView) => void
   onRegenerateMessage?: (view: AgentMessageView) => void
@@ -94,7 +96,7 @@ interface MessageListVirtuosoContext {
   onAfterContentInteraction: () => void
 }
 
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, afterContentKey, timelineAttachments = [], messageStyle, collapseTraceGroups = false, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, afterContentKey, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const lastVisibleTurnAnchorRef = useRef('')
@@ -210,6 +212,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         item={resolvedItem}
         isLast={index === listItems.length - 1}
         isStreaming={isStreaming}
+        activeTraceDisplay={activeTraceDisplay}
         highlightDialogue={highlightDialogue}
         messageStyle={messageStyle}
         onEditMessage={onEditMessage}
@@ -229,7 +232,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         onPlanCardLayoutChange={anchorLatestPlanCardBottom}
       />
     )
-  }, [activeSubAgentSessionKey, anchorLatestPlanCardBottom, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onSubmitPlanQuestion, onSwitchMessageVersion])
+  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestPlanCardBottom, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onSubmitPlanQuestion, onSwitchMessageVersion])
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
@@ -295,10 +298,11 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ item, isLast, isStreaming, highlightDialogue, messageStyle, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange }: {
+function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange }: {
   item: AgentChatListItem
   isLast: boolean
   isStreaming: boolean
+  activeTraceDisplay: 'expanded' | 'collapsed'
   highlightDialogue: boolean
   messageStyle?: CSSProperties
   onEditMessage?: (view: AgentMessageView) => void
@@ -351,6 +355,7 @@ function AgentChatListRow({ item, isLast, isStreaming, highlightDialogue, messag
         <TraceGroup
           views={item.views}
           activeStreamingTrace={item.activeStreamingTrace}
+          activeTraceDisplay={activeTraceDisplay}
           highlightDialogue={highlightDialogue}
           messageStyle={messageStyle}
           onInsertIllustration={onInsertIllustration}
@@ -567,10 +572,10 @@ function isActiveStreamingTrace(views: AgentMessageView[], afterTraceIndex: numb
   return true
 }
 
-function TraceGroup({ views, activeStreamingTrace, highlightDialogue, messageStyle, onInsertIllustration, onGenerateInteractiveImage, onOpenTrace }: { views: AgentMessageView[]; activeStreamingTrace: boolean; highlightDialogue: boolean; messageStyle?: CSSProperties; onInsertIllustration?: (illustration: ChapterIllustration) => void; onGenerateInteractiveImage?: (view: AgentMessageView) => void; onOpenTrace?: (runID: string) => void }) {
+function TraceGroup({ views, activeStreamingTrace, activeTraceDisplay, highlightDialogue, messageStyle, onInsertIllustration, onGenerateInteractiveImage, onOpenTrace }: { views: AgentMessageView[]; activeStreamingTrace: boolean; activeTraceDisplay: 'expanded' | 'collapsed'; highlightDialogue: boolean; messageStyle?: CSSProperties; onInsertIllustration?: (illustration: ChapterIllustration) => void; onGenerateInteractiveImage?: (view: AgentMessageView) => void; onOpenTrace?: (runID: string) => void }) {
   const { t } = useTranslation()
   const active = activeStreamingTrace || views.some((view) => view.streaming || view.status === 'running')
-  const [expanded, setExpanded] = useState(active)
+  const [expanded, setExpanded] = useState(activeTraceDisplay === 'expanded' && active)
   const userToggledRef = useRef(false)
   const toolCount = views.filter((view) => view.kind === 'tool').length
   const thinkingCount = views.filter((view) => view.kind === 'reasoning').length
@@ -583,12 +588,14 @@ function TraceGroup({ views, activeStreamingTrace, highlightDialogue, messageSty
 
   useEffect(() => {
     if (active) {
-      userToggledRef.current = false
-      setExpanded(true)
+      if (activeTraceDisplay === 'expanded') {
+        userToggledRef.current = false
+        setExpanded(true)
+      }
       return
     }
     if (!userToggledRef.current) setExpanded(false)
-  }, [active])
+  }, [active, activeTraceDisplay])
 
   return (
     <div className="flex justify-start">
@@ -596,12 +603,14 @@ function TraceGroup({ views, activeStreamingTrace, highlightDialogue, messageSty
         <button
           type="button"
           className="flex items-center gap-1 py-1 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]"
+          aria-expanded={expanded}
           onClick={() => {
             userToggledRef.current = true
-            setExpanded(!expanded)
+            setExpanded(current => !current)
           }}
         >
           {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          {active ? <span aria-hidden="true" className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--nova-text-muted)]" /> : null}
           {label}
         </button>
         {expanded && (

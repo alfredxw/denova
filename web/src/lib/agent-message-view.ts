@@ -63,14 +63,28 @@ export interface AgentTokenUsageRecord {
   usage_calls?: TokenUsageCall[]
 }
 
+// Agent message updates are immutable. Caching by message identity keeps
+// completed history stable while only the active streaming message is rebuilt.
+const messageViewsCache = new WeakMap<AgentUIMessage, AgentMessageView[]>()
+
 export function buildAgentMessageViews(messages: AgentUIMessage[]): AgentMessageView[] {
   const views: AgentMessageView[] = []
   messages.forEach((message) => {
-    if (message.role === 'user' && message.metadata?.display_hidden) return
-    message.parts.forEach((part, partIndex) => {
-      const view = buildAgentMessageView(message, part, partIndex)
-      if (view) views.push(view)
-    })
+    const cachedViews = messageViewsCache.get(message)
+    if (cachedViews) {
+      views.push(...cachedViews)
+      return
+    }
+
+    const messageViews: AgentMessageView[] = []
+    if (!(message.role === 'user' && message.metadata?.display_hidden)) {
+      message.parts.forEach((part, partIndex) => {
+        const view = buildAgentMessageView(message, part, partIndex)
+        if (view) messageViews.push(view)
+      })
+    }
+    messageViewsCache.set(message, messageViews)
+    views.push(...messageViews)
   })
   return views
 }

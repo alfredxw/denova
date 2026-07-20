@@ -147,11 +147,11 @@ function normalizeRepeatedAgentUIMessageIDs(messages: AgentUIMessage[]) {
 }
 
 function normalizeRepeatedAgentUIParts(messages: AgentUIMessage[]) {
-  const normalized = messages.map(message => ({ ...message, parts: [...message.parts] })) as AgentUIMessage[]
+  const normalized = [...messages]
   const locationByKey = new Map<string, { messageIndex: number; partIndex: number }>()
-  const removed = new Set<string>()
+  const removedByMessage = new Map<number, Set<number>>()
 
-  normalized.forEach((message, messageIndex) => {
+  messages.forEach((message, messageIndex) => {
     message.parts.forEach((part, partIndex) => {
       const key = agentUIPartDedupeKey(message, part)
       if (!key) return
@@ -161,17 +161,33 @@ function normalizeRepeatedAgentUIParts(messages: AgentUIMessage[]) {
         return
       }
       const existingMessage = normalized[existing.messageIndex]
-      existingMessage.parts[existing.partIndex] = mergeDuplicateAgentUIPart(existingMessage.parts[existing.partIndex], part)
-      existingMessage.metadata = mergeAgentMessageMetadata(existingMessage.metadata, message.metadata)
-      removed.add(`${messageIndex}:${partIndex}`)
+      const existingPart = existingMessage.parts[existing.partIndex]
+      const mergedPart = mergeDuplicateAgentUIPart(existingPart, part)
+      const mergedMetadata = mergeAgentMessageMetadata(existingMessage.metadata, message.metadata)
+      if (mergedPart !== existingPart || mergedMetadata !== existingMessage.metadata) {
+        const parts = mergedPart === existingPart ? existingMessage.parts : [...existingMessage.parts]
+        if (parts !== existingMessage.parts) parts[existing.partIndex] = mergedPart
+        normalized[existing.messageIndex] = {
+          ...existingMessage,
+          parts,
+          metadata: mergedMetadata,
+        } as AgentUIMessage
+      }
+      const removedParts = removedByMessage.get(messageIndex) || new Set<number>()
+      removedParts.add(partIndex)
+      removedByMessage.set(messageIndex, removedParts)
     })
   })
 
   return normalized
-    .map((message, messageIndex) => ({
-      ...message,
-      parts: message.parts.filter((_part, partIndex) => !removed.has(`${messageIndex}:${partIndex}`)),
-    }) as AgentUIMessage)
+    .map((message, messageIndex) => {
+      const removedParts = removedByMessage.get(messageIndex)
+      if (!removedParts?.size) return message
+      return {
+        ...message,
+        parts: message.parts.filter((_part, partIndex) => !removedParts.has(partIndex)),
+      } as AgentUIMessage
+    })
     .filter(message => message.parts.length > 0)
 }
 

@@ -71,6 +71,7 @@ describe('Agent MessageList', () => {
         isStreaming
         activityContent="正在思考…"
         collapseTraceGroups
+        activeTraceDisplay="collapsed"
         messages={[
           {
             id: 'assistant-thinking',
@@ -83,7 +84,8 @@ describe('Agent MessageList', () => {
       />,
     )
 
-    expect(screen.getByText('正在分析当前剧情。')).toBeInTheDocument()
+    expect(screen.queryByText('正在分析当前剧情。')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /思考过程/ })).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText('正在思考…')).not.toBeInTheDocument()
   })
 
@@ -231,12 +233,13 @@ describe('Agent MessageList', () => {
     expect(screen.getByText('submit_actor_state_patches')).toBeInTheDocument()
   })
 
-  it('运行中的 trace 在工具结果返回后保持展开，结束后和工具调用一起折叠', async () => {
+  it('运行中的 trace 默认收起，用户展开后在流式更新中保持展开', async () => {
     const { rerender } = renderMessageList(
       <MessageList
         isStreaming
         activityContent=""
         collapseTraceGroups
+        activeTraceDisplay="collapsed"
         messages={[
           {
             id: 'assistant-running',
@@ -250,7 +253,13 @@ describe('Agent MessageList', () => {
       />,
     )
 
-    expect(screen.getByRole('button', { name: /思考过程.*1 次工具调用/ })).toBeInTheDocument()
+    const traceButton = screen.getByRole('button', { name: /思考过程.*1 次工具调用/ })
+    expect(traceButton).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('正在检查资料')).not.toBeInTheDocument()
+    expect(screen.queryByText('read_file')).not.toBeInTheDocument()
+
+    fireEvent.click(traceButton)
+    expect(traceButton).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('正在检查资料')).toBeInTheDocument()
     expect(screen.getByText('read_file')).toBeInTheDocument()
 
@@ -260,6 +269,7 @@ describe('Agent MessageList', () => {
           isStreaming
           activityContent=""
           collapseTraceGroups
+          activeTraceDisplay="collapsed"
           messages={[
             {
               id: 'assistant-running',
@@ -283,6 +293,7 @@ describe('Agent MessageList', () => {
           isStreaming={false}
           activityContent=""
           collapseTraceGroups
+          activeTraceDisplay="collapsed"
           messages={[
             {
               id: 'assistant-running',
@@ -298,12 +309,8 @@ describe('Agent MessageList', () => {
       </VirtuosoMockContext.Provider>,
     )
 
-    await waitFor(() => expect(screen.queryByText('正在检查资料')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('正在检查资料')).toBeInTheDocument())
     expect(screen.getByText('资料检查完成。')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /思考过程.*1 次工具调用/ }))
-    expect(screen.getByText('正在检查资料')).toBeInTheDocument()
-    expect(screen.getByText('read_file')).toBeInTheDocument()
   })
 
   it('新一轮 streaming 不会重新展开历史 trace', async () => {

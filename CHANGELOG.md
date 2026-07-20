@@ -60,6 +60,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 写作模式创作 Agent 的运行中思考与工具轨迹改为默认收起并保留动态状态提示，仍可按需完整展开；流式消息去重与展示模型现在复用未变化的历史消息引用，避免超长 thinking 持续挂载并触发整段历史 Markdown 重渲染导致浏览器失去响应。游戏模式保留运行中实时展开行为，所有 thinking 与工具内容均未截断。
+- In Writing Mode, active reasoning and tool traces now stay collapsed by default with a live status indicator while remaining fully expandable on demand. Streaming deduplication and view projection preserve unchanged historical message identities, preventing very long thinking output from staying mounted and repeatedly re-rendering the entire Markdown history. Game Mode retains its live expanded traces, and no thinking or tool content is truncated.
 - 状态面板中的名称型记录现在统一“名称即 ID”：新建 Actor、技能、物品、任务、地点与势力直接使用故事语言中的名称，不再生成英文、拼音或 slug 标识；回合提交会拒绝 Actor `actor_id/name` 或对象记录键/名称不一致的数据并要求重试。已有故事状态不会被自动改写，后续引用仍逐字使用现有 ID。
 - Named state-panel records now consistently use the visible name as the ID: newly created Actors, abilities, items, quests, locations, and factions use the story-language name directly instead of an English, transliterated, or slug identifier. Turn submission rejects mismatched Actor `actor_id`/`name` or object-key/name pairs and requests a retry. Existing story state is not rewritten automatically, and existing IDs remain exact references.
 - 游戏模式正文后的状态面板会预先挂载全部 Actor 与世界页签内容，切换页签不再因首次加载重置消息区滚动；展开全部会保持预览分区在原位并将其余分区追加在后，切换页签、展开或折叠等直接查看操作也不会再触发自动锁底。

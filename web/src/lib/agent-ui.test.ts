@@ -8,6 +8,30 @@ import {
 import { agentViewToRenderMessage, buildAgentMessageViews } from './agent-message-view'
 
 describe('agent-ui', () => {
+  it('没有重复 part 时保留消息和 parts 引用，避免流式更新重渲染历史消息', () => {
+    const historyPart = { type: 'text', id: 'history-text', text: '已经渲染的历史正文' } as const
+    const streamingPart = { type: 'reasoning', id: 'active-reasoning', text: '正在继续分析', state: 'streaming' } as const
+    const historyMessage = {
+      id: 'history-assistant',
+      role: 'assistant',
+      parts: [historyPart],
+    } as AgentUIMessage
+    const streamingMessage = {
+      id: 'active-assistant',
+      role: 'assistant',
+      parts: [streamingPart],
+    } as AgentUIMessage
+
+    const normalized = normalizeAgentUIMessages([historyMessage, streamingMessage])
+
+    expect(normalized[0]).toBe(historyMessage)
+    expect(normalized[0].parts).toBe(historyMessage.parts)
+    expect(normalized[0].parts[0]).toBe(historyPart)
+    expect(normalized[1]).toBe(streamingMessage)
+    expect(normalized[1].parts).toBe(streamingMessage.parts)
+    expect(normalized[1].parts[0]).toBe(streamingPart)
+  })
+
   it('保留单轮请求 extras，不回传完整 UI 历史', () => {
     expect(buildAgentChatRequestBody({
       references: ['chapters/a.md'],
