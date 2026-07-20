@@ -373,6 +373,18 @@ export interface WorkspaceSearchResult {
   match_text: string
 }
 
+export interface WorkspaceReplaceFileResult {
+  path: string
+  replacements: number
+}
+
+export interface WorkspaceReplaceResult {
+  workspace: string
+  files: WorkspaceReplaceFileResult[]
+  total_replacements: number
+  skipped: string[]
+}
+
 export interface CharacterCardImportResult {
   name: string
   target_path: string

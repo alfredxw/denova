@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -176,13 +177,171 @@ func (h *Handlers) HandleWorkspaceSearch(ctx context.Context, c *app.RequestCont
 		}
 		limit = parsed
 	}
+	opts := book.SearchOptions{Regex: isTruthyQueryFlag(c.Query("regex"))}
 
-	results, err := h.app.BookService().Search(query, limit)
+	results, err := h.app.BookService().Search(query, limit, opts)
 	if err != nil {
+		if errors.Is(err, book.ErrInvalidSearchRegex) {
+			writeErrorKey(c, consts.StatusBadRequest, "api.workspace.invalidRegex", "detail", err.Error())
+			return
+		}
 		writeErrorKey(c, consts.StatusInternalServerError, "api.workspace.searchFailed", "detail", err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]any{"results": results})
+}
+
+// handleWorkspaceReplace POST /api/workspace/replace — 在整个 workspace 文本文件内全局替换匹配内容。
+// 替换前会先做一次只读预扫描，存在匹配时创建可恢复版本，再逐文件按当前 revision CAS 写入；
+// 写入期间被并发修改的文件会跳过并在响应中列出。
+func (h *Handlers) HandleWorkspaceReplace(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	var req struct {
+		Query       string `json:"query"`
+		Replacement string `json:"replacement"`
+		Regex       bool   `json:"regex"`
+		Workspace   string `json:"workspace"`
+	}
+	if err := c.BindJSON(&req); err != nil || strings.TrimSpace(req.Query) == "" {
+		writeErrorKey(c, consts.StatusBadRequest, "api.workspace.queryRequired")
+		return
+	}
+	replacer, err := book.NewReplacer(strings.TrimSpace(req.Query), req.Replacement, book.SearchOptions{Regex: req.Regex})
+	if err != nil {
+		key := "api.workspace.invalidRegex"
+		if errors.Is(err, book.ErrRegexMatchesEmpty) {
+			key = "api.workspace.regexMatchesEmpty"
+		}
+		writeErrorKey(c, consts.StatusBadRequest, key, "detail", err.Error())
+		return
+	}
+
+	// 只读预扫描：没有任何匹配时直接返回，避免创建无意义的备份版本。
+	workspace := strings.TrimSpace(h.app.Workspace())
+	hasMatch, err := workspaceHasReplacement(workspace, replacer)
+	if err != nil {
+		writeErrorKey(c, consts.StatusInternalServerError, "api.workspace.replaceFailed", "detail", err.Error())
+		return
+	}
+	if !hasMatch {
+		writeJSON(c, consts.StatusOK, map[string]any{
+			"workspace":          workspace,
+			"files":              []any{},
+			"total_replacements": 0,
+			"skipped":            []any{},
+		})
+		return
+	}
+	if _, err := h.app.CreateVersion(ctx, "全局替换前自动备份"); err != nil && !errors.Is(err, book.ErrVersionClean) {
+		writeErrorKey(c, consts.StatusInternalServerError, "api.workspace.replaceFailed", "detail", err.Error())
+		return
+	}
+
+	changed := make([]book.ReplaceFileResult, 0)
+	skipped := make([]string, 0)
+	canonicalWorkspace, err := h.app.WithWorkspaceChangeMutation(
+		ctx,
+		req.Workspace,
+		func(changeService *workspacechange.Service) (denovaapp.WorkspaceChangeMutationHooks, error) {
+			candidates, listErr := book.ListReplaceCandidateFiles(changeService.Workspace())
+			if listErr != nil {
+				return denovaapp.WorkspaceChangeMutationHooks{}, listErr
+			}
+			for _, rel := range candidates {
+				content, revision, readErr := changeService.ReadFile(rel)
+				if readErr != nil || !book.IsSearchableContent([]byte(content)) {
+					continue
+				}
+				next, count := replacer.ReplaceAll(content)
+				if count == 0 {
+					continue
+				}
+				saveResult, saveErr := changeService.SaveFile(ctx, rel, next, revision)
+				if saveErr != nil {
+					var changeErr *workspacechange.Error
+					if errors.As(saveErr, &changeErr) && changeErr.Code == workspacechange.ErrorCodeRevisionConflict {
+						log.Printf("[workspace-replace] 跳过并发修改的文件 path=%q", rel)
+						skipped = append(skipped, rel)
+						continue
+					}
+					return denovaapp.WorkspaceChangeMutationHooks{}, saveErr
+				}
+				// 替换结果与原内容一致时 SaveFile 不产生实际写入，不计入变更。
+				if !saveResult.Changed {
+					continue
+				}
+				changed = append(changed, book.ReplaceFileResult{Path: rel, Replacements: count})
+			}
+			if len(changed) == 0 {
+				return denovaapp.WorkspaceChangeMutationHooks{}, nil
+			}
+			paths := make([]string, 0, len(changed))
+			for _, item := range changed {
+				paths = append(paths, item.Path)
+			}
+			return denovaapp.WorkspaceChangeMutationHooks{
+				CreateTimedVersion: true,
+				AutomationSource:   "workspace_replace",
+				Paths:              paths,
+			}, nil
+		},
+	)
+	if err != nil {
+		if errors.Is(err, denovaapp.ErrWorkspaceChanged) {
+			writeJSON(c, consts.StatusConflict, map[string]any{
+				"error": messageKey(c, "api.workspace.changedDuringRequest"),
+				"code":  "workspace_changed",
+				"details": map[string]string{
+					"expected_workspace": strings.TrimSpace(req.Workspace),
+					"actual_workspace":   h.app.Workspace(),
+				},
+			})
+			return
+		}
+		var changeErr *workspacechange.Error
+		if errors.As(err, &changeErr) {
+			writeWorkspaceChangeError(c, err)
+			return
+		}
+		writeErrorKey(c, consts.StatusInternalServerError, "api.workspace.replaceFailed", "detail", err.Error())
+		return
+	}
+
+	total := 0
+	for _, item := range changed {
+		total += item.Replacements
+	}
+	log.Printf("[workspace-replace] 全局替换完成 files=%d replacements=%d skipped=%d", len(changed), total, len(skipped))
+	writeJSON(c, consts.StatusOK, map[string]any{
+		"workspace":          canonicalWorkspace,
+		"files":              changed,
+		"total_replacements": total,
+		"skipped":            skipped,
+	})
+}
+
+// workspaceHasReplacement 只读扫描 workspace，报告是否存在至少一处可替换匹配。
+func workspaceHasReplacement(workspace string, replacer *book.Replacer) (bool, error) {
+	candidates, err := book.ListReplaceCandidateFiles(workspace)
+	if err != nil {
+		return false, err
+	}
+	for _, rel := range candidates {
+		data, err := os.ReadFile(filepath.Join(workspace, filepath.FromSlash(rel)))
+		if err != nil || !book.IsSearchableContent(data) {
+			continue
+		}
+		if next, count := replacer.ReplaceAll(string(data)); count > 0 && next != string(data) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func isTruthyQueryFlag(raw string) bool {
+	return raw == "1" || raw == "true"
 }
 
 // handleWorkspaceFileWrite POST /api/workspace/file — 写入文件内容。

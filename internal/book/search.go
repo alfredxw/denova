@@ -2,9 +2,11 @@ package book
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode"
@@ -28,6 +30,16 @@ var searchableTextExtensions = map[string]struct{}{
 	".yml":  {},
 }
 
+// ErrInvalidSearchRegex 表示查询字符串不是合法的正则表达式。
+var ErrInvalidSearchRegex = errors.New("invalid search regex")
+
+// SearchOptions 控制全局搜索的匹配方式。
+type SearchOptions struct {
+	// Regex 为 true 时按 Go(RE2) 正则表达式匹配且大小写敏感；
+	// 为 false 时按大小写不敏感的字面量匹配。
+	Regex bool
+}
+
 // SearchResult 表示 workspace 全文搜索的一条结果。
 type SearchResult struct {
 	Path      string `json:"path"`
@@ -37,16 +49,20 @@ type SearchResult struct {
 	MatchText string `json:"match_text"`
 }
 
-// Search 在当前作品 workspace 内执行大小写不敏感的扫描式搜索。
-func (s *Service) Search(query string, limit int) ([]SearchResult, error) {
-	return SearchWorkspace(s.workspace, query, limit)
+// Search 在当前作品 workspace 内执行扫描式搜索。
+func (s *Service) Search(query string, limit int, opts SearchOptions) ([]SearchResult, error) {
+	return SearchWorkspace(s.workspace, query, limit, opts)
 }
 
 // SearchWorkspace 递归扫描 workspace 下的文本文件和文件路径。
-func SearchWorkspace(workspace, query string, limit int) ([]SearchResult, error) {
+func SearchWorkspace(workspace, query string, limit int, opts SearchOptions) ([]SearchResult, error) {
 	normalizedQuery := strings.TrimSpace(query)
 	if normalizedQuery == "" {
 		return []SearchResult{}, nil
+	}
+	matcher, err := newSearchMatcher(normalizedQuery, opts)
+	if err != nil {
+		return nil, err
 	}
 	if limit <= 0 {
 		limit = DefaultSearchLimit
@@ -56,35 +72,12 @@ func SearchWorkspace(workspace, query string, limit int) ([]SearchResult, error)
 	}
 
 	var results []SearchResult
-	err := filepath.WalkDir(workspace, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		name := entry.Name()
-		if name != "." && strings.HasPrefix(name, ".") {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-		rel, err := filepath.Rel(workspace, path)
-		if err != nil {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		if _, err := SafePath(workspace, rel); err != nil {
-			return nil
-		}
-
-		results = append(results, matchPath(rel, normalizedQuery)...)
+	err = walkVisibleWorkspaceFiles(workspace, func(path, rel string) error {
+		results = append(results, matchPath(rel, matcher)...)
 		if len(results) >= limit {
 			return errSearchLimitReached
 		}
-
-		fileResults, err := searchFile(path, rel, normalizedQuery, limit-len(results))
+		fileResults, err := searchFile(path, rel, matcher, limit-len(results))
 		if err != nil {
 			return nil
 		}
@@ -117,27 +110,104 @@ func SearchWorkspace(workspace, query string, limit int) ([]SearchResult, error)
 
 var errSearchLimitReached = errors.New("search limit reached")
 
-func matchPath(relPath, query string) []SearchResult {
-	index := indexFoldRunes(relPath, query)
-	if index < 0 {
+// walkVisibleWorkspaceFiles 按统一规则遍历 workspace 内的可见文件：
+// 跳过隐藏文件/目录、符号链接以及未通过 SafePath 校验的路径。
+func walkVisibleWorkspaceFiles(workspace string, visit func(absPath, rel string) error) error {
+	return filepath.WalkDir(workspace, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		name := entry.Name()
+		if name != "." && strings.HasPrefix(name, ".") {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		rel, err := filepath.Rel(workspace, path)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if _, err := SafePath(workspace, rel); err != nil {
+			return nil
+		}
+		return visit(path, rel)
+	})
+}
+
+// searchMatcher 统一字面量（大小写不敏感折叠）与正则两种匹配方式，
+// 匹配结果以 rune 索引区间 [start, end) 表示。
+type searchMatcher struct {
+	literal string
+	regex   *regexp.Regexp
+}
+
+func newSearchMatcher(query string, opts SearchOptions) (*searchMatcher, error) {
+	if !opts.Regex {
+		return &searchMatcher{literal: query}, nil
+	}
+	re, err := regexp.Compile(query)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidSearchRegex, err)
+	}
+	return &searchMatcher{regex: re}, nil
+}
+
+// findAll 返回 text 内所有非空匹配的 rune 区间；零宽匹配会被跳过。
+func (m *searchMatcher) findAll(text string) [][2]int {
+	if m.regex != nil {
+		matches := m.regex.FindAllStringIndex(text, -1)
+		spans := make([][2]int, 0, len(matches))
+		for _, match := range matches {
+			if match[0] == match[1] {
+				continue
+			}
+			start := utf8.RuneCountInString(text[:match[0]])
+			end := start + utf8.RuneCountInString(text[match[0]:match[1]])
+			spans = append(spans, [2]int{start, end})
+		}
+		return spans
+	}
+	return literalFoldSpans(text, m.literal)
+}
+
+func literalFoldSpans(text, query string) [][2]int {
+	queryLen := len([]rune(query))
+	if queryLen == 0 {
+		return nil
+	}
+	spans := make([][2]int, 0)
+	for from := 0; ; {
+		index := indexFoldRunesFrom(text, query, from)
+		if index < 0 {
+			return spans
+		}
+		spans = append(spans, [2]int{index, index + queryLen})
+		from = index + queryLen
+	}
+}
+
+func matchPath(relPath string, matcher *searchMatcher) []SearchResult {
+	spans := matcher.findAll(relPath)
+	if len(spans) == 0 {
 		return nil
 	}
 	runes := []rune(relPath)
-	queryRunes := []rune(query)
-	end := index + len(queryRunes)
-	if end > len(runes) {
-		end = len(runes)
-	}
+	start, end := spans[0][0], spans[0][1]
 	return []SearchResult{{
 		Path:      relPath,
 		Line:      0,
-		Column:    index + 1,
+		Column:    start + 1,
 		Preview:   relPath,
-		MatchText: string(runes[index:end]),
+		MatchText: string(runes[start:end]),
 	}}
 }
 
-func searchFile(path, relPath, query string, limit int) ([]SearchResult, error) {
+func searchFile(path, relPath string, matcher *searchMatcher, limit int) ([]SearchResult, error) {
 	if limit <= 0 || !isSearchableTextFile(relPath) {
 		return nil, nil
 	}
@@ -146,36 +216,26 @@ func searchFile(path, relPath, query string, limit int) ([]SearchResult, error) 
 		return nil, nil
 	}
 	data, err := os.ReadFile(path)
-	if err != nil || !utf8.Valid(data) || looksBinary(data) {
+	if err != nil || !IsSearchableContent(data) {
 		return nil, nil
 	}
 
 	lines := strings.Split(string(data), "\n")
 	results := make([]SearchResult, 0)
 	for lineIndex, line := range lines {
-		searchFrom := 0
-		for searchFrom <= len([]rune(line)) {
-			matchIndex := indexFoldRunesFrom(line, query, searchFrom)
-			if matchIndex < 0 {
-				break
-			}
-			lineRunes := []rune(line)
-			queryRunes := []rune(query)
-			end := matchIndex + len(queryRunes)
-			if end > len(lineRunes) {
-				end = len(lineRunes)
-			}
+		lineRunes := []rune(line)
+		for _, span := range matcher.findAll(line) {
+			start, end := span[0], span[1]
 			results = append(results, SearchResult{
 				Path:      relPath,
 				Line:      lineIndex + 1,
-				Column:    matchIndex + 1,
-				Preview:   buildSearchPreview(lineRunes, matchIndex, end),
-				MatchText: string(lineRunes[matchIndex:end]),
+				Column:    start + 1,
+				Preview:   buildSearchPreview(lineRunes, start, end),
+				MatchText: string(lineRunes[start:end]),
 			})
 			if len(results) >= limit {
 				return results, nil
 			}
-			searchFrom = end
 		}
 	}
 	return results, nil
@@ -184,6 +244,11 @@ func searchFile(path, relPath, query string, limit int) ([]SearchResult, error) 
 func isSearchableTextFile(path string) bool {
 	_, ok := searchableTextExtensions[strings.ToLower(filepath.Ext(path))]
 	return ok
+}
+
+// IsSearchableContent 报告文件内容是否为可参与搜索/替换的 UTF-8 文本。
+func IsSearchableContent(data []byte) bool {
+	return utf8.Valid(data) && !looksBinary(data)
 }
 
 func looksBinary(data []byte) bool {
@@ -202,10 +267,6 @@ func looksBinary(data []byte) bool {
 	return false
 }
 
-func indexFoldRunes(text, query string) int {
-	return indexFoldRunesFrom(text, query, 0)
-}
-
 func indexFoldRunesFrom(text, query string, from int) int {
 	textRunes := []rune(text)
 	queryRunes := []rune(query)
@@ -213,18 +274,20 @@ func indexFoldRunesFrom(text, query string, from int) int {
 		return -1
 	}
 	for i := from; i <= len(textRunes)-len(queryRunes); i++ {
-		matched := true
-		for j := range queryRunes {
-			if unicode.ToLower(textRunes[i+j]) != unicode.ToLower(queryRunes[j]) {
-				matched = false
-				break
-			}
-		}
-		if matched {
+		if foldMatchAt(textRunes, queryRunes, i) {
 			return i
 		}
 	}
 	return -1
+}
+
+func foldMatchAt(textRunes, queryRunes []rune, i int) bool {
+	for j := range queryRunes {
+		if unicode.ToLower(textRunes[i+j]) != unicode.ToLower(queryRunes[j]) {
+			return false
+		}
+	}
+	return true
 }
 
 func buildSearchPreview(lineRunes []rune, start, end int) string {
