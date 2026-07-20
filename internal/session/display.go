@@ -91,17 +91,13 @@ func (s *Session) AppendDisplayToolArgs(id, name, delta string) error {
 	}
 	if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
 		record := &s.records[index]
-		args, changed := appendDisplayToolArgsPreview(record.display.Args, delta)
-		if !changed {
-			return nil
-		}
-		record.display.Args = args
+		record.display.Args += delta
 		s.UpdatedAt = time.Now().UTC()
 		if !shouldPersistDisplayToolArgs(record) {
 			return nil
 		}
 		record.displayArgsPersistedBytes = len(record.display.Args)
-		// 流式工具参数只是展示缓存；若中途落盘失败，后续 tool_result 会再落完整卡片状态。
+		// 流式工具参数按批次保存；后续 tool_result 会再落完整卡片状态。
 		_ = s.persistLocked()
 		return nil
 	}
@@ -112,29 +108,7 @@ func shouldPersistDisplayToolArgs(record *historyRecord) bool {
 	if record == nil || record.display == nil {
 		return false
 	}
-	if strings.HasSuffix(record.display.Args, displayToolArgsTruncatedHint) &&
-		record.displayArgsPersistedBytes != len(record.display.Args) {
-		return true
-	}
 	return len(record.display.Args)-record.displayArgsPersistedBytes >= displayToolArgsPersistBytes
-}
-
-func appendDisplayToolArgsPreview(current, delta string) (string, bool) {
-	if delta == "" || strings.HasSuffix(current, displayToolArgsTruncatedHint) {
-		return current, false
-	}
-	contentLimit := displayToolArgsPreviewBytes - len(displayToolArgsTruncatedHint)
-	if contentLimit < 0 {
-		contentLimit = 0
-	}
-	if len(current)+len(delta) <= contentLimit {
-		return current + delta, true
-	}
-	if len(current) >= contentLimit {
-		return truncateUTF8ByBytes(current, contentLimit) + displayToolArgsTruncatedHint, true
-	}
-	remaining := contentLimit - len(current)
-	return current + truncateUTF8ByBytes(delta, remaining) + displayToolArgsTruncatedHint, true
 }
 
 func truncateUTF8ByBytes(value string, maxBytes int) string {

@@ -66,12 +66,13 @@ type ActorStateSchemaBatchIssue struct {
 // ActorStateSchemaBatchResult reports partial progress without converting
 // item-level validation failures into an opaque tool execution failure.
 type ActorStateSchemaBatchResult struct {
-	Accepted           []ActorStateSchemaBatchAccepted  `json:"accepted"`
-	Rejected           []ActorStateSchemaBatchIssue     `json:"rejected"`
-	Blocked            []ActorStateSchemaBatchIssue     `json:"blocked"`
-	DraftAcceptedItems int                              `json:"draft_accepted_items"`
-	Finalized          bool                             `json:"finalized"`
-	Preview            *ActorStateSchemaProposalPreview `json:"preview,omitempty"`
+	Accepted            []ActorStateSchemaBatchAccepted  `json:"accepted"`
+	Rejected            []ActorStateSchemaBatchIssue     `json:"rejected"`
+	Blocked             []ActorStateSchemaBatchIssue     `json:"blocked"`
+	DraftAcceptedItems  int                              `json:"draft_accepted_items"`
+	Finalized           bool                             `json:"finalized"`
+	Preview             *ActorStateSchemaProposalPreview `json:"preview,omitempty"`
+	InitializationGuide *OpeningStateInitializationGuide `json:"initialization_guide,omitempty"`
 }
 
 type actorStateSchemaDraftItem struct {
@@ -300,7 +301,12 @@ func (d *ActorStateSchemaBatchDraft) SubmitStructureOnly(batch ActorStateSchemaB
 	valid := batch
 	valid.Items = make([]ActorStateSchemaBatchItem, 0, len(batch.Items))
 	issues := make([]ActorStateSchemaBatchIssue, 0)
+	base := StoryDirectorActorStateSystem{}
+	if d != nil {
+		base = d.base
+	}
 	for index, item := range batch.Items {
+		item = normalizeOpeningStructureTemplateReferences(base, item)
 		path := fmt.Sprintf("items[%d]", index)
 		switch {
 		case len(item.Adaptation.InitialActorOps) > 0:
@@ -328,7 +334,55 @@ func (d *ActorStateSchemaBatchDraft) SubmitStructureOnly(batch ActorStateSchemaB
 	}
 	result := d.Submit(valid, audit)
 	result.Rejected = append(result.Rejected, issues...)
+	if result.Finalized {
+		if proposal, ok := d.FinalProposal(); ok {
+			target, _, err := ApplyActorStateSchemaAdaptation(d.base, d.trpg, proposal.Adaptation)
+			if err == nil {
+				guide, guideErr := buildOpeningStateInitializationGuide(target)
+				if guideErr == nil {
+					result.InitializationGuide = &guide
+				}
+			}
+		}
+	}
 	return result
+}
+
+// normalizeOpeningStructureTemplateReferences accepts an initial Actor ID only
+// when it maps unambiguously to an existing template. This keeps the opening
+// tool ergonomic without adding fuzzy aliases to the general Director schema
+// API, and finalized proposals always persist the canonical template ID.
+func normalizeOpeningStructureTemplateReferences(base StoryDirectorActorStateSystem, item ActorStateSchemaBatchItem) ActorStateSchemaBatchItem {
+	system := normalizeActorStateSystem(base)
+	resolve := func(reference string) string {
+		if strings.TrimSpace(reference) == "" {
+			return ""
+		}
+		templateID := normalizeActorStateID(reference)
+		if templateID != "" && actorStateTemplateByID(system, templateID).ID != "" {
+			return templateID
+		}
+		actorID := normalizeStatePanelActorID(reference)
+		for _, actor := range system.InitialActors {
+			if actor.ID == actorID && actorStateTemplateByID(system, actor.TemplateID).ID != "" {
+				return actor.TemplateID
+			}
+		}
+		return templateID
+	}
+
+	item.Requirements = append([]ActorStateSchemaRequirementReview(nil), item.Requirements...)
+	for index := range item.Requirements {
+		item.Requirements[index].TemplateID = resolve(item.Requirements[index].TemplateID)
+	}
+	item.Adaptation.TemplateOps = append([]ActorStateTemplateSchemaOp(nil), item.Adaptation.TemplateOps...)
+	for index := range item.Adaptation.TemplateOps {
+		op := &item.Adaptation.TemplateOps[index]
+		if strings.TrimSpace(op.Op) != "add" {
+			op.TemplateID = resolve(op.TemplateID)
+		}
+	}
+	return item
 }
 
 // FinalProposal returns a deep copy only after a successful finalize.

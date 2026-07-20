@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -63,22 +64,38 @@ func TestPlanProtocolParserFlushesUnclosedBlockAsVisibleText(t *testing.T) {
 	}
 }
 
-func TestPlanProtocolParserTruncatesDisplayedBlock(t *testing.T) {
+func TestPlanProtocolParserPreservesDisplayedBlock(t *testing.T) {
 	var events []Event
 	parser := newPlanProtocolParser(agentEventMetadata{}, func(ev Event) {
 		events = append(events, ev)
 	})
+	rawContent := strings.Repeat("长计划内容。", 3000) + "计划尾部必须完整展示"
 
-	_ = parser.Push("<proposed_plan>" + strings.Repeat("长", planBlockDisplayMaxBytes) + "</proposed_plan>")
+	_ = parser.Push("<proposed_plan>" + rawContent + "</proposed_plan>")
 	if len(events) != 2 {
 		t.Fatalf("events len = %d, want 2", len(events))
 	}
 	content := eventDataString(events[1].Data, "content")
-	if len(content) > planBlockDisplayMaxBytes {
-		t.Fatalf("content bytes = %d, want <= %d", len(content), planBlockDisplayMaxBytes)
+	if content != rawContent {
+		t.Fatalf("displayed plan was changed: got_bytes=%d want_bytes=%d", len(content), len(rawContent))
 	}
-	if !strings.Contains(content, "Plan 展示已截断") {
-		t.Fatalf("content should include truncation hint: %q", content[len(content)-80:])
+}
+
+func TestPlanProtocolToolCallPreservesLongInputContent(t *testing.T) {
+	rawPlan := strings.Repeat("核对实施步骤。", 3000) + "工具输入尾部必须完整展示"
+	args, err := json.Marshal(map[string]string{"content": rawPlan})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []Event
+	handled, successful := emitPlanProtocolToolCall("proposed_plan", string(args), agentEventMetadata{}, func(ev Event) {
+		events = append(events, ev)
+	})
+	if !handled || !successful || len(events) != 1 {
+		t.Fatalf("plan tool result handled=%t successful=%t events=%#v", handled, successful, events)
+	}
+	if got := eventDataString(events[0].Data, "content"); got != rawPlan {
+		t.Fatalf("plan tool input was changed: got_bytes=%d want_bytes=%d", len(got), len(rawPlan))
 	}
 }
 

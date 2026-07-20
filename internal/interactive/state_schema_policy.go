@@ -92,11 +92,11 @@ func OpeningGameStateSchemaInstruction(meta StoryMeta) string {
 		return ""
 	}
 	mode := NormalizeStoryStateSchemaPolicy(*meta.StateSchemaPolicy).Mode
-	base := "本故事的首回合必须先调用 initialize_story_state_schema，并在工具 finalized=true 后再输出正文。结构工具只定义模板与字段：开局来源必须精确填写 source.kind=opening、source.id=opening-draft；evidence_kind 只能是 confirmed/inferred/default，value_policy 固定为 schema_only；covered/add/replace 必须填写 template_id、field_id 与 number/string/bool/enum/object/list 之一的 expected_type。不要提交 initial_actor_ops 或 actor_ops。已有字段足够时只提交一个具体字段的 covered 审查项，不要逐模板重复审查。随后通过 submit_interactive_turn.state_changes 创建必要 Actor 并写入初始值。结构草案、开局正文、初始状态和 choices 只会在本轮成功结束时一起原子落盘。"
+	base := "本故事的首回合必须先调用 initialize_story_state_schema，并在工具 finalized=true 后再输出正文。结构工具只定义模板与字段：开局来源必须精确填写 source.kind=opening、source.id=opening-draft；evidence_kind 只能是 confirmed/inferred/default，value_policy 固定为 schema_only；covered/add/replace 必须填写 template_id、field_id 与 number/string/bool/enum/object/list 之一的 expected_type。结构 requirement 与 template_ops 使用状态手册中的 Template ID，不能使用 Actor ID；story 是 actor_id，对应的 template_id 是 story_context。不要提交 initial_actor_ops 或 actor_ops。先审查开局中会独立变化、消耗、触发阈值、参与检定或需要单独展示的长期状态；通用的当前处境、当前事件、世界局势或物品描述只能覆盖整体摘要，不能覆盖氧气、完整度、警戒值、倒计时等有独立更新节奏的资源，这些状态必须使用专用的 number/enum/bool 等字段。只有确实不存在独立状态需求时才用一个具体字段的 covered 审查项。finalize 后严格按回执 initialization_guide.required_state_changes，在首次 submit_interactive_turn.state_changes 中一次补齐所有仍缺初值的字段；不得使用空字符串、未设置、未知或待定占位。结构草案、开局正文、初始状态和 choices 只会在本轮成功结束时一起原子落盘。"
 	if mode == StoryStateSchemaModeGenerate {
 		return base + " 当前手册只有 Denova 不可删除的主角与故事连续性核心；请根据实际开局补齐真正需要长期追踪的模板和字段，不要为了完整感添加无用途字段。"
 	}
-	return base + " 当前手册来自用户选择的状态模板；只添加、替换或移除对本故事确有必要的字段，已有覆盖充分时也要提交一个有来源的 covered 审查项并 finalize。"
+	return base + " 当前手册来自用户选择的状态模板；添加或替换本故事真正需要的独立字段，不为形式完整重复现有字段，也不要改动仍被 TRPG 规则绑定的字段。最终保留的每个开局 Actor 可写字段都必须能由来源事实、合理推断或模板默认值获得具体初值。"
 }
 
 // GeneratedStoryActorStateCore is the non-removable platform contract used by

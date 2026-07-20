@@ -331,8 +331,8 @@ func normalizeRuleStateBindingAuditPointer(value *RuleStateBindingAudit) *RuleSt
 	}
 	next := *value
 	next.BindingID = normalizeSlotID(next.BindingID)
-	next.ActorID = normalizeActorStateID(next.ActorID)
-	next.TargetActorID = normalizeActorStateID(next.TargetActorID)
+	next.ActorID = normalizeStatePanelActorID(next.ActorID)
+	next.TargetActorID = normalizeStatePanelActorID(next.TargetActorID)
 	next.NarrativeStateRefs = normalizeRuleNarrativeStateRefs(next.NarrativeStateRefs)
 	next.ComputedStateChanges = normalizeTurnStateChanges(next.ComputedStateChanges)
 	next.ManualStateChanges = normalizeTurnStateChanges(next.ManualStateChanges)
@@ -350,7 +350,7 @@ func normalizeRuleStateBindingInputs(values []RuleStateBindingInput) []RuleState
 	out := make([]RuleStateBindingInput, 0, len(values))
 	for _, value := range values {
 		value.Source = normalizeRuleBindingSource(value.Source)
-		value.ActorID = normalizeActorStateID(value.ActorID)
+		value.ActorID = normalizeStatePanelActorID(value.ActorID)
 		value.TemplateID = normalizeActorStateID(value.TemplateID)
 		value.FieldID = normalizeActorStateFieldName(value.FieldID)
 		value.ValuePath = normalizeRuleStateValuePath(value.ValuePath)
@@ -372,7 +372,7 @@ func normalizeRuleStateBindingWarnings(values []RuleStateBindingWarning) []RuleS
 	}
 	out := make([]RuleStateBindingWarning, 0, len(values))
 	for _, value := range values {
-		value.ActorID = normalizeActorStateID(value.ActorID)
+		value.ActorID = normalizeStatePanelActorID(value.ActorID)
 		value.FieldID = normalizeActorStateFieldName(value.FieldID)
 		value.Reason = trimBytes(value.Reason, 512)
 		if value.ActorID == "" && value.FieldID == "" && value.Reason == "" {
@@ -412,7 +412,7 @@ func resolveRuleStateBinding(state map[string]any, director StoryDirector, req T
 	if actorStateEmpty(director.ActorState) {
 		return nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s 需要状态系统", bindingID)
 	}
-	actorID := normalizeActorStateID(req.Rule.ActorID)
+	actorID := normalizeStatePanelActorID(req.Rule.ActorID)
 	if actorID == "" {
 		return nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s 缺少 actor_id", bindingID)
 	}
@@ -420,7 +420,7 @@ func resolveRuleStateBinding(state map[string]any, director StoryDirector, req T
 	if err != nil {
 		return nil, err
 	}
-	targetActorID := normalizeActorStateID(req.Rule.TargetActorID)
+	targetActorID := normalizeStatePanelActorID(req.Rule.TargetActorID)
 	if binding.TargetTemplateID != "" {
 		if targetActorID == "" {
 			return nil, fmt.Errorf("prepare_interactive_turn rule.binding_id=%s 需要 target_actor_id", bindingID)

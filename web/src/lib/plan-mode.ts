@@ -27,7 +27,6 @@ export interface PlanQuestionAnswer {
   customAnswer?: string
 }
 
-const PLAN_CARD_DISPLAY_CHARS = 12_000
 const MAX_APPROVED_PLAN_CHARS = 16_000
 
 export function parsePlanQuestionSet(content: string): PlanQuestionSet | null {
@@ -92,15 +91,8 @@ export function formatPlanDiscussionMessage(planContent: string) {
   return `我想继续讨论这份计划：\n<proposed_plan>\n${truncatePlanContext(planContent)}\n</proposed_plan>\n\n调整点：`
 }
 
-export function boundedPlanDisplay(content: string, maxChars = PLAN_CARD_DISPLAY_CHARS) {
-  const chars = Array.from(content.trim())
-  if (chars.length <= maxChars) {
-    return { content: content.trim(), truncated: false }
-  }
-  return {
-    content: `${chars.slice(0, maxChars).join('').trimEnd()}\n\n...\n[Plan 展示已截断，仅显示前 ${maxChars} 字符]`,
-    truncated: true,
-  }
+export function planDisplayContent(content: string) {
+  return content.trim()
 }
 
 function normalizeQuestion(value: unknown, index: number): PlanQuestion | null {

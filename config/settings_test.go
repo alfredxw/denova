@@ -58,6 +58,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AgentModels.ConfigManager.EnableThinking == nil || !*s.AgentModels.ConfigManager.EnableThinking {
 		t.Fatalf("ConfigManager thinking should default on")
 	}
+	if s.AgentModels.InteractiveStory.EnableThinking == nil || *s.AgentModels.InteractiveStory.EnableThinking {
+		t.Fatalf("InteractiveStory extended thinking should default off")
+	}
 	if s.AgentModels.ToolAgent.EnableThinking == nil || *s.AgentModels.ToolAgent.EnableThinking {
 		t.Fatalf("ToolAgent thinking should default off")
 	}

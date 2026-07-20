@@ -154,7 +154,13 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
           <Tabs value={selectedTab} onValueChange={setSelectedTab} className="gap-0">
             <StateEntityTabs actors={actorTabs} showWorld={hasWorldFacts} />
             {actorLedgers.map((ledger) => (
-              <TabsContent key={ledger.id} value={ledger.id} className="mt-0">
+              <TabsContent
+                key={ledger.id}
+                value={ledger.id}
+                forceMount
+                hidden={selectedTab !== ledger.id}
+                className="mt-0"
+              >
                 <ActorLedgerBody
                   ledger={ledger}
                   layout={layouts[ledger.templateId]}
@@ -164,7 +170,12 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
               </TabsContent>
             ))}
             {hasWorldFacts ? (
-              <TabsContent value={WORLD_STATE_TAB} className="mt-0">
+              <TabsContent
+                value={WORLD_STATE_TAB}
+                forceMount
+                hidden={selectedTab !== WORLD_STATE_TAB}
+                className="mt-0"
+              >
                 <WorldLedgerBody
                   ledger={worldLedger}
                   layout={layouts[worldLedger.templateId]}
@@ -339,7 +350,10 @@ function LedgerSections({ groups, mode, onModeChange }: { groups: LedgerFieldGro
   const { t } = useTranslation()
   const { preview, hidden } = useMemo(() => splitLedgerGroupsForPreview(groups), [groups])
   const expanded = mode === 'expanded'
-  const visibleGroups = expanded ? groups : preview
+  // Keep the already-visible preview sections anchored in place. Sections
+  // revealed by the user's action append after them even when their schema
+  // order originally placed them above the preview set.
+  const visibleGroups = expanded ? [...preview, ...hidden] : preview
   const decorated = groups.length > 1
   return (
     <div className="story-state-ledger__sections">

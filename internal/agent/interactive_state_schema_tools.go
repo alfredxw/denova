@@ -99,9 +99,11 @@ func newInteractiveOpeningStateSchemaTools(ctx InteractiveStoryToolContext) ([]t
 	description := strings.Join([]string{
 		"仅在故事首回合正文之前，增量暂存本故事的状态模板与字段结构。模型可见参数是开局专用的 structure-only 契约；不要提交 Actor、initial_actor_ops 或 actor_ops。",
 		"开局草案来源必须精确写为 source={\"kind\":\"opening\",\"id\":\"opening-draft\"}。evidence_kind 只能是 confirmed/inferred/default，value_policy 固定为 schema_only；covered/add/replace 必须填写现有或目标 template_id、field_id 与合法 expected_type。",
-		"已有字段足够时只需一个具体字段的 covered 审查项并使用空 template_ops，不要为了完整感逐模板重复审查。工具分别返回 accepted、rejected、blocked；只重试失败项，finalized=true 后再输出开局正文。",
-		"最小可照抄示例：{\"summary\":\"现有字段覆盖开局需求\",\"items\":[{\"item_id\":\"schema-covered-review\",\"summary\":\"审查主角姓名字段\",\"requirements\":[{\"source\":{\"kind\":\"opening\",\"id\":\"opening-draft\"},\"requirement\":\"主角姓名需要长期记录，现有字段已覆盖\",\"evidence_kind\":\"confirmed\",\"value_policy\":\"schema_only\",\"expected_type\":\"string\",\"decision\":\"covered\",\"template_id\":\"protagonist\",\"field_id\":\"姓名\"}],\"adaptation\":{\"template_ops\":[]}}],\"finalize\":true}",
-		"草稿不会单独写入；只有结构、正文、初始状态和 choices 全部通过时才原子落盘。Actor 创建与所有初始值稍后通过 submit_interactive_turn.state_changes 提交。",
+		"结构 requirement 与 template_ops 必须使用状态手册中的 Template ID，不能使用 Actor ID；例如 story 是 actor_id，对应的 template_id 是 story_context。后端只会将能由初始 Actor 唯一确定的误用归一化，并始终保存规范 Template ID。",
+		"按状态的变化边界而不是文字能否勉强容纳来判断 covered：会独立消耗、恢复、触发阈值、参与检定或单独展示的资源/倒计时必须有专用字段，不能塞进当前处境、当前事件、世界局势或物品描述。例如氧气与站体完整度应各自使用有 min/max 的 number 字段。",
+		"只有确实没有独立结构需求时才使用具体字段的 covered 审查和空 template_ops。工具分别返回 accepted、rejected、blocked；只重试失败项，finalized=true 后再输出开局正文。",
+		"finalized 回执包含 initialization_guide：auto_initialized_fields 已由模板默认值或初始 Actor 值覆盖；required_state_changes 列出首次 submit_interactive_turn 必须一次填写的精确 actor_id、template_id、field_id 和 type。不得用空字符串、未设置、未知或待定占位。",
+		"草稿不会单独写入；只有结构、正文、所有初始字段和 choices 全部通过时才原子落盘。Actor 创建与所有初始值稍后通过 submit_interactive_turn.state_changes 提交。",
 	}, "\n")
 	submitTool, err := utils.InferTool(
 		initializeStoryStateSchemaToolName,

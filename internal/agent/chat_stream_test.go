@@ -9,6 +9,70 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
+func TestProcessStreamingEventPreservesProviderThinkingVerbatim(t *testing.T) {
+	reader, writer := schema.Pipe[*schema.Message](1)
+	rawThinking := "开局：" + strings.Repeat("规划目标、约束与状态。", 300) + "供应商思考尾部必须完整展示"
+	writer.Send(&schema.Message{Role: schema.Assistant, ReasoningContent: rawThinking}, nil)
+	writer.Close()
+
+	var content strings.Builder
+	var thinking strings.Builder
+	var events []Event
+	_, err := processStreamingEvent(
+		context.Background(),
+		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: schema.Assistant},
+		&content,
+		&thinking,
+		0,
+		0,
+		agentEventMetadata{AgentKind: AgentKindInteractiveStory},
+		false,
+		nil,
+		func(event Event) { events = append(events, event) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := thinking.String(); got != rawThinking {
+		t.Fatalf("provider thinking was changed: got_bytes=%d want_bytes=%d\ngot_tail=%q", len(got), len(rawThinking), got[max(0, len(got)-80):])
+	}
+	if len(events) != 1 || events[0].Type != "thinking" || eventDataString(events[0].Data, "content") != rawThinking {
+		t.Fatalf("visible thinking must match the provider output verbatim: %#v", events)
+	}
+}
+
+func TestProcessNonStreamingEventPreservesToolArgumentsVerbatim(t *testing.T) {
+	rawArgs := `{"path":"chapters/ch01.md","content":"` + strings.Repeat("正文", 300) + `工具输入尾部必须完整展示"}`
+	message := &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{
+		ID: "call-write",
+		Function: schema.FunctionCall{
+			Name:      "write_file",
+			Arguments: rawArgs,
+		},
+	}}}
+	var content strings.Builder
+	var thinking strings.Builder
+	var events []Event
+
+	processNonStreamingEvent(
+		&adk.MessageVariant{Message: message, Role: schema.Assistant},
+		&content,
+		&thinking,
+		0,
+		agentEventMetadata{},
+		false,
+		nil,
+		func(event Event) { events = append(events, event) },
+	)
+
+	if len(events) != 1 || events[0].Type != "tool_call" {
+		t.Fatalf("tool call event = %#v", events)
+	}
+	if got := eventDataString(events[0].Data, "args"); got != rawArgs {
+		t.Fatalf("tool arguments were changed: got_bytes=%d want_bytes=%d\ngot=%q", len(got), len(rawArgs), got)
+	}
+}
+
 func TestProcessStreamingEventReclassifiesInteractiveToolPreambleAsThinking(t *testing.T) {
 	reader, writer := schema.Pipe[*schema.Message](3)
 	writer.Send(&schema.Message{Role: schema.Assistant, Content: "我先检查资料，再开始写正文。"}, nil)

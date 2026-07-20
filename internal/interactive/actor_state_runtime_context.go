@@ -43,7 +43,8 @@ func actorStateRuntimeMarkdownBlocks(system StoryDirectorActorStateSystem, state
 		"> 来源：`effective_actor_state_schema` + `Snapshot.State.actors`；缺失的 schema 初始 Actor 仅作运行时投影，不改写事件历史。",
 		"",
 		"- 只提交本轮正文中已经发生的变化；未变化字段不要重复提交，也不要用空值清除。",
-		"- `actor_id`、`template_id`、`field_id` 必须逐字使用下文反引号中的稳定 ID，不能使用展示名称代替。",
+		"- 引用已有 Actor 时，`actor_id` 必须逐字使用下文反引号中的现有 ID；`template_id`、`field_id` 同样逐字复用。",
+		"- 新建 Actor 时 actor_id 与 name 必须完全相同，直接使用故事语言中的角色名称，不要生成英文、拼音或 slug ID。",
 		"- `description` 解释字段含义；`update_instruction` 决定何时、如何更新。两者都必须遵守。",
 		"- “当前状态”只列本轮可写值；字段语义和更新规则统一见后面的“新 Actor 可用模板”，避免重复上下文。",
 		"- `replace` 写入本轮结束后的完整值；`delta` 只用于已有数值；规则检定已消费的字段不要重复提交。",
@@ -188,9 +189,9 @@ func actorStateRuntimeSubmissionTemplate(system StoryDirectorActorStateSystem, r
 	sb.WriteString("没有状态变化时提交 `\"state_changes\": []`。创建新 Actor 时使用：\n\n```json\n")
 	create := map[string]any{
 		"op":            TurnStateUpdateCreate,
-		"actor_id":      "{{new_stable_actor_id}}",
+		"actor_id":      "{{new_actor_name}}",
 		"template_id":   "{{template_id}}",
-		"name":          "{{display_name}}",
+		"name":          "{{new_actor_name}}",
 		"initial_state": map[string]any{"{{field_id}}": "{{initial_value_matching_field_type}}"},
 	}
 	data, _ = json.MarshalIndent(create, "", "  ")

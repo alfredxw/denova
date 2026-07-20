@@ -60,6 +60,8 @@ type ContextAnalysisPart struct {
 	Note       string `json:"note,omitempty"`
 	Bytes      int    `json:"bytes"`
 	Chars      int    `json:"chars"`
+	// Parts decomposes one exact model-visible message for diagnostics; Content remains the copy/source-of-truth payload.
+	Parts []ContextAnalysisPart `json:"parts,omitempty"`
 }
 
 type ContextAnalysisPartInput struct {
@@ -304,7 +306,11 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 			source = "本轮互动指令"
 			title = "本轮互动指令与动态上下文"
 		}
-		contextMessages = append(contextMessages, contextAnalysisPartFromMessage(fmt.Sprintf("message_%d", i+1), source, title, msg))
+		part := contextAnalysisPartFromMessage(fmt.Sprintf("message_%d", i+1), source, title, msg)
+		if i == len(messages)-1 {
+			part.Parts = buildInteractiveStoryInstructionContextParts(part.Content)
+		}
+		contextMessages = append(contextMessages, part)
 	}
 	usage := analyzeContextUsage(cfg, config.AgentKindInteractiveStory, systemPrompt, messages, teller.ReplyTargetChars)
 	return ContextAnalysis{

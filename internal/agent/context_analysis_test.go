@@ -48,6 +48,68 @@ func TestInteractiveContextAnalysisLabelsDynamicContextAtFinalMessage(t *testing
 	}
 }
 
+func TestInteractiveContextAnalysisSplitsCurrentTurnByRuntimeSource(t *testing.T) {
+	runtimeContext := prompts.InteractiveStoryRuntimeContext(prompts.InteractiveStoryPromptInput{
+		ReplyTargetChars:            1200,
+		ChoiceCount:                 3,
+		DirectorPlanVisible:         "## 正文 Agent 简报（source: agent-brief.md）\n\n当前目标：进入藏书阁。",
+		StoryDirectorRules:          "冲突升级应保持渐进。",
+		ActorState:                  "主角：体力=8。",
+		StoryDirectorStrategyPrompt: "伏笔回收前先给征兆。",
+	})
+	turnInstruction := prompts.InteractiveStoryTurnInstruction(
+		"我推开藏书阁的门",
+		"守门人会先观察来者身份。",
+		runtimeContext,
+	)
+	analysis, err := BuildInteractiveStoryContextAnalysis(
+		&config.Config{},
+		nil,
+		prompts.InteractiveStorySystemInstructionInput{},
+		nil,
+		ChatRequest{Message: "我推开藏书阁的门"},
+		nil,
+		func(originalMessage, agentMessage string) ([]*schema.Message, error) {
+			return []*schema.Message{schema.UserMessage(turnInstruction)}, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(analysis.ContextMessages) != 1 {
+		t.Fatalf("context message count = %d, want 1", len(analysis.ContextMessages))
+	}
+	parts := analysis.ContextMessages[0].Parts
+	if len(parts) < 7 {
+		t.Fatalf("current turn should be split into source parts: %#v", parts)
+	}
+	wants := []struct {
+		source  string
+		title   string
+		content string
+	}{
+		{source: "本轮行动", title: "当前用户行动", content: "我推开藏书阁的门"},
+		{source: "StoryTeller.turn_context", title: "导演本轮上下文规则", content: "守门人会先观察来者身份"},
+		{source: "agent-brief.md", title: "正文 Agent 简报", content: "进入藏书阁"},
+		{source: "StoryDirector", title: "故事导演规则清单", content: "冲突升级"},
+		{source: "Snapshot.State.actors + effective Actor schema", title: "Actor 状态手册", content: "体力=8"},
+		{source: "StoryDirector.strategy.prompt_markdown", title: "故事导演 Markdown 策略提示", content: "伏笔回收"},
+	}
+	for _, want := range wants {
+		matches := 0
+		contentFound := false
+		for _, part := range parts {
+			if part.Source == want.source && part.Title == want.title {
+				matches++
+				contentFound = contentFound || strings.Contains(part.Content, want.content)
+			}
+		}
+		if matches != 1 || !contentFound {
+			t.Fatalf("split part source=%q title=%q matches=%d content_found=%v, want one matching %q in %#v", want.source, want.title, matches, contentFound, want.content, parts)
+		}
+	}
+}
+
 func TestInteractiveContextAnalysisUsesConfiguredContextWindow(t *testing.T) {
 	contextWindow := 650000
 	analysis, err := BuildInteractiveStoryContextAnalysis(

@@ -11,8 +11,6 @@ const (
 	defaultSessionID             = "default"
 	defaultSessionTitle          = "新会话"
 	displayToolArgsPersistBytes  = 4 * 1024
-	displayToolArgsPreviewBytes  = 32 * 1024
-	displayToolArgsTruncatedHint = "\n...\n[session preview truncated / 会话预览已截断]"
 	maxTokenUsageDisplayEvents   = 10
 	historyTypeMessage           = "message"
 	historyTypeContextMessage    = "context_message"

@@ -693,6 +693,7 @@ describe('StoryStage streaming rendering', () => {
   it('keeps live thinking visible while narrative output starts', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
+    const providerThinking = `正在判断门后的声响。${'继续核对现场线索。'.repeat(300)}供应商思考尾部必须完整展示。`
 
     try {
       sendInteractiveMessageMock.mockResolvedValue(stream.readable)
@@ -703,16 +704,16 @@ describe('StoryStage streaming rendering', () => {
       await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
 
       act(() => {
-        stream.enqueue({ event: 'thinking', data: JSON.stringify({ content: '正在判断门后的声响。' }) })
+        stream.enqueue({ event: 'thinking', data: JSON.stringify({ content: providerThinking }) })
       })
-      expect(await screen.findByText('正在判断门后的声响。')).toBeInTheDocument()
+      expect(await screen.findByText(providerThinking)).toBeInTheDocument()
 
       act(() => {
         stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '门后传来脚步声。' }) })
       })
 
       await waitFor(() => expect(screen.getByText('门后传来脚步声。')).toBeInTheDocument())
-      expect(screen.getByText('正在判断门后的声响。')).toBeInTheDocument()
+      expect(screen.getByText(providerThinking)).toBeInTheDocument()
     } finally {
       stream.close()
     }
@@ -1014,6 +1015,7 @@ describe('StoryStage streaming rendering', () => {
   it('updates a live tool card when an index-based call later receives an id', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
+    const completeArgs = JSON.stringify({ command: `printf '${'工具输入'.repeat(9000)}尾部必须完整展示'` })
 
     try {
       sendInteractiveMessageMock.mockResolvedValue(stream.readable)
@@ -1025,7 +1027,7 @@ describe('StoryStage streaming rendering', () => {
 
       act(() => {
         stream.enqueue({ event: 'tool_call', data: JSON.stringify({ index: 0, name: 'execute', args: '' }) })
-        stream.enqueue({ event: 'tool_args_delta', data: JSON.stringify({ id: 'call-execute', index: 0, name: 'execute', delta: '{"command":"pwd"}' }) })
+        stream.enqueue({ event: 'tool_args_delta', data: JSON.stringify({ id: 'call-execute', index: 0, name: 'execute', delta: completeArgs }) })
         stream.enqueue({ event: 'tool_result', data: JSON.stringify({ id: 'call-execute', index: 0, name: 'execute', content: 'command done' }) })
       })
 
@@ -1034,7 +1036,7 @@ describe('StoryStage streaming rendering', () => {
         const executeMessages = liveMessages.filter((message) => message.role === 'tool_call' && message.name === 'execute')
         expect(executeMessages).toHaveLength(1)
         expect(executeMessages[0]).toMatchObject({
-          args: '{"command":"pwd"}',
+          args: completeArgs,
           status: 'success',
           result: 'command done',
           streaming: false,

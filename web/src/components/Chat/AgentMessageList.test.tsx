@@ -32,6 +32,39 @@ describe('Agent MessageList', () => {
     expect(state.closest('[data-nova-chat-after-content]')?.nextElementSibling).toHaveAttribute('data-nova-chat-bottom-spacer')
   })
 
+  it('releases bottom following before an interaction inside stage content changes its height', () => {
+    const renderList = (afterContentKey: string) => (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList
+          isStreaming={false}
+          activityContent=""
+          messages={agentTurnMessages()}
+          afterContent={<button type="button">展开状态</button>}
+          afterContentKey={afterContentKey}
+        />
+      </VirtuosoMockContext.Provider>
+    )
+    const { container, rerender } = render(renderList('collapsed'))
+    const scroller = container.querySelector<HTMLElement>('.nova-chat-canvas')
+    if (!scroller) throw new Error('Expected message scroller')
+    let scrollHeight = 500
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => 100 })
+    scroller.scrollTop = 400
+    fireEvent.scroll(scroller)
+
+    fireEvent.pointerDown(screen.getByRole('button', { name: '展开状态' }))
+    scrollHeight = 700
+    rerender(renderList('expanded'))
+
+    // Virtuoso can issue a second, delayed scroll after measuring the taller
+    // footer. The direct interaction must keep winning over that adjustment.
+    scroller.scrollTop = 600
+    fireEvent.scroll(scroller)
+
+    expect(scroller.scrollTop).toBe(400)
+  })
+
   it('有可见流式 thinking 时不再追加会被动态内容推动的活动卡片', () => {
     renderMessageList(
       <MessageList

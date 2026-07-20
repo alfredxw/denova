@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { KeyboardEvent, UIEvent, WheelEvent } from 'react'
+import type { KeyboardEvent, PointerEvent, UIEvent, WheelEvent } from 'react'
 import type { VirtuosoHandle } from 'react-virtuoso'
 import { createDeferredBottomScrollScheduler, DEFAULT_BOTTOM_THRESHOLD, isElementNearBottom, UPWARD_SCROLL_KEYS } from '@/lib/bottom-scroll-controller'
 
 export const VIRTUOSO_BOTTOM_THRESHOLD = DEFAULT_BOTTOM_THRESHOLD
 const VIRTUOSO_AWAY_FROM_BOTTOM_THRESHOLD = 160
+const DOWNWARD_SCROLL_KEYS = new Set(['ArrowDown', 'PageDown', 'End', ' '])
 
 export interface ScrollElementBottomIntoViewOptions {
   bottomInsetPx?: number
@@ -16,6 +17,8 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
   const virtuosoRef = useRef<VirtuosoHandle | null>(null)
   const scrollerElementRef = useRef<HTMLElement | null>(null)
   const lockedRef = useRef(true)
+  const afterContentInteractionRef = useRef(false)
+  const preservedInteractionScrollTopRef = useRef(0)
   const lastScrollTopRef = useRef(0)
   const lastLockedBottomScrollTopRef = useRef(0)
   const schedulerRef = useRef(createDeferredBottomScrollScheduler())
@@ -80,12 +83,20 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
     cancelScheduledScroll()
   }, [cancelScheduledScroll])
 
+  const releaseBottomLock = useCallback(() => {
+    preservedInteractionScrollTopRef.current = currentScrollerElement()?.scrollTop ?? lastScrollTopRef.current
+    afterContentInteractionRef.current = true
+    unlockFromBottom()
+  }, [currentScrollerElement, unlockFromBottom])
+
   const scrollToBottom = useCallback(() => {
+    afterContentInteractionRef.current = false
     lockedRef.current = true
     schedulerRef.current.schedule(scrollToBottomNow, () => lockedRef.current)
   }, [scrollToBottomNow])
 
   const scrollElementIntoView = useCallback((element: HTMLElement) => {
+    afterContentInteractionRef.current = false
     lockedRef.current = false
     cancelScheduledScroll()
     element.scrollIntoView?.({ block: 'start', inline: 'nearest', behavior: 'auto' })
@@ -98,6 +109,7 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
 
   const scrollElementBottomIntoView = useCallback((element: HTMLElement, options: number | ScrollElementBottomIntoViewOptions = 0) => {
     const lockAfterScroll = typeof options !== 'number' && options.lockAfterScroll === true
+    afterContentInteractionRef.current = false
     lockedRef.current = lockAfterScroll
     cancelScheduledScroll()
     const scroller = currentScrollerElement()
@@ -125,6 +137,7 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
 
   const scrollToIndex = useCallback((index: number, options?: { align?: 'start' | 'center' | 'end'; behavior?: 'auto' | 'smooth' }) => {
     if (itemCount <= 0) return
+    afterContentInteractionRef.current = false
     lockedRef.current = false
     cancelScheduledScroll()
     virtuosoRef.current?.scrollToIndex({
@@ -136,7 +149,28 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
   }, [cancelScheduledScroll, itemCount, updateAwayFromBottom])
 
   const handleScrollElement = useCallback((element: HTMLElement) => {
-    const currentTop = element.scrollTop
+    let currentTop = element.scrollTop
+    if (afterContentInteractionRef.current) {
+      const preservedTop = Math.min(
+        preservedInteractionScrollTopRef.current,
+        Math.max(0, element.scrollHeight - element.clientHeight),
+      )
+      if (currentTop > preservedTop + 1) {
+        // Virtuoso can issue a delayed bottom adjustment after its footer has
+        // been remeasured. Restore the viewport captured by the direct panel
+        // interaction instead of allowing that internal scroll to win.
+        element.scrollTop = preservedTop
+        currentTop = preservedTop
+      } else {
+        // Content can become shorter when changing tabs, so retain the native
+        // clamp as the new position to preserve for the next layout change.
+        preservedInteractionScrollTopRef.current = currentTop
+      }
+      lockedRef.current = false
+      lastScrollTopRef.current = currentTop
+      updateAwayFromBottom(element)
+      return
+    }
     const previousTop = lastScrollTopRef.current
     if (isNearBottom(element)) {
       lockedRef.current = true
@@ -154,15 +188,28 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
   }, [handleScrollElement])
 
   const onWheel = useCallback((event: WheelEvent<HTMLDivElement>) => {
+    if (event.deltaY !== 0) afterContentInteractionRef.current = false
     if (event.deltaY < 0) unlockFromBottom()
   }, [unlockFromBottom])
 
   const onKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    if (isAfterContentEventTarget(event.target)) return
+    if (UPWARD_SCROLL_KEYS.has(event.key) || DOWNWARD_SCROLL_KEYS.has(event.key)) {
+      afterContentInteractionRef.current = false
+    }
     if (UPWARD_SCROLL_KEYS.has(event.key)) unlockFromBottom()
   }, [unlockFromBottom])
 
+  const onPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    if (!isAfterContentEventTarget(event.target)) afterContentInteractionRef.current = false
+  }, [])
+
   const onAtBottomStateChange = useCallback((atBottom: boolean) => {
     if (atBottom) {
+      if (afterContentInteractionRef.current) {
+        updateAwayFromBottom()
+        return
+      }
       const element = scrollerElementRef.current
       if (element && !isNearBottom(element)) {
         updateAwayFromBottom(element)
@@ -171,14 +218,19 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
       lockedRef.current = true
       setIsAwayFromBottom(false)
     } else {
+      // A footer interaction can emit `false`, then another stale `true`, while
+      // Virtuoso measures the newly revealed content. Keep the suppression
+      // active until the user explicitly returns to the bottom or the list is
+      // reset; otherwise that second callback immediately restores the lock.
       updateAwayFromBottom()
     }
   }, [isNearBottom, updateAwayFromBottom])
 
-  const followOutput = useCallback((atBottom: boolean) => {
+  const followOutput = useCallback((_atBottom: boolean) => {
     detectManualScrollAway()
-    if (atBottom) lockedRef.current = true
-    return lockedRef.current ? 'auto' : false
+    // `atBottom` describes the layout before newly revealed footer content is
+    // measured. An explicit interaction unlock must win over that stale value.
+    return lockedRef.current && !afterContentInteractionRef.current ? 'auto' : false
   }, [detectManualScrollAway])
 
   const scrollerRef = useCallback((ref: HTMLElement | Window | null) => {
@@ -191,9 +243,14 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
       updateAwayFromBottom(element)
       const handleNativeScroll = () => handleScrollElement(element)
       const handleNativeWheel = (event: globalThis.WheelEvent) => {
+        if (event.deltaY !== 0) afterContentInteractionRef.current = false
         if (event.deltaY < 0) unlockFromBottom()
       }
       const handleNativeKeyDown = (event: globalThis.KeyboardEvent) => {
+        if (isAfterContentEventTarget(event.target)) return
+        if (UPWARD_SCROLL_KEYS.has(event.key) || DOWNWARD_SCROLL_KEYS.has(event.key)) {
+          afterContentInteractionRef.current = false
+        }
         if (UPWARD_SCROLL_KEYS.has(event.key)) unlockFromBottom()
       }
       element.addEventListener('scroll', handleNativeScroll, { passive: true })
@@ -212,6 +269,7 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
   }, [scheduleScrollToBottom])
 
   useLayoutEffect(() => {
+    afterContentInteractionRef.current = false
     lockedRef.current = true
     scheduleScrollRef.current()
     return cancelScheduledScroll
@@ -236,12 +294,18 @@ export function useVirtuosoBottomLock({ resetKey, contentKey, itemCount, awayFro
     onScroll,
     onWheel,
     onKeyDown,
+    onPointerDown,
     onAtBottomStateChange,
     followOutput,
     isAwayFromBottom,
     scrollToBottom,
+    releaseBottomLock,
     scrollElementIntoView,
     scrollElementBottomIntoView,
     scrollToIndex,
   }
+}
+
+function isAfterContentEventTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest('[data-nova-chat-after-content]'))
 }

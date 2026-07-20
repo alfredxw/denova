@@ -171,16 +171,16 @@ func ParseActorStateSchemaAdaptation(content string) (ActorStateSchemaAdaptation
 	for index := range adaptation.InitialActorOps {
 		op := &adaptation.InitialActorOps[index]
 		op.Op = strings.TrimSpace(op.Op)
-		op.ActorID = normalizeActorStateID(op.ActorID)
+		op.ActorID = normalizeStatePanelActorID(op.ActorID)
 		op.Reason = trimBytes(op.Reason, maxInteractiveTextBytes)
 		normalizeActorStateSchemaActorValueSource(op.ValueSource)
 	}
 	for index := range adaptation.ActorOps {
 		op := &adaptation.ActorOps[index]
 		op.Op = strings.TrimSpace(op.Op)
-		op.ActorID = normalizeActorStateID(op.ActorID)
+		op.ActorID = normalizeStatePanelActorID(op.ActorID)
 		op.FieldID = normalizeActorStateFieldName(op.FieldID)
-		op.Actor.ID = normalizeActorStateID(op.Actor.ID)
+		op.Actor.ID = normalizeStatePanelActorID(op.Actor.ID)
 		op.Actor.TemplateID = normalizeActorStateID(op.Actor.TemplateID)
 		op.Reason = trimBytes(op.Reason, maxInteractiveTextBytes)
 		normalizeActorStateSchemaActorValueSource(op.ValueSource)
@@ -367,7 +367,7 @@ func applyActorStateInitialActorSchemaOp(system StoryDirectorActorStateSystem, o
 	switch op.Op {
 	case "add":
 		actor := op.Actor
-		actor.ID = normalizeActorStateID(actor.ID)
+		actor.ID = normalizeStatePanelActorID(actor.ID)
 		if actor.ID == "" {
 			return system, fmt.Errorf("新增初始 Actor 缺少合法 actor.id")
 		}
@@ -384,11 +384,11 @@ func applyActorStateInitialActorSchemaOp(system StoryDirectorActorStateSystem, o
 			return system, fmt.Errorf("替换的初始 Actor 不存在: %s", op.ActorID)
 		}
 		actor := op.Actor
-		actor.ID = normalizeActorStateID(actor.ID)
+		actor.ID = normalizeStatePanelActorID(actor.ID)
 		if actor.ID == "" {
-			actor.ID = normalizeActorStateID(op.ActorID)
+			actor.ID = normalizeStatePanelActorID(op.ActorID)
 		}
-		if actor.ID != normalizeActorStateID(op.ActorID) {
+		if actor.ID != normalizeStatePanelActorID(op.ActorID) {
 			return system, fmt.Errorf("替换初始 Actor 时不可改变 ID: %s -> %s", op.ActorID, actor.ID)
 		}
 		if actorStateTemplateByID(system, actor.TemplateID).ID == "" {
@@ -396,7 +396,7 @@ func applyActorStateInitialActorSchemaOp(system StoryDirectorActorStateSystem, o
 		}
 		system.InitialActors[index] = actor
 	case "remove":
-		actorID := normalizeActorStateID(op.ActorID)
+		actorID := normalizeStatePanelActorID(op.ActorID)
 		if actorID == DefaultActorID || actorID == DefaultStoryContextActorID {
 			return system, fmt.Errorf("故事基础初始 Actor 不可删除: %s", actorID)
 		}
@@ -435,9 +435,9 @@ func actorStateFieldIndex(fields []ActorStateField, fieldID string) int {
 }
 
 func actorStateInitialActorIndex(actors []ActorStateInitialActor, actorID string) int {
-	actorID = normalizeActorStateID(actorID)
+	actorID = normalizeStatePanelActorID(actorID)
 	for index := range actors {
-		if normalizeActorStateID(actors[index].ID) == actorID {
+		if normalizeStatePanelActorID(actors[index].ID) == actorID {
 			return index
 		}
 	}

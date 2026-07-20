@@ -255,8 +255,8 @@ func NormalizeTurnCheckRequest(req TurnCheckRequest) TurnCheckRequest {
 	req.Rule.FailurePolicy = normalizeRuleCheckFailurePolicyOptional(req.Rule.FailurePolicy)
 	req.Rule.RollMode = normalizeTurnCheckRollMode(req.Rule.RollMode)
 	req.Rule.BindingID = normalizeSlotID(req.Rule.BindingID)
-	req.Rule.ActorID = normalizeActorStateID(req.Rule.ActorID)
-	req.Rule.TargetActorID = normalizeActorStateID(req.Rule.TargetActorID)
+	req.Rule.ActorID = normalizeStatePanelActorID(req.Rule.ActorID)
+	req.Rule.TargetActorID = normalizeStatePanelActorID(req.Rule.TargetActorID)
 	req.Difficulty = normalizeTurnCheckDifficulty(req.Difficulty)
 	req.Bonuses = normalizeTurnCheckBonuses(req.Bonuses)
 	req.Outcomes.CriticalSuccess = normalizeTurnCheckOutcome(req.Outcomes.CriticalSuccess)
@@ -471,7 +471,7 @@ func normalizeTurnCheckBonuses(values []TurnCheckBonus) []TurnCheckBonus {
 	out := make([]TurnCheckBonus, 0, len(values))
 	for _, value := range values {
 		value.Kind = normalizeTurnCheckEnumToken(value.Kind)
-		value.ActorID = normalizeActorStateID(value.ActorID)
+		value.ActorID = normalizeStatePanelActorID(value.ActorID)
 		value.FieldID = normalizeActorStateFieldName(value.FieldID)
 		value.Reason = trimBytes(value.Reason, 512)
 		out = append(out, value)
@@ -488,7 +488,7 @@ func normalizeTurnStateChanges(values []TurnStateChange) []TurnStateChange {
 	}
 	out := make([]TurnStateChange, 0, len(values))
 	for _, value := range values {
-		value.ActorID = normalizeActorStateID(value.ActorID)
+		value.ActorID = normalizeStatePanelActorID(value.ActorID)
 		value.FieldID = normalizeActorStateFieldName(value.FieldID)
 		value.Reason = trimBytes(value.Reason, 512)
 		out = append(out, value)
@@ -506,7 +506,7 @@ func normalizeActorStateRefs(values []ActorStateRef) []ActorStateRef {
 	out := make([]ActorStateRef, 0, len(values))
 	seen := map[string]bool{}
 	for _, value := range values {
-		value.ActorID = normalizeActorStateID(value.ActorID)
+		value.ActorID = normalizeStatePanelActorID(value.ActorID)
 		value.FieldID = normalizeActorStateFieldName(value.FieldID)
 		key := value.ActorID + "\x00" + actorStateFieldNameKey(value.FieldID)
 		if value.ActorID == "" || value.FieldID == "" || seen[key] {

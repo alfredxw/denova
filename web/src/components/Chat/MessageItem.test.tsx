@@ -530,8 +530,10 @@ describe('MessageItem', () => {
   })
 
   it('工具调用流式预览默认锁定到底部', async () => {
-    const initialArgs = JSON.stringify({ path: 'chapters/ch01.md', content: '开头。'.repeat(80) })
-    const nextArgs = JSON.stringify({ path: 'chapters/ch01.md', content: '开头。'.repeat(120) })
+    const initialContent = `完整起点。${'开头。'.repeat(250)}完整终点。`
+    const nextContent = `${initialContent}${'继续。'.repeat(160)}新的完整终点。`
+    const initialArgs = JSON.stringify({ path: 'chapters/ch01.md', content: initialContent })
+    const nextArgs = JSON.stringify({ path: 'chapters/ch01.md', content: nextContent })
     const { container, rerender } = render(
       <MessageItem
         message={{
@@ -546,6 +548,7 @@ describe('MessageItem', () => {
     )
     const preview = container.querySelector('[data-nova-scroll-lock="tool-stream-preview"]') as HTMLDivElement
     expect(preview).toBeInTheDocument()
+    expect(preview.textContent).toBe(initialContent)
     const scrollMetrics = mockScrollMetrics(preview)
     preview.scrollTop = scrollMetrics.maxScrollTop()
     fireEvent.scroll(preview)
@@ -566,6 +569,7 @@ describe('MessageItem', () => {
     )
 
     await waitFor(() => expect(preview.scrollTop).toBe(scrollMetrics.maxScrollTop()))
+    expect(preview.textContent).toBe(nextContent)
   })
 
   it('write_todos 工具卡片渲染为待办列表，并显示进度', () => {

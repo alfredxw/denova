@@ -74,13 +74,13 @@ func TestCompileTurnStateUpdatesUsesEscapedTildeInFieldIDs(t *testing.T) {
 	}
 }
 
-func TestCompileTurnStateUpdatesCreatesActorWithoutInventingOptionalStrings(t *testing.T) {
+func TestCompileTurnStateUpdatesCreatesNamedActorWithoutInventingOtherOptionalStrings(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID: "opponent", Fields: []ActorStateField{{Name: "生命值", Type: "number", Visibility: "visible"}},
 	}}}
 	compiled, err := CompileTurnStateUpdates(system, map[string]any{}, []StateUpdate{{
-		Op: TurnStateUpdateCreate, Path: "/wolf_1",
-		Value: map[string]any{"template_id": "opponent", "state": map[string]any{"生命值": 12}},
+		Op: TurnStateUpdateCreate, Path: "/狼王",
+		Value: map[string]any{"template_id": "opponent", "name": "狼王", "state": map[string]any{"生命值": 12}},
 	}}, TurnStateUpdateCompileOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -92,14 +92,17 @@ func TestCompileTurnStateUpdatesCreatesActorWithoutInventingOptionalStrings(t *t
 	if !ok || audit["template_id"] != "opponent" {
 		t.Fatalf("unexpected create audit value: %#v", compiled.Updates[0].Value)
 	}
-	for _, key := range []string{"name", "role", "description"} {
+	if audit["name"] != "狼王" {
+		t.Fatalf("actor name should be identical to its ID: %#v", audit)
+	}
+	for _, key := range []string{"role", "description"} {
 		if _, exists := audit[key]; exists {
 			t.Fatalf("missing optional field %q must not become an invented string: %#v", key, audit)
 		}
 	}
 
 	_, err = CompileTurnStateUpdates(system, map[string]any{}, []StateUpdate{{
-		Op: TurnStateUpdateCreate, Path: "/wolf_2",
+		Op: TurnStateUpdateCreate, Path: "/狼群首领",
 		Value: map[string]any{"template_id": "opponent", "name": 2},
 	}}, TurnStateUpdateCompileOptions{})
 	var validationError *StateUpdateValidationError

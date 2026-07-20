@@ -1,5 +1,5 @@
 import { Check, ChevronDown } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -18,8 +18,18 @@ interface CompactResourcePickerProps<T> {
   triggerClassName?: string
   contentClassName?: string
   trailingAction?: ReactNode
+  /** Override a complete item row while preserving the shared picker chrome. */
+  renderItem?: (item: T, context: CompactResourcePickerItemContext) => ReactNode
   renderFooter?: (close: () => void) => ReactNode
   onSelect: (id: string) => void
+}
+
+interface CompactResourcePickerItemContext {
+  id: string
+  label: string
+  selected: boolean
+  close: () => void
+  select: () => void
 }
 
 /** Compact labeled listbox presentation shared by story-scoped resource selectors. */
@@ -37,6 +47,7 @@ export function CompactResourcePicker<T>({
   triggerClassName,
   contentClassName,
   trailingAction,
+  renderItem,
   renderFooter,
   onSelect,
 }: CompactResourcePickerProps<T>) {
@@ -67,6 +78,7 @@ export function CompactResourcePicker<T>({
       <PopoverContent
         align="start"
         sideOffset={6}
+        collisionPadding={8}
         className={cn(
           'max-h-[min(70dvh,28rem)] overflow-y-auto rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1 text-[var(--nova-text)] shadow-[var(--nova-shadow)]',
           sidebar
@@ -80,7 +92,24 @@ export function CompactResourcePicker<T>({
             <div className="px-2 py-2 text-xs text-[var(--nova-text-faint)]">{emptyLabel}</div>
           ) : items.map((item) => {
             const id = getId(item)
+            const itemLabel = getLabel(item)
             const selected = id === selectedId
+            if (renderItem) {
+              return (
+                <Fragment key={id}>
+                  {renderItem(item, {
+                    id,
+                    label: itemLabel,
+                    selected,
+                    close,
+                    select: () => {
+                      close()
+                      onSelect(id)
+                    },
+                  })}
+                </Fragment>
+              )
+            }
             return (
               <button
                 key={id}
@@ -97,7 +126,7 @@ export function CompactResourcePicker<T>({
                   onSelect(id)
                 }}
               >
-                <span className="min-w-0 flex-1 truncate">{getLabel(item)}</span>
+                <span className="min-w-0 flex-1 truncate">{itemLabel}</span>
                 {selected ? <Check className="size-3.5 shrink-0 text-[var(--nova-text-faint)]" /> : null}
               </button>
             )

@@ -16,7 +16,8 @@ function expectVitalityHidden() {
 }
 
 function sectionLabels(container: HTMLElement) {
-  return Array.from(container.querySelectorAll('.story-state-ledger__section'))
+  const activePanel = container.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])')
+  return Array.from((activePanel || container).querySelectorAll('.story-state-ledger__section'))
     .map((section) => section.getAttribute('aria-label'))
 }
 
@@ -142,6 +143,35 @@ describe('StoryStateLedger', () => {
     expect(sectionLabels(container)).toEqual(['概览', '持有与资源'])
   })
 
+  it('keeps preview sections in place when revealing sections that were hidden above them', async () => {
+    const snapshot = storyStateSnapshot()
+    const template = snapshot.actor_state_schema?.system.templates?.[0]
+    const actors = snapshot.state.actors as Record<string, { state?: Record<string, unknown> }>
+    if (!template || !actors.protagonist.state) throw new Error('Expected Actor State fixture')
+    template.fields = [
+      { name: '身份', type: 'string', group: '人物设定' },
+      { name: '战斗面板', type: 'object', group: '面板' },
+      { name: '即时状态', type: 'object', group: '状态' },
+    ]
+    actors.protagonist.state = {
+      身份: '青石镇散修',
+      战斗面板: { 攻击: 12 },
+      即时状态: { 生命: 7 },
+    }
+
+    const { container } = render(
+      <StoryStateLedger
+        snapshot={snapshot}
+        displayPreference="preview"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+
+    expect(sectionLabels(container)).toEqual(['面板', '状态'])
+    await userEvent.click(screen.getByRole('button', { name: '展开全部（还有 1 个分区）' }))
+    expect(sectionLabels(container)).toEqual(['面板', '状态', '人物设定'])
+  })
+
   it('previews the first section when a template has no structured sections', () => {
     const snapshot = richStoryStateSnapshot()
     const template = snapshot.actor_state_schema?.system.templates?.[0]
@@ -234,6 +264,22 @@ describe('StoryStateLedger', () => {
     )
     expect(screen.queryByRole('tab', { name: '世界状态' })).not.toBeInTheDocument()
     expectVitalityVisible()
+  })
+
+  it('mounts every entity tab body up front so switching tabs only changes visibility', () => {
+    const { container } = render(
+      <StoryStateLedger
+        snapshot={storyStateSnapshot()}
+        displayPreference="expanded"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+
+    const panels = Array.from(container.querySelectorAll<HTMLElement>('[role="tabpanel"]'))
+    expect(panels).toHaveLength(3)
+    expect(panels.filter((panel) => panel.hidden)).toHaveLength(2)
+    expect(panels.some((panel) => panel.hidden && panel.textContent?.includes('观望'))).toBe(true)
+    expect(panels.some((panel) => panel.hidden && panel.textContent?.includes('暴雨将至'))).toBe(true)
   })
 
   it('shows the turn delta once in the summary row plus per-field chips, not per-field notes', () => {

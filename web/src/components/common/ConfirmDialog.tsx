@@ -76,7 +76,7 @@ export function ConfirmDialog({
         </AlertDialogHeader>
         {details && details.length > 0 && (
           <div className="max-h-28 overflow-y-auto rounded border border-border bg-muted p-2 text-xs text-muted-foreground">
-            {details.map((item) => <div key={item} className="truncate">{item}</div>)}
+            {details.map((item, index) => <div key={`${index}:${item}`} className="truncate">{item}</div>)}
           </div>
         )}
         {detailContent}

@@ -41,6 +41,82 @@ func TestActorStateSchemaBatchDraftAcceptsValidItemsAndRetriesOnlyFailures(t *te
 	}
 }
 
+func TestOpeningActorStateSchemaBatchReturnsExactInitializationGuide(t *testing.T) {
+	base := StoryDirectorActorStateSystem{
+		Templates: []ActorStateTemplate{
+			{ID: DefaultActorID, Fields: []ActorStateField{
+				{Name: "身份", Type: "string", Visibility: "visible"},
+				{Name: "氧气", Type: "number", Default: 45, Visibility: "visible"},
+				{Name: "幕后风险", Type: "string", Visibility: "hidden"},
+			}},
+			{ID: ActorStateStoryContextTemplateID, Fields: []ActorStateField{{Name: storyContextCurrentEventField, Type: "string", Visibility: "visible"}}},
+		},
+		InitialActors: []ActorStateInitialActor{
+			{ID: DefaultActorID, TemplateID: DefaultActorID},
+			{ID: DefaultStoryContextActorID, TemplateID: ActorStateStoryContextTemplateID},
+		},
+	}
+	draft := NewOpeningActorStateSchemaBatchDraft(base, StoryDirectorTRPGSystem{})
+	result := draft.SubmitStructureOnly(ActorStateSchemaBatch{
+		Items: []ActorStateSchemaBatchItem{{
+			ItemID: "identity-covered",
+			Requirements: []ActorStateSchemaRequirementReview{{
+				Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-draft"}, Requirement: "主角身份需要长期记录",
+				EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly,
+				ExpectedType: "string", Decision: "covered", TemplateID: DefaultActorID, FieldID: "身份",
+			}},
+			Adaptation: ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{}},
+		}},
+		Finalize: true,
+	}, ActorStateSchemaBatchAudit{OpeningSourceIDs: []string{"opening-draft"}})
+	if !result.Finalized || result.InitializationGuide == nil {
+		t.Fatalf("a finalized opening draft must return its initialization guide: %#v", result)
+	}
+	guide := result.InitializationGuide
+	if guide.TotalWritableFields != 3 || guide.AutoInitializedFields != 1 || len(guide.RequiredStateChanges) != 2 {
+		t.Fatalf("unexpected initialization coverage: %#v", guide)
+	}
+	if first, second := guide.RequiredStateChanges[0], guide.RequiredStateChanges[1]; first.ActorID != DefaultActorID || first.FieldID != "身份" || second.ActorID != DefaultStoryContextActorID || second.FieldID != storyContextCurrentEventField {
+		t.Fatalf("the guide must use exact stable actor and field IDs: %#v", guide.RequiredStateChanges)
+	}
+}
+
+func TestOpeningActorStateSchemaBatchResolvesInitialActorIDAsTemplateAlias(t *testing.T) {
+	base := StoryDirectorActorStateSystem{
+		Templates: []ActorStateTemplate{
+			{ID: DefaultActorID, Fields: []ActorStateField{{Name: "身份", Type: "string", Visibility: "visible"}}},
+			{ID: ActorStateStoryContextTemplateID, Fields: []ActorStateField{{Name: storyContextCurrentEventField, Type: "string", Visibility: "visible"}}},
+		},
+		InitialActors: []ActorStateInitialActor{
+			{ID: DefaultActorID, TemplateID: DefaultActorID},
+			{ID: DefaultStoryContextActorID, TemplateID: ActorStateStoryContextTemplateID},
+		},
+	}
+	draft := NewOpeningActorStateSchemaBatchDraft(base, StoryDirectorTRPGSystem{})
+	result := draft.SubmitStructureOnly(ActorStateSchemaBatch{
+		Items: []ActorStateSchemaBatchItem{{
+			ItemID: "story-integrity",
+			Requirements: []ActorStateSchemaRequirementReview{{
+				Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-draft"}, Requirement: "空间站完整度需要独立变化",
+				EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly,
+				ExpectedType: "number", Decision: "add", TemplateID: DefaultStoryContextActorID, FieldID: "站体完整度",
+			}},
+			Adaptation: ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{
+				Op: "fields", TemplateID: DefaultStoryContextActorID,
+				FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "站体完整度", Type: "number", Visibility: "visible"}}},
+			}}},
+		}},
+		Finalize: true,
+	}, ActorStateSchemaBatchAudit{OpeningSourceIDs: []string{"opening-draft"}})
+	if !result.Finalized || len(result.Rejected) != 0 || len(result.Accepted) != 1 {
+		t.Fatalf("an unambiguous initial Actor ID should resolve to its template in the opening contract: %#v", result)
+	}
+	proposal, ok := draft.FinalProposal()
+	if !ok || proposal.Requirements[0].TemplateID != ActorStateStoryContextTemplateID || proposal.Adaptation.TemplateOps[0].TemplateID != ActorStateStoryContextTemplateID {
+		t.Fatalf("the finalized proposal must persist canonical template IDs: %#v", proposal)
+	}
+}
+
 func TestActorStateSchemaBatchDraftRequiresDeclaredActorValueInitialization(t *testing.T) {
 	base := batchTestActorStateSystem()
 	base.InitialActors = append(base.InitialActors, ActorStateInitialActor{ID: DefaultActorID, Name: "主角", TemplateID: DefaultActorID})

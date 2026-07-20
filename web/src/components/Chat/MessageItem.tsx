@@ -14,7 +14,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { subAgentSessionKey } from './subagent-session'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { boundedPlanDisplay, formatPlanQuestionAnswerMessage, formatPlanQuestionAnswerPreview, parsePlanQuestionSet, recommendedAnswerSet } from '@/lib/plan-mode'
+import { formatPlanQuestionAnswerMessage, formatPlanQuestionAnswerPreview, parsePlanQuestionSet, planDisplayContent, recommendedAnswerSet } from '@/lib/plan-mode'
 import type { PlanQuestionAnswer } from '@/lib/plan-mode'
 import { Message as AIMessage, MessageContent as AIMessageContent } from '@/components/ai-elements/message'
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning'
@@ -620,7 +620,7 @@ function ContextCompactionBlock({ message }: { message: ChatMessage }) {
 function PlanQuestionBlock({ message, onSubmit, onLayoutChange }: { message: ChatMessage; onSubmit?: (message: ChatMessage, content: string, preview: string) => void; onLayoutChange?: () => void }) {
   const { t } = useTranslation()
   const questionSet = parsePlanQuestionSet(message.content || '')
-  const fallback = boundedPlanDisplay(message.content || '')
+  const fallback = planDisplayContent(message.content || '')
   const [selected, setSelected] = useState<Record<string, string[]>>(() => questionSet ? recommendedAnswerSet(questionSet) : {})
   const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({})
   const [questionIndex, setQuestionIndex] = useState(0)
@@ -658,7 +658,7 @@ function PlanQuestionBlock({ message, onSubmit, onLayoutChange }: { message: Cha
   if (!questionSet) {
     return (
       <PlanShell icon={<ClipboardList className="h-3.5 w-3.5" />} title={t('chat.plan.questionTitle')}>
-        <div className="max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[var(--nova-text-muted)]">{fallback.content}</div>
+        <div className="max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-[var(--nova-text-muted)]">{fallback}</div>
       </PlanShell>
     )
   }
@@ -797,7 +797,7 @@ function PlanQuestionBlock({ message, onSubmit, onLayoutChange }: { message: Cha
 
 function ProposedPlanBlock({ message, highlightDialogue, onApprove, onContinue, onExit, onLayoutChange }: { message: ChatMessage; highlightDialogue?: boolean; onApprove?: (message: ChatMessage) => void; onContinue?: (message: ChatMessage) => void; onExit?: () => void; onLayoutChange?: () => void }) {
   const { t } = useTranslation()
-  const display = boundedPlanDisplay(message.content || '')
+  const display = planDisplayContent(message.content || '')
   const [localAction, setLocalAction] = useState<ChatMessage['plan_action']>(message.plan_action)
   const planAction = message.plan_action || localAction
   useEffect(() => {
@@ -814,9 +814,8 @@ function ProposedPlanBlock({ message, highlightDialogue, onApprove, onContinue, 
     <PlanShell icon={<ClipboardCheck className="h-3.5 w-3.5" />} title={t('chat.plan.proposalTitle')} badge={t('chat.plan.proposalBadge')}>
       <div className="flex max-h-[min(680px,calc(100vh-220px))] min-h-0 flex-col">
         <div className="chat-agent-message min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 text-sm leading-6 text-[var(--nova-text)] [scrollbar-gutter:stable]">
-          <MarkdownContent content={display.content} highlightDialogue={highlightDialogue === true} />
+          <MarkdownContent content={display} highlightDialogue={highlightDialogue === true} />
         </div>
-        {display.truncated && <div className="mt-2 shrink-0 text-[11px] text-[var(--nova-text-faint)]">{t('chat.plan.displayTruncated')}</div>}
         {planAction ? (
           <PlanActionStatus text={planActionStatusText(t, planAction)} />
         ) : (
@@ -1526,6 +1525,14 @@ function isContentTool(name: string): boolean {
 
 /** 从不完整的 JSON args 中提取 content/new_string 字段的流式文本 */
 function extractStreamingContent(rawArgs: string): string {
+  try {
+    const parsed = JSON.parse(rawArgs) as Record<string, unknown>
+    for (const key of ['content', 'new_string']) {
+      if (typeof parsed[key] === 'string') return parsed[key]
+    }
+  } catch {
+    // 流式参数尚未形成完整 JSON 时继续按增量文本提取。
+  }
   // 尝试提取 "content": "..." 或 "new_string": "..."
   const match = rawArgs.match(/"(?:content|new_string)"\s*:\s*"([\s\S]*)$/m)
   if (!match) return ''
@@ -1537,10 +1544,6 @@ function extractStreamingContent(rawArgs: string): string {
   } catch {
     // 不完整时做简单转义还原
     text = text.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
-  }
-  // 只展示最后 500 字符以保持性能
-  if (text.length > 500) {
-    return '...' + text.slice(-500)
   }
   return text
 }

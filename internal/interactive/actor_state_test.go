@@ -154,12 +154,12 @@ func TestDefaultActorStateCentralizedRecordsUseNestedUpdates(t *testing.T) {
 	}
 
 	updates := []StateUpdate{
-		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultActorID, "技能与能力", "ability_001"}), Value: map[string]any{"名称": "洞察", "类型": "探索", "当前状态": "可用"}},
-		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultActorID, "重要物品", "item_001"}), Value: map[string]any{"名称": "旧钥匙", "类型": "线索", "数量": float64(1)}},
-		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultActorID, "关系", "npc_guide"}), Value: map[string]any{"关系类型": "同伴", "好感度": float64(60), "当前态度": "愿意合作"}},
-		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultStoryContextActorID, "当前任务", "quest_main_001"}), Value: map[string]any{"任务名称": "进入遗迹", "当前状态": "进行中"}},
-		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultWorldEntitiesActorID, "地点记录", "location_001"}), Value: map[string]any{"地点名称": "沉没遗迹", "探索状态": "已发现"}},
-		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultWorldEntitiesActorID, "势力记录", "faction_001"}), Value: map[string]any{"势力名称": "灰塔协会", "对主角立场": "观望"}},
+		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultActorID, "技能与能力", "洞察"}), Value: map[string]any{"名称": "洞察", "类型": "探索", "当前状态": "可用"}},
+		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultActorID, "重要物品", "旧钥匙"}), Value: map[string]any{"名称": "旧钥匙", "类型": "线索", "数量": float64(1)}},
+		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultActorID, "关系", "引路人"}), Value: map[string]any{"关系类型": "同伴", "好感度": float64(60), "当前态度": "愿意合作"}},
+		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultStoryContextActorID, "当前任务", "进入遗迹"}), Value: map[string]any{"任务名称": "进入遗迹", "当前状态": "进行中"}},
+		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultWorldEntitiesActorID, "地点记录", "沉没遗迹"}), Value: map[string]any{"地点名称": "沉没遗迹", "探索状态": "已发现"}},
+		{Op: TurnStateUpdateReplace, Path: formatStateUpdatePath([]string{DefaultWorldEntitiesActorID, "势力记录", "灰塔协会"}), Value: map[string]any{"势力名称": "灰塔协会", "对主角立场": "观望"}},
 	}
 	compiled, err := CompileTurnStateUpdates(system, snapshot.State, updates, TurnStateUpdateCompileOptions{SourceTurnID: "turn-centralized"})
 	if err != nil {
@@ -183,12 +183,12 @@ func TestDefaultActorStateCentralizedRecordsUseNestedUpdates(t *testing.T) {
 			t.Fatalf("record %s/%s/%s mismatch: %#v", actorID, fieldID, recordID, field)
 		}
 	}
-	assertActorObjectRecord(DefaultActorID, "技能与能力", "ability_001", "名称", "洞察")
-	assertActorObjectRecord(DefaultActorID, "重要物品", "item_001", "名称", "旧钥匙")
-	assertActorObjectRecord(DefaultActorID, "关系", "npc_guide", "关系类型", "同伴")
-	assertActorObjectRecord(DefaultStoryContextActorID, "当前任务", "quest_main_001", "任务名称", "进入遗迹")
-	assertActorObjectRecord(DefaultWorldEntitiesActorID, "地点记录", "location_001", "地点名称", "沉没遗迹")
-	assertActorObjectRecord(DefaultWorldEntitiesActorID, "势力记录", "faction_001", "势力名称", "灰塔协会")
+	assertActorObjectRecord(DefaultActorID, "技能与能力", "洞察", "名称", "洞察")
+	assertActorObjectRecord(DefaultActorID, "重要物品", "旧钥匙", "名称", "旧钥匙")
+	assertActorObjectRecord(DefaultActorID, "关系", "引路人", "关系类型", "同伴")
+	assertActorObjectRecord(DefaultStoryContextActorID, "当前任务", "进入遗迹", "任务名称", "进入遗迹")
+	assertActorObjectRecord(DefaultWorldEntitiesActorID, "地点记录", "沉没遗迹", "地点名称", "沉没遗迹")
+	assertActorObjectRecord(DefaultWorldEntitiesActorID, "势力记录", "灰塔协会", "势力名称", "灰塔协会")
 }
 
 func TestActorStateSupportsCustomNonCharacterStateObjects(t *testing.T) {

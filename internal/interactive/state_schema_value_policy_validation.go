@@ -7,7 +7,7 @@ import (
 
 func validateActorStateSchemaBatchValuePolicy(item ActorStateSchemaBatchItem, requirement ActorStateSchemaRequirementReview, path string, audit ActorStateSchemaBatchAudit) *ActorStateSchemaBatchIssue {
 	policy := strings.TrimSpace(requirement.ValuePolicy)
-	actorID := normalizeActorStateID(requirement.ActorID)
+	actorID := normalizeStatePanelActorID(requirement.ActorID)
 	switch policy {
 	case ActorStateSchemaValuePolicySchemaOnly:
 		if actorID != "" {
@@ -89,12 +89,12 @@ func validateActorStateSchemaBatchActorTemplate(item ActorStateSchemaBatchItem, 
 }
 
 func actorStateSchemaBatchActorTemplate(state map[string]any, adaptation ActorStateSchemaAdaptation, actorID string) (string, bool) {
-	actorID = normalizeActorStateID(actorID)
+	actorID = normalizeStatePanelActorID(actorID)
 	for _, op := range adaptation.InitialActorOps {
 		if op.Op != "add" && op.Op != "replace" {
 			continue
 		}
-		if normalizeActorStateID(firstNonEmptyString(op.ActorID, op.Actor.ID)) == actorID && normalizeActorStateID(op.Actor.TemplateID) != "" {
+		if normalizeStatePanelActorID(firstNonEmptyString(op.ActorID, op.Actor.ID)) == actorID && normalizeActorStateID(op.Actor.TemplateID) != "" {
 			return op.Actor.TemplateID, true
 		}
 	}
@@ -102,7 +102,7 @@ func actorStateSchemaBatchActorTemplate(state map[string]any, adaptation ActorSt
 		if op.Op != "add" && op.Op != "replace" {
 			continue
 		}
-		if normalizeActorStateID(firstNonEmptyString(op.ActorID, op.Actor.ID)) == actorID && normalizeActorStateID(op.Actor.TemplateID) != "" {
+		if normalizeStatePanelActorID(firstNonEmptyString(op.ActorID, op.Actor.ID)) == actorID && normalizeActorStateID(op.Actor.TemplateID) != "" {
 			return op.Actor.TemplateID, true
 		}
 	}
@@ -134,7 +134,7 @@ func actorStateSchemaBatchPreservedFieldID(adaptation ActorStateSchemaAdaptation
 
 func actorStateSchemaBatchCurrentActorValue(state map[string]any, actorID, fieldID string) (string, any, bool) {
 	actors, _ := state[actorStateRoot].(map[string]any)
-	actor, _ := actors[normalizeActorStateID(actorID)].(map[string]any)
+	actor, _ := actors[normalizeStatePanelActorID(actorID)].(map[string]any)
 	if actor == nil {
 		return "", nil, false
 	}
@@ -145,10 +145,10 @@ func actorStateSchemaBatchCurrentActorValue(state map[string]any, actorID, field
 }
 
 func actorStateSchemaBatchHasActorValueOp(adaptation ActorStateSchemaAdaptation, actorID, fieldID string) bool {
-	actorID = normalizeActorStateID(actorID)
+	actorID = normalizeStatePanelActorID(actorID)
 	fieldID = normalizeActorStateFieldName(fieldID)
 	for _, op := range adaptation.InitialActorOps {
-		if normalizeActorStateID(firstNonEmptyString(op.ActorID, op.Actor.ID)) != actorID {
+		if normalizeStatePanelActorID(firstNonEmptyString(op.ActorID, op.Actor.ID)) != actorID {
 			continue
 		}
 		if value, exists := op.Actor.State[fieldID]; exists && value != nil {
@@ -156,7 +156,7 @@ func actorStateSchemaBatchHasActorValueOp(adaptation ActorStateSchemaAdaptation,
 		}
 	}
 	for _, op := range adaptation.ActorOps {
-		if normalizeActorStateID(firstNonEmptyString(op.ActorID, op.Actor.ID)) != actorID {
+		if normalizeStatePanelActorID(firstNonEmptyString(op.ActorID, op.Actor.ID)) != actorID {
 			continue
 		}
 		if op.Op == "set" && normalizeActorStateFieldName(op.FieldID) == fieldID && op.Value != nil {

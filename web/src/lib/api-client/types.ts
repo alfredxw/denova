@@ -236,6 +236,8 @@ export interface ContextAnalysisPart {
   note?: string
   bytes: number
   chars: number
+  /** Diagnostic source breakdown; content remains the exact model-visible message. */
+  parts?: ContextAnalysisPart[]
 }
 
 export interface ContextAnalysisCompaction {

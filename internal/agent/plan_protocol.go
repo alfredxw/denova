@@ -11,9 +11,6 @@ const (
 	planQuestionsCloseTag = "</plan_questions>"
 	proposedPlanOpenTag   = "<proposed_plan>"
 	proposedPlanCloseTag  = "</proposed_plan>"
-
-	planBlockDisplayMaxBytes = 32 * 1024
-	planBlockTruncatedHint   = "\n...\n[plan display truncated / Plan 展示已截断]"
 )
 
 type planBlockKind string
@@ -92,7 +89,7 @@ func (p *planProtocolParser) drain(flush bool) string {
 				p.blockBuffer.WriteString(buffer[:idx])
 				p.buffer.Reset()
 				p.buffer.WriteString(buffer[idx+len(closeTag):])
-				p.emitPlanBlock("success", truncatePlanBlockDisplay(p.blockBuffer.String()))
+				p.emitPlanBlock("success", normalizePlanBlockDisplay(p.blockBuffer.String()))
 				p.block = ""
 				p.blockID = ""
 				p.blockBuffer.Reset()
@@ -228,16 +225,8 @@ func longestPlanTagPrefixSuffix(content string, tags []string) int {
 	return max
 }
 
-func truncatePlanBlockDisplay(content string) string {
-	content = strings.TrimSpace(content)
-	if len(content) <= planBlockDisplayMaxBytes {
-		return content
-	}
-	limit := planBlockDisplayMaxBytes - len(planBlockTruncatedHint)
-	if limit < 0 {
-		limit = planBlockDisplayMaxBytes
-	}
-	return truncateUTF8StringBytes(content, limit) + planBlockTruncatedHint
+func normalizePlanBlockDisplay(content string) string {
+	return strings.TrimSpace(content)
 }
 
 func truncateUTF8StringBytes(value string, maxBytes int) string {
@@ -289,7 +278,7 @@ func emitPlanProtocolToolCall(name, args string, meta agentEventMetadata, emit f
 	if !ok {
 		return false, false
 	}
-	content := truncatePlanBlockDisplay(planProtocolToolContent(kind, args))
+	content := normalizePlanBlockDisplay(planProtocolToolContent(kind, args))
 	if content == "" {
 		emitPlanProtocolToolRunning(name, meta, emit)
 		return true, false
