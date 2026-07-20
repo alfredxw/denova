@@ -122,6 +122,35 @@ export async function getMessages(sessionId?: string): Promise<AgentUIMessage[]>
   return requestJSON(`/api/session/messages${query}`)
 }
 
+export const DEFAULT_SESSION_MESSAGE_PAGE_SIZE = 100
+
+export interface SessionMessagesPage {
+  messages: AgentUIMessage[]
+  nextBefore: string
+  hasMore: boolean
+  total: number
+}
+
+export async function getMessagesPage(sessionId?: string, options: { limit?: number; before?: string } = {}): Promise<SessionMessagesPage> {
+  const query = new URLSearchParams()
+  if (sessionId) query.set('session_id', sessionId)
+  query.set('limit', String(options.limit || DEFAULT_SESSION_MESSAGE_PAGE_SIZE))
+  if (options.before) query.set('before', options.before)
+  const data = await requestJSON<AgentUIMessage[] | {
+    messages?: AgentUIMessage[]
+    page?: { next_before?: string; has_more?: boolean; total?: number }
+  }>(`/api/session/messages?${query.toString()}`)
+  if (Array.isArray(data)) {
+    return { messages: data, nextBefore: '0', hasMore: false, total: data.length }
+  }
+  return {
+    messages: data.messages || [],
+    nextBefore: data.page?.next_before || '0',
+    hasMore: data.page?.has_more === true,
+    total: data.page?.total || 0,
+  }
+}
+
 export async function getSessions(): Promise<SessionSummary[]> {
   const data = await requestJSON<{ sessions: SessionSummary[] }>('/api/sessions')
   return data.sessions || []

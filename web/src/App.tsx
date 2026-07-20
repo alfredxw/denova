@@ -176,6 +176,9 @@ function App() {
     stop,
     loadSessions,
     loadHistory,
+    loadEarlierHistory,
+    hasEarlierMessages,
+    isLoadingEarlierHistory,
     resumeActiveChat,
     createChatSession,
     switchChatSession,
@@ -789,6 +792,8 @@ function App() {
         styleScenes={styleScenes}
         textSelections={textSelections}
         chatPlanMode={planMode}
+        hasEarlierMessages={hasEarlierMessages}
+        isLoadingEarlierHistory={isLoadingEarlierHistory}
         onSetMode={handleSetMode}
         onToggleActivityBarExpanded={() => setActivityBarExpanded((value) => !value)}
         onToggleProjectVisible={() => setProjectVisible((value) => !value)}
@@ -823,6 +828,7 @@ function App() {
         onSwitchChatSession={switchChatSession}
         onRenameChatSession={renameChatSession}
         onDeleteChatSession={deleteChatSession}
+        onLoadEarlierHistory={loadEarlierHistory}
         onSend={send}
         onAnalyzeContext={analyzeContext}
         onStop={stop}

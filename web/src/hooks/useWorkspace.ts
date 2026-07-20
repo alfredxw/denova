@@ -226,24 +226,52 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   // 自动刷新目录树，覆盖 AI Agent 直接写入文件后的结构变化。
   useEffect(() => {
     if (!autoRefreshEnabled || !workspaceLoaded || !workspace) return
+    let cancelled = false
+    let timer: number | null = null
+    let inFlight: Promise<void> | null = null
+    const backgroundOptions = { showLoading: false, clearOnError: false }
+    const clearTimer = () => {
+      if (timer === null) return
+      window.clearTimeout(timer)
+      timer = null
+    }
     const refreshIfVisible = () => {
-      if (document.visibilityState === 'visible') {
-        const backgroundOptions = { showLoading: false, clearOnError: false }
-        void Promise.all([
-          fetchTree(backgroundOptions),
-          fetchSummary(backgroundOptions),
-        ])
-      }
+      if (cancelled || document.visibilityState !== 'visible') return Promise.resolve()
+      if (inFlight) return inFlight
+      inFlight = Promise.all([
+        fetchTree(backgroundOptions),
+        fetchSummary(backgroundOptions),
+      ]).then(() => undefined).finally(() => {
+        inFlight = null
+      })
+      return inFlight
+    }
+    const scheduleNext = () => {
+      clearTimer()
+      if (cancelled || document.visibilityState !== 'visible') return
+      timer = window.setTimeout(() => {
+        timer = null
+        void refreshIfVisible().finally(scheduleNext)
+      }, TREE_AUTO_REFRESH_INTERVAL_MS)
+    }
+    const refreshAndReschedule = () => {
+      clearTimer()
+      void refreshIfVisible().finally(scheduleNext)
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshAndReschedule()
+      else clearTimer()
     }
 
-    const timer = window.setInterval(refreshIfVisible, TREE_AUTO_REFRESH_INTERVAL_MS)
-    window.addEventListener('focus', refreshIfVisible)
-    document.addEventListener('visibilitychange', refreshIfVisible)
+    scheduleNext()
+    window.addEventListener('focus', refreshAndReschedule)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
-      window.clearInterval(timer)
-      window.removeEventListener('focus', refreshIfVisible)
-      document.removeEventListener('visibilitychange', refreshIfVisible)
+      cancelled = true
+      clearTimer()
+      window.removeEventListener('focus', refreshAndReschedule)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [autoRefreshEnabled, fetchTree, fetchSummary, workspace, workspaceLoaded])
 

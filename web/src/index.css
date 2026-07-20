@@ -1836,32 +1836,6 @@ html[data-nova-motion="off"] *::after {
   margin-bottom: 0;
 }
 
-.nova-streaming-content-stage {
-  position: relative;
-  min-width: 0;
-}
-
-.nova-streaming-content-reserve {
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.nova-streaming-content-overlay {
-  position: absolute;
-  inset-inline: 0;
-  top: 0;
-}
-
-.nova-streaming-content-reserve > :first-child,
-.nova-streaming-content-overlay > :first-child {
-  margin-top: 0;
-}
-
-.nova-streaming-content-reserve > :last-child,
-.nova-streaming-content-overlay > :last-child {
-  margin-bottom: 0;
-}
-
 .chat-agent-message h1,
 .chat-agent-message h2,
 .chat-agent-message h3 {

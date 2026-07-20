@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { StrictMode, useState } from 'react'
+import { Profiler, StrictMode, useState } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StoryStage } from './StoryStage'
@@ -53,6 +53,26 @@ beforeEach(() => {
   updateInteractiveTurnNarrativeMock.mockReset()
   useSkillCommandsMock.mockReset()
   useSkillCommandsMock.mockReturnValue([])
+})
+
+describe('StoryStage store subscriptions', () => {
+  it('does not rerender when unrelated interactive store state changes', async () => {
+    let commits = 0
+    render(
+      <Profiler id="story-stage" onRender={() => { commits += 1 }}>
+        <StoryStageHarness />
+      </Profiler>,
+    )
+    await waitFor(() => expect(getActiveInteractiveChatMock).toHaveBeenCalled())
+    await act(async () => undefined)
+    commits = 0
+
+    act(() => {
+      useInteractiveStore.getState().setTellers([])
+    })
+
+    expect(commits).toBe(0)
+  })
 })
 
 describe('StoryStage TurnResult choices', () => {
@@ -641,7 +661,7 @@ describe('StoryStage streaming rendering', () => {
 		}
 	})
 
-  it('batches fast interactive chunks into one animation frame without slicing text', async () => {
+  it('batches fast interactive chunks into one frame and renders one complete text tree', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
     const originalRequestAnimationFrame = window.requestAnimationFrame
@@ -674,12 +694,12 @@ describe('StoryStage streaming rendering', () => {
 
       act(() => runAnimationFrames(frames))
 
-      expect(container.querySelector('.nova-streaming-content-reserve')).toHaveTextContent('青石镇外风声忽然停了。')
-      expect(container.querySelector('.nova-streaming-content-overlay')).not.toHaveTextContent('青石镇外风声忽然停了。')
+      expect(container.querySelector('.nova-streaming-content-stage')).toBeNull()
+      expect(await screen.findByText('青石镇外风声忽然停了。')).toBeInTheDocument()
 
       act(() => runAnimationFrames(frames))
 
-      expect(await screen.findByText('青石镇外风声忽然停了。')).toBeInTheDocument()
+			expect(screen.getByText('青石镇外风声忽然停了。')).toBeInTheDocument()
 			stream.enqueue({ event: 'interactive_turn_persisted', data: JSON.stringify(persistedTurnEvent()) })
       stream.enqueue({ event: 'done', data: '{}' })
       stream.close()
@@ -690,7 +710,7 @@ describe('StoryStage streaming rendering', () => {
     }
   })
 
-  it('reserves live thinking height before revealing the new text', async () => {
+  it('renders live thinking from one complete text tree after the batched frame', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
     const originalRequestAnimationFrame = window.requestAnimationFrame
@@ -721,13 +741,12 @@ describe('StoryStage streaming rendering', () => {
 
       act(() => runAnimationFrames(frames))
 
-      const stage = container.querySelector('.nova-streaming-content-stage')
-      expect(stage?.querySelector('.nova-streaming-content-reserve')).toHaveTextContent('正在检查门后的动静。')
-      expect(stage?.querySelector('.nova-streaming-content-overlay')).not.toHaveTextContent('正在检查门后的动静。')
+      expect(container.querySelector('.nova-streaming-content-stage')).toBeNull()
+      expect(await screen.findByText('正在检查门后的动静。')).toBeInTheDocument()
 
       act(() => runAnimationFrames(frames))
 
-      expect(await screen.findByText('正在检查门后的动静。')).toBeInTheDocument()
+      expect(screen.getByText('正在检查门后的动静。')).toBeInTheDocument()
     } finally {
       stream.close()
       window.requestAnimationFrame = originalRequestAnimationFrame
@@ -1088,6 +1107,55 @@ describe('StoryStage streaming rendering', () => {
         })
       })
     } finally {
+      stream.close()
+    }
+  })
+
+  it('batches consecutive tool argument deltas into one frame update', async () => {
+    const user = userEvent.setup()
+    const stream = controllableInteractiveStream()
+    sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+    let scheduledFrame: FrameRequestCallback | null = null
+    let unsubscribe: () => void = () => {}
+
+    try {
+      render(<StoryStageHarness />)
+      await user.type(screen.getByPlaceholderText('你要做什么？'), '继续前进')
+      await user.click(screen.getByRole('button', { name: '发送' }))
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
+      act(() => {
+        stream.enqueue({ event: 'tool_call', data: JSON.stringify({ id: 'call-execute', name: 'execute', args: '' }) })
+      })
+      await waitFor(() => {
+        const messages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
+        expect(messages.some((message) => message.id === 'call-execute')).toBe(true)
+      })
+
+      vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
+        scheduledFrame = callback
+        return 91
+      })
+      let storeUpdates = 0
+      unsubscribe = useInteractiveStore.subscribe(() => { storeUpdates += 1 })
+
+      await act(async () => {
+        stream.enqueue({ event: 'tool_args_delta', data: JSON.stringify({ id: 'call-execute', name: 'execute', delta: 'first' }) })
+        stream.enqueue({ event: 'tool_args_delta', data: JSON.stringify({ id: 'call-execute', name: 'execute', delta: '-last' }) })
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(storeUpdates).toBe(0)
+      expect(scheduledFrame).not.toBeNull()
+      act(() => {
+        ;(scheduledFrame as FrameRequestCallback)(0)
+      })
+      const messages = useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.liveMessages || []
+      expect(storeUpdates).toBe(1)
+      expect(messages.find((message) => message.id === 'call-execute')?.args).toBe('first-last')
+    } finally {
+      unsubscribe()
+      vi.restoreAllMocks()
       stream.close()
     }
   })

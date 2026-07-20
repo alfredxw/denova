@@ -43,6 +43,8 @@ const chat = {
   'chat.writingSkill.source.workspace': '工作区',
   'chat.writingSkill.empty': '暂无可用写作 Skill',
   'chat.empty': '发送消息开始对话，或输入 /help 查看可用命令',
+  'chat.history.loadEarlier': '加载更早消息',
+  'chat.history.loadingEarlier': '正在加载更早消息…',
   'chat.input.placeholder': '输入消息，Enter 发送，Shift+Enter 换行',
   'chat.input.placeholderWithSkills': '输入消息，/ 选择命令或 Skills',
   'chat.input.disabledPlaceholder': 'AI 正在回复…',

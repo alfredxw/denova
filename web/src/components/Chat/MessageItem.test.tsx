@@ -55,18 +55,15 @@ describe('MessageItem', () => {
     expect(status.querySelector('.bg-clip-text')).toBeInTheDocument()
   })
 
-  it('流式 assistant 新增正文先预留目标高度，提升为 content 后才显示新文字', () => {
+  it('流式 assistant 只渲染最新目标正文的一棵 Markdown 树', () => {
     const { container, rerender } = render(<MessageItem message={{ role: 'assistant', content: '第一行内容', streaming: true }} />)
 
     expect(container.querySelector('.nova-streaming-content-stage')).toBeNull()
 
     rerender(<MessageItem message={{ role: 'assistant', content: '第一行内容', streaming_target_content: '第一行内容\n第二行内容', streaming: true }} />)
 
-    const stage = container.querySelector('.nova-streaming-content-stage')
-    expect(stage).toBeInTheDocument()
-    expect(stage?.querySelector('.nova-streaming-content-reserve')).toHaveTextContent('第二行内容')
-    expect(stage?.querySelector('.nova-streaming-content-overlay')).toHaveTextContent('第一行内容')
-    expect(stage?.querySelector('.nova-streaming-content-overlay')).not.toHaveTextContent('第二行内容')
+    expect(container.querySelector('.nova-streaming-content-stage')).toBeNull()
+    expect(container.querySelector('.chat-agent-message')).toHaveTextContent('第二行内容')
 
     rerender(<MessageItem message={{ role: 'assistant', content: '第一行内容\n第二行内容', streaming: true }} />)
 
@@ -251,43 +248,13 @@ describe('MessageItem', () => {
     expect(screen.getByText('已经分析完')).toBeInTheDocument()
   })
 
-  it('直接增长的流式 thinking 先预留目标高度再显示新文字', () => {
-    const originalRequestAnimationFrame = window.requestAnimationFrame
-    const originalCancelAnimationFrame = window.cancelAnimationFrame
-    const frames = new Map<number, FrameRequestCallback>()
-    let nextFrameId = 1
-    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
-      const id = nextFrameId
-      nextFrameId += 1
-      frames.set(id, callback)
-      return id
-    })
-    window.cancelAnimationFrame = vi.fn((id: number) => {
-      frames.delete(id)
-    })
+  it('直接增长的流式 thinking 立即复用单棵文本树显示最新内容', () => {
+    const { container, rerender } = render(<MessageItem message={{ role: 'thinking', content: '正在分析', streaming: true }} />)
 
-    try {
-      const { container, rerender } = render(<MessageItem message={{ role: 'thinking', content: '正在分析', streaming: true }} />)
+    rerender(<MessageItem message={{ role: 'thinking', content: '正在分析下一条线索', streaming: true }} />)
 
-      rerender(<MessageItem message={{ role: 'thinking', content: '正在分析下一条线索', streaming: true }} />)
-
-      const stage = container.querySelector('.nova-streaming-content-stage')
-      expect(stage?.querySelector('.nova-streaming-content-reserve')).toHaveTextContent('正在分析下一条线索')
-      expect(stage?.querySelector('.nova-streaming-content-overlay')).toHaveTextContent('正在分析')
-      expect(stage?.querySelector('.nova-streaming-content-overlay')).not.toHaveTextContent('下一条线索')
-
-      act(() => {
-        const callbacks = Array.from(frames.values())
-        frames.clear()
-        callbacks.forEach((callback) => callback(0))
-      })
-
-      expect(container.querySelector('.nova-streaming-content-stage')).toBeNull()
-      expect(screen.getByText('正在分析下一条线索')).toBeInTheDocument()
-    } finally {
-      window.requestAnimationFrame = originalRequestAnimationFrame
-      window.cancelAnimationFrame = originalCancelAnimationFrame
-    }
+    expect(container.querySelector('.nova-streaming-content-stage')).toBeNull()
+    expect(screen.getByText('正在分析下一条线索')).toBeInTheDocument()
   })
 
   it('工具调用卡片展示工具名、摘要和成功结果', () => {

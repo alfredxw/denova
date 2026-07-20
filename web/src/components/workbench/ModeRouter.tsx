@@ -82,6 +82,8 @@ interface ModeRouterProps {
   styleScenes: string[]
   textSelections: TextSelection[]
   chatPlanMode: boolean
+  hasEarlierMessages: boolean
+  isLoadingEarlierHistory: boolean
   updateNotice?: { latestVersion: string } | null
   onSetMode: (mode: WorkspaceMode) => void
   onToggleActivityBarExpanded: () => void
@@ -115,6 +117,7 @@ interface ModeRouterProps {
   onSwitchChatSession: (id: string) => void | Promise<void>
   onRenameChatSession: (id: string, title: string) => void | Promise<void>
   onDeleteChatSession: (id: string) => void | Promise<void>
+  onLoadEarlierHistory: () => void | Promise<void>
   onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
@@ -175,6 +178,8 @@ export function ModeRouter(props: ModeRouterProps) {
     styleScenes,
     textSelections,
     chatPlanMode,
+    hasEarlierMessages,
+    isLoadingEarlierHistory,
     updateNotice,
     onSetMode,
     onToggleActivityBarExpanded,
@@ -208,6 +213,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onSwitchChatSession,
     onRenameChatSession,
     onDeleteChatSession,
+    onLoadEarlierHistory,
     onSend,
     onAnalyzeContext,
     onStop,
@@ -657,6 +663,7 @@ export function ModeRouter(props: ModeRouterProps) {
         <MainRouteLayer visible={visibleMainRoute === 'interactive'}>
           <InteractiveLayout
             workspace={workspace}
+            active={visibleMainRoute === 'interactive'}
             imagePresets={imagePresets}
             onImagePresetsChange={setImagePresets}
             loreEmpty={loreEmpty}
@@ -747,11 +754,14 @@ export function ModeRouter(props: ModeRouterProps) {
       styleScenes={styleScenes}
       textSelections={textSelections}
       planMode={chatPlanMode}
+      hasEarlierMessages={hasEarlierMessages}
+      isLoadingEarlierHistory={isLoadingEarlierHistory}
       fileSuggestions={flattenFileTree(tree)}
       onCreateSession={onCreateChatSession}
       onSwitchSession={onSwitchChatSession}
       onRenameSession={onRenameChatSession}
       onDeleteSession={onDeleteChatSession}
+      onLoadEarlierHistory={onLoadEarlierHistory}
       onSend={onSend}
       onAnalyzeContext={onAnalyzeContext}
       ideContext={ideContext}

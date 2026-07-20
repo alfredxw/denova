@@ -66,6 +66,11 @@ Object.defineProperty(window, 'scrollBy', {
   value: () => {},
 })
 
+Object.defineProperty(HTMLElement.prototype, 'scrollBy', {
+  configurable: true,
+  value: () => {},
+})
+
 const testDOMRect = {
   width: 1,
   height: 1,

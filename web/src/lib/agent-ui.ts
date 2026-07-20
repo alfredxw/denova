@@ -146,14 +146,21 @@ function normalizeRepeatedAgentUIMessageIDs(messages: AgentUIMessage[]) {
   return normalized
 }
 
+const messagePartDedupeKeysCache = new WeakMap<AgentUIMessage, {
+  metadata: AgentUIMessage['metadata']
+  parts: AgentUIMessage['parts']
+  keys: string[]
+}>()
+
 function normalizeRepeatedAgentUIParts(messages: AgentUIMessage[]) {
   const normalized = [...messages]
   const locationByKey = new Map<string, { messageIndex: number; partIndex: number }>()
   const removedByMessage = new Map<number, Set<number>>()
 
   messages.forEach((message, messageIndex) => {
+    const dedupeKeys = agentUIPartDedupeKeys(message)
     message.parts.forEach((part, partIndex) => {
-      const key = agentUIPartDedupeKey(message, part)
+      const key = dedupeKeys[partIndex]
       if (!key) return
       const existing = locationByKey.get(key)
       if (!existing) {
@@ -189,6 +196,14 @@ function normalizeRepeatedAgentUIParts(messages: AgentUIMessage[]) {
       } as AgentUIMessage
     })
     .filter(message => message.parts.length > 0)
+}
+
+function agentUIPartDedupeKeys(message: AgentUIMessage) {
+  const cached = messagePartDedupeKeysCache.get(message)
+  if (cached && cached.metadata === message.metadata && cached.parts === message.parts) return cached.keys
+  const keys = message.parts.map((part) => agentUIPartDedupeKey(message, part))
+  messagePartDedupeKeysCache.set(message, { metadata: message.metadata, parts: message.parts, keys })
+  return keys
 }
 
 function agentUIPartDedupeKey(message: AgentUIMessage, part: AgentUIMessage['parts'][number]) {

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import type { Layout } from 'react-resizable-panels'
+import { useShallow } from 'zustand/react/shallow'
 import { readFile } from '@/lib/api'
 import { createInteractiveBranch, createInteractiveStory, deleteInteractiveBranch, deleteInteractiveStory, getInteractiveBranches, getInteractiveSnapshot, getInteractiveStories, getInteractiveTellers, getStoryDirectors, switchInteractiveBranch, updateInteractiveStory } from '../api'
 import { useInteractiveStore } from '../stores/interactive-store'
@@ -26,6 +27,7 @@ import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVE
 
 interface InteractiveLayoutProps {
   workspace?: string
+  active?: boolean
   imagePresets?: ImagePreset[]
   onImagePresetsChange?: (presets: ImagePreset[]) => void
   loreEmpty?: boolean
@@ -34,10 +36,50 @@ interface InteractiveLayoutProps {
   onToggleRightPanel?: () => void
 }
 
-export function InteractiveLayout({ workspace, imagePresets = [], onImagePresetsChange, loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
+const SNAPSHOT_POLL_INTERVAL_MS = 1000
+
+export function InteractiveLayout({ workspace, active = true, imagePresets = [], onImagePresetsChange, loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
-  const { stories, tellers, storyDirectors, branches, snapshot, currentStoryId, currentBranchId, submode, setStories, setTellers, setStoryDirectors, setBranches, setSnapshot, applyTurnPersisted, setCurrentStoryId, setCurrentBranchId, setSubmode, resetWorkspaceState } = useInteractiveStore()
+  const {
+    stories,
+    tellers,
+    storyDirectors,
+    branches,
+    snapshot,
+    currentStoryId,
+    currentBranchId,
+    submode,
+    setStories,
+    setTellers,
+    setStoryDirectors,
+    setBranches,
+    setSnapshot,
+    applyTurnPersisted,
+    setCurrentStoryId,
+    setCurrentBranchId,
+    setSubmode,
+    resetWorkspaceState,
+  } = useInteractiveStore(useShallow((state) => ({
+    stories: state.stories,
+    tellers: state.tellers,
+    storyDirectors: state.storyDirectors,
+    branches: state.branches,
+    snapshot: state.snapshot,
+    currentStoryId: state.currentStoryId,
+    currentBranchId: state.currentBranchId,
+    submode: state.submode,
+    setStories: state.setStories,
+    setTellers: state.setTellers,
+    setStoryDirectors: state.setStoryDirectors,
+    setBranches: state.setBranches,
+    setSnapshot: state.setSnapshot,
+    applyTurnPersisted: state.applyTurnPersisted,
+    setCurrentStoryId: state.setCurrentStoryId,
+    setCurrentBranchId: state.setCurrentBranchId,
+    setSubmode: state.setSubmode,
+    resetWorkspaceState: state.resetWorkspaceState,
+  })))
   const currentStory = stories.find((story) => story.id === currentStoryId)
   const currentTeller = tellers.find((teller) => teller.id === currentStory?.story_teller_id)
   const styleSceneSuggestions = Array.from(new Set((currentTeller?.style_rules || []).map((rule) => rule.scene.trim()).filter((scene) => scene && !isGlobalStyleSceneName(scene))))
@@ -146,19 +188,42 @@ export function InteractiveLayout({ workspace, imagePresets = [], onImagePresets
   }, [reloadBookOpeningPreset])
 
   useEffect(() => {
+    if (!active) return
     void reloadSnapshot()
-  }, [currentStoryId])
+  }, [active, currentStoryId, reloadSnapshot])
 
   useEffect(() => {
     const branchID = snapshot?.branch_id
     const directorStatus = snapshot?.director_plan_status?.status || ''
     const directorPending = directorStatus === 'running' || (directorStatus === 'waiting_opening' && (snapshot?.turns?.length || 0) > 0)
-    if (!branchID || (snapshot?.current_turn?.state_status !== 'pending' && !directorPending)) return
-    const timer = window.setInterval(() => {
-      void reloadSnapshot(branchID)
-    }, 1000)
-    return () => window.clearInterval(timer)
-  }, [reloadSnapshot, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status, snapshot?.director_plan_status?.status, snapshot?.turns?.length])
+    if (!active || !branchID || (snapshot?.current_turn?.state_status !== 'pending' && !directorPending)) return
+    let cancelled = false
+    let timer: number | null = null
+    const clearTimer = () => {
+      if (timer === null) return
+      window.clearTimeout(timer)
+      timer = null
+    }
+    const schedule = () => {
+      clearTimer()
+      if (cancelled || document.visibilityState !== 'visible') return
+      timer = window.setTimeout(() => {
+        timer = null
+        void reloadSnapshot(branchID, undefined, { silent: true }).finally(schedule)
+      }, SNAPSHOT_POLL_INTERVAL_MS)
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') schedule()
+      else clearTimer()
+    }
+    schedule()
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      cancelled = true
+      clearTimer()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [active, reloadSnapshot, snapshot?.branch_id, snapshot?.current_turn?.id, snapshot?.current_turn?.state_status, snapshot?.director_plan_status?.status, snapshot?.turns?.length])
 
   useEffect(() => {
     if (!isMobile || submode !== 'story') setMobileSnapshotOpen(false)

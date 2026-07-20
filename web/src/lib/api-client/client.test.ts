@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import { setConfiguredLocale } from '@/i18n'
-import { APIError, clearRemoteAccessCredentials, fetchAPI, requestJSON, setRemoteAccessCredentials } from './client'
+import { APIError, clearRemoteAccessCredentials, fetchAPI, parseSSEStream, requestJSON, setRemoteAccessCredentials } from './client'
 
 vi.mock('sonner', () => ({
   toast: {
@@ -109,5 +109,37 @@ describe('api client backend availability toast', () => {
       code: 'revision_conflict',
       details: { path: 'chapters/ch01.md', expected: 'sha256:old', actual: 'sha256:new' },
     })
+  })
+})
+
+describe('parseSSEStream', () => {
+  it('preserves split boundaries, multiline data, CRLF, and a final unterminated event', async () => {
+    const source = [
+      'event: tool\ndata: first',
+      '\ndata: second\n\n',
+      'event: chunk\r\ndata: third\r\n\r',
+      '\nevent: done\ndata: {}',
+    ]
+    const encoder = new TextEncoder()
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of source) controller.enqueue(encoder.encode(chunk))
+        controller.close()
+      },
+    })
+
+    const reader = parseSSEStream(body).getReader()
+    const events = []
+    while (true) {
+      const result = await reader.read()
+      if (result.done) break
+      events.push(result.value)
+    }
+
+    expect(events).toEqual([
+      { event: 'tool', data: 'first\nsecond' },
+      { event: 'chunk', data: 'third' },
+      { event: 'done', data: '{}' },
+    ])
   })
 })

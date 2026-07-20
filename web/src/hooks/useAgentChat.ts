@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChat as useAIChat } from '@ai-sdk/react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -8,7 +8,7 @@ import {
   deleteSession,
   executeCommand,
   getActiveChatTask,
-  getMessages,
+  getMessagesPage,
   getSessions,
   renameSession,
   switchSession,
@@ -87,6 +87,15 @@ export function useAgentChat(options: ChatOptions = {}) {
   const [textSelections, setTextSelections] = useState<TextSelection[]>([])
   const [defaultPlanMode, setDefaultPlanMode] = useState(false)
   const [planModes, setPlanModes] = useState<Record<string, boolean>>(() => readChatPlanModes())
+  const [hasEarlierMessages, setHasEarlierMessages] = useState(false)
+  const [isLoadingEarlierHistory, setIsLoadingEarlierHistory] = useState(false)
+  const historyRequestGenerationRef = useRef(0)
+  const earlierHistoryRequestRef = useRef(0)
+  const earlierHistoryLoadingRef = useRef(false)
+  const historyPageRef = useRef<{ sessionId?: string; nextBefore: string; hasMore: boolean }>({
+    nextBefore: '0',
+    hasMore: false,
+  })
   const activePlanMode = planModeForSession(planModes, activeSessionId, defaultPlanMode)
 
   useEffect(() => {
@@ -129,13 +138,61 @@ export function useAgentChat(options: ChatOptions = {}) {
   }, [])
 
   const loadHistory = useCallback(async (sessionId?: string) => {
+    const generation = historyRequestGenerationRef.current + 1
+    historyRequestGenerationRef.current = generation
+    earlierHistoryRequestRef.current += 1
+    earlierHistoryLoadingRef.current = false
+    setIsLoadingEarlierHistory(false)
     try {
-      const nextMessages = await getMessages(sessionId)
-      setUIMessages(filterInternalPlanUIMessages(nextMessages))
+      const page = await getMessagesPage(sessionId)
+      if (generation !== historyRequestGenerationRef.current) return
+      historyPageRef.current = {
+        sessionId,
+        nextBefore: page.nextBefore,
+        hasMore: page.hasMore,
+      }
+      setHasEarlierMessages(page.hasMore)
+      setUIMessages(filterInternalPlanUIMessages(page.messages))
     } catch (e) {
-      console.error('加载历史失败', e)
+      if (generation === historyRequestGenerationRef.current) console.error('加载历史失败', e)
     }
   }, [setUIMessages])
+
+  const loadEarlierHistory = useCallback(async () => {
+    const currentPage = historyPageRef.current
+    if (!currentPage.hasMore || earlierHistoryLoadingRef.current) return
+    const historyGeneration = historyRequestGenerationRef.current
+    const requestID = earlierHistoryRequestRef.current + 1
+    earlierHistoryRequestRef.current = requestID
+    earlierHistoryLoadingRef.current = true
+    setIsLoadingEarlierHistory(true)
+    try {
+      const page = await getMessagesPage(currentPage.sessionId, { before: currentPage.nextBefore })
+      if (historyGeneration !== historyRequestGenerationRef.current || requestID !== earlierHistoryRequestRef.current) return
+      const earlierMessages = filterInternalPlanUIMessages(page.messages)
+      historyPageRef.current = {
+        ...currentPage,
+        nextBefore: page.nextBefore,
+        hasMore: page.hasMore,
+      }
+      setHasEarlierMessages(page.hasMore)
+      setUIMessages((messages) => normalizeAgentUIMessages([...earlierMessages, ...messages]))
+    } catch (e) {
+      if (historyGeneration === historyRequestGenerationRef.current && requestID === earlierHistoryRequestRef.current) {
+        console.error('加载更早历史失败', e)
+      }
+    } finally {
+      if (requestID === earlierHistoryRequestRef.current) {
+        earlierHistoryLoadingRef.current = false
+        setIsLoadingEarlierHistory(false)
+      }
+    }
+  }, [setUIMessages])
+
+  useEffect(() => () => {
+    historyRequestGenerationRef.current += 1
+    earlierHistoryRequestRef.current += 1
+  }, [])
 
   const addReference = useCallback((path: string) => {
     setReferences(prev => Array.from(new Set([...prev, path])))
@@ -380,6 +437,9 @@ export function useAgentChat(options: ChatOptions = {}) {
     stop,
     loadSessions,
     loadHistory,
+    loadEarlierHistory,
+    hasEarlierMessages,
+    isLoadingEarlierHistory,
     resumeActiveChat,
     createChatSession,
     switchChatSession,

@@ -25,24 +25,23 @@ if (!root) {
   throw new Error('root 节点不存在')
 }
 
-void bootstrapSettings().finally(() => {
-  createRoot(root).render(
-    <StrictMode>
-      <QueryClientProvider client={queryClient}>
-        <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem themes={['light', 'dark']}>
-          <TooltipProvider>
-            <RuntimeErrorBoundary>
-              <App />
-              <Toaster richColors closeButton />
-            </RuntimeErrorBoundary>
-          </TooltipProvider>
-        </ThemeProvider>
-      </QueryClientProvider>
-    </StrictMode>,
-  )
+createRoot(root).render(
+  <StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider attribute="data-theme" defaultTheme="dark" enableSystem themes={['light', 'dark']}>
+        <TooltipProvider>
+          <RuntimeErrorBoundary>
+            <App />
+            <Toaster richColors closeButton />
+          </RuntimeErrorBoundary>
+        </TooltipProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  </StrictMode>,
+)
 
-  scheduleWhiteScreenCheck(root)
-})
+scheduleWhiteScreenCheck(root)
+void bootstrapSettings()
 
 async function bootstrapSettings() {
   try {

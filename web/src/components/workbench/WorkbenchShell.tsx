@@ -86,6 +86,7 @@ const ACTIVITY_BAR_LEGACY_DEFAULT_WIDTH = 152
 const ACTIVITY_BAR_DEFAULT_WIDTH = 180
 const ACTIVITY_BAR_MAX_WIDTH = 280
 const ACTIVITY_BAR_WIDTH_KEYBOARD_STEP = 8
+const AUTOMATION_ACTIVITY_REFRESH_INTERVAL_MS = 30000
 
 function NovaBrandIcon() {
   return (
@@ -157,17 +158,44 @@ export function WorkbenchShell({
 
   useEffect(() => {
     let cancelled = false
+    let timer: number | null = null
+    let running = false
+    const clearTimer = () => {
+      if (timer === null) return
+      window.clearTimeout(timer)
+      timer = null
+    }
+    const scheduleNext = () => {
+      clearTimer()
+      if (cancelled || document.visibilityState !== 'visible') return
+      timer = window.setTimeout(() => {
+        timer = null
+        void loadAutomationActivity()
+      }, AUTOMATION_ACTIVITY_REFRESH_INTERVAL_MS)
+    }
     async function loadAutomationActivity() {
-      const [inboxResult, runsResult] = await Promise.allSettled([getAutomationInbox(), getActiveAutomationRuns()])
-      if (cancelled) return
-      setAutomationInboxUnread(inboxResult.status === 'fulfilled' ? inboxResult.value.filter((item) => item.status === 'pending' && !item.read_at).length : 0)
-      setAutomationRunning(runsResult.status === 'fulfilled' ? runsResult.value.length : 0)
+      if (cancelled || running || document.visibilityState !== 'visible') return
+      running = true
+      try {
+        const [inboxResult, runsResult] = await Promise.allSettled([getAutomationInbox(), getActiveAutomationRuns()])
+        if (cancelled) return
+        setAutomationInboxUnread(inboxResult.status === 'fulfilled' ? inboxResult.value.filter((item) => item.status === 'pending' && !item.read_at).length : 0)
+        setAutomationRunning(runsResult.status === 'fulfilled' ? runsResult.value.length : 0)
+      } finally {
+        running = false
+        scheduleNext()
+      }
+    }
+    const handleVisibilityChange = () => {
+      clearTimer()
+      if (document.visibilityState === 'visible') void loadAutomationActivity()
     }
     void loadAutomationActivity()
-    const timer = window.setInterval(loadAutomationActivity, 30000)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     return () => {
       cancelled = true
-      window.clearInterval(timer)
+      clearTimer()
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [])
 

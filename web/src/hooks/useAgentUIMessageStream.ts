@@ -1,7 +1,8 @@
-import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { readUIMessageStream, type UIMessageChunk } from 'ai'
 import { buildAgentMessageViews, type AgentMessageView } from '@/lib/agent-message-view'
 import { normalizeAgentUIMessages, type AgentDataParts, type AgentMessageMetadata, type AgentUIMessage } from '@/lib/agent-ui'
+import { createRafUpdateBatcher, type RafUpdateBatcher } from '@/lib/streaming/raf-update-batcher'
 
 interface AgentUIMessageStreamOptions {
   onView?: (view: AgentMessageView) => void
@@ -18,15 +19,21 @@ export function useAgentUIMessageStream(options: AgentUIMessageStreamOptions = {
   const [isStreaming, setIsStreaming] = useState(false)
   const [activityContent, setActivityContent] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
+  const messageBatcherRef = useRef<RafUpdateBatcher<AgentUIMessage[]> | null>(null)
+  const messageBatcher = messageBatcherRef.current ?? createRafUpdateBatcher(rawSetMessages)
+  messageBatcherRef.current = messageBatcher
 
   const setMessages = useCallback((updater: AgentMessageUpdater) => {
+    messageBatcher.discard()
     rawSetMessages((current) => {
       const next = typeof updater === 'function'
         ? (updater as (value: AgentUIMessage[]) => AgentUIMessage[])(current)
         : updater
       return normalizeAgentUIMessages(next)
     })
-  }, []) as Dispatch<SetStateAction<AgentUIMessage[]>>
+  }, [messageBatcher]) as Dispatch<SetStateAction<AgentUIMessage[]>>
+
+  useEffect(() => () => messageBatcher.discard(), [messageBatcher])
 
   const resetStreamingState = useCallback(() => {
     setIsStreaming(false)
@@ -53,15 +60,16 @@ export function useAgentUIMessageStream(options: AgentUIMessageStreamOptions = {
       })) {
         if (consumeOptions.shouldContinue && !consumeOptions.shouldContinue()) break
         const normalized = normalizeAgentUIMessages([message])[0] || message
-        rawSetMessages(current => normalizeAgentUIMessages(upsertAgentUIMessage(current, normalized)))
+        messageBatcher.enqueue(current => normalizeAgentUIMessages(upsertAgentUIMessage(current, normalized)))
         if (onView) {
           for (const view of buildAgentMessageViews([normalized])) onView(view)
         }
       }
     } finally {
+      messageBatcher.flush()
       resetStreamingState()
     }
-  }, [onView, resetStreamingState])
+  }, [messageBatcher, onView, resetStreamingState])
 
   return {
     messages,

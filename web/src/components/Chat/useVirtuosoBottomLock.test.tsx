@@ -1,12 +1,24 @@
 import { act, renderHook } from '@testing-library/react'
 import type { VirtuosoHandle } from 'react-virtuoso'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useVirtuosoBottomLock } from './useVirtuosoBottomLock'
 
 describe('useVirtuosoBottomLock', () => {
+  let frames: FrameRequestCallback[]
+
+  beforeEach(() => {
+    frames = []
+    vi.stubGlobal('requestAnimationFrame', vi.fn((callback: FrameRequestCallback) => {
+      frames.push(callback)
+      return frames.length
+    }))
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
   it('does not relock from stale at-bottom callbacks after a direct content interaction', () => {
     const { result } = renderHook(() => useVirtuosoBottomLock({
-      contentKey: 'turn-1',
       itemCount: 1,
       autoFollowEnabled: true,
     }))
@@ -23,18 +35,20 @@ describe('useVirtuosoBottomLock', () => {
   it('does not follow content growth while automatic following is disabled', () => {
     const scrollToIndex = vi.fn()
     const { result, rerender } = renderHook(
-      ({ contentKey }) => useVirtuosoBottomLock({
-        contentKey,
-        itemCount: 1,
+      ({ itemCount }) => useVirtuosoBottomLock({
+        itemCount,
         autoFollowEnabled: false,
       }),
-      { initialProps: { contentKey: 'idle-1' } },
+      { initialProps: { itemCount: 1 } },
     )
     act(() => {
       result.current.virtuosoRef.current = { scrollToIndex } as unknown as VirtuosoHandle
     })
+    flushAnimationFrames(frames)
+    scrollToIndex.mockClear()
 
-    rerender({ contentKey: 'idle-2' })
+    rerender({ itemCount: 2 })
+    flushAnimationFrames(frames)
 
     expect(scrollToIndex).not.toHaveBeenCalled()
   })
@@ -42,19 +56,19 @@ describe('useVirtuosoBottomLock', () => {
   it('still positions a newly populated list after an explicit reset while automatic following is disabled', () => {
     const scrollToIndex = vi.fn()
     const { result, rerender } = renderHook(
-      ({ contentKey, itemCount, resetKey }) => useVirtuosoBottomLock({
+      ({ itemCount, resetKey }) => useVirtuosoBottomLock({
         resetKey,
-        contentKey,
         itemCount,
         autoFollowEnabled: false,
       }),
-      { initialProps: { contentKey: 'empty', itemCount: 0, resetKey: 'session-1' } },
+      { initialProps: { itemCount: 0, resetKey: 'session-1' } },
     )
     act(() => {
       result.current.virtuosoRef.current = { scrollToIndex } as unknown as VirtuosoHandle
     })
 
-    rerender({ contentKey: 'loaded', itemCount: 1, resetKey: 'session-2' })
+    rerender({ itemCount: 1, resetKey: 'session-2' })
+    flushAnimationFrames(frames)
 
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 'LAST', align: 'end', behavior: 'auto' })
   })
@@ -66,21 +80,43 @@ describe('useVirtuosoBottomLock', () => {
     scroller.scrollTop = 400
     const scrollToIndex = vi.fn()
     const { result, rerender } = renderHook(
-      ({ autoFollowEnabled, contentKey }) => useVirtuosoBottomLock({
-        contentKey,
+      ({ autoFollowEnabled }) => useVirtuosoBottomLock({
         itemCount: 1,
         autoFollowEnabled,
         resolveScroller: () => scroller,
       }),
-      { initialProps: { autoFollowEnabled: false, contentKey: 'idle' } },
+      { initialProps: { autoFollowEnabled: false } },
     )
     act(() => {
       result.current.virtuosoRef.current = { scrollToIndex } as unknown as VirtuosoHandle
       result.current.releaseBottomLock()
     })
 
-    rerender({ autoFollowEnabled: true, contentKey: 'streaming' })
+    rerender({ autoFollowEnabled: true })
+    flushAnimationFrames(frames)
 
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 'LAST', align: 'end', behavior: 'auto' })
   })
+
+  it('translates relative navigation targets into the virtualizer absolute index window', () => {
+    const scrollToIndex = vi.fn()
+    const { result } = renderHook(() => useVirtuosoBottomLock({
+      firstItemIndex: 1_000_000,
+      itemCount: 3,
+      autoFollowEnabled: false,
+    }))
+    act(() => {
+      result.current.virtuosoRef.current = { scrollToIndex } as unknown as VirtuosoHandle
+      result.current.scrollToIndex(1, { align: 'start', behavior: 'smooth' })
+    })
+
+    expect(scrollToIndex).toHaveBeenCalledWith({ index: 1_000_001, align: 'start', behavior: 'smooth' })
+  })
 })
+
+function flushAnimationFrames(frames: FrameRequestCallback[]) {
+  act(() => {
+    const callbacks = frames.splice(0)
+    callbacks.forEach((callback) => callback(0))
+  })
+}

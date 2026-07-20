@@ -134,16 +134,55 @@ const highlighterCache = new Map<
   Promise<HighlighterGeneric<BundledLanguage, BundledTheme>>
 >();
 
-// Token cache
-const tokensCache = new Map<string, TokenizedCode>();
+const TOKEN_CACHE_MAX_ENTRIES = 64;
+const TOKEN_CACHE_MAX_SOURCE_CHARS = 1024 * 1024;
+
+// Exact-content LRU. The entry and total-source caps keep long sessions from
+// retaining every transient version of a streaming code block.
+const tokensCache = new Map<
+  string,
+  { sourceLength: number; tokenized: TokenizedCode }
+>();
+let tokensCacheSourceChars = 0;
 
 // Subscribers for async token updates
 const subscribers = new Map<string, Set<(result: TokenizedCode) => void>>();
+const inFlightHighlights = new Set<string>();
 
-const getTokensCacheKey = (code: string, language: BundledLanguage) => {
-  const start = code.slice(0, 100);
-  const end = code.length > 100 ? code.slice(-100) : "";
-  return `${language}:${code.length}:${start}:${end}`;
+const getTokensCacheKey = (code: string, language: BundledLanguage) =>
+  `${language}\u0000${code}`;
+
+const readTokenCache = (key: string) => {
+  const cached = tokensCache.get(key);
+  if (!cached) return null;
+  tokensCache.delete(key);
+  tokensCache.set(key, cached);
+  return cached.tokenized;
+};
+
+const writeTokenCache = (
+  key: string,
+  sourceLength: number,
+  tokenized: TokenizedCode
+) => {
+  if (sourceLength > TOKEN_CACHE_MAX_SOURCE_CHARS) return;
+  const existing = tokensCache.get(key);
+  if (existing) {
+    tokensCacheSourceChars -= existing.sourceLength;
+    tokensCache.delete(key);
+  }
+  tokensCache.set(key, { sourceLength, tokenized });
+  tokensCacheSourceChars += sourceLength;
+  while (
+    tokensCache.size > TOKEN_CACHE_MAX_ENTRIES ||
+    tokensCacheSourceChars > TOKEN_CACHE_MAX_SOURCE_CHARS
+  ) {
+    const oldestKey = tokensCache.keys().next().value as string | undefined;
+    if (oldestKey === undefined) break;
+    const oldest = tokensCache.get(oldestKey);
+    tokensCache.delete(oldestKey);
+    tokensCacheSourceChars -= oldest?.sourceLength ?? 0;
+  }
 };
 
 const getHighlighter = (
@@ -191,7 +230,7 @@ export const highlightCode = (
   const tokensCacheKey = getTokensCacheKey(code, language);
 
   // Return cached result if available
-  const cached = tokensCache.get(tokensCacheKey);
+  const cached = readTokenCache(tokensCacheKey);
   if (cached) {
     return cached;
   }
@@ -203,6 +242,9 @@ export const highlightCode = (
     }
     subscribers.get(tokensCacheKey)?.add(callback);
   }
+
+  if (inFlightHighlights.has(tokensCacheKey)) return null;
+  inFlightHighlights.add(tokensCacheKey);
 
   // Start highlighting in background - fire-and-forget async pattern
   getHighlighter(language)
@@ -226,7 +268,8 @@ export const highlightCode = (
       };
 
       // Cache the result
-      tokensCache.set(tokensCacheKey, tokenized);
+      writeTokenCache(tokensCacheKey, code.length, tokenized);
+      inFlightHighlights.delete(tokensCacheKey);
 
       // Notify all subscribers
       const subs = subscribers.get(tokensCacheKey);
@@ -240,6 +283,7 @@ export const highlightCode = (
     // oxlint-disable-next-line eslint-plugin-promise(prefer-await-to-then), eslint-plugin-promise(prefer-await-to-callbacks)
     .catch((error) => {
       console.error("Failed to highlight code:", error);
+      inFlightHighlights.delete(tokensCacheKey);
       subscribers.delete(tokensCacheKey);
     });
 
