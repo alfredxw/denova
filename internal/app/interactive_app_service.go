@@ -50,6 +50,23 @@ func (s *InteractiveAppService) InteractiveStories() (interactive.Index, error) 
 	return store.Index()
 }
 
+func (a *App) SelectInteractiveStory(storyID string) error {
+	return a.interactiveService().SelectInteractiveStory(storyID)
+}
+
+func (s *InteractiveAppService) SelectInteractiveStory(storyID string) error {
+	store := s.store()
+	if store == nil {
+		return ErrNoWorkspace
+	}
+	log.Printf("[interactive-story] persist current story selection story_id=%s", storyID)
+	if err := store.SelectStory(storyID); err != nil {
+		log.Printf("[interactive-story] persist current story selection failed story_id=%s err=%v", storyID, err)
+		return err
+	}
+	return nil
+}
+
 func (a *App) CreateInteractiveStory(req interactive.CreateStoryRequest) (interactive.StorySummary, error) {
 	return a.interactiveService().CreateInteractiveStoryContext(context.Background(), req)
 }

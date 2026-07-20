@@ -100,36 +100,10 @@ describe('interactive-store', () => {
 
   it('remembers the selected story across refreshes', () => {
     const stories: StorySummary[] = [
-      {
-        id: 'st_1',
-        title: '故事线 1',
-        origin: '',
-          story_teller_id: 'classic',
-          story_director_id: 'default',
-          choice_count: 5,
-          reply_target_chars: 2000,
-        opening: { mode: 'ai' },
-        created_at: '',
-        updated_at: '',
-        branches: 1,
-        events: 0,
-      },
-      {
-        id: 'st_2',
-        title: '故事线 2',
-        origin: '',
-          story_teller_id: 'classic',
-          story_director_id: 'default',
-          choice_count: 5,
-          reply_target_chars: 2000,
-        opening: { mode: 'ai' },
-        created_at: '',
-        updated_at: '',
-        branches: 1,
-        events: 0,
-      },
+      storySummary('st_1', '故事线 1'),
+      storySummary('st_2', '故事线 2'),
     ]
-    useInteractiveStore.getState().setStories(stories, 'st_1')
+    useInteractiveStore.getState().setStories(stories)
     useInteractiveStore.getState().setCurrentStoryId('st_2')
 
     useInteractiveStore.setState({
@@ -139,7 +113,26 @@ describe('interactive-store', () => {
       currentStoryId: '',
       currentBranchId: 'main',
     })
-    useInteractiveStore.getState().setStories(stories, 'st_1')
+    useInteractiveStore.getState().setStories(stories)
+
+    expect(useInteractiveStore.getState().currentStoryId).toBe('st_2')
+  })
+
+  it('prefers the workspace current story over another browser local selection', () => {
+    const stories: StorySummary[] = [
+      storySummary('st_1', '本浏览器旧选择'),
+      storySummary('st_2', '工作区当前选择'),
+    ]
+    useInteractiveStore.getState().setCurrentStoryId('st_1')
+
+    useInteractiveStore.setState({
+      stories: [],
+      branches: [],
+      snapshot: null,
+      currentStoryId: '',
+      currentBranchId: 'main',
+    })
+    useInteractiveStore.getState().setStories(stories, 'st_2')
 
     expect(useInteractiveStore.getState().currentStoryId).toBe('st_2')
   })
@@ -270,6 +263,23 @@ describe('interactive-store', () => {
     expect(useInteractiveStore.getState().snapshot?.current_turn?.id).toBe('turn-2')
   })
 })
+
+function storySummary(id: string, title: string): StorySummary {
+  return {
+    id,
+    title,
+    origin: '',
+    story_teller_id: 'classic',
+    story_director_id: 'default',
+    choice_count: 5,
+    reply_target_chars: 2000,
+    opening: { mode: 'ai' },
+    created_at: '',
+    updated_at: '',
+    branches: 1,
+    events: 0,
+  }
+}
 
 function snapshot(turns: TurnEvent[]): Snapshot {
   const last = turns[turns.length - 1]

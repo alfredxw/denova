@@ -69,6 +69,30 @@ func (s *Store) Index() (Index, error) {
 	return s.readIndexLocked()
 }
 
+// SelectStory persists the workspace-wide story selection. The index is the
+// shared source of truth used by every browser connected to this workspace.
+func (s *Store) SelectStory(storyID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	storyID = strings.TrimSpace(storyID)
+	index, err := s.readIndexLocked()
+	if err != nil {
+		return err
+	}
+	for _, story := range index.Stories {
+		if story.ID != storyID {
+			continue
+		}
+		if index.CurrentStoryID == storyID {
+			return nil
+		}
+		index.CurrentStoryID = storyID
+		return s.writeIndexLocked(index)
+	}
+	return fmt.Errorf("故事不存在 / Story not found: %s", storyID)
+}
+
 func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

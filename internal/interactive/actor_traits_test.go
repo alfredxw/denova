@@ -246,6 +246,25 @@ func TestActorStateRuntimeContextFiltersVisibilityAndLibrary(t *testing.T) {
 	}
 }
 
+func TestActorStateRuntimeContextShowsNativeJSONValueTypes(t *testing.T) {
+	context := ActorStateRuntimeContext(defaultActorStateSystem(), nil, DirectorContextMaxBytes)
+	for _, expected := range []string{
+		`"{{number_field_id}}": 0`,
+		`"{{bool_field_id}}": false`,
+		`"{{object_field_id}}": {}`,
+		`"{{list_field_id}}": []`,
+		`"{{string_field_id}}": "{{text_value}}"`,
+		"有默认值且没有可靠新事实的字段直接省略",
+	} {
+		if !strings.Contains(context, expected) {
+			t.Fatalf("runtime state guide should show native JSON values; missing %q in:\n%s", expected, context)
+		}
+	}
+	if strings.Contains(context, `"{{initial_value_matching_field_type}}"`) {
+		t.Fatalf("runtime state guide must not quote a generic typed-value placeholder:\n%s", context)
+	}
+}
+
 func TestBuiltinActorStateRuntimeContextsKeepCentralizedSchemaWithinLimit(t *testing.T) {
 	for _, module := range builtinActorStateModules() {
 		context := ActorStateRuntimeContext(module.ActorState, nil, DirectorContextMaxBytes)

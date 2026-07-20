@@ -52,6 +52,12 @@ export function updateInteractiveStory(
   })
 }
 
+export function selectInteractiveStory(id: string): Promise<void> {
+  return requestJSON(`/api/interactive/stories/${encodeURIComponent(id)}/select`, {
+    method: 'POST',
+  })
+}
+
 export function deleteInteractiveStory(id: string): Promise<void> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(id)}`, {
     method: 'DELETE',

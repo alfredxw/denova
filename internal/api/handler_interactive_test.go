@@ -143,6 +143,41 @@ func TestInteractiveStoriesAndTellersAPI(t *testing.T) {
 	}
 }
 
+func TestInteractiveStorySelectionAPIUpdatesWorkspaceCurrentStory(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	createStory := func(title string) string {
+		response := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]string{
+			"title":           title,
+			"story_teller_id": "classic",
+		})
+		if response.Code != http.StatusOK {
+			t.Fatalf("create story status = %d body=%s", response.Code, response.Body.String())
+		}
+		var story struct {
+			ID string `json:"id"`
+		}
+		decodeResponse(t, response.Body.Bytes(), &story)
+		return story.ID
+	}
+
+	firstID := createStory("第一条故事线")
+	_ = createStory("第二条故事线")
+	selectResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+firstID+"/select", nil)
+	if selectResp.Code != http.StatusOK {
+		t.Fatalf("select story status = %d body=%s", selectResp.Code, selectResp.Body.String())
+	}
+
+	listResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/stories", nil)
+	var index struct {
+		CurrentStoryID string `json:"current_story_id"`
+	}
+	decodeResponse(t, listResp.Body.Bytes(), &index)
+	if index.CurrentStoryID != firstID {
+		t.Fatalf("current story = %q, want %q", index.CurrentStoryID, firstID)
+	}
+}
+
 func TestInteractiveDirectorAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
