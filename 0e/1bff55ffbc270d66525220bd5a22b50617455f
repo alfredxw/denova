@@ -1,0 +1,33 @@
+web/src/components/Editor/EditorSearchBar.tsx
+  s_a339f8e4386b5e::t_6292bb6dc356ee 2,12-14,18-22,30-32,36-40,45-143
+web/src/components/Editor/EditorSurface.tsx
+  s_eb34a7d7f9dcb4::t_ead76611fb07d9 26-28,32-36,75-77,81-85
+web/src/components/Editor/editorDecorations.ts
+  s_a339f8e4386b5e::t_befbc62b343669 12,87,99-100,103-114,120-145,161-223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0e1bff55ffbc270d66525220bd5a22b50617455f",
+  "prompts": {},
+  "sessions": {
+    "s_a339f8e4386b5e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b5b36d0f-4669-42f5-ac1c-e0e14060b1bc",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_eb34a7d7f9dcb4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7e53-5319-7292-8578-5578db95361f",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
