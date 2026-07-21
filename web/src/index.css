@@ -2248,30 +2248,7 @@ html[data-nova-motion="off"] *::after {
 .story-state-ledger__field {
   position: relative;
   min-width: 0;
-  padding: 2px 0 2px 9px;
-}
-
-.story-state-ledger__field::before {
-  position: absolute;
-  top: 4px;
-  bottom: 4px;
-  left: 0;
-  width: 2px;
-  border-radius: 1px;
-  background: transparent;
-  content: '';
-}
-
-.story-state-ledger__field[data-change-tone='positive']::before {
-  background: var(--story-state-positive);
-}
-
-.story-state-ledger__field[data-change-tone='negative']::before {
-  background: var(--story-state-negative);
-}
-
-.story-state-ledger__field[data-change-tone='neutral']::before {
-  background: var(--nova-text-faint);
+  padding: 2px 0;
 }
 
 .story-state-ledger__field-label {
