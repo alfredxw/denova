@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 )
@@ -9,8 +10,8 @@ func TestCompileTurnStateUpdatesSupportsNestedReplaceAndDelta(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID: "protagonist",
 		Fields: []ActorStateField{
-			{Name: "行踪", Type: "object", Visibility: "visible"},
-			{Name: "好感度", Type: "number", Visibility: "visible"},
+			{Name: "行踪", Type: "object"},
+			{Name: "好感度", Type: "number"},
 		},
 	}}}
 	state := map[string]any{"actors": map[string]any{"protagonist": map[string]any{
@@ -40,7 +41,7 @@ func TestCompileTurnStateUpdatesSupportsNestedReplaceAndDelta(t *testing.T) {
 
 func TestCompileTurnStateUpdatesRejectsMissingDeltaTargetAndOverlappingPaths(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
-		ID: "protagonist", Fields: []ActorStateField{{Name: "行踪", Type: "object", Visibility: "visible"}},
+		ID: "protagonist", Fields: []ActorStateField{{Name: "行踪", Type: "object"}},
 	}}}
 	state := map[string]any{"actors": map[string]any{"protagonist": map[string]any{
 		"id": "protagonist", "template_id": "protagonist", "state": map[string]any{"行踪": map[string]any{}},
@@ -62,7 +63,7 @@ func TestCompileTurnStateUpdatesRejectsMissingDeltaTargetAndOverlappingPaths(t *
 
 func TestCompileTurnStateUpdatesUsesEscapedTildeInFieldIDs(t *testing.T) {
 	fieldID := "精神~状态"
-	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{ID: "protagonist", Fields: []ActorStateField{{Name: fieldID, Type: "string", Visibility: "visible"}}}}}
+	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{ID: "protagonist", Fields: []ActorStateField{{Name: fieldID, Type: "string"}}}}}
 	state := map[string]any{"actors": map[string]any{"protagonist": map[string]any{"id": "protagonist", "template_id": "protagonist", "state": map[string]any{fieldID: "动摇"}}}}
 	path := formatStateUpdatePath([]string{"protagonist", fieldID})
 	compiled, err := CompileTurnStateUpdates(system, state, []StateUpdate{{Op: TurnStateUpdateReplace, Path: path, Value: "镇定"}}, TurnStateUpdateCompileOptions{})
@@ -74,9 +75,29 @@ func TestCompileTurnStateUpdatesUsesEscapedTildeInFieldIDs(t *testing.T) {
 	}
 }
 
+func TestCompileTurnStateUpdatesWritesHistoricalHiddenField(t *testing.T) {
+	var system StoryDirectorActorStateSystem
+	if err := json.Unmarshal([]byte(`{"templates":[{"id":"protagonist","fields":[{"name":"秘密身份","type":"string","visibility":"hidden"}]}]}`), &system); err != nil {
+		t.Fatalf("decode historical hidden field: %v", err)
+	}
+	state := map[string]any{"actors": map[string]any{"protagonist": map[string]any{
+		"id": "protagonist", "template_id": "protagonist", "state": map[string]any{"秘密身份": "未知"},
+	}}}
+
+	compiled, err := CompileTurnStateUpdates(system, state, []StateUpdate{{
+		Op: TurnStateUpdateReplace, Path: "/protagonist/秘密身份", Value: "宗门少主",
+	}}, TurnStateUpdateCompileOptions{})
+	if err != nil {
+		t.Fatalf("historical hidden fields should remain writable: %v", err)
+	}
+	if len(compiled.Updates) != 1 || compiled.Updates[0].Value != "宗门少主" {
+		t.Fatalf("hidden field update was not preserved: %#v", compiled.Updates)
+	}
+}
+
 func TestCompileTurnStateUpdatesCreatesNamedActorWithoutInventingOtherOptionalStrings(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
-		ID: "opponent", Fields: []ActorStateField{{Name: "生命值", Type: "number", Visibility: "visible"}},
+		ID: "opponent", Fields: []ActorStateField{{Name: "生命值", Type: "number"}},
 	}}}
 	compiled, err := CompileTurnStateUpdates(system, map[string]any{}, []StateUpdate{{
 		Op: TurnStateUpdateCreate, Path: "/狼王",

@@ -357,7 +357,7 @@ function MoveButton({ icon: Icon, label, disabled, onClick }: { icon: typeof Arr
 }
 
 function builtinGroupLabel(key: string, t: ReturnType<typeof useTranslation>['t']) {
-  return ['overview', 'holdings', 'details', 'spoiler'].includes(key)
+  return ['overview', 'holdings', 'details'].includes(key)
     ? t(`storyStage.state.group.${key}`)
     : key
 }

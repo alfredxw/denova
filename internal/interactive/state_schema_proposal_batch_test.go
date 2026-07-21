@@ -7,18 +7,20 @@ import (
 
 func TestActorStateSchemaBatchDraftAcceptsValidItemsAndRetriesOnlyFailures(t *testing.T) {
 	draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
+	invalidMood := batchTestCoveredItem("mood")
+	invalidMood.Requirements[0].Source.ID = "unavailable-opening"
 	result := draft.Submit(ActorStateSchemaBatch{
 		Summary: "增量审查",
 		Items: []ActorStateSchemaBatchItem{
-			batchTestCoveredItem("status", "confirmed"),
-			batchTestCoveredItem("mood", ""),
+			batchTestCoveredItem("status"),
+			invalidMood,
 		},
 		Finalize: true,
 	}, batchTestAudit())
 	if len(result.Accepted) != 1 || result.Accepted[0].ItemID != "status" {
 		t.Fatalf("valid item should be accepted independently: %#v", result)
 	}
-	if len(result.Rejected) != 1 || result.Rejected[0].ItemID != "mood" || result.Rejected[0].Code != "missing_evidence_kind" || result.Rejected[0].Path != "items[1].requirements[0].evidence_kind" {
+	if len(result.Rejected) != 1 || result.Rejected[0].ItemID != "mood" || result.Rejected[0].Code != "opening_source_not_available" || result.Rejected[0].Path != "items[1].requirements[0].source.id" {
 		t.Fatalf("invalid item should return a precise retry path: %#v", result)
 	}
 	if result.Finalized || result.DraftAcceptedItems != 1 {
@@ -29,14 +31,14 @@ func TestActorStateSchemaBatchDraftAcceptsValidItemsAndRetriesOnlyFailures(t *te
 	}
 
 	retry := draft.Submit(ActorStateSchemaBatch{
-		Items:    []ActorStateSchemaBatchItem{batchTestCoveredItem("mood", "inferred")},
+		Items:    []ActorStateSchemaBatchItem{batchTestCoveredItem("mood")},
 		Finalize: true,
 	}, batchTestAudit())
 	if len(retry.Accepted) != 1 || retry.Accepted[0].ItemID != "mood" || len(retry.Rejected) != 0 || !retry.Finalized || retry.DraftAcceptedItems != 2 {
 		t.Fatalf("retry should send and accept only the failed item: %#v", retry)
 	}
 	proposal, ok := draft.FinalProposal()
-	if !ok || proposal.Summary != "增量审查" || len(proposal.Requirements) != 2 || proposal.Requirements[1].EvidenceKind != "inferred" {
+	if !ok || proposal.Summary != "增量审查" || len(proposal.Requirements) != 2 {
 		t.Fatalf("final proposal should preserve accumulated normalized items: %#v", proposal)
 	}
 }
@@ -45,11 +47,11 @@ func TestOpeningActorStateSchemaBatchReturnsExactInitializationGuide(t *testing.
 	base := StoryDirectorActorStateSystem{
 		Templates: []ActorStateTemplate{
 			{ID: DefaultActorID, Fields: []ActorStateField{
-				{Name: "身份", Type: "string", Visibility: "visible"},
-				{Name: "氧气", Type: "number", Default: 45, Visibility: "visible"},
-				{Name: "幕后风险", Type: "string", Visibility: "hidden"},
+				{Name: "身份", Type: "string"},
+				{Name: "氧气", Type: "number", Default: 45},
+				{Name: "幕后风险", Type: "string"},
 			}},
-			{ID: ActorStateStoryContextTemplateID, Fields: []ActorStateField{{Name: storyContextCurrentEventField, Type: "string", Visibility: "visible"}}},
+			{ID: ActorStateStoryContextTemplateID, Fields: []ActorStateField{{Name: storyContextCurrentEventField, Type: "string"}}},
 		},
 		InitialActors: []ActorStateInitialActor{
 			{ID: DefaultActorID, TemplateID: DefaultActorID},
@@ -62,7 +64,7 @@ func TestOpeningActorStateSchemaBatchReturnsExactInitializationGuide(t *testing.
 			ItemID: "identity-covered",
 			Requirements: []ActorStateSchemaRequirementReview{{
 				Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-draft"}, Requirement: "主角身份需要长期记录",
-				EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly,
+				ValuePolicy:  ActorStateSchemaValuePolicySchemaOnly,
 				ExpectedType: "string", Decision: "covered", TemplateID: DefaultActorID, FieldID: "身份",
 			}},
 			Adaptation: ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{}},
@@ -73,10 +75,10 @@ func TestOpeningActorStateSchemaBatchReturnsExactInitializationGuide(t *testing.
 		t.Fatalf("a finalized opening draft must return its initialization guide: %#v", result)
 	}
 	guide := result.InitializationGuide
-	if guide.TotalWritableFields != 3 || guide.AutoInitializedFields != 1 || len(guide.RequiredStateChanges) != 2 {
+	if guide.TotalWritableFields != 4 || guide.AutoInitializedFields != 1 || len(guide.RequiredStateChanges) != 3 {
 		t.Fatalf("unexpected initialization coverage: %#v", guide)
 	}
-	if first, second := guide.RequiredStateChanges[0], guide.RequiredStateChanges[1]; first.ActorID != DefaultActorID || first.FieldID != "身份" || second.ActorID != DefaultStoryContextActorID || second.FieldID != storyContextCurrentEventField {
+	if first, second, third := guide.RequiredStateChanges[0], guide.RequiredStateChanges[1], guide.RequiredStateChanges[2]; first.ActorID != DefaultActorID || first.FieldID != "身份" || second.ActorID != DefaultActorID || second.FieldID != "幕后风险" || third.ActorID != DefaultStoryContextActorID || third.FieldID != storyContextCurrentEventField {
 		t.Fatalf("the guide must use exact stable actor and field IDs: %#v", guide.RequiredStateChanges)
 	}
 }
@@ -84,8 +86,8 @@ func TestOpeningActorStateSchemaBatchReturnsExactInitializationGuide(t *testing.
 func TestOpeningActorStateSchemaBatchResolvesInitialActorIDAsTemplateAlias(t *testing.T) {
 	base := StoryDirectorActorStateSystem{
 		Templates: []ActorStateTemplate{
-			{ID: DefaultActorID, Fields: []ActorStateField{{Name: "身份", Type: "string", Visibility: "visible"}}},
-			{ID: ActorStateStoryContextTemplateID, Fields: []ActorStateField{{Name: storyContextCurrentEventField, Type: "string", Visibility: "visible"}}},
+			{ID: DefaultActorID, Fields: []ActorStateField{{Name: "身份", Type: "string"}}},
+			{ID: ActorStateStoryContextTemplateID, Fields: []ActorStateField{{Name: storyContextCurrentEventField, Type: "string"}}},
 		},
 		InitialActors: []ActorStateInitialActor{
 			{ID: DefaultActorID, TemplateID: DefaultActorID},
@@ -98,12 +100,12 @@ func TestOpeningActorStateSchemaBatchResolvesInitialActorIDAsTemplateAlias(t *te
 			ItemID: "story-integrity",
 			Requirements: []ActorStateSchemaRequirementReview{{
 				Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-draft"}, Requirement: "空间站完整度需要独立变化",
-				EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly,
+				ValuePolicy:  ActorStateSchemaValuePolicySchemaOnly,
 				ExpectedType: "number", Decision: "add", TemplateID: DefaultStoryContextActorID, FieldID: "站体完整度",
 			}},
 			Adaptation: ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{
 				Op: "fields", TemplateID: DefaultStoryContextActorID,
-				FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "站体完整度", Type: "number", Visibility: "visible"}}},
+				FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "站体完整度", Type: "number"}}},
 			}}},
 		}},
 		Finalize: true,
@@ -125,12 +127,12 @@ func TestActorStateSchemaBatchDraftRequiresDeclaredActorValueInitialization(t *t
 		ItemID: "protagonist-realm",
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "开局明确主角境界为筑基初期",
-			EvidenceKind: "confirmed", ValuePolicy: "initialize", ActorID: DefaultActorID,
+			ValuePolicy: "initialize", ActorID: DefaultActorID,
 			ExpectedType: "string", Decision: "add", TemplateID: DefaultActorID, FieldID: "境界",
 		}},
 		Adaptation: ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{
 			Op: "fields", TemplateID: DefaultActorID,
-			FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "境界", Type: "string", Visibility: "visible"}}},
+			FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "境界", Type: "string"}}},
 		}}},
 	}
 
@@ -170,12 +172,12 @@ func TestActorStateSchemaBatchDraftPreservesRenamedActorField(t *testing.T) {
 		ItemID: "rename-status",
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "用更准确的名称承接现有状态",
-			EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicyPreserve, ActorID: DefaultActorID,
+			ValuePolicy: ActorStateSchemaValuePolicyPreserve, ActorID: DefaultActorID,
 			ExpectedType: "string", Decision: "replace", TemplateID: DefaultActorID, FieldID: "当前状态",
 		}},
 		Adaptation: ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{
 			Op: "fields", TemplateID: DefaultActorID, FieldOps: []ActorStateFieldSchemaOp{{
-				Op: "replace", FieldID: "状态", Field: ActorStateField{Name: "当前状态", Type: "string", Visibility: "visible"},
+				Op: "replace", FieldID: "状态", Field: ActorStateField{Name: "当前状态", Type: "string"},
 			}},
 		}}},
 	}
@@ -194,7 +196,7 @@ func TestActorStateSchemaBatchDraftRejectsActorTemplateMismatch(t *testing.T) {
 		ItemID: "wrong-template",
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "初始化主角状态",
-			EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicyInitialize, ActorID: "guide",
+			ValuePolicy: ActorStateSchemaValuePolicyInitialize, ActorID: "guide",
 			ExpectedType: "string", Decision: "covered", TemplateID: DefaultActorID, FieldID: "状态",
 		}},
 		Adaptation: ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{{Op: "set", ActorID: "guide", FieldID: "状态", Value: "清醒"}}},
@@ -217,7 +219,7 @@ func TestActorStateSchemaBatchDraftDistinguishesPreservedAndDeferredActorValues(
 	audit := batchTestAudit()
 	audit.CurrentState = currentState
 
-	preserve := batchTestCoveredItem("preserve-status", "confirmed")
+	preserve := batchTestCoveredItem("preserve-status")
 	preserve.Requirements[0].ActorID = DefaultActorID
 	preserve.Requirements[0].ValuePolicy = "preserve"
 	draft := NewActorStateSchemaBatchDraft(base, StoryDirectorTRPGSystem{})
@@ -226,7 +228,7 @@ func TestActorStateSchemaBatchDraftDistinguishesPreservedAndDeferredActorValues(
 		t.Fatalf("an existing current value should satisfy preserve: %#v", result)
 	}
 
-	missing := batchTestCoveredItem("preserve-missing", "confirmed")
+	missing := batchTestCoveredItem("preserve-missing")
 	missing.Requirements[0].FieldID = "心境"
 	missing.Requirements[0].ActorID = DefaultActorID
 	missing.Requirements[0].ValuePolicy = "preserve"
@@ -236,7 +238,7 @@ func TestActorStateSchemaBatchDraftDistinguishesPreservedAndDeferredActorValues(
 		t.Fatalf("preserve must point at a materialized current value: %#v", result)
 	}
 
-	deferred := batchTestCoveredItem("deferred-mood", "default")
+	deferred := batchTestCoveredItem("deferred-mood")
 	deferred.Requirements[0].FieldID = "心境"
 	deferred.Requirements[0].ActorID = DefaultActorID
 	deferred.Requirements[0].ValuePolicy = "defer"
@@ -254,7 +256,7 @@ func TestActorStateSchemaBatchDraftRejectsBlankActorInitialization(t *testing.T)
 	audit.CurrentState = map[string]any{actorStateRoot: map[string]any{
 		DefaultActorID: map[string]any{"id": DefaultActorID, "template_id": DefaultActorID, "state": map[string]any{"状态": "平静"}},
 	}}
-	item := batchTestCoveredItem("blank-status", "confirmed")
+	item := batchTestCoveredItem("blank-status")
 	item.Requirements[0].ValuePolicy = ActorStateSchemaValuePolicyInitialize
 	item.Requirements[0].ActorID = DefaultActorID
 	item.Adaptation.ActorOps = []ActorStateRuntimeSchemaOp{{Op: "set", ActorID: DefaultActorID, FieldID: "状态", Value: "  "}}
@@ -266,14 +268,14 @@ func TestActorStateSchemaBatchDraftRejectsBlankActorInitialization(t *testing.T)
 
 func TestActorStateSchemaBatchDraftReportsDependenciesAsBlocked(t *testing.T) {
 	draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
-	dependent := batchTestCoveredItem("mood", "confirmed")
+	dependent := batchTestCoveredItem("mood")
 	dependent.DependsOn = []string{"status"}
 	blocked := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{dependent}, Finalize: true}, batchTestAudit())
 	if len(blocked.Blocked) != 1 || blocked.Blocked[0].Code != "dependency_not_accepted" || len(blocked.Blocked[0].DependsOn) != 1 || blocked.Blocked[0].DependsOn[0] != "status" {
 		t.Fatalf("missing dependency should be structured as blocked: %#v", blocked)
 	}
 
-	accepted := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{batchTestCoveredItem("status", "confirmed")}}, batchTestAudit())
+	accepted := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{batchTestCoveredItem("status")}}, batchTestAudit())
 	if len(accepted.Accepted) != 1 {
 		t.Fatalf("dependency should be accepted separately: %#v", accepted)
 	}
@@ -285,7 +287,7 @@ func TestActorStateSchemaBatchDraftReportsDependenciesAsBlocked(t *testing.T) {
 
 func TestActorStateSchemaBatchDraftUsesBackendLoreAudit(t *testing.T) {
 	draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
-	item := batchTestCoveredItem("lore-status", "confirmed")
+	item := batchTestCoveredItem("lore-status")
 	item.Requirements[0].Source = ActorStateSchemaRequirementSource{Kind: "lore", ID: "status-rule"}
 	blocked := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{item}, Finalize: true}, ActorStateSchemaBatchAudit{})
 	if len(blocked.Blocked) != 1 || blocked.Blocked[0].Code != "lore_not_reviewed" {
@@ -306,7 +308,7 @@ func TestActorStateSchemaBatchDraftUsesBackendLoreAudit(t *testing.T) {
 
 func TestActorStateSchemaBatchDraftKeepsFinalizedProposalAfterLaterFailure(t *testing.T) {
 	draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
-	first := draft.Submit(ActorStateSchemaBatch{Summary: "有效审查", Items: []ActorStateSchemaBatchItem{batchTestCoveredItem("status", "confirmed")}, Finalize: true}, batchTestAudit())
+	first := draft.Submit(ActorStateSchemaBatch{Summary: "有效审查", Items: []ActorStateSchemaBatchItem{batchTestCoveredItem("status")}, Finalize: true}, batchTestAudit())
 	if !first.Finalized {
 		t.Fatalf("first batch should finalize: %#v", first)
 	}
@@ -322,7 +324,7 @@ func TestActorStateSchemaBatchDraftKeepsFinalizedProposalAfterLaterFailure(t *te
 
 func TestActorStateSchemaBatchDraftIsIdempotentByStableItemID(t *testing.T) {
 	draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
-	item := batchTestCoveredItem("status", "confirmed")
+	item := batchTestCoveredItem("status")
 	first := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{item}}, batchTestAudit())
 	second := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{item}}, batchTestAudit())
 	if len(first.Accepted) != 1 || len(second.Accepted) != 1 || !second.Accepted[0].AlreadyAccepted || second.DraftAcceptedItems != 1 {
@@ -376,12 +378,12 @@ func TestActorStateSchemaBatchDraftRejectsConflictingTargetsAcrossAndWithinItems
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			draft := NewActorStateSchemaBatchDraft(base, StoryDirectorTRPGSystem{})
-			first := batchTestSourcedAdaptationItem("first", test.first, "confirmed")
+			first := batchTestSourcedAdaptationItem("first", test.first)
 			accepted := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{first}}, batchTestAudit())
 			if len(accepted.Accepted) != 1 {
 				t.Fatalf("first target should be accepted: %#v", accepted)
 			}
-			second := batchTestSourcedAdaptationItem("second", test.second, "confirmed")
+			second := batchTestSourcedAdaptationItem("second", test.second)
 			result := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{second}}, batchTestAudit())
 			if len(result.Rejected) != 1 || result.Rejected[0].Code != "target_conflict" || result.Rejected[0].Path != test.expectedPath {
 				t.Fatalf("second target should be rejected precisely: %#v", result)
@@ -414,7 +416,7 @@ func TestActorStateSchemaBatchDraftRejectsConflictingTargetsAcrossAndWithinItems
 	for _, test := range withinItem {
 		t.Run("within item "+test.name, func(t *testing.T) {
 			draft := NewActorStateSchemaBatchDraft(base, StoryDirectorTRPGSystem{})
-			item := batchTestSourcedAdaptationItem("duplicate", test.adaptation, "confirmed")
+			item := batchTestSourcedAdaptationItem("duplicate", test.adaptation)
 			result := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{item}}, batchTestAudit())
 			if len(result.Rejected) != 1 || result.Rejected[0].Code != "target_conflict" || result.Rejected[0].Path != test.expectedPath {
 				t.Fatalf("same-item conflict should be rejected precisely: %#v", result)
@@ -437,7 +439,7 @@ func TestActorStateSchemaBatchDraftRejectsUnavailableBackendSourceIDs(t *testing
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
-			item := batchTestCoveredItem("source", "confirmed")
+			item := batchTestCoveredItem("source")
 			item.Requirements[0].Source = ActorStateSchemaRequirementSource{Kind: test.kind, ID: "model-invented-id"}
 			result := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{item}}, test.audit)
 			if len(result.Rejected) != 1 || result.Rejected[0].Code != test.code || result.Rejected[0].Path != "items[0].requirements[0].source.id" {
@@ -450,8 +452,8 @@ func TestActorStateSchemaBatchDraftRejectsUnavailableBackendSourceIDs(t *testing
 func TestActorStateSchemaBatchDraftRejectsDuplicateIDsWithoutPartialAcceptance(t *testing.T) {
 	draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
 	result := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{
-		batchTestCoveredItem("duplicate", "confirmed"),
-		batchTestCoveredItem("duplicate", "confirmed"),
+		batchTestCoveredItem("duplicate"),
+		batchTestCoveredItem("duplicate"),
 	}}, batchTestAudit())
 	if len(result.Accepted) != 0 || len(result.Rejected) != 2 || result.DraftAcceptedItems != 0 {
 		t.Fatalf("a duplicated ID group must not be both accepted and rejected: %#v", result)
@@ -465,38 +467,38 @@ func TestActorStateSchemaBatchDraftRejectsDuplicateIDsWithoutPartialAcceptance(t
 
 func TestActorStateSchemaBatchItemIDKeepsMigrationSourceIDUnique(t *testing.T) {
 	prefix := strings.Repeat("a", maxActorStateSchemaBatchItemIDBytes-1)
-	first := batchTestCoveredItem(prefix+"1", "confirmed")
-	second := batchTestCoveredItem(prefix+"2", "confirmed")
+	first := batchTestCoveredItem(prefix + "1")
+	second := batchTestCoveredItem(prefix + "2")
 	firstSource, firstOK := actorStateSchemaBatchItemValueSource(first)
 	secondSource, secondOK := actorStateSchemaBatchItemValueSource(second)
 	if !firstOK || !secondOK || firstSource.SourceID == secondSource.SourceID || len(firstSource.SourceID) > 128 || len(secondSource.SourceID) > 128 {
 		t.Fatalf("maximum-length item IDs must retain unique migration source IDs: first=%#v second=%#v", firstSource, secondSource)
 	}
 	draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
-	tooLong := batchTestCoveredItem(strings.Repeat("b", maxActorStateSchemaBatchItemIDBytes+1), "confirmed")
+	tooLong := batchTestCoveredItem(strings.Repeat("b", maxActorStateSchemaBatchItemIDBytes+1))
 	result := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{tooLong}}, batchTestAudit())
 	if len(result.Rejected) != 1 || result.Rejected[0].Code != "invalid_item_id" {
 		t.Fatalf("an item ID that would truncate provenance must be rejected: %#v", result)
 	}
 }
 
-func TestActorStateSchemaBatchDraftRejectsUnsourcedAndInferredTemplateDefaults(t *testing.T) {
-	field := ActorStateField{Name: "隐藏身份", Type: "string", Default: "宗门少主", Visibility: "hidden"}
-	unsourced := batchTestCoveredItem("unsourced", "inferred")
+func TestActorStateSchemaBatchDraftRejectsUnsourcedTemplateDefaults(t *testing.T) {
+	field := ActorStateField{Name: "隐藏身份", Type: "string", Default: "宗门少主"}
+	unsourced := batchTestCoveredItem("unsourced")
 	unsourced.Adaptation = ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{
 		Op: "fields", TemplateID: "protagonist", FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: field}},
 	}}}
 	draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
 	result := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{unsourced}}, batchTestAudit())
 	if len(result.Rejected) != 1 || result.Rejected[0].Code != "unsourced_adaptation_op" || result.Rejected[0].Path != "items[0].adaptation.template_ops[0].field_ops[0]" {
-		t.Fatalf("an extra hidden field must not be smuggled beside another requirement: %#v", result)
+		t.Fatalf("an extra field must not be smuggled beside another requirement: %#v", result)
 	}
 
-	sourced := batchTestSourcedAdaptationItem("inferred-default", unsourced.Adaptation, "inferred")
+	sourced := batchTestSourcedAdaptationItem("sourced-default", unsourced.Adaptation)
 	sourcedDraft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
-	result = sourcedDraft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{sourced}}, batchTestAudit())
-	if len(result.Rejected) != 1 || result.Rejected[0].Code != "inferred_template_default" || result.Rejected[0].Path != "items[0].adaptation.template_ops[0].field_ops[0].field.default" {
-		t.Fatalf("an inferred concrete value must use an Actor op, not a template default: %#v", result)
+	result = sourcedDraft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{sourced}, Finalize: true}, batchTestAudit())
+	if !result.Finalized || len(result.Rejected) != 0 {
+		t.Fatalf("a sourced template default should not require a retired evidence classification: %#v", result)
 	}
 }
 
@@ -505,8 +507,8 @@ func TestActorStateSchemaBatchDraftInjectsActorValueProvenance(t *testing.T) {
 	item := batchTestItemWithAdaptation("realm", ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{{
 		Op: "replace", ActorID: "guide",
 		Actor:       ActorStateInitialActor{ID: "guide", Name: "向导", TemplateID: "protagonist", State: map[string]any{"状态": "筑基中期"}},
-		ValueSource: &ActorStateSchemaActorValueSource{SourceID: "model-fake", ItemID: "fake", EvidenceKind: "default"},
-	}}}, "inferred")
+		ValueSource: &ActorStateSchemaActorValueSource{SourceID: "model-fake", ItemID: "fake"},
+	}}})
 	result := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{item}, Finalize: true}, batchTestAudit())
 	if !result.Finalized {
 		t.Fatalf("actor value item should finalize: %#v", result)
@@ -516,7 +518,7 @@ func TestActorStateSchemaBatchDraftInjectsActorValueProvenance(t *testing.T) {
 		t.Fatalf("final proposal should contain actor provenance: %#v", proposal)
 	}
 	source := proposal.Adaptation.ActorOps[0].ValueSource
-	if source == nil || source.SourceID != "state_schema_batch:realm" || source.ItemID != "realm" || source.Source.Kind != "opening" || source.Source.ID != "opening-turn" || source.EvidenceKind != "inferred" {
+	if source == nil || source.SourceID != "state_schema_batch:realm" || source.ItemID != "realm" || source.Source.Kind != "opening" || source.Source.ID != "opening-turn" {
 		t.Fatalf("backend must overwrite actor provenance from the accepted requirement: %#v", source)
 	}
 	if proposal.Requirements[0].ItemID != "realm" {
@@ -528,9 +530,9 @@ func TestActorStateSchemaBatchDraftRequiresOneActorValueSource(t *testing.T) {
 	draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
 	item := batchTestItemWithAdaptation("ambiguous", ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{{
 		Op: "replace", ActorID: "guide", Actor: ActorStateInitialActor{ID: "guide", TemplateID: "protagonist"},
-	}}}, "confirmed")
+	}}})
 	item.Requirements = append(item.Requirements, ActorStateSchemaRequirementReview{
-		Source: ActorStateSchemaRequirementSource{Kind: "trpg", ID: "rule-1"}, Requirement: "规则默认值", EvidenceKind: "default",
+		Source: ActorStateSchemaRequirementSource{Kind: "trpg", ID: "rule-1"}, Requirement: "规则默认值",
 		ValuePolicy:  ActorStateSchemaValuePolicySchemaOnly,
 		ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态",
 	})
@@ -550,8 +552,8 @@ func TestActorStateSchemaBatchDraftAssignsSourcePerFieldSet(t *testing.T) {
 	item := ActorStateSchemaBatchItem{
 		ItemID: "multi-source-fields",
 		Requirements: []ActorStateSchemaRequirementReview{
-			{Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "承接当前状态", EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicyInitialize, ActorID: "protagonist", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态"},
-			{Source: ActorStateSchemaRequirementSource{Kind: "trpg", ID: "rule-1"}, Requirement: "初始化规则心境", EvidenceKind: "default", ValuePolicy: ActorStateSchemaValuePolicyInitialize, ActorID: "protagonist", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "心境"},
+			{Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "承接当前状态", ValuePolicy: ActorStateSchemaValuePolicyInitialize, ActorID: "protagonist", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态"},
+			{Source: ActorStateSchemaRequirementSource{Kind: "trpg", ID: "rule-1"}, Requirement: "初始化规则心境", ValuePolicy: ActorStateSchemaValuePolicyInitialize, ActorID: "protagonist", ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "心境"},
 		},
 		Adaptation: ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{
 			{Op: "set", ActorID: "protagonist", FieldID: "状态", Value: "警觉"},
@@ -577,27 +579,18 @@ func TestActorStateSchemaBatchDraftAssignsSourcePerFieldSet(t *testing.T) {
 	}
 }
 
-func TestActorStateSchemaBatchDraftRejectsInferredSecretActorValues(t *testing.T) {
-	makeItem := func(evidenceKind string) ActorStateSchemaBatchItem {
-		item := batchTestItemWithAdaptation("secret-"+evidenceKind, ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{{
-			Op: "replace", ActorID: "guide",
-			Actor: ActorStateInitialActor{ID: "guide", TemplateID: "protagonist", State: map[string]any{"秘密": "真实身份"}},
-		}}}, evidenceKind)
-		item.Requirements[0].FieldID = "秘密"
-		item.Requirements[0].ActorID = "guide"
-		item.Requirements[0].ValuePolicy = ActorStateSchemaValuePolicyInitialize
-		return item
-	}
+func TestActorStateSchemaBatchDraftAcceptsSourcedActorValuesWithoutEvidenceClassification(t *testing.T) {
+	item := batchTestItemWithAdaptation("secret", ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{{
+		Op: "replace", ActorID: "guide",
+		Actor: ActorStateInitialActor{ID: "guide", TemplateID: "protagonist", State: map[string]any{"秘密": "真实身份"}},
+	}}})
+	item.Requirements[0].FieldID = "秘密"
+	item.Requirements[0].ActorID = "guide"
+	item.Requirements[0].ValuePolicy = ActorStateSchemaValuePolicyInitialize
 	draft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
-	rejected := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{makeItem("inferred")}}, batchTestAudit())
-	if len(rejected.Rejected) != 1 || rejected.Rejected[0].Code != "inferred_secret_value" || rejected.Rejected[0].Path != "items[0].adaptation.actor_ops[0].actor.state.秘密" {
-		t.Fatalf("inferred secret values must be rejected precisely: %#v", rejected)
-	}
-
-	confirmedDraft := NewActorStateSchemaBatchDraft(batchTestActorStateSystem(), StoryDirectorTRPGSystem{})
-	confirmed := confirmedDraft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{makeItem("confirmed")}, Finalize: true}, batchTestAudit())
-	if !confirmed.Finalized {
-		t.Fatalf("confirmed secret values may be accepted: %#v", confirmed)
+	result := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{item}, Finalize: true}, batchTestAudit())
+	if !result.Finalized || len(result.Rejected) != 0 {
+		t.Fatalf("a sourced Actor value should not require a retired evidence classification: %#v", result)
 	}
 }
 
@@ -606,7 +599,7 @@ func TestActorStateSchemaBatchDraftRejectsUnsourcedVisibleActorValue(t *testing.
 	item := batchTestItemWithAdaptation("extra-actor-value", ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{{
 		Op: "replace", ActorID: "guide",
 		Actor: ActorStateInitialActor{ID: "guide", TemplateID: "protagonist", State: map[string]any{"心境": "紧张"}},
-	}}}, "confirmed")
+	}}})
 	result := draft.Submit(ActorStateSchemaBatch{Items: []ActorStateSchemaBatchItem{item}}, batchTestAudit())
 	if len(result.Rejected) != 1 || result.Rejected[0].Code != "unsourced_actor_value" || result.Rejected[0].Path != "items[0].adaptation.actor_ops[0].actor.state.心境" {
 		t.Fatalf("an Actor value must be covered by an exact requirement: %#v", result)
@@ -619,7 +612,7 @@ func batchTestActorStateSystem() StoryDirectorActorStateSystem {
 			{ID: "protagonist", Name: "主角", Fields: []ActorStateField{
 				{Name: "状态", Type: "string", Default: "平静"},
 				{Name: "心境", Type: "string", Default: "稳定"},
-				{Name: "秘密", Type: "string", Visibility: "hidden"},
+				{Name: "秘密", Type: "string"},
 			}},
 			{ID: "npc", Name: "NPC", Fields: []ActorStateField{{Name: "态度", Type: "string", Default: "中立"}}},
 		},
@@ -631,8 +624,8 @@ func batchTestAudit() ActorStateSchemaBatchAudit {
 	return ActorStateSchemaBatchAudit{OpeningSourceIDs: []string{"opening-turn"}}
 }
 
-func batchTestItemWithAdaptation(itemID string, adaptation ActorStateSchemaAdaptation, evidenceKind string) ActorStateSchemaBatchItem {
-	item := batchTestCoveredItem(itemID, evidenceKind)
+func batchTestItemWithAdaptation(itemID string, adaptation ActorStateSchemaAdaptation) ActorStateSchemaBatchItem {
+	item := batchTestCoveredItem(itemID)
 	item.Adaptation = adaptation
 	for _, op := range adaptation.ActorOps {
 		if op.Op == "set" && normalizeActorStateFieldName(op.FieldID) == normalizeActorStateFieldName(item.Requirements[0].FieldID) {
@@ -649,14 +642,14 @@ func batchTestItemWithAdaptation(itemID string, adaptation ActorStateSchemaAdapt
 	return item
 }
 
-func batchTestSourcedAdaptationItem(itemID string, adaptation ActorStateSchemaAdaptation, evidenceKind string) ActorStateSchemaBatchItem {
+func batchTestSourcedAdaptationItem(itemID string, adaptation ActorStateSchemaAdaptation) ActorStateSchemaBatchItem {
 	item := ActorStateSchemaBatchItem{ItemID: itemID, Adaptation: adaptation}
 	for _, templateOp := range adaptation.TemplateOps {
 		templateID := firstNonEmptyString(templateOp.TemplateID, templateOp.Template.ID)
 		if templateOp.Op == "remove" {
 			item.Requirements = append(item.Requirements, ActorStateSchemaRequirementReview{
 				Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "该模板不应长期追踪",
-				EvidenceKind: evidenceKind, ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, Decision: "ignored", TemplateID: templateID, Reason: "开局确认不需要该模板",
+				ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, Decision: "ignored", TemplateID: templateID, Reason: "开局确认不需要该模板",
 			})
 			continue
 		}
@@ -672,7 +665,7 @@ func batchTestSourcedAdaptationItem(itemID string, adaptation ActorStateSchemaAd
 			fieldID := firstNonEmptyString(fieldOp.Field.Name, fieldOp.FieldID)
 			review := ActorStateSchemaRequirementReview{
 				Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "该字段需要长期审查",
-				EvidenceKind: evidenceKind, ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, Decision: decision, TemplateID: templateID, FieldID: fieldID,
+				ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, Decision: decision, TemplateID: templateID, FieldID: fieldID,
 			}
 			if fieldOp.Op == "remove" {
 				review.Decision = "ignored"
@@ -687,7 +680,7 @@ func batchTestSourcedAdaptationItem(itemID string, adaptation ActorStateSchemaAd
 		for fieldID := range actor.State {
 			item.Requirements = append(item.Requirements, ActorStateSchemaRequirementReview{
 				Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "该 Actor 值需要长期承接",
-				EvidenceKind: evidenceKind, ValuePolicy: ActorStateSchemaValuePolicyInitialize, ActorID: firstNonEmptyString(actorID, actor.ID), ExpectedType: "string", Decision: "covered", TemplateID: actor.TemplateID, FieldID: fieldID,
+				ValuePolicy: ActorStateSchemaValuePolicyInitialize, ActorID: firstNonEmptyString(actorID, actor.ID), ExpectedType: "string", Decision: "covered", TemplateID: actor.TemplateID, FieldID: fieldID,
 			})
 		}
 	}
@@ -698,12 +691,12 @@ func batchTestSourcedAdaptationItem(itemID string, adaptation ActorStateSchemaAd
 		appendActorStateRequirements(actorOp.ActorID, actorOp.Actor)
 	}
 	if len(item.Requirements) == 0 {
-		item.Requirements = batchTestCoveredItem(itemID, evidenceKind).Requirements
+		item.Requirements = batchTestCoveredItem(itemID).Requirements
 	}
 	return item
 }
 
-func batchTestCoveredItem(itemID, evidenceKind string) ActorStateSchemaBatchItem {
+func batchTestCoveredItem(itemID string) ActorStateSchemaBatchItem {
 	fieldID := "状态"
 	if itemID == "mood" {
 		fieldID = "心境"
@@ -712,7 +705,7 @@ func batchTestCoveredItem(itemID, evidenceKind string) ActorStateSchemaBatchItem
 		ItemID: itemID,
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "长期承接" + fieldID,
-			EvidenceKind: evidenceKind, ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: fieldID,
+			ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: fieldID,
 		}},
 	}
 }

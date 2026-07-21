@@ -323,31 +323,14 @@ func TestAnalyzeInteractiveDirectorContextUsesCurrentDirectorInputs(t *testing.T
 	}
 }
 
-func TestShouldScheduleInteractiveDirectorAfterTurnUsesGameSignal(t *testing.T) {
-	triggered := interactive.StoryDirectorStrategy{Enabled: true, DirectorAgentMode: interactive.DirectorAgentModeTriggered}
-	routine := interactive.TurnEvent{TurnResult: committedTurnResultForTest("观察", "确认环境", "门后传来风声")}
-	if decision := shouldScheduleInteractiveDirectorAfterTurn(triggered, routine); decision.ShouldRun || decision.Reason != "no_material_update" {
-		t.Fatalf("routine triggered-mode turn should not start Director: %#v", decision)
+func TestShouldRunInteractiveDirectorAgentAllowsManualRunForLegacyOffMode(t *testing.T) {
+	strategy := interactive.StoryDirectorStrategy{Enabled: true, DirectorAgentMode: interactive.DirectorAgentModeOff}
+	if decision := shouldRunInteractiveDirectorAgent(strategy); !decision.ShouldRun {
+		t.Fatalf("manual runs should remain available when automatic scheduling is off: %#v", decision)
 	}
-	material := routine
-	material.TurnResult.DirectorUpdate = &interactive.DirectorUpdateHint{Needed: true, Reason: "玩家推翻了阶段前提"}
-	if decision := shouldScheduleInteractiveDirectorAfterTurn(triggered, material); !decision.ShouldRun || decision.Reason != "game_agent_update" {
-		t.Fatalf("material Game signal should start Director: %#v", decision)
-	}
-	everyTurn := triggered
-	everyTurn.DirectorAgentMode = interactive.DirectorAgentModeEveryTurn
-	if decision := shouldScheduleInteractiveDirectorAfterTurn(everyTurn, routine); !decision.ShouldRun || decision.Reason != "every_turn" {
-		t.Fatalf("every-turn mode should remain explicitly high-frequency: %#v", decision)
-	}
-	off := triggered
-	off.DirectorAgentMode = interactive.DirectorAgentModeOff
-	if decision := shouldScheduleInteractiveDirectorAfterTurn(off, material); decision.ShouldRun || decision.Reason != "mode_off" {
-		t.Fatalf("off mode must ignore Game hints: %#v", decision)
-	}
-	disabled := triggered
-	disabled.Enabled = false
-	if decision := shouldScheduleInteractiveDirectorAfterTurn(disabled, material); decision.ShouldRun || decision.Reason != "disabled" {
-		t.Fatalf("disabled Director must ignore Game hints: %#v", decision)
+	strategy.Enabled = false
+	if decision := shouldRunInteractiveDirectorAgent(strategy); decision.ShouldRun || decision.Reason != "disabled" {
+		t.Fatalf("disabled Director must reject manual runs: %#v", decision)
 	}
 }
 

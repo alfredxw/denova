@@ -1,7 +1,6 @@
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { novaEase } from '@/features/motion/motion-tokens'
 import { parseNumberInput } from '../../utils'
@@ -81,7 +80,7 @@ export function TraitDetailEditor({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-3">
           <div className="space-y-1">
             <label className="text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.actorState.explorer.weightLabel')}</label>
             <Input
@@ -90,19 +89,6 @@ export function TraitDetailEditor({
               value={trait.weight !== undefined ? String(trait.weight) : ''}
               onChange={(e) => updateTrait({ weight: parseNumberInput(e.target.value) ?? 1 })}
             />
-          </div>
-          <div className="space-y-1">
-            <label className="text-[11px] text-[var(--nova-text-faint)]">{t('settingPanel.actorState.explorer.visibility')}</label>
-            <Select value={trait.visibility || 'visible'} onValueChange={(visibility) => updateTrait({ visibility: visibility as ActorTraitDefinition['visibility'] })}>
-              <SelectTrigger className="nova-field h-8 text-xs focus:ring-0"><SelectValue /></SelectTrigger>
-              <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                <SelectGroup>
-                  {(['visible', 'spoiler', 'hidden'] as const).map((visibility) => (
-                    <SelectItem key={visibility} value={visibility}>{t(`settingPanel.actorState.explorer.${visibility}`)}</SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
           </div>
         </div>
 

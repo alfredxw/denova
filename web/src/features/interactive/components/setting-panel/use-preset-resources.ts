@@ -1,6 +1,7 @@
 /** 方案预设 6 类资源的数据层：列表/选中 id/草稿 state、加载与外部同步、保存合并与刷新。 */
 import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { rebaseJSONWithRecovery } from '@/lib/autosave/rebase-with-recovery'
+import { rebaseJSONValue } from '@/lib/three-way-rebase'
 import { getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors } from '../../api'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
 import { cloneActorState, cloneEventPackage, cloneImagePreset, cloneRuleSystem, cloneStoryDirector, cloneTeller, EMPTY_ACTOR_STATES, EMPTY_EVENT_PACKAGES, EMPTY_IMAGE_PRESETS, EMPTY_RULE_SYSTEMS, EMPTY_STORY_DIRECTORS, EMPTY_TELLERS, TELLER_CONFIG_AGENT_ENTRY_ID, type PresetDrafts } from './presetResources'
@@ -350,12 +351,17 @@ export function usePresetResources({
 export type PresetResources = ReturnType<typeof usePresetResources>
 
 interface DraftSyncAutosaves {
-  teller: { resetBaseline: (draft: Teller | null) => void }
-  director: { resetBaseline: (draft: StoryDirector | null) => void }
-  image: { resetBaseline: (draft: ImagePreset | null) => void }
-  event: { resetBaseline: (draft: EventPackageModule | null) => void }
-  rule: { resetBaseline: (draft: RuleSystemModule | null) => void }
-  'actor-state': { resetBaseline: (draft: ActorStateModule | null) => void }
+  teller: DraftSyncAutosave<Teller>
+  director: DraftSyncAutosave<StoryDirector>
+  image: DraftSyncAutosave<ImagePreset>
+  event: DraftSyncAutosave<EventPackageModule>
+  rule: DraftSyncAutosave<RuleSystemModule>
+  'actor-state': DraftSyncAutosave<ActorStateModule>
+}
+
+interface DraftSyncAutosave<T> {
+  isBaselineAcknowledged: (draft: T | null) => boolean
+  resetBaseline: (draft: T | null) => void
 }
 
 /** 草稿同步：activeId/列表变化时克隆草稿并对齐 autosave 基线（config agent 伪条目清空草稿）。 */
@@ -398,12 +404,12 @@ export function usePresetDraftSync(resources: PresetResources, autosaves: DraftS
   const ruleSystem = ruleSystems.find((entry) => entry.id === activeRuleSystemId) || null
   const actorState = actorStates.find((entry) => entry.id === activeActorStateId) || null
 
-  useRebasedPresetDraft({ resource: 'teller', scopeKey: workspace, baseline: teller, draft: tellerDraft, setDraft: setTellerDraft, clone: cloneTeller, resetBaseline: autosaves.teller.resetBaseline })
-  useRebasedPresetDraft({ resource: 'story_director', scopeKey: workspace, baseline: director, draft: storyDirectorDraft, setDraft: setStoryDirectorDraft, clone: cloneStoryDirector, resetBaseline: autosaves.director.resetBaseline })
-  useRebasedPresetDraft({ resource: 'image_preset', scopeKey: workspace, baseline: imagePreset, draft: imagePresetDraft, setDraft: setImagePresetDraft, clone: cloneImagePreset, resetBaseline: autosaves.image.resetBaseline })
-  useRebasedPresetDraft({ resource: 'event_package', scopeKey: workspace, baseline: eventPackage, draft: eventPackageDraft, setDraft: setEventPackageDraft, clone: cloneEventPackage, resetBaseline: autosaves.event.resetBaseline })
-  useRebasedPresetDraft({ resource: 'rule_system', scopeKey: workspace, baseline: ruleSystem, draft: ruleSystemDraft, setDraft: setRuleSystemDraft, clone: cloneRuleSystem, resetBaseline: autosaves.rule.resetBaseline })
-  useRebasedPresetDraft({ resource: 'actor_state', scopeKey: workspace, baseline: actorState, draft: actorStateDraft, setDraft: setActorStateDraft, clone: cloneActorState, resetBaseline: autosaves['actor-state'].resetBaseline })
+  useRebasedPresetDraft({ resource: 'teller', scopeKey: workspace, baseline: teller, draft: tellerDraft, setDraft: setTellerDraft, clone: cloneTeller, ...autosaves.teller })
+  useRebasedPresetDraft({ resource: 'story_director', scopeKey: workspace, baseline: director, draft: storyDirectorDraft, setDraft: setStoryDirectorDraft, clone: cloneStoryDirector, ...autosaves.director })
+  useRebasedPresetDraft({ resource: 'image_preset', scopeKey: workspace, baseline: imagePreset, draft: imagePresetDraft, setDraft: setImagePresetDraft, clone: cloneImagePreset, ...autosaves.image })
+  useRebasedPresetDraft({ resource: 'event_package', scopeKey: workspace, baseline: eventPackage, draft: eventPackageDraft, setDraft: setEventPackageDraft, clone: cloneEventPackage, ...autosaves.event })
+  useRebasedPresetDraft({ resource: 'rule_system', scopeKey: workspace, baseline: ruleSystem, draft: ruleSystemDraft, setDraft: setRuleSystemDraft, clone: cloneRuleSystem, ...autosaves.rule })
+  useRebasedPresetDraft({ resource: 'actor_state', scopeKey: workspace, baseline: actorState, draft: actorStateDraft, setDraft: setActorStateDraft, clone: cloneActorState, ...autosaves['actor-state'] })
 
   useEffect(() => {
     setActiveSlotId((current) => {
@@ -420,6 +426,7 @@ function useRebasedPresetDraft<T extends { id: string; updated_at?: string }>({
   draft,
   setDraft,
   clone,
+  isBaselineAcknowledged,
   resetBaseline,
 }: {
   resource: string
@@ -428,6 +435,7 @@ function useRebasedPresetDraft<T extends { id: string; updated_at?: string }>({
   draft: T | null
   setDraft: Dispatch<SetStateAction<T | null>>
   clone: (value: T) => T
+  isBaselineAcknowledged: (draft: T | null) => boolean
   resetBaseline: (draft: T | null) => void
 }) {
   const previousBaselineRef = useRef<T | null>(null)
@@ -444,18 +452,21 @@ function useRebasedPresetDraft<T extends { id: string; updated_at?: string }>({
     const nextBaseline = baseline ? clone(baseline) : null
     const previousBaseline = previousBaselineRef.current
     const currentDraft = draftRef.current
+    const baselineAcknowledged = isBaselineAcknowledged(nextBaseline)
     void (async () => {
       let rebasedFromDraft = currentDraft
       let nextDraft = nextBaseline
         ? previousBaseline?.id === nextBaseline.id && currentDraft?.id === nextBaseline.id
-          ? await rebaseJSONWithRecovery({
-              resource,
-              scope: scopeKey,
-              id: nextBaseline.id,
-              baseline: { revision: previousBaseline.updated_at, value: previousBaseline },
-              local: { revision: previousBaseline.updated_at, value: currentDraft },
-              external: { revision: nextBaseline.updated_at, value: nextBaseline },
-            })
+          ? baselineAcknowledged
+            ? rebaseJSONValue(previousBaseline, currentDraft, nextBaseline)
+            : await rebaseJSONWithRecovery({
+                resource,
+                scope: scopeKey,
+                id: nextBaseline.id,
+                baseline: { revision: previousBaseline.updated_at, value: previousBaseline },
+                local: { revision: previousBaseline.updated_at, value: currentDraft },
+                external: { revision: nextBaseline.updated_at, value: nextBaseline },
+              })
           : nextBaseline
         : null
       // Conflict preservation can await storage. Fold every edit made during that
@@ -482,5 +493,5 @@ function useRebasedPresetDraft<T extends { id: string; updated_at?: string }>({
     return () => {
       cancelled = true
     }
-  }, [baseline, clone, resetBaseline, resource, scopeKey, setDraft])
+  }, [baseline, clone, isBaselineAcknowledged, resetBaseline, resource, scopeKey, setDraft])
 }

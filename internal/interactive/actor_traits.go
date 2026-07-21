@@ -85,7 +85,6 @@ func normalizeActorTraitDefinitions(traits []ActorTraitDefinition) []ActorTraitD
 		if trait.Weight <= 0 {
 			trait.Weight = 1
 		}
-		trait.Visibility = normalizeStoryDirectorVisibility(trait.Visibility)
 		out = append(out, trait)
 	}
 	return out
@@ -200,7 +199,6 @@ func rollActorTraits(system StoryDirectorActorStateSystem, req ActorTraitRollReq
 				TraitID:      trait.ID,
 				Name:         trait.Name,
 				Summary:      trait.Summary,
-				Visibility:   trait.Visibility,
 				SourceKind:   sourceKind,
 				SourceID:     sourceID,
 				SourceTurnID: sourceTurnID,

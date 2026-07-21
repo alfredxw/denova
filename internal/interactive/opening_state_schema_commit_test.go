@@ -217,7 +217,7 @@ func TestOpeningSchemaBatchRejectsActorValuesWithoutPollutingDraft(t *testing.T)
 		Items: []ActorStateSchemaBatchItem{{
 			ItemID: "bad-values",
 			Requirements: []ActorStateSchemaRequirementReview{{
-				Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-draft"}, Requirement: "初始化身份", EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicyInitialize, ActorID: DefaultActorID, ExpectedType: "string", Decision: "covered", TemplateID: DefaultActorID, FieldID: "身份",
+				Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-draft"}, Requirement: "初始化身份", ValuePolicy: ActorStateSchemaValuePolicyInitialize, ActorID: DefaultActorID, ExpectedType: "string", Decision: "covered", TemplateID: DefaultActorID, FieldID: "身份",
 			}},
 			Adaptation: ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{{Op: "set", ActorID: DefaultActorID, FieldID: "身份", Value: "旅人"}}},
 		}},
@@ -240,10 +240,10 @@ func TestOpeningSchemaDraftCanSatisfyInitiallyMissingTRPGBindingAtFinalize(t *te
 	result := draft.SubmitStructureOnly(ActorStateSchemaBatch{Finalize: true, Items: []ActorStateSchemaBatchItem{{
 		ItemID: "trpg-strength",
 		Requirements: []ActorStateSchemaRequirementReview{{
-			Source: ActorStateSchemaRequirementSource{Kind: "trpg", ID: "rule-1"}, Requirement: "力量检定需要数值字段", EvidenceKind: "default", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "number", Decision: "add", TemplateID: DefaultActorID, FieldID: "力量",
+			Source: ActorStateSchemaRequirementSource{Kind: "trpg", ID: "rule-1"}, Requirement: "力量检定需要数值字段", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "number", Decision: "add", TemplateID: DefaultActorID, FieldID: "力量",
 		}},
 		Adaptation: ActorStateSchemaAdaptation{TemplateOps: []ActorStateTemplateSchemaOp{{
-			Op: "fields", TemplateID: DefaultActorID, FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "力量", Type: "number", Visibility: "visible"}}},
+			Op: "fields", TemplateID: DefaultActorID, FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "力量", Type: "number"}}},
 		}}},
 	}}}, ActorStateSchemaBatchAudit{TRPGSourceIDs: []string{"rule-1"}})
 	if !result.Finalized || len(result.Rejected) > 0 {
@@ -305,7 +305,6 @@ func openingSchemaProposalAddingIdentity() ActorStateSchemaProposal {
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source:       ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-draft"},
 			Requirement:  "长期记录主角在开局确认的身份",
-			EvidenceKind: "confirmed",
 			ValuePolicy:  ActorStateSchemaValuePolicySchemaOnly,
 			ExpectedType: "string",
 			Decision:     "add",
@@ -315,7 +314,7 @@ func openingSchemaProposalAddingIdentity() ActorStateSchemaProposal {
 		Adaptation: ActorStateSchemaAdaptation{
 			TemplateOps: []ActorStateTemplateSchemaOp{{
 				Op: "fields", TemplateID: DefaultActorID,
-				FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "身份", Type: "string", Visibility: "visible", Group: "人物设定", Display: "inline"}}},
+				FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "身份", Type: "string", Group: "人物设定", Display: "inline"}}},
 			}},
 		},
 	}

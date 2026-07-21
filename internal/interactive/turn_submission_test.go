@@ -90,12 +90,12 @@ func TestPrepareTurnSubmissionRequiresCompleteOpeningInitialState(t *testing.T) 
 	system := StoryDirectorActorStateSystem{
 		Templates: []ActorStateTemplate{
 			{ID: DefaultActorID, Fields: []ActorStateField{
-				{Name: "身份", Type: "string", Visibility: "visible"},
-				{Name: "氧气", Type: "number", Default: 45, Min: &oxygenMin, Max: &oxygenMax, Visibility: "visible"},
+				{Name: "身份", Type: "string"},
+				{Name: "氧气", Type: "number", Default: 45, Min: &oxygenMin, Max: &oxygenMax},
 			}},
 			{ID: ActorStateStoryContextTemplateID, Fields: []ActorStateField{
-				{Name: storyContextCurrentLocationField, Type: "string", Visibility: "visible"},
-				{Name: storyContextCurrentEventField, Type: "string", Visibility: "visible"},
+				{Name: storyContextCurrentLocationField, Type: "string"},
+				{Name: storyContextCurrentEventField, Type: "string"},
 			}},
 		},
 		InitialActors: []ActorStateInitialActor{
@@ -175,8 +175,8 @@ func TestUnifiedTurnSubmissionDecodesStructuredStateChangesAndIsolatesFailures(t
 func TestUnifiedTurnSubmissionSupportsObjectSubpathsAndExplicitActorCreation(t *testing.T) {
 	system := StoryDirectorActorStateSystem{
 		Templates: []ActorStateTemplate{
-			{ID: "protagonist", Fields: []ActorStateField{{Name: "关系", Type: "object", Visibility: "visible"}}},
-			{ID: "important_character", Fields: []ActorStateField{{Name: "状态", Type: "string", Visibility: "visible"}}},
+			{ID: "protagonist", Fields: []ActorStateField{{Name: "关系", Type: "object"}}},
+			{ID: "important_character", Fields: []ActorStateField{{Name: "状态", Type: "string"}}},
 		},
 	}
 	state := map[string]any{"actors": map[string]any{
@@ -282,8 +282,8 @@ func turnSubmissionTestState() (StoryDirectorActorStateSystem, map[string]any) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID: "protagonist",
 		Fields: []ActorStateField{
-			{Name: "当前处境", Type: "string", Visibility: "visible"},
-			{Name: "生命值", Type: "number", Visibility: "visible"},
+			{Name: "当前处境", Type: "string"},
+			{Name: "生命值", Type: "number"},
 		},
 	}}}
 	state := map[string]any{"actors": map[string]any{

@@ -69,6 +69,24 @@ describe('NewStorySetupPanel', () => {
       reply_target_chars: 2400,
       module_refs: expect.objectContaining({ actor_state_id: 'actors' }),
       state_schema_policy: { mode: 'adapt_template' },
+      director_run_policy: { mode: 'on_demand' },
+    })))
+  })
+
+  it('offers three director run modes and submits the configured interval', async () => {
+    const user = userEvent.setup()
+    const onCreate = vi.fn().mockResolvedValue(undefined)
+    render(<NewStorySetupPanel stories={[]} tellers={[]} directors={[director]} imagePresets={[]} onCancel={vi.fn()} onCreate={onCreate} />)
+
+    expect(screen.getByRole('radio', { name: /按需自动/ })).toBeChecked()
+    expect(screen.getByRole('radio', { name: /仅手动/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('radio', { name: /每 X 回合自动/ }))
+    await user.clear(screen.getByLabelText('导演自动规划间隔'))
+    await user.type(screen.getByLabelText('导演自动规划间隔'), '4')
+    await user.click(screen.getByRole('button', { name: '继续选择开场方式' }))
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+      director_run_policy: { mode: 'interval', interval_turns: 4 },
     })))
   })
 

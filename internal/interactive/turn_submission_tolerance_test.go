@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -9,11 +10,11 @@ func TestPrepareTurnSubmissionLosslesslyNormalizesStringEncodedTypedValues(t *te
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID: "important_character",
 		Fields: []ActorStateField{
-			{Name: "好感度", Type: "number", Visibility: "visible"},
-			{Name: "已知信息", Type: "list", Visibility: "visible"},
-			{Name: "关系", Type: "object", Visibility: "visible"},
-			{Name: "在场", Type: "bool", Visibility: "visible"},
-			{Name: "备注", Type: "string", Visibility: "visible"},
+			{Name: "好感度", Type: "number"},
+			{Name: "已知信息", Type: "list"},
+			{Name: "关系", Type: "object"},
+			{Name: "在场", Type: "bool"},
+			{Name: "备注", Type: "string"},
 		},
 	}}}
 	input := DecodeInteractiveTurnSubmissionInput(`{
@@ -129,11 +130,11 @@ func TestCompileTurnStateUpdatesLosslesslyNormalizesNumericDelta(t *testing.T) {
 	}
 }
 
-func TestPrepareTurnSubmissionCanonicalizesNamedRecordFromItsID(t *testing.T) {
+func TestPrepareTurnSubmissionPreservesNamedRecordValues(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID: "world_entities",
 		Fields: []ActorStateField{
-			{Name: "地点记录", Type: "object", Visibility: "visible"},
+			{Name: "地点记录", Type: "object"},
 		},
 	}}}
 	state := map[string]any{"actors": map[string]any{
@@ -148,7 +149,9 @@ func TestPrepareTurnSubmissionCanonicalizesNamedRecordFromItsID(t *testing.T) {
 			"actor_id":"world",
 			"field_id":"地点记录",
 			"value":{
-				"清月居":{"名称":"清月居","类型":"建筑"}
+				"清月居":"建筑",
+				"旧驿站":{"地点名称":"驿站旧称","名称":"legacy alias","类型":"设施"},
+				"无名洞穴":{"类型":"地点"}
 			}
 		}],
 		"choices":["前进","观察","交谈","等待","后退"]
@@ -158,29 +161,31 @@ func TestPrepareTurnSubmissionCanonicalizesNamedRecordFromItsID(t *testing.T) {
 		ActorState: system, CurrentState: state, ChoiceCount: 5,
 	}, nil, input)
 	if !receipt.Ready || !prepared.Ready() {
-		t.Fatalf("record name should be derived from its identical ID: receipt=%#v", receipt)
+		t.Fatalf("named records should accept and preserve arbitrary child values: receipt=%#v", receipt)
 	}
 	updates := prepared.TurnResult().StateUpdates
 	locations, ok := updates[0].Value.(map[string]any)
 	if !ok {
-		t.Fatalf("canonical locations = %#v, want object", updates[0].Value)
+		t.Fatalf("locations = %#v, want root object", updates[0].Value)
 	}
-	location, ok := locations["清月居"].(map[string]any)
-	if !ok {
-		t.Fatalf("canonical location = %#v, want object", locations["清月居"])
+	want := map[string]any{
+		"清月居": "建筑",
+		"旧驿站": map[string]any{
+			"地点名称": "驿站旧称",
+			"名称":   "legacy alias",
+			"类型":   "设施",
+		},
+		"无名洞穴": map[string]any{"类型": "地点"},
 	}
-	if location["地点名称"] != "清月居" {
-		t.Fatalf("地点名称 = %#v, want 清月居", location["地点名称"])
-	}
-	if _, exists := location["名称"]; exists {
-		t.Fatalf("generic 名称 alias should be removed after canonicalization: %#v", location)
+	if !reflect.DeepEqual(locations, want) {
+		t.Fatalf("named record values changed: got %#v, want %#v", locations, want)
 	}
 }
 
-func TestPrepareTurnSubmissionRejectsConflictingNamedRecordAlias(t *testing.T) {
+func TestPrepareTurnSubmissionRequiresNamedRecordRootObject(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID:     "world_entities",
-		Fields: []ActorStateField{{Name: "地点记录", Type: "object", Visibility: "visible"}},
+		Fields: []ActorStateField{{Name: "地点记录", Type: "object"}},
 	}}}
 	state := map[string]any{"actors": map[string]any{
 		"world": map[string]any{
@@ -193,9 +198,7 @@ func TestPrepareTurnSubmissionRejectsConflictingNamedRecordAlias(t *testing.T) {
 			"op":"replace",
 			"actor_id":"world",
 			"field_id":"地点记录",
-			"value":{
-				"清月居":{"地点名称":"清月居","名称":"别院","类型":"建筑"}
-			}
+			"value":"清月居"
 		}],
 		"choices":["前进","观察","交谈","等待","后退"]
 	}`)
@@ -204,17 +207,17 @@ func TestPrepareTurnSubmissionRejectsConflictingNamedRecordAlias(t *testing.T) {
 		ActorState: system, CurrentState: state, ChoiceCount: 5,
 	}, nil, input)
 	if receipt.ModuleStatus.StateChanges != TurnSubmissionModuleRejected || len(receipt.Diagnostics) != 1 {
-		t.Fatalf("conflicting record aliases must remain rejected: %#v", receipt)
+		t.Fatalf("an object-typed named record field must reject a scalar root: %#v", receipt)
 	}
-	if !strings.Contains(receipt.Diagnostics[0].MessageZH, "别院") {
-		t.Fatalf("diagnostic should identify the conflicting alias: %#v", receipt.Diagnostics[0])
+	if receipt.Diagnostics[0].Expected != "object" || receipt.Diagnostics[0].Actual != "string" {
+		t.Fatalf("root type diagnostic should use generic object validation: %#v", receipt.Diagnostics[0])
 	}
 }
 
-func TestPrepareTurnSubmissionCanonicalizesNamedRecordsInNewActorState(t *testing.T) {
+func TestPrepareTurnSubmissionPreservesNamedRecordsInNewActorState(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID:     "important_character",
-		Fields: []ActorStateField{{Name: "技能与能力", Type: "object", Visibility: "visible"}},
+		Fields: []ActorStateField{{Name: "技能与能力", Type: "object"}},
 	}}}
 	input := DecodeInteractiveTurnSubmissionInput(`{
 		"state_changes":[{
@@ -223,7 +226,10 @@ func TestPrepareTurnSubmissionCanonicalizesNamedRecordsInNewActorState(t *testin
 			"template_id":"important_character",
 			"name":"柳寒衣",
 			"initial_state":{
-				"技能与能力":{"寒冰诀":{"类型":"修炼"}}
+				"技能与能力":{
+					"寒冰诀":{"名称":"旧称冰心诀","类型":"修炼"},
+					"洞察":"被动"
+				}
 			}
 		}],
 		"choices":["前进","观察","交谈","等待","后退"]
@@ -233,43 +239,17 @@ func TestPrepareTurnSubmissionCanonicalizesNamedRecordsInNewActorState(t *testin
 		ActorState: system, CurrentState: map[string]any{}, ChoiceCount: 5,
 	}, nil, input)
 	if !receipt.Ready || !prepared.Ready() {
-		t.Fatalf("new Actor records should derive names from their IDs: receipt=%#v", receipt)
+		t.Fatalf("new Actor named records should preserve arbitrary child values: receipt=%#v", receipt)
 	}
 	created := prepared.TurnResult().StateUpdates[0].Value.(map[string]any)
 	actorState := created["state"].(map[string]any)
 	abilities := actorState["技能与能力"].(map[string]any)
-	ability := abilities["寒冰诀"].(map[string]any)
-	if ability["名称"] != "寒冰诀" {
-		t.Fatalf("ability name = %#v, want 寒冰诀", ability["名称"])
+	want := map[string]any{
+		"寒冰诀": map[string]any{"名称": "旧称冰心诀", "类型": "修炼"},
+		"洞察":  "被动",
 	}
-}
-
-func TestPrepareTurnSubmissionRejectsConflictingNamedRecordInNewActorState(t *testing.T) {
-	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
-		ID:     "important_character",
-		Fields: []ActorStateField{{Name: "技能与能力", Type: "object", Visibility: "visible"}},
-	}}}
-	input := DecodeInteractiveTurnSubmissionInput(`{
-		"state_changes":[{
-			"op":"create",
-			"actor_id":"柳寒衣",
-			"template_id":"important_character",
-			"name":"柳寒衣",
-			"initial_state":{
-				"技能与能力":{"寒冰诀":{"名称":"火球术","类型":"修炼"}}
-			}
-		}],
-		"choices":["前进","观察","交谈","等待","后退"]
-	}`)
-
-	_, receipt := PrepareTurnSubmission(TurnSubmissionContext{
-		ActorState: system, CurrentState: map[string]any{}, ChoiceCount: 5,
-	}, nil, input)
-	if receipt.ModuleStatus.StateChanges != TurnSubmissionModuleRejected || len(receipt.Diagnostics) != 1 {
-		t.Fatalf("conflicting new Actor record must be rejected: %#v", receipt)
-	}
-	if !strings.Contains(receipt.Diagnostics[0].MessageZH, "火球术") {
-		t.Fatalf("diagnostic should identify the conflicting name: %#v", receipt.Diagnostics[0])
+	if !reflect.DeepEqual(abilities, want) {
+		t.Fatalf("new Actor named record values changed: got %#v, want %#v", abilities, want)
 	}
 }
 
@@ -277,9 +257,9 @@ func TestPrepareTurnSubmissionReportsAllInvalidNewActorFields(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID: "important_character",
 		Fields: []ActorStateField{
-			{Name: "好感度", Type: "number", Visibility: "visible"},
-			{Name: "已知信息", Type: "list", Visibility: "visible"},
-			{Name: "关系", Type: "object", Visibility: "visible"},
+			{Name: "好感度", Type: "number"},
+			{Name: "已知信息", Type: "list"},
+			{Name: "关系", Type: "object"},
 		},
 	}}}
 	input := DecodeInteractiveTurnSubmissionInput(`{
@@ -334,8 +314,8 @@ func TestPrepareTurnSubmissionReportsIndependentInvalidOperationsTogether(t *tes
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID: "protagonist",
 		Fields: []ActorStateField{
-			{Name: "生命值", Type: "number", Visibility: "visible"},
-			{Name: "关系", Type: "object", Visibility: "visible"},
+			{Name: "生命值", Type: "number"},
+			{Name: "关系", Type: "object"},
 		},
 	}}}
 	state := map[string]any{"actors": map[string]any{
@@ -367,16 +347,16 @@ func TestPrepareTurnSubmissionAcceptsLosslessWeakModelPayloadInOneCall(t *testin
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{
 		{
 			ID:     "world_entities",
-			Fields: []ActorStateField{{Name: "地点记录", Type: "object", Visibility: "visible"}},
+			Fields: []ActorStateField{{Name: "地点记录", Type: "object"}},
 		},
 		{
 			ID: "important_character",
 			Fields: []ActorStateField{
-				{Name: "对主角好感度", Type: "number", Visibility: "visible"},
-				{Name: "对主角的已知信息", Type: "list", Default: []any{}, Visibility: "visible"},
-				{Name: "技能与能力", Type: "object", Default: map[string]any{}, Visibility: "visible"},
-				{Name: "重要物品", Type: "object", Default: map[string]any{}, Visibility: "visible"},
-				{Name: "关系", Type: "object", Default: map[string]any{}, Visibility: "visible"},
+				{Name: "对主角好感度", Type: "number"},
+				{Name: "对主角的已知信息", Type: "list", Default: []any{}},
+				{Name: "技能与能力", Type: "object", Default: map[string]any{}},
+				{Name: "重要物品", Type: "object", Default: map[string]any{}},
+				{Name: "关系", Type: "object", Default: map[string]any{}},
 			},
 		},
 	}}
@@ -427,8 +407,11 @@ func TestPrepareTurnSubmissionAcceptsLosslessWeakModelPayloadInOneCall(t *testin
 	locations := updates[0].Value.(map[string]any)
 	for id, raw := range locations {
 		location := raw.(map[string]any)
-		if location["地点名称"] != id {
-			t.Fatalf("location %q canonical name = %#v", id, location["地点名称"])
+		if location["名称"] != id {
+			t.Fatalf("location %q legacy name changed: %#v", id, location)
+		}
+		if _, exists := location["地点名称"]; exists {
+			t.Fatalf("location %q gained a derived 地点名称: %#v", id, location)
 		}
 	}
 	created := updates[1].Value.(map[string]any)

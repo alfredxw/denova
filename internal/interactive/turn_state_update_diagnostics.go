@@ -145,8 +145,6 @@ func stateUpdateDiagnosticEnglish(code string) string {
 		return "The referenced Actor ID does not exist in the current state."
 	case "actor_name_id_mismatch":
 		return "A newly created Actor must use its story-language name unchanged as both actor_id and name."
-	case "state_record_name_id_mismatch":
-		return "A named state-panel record must use the same story-language text for its object key ID and name field."
 	case "state_field_not_found":
 		return "The state field does not exist in the Actor's frozen schema."
 	case "delta_target_not_number":
@@ -249,17 +247,12 @@ func validateTurnSubmissionActorInitialState(index int, updatePath string, templ
 			validationErrors = append(validationErrors, err)
 			continue
 		}
-		normalized, err := normalizeActorStateValue(field, value)
+		_, err := normalizeActorStateValue(field, value)
 		if err != nil {
 			validationError := stateUpdateError(index, "actor_create_invalid", updatePath, field.Type, stateUpdateActual(value), err)
 			validationError.DiagnosticPath = diagnosticPath
 			validationErrors = append(validationErrors, validationError)
 			continue
-		}
-		if err := validateStatePanelRecordNameIDs(actorStateFieldID(field), normalized); err != nil {
-			validationError := stateUpdateError(index, "state_record_name_id_mismatch", updatePath, "record ID identical to its name", stateUpdateActual(normalized), err)
-			validationError.DiagnosticPath = diagnosticPath
-			validationErrors = append(validationErrors, validationError)
 		}
 	}
 	return validationErrors

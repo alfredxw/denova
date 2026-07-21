@@ -59,6 +59,10 @@ type InteractiveDirectorPromptInput struct {
 	EventRuntime                string
 }
 
+const interactiveTrackableActorInstruction = "当一个具名角色或敌对对象首次在正文中实际登场，并且它被资料库标记为主要或重要角色、成为当前关键关系对象或目标、预计反复登场，或拥有需要持续追踪的独立可变状态时，必须在同一次 state_changes 中使用 create 创建独立 Actor；只写入 protagonist/关系或 story/在场角色不能代替 create。若符合条件的角色此前已经登场但仍没有 Actor，本轮继续涉及时必须补建；已有 Actor 只更新，不重复创建。仅被提及、背景人群、或一次性且没有后续承接价值的临时角色不要创建 Actor。"
+
+const interactiveLoreCharacterGroundingInstruction = "当本轮准备让资料库中的具名角色首次在正文中实际登场，或首次确定其身份、外貌、能力、性格或关系事实时，如果该角色的完整资料正文尚未通过 ResidentLore 或当前 LoreContext 注入，必须在写正文前读取完整资料正文；目录名称、标签、摘要、Actor State 或导演简报都不算完整资料正文。已知唯一名称直接调用 read_lore_items；需要查找或消歧时调用 list_lore_items，并用 detail=full 在同次返回正文。资料库没有匹配条目时，才可依据用户输入与已确认上下文创建新角色；不得凭摘要补全设定。读取失败时保守使用已确认事实继续，不要臆造未读取内容。"
+
 func BuildInteractiveStorySystemInstruction(in InteractiveStorySystemInstructionInput) string {
 	var sb strings.Builder
 	if creator := strings.TrimSpace(in.CreatorPrompt); creator != "" {
@@ -106,6 +110,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("## 工具化召回流程\n")
 	sb.WriteString("- 资料库正文和较早历史不会默认整段注入；需要长期设定或角色资料时读取资料库，需要既往线索或已发生事实时检索当前分支 Turn 历史。\n")
 	sb.WriteString("- 上下文已提供有界资料名称目录；已知唯一名称时可直接用 read_lore_items 读取正文，无需先 list。需要按语义筛选时可用 list_lore_items，detail=full 能在同一次调用返回筛选结果正文；不要臆造未读取的资料库内容。\n")
+	sb.WriteString("- " + interactiveLoreCharacterGroundingInstruction + "\n")
 	sb.WriteString("- 历史事实召回使用 search_story_history 检索当前分支已提交 Turn；每条结果都带 turn_id 来源。Turn 是历史事实真源，Actor State 是当前投影，director.md 是未来计划，资料库是稳定设定，不得混用。\n")
 	sb.WriteString("- 正文前的 thinking 只做简短的规划与意图分析：确认本轮目标、约束、必要工具、关键状态事实和场景落点。不要在 thinking 中试写、逐段构思、复述或自检完整正文，也不要预先展开完整工具 JSON；玩家可见正文只在正文通道一次成稿。\n")
 	sb.WriteString("- 每轮必须遵循这个流程：理解用户行动和当前快照 → 必要时读取资料库或检索历史 Turn → 判断是否需要固定检定 → 如需检定，调用 prepare_interactive_turn → 形成正文和一致的状态变化 → 直接输出完整故事正文 → 调用 submit_interactive_turn 提交 state_changes 与 choices → 两个模块都成功后立即结束。\n")
@@ -122,7 +127,8 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("- 动态状态结构首回合在 initialize_story_state_schema finalized 后，首次 state_changes 必须按 initialization_guide.required_state_changes 一次补齐每个仍缺初值的可写字段；模板默认值已自动初始化，无需重复。禁止用空字符串、未设置、未知或待定占位绕过初始化。\n")
 	sb.WriteString("- submit_interactive_turn 可随 choices 携带 director_update。默认省略：普通承接、同一场景内的小变化、常规资源消耗和既定冲突推进不需要后台导演。只有当前目标/阶段改变、关键关系或势力重大变化、重要秘密揭示、不可逆结果，或现有简报已无法指导下一回合时才设置 needed=true，并只说明已发生事实；patch/replan 与修改文件由 Director 决定。\n")
 	sb.WriteString("- state_changes 只能使用 replace、delta、create。引用已有 Actor 时逐字使用状态手册中的 actor_id；create 新建 Actor 时 name 必填，actor_id 与 name 完全相同，直接使用故事语言中的角色名称，不得生成英文、拼音或 slug ID。field_id、template_id 逐字使用状态手册中的现有值。replace 设置字段完整新值，delta 只增减已有数值且不能把缺失值当作 0，object 子字段用 subpath 字符串数组；不要自行拼接路径字符串。不能重复 RuleResolution 已消费的字段。\n")
-	sb.WriteString("- 状态面板 object 记录的键就是该条记录的 ID：技能、物品使用“名称”，任务使用“任务名称”，地点使用“地点名称”，势力使用“势力名称”；键必须与对应名称完全相同并使用故事语言，不得另造英文、拼音或 slug ID。\n")
+	sb.WriteString("- " + interactiveTrackableActorInstruction + "\n")
+	sb.WriteString("- 状态面板 object 记录直接使用稳定、可读的故事语言 map key 作为该条记录的 ID，不得另造英文、拼音或 slug ID；子值按字段说明与现有记录组织，不要求重复写入名称字段。\n")
 	sb.WriteString("- story_context 是每回合必须维护的基础状态对象：state_changes 至少 replace actor_id=story、field_id=当前事件；当前详细地点尚未初始化或正文确定地点变化时，同时 replace field_id=当前详细地点。其余字段只按正文已经确定的事实更新；没有依据时保留现值，禁止用空值覆盖。\n")
 	sb.WriteString(fmt.Sprintf("- 非终局回合 choices 必须提供恰好 %d 个文本不同、行动方向也不同且与正文结尾一致的建议；只有 prepare_interactive_turn 返回 terminal_candidate 的终局回合才提交空数组。\n", normalizeInteractiveChoiceCount(in.ChoiceCount)))
 	sb.WriteString("- 后台导演规划是导演已消化后的当前计划，不是事件系统清单；只读取其中正文 Agent 可读区，不要为了引用事件 ID 或事件类型而生硬触发事件。\n")
@@ -212,13 +218,15 @@ func InteractiveStoryTurnInstruction(message, turnContext, runtimeContext string
 
 请基于互动故事上下文续写下一回合，只输出读者可直接看到的故事正文；不要输出计划、解释、状态 JSON、Markdown 标题、工具说明或 XML 包装。
 本回合必须隐式完成：识别用户行动、判断相关角色和世界规则、裁定后果、制造新的可选择、保持角色和世界一致性；不要输出这些分析过程。
+%s
 不是所有用户行动都需要检定；普通观察、对话、小范围移动、低风险试探和无明确代价的叙事承接，应由你直接裁定并写正文。
 只有当本回合存在明确风险、资源/关系/数值变化、当前 TRPG 检定配置命中、失败等级、不可逆后果或终局候选，需要固定规则裁定时，才调用 prepare_interactive_turn；工具只负责固定 d20、优势/劣势检定和四档后果选择，不负责替你理解剧情或选择事件。
 调用 prepare_interactive_turn 时，先参考当前 TRPG 检定配置中的 trigger、must_check_examples、skip_check_examples、difficulty_guidance 和 state_effect_guidance 判断是否检定、difficulty/bonuses 与四档 outcomes.*.result；outcomes 不接收 state_changes。skip_check_examples 命中时优先直接裁定，must_check_examples 命中时优先固定检定。若当前规则提供 state_bindings，投骰前选择 binding_id，并填写 actor_id 与必要的 target_actor_id；modifiers 与 outcome_state_changes 会按 field_id 自动读取状态计算，narrative_state_refs 用于帮助你写四档后果。必须填写 adjudication 说明检定理由、stakes、难度依据和优势/劣势依据；状态引用一律使用 actor_id + field_id；difficulty 必须使用 very_easy/easy/normal/hard/very_hard；普通难度使用 normal，不要使用 medium 或 moderate；rule 可省略，若提供只能是 template=dice_check、roll_mode=normal/advantage/disadvantage。
-先直接输出完整正文，再调用 submit_interactive_turn；首次同时提供 state_changes 与 choices。state_changes 使用 replace/delta/create，并填写状态手册中的精确 actor_id、field_id、可选 subpath 或 template_id，不要自行拼接路径字符串；新建 Actor 的 actor_id 与 name 必须完全相同并直接使用故事语言中的角色名称；状态面板 object 记录的键必须与其名称字段完全相同。每回合至少 replace actor_id=story、field_id=当前事件，首次初始化或地点变化时同步当前详细地点，不得重复 RuleResolution 已消费的字段。非终局回合 choices 必须给出当前故事配置数量的不同建议；仅 prepare_interactive_turn 返回 terminal_candidate 的终局回合使用空数组。director_update 默认省略，只有本轮已发生事实让目标、阶段、关键关系/势力、重大线索或规划前提发生实质变化时才设置 needed=true。两个模块由后端独立解析和保留；ready=false 时只在同一工具中重交 retry_modules 指定的字段，ready=true 后立即结束，不得重复输出正文。不得把 TurnResult、工具结果或状态 JSON 写进正文。
-长期设定和角色资料通过 list_lore_items/read_lore_items 按需读取；如果本轮行动明显依赖既往线索、旧承诺或分支内已发生事实，使用 search_story_history 检索 Turn，并以返回的 turn_id 为来源。
+%s
+先直接输出完整正文，再调用 submit_interactive_turn；首次同时提供 state_changes 与 choices。state_changes 使用 replace/delta/create，并填写状态手册中的精确 actor_id、field_id、可选 subpath 或 template_id，不要自行拼接路径字符串；新建 Actor 的 actor_id 与 name 必须完全相同并直接使用故事语言中的角色名称；状态面板 object 记录直接使用稳定、可读的故事语言 map key 作为 ID，不要求重复的内部名称字段。每回合至少 replace actor_id=story、field_id=当前事件，首次初始化或地点变化时同步当前详细地点，不得重复 RuleResolution 已消费的字段。非终局回合 choices 必须给出当前故事配置数量的不同建议；仅 prepare_interactive_turn 返回 terminal_candidate 的终局回合使用空数组。director_update 默认省略，只有本轮已发生事实让目标、阶段、关键关系/势力、重大线索或规划前提发生实质变化时才设置 needed=true。两个模块由后端独立解析和保留；ready=false 时只在同一工具中重交 retry_modules 指定的字段，ready=true 后立即结束，不得重复输出正文。不得把 TurnResult、工具结果或状态 JSON 写进正文。
+如果本轮行动明显依赖既往线索、旧承诺或分支内已发生事实，使用 search_story_history 检索 Turn，并以返回的 turn_id 为来源。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
-其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。%s`, strings.TrimSpace(message), turnBlock, contextBlock)
+其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。%s`, strings.TrimSpace(message), turnBlock, interactiveLoreCharacterGroundingInstruction, interactiveTrackableActorInstruction, contextBlock)
 }
 
 func BuildInteractiveDirectorSystemInstruction() string {

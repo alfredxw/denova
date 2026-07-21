@@ -10,6 +10,10 @@ import { settingsForLayer, settingsRevisionForLayer, useAutoSaveSettings } from 
 type SaveLayerSettings = (settings: Settings, baseRevision?: string) => Promise<LayeredSettings>
 type LayerValues<T> = Record<SettingsLayer, T>
 
+type SettingsSnapshotSource =
+  | { kind: 'load' }
+  | { kind: 'own-save'; layer: SettingsLayer; submitted: Settings }
+
 interface UseLayeredSettingsDraftOptions {
   layer: SettingsLayer
   sourcePrefix: string
@@ -56,7 +60,7 @@ export function useLayeredSettingsDraft({
     window.dispatchEvent(new CustomEvent('nova:settings-updated', { detail: { source: eventSource } }))
   }, [eventSource])
 
-  const applySnapshot = useCallback(async (next: LayeredSettings, shouldNotify = false) => {
+  const applySnapshot = useCallback(async (next: LayeredSettings, source: SettingsSnapshotSource) => {
     const applySequence = applySequenceRef.current + 1
     applySequenceRef.current = applySequence
     const nextBaselines: LayerValues<Settings> = { user: next.user, workspace: next.workspace }
@@ -65,23 +69,32 @@ export function useLayeredSettingsDraft({
     const capturedDrafts = draftsRef.current
     let nextDrafts = nextBaselines
     if (readyRef.current) {
-      const rebaseLayer = (targetLayer: SettingsLayer) => rebaseJSONWithRecovery({
-        resource: 'settings',
-        scope: `${sourcePrefix}:${targetLayer}`,
-        id: targetLayer,
-        baseline: {
-          revision: settingsRevisionForLayer(previousSnapshot, targetLayer),
-          value: capturedBaselines[targetLayer],
-        },
-        local: {
-          revision: settingsRevisionForLayer(previousSnapshot, targetLayer),
-          value: capturedDrafts[targetLayer],
-        },
-        external: {
-          revision: settingsRevisionForLayer(next, targetLayer),
-          value: nextBaselines[targetLayer],
-        },
-      })
+      const rebaseLayer = (targetLayer: SettingsLayer) => {
+        if (source.kind === 'own-save' && source.layer === targetLayer) {
+          return Promise.resolve(rebaseJSONValue(
+            source.submitted,
+            capturedDrafts[targetLayer],
+            nextBaselines[targetLayer],
+          ))
+        }
+        return rebaseJSONWithRecovery({
+          resource: 'settings',
+          scope: `${sourcePrefix}:${targetLayer}`,
+          id: targetLayer,
+          baseline: {
+            revision: settingsRevisionForLayer(previousSnapshot, targetLayer),
+            value: capturedBaselines[targetLayer],
+          },
+          local: {
+            revision: settingsRevisionForLayer(previousSnapshot, targetLayer),
+            value: capturedDrafts[targetLayer],
+          },
+          external: {
+            revision: settingsRevisionForLayer(next, targetLayer),
+            value: nextBaselines[targetLayer],
+          },
+        })
+      }
       const [user, workspace] = await Promise.all([rebaseLayer('user'), rebaseLayer('workspace')])
       nextDrafts = { user, workspace }
     }
@@ -105,7 +118,7 @@ export function useLayeredSettingsDraft({
     setReady(true)
     setSyncVersions((current) => ({ user: current.user + 1, workspace: current.workspace + 1 }))
     setError(null)
-    if (shouldNotify) notifyUpdated()
+    if (source.kind === 'own-save') notifyUpdated()
     return true
   }, [notifyUpdated, sourcePrefix])
 
@@ -115,7 +128,7 @@ export function useLayeredSettingsDraft({
     try {
       const next = await (loadSettings ?? fetchSettings)()
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return null
-      const applied = await applySnapshot(next)
+      const applied = await applySnapshot(next, { kind: 'load' })
       return applied ? next : null
     } catch (cause) {
       if (!mountedRef.current || sequence !== loadSequenceRef.current) return null
@@ -195,8 +208,12 @@ export function useLayeredSettingsDraft({
 
   const saveUser = useCallback((settings: Settings, revision?: string) => saveLayer('user', settings, revision), [saveLayer])
   const saveWorkspace = useCallback((settings: Settings, revision?: string) => saveLayer('workspace', settings, revision), [saveLayer])
-  const applySavedSettings = useCallback(async (next: LayeredSettings) => {
-    await applySnapshot(next, true)
+  const applySavedSettings = useCallback(async (
+    targetLayer: SettingsLayer,
+    next: LayeredSettings,
+    submitted: Settings,
+  ) => {
+    await applySnapshot(next, { kind: 'own-save', layer: targetLayer, submitted })
   }, [applySnapshot])
   const updateSavingLayer = useCallback((targetLayer: SettingsLayer, saving: boolean) => {
     if (!mountedRef.current) return
@@ -217,7 +234,7 @@ export function useLayeredSettingsDraft({
     syncKey: syncVersions.user,
     save: saveUser,
     onSavingChange: (saving) => updateSavingLayer('user', saving),
-    onSaved: applySavedSettings,
+    onSaved: (next, submitted) => applySavedSettings('user', next, submitted),
     onStaleSuccess: async () => { await reload() },
     onError: (message) => handleSaveError('user', message),
   })
@@ -231,7 +248,7 @@ export function useLayeredSettingsDraft({
     syncKey: syncVersions.workspace,
     save: saveWorkspace,
     onSavingChange: (saving) => updateSavingLayer('workspace', saving),
-    onSaved: applySavedSettings,
+    onSaved: (next, submitted) => applySavedSettings('workspace', next, submitted),
     onStaleSuccess: async () => { await reload() },
     onError: (message) => handleSaveError('workspace', message),
   })

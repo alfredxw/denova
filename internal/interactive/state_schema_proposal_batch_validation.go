@@ -16,15 +16,6 @@ func validateActorStateSchemaBatchItemInput(item ActorStateSchemaBatchItem, path
 	}
 	for index, requirement := range item.Requirements {
 		requirementPath := fmt.Sprintf("%s.requirements[%d]", path, index)
-		switch strings.TrimSpace(requirement.EvidenceKind) {
-		case "confirmed", "inferred", "default":
-		case "":
-			issue := actorStateSchemaBatchIssue(item.ItemID, "missing_evidence_kind", requirementPath+".evidence_kind", "evidence_kind 必须是 confirmed、inferred 或 default")
-			return &issue, false
-		default:
-			issue := actorStateSchemaBatchIssue(item.ItemID, "invalid_evidence_kind", requirementPath+".evidence_kind", "evidence_kind 必须是 confirmed、inferred 或 default")
-			return &issue, false
-		}
 		if issue := validateActorStateSchemaBatchValuePolicy(item, requirement, requirementPath, audit); issue != nil {
 			return issue, false
 		}
@@ -55,7 +46,7 @@ func validateActorStateSchemaBatchItemInput(item ActorStateSchemaBatchItem, path
 	}
 	if actorStateSchemaBatchHasWholeActorOps(item.Adaptation) {
 		if _, ok := actorStateSchemaBatchItemValueSource(item); !ok {
-			issue := actorStateSchemaBatchIssue(item.ItemID, "ambiguous_actor_value_source", path+".requirements", "包含整体 Actor 操作的 item 必须只有一个一致的 source/evidence_kind；请拆成多个 item，或改用字段级 actor_ops set")
+			issue := actorStateSchemaBatchIssue(item.ItemID, "ambiguous_actor_value_source", path+".requirements", "包含整体 Actor 操作的 item 必须只有一个一致的 source；请拆成多个 item，或改用字段级 actor_ops set")
 			return &issue, false
 		}
 	}
@@ -91,10 +82,6 @@ func validateActorStateSchemaBatchTemplateOpSources(item ActorStateSchemaBatchIt
 		review := findReview(decision, templateID, fieldID)
 		if review == nil {
 			issue := actorStateSchemaBatchIssue(item.ItemID, "unsourced_adaptation_op", path, fmt.Sprintf("字段操作缺少同一 item 中指向 template=%s field=%s 且 decision=%s 的 requirement", templateID, fieldID, decision))
-			return &issue
-		}
-		if (op.Op == "add" || op.Op == "replace") && op.Field.Default != nil && strings.TrimSpace(review.EvidenceKind) == "inferred" {
-			issue := actorStateSchemaBatchIssue(item.ItemID, "inferred_template_default", path+".field.default", "合理推测的具体 Actor 值不能写成整个模板的通用 default；请改用 initial_actor_ops 或 actor_ops")
 			return &issue
 		}
 		return nil
@@ -163,15 +150,14 @@ func actorStateSchemaBatchItemValueSource(item ActorStateSchemaBatchItem) (Actor
 	for _, requirement := range item.Requirements {
 		kind := strings.TrimSpace(requirement.Source.Kind)
 		id := strings.TrimSpace(requirement.Source.ID)
-		evidenceKind := strings.TrimSpace(requirement.EvidenceKind)
-		key := kind + "\x00" + id + "\x00" + evidenceKind
+		key := kind + "\x00" + id
 		if sourceKey != "" && sourceKey != key {
 			return ActorStateSchemaActorValueSource{}, false
 		}
 		sourceKey = key
 		source = ActorStateSchemaActorValueSource{
 			SourceID: actorStateSchemaBatchSourceIDPrefix + strings.TrimSpace(item.ItemID),
-			ItemID:   strings.TrimSpace(item.ItemID), Source: ActorStateSchemaRequirementSource{Kind: kind, ID: id}, EvidenceKind: evidenceKind,
+			ItemID:   strings.TrimSpace(item.ItemID), Source: ActorStateSchemaRequirementSource{Kind: kind, ID: id},
 		}
 	}
 	return source, sourceKey != ""
@@ -198,7 +184,7 @@ func actorStateSchemaBatchActorFieldValueSource(item ActorStateSchemaBatchItem, 
 		if strings.TrimSpace(requirement.ValuePolicy) != ActorStateSchemaValuePolicyInitialize || normalizeStatePanelActorID(requirement.ActorID) != actorID || normalizeActorStateFieldName(requirement.FieldID) != fieldID {
 			continue
 		}
-		nextKey := strings.TrimSpace(requirement.Source.Kind) + "\x00" + strings.TrimSpace(requirement.Source.ID) + "\x00" + strings.TrimSpace(requirement.EvidenceKind)
+		nextKey := strings.TrimSpace(requirement.Source.Kind) + "\x00" + strings.TrimSpace(requirement.Source.ID)
 		if key != "" && key != nextKey {
 			return ActorStateSchemaActorValueSource{}, false
 		}
@@ -209,7 +195,6 @@ func actorStateSchemaBatchActorFieldValueSource(item ActorStateSchemaBatchItem, 
 			Source: ActorStateSchemaRequirementSource{
 				Kind: strings.TrimSpace(requirement.Source.Kind), ID: strings.TrimSpace(requirement.Source.ID),
 			},
-			EvidenceKind: strings.TrimSpace(requirement.EvidenceKind),
 		}
 	}
 	return source, key != ""
@@ -323,32 +308,21 @@ func actorStateSchemaBatchTargetClaims(adaptation ActorStateSchemaAdaptation, ba
 	return claims
 }
 
-func validateActorStateSchemaBatchActorValueVisibility(itemID string, proposal ActorStateSchemaProposal, target StoryDirectorActorStateSystem, basePath string) *ActorStateSchemaBatchIssue {
-	validate := func(source *ActorStateSchemaActorValueSource, actor ActorStateInitialActor, path string) *ActorStateSchemaBatchIssue {
+func validateActorStateSchemaBatchActorValues(itemID string, proposal ActorStateSchemaProposal, target StoryDirectorActorStateSystem, basePath string) *ActorStateSchemaBatchIssue {
+	validate := func(actor ActorStateInitialActor, path string) *ActorStateSchemaBatchIssue {
 		if len(actor.State) == 0 {
 			return nil
 		}
-		template := actorStateTemplateByID(target, actor.TemplateID)
-		fields := actorStateFieldsByReference(template)
 		for rawFieldID, value := range actor.State {
 			if !actorStateSchemaBatchValueInitialized(value) {
 				issue := actorStateSchemaBatchIssue(itemID, "invalid_actor_value", path+".actor.state."+rawFieldID, "Actor 字段初始化值不能为 null、空字符串或纯空白字符串；无法确定时请使用 value_policy=defer")
 				return &issue
 			}
-			if source == nil || source.EvidenceKind != "inferred" {
-				continue
-			}
-			field, ok := fields[actorStateFieldNameKey(rawFieldID)]
-			if !ok || (field.Visibility != "spoiler" && field.Visibility != "hidden") {
-				continue
-			}
-			issue := actorStateSchemaBatchIssue(itemID, "inferred_secret_value", path+".actor.state."+rawFieldID, fmt.Sprintf("inferred Actor 值不能写入 %s 字段 %s", field.Visibility, actorStateFieldID(field)))
-			return &issue
 		}
 		return nil
 	}
 	for index, op := range proposal.Adaptation.InitialActorOps {
-		if issue := validate(op.ValueSource, op.Actor, fmt.Sprintf("%s.adaptation.initial_actor_ops[%d]", basePath, index)); issue != nil {
+		if issue := validate(op.Actor, fmt.Sprintf("%s.adaptation.initial_actor_ops[%d]", basePath, index)); issue != nil {
 			return issue
 		}
 	}
@@ -372,16 +346,9 @@ func validateActorStateSchemaBatchActorValueVisibility(itemID string, proposal A
 				issue := actorStateSchemaBatchIssue(itemID, "invalid_actor_value", fmt.Sprintf("%s.adaptation.actor_ops[%d].value", basePath, index), err.Error())
 				return &issue
 			}
-			if op.ValueSource == nil || op.ValueSource.EvidenceKind != "inferred" {
-				continue
-			}
-			if exists && (field.Visibility == "spoiler" || field.Visibility == "hidden") {
-				issue := actorStateSchemaBatchIssue(itemID, "inferred_secret_value", fmt.Sprintf("%s.adaptation.actor_ops[%d].value", basePath, index), fmt.Sprintf("inferred Actor 值不能写入 %s 字段 %s", field.Visibility, actorStateFieldID(field)))
-				return &issue
-			}
 			continue
 		}
-		if issue := validate(op.ValueSource, op.Actor, fmt.Sprintf("%s.adaptation.actor_ops[%d]", basePath, index)); issue != nil {
+		if issue := validate(op.Actor, fmt.Sprintf("%s.adaptation.actor_ops[%d]", basePath, index)); issue != nil {
 			return issue
 		}
 	}

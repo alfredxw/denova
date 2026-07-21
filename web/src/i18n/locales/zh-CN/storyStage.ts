@@ -33,7 +33,6 @@ const storyStage = {
   'storyStage.state.group.overview': '概览',
   'storyStage.state.group.details': '详情',
   'storyStage.state.group.holdings': '持有与资源',
-  'storyStage.state.group.spoiler': '隐藏信息',
   'storyStage.state.metricProgress': '{{label}}：当前 {{value}}，范围 {{min}} 到 {{max}}',
   'storyStage.state.actorEmpty': '该角色暂无可见状态字段',
   'storyStage.state.worldEmpty': '暂无可见世界状态',

@@ -128,6 +128,14 @@ export function usePersistedUserSettings<TDefaults extends PersistedStringSettin
         if (!pending || pending.mutationID > request.maxMutationID || pending.value !== submittedValue) continue
         pendingChangesRef.current.delete(key)
       }
+      for (const [key, pending] of pendingChangesRef.current) {
+        if (!Object.prototype.hasOwnProperty.call(request.changes, key)) continue
+        const savedUser = result.snapshot.user
+        const savedValuePresent = Object.prototype.hasOwnProperty.call(savedUser, key)
+        pending.baselineUserPresent = savedValuePresent
+        pending.baselineUserValue = savedValuePresent ? savedUser[key] as string | undefined : undefined
+        pending.baseRevision = result.snapshot.revisions?.user
+      }
       settleMutationsThrough(request.maxMutationID, true)
 
       snapshotRef.current = result.snapshot

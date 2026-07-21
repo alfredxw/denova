@@ -110,12 +110,19 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	stateSchemaPolicy := cloneStoryStateSchemaPolicy(req.StateSchemaPolicy)
+	directorRunPolicy := cloneStoryDirectorRunPolicy(req.DirectorRunPolicy)
+	if directorRunPolicy != nil {
+		if err := ValidateStoryDirectorRunPolicy(*directorRunPolicy); err != nil {
+			return StorySummary{}, err
+		}
+	}
 	story := StorySummary{
 		ID:                newID("st"),
 		Title:             title,
 		Origin:            strings.TrimSpace(req.Origin),
 		StoryTellerID:     strings.TrimSpace(req.StoryTellerID),
 		StoryDirectorID:   NormalizeStoryDirectorID(req.StoryDirectorID),
+		DirectorRunPolicy: cloneStoryDirectorRunPolicy(directorRunPolicy),
 		ModuleRefs:        cloneStoryDirectorModuleRefs(req.ModuleRefs),
 		ReplyTargetChars:  normalizeStoryReplyTargetChars(req.ReplyTargetChars),
 		ChoiceCount:       normalizeStoryChoiceCount(req.ChoiceCount),
@@ -144,6 +151,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		Origin:            story.Origin,
 		StoryTellerID:     story.StoryTellerID,
 		StoryDirectorID:   story.StoryDirectorID,
+		DirectorRunPolicy: cloneStoryDirectorRunPolicy(story.DirectorRunPolicy),
 		ModuleRefs:        cloneStoryDirectorModuleRefs(story.ModuleRefs),
 		ReplyTargetChars:  story.ReplyTargetChars,
 		ChoiceCount:       story.ChoiceCount,
@@ -293,6 +301,13 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	} else if req.ModuleRefs != nil {
 		meta.ModuleRefs = cloneStoryDirectorModuleRefs(req.ModuleRefs)
 	}
+	if req.DirectorRunPolicy != nil {
+		policy := NormalizeStoryDirectorRunPolicy(*req.DirectorRunPolicy)
+		if err := ValidateStoryDirectorRunPolicy(policy); err != nil {
+			return StorySummary{}, err
+		}
+		meta.DirectorRunPolicy = &policy
+	}
 	if req.ReplyTargetChars != nil {
 		if *req.ReplyTargetChars <= 0 {
 			return StorySummary{}, fmt.Errorf("互动故事单轮目标字数必须大于 0")
@@ -384,6 +399,7 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 			index.Stories[i].Origin = meta.Origin
 			index.Stories[i].StoryTellerID = meta.StoryTellerID
 			index.Stories[i].StoryDirectorID = normalizedStoryDirectorID(meta.StoryDirectorID)
+			index.Stories[i].DirectorRunPolicy = cloneStoryDirectorRunPolicy(meta.DirectorRunPolicy)
 			index.Stories[i].ModuleRefs = cloneStoryDirectorModuleRefs(meta.ModuleRefs)
 			index.Stories[i].ReplyTargetChars = meta.ReplyTargetChars
 			index.Stories[i].ChoiceCount = meta.ChoiceCount
@@ -1459,6 +1475,7 @@ func validateStoryChoiceCount(value int) error {
 
 func normalizeStorySummary(story StorySummary) StorySummary {
 	story.StoryDirectorID = normalizedStoryDirectorID(story.StoryDirectorID)
+	story.DirectorRunPolicy = cloneStoryDirectorRunPolicy(story.DirectorRunPolicy)
 	story.ReplyTargetChars = normalizeStoryReplyTargetChars(story.ReplyTargetChars)
 	story.ChoiceCount = normalizeStoryChoiceCount(story.ChoiceCount)
 	story.Opening = normalizeStoryOpeningConfig(story.Opening)
@@ -1475,6 +1492,7 @@ func normalizeStorySummary(story StorySummary) StorySummary {
 func normalizeStoryMeta(meta StoryMeta) StoryMeta {
 	legacyFixedSchema := meta.StateSchemaPolicy == nil
 	meta.StoryDirectorID = normalizedStoryDirectorID(meta.StoryDirectorID)
+	meta.DirectorRunPolicy = cloneStoryDirectorRunPolicy(meta.DirectorRunPolicy)
 	meta.ReplyTargetChars = normalizeStoryReplyTargetChars(meta.ReplyTargetChars)
 	meta.ChoiceCount = normalizeStoryChoiceCount(meta.ChoiceCount)
 	meta.Opening = normalizeStoryOpeningConfig(meta.Opening)
@@ -1505,6 +1523,14 @@ func cloneStoryDirectorModuleRefs(refs *StoryDirectorModuleRefs) *StoryDirectorM
 	}
 	cloned := NormalizeStoryDirectorModuleRefs(*refs)
 	cloned.EventPackageIDs = append([]string(nil), cloned.EventPackageIDs...)
+	return &cloned
+}
+
+func cloneStoryDirectorRunPolicy(policy *StoryDirectorRunPolicy) *StoryDirectorRunPolicy {
+	if policy == nil {
+		return nil
+	}
+	cloned := NormalizeStoryDirectorRunPolicy(*policy)
 	return &cloned
 }
 

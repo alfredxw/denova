@@ -262,9 +262,11 @@ export function useEditorDraftPersistence({
           }
           let response: EditorSaveResponse | undefined
           let superseded = false
+          let rebasedAgainstNewerBaseline = false
           for (let attempt = 0; attempt < MAX_EDITOR_REVISION_SAVE_ATTEMPTS; attempt += 1) {
             const confirmed = confirmedSnapshotsRef.current.get(key)
             if (confirmed && confirmed.revision !== request.baseRevision) {
+              rebasedAgainstNewerBaseline = true
               const merged = rebaseTextWithConflicts(request.baseContent, request.text, confirmed.content)
               if (merged.conflicts.length > 0) {
                 await preserveEditorConflict({
@@ -303,6 +305,7 @@ export function useEditorDraftPersistence({
                 content: error.latest.content,
                 revision: error.latest.revision,
               })
+              rebasedAgainstNewerBaseline = true
               if (queuedRequestsRef.current.get(key) !== request) {
                 superseded = true
                 break
@@ -342,6 +345,14 @@ export function useEditorDraftPersistence({
             revision: nextRevision,
           })
           const queuedAfterSave = queuedRequestsRef.current.get(key)
+          if (queuedAfterSave && queuedAfterSave !== request && !rebasedAgainstNewerBaseline) {
+            // This newer editor snapshot was created after the submitted text.
+            // Advance its ancestor directly to our acknowledged save so the next
+            // request inherits the revision without treating that response as an
+            // external concurrent edit.
+            queuedAfterSave.baseContent = request.text
+            queuedAfterSave.baseRevision = nextRevision
+          }
           if (queuedAfterSave === request || queuedAfterSave?.text === request.text) {
             queuedRequestsRef.current.delete(key)
           }

@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 游戏模式新故事开局新增故事级后台导演运行策略：支持“按需自动（推荐）”“仅手动”和“每 X 回合自动”；自动模式会在首回合落盘后先初始化规划，固定间隔从首回合起按配置节奏运行，手动模式仍可从导演台显式触发。
+- New Game Mode stories now have a story-scoped Background Director schedule with Automatic When Needed (recommended), Manual Only, and Automatic Every X Turns modes. Automatic modes initialize planning after the first persisted turn, interval mode follows its configured cadence from that opening turn, and manual mode remains explicitly runnable from the Director backstage.
 - 上下文分析器新增全上下文、SystemPrompt 区、消息组与来源片段的一键复制；游戏模式的“本轮互动指令与动态上下文”会在保留模型实际收到的完整原文同时，继续按本轮行动、导演本轮规则、`agent-brief.md`、`StoryDirector`、Actor 状态手册、动态策略等来源展开。
 - Context Analysis now supports one-click copying for the full context, the SystemPrompt section, message groups, and individual source parts. In Game Mode, the current-turn instruction and dynamic context retain the exact model-visible message while expanding into sources such as the current action, turn-specific director rules, `agent-brief.md`, `StoryDirector`, the Actor state guide, and dynamic strategy prompts.
 - 游戏模式的故事线选择器新增批量删除：可在同一面板中多选或全选故事线，查看受影响清单后统一确认删除；操作支持中英文、明暗主题和窄屏布局。
@@ -25,6 +27,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 游戏模式简化 Actor State Schema：字段与特质移除 `visibility`，旧数据中的 `visible` / `hidden` / `spoiler` 会在读取时忽略，所有历史状态均按普通可见信息进入状态面板与 Agent 上下文；结构初始化同时移除 `evidence_kind`，继续保留 `source`、`requirement` 与 `reason`。Beta 不兼容：原先依赖 `hidden` 隐藏的状态将直接可见，幕后规划应维护在 Director 私有文件中。
+- Game Mode simplifies the Actor State Schema by removing `visibility` from fields and traits. Legacy `visible`, `hidden`, and `spoiler` values are ignored on read, so all historical state is treated as ordinary visible information in the state panel and Agent context. Schema initialization also removes `evidence_kind` while retaining `source`, `requirement`, and `reason`. Beta breaking: state previously hidden with `hidden` becomes directly visible; private future planning belongs in the Director's private files.
 - 游戏模式输入栏的末端操作统一按“模型选择 → 行动选择 → 发送”排列，让模型入口固定在左、行动选择位于中间，并与写作模式的模型优先顺序保持一致。
 - Game Mode composer actions now follow Model → Choices → Send, keeping model selection on the left, action choices in the middle, and the model-first order consistent with Writing Mode.
 - 游戏模式状态面板的 Object 字段不再把嵌套对象与数组拼成一行文字；叶子项改用紧凑的 `key: value` 列表，只有下一层对象才缩进，长内容可使用完整字段宽度换行，并保持明暗主题一致。
@@ -68,8 +72,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- 游戏模式的 `submit_interactive_turn` 现在会在冻结 Schema 校验前，将可无歧义解释的数字、布尔、object 和 list 字符串编码规范为原生 JSON，并从同名对象记录 ID 补齐模板要求的名称字段；冲突或模糊值仍会原子拒绝。一次提交中的独立状态错误会合并到同一回执并精确定位 `initial_state` 字段，工具说明也改用原生 JSON 示例，避免弱模型逐字段重试。
-- Game Mode's `submit_interactive_turn` now normalizes unambiguous string encodings of numbers, booleans, objects, and lists into native JSON before frozen-schema validation, and derives required record-name fields from identical object-key IDs; conflicting or ambiguous values remain atomically rejected. Independent state errors from one submission are returned together with precise `initial_state` paths, and the tool guide now uses native JSON examples to avoid field-by-field retries from weaker models.
+- 游戏模式的 `submit_interactive_turn` 现在会在冻结 Schema 校验前，将可无歧义解释的数字、布尔、object 和 list 字符串编码规范为原生 JSON；冲突或模糊值仍会原子拒绝，Object 内部记录则保持原样。一次提交中的独立状态错误会合并到同一回执并精确定位 `initial_state` 字段，工具说明也改用原生 JSON 示例，避免弱模型逐字段重试。
+- Game Mode's `submit_interactive_turn` now normalizes unambiguous string encodings of numbers, booleans, objects, and lists into native JSON before frozen-schema validation. Conflicting or ambiguous encodings remain atomically rejected, while entries inside Object values are preserved as submitted. Independent state errors from one submission are returned together with precise `initial_state` paths, and the tool guide uses native JSON examples to avoid field-by-field retries from weaker models.
 - 游戏模式切换故事线时会将当前选择写入工作区故事索引，并在加载时优先采用该共享值；同一工作区从其他浏览器打开时会恢复最后选择的故事线，不再被各浏览器独立的本地缓存覆盖。
 - Switching stories in Game Mode now persists the current selection in the workspace story index and treats that shared value as authoritative on load. Opening the same workspace in another browser restores the last selected story instead of being overridden by per-browser local cache.
 - 状态面板预览不再固定优先“概览/持有”或“面板/状态”，而是严格展示当前排序最前的两个分区；展开全部继续沿用同一顺序，不会改变用户的布局配置。
@@ -80,8 +84,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Message lists now fully disable automatic bottom-following and size-growth scrolling while no output is actively streaming, so expanding, collapsing, or switching tabs in the state panel no longer jumps to the bottom and then snaps back. Streaming follow, one-shot positioning after session switches, and explicit Back to Bottom actions retain their existing behavior.
 - 写作模式创作 Agent 的运行中思考与工具轨迹改为默认收起并保留动态状态提示，仍可按需完整展开；流式消息去重与展示模型现在复用未变化的历史消息引用，避免超长 thinking 持续挂载并触发整段历史 Markdown 重渲染导致浏览器失去响应。游戏模式保留运行中实时展开行为，所有 thinking 与工具内容均未截断。
 - In Writing Mode, active reasoning and tool traces now stay collapsed by default with a live status indicator while remaining fully expandable on demand. Streaming deduplication and view projection preserve unchanged historical message identities, preventing very long thinking output from staying mounted and repeatedly re-rendering the entire Markdown history. Game Mode retains its live expanded traces, and no thinking or tool content is truncated.
-- 状态面板中的名称型记录现在统一“名称即 ID”：新建 Actor、技能、物品、任务、地点与势力直接使用故事语言中的名称，不再生成英文、拼音或 slug 标识；回合提交会拒绝 Actor `actor_id/name` 或对象记录键/名称不一致的数据并要求重试。已有故事状态不会被自动改写，后续引用仍逐字使用现有 ID。
-- Named state-panel records now consistently use the visible name as the ID: newly created Actors, abilities, items, quests, locations, and factions use the story-language name directly instead of an English, transliterated, or slug identifier. Turn submission rejects mismatched Actor `actor_id`/`name` or object-key/name pairs and requests a retry. Existing story state is not rewritten automatically, and existing IDs remain exact references.
+- 状态面板中的名称型记录统一直接使用可读的 map key 作为 ID，不再生成英文、拼音或 slug 标识；Object 字段只校验根值为对象，不再要求每条记录必须是对象、补写重复的名称字段或校验键名与内部名称一致。已有故事状态不会被自动改写，提示词仍引导 Agent 使用稳定、可读的键。
+- Named state-panel records use their readable map keys directly as IDs instead of generating English, transliterated, or slug identifiers. Object fields validate only that the root value is an object; individual entries no longer have to be objects, receive duplicate name fields, or match an inner name. Existing story state is not rewritten, while prompts continue guiding the Agent toward stable, readable keys.
 - 游戏模式正文后的状态面板会预先挂载全部 Actor 与世界页签内容，切换页签不再因首次加载重置消息区滚动；展开全部会保持预览分区在原位并将其余分区追加在后，切换页签、展开或折叠等直接查看操作也不会再触发自动锁底。
 - The state panel after Game Mode prose now mounts every Actor and World tab up front, preventing first-load scroll resets when switching tabs. Expand All keeps preview sections in place and appends the remaining sections, while direct viewing actions such as switching, expanding, or collapsing no longer trigger bottom-following.
 - 游戏新故事开局会按独立变化边界审查状态结构，氧气、完整度、警戒值和倒计时等资源不再被通用叙事字段错误覆盖；结构工具在一次 finalize 回执中给出精确的初值清单，首个 `submit_interactive_turn` 会原子校验所有可写初始字段均有具体值。开局结构项若误用可唯一映射的初始 Actor ID，会安全归一化并始终保存规范 Template ID，避免 `story` / `story_context` 混淆触发无意义重试。

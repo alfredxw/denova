@@ -159,10 +159,9 @@ func TestStoryFreezesChineseActorStateFieldIDs(t *testing.T) {
 			ID:   "protagonist",
 			Name: "主角",
 			Fields: []ActorStateField{{
-				Name:       "当前可用能力",
-				Type:       "list",
-				Default:    []any{},
-				Visibility: "visible",
+				Name:    "当前可用能力",
+				Type:    "list",
+				Default: []any{},
 			}},
 		}},
 		InitialActors: []ActorStateInitialActor{{ID: "protagonist", Name: "主角", TemplateID: "protagonist"}},
@@ -236,7 +235,7 @@ func TestActorStateFieldIDSupportsNonPathPunctuation(t *testing.T) {
 	system := StoryDirectorActorStateSystem{
 		Templates: []ActorStateTemplate{{
 			ID:     "protagonist",
-			Fields: []ActorStateField{{Name: fieldID, Type: "string", Visibility: "visible"}},
+			Fields: []ActorStateField{{Name: fieldID, Type: "string"}},
 		}},
 		InitialActors: []ActorStateInitialActor{{ID: "protagonist", TemplateID: "protagonist"}},
 	}

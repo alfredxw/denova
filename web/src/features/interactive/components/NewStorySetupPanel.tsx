@@ -1,4 +1,4 @@
-import { ChevronDown, GitBranch, Image, Loader2, Lock, Package, Scale, Sparkles, UserRound, WandSparkles } from 'lucide-react'
+import { ChevronDown, Clock3, GitBranch, Image, Loader2, Lock, MousePointerClick, Package, Scale, Sparkles, UserRound, WandSparkles, Zap } from 'lucide-react'
 import type { ElementType } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { cn } from '@/lib/utils'
 import { getActorStates, getEventPackages, getRuleSystems } from '../api'
 import { DEFAULT_INTERACTIVE_CHOICE_COUNT, DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, MAX_INTERACTIVE_CHOICE_COUNT, MIN_INTERACTIVE_CHOICE_COUNT, type StoryCreateInput } from '../opening'
-import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryStateSchemaMode, StorySummary, Teller } from '../types'
+import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunMode, StoryDirectorRunPolicy, StoryStateSchemaMode, StorySummary, Teller } from '../types'
 
 interface NewStorySetupPanelProps {
   stories: StorySummary[]
@@ -40,6 +40,9 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
   const [choiceCount, setChoiceCount] = useState(String(story?.choice_count || DEFAULT_INTERACTIVE_CHOICE_COUNT))
   const [moduleRefs, setModuleRefs] = useState<StoryDirectorModuleRefs>(() => ({ ...(story?.module_refs || initialDirector?.module_refs || {}) }))
   const [stateSchemaMode, setStateSchemaMode] = useState<StoryStateSchemaMode>(story?.state_schema_policy?.mode || 'adapt_template')
+  const initialRunPolicy = story?.director_run_policy || defaultDirectorRunPolicy(initialDirector)
+  const [directorRunMode, setDirectorRunMode] = useState<StoryDirectorRunMode>(initialRunPolicy.mode)
+  const [directorIntervalTurns, setDirectorIntervalTurns] = useState(String(initialRunPolicy.interval_turns || 3))
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
   const [moduleCatalog, setModuleCatalog] = useState<DirectorModuleCatalog>({ eventPackages: [], ruleSystems: [], actorStates: [] })
@@ -58,8 +61,11 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
 
   const selectDirector = (id: string) => {
     const next = directors.find((item) => item.id === id)
+    const nextRunPolicy = defaultDirectorRunPolicy(next)
     setDirectorId(id)
     setModuleRefs({ ...(next?.module_refs || {}) })
+    setDirectorRunMode(nextRunPolicy.mode)
+    setDirectorIntervalTurns(String(nextRunPolicy.interval_turns || 3))
   }
   const submit = async () => {
     if (creating) return
@@ -69,6 +75,8 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
       const tellerID = moduleRefs.narrative_style_disabled ? 'classic' : moduleRefs.narrative_style_id || tellers[0]?.id || 'classic'
       const normalizedChoiceCount = parseChoiceCount(choiceCount)
       if (normalizedChoiceCount === null) throw new Error(t('storyPicker.choiceCountError'))
+      const directorRunPolicy = buildDirectorRunPolicy(directorRunMode, directorIntervalTurns)
+      if (!directorRunPolicy) throw new Error(t('storyPicker.setup.directorRun.intervalError'))
       const selectedActorStateID = moduleRefs.actor_state_id || director?.module_refs?.actor_state_id
       const submittedModuleRefs: StoryDirectorModuleRefs = {
         ...moduleRefs,
@@ -80,6 +88,7 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
         origin: origin.trim(),
         story_teller_id: tellerID,
         story_director_id: directorId,
+        director_run_policy: directorRunPolicy,
         reply_target_chars: normalizeReplyTargetChars(replyTargetChars),
         choice_count: normalizedChoiceCount,
         module_refs: submittedModuleRefs,
@@ -117,6 +126,8 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
             <Field label={t('storyPicker.choiceCount')} hint={t('storyPicker.choiceCountHint')}><Input type="number" min={MIN_INTERACTIVE_CHOICE_COUNT} max={MAX_INTERACTIVE_CHOICE_COUNT} value={choiceCount} onChange={(event) => setChoiceCount(event.target.value)} className="nova-field" /></Field>
           </div>
 
+          <DirectorRunPolicyCard mode={directorRunMode} intervalTurns={directorIntervalTurns} onModeChange={setDirectorRunMode} onIntervalTurnsChange={setDirectorIntervalTurns} t={t} />
+
           <section className="border-t border-[var(--nova-border)] pt-5">
             <div><h3 className="text-sm font-medium text-[var(--nova-text)]">{t('storyPicker.setup.modules')}</h3><p className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('storyPicker.setup.modulesHint', { director: director?.name || directorId })}</p></div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -139,6 +150,22 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 function normalizeReplyTargetChars(value: string) { const parsed = Number(value); return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS }
 function parseChoiceCount(value: string) { const parsed = Number(value); return Number.isInteger(parsed) && parsed >= MIN_INTERACTIVE_CHOICE_COUNT && parsed <= MAX_INTERACTIVE_CHOICE_COUNT ? parsed : null }
 function defaultStoryTitle(stories: StorySummary[], t: (key: string, options?: Record<string, unknown>) => string) { return stories.length === 0 ? t('storyPicker.firstTitle') : t('storyPicker.numberedTitle', { number: stories.length + 1 }) }
+
+function defaultDirectorRunPolicy(director?: StoryDirector): StoryDirectorRunPolicy {
+  switch (director?.strategy?.director_agent_mode) {
+    case 'every_turn': return { mode: 'interval', interval_turns: 1 }
+    case 'off': return { mode: 'manual' }
+    case 'triggered':
+    default: return { mode: 'on_demand' }
+  }
+}
+
+function buildDirectorRunPolicy(mode: StoryDirectorRunMode, intervalTurns: string): StoryDirectorRunPolicy | null {
+  if (mode !== 'interval') return { mode }
+  const parsed = Number(intervalTurns)
+  if (!Number.isInteger(parsed) || parsed <= 0) return null
+  return { mode, interval_turns: parsed }
+}
 
 type ModuleOptionMap = Record<keyof StoryDirectorModuleRefs, Array<{ id: string; label: string }>>
 interface DirectorModuleCatalog {
@@ -166,6 +193,32 @@ const stateSchemaModes: Array<{ mode: StoryStateSchemaMode; icon: ElementType }>
   { mode: 'fixed_template', icon: Lock },
   { mode: 'generate', icon: WandSparkles },
 ]
+
+const directorRunModes: Array<{ mode: StoryDirectorRunMode; icon: ElementType }> = [
+  { mode: 'on_demand', icon: Zap },
+  { mode: 'manual', icon: MousePointerClick },
+  { mode: 'interval', icon: Clock3 },
+]
+
+function DirectorRunPolicyCard({ mode, intervalTurns, onModeChange, onIntervalTurnsChange, t }: { mode: StoryDirectorRunMode; intervalTurns: string; onModeChange: (mode: StoryDirectorRunMode) => void; onIntervalTurnsChange: (value: string) => void; t: (key: string, options?: Record<string, unknown>) => string }) {
+  return (
+    <section className="border-t border-[var(--nova-border)] pt-5" aria-labelledby="director-run-policy-title">
+      <div><h3 id="director-run-policy-title" className="text-sm font-medium text-[var(--nova-text)]">{t('storyPicker.setup.directorRun.title')}</h3><p className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('storyPicker.setup.directorRun.description')}</p></div>
+      <RadioGroup value={mode} onValueChange={(value) => onModeChange(value as StoryDirectorRunMode)} className="mt-3 grid gap-2.5 md:grid-cols-3" aria-label={t('storyPicker.setup.directorRun.title')}>
+        {directorRunModes.map(({ mode: optionMode, icon: Icon }) => {
+          const selected = mode === optionMode
+          return (
+            <label key={optionMode} htmlFor={`director-run-${optionMode}`} className={cn('relative flex cursor-pointer items-start gap-2.5 rounded-[10px] border p-3 transition-colors', selected ? 'border-[var(--nova-field-focus-border)] bg-[var(--nova-surface)]' : 'border-[var(--nova-border)] bg-[var(--nova-surface-2)] hover:bg-[var(--nova-surface)]/60')}>
+              <RadioGroupItem id={`director-run-${optionMode}`} value={optionMode} className="mt-0.5 border-[var(--nova-border)] text-[var(--nova-accent)]" />
+              <span className="min-w-0"><span className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-[var(--nova-text)]"><Icon className="size-3.5 text-[var(--nova-text-muted)]" />{t(`storyPicker.setup.directorRun.${optionMode}.title`)}{optionMode === 'on_demand' ? <span className="rounded-full bg-[var(--nova-accent)]/10 px-1.5 py-0.5 text-[9px] font-medium text-[var(--nova-accent)]">{t('storyPicker.setup.directorRun.recommended')}</span> : null}</span><span className="mt-1 block text-[10px] leading-4 text-[var(--nova-text-faint)]">{t(`storyPicker.setup.directorRun.${optionMode}.description`)}</span></span>
+            </label>
+          )
+        })}
+      </RadioGroup>
+      {mode === 'interval' ? <Field label={t('storyPicker.setup.directorRun.intervalLabel')} hint={t('storyPicker.setup.directorRun.intervalHint')}><Input aria-label={t('storyPicker.setup.directorRun.intervalLabel')} type="number" min={1} step={1} value={intervalTurns} onChange={(event) => onIntervalTurnsChange(event.target.value)} className="nova-field mt-3 sm:max-w-xs" /></Field> : null}
+    </section>
+  )
+}
 
 function StateSchemaPolicyCard({ mode, onModeChange, refs, directorRefs, options, onRefsChange, t }: { mode: StoryStateSchemaMode; onModeChange: (mode: StoryStateSchemaMode) => void; refs: StoryDirectorModuleRefs; directorRefs: StoryDirectorModuleRefs; options: Array<{ id: string; label: string }>; onRefsChange: React.Dispatch<React.SetStateAction<StoryDirectorModuleRefs>>; t: (key: string, options?: Record<string, unknown>) => string }) {
   const directorID = directorRefs.actor_state_id || ''

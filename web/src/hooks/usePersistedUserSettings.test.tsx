@@ -174,6 +174,62 @@ describe('usePersistedUserSettings', () => {
       expect(await middleSave).toBe(true)
       expect(await latestSave).toBe(true)
     })
+    expect(preserveAutosaveConflict).not.toHaveBeenCalled()
+  })
+
+  it('still archives a different setting changed externally while its local edit waits', async () => {
+    const initial = snapshot({
+      user: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
+      effective: { ide_story_teller_id: 'classic', ide_image_preset_id: 'game-cg' },
+      revisions: { user: 'r1' },
+    })
+    const external = snapshot({
+      user: { ide_story_teller_id: 'classic', ide_image_preset_id: 'cinematic' },
+      effective: { ide_story_teller_id: 'classic', ide_image_preset_id: 'cinematic' },
+      revisions: { user: 'r2' },
+    })
+    const firstSaved = snapshot({
+      user: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'cinematic' },
+      effective: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'cinematic' },
+      revisions: { user: 'r3' },
+    })
+    const finalSaved = snapshot({
+      user: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'illustrated' },
+      effective: { ide_story_teller_id: 'slow-burn', ide_image_preset_id: 'illustrated' },
+      revisions: { user: 'r4' },
+    })
+    let current = initial
+    const firstUpdate = deferred<LayeredSettings>()
+    vi.mocked(fetchSettings).mockImplementation(async () => current)
+    vi.mocked(updateUserSettings)
+      .mockImplementationOnce(() => firstUpdate.promise)
+      .mockImplementationOnce(async () => finalSaved)
+
+    const { result } = renderHook(() => usePersistedUserSettings({ workspace: '/book', defaults }))
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    vi.useFakeTimers()
+
+    let firstOperation!: Promise<boolean>
+    act(() => { firstOperation = result.current.persist('ide_story_teller_id', 'slow-burn') })
+    current = external
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(updateUserSettings).toHaveBeenCalledOnce()
+
+    let secondOperation!: Promise<boolean>
+    act(() => { secondOperation = result.current.persist('ide_image_preset_id', 'illustrated') })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    current = firstSaved
+    await act(async () => {
+      firstUpdate.resolve(firstSaved)
+      expect(await firstOperation).toBe(true)
+      expect(await secondOperation).toBe(true)
+    })
+
+    expect(preserveAutosaveConflict).toHaveBeenCalledWith(expect.objectContaining({
+      conflict_paths: [['ide_image_preset_id']],
+      base: { revision: 'r1', value: expect.objectContaining({ ide_image_preset_id: 'game-cg' }) },
+      external: { revision: 'r3', value: expect.objectContaining({ ide_image_preset_id: 'cinematic' }) },
+    }))
   })
 
   it('keeps an after-delay user preference when the stable owner changes workspace', async () => {

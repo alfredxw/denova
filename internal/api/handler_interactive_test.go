@@ -402,8 +402,8 @@ func TestInteractiveActorTraitRollAndInitialStateAPI(t *testing.T) {
 			}},
 			TraitPools: []interactive.ActorTraitPool{{
 				ID: "origin", Name: "出身", Traits: []interactive.ActorTraitDefinition{
-					{ID: "wanderer", Name: "旅人", Weight: 1, Visibility: "visible"},
-					{ID: "scholar", Name: "学者", Weight: 1, Visibility: "visible"},
+					{ID: "wanderer", Name: "旅人", Weight: 1},
+					{ID: "scholar", Name: "学者", Weight: 1},
 				},
 			}},
 			InitialActors: []interactive.ActorStateInitialActor{{ID: "protagonist", Name: "主角", TemplateID: "protagonist", Role: "protagonist"}},

@@ -22,15 +22,15 @@ func defaultActorStatePresetSpec() actorStatePresetSpec {
 
 func protagonistStateTemplate(spec actorStatePresetSpec) ActorStateTemplate {
 	fields := []ActorStateField{
-		textStateField("identity.name", "姓名", "主角姓名；尚未确定时保持空白，确认后只在正式改名时更新。", "visible", "人物设定", "inline"),
-		textStateField("identity.profile", "基本身份", "合并记录年龄、性别、职业、种族、社会身份等当前故事确实使用的信息。", "visible", "人物设定", "block"),
-		textStateField("identity.appearance_style", "外貌与装扮", "合并记录有辨识度的外貌、衣着、装备外观和当前伪装；忽略无承接价值的临时描写。", "spoiler", "人物设定", "block"),
-		textStateField("identity.character_background", "性格与背景", "记录会持续影响选择的性格倾向与已确认背景，不复述回合经历。", "spoiler", "人物设定", "block"),
+		textStateField("identity.name", "姓名", "主角姓名；尚未确定时保持空白，确认后只在正式改名时更新。", "人物设定", "inline"),
+		textStateField("identity.profile", "基本身份", "合并记录年龄、性别、职业、种族、社会身份等当前故事确实使用的信息。", "人物设定", "block"),
+		textStateField("identity.appearance_style", "外貌与装扮", "合并记录有辨识度的外貌、衣着、装备外观和当前伪装；忽略无承接价值的临时描写。", "人物设定", "block"),
+		textStateField("identity.character_background", "性格与背景", "记录会持续影响选择的性格倾向与已确认背景，不复述回合经历。", "人物设定", "block"),
 	}
 	fields = append(fields, actorPanelAndStateFields(spec)...)
-	fields = append(fields, textStateField("current.situation", "当前处境", "记录当前优势、危险、限制和直接压力；具体地点由故事状态维护。", "visible", "状态", "block"))
+	fields = append(fields, textStateField("current.situation", "当前处境", "记录当前优势、危险、限制和直接压力；具体地点由故事状态维护。", "状态", "block"))
 	fields = append(fields, spec.ProtagonistFields...)
-	fields = append(fields, actorOwnedRecordFields(spec, 12, 16, 12, "visible", "")...)
+	fields = append(fields, actorOwnedRecordFields(spec, 12, 16, 12, "")...)
 	return actorStatePresetTemplate(
 		DefaultActorID,
 		"主角状态表",
@@ -41,20 +41,20 @@ func protagonistStateTemplate(spec actorStatePresetSpec) ActorStateTemplate {
 
 func importantCharacterStateTemplate(spec actorStatePresetSpec) ActorStateTemplate {
 	fields := []ActorStateField{
-		textStateField("identity.profile", "基本身份", "合并记录年龄、性别、职业、种族、组织与公开身份等有用信息。", "visible", "人物设定", "block"),
-		textStateField("identity.appearance_style", "外貌与装扮", "合并记录辨识特征、常见装束、装备外观和当前伪装。", "spoiler", "人物设定", "block"),
-		textStateField("identity.character_background", "性格与背景", "记录稳定性格、关键来历和会持续影响行为的背景。", "spoiler", "人物设定", "block"),
-		textStateField("current.presence_location", "出场与位置", "用一句话记录在场、离场、失联、死亡等存续状态及当前位置或最后确认位置。", "visible", "状态", "inline"),
+		textStateField("identity.profile", "基本身份", "合并记录年龄、性别、职业、种族、组织与公开身份等有用信息。", "人物设定", "block"),
+		textStateField("identity.appearance_style", "外貌与装扮", "合并记录辨识特征、常见装束、装备外观和当前伪装。", "人物设定", "block"),
+		textStateField("identity.character_background", "性格与背景", "记录稳定性格、关键来历和会持续影响行为的背景。", "人物设定", "block"),
+		textStateField("current.presence_location", "出场与位置", "用一句话记录在场、离场、失联、死亡等存续状态及当前位置或最后确认位置。", "状态", "inline"),
 	}
 	fields = append(fields, actorPanelAndStateFields(spec)...)
 	fields = append(fields,
-		textStateField("current.goal_situation", "当前目标与处境", "记录已经由行为、对话或设定确认的近期目标、压力、优势与限制，不猜测幕后计划。", "spoiler", "状态", "block"),
-		textStateField("protagonist_relation.summary", "与主角关系", "记录关系类型、当前态度、关系阶段、重要承诺、边界和主要矛盾。", "visible", "主角关系", "block"),
-		favorabilityStateField("protagonist_relation.favorability", "对主角好感度", "该角色对主角的总体情感倾向，不代表信任、服从或恋爱关系。", "visible", "主角关系"),
-		listStateField("knowledge.about_protagonist", "对主角的已知信息", "只列会影响该角色判断或行动、且该角色确实已经得知的信息，最多 6 项。", "spoiler", "主角关系"),
+		textStateField("current.goal_situation", "当前目标与处境", "记录已经由行为、对话或设定确认的近期目标、压力、优势与限制，不猜测幕后计划。", "状态", "block"),
+		textStateField("protagonist_relation.summary", "与主角关系", "记录关系类型、当前态度、关系阶段、重要承诺、边界和主要矛盾。", "主角关系", "block"),
+		favorabilityStateField("protagonist_relation.favorability", "对主角好感度", "该角色对主角的总体情感倾向，不代表信任、服从或恋爱关系。", "主角关系"),
+		listStateField("knowledge.about_protagonist", "对主角的已知信息", "只列会影响该角色判断或行动、且该角色确实已经得知的信息，最多 6 项。", "主角关系"),
 	)
 	fields = append(fields, spec.ImportantCharacterFields...)
-	fields = append(fields, actorOwnedRecordFields(spec, 6, 6, 6, "spoiler", "对主角的关系已由专用字段维护，此处只记录该角色对其他 Actor 或势力的关系。")...)
+	fields = append(fields, actorOwnedRecordFields(spec, 6, 6, 6, "对主角的关系已由专用字段维护，此处只记录该角色对其他 Actor 或势力的关系。")...)
 	return actorStatePresetTemplate(
 		ActorStateImportantCharacterTemplateID,
 		"重要角色状态表",
@@ -65,17 +65,17 @@ func importantCharacterStateTemplate(spec actorStatePresetSpec) ActorStateTempla
 
 func opponentStateTemplate(spec actorStatePresetSpec) ActorStateTemplate {
 	fields := []ActorStateField{
-		textStateField("identity.profile", "类型与外观", "合并记录敌人、怪物、Boss、陷阱或异常实体的类型、身份与辨识特征。", "visible", "威胁", "block"),
-		textStateField("current.lifecycle_location", "存续与位置", "用一句话记录活跃、撤退、被俘、失效、消灭等状态及所在或最后确认位置。", "visible", "威胁", "inline"),
-		textStateFieldWithInstruction("threat.assessment", "威胁态势", "合并记录威胁级别、警戒或追击状态和当前目标。", "visible", "威胁", "block", "使用低、中、高、致命四档：低=通常无需专门准备；中=会造成明确损失；高=需要资源、协作或针对性策略；致命=正面对抗很可能导致死亡或不可逆后果。只有能力、数量、环境或目标发生实质变化时调整。"),
+		textStateField("identity.profile", "类型与外观", "合并记录敌人、怪物、Boss、陷阱或异常实体的类型、身份与辨识特征。", "威胁", "block"),
+		textStateField("current.lifecycle_location", "存续与位置", "用一句话记录活跃、撤退、被俘、失效、消灭等状态及所在或最后确认位置。", "威胁", "inline"),
+		textStateFieldWithInstruction("threat.assessment", "威胁态势", "合并记录威胁级别、警戒或追击状态和当前目标。", "威胁", "block", "使用低、中、高、致命四档：低=通常无需专门准备；中=会造成明确损失；高=需要资源、协作或针对性策略；致命=正面对抗很可能导致死亡或不可逆后果。只有能力、数量、环境或目标发生实质变化时调整。"),
 	}
 	fields = append(fields, actorPanelAndStateFields(spec)...)
 	fields = append(fields,
-		textStateField("behavior.pattern", "行动模式", "记录已经观察或可靠确认的攻击倾向、触发方式和行为规律。", "spoiler", "状态", "block"),
-		textStateField("weakness.exit_condition", "弱点与退场条件", "合并记录已确认弱点，以及击败、驱散、封印、谈判或摆脱条件。", "spoiler", "状态", "block"),
+		textStateField("behavior.pattern", "行动模式", "记录已经观察或可靠确认的攻击倾向、触发方式和行为规律。", "状态", "block"),
+		textStateField("weakness.exit_condition", "弱点与退场条件", "合并记录已确认弱点，以及击败、驱散、封印、谈判或摆脱条件。", "状态", "block"),
 	)
 	fields = append(fields, spec.OpponentFields...)
-	fields = append(fields, actorOwnedRecordFields(spec, 6, 4, 4, "spoiler", "")...)
+	fields = append(fields, actorOwnedRecordFields(spec, 6, 4, 4, "")...)
 	return actorStatePresetTemplate(
 		ActorStateOpponentTemplateID,
 		"敌对对象状态表",
@@ -86,13 +86,13 @@ func opponentStateTemplate(spec actorStatePresetSpec) ActorStateTemplate {
 
 func storyContextStateTemplate(spec actorStatePresetSpec) ActorStateTemplate {
 	fields := []ActorStateField{
-		textStateField("scene.current_time", "当前时间", "按世界观记录当前日期、时段或阶段；只保留对行动有意义的精度。", "visible", "当前场景", "inline"),
-		textStateField("scene.location", "当前详细地点", "用一个字段表达当前具体地点及必要的上级范围，不再拆分大区、区域和房间。", "visible", "当前场景", "inline"),
-		textStateField("scene.current_event", "当前事件", "合并记录正在发生的事件、直接压力和下一步必须面对的问题。", "visible", "当前场景", "block"),
-		listStateField("scene.present_actors", "在场角色", "使用 Actor 状态中已有的精确 ID；新建 Actor 直接使用故事语言中的角色名称，Actor 名称即 ID。只保留当前可感知或正在互动的角色。", "visible", "当前场景"),
-		textStateFieldWithInstruction("scene.continuation_hook", "可承接钩子", "保留一个下一段可以直接承接的未完成动作、对话、发现或迫近威胁；它不是剧情总结或选项列表。", "visible", "当前场景", "block", "只写一个当前最直接的承接点。原钩子已经兑现、失效或被更强的新钩子替代时更新；使用具体对象与动作，不写泛泛的“继续探索”或多个备选项。"),
-		textStateField("world.situation", "世界局势", "合并记录当前阶段、环境变化、跨场景威胁与倒计时；只写仍会影响后续剧情的变化。", "spoiler", "世界状态", "block"),
-		objectStateFieldWithInstruction("tasks.current", "当前任务", "记录已经成立且仍需推进的任务。", "visible", "当前任务", questRecordUpdateInstruction(spec)),
+		textStateField("scene.current_time", "当前时间", "按世界观记录当前日期、时段或阶段；只保留对行动有意义的精度。", "当前场景", "inline"),
+		textStateField("scene.location", "当前详细地点", "用一个字段表达当前具体地点及必要的上级范围，不再拆分大区、区域和房间。", "当前场景", "inline"),
+		textStateField("scene.current_event", "当前事件", "合并记录正在发生的事件、直接压力和下一步必须面对的问题。", "当前场景", "block"),
+		listStateField("scene.present_actors", "在场角色", "使用 Actor 状态中已有的精确 ID；新建 Actor 直接使用故事语言中的角色名称，Actor 名称即 ID。只保留当前可感知或正在互动的角色。", "当前场景"),
+		textStateFieldWithInstruction("scene.continuation_hook", "可承接钩子", "保留一个下一段可以直接承接的未完成动作、对话、发现或迫近威胁；它不是剧情总结或选项列表。", "当前场景", "block", "只写一个当前最直接的承接点。原钩子已经兑现、失效或被更强的新钩子替代时更新；使用具体对象与动作，不写泛泛的“继续探索”或多个备选项。"),
+		textStateField("world.situation", "世界局势", "合并记录当前阶段、环境变化、跨场景威胁与倒计时；只写仍会影响后续剧情的变化。", "世界状态", "block"),
+		objectStateFieldWithInstruction("tasks.current", "当前任务", "记录已经成立且仍需推进的任务。", "当前任务", questRecordUpdateInstruction(spec)),
 	}
 	fields = append(fields, spec.StoryFields...)
 	return actorStatePresetTemplate(
@@ -105,8 +105,8 @@ func storyContextStateTemplate(spec actorStatePresetSpec) ActorStateTemplate {
 
 func worldEntitiesStateTemplate(spec actorStatePresetSpec) ActorStateTemplate {
 	fields := []ActorStateField{
-		objectStateFieldWithInstruction("world.locations", "地点记录", "记录仍有探索、通行、资源或剧情价值的重要地点。", "visible", "地点", locationRecordUpdateInstruction(spec)),
-		objectStateFieldWithInstruction("world.factions", "势力记录", "记录仍在影响主角、任务或世界局势的重要势力。", "visible", "势力", factionRecordUpdateInstruction(spec)),
+		objectStateFieldWithInstruction("world.locations", "地点记录", "记录仍有探索、通行、资源或剧情价值的重要地点。", "地点", locationRecordUpdateInstruction(spec)),
+		objectStateFieldWithInstruction("world.factions", "势力记录", "记录仍在影响主角、任务或世界局势的重要势力。", "势力", factionRecordUpdateInstruction(spec)),
 	}
 	return actorStatePresetTemplate(
 		ActorStateWorldEntitiesTemplateID,
@@ -116,20 +116,20 @@ func worldEntitiesStateTemplate(spec actorStatePresetSpec) ActorStateTemplate {
 	)
 }
 
-func actorOwnedRecordFields(spec actorStatePresetSpec, abilityLimit, itemLimit, relationshipLimit int, visibility, relationshipScope string) []ActorStateField {
+func actorOwnedRecordFields(spec actorStatePresetSpec, abilityLimit, itemLimit, relationshipLimit int, relationshipScope string) []ActorStateField {
 	return []ActorStateField{
-		objectStateFieldWithInstruction("abilities.records", "技能与能力", "记录属于当前 Actor、会再次使用或仍有可变状态的能力。", visibility, "持有与关系", abilityRecordUpdateInstruction(spec, abilityLimit)),
-		objectStateFieldWithInstruction("assets.important_items", "重要物品", "记录由当前 Actor 持有、会影响后续行动的物品。", visibility, "持有与关系", itemRecordUpdateInstruction(spec, itemLimit)),
-		objectStateFieldWithInstruction("relations.records", "关系", "记录当前 Actor 对目标 Actor 或势力的有方向关系。", visibility, "持有与关系", relationshipRecordUpdateInstruction(spec, relationshipLimit, relationshipScope)),
+		objectStateFieldWithInstruction("abilities.records", "技能与能力", "记录属于当前 Actor、会再次使用或仍有可变状态的能力。", "持有与关系", abilityRecordUpdateInstruction(spec, abilityLimit)),
+		objectStateFieldWithInstruction("assets.important_items", "重要物品", "记录由当前 Actor 持有、会影响后续行动的物品。", "持有与关系", itemRecordUpdateInstruction(spec, itemLimit)),
+		objectStateFieldWithInstruction("relations.records", "关系", "记录当前 Actor 对目标 Actor 或势力的有方向关系。", "持有与关系", relationshipRecordUpdateInstruction(spec, relationshipLimit, relationshipScope)),
 	}
 }
 
 func abilityRecordUpdateInstruction(spec actorStatePresetSpec, limit int) string {
-	return fmt.Sprintf("%s每项只写名称、类型、掌握或当前状态、效果、代价与限制、来源，最多 %d 条。删除记录时 replace 整个 object。%s", statePanelRecordNameIDInstruction("名称"), limit, spec.AbilityGuidance)
+	return fmt.Sprintf("%s子值按需记录类型、掌握或当前状态、效果、代价与限制、来源，最多 %d 条。删除记录时 replace 整个 object。%s", statePanelReadableRecordKeyInstruction("技能或能力"), limit, spec.AbilityGuidance)
 }
 
 func itemRecordUpdateInstruction(spec actorStatePresetSpec, limit int) string {
-	return fmt.Sprintf("%s当前 Actor 即持有者；每项只写名称、类型、数量或状态、作用、限制与来源，最多 %d 条。物品转移时同轮从原持有者移除并写入新持有者；删除记录时 replace 整个 object。%s", statePanelRecordNameIDInstruction("名称"), limit, spec.ItemGuidance)
+	return fmt.Sprintf("%s当前 Actor 即持有者；子值按需记录类型、数量或状态、作用、限制与来源，最多 %d 条。物品转移时同轮从原持有者移除并写入新持有者；删除记录时 replace 整个 object。%s", statePanelReadableRecordKeyInstruction("物品"), limit, spec.ItemGuidance)
 }
 
 func relationshipRecordUpdateInstruction(spec actorStatePresetSpec, limit int, scope string) string {
@@ -141,19 +141,19 @@ func relationshipRecordUpdateInstruction(spec actorStatePresetSpec, limit int, s
 }
 
 func questRecordUpdateInstruction(spec actorStatePresetSpec) string {
-	return statePanelRecordNameIDInstruction("任务名称") + "每项只写任务名称、类型、状态、目标与进度、时限、明确的奖惩和关联对象名称/ID，最多 8 条；关联对象引用已有状态面板名称/ID。任务结算且结果已进入正文后删除；删除记录时 replace 整个 object。" + spec.QuestGuidance
+	return statePanelReadableRecordKeyInstruction("任务") + "子值按需记录类型、状态、目标与进度、时限、明确的奖惩和关联对象名称/ID，最多 8 条；关联对象引用已有状态面板名称/ID。任务结算且结果已进入正文后删除；删除记录时 replace 整个 object。" + spec.QuestGuidance
 }
 
 func locationRecordUpdateInstruction(spec actorStatePresetSpec) string {
-	return statePanelRecordNameIDInstruction("地点名称") + "每项只写地点名称、类型、所属范围、当前状态、风险、关键特征与通路，最多 16 条。风险使用低、中、高、致命等文字等级，不保存画布坐标；删除记录时 replace 整个 object。" + spec.LocationGuidance
+	return statePanelReadableRecordKeyInstruction("地点") + "子值按需记录类型、所属范围、当前状态、风险、关键特征与通路，最多 16 条。风险使用低、中、高、致命等文字等级，不保存画布坐标；删除记录时 replace 整个 object。" + spec.LocationGuidance
 }
 
 func factionRecordUpdateInstruction(spec actorStatePresetSpec) string {
-	return statePanelRecordNameIDInstruction("势力名称") + "每项只写势力名称、类型、核心特征、存续状态、对主角立场、主要范围和当前行动，最多 8 条。删除记录时 replace 整个 object。" + spec.FactionGuidance
+	return statePanelReadableRecordKeyInstruction("势力") + "子值按需记录类型、核心特征、存续状态、对主角立场、主要范围和当前行动，最多 8 条。删除记录时 replace 整个 object。" + spec.FactionGuidance
 }
 
-func statePanelRecordNameIDInstruction(nameField string) string {
-	return fmt.Sprintf("键直接使用故事语言中的“%s”，名称即 ID；不得翻译成英文、转写拼音或生成 slug。", nameField)
+func statePanelReadableRecordKeyInstruction(recordKind string) string {
+	return fmt.Sprintf("map key 直接使用故事语言中稳定、可读的%s名称，名称即 ID；不得翻译成英文、转写拼音或生成 slug；子值不要求重复名称字段。", recordKind)
 }
 
 func actorPanelAndStateFields(spec actorStatePresetSpec) []ActorStateField {
@@ -188,50 +188,50 @@ func defaultTRPGPanelFields() []ActorStateField {
 
 func defaultTRPGStateFields() []ActorStateField {
 	return []ActorStateField{
-		textStateFieldWithDefaultInstruction("state.health", "生命", "使用“当前值/上限”表达可恢复的生命资源；例如 8/12。", "visible", "状态", "inline", "10/10", "受伤、治疗或上限改变时更新；没有生命数值规则时改用作品中的等价状态。"),
-		textStateFieldWithDefaultInstruction("state.mana", "法力", "使用“当前值/上限”表达法力、能量或等价施法资源；例如 3/6。", "visible", "状态", "inline", "0/0", "消耗、恢复或上限改变时更新；作品没有此类资源时保持 0/0。"),
-		listStateFieldWithInstruction("state.effects", "持续效果", "只列仍在生效且会影响后续行动的增益、减益、异常或伤势。", "visible", "状态", "每项使用“名称｜影响｜剩余条件或时长”；结束后立即移除，瞬时效果不保留。"),
-		listStateFieldWithInstruction("state.cooldowns", "冷却状态", "只列尚未恢复的技能或物品及其剩余冷却。", "visible", "状态", "每项使用稳定技能或物品名称及剩余回合、时间或恢复条件；冷却结束后移除。"),
+		textStateFieldWithDefaultInstruction("state.health", "生命", "使用“当前值/上限”表达可恢复的生命资源；例如 8/12。", "状态", "inline", "10/10", "受伤、治疗或上限改变时更新；没有生命数值规则时改用作品中的等价状态。"),
+		textStateFieldWithDefaultInstruction("state.mana", "法力", "使用“当前值/上限”表达法力、能量或等价施法资源；例如 3/6。", "状态", "inline", "0/0", "消耗、恢复或上限改变时更新；作品没有此类资源时保持 0/0。"),
+		listStateFieldWithInstruction("state.effects", "持续效果", "只列仍在生效且会影响后续行动的增益、减益、异常或伤势。", "状态", "每项使用“名称｜影响｜剩余条件或时长”；结束后立即移除，瞬时效果不保留。"),
+		listStateFieldWithInstruction("state.cooldowns", "冷却状态", "只列尚未恢复的技能或物品及其剩余冷却。", "状态", "每项使用稳定技能或物品名称及剩余回合、时间或恢复条件；冷却结束后移除。"),
 	}
 }
 
-func textStateField(path, name, description, visibility, group, display string) ActorStateField {
-	return presetStateField(path, name, "string", description, visibility, group, display)
+func textStateField(path, name, description, group, display string) ActorStateField {
+	return presetStateField(path, name, "string", description, group, display)
 }
 
-func textStateFieldWithInstruction(path, name, description, visibility, group, display, instruction string) ActorStateField {
-	field := textStateField(path, name, description, visibility, group, display)
+func textStateFieldWithInstruction(path, name, description, group, display, instruction string) ActorStateField {
+	field := textStateField(path, name, description, group, display)
 	field.UpdateInstruction = instruction
 	return field
 }
 
-func textStateFieldWithDefaultInstruction(path, name, description, visibility, group, display, defaultValue, instruction string) ActorStateField {
-	field := textStateFieldWithInstruction(path, name, description, visibility, group, display, instruction)
+func textStateFieldWithDefaultInstruction(path, name, description, group, display, defaultValue, instruction string) ActorStateField {
+	field := textStateFieldWithInstruction(path, name, description, group, display, instruction)
 	field.Default = defaultValue
 	return field
 }
 
-func listStateField(path, name, description, visibility, group string) ActorStateField {
-	field := presetStateField(path, name, "list", description, visibility, group, "list")
+func listStateField(path, name, description, group string) ActorStateField {
+	field := presetStateField(path, name, "list", description, group, "list")
 	field.Default = []any{}
 	return field
 }
 
-func listStateFieldWithInstruction(path, name, description, visibility, group, instruction string) ActorStateField {
-	field := listStateField(path, name, description, visibility, group)
+func listStateFieldWithInstruction(path, name, description, group, instruction string) ActorStateField {
+	field := listStateField(path, name, description, group)
 	field.UpdateInstruction = instruction
 	return field
 }
 
-func objectStateFieldWithInstruction(path, name, description, visibility, group, instruction string) ActorStateField {
-	field := presetStateField(path, name, "object", description, visibility, group, "")
+func objectStateFieldWithInstruction(path, name, description, group, instruction string) ActorStateField {
+	field := presetStateField(path, name, "object", description, group, "")
 	field.Default = map[string]any{}
 	field.UpdateInstruction = instruction
 	return field
 }
 
-func favorabilityStateField(path, name, description, visibility, group string) ActorStateField {
-	field := presetStateField(path, name, "number", description+" 区间含义："+actorStateFavorabilityBands, visibility, group, "stat")
+func favorabilityStateField(path, name, description, group string) ActorStateField {
+	field := presetStateField(path, name, "number", description+" 区间含义："+actorStateFavorabilityBands, group, "stat")
 	field.Min = presetFloatPointer(0)
 	field.Max = presetFloatPointer(100)
 	field.UpdateInstruction = "只有会改变双方关系的有效互动或事件才调整；一般事件变化 1–5，重大选择变化 6–15，跨越区间必须有明确剧情依据。"
@@ -239,7 +239,7 @@ func favorabilityStateField(path, name, description, visibility, group string) A
 }
 
 func scaledNumberStateField(path, name, description, group string, defaultValue, minValue, maxValue float64, scale, instruction string) ActorStateField {
-	field := presetStateField(path, name, "number", description+" 数值区间："+scale, "visible", group, "stat")
+	field := presetStateField(path, name, "number", description+" 数值区间："+scale, group, "stat")
 	field.Default = defaultValue
 	field.Min = presetFloatPointer(minValue)
 	field.Max = presetFloatPointer(maxValue)
@@ -247,12 +247,11 @@ func scaledNumberStateField(path, name, description, group string, defaultValue,
 	return field
 }
 
-func presetStateField(path, name, fieldType, description, visibility, group, display string) ActorStateField {
+func presetStateField(path, name, fieldType, description, group, display string) ActorStateField {
 	return ActorStateField{
 		Path:        path,
 		Name:        name,
 		Type:        fieldType,
-		Visibility:  visibility,
 		Description: description,
 		Group:       group,
 		Display:     display,

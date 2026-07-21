@@ -30,7 +30,7 @@ type ActorStateSchemaBatchItem struct {
 	ItemID       string                              `json:"item_id" jsonschema:"description=稳定且唯一的幂等 ID，仅使用字母、数字、点、下划线、冒号或短横线"`
 	DependsOn    []string                            `json:"depends_on,omitempty" jsonschema:"description=本项依赖的其他 item_id；依赖项未 accepted 时本项返回 blocked"`
 	Summary      string                              `json:"summary,omitempty"`
-	Requirements []ActorStateSchemaRequirementReview `json:"requirements" jsonschema:"description=本项自包含的来源化需求审查；每项必须填写 evidence_kind"`
+	Requirements []ActorStateSchemaRequirementReview `json:"requirements" jsonschema:"description=本项自包含的来源化需求审查"`
 	Adaptation   ActorStateSchemaAdaptation          `json:"adaptation" jsonschema:"description=仅包含满足本项 requirements 所需的最小 diff"`
 }
 
@@ -233,7 +233,7 @@ func (d *ActorStateSchemaBatchDraft) Submit(batch ActorStateSchemaBatch, audit A
 				madeProgress = true
 				continue
 			}
-			if issue := validateActorStateSchemaBatchActorValueVisibility(candidate.item.ItemID, normalizedItem, targetSystem, path); issue != nil {
+			if issue := validateActorStateSchemaBatchActorValues(candidate.item.ItemID, normalizedItem, targetSystem, path); issue != nil {
 				result.Rejected = append(result.Rejected, *issue)
 				madeProgress = true
 				continue
@@ -525,8 +525,6 @@ func actorStateSchemaBatchItemFingerprint(item ActorStateSchemaBatchItem) string
 func actorStateSchemaBatchValidationCode(err error) string {
 	message := err.Error()
 	switch {
-	case strings.Contains(message, "秘密或剧透"):
-		return "inferred_secret_value"
 	case strings.Contains(message, "expected_type"):
 		return "invalid_expected_type"
 	case strings.Contains(message, "来源"):
@@ -544,18 +542,6 @@ func actorStateSchemaBatchValidationCode(err error) string {
 
 func actorStateSchemaBatchValidationPath(basePath string, item ActorStateSchemaBatchItem, err error) string {
 	message := err.Error()
-	if strings.Contains(message, "秘密或剧透") {
-		for opIndex, op := range item.Adaptation.ActorOps {
-			if op.Op == "set" && strings.Contains(message, "field="+normalizeActorStateFieldName(op.FieldID)) {
-				return fmt.Sprintf("%s.adaptation.actor_ops[%d].value", basePath, opIndex)
-			}
-			for fieldID := range op.Actor.State {
-				if strings.Contains(message, "field="+normalizeActorStateFieldName(fieldID)) {
-					return fmt.Sprintf("%s.adaptation.actor_ops[%d].actor.state.%s", basePath, opIndex, fieldID)
-				}
-			}
-		}
-	}
 	for index, requirement := range item.Requirements {
 		if strings.Contains(message, "source="+strings.TrimSpace(requirement.Source.ID)) {
 			return fmt.Sprintf("%s.requirements[%d]", basePath, index)

@@ -286,6 +286,17 @@ export function useResourceAutosave<Draft extends { id: string; updated_at?: str
     )
   }, [])
 
+  /** Lets a rebase owner distinguish our saved echo from a genuinely external baseline. */
+  const isBaselineAcknowledged = useCallback((nextDraft: Draft | null) => {
+    if (!nextDraft) return false
+    const nextRevision = getRevisionRef.current(nextDraft) || ''
+    return baselineScopeKeyRef.current === scopeKeyRef.current
+      && baselineResourceIdRef.current === nextDraft.id
+      && Boolean(nextRevision)
+      && nextRevision === baseRevisionRef.current
+      && signatureRef.current(nextDraft) === savedSignatureRef.current
+  }, [])
+
   const saveNow = useCallback((mode: ResourceSaveMode) => {
     const snapshot = draftRef.current
     if (!snapshot) return Promise.resolve(null)
@@ -386,6 +397,7 @@ export function useResourceAutosave<Draft extends { id: string; updated_at?: str
   return {
     cancelPending: cancel,
     flushPending,
+    isBaselineAcknowledged,
     resetBaseline,
     saveNow,
     status: lane.status as AutosaveStatus,

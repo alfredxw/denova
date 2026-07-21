@@ -27,9 +27,6 @@ func normalizeTurnSubmissionActorStateValues(actorID string, template ActorState
 			log.Printf("[interactive-turn-submission] normalized lossless field value actor_id=%q field_id=%q from=string to=%s location=internal/interactive/turn_state_value_normalization.go", actorID, actorStateFieldID(field), field.Type)
 			value = converted
 		}
-		if canonical, canonicalized := normalizeStatePanelRecordNameIDs(actorStateFieldID(field), value); canonicalized {
-			value = canonical
-		}
 		normalized[fieldReference] = value
 	}
 	return normalized

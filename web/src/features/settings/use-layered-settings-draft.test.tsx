@@ -178,6 +178,55 @@ describe('useLayeredSettingsDraft', () => {
     expect(result.current.draft).toEqual({ language: 'en-US' })
   })
 
+  it('treats its own save response as an acknowledgement while a newer draft waits', async () => {
+    const initial = snapshot({
+      user: { model_profiles: [{ id: 'default', openai_model: 'model-a' }] },
+      revisions: { user: 'r1' },
+    })
+    const firstSave = deferred<LayeredSettings>()
+    const secondSave = deferred<LayeredSettings>()
+    const loadSettings = vi.fn(async () => initial)
+    const saveUserSettings = vi.fn()
+      .mockImplementationOnce(() => firstSave.promise)
+      .mockImplementationOnce(() => secondSave.promise)
+    const { result, unmount } = renderHook(() => useLayeredSettingsDraft({
+      layer: 'user',
+      sourcePrefix: 'test-settings',
+      loadSettings,
+      saveUserSettings,
+      saveWorkspaceSettings: vi.fn(),
+    }))
+    await waitFor(() => expect(result.current.draft).toEqual(initial.user))
+    vi.useFakeTimers()
+
+    act(() => result.current.setDraft({ model_profiles: [{ id: 'default', openai_model: 'model-b' }] }))
+    act(() => { vi.advanceTimersByTime(1100) })
+    expect(saveUserSettings).toHaveBeenCalledOnce()
+
+    act(() => result.current.setDraft({ model_profiles: [{ id: 'default', openai_model: 'model-c' }] }))
+    const firstSaved = snapshot({
+      user: { model_profiles: [{ id: 'default', openai_model: 'model-b' }] },
+      revisions: { user: 'r2' },
+    })
+    await act(async () => {
+      firstSave.resolve(firstSaved)
+      await firstSave.promise
+      await Promise.resolve()
+    })
+
+    const conflictCallCount = vi.mocked(preserveAutosaveConflict).mock.calls.length
+    const currentDraft = result.current.draft
+    act(() => { vi.advanceTimersByTime(1100) })
+    const queuedSave = saveUserSettings.mock.calls[1]
+    unmount()
+
+    expect(conflictCallCount).toBe(0)
+    expect(queuedSave).toEqual([{
+      model_profiles: [{ id: 'default', openai_model: 'model-c' }],
+    }, 'r2'])
+    expect(currentDraft).toEqual({ model_profiles: [{ id: 'default', openai_model: 'model-c' }] })
+  })
+
   it('applies external snapshots without writing them back when there is no local edit', async () => {
     const initial = snapshot({ user: { language: 'zh-CN', theme: 'dark' }, revisions: { user: 'r1' } })
     const external = snapshot({ user: { language: 'zh-CN', theme: 'light' }, revisions: { user: 'r2' } })

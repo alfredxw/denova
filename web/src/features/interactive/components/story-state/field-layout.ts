@@ -3,14 +3,10 @@ import type { ActorStateField } from '../../types'
 /** Renderer kinds understood by the stage state ledger. */
 export type StateFieldRenderer = 'stat' | 'inline' | 'block' | 'list' | 'object'
 
-/**
- * Built-in ledger groups used when a field declares no explicit group.
- * spoiler fields always land in the spoiler group unless the template pins a
- * custom group name.
- */
-export type StateFieldGroupKey = 'overview' | 'details' | 'holdings' | 'spoiler'
+/** Built-in ledger groups used when a field declares no explicit group. */
+export type StateFieldGroupKey = 'overview' | 'details' | 'holdings'
 
-export const BUILTIN_STATE_FIELD_GROUPS: StateFieldGroupKey[] = ['overview', 'details', 'holdings', 'spoiler']
+export const BUILTIN_STATE_FIELD_GROUPS: StateFieldGroupKey[] = ['overview', 'details', 'holdings']
 
 export interface StateFieldLayout {
   renderer: StateFieldRenderer
@@ -28,9 +24,6 @@ export function resolveStateFieldLayout(field: ActorStateField | undefined, valu
   const declaredGroup = typeof field?.group === 'string' ? field.group.trim() : ''
   if (declaredGroup) {
     return { renderer, group: declaredGroup, customGroup: true }
-  }
-  if (field?.visibility === 'spoiler') {
-    return { renderer, group: 'spoiler', customGroup: false }
   }
   switch (renderer) {
     case 'stat':

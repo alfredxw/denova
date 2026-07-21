@@ -36,7 +36,6 @@ type openingStateSchemaRequirementSourceToolInput struct {
 type openingStateSchemaRequirementReviewToolInput struct {
 	Source       openingStateSchemaRequirementSourceToolInput `json:"source"`
 	Requirement  string                                       `json:"requirement" jsonschema_description:"为什么本故事需要这个长期状态字段，以及它将承接什么信息。"`
-	EvidenceKind string                                       `json:"evidence_kind" jsonschema:"enum=confirmed,enum=inferred,enum=default" jsonschema_description:"confirmed=来源明确确认；inferred=合理推断；default=规则级默认。"`
 	ValuePolicy  string                                       `json:"value_policy" jsonschema:"enum=schema_only" jsonschema_description:"开局结构工具固定为 schema_only；不得在此写 Actor 值。"`
 	ExpectedType string                                       `json:"expected_type,omitempty" jsonschema:"enum=number,enum=string,enum=bool,enum=enum,enum=object,enum=list" jsonschema_description:"covered/add/replace 必填，且必须与目标字段类型一致。ignored 时省略。"`
 	Min          *float64                                     `json:"min,omitempty" jsonschema_description:"仅当来源明确要求数值下界时填写，并与目标字段一致。"`
@@ -76,7 +75,6 @@ func (input openingStateSchemaBatchToolInput) batch() interactive.ActorStateSche
 					ID:   requirement.Source.ID,
 				},
 				Requirement:  requirement.Requirement,
-				EvidenceKind: requirement.EvidenceKind,
 				ValuePolicy:  requirement.ValuePolicy,
 				ExpectedType: requirement.ExpectedType,
 				Min:          requirement.Min,
@@ -98,7 +96,7 @@ func newInteractiveOpeningStateSchemaTools(ctx InteractiveStoryToolContext) ([]t
 	}
 	description := strings.Join([]string{
 		"仅在故事首回合正文之前，增量暂存本故事的状态模板与字段结构。模型可见参数是开局专用的 structure-only 契约；不要提交 Actor、initial_actor_ops 或 actor_ops。",
-		"开局草案来源必须精确写为 source={\"kind\":\"opening\",\"id\":\"opening-draft\"}。evidence_kind 只能是 confirmed/inferred/default，value_policy 固定为 schema_only；covered/add/replace 必须填写现有或目标 template_id、field_id 与合法 expected_type。",
+		"开局草案来源必须精确写为 source={\"kind\":\"opening\",\"id\":\"opening-draft\"}。value_policy 固定为 schema_only；covered/add/replace 必须填写现有或目标 template_id、field_id 与合法 expected_type。",
 		"结构 requirement 与 template_ops 必须使用状态手册中的 Template ID，不能使用 Actor ID；例如 story 是 actor_id，对应的 template_id 是 story_context。后端只会将能由初始 Actor 唯一确定的误用归一化，并始终保存规范 Template ID。",
 		"按状态的变化边界而不是文字能否勉强容纳来判断 covered：会独立消耗、恢复、触发阈值、参与检定或单独展示的资源/倒计时必须有专用字段，不能塞进当前处境、当前事件、世界局势或物品描述。例如氧气与站体完整度应各自使用有 min/max 的 number 字段。",
 		"只有确实没有独立结构需求时才使用具体字段的 covered 审查和空 template_ops。工具分别返回 accepted、rejected、blocked；只重试失败项，finalized=true 后再输出开局正文。",

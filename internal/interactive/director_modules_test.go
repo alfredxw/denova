@@ -396,9 +396,6 @@ func requireWritableActorStatePresetFields(t *testing.T, item ActorStateModule) 
 			if field.Order != 0 {
 				t.Fatalf("genre actor state %s field %s must use array order only as the UI fallback: %#v", item.ID, field.Path, field)
 			}
-			if field.Visibility == "hidden" {
-				t.Fatalf("genre actor state %s field %s must remain game-agent writable: %#v", item.ID, field.Path, field)
-			}
 			if strings.HasPrefix(field.Path, "attributes.") || forbiddenPaths[field.Path] {
 				t.Fatalf("genre actor state %s retains a fragmented or generic field %s: %#v", item.ID, field.Path, field)
 			}
@@ -518,12 +515,11 @@ func TestStoryDirectorResolvesLiveModulesAndFallsBackToSnapshot(t *testing.T) {
 				ID:   "protagonist",
 				Name: "主角",
 				Fields: []ActorStateField{{
-					ID:         "heat",
-					Path:       "resources.heat",
-					Name:       "热量",
-					Type:       "number",
-					Default:    float64(1),
-					Visibility: "visible",
+					ID:      "heat",
+					Path:    "resources.heat",
+					Name:    "热量",
+					Type:    "number",
+					Default: float64(1),
 				}},
 			}},
 			InitialActors: []ActorStateInitialActor{{

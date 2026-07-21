@@ -55,7 +55,6 @@ export function PoolDetailEditor({
       id: nextPresetId('trait'),
       name: t('settingPanel.actorState.explorer.newTrait', { count: traits.length + 1 }),
       weight: 1,
-      visibility: 'visible',
     }
     updatePool({ traits: [...traits, newTrait] })
   }

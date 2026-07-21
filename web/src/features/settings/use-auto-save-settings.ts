@@ -38,7 +38,7 @@ export function useAutoSaveSettings({
   syncKey?: string | number
   save: SaveSettings
   onSavingChange: (saving: boolean) => void
-  onSaved: (next: LayeredSettings) => void | Promise<void>
+  onSaved: (next: LayeredSettings, submitted: Settings) => void | Promise<void>
   /** Reconcile a successful write whose response was superseded by a newer server sync. */
   onStaleSuccess?: (next: LayeredSettings) => void | Promise<void>
   onError: (message: string) => void
@@ -95,7 +95,7 @@ export function useAutoSaveSettings({
         baselineRef.current = request.key
         baseRevisionRef.current = savedRevisionRef.current?.(next) || baseRevisionRef.current
         blockedDraftKeyRef.current = ''
-        await onSavedRef.current(next)
+        await onSavedRef.current(next, request.draft)
         return next
       } catch (error) {
         if (mountedRef.current && request.generation === generationRef.current) {

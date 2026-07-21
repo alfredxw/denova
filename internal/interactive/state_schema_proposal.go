@@ -45,9 +45,6 @@ type ActorStateSchemaRequirementReview struct {
 	ItemID      string                            `json:"item_id,omitempty" jsonschema:"-"`
 	Source      ActorStateSchemaRequirementSource `json:"source"`
 	Requirement string                            `json:"requirement"`
-	// EvidenceKind preserves whether the requirement or proposed initial value
-	// is explicitly confirmed, reasonably inferred, or a rules-level default.
-	EvidenceKind string `json:"evidence_kind"`
 	// ValuePolicy makes Actor value handling explicit instead of treating a
 	// sourced schema requirement as if it had also initialized runtime state.
 	ValuePolicy  string   `json:"value_policy" jsonschema:"description=该需求的 Actor 值策略：schema_only 仅审查结构；preserve 校验并保留已有值；initialize 必须在同一 item 用字段级 actor_ops set 落值；defer 明确延后且必须说明理由"`
@@ -147,7 +144,6 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		review.Source.Kind = strings.TrimSpace(review.Source.Kind)
 		review.Source.ID = strings.TrimSpace(review.Source.ID)
 		review.Requirement = trimBytes(review.Requirement, maxInteractiveTextBytes)
-		review.EvidenceKind = strings.TrimSpace(review.EvidenceKind)
 		review.ValuePolicy = strings.TrimSpace(review.ValuePolicy)
 		review.ActorID = normalizeStatePanelActorID(review.ActorID)
 		review.ExpectedType = strings.TrimSpace(review.ExpectedType)
@@ -165,11 +161,6 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		}
 		if review.Source.Kind == "lore" && !reviewedLore[review.Source.ID] {
 			return fmt.Errorf("状态需求引用了未经后端确认审阅的资料: %s", review.Source.ID)
-		}
-		switch review.EvidenceKind {
-		case "confirmed", "inferred", "default":
-		default:
-			return fmt.Errorf("状态需求 evidence_kind 无效: %s", review.EvidenceKind)
 		}
 		switch review.ValuePolicy {
 		case ActorStateSchemaValuePolicySchemaOnly:
@@ -218,9 +209,6 @@ func validateActorStateSchemaRequirementReviews(proposal *ActorStateSchemaPropos
 		}
 		if review.ExpectedType != "" && field.Type != review.ExpectedType {
 			return fmt.Errorf("状态需求字段类型不匹配: template=%s field=%s expected=%s actual=%s", review.TemplateID, review.FieldID, review.ExpectedType, field.Type)
-		}
-		if review.EvidenceKind == "inferred" && (field.Visibility == "spoiler" || field.Visibility == "hidden") {
-			return fmt.Errorf("推测信息不能填充秘密或剧透状态字段: template=%s field=%s visibility=%s", review.TemplateID, review.FieldID, field.Visibility)
 		}
 		if review.Min != nil && (field.Min == nil || *field.Min != *review.Min) {
 			return fmt.Errorf("状态需求字段 min 不匹配: template=%s field=%s", review.TemplateID, review.FieldID)

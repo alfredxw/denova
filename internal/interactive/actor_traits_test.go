@@ -194,7 +194,7 @@ func TestActorTraitLifecycleDrawRerollSetRemove(t *testing.T) {
 	}
 }
 
-func TestActorStateRuntimeContextFiltersVisibilityAndLibrary(t *testing.T) {
+func TestActorStateRuntimeContextIncludesAssignedTraitsButNotReusableLibrary(t *testing.T) {
 	system := actorTraitTestSystem()
 	system.Templates[0].Fields[0].Description = "主角当前能够被剧情直接观察到的状态。"
 	system.Templates[0].Fields[0].UpdateInstruction = "仅在正文已经明确改变该状态时更新。"
@@ -209,8 +209,11 @@ func TestActorStateRuntimeContextFiltersVisibilityAndLibrary(t *testing.T) {
 	if !strings.Contains(context, "patient") || !strings.Contains(context, "耐心") {
 		t.Fatalf("visible assigned trait should enter runtime context: %s", context)
 	}
-	if strings.Contains(context, "secret") || strings.Contains(context, "未被抽取的配置词条") {
-		t.Fatalf("hidden traits and the reusable library must stay out of runtime context: %s", context)
+	if !strings.Contains(context, "secret") || !strings.Contains(context, "隐藏真相") {
+		t.Fatalf("every assigned trait should enter runtime context: %s", context)
+	}
+	if strings.Contains(context, "未被抽取的配置词条") {
+		t.Fatalf("the reusable trait library must stay out of runtime context: %s", context)
 	}
 	for _, expected := range []string{
 		"# Actor 状态手册",
@@ -343,16 +346,16 @@ func TestActorTraitSnapshotsReplayIdenticallyAcrossBranches(t *testing.T) {
 func actorTraitTestSystem() StoryDirectorActorStateSystem {
 	return StoryDirectorActorStateSystem{
 		Templates: []ActorStateTemplate{
-			{ID: "protagonist", Name: "主角", Fields: []ActorStateField{{ID: "status", Path: "status", Name: "状态", Type: "string", Default: "ready", Visibility: "visible"}}, TraitRules: []ActorTraitRule{{PoolID: "nature", DrawCount: 2}}},
-			{ID: "important_character", Name: "重要角色", Fields: []ActorStateField{{ID: "status", Path: "status", Name: "状态", Type: "string", Visibility: "visible"}}, TraitRules: []ActorTraitRule{{PoolID: "nature", DrawCount: 1}}},
-			{ID: "opponent", Name: "敌人/怪物", Fields: []ActorStateField{{ID: "status", Path: "status", Name: "状态", Type: "string", Visibility: "visible"}}, TraitRules: []ActorTraitRule{{PoolID: "nature", DrawCount: 1}}},
+			{ID: "protagonist", Name: "主角", Fields: []ActorStateField{{ID: "status", Path: "status", Name: "状态", Type: "string", Default: "ready"}}, TraitRules: []ActorTraitRule{{PoolID: "nature", DrawCount: 2}}},
+			{ID: "important_character", Name: "重要角色", Fields: []ActorStateField{{ID: "status", Path: "status", Name: "状态", Type: "string"}}, TraitRules: []ActorTraitRule{{PoolID: "nature", DrawCount: 1}}},
+			{ID: "opponent", Name: "敌人/怪物", Fields: []ActorStateField{{ID: "status", Path: "status", Name: "状态", Type: "string"}}, TraitRules: []ActorTraitRule{{PoolID: "nature", DrawCount: 1}}},
 		},
 		TraitPools: []ActorTraitPool{{
 			ID: "nature", Name: "性格", Description: "未被抽取的配置词条",
 			Traits: []ActorTraitDefinition{
-				{ID: "patient", Name: "耐心", Summary: "善于等待。", Weight: 10, Visibility: "visible"},
-				{ID: "bold", Name: "果断", Summary: "敢于冒险。", Weight: 1, Visibility: "spoiler"},
-				{ID: "secret", Name: "隐藏真相", Summary: "不应进入正文上下文。", Weight: 1, Visibility: "hidden"},
+				{ID: "patient", Name: "耐心", Summary: "善于等待。", Weight: 10},
+				{ID: "bold", Name: "果断", Summary: "敢于冒险。", Weight: 1},
+				{ID: "secret", Name: "隐藏真相", Summary: "分配后应进入正文上下文。", Weight: 1},
 			},
 		}},
 		InitialActors: []ActorStateInitialActor{{ID: "protagonist", Name: "主角", TemplateID: "protagonist", Role: "protagonist"}},

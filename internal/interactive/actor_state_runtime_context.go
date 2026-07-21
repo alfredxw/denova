@@ -105,9 +105,6 @@ func actorStateRuntimeActorMarkdown(system StoryDirectorActorStateSystem, state 
 
 	rawState, _ := record["state"].(map[string]any)
 	for _, field := range template.Fields {
-		if field.Visibility == "hidden" {
-			continue
-		}
 		fieldID := actorStateFieldID(field)
 		value := rawState[fieldID]
 		if value == nil && strings.TrimSpace(field.LegacyPath) != "" {
@@ -120,15 +117,9 @@ func actorStateRuntimeActorMarkdown(system StoryDirectorActorStateSystem, state 
 	}
 
 	traits := actorTraitInstancesFromState(state, actorID)
-	visibleTraits := make([]ActorTraitInstance, 0, len(traits))
-	for _, trait := range traits {
-		if trait.Visibility != "hidden" {
-			visibleTraits = append(visibleTraits, trait)
-		}
-	}
-	if len(visibleTraits) > 0 {
+	if len(traits) > 0 {
 		sb.WriteString("\n#### 已分配词条（只读）\n")
-		for _, trait := range visibleTraits {
+		for _, trait := range traits {
 			fmt.Fprintf(&sb, "\n- %s（Trait ID：%s）", actorStateRuntimeText(trait.Name), actorStateRuntimeCode(trait.TraitID))
 			if summary := actorStateRuntimeText(trait.Summary); summary != "" {
 				fmt.Fprintf(&sb, "：%s", summary)
@@ -150,9 +141,6 @@ func actorStateRuntimeTemplateMarkdown(template ActorStateTemplate) string {
 		sb.WriteString("- 词条由后端按模板规则自动分配；创建参数中不要伪造词条。\n")
 	}
 	for _, field := range template.Fields {
-		if field.Visibility == "hidden" {
-			continue
-		}
 		fieldID := actorStateFieldID(field)
 		fmt.Fprintf(&sb, "\n#### %s\n\n", actorStateRuntimeText(firstNonEmptyString(field.Name, fieldID)))
 		fmt.Fprintf(&sb, "- 字段 ID：%s\n", actorStateRuntimeCode(fieldID))
@@ -212,9 +200,7 @@ func actorStateRuntimeExample(system StoryDirectorActorStateSystem, rawActors ma
 		record, _ := rawActors[actorID].(map[string]any)
 		template := actorStateTemplateByID(system, normalizeActorStateID(fmt.Sprint(record["template_id"])))
 		for _, field := range template.Fields {
-			if field.Visibility != "hidden" {
-				return actorID, actorStateFieldID(field), actorStateRuntimeExampleValue(field)
-			}
+			return actorID, actorStateFieldID(field), actorStateRuntimeExampleValue(field)
 		}
 	}
 	return "{{actor_id}}", "{{field_id}}", "{{new_value_matching_field_type}}"
