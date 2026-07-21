@@ -10,6 +10,25 @@ interface AgentSSEUIMessageStreamOptions {
 
 type AgentMessageUpdater = SetStateAction<AgentUIMessage[]>
 
+/** A buffered streaming text chunk awaiting rAF flush. */
+interface PendingTextChunk {
+  segmentIDRef: { current: string }
+  partType: 'text' | 'reasoning'
+  content: string
+  metadata?: AgentMessageMetadata
+}
+
+/** A buffered tool args delta awaiting rAF flush. */
+interface PendingToolArgsDelta {
+  toolID: string
+  data: Record<string, unknown>
+  metadata: AgentMessageMetadata
+}
+
+type PendingChunk =
+  | { kind: 'text'; chunk: PendingTextChunk }
+  | { kind: 'tool_args'; delta: PendingToolArgsDelta }
+
 export function useAgentSSEUIMessageStream(options: AgentSSEUIMessageStreamOptions = {}) {
   const { t } = useTranslation()
   const { onEvent } = options
@@ -21,6 +40,9 @@ export function useAgentSSEUIMessageStream(options: AgentSSEUIMessageStreamOptio
   const reasoningSegmentIDRef = useRef('')
   const toolInputsRef = useRef<Record<string, string>>({})
   const toolCounterRef = useRef(0)
+  // rAF batch buffer: streaming deltas are queued here and flushed once per frame.
+  const pendingChunksRef = useRef<PendingChunk[]>([])
+  const rafRef = useRef<number>(0)
 
   const setMessages = useCallback((updater: AgentMessageUpdater) => {
     rawSetMessages((current) => {
@@ -31,12 +53,48 @@ export function useAgentSSEUIMessageStream(options: AgentSSEUIMessageStreamOptio
     })
   }, []) as Dispatch<SetStateAction<AgentUIMessage[]>>
 
+  /** Flush all buffered streaming chunks into a single setState (no normalization). */
+  const flushPendingChunks = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = 0
+    }
+    const pending = pendingChunksRef.current
+    if (pending.length === 0) return
+    pendingChunksRef.current = []
+    rawSetMessages(current => {
+      let next = current
+      for (const entry of pending) {
+        if (entry.kind === 'text') {
+          next = applyTextChunk(next, entry.chunk)
+        } else {
+          next = applyToolArgsDelta(next, entry.delta, toolInputsRef)
+        }
+      }
+      return next
+    })
+  }, [])
+
+  /** Schedule a rAF flush if one is not already pending. */
+  const scheduleFlush = useCallback(() => {
+    if (rafRef.current) return
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0
+      flushPendingChunks()
+    })
+  }, [flushPendingChunks])
+
   const resetStreamingState = useCallback(() => {
     abortControllerRef.current?.abort()
     abortControllerRef.current = null
     textSegmentIDRef.current = ''
     reasoningSegmentIDRef.current = ''
     toolInputsRef.current = {}
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = 0
+    }
+    pendingChunksRef.current = []
     setIsStreaming(false)
     setActivityContent('')
   }, [])
@@ -53,6 +111,7 @@ export function useAgentSSEUIMessageStream(options: AgentSSEUIMessageStreamOptio
     textSegmentIDRef.current = ''
     reasoningSegmentIDRef.current = ''
     toolInputsRef.current = {}
+    pendingChunksRef.current = []
     setIsStreaming(true)
     setActivityContent(t('chat.activity.thinking'))
     try {
@@ -65,34 +124,56 @@ export function useAgentSSEUIMessageStream(options: AgentSSEUIMessageStreamOptio
         const metadata = readEventMetadata(data)
         onEvent?.(event, data)
         switch (event.event) {
-          case 'chunk':
-            appendStreamingText(rawSetMessages, textSegmentIDRef, 'text', readString(data.content), metadata)
+          case 'chunk': {
+            const content = readString(data.content)
+            if (content) {
+              pendingChunksRef.current.push({ kind: 'text', chunk: { segmentIDRef: textSegmentIDRef, partType: 'text', content, metadata } })
+              scheduleFlush()
+            }
             setActivityContent('')
             break
-          case 'thinking':
-            appendStreamingText(rawSetMessages, reasoningSegmentIDRef, 'reasoning', readString(data.content), metadata)
+          }
+          case 'thinking': {
+            const content = readString(data.content)
+            if (content) {
+              pendingChunksRef.current.push({ kind: 'text', chunk: { segmentIDRef: reasoningSegmentIDRef, partType: 'reasoning', content, metadata } })
+              scheduleFlush()
+            }
             setActivityContent(t('chat.activity.thinking'))
             break
+          }
           case 'tool_call':
+            flushPendingChunks()
             upsertTool(rawSetMessages, toolInputsRef, toolCounterRef, data, metadata, 'input-available')
             setActivityContent('')
             break
-          case 'tool_args_delta':
-            appendToolArgs(rawSetMessages, toolInputsRef, toolCounterRef, data, metadata)
+          case 'tool_args_delta': {
+            const toolID = toolEventID(data, toolCounterRef)
+            const delta = readString(data.delta)
+            if (delta) {
+              toolInputsRef.current[toolID] = `${toolInputsRef.current[toolID] || ''}${delta}`
+              pendingChunksRef.current.push({ kind: 'tool_args', delta: { toolID, data, metadata } })
+              scheduleFlush()
+            }
             break
+          }
           case 'tool_result':
+            flushPendingChunks()
             upsertTool(rawSetMessages, toolInputsRef, toolCounterRef, data, metadata, data.status === 'error' ? 'output-error' : 'output-available')
             setActivityContent('')
             break
           case 'done':
+            flushPendingChunks()
             finishStreamingParts(rawSetMessages)
             setActivityContent('')
             break
           case 'aborted':
+            flushPendingChunks()
             finishStreamingParts(rawSetMessages)
             setActivityContent(t('chat.activity.aborted'))
             break
           case 'error':
+            flushPendingChunks()
             finishStreamingParts(rawSetMessages)
             setMessages(prev => [...prev, createAgentDataMessage('agent-error', { content: readString(data.message) || readString(data.error) || t('chat.activity.unknownError') })])
             setActivityContent('')
@@ -102,8 +183,10 @@ export function useAgentSSEUIMessageStream(options: AgentSSEUIMessageStreamOptio
             break
         }
       }
+      flushPendingChunks()
       finishStreamingParts(rawSetMessages)
     } catch (error) {
+      flushPendingChunks()
       finishStreamingParts(rawSetMessages)
       if (isAbortError(error)) {
         setActivityContent(t('chat.activity.aborted'))
@@ -111,6 +194,11 @@ export function useAgentSSEUIMessageStream(options: AgentSSEUIMessageStreamOptio
         setMessages(prev => [...prev, createAgentDataMessage('agent-error', { content: t('chat.activity.requestFailed', { error: String(error) }) })])
       }
     } finally {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = 0
+      }
+      pendingChunksRef.current = []
       abortControllerRef.current = null
       textSegmentIDRef.current = ''
       reasoningSegmentIDRef.current = ''
@@ -118,7 +206,7 @@ export function useAgentSSEUIMessageStream(options: AgentSSEUIMessageStreamOptio
       setIsStreaming(false)
       setActivityContent('')
     }
-  }, [onEvent, setMessages, t])
+  }, [onEvent, setMessages, t, flushPendingChunks, scheduleFlush])
 
   return {
     messages,
@@ -132,29 +220,26 @@ export function useAgentSSEUIMessageStream(options: AgentSSEUIMessageStreamOptio
   }
 }
 
-function appendStreamingText(
-  setMessages: Dispatch<SetStateAction<AgentUIMessage[]>>,
-  segmentIDRef: { current: string },
-  partType: 'text' | 'reasoning',
-  content: string,
-  metadata?: AgentMessageMetadata,
-) {
-  if (!content) return
+/**
+ * Apply a buffered text chunk to the message array without normalization.
+ * First chunk for a segment creates a new message; subsequent chunks append text.
+ */
+function applyTextChunk(messages: AgentUIMessage[], chunk: PendingTextChunk): AgentUIMessage[] {
+  const { segmentIDRef, partType, content, metadata } = chunk
   if (!segmentIDRef.current) {
     segmentIDRef.current = localSSEMessageID(partType)
     const part = partType === 'text'
       ? { type: 'text', text: content, state: 'streaming' }
       : { type: 'reasoning', text: content, state: 'streaming' }
-    setMessages(current => normalizeAgentUIMessages([...current, {
+    return [...messages, {
       id: segmentIDRef.current,
       role: 'assistant',
       metadata,
       parts: [part],
-    } as AgentUIMessage]))
-    return
+    } as AgentUIMessage]
   }
   const messageID = segmentIDRef.current
-  setMessages(current => normalizeAgentUIMessages(current.map((message) => {
+  return messages.map((message) => {
     if (message.id !== messageID) return message
     return {
       ...message,
@@ -165,7 +250,34 @@ function appendStreamingText(
         return { ...raw, text: `${readString(raw.text)}${content}`, state: 'streaming' } as AgentUIMessage['parts'][number]
       }),
     } as AgentUIMessage
-  })))
+  })
+}
+
+/**
+ * Apply a buffered tool args delta by upserting the tool card without normalization.
+ */
+function applyToolArgsDelta(
+  messages: AgentUIMessage[],
+  delta: PendingToolArgsDelta,
+  toolInputsRef: { current: Record<string, string> },
+): AgentUIMessage[] {
+  const { toolID, data, metadata } = delta
+  const toolName = readString(data.name) || 'unknown_tool'
+  const inputText = toolInputsRef.current[toolID] || ''
+  const part: Record<string, unknown> = {
+    type: 'dynamic-tool',
+    toolName,
+    toolCallId: toolID,
+    state: 'input-streaming',
+    input: parseJSONValue(inputText),
+    providerMetadata: { agent: metadata },
+  }
+  return upsertAgentMessage(messages, {
+    id: toolID,
+    role: 'assistant',
+    metadata,
+    parts: [part as AgentUIMessage['parts'][number]],
+  } as AgentUIMessage)
 }
 
 function upsertTool(
@@ -200,19 +312,6 @@ function upsertTool(
   } as AgentUIMessage)))
 }
 
-function appendToolArgs(
-  setMessages: Dispatch<SetStateAction<AgentUIMessage[]>>,
-  toolInputsRef: { current: Record<string, string> },
-  counterRef: { current: number },
-  data: Record<string, unknown>,
-  metadata: AgentMessageMetadata,
-) {
-  const toolID = toolEventID(data, counterRef)
-  const delta = readString(data.delta)
-  if (!delta) return
-  toolInputsRef.current[toolID] = `${toolInputsRef.current[toolID] || ''}${delta}`
-  upsertTool(setMessages, toolInputsRef, counterRef, data, metadata, 'input-streaming')
-}
 
 function finishStreamingParts(setMessages: Dispatch<SetStateAction<AgentUIMessage[]>>) {
   setMessages(current => normalizeAgentUIMessages(current.map((message) => ({
