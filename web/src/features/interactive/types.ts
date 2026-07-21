@@ -8,6 +8,7 @@ export interface StorySummary {
   origin: string
   story_teller_id: string
   story_director_id: string
+  director_run_policy?: StoryDirectorRunPolicy
   module_refs?: StoryDirectorModuleRefs
   reply_target_chars: number
   choice_count: number
@@ -24,6 +25,13 @@ export type StoryStateSchemaMode = 'adapt_template' | 'fixed_template' | 'genera
 
 export interface StoryStateSchemaPolicy {
   mode: StoryStateSchemaMode
+}
+
+export type StoryDirectorRunMode = 'on_demand' | 'manual' | 'interval'
+
+export interface StoryDirectorRunPolicy {
+  mode: StoryDirectorRunMode
+  interval_turns?: number
 }
 
 type StoryImageMode = 'manual' | 'interval'
@@ -230,7 +238,6 @@ export interface ActorTraitDefinition {
   name: string
   summary?: string
   weight?: number
-  visibility?: 'visible' | 'hidden' | 'spoiler'
 }
 
 export interface ActorTraitInstance {
@@ -239,7 +246,6 @@ export interface ActorTraitInstance {
   trait_id: string
   name: string
   summary?: string
-  visibility?: 'visible' | 'hidden' | 'spoiler'
   source_kind?: string
   source_id?: string
   source_turn_id?: string
@@ -265,7 +271,6 @@ export interface ActorStateField {
   min?: number
   max?: number
   options?: string[]
-  visibility?: 'visible' | 'hidden' | 'spoiler'
   description?: string
   update_instruction?: string
   /** Legacy Beta input retained for API compatibility; field array order is the fallback. */
@@ -886,7 +891,6 @@ export interface ActorStateSchemaRequirementSource {
 export interface ActorStateSchemaRequirementReview {
 	source: ActorStateSchemaRequirementSource
 	requirement: string
-	evidence_kind: 'confirmed' | 'inferred' | 'default' | string
 	value_policy?: 'schema_only' | 'preserve' | 'initialize' | 'defer' | string
 	actor_id?: string
 	expected_type?: string
@@ -910,7 +914,6 @@ export interface ActorStateSchemaAdaptationChange {
 		source_id: string
 		item_id: string
 		source: ActorStateSchemaRequirementSource
-		evidence_kind: string
 	}
 }
 

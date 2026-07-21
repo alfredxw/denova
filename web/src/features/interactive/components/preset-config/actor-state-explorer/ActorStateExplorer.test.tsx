@@ -66,7 +66,7 @@ describe('ActorStateExplorer', () => {
           templates: [{
             id: 'protagonist',
             name: '主角状态',
-            fields: [{ id: 'health', name: '身体状态', path: 'current.health', type: 'string', visibility: 'visible', group: '状态' }],
+            fields: [{ id: 'health', name: '身体状态', path: 'current.health', type: 'string', group: '状态' }],
           }],
           initial_actors: [],
           trait_pools: [],
@@ -118,8 +118,8 @@ describe('ActorStateExplorer', () => {
             id: 'protagonist',
             name: 'Protagonist',
             fields: [
-              { id: 'health', name: 'Health', type: 'number', visibility: 'visible' },
-              { id: 'mana', name: 'Mana', type: 'number', visibility: 'visible' },
+              { id: 'health', name: 'Health', type: 'number' },
+              { id: 'mana', name: 'Mana', type: 'number' },
             ],
           }],
           initial_actors: [],
@@ -149,7 +149,7 @@ describe('ActorStateExplorer', () => {
           templates: [{
             id: 'protagonist',
             name: '主角状态',
-            fields: [{ id: 'health', name: '身体状态', path: 'current.health', type: 'string', visibility: 'visible' }],
+            fields: [{ id: 'health', name: '身体状态', path: 'current.health', type: 'string' }],
           }],
           initial_actors: [],
           trait_pools: [],
@@ -238,7 +238,7 @@ describe('ActorStateExplorer', () => {
           templates: [{
             id: 'protagonist',
             name: '主角状态',
-            fields: [{ name: '当前处境', type: 'string', visibility: 'visible' }],
+            fields: [{ name: '当前处境', type: 'string' }],
           }],
           initial_actors: [],
           trait_pools: [],
@@ -264,6 +264,43 @@ describe('ActorStateExplorer', () => {
     expect(onChange.mock.lastCall?.[0]).toMatchObject({
       templates: [{ fields: [{ name: '当前处境', display: 'block' }] }],
     })
+  })
+
+  it('does not expose legacy field or trait visibility metadata in the tree and detail editors', async () => {
+    const user = userEvent.setup()
+    const legacyValue = {
+      templates: [{
+        id: 'protagonist',
+        name: '主角状态',
+        fields: [{ name: '当前处境', type: 'string', visibility: 'hidden' }],
+      }],
+      initial_actors: [],
+      trait_pools: [{
+        id: 'origin',
+        name: '出身',
+        traits: [{ id: 'wanderer', name: '游侠', weight: 1, visibility: 'spoiler' }],
+      }],
+    } as unknown as ExplorerProps['value']
+
+    render(
+      <ActorStateExplorer
+        value={legacyValue}
+        onChange={vi.fn()}
+        onValidityChange={vi.fn()}
+      />,
+    )
+
+    const fieldItem = screen.getByRole('treeitem', { name: '当前处境' })
+    expect(within(fieldItem).queryByText(/^隐藏$|^Hidden$/)).not.toBeInTheDocument()
+    await user.click(within(fieldItem).getByTitle(/^当前处境/))
+    expect(screen.queryByText(/^可见性$|^Visibility$/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^隐藏$|^Hidden$/)).not.toBeInTheDocument()
+
+    const traitItem = screen.getByRole('treeitem', { name: '游侠' })
+    expect(within(traitItem).queryByText(/^剧透$|^Spoiler$/)).not.toBeInTheDocument()
+    await user.click(within(traitItem).getByTitle(/^游侠/))
+    expect(screen.queryByText(/^可见性$|^Visibility$/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^剧透$|^Spoiler$/)).not.toBeInTheDocument()
   })
 
   it('keeps section and renderer hints in the schema without exposing UI ordering controls', async () => {
@@ -333,7 +370,7 @@ describe('ActorStateExplorer', () => {
           initial_actors: [],
           trait_pools: [
             { id: 'pool-a', name: 'Pool A', traits: [] },
-            { id: 'pool-b', name: 'Pool B', traits: [{ id: 'trait-b', name: 'Trait B', weight: 1, visibility: 'visible' }] },
+            { id: 'pool-b', name: 'Pool B', traits: [{ id: 'trait-b', name: 'Trait B', weight: 1 }] },
           ],
         }}
         onChange={onChange}
@@ -351,7 +388,7 @@ describe('ActorStateExplorer', () => {
     })
 
     const traitItem = screen.getByRole('treeitem', { name: 'Trait B' })
-    expect(within(traitItem).getByText(/可见|Visible/)).toBeInTheDocument()
+    expect(within(traitItem).queryByText(/可见|Visible/)).not.toBeInTheDocument()
     await user.click(within(traitItem).getByTitle(/^Trait B/))
     fireEvent.change(await screen.findByDisplayValue('trait-b'), { target: { value: 'trait-renamed' } })
     expect(screen.getByDisplayValue('trait-renamed')).toBeInTheDocument()

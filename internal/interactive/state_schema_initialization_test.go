@@ -94,7 +94,7 @@ func TestBuildStateSchemaMigrationAppliesFieldLevelActorInitialization(t *testin
 	target := base
 	target.Templates = append([]ActorStateTemplate(nil), base.Templates...)
 	target.Templates[0].Fields = append([]ActorStateField(nil), base.Templates[0].Fields...)
-	target.Templates[0].Fields = append(target.Templates[0].Fields, ActorStateField{Name: "境界", Type: "string", Visibility: "visible"})
+	target.Templates[0].Fields = append(target.Templates[0].Fields, ActorStateField{Name: "境界", Type: "string"})
 	state := map[string]any{actorStateRoot: map[string]any{
 		DefaultActorID: map[string]any{
 			"id": DefaultActorID, "template_id": DefaultActorID,
@@ -103,12 +103,12 @@ func TestBuildStateSchemaMigrationAppliesFieldLevelActorInitialization(t *testin
 	}}
 	source := &ActorStateSchemaActorValueSource{
 		SourceID: "state_schema_batch:protagonist-realm", ItemID: "protagonist-realm",
-		Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, EvidenceKind: "confirmed",
+		Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"},
 	}
 	adaptation := ActorStateSchemaAdaptation{
 		TemplateOps: []ActorStateTemplateSchemaOp{{
 			Op: "fields", TemplateID: DefaultActorID,
-			FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "境界", Type: "string", Visibility: "visible"}}},
+			FieldOps: []ActorStateFieldSchemaOp{{Op: "add", Field: ActorStateField{Name: "境界", Type: "string"}}},
 		}},
 		ActorOps: []ActorStateRuntimeSchemaOp{{
 			Op: "set", ActorID: DefaultActorID, FieldID: "境界", Value: "筑基初期", Reason: "开局正文明确", ValueSource: source,
@@ -143,7 +143,7 @@ func TestBuildStateSchemaMigrationKeepsBatchActorValueSourceID(t *testing.T) {
 	}}}
 	source := &ActorStateSchemaActorValueSource{
 		SourceID: "state_schema_batch:guide-attitude", ItemID: "guide-attitude",
-		Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "turn-opening"}, EvidenceKind: "inferred",
+		Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "turn-opening"},
 	}
 	adaptation := ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{{
 		Op: "add", ActorID: "guide", Actor: ActorStateInitialActor{
@@ -168,7 +168,7 @@ func TestBuildStateSchemaMigrationKeepsBatchActorValueSourceID(t *testing.T) {
 		}
 	}
 	changes := stateSchemaAdaptationChanges(adaptation)
-	if len(changes) != 1 || changes[0].ValueSource == nil || changes[0].ValueSource.SourceID != source.SourceID || changes[0].ValueSource.EvidenceKind != "inferred" {
+	if len(changes) != 1 || changes[0].ValueSource == nil || changes[0].ValueSource.SourceID != source.SourceID {
 		t.Fatalf("persisted schema adaptation change lost Actor evidence association: %#v", changes)
 	}
 }

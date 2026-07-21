@@ -33,7 +33,6 @@ const storyStage = {
   'storyStage.state.group.overview': 'Overview',
   'storyStage.state.group.details': 'Details',
   'storyStage.state.group.holdings': 'Holdings',
-  'storyStage.state.group.spoiler': 'Hidden Info',
   'storyStage.state.metricProgress': '{{label}}: current {{value}}, range {{min}} to {{max}}',
   'storyStage.state.actorEmpty': 'This Actor has no visible state fields',
   'storyStage.state.worldEmpty': 'No visible world state yet',

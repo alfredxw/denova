@@ -5,6 +5,7 @@ type CreateStoryRequest struct {
 	Origin                    string                            `json:"origin"`
 	StoryTellerID             string                            `json:"story_teller_id"`
 	StoryDirectorID           string                            `json:"story_director_id,omitempty"`
+	DirectorRunPolicy         *StoryDirectorRunPolicy           `json:"director_run_policy,omitempty"`
 	ModuleRefs                *StoryDirectorModuleRefs          `json:"module_refs,omitempty"`
 	ReplyTargetChars          int                               `json:"reply_target_chars"`
 	ChoiceCount               int                               `json:"choice_count"`
@@ -105,6 +106,7 @@ type UpdateStoryRequest struct {
 	Origin                    *string                          `json:"origin,omitempty"`
 	StoryTellerID             string                           `json:"story_teller_id"`
 	StoryDirectorID           string                           `json:"story_director_id,omitempty"`
+	DirectorRunPolicy         *StoryDirectorRunPolicy          `json:"director_run_policy,omitempty"`
 	ModuleRefs                *StoryDirectorModuleRefs         `json:"module_refs,omitempty"`
 	ReplyTargetChars          *int                             `json:"reply_target_chars,omitempty"`
 	ChoiceCount               *int                             `json:"choice_count,omitempty"`
@@ -132,6 +134,7 @@ type StorySummary struct {
 	Origin            string                   `json:"origin"`
 	StoryTellerID     string                   `json:"story_teller_id"`
 	StoryDirectorID   string                   `json:"story_director_id"`
+	DirectorRunPolicy *StoryDirectorRunPolicy  `json:"director_run_policy,omitempty"`
 	ModuleRefs        *StoryDirectorModuleRefs `json:"module_refs,omitempty"`
 	ReplyTargetChars  int                      `json:"reply_target_chars"`
 	ChoiceCount       int                      `json:"choice_count"`
@@ -183,6 +186,7 @@ type StoryMeta struct {
 	Origin                    string                           `json:"origin"`
 	StoryTellerID             string                           `json:"story_teller_id"`
 	StoryDirectorID           string                           `json:"story_director_id,omitempty"`
+	DirectorRunPolicy         *StoryDirectorRunPolicy          `json:"director_run_policy,omitempty"`
 	ModuleRefs                *StoryDirectorModuleRefs         `json:"module_refs,omitempty"`
 	ReplyTargetChars          int                              `json:"reply_target_chars"`
 	ChoiceCount               int                              `json:"choice_count"`

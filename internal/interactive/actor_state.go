@@ -53,11 +53,10 @@ type ActorTraitPool struct {
 }
 
 type ActorTraitDefinition struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	Summary    string  `json:"summary,omitempty"`
-	Weight     float64 `json:"weight,omitempty"`
-	Visibility string  `json:"visibility,omitempty"`
+	ID      string  `json:"id"`
+	Name    string  `json:"name"`
+	Summary string  `json:"summary,omitempty"`
+	Weight  float64 `json:"weight,omitempty"`
 }
 
 // ActorTraitInstance is a snapshot of a definition at assignment time. Stories
@@ -68,7 +67,6 @@ type ActorTraitInstance struct {
 	TraitID      string `json:"trait_id"`
 	Name         string `json:"name"`
 	Summary      string `json:"summary,omitempty"`
-	Visibility   string `json:"visibility,omitempty"`
 	SourceKind   string `json:"source_kind,omitempty"`
 	SourceID     string `json:"source_id,omitempty"`
 	SourceTurnID string `json:"source_turn_id,omitempty"`
@@ -94,7 +92,6 @@ type ActorStateField struct {
 	Min               *float64 `json:"min,omitempty"`
 	Max               *float64 `json:"max,omitempty"`
 	Options           []string `json:"options,omitempty" jsonschema:"maxItems=24" jsonschema_description:"type=enum 时的有限合法值。"`
-	Visibility        string   `json:"visibility,omitempty" jsonschema:"enum=visible,enum=spoiler,enum=hidden" jsonschema_description:"省略时默认 visible。"`
 	Description       string   `json:"description,omitempty" jsonschema_description:"字段承接的信息及语义。"`
 	UpdateInstruction string   `json:"update_instruction,omitempty" jsonschema_description:"何时更新以及写入完整值还是增量。"`
 	// Order is retained only for decoding older Beta presets. Field array order
@@ -297,7 +294,6 @@ func normalizeActorStateFields(fields []ActorStateField) []ActorStateField {
 		}
 		field.ID = field.Name
 		field.Type = normalizeActorStateFieldType(field.Type)
-		field.Visibility = normalizeStoryDirectorVisibility(field.Visibility)
 		field.Description = trimBytes(field.Description, maxInteractiveTextBytes)
 		field.UpdateInstruction = trimBytes(field.UpdateInstruction, maxInteractiveTextBytes)
 		field.Options = normalizeStringListLimit(field.Options, maxInteractiveListItems)
@@ -563,10 +559,9 @@ func enrichLegacyActorStateSchema(snapshot *ActorStateSchemaSnapshot, state map[
 			}
 			order := (len(template.Fields) + 1) * 10
 			template.Fields = append(template.Fields, ActorStateField{
-				Name:       legacyPath,
-				Type:       legacyActorStateFieldType(value),
-				Visibility: "visible",
-				Order:      order,
+				Name:  legacyPath,
+				Type:  legacyActorStateFieldType(value),
+				Order: order,
 			})
 			aliases[legacyPath] = legacyPath
 		}

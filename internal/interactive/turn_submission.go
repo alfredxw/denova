@@ -375,9 +375,6 @@ func jsonValueKind(raw []byte) string {
 func turnSubmissionAllowedFields(template ActorStateTemplate) []string {
 	fields := make([]string, 0, len(template.Fields))
 	for _, field := range template.Fields {
-		if field.Visibility == "hidden" {
-			continue
-		}
 		fields = append(fields, actorStateFieldID(field))
 		if len(fields) >= maxTurnSubmissionAllowedFields {
 			break

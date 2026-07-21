@@ -6,6 +6,10 @@ function field(partial: Partial<ActorStateField> & Pick<ActorStateField, 'name' 
   return partial
 }
 
+function historicalField(value: Record<string, unknown>): ActorStateField {
+  return value as unknown as ActorStateField
+}
+
 describe('resolveStateFieldLayout', () => {
   it('routes bounded numbers to the stat renderer in the overview group', () => {
     const layout = resolveStateFieldLayout(field({ name: '生命', type: 'number', min: 0, max: 10 }), 7)
@@ -30,11 +34,13 @@ describe('resolveStateFieldLayout', () => {
     expect(resolveStateFieldLayout(field({ name: '储物袋', type: 'object' }), { 灵石: 9 })).toEqual({ renderer: 'object', group: 'holdings', customGroup: false })
   })
 
-  it('sends spoiler fields to the spoiler group unless a custom group is declared', () => {
-    const spoiler = resolveStateFieldLayout(field({ name: '隐藏风险', type: 'list', visibility: 'spoiler' }), ['被追踪'])
-    expect(spoiler.group).toBe('spoiler')
-    const declared = resolveStateFieldLayout(field({ name: '隐藏风险', type: 'list', visibility: 'spoiler', group: '暗线' }), ['被追踪'])
-    expect(declared).toEqual({ renderer: 'list', group: '暗线', customGroup: true })
+  it('ignores historical spoiler metadata while preserving custom group strings', () => {
+    const legacySpoiler = resolveStateFieldLayout(historicalField({ name: '隐藏风险', type: 'list', visibility: 'spoiler' }), ['被追踪'])
+    expect(legacySpoiler).toEqual({ renderer: 'list', group: 'holdings', customGroup: false })
+    const declared = resolveStateFieldLayout(historicalField({ name: '隐藏风险', type: 'list', visibility: 'spoiler', group: 'spoiler' }), ['被追踪'])
+    expect(declared).toEqual({ renderer: 'list', group: 'spoiler', customGroup: true })
+    const localized = resolveStateFieldLayout(field({ name: '隐藏风险', type: 'list', group: '暗线' }), ['被追踪'])
+    expect(localized).toEqual({ renderer: 'list', group: '暗线', customGroup: true })
   })
 
   it('honors display hints with graceful fallback', () => {

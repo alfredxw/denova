@@ -62,7 +62,6 @@ export function StateSchemaOverview({ schema, initialization }: {
                 <li key={`${requirement.source.kind}:${requirement.source.id}:${requirement.template_id}:${requirement.field_id}:${index}`} className="min-w-0 rounded-md bg-[var(--nova-surface-2)] px-2.5 py-2 text-[10px] leading-4">
                   <div className="flex flex-wrap items-center gap-1.5 text-[9px] text-[var(--nova-text-faint)]">
                     <span className="rounded bg-[var(--nova-surface-3)] px-1.5 py-0.5 font-medium text-[var(--nova-text-muted)]">{t(`directorPanel.stateSchema.decision.${requirement.decision}`, { defaultValue: requirement.decision })}</span>
-                    <span className="rounded border border-[var(--nova-border)] px-1.5 py-0.5">{t(`directorPanel.stateSchema.evidence.${requirement.evidence_kind}`, { defaultValue: requirement.evidence_kind })}</span>
                     <span className="min-w-0 break-words">{t(`directorPanel.stateSchema.source.${requirement.source.kind}`, { defaultValue: requirement.source.kind })} · <span className="break-all font-mono">{requirement.source.id}</span></span>
                   </div>
                   <p className="mt-1 break-words text-[var(--nova-text-muted)]">{requirement.requirement}</p>
@@ -89,7 +88,7 @@ export function StateSchemaOverview({ schema, initialization }: {
                   <span className="ml-2 font-mono text-[9px] text-[var(--nova-text-faint)]">{template.id} · {(template.fields || []).length}</span>
                 </summary>
                 <div className="mt-2 space-y-1.5 pl-2">
-                  {(template.fields || []).filter((field) => field.visibility !== 'hidden').map((field) => (
+                  {(template.fields || []).map((field) => (
                     <div key={field.name} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 text-[10px] leading-4">
                       <div className="min-w-0"><span className="break-words text-[var(--nova-text-muted)]">{field.name}</span>{field.description ? <span className="ml-1 text-[var(--nova-text-faint)]">— {field.description}</span> : null}</div>
                       <span className="font-mono text-[var(--nova-text-faint)]">{fieldMeta(field)}</span>
@@ -172,7 +171,7 @@ function requirementExpected(requirement: ActorStateSchemaRequirementReview) {
 
 function fieldMeta(field: ActorStateField) {
   const defaultValue = field.default === undefined ? '' : ` = ${compactValue(field.default)}`
-  return `${field.type}${defaultValue}${field.visibility ? ` · ${field.visibility}` : ''}`
+  return `${field.type}${defaultValue}`
 }
 
 function compactValue(value: unknown) {

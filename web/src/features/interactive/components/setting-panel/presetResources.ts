@@ -225,7 +225,7 @@ export function newActorStateDraft(t?: PresetDraftTranslator): Partial<ActorStat
           name: presetDraftText(t, 'settingPanel.presetDraft.actor.templateName', '默认主角状态表'),
           description: presetDraftText(t, 'settingPanel.presetDraft.actor.templateDescription', '示例主角状态表，可替换或新增世界、故事、势力、基地、特定角色等状态表。'),
           fields: [
-            { id: 'current_status', path: 'current.status', name: presetDraftText(t, 'settingPanel.presetDraft.actor.fieldName', '当前状态'), type: 'string', default: presetDraftText(t, 'settingPanel.presetDraft.actor.fieldDefault', '状态稳定，等待剧情确定。'), visibility: 'visible' },
+            { id: 'current_status', path: 'current.status', name: presetDraftText(t, 'settingPanel.presetDraft.actor.fieldName', '当前状态'), type: 'string', default: presetDraftText(t, 'settingPanel.presetDraft.actor.fieldDefault', '状态稳定，等待剧情确定。') },
           ],
         },
       ],

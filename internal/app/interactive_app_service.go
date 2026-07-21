@@ -145,6 +145,8 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 	if interactive.StoryDirectorImagePresetEnabled(director) && strings.TrimSpace(req.ImageSettings.PresetID) == "" && strings.TrimSpace(director.ModuleRefs.ImagePresetID) != "" {
 		req.ImageSettings.PresetID = strings.TrimSpace(director.ModuleRefs.ImagePresetID)
 	}
+	directorRunPolicy := interactive.ResolveStoryDirectorRunPolicy(req.DirectorRunPolicy, director.Strategy)
+	req.DirectorRunPolicy = &directorRunPolicy
 	openingSummary := openingSummaryFromStateOps(req.InitialStateOps)
 	req.DirectorPlanSeed = &interactive.DirectorPlanSeed{
 		Templates:           director.Strategy.PlanningTemplates,
@@ -158,6 +160,10 @@ func (s *InteractiveAppService) withStoryDirectorDefaults(req interactive.Create
 	if !decision.ShouldRun {
 		req.DirectorPlanSeed.InitialStatus = interactive.DirectorPlanStatusSkipped
 		req.DirectorPlanSeed.InitialSummary = "后台导演已关闭，跳过开局规划。"
+		req.DirectorPlanSeed.StartReady = true
+	} else if directorRunPolicy.Mode == interactive.DirectorRunModeManual {
+		req.DirectorPlanSeed.InitialStatus = interactive.DirectorPlanStatusSkipped
+		req.DirectorPlanSeed.InitialSummary = "后台导演设为仅手动运行。"
 		req.DirectorPlanSeed.StartReady = true
 	}
 	policy := interactive.StoryStateSchemaPolicy{Mode: interactive.StoryStateSchemaModeAdaptTemplate}
@@ -836,19 +842,44 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 		}
 		persistedEmitted := false
 		maintenanceScheduled := false
-		scheduleMaintenance := func(turn interactive.TurnEvent) {
+		scheduleMaintenance := func(turn interactive.TurnEvent, persistedSnapshot *interactive.Snapshot) {
 			director := conversation.storyDirectorForMeta(storyCtx.Meta)
-			decision := shouldScheduleInteractiveDirectorAfterTurn(director.Strategy, turn)
-			log.Printf("[interactive-director-agent] maintenance decision story_id=%s branch_id=%s turn_id=%s run_plan=%t reason=%s", storyID, turn.BranchID, turn.ID, decision.ShouldRun, decision.Reason)
+			policy := interactive.ResolveStoryDirectorRunPolicy(storyCtx.Meta.DirectorRunPolicy, director.Strategy)
+			if persistedSnapshot == nil {
+				loaded, loadErr := store.Snapshot(storyID, turn.BranchID)
+				if loadErr != nil {
+					log.Printf("[interactive-director-agent] load scheduling snapshot failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, loadErr)
+				} else {
+					persistedSnapshot = &loaded
+				}
+			}
+			committedTurns := len(storyCtx.Snapshot.Turns) + 1
+			planStatus := ""
+			if storyCtx.Snapshot.DirectorPlanStatus != nil {
+				planStatus = storyCtx.Snapshot.DirectorPlanStatus.Status
+			}
+			if persistedSnapshot != nil {
+				committedTurns = len(persistedSnapshot.Turns)
+				if persistedSnapshot.DirectorPlanStatus != nil {
+					planStatus = persistedSnapshot.DirectorPlanStatus.Status
+				}
+			}
+			materialUpdate := turn.TurnResult != nil && turn.TurnResult.DirectorUpdate != nil && turn.TurnResult.DirectorUpdate.Needed
+			decision := interactive.DecideDirectorRunAfterTurn(director.Strategy.Enabled, policy, interactive.DirectorRunScheduleContext{
+				CommittedTurns: committedTurns,
+				PlanStatus:     planStatus,
+				MaterialUpdate: materialUpdate,
+			})
+			log.Printf("[interactive-director-agent] maintenance decision story_id=%s branch_id=%s turn_id=%s policy_mode=%s interval_turns=%d committed_turns=%d plan_status=%s run_plan=%t reason=%s", storyID, turn.BranchID, turn.ID, policy.Mode, policy.IntervalTurns, committedTurns, planStatus, decision.ShouldRun, decision.Reason)
 			startInteractiveDirectorMaintenanceTask(&runtimeCfg, state, conversation, turn, sessionStore, decision.ShouldRun)
 			maintenanceScheduled = true
 		}
 		interactiveEmit := func(event agent.Event) {
 			if event.Type == "done" && !persistedEmitted && ctx.Err() == nil {
 				persistedEmitted = true
-				emitInteractiveTurnPersisted(store, storyID, conversation, emit)
+				persistedSnapshot := emitInteractiveTurnPersisted(store, storyID, conversation, emit)
 				if turn, _, ok := conversation.LastTurnForState(); ok {
-					scheduleMaintenance(turn)
+					scheduleMaintenance(turn, persistedSnapshot)
 				}
 			}
 			emit(event)
@@ -866,7 +897,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 			OnMutationsVerified: a.automationMutationCallback("interactive_agent_post_run"),
 		}, interactiveEmit)
 		if turn, _, ok := conversation.LastTurnForState(); ok && ctx.Err() == nil && !maintenanceScheduled {
-			scheduleMaintenance(turn)
+			scheduleMaintenance(turn, nil)
 		}
 		log.Printf("[interactive-agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})
@@ -884,18 +915,18 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 	return task
 }
 
-func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conversation *interactiveConversation, emit func(agent.Event)) {
+func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conversation *interactiveConversation, emit func(agent.Event)) *interactive.Snapshot {
 	if store == nil || conversation == nil || emit == nil {
-		return
+		return nil
 	}
 	turn, _, ok := conversation.LastTurnForState()
 	if !ok || strings.TrimSpace(turn.ID) == "" {
-		return
+		return nil
 	}
 	snapshot, err := store.Snapshot(storyID, turn.BranchID)
 	if err != nil {
 		log.Printf("[interactive-agent-task] load persisted turn snapshot failed story_id=%s branch_id=%s turn_id=%s err=%v", storyID, turn.BranchID, turn.ID, err)
-		return
+		return nil
 	}
 	persistedTurn := turn
 	for _, snapshotTurn := range snapshot.Turns {
@@ -917,6 +948,7 @@ func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conv
 	}
 	emit(agent.Event{Type: "interactive_turn_persisted", Data: event})
 	log.Printf("[interactive-agent-task] emitted persisted turn story_id=%s branch_id=%s turn_id=%s", storyID, snapshot.BranchID, persistedTurn.ID)
+	return &snapshot
 }
 
 func (a *App) InteractiveTellers() ([]interactive.Teller, error) {

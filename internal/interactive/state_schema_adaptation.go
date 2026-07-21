@@ -70,10 +70,9 @@ type ActorStateRuntimeSchemaOp struct {
 // ActorStateSchemaActorValueSource links Actor values produced by a Batch item
 // to the exact requirement evidence persisted in the schema adaptation audit.
 type ActorStateSchemaActorValueSource struct {
-	SourceID     string                            `json:"source_id"`
-	ItemID       string                            `json:"item_id"`
-	Source       ActorStateSchemaRequirementSource `json:"source"`
-	EvidenceKind string                            `json:"evidence_kind"`
+	SourceID string                            `json:"source_id"`
+	ItemID   string                            `json:"item_id"`
+	Source   ActorStateSchemaRequirementSource `json:"source"`
 }
 
 // ActorStateSchemaAdaptationRecord is persisted with the frozen story schema
@@ -202,7 +201,6 @@ func normalizeActorStateSchemaActorValueSource(source *ActorStateSchemaActorValu
 	source.ItemID = strings.TrimSpace(source.ItemID)
 	source.Source.Kind = strings.TrimSpace(source.Source.Kind)
 	source.Source.ID = strings.TrimSpace(source.Source.ID)
-	source.EvidenceKind = strings.TrimSpace(source.EvidenceKind)
 }
 
 // ApplyActorStateSchemaAdaptation applies a Game Agent schema diff and validates

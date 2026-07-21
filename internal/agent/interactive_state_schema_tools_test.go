@@ -38,16 +38,19 @@ func TestOpeningGameStateSchemaToolUsesDedicatedStructureOnlyEntry(t *testing.T)
 		t.Fatal(err)
 	}
 	schemaText := string(data)
-	for _, expected := range []string{`"enum":["opening","lore","trpg"]`, `"enum":["confirmed","inferred","default"]`, `"enum":["schema_only"]`, `"enum":["number","string","bool","enum","object","list"]`, `"enum":["covered","add","replace","ignored"]`, `"enum":["add","remove","fields"]`, `"maxItems":16`} {
+	for _, expected := range []string{`"enum":["opening","lore","trpg"]`, `"enum":["schema_only"]`, `"enum":["number","string","bool","enum","object","list"]`, `"enum":["covered","add","replace","ignored"]`, `"enum":["add","remove","fields"]`, `"maxItems":16`} {
 		if !strings.Contains(schemaText, expected) {
 			t.Fatalf("opening schema must expose strict bounded enums; missing %s in %s", expected, schemaText)
 		}
+	}
+	if strings.Contains(schemaText, `"evidence_kind"`) || strings.Contains(info.Desc, "evidence_kind") {
+		t.Fatalf("opening schema tool must not expose the retired evidence_kind contract: info=%#v schema=%s", info, schemaText)
 	}
 	if strings.Contains(schemaText, `"initial_actor_ops"`) || strings.Contains(schemaText, `"actor_ops"`) {
 		t.Fatalf("opening structure-only schema must not expose Actor value operations: %s", schemaText)
 	}
 	invokable := tools[0].(tool.InvokableTool)
-	if _, err := invokable.InvokableRun(context.Background(), `{"summary":"现有字段覆盖开局需求","items":[{"item_id":"schema-covered-review","requirements":[{"source":{"kind":"opening","id":"opening-draft"},"requirement":"主角姓名需要长期记录，现有字段已覆盖","evidence_kind":"confirmed","value_policy":"schema_only","expected_type":"string","decision":"covered","template_id":"protagonist","field_id":"姓名"}],"adaptation":{"template_ops":[]}}],"finalize":true}`); err != nil {
+	if _, err := invokable.InvokableRun(context.Background(), `{"summary":"现有字段覆盖开局需求","items":[{"item_id":"schema-covered-review","requirements":[{"source":{"kind":"opening","id":"opening-draft"},"requirement":"主角姓名需要长期记录，现有字段已覆盖","value_policy":"schema_only","expected_type":"string","decision":"covered","template_id":"protagonist","field_id":"姓名"}],"adaptation":{"template_ops":[]}}],"finalize":true}`); err != nil {
 		t.Fatal(err)
 	}
 	if !submitted.Finalize || len(submitted.Items) != 1 || len(submitted.Items[0].Requirements) != 1 {

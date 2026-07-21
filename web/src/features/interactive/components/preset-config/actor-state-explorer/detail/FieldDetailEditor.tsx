@@ -9,13 +9,11 @@ import type { ActorStateField, ActorStateTemplate } from '../../../../types'
 import type { ExplorerProps } from '../types'
 import { fieldNodeId } from '../build-tree'
 import { FieldTypeBadge } from '../shared/FieldTypeBadge'
-import { VisibilityBadge } from '../shared/VisibilityBadge'
 import { StateValueEditor } from '../shared/StateValueEditor'
 import { DetailResponsiveGrid, DetailStack } from './DetailLayout'
 import { actorStateFieldNameHasPathSeparator } from '../validation'
 
 const FIELD_TYPES = ['number', 'string', 'bool', 'enum', 'object', 'list'] as const
-const VISIBILITY_OPTIONS = ['visible', 'hidden', 'spoiler'] as const
 const DISPLAY_OPTIONS = ['auto', 'stat', 'inline', 'block', 'list'] as const
 
 interface FieldDetailEditorProps {
@@ -69,7 +67,6 @@ export function FieldDetailEditor({
         className="flex flex-wrap items-center gap-2"
       >
         <FieldTypeBadge type={field.type} />
-        {field.visibility ? <VisibilityBadge visibility={field.visibility} /> : null}
         <span className="text-[10px] text-[var(--nova-text-faint)]">{t('settingPanel.actorState.explorer.nameIsId')}</span>
       </motion.div>
 
@@ -107,7 +104,7 @@ export function FieldDetailEditor({
 				</div>
 			)}
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3">
             <FormField label={t('settingPanel.actorState.explorer.type')}>
               <Select
                 value={field.type}
@@ -120,25 +117,6 @@ export function FieldDetailEditor({
                   <SelectGroup>
                     {FIELD_TYPES.map((fieldType) => (
                       <SelectItem key={fieldType} value={fieldType}>{fieldType}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </FormField>
-            <FormField label={t('settingPanel.actorState.explorer.visibility')}>
-              <Select
-                value={field.visibility || 'visible'}
-                onValueChange={(v) => updateField({ visibility: v as ActorStateField['visibility'] })}
-              >
-                <SelectTrigger className="nova-field h-8 text-xs focus:ring-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="nova-panel border text-[var(--nova-text)]">
-                  <SelectGroup>
-                    {VISIBILITY_OPTIONS.map((visibility) => (
-                      <SelectItem key={visibility} value={visibility}>
-                        {t(`settingPanel.actorState.explorer.${visibility}`)}
-                      </SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>

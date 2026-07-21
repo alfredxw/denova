@@ -65,7 +65,6 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
     const newField: ActorStateField = {
       name: t('settingPanel.actorState.explorer.newField', { count: fields.length + 1 }),
       type: 'string',
-      visibility: 'visible',
     }
     fields.push(newField)
     tpl.fields = fields
@@ -113,7 +112,6 @@ export function ActorStateExplorer({ value, onChange, onValidityChange, layout =
       id: nextPresetId('trait'),
       name: t('settingPanel.actorState.explorer.newTrait', { count: traits.length + 1 }),
       weight: 1,
-      visibility: 'visible',
     }
     traits.push(newTrait)
     pool.traits = traits

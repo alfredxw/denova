@@ -1,11 +1,12 @@
 import type { TFunction } from 'i18next'
-import type { InitialActorTraitRoll, StoryDirectorModuleRefs, StoryImageSettings, StoryOpeningConfig, StoryStateSchemaPolicy, StorySummary } from './types'
+import type { InitialActorTraitRoll, StoryDirectorModuleRefs, StoryDirectorRunPolicy, StoryImageSettings, StoryOpeningConfig, StoryStateSchemaPolicy, StorySummary } from './types'
 
 export interface StoryCreateInput {
   title: string
   origin: string
   story_teller_id: string
   story_director_id: string
+  director_run_policy: StoryDirectorRunPolicy
   module_refs?: StoryDirectorModuleRefs
   reply_target_chars: number
   choice_count: number

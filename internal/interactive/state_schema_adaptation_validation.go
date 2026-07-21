@@ -66,13 +66,6 @@ func validateActorStateAdaptationField(field ActorStateField) error {
 	default:
 		return fmt.Errorf("状态字段 %s type 无效: %s", field.Name, field.Type)
 	}
-	if field.Visibility != "" {
-		switch strings.TrimSpace(field.Visibility) {
-		case "visible", "spoiler", "hidden":
-		default:
-			return fmt.Errorf("状态字段 %s visibility 无效: %s", field.Name, field.Visibility)
-		}
-	}
 	if field.Type == "enum" && len(field.Options) == 0 {
 		return fmt.Errorf("enum 状态字段 %s 缺少 options", field.Name)
 	}

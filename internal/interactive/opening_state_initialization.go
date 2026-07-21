@@ -55,9 +55,6 @@ func openingInitialStateCoverage(system StoryDirectorActorStateSystem, state map
 			continue
 		}
 		for _, field := range template.Fields {
-			if field.Visibility == "hidden" {
-				continue
-			}
 			total++
 			fieldID := actorStateFieldID(field)
 			if meaningfulOpeningInitialStateValue(actorStateFieldValue(state, actor.ID, fieldID)) {

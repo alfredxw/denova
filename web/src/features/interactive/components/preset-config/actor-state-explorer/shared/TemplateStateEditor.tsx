@@ -1,9 +1,7 @@
-import { AlertTriangle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ActorStateField, ActorStateTemplate } from '../../../../types'
 import { StateValueEditor } from './StateValueEditor'
 import { FieldTypeBadge } from './FieldTypeBadge'
-import { VisibilityBadge } from './VisibilityBadge'
 
 interface TemplateStateEditorProps {
   template: ActorStateTemplate
@@ -56,8 +54,6 @@ function TemplateFieldRow({
   value: unknown
   onChange: (value: unknown) => void
 }) {
-  const isSensitive = field.visibility === 'hidden' || field.visibility === 'spoiler'
-
   return (
     <div className="rounded-[12px] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2.5">
       <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
@@ -65,10 +61,6 @@ function TemplateFieldRow({
           {field.name}
         </span>
         <FieldTypeBadge type={field.type} />
-        {field.visibility ? <VisibilityBadge visibility={field.visibility} /> : null}
-        {isSensitive ? (
-          <AlertTriangle className="h-3 w-3 text-[var(--nova-warning)]" />
-        ) : null}
       </div>
       <div className="mt-2">
         <StateValueEditor

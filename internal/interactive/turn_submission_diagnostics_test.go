@@ -8,7 +8,7 @@ import (
 func TestPrepareTurnSubmissionDoesNotReportDependentErrorsAfterInvalidCreate(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID:     "important_character",
-		Fields: []ActorStateField{{Name: "生命值", Type: "number", Visibility: "visible"}},
+		Fields: []ActorStateField{{Name: "生命值", Type: "number"}},
 	}}}
 	input := DecodeInteractiveTurnSubmissionInput(`{
 		"state_changes":[
@@ -39,8 +39,8 @@ func TestPrepareTurnSubmissionReportsOverlapAlongsideUnrelatedFailure(t *testing
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID: "protagonist",
 		Fields: []ActorStateField{
-			{Name: "生命值", Type: "number", Visibility: "visible"},
-			{Name: "关系", Type: "object", Visibility: "visible"},
+			{Name: "生命值", Type: "number"},
+			{Name: "关系", Type: "object"},
 		},
 	}}}
 	state := map[string]any{"actors": map[string]any{
@@ -74,7 +74,7 @@ func TestPrepareTurnSubmissionReportsOverlapAlongsideUnrelatedFailure(t *testing
 
 func TestPrepareTurnSubmissionPreservesOverlapErrorForDuplicateCreate(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{
-		{ID: "protagonist", Fields: []ActorStateField{{Name: "关系", Type: "object", Visibility: "visible"}}},
+		{ID: "protagonist", Fields: []ActorStateField{{Name: "关系", Type: "object"}}},
 		{ID: "important_character"},
 	}}
 	state := map[string]any{"actors": map[string]any{
@@ -124,7 +124,7 @@ func TestPrepareTurnSubmissionDoesNotDescribeSemanticCreateFailureAsJSONType(t *
 
 func TestPrepareTurnSubmissionDeltaDiagnosticDescribesTheMissingTarget(t *testing.T) {
 	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
-		ID: "protagonist", Fields: []ActorStateField{{Name: "生命值", Type: "number", Visibility: "visible"}},
+		ID: "protagonist", Fields: []ActorStateField{{Name: "生命值", Type: "number"}},
 	}}}
 	state := map[string]any{"actors": map[string]any{
 		"protagonist": map[string]any{

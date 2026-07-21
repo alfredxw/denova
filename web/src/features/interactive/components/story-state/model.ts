@@ -66,9 +66,9 @@ export function actorTemplate(actor: Record<string, unknown>, schema?: ActorStat
   return schema?.system.templates?.find((item) => item.id === templateId)
 }
 
-export function visibleActorTraits(actor: Record<string, unknown>) {
+export function actorTraits(actor: Record<string, unknown>) {
   if (!Array.isArray(actor.traits)) return []
-  return actor.traits.filter(isActorTrait).filter((trait) => trait.visibility !== 'hidden')
+  return actor.traits.filter(isActorTrait)
 }
 
 export function actorFieldEntries(
@@ -76,10 +76,8 @@ export function actorFieldEntries(
   schemaFields: ActorStateField[] | undefined,
 ): Array<{ field: ActorStateField; value: unknown }> {
   const state = isRecord(actor.state) ? actor.state : {}
-  const visibleFields = (schemaFields || [])
-    .filter((field) => field.visibility !== 'hidden')
   if (schemaFields !== undefined) {
-    return visibleFields.map((field) => ({
+    return schemaFields.map((field) => ({
       field,
       value: state[field.name] ?? (field.id ? state[field.id] : undefined) ?? (field.path ? state[field.path] : undefined),
     }))
@@ -233,7 +231,6 @@ const BUILTIN_GROUP_PRIORITY: Record<string, number> = {
   overview: 0,
   holdings: 1,
   details: 3,
-  spoiler: 4,
 }
 
 /** Custom groups sit between holdings and details and keep first-seen field order. */

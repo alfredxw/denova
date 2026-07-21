@@ -132,6 +132,11 @@ func validateStoryMeta(meta StoryMeta) error {
 	if err := validateStoryChoiceCount(meta.ChoiceCount); err != nil {
 		return err
 	}
+	if meta.DirectorRunPolicy != nil {
+		if err := ValidateStoryDirectorRunPolicy(*meta.DirectorRunPolicy); err != nil {
+			return err
+		}
+	}
 	switch meta.ImageSettings.Mode {
 	case StoryImageModeManual, StoryImageModeInterval:
 	default:

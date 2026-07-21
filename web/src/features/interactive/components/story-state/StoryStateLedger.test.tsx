@@ -40,11 +40,11 @@ describe('StoryStateLedger', () => {
       />,
     )
 
-    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '详情', '隐藏信息'])
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '详情'])
     const sections = container.querySelectorAll('.story-state-ledger__section[data-decorated]')
-    expect(sections).toHaveLength(4)
+    expect(sections).toHaveLength(3)
     const headers = container.querySelectorAll('.story-state-ledger__section-header')
-    expect(headers).toHaveLength(4)
+    expect(headers).toHaveLength(3)
     expect(headers[0].textContent).toContain('概览')
     expect(headers[0].textContent).toContain('4')
 
@@ -74,7 +74,7 @@ describe('StoryStateLedger', () => {
       />,
     )
 
-    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '身份', '人际', '详情', '隐藏信息'])
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '身份', '人际', '详情'])
     expect(screen.getByText('外门弟子')).toBeInTheDocument()
     expect(screen.getByText('冷淡')).toBeInTheDocument()
 
@@ -82,7 +82,7 @@ describe('StoryStateLedger', () => {
     await userEvent.click(screen.getByText('自定义布局'))
     await userEvent.click(screen.getByRole('button', { name: '下移分区：身份' }))
     await userEvent.click(screen.getByRole('button', { name: '关闭' }))
-    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '人际', '身份', '详情', '隐藏信息'])
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '人际', '身份', '详情'])
 
     unmount()
     const next = render(
@@ -92,13 +92,13 @@ describe('StoryStateLedger', () => {
         onDisplayPreferenceChange={() => undefined}
       />,
     )
-    expect(sectionLabels(next.container)).toEqual(['概览', '持有与资源', '人际', '身份', '详情', '隐藏信息'])
+    expect(sectionLabels(next.container)).toEqual(['概览', '持有与资源', '人际', '身份', '详情'])
 
     await userEvent.click(screen.getByRole('button', { name: '状态显示偏好' }))
     await userEvent.click(screen.getByText('自定义布局'))
     await userEvent.click(screen.getByRole('button', { name: '恢复默认布局' }))
     await userEvent.click(screen.getByRole('button', { name: '关闭' }))
-    expect(sectionLabels(next.container)).toEqual(['概览', '持有与资源', '身份', '人际', '详情', '隐藏信息'])
+    expect(sectionLabels(next.container)).toEqual(['概览', '持有与资源', '身份', '人际', '详情'])
   })
 
   it('shows only the glanceable sections in preview and expands on demand', async () => {
@@ -113,17 +113,17 @@ describe('StoryStateLedger', () => {
     expect(sectionLabels(container)).toEqual(['概览', '持有与资源'])
     expectVitalityVisible()
     expect(screen.queryByText(LONG_DETAIL_TEXT)).not.toBeInTheDocument()
-    expect(screen.queryByText('被赵师兄盯上')).not.toBeInTheDocument()
+    expect(screen.getByText('被赵师兄盯上')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: '展开全部（还有 2 个分区）' }))
-    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '详情', '隐藏信息'])
+    await userEvent.click(screen.getByRole('button', { name: '展开全部（还有 1 个分区）' }))
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '详情'])
     expect(screen.getByText(LONG_DETAIL_TEXT)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: '收起为预览' }))
     expect(sectionLabels(container)).toEqual(['概览', '持有与资源'])
 
     // Manual expansion survives same-turn updates but resets on a new turn.
-    await userEvent.click(screen.getByRole('button', { name: '展开全部（还有 2 个分区）' }))
+    await userEvent.click(screen.getByRole('button', { name: '展开全部（还有 1 个分区）' }))
     rerender(
       <StoryStateLedger
         snapshot={richStoryStateSnapshot()}
@@ -131,7 +131,7 @@ describe('StoryStateLedger', () => {
         onDisplayPreferenceChange={() => undefined}
       />,
     )
-    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '详情', '隐藏信息'])
+    expect(sectionLabels(container)).toEqual(['概览', '持有与资源', '详情'])
 
     rerender(
       <StoryStateLedger
@@ -175,7 +175,7 @@ describe('StoryStateLedger', () => {
   it('previews up to the first two sections when a template has no structured sections', () => {
     const snapshot = richStoryStateSnapshot()
     const template = snapshot.actor_state_schema?.system.templates?.[0]
-    // Drop every overview/holdings field so only details + spoiler remain.
+    // Keep one details field and one list field; the legacy spoiler bucket no longer exists.
     if (!template) throw new Error('Expected template fixture')
     template.fields = (template.fields || []).filter((field) => ['伤势详情', '隐藏风险'].includes(field.name))
 
@@ -187,7 +187,7 @@ describe('StoryStateLedger', () => {
       />,
     )
 
-    expect(sectionLabels(container)).toEqual(['详情', '隐藏信息'])
+    expect(sectionLabels(container)).toEqual(['持有与资源', '详情'])
     expect(screen.getByText(LONG_DETAIL_TEXT)).toBeInTheDocument()
     expect(screen.getByText('被赵师兄盯上')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /展开全部/ })).not.toBeInTheDocument()
@@ -426,7 +426,7 @@ describe('StoryStateLedger', () => {
     )
 
     expect(screen.getByText('2 changes this turn')).toBeInTheDocument()
-    expect(sectionLabels(container)).toEqual(['Overview', 'Holdings', 'Details', 'Hidden Info'])
+    expect(sectionLabels(container)).toEqual(['Overview', 'Holdings', 'Details'])
   })
 })
 
@@ -472,7 +472,7 @@ function storyStateSnapshot(turnId = 'turn-1'): Snapshot {
           role: 'protagonist',
           template_id: 'cultivator',
           state: { vitality: 7, spirit: 4, age: 23, 当前处境: '青石镇客栈' },
-          traits: [{ pool_id: 'origin', trait_id: 'calm', name: '冷静', visibility: 'visible' }],
+          traits: [{ pool_id: 'origin', trait_id: 'calm', name: '冷静' }],
         },
         supporting: { name: '沈凝', role: 'supporting', state: { stance: '观望' } },
       },
@@ -491,7 +491,7 @@ function richStoryStateSnapshot(turnId = 'turn-1'): Snapshot {
     { name: '伤势详情', type: 'string', order: 50 },
     { name: '储物袋', type: 'object', order: 60 },
     { name: '功法', type: 'list', order: 70 },
-    { name: '隐藏风险', type: 'list', visibility: 'spoiler', order: 80 },
+    { name: '隐藏风险', type: 'list', order: 80 },
   )
   protagonist.state['伤势详情'] = LONG_DETAIL_TEXT
   protagonist.state['储物袋'] = { 下品灵石: 9 }

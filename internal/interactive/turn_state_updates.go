@@ -149,9 +149,6 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 			if err != nil {
 				return CompiledTurnStateUpdates{}, stateUpdateError(index, "actor_create_invalid", update.Path, "valid template and state", stateUpdateActual(update.Value), err)
 			}
-			if err := validateActorStateRecordNameIDs(actorStateTemplateByID(system, normalized.TemplateID), normalized.State); err != nil {
-				return CompiledTurnStateUpdates{}, stateUpdateError(index, "state_record_name_id_mismatch", update.Path, "record ID identical to its name", stateUpdateActual(normalized.State), err)
-			}
 			for _, op := range ops {
 				applyStateOp(workingState, op)
 			}
@@ -176,9 +173,6 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 		field, found := actorStateFieldByID(template, segments[1])
 		if !found {
 			return CompiledTurnStateUpdates{}, stateUpdateError(index, "state_field_not_found", update.Path, strings.Join(turnSubmissionAllowedFields(template), ", "), segments[1], fmt.Errorf("Actor 状态字段不在模板中: actor=%s field=%s", actorID, segments[1]))
-		}
-		if field.Visibility == "hidden" {
-			return CompiledTurnStateUpdates{}, stateUpdateError(index, "state_field_hidden", update.Path, "model-writable field", actorStateFieldID(field), fmt.Errorf("隐藏状态字段不能由 Game Agent 直接修改"))
 		}
 		fieldID := actorStateFieldID(field)
 		if deltaNormalized {
@@ -219,21 +213,6 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 				actualValue = currentValue
 			}
 			return CompiledTurnStateUpdates{}, stateUpdateError(index, code, update.Path, stateUpdateExpected(field, segments[2:], update.Op), stateUpdateActual(actualValue), err)
-		}
-		if update.Op == TurnStateUpdateReplace && len(segments) <= 3 {
-			if normalized, changed := normalizeStatePanelRecordNameIDs(fieldID, nextValue); changed {
-				nextValue = normalized
-				if len(segments) == 2 {
-					auditValue = normalized
-				} else if normalizedObject, ok := normalized.(map[string]any); ok {
-					if leaf, found := stateUpdateNestedValue(normalizedObject, segments[2:]); found {
-						auditValue = leaf
-					}
-				}
-			}
-		}
-		if err := validateStatePanelRecordNameIDs(fieldID, nextValue); err != nil {
-			return CompiledTurnStateUpdates{}, stateUpdateError(index, "state_record_name_id_mismatch", update.Path, "record ID identical to its name", stateUpdateActual(nextValue), err)
 		}
 		if reflect.DeepEqual(currentValue, nextValue) {
 			continue

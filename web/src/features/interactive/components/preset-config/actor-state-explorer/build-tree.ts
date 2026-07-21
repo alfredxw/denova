@@ -29,9 +29,8 @@ export function buildStateTree(value: ExplorerProps['value'], t: TFunction): Tre
       children: entries.map(({ field, index }) => ({
         id: fieldNodeId(template.id, field, index),
         kind: 'field' as const,
-				label: field.name || t('settingPanel.actorState.explorer.fieldFallback', { count: index + 1 }),
-				subtitle: field.type,
-        badge: field.visibility ? visibilityBadge(field.visibility, t) : undefined,
+        label: field.name || t('settingPanel.actorState.explorer.fieldFallback', { count: index + 1 }),
+        subtitle: field.type,
         selectable: true,
         children: [],
         data: { kind: 'field' as const, field, fieldIndex: index, template, templateIndex: tIndex },
@@ -66,7 +65,6 @@ export function buildStateTree(value: ExplorerProps['value'], t: TFunction): Tre
       kind: 'trait' as const,
       label: trait.name || trait.id || t('settingPanel.actorState.explorer.traitFallback', { count: tIndex + 1 }),
       subtitle: trait.summary || t('settingPanel.actorState.explorer.weight', { count: trait.weight ?? 1 }),
-      badge: trait.visibility ? visibilityBadge(trait.visibility, t) : undefined,
       selectable: true,
       children: [],
       data: { kind: 'trait' as const, trait, traitIndex: tIndex, pool, poolIndex: pIndex },
@@ -141,15 +139,6 @@ export function poolNodeId(pool: ActorTraitPool, index: number): string {
 
 export function traitNodeId(pool: ActorTraitPool, trait: ActorTraitDefinition, index: number): string {
   return `trait:${pool.id || 'pool'}:${trait.id || index}`
-}
-
-function visibilityBadge(visibility: string, t: TFunction): string {
-  switch (visibility) {
-    case 'visible': return t('settingPanel.actorState.explorer.visible')
-    case 'hidden': return t('settingPanel.actorState.explorer.hidden')
-    case 'spoiler': return t('settingPanel.actorState.explorer.spoiler')
-    default: return visibility
-  }
 }
 
 /** Find a node by id in the tree (depth-first). */

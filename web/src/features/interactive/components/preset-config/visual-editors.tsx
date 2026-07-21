@@ -272,7 +272,7 @@ function ActorStateTemplateDetails({
     setFields(fields.map((field, index) => (index === activeIndex ? nextField : field)))
   }
   const addField = () => {
-		const field: ActorStateField = { name: '', type: 'number', visibility: 'visible' }
+		const field: ActorStateField = { name: '', type: 'number' }
     setFields([...fields, field])
 		setActiveFieldId(actorStateFieldKey(field, fields.length))
   }
@@ -313,7 +313,7 @@ function ActorStateTemplateDetails({
             activeId={activeFieldId}
             getId={actorStateFieldKey}
 			getTitle={(field, index) => field.name || `${t('settingPanel.actorState.field')} ${index + 1}`}
-            getSubtitle={(field) => [field.type, field.visibility].filter(Boolean).join(' · ')}
+            getSubtitle={(field) => field.type}
             addLabel={t('settingPanel.actorState.addField')}
             emptyLabel={t('settingPanel.actorState.fields')}
             layout="rail"
@@ -387,18 +387,6 @@ function ActorStateFieldDetails({
         </Field>
         <Field label={t('settingPanel.presetConfig.min')}><Input className={inputClassName} inputMode="decimal" value={String(field.min ?? '')} onChange={(event) => onPatch({ min: parseNumberInput(event.target.value) })} /></Field>
         <Field label={t('settingPanel.presetConfig.max')}><Input className={inputClassName} inputMode="decimal" value={String(field.max ?? '')} onChange={(event) => onPatch({ max: parseNumberInput(event.target.value) })} /></Field>
-        <Field label={t('settingPanel.presetConfig.visibility')}>
-          <Select value={field.visibility || 'visible'} onValueChange={(visibility) => onPatch({ visibility: visibility as ActorStateField['visibility'] })}>
-            <SelectTrigger className={selectClassName}><SelectValue /></SelectTrigger>
-            <SelectContent className="nova-panel border text-[var(--nova-text)]">
-              <SelectGroup>
-                <SelectItem value="visible">visible</SelectItem>
-                <SelectItem value="hidden">hidden</SelectItem>
-                <SelectItem value="spoiler">spoiler</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </Field>
         <Field label={t('settingPanel.actorState.options')}><Input className={inputClassName} value={joinListInput(field.options)} onChange={(event) => onPatch({ options: splitListInput(event.target.value) })} /></Field>
       </div>
       <ActorStateDefaultValueField field={field} onPatch={onPatch} onValidChange={onValidChange} />

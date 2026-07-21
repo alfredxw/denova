@@ -7,11 +7,11 @@ import {
   actorFieldEntries,
   actorName,
   actorTemplate,
+  actorTraits,
   humanizeStateKey,
   splitStoryStateFacts,
   stateChanges,
   statePathLabel,
-  visibleActorTraits,
   type StoryStateChange,
 } from '../story-state/model'
 import { StateValue } from './shared'
@@ -137,7 +137,7 @@ function ActorRow({ actorId, actor, schema, expanded, onToggle }: { actorId: str
   const name = actorName(actorId, actor)
   const template = actorTemplate(actor, schema)
   const fields = actorFieldEntries(actor, template?.fields)
-  const traits = visibleActorTraits(actor)
+  const traits = actorTraits(actor)
   const meters = fields.filter(({ field, value }) => meterPercent(field, value) !== null).slice(0, 2)
 
   return (

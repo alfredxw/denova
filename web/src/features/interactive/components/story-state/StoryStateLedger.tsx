@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlignLeft, AlertCircle, ChevronDown, ChevronUp, CircleCheck, EyeOff, Gauge, Globe2, Loader2, Package, PanelRight, Sparkles, Tag } from 'lucide-react'
+import { AlignLeft, AlertCircle, ChevronDown, ChevronUp, CircleCheck, Gauge, Globe2, Loader2, Package, PanelRight, Sparkles, Tag } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -15,11 +15,11 @@ import {
   actorFieldEntries,
   actorName,
   actorTemplate,
+  actorTraits,
   buildLedgerGroups,
   buildStoryStateModel,
   humanizeStateKey,
   splitLedgerGroupsForPreview,
-  visibleActorTraits,
   type LedgerFieldEntry,
   type LedgerFieldGroup,
   type StoryStateChange,
@@ -50,7 +50,7 @@ interface StateLedgerPresentation {
   name: string
   templateId: string
   groups: LedgerFieldGroup[]
-  traits: ReturnType<typeof visibleActorTraits>
+  traits: ReturnType<typeof actorTraits>
 }
 
 /**
@@ -293,7 +293,7 @@ function buildActorLedger(actorId: string, actor: Record<string, unknown>, snaps
     name: actorName(actorId, actor),
     templateId: template?.id || rawTemplateId || `actor:${actorId}`,
     groups: buildLedgerGroups(entries, changes.filter((change) => change.actorId === actorId)),
-    traits: visibleActorTraits(actor),
+    traits: actorTraits(actor),
   }
 }
 
@@ -411,8 +411,6 @@ function LedgerGroupIcon({ group }: { group: LedgerFieldGroup }) {
       return <Package aria-hidden="true" className={className} />
     case 'details':
       return <AlignLeft aria-hidden="true" className={className} />
-    case 'spoiler':
-      return <EyeOff aria-hidden="true" className={className} />
     default:
       return <Tag aria-hidden="true" className={className} />
   }
@@ -426,7 +424,7 @@ function LedgerGroupGrid({ group }: { group: LedgerFieldGroup }) {
   )
 }
 
-function ActorTraits({ traits }: { traits: ReturnType<typeof visibleActorTraits> }) {
+function ActorTraits({ traits }: { traits: ReturnType<typeof actorTraits> }) {
   return (
     <div className="flex min-w-0 flex-wrap gap-1 border-b border-[var(--nova-border-soft)] px-2.5 py-1.5">
       {traits.map((trait) => (

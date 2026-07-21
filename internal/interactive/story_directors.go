@@ -421,15 +421,6 @@ func normalizeDirectorAgentMode(mode string) string {
 	}
 }
 
-func normalizeStoryDirectorVisibility(value string) string {
-	switch strings.TrimSpace(value) {
-	case "visible", "hidden", "spoiler":
-		return strings.TrimSpace(value)
-	default:
-		return "visible"
-	}
-}
-
 func StoryDirectorStrategyPromptMarkdown(director StoryDirector) string {
 	director = normalizeStoryDirector(director)
 	return director.Strategy.PromptMarkdown
@@ -500,17 +491,6 @@ func storyDirectorActorStateSchemaSummary(system StoryDirectorActorStateSystem) 
 	system = normalizeActorStateSystem(system)
 	for poolIndex := range system.TraitPools {
 		system.TraitPools[poolIndex].Traits = nil
-	}
-	for templateIndex := range system.Templates {
-		fields := system.Templates[templateIndex].Fields
-		visibleFields := make([]ActorStateField, 0, len(fields))
-		for _, field := range fields {
-			if field.Visibility == "hidden" {
-				continue
-			}
-			visibleFields = append(visibleFields, field)
-		}
-		system.Templates[templateIndex].Fields = visibleFields
 	}
 	return system
 }

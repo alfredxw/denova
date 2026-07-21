@@ -15,19 +15,6 @@ func TestValidateActorStateSchemaProposalRejectsEmptyUnreviewedDiff(t *testing.T
 	}
 }
 
-func TestValidateActorStateSchemaProposalRequiresEvidenceKind(t *testing.T) {
-	proposal := ActorStateSchemaProposal{Requirements: []ActorStateSchemaRequirementReview{{
-		Source:      ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"},
-		Requirement: "不需要长期追踪的气氛细节",
-		ValuePolicy: ActorStateSchemaValuePolicySchemaOnly,
-		Decision:    "ignored",
-		Reason:      "只影响当前场景",
-	}}}
-	if _, _, err := ValidateActorStateSchemaProposal(StoryDirectorActorStateSystem{}, StoryDirectorTRPGSystem{}, proposal); err == nil || !strings.Contains(err.Error(), "evidence_kind") {
-		t.Fatalf("the final schema-review contract must reject a missing evidence_kind: %v", err)
-	}
-}
-
 func TestValidateActorStateSchemaProposalRejectsGenericCoverageForNumericRule(t *testing.T) {
 	base := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
 		ID: "protagonist", Fields: []ActorStateField{{Name: "当前资源", Type: "object", Default: map[string]any{}}},
@@ -38,7 +25,6 @@ func TestValidateActorStateSchemaProposalRejectsGenericCoverageForNumericRule(t 
 		ReviewedLoreIDs: []string{"具体数值"},
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "lore", ID: "具体数值"}, Requirement: "灵力必须独立按 0-100 结算",
-			EvidenceKind: "confirmed",
 			ValuePolicy:  ActorStateSchemaValuePolicySchemaOnly,
 			ExpectedType: "number", Min: &minValue, Max: &maxValue, Decision: "covered", TemplateID: "protagonist", FieldID: "当前资源",
 		}},
@@ -58,7 +44,6 @@ func TestValidateActorStateSchemaProposalRejectsUntypedCoverage(t *testing.T) {
 		ReviewedLoreIDs: []string{"具体数值"},
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "lore", ID: "具体数值"}, Requirement: "灵力需要独立结算",
-			EvidenceKind: "confirmed",
 			ValuePolicy: ActorStateSchemaValuePolicySchemaOnly,
 			Decision:    "covered", TemplateID: "protagonist", FieldID: "当前资源",
 		}},
@@ -75,7 +60,7 @@ func TestValidateActorStateSchemaProposalRejectsUnreviewedLoreAtStoreBoundary(t 
 	}}}
 	proposal := ActorStateSchemaProposal{Requirements: []ActorStateSchemaRequirementReview{{
 		Source: ActorStateSchemaRequirementSource{Kind: "lore", ID: "model-invented"}, Requirement: "长期状态",
-		EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态",
+		ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "状态",
 	}}}
 	if _, _, err := ValidateActorStateSchemaProposal(base, StoryDirectorTRPGSystem{}, proposal); err == nil || !strings.Contains(err.Error(), "未经后端确认审阅") {
 		t.Fatalf("store validation must not promote a model-supplied Lore ID to reviewed: %v", err)
@@ -88,7 +73,6 @@ func TestValidateActorStateSchemaProposalAcceptsRequirementAddedWithNewTemplate(
 		Summary: "新增关系角色模板",
 		Requirements: []ActorStateSchemaRequirementReview{{
 			Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "重要角色需要好感度",
-			EvidenceKind: "confirmed",
 			ValuePolicy:  ActorStateSchemaValuePolicySchemaOnly,
 			ExpectedType: "number", Min: &minValue, Max: &maxValue, Decision: "add", TemplateID: "important_character", FieldID: "好感度",
 		}},
@@ -98,21 +82,6 @@ func TestValidateActorStateSchemaProposalAcceptsRequirementAddedWithNewTemplate(
 	}
 	if _, _, err := ValidateActorStateSchemaProposal(StoryDirectorActorStateSystem{}, StoryDirectorTRPGSystem{}, proposal); err != nil {
 		t.Fatalf("a sourced field in a newly added template should validate: %v", err)
-	}
-}
-
-func TestValidateActorStateSchemaProposalRejectsInferredSpoilerField(t *testing.T) {
-	base := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
-		ID: "protagonist", Fields: []ActorStateField{{Name: "隐藏身世", Type: "string", Visibility: "spoiler"}},
-	}}}
-	proposal := ActorStateSchemaProposal{
-		Requirements: []ActorStateSchemaRequirementReview{{
-			Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "opening-turn"}, Requirement: "主角隐藏身世",
-			EvidenceKind: "inferred", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "string", Decision: "covered", TemplateID: "protagonist", FieldID: "隐藏身世",
-		}},
-	}
-	if _, _, err := ValidateActorStateSchemaProposal(base, StoryDirectorTRPGSystem{}, proposal); err == nil || !strings.Contains(err.Error(), "秘密或剧透") {
-		t.Fatalf("inferred evidence must not populate spoiler fields: %v", err)
 	}
 }
 
@@ -144,7 +113,7 @@ func TestValidateActorStateSchemaProposalValidatesRuntimeActorOps(t *testing.T) 
 			proposal := ActorStateSchemaProposal{
 				Requirements: []ActorStateSchemaRequirementReview{{
 					Source: ActorStateSchemaRequirementSource{Kind: "opening", ID: "turn-1"}, Requirement: "持续追踪状态",
-					EvidenceKind: "confirmed", ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "string", Decision: "covered", TemplateID: DefaultActorID, FieldID: "状态",
+					ValuePolicy: ActorStateSchemaValuePolicySchemaOnly, ExpectedType: "string", Decision: "covered", TemplateID: DefaultActorID, FieldID: "状态",
 				}},
 				Adaptation: ActorStateSchemaAdaptation{ActorOps: []ActorStateRuntimeSchemaOp{test.op}},
 			}

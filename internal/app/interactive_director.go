@@ -340,30 +340,7 @@ func shouldRunInteractiveDirectorAgent(strategy interactive.StoryDirectorStrateg
 	if !strategy.Enabled {
 		return interactive.DirectorAgentScheduleDecision{Reason: "disabled"}
 	}
-	if strategy.DirectorAgentMode == interactive.DirectorAgentModeOff {
-		return interactive.DirectorAgentScheduleDecision{Reason: "mode_off"}
-	}
 	return interactive.DirectorAgentScheduleDecision{ShouldRun: true, Reason: "after_persisted_turn"}
-}
-
-// shouldScheduleInteractiveDirectorAfterTurn is the low-cost gate for normal
-// Game turns. The already-running Game Agent reports material planning impact;
-// the Director is not started merely to decide that the plan can be kept.
-func shouldScheduleInteractiveDirectorAfterTurn(strategy interactive.StoryDirectorStrategy, turn interactive.TurnEvent) interactive.DirectorAgentScheduleDecision {
-	strategy = interactive.NormalizeStoryDirectorStrategy(strategy)
-	if !strategy.Enabled {
-		return interactive.DirectorAgentScheduleDecision{Reason: "disabled"}
-	}
-	switch strategy.DirectorAgentMode {
-	case interactive.DirectorAgentModeOff:
-		return interactive.DirectorAgentScheduleDecision{Reason: "mode_off"}
-	case interactive.DirectorAgentModeEveryTurn:
-		return interactive.DirectorAgentScheduleDecision{ShouldRun: true, Reason: "every_turn"}
-	}
-	if turn.TurnResult == nil || turn.TurnResult.DirectorUpdate == nil || !turn.TurnResult.DirectorUpdate.Needed {
-		return interactive.DirectorAgentScheduleDecision{Reason: "no_material_update"}
-	}
-	return interactive.DirectorAgentScheduleDecision{ShouldRun: true, Reason: "game_agent_update"}
 }
 
 func firstNonEmptyApp(values ...string) string {

@@ -347,6 +347,7 @@ describe('MarkdownEditor', () => {
 
     expect(onSave).toHaveBeenCalledTimes(2)
     expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第二版\n', 'r2')
+    expect(conflictArchiveMock.preserve).not.toHaveBeenCalled()
   })
 
   it('切换 workspace 后丢弃旧工作区中尚未执行的保存', async () => {
