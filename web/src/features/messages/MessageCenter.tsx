@@ -4,10 +4,10 @@ import { useTranslation } from 'react-i18next'
 import { MarkdownRenderer } from '@/components/common/MarkdownRenderer'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { formatDateTime } from '@/i18n'
+import { DENOVA_GITHUB_URL } from '@/lib/product-links'
 import { getMessages, markAllMessagesRead, markMessageRead } from './api'
 import type { AutomationMessageNavigation, ProductMessage } from './types'
 
-const DENOVA_GITHUB_URL = 'https://github.com/alfredxw/denova'
 const MESSAGE_CENTER_REFRESH_INTERVAL_MS = 30000
 
 type MessageFilter = 'all' | 'action' | 'automation' | 'product'

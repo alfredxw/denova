@@ -95,6 +95,17 @@ export function selectAgentTokenUsageRecords(messages: AgentUIMessage[]): AgentT
     .map(agentTokenUsageRecordFromView)
 }
 
+export function countCompletedAgentTurnSignals(messages: AgentUIMessage[]): number {
+  return buildAgentMessageViews(messages).filter((view) =>
+    (view.kind === 'assistant' || view.kind === 'tool-result' || view.kind === 'tool') &&
+    (Boolean(agentViewContent(view).trim()) || view.status === 'success'),
+  ).length
+}
+
+export function hasCompletedAgentTurn(messages: AgentUIMessage[], isStreaming: boolean): boolean {
+  return !isStreaming && countCompletedAgentTurnSignals(messages) > 0
+}
+
 export function agentViewContent(view: AgentMessageView) {
   return view.content || readString(view.data.content) || readString(view.data.message) || readString(view.data.error)
 }
