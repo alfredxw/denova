@@ -61,8 +61,8 @@ export function StateView({ snapshot, stateFacts, syncError, section }: { snapsh
         </div>
       ) : null}
 
-      {section === 'changes' ? (
-        changes.length > 0 ? (
+      <div className={section === 'changes' ? '' : 'hidden'}>
+        {changes.length > 0 ? (
           <section aria-labelledby="director-state-change-title">
             <SectionHeading id="director-state-change-title" icon={<Activity className="h-3.5 w-3.5" />} title={t('directorPanel.stateDelta')} hint={t('directorPanel.stateDeltaHint')} />
             <ol className="mt-3 space-y-2">
@@ -79,10 +79,10 @@ export function StateView({ snapshot, stateFacts, syncError, section }: { snapsh
           </section>
         ) : (
           <SectionEmpty text={t('directorPanel.stateDeltaEmpty')} />
-        )
-      ) : null}
+        )}
+      </div>
 
-      {section === 'actors' ? (
+      <div className={section === 'actors' ? '' : 'hidden'}>
         <section className="min-w-0">
           {actors.length === 0 && archivedActors.length === 0 ? (
             <StateEmpty />
@@ -112,10 +112,10 @@ export function StateView({ snapshot, stateFacts, syncError, section }: { snapsh
             </div>
           )}
         </section>
-      ) : null}
+      </div>
 
-      {section === 'world' ? (
-        worldFacts.length > 0 ? (
+      <div className={section === 'world' ? '' : 'hidden'}>
+        {worldFacts.length > 0 ? (
           <section aria-labelledby="director-world-state-title">
             <SectionHeading id="director-world-state-title" icon={<Sparkles className="h-3.5 w-3.5" />} title={t('directorPanel.worldState')} hint={t('directorPanel.worldStateHint')} />
             <div className="director-state-grid mt-3 grid grid-cols-1 gap-px overflow-hidden rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-border)]">
@@ -126,8 +126,8 @@ export function StateView({ snapshot, stateFacts, syncError, section }: { snapsh
           </section>
         ) : (
           <SectionEmpty text={t('directorPanel.worldStateEmpty')} />
-        )
-      ) : null}
+        )}
+      </div>
     </div>
   )
 }
