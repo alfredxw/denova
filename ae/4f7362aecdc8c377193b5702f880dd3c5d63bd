@@ -1,0 +1,47 @@
+CHANGELOG.md
+  s_c4a3e5fe9654fc::t_3b1bca2d5efc44 34-35,85-86,105-106
+config/agent_context_test.go
+  s_c4a3e5fe9654fc::t_978145c769f728 70-71
+internal/agent/context_analysis_test.go
+  s_c4a3e5fe9654fc::t_33343973474b47 232-233,249,270-271
+internal/agent/context_compaction.go
+  s_c4a3e5fe9654fc::t_21c870b39d7d2b 232-236
+internal/agent/tool_result_context.go
+  s_c4a3e5fe9654fc::t_65e1c12f8eef83 12-14,16-18,24-26,35,88,116,129,133,136,139-140,151,158
+internal/agent/tool_result_context_semantic.go
+  s_930f973709a8f5::t_18fc426eb20738 141
+internal/agent/workspace_change_tool_result.go
+  s_c4a3e5fe9654fc::t_04baab39f6379d 68,86-98
+internal/app/interactive_conversation_context_ledger.go
+  s_c4a3e5fe9654fc::t_0308baad5bdc97 228,244-245,247,254,257,275-276
+internal/app/interactive_conversation_context_ledger_test.go
+  s_c4a3e5fe9654fc::t_2951857f88100a 92-93,97
+web/src/components/Chat/MessageItem.tsx
+  s_930f973709a8f5::t_0294297ddbc68e 1680-1682,1689-1693
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ae4f7362aecdc8c377193b5702f880dd3c5d63bd",
+  "prompts": {},
+  "sessions": {
+    "s_930f973709a8f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0b7b972e-7953-438f-86ec-a812335279cb",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_c4a3e5fe9654fc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8572-12cc-7713-be05-6dca9bc62744",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
