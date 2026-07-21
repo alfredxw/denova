@@ -1,0 +1,21 @@
+web/src/features/interactive/components/director-console/StateView.tsx
+  s_6b340937952f81::t_46fa7db080d197 64-65,82-83,85,115,117-118,129-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "35f9cb75f90b39161071a2d9324aa4e5c6865280",
+  "prompts": {},
+  "sessions": {
+    "s_6b340937952f81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11726a86-4e39-42da-ac71-4ffe8722e33d",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
