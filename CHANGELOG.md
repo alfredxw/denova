@@ -27,6 +27,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 游戏模式新建故事线配置页重构为紧凑布局：名称、导演、目标字数与行动建议数量合并为同一自适应行，继承导演模块的四个选择器并排一行，分区标题与说明同行展示，底部操作改为吸底栏，滚动时始终可见。
+- Game Mode's new story setup panel is rebuilt as a compact layout: name, director, target length, and choice count share one adaptive row, the four inherited-module pickers sit in a single row, section titles show inline with their descriptions, and the action footer stays pinned at the bottom while scrolling.
 - 游戏模式简化 Actor State Schema：字段与特质移除 `visibility`，旧数据中的 `visible` / `hidden` / `spoiler` 会在读取时忽略，所有历史状态均按普通可见信息进入状态面板与 Agent 上下文；结构初始化同时移除 `evidence_kind`，继续保留 `source`、`requirement` 与 `reason`。Beta 不兼容：原先依赖 `hidden` 隐藏的状态将直接可见，幕后规划应维护在 Director 私有文件中。
 - Game Mode simplifies the Actor State Schema by removing `visibility` from fields and traits. Legacy `visible`, `hidden`, and `spoiler` values are ignored on read, so all historical state is treated as ordinary visible information in the state panel and Agent context. Schema initialization also removes `evidence_kind` while retaining `source`, `requirement`, and `reason`. Beta breaking: state previously hidden with `hidden` becomes directly visible; private future planning belongs in the Director's private files.
 - 游戏模式输入栏的末端操作统一按“模型选择 → 行动选择 → 发送”排列，让模型入口固定在左、行动选择位于中间，并与写作模式的模型优先顺序保持一致。
