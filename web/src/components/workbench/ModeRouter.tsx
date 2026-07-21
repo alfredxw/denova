@@ -24,6 +24,7 @@ import { useWritingChangeReview } from '@/features/changes/use-writing-change-re
 import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { useDocumentReview } from '@/features/document-review/use-document-review'
 import { ChangeReviewWorkspace } from '@/features/changes/review/ChangeReviewWorkspace'
+import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
 import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
 import { WorkbenchShell } from './WorkbenchShell'
@@ -84,7 +85,7 @@ interface ModeRouterProps {
   chatPlanMode: boolean
   hasEarlierMessages: boolean
   isLoadingEarlierHistory: boolean
-  updateNotice?: { latestVersion: string } | null
+  notice?: WorkbenchNotice | null
   onSetMode: (mode: WorkspaceMode) => void
   onToggleActivityBarExpanded: () => void
   onToggleProjectVisible: () => void
@@ -132,7 +133,7 @@ interface ModeRouterProps {
   onSubmitPlanQuestion: (ref: AgentPartRef, content: string, preview: string) => void
   onApproveProposedPlan: (ref: AgentPartRef) => void
   onExitChatPlanMode: () => void
-  onDismissUpdateNotice?: () => void
+  onDismissNotice?: () => void
 }
 
 export function ModeRouter(props: ModeRouterProps) {
@@ -180,7 +181,7 @@ export function ModeRouter(props: ModeRouterProps) {
     chatPlanMode,
     hasEarlierMessages,
     isLoadingEarlierHistory,
-    updateNotice,
+    notice,
     onSetMode,
     onToggleActivityBarExpanded,
     onToggleProjectVisible,
@@ -228,7 +229,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onSubmitPlanQuestion,
     onApproveProposedPlan,
     onExitChatPlanMode,
-    onDismissUpdateNotice,
+    onDismissNotice,
   } = props
 
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
@@ -813,7 +814,7 @@ export function ModeRouter(props: ModeRouterProps) {
       sidebar={sidebar}
       main={main}
       rightPanelContent={rightPanelContent}
-      updateNotice={updateNotice}
+      notice={notice}
       onSetMode={onSetMode}
       onToggleActivityBarExpanded={onToggleActivityBarExpanded}
       onSetInteractiveSubmode={setInteractiveSubmode}
@@ -821,7 +822,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onToggleSettings={onToggleSettings}
       onCloseSettings={onCloseSettings}
       onQuickSwitchBook={quickSwitchBook}
-      onDismissUpdateNotice={onDismissUpdateNotice}
+      onDismissNotice={onDismissNotice}
     />
   )
 }

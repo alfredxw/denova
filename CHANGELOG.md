@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 写作与游戏模式共用的工作台通知槽新增一次性 GitHub Star 提示：仅在当前会话完成有效 Agent 回合后出现，新版本提醒始终优先；关闭或打开仓库后不再提示，并完整支持中英文、明暗主题、桌面与移动布局。
+- The shared Writing and Game workbench notice slot now includes a one-time GitHub Star prompt after a successful Agent turn in the current session. Update notices always take priority; dismissing the prompt or opening the repository keeps it quiet, with bilingual, light/dark, desktop, and mobile support.
 - 游戏模式 Actor 状态新增可回放的归档与恢复：敌人死亡或角色永久退场时保留完整历史状态，仅从活动上下文、检定与状态页签中退出；重新登场必须显式恢复。舞台状态面板与导演台提供中英文只读归档索引，并展示归档原因和来源回合。
 - Game Mode Actor state now supports replayable archive and restore transitions. Dead enemies and permanently departed characters retain their complete historical state while leaving active model context, rule checks, and state tabs; returning requires an explicit restore. The stage ledger and Director Console expose a bilingual read-only archive index with reason and source-turn provenance.
 - 游戏模式新故事开局新增故事级后台导演运行策略：支持“按需自动（推荐）”“仅手动”和“每 X 回合自动”；自动模式会在首回合落盘后先初始化规划，固定间隔从首回合起按配置节奏运行，手动模式仍可从导演台显式触发。

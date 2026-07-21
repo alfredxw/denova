@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { fetchSettings } from '@/features/settings/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
-import { agentViewContent, buildAgentMessageViews } from '@/lib/agent-message-view'
+import { hasCompletedAgentTurn } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { ONBOARDING_OPEN_EVENT } from './events'
 import { hasUsableLanguageModel } from './model-status'
@@ -87,13 +87,10 @@ export function OnboardingGuide({
   const [tourIndex, setTourIndex] = useState(0)
   const [anchorRect, setAnchorRect] = useState<AnchorRect | null>(null)
 
-  const completedAgentTurn = useMemo(() => {
-    if (isStreaming) return false
-    return buildAgentMessageViews(messages).some((view) =>
-      (view.kind === 'assistant' || view.kind === 'tool-result' || view.kind === 'tool') &&
-      (Boolean(agentViewContent(view).trim()) || view.status === 'success'),
-    )
-  }, [isStreaming, messages])
+  const completedAgentTurn = useMemo(
+    () => hasCompletedAgentTurn(messages, isStreaming),
+    [isStreaming, messages],
+  )
 
   const refreshModelState = useCallback(() => {
     setLoadingSettings(true)

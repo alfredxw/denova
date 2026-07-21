@@ -41,6 +41,7 @@ import {
   AUTOSAVE_CONFLICT_PRESERVED_EVENT,
   type AutosaveConflictPreservedDetail,
 } from '@/lib/autosave/rebase-with-recovery'
+import { useWorkbenchNotice } from '@/features/notices/use-workbench-notice'
 
 const PROJECT_VISIBLE_KEY = 'nova.layout.projectVisible'
 const ACTIVITY_BAR_EXPANDED_KEY = 'nova.layout.activityBarExpanded'
@@ -50,11 +51,9 @@ const CONTENT_MODE_STORAGE_KEY = 'nova:content-mode'
 const MAX_OPEN_TABS_FALLBACK = 5
 const AUTO_SAVE_ENABLED_FALLBACK = true
 const AUTO_SAVE_DELAY_FALLBACK_MS = 1500
-const DISMISSED_UPDATE_VERSION_KEY = 'nova.update.dismissedLatestVersion'
 type SidebarView = 'outline' | 'files' | 'search'
 type WritingRightPanel = Extract<RightPanel, 'ai'> | null
 type BooksReturnMode = 'ide' | 'interactive'
-type UpdateNotice = { latestVersion: string }
 
 function App() {
   const { t } = useTranslation()
@@ -71,7 +70,6 @@ function App() {
   const [editorAutoSaveEnabled, setEditorAutoSaveEnabled] = useState(AUTO_SAVE_ENABLED_FALLBACK)
   const [editorAutoSaveDelayMs, setEditorAutoSaveDelayMs] = useState(AUTO_SAVE_DELAY_FALLBACK_MS)
   const [updateCheckEnabled, setUpdateCheckEnabled] = useState<boolean | null>(null)
-  const [updateNotice, setUpdateNotice] = useState<UpdateNotice | null>(null)
   const [motionIntensity, setMotionIntensity] = useState('system')
   const [novaDir, setNovaDir] = useState('')
   const [sidebarView, setSidebarView] = useState<SidebarView>('outline')
@@ -195,6 +193,8 @@ function App() {
     removeTextSelection,
   } = useAgentChat({ workspace, onAgentFileChange: handleAgentFileChange, onWorkspaceChange: handleWorkspaceChangeEvent })
 
+  const { notice, applyUpdateCheckResult, dismissNotice } = useWorkbenchNotice({ messages, isStreaming })
+
   const handleChatPlanModeChange = useCallback((value: boolean) => {
     setPlanMode(value)
   }, [setPlanMode])
@@ -229,22 +229,6 @@ function App() {
     books.find((book) => book.path === workspace)?.name?.trim() ||
     workspace.replace(/\/+$/, '').split('/').pop() ||
     t('workbench.noBook')
-
-  const applyUpdateCheckResult = useCallback((result: UpdateCheckResult) => {
-    if (!result.update_available || !result.latest_version) {
-      setUpdateNotice(null)
-      return
-    }
-    const dismissedVersion = readDismissedUpdateVersion()
-    setUpdateNotice(dismissedVersion === result.latest_version ? null : { latestVersion: result.latest_version })
-  }, [])
-
-  const dismissUpdateNotice = useCallback(() => {
-    setUpdateNotice((current) => {
-      if (current?.latestVersion) writeDismissedUpdateVersion(current.latestVersion)
-      return null
-    })
-  }, [])
 
   const touchTab = useCallback((key: string) => {
     tabActivationCounterRef.current += 1
@@ -800,8 +784,8 @@ function App() {
         onSetRightPanel={handleSetRightPanel}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
         onCloseSettings={() => setSettingsOpen(false)}
-        updateNotice={updateNotice}
-        onDismissUpdateNotice={dismissUpdateNotice}
+        notice={notice}
+        onDismissNotice={dismissNotice}
         onToggleInteractiveRightPanel={() => setInteractiveRightVisible((value) => !value)}
         onSwitchBook={handleWorkspaceSwitch}
         onQuickSwitchBook={handleQuickWorkspaceSwitch}
@@ -926,22 +910,6 @@ function normalizeAutoSaveDelayMs(value: number | null | undefined) {
     return AUTO_SAVE_DELAY_FALLBACK_MS
   }
   return Math.floor(value)
-}
-
-function readDismissedUpdateVersion() {
-  try {
-    return window.localStorage.getItem(DISMISSED_UPDATE_VERSION_KEY) || ''
-  } catch {
-    return ''
-  }
-}
-
-function writeDismissedUpdateVersion(version: string) {
-  try {
-    window.localStorage.setItem(DISMISSED_UPDATE_VERSION_KEY, version)
-  } catch {
-    // localStorage 不可写时，当前会话内的关闭状态仍由 React state 保持。
-  }
 }
 
 function isIdeWorkspacePanel(panel: RightPanel): panel is 'lore' | 'creator' | 'teller' | 'versions' {
