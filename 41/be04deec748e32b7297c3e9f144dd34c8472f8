@@ -1,0 +1,31 @@
+CHANGELOG.md
+  s_42a7663a03704a::t_4221e744042f8f 30-31
+web/src/index.css
+  s_f96638cd2cfa3f::t_8dfecfb1799db7 2251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "41be04deec748e32b7297c3e9f144dd34c8472f8",
+  "prompts": {},
+  "sessions": {
+    "s_42a7663a03704a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f852a-a8af-7242-931e-20237cb5afd0",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_f96638cd2cfa3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0d4dddc4-02cb-453e-8242-9c42520a1ec3",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
