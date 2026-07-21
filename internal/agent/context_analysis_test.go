@@ -229,7 +229,8 @@ func TestInteractiveDirectorContextAnalysisIncludesStableResidentLoreMessage(t *
 	}
 }
 
-func TestIDEContextAnalysisShowsToolContextWithoutDenovaMetadata(t *testing.T) {
+func TestIDEContextAnalysisShowsExactModelVisibleToolContext(t *testing.T) {
+	result := "第一章内容\n\n" + toolResultMetadataHeader + "\nschema: tool_result.v1"
 	analysis, err := BuildIDEContextAnalysis(
 		&config.Config{},
 		nil,
@@ -245,7 +246,7 @@ func TestIDEContextAnalysisShowsToolContextWithoutDenovaMetadata(t *testing.T) {
 					Arguments: `{"path":"chapters/1.md"}`,
 				},
 			}}),
-			schema.ToolMessage("第一章内容\n\n"+toolResultMetadataHeader+"\nschema: tool_result.v1", "call-read", schema.WithToolName("read_file")),
+			schema.ToolMessage(result, "call-read", schema.WithToolName("read_file")),
 			schema.AssistantMessage("已读取", nil),
 		},
 		4,
@@ -266,8 +267,8 @@ func TestIDEContextAnalysisShowsToolContextWithoutDenovaMetadata(t *testing.T) {
 			}
 		case "tool_result":
 			sawToolResult = true
-			if part.ToolName != "read_file" || part.Content != "第一章内容" || strings.Contains(part.Content, toolResultMetadataHeader) {
-				t.Fatalf("tool result part should be sanitized: %#v", part)
+			if part.ToolName != "read_file" || part.Content != result {
+				t.Fatalf("tool result part should match the model-visible message: %#v", part)
 			}
 		}
 	}

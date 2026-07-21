@@ -229,11 +229,11 @@ func EstimateContextProjectionReserves(cfg *config.Config, agentKind string, exp
 	if window > 0 {
 		completionTokens = min(completionTokens, max(2048, window/4))
 	}
-	contextSettings := config.ResolveAgentContext(cfg, agentKind)
-	if contextSettings.ToolResultRetentionEnabled && contextSettings.ToolResultContextBudgetKB > 0 {
-		// Tool result budgets are bytes. Dividing by three is a conservative
-		// mixed Chinese/English token estimate without assuming ASCII-only text.
-		toolResultTokens = contextSettings.ToolResultContextBudgetKB * 1024 / 3
+	toolPolicy := resolveToolResultContextPolicy(cfg, agentKind).normalized()
+	if toolPolicy.Enabled {
+		// A result is bounded at the tool boundary before it is persisted. Reserve
+		// for one such result; older exchanges are owned by normal compaction.
+		toolResultTokens = toolPolicy.MaxResultBytes / 3
 		if window > 0 {
 			toolResultTokens = min(toolResultTokens, max(1024, window/10))
 		}

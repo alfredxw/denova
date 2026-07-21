@@ -65,7 +65,7 @@ func parseWorkspaceChangeToolReceipt(toolName, content string) (workspaceChangeT
 	if !isWorkspaceChangeReceiptTool(toolName) {
 		return workspaceChangeToolReceipt{}, false
 	}
-	content = strings.TrimSpace(stripToolResultMetadata(content))
+	content = strings.TrimSpace(toolResultBody(content))
 	if content == "" || !strings.HasPrefix(content, "{") {
 		return workspaceChangeToolReceipt{}, false
 	}
@@ -81,6 +81,19 @@ func parseWorkspaceChangeToolReceipt(toolName, content string) (workspaceChangeT
 		return workspaceChangeToolReceipt{}, false
 	}
 	return receipt, true
+}
+
+func toolResultBody(content string) string {
+	content = strings.TrimRight(content, "\n")
+	for _, separator := range []string{"\n\n" + toolResultMetadataHeader, "\n" + toolResultMetadataHeader} {
+		if before, _, ok := strings.Cut(content, separator); ok {
+			return strings.TrimRight(before, "\n")
+		}
+	}
+	if strings.HasPrefix(strings.TrimSpace(content), toolResultMetadataHeader) {
+		return ""
+	}
+	return content
 }
 
 func isWorkspaceChangeReceiptTool(toolName string) bool {

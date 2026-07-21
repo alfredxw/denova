@@ -138,7 +138,7 @@ func filterSemanticToolContextMessages(messages []*schema.Message, policy ToolRe
 					callsByID[callID] = existing
 					continue
 				}
-				arguments, valid := retainedToolCallArguments(call.Function.Arguments, toolName, callID, policy.PreviewChars)
+				arguments, valid := retainedToolCallArguments(call.Function.Arguments)
 				callsByID[callID] = retainedCall{
 					toolName:  toolName,
 					arguments: arguments,

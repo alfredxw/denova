@@ -150,9 +150,6 @@ export interface AgentContextOverride {
   compaction_target_min_ratio?: number | null
   compaction_target_max_ratio?: number | null
   tool_result_retention_enabled?: boolean | null
-  tool_result_keep_recent?: number | null
-  tool_result_context_budget_kb?: number | null
-  tool_result_preview_chars?: number | null
 }
 
 interface AgentGeneralSubAgentSettings {

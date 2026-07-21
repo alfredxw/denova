@@ -5,12 +5,6 @@ const (
 	// a compaction summary when the user has not configured a value.
 	DefaultContextCompactionRetainedTurns = 1
 	MaxContextCompactionRetainedTurns     = 30
-	DefaultToolResultKeepRecent           = 3
-	DefaultToolResultContextBudgetKB      = 32
-	DefaultToolResultPreviewChars         = 2000
-	MaxToolResultKeepRecent               = 20
-	MaxToolResultContextBudgetKB          = 4096
-	MaxToolResultPreviewChars             = 20000
 
 	AgentContextCompactionStrategySummaryAgent = "summary_agent"
 )
@@ -37,9 +31,6 @@ type AgentContextOverride struct {
 	CompactionTargetMin        *float64 `toml:"compaction_target_min_ratio,omitempty" json:"compaction_target_min_ratio,omitempty"`
 	CompactionTargetMax        *float64 `toml:"compaction_target_max_ratio,omitempty" json:"compaction_target_max_ratio,omitempty"`
 	ToolResultRetentionEnabled *bool    `toml:"tool_result_retention_enabled,omitempty" json:"tool_result_retention_enabled,omitempty"`
-	ToolResultKeepRecent       *int     `toml:"tool_result_keep_recent,omitempty" json:"tool_result_keep_recent,omitempty"`
-	ToolResultContextBudgetKB  *int     `toml:"tool_result_context_budget_kb,omitempty" json:"tool_result_context_budget_kb,omitempty"`
-	ToolResultPreviewChars     *int     `toml:"tool_result_preview_chars,omitempty" json:"tool_result_preview_chars,omitempty"`
 }
 
 type ResolvedAgentContextSettings struct {
@@ -50,9 +41,6 @@ type ResolvedAgentContextSettings struct {
 	CompactionTargetMin        float64 `json:"compaction_target_min_ratio"`
 	CompactionTargetMax        float64 `json:"compaction_target_max_ratio"`
 	ToolResultRetentionEnabled bool    `json:"tool_result_retention_enabled"`
-	ToolResultKeepRecent       int     `json:"tool_result_keep_recent"`
-	ToolResultContextBudgetKB  int     `json:"tool_result_context_budget_kb"`
-	ToolResultPreviewChars     int     `json:"tool_result_preview_chars"`
 }
 
 func DefaultAgentContextSettings() AgentContextSettings {
@@ -128,18 +116,6 @@ func ResolveAgentContext(cfg *Config, agentKind string) ResolvedAgentContextSett
 	if override.ToolResultRetentionEnabled != nil {
 		toolResultRetentionEnabled = *override.ToolResultRetentionEnabled
 	}
-	toolResultKeepRecent := DefaultToolResultKeepRecent
-	if override.ToolResultKeepRecent != nil {
-		toolResultKeepRecent = normalizeToolResultKeepRecent(*override.ToolResultKeepRecent)
-	}
-	toolResultContextBudgetKB := DefaultToolResultContextBudgetKB
-	if override.ToolResultContextBudgetKB != nil {
-		toolResultContextBudgetKB = normalizeToolResultContextBudgetKB(*override.ToolResultContextBudgetKB)
-	}
-	toolResultPreviewChars := DefaultToolResultPreviewChars
-	if override.ToolResultPreviewChars != nil {
-		toolResultPreviewChars = normalizeToolResultPreviewChars(*override.ToolResultPreviewChars)
-	}
 	return ResolvedAgentContextSettings{
 		CompactionEnabled:          compactionEnabled,
 		CompactionStrategy:         compactionStrategy,
@@ -148,9 +124,6 @@ func ResolveAgentContext(cfg *Config, agentKind string) ResolvedAgentContextSett
 		CompactionTargetMin:        compactionTargetMin,
 		CompactionTargetMax:        compactionTargetMax,
 		ToolResultRetentionEnabled: toolResultRetentionEnabled,
-		ToolResultKeepRecent:       toolResultKeepRecent,
-		ToolResultContextBudgetKB:  toolResultContextBudgetKB,
-		ToolResultPreviewChars:     toolResultPreviewChars,
 	}
 }
 
@@ -176,15 +149,6 @@ func mergeAgentContextOverride(parent, child AgentContextOverride) AgentContextO
 	}
 	if child.ToolResultRetentionEnabled != nil {
 		out.ToolResultRetentionEnabled = child.ToolResultRetentionEnabled
-	}
-	if child.ToolResultKeepRecent != nil {
-		out.ToolResultKeepRecent = child.ToolResultKeepRecent
-	}
-	if child.ToolResultContextBudgetKB != nil {
-		out.ToolResultContextBudgetKB = child.ToolResultContextBudgetKB
-	}
-	if child.ToolResultPreviewChars != nil {
-		out.ToolResultPreviewChars = child.ToolResultPreviewChars
 	}
 	return out
 }
@@ -234,15 +198,6 @@ func sanitizeAgentContextOverride(override AgentContextOverride) AgentContextOve
 	if override.CompactionTargetMin != nil && override.CompactionTargetMax != nil && *override.CompactionTargetMax < *override.CompactionTargetMin {
 		*override.CompactionTargetMax = *override.CompactionTargetMin
 	}
-	if override.ToolResultKeepRecent != nil {
-		*override.ToolResultKeepRecent = normalizeToolResultKeepRecent(*override.ToolResultKeepRecent)
-	}
-	if override.ToolResultContextBudgetKB != nil {
-		*override.ToolResultContextBudgetKB = normalizeToolResultContextBudgetKB(*override.ToolResultContextBudgetKB)
-	}
-	if override.ToolResultPreviewChars != nil {
-		*override.ToolResultPreviewChars = normalizeToolResultPreviewChars(*override.ToolResultPreviewChars)
-	}
 	return override
 }
 
@@ -285,34 +240,4 @@ func defaultToolResultRetentionEnabled(agentKind string) bool {
 	default:
 		return false
 	}
-}
-
-func normalizeToolResultKeepRecent(value int) int {
-	if value <= 0 {
-		return DefaultToolResultKeepRecent
-	}
-	if value > MaxToolResultKeepRecent {
-		return MaxToolResultKeepRecent
-	}
-	return value
-}
-
-func normalizeToolResultContextBudgetKB(value int) int {
-	if value <= 0 {
-		return DefaultToolResultContextBudgetKB
-	}
-	if value > MaxToolResultContextBudgetKB {
-		return MaxToolResultContextBudgetKB
-	}
-	return value
-}
-
-func normalizeToolResultPreviewChars(value int) int {
-	if value <= 0 {
-		return DefaultToolResultPreviewChars
-	}
-	if value > MaxToolResultPreviewChars {
-		return MaxToolResultPreviewChars
-	}
-	return value
 }
