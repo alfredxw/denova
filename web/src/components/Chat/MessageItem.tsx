@@ -1677,13 +1677,20 @@ function ThinkingBlock({ message, content, streaming }: { message: ChatMessage; 
     setExpanded(streaming)
   }, [streaming])
 
+  // 流式思考但内容尚未到达时，复用 Shimmer 显示“思考中...”，避免空白折叠块像卡死。
+  const showActivityShimmer = streaming && !content.trim()
+
   return (
     <div className="flex justify-start">
       <div className="w-full">
         <Reasoning isStreaming={streaming} open={expanded} onOpenChange={setExpanded} className="mb-0">
           <ReasoningTrigger className="flex items-center gap-1 py-1 text-xs text-[var(--nova-text-muted)] hover:text-[var(--nova-text)]">
             {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-            <span>{t('chat.trace.thinking')}</span>
+            {showActivityShimmer ? (
+              <Shimmer as="span" className="text-xs font-medium">{t('chat.activity.thinking')}</Shimmer>
+            ) : (
+              <span>{t('chat.trace.thinking')}</span>
+            )}
             {message.subagent && <AgentSourceBadge message={message} compact />}
           </ReasoningTrigger>
           <ReasoningContent className="mt-0 border-l border-[var(--nova-border)] px-3 py-2 text-xs text-[var(--nova-text-muted)] whitespace-pre-wrap">

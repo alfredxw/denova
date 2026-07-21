@@ -604,18 +604,12 @@ function AgentRuntimeContextSection({ agent, value, inherited, onChange }: {
   const hasCompactionTargetMin = value.compaction_target_min_ratio !== undefined && value.compaction_target_min_ratio !== null
   const hasCompactionTargetMax = value.compaction_target_max_ratio !== undefined && value.compaction_target_max_ratio !== null
   const hasToolResultRetention = value.tool_result_retention_enabled !== undefined && value.tool_result_retention_enabled !== null
-  const hasToolResultKeepRecent = value.tool_result_keep_recent !== undefined && value.tool_result_keep_recent !== null
-  const hasToolResultBudget = value.tool_result_context_budget_kb !== undefined && value.tool_result_context_budget_kb !== null
-  const hasToolResultPreview = value.tool_result_preview_chars !== undefined && value.tool_result_preview_chars !== null
   const effectiveCompactionEnabled = hasCompactionEnabled ? value.compaction_enabled : inherited.compaction_enabled ?? true
   const effectiveCompactionThreshold = hasCompactionThreshold ? value.compaction_threshold : inherited.compaction_threshold ?? 0.9
   const effectiveCompactionRecentTurns = hasCompactionRecentTurns ? value.compaction_recent_turns : inherited.compaction_recent_turns ?? 1
   const effectiveCompactionTargetMin = hasCompactionTargetMin ? value.compaction_target_min_ratio : inherited.compaction_target_min_ratio ?? 0.05
   const effectiveCompactionTargetMax = hasCompactionTargetMax ? value.compaction_target_max_ratio : inherited.compaction_target_max_ratio ?? 0.2
   const effectiveToolResultRetention = hasToolResultRetention ? value.tool_result_retention_enabled : inherited.tool_result_retention_enabled ?? (agent === 'ide' || agent === 'interactive_story')
-  const effectiveToolResultKeepRecent = hasToolResultKeepRecent ? value.tool_result_keep_recent : inherited.tool_result_keep_recent ?? 3
-  const effectiveToolResultBudget = hasToolResultBudget ? value.tool_result_context_budget_kb : inherited.tool_result_context_budget_kb ?? 200
-  const effectiveToolResultPreview = hasToolResultPreview ? value.tool_result_preview_chars : inherited.tool_result_preview_chars ?? 2000
   const isCompactionAgent = agent === 'context_compaction'
   return (
     <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
@@ -651,42 +645,6 @@ function AgentRuntimeContextSection({ agent, value, inherited, onChange }: {
                 ariaLabel={t('agents.field.toolResultRetention')}
                 inherited={!hasToolResultRetention}
                 onReset={hasToolResultRetention ? () => onChange({ tool_result_retention_enabled: null }) : undefined}
-              />
-            </Field>
-            <Field label={t('agents.field.toolResultKeepRecent')} inherited={!hasToolResultKeepRecent} onReset={hasToolResultKeepRecent ? () => onChange({ tool_result_keep_recent: null }) : undefined}>
-              <Input
-                type="number"
-                aria-label={t('agents.field.toolResultKeepRecent')}
-                min={1}
-                max={20}
-                step={1}
-                value={effectiveToolResultKeepRecent ?? 3}
-                onChange={(e) => onChange({ tool_result_keep_recent: e.target.value === '' ? null : Number(e.target.value) })}
-                className="h-7 flex-1 text-xs"
-              />
-            </Field>
-            <Field label={t('agents.field.toolResultBudget')} inherited={!hasToolResultBudget} onReset={hasToolResultBudget ? () => onChange({ tool_result_context_budget_kb: null }) : undefined}>
-              <Input
-                type="number"
-                aria-label={t('agents.field.toolResultBudget')}
-                min={1}
-                max={4096}
-                step={1}
-                value={effectiveToolResultBudget ?? 200}
-                onChange={(e) => onChange({ tool_result_context_budget_kb: e.target.value === '' ? null : Number(e.target.value) })}
-                className="h-7 flex-1 text-xs"
-              />
-            </Field>
-            <Field label={t('agents.field.toolResultPreview')} inherited={!hasToolResultPreview} onReset={hasToolResultPreview ? () => onChange({ tool_result_preview_chars: null }) : undefined}>
-              <Input
-                type="number"
-                aria-label={t('agents.field.toolResultPreview')}
-                min={1}
-                max={20000}
-                step={100}
-                value={effectiveToolResultPreview ?? 2000}
-                onChange={(e) => onChange({ tool_result_preview_chars: e.target.value === '' ? null : Number(e.target.value) })}
-                className="h-7 flex-1 text-xs"
               />
             </Field>
           </>
@@ -1584,9 +1542,6 @@ function mergeAgentContextOverride(parent: AgentContextOverride, child: AgentCon
   const compactionRecentTurns = child.compaction_recent_turns ?? parent.compaction_recent_turns ?? 1
   const compactionTargetMin = child.compaction_target_min_ratio ?? parent.compaction_target_min_ratio ?? 0.05
   const compactionTargetMax = child.compaction_target_max_ratio ?? parent.compaction_target_max_ratio ?? 0.2
-  const toolResultKeepRecent = child.tool_result_keep_recent ?? parent.tool_result_keep_recent ?? 3
-  const toolResultBudget = child.tool_result_context_budget_kb ?? parent.tool_result_context_budget_kb ?? 200
-  const toolResultPreview = child.tool_result_preview_chars ?? parent.tool_result_preview_chars ?? 2000
   return {
     compaction_enabled: child.compaction_enabled ?? parent.compaction_enabled ?? true,
     compaction_strategy: child.compaction_strategy || parent.compaction_strategy || 'summary_agent',
@@ -1595,8 +1550,5 @@ function mergeAgentContextOverride(parent: AgentContextOverride, child: AgentCon
     compaction_target_min_ratio: Math.max(0.01, Math.min(0.8, compactionTargetMin)),
     compaction_target_max_ratio: Math.max(0.01, Math.min(0.8, Math.max(compactionTargetMin, compactionTargetMax))),
     tool_result_retention_enabled: child.tool_result_retention_enabled ?? parent.tool_result_retention_enabled,
-    tool_result_keep_recent: Math.max(1, Math.min(20, toolResultKeepRecent)),
-    tool_result_context_budget_kb: Math.max(1, Math.min(4096, toolResultBudget)),
-    tool_result_preview_chars: Math.max(1, Math.min(20000, toolResultPreview)),
   }
 }
