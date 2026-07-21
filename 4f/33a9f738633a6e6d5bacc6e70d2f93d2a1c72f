@@ -1,0 +1,49 @@
+CHANGELOG.md
+  s_5d91d516356d95::t_73b7c5945ac5b1 11-12
+web/src/App.tsx
+  s_5d91d516356d95::t_fe820c3390074d 44,196-197,787-788
+web/src/components/workbench/ModeRouter.tsx
+  s_5d91d516356d95::t_13709b55bd4179 27,88,136,184,232,817,825
+web/src/components/workbench/WorkbenchNoticePill.test.tsx
+  s_5d91d516356d95::t_739b843a6d202e 1-47
+web/src/components/workbench/WorkbenchNoticePill.tsx
+  s_5d91d516356d95::t_2bbc1c099e6d8d 1-81
+web/src/components/workbench/WorkbenchShell.tsx
+  s_5d91d516356d95::t_85cda2d4968e17 9,26-27,50,58,125,133,542-543,545,547,675,677,679-680,682
+web/src/features/messages/MessageCenter.tsx
+  s_5d91d516356d95::t_d21b36c0901a90 7
+web/src/features/notices/use-workbench-notice.test.tsx
+  s_5d91d516356d95::t_d6dd0a40c1b8d4 1-88
+web/src/features/notices/use-workbench-notice.ts
+  s_5d91d516356d95::t_d8bf5c0be9d7df 1-109
+web/src/features/onboarding/OnboardingGuide.tsx
+  s_5d91d516356d95::t_f4066ac59a414e 7,90-93
+web/src/i18n/locales/en-US/workbench.ts
+  s_5d91d516356d95::t_14498dc5d5808e 46-49
+web/src/i18n/locales/zh-CN/workbench.ts
+  s_5d91d516356d95::t_fb6048da26bdbe 46-49
+web/src/lib/agent-message-view.test.ts
+  s_5d91d516356d95::t_da7f3145658642 3-8,108-120
+web/src/lib/agent-message-view.ts
+  s_5d91d516356d95::t_f2a90a8099e1c0 98-108
+web/src/lib/product-links.ts
+  s_5d91d516356d95::t_d1b594558096ed 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4f33a9f738633a6e6d5bacc6e70d2f93d2a1c72f",
+  "prompts": {},
+  "sessions": {
+    "s_5d91d516356d95": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f856e-a731-7ac1-a8fa-4a828fa25ddc",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
