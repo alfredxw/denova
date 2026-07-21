@@ -1,0 +1,99 @@
+CHANGELOG.md
+  s_42a7663a03704a::t_f6893b25da7ebf 11-12,32-33
+internal/agent/interactive_story_tools.go
+  s_421d7de6c34a61::t_e02086239bd40a 149,167,172-174,203-214,236-240,253-260,262-263
+internal/agent/interactive_story_tools_test.go
+  s_421d7de6c34a61::t_00854c5f9e021c 50-51,54-61,104-112,117,120
+internal/app/interactive_conversation.go
+  s_42a7663a03704a::t_2fe45923f3cf58 1188
+internal/interactive/actor_archive.go
+  s_42a7663a03704a::t_ee7d3d0ff63735 1-329
+internal/interactive/actor_archive_context_test.go
+  s_421d7de6c34a61::t_d122b3702d253d 1-66
+internal/interactive/actor_state_runtime_context.go
+  s_42a7663a03704a::t_3062ce0ab87fb6 21,37,45-46,65-72,86-101,213-219
+internal/interactive/history_search.go
+  s_42a7663a03704a::t_8b41e6d674d140 223-226,238-256
+internal/interactive/rule_state_binding.go
+  s_42a7663a03704a::t_6dd4eaa4e10c12 585-587
+internal/interactive/story_snapshot.go
+  s_42a7663a03704a::t_02b63b3db67787 131-141
+internal/interactive/tellers.go
+  s_42a7663a03704a::t_ceb712f65db592 580-585
+internal/interactive/turn_result.go
+  s_421d7de6c34a61::t_59347c28f9ddb1 17-18,26,154,156
+internal/interactive/turn_result_test.go
+  s_421d7de6c34a61::t_9fd8600694b249 85-138
+internal/interactive/turn_state_update_diagnostics.go
+  s_42a7663a03704a::t_6325d528495cf3 19-21,26,58,149-162,185-192
+internal/interactive/turn_state_update_limits_test.go
+  s_42a7663a03704a::t_9f53dcca79e4c8 1-53
+internal/interactive/turn_state_updates.go
+  s_42a7663a03704a::t_a668c0b99ad12b 19,85-91,107,120-143,276-280,282
+internal/interactive/turn_state_updates_test.go
+  s_42a7663a03704a::t_ec139bc7e9b4a8 146-238
+internal/interactive/turn_submission.go
+  s_421d7de6c34a61::t_ee9a3da846d1ce 159-160
+internal/interactive/turn_submission_decode.go
+  s_421d7de6c34a61::t_41ee1652ccd842 18,28,141,209-210,228-229,245-256,258
+internal/interactive/turn_submission_diagnostics_test.go
+  s_42a7663a03704a::t_82925280d4c279 146-172
+internal/interactive/turn_submission_limits_test.go
+  s_421d7de6c34a61::t_a9dfbecc5389c5 1-28
+internal/interactive/turn_submission_test.go
+  s_42a7663a03704a::t_cca0a06c536c5f 201-224
+web/src/features/interactive/components/director-console/DirectorConsole.tsx
+  s_42a7663a03704a::t_10ac4e31803232 56,62
+web/src/features/interactive/components/director-console/StateView.test.tsx
+  s_42a7663a03704a::t_4667bba5c9db74 129-152
+web/src/features/interactive/components/director-console/StateView.tsx
+  s_42a7663a03704a::t_f671f2ed481348 18,29,47-50,87,91-111,263,301-302
+web/src/features/interactive/components/story-state/ActorArchiveList.tsx
+  s_42a7663a03704a::t_b65b45129c3a0f 1-49
+web/src/features/interactive/components/story-state/ChangesSummary.tsx
+  s_42a7663a03704a::t_5e085c957a43bf 72-77
+web/src/features/interactive/components/story-state/StoryStateLedger.test.tsx
+  s_42a7663a03704a::t_7c2101505b2e9a 34-48,297-334,555-574
+web/src/features/interactive/components/story-state/StoryStateLedger.tsx
+  s_42a7663a03704a::t_637497f0c23fc1 11,26,71-74,158,160-196,260,466-468
+web/src/features/interactive/components/story-state/changes.ts
+  s_42a7663a03704a::t_3a8477ecbc663f 5,29-34
+web/src/features/interactive/components/story-state/model.test.ts
+  s_42a7663a03704a::t_1fa733b371d9cc 92-118
+web/src/features/interactive/components/story-state/model.ts
+  s_42a7663a03704a::t_0c1e1bc1d233d6 1,8-15,27,37,40,43,49-53,56,62-81,135-153,314,324-338
+web/src/i18n/locales/en-US/directorPanel.ts
+  s_42a7663a03704a::t_972b79d2561bf0 84-85
+web/src/i18n/locales/en-US/storyStage.ts
+  s_42a7663a03704a::t_66e3a33454c852 30-31,35-37
+web/src/i18n/locales/zh-CN/directorPanel.ts
+  s_42a7663a03704a::t_ac246d8ee692d0 84-85
+web/src/i18n/locales/zh-CN/storyStage.ts
+  s_42a7663a03704a::t_65ab02b0d96209 30-31,35-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "edfa6d41e2646406622ee927de35eb95b0e3f46e",
+  "prompts": {},
+  "sessions": {
+    "s_421d7de6c34a61": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8542-adc5-7c43-a6b3-e41a7c39c95a",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_42a7663a03704a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f852a-a8af-7242-931e-20237cb5afd0",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
