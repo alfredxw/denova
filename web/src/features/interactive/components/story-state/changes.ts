@@ -2,7 +2,7 @@ import type { StoryStateChange } from './model'
 
 export type StateChangeTone = 'positive' | 'negative' | 'neutral'
 
-export type StateChangeKind = 'delta' | 'added' | 'removed' | 'updated' | 'cleared'
+export type StateChangeKind = 'delta' | 'added' | 'removed' | 'updated' | 'cleared' | 'archived' | 'restored'
 
 /**
  * ClassifiedStateChange is the presentation-ready form of one raw state op.
@@ -26,6 +26,12 @@ export function classifyStateChange(change: StoryStateChange, numeric: boolean):
     return { kind: 'delta', delta, text: '', reason: change.reason, tone: delta > 0 ? 'positive' : delta < 0 ? 'negative' : 'neutral' }
   }
   const text = printableChangeValue(change.value)
+  if (op === 'archive') {
+    return { kind: 'archived', delta: null, text: '', reason: change.reason, tone: 'negative' }
+  }
+  if (op === 'restore') {
+    return { kind: 'restored', delta: null, text: '', reason: change.reason, tone: 'positive' }
+  }
   if (['push', 'append', 'add'].includes(op)) {
     return { kind: 'added', delta: null, text, reason: change.reason, tone: 'positive' }
   }

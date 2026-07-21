@@ -47,12 +47,18 @@ func TestInteractiveTurnToolsExposeOneStructuredSubmissionTool(t *testing.T) {
 		t.Fatal(err)
 	}
 	parameterText := string(parameterData)
-	if !strings.Contains(parameterText, `"state_changes"`) || !strings.Contains(parameterText, `"type":"array"`) || !strings.Contains(parameterText, `"maxItems":24`) {
-		t.Fatalf("state_changes must be a bounded native array in the provider schema: %s", parameterText)
+	if !strings.Contains(parameterText, `"state_changes"`) || !strings.Contains(parameterText, `"type":"array"`) {
+		t.Fatalf("state_changes must be a native array in the provider schema: %s", parameterText)
 	}
 	stateChangesSchema, ok := parameters.Properties.Get("state_changes")
-	if !ok || stateChangesSchema.Items == nil || len(stateChangesSchema.Items.OneOf) != 3 {
-		t.Fatalf("state_changes items must expose three disjoint operation variants: %s", parameterText)
+	if !ok || stateChangesSchema.Items == nil || len(stateChangesSchema.Items.OneOf) != 5 {
+		t.Fatalf("state_changes items must expose five disjoint operation variants: %s", parameterText)
+	}
+	if stateChangesSchema.MaxItems != nil {
+		t.Fatalf("state_changes must not expose a hard operation-count limit: %#v", stateChangesSchema.MaxItems)
+	}
+	if !strings.Contains(stateChangesSchema.Description, "常规回合建议不超过 24 项") || !strings.Contains(stateChangesSchema.Description, "不是校验上限") {
+		t.Fatalf("state_changes schema should retain explicit soft guidance: %s", stateChangesSchema.Description)
 	}
 	variants := map[string]bool{}
 	for _, variant := range stateChangesSchema.Items.OneOf {
@@ -95,14 +101,23 @@ func TestInteractiveTurnToolsExposeOneStructuredSubmissionTool(t *testing.T) {
 			if !nameRequired {
 				t.Fatalf("create variant must require name so it can equal actor_id: %#v", variant)
 			}
+		case "archive", "restore":
+			if _, exists := variant.Properties.Get("reason"); !exists {
+				t.Fatalf("%s variant must expose reason: %#v", op, variant)
+			}
+			for _, forbidden := range []string{"field_id", "subpath", "value", "template_id", "name", "initial_state"} {
+				if _, exists := variant.Properties.Get(forbidden); exists {
+					t.Fatalf("%s variant must not expose %s: %#v", op, forbidden, variant)
+				}
+			}
 		default:
 			t.Fatalf("unexpected state change variant op %q: %#v", op, variant)
 		}
 	}
-	if !variants["replace"] || !variants["delta"] || !variants["create"] {
+	if !variants["replace"] || !variants["delta"] || !variants["create"] || !variants["archive"] || !variants["restore"] {
 		t.Fatalf("state change variants incomplete: %#v", variants)
 	}
-	if !strings.Contains(info.Desc, "JSON.stringify") || !strings.Contains(info.Desc, "同一个 create.initial_state") || !strings.Contains(info.Desc, "不要通过删除") || !strings.Contains(info.Desc, "actor_id 与 name 必须完全相同") {
+	if !strings.Contains(info.Desc, "JSON.stringify") || !strings.Contains(info.Desc, "常规回合建议不超过 24 项") || !strings.Contains(info.Desc, "这不是校验上限") || !strings.Contains(info.Desc, "同一个 create.initial_state") || !strings.Contains(info.Desc, "不要通过删除") || !strings.Contains(info.Desc, "actor_id 与 name 必须完全相同") || !strings.Contains(info.Desc, "archive") || !strings.Contains(info.Desc, "restore") {
 		t.Fatalf("submission tool must explain native arrays and fact-preserving retries: %s", info.Desc)
 	}
 	if strings.Contains(parameterText, "ASCII ID") {

@@ -3,7 +3,6 @@ package interactive
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 )
@@ -19,12 +18,7 @@ func ActorStateRuntimeContext(system StoryDirectorActorStateSystem, state map[st
 		limitBytes = DirectorContextMaxBytes
 	}
 	system = normalizeActorStateSystem(system)
-	projectedState := cloneActorStateRoot(state)
-	if err := applyMissingInitialActors(projectedState, system, "运行时 schema 初始状态"); err != nil {
-		log.Printf("[interactive-state] project initial Actors into runtime guide failed err=%v location=internal/interactive/actor_state_runtime_context.go", err)
-	} else {
-		state = projectedState
-	}
+	state = ActorStateRuntimeProjection(system, state)
 	choiceCount := DefaultStoryChoiceCount
 	if len(configuredChoiceCount) > 0 {
 		choiceCount = normalizeStoryChoiceCount(configuredChoiceCount[0])
@@ -40,7 +34,7 @@ func actorStateRuntimeMarkdownBlocks(system StoryDirectorActorStateSystem, state
 	blocks := []string{strings.Join([]string{
 		"# Actor 状态手册",
 		"",
-		"> 来源：`effective_actor_state_schema` + `Snapshot.State.actors`；缺失的 schema 初始 Actor 仅作运行时投影，不改写事件历史。",
+		"> 来源：`effective_actor_state_schema` + `Snapshot.State.actors` + `Snapshot.State.actor_archives`；缺失的 schema 初始 Actor 仅作运行时投影，不改写事件历史。",
 		"",
 		"- 只提交本轮正文中已经发生的变化；未变化字段不要重复提交，也不要用空值清除。",
 		"- 引用已有 Actor 时，`actor_id` 必须逐字使用下文反引号中的现有 ID；`template_id`、`field_id` 同样逐字复用。",
@@ -48,6 +42,8 @@ func actorStateRuntimeMarkdownBlocks(system StoryDirectorActorStateSystem, state
 		"- `description` 解释字段含义；`update_instruction` 决定何时、如何更新。两者都必须遵守。",
 		"- “当前状态”只列本轮可写值；字段语义和更新规则统一见后面的“新 Actor 可用模板”，避免重复上下文。",
 		"- `replace` 写入本轮结束后的完整值；`delta` 只用于已有数值；规则检定已消费的字段不要重复提交。",
+		"- `archive` 仅用于正文已确认死亡或永久退场的非系统 Actor；它保留完整历史状态，但该 Actor 下一轮不可写、不可参与检定。",
+		"- `restore` 让已归档 Actor 恢复参与；archive/restore 都必须提供事实依据 `reason`，不得根据生命值或措辞自动推断。",
 	}, "\n")}
 
 	rawActors, _ := state[actorStateRoot].(map[string]any)
@@ -66,7 +62,14 @@ func actorStateRuntimeMarkdownBlocks(system StoryDirectorActorStateSystem, state
 		}
 	}
 	if len(actorIDs) == 0 {
-		blocks = append(blocks, "> 当前没有可写 Actor；仅可按“新 Actor 可用模板”创建确有必要长期追踪的角色。")
+		blocks = append(blocks, "> 当前没有活动 Actor；可恢复确实重新参与的归档 Actor，或按“新 Actor 可用模板”创建确有必要长期追踪的角色。")
+	}
+	if archives, ok := state[actorArchiveRoot].([]ActorArchiveSummary); ok && len(archives) > 0 {
+		blocks = append(blocks, "## 已归档 Actor（只读索引）")
+		blocks = append(blocks, "> 这里只提供恢复判断所需的身份与归档来源；完整归档状态不进入下一轮上下文。")
+		for _, archive := range archives {
+			blocks = append(blocks, actorStateRuntimeArchiveMarkdown(archive))
+		}
 	}
 
 	blocks = append(blocks, actorStateRuntimeSubmissionTemplate(system, rawActors, actorIDs, choiceCount))
@@ -78,6 +81,22 @@ func actorStateRuntimeMarkdownBlocks(system StoryDirectorActorStateSystem, state
 		blocks = append(blocks, actorStateRuntimeTemplateMarkdown(template))
 	}
 	return blocks
+}
+
+func actorStateRuntimeArchiveMarkdown(archive ActorArchiveSummary) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "### %s\n\n", actorStateRuntimeText(firstNonEmptyString(archive.Name, archive.ActorID)))
+	fmt.Fprintf(&sb, "- Actor ID：%s\n", actorStateRuntimeCode(archive.ActorID))
+	if archive.TemplateID != "" {
+		fmt.Fprintf(&sb, "- Template ID：%s\n", actorStateRuntimeCode(archive.TemplateID))
+	}
+	if archive.Reason != "" {
+		fmt.Fprintf(&sb, "- 归档原因：%s\n", actorStateRuntimeText(archive.Reason))
+	}
+	if archive.SourceTurnID != "" {
+		fmt.Fprintf(&sb, "- 来源回合：%s\n", actorStateRuntimeCode(archive.SourceTurnID))
+	}
+	return strings.TrimSpace(sb.String())
 }
 
 func actorStateRuntimeActorMarkdown(system StoryDirectorActorStateSystem, state map[string]any, rawActors map[string]any, actorID string) string {
@@ -190,6 +209,13 @@ func actorStateRuntimeSubmissionTemplate(system StoryDirectorActorStateSystem, r
 		},
 	}
 	data, _ = json.MarshalIndent(create, "", "  ")
+	sb.Write(data)
+	sb.WriteString("\n```\n\nActor 已确认死亡或永久退场时使用 `archive`；只有其确实重新参与时才使用 `restore`：\n\n```json\n")
+	lifecycle := []map[string]any{
+		{"op": TurnStateUpdateArchive, "actor_id": "{{existing_actor_id}}", "reason": "{{confirmed_exit_reason}}"},
+		{"op": TurnStateUpdateRestore, "actor_id": "{{archived_actor_id}}", "reason": "{{confirmed_return_reason}}"},
+	}
+	data, _ = json.MarshalIndent(lifecycle, "", "  ")
 	sb.Write(data)
 	sb.WriteString("\n```\n\n对象字段的子路径使用可选 `subpath` 字符串数组；不要自行拼接路径字符串。")
 	return sb.String()

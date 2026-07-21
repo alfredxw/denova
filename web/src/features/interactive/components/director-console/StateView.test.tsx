@@ -126,6 +126,30 @@ describe('StateView', () => {
     expect(screen.queryByText('敌对')).not.toBeInTheDocument()
   })
 
+  it('separates archived Actors into a collapsed read-only region', async () => {
+    render(
+      <StateView
+        section="actors"
+        snapshot={{ story_id: 'story', branch_id: 'main', turns: [], state: {} }}
+        stateFacts={[
+          ['actors', {
+            protagonist: { name: '林风', role: 'protagonist', state: { stance: '迎战' } },
+            wolf: { name: '赤瞳狼王', role: 'opponent', state: { stance: '完整归档状态不应显示' } },
+          }],
+          ['actor_archives', { wolf: { reason: '本回合已确认死亡', source_turn_id: 'turn-death' } }],
+        ]}
+      />,
+    )
+
+    expect(screen.getByRole('article', { name: '林风' })).toBeInTheDocument()
+    expect(screen.queryByRole('article', { name: '赤瞳狼王' })).not.toBeInTheDocument()
+    expect(screen.queryByText('完整归档状态不应显示')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '已归档角色（1）' }))
+    expect(screen.getByText('赤瞳狼王')).toBeInTheDocument()
+    expect(screen.getByText('本回合已确认死亡')).toBeInTheDocument()
+    expect(screen.getByText('turn-death')).toBeInTheDocument()
+  })
+
   it('shows inline meters for numeric ranged fields on collapsed actor rows', () => {
     render(
       <StateView

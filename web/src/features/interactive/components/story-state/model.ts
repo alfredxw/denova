@@ -1,9 +1,17 @@
-import type { ActorStateField, ActorStateSchemaSnapshot, ActorTraitInstance, Snapshot, TurnEvent } from '../../types'
+import type { ActorStateField, ActorStateSchemaSnapshot, ActorTraitInstance, Snapshot, StateOp, TurnEvent } from '../../types'
 import type { ClassifiedStateChange } from './changes'
 import { mergeFieldChanges } from './changes'
 import { resolveStateFieldLayout, type StateFieldRenderer } from './field-layout'
 
 export type ActorStateEntry = [string, Record<string, unknown>]
+
+export interface ActorArchiveEntry {
+  actorId: string
+  name: string
+  templateId: string
+  reason: string
+  sourceTurnId: string
+}
 
 export interface StoryStateChange {
   id: string
@@ -16,6 +24,7 @@ export interface StoryStateChange {
 
 export interface StoryStateModel {
   actors: ActorStateEntry[]
+  archivedActors: ActorArchiveEntry[]
   worldFacts: Array<[string, unknown]>
   changes: StoryStateChange[]
   hasState: boolean
@@ -25,28 +34,51 @@ export function buildStoryStateModel(snapshot: Snapshot | null): StoryStateModel
   const stateFacts = snapshot
     ? Object.entries(snapshot.state).filter(([, value]) => value !== undefined && value !== null)
     : []
-  const { actors, worldFacts } = splitStoryStateFacts(stateFacts)
+  const { actors, archivedActors, worldFacts } = splitStoryStateFacts(stateFacts)
   return {
     actors,
+    archivedActors,
     worldFacts,
     changes: stateChanges(snapshot?.current_turn?.state_delta),
-    hasState: actors.length > 0 || worldFacts.length > 0,
+    hasState: actors.length > 0 || archivedActors.length > 0 || worldFacts.length > 0,
   }
 }
 
 export function splitStoryStateFacts(stateFacts: Array<[string, unknown]>) {
   const stateObjects = actorEntries(stateFacts)
-  const actors = stateObjects.filter(([actorId, actor]) => isActorLike(actorId, actor))
-  const otherFacts = stateFacts.filter(([key]) => key !== 'actors')
+  const archivedActors = actorArchiveEntries(stateFacts, stateObjects)
+  const archivedIds = new Set(archivedActors.map((entry) => entry.actorId))
+  const activeStateObjects = stateObjects.filter(([actorId]) => !archivedIds.has(actorId))
+  const actors = activeStateObjects.filter(([actorId, actor]) => isActorLike(actorId, actor))
+  const otherFacts = stateFacts.filter(([key]) => key !== 'actors' && key !== 'actor_archives')
   const worldFacts = ([
     ...otherFacts,
-    ...stateObjects
+    ...activeStateObjects
       .filter(([actorId, actor]) => !isActorLike(actorId, actor))
       .map(([actorId, actor]): [string, unknown] => [actorName(actorId, actor), stateObjectValue(actor)]),
   ] satisfies Array<[string, unknown]>)
     .map(([key, value]): [string, unknown] => [key, compactStateValue(value)])
     .filter(([, value]) => value !== undefined)
-  return { actors, worldFacts, stateObjects, otherFacts }
+  return { actors, archivedActors, worldFacts, stateObjects, otherFacts }
+}
+
+export function actorArchiveEntries(stateFacts: Array<[string, unknown]>, actors = actorEntries(stateFacts)): ActorArchiveEntry[] {
+  const archives = stateFacts.find(([key]) => key === 'actor_archives')?.[1]
+  if (!isRecord(archives)) return []
+  const actorsById = new Map(actors)
+  return Object.entries(archives)
+    .map(([actorId, rawArchive]) => {
+      const actor = actorsById.get(actorId) || {}
+      const archive = isRecord(rawArchive) ? rawArchive : {}
+      return {
+        actorId,
+        name: actorName(actorId, actor),
+        templateId: stringValue(actor.template_id),
+        reason: stringValue(archive.reason),
+        sourceTurnId: stringValue(archive.source_turn_id),
+      }
+    })
+    .sort((left, right) => left.name.localeCompare(right.name))
 }
 
 export function actorEntries(stateFacts: Array<[string, unknown]>): ActorStateEntry[] {
@@ -100,13 +132,25 @@ export function stateChanges(delta: TurnEvent['state_delta']): StoryStateChange[
     value: op.value,
     reason: op.reason,
   }))
-  const sharedChanges: StoryStateChange[] = (delta.ops || []).map((op, index) => ({
-    id: `state:${op.path}:${index}`,
-    path: op.path,
-    op: op.op,
-    value: op.value,
-    reason: op.reason,
-  }))
+  const sharedChanges: StoryStateChange[] = (delta.ops || []).map((op, index) => {
+    const lifecycle = actorLifecycleChange(op)
+    if (lifecycle) {
+      return {
+        id: `actor-lifecycle:${lifecycle.actorId}:${lifecycle.op}:${index}`,
+        actorId: lifecycle.actorId,
+        path: '',
+        op: lifecycle.op,
+        reason: lifecycle.reason,
+      }
+    }
+    return {
+      id: `state:${op.path}:${index}`,
+      path: op.path,
+      op: op.op,
+      value: op.value,
+      reason: op.reason,
+    }
+  })
   return [...actorChanges, ...sharedChanges]
 }
 
@@ -267,6 +311,7 @@ export function sameFieldPath(left: string, right: string) {
 export function changeFieldLabel(change: StoryStateChange, actors: ActorStateEntry[], schema?: ActorStateSchemaSnapshot): string {
   if (change.actorId) {
     const actor = actors.find(([actorId]) => actorId === change.actorId)?.[1]
+    if (change.op === 'archive' || change.op === 'restore') return actor ? actorName(change.actorId, actor) : change.actorId
     const template = actor ? actorTemplate(actor, schema) : undefined
     const field = template?.fields?.find((candidate) => actorFieldPaths(candidate).some((path) => sameFieldPath(path, change.path)))
     if (field) return field.name
@@ -274,6 +319,21 @@ export function changeFieldLabel(change: StoryStateChange, actors: ActorStateEnt
   }
   const segments = change.path.split('.').filter(Boolean)
   return humanizeStateKey(segments[segments.length - 1] || change.path)
+}
+
+function actorLifecycleChange(op: StateOp) {
+  const prefix = 'actor_archives.'
+  if (!op.path.startsWith(prefix)) return null
+  const actorId = op.path.slice(prefix.length).trim()
+  if (!actorId) return null
+  const normalizedOp = op.op.trim().toLowerCase()
+  if (normalizedOp !== 'set' && normalizedOp !== 'unset') return null
+  const archive = isRecord(op.value) ? op.value : {}
+  return {
+    actorId,
+    op: normalizedOp === 'set' ? 'archive' : 'restore',
+    reason: stringValue(op.reason) || stringValue(archive.reason),
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

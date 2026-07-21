@@ -845,23 +845,6 @@ func normalizeDirectorEvents(values []DirectorEvent) []DirectorEvent {
 	return out
 }
 
-func normalizeStateOpsForRule(ops []StateOp) []StateOp {
-	out := make([]StateOp, 0, len(ops))
-	for _, op := range ops {
-		op.Op = strings.TrimSpace(op.Op)
-		op.Path = canonicalStatePath(op.Path)
-		op.Reason = trimBytes(op.Reason, maxInteractiveTextBytes)
-		op.SourceTurnID = trimBytes(op.SourceTurnID, 128)
-		op.SourceKind = trimBytes(op.SourceKind, 128)
-		op.SourceID = trimBytes(op.SourceID, 128)
-		if op.Op == "" || op.Path == "" {
-			continue
-		}
-		out = append(out, op)
-	}
-	return out
-}
-
 func normalizeStringListLimit(values []string, limit int) []string {
 	if limit <= 0 {
 		limit = maxInteractiveListItems

@@ -577,6 +577,12 @@ func normalizeStateOps(ops []StateOp) []StateOp {
 	if len(ops) > maxInteractiveListItems {
 		ops = ops[:maxInteractiveListItems]
 	}
+	return normalizeStateOpsUnbounded(ops)
+}
+
+// normalizeStateOpsUnbounded is reserved for already validated operation
+// batches whose public contract intentionally has no item-count limit.
+func normalizeStateOpsUnbounded(ops []StateOp) []StateOp {
 	result := make([]StateOp, 0, len(ops))
 	for _, op := range ops {
 		op.Op = strings.TrimSpace(op.Op)

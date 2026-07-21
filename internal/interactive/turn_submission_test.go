@@ -198,6 +198,30 @@ func TestUnifiedTurnSubmissionSupportsObjectSubpathsAndExplicitActorCreation(t *
 	}
 }
 
+func TestUnifiedTurnSubmissionDecodesActorArchiveAndRestore(t *testing.T) {
+	input := DecodeInteractiveTurnSubmissionInput(`{"state_changes":[{"op":"archive","actor_id":"狼王","reason":"本回合已确认死亡"},{"op":"restore","actor_id":"失踪斥候","reason":"确认幸存并重新登场"}]}`)
+	if input.StateUpdates == nil || len(*input.StateUpdates) != 2 || len(input.Diagnostics) != 0 {
+		t.Fatalf("actor lifecycle changes should decode as one valid state module: %#v", input)
+	}
+	archive := (*input.StateUpdates)[0]
+	if archive.Op != TurnStateUpdateArchive || archive.Path != "/狼王" {
+		t.Fatalf("unexpected archive update: %#v", archive)
+	}
+	archiveValue, ok := archive.Value.(map[string]any)
+	if !ok || archiveValue["reason"] != "本回合已确认死亡" {
+		t.Fatalf("archive reason should survive structured decoding: %#v", archive.Value)
+	}
+	restore := (*input.StateUpdates)[1]
+	if restore.Op != TurnStateUpdateRestore || restore.Path != "/失踪斥候" {
+		t.Fatalf("unexpected restore update: %#v", restore)
+	}
+
+	invalid := DecodeInteractiveTurnSubmissionInput(`{"state_changes":[{"op":"archive","actor_id":"狼王"}]}`)
+	if invalid.StateUpdates != nil || len(invalid.Diagnostics) != 1 || invalid.Diagnostics[0].Path != "/state_changes/0" {
+		t.Fatalf("archive without a reason should be rejected at the lifecycle operation: %#v", invalid)
+	}
+}
+
 func TestChoicesSubmissionCarriesOptionalDirectorUpdateHint(t *testing.T) {
 	system, state := turnSubmissionTestState()
 	updates := []StateUpdate{}

@@ -31,6 +31,21 @@ afterEach(async () => {
 beforeEach(() => window.localStorage.clear())
 
 describe('StoryStateLedger', () => {
+  it('tolerates a null turn list from an empty persisted story', () => {
+    const snapshot = storyStateSnapshot()
+    snapshot.turns = null as unknown as TurnEvent[]
+
+    render(
+      <StoryStateLedger
+        snapshot={snapshot}
+        displayPreference="expanded"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { name: '当前状态' })).toBeInTheDocument()
+  })
+
   it('lays fields out as decorated one-page sections with titled headers', () => {
     const { container } = render(
       <StoryStateLedger
@@ -279,6 +294,44 @@ describe('StoryStateLedger', () => {
     expectVitalityVisible()
   })
 
+  it('keeps archived Actors out of active tabs and exposes a read-only archive drawer', async () => {
+    render(
+      <StoryStateLedger
+        snapshot={archivedStoryStateSnapshot()}
+        displayPreference="expanded"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+
+    expect(screen.queryByRole('tab', { name: '赤瞳狼王' })).not.toBeInTheDocument()
+    expect(screen.queryByText('完整归档状态不应显示')).not.toBeInTheDocument()
+    const archiveToggle = screen.getByRole('button', { name: '已归档角色（1）' })
+    expect(archiveToggle).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.click(archiveToggle)
+    const archiveCard = screen.getByRole('article', { name: '赤瞳狼王' })
+    expect(within(archiveCard).getByText('赤瞳狼王')).toBeInTheDocument()
+    expect(within(archiveCard).getByText('本回合已确认死亡')).toBeInTheDocument()
+    expect(within(archiveCard).getByText('turn-death')).toBeInTheDocument()
+    expect(screen.queryByText('完整归档状态不应显示')).not.toBeInTheDocument()
+  })
+
+  it('localizes the Actor archive drawer in English', async () => {
+    setConfiguredLocale('en-US')
+    await i18n.changeLanguage('en-US')
+    render(
+      <StoryStateLedger
+        snapshot={archivedStoryStateSnapshot()}
+        displayPreference="expanded"
+        onDisplayPreferenceChange={() => undefined}
+      />,
+    )
+
+    const archiveToggle = screen.getByRole('button', { name: 'Archived Actors (1)' })
+    await userEvent.click(archiveToggle)
+    const archiveCard = screen.getByRole('article', { name: '赤瞳狼王' })
+    expect(within(archiveCard).getByText(/Source turn/)).toBeInTheDocument()
+  })
+
   it('mounts every entity tab body up front so switching tabs only changes visibility', () => {
     const { container } = render(
       <StoryStateLedger
@@ -497,5 +550,25 @@ function richStoryStateSnapshot(turnId = 'turn-1'): Snapshot {
   protagonist.state['储物袋'] = { 下品灵石: 9 }
   protagonist.state['功法'] = ['敛息诀']
   protagonist.state['隐藏风险'] = ['被赵师兄盯上']
+  return snapshot
+}
+
+function archivedStoryStateSnapshot(): Snapshot {
+  const snapshot = storyStateSnapshot('turn-death')
+  const actors = snapshot.state.actors as Record<string, Record<string, unknown>>
+  actors.wolf = {
+    name: '赤瞳狼王',
+    role: 'opponent',
+    template_id: 'cultivator',
+    state: { 当前处境: '完整归档状态不应显示' },
+  }
+  snapshot.state.actor_archives = {
+    wolf: { reason: '本回合已确认死亡', source_turn_id: 'turn-death' },
+  }
+  if (snapshot.current_turn) {
+    snapshot.current_turn.state_delta = {
+      ops: [{ op: 'set', path: 'actor_archives.wolf', value: { reason: '本回合已确认死亡', source_turn_id: 'turn-death' }, reason: '本回合已确认死亡' }],
+    }
+  }
   return snapshot
 }

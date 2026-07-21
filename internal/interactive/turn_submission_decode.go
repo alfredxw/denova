@@ -15,7 +15,7 @@ const turnSubmissionStateChangesField = "state_changes"
 // are separate fields so the model never has to construct or escape a JSON
 // Pointer; the backend compiles this shape to the persisted StateUpdate.
 type TurnStateChangeInput struct {
-	Op           string         `json:"op" jsonschema:"enum=replace,enum=delta,enum=create" jsonschema_description:"replace 写入字段完整新值，delta 增减已有数值，create 创建新的 Actor。"`
+	Op           string         `json:"op" jsonschema:"enum=replace,enum=delta,enum=create,enum=archive,enum=restore" jsonschema_description:"replace 写入字段完整新值，delta 增减已有数值，create 创建 Actor，archive 让 Actor 退出运行时状态，restore 恢复参与。"`
 	ActorID      string         `json:"actor_id" jsonschema_description:"引用已有 Actor 时逐字使用状态手册中的 ID；create 时直接使用故事语言中的角色名称，并与 name 完全相同。"`
 	FieldID      string         `json:"field_id,omitempty" jsonschema_description:"replace/delta 必填，逐字使用 Actor 状态手册中的字段 ID。"`
 	Subpath      []string       `json:"subpath,omitempty" jsonschema_description:"仅 object 字段的嵌套更新使用；按层级填写字符串段，不要自行拼接路径字符串。"`
@@ -25,6 +25,7 @@ type TurnStateChangeInput struct {
 	Role         string         `json:"role,omitempty" jsonschema_description:"仅 create 使用的角色定位。"`
 	Description  string         `json:"description,omitempty" jsonschema_description:"仅 create 使用的简短角色说明。"`
 	InitialState map[string]any `json:"initial_state,omitempty" jsonschema_description:"仅 create 使用；key 必须是所选模板的精确字段 ID，number、bool、object、list 必须使用原生 JSON 值，不能写成带引号的字符串。"`
+	Reason       string         `json:"reason,omitempty" jsonschema_description:"archive/restore 必填；简短说明归档或恢复依据。"`
 }
 
 // DecodeInteractiveTurnSubmissionInput independently decodes state_changes
@@ -113,18 +114,6 @@ func decodeStructuredStateChangesModule(raw json.RawMessage) ([]StateUpdate, []T
 			fmt.Sprintf("state_changes must be a native array; only one string layer containing valid array JSON is tolerated: %v", err),
 		)}
 	}
-	if len(items) > maxInteractiveListItems {
-		return nil, []TurnSubmissionDiagnostic{*newTurnSubmissionDiagnostic(
-			TurnSubmissionModuleStateChanges,
-			nil,
-			"too_many_state_updates",
-			"/state_changes",
-			fmt.Sprintf("at most %d operations", maxInteractiveListItems),
-			fmt.Sprintf("%d operations", len(items)),
-			fmt.Sprintf("state_changes 不能超过 %d 项", maxInteractiveListItems),
-			fmt.Sprintf("state_changes cannot exceed %d operations.", maxInteractiveListItems),
-		)}
-	}
 	updates := make([]StateUpdate, 0, len(items))
 	diagnostics := make([]TurnSubmissionDiagnostic, 0)
 	for index, item := range items {
@@ -149,7 +138,7 @@ func decodeStructuredStateChangesModule(raw json.RawMessage) ([]StateUpdate, []T
 				intPointer(index),
 				TurnSubmissionDiagnosticInvalidModule,
 				fmt.Sprintf("/state_changes/%d", index),
-				"valid replace, delta, or create fields",
+				"valid replace, delta, create, archive, or restore fields",
 				"invalid state change",
 				err.Error(),
 				"The structured state change has incompatible or missing fields.",
@@ -217,8 +206,8 @@ func stateUpdateFromStructuredInput(change TurnStateChangeInput) (StateUpdate, e
 		if change.Value == nil {
 			return StateUpdate{}, fmt.Errorf("%s 状态变化缺少非空 value", change.Op)
 		}
-		if change.TemplateID != "" || change.Name != "" || change.Role != "" || change.Description != "" || change.InitialState != nil {
-			return StateUpdate{}, fmt.Errorf("%s 不能包含 create 专用字段", change.Op)
+		if change.TemplateID != "" || change.Name != "" || change.Role != "" || change.Description != "" || change.InitialState != nil || strings.TrimSpace(change.Reason) != "" {
+			return StateUpdate{}, fmt.Errorf("%s 不能包含 create 或 lifecycle 专用字段", change.Op)
 		}
 		segments := []string{change.ActorID, change.FieldID}
 		for _, segment := range change.Subpath {
@@ -236,8 +225,8 @@ func stateUpdateFromStructuredInput(change TurnStateChangeInput) (StateUpdate, e
 		if strings.TrimSpace(change.Name) == "" {
 			return StateUpdate{}, fmt.Errorf("create 状态变化缺少 name；新建 Actor 的 name 必须与 actor_id 完全相同")
 		}
-		if change.FieldID != "" || len(change.Subpath) > 0 || change.Value != nil {
-			return StateUpdate{}, fmt.Errorf("create 不能包含 field_id、subpath 或 value")
+		if change.FieldID != "" || len(change.Subpath) > 0 || change.Value != nil || strings.TrimSpace(change.Reason) != "" {
+			return StateUpdate{}, fmt.Errorf("create 不能包含 field_id、subpath、value 或 reason")
 		}
 		value := map[string]any{"template_id": change.TemplateID}
 		if name := strings.TrimSpace(change.Name); name != "" {
@@ -253,8 +242,20 @@ func stateUpdateFromStructuredInput(change TurnStateChangeInput) (StateUpdate, e
 			value["state"] = change.InitialState
 		}
 		return StateUpdate{Op: TurnStateUpdateCreate, Path: formatStateUpdatePath([]string{change.ActorID}), Value: value}, nil
+	case TurnStateUpdateArchive, TurnStateUpdateRestore:
+		reason := strings.TrimSpace(change.Reason)
+		if reason == "" {
+			return StateUpdate{}, fmt.Errorf("%s 状态变化缺少非空 reason", change.Op)
+		}
+		if len([]byte(reason)) > maxActorArchiveReasonBytes {
+			return StateUpdate{}, fmt.Errorf("%s reason 超过 %d bytes", change.Op, maxActorArchiveReasonBytes)
+		}
+		if change.FieldID != "" || len(change.Subpath) > 0 || change.Value != nil || change.TemplateID != "" || change.Name != "" || change.Role != "" || change.Description != "" || change.InitialState != nil {
+			return StateUpdate{}, fmt.Errorf("%s 只能包含 actor_id 和 reason", change.Op)
+		}
+		return StateUpdate{Op: change.Op, Path: formatStateUpdatePath([]string{change.ActorID}), Value: map[string]any{"reason": reason}}, nil
 	default:
-		return StateUpdate{}, fmt.Errorf("op 必须是 replace、delta 或 create")
+		return StateUpdate{}, fmt.Errorf("op 必须是 replace、delta、create、archive 或 restore")
 	}
 }
 

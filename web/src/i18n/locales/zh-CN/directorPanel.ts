@@ -81,6 +81,8 @@ const directorPanel = {
   'directorPanel.stateChange.set': '更新',
   'directorPanel.stateChange.add': '增加',
   'directorPanel.stateChange.remove': '移除',
+  'directorPanel.stateChange.archive': '归档',
+  'directorPanel.stateChange.restore': '恢复',
   'directorPanel.directorSpoilerTitle': '导演编排可能涉及剧透',
   'directorPanel.directorSpoilerDescription': '这里会显示导演节拍表、事件编排和后台执行过程，可能提前揭示后续剧情。确认后再查看。',
   'directorPanel.directorReveal': '查看导演编排',

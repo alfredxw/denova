@@ -220,6 +220,10 @@ func storyHistoryStateChanges(delta *StateDelta) []string {
 	}
 	changes := make([]string, 0, len(delta.Ops)+len(delta.ActorOps))
 	for _, op := range delta.Ops {
+		if lifecycle, ok := storyHistoryActorLifecycleChange(op); ok {
+			changes = append(changes, boundedStoryHistoryText(lifecycle, storyHistoryStateSummaryRunes))
+			continue
+		}
 		changes = append(changes, boundedStoryHistoryText(op.Op+" "+op.Path+" "+storyHistoryValue(op.Value)+" "+op.Reason, storyHistoryStateSummaryRunes))
 	}
 	for _, op := range delta.ActorOps {
@@ -229,6 +233,25 @@ func storyHistoryStateChanges(delta *StateDelta) []string {
 		changes = append(changes[:12], "…")
 	}
 	return changes
+}
+
+func storyHistoryActorLifecycleChange(op StateOp) (string, bool) {
+	prefix := actorArchiveRoot + "."
+	if !strings.HasPrefix(op.Path, prefix) {
+		return "", false
+	}
+	actorID := strings.TrimPrefix(op.Path, prefix)
+	if normalizeStatePanelActorID(actorID) == "" {
+		return "", false
+	}
+	switch strings.TrimSpace(op.Op) {
+	case "set":
+		return "archive /" + actorID + " " + op.Reason, true
+	case "unset":
+		return "restore /" + actorID + " " + op.Reason, true
+	default:
+		return "", false
+	}
 }
 
 func storyHistoryValue(value any) string {

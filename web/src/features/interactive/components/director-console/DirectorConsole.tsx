@@ -53,13 +53,13 @@ export function DirectorConsole({
   }
 
   const stateFacts = useMemo(() => stateEntries(snapshot?.state), [snapshot?.state])
-  const { actors, worldFacts } = useMemo(() => splitStoryStateFacts(stateFacts), [stateFacts])
+  const { actors, archivedActors, worldFacts } = useMemo(() => splitStoryStateFacts(stateFacts), [stateFacts])
   const changesCount = useMemo(() => stateChanges(snapshot?.current_turn?.state_delta).length, [snapshot?.current_turn?.state_delta])
 
   return (
     <aside className="director-console flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--director-canvas)] text-[var(--nova-text)]">
       <DirectorConsoleHeader branchId={branchId} turnCount={(snapshot?.turns || []).length || (snapshot?.current_turn ? 1 : 0)} story={story} storyDirectors={storyDirectors} onDirectorChange={onDirectorChange} onReplyTargetCharsChange={onReplyTargetCharsChange} stateDisplayPreference={stateDisplayPreference} onStateDisplayPreferenceChange={onStateDisplayPreferenceChange} directorStatus={directorStatus} onOpenBackstage={onOpenBackstage} />
-      <StatePanelTabs activeTab={activeTab} onChange={changeTab} changesCount={changesCount} actorsCount={actors.length} worldCount={worldFacts.length} />
+      <StatePanelTabs activeTab={activeTab} onChange={changeTab} changesCount={changesCount} actorsCount={actors.length + archivedActors.length} worldCount={worldFacts.length} />
       <div className="min-h-0 flex-1 overflow-hidden px-4 py-4">
         <div className="director-console__scroll h-full min-h-0 overflow-y-auto pb-4 pr-1">
           <StateView snapshot={snapshot} stateFacts={stateFacts} syncError={stateError} section={activeTab} />

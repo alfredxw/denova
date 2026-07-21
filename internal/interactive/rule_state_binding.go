@@ -582,6 +582,9 @@ func computeBindingFormula(state map[string]any, system StoryDirectorActorStateS
 }
 
 func validateBindingActor(state map[string]any, system StoryDirectorActorStateSystem, actorID, wantTemplateID, role string) (string, error) {
+	if actorIsArchived(state, actorID) {
+		return "", fmt.Errorf("prepare_interactive_turn rule.%s_id 已归档，不能参与检定: %s", role, actorID)
+	}
 	templateID, ok := actorTemplateIDFromStateOrSystem(state, system, actorID)
 	if !ok {
 		return "", fmt.Errorf("prepare_interactive_turn rule.%s_id 不存在或缺少状态模板: %s", role, actorID)

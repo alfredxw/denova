@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 游戏模式 Actor 状态新增可回放的归档与恢复：敌人死亡或角色永久退场时保留完整历史状态，仅从活动上下文、检定与状态页签中退出；重新登场必须显式恢复。舞台状态面板与导演台提供中英文只读归档索引，并展示归档原因和来源回合。
+- Game Mode Actor state now supports replayable archive and restore transitions. Dead enemies and permanently departed characters retain their complete historical state while leaving active model context, rule checks, and state tabs; returning requires an explicit restore. The stage ledger and Director Console expose a bilingual read-only archive index with reason and source-turn provenance.
 - 游戏模式新故事开局新增故事级后台导演运行策略：支持“按需自动（推荐）”“仅手动”和“每 X 回合自动”；自动模式会在首回合落盘后先初始化规划，固定间隔从首回合起按配置节奏运行，手动模式仍可从导演台显式触发。
 - New Game Mode stories now have a story-scoped Background Director schedule with Automatic When Needed (recommended), Manual Only, and Automatic Every X Turns modes. Automatic modes initialize planning after the first persisted turn, interval mode follows its configured cadence from that opening turn, and manual mode remains explicitly runnable from the Director backstage.
 - 上下文分析器新增全上下文、SystemPrompt 区、消息组与来源片段的一键复制；游戏模式的“本轮互动指令与动态上下文”会在保留模型实际收到的完整原文同时，继续按本轮行动、导演本轮规则、`agent-brief.md`、`StoryDirector`、Actor 状态手册、动态策略等来源展开。
@@ -27,6 +29,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 游戏模式移除单次 `state_changes` 的操作数量硬上限，工具 Schema、提交解码、状态编译与 `TurnResult` 不再因第 25 项或更多操作拒绝复杂回合。Agent 仍会收到“常规回合建议不超过 24 项”的软提示，并明确复杂开局或确有更多事实变化时可以超过。
+- Game Mode removes the hard operation-count limit from one `state_changes` submission, so the tool schema, submission decoder, state compiler, and `TurnResult` no longer reject complex turns at the 25th operation or beyond. The Agent still receives soft guidance to keep routine turns at 24 changes or fewer, with an explicit allowance for complex openings or genuinely larger fact changes.
 - 游戏模式新建故事线配置页重构为紧凑布局：名称、导演、目标字数与行动建议数量合并为同一自适应行，继承导演模块的四个选择器并排一行，分区标题与说明同行展示，底部操作改为吸底栏，滚动时始终可见。
 - Game Mode's new story setup panel is rebuilt as a compact layout: name, director, target length, and choice count share one adaptive row, the four inherited-module pickers sit in a single row, section titles show inline with their descriptions, and the action footer stays pinned at the bottom while scrolling.
 - 游戏模式简化 Actor State Schema：字段与特质移除 `visibility`，旧数据中的 `visible` / `hidden` / `spoiler` 会在读取时忽略，所有历史状态均按普通可见信息进入状态面板与 Agent 上下文；结构初始化同时移除 `evidence_kind`，继续保留 `source`、`requirement` 与 `reason`。Beta 不兼容：原先依赖 `hidden` 隐藏的状态将直接可见，幕后规划应维护在 Director 私有文件中。

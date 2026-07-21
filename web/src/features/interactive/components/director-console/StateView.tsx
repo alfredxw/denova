@@ -15,6 +15,7 @@ import {
   type StoryStateChange,
 } from '../story-state/model'
 import { StateValue } from './shared'
+import { ActorArchiveList } from '../story-state/ActorArchiveList'
 import type { StatePanelTab } from './types'
 
 const CHANGES_PREVIEW_COUNT = 3
@@ -25,7 +26,7 @@ const CHANGES_PREVIEW_COUNT = 3
 export function StateView({ snapshot, stateFacts, syncError, section }: { snapshot: Snapshot | null; stateFacts: Array<[string, unknown]>; syncError?: string; section: StatePanelTab }) {
   const { t } = useTranslation()
   const turn = snapshot?.current_turn
-  const { actors, worldFacts } = useMemo(() => splitStoryStateFacts(stateFacts), [stateFacts])
+  const { actors, archivedActors, worldFacts } = useMemo(() => splitStoryStateFacts(stateFacts), [stateFacts])
   const [showAllChanges, setShowAllChanges] = useState(false)
   const [expandedActorIds, setExpandedActorIds] = useState<string[]>(() => defaultExpandedActors(actors))
   const actorIdsKey = actors.map(([actorId]) => actorId).join('|')
@@ -43,7 +44,10 @@ export function StateView({ snapshot, stateFacts, syncError, section }: { snapsh
 
   const changes = useMemo(() => stateChanges(turn?.state_delta), [turn?.state_delta])
   const visibleChanges = showAllChanges ? changes : changes.slice(0, CHANGES_PREVIEW_COUNT)
-  const actorNames = useMemo(() => new Map(actors.map(([actorId, actor]) => [actorId, actorName(actorId, actor)])), [actors])
+  const actorNames = useMemo(() => new Map([
+    ...actors.map(([actorId, actor]) => [actorId, actorName(actorId, actor)] as const),
+    ...archivedActors.map((entry) => [entry.actorId, entry.name] as const),
+  ]), [actors, archivedActors])
 
   const toggleActor = (actorId: string) => {
     setExpandedActorIds((current) => current.includes(actorId) ? current.filter((id) => id !== actorId) : [...current, actorId])
@@ -80,26 +84,31 @@ export function StateView({ snapshot, stateFacts, syncError, section }: { snapsh
 
       {section === 'actors' ? (
         <section className="min-w-0">
-          {actors.length === 0 ? (
+          {actors.length === 0 && archivedActors.length === 0 ? (
             <StateEmpty />
           ) : (
             <div className="min-w-0">
-              <div className="flex min-w-0 items-center justify-between gap-2 px-0.5">
-                <span className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--nova-text-faint)]">{t('directorPanel.actorCue')}</span>
-                <span className="text-[10px] text-[var(--nova-text-faint)]">{t('directorPanel.actorCount', { count: actors.length })}</span>
-              </div>
-              <div className="mt-1.5 space-y-1.5">
-                {actors.map(([actorId, actor]) => (
-                  <ActorRow
-                    key={actorId}
-                    actorId={actorId}
-                    actor={actor}
-                    schema={snapshot?.actor_state_schema}
-                    expanded={expandedActorIds.includes(actorId)}
-                    onToggle={() => toggleActor(actorId)}
-                  />
-                ))}
-              </div>
+              {actors.length > 0 ? (
+                <>
+                  <div className="flex min-w-0 items-center justify-between gap-2 px-0.5">
+                    <span className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--nova-text-faint)]">{t('directorPanel.actorCue')}</span>
+                    <span className="text-[10px] text-[var(--nova-text-faint)]">{t('directorPanel.actorCount', { count: actors.length })}</span>
+                  </div>
+                  <div className="mt-1.5 space-y-1.5">
+                    {actors.map(([actorId, actor]) => (
+                      <ActorRow
+                        key={actorId}
+                        actorId={actorId}
+                        actor={actor}
+                        schema={snapshot?.actor_state_schema}
+                        expanded={expandedActorIds.includes(actorId)}
+                        onToggle={() => toggleActor(actorId)}
+                      />
+                    ))}
+                  </div>
+                </>
+              ) : null}
+              <ActorArchiveList entries={archivedActors} variant="director" />
             </div>
           )}
         </section>
@@ -251,7 +260,7 @@ function StateChangeRow({ change, actorName }: { change: StoryStateChange; actor
         <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px]">
           {actorName ? <span className="font-semibold text-[var(--nova-text)]">{actorName}</span> : null}
           {actorName ? <ArrowRight className="h-3 w-3 text-[var(--nova-text-faint)]" /> : null}
-          <span className="min-w-0 break-words text-[var(--nova-text-muted)]">{statePathLabel(change.path)}</span>
+          {change.path ? <span className="min-w-0 break-words text-[var(--nova-text-muted)]">{statePathLabel(change.path)}</span> : null}
           <span className="rounded-full bg-[var(--nova-surface-3)] px-1.5 py-0.5 text-[9px] text-[var(--nova-text-faint)]">{changeVerb(change.op, t)}</span>
         </div>
         {change.value !== undefined ? <div className="mt-1.5"><StateValue value={change.value} /></div> : null}
@@ -289,6 +298,8 @@ function changeVerb(op: string, t: ReturnType<typeof useTranslation>['t']) {
   if (normalized === 'set' || normalized === 'replace') return t('directorPanel.stateChange.set')
   if (normalized === 'add' || normalized === 'increment' || normalized === 'append') return t('directorPanel.stateChange.add')
   if (normalized === 'remove' || normalized === 'delete' || normalized === 'unset') return t('directorPanel.stateChange.remove')
+  if (normalized === 'archive') return t('directorPanel.stateChange.archive')
+  if (normalized === 'restore') return t('directorPanel.stateChange.restore')
   return op
 }
 

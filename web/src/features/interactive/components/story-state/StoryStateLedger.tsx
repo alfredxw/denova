@@ -8,6 +8,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from '@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import type { Snapshot } from '../../types'
 import { ChangesSummary } from './ChangesSummary'
+import { ActorArchiveList } from './ActorArchiveList'
 import type { StoryStateDisplayPreference } from './display-preference'
 import { applyStoryStateLayout, readStoryStateLayouts, writeStoryStateTemplateLayout, type StoryStateLayouts, type StoryStateTemplateLayout } from './layout-preference'
 import { LedgerFieldView } from './ledger-fields'
@@ -22,6 +23,7 @@ import {
   splitLedgerGroupsForPreview,
   type LedgerFieldEntry,
   type LedgerFieldGroup,
+  type ActorStateEntry,
   type StoryStateChange,
 } from './model'
 import { StateDisplayPreferenceMenu } from './StateDisplayPreferenceMenu'
@@ -66,6 +68,10 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
   const model = useMemo(() => buildStoryStateModel(snapshot), [snapshot])
   const actorLedgers = useMemo(() => model.actors.map(([actorId, actor]) => buildActorLedger(actorId, actor, snapshot, model.changes)), [model.actors, model.changes, snapshot])
   const worldLedger = useMemo(() => buildWorldLedger(model.worldFacts, model.changes), [model.changes, model.worldFacts])
+  const allActors = useMemo<ActorStateEntry[]>(() => [
+    ...model.actors,
+    ...model.archivedActors.map((entry): ActorStateEntry => [entry.actorId, { name: entry.name, template_id: entry.templateId }]),
+  ], [model.actors, model.archivedActors])
   const actorTabs = useMemo(() => actorLedgers.map((ledger) => ({ id: ledger.id, name: ledger.name })), [actorLedgers])
   const hasWorldFacts = model.worldFacts.length > 0
   const [selectedTab, setSelectedTab] = useState(actorTabs[0]?.id || WORLD_STATE_TAB)
@@ -149,42 +155,45 @@ export function StoryStateLedger({ snapshot, displayPreference, onDisplayPrefere
 
         <CollapsibleContent>
           {model.changes.length > 0 ? (
-            <ChangesSummary changes={model.changes} actors={model.actors} schema={snapshot?.actor_state_schema} />
+            <ChangesSummary changes={model.changes} actors={allActors} schema={snapshot?.actor_state_schema} />
           ) : null}
-          <Tabs value={selectedTab} onValueChange={setSelectedTab} className="gap-0">
-            <StateEntityTabs actors={actorTabs} showWorld={hasWorldFacts} />
-            {actorLedgers.map((ledger) => (
-              <TabsContent
-                key={ledger.id}
-                value={ledger.id}
-                forceMount
-                hidden={selectedTab !== ledger.id}
-                className="mt-0"
-              >
-                <ActorLedgerBody
-                  ledger={ledger}
-                  layout={layouts[ledger.templateId]}
-                  panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
-                  onPanelModeChange={setPanelMode}
-                />
-              </TabsContent>
-            ))}
-            {hasWorldFacts ? (
-              <TabsContent
-                value={WORLD_STATE_TAB}
-                forceMount
-                hidden={selectedTab !== WORLD_STATE_TAB}
-                className="mt-0"
-              >
-                <WorldLedgerBody
-                  ledger={worldLedger}
-                  layout={layouts[worldLedger.templateId]}
-                  panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
-                  onPanelModeChange={setPanelMode}
-                />
-              </TabsContent>
-            ) : null}
-          </Tabs>
+          {actorLedgers.length > 0 || hasWorldFacts ? (
+            <Tabs value={selectedTab} onValueChange={setSelectedTab} className="gap-0">
+              <StateEntityTabs actors={actorTabs} showWorld={hasWorldFacts} />
+              {actorLedgers.map((ledger) => (
+                <TabsContent
+                  key={ledger.id}
+                  value={ledger.id}
+                  forceMount
+                  hidden={selectedTab !== ledger.id}
+                  className="mt-0"
+                >
+                  <ActorLedgerBody
+                    ledger={ledger}
+                    layout={layouts[ledger.templateId]}
+                    panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
+                    onPanelModeChange={setPanelMode}
+                  />
+                </TabsContent>
+              ))}
+              {hasWorldFacts ? (
+                <TabsContent
+                  value={WORLD_STATE_TAB}
+                  forceMount
+                  hidden={selectedTab !== WORLD_STATE_TAB}
+                  className="mt-0"
+                >
+                  <WorldLedgerBody
+                    ledger={worldLedger}
+                    layout={layouts[worldLedger.templateId]}
+                    panelMode={panelMode === 'expanded' ? 'expanded' : 'preview'}
+                    onPanelModeChange={setPanelMode}
+                  />
+                </TabsContent>
+              ) : null}
+            </Tabs>
+          ) : null}
+          <ActorArchiveList entries={model.archivedActors} />
         </CollapsibleContent>
         {selectedLedger ? (
           <StateLayoutEditor
@@ -248,7 +257,7 @@ function StatusIndicator({ status }: { status?: 'pending' | 'ready' | 'failed' }
 
 function StateEntityTabs({ actors, showWorld }: { actors: Array<{ id: string; name: string }>; showWorld: boolean }) {
   const { t } = useTranslation()
-  if (actors.length === 1 && !showWorld) return null
+  if (actors.length <= 1 && !showWorld) return null
   return (
     <div className="story-state-ledger__tabs-scroll overflow-x-auto overflow-y-hidden px-2.5 pb-1.5">
       <TabsList
@@ -454,8 +463,9 @@ function StateSectionEmpty({ label }: { label: string }) {
 
 function turnStatusLabel(snapshot: Snapshot | null, t: ReturnType<typeof useTranslation>['t']) {
   const turnId = snapshot?.current_turn?.id
-  const matchedIndex = turnId ? snapshot?.turns.findIndex((turn) => turn.id === turnId) ?? -1 : -1
-  const turn = matchedIndex >= 0 ? matchedIndex + 1 : Math.max(snapshot?.turns.length || 0, turnId ? 1 : 0)
+  const turns = snapshot?.turns || []
+  const matchedIndex = turnId ? turns.findIndex((turn) => turn.id === turnId) : -1
+  const turn = matchedIndex >= 0 ? matchedIndex + 1 : Math.max(turns.length, turnId ? 1 : 0)
   if (snapshot?.current_turn?.state_status === 'pending') return t('storyStage.state.syncing', { turn })
   if (snapshot?.current_turn?.state_status === 'failed') return t('storyStage.state.failed', { turn })
   return t('storyStage.state.updatedTurn', { turn })

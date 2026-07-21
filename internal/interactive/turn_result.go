@@ -14,6 +14,8 @@ const (
 	TurnStateUpdateReplace = "replace"
 	TurnStateUpdateDelta   = "delta"
 	TurnStateUpdateCreate  = "create"
+	TurnStateUpdateArchive = "archive"
+	TurnStateUpdateRestore = "restore"
 
 	maxDirectorUpdateReasonBytes = 1024
 )
@@ -21,7 +23,7 @@ const (
 // StateUpdate is the small, model-facing state mutation contract. Path is a
 // schema-bound JSON Pointer whose first segment is a stable Actor ID.
 type StateUpdate struct {
-	Op    string `json:"op" jsonschema:"enum=replace,enum=delta,enum=create" jsonschema_description:"状态操作，只能使用 replace、delta 或 create。"`
+	Op    string `json:"op" jsonschema:"enum=replace,enum=delta,enum=create,enum=archive,enum=restore" jsonschema_description:"状态操作：replace/delta 更新字段，create 新建 Actor，archive/restore 改变 Actor 是否参与运行时状态。"`
 	Path  string `json:"path" jsonschema_description:"以稳定 actor_id 开头的 schema-bound JSON Pointer，例如 /protagonist/生命值。"`
 	Value any    `json:"value" jsonschema_description:"replace/create 的目标值，或 delta 的数值变化量。"`
 }
@@ -66,9 +68,6 @@ func validateTurnResult(result TurnResult, configuredChoiceCount int, terminal b
 	choiceCount := normalizeStoryChoiceCount(configuredChoiceCount)
 	if err := validateStoryChoiceCount(choiceCount); err != nil {
 		return err
-	}
-	if len(result.StateUpdates) > maxInteractiveListItems {
-		return fmt.Errorf("TurnResult state_updates 不能超过 %d 项", maxInteractiveListItems)
 	}
 	for index, update := range result.StateUpdates {
 		if err := validateStateUpdateShape(update); err != nil {
@@ -152,9 +151,9 @@ func normalizeTurnStateUpdates(updates []StateUpdate) []StateUpdate {
 
 func validateStateUpdateShape(update StateUpdate) error {
 	switch update.Op {
-	case TurnStateUpdateReplace, TurnStateUpdateDelta, TurnStateUpdateCreate:
+	case TurnStateUpdateReplace, TurnStateUpdateDelta, TurnStateUpdateCreate, TurnStateUpdateArchive, TurnStateUpdateRestore:
 	default:
-		return fmt.Errorf("op 必须是 replace、delta 或 create")
+		return fmt.Errorf("op 必须是 replace、delta、create、archive 或 restore")
 	}
 	if !strings.HasPrefix(update.Path, "/") || update.Path == "/" {
 		return fmt.Errorf("path 必须是以 / 开头的非空 JSON Pointer")

@@ -81,6 +81,8 @@ const directorPanel = {
   'directorPanel.stateChange.set': 'Updated',
   'directorPanel.stateChange.add': 'Added',
   'directorPanel.stateChange.remove': 'Removed',
+  'directorPanel.stateChange.archive': 'Archived',
+  'directorPanel.stateChange.restore': 'Restored',
   'directorPanel.directorSpoilerTitle': 'Director content may contain spoilers',
   'directorPanel.directorSpoilerDescription': 'This panel shows the director beat sheet, event orchestration, and background run process, which may reveal upcoming story beats. Confirm before viewing.',
   'directorPanel.directorReveal': 'View Director',

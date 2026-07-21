@@ -16,6 +16,7 @@ type TurnStateUpdateCompileOptions struct {
 	SourceTurnID             string
 	RuleResolution           *RuleResolution
 	RuleStateConsumptionMode string
+	actorLifecycleIntents    map[string]actorLifecycleIntent
 }
 
 // CompiledTurnStateUpdates contains canonical audit input and deterministic
@@ -81,17 +82,15 @@ func (e *StateUpdateValidationErrors) Unwrap() []error {
 // rejects the whole module.
 func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState map[string]any, updates []StateUpdate, options TurnStateUpdateCompileOptions) (CompiledTurnStateUpdates, error) {
 	updates = normalizeTurnStateUpdates(updates)
-	if len(updates) > maxInteractiveListItems {
-		return CompiledTurnStateUpdates{}, &StateUpdateValidationError{
-			Index:    maxInteractiveListItems,
-			Code:     "too_many_state_updates",
-			Expected: fmt.Sprintf("at most %d operations", maxInteractiveListItems),
-			Actual:   fmt.Sprintf("%d operations", len(updates)),
-			Cause:    fmt.Errorf("state_updates 不能超过 %d 项", maxInteractiveListItems),
+	system = normalizeActorStateSystem(system)
+	lifecycleIntents := options.actorLifecycleIntents
+	if lifecycleIntents == nil {
+		var err error
+		lifecycleIntents, err = planActorLifecycleUpdates(system, currentState, updates)
+		if err != nil {
+			return CompiledTurnStateUpdates{}, err
 		}
 	}
-
-	system = normalizeActorStateSystem(system)
 	workingState := cloneActorStateRoot(currentState)
 	compiled := CompiledTurnStateUpdates{Updates: []StateUpdate{}, Ops: []StateOp{}, ActorOps: []ActorStateOp{}}
 	canonicalPaths := make([][]string, 0, len(updates))
@@ -105,7 +104,7 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 			}
 		}
 		if err := validateStateUpdateShape(update); err != nil {
-			return CompiledTurnStateUpdates{}, stateUpdateError(index, "invalid_state_update", update.Path, "replace, delta, or create with a non-null value", stateUpdateActual(update.Value), err)
+			return CompiledTurnStateUpdates{}, stateUpdateError(index, "invalid_state_update", update.Path, "replace, delta, create, archive, or restore with a non-null value", stateUpdateActual(update.Value), err)
 		}
 		segments, err := parseStateUpdatePath(update.Path)
 		if err != nil {
@@ -117,6 +116,30 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 		}
 		if err := validateStateUpdateValueSize(update.Value); err != nil {
 			return CompiledTurnStateUpdates{}, stateUpdateError(index, "state_value_too_large", update.Path, fmt.Sprintf("at most %d JSON bytes", maxTurnStateUpdateValueBytes), stateUpdateActual(update.Value), err)
+		}
+		if update.Op == TurnStateUpdateArchive || update.Op == TurnStateUpdateRestore {
+			intent := lifecycleIntents[actorID]
+			canonical := []string{actorArchiveRoot, actorID}
+			if conflict := overlappingStateUpdatePath(canonicalPaths, canonical); conflict != "" {
+				return CompiledTurnStateUpdates{}, stateUpdateError(index, "overlapping_state_path", update.Path, "one lifecycle operation per Actor", conflict, fmt.Errorf("同一次提交不能包含重复或相互覆盖的状态路径: %s", conflict))
+			}
+			stateOp := StateOp{
+				Path:         actorArchiveStatePath(actorID),
+				Reason:       intent.Reason,
+				SourceTurnID: options.SourceTurnID,
+				SourceKind:   StateOpSourceTurnResult,
+			}
+			if update.Op == TurnStateUpdateArchive {
+				stateOp.Op = "set"
+				stateOp.Value = map[string]any{"reason": intent.Reason, "source_turn_id": options.SourceTurnID}
+			} else {
+				stateOp.Op = "unset"
+			}
+			applyStateOp(workingState, stateOp)
+			canonicalPaths = append(canonicalPaths, canonical)
+			compiled.Updates = append(compiled.Updates, StateUpdate{Op: update.Op, Path: formatStateUpdatePath([]string{actorID}), Value: map[string]any{"reason": intent.Reason}})
+			compiled.Ops = append(compiled.Ops, stateOp)
+			continue
 		}
 
 		if update.Op == TurnStateUpdateCreate {
@@ -250,8 +273,13 @@ func CompileTurnStateUpdates(system StoryDirectorActorStateSystem, currentState 
 		compiled.Ops = append(compiled.Ops, ops...)
 		compiled.ActorOps = append(compiled.ActorOps, actorOps...)
 	}
+	for _, intent := range sortedActorLifecycleIntents(lifecycleIntents, TurnStateUpdateArchive) {
+		ops, actorOps := compileActorArchivePresenceCleanup(system, workingState, intent, options.SourceTurnID)
+		compiled.Ops = append(compiled.Ops, ops...)
+		compiled.ActorOps = append(compiled.ActorOps, actorOps...)
+	}
 
-	compiled.Ops = normalizeStateOps(compiled.Ops)
+	compiled.Ops = normalizeStateOpsUnbounded(compiled.Ops)
 	compiled.ActorOps = normalizeActorStateOps(compiled.ActorOps)
 	return compiled, nil
 }

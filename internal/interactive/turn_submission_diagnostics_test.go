@@ -143,3 +143,30 @@ func TestPrepareTurnSubmissionDeltaDiagnosticDescribesTheMissingTarget(t *testin
 		t.Fatalf("delta diagnostic should describe its missing target, not its valid input: %#v", receipt.Diagnostics)
 	}
 }
+
+func TestPrepareTurnSubmissionUsesFullLifecycleIntentWhenCollectingDiagnostics(t *testing.T) {
+	system := StoryDirectorActorStateSystem{Templates: []ActorStateTemplate{{
+		ID: "opponent", Fields: []ActorStateField{{Name: "生命值", Type: "number"}},
+	}}}
+	state := map[string]any{
+		actorStateRoot: map[string]any{
+			"狼王": map[string]any{"id": "狼王", "template_id": "opponent", "state": map[string]any{"生命值": float64(0)}},
+		},
+		actorArchiveRoot: map[string]any{"狼王": map[string]any{"reason": "死亡"}},
+	}
+	input := DecodeInteractiveTurnSubmissionInput(`{
+		"state_changes":[
+			{"op":"replace","actor_id":"狼王","field_id":"生命值","value":1},
+			{"op":"restore","actor_id":"狼王","reason":"确认仍然存活"},
+			{"op":"replace","actor_id":"不存在的角色","field_id":"生命值","value":1}
+		],
+		"choices":["前进","观察","交谈","等待","后退"]
+	}`)
+
+	_, receipt := PrepareTurnSubmission(TurnSubmissionContext{
+		ActorState: system, CurrentState: state, ChoiceCount: 5,
+	}, nil, input)
+	if len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Path != "/state_changes/2" || receipt.Diagnostics[0].Code != "actor_not_found" {
+		t.Fatalf("diagnostic collection must not misreport a write covered by same-batch restore: %#v", receipt.Diagnostics)
+	}
+}

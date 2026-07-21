@@ -16,11 +16,14 @@ import (
 // while overlap checks are retained across successfully compiled operations.
 func collectTurnStateUpdateValidationErrors(system StoryDirectorActorStateSystem, currentState map[string]any, updates []StateUpdate, options TurnStateUpdateCompileOptions) []*StateUpdateValidationError {
 	workingState := cloneActorStateRoot(currentState)
+	if intents, err := planActorLifecycleUpdates(normalizeActorStateSystem(system), currentState, normalizeTurnStateUpdates(updates)); err == nil {
+		options.actorLifecycleIntents = intents
+	}
 	validationErrors := make([]*StateUpdateValidationError, 0)
 	canonicalPaths := make([][]string, 0, len(updates))
 	failedPaths := make([][]string, 0)
 	for index, update := range updates {
-		inputPath, inputPathValid := stateUpdateDiagnosticSegments(update.Path)
+		inputPath, inputPathValid := stateUpdateDiagnosticSegmentsForUpdate(update)
 		if inputPathValid && overlappingStateUpdatePath(failedPaths, inputPath) != "" {
 			continue
 		}
@@ -52,7 +55,7 @@ func collectTurnStateUpdateValidationErrors(system StoryDirectorActorStateSystem
 		compiledPaths := make([][]string, 0, len(compiled.Updates))
 		overlap := ""
 		for _, compiledUpdate := range compiled.Updates {
-			compiledPath, ok := stateUpdateDiagnosticSegments(compiledUpdate.Path)
+			compiledPath, ok := stateUpdateDiagnosticSegmentsForUpdate(compiledUpdate)
 			if !ok {
 				continue
 			}
@@ -143,6 +146,20 @@ func stateUpdateDiagnosticEnglish(code string) string {
 		return "actor_id must be a normalized state-panel Actor ID."
 	case "actor_not_found":
 		return "The referenced Actor ID does not exist in the current state."
+	case "actor_archived":
+		return "The referenced Actor is archived and read-only until the same atomic state_changes module explicitly restores it."
+	case "actor_already_exists":
+		return "The Actor already exists. Restore an archived Actor instead of creating it again."
+	case "actor_already_archived":
+		return "The Actor is already archived."
+	case "actor_not_archived":
+		return "The Actor is active and does not need to be restored."
+	case "protected_actor_archive":
+		return "System Actors story, protagonist, and world cannot be archived or restored."
+	case "duplicate_actor_lifecycle", "actor_lifecycle_conflict":
+		return "Each Actor may have only one compatible archive or restore operation in an atomic state_changes module."
+	case "invalid_actor_lifecycle_path", "invalid_actor_lifecycle_reason":
+		return "archive and restore require only an existing actor_id and a non-empty reason."
 	case "actor_name_id_mismatch":
 		return "A newly created Actor must use its story-language name unchanged as both actor_id and name."
 	case "state_field_not_found":
@@ -163,6 +180,14 @@ func stateUpdateDiagnosticEnglish(code string) string {
 func stateUpdateDiagnosticSegments(path string) ([]string, bool) {
 	segments, err := parseStateUpdatePath(strings.TrimSpace(path))
 	return segments, err == nil
+}
+
+func stateUpdateDiagnosticSegmentsForUpdate(update StateUpdate) ([]string, bool) {
+	segments, ok := stateUpdateDiagnosticSegments(update.Path)
+	if !ok || (update.Op != TurnStateUpdateArchive && update.Op != TurnStateUpdateRestore) || len(segments) != 1 {
+		return segments, ok
+	}
+	return []string{actorArchiveRoot, segments[0]}, true
 }
 
 func stateUpdateOverlapValidationError(index int, path, overlap string) *StateUpdateValidationError {

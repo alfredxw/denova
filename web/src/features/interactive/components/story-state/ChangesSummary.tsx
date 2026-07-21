@@ -69,6 +69,12 @@ function SummaryItemValue({ change }: { change: ClassifiedStateChange }) {
   if (change.kind === 'removed') {
     return <span className="text-[var(--story-state-negative)]">{change.text ? `−${truncateEnd(change.text, 10)}` : t('storyStage.state.change.removed')}</span>
   }
+  if (change.kind === 'archived') {
+    return <span className="text-[var(--story-state-negative)]">{t('storyStage.state.change.archived')}</span>
+  }
+  if (change.kind === 'restored') {
+    return <span className="text-[var(--story-state-positive)]">{t('storyStage.state.change.restored')}</span>
+  }
   return (
     <span className="text-[var(--nova-text-faint)]">
       {change.kind === 'cleared' ? t('storyStage.state.change.cleared') : t('storyStage.state.change.updated')}

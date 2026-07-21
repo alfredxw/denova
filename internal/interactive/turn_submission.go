@@ -156,10 +156,8 @@ func PrepareTurnSubmission(validation TurnSubmissionContext, current *PreparedTu
 		compiled, err := CompileTurnStateUpdates(validation.ActorState, validation.CurrentState, updates, compileOptions)
 		if err != nil {
 			validationErrors := flattenStateUpdateValidationErrors(err)
-			if len(validationErrors) == 0 || validationErrors[0].Code != "too_many_state_updates" {
-				collected := collectTurnStateUpdateValidationErrors(validation.ActorState, validation.CurrentState, updates, compileOptions)
-				validationErrors = mergeStateUpdateValidationErrors(validationErrors, collected)
-			}
+			collected := collectTurnStateUpdateValidationErrors(validation.ActorState, validation.CurrentState, updates, compileOptions)
+			validationErrors = mergeStateUpdateValidationErrors(validationErrors, collected)
 			if len(validationErrors) > 0 {
 				err = &StateUpdateValidationErrors{Items: validationErrors}
 			}

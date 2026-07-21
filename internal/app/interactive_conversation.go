@@ -1185,10 +1185,7 @@ func (c *interactiveConversation) buildDirectorInstruction(turn interactive.Turn
 	if err != nil {
 		return "", err
 	}
-	actorStateSnapshot := map[string]any{}
-	if actors, ok := storyCtx.Snapshot.State["actors"]; ok {
-		actorStateSnapshot = map[string]any{"actors": actors}
-	}
+	actorStateSnapshot := interactive.ActorStateRuntimeProjection(storyDirector.ActorState, storyCtx.Snapshot.State)
 	openingInitialization := strings.TrimSpace(c.directorTask) == interactiveDirectorTaskOpeningPlan
 	budget := newDirectorContextBudget(c.cfg, c.directorTask, stableContext)
 	title := budget.take("story.title", storyCtx.Meta.Title, 512)
