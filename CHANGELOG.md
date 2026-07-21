@@ -24,6 +24,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复 Agent `prefill failed: unexpected control character ... char 2000`：JSON 形态 tool result 不再按默认 2000 字硬截断并拼接换行 marker。
+- Fixed Agent `prefill failed: unexpected control character ... char 2000`: stop mid-cutting JSON tool results at the default 2000-rune preview with a newline marker.
+
 - 写作模式现在会隔离参数不是合法 JSON 的工具调用及其结果；已经保存的异常调用链也会在下次请求前被过滤，长参数则使用合法 JSON 回执保留上下文，避免会话被永久冻结。
 - Writing Mode now isolates tool calls with invalid JSON arguments and their results; previously saved malformed pairs are filtered before the next request, while large arguments use a valid JSON receipt so sessions do not become permanently frozen.
 - 设置与 Agents 的分层草稿、自动保存和输入区偏好持久化现在会串行写入，并在 revision 冲突时按原始基线重新拉取、合并和重试；卸载或过期请求不再回写状态。
