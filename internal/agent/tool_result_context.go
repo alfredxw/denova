@@ -174,6 +174,14 @@ func toolResultContextContent(toolName, toolCallID, content string, policy ToolR
 	if content == "" {
 		content = "(无返回内容)"
 	}
+	// JSON bodies must not be mid-cut at PreviewChars (default 2000): the "\n..."
+	// marker makes providers that re-parse tool content fail with
+	// "unexpected control character ... char 2000".
+	if policy.PreviewChars > 0 && countRunes(content) > policy.PreviewChars && looksLikeJSONPayload(content) {
+		return toolResultPlaceholderMessage(&schema.Message{
+			Role: schema.Tool, Content: content, ToolName: toolName, ToolCallID: toolCallID,
+		}, "tool_result_json_preview_exceeded").Content
+	}
 	return limitContextText(content, policy.PreviewChars, fmt.Sprintf(
 		"\n[Denova tool result preview truncated for context]\ntool_name: %s\ntool_call_id: %s\noriginal_chars: %d\npreview_chars: %d",
 		toolName,
@@ -208,6 +216,11 @@ func limitContextText(content string, maxRunes int, marker string) string {
 		return content
 	}
 	return strings.TrimRight(string(runes[:maxRunes]), "\n") + marker
+}
+
+func looksLikeJSONPayload(content string) bool {
+	content = strings.TrimSpace(content)
+	return strings.HasPrefix(content, "{") || strings.HasPrefix(content, "[")
 }
 
 func applyToolResultContextPolicy(messages []*schema.Message, policy ToolResultContextPolicy) []*schema.Message {

@@ -78,6 +78,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复 Agent `prefill failed: unexpected control character ... char 2000`：JSON 形态 tool result 不再按默认 2000 字硬截断并拼接换行 marker。
+- Fixed Agent `prefill failed: unexpected control character ... char 2000`: stop mid-cutting JSON tool results at the default 2000-rune preview with a newline marker.
 - 游戏模式的 `submit_interactive_turn` 现在会在冻结 Schema 校验前，将可无歧义解释的数字、布尔、object 和 list 字符串编码规范为原生 JSON；冲突或模糊值仍会原子拒绝，Object 内部记录则保持原样。一次提交中的独立状态错误会合并到同一回执并精确定位 `initial_state` 字段，工具说明也改用原生 JSON 示例，避免弱模型逐字段重试。
 - Game Mode's `submit_interactive_turn` now normalizes unambiguous string encodings of numbers, booleans, objects, and lists into native JSON before frozen-schema validation. Conflicting or ambiguous encodings remain atomically rejected, while entries inside Object values are preserved as submitted. Independent state errors from one submission are returned together with precise `initial_state` paths, and the tool guide uses native JSON examples to avoid field-by-field retries from weaker models.
 - 游戏模式切换故事线时会将当前选择写入工作区故事索引，并在加载时优先采用该共享值；同一工作区从其他浏览器打开时会恢复最后选择的故事线，不再被各浏览器独立的本地缓存覆盖。
