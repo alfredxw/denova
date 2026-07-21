@@ -1,0 +1,229 @@
+CHANGELOG.md
+  s_4ae774f922837f::t_9ec36edfee253f 11-12,30-31,75-76,87-88
+docs/status/actor-state-presets-v2-design.md
+  s_a964ccbce621a9::t_64b795ba93c4ec 261,265-266,268-270
+internal/agent/config_manager_tools.go
+  s_9bc732b6844396::t_a97fe28ce3236d 77,550,573
+internal/agent/interactive_state_schema_tools.go
+  s_9bc732b6844396::t_9119ef2dbc3cb1 99
+internal/agent/interactive_state_schema_tools_test.go
+  s_9bc732b6844396::t_35f64f654890dc 41,46-48,53
+internal/api/handler_interactive_test.go
+  s_9bc732b6844396::t_2bbfa115ddad1f 405-406
+internal/app/interactive_agent_test.go
+  s_9bc732b6844396::t_0778ebff730946 555-561
+internal/app/interactive_app_service.go
+  s_4ae774f922837f::t_faa589f42bab55 148-149,164-167,845,847-873,880,882,900,918,920,924,929,951
+internal/app/interactive_director_test.go
+  s_4ae774f922837f::t_914f10cd4a2a3f 326-333
+internal/interactive/actor_state.go
+  s_9bc732b6844396::t_8c5b2de6b053a6 56-59,562-564
+internal/interactive/actor_state_preset_fields.go
+  s_f8cff9d6633350::t_c4d992a642075c 25-28,31,33,44-47,51-54,57,68-70,74-75,78,89-95,108-109,119,121-123,128,132,144,148,152,155-156,191-194,198-199,202-203,208-209,214-215,220-221,226-227,233-234,242,250
+internal/interactive/actor_state_preset_genres.go
+  s_9bc732b6844396::t_ac9e639eb40419 9,13-14,17,20,23,26,43,49-52,55,58,61,64,81-83,86,89,92-93,110,113-115,118,121,124,127-128
+internal/interactive/actor_state_runtime_context.go
+  s_9bc732b6844396::t_7c22b1483ef9c6 120,122,203
+internal/interactive/actor_state_test.go
+  s_9bc732b6844396::t_5e360cf59717d2 12-18,20-25,199-203,205-208,215-218,220-223
+internal/interactive/actor_state_v2_test.go
+  s_9bc732b6844396::t_86e88c2143e5fa 162-164,238
+internal/interactive/actor_traits_test.go
+  s_9bc732b6844396::t_be1b2ed27cbcf4 197,212-216,349-351,356-358
+internal/interactive/actor_visibility_compatibility_test.go
+  s_9bc732b6844396::t_5e7909cc36b976 1-66
+internal/interactive/director_modules_test.go
+  s_9bc732b6844396::t_7eedc6f646a99c 518-522
+internal/interactive/director_run_policy.go
+  s_4ae774f922837f::t_48cbdefdfd4a83 5,8-21,24-35,37-39,41-42,44,47-50,52-55,57-58,60-74,76-82,84,87-111,113-114,116-118
+internal/interactive/director_run_policy_test.go
+  s_40df5285d44a26::t_5e313d569fcee2 1-116
+internal/interactive/opening_state_schema_commit_test.go
+  s_9bc732b6844396::t_51efbcf5c766df 220,243,246,317
+internal/interactive/state_panel_name_id_test.go
+  s_f8cff9d6633350::t_a39a865805977f 5,13,95,100-104,122-129,132,135,137-163
+internal/interactive/state_schema_adaptation.go
+  s_9bc732b6844396::t_aa8847e7199dc6 73-75
+internal/interactive/state_schema_adaptation_test.go
+  s_9bc732b6844396::t_04d9d0f0a04a3a 19-20,28-31,39-42,50-52
+internal/interactive/state_schema_evidence_compatibility_test.go
+  s_9bc732b6844396::t_253afdb1b5b981 1-71
+internal/interactive/state_schema_initialization_test.go
+  s_9bc732b6844396::t_991372d44ec0d6 97,106,111,146,171
+internal/interactive/state_schema_policy.go
+  s_9bc732b6844396::t_c162e2d08b3506 95,118-119
+internal/interactive/state_schema_proposal_batch.go
+  s_9bc732b6844396::t_6c34e94cc55a4d 33,236
+internal/interactive/state_schema_proposal_batch_test.go
+  s_9bc732b6844396::t_642f87e4e8dce1 10-11,15-16,23,34,41,50-52,54,67,78,81,89-90,103,108,130,135,175,180,199,222,231,241,259,271,278,290,311,327,381,386,419,442,455-456,470-471,478,485-487,494,497,499-501,510-511,521,533,535,555-556,582-589,591-593,602,615,627-628,645,652,668,683,694,699,708
+internal/interactive/state_schema_proposal_batch_validation.go
+  s_9bc732b6844396::t_da4019d04b7819 49,153,160,187,311-312,325,351
+internal/interactive/state_schema_proposal_test.go
+  s_9bc732b6844396::t_9d434580e1dddc 63,116
+internal/interactive/story.go
+  s_4ae774f922837f::t_cb15fb77b6839c 113-118,125,154,304-310,402,1478,1495,1529-1536
+internal/interactive/story_directors_test.go
+  s_9bc732b6844396::t_9d206c1e9ee84d 40,44,92
+internal/interactive/story_schema.go
+  s_4ae774f922837f::t_e565507afd6d26 135-139
+internal/interactive/story_test.go
+  s_9bc732b6844396::t_f6b02abbe58656 830-836
+internal/interactive/story_types.go
+  s_4ae774f922837f::t_d4e29b2ac7c7d9 8,109,137,189
+internal/interactive/turn_state_update_diagnostics.go
+  s_9bc732b6844396::t_037d81679cf211 250
+internal/interactive/turn_state_updates_test.go
+  s_f8cff9d6633350::t_594d0cdc5b4dd2 4,13-14,44,66,78-97,100
+internal/interactive/turn_submission_diagnostics_test.go
+  s_9bc732b6844396::t_a2b070c00a7cbe 11,42-43,77,127
+internal/interactive/turn_submission_test.go
+  s_9bc732b6844396::t_d845146f72cf85 93-94,97-98,178-179,285-286
+internal/interactive/turn_submission_tolerance_test.go
+  s_f8cff9d6633350::t_0538485bb9aefe 4,13-17,133,137,152-154,164,169-178,180-181,185,188,201,210,212-213,217,220,229-232,242,247-249,251-252,260-262,317-318,350,355-359,410-414
+internal/prompts/interactive.go
+  s_c3aebd0f1e8328::t_70cfbad23d6401 62-65,113,130-131,221,225-227,229
+internal/prompts/interactive_test.go
+  s_c3aebd0f1e8328::t_bbda925b2041b7 90,94,96,100-147
+skills/story-director-config/SKILL.md
+  s_a964ccbce621a9::t_e61f248c132531 30
+web/src/components/Editor/MarkdownEditor.test.tsx
+  s_40df5285d44a26::t_49469d819c05b2 350
+web/src/components/Editor/useEditorDraftPersistence.ts
+  s_292cba4689c5d8::t_3b1a092663b273 265,269,308,348-355
+web/src/features/interactive/api.ts
+  s_4ae774f922837f::t_581f1d5dad0793 3,17,40
+web/src/features/interactive/components/InteractiveLayout.tsx
+  s_4ae774f922837f::t_6c59644b05e857 275
+web/src/features/interactive/components/NewStorySetupPanel.test.tsx
+  s_4ae774f922837f::t_7d6164167cb681 72-89
+web/src/features/interactive/components/NewStorySetupPanel.tsx
+  s_4ae774f922837f::t_9a38ccd8d3d808 1,14,43-45,64,67-68,78-79,91,129-130,154-169,197-222
+web/src/features/interactive/components/director-console/StateSchemaOverview.test.tsx
+  s_a964ccbce621a9::t_3d28e4fc70b6c0 4,13-19,25,35,44-47,54
+web/src/features/interactive/components/director-console/StateSchemaOverview.tsx
+  s_a964ccbce621a9::t_bddab5c44045ef 91,174
+web/src/features/interactive/components/director-console/StateView.test.tsx
+  s_a964ccbce621a9::t_90d99804eed3d0 4,8,44,47-52,65-66,160,172-175,178,182-185
+web/src/features/interactive/components/director-console/StateView.tsx
+  s_a964ccbce621a9::t_714256dfb7d558 10,140
+web/src/features/interactive/components/preset-config/actor-state-explorer/ActorStateExplorer.test.tsx
+  s_9bc732b6844396::t_a6031069afcde0 69,121-122,152,241,269-305,373,391
+web/src/features/interactive/components/preset-config/actor-state-explorer/build-tree.ts
+  s_f8cff9d6633350::t_45971b4f14c9b1 32-33
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/FieldDetailEditor.tsx
+  s_a964ccbce621a9::t_2514fd8b556821 107
+web/src/features/interactive/components/preset-config/actor-state-explorer/detail/TraitDetailEditor.tsx
+  s_f8cff9d6633350::t_6dc2e1af18591c 83
+web/src/features/interactive/components/preset-config/visual-editors.tsx
+  s_f8cff9d6633350::t_704588863a37e7 275,316
+web/src/features/interactive/components/setting-panel/presetResources.ts
+  s_9bc732b6844396::t_452e994b6d43ba 228
+web/src/features/interactive/components/setting-panel/use-preset-resources.test.tsx
+  s_292cba4689c5d8::t_daeed7412f485e 1-164
+web/src/features/interactive/components/setting-panel/use-preset-resources.ts
+  s_292cba4689c5d8::t_95a289e1f63557 4,354-364,407-412,429,438,455,460-469,496
+web/src/features/interactive/components/story-state/StateLayoutEditor.tsx
+  s_a964ccbce621a9::t_bf62ddf737feb6 360
+web/src/features/interactive/components/story-state/StoryStateLedger.test.tsx
+  s_a964ccbce621a9::t_be8d830a94ae3a 43,45,47,77,85,95,101,116,118-119,126,134,178,190,429,475,494
+web/src/features/interactive/components/story-state/StoryStateLedger.tsx
+  s_a964ccbce621a9::t_7b8c07785ddbf4 2,18,53,296,427
+web/src/features/interactive/components/story-state/field-layout.test.ts
+  s_a964ccbce621a9::t_01b21a322b1361 9-12,37-43
+web/src/features/interactive/components/story-state/field-layout.ts
+  s_a964ccbce621a9::t_ab635edfcf5de9 6-7,9
+web/src/features/interactive/components/story-state/model.ts
+  s_a964ccbce621a9::t_5eb1c2513a97f7 69,71,80
+web/src/features/interactive/opening.ts
+  s_4ae774f922837f::t_54c6cc2c9c719b 2,9
+web/src/features/interactive/types.ts
+  s_4ae774f922837f::t_c6abfc0dec07b4 11,30-36
+web/src/features/settings/use-auto-save-settings.ts
+  s_40df5285d44a26::t_aaa65b2cb0f31d 41,98
+web/src/features/settings/use-layered-settings-draft.test.tsx
+  s_40df5285d44a26::t_80318c65e2251f 181-229
+web/src/features/settings/use-layered-settings-draft.ts
+  s_40df5285d44a26::t_487f37cdb86daf 13-16,63,72-97,121,131,211-216,237,251
+web/src/hooks/use-resource-autosave.ts
+  s_40df5285d44a26::t_3ffee5379f3546 289-299,400
+web/src/hooks/usePersistedUserSettings.test.tsx
+  s_40df5285d44a26::t_c030b0273d5624 177-232
+web/src/hooks/usePersistedUserSettings.ts
+  s_40df5285d44a26::t_a567913f8e336f 131-138
+web/src/i18n/locales/en-US/settingPanel.ts
+  s_4ae774f922837f::t_865db45ad17827 520-521,570-575,591
+web/src/i18n/locales/en-US/storyPicker.ts
+  s_4ae774f922837f::t_c20a45f7978ea9 33-44
+web/src/i18n/locales/zh-CN/settingPanel.ts
+  s_4ae774f922837f::t_46d561a34e0d16 520-521,570-575,591
+web/src/i18n/locales/zh-CN/storyPicker.ts
+  s_4ae774f922837f::t_ba0f8bb1265598 33-44
+AGENTS.md
+  s_292cba4689c5d8::t_6a29d94e80f6de 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3d4ec8d7507210d58855f98ca5dd1cdec5c2f2a0",
+  "prompts": {},
+  "sessions": {
+    "s_292cba4689c5d8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d055a756-3c53-4061-b29b-7c6dd766adb4",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_40df5285d44a26": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f805c-9f9a-72c0-91ca-c1a3ec4f9510",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_4ae774f922837f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8060-819d-74f2-9062-4104e8e8fe61",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_9bc732b6844396": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f82e5-d935-7011-acf7-aabcd23e1899",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_a964ccbce621a9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f82e6-2a02-7032-b96f-33ed8e34a3fd",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_c3aebd0f1e8328": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8479-82d6-7762-aee2-b66547e924a2",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_f8cff9d6633350": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f82bd-4bb8-79e1-80f6-a42675178a20",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
