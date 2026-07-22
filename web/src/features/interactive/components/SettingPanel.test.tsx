@@ -945,7 +945,7 @@ describe('SettingPanel', () => {
     expect(branchTurnsInput).toHaveValue(5)
     fireEvent.change(branchTurnsInput, { target: { value: '7' } })
 
-    const modeField = screen.getByText('后台导演运行方式').closest('label') as HTMLElement
+    const modeField = screen.getByText('新故事默认运行方式').closest('label') as HTMLElement
     await user.click(within(modeField).getByRole('combobox'))
     await user.click(screen.getByRole('option', { name: /每回合/ }))
 
