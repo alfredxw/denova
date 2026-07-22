@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Activity, Bot, Braces, CheckCircle2, Database, Hammer, RefreshCw, XCircle } from 'lucide-react'
+import { Activity, Bot, Braces, CheckCircle2, Database, Download, Hammer, RefreshCw, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { getAgentRunTrace, getAgentRunTraces } from '@/lib/api'
+import { toast } from 'sonner'
+import { downloadAgentRunTrace, exportAgentRunTrace, getAgentRunTrace, getAgentRunTraces } from '@/lib/api'
 import type { AgentRunTrace, AgentRunTraceRecord, AgentRunTraceSummary } from '@/lib/api'
+import { ContextCopyButton } from './ContextCopyButton'
 
 type TraceFilter = 'all' | 'llm' | 'tools' | 'context' | 'errors'
 type TraceCategory = 'run' | 'llm' | 'tools' | 'context' | 'verification' | 'errors' | 'event'
@@ -141,6 +143,7 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
           {error && <div className="mb-2 rounded border border-[var(--nova-danger)] px-2 py-1.5 text-xs text-[var(--nova-danger)]">{error}</div>}
           {trace ? (
             <div className="space-y-3">
+              <TraceRunActions runID={trace.summary.id} />
               <TraceSummaryGrid trace={trace} stats={stats} />
               <div className="flex flex-wrap gap-1">
                 {filterItems.map((item) => (
@@ -172,6 +175,55 @@ export function AgentTracePanel({ disabled, selectedRunId }: AgentTracePanelProp
             <div className="px-2 py-4 text-xs text-[var(--nova-text-faint)]">{loading ? t('common.loading') : t('chat.tracePanel.selectRun')}</div>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function TraceRunActions({ runID }: { runID: string }) {
+  const { t } = useTranslation()
+  const [exporting, setExporting] = useState(false)
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const file = await exportAgentRunTrace(runID)
+      downloadAgentRunTrace(file)
+      toast.success(t('chat.tracePanel.exportSuccess', { filename: file.filename }))
+    } catch (error) {
+      const description = error instanceof Error ? error.message : String(error)
+      console.error('[agent-trace] failed to export run trace', { runID, error })
+      toast.error(t('chat.tracePanel.exportFailed'), { description })
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-[6px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2">
+      <div className="flex min-w-0 items-center gap-2 text-[11px]">
+        <span className="shrink-0 text-[var(--nova-text-faint)]">{t('chat.tracePanel.runId')}</span>
+        <code className="min-w-0 truncate font-mono text-[var(--nova-text)]" title={runID}>{runID}</code>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <ContextCopyButton
+          content={runID}
+          label={t('chat.tracePanel.copyRunId')}
+          copiedLabel={t('chat.tracePanel.runIdCopied')}
+          failedLabel={t('chat.tracePanel.copyRunIdFailed')}
+          showLabel
+        />
+        <button
+          type="button"
+          disabled={!runID || exporting}
+          onClick={() => void handleExport()}
+          className="inline-flex h-7 items-center gap-1.5 rounded-[6px] border border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 text-[11px] text-[var(--nova-text-muted)] transition-colors hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-45"
+          aria-label={exporting ? t('chat.tracePanel.exporting') : t('chat.tracePanel.export')}
+          title={exporting ? t('chat.tracePanel.exporting') : t('chat.tracePanel.export')}
+        >
+          <Download className="h-3.5 w-3.5" />
+          <span>{exporting ? t('chat.tracePanel.exporting') : t('chat.tracePanel.export')}</span>
+        </button>
       </div>
     </div>
   )

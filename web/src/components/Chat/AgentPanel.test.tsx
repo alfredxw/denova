@@ -137,6 +137,20 @@ describe('AgentPanel', () => {
     expect(screen.getByText('read_file')).toBeInTheDocument()
   })
 
+  it('创作 Agent 运行中自动展开思考过程', () => {
+    renderAgentPanel({
+      isStreaming: true,
+      messages: [{
+        id: 'assistant-running-trace',
+        role: 'assistant',
+        parts: [{ type: 'reasoning', text: '正在读取章节上下文', state: 'streaming' }],
+      }],
+    })
+
+    expect(screen.getByRole('button', { name: /思考过程/ })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('正在读取章节上下文')).toBeInTheDocument()
+  })
+
   it('打开 SubAgent 详情时通知外层扩展右栏', async () => {
     const user = userEvent.setup()
     const handleDetailsChange = vi.fn()

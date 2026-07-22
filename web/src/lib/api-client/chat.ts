@@ -1,7 +1,12 @@
 import type { UIMessageChunk } from 'ai'
-import { fetchAPI, jsonHeaders, parseUIMessageStream, requestJSON } from './client'
+import { fetchAPI, jsonHeaders, parseUIMessageStream, readErrorMessage, requestJSON } from './client'
 import type { AgentRunTrace, AgentRunTraceSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from './types'
 import type { AgentUIMessage } from '@/lib/agent-ui'
+
+export interface AgentRunTraceExportFile {
+  filename: string
+  blob: Blob
+}
 
 export async function sendMessage(
   message: string,
@@ -163,6 +168,26 @@ export async function getAgentRunTraces(limit = 20): Promise<AgentRunTraceSummar
 
 export async function getAgentRunTrace(id: string): Promise<AgentRunTrace> {
   return requestJSON(`/api/agent-runs/${encodeURIComponent(id)}`)
+}
+
+export async function exportAgentRunTrace(id: string): Promise<AgentRunTraceExportFile> {
+  const res = await fetchAPI(`/api/agent-runs/${encodeURIComponent(id)}/export`)
+  if (!res.ok) throw new Error(await readErrorMessage(res))
+  return {
+    filename: `${id}.jsonl`,
+    blob: await res.blob(),
+  }
+}
+
+export function downloadAgentRunTrace(file: AgentRunTraceExportFile) {
+  const href = URL.createObjectURL(file.blob)
+  const link = document.createElement('a')
+  link.href = href
+  link.download = file.filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(href)
 }
 
 export async function createSession(title?: string): Promise<SessionSummary> {

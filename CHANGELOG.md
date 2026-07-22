@@ -6,8 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- 示例配置的默认服务端口更新为后端 `8011`、前端 `5174`。
+- The sample configuration now defaults to backend port `8011` and frontend port `5174`.
+
+### Added
+
+- Agent Trace 现可一键复制运行 ID，并直接导出该次运行完整的原始 JSONL trace 文件，便于用户向开发者提供可复现的诊断资料；写作与游戏模式共用此入口。
+- Agent Trace now supports one-click Run ID copying and download of the complete original JSONL trace for the selected run, making reproducible support diagnostics easy to share; Writing and Game modes use the same entry point.
+
 ### Fixed
 
+- 写作 Agent 运行中的 thinking 现在会自动展开；回合结束后仍保持可折叠，避免历史消息持续占据对话区域。
+- Running Writing Agent thinking now expands automatically, while completed turns remain collapsible to keep history compact.
+- Windows 自动保存不再将已落盘的配置误报为失败：Windows 不支持对配置目录句柄执行同步时，会跳过该目录同步；新增但尚未填写模型名的语言模型草稿也会在自动保存后保留，不再中断编辑。
+- Windows autosave no longer reports a persisted configuration as failed when Windows rejects directory-handle synchronization. Newly added language-model drafts without a model name are now retained after autosave instead of interrupting editing.
 - 修复游戏模式 Agent 的互动正文候选在异步 TurnResult 提交完成时可能被后续重试正文重复追加的问题；流式与非流式输出现在都只保留按事件顺序消费到的首个正文候选。
 - Fixed a Game Agent race where a later retry could be appended to the locked interactive narrative after an asynchronous TurnResult submission; streaming and non-streaming output now retain only the first narrative candidate consumed in event order.
 

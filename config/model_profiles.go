@@ -177,22 +177,49 @@ func sanitizeModelProfiles(profiles []ModelProfileSettings) []ModelProfileSettin
 		profile.OpenAIModel = strings.TrimSpace(profile.OpenAIModel)
 		profile.ID = modelProfileID(profile)
 		if profile.ID == "" {
+			// Settings autosave persists a newly added profile before the user has
+			// supplied its model identifier. Keep any meaningful partial draft so a
+			// successful save cannot make that active form disappear. Resolution and
+			// inheritance still ignore id-less profiles, so drafts cannot be selected
+			// by an Agent until the user fills in a model name or explicit ID.
+			if !hasModelProfileDraftFields(profile) {
+				continue
+			}
+			profile.Name = strings.TrimSpace(profile.Name)
+			profile.OpenAIBaseURL = strings.TrimSpace(profile.OpenAIBaseURL)
+			profile.ContextWindowTokens = normalizeModelProfileContextWindow(profile.ContextWindowTokens)
+			out = append(out, profile)
 			continue
 		}
 		if profile.OpenAIModel == "" && profile.ID != "default" {
 			profile.OpenAIModel = profile.ID
 		}
 		profile.Name = strings.TrimSpace(profile.Name)
-		if profile.ContextWindowTokens != nil {
-			if *profile.ContextWindowTokens <= 0 {
-				profile.ContextWindowTokens = nil
-			} else if *profile.ContextWindowTokens > MaxContextWindowTokens {
-				*profile.ContextWindowTokens = MaxContextWindowTokens
-			}
-		}
+		profile.ContextWindowTokens = normalizeModelProfileContextWindow(profile.ContextWindowTokens)
 		out = append(out, profile)
 	}
 	return out
+}
+
+func hasModelProfileDraftFields(profile ModelProfileSettings) bool {
+	return strings.TrimSpace(profile.Name) != "" ||
+		profile.OpenAIAPIKey != "" ||
+		strings.TrimSpace(profile.OpenAIBaseURL) != "" ||
+		profile.Temperature != nil ||
+		profile.ContextWindowTokens != nil
+}
+
+func normalizeModelProfileContextWindow(tokens *int) *int {
+	if tokens == nil {
+		return nil
+	}
+	if *tokens <= 0 {
+		return nil
+	}
+	if *tokens > MaxContextWindowTokens {
+		*tokens = MaxContextWindowTokens
+	}
+	return tokens
 }
 
 func defaultModelProfile(profiles []ModelProfileSettings) (ModelProfileSettings, bool) {

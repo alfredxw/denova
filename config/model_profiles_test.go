@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestResolveAgentModelContextWindowDefaultsAndOverrides(t *testing.T) {
 	defaultModel := ResolveAgentModel(&Config{}, AgentKindIDE)
@@ -176,6 +179,64 @@ func TestSanitizeModelProfilesDerivesIDFromModelName(t *testing.T) {
 	}
 	if settings.ModelProfiles[1].ID != "legacy" || settings.ModelProfiles[1].OpenAIModel != "legacy" {
 		t.Fatalf("legacy id profile should keep working: %#v", settings.ModelProfiles[1])
+	}
+}
+
+func TestSanitizeModelProfilesKeepsIncompleteDraft(t *testing.T) {
+	contextWindow := DefaultContextWindowTokens
+	settings := sanitizeEditableSettings(Settings{
+		ModelProfiles: []ModelProfileSettings{
+			{
+				Name:                "  Draft provider  ",
+				OpenAIAPIKey:        "draft-key",
+				OpenAIBaseURL:       " https://api.example.com/v1 ",
+				ContextWindowTokens: &contextWindow,
+			},
+		},
+	})
+
+	if len(settings.ModelProfiles) != 1 {
+		t.Fatalf("sanitized model profiles length = %d, want 1", len(settings.ModelProfiles))
+	}
+	draft := settings.ModelProfiles[0]
+	if draft.ID != "" || draft.OpenAIModel != "" {
+		t.Fatalf("incomplete draft must stay ineligible for model resolution: %#v", draft)
+	}
+	if draft.Name != "Draft provider" || draft.OpenAIBaseURL != "https://api.example.com/v1" {
+		t.Fatalf("incomplete draft fields were not normalized: %#v", draft)
+	}
+	if draft.ContextWindowTokens == nil || *draft.ContextWindowTokens != DefaultContextWindowTokens {
+		t.Fatalf("incomplete draft context window was not retained: %#v", draft)
+	}
+}
+
+func TestWriteSettingsFileKeepsIncompleteModelDraft(t *testing.T) {
+	contextWindow := DefaultContextWindowTokens
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := WriteSettingsFile(path, Settings{
+		ModelProfiles: []ModelProfileSettings{{
+			Name:                "Draft provider",
+			OpenAIAPIKey:        "draft-key",
+			OpenAIBaseURL:       "https://api.example.com/v1",
+			ContextWindowTokens: &contextWindow,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	saved, err := ReadSettingsFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.ModelProfiles) != 1 {
+		t.Fatalf("saved model profiles length = %d, want 1", len(saved.ModelProfiles))
+	}
+	draft := saved.ModelProfiles[0]
+	if draft.ID != "" || draft.OpenAIModel != "" {
+		t.Fatalf("incomplete draft must remain ineligible after a write/read round trip: %#v", draft)
+	}
+	if draft.Name != "Draft provider" || draft.OpenAIAPIKey != "draft-key" || draft.OpenAIBaseURL != "https://api.example.com/v1" {
+		t.Fatalf("incomplete draft was not preserved after a write/read round trip: %#v", draft)
 	}
 }
 

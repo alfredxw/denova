@@ -172,8 +172,8 @@ denova_dir = "./.denova"
 # nova_dir = "./.nova"
 
 # 修改端口号
-backend_port = 8080
-frontend_port = 5173
+backend_port = 8011
+frontend_port = 5174
 
 # 编辑器
 auto_save_enabled = true

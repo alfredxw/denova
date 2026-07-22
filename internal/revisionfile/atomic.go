@@ -40,7 +40,7 @@ func atomicReplace(path string, content []byte, fileMode, directoryMode os.FileM
 		return fmt.Errorf("open revision file directory for sync: %w", err)
 	}
 	defer directory.Close()
-	if err := directory.Sync(); err != nil {
+	if err := syncDirectory(directory); err != nil {
 		return fmt.Errorf("sync revision file directory: %w", err)
 	}
 	return nil
