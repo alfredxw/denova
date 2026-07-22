@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_07199eb8161f49::t_8deca3b2cc4af2 87-88
+go.mod
+  s_07199eb8161f49::t_759806a20f8b38 21
+go.sum
+  s_07199eb8161f49::t_400e33948eefd4 292-293,298-299
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cb0b7d24801ad9ebf0be16f14098de6548de8ebc",
+  "prompts": {},
+  "sessions": {
+    "s_07199eb8161f49": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f88c8-7057-7f41-a158-bdf09b849e8f",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
