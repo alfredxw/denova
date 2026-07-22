@@ -1,6 +1,6 @@
 {
   "name": "@alfredxw/denova",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "面向长篇小说创作的 AI 写作工作台",
   "type": "module",
   "bin": {

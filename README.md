@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  当前版本：<strong>v0.3.0</strong>（2026-07-22） · Beta
+  当前版本：<strong>v0.3.1</strong>（2026-07-23） · Beta
 </p>
 
 ![Denova 写作模式](./img/ide.png)

@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.3.0</strong> (2026-07-22) · Beta
+  Current version: <strong>v0.3.1</strong> (2026-07-23) · Beta
 </p>
 
 ![Denova Writing Mode](./img/ide.png)
