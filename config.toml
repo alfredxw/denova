@@ -5,6 +5,8 @@
 #   3. 用户级：<denova_dir>/config.toml
 #   4. 工作区级：<workspace>/.denova/config.toml；旧 <workspace>/.nova/config.toml 会兼容读取
 # 环境变量（OPENAI_API_KEY、OPENAI_MODEL 等）始终最高优先级，仅运行时覆盖，不写盘。
+# 也可用 ATLASCLOUD_API_KEY（可选 ATLASCLOUD_API_BASE / ATLASCLOUD_MODEL）作为快捷方式，
+# 它只填充默认连接与默认模型；同时设置的 OPENAI_* 仍然优先。
 #
 # 字段留空表示继承上层。
 # denova_dir 仅在全局启动配置或 DENOVA_DIR 环境变量中生效；用户级/工作区级会忽略并过滤该字段。
@@ -25,8 +27,7 @@
 # model = "my-model"
 #
 # [agent_models.default]
-# profile_id = "my-model"
-#
+# profile_id = "my-model"#
 # 图像模型。内置 OpenAI、xAI/Grok、ComfyUI、火山 Seedream、Google Gemini；
 # 自定义端点可选择任一已支持协议。可配置多个 profile。
 # 生成结果会保存到当前工作区 assets/image/generated/。

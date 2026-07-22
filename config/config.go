@@ -611,6 +611,18 @@ func ApplyModelEnvironment(cfg *Config) {
 	}
 	endpointOverride := ModelEndpointSettings{ID: DefaultModelEndpointID}
 	profileOverride := ModelProfileSettings{ID: DefaultModelEndpointID}
+	// ATLASCLOUD_* is a shortcut that seeds the default endpoint and profile.
+	// It is applied before the OPENAI_* reads below so an explicit OPENAI_*
+	// value still wins, and it feeds the override structs rather than cfg
+	// directly because syncLegacyModelProjection rebuilds cfg.OpenAI* at the
+	// end of this function from the resolved endpoint/profile.
+	if apiKey, baseURL, model, ok := atlasCloudEnvSettings(); ok {
+		if apiKey != "" {
+			endpointOverride.APIKey = apiKey
+		}
+		endpointOverride.BaseURL = firstNonEmpty(baseURL, AtlasCloudAPIBaseURL)
+		profileOverride.Model = firstNonEmpty(model, AtlasCloudDefaultModel)
+	}
 	if v := os.Getenv("OPENAI_API_KEY"); v != "" {
 		cfg.OpenAIAPIKey = v
 		endpointOverride.APIKey = v
