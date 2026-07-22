@@ -1,0 +1,61 @@
+CHANGELOG.md
+  s_be405dd6d9746d::t_1f6396dfb41575 34-35
+internal/agent/automation.go
+  s_be405dd6d9746d::t_26aa6c1297fc73 47
+internal/agent/lore_tools.go
+  s_be405dd6d9746d::t_0e60c2b009e63e 230
+internal/automation/default_prompts.go
+  s_be405dd6d9746d::t_83c535aae654fa 3,7
+internal/prompts/system.go
+  s_be405dd6d9746d::t_be4a3c7ec327c8 78,83,134,139,180,192,197-199,208-210
+internal/prompts/system_test.go
+  s_be405dd6d9746d::t_f338fcada22307 41,47-51,53-54,65-66
+skills/continue/SKILL.md
+  s_be405dd6d9746d::t_bbf6e68200997d 16,18,20,29-30
+skills/group-plan/SKILL.md
+  s_be405dd6d9746d::t_3ef1ba75d53478 9,14-17,69
+skills/novel-heavy/SKILL.md
+  s_be405dd6d9746d::t_1c4286a4f4af7c 104-105
+skills/novel-lite/SKILL.md
+  s_be405dd6d9746d::t_95d486933fcfc9 29-30
+skills/novel-standard/SKILL.md
+  s_be405dd6d9746d::t_9c44143c10ae8d 37
+skills/rewrite/SKILL.md
+  s_be405dd6d9746d::t_e413aa24ae5a32 34
+web/src/components/Chat/AgentPanel.test.tsx
+  s_be405dd6d9746d::t_43bc1728c7cfc2 101-115
+web/src/components/Chat/AgentPanel.tsx
+  s_be405dd6d9746d::t_0e94faed81f0e4 562-563,566
+web/src/components/Chat/MessageItem.tsx
+  s_aa539cdec27624::t_2cd6fdd1c02c80 1671,1674,1676
+web/src/i18n/locales/en-US/chat.ts
+  s_be405dd6d9746d::t_37e62a29991f5c 413
+web/src/i18n/locales/zh-CN/chat.ts
+  s_be405dd6d9746d::t_e1e52fdf882f09 413
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3c93df2d9757bf330301483241dc04ee3a9efbac",
+  "prompts": {},
+  "sessions": {
+    "s_aa539cdec27624": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7274a6d9-eaea-4f52-9e6b-3572400505ae",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    },
+    "s_be405dd6d9746d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f87b0-eb34-7081-9da1-d99a28e90f30",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
