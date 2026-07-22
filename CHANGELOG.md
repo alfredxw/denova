@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复游戏模式 Agent 的互动正文候选在异步 TurnResult 提交完成时可能被后续重试正文重复追加的问题；流式与非流式输出现在都只保留按事件顺序消费到的首个正文候选。
+- Fixed a Game Agent race where a later retry could be appended to the locked interactive narrative after an asynchronous TurnResult submission; streaming and non-streaming output now retain only the first narrative candidate consumed in event order.
+
 ## [v0.3.0] - 2026-07-22
 
 ### Brief / 简要说明

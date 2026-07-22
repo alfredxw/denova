@@ -63,7 +63,8 @@ type RunTraceMetadataReporter interface {
 }
 
 // InteractiveNarrativeReadinessReporter marks the protocol boundary after a
-// Game Agent has successfully staged its hidden TurnResult and may emit prose.
+// Game Agent has successfully staged its hidden TurnResult. Runtime uses it to
+// recognize cancellation after submission as successful turn completion.
 type InteractiveNarrativeReadinessReporter interface {
 	InteractiveNarrativeReady() bool
 }

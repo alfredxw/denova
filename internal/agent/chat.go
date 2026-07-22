@@ -587,7 +587,7 @@ func (r *Runtime) Run(
 			continue
 		}
 		if mv.IsStreaming && mv.MessageStream != nil {
-			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, options.ToolResultMaxBytes, eventMeta, interactiveNarrativeReady(conversation, eventMeta), planParser, emit)
+			msg, streamErr := processStreamingEvent(runCtx, mv, &fullContent, &fullThinking, options.IdleTimeout, options.ToolResultMaxBytes, eventMeta, planParser, emit)
 			if streamErr != nil {
 				// A completion-guard retry arrives after all response frames. Preserve
 				// the rejected call's provider usage even though its prose is discarded.
@@ -622,7 +622,7 @@ func (r *Runtime) Run(
 			continue
 		}
 		if mv.Message != nil {
-			processNonStreamingEvent(mv, &fullContent, &fullThinking, options.ToolResultMaxBytes, eventMeta, interactiveNarrativeReady(conversation, eventMeta), planParser, emit)
+			processNonStreamingEvent(mv, &fullContent, &fullThinking, options.ToolResultMaxBytes, eventMeta, planParser, emit)
 			toolContextRecorder.RecordAssistantToolCalls(mv.Message, eventMeta)
 			usageCollector.AddMessage(mv.Message)
 			if req.PlanMode && planParser != nil && planParser.HasSuccessfulBlock() {
