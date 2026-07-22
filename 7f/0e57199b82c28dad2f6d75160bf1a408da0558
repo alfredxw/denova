@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_fbd1141dd23ce9::t_c7635b9cb049d0 9-28,31-41,65-81,135-149
+README.en.md
+  s_fbd1141dd23ce9::t_f4d845d32e9166 22,56,58,61
+README.md
+  s_fbd1141dd23ce9::t_615e354f55fa29 22,56,58,61
+web/src/features/interactive/components/SettingPanel.test.tsx
+  s_fbd1141dd23ce9::t_c739395b8cb9a8 948
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7f0e57199b82c28dad2f6d75160bf1a408da0558",
+  "prompts": {},
+  "sessions": {
+    "s_fbd1141dd23ce9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8950-3995-7840-94ef-254afcf574af",
+        "model": "unknown"
+      },
+      "human_author": "alfred <xinggwang@gmail.com>"
+    }
+  },
+  "attestation_metadata": {},
+  "remote_transcripts": {}
+}
