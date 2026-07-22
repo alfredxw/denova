@@ -13,11 +13,11 @@ agent: ide,interactive_story
 1. 使用 read_file 读取 `setting/outline.md` 确认长期方向
 2. 使用 read_file 读取 `setting/progress.md` 获取最近章节摘要，并读取 `setting/character-states.md` 确认角色当前位置、身体、心理、目标、持有物和关系等当前状态
 3. 如 `setting/chapter-groups/` 下存在当前章节组细纲，优先读取对应细纲，确认本章在组内的作用、冲突、信息揭示和钩子
-4. 必须读取前面至少 2 章定稿正文，确保本章与前文自然衔接
+4. 必须读取前面至少 2 章实际正文，确保本章与前文自然衔接
 5. 根据大纲方向、章节组细纲、角色当前状态、资料库长期设定和前文正文创作本章内容；如本轮涉及资料库索引中的相关自动加载条目（基于简介判断），先用 read_lore_items 读取完整资料
-6. 使用 write_file 将章节写入 `chapters/` 下符合系统提示章节文件名模板的位置；非空新章节默认是初稿，由章节状态控制是否成章
+6. 使用 write_file 将章节写入 `chapters/` 下符合系统提示章节文件名模板的位置；章节状态只用于 UI 编辑标记，不影响后续章节判断或状态同步
 7. 不更改 `setting/outline.md`
-8. 只有作者明确确认成章或明确要求同步状态后，才更新 `setting/progress.md`（当前进度 + 本章摘要）和 `setting/character-states.md`（角色当前状态）；只有长期设定发生明确变化时，才使用 write_lore_items 批量同步资料库条目
+8. 完成正文自检和本轮最后修订后，在同一轮更新 `setting/progress.md`（当前进度 + 本章摘要）和 `setting/character-states.md`（角色当前状态），不等待作者另行确认成章；只有长期设定发生明确变化时，才使用 write_lore_items 批量同步资料库条目
 
 ## 写作要求
 
@@ -26,7 +26,8 @@ agent: ide,interactive_story
 - 大纲只作为长期结构和章节方向参考，续写完成后不要修改大纲文件
 - 写作推进主要通过 `setting/progress.md` 追踪，记录当前进度、已完成章节摘要和短期衔接提示
 - 角色当前状态通过 `setting/character-states.md` 追踪，按角色记录最近出场、当前位置、身体状态、心理状态、当前目标、持有物、能力变化、关系变化和待回收伏笔
-- 未确认成章的初稿不写入 `progress.md`、`character-states.md` 或资料库
+- 判断下一章时以实际章节路径和非空正文为准，`progress.md` 只作为摘要参考；如果两者冲突，以实际章节为准并在本轮同步修正 `progress.md`
+- 纯错字、标点或措辞润色没有改变叙事事实时，无需更新 `progress.md` 或 `character-states.md`
 - 资料库只同步角色身份、人设、长期关系、能力体系、世界规则、地点、势力和物品等稳定设定变化，不记录每章后的状态抖动，不写章节规划
 - 保持角色性格和说话方式一致
 - 与前面至少两章自然衔接（注意情节、时间、地点、人物状态的连贯）

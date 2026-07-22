@@ -6,15 +6,15 @@ agent: ide
 
 # 下一组章节细纲
 
-根据当前定稿进度和长期大纲，规划接下来一个短期情节单元的章节组细纲。
+根据当前实际写作进度和长期大纲，规划接下来一个短期情节单元的章节组细纲。
 
 ## 工作流程
 
 1. 使用 read_file 读取 `setting/outline.md`，确认长期主线、卷章方向和阶段目标
-2. 使用 read_file 读取 `setting/progress.md` 和 `setting/character-states.md`，并结合常驻资料库和资料库索引确认当前定稿落点、角色当前状态和关键长期设定
-3. 读取最近已定稿章节正文，至少包含最近 2 章；如果章节很少，则读取已有全部章节
-4. 如 `setting/chapter-groups/` 下存在上一组细纲，读取最近 1-2 个文件，只用于对照原计划与实际定稿偏差
-5. 如果实际定稿明显偏离大纲，先向作者说明偏差，并询问是调整大纲还是让下一组细纲拉回主线；不要直接硬写新细纲
+2. 使用 read_file 读取 `setting/progress.md` 和 `setting/character-states.md`，并结合常驻资料库和资料库索引确认当前实际写作落点、角色当前状态和关键长期设定
+3. 读取最近实际章节正文，至少包含最近 2 章；如果章节很少，则读取已有全部章节
+4. 如 `setting/chapter-groups/` 下存在上一组细纲，读取最近 1-2 个文件，只用于对照原计划与实际正文偏差
+5. 如果实际正文明显偏离大纲，先向作者说明偏差，并询问是调整大纲还是让下一组细纲拉回主线；不要直接硬写新细纲
 6. 只规划接下来要写的一组章节，不一次性批量生成很多组
 7. 使用 write_file 写入 `setting/chapter-groups/groupXX-情节目标.md`
 8. 细纲要短而可维护，建议全文控制在 800-1200 个中文字内，方便作者阅读、评论和后续更新
@@ -66,4 +66,4 @@ agent: ide
 - 文件名使用组序号和情节目标，例如 `setting/chapter-groups/group03-秘境入口.md`
 - 细纲服务接下来一组章节的落笔，不要替代 `setting/outline.md`
 - 不要把已完成章节复盘写进 `setting/outline.md`
-- 不要更新 `setting/progress.md`、`setting/character-states.md` 或资料库，它们只在章节定稿后同步
+- 本任务只规划细纲，不要更新 `setting/progress.md`、`setting/character-states.md` 或资料库；这些文件由章节创作或实质性改写流程同步

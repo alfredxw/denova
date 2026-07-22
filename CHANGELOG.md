@@ -31,6 +31,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 写作模式简化章节状态同步：新写完整章节或实质性改写章节时，Agent 在完成本轮修订后直接同步 `setting/progress.md` 与 `setting/character-states.md`；“初稿 / 成章”仅保留为 UI 编辑标记，不再作为下一章判断、上下文选择或状态同步的门槛，实际章节路径与非空正文优先于进度摘要。
+- Writing Mode simplifies chapter-state synchronization: after writing a complete chapter or making a substantive story rewrite, the Agent now updates `setting/progress.md` and `setting/character-states.md` after the run's final revision. Draft/Final remains a UI editing label only and no longer gates next-chapter selection, context, or state synchronization; actual chapter paths and non-empty chapter content take precedence over the progress summary.
 - Agent 工具上下文收敛为单一边界：工具结果仅在执行完成时按全局 `agent_tool_result_limit_kb` 有界化，后续轮次原样保留有效的 call/result 对，旧历史交给普通上下文压缩；`read_lore_items` 仍使用来源回执避免重复正文。Beta 不兼容：移除 `tool_result_keep_recent`、`tool_result_context_budget_kb` 与 `tool_result_preview_chars`，旧配置键读取时忽略。
 - Agent tool context now has one size boundary: results are bounded once at completion by the global `agent_tool_result_limit_kb`, valid call/result pairs remain exact across subsequent turns, and normal context compaction owns older history; `read_lore_items` still uses source receipts to avoid duplicating bodies. Beta breaking: `tool_result_keep_recent`, `tool_result_context_budget_kb`, and `tool_result_preview_chars` are removed, and legacy keys are ignored when read.
 - 游戏模式移除单次 `state_changes` 的操作数量硬上限，工具 Schema、提交解码、状态编译与 `TurnResult` 不再因第 25 项或更多操作拒绝复杂回合。Agent 仍会收到“常规回合建议不超过 24 项”的软提示，并明确复杂开局或确有更多事实变化时可以超过。

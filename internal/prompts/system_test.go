@@ -38,18 +38,20 @@ func TestSystemInstructionRequiresIdeasAndCreatorDuringIdeation(t *testing.T) {
 	}
 }
 
-func TestIDEWritingFlowUsesChapterStatusInsteadOfSeparateDraftDirectory(t *testing.T) {
+func TestIDEWritingFlowKeepsChapterStatusIndependentFromStateSync(t *testing.T) {
 	instruction := BuildIDEWritingFlowInstruction(SystemInstructionInput{
 		Workspace: "/tmp/book",
 	})
 
 	for _, required := range []string{
-		"章节初稿 -> 确认成章",
-		"章节初稿直接写入 chapters/",
-		"非空未确认章节为初稿",
-		"作者确认后才标记为成章",
+		"章节创作 -> 同步进度与角色状态",
+		"章节正文直接写入 chapters/",
+		"非空未确认章节可在 UI 中显示为初稿",
+		"章节状态只是编辑标记",
+		"不影响下一章判断、上下文选择或状态同步",
 		"write_file 到 chapters/",
-		"普通初稿不写入全书事实状态",
+		"在同一轮更新 setting/progress.md 和 setting/character-states.md",
+		"不等待作者另行确认成章",
 	} {
 		if !strings.Contains(instruction, required) {
 			t.Fatalf("写作流程提示缺少 %q:\n%s", required, instruction)
@@ -60,6 +62,8 @@ func TestIDEWritingFlowUsesChapterStatusInsteadOfSeparateDraftDirectory(t *testi
 		"draft" + "s/",
 		"Draft" + "Flow",
 		"章节草稿应先写入",
+		"普通初稿不写入全书事实状态",
+		"只有作者明确确认成章",
 	} {
 		if strings.Contains(instruction, forbidden) {
 			t.Fatalf("写作流程提示不应包含旧草稿目录流程 %q:\n%s", forbidden, instruction)

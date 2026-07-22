@@ -410,7 +410,7 @@ const chat = {
   'chat.quick.writeNextChapter': '按细纲写下一章',
   'chat.quick.continueParagraph': '续写下一段',
   'chat.quick.polishChapter': '润色当前章',
-  'chat.quick.finalizeState': '定稿并同步状态',
+  'chat.quick.finalizeState': '同步作品状态',
   'chat.quick.consistencyCheck': '一致性检查',
 } as const
 

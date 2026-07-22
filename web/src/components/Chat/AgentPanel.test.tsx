@@ -98,6 +98,21 @@ describe('AgentPanel', () => {
     expect(handleCreateSession).toHaveBeenCalledTimes(1)
   })
 
+  it('写下一章快捷提示要求同轮同步作品状态且不依赖成章确认', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn()
+    renderAgentPanel({ onSend: handleSend })
+
+    await user.click(screen.getByRole('button', { name: '按细纲写下一章' }))
+
+    expect(handleSend).toHaveBeenCalledWith(
+      expect.stringContaining('在同一轮同步更新 setting/progress.md 与 setting/character-states.md'),
+      expect.objectContaining({ writingSkill: 'novel-lite', tellerId: 'classic' }),
+    )
+    expect(handleSend.mock.calls[0][0]).toContain('章节是否标记成章不影响同步')
+    expect(handleSend.mock.calls[0][0]).not.toContain('由我在章节列表确认后再标记为成章')
+  })
+
   it('创作 Agent 将思考和工具调用折叠到同一个思考过程', async () => {
     const user = userEvent.setup()
     renderAgentPanel({

@@ -410,7 +410,7 @@ const chat = {
   'chat.quick.writeNextChapter': 'Write Next Chapter from Outline',
   'chat.quick.continueParagraph': 'Continue Next Paragraph',
   'chat.quick.polishChapter': 'Polish Current Chapter',
-  'chat.quick.finalizeState': 'Finalize and Sync State',
+  'chat.quick.finalizeState': 'Sync Story State',
   'chat.quick.consistencyCheck': 'Consistency Check',
 } as const
 
