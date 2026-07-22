@@ -49,7 +49,11 @@ func TestSelectFrontendPortAvoidsAutoPickedBackendPort(t *testing.T) {
 	}
 	defer ln.Close()
 
-	backendPort := selectStartupPort(preferred, true)
+	backendListener, backendPort, err := reserveBackendListener("127.0.0.1", preferred, true)
+	if err != nil {
+		t.Fatalf("reserve fallback backend port: %v", err)
+	}
+	defer backendListener.Close()
 	frontendPort := selectFrontendPort(backendPort, backendPort)
 
 	if frontendPort == backendPort {
@@ -57,9 +61,65 @@ func TestSelectFrontendPortAvoidsAutoPickedBackendPort(t *testing.T) {
 	}
 }
 
-func TestShouldAutoPickPortDisabledInDevStartup(t *testing.T) {
-	if shouldAutoPickPort(true) {
-		t.Fatal("dev startup should keep the configured backend port fixed")
+func TestReserveBackendListenerAutoPicksAndKeepsPortReserved(t *testing.T) {
+	preferred := findPortWithAvailableWindow(t)
+	reserved, err := net.Listen("tcp", "127.0.0.1:"+preferred)
+	if err != nil {
+		t.Fatalf("reserve preferred backend port: %v", err)
+	}
+	defer reserved.Close()
+
+	listener, selectedPort, err := reserveBackendListener("127.0.0.1", preferred, true)
+	if err != nil {
+		t.Fatalf("reserve fallback port: %v", err)
+	}
+	defer listener.Close()
+	if selectedPort == preferred {
+		t.Fatalf("selected port should differ from occupied port %s", preferred)
+	}
+	if listenerPort := strconv.Itoa(listener.Addr().(*net.TCPAddr).Port); selectedPort != listenerPort {
+		t.Fatalf("listener should reserve selected port: selected=%s addr=%s", selectedPort, listener.Addr())
+	}
+}
+
+func TestReserveBackendListenerRejectsExplicitOccupiedPort(t *testing.T) {
+	preferred := findPortWithAvailableWindow(t)
+	reserved, err := net.Listen("tcp", "127.0.0.1:"+preferred)
+	if err != nil {
+		t.Fatalf("reserve preferred backend port: %v", err)
+	}
+	defer reserved.Close()
+
+	listener, selectedPort, err := reserveBackendListener("127.0.0.1", preferred, false)
+	if err == nil {
+		if listener != nil {
+			_ = listener.Close()
+		}
+		t.Fatal("explicit occupied port should return an error")
+	}
+	if listener != nil || selectedPort != preferred {
+		t.Fatalf("unexpected explicit port result: listener=%v port=%s", listener, selectedPort)
+	}
+}
+
+func TestPortWasExplicitlySet(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "not set", args: []string{"--dev"}, want: false},
+		{name: "separate long flag", args: []string{"--port", "8080"}, want: true},
+		{name: "assigned long flag", args: []string{"--port=8080"}, want: true},
+		{name: "separate short flag", args: []string{"-port", "8080"}, want: true},
+		{name: "after terminator", args: []string{"--", "--port", "8080"}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := portWasExplicitlySet(tt.args); got != tt.want {
+				t.Fatalf("portWasExplicitlySet(%v) = %v, want %v", tt.args, got, tt.want)
+			}
+		})
 	}
 }
 

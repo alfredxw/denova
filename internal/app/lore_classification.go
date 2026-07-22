@@ -149,12 +149,10 @@ func selectLoreClassificationCandidates(items []book.LoreItem, requestedIDs []st
 			}
 			continue
 		}
-		if item.Provenance == nil || item.Provenance.Kind != "tavern_worldbook_entry" || item.TypeSource == book.LoreTypeSourceManual {
-			continue
-		}
-		if item.Type == "world" || item.Type == "other" {
-			result = append(result, item)
-		}
+		// A preview never changes data by itself, and every suggested change still
+		// requires an explicit user confirmation. Include all entries so legacy,
+		// manually classified, and non-Tavern sources can be reviewed together.
+		result = append(result, item)
 	}
 	return result
 }

@@ -8,16 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 书籍设定的缺失文件现在在快捷按钮和管理列表中都以虚线轮廓与低饱和状态图标呈现；文件仍可点击，以便按需请求创作 Agent 创建。
+- Missing Book Settings files now use a dashed outline and a muted status icon in both shortcuts and the management list; they remain selectable so users can ask the Creation Agent to create them when needed.
 - 示例配置的默认服务端口更新为后端 `8011`、前端 `5174`。
 - The sample configuration now defaults to backend port `8011` and frontend port `5174`.
 
 ### Added
 
+- `./scripts/bootstrap.sh fe` 新增 `--backend-port <port>`，可在前后端独立启动时显式指定 Vite 代理的后端端口。
+- `./scripts/bootstrap.sh fe` now accepts `--backend-port <port>` to explicitly set the Vite proxy backend port when frontend and backend start independently.
 - Agent Trace 现可一键复制运行 ID，并直接导出该次运行完整的原始 JSONL trace 文件，便于用户向开发者提供可复现的诊断资料；写作与游戏模式共用此入口。
 - Agent Trace now supports one-click Run ID copying and download of the complete original JSONL trace for the selected run, making reproducible support diagnostics easy to share; Writing and Game modes use the same entry point.
 
 ### Fixed
 
+- 未显式传入 `--port` 时，后端端口冲突会原子地切换到后续可用端口并输出最终地址；显式指定的端口冲突会提供中英文原因和操作提示，等待用户按键后再退出。
+- When `--port` is not explicitly supplied, backend port conflicts now atomically fall back to a later available port and print the final address; an explicitly selected port reports a bilingual explanation and waits for user input before exiting.
 - 写作 Agent 运行中的 thinking 现在会自动展开；回合结束后仍保持可折叠，避免历史消息持续占据对话区域。
 - Running Writing Agent thinking now expands automatically, while completed turns remain collapsible to keep history compact.
 - Windows 自动保存不再将已落盘的配置误报为失败：Windows 不支持对配置目录句柄执行同步时，会跳过该目录同步；新增但尚未填写模型名的语言模型草稿也会在自动保存后保留，不再中断编辑。

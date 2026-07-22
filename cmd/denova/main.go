@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -51,7 +53,18 @@ func main() {
 	defer closeLog()
 	observability.ConfigureStructuredLogging()
 	log.Printf("[startup] 日志输出已启用 dir=./log current_file=%s", logPath)
-	port = selectStartupPort(port, shouldAutoPickPort(cfg.DevMode))
+	requestedPort := port
+	listenHost := config.HTTPListenHost(cfg.AllowLANAccess)
+	listener, port, err := reserveBackendListener(listenHost, requestedPort, !portWasExplicitlySet(os.Args[1:]))
+	if err != nil {
+		reportBackendPortConflict(os.Stderr, requestedPort, err)
+		waitForAnyKey(os.Stdin)
+		os.Exit(1)
+	}
+	defer func() { _ = listener.Close() }()
+	if port != requestedPort {
+		reportBackendPortFallback(os.Stderr, requestedPort, port)
+	}
 	frontendPort = selectFrontendPort(frontendPort, port)
 	if runtimeWebPort, err := strconv.Atoi(port); err == nil {
 		cfg.RuntimeWebPort = runtimeWebPort
@@ -83,8 +96,7 @@ func main() {
 	defer application.Close()
 
 	// 启动 HTTP 服务
-	srv := api.NewServer(application, port)
-	listenHost := config.HTTPListenHost(cfg.AllowLANAccess)
+	srv := api.NewServerWithListener(application, port, listener)
 
 	// 打印启动信息
 	url := fmt.Sprintf("http://localhost:%s", port)
@@ -200,40 +212,64 @@ func defaultFrontendPort(cfg *config.Config) string {
 	return "5173"
 }
 
-func shouldAutoPickPort(devStartup bool) bool {
-	if devStartup {
-		return false
-	}
-	if envCompat("DENOVA_BACKEND_PORT", "NOVA_BACKEND_PORT") != "" {
-		return false
-	}
-	explicit := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == "port" {
-			explicit = true
-		}
-	})
-	return !explicit
-}
-
-func selectStartupPort(preferred string, autoPick bool) string {
-	if portAvailable(preferred) {
-		return preferred
+// reserveBackendListener atomically claims the selected HTTP port. The listener
+// is passed to the HTTP server later so another process cannot take the port
+// between availability detection and server startup.
+func reserveBackendListener(host, preferred string, autoPick bool) (net.Listener, string, error) {
+	listener, err := listenOnPort(host, preferred)
+	if err == nil {
+		return listener, preferred, nil
 	}
 	if !autoPick {
-		log.Printf("[startup] HTTP 端口不可用 port=%s auto_pick=false", preferred)
-		return preferred
+		return nil, preferred, err
 	}
 
-	next, err := findAvailablePort(preferred, 20)
-	if err != nil {
-		log.Printf("[startup] HTTP 端口不可用且自动选择失败 port=%s err=%v", preferred, err)
-		return preferred
+	start, parseErr := strconv.Atoi(preferred)
+	if parseErr != nil || start < 1 || start > 65535 {
+		return nil, preferred, fmt.Errorf("invalid port %q", preferred)
 	}
+	for candidate := start + 1; candidate <= 65535 && candidate <= start+20; candidate++ {
+		port := strconv.Itoa(candidate)
+		listener, candidateErr := listenOnPort(host, port)
+		if candidateErr == nil {
+			return listener, port, nil
+		}
+	}
+	return nil, preferred, fmt.Errorf("no available port found in %d-%d: %w", start+1, min(start+20, 65535), err)
+}
 
-	fmt.Fprintf(os.Stderr, "提示: 端口 %s 已被占用，已自动改用 %s\n", preferred, next)
-	log.Printf("[startup] HTTP 端口 %s 已被占用，自动改用 %s", preferred, next)
-	return next
+func listenOnPort(host, port string) (net.Listener, error) {
+	return net.Listen("tcp", net.JoinHostPort(host, port))
+}
+
+func portWasExplicitlySet(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
+		if arg == "-port" || arg == "--port" || strings.HasPrefix(arg, "-port=") || strings.HasPrefix(arg, "--port=") {
+			return true
+		}
+	}
+	return false
+}
+
+func reportBackendPortFallback(output io.Writer, requestedPort, selectedPort string) {
+	fmt.Fprintf(output, "提示：端口 %s 已被占用，已自动改用 %s。\n", requestedPort, selectedPort)
+	fmt.Fprintf(output, "Notice: port %s is in use; switched to %s.\n", requestedPort, selectedPort)
+	log.Printf("[startup] HTTP port %s is unavailable; switched to %s", requestedPort, selectedPort)
+}
+
+func reportBackendPortConflict(output io.Writer, port string, err error) {
+	fmt.Fprintf(output, "错误：显式指定的端口 %s 不可用：%v\n", port, err)
+	fmt.Fprintf(output, "Error: explicitly specified port %s is unavailable: %v\n", port, err)
+	fmt.Fprintln(output, "请释放该端口或指定其他 --port 值。按任意键（或 Enter）退出。")
+	fmt.Fprintln(output, "Release the port or choose another --port value. Press any key (or Enter) to exit.")
+	log.Printf("[startup] explicitly specified HTTP port is unavailable port=%s err=%v", port, err)
+}
+
+func waitForAnyKey(input io.Reader) {
+	_, _ = bufio.NewReader(input).ReadByte()
 }
 
 // selectFrontendPort 为前端 Vite dev server 自动选择一个可用端口。

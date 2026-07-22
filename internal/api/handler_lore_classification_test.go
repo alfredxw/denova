@@ -18,13 +18,23 @@ func TestLoreClassificationPreviewAndApplyAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	legacyItem, err := application.CreateLoreItem(book.LoreItemInput{
+		ID: "legacy", Type: "world", TypeSource: book.LoreTypeSourceManual, Name: "人物详情：旧资料", Content: "旧资料也应当可以重新分类。",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	previewResp := performJSONRequest(t, server, http.MethodPost, "/api/lore/classification/preview", map[string]any{"mode": "heuristic"})
 	if previewResp.Code != http.StatusOK {
 		t.Fatalf("preview status=%d body=%s", previewResp.Code, previewResp.Body.String())
 	}
 	var preview runtimeapp.LoreClassificationPreview
 	decodeResponse(t, previewResp.Body.Bytes(), &preview)
-	if preview.Revision == "" || len(preview.Items) != 1 || preview.Items[0].ID != item.ID || preview.Items[0].SuggestedType != "character" {
+	previewByID := make(map[string]runtimeapp.LoreClassificationPreviewItem, len(preview.Items))
+	for _, previewItem := range preview.Items {
+		previewByID[previewItem.ID] = previewItem
+	}
+	if preview.Revision == "" || len(preview.Items) != 2 || previewByID[item.ID].SuggestedType != "character" || previewByID[legacyItem.ID].SuggestedType != "character" {
 		t.Fatalf("unexpected classification preview: %#v", preview)
 	}
 
