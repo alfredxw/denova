@@ -379,6 +379,13 @@ func settingsString(v, fallback string) string {
 
 // overrideFromEnv 用环境变量覆盖配置
 func overrideFromEnv(cfg *Config) {
+	if apiKey, baseURL, model, ok := atlasCloudEnvSettings(); ok {
+		if apiKey != "" {
+			cfg.OpenAIAPIKey = apiKey
+		}
+		cfg.OpenAIBaseURL = firstNonEmpty(baseURL, AtlasCloudAPIBaseURL)
+		cfg.OpenAIModel = firstNonEmpty(model, AtlasCloudDefaultModel)
+	}
 	if v := os.Getenv("OPENAI_API_KEY"); v != "" {
 		cfg.OpenAIAPIKey = v
 	}

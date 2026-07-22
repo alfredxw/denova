@@ -26,6 +26,13 @@ openai_model = "deepseek-v4-pro"
 # openai_api_key = ""
 # openai_model = "gpt-4.1"
 #
+# [[model_profiles]]
+# id = "atlascloud"
+# name = "Atlas Cloud"
+# openai_base_url = "https://api.atlascloud.ai/v1"
+# openai_api_key = ""
+# openai_model = "qwen/qwen3.5-flash"
+#
 # [agent_models.ide]
 # profile_id = "deepseek-v4-pro"
 # temperature = 0.7
