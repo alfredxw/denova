@@ -19,7 +19,7 @@
 </p>
 
 <p align="center">
-  Current version: <strong>v0.3.0</strong> (2026-07-18) · Beta
+  Current version: <strong>v0.3.0</strong> (2026-07-22) · Beta
 </p>
 
 ![Denova Writing Mode](./img/ide.png)
@@ -53,12 +53,12 @@ You can start from an original idea, import an existing novel for fan fiction, a
 
 ## Core Features
 
-- **Writing Mode**: fiction-focused Markdown editing, multiple tabs, global search, chapter statistics, outlines, chapter-group plans, progress tracking, document comments, Change Review, and existing novel import.
+- **Writing Mode**: fiction-focused Markdown editing, multiple tabs, regex find and replace, recoverable workspace-wide replacement, chapter statistics, outlines, chapter-group plans, progress tracking, document comments, Change Review, and existing novel import.
 - **Creative Agents**: read selections, files, lore, and trusted review feedback; call tools to generate or edit chapters; and use Skills / SubAgents for different writing tasks, prose styles, and workflows. Changes can be reviewed, commented on, and undone from a cumulative diff.
-- **Game Mode**: run interactive text adventures with player input, story branches, storyline switching, action suggestions, saved AI reply corrections, searchable Turn history, Actor State, and a full-screen Director Desk for goals, pressure, costs, event card packs, and rule checks.
+- **Game Mode**: run interactive text adventures with player input, story branches, storyline switching, Background Director schedules, action suggestions, saved AI reply corrections, searchable Turn history, replayable Actor archive/restore, customizable state layouts, and a full-screen Director Desk for goals, pressure, costs, event card packs, and rule checks.
 - **Lore and presets**: maintain durable settings such as characters, worlds, locations, factions, rules, and items; narrative styles handle prose, prompt slots, and scene style rules, while Story Directors can plug together narrative styles, event packages, TRPG Checks, State Systems, and image presets, with each module independently switchable. State Systems also provide reusable trait libraries whose templates define draw rules for each kind of Actor.
 - **Image creation**: generate chapter illustrations, interactive images, and book covers through OpenAI-compatible image model profiles, with previews and result management in the UI.
-- **Context management**: progressively assemble model context, build source-linked history checkpoints, improve cache reuse, and keep tool results bounded to reduce noise and token cost.
+- **Context management**: progressively assemble model context, inspect and copy its sources, build source-linked history checkpoints, improve cache reuse, and keep tool results bounded to reduce noise and token cost.
 - **Versions and restore**: save local versions, inspect diffs, restore history, use restart-safe undo/redo for Agent workspace changes, and enable timed saves or automatic saves after large Agent outputs.
 - **Automation**: schedule tasks, reviews, auto-continuation, and custom Prompt workflows.
 - **Product experience**: Chinese and English UI, light and dark themes, OpenAI-compatible model setup, remote access, PWA phone usage, and Windows / macOS / Linux support.
