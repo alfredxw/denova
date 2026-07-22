@@ -15,3 +15,10 @@ func (a *App) AgentRunTrace(id string) (agent.RunTrace, error) {
 	}
 	return agent.ReadRunTrace(a.Workspace(), id)
 }
+
+func (a *App) ExportAgentRunTrace(id string) (agent.RunTraceExport, error) {
+	if !a.HasWorkspace() {
+		return agent.RunTraceExport{}, ErrNoWorkspace
+	}
+	return agent.ExportRunTrace(a.Workspace(), id)
+}

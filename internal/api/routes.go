@@ -149,6 +149,7 @@ func (s *Server) registerRoutes(h *hertzserver.Hertz) {
 		api.PATCH("/image-presets/:id", apiHandlers.HandleImagePresetUpdate)
 		api.DELETE("/image-presets/:id", apiHandlers.HandleImagePresetDelete)
 		api.GET("/agent-runs", apiHandlers.HandleAgentRunTraces)
+		api.GET("/agent-runs/:id/export", apiHandlers.HandleAgentRunTraceExport)
 		api.GET("/agent-runs/:id", apiHandlers.HandleAgentRunTrace)
 		api.GET("/messages", apiHandlers.HandleMessages)
 		api.POST("/messages/read-all", apiHandlers.HandleMessagesReadAll)

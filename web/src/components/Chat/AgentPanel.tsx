@@ -327,7 +327,7 @@ export function AgentPanel({
     bottomPaddingClassName: 'pb-36',
     bottomPaddingPx: messageListBottomPadding,
     collapseTraceGroups: true,
-    activeTraceDisplay: 'collapsed' as const,
+    activeTraceDisplay: 'expanded' as const,
     hasEarlierMessages,
     isLoadingEarlierMessages: isLoadingEarlierHistory,
     onLoadEarlierMessages: onLoadEarlierHistory,
