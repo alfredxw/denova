@@ -332,6 +332,15 @@ function buildAgentMessageView(message: AgentUIMessage, part: AgentUIMessage['pa
         toolName: readString(data.name),
         output: data.result ?? data.content,
       }
+    case 'data-agent-activity': {
+      // Lifecycle activity payloads may carry the accepted user input in
+      // `message` (for example agent_cycle_started). Only explicit `content`
+      // is presentation text; treating `message` as display content echoes the
+      // user's bubble back as a system message.
+      const activityContent = readString(data.content)
+      if (!activityContent) return null
+      return { ...base, kind: 'activity', data, content: activityContent, status, streaming }
+    }
     default:
       if (!content) return null
       return { ...base, kind: 'activity', data, content, streaming }

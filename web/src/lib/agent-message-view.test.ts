@@ -126,6 +126,7 @@ describe('agent-message-view', () => {
         parts: [
           { type: 'data-agent-system', id: 'system-empty', data: {} },
           { type: 'data-agent-activity', id: 'activity-empty', data: { status: 'running' } },
+          { type: 'data-agent-activity', id: 'cycle-started', data: { event: 'agent_cycle_started', message: '继续下一章' } },
           { type: 'data-agent-activity', id: 'activity-visible', data: { content: '正在整理' } },
         ],
       },

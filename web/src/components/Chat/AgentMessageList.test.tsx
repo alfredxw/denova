@@ -126,14 +126,42 @@ describe('Agent MessageList', () => {
     renderMessageList(
       <MessageList
         isStreaming
-        activityContent="思考中..."
-        messages={[]}
+        activityContent=""
+        messages={[
+          { id: 'user-next-chapter', role: 'user', parts: [{ type: 'text', text: '继续下一章' }] },
+          {
+            id: 'assistant-cycle-started',
+            role: 'assistant',
+            parts: [{
+              type: 'data-agent-activity',
+              id: 'cycle-started',
+              data: { event: 'agent_cycle_started', message: '继续下一章', operation_id: 'operation-1' },
+            }],
+          },
+        ] as AgentUIMessage[]}
       />,
     )
 
     const status = screen.getByRole('status')
-    expect(status).toHaveTextContent('思考中...')
+    expect(status).toHaveTextContent('思考中')
     expect(status.querySelector('.bg-clip-text')).toBeInTheDocument()
+    expect(screen.getAllByText('继续下一章')).toHaveLength(1)
+  })
+
+  it('真实助手内容开始流式输出后隐藏默认 Shimmer', () => {
+    renderMessageList(
+      <MessageList
+        isStreaming
+        activityContent=""
+        messages={[
+          { id: 'user-continue', role: 'user', parts: [{ type: 'text', text: '继续' }] },
+          { id: 'assistant-streaming', role: 'assistant', parts: [{ type: 'text', text: '新一章开头', state: 'streaming' }] },
+        ] as AgentUIMessage[]}
+      />,
+    )
+
+    expect(screen.getByText('新一章开头')).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
   it('直接渲染 AgentUIMessage parts 并上报 turn anchor', async () => {

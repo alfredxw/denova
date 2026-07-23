@@ -18,13 +18,6 @@ web/dist/
 internal/webfs/dist/
 plan.md
 docs/*
-!docs/workspace-change-engine.md
-!docs/architecture/
-docs/architecture/*
-!docs/architecture/frontend-long-session-performance-hardening-plan.md
-!docs/status/
-docs/status/*
-!docs/status/actor-state-presets-v2-design.md
 .worktrees/
 .pnpm-store/
 .DS_Store

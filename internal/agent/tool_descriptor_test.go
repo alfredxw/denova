@@ -54,6 +54,13 @@ func TestToolDescriptorDeclaresExecutionAndRecoveryPolicy(t *testing.T) {
 			execution:  ToolExecutionParallelRead,
 			recovery:   ToolRecoveryReadOnly,
 		},
+		{
+			name:       "write_todos",
+			source:     ToolSourceOther,
+			capability: config.AgentToolTodo,
+			execution:  ToolExecutionWorkspaceExclusive,
+			recovery:   ToolRecoveryIdempotent,
+		},
 	}
 
 	for _, tt := range tests {
@@ -72,6 +79,11 @@ func TestToolDescriptorDeclaresExecutionAndRecoveryPolicy(t *testing.T) {
 				t.Fatalf("recovery = %q, want %q", descriptor.Recovery, tt.recovery)
 			}
 		})
+	}
+
+	todoDescriptor := DescriptorForTool("write_todos")
+	if todoDescriptor.MutatesWorkspace || todoDescriptor.RequiresPostCheck {
+		t.Fatalf("write_todos must remain session-local: %+v", todoDescriptor)
 	}
 }
 

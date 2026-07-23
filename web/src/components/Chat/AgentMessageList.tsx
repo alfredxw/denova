@@ -110,11 +110,17 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
   const lastVisibleTurnAnchorRef = useRef('')
   const lastTurnScrollRequestIdRef = useRef<number | null>(null)
   const views = useMemo(() => buildAgentMessageViews(messages), [messages])
-  const hasRunningContextCompaction = views.some((view) => view.kind === 'context-compaction' && view.status === 'running')
-  const hasActiveTrace = views.some((view) => isAgentTraceView(view) && (view.streaming || view.status === 'running'))
-  // 真实 thinking / tool 行已经承担进度展示；保留额外 activity 行会在 trace 增高时
-  // 先被文档流推走、再被底部锁定拉回，产生持续抖动。
-  const visibleActivityContent = hasRunningContextCompaction || hasActiveTrace ? '' : activityContent
+  const hasActiveResponse = views.some((view) =>
+    view.kind !== 'user' &&
+    view.kind !== 'token-usage' &&
+    view.kind !== 'clear' &&
+    (view.streaming || view.status === 'running'),
+  )
+  // 真实 thinking / tool / 正文行已经承担进度展示；额外 activity 行会重复展示，
+  // 并在内容增高时被底部锁定反复拉动。没有真实输出时则统一使用 Shimmer 填充等待态。
+  const visibleActivityContent = hasActiveResponse
+    ? ''
+    : activityContent || (isStreaming ? t('chat.activity.thinking') : '')
   const listItems = useMemo(
     () => buildAgentChatListItems({
       views,

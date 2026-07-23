@@ -128,6 +128,10 @@ func buildToolDescriptorCatalog() map[string]ToolDescriptor {
 		Source: ToolSourceWeb, Capability: config.AgentToolWebSearch,
 		Execution: ToolExecutionParallelRead, Recovery: ToolRecoveryReadOnly,
 	})
+	register([]string{"write_todos"}, ToolDescriptor{
+		Source: ToolSourceOther, Capability: config.AgentToolTodo,
+		Execution: ToolExecutionWorkspaceExclusive, Recovery: ToolRecoveryIdempotent,
+	})
 	register([]string{"task"}, ToolDescriptor{
 		Source: ToolSourceOther, Execution: ToolExecutionChild, Recovery: ToolRecoveryNonIdempotent,
 	})

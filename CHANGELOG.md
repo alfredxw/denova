@@ -68,6 +68,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Ordinary file saves no longer synchronously check or create Git versions. Automatic Git versions run serially in the background, and edits made during a version operation only reset the next idle cycle instead of blocking the save response.
 - 本地草稿与外部版本真实重叠时会保留双方版本并暂停自动保存；用户明确选择保留合并结果或载入工作区版本后才继续，非重叠修改仍自动合并。
 - When a local draft truly overlaps an external version, both versions are preserved and Auto Save pauses until the user keeps the merged result or loads the workspace version. Non-overlapping edits still merge automatically.
+- 修复 Game 已落盘回合在刷新后仍把保留的已结算展示 Task 当作活动运行、从零游标重放最新一轮的问题；普通终态现在直接使用规范 Story 历史，显式恢复边界仍会精确重连。
+- Fixed Game refreshes treating a retained settled display Task as active and replaying the latest persisted turn from cursor zero. Ordinary terminal views now use canonical Story history directly, while explicit recovery boundaries still reattach exactly.
+- 修复创作 Agent 因 Eino 内置 `write_todos` 缺少显式 Tool Descriptor、在首次模型请求前被安全校验终止而无法对话的问题；新增真实 Deep Agent 与完整创作工具面的运行测试，并校验写作、游戏、后台导演、配置管理、图像、自动化和网页搜索的全部具体工具均已声明恢复契约。
+- Fixed Creation Agent conversations being terminated before the first model request because Eino's built-in `write_todos` lacked an explicit Tool Descriptor. Real Deep Agent and complete Writing tool-surface tests now cover the runtime boundary, while every concrete Writing, Game, Director, Config Manager, Image, Automation, and web-search tool is checked for a declared recovery contract.
 - 修复 Harness 在 emit、提交或回调 panic/提前返回时未取消 cycle 子上下文，以及已完成/启动失败的展示 Task 关闭 `Done` 后仍保留活动上下文的问题；桥接控制、ADK 子任务和 `AfterFunc` 现在都会随精确生命周期边界释放。
 - Fixed cycle child contexts surviving Harness emit/commit/callback panics or early returns, plus completed or start-rejected display Tasks publishing `Done` while retaining a live context. Control bridges, ADK child work, and `AfterFunc` callbacks now release with the exact lifecycle boundary.
 - 修复 Agent 冷恢复在结构操作已落盘、但规范 Session / Story 刷新失败后丢失精确重试入口，以及旧完成 Task 被重复挂接、连续队首恢复动作跨 Task 交接、取消后继 NextTurn 时复用旧 Abort 身份等问题；恢复义务现在作为服务级准入栅栏保留到规范投影成功，写作与游戏始终沿用同一可观察 Task，并按当前 operation 生成控制身份。

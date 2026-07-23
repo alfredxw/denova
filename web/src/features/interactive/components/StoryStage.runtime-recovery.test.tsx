@@ -58,6 +58,50 @@ beforeEach(() => {
 })
 
 describe('StoryStage runtime recovery', () => {
+  it('keeps a canonically persisted turn idle when only a settled display replay remains', async () => {
+    const retainedStream = controllableInteractiveStream()
+    const persistedTurn = {
+      id: 'turn-persisted',
+      parent_id: null,
+      branch_id: 'main',
+      ts: '2026-07-23T00:00:00Z',
+      user: '继续前进',
+      narrative: '这一轮已经落盘。',
+    }
+    getActiveInteractiveChatMock.mockResolvedValue({
+      active: false,
+      status: 'done',
+      task_id: 'settled-display-task',
+      message: persistedTurn.user,
+      phase: 'idle',
+      runtime_recoverable: false,
+      stream_attached: true,
+      recovery_actions: [],
+    })
+    streamActiveInteractiveChatMock.mockResolvedValue(retainedStream.readable)
+
+    try {
+      render(<StoryStageHarness initialSnapshot={{
+        story_id: 'story-1',
+        branch_id: 'main',
+        turns: [persistedTurn],
+        current_turn: persistedTurn,
+        state: {},
+      }} />)
+
+      await waitFor(() => expect(getActiveInteractiveChatMock).toHaveBeenCalledWith('story-1', 'main'))
+      await act(async () => {
+        await Promise.resolve()
+      })
+
+      expect(screen.getByText('这一轮已经落盘。')).toBeInTheDocument()
+      expect(streamActiveInteractiveChatMock).not.toHaveBeenCalled()
+      expect(useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.streaming ?? false).toBe(false)
+    } finally {
+      retainedStream.close()
+    }
+  })
+
   it('retries payload-free cold recovery with the exact projected game action', async () => {
     const stream = controllableInteractiveStream()
     const action = {
