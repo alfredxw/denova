@@ -1,6 +1,6 @@
 ---
 name: group-plan
-description: 生成下一组章节细纲。当用户要求安排接下来几章、生成下一组细纲、规划短期情节或按当前进度继续拆分章节组时使用。
+description: 生成下一组章节细纲。当用户要求安排接下来几章、生成下一组细纲、规划短期情节或按当前进度继续拆分章节组时使用。Generate the next chapter-group outline for short-term plot planning.
 agent: ide
 ---
 
@@ -57,6 +57,11 @@ agent: ide
 ## 待确认点
 - （需要作者确认的问题）
 ```
+
+## 错误处理
+
+- 每次调用 `write_file` 后检查工具结果。若结果包含 `[tool error]`、路径错误或截断提示，不得宣称已完成；应重新读取目标文件、修正参数后重试，或明确告诉用户未写入成功。
+- 写入完成后使用 `read_file` 读回细纲文件关键片段，确认内容已经落盘。
 
 ## 注意事项
 

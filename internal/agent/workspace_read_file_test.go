@@ -149,3 +149,45 @@ func TestWorkspaceReadFileToolRejectsSymlinkEscape(t *testing.T) {
 		t.Fatal("workspace read must not follow a symlink outside the active workspace")
 	}
 }
+
+func TestNormalizeWorkspaceFilePathCollapsesSpacesAroundDashes(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"chapters/v00001-第一卷 - 诅咒的觉醒/ch00001-第一章 - 真空外出的觉醒.md", "chapters/v00001-第一卷-诅咒的觉醒/ch00001-第一章-真空外出的觉醒.md"},
+		{"chapters/v00001-第一卷-诅咒的觉醒/ch00001-第一章-真空外出的觉醒.md", "chapters/v00001-第一卷-诅咒的觉醒/ch00001-第一章-真空外出的觉醒.md"},
+		{"chapters/v00001-第一卷 -诅咒的觉醒/ch00001-第一章- 真空外出的觉醒.md", "chapters/v00001-第一卷-诅咒的觉醒/ch00001-第一章-真空外出的觉醒.md"},
+		{"no change needed", "no change needed"},
+		{"a - b - c", "a-b-c"},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		got := normalizeWorkspaceFilePath(tc.input)
+		if got != tc.want {
+			t.Fatalf("normalizeWorkspaceFilePath(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestOpenWorkspaceFileFallsBackToNormalizedPath(t *testing.T) {
+	dir := t.TempDir()
+	realFile := filepath.Join(dir, "ch00001-第一章-真空外出的觉醒.md")
+	if err := os.WriteFile(realFile, []byte("test content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// File exists at the normalized path; try opening the variant with spaces.
+	f, err := openWorkspaceFile(dir, "ch00001-第一章 - 真空外出的觉醒.md")
+	if err != nil {
+		t.Fatalf("openWorkspaceFile should fall back to normalized path: %v", err)
+	}
+	f.Close()
+
+	// Opening with the exact path should also work.
+	f2, err := openWorkspaceFile(dir, "ch00001-第一章-真空外出的觉醒.md")
+	if err != nil {
+		t.Fatalf("openWorkspaceFile should work with exact path: %v", err)
+	}
+	f2.Close()
+}

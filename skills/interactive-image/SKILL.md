@@ -1,6 +1,6 @@
 ---
 name: interactive-image
-description: 为互动故事已发生的回合生成一张互动图像。
+description: 为互动故事已发生的回合生成一张互动图像。Generate a single interactive image for a completed turn in an interactive story.
 agent: image
 ---
 
@@ -22,6 +22,11 @@ agent: image
    - `size` 可按画面需要从工具支持的 2K/3K/4K 尺寸中选择；不确定时留空。
    - `output_format` 只能填 `png` 或 `jpeg`；不确定时留空。
 6. 工具返回后，只简要说明生成结果，不要继续推进剧情。
+
+## 错误处理
+
+- 如果 `generate_image` 调用失败或返回错误，向用户说明失败原因，不要假装生成成功。
+- 如果 `source_context` 为空或无法识别已发生的互动内容，提示调用方补充上下文。
 
 ## 约束
 

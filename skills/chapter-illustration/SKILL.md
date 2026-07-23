@@ -1,6 +1,6 @@
 ---
 name: chapter-illustration
-description: 为当前或指定章节生成一张非剧透插画，并保存到 workspace assets/illustrations。
+description: 为当前或指定章节生成一张非剧透插画，并保存到 workspace assets/illustrations。Generate a single non-spoiler illustration for a chapter and save it to workspace assets.
 agent: ide
 ---
 
@@ -25,6 +25,11 @@ agent: ide
    - `size` 可按画面需要从工具支持的 2K/3K/4K 尺寸中选择；不确定时留空，由生成工具按默认策略处理。
    - `output_format` 只能填 `png` 或 `jpeg`；不确定时留空。
 6. 工具返回后，简要说明生成了什么，并告诉用户可以手动插入章节。不要自动编辑章节正文。
+
+## 错误处理
+
+- 如果 `generate_image` 调用失败或返回错误，向用户说明失败原因，不要假装生成成功。
+- 如果目标章节路径不存在或内容不是章节正文，提示用户重新选择。
 
 ## 约束
 

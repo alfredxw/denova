@@ -238,7 +238,7 @@ func formatWorkspaceChangeToolError(toolName string, err error) (string, bool) {
 		Code:             changeErr.Code,
 		Message:          workspaceChangeToolPublicErrorMessage(changeErr),
 		Details:          workspaceChangeToolPublicErrorDetails(changeErr.Details),
-		Retryable:        workspaceChangeErrorRetryable(changeErr.Code),
+		Retryable:        workspaceChangeErrorRetryable(changeErr),
 		WorkspaceMutated: workspaceChangeErrorMutated(changeErr),
 	}
 	data, marshalErr := json.Marshal(receipt)
@@ -250,7 +250,7 @@ func formatWorkspaceChangeToolError(toolName string, err error) (string, bool) {
 
 func workspaceChangeToolPublicErrorMessage(changeErr *workspacechange.Error) string {
 	if changeErr != nil && changeErr.Code == workspacechange.ErrorCodeRevisionConflict {
-		return "Workspace file changed during the tool call; retry the operation. / 工具调用期间文件发生变化，请重试。"
+		return "File was modified since last read. Re-read the file to get the latest content and revision, then retry with write_file or edit_file. Do NOT fall back to shell commands like execute — they are slower, serialized, and bypass revision protection. / 文件自上次读取后被修改。请重新 read_file 获取最新内容和 revision，再用 write_file 或 edit_file 重试。不要退而使用 execute 等 shell 命令——它们更慢、串行执行且绕过 revision 保护。"
 	}
 	if changeErr == nil {
 		return ""
@@ -283,8 +283,16 @@ func workspaceChangeErrorMutated(changeErr *workspacechange.Error) bool {
 	return mutated
 }
 
-func workspaceChangeErrorRetryable(code string) bool {
-	switch code {
+func workspaceChangeErrorRetryable(changeErr *workspacechange.Error) bool {
+	if changeErr == nil {
+		return false
+	}
+	// "replacement does not change the file" 不是瞬态错误，重试不会改变结果
+	if changeErr.Code == workspacechange.ErrorCodeInvalidEdit &&
+		strings.Contains(changeErr.Message, "replacement does not change") {
+		return false
+	}
+	switch changeErr.Code {
 	case workspacechange.ErrorCodeInvalidEdit,
 		workspacechange.ErrorCodeRevisionConflict,
 		workspacechange.ErrorCodeNotFound,

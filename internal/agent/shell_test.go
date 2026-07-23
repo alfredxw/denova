@@ -133,3 +133,40 @@ func collectShellOutput(ctx context.Context, sh *agentStreamingShell, command st
 	}
 	return output.String(), nil
 }
+
+func TestAgentStreamingShellUnescapesHtmlEntities(t *testing.T) {
+	sh := &agentStreamingShell{goos: runtime.GOOS, lookPath: exec.LookPath}
+
+	tests := []struct {
+		input    string
+		contains string // substring that must appear in the unescaped command
+	}{
+		{`echo "hello &amp;&amp; world"`, `&&`},
+		{`echo "a &amp; b"`, `&`},
+		{`echo "a &lt; b &gt; c"`, `<`},
+		{`echo "no entities"`, `no entities`},
+	}
+
+	for _, tc := range tests {
+		sr, err := sh.ExecuteStreaming(context.Background(), &filesystem.ExecuteRequest{Command: tc.input})
+		if err != nil {
+			t.Fatalf("ExecuteStreaming(%q) unexpected error: %v", tc.input, err)
+		}
+		var output strings.Builder
+		for {
+			resp, recvErr := sr.Recv()
+			if errors.Is(recvErr, io.EOF) {
+				break
+			}
+			if recvErr != nil {
+				t.Fatalf("recv error for %q: %v", tc.input, recvErr)
+			}
+			if resp != nil {
+				output.WriteString(resp.Output)
+			}
+		}
+		if !strings.Contains(output.String(), tc.contains) {
+			t.Fatalf("output for %q should contain %q, got %q", tc.input, tc.contains, output.String())
+		}
+	}
+}

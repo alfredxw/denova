@@ -104,7 +104,7 @@ func ManifestForTool(name string) ToolManifest {
 
 func capabilityForConfigManagerTool(name string) string {
 	switch name {
-	case "list_style_references", "list_tellers", "read_tellers", "list_story_directors", "read_story_directors", "list_actor_states", "read_actor_states", "list_image_presets", "read_image_presets":
+	case "list_style_references", "read_style_references", "list_tellers", "read_tellers", "list_story_directors", "read_story_directors", "list_actor_states", "read_actor_states", "list_image_presets", "read_image_presets":
 		return config.AgentToolLoreRead
 	case "write_style_references", "write_tellers", "write_story_directors", "write_actor_states", "write_image_presets":
 		return config.AgentToolLoreWrite

@@ -1,6 +1,6 @@
 ---
 name: lore-init
-description: 当资料库为空，或用户想初始化故事设定、世界观、角色、创作规则、互动开局时使用。
+description: 当资料库为空，或用户想初始化故事设定、世界观、角色、创作规则、互动开局时使用。Initialize lore entries, world-building, characters, and creator rules for a new story.
 agent: config_manager,interactive_story
 ---
 
@@ -56,3 +56,8 @@ agent: config_manager,interactive_story
 - 作者已经确认的长期写作约束
 
 不要把资料库条目的完整正文复制进 `CREATOR.md`。
+
+## 错误处理
+
+- 每次调用 `write_lore_items` 或文件写入工具后检查工具结果。若返回错误，不得宣称初始化完成；应修正参数后重试，或明确告诉用户哪些条目未写入成功。
+- 初始化完成后，建议用户使用 `list_lore_items` 检查资料库索引是否正确创建。

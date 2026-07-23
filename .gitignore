@@ -26,3 +26,4 @@ docs/*
 .nova
 prd
 .playwright-cli/
+.env

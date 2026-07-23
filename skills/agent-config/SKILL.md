@@ -1,6 +1,6 @@
 ---
 name: agent-config
-description: Use when config_manager creates or updates Denova Agent page settings through agent config tools.
+description: 配置管理 Agent 创建或更新 Agent 页面设置时使用。Use when config_manager creates or updates Denova Agent page settings through agent config tools.
 agent: config_manager
 ---
 

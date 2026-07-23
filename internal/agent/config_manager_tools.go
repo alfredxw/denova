@@ -33,6 +33,10 @@ type tellerWriteOperation struct {
 	Teller interactive.Teller `json:"teller" jsonschema:"description=create/update 使用的完整叙事风格配置；这里只维护文风、提示词槽位、文风参考和上下文策略，故事编排使用 story_directors"`
 }
 
+type styleReferenceReadInput struct {
+	Paths []string `json:"paths" jsonschema:"description=要读取的文风参考路径列表，使用 list_style_references 返回的 path 字段"`
+}
+
 type styleReferenceWriteInput struct {
 	Message    string                         `json:"message" jsonschema:"description=本次文风参考变更说明"`
 	Operations []styleReferenceWriteOperation `json:"operations" jsonschema:"description=批量文风参考操作"`
@@ -136,6 +140,7 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 	automationWorkspaces := append([]string(nil), cfg.AutomationWorkspaces...)
 	builders := []configManagerToolBuilder{
 		{build: func() (tool.BaseTool, error) { return newListStyleReferencesTool(novaDir) }},
+		{build: func() (tool.BaseTool, error) { return newReadStyleReferencesTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newWriteStyleReferencesTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newListTellersTool(novaDir) }},
 		{build: func() (tool.BaseTool, error) { return newReadTellersTool(novaDir) }},
@@ -299,6 +304,29 @@ func newListStyleReferencesTool(novaDir string) (tool.BaseTool, error) {
 			sb.WriteString("\n")
 		}
 		return strings.TrimSpace(sb.String()), nil
+	})
+}
+
+func newReadStyleReferencesTool(novaDir string) (tool.BaseTool, error) {
+	return utils.InferTool("read_style_references", "按文风参考路径批量读取完整 Markdown 内容。文风参考统一位于 .denova/styles/；path 使用 list_style_references 返回的路径。返回 reference（元数据）和 content（全文）。", func(ctx context.Context, input styleReferenceReadInput) (string, error) {
+		_ = ctx
+		if novaDir == "" {
+			return "", fmt.Errorf("nova_dir 不可用，无法读取文风参考")
+		}
+		lib := styleref.NewLibrary(novaDir)
+		result := []styleref.FileDocument{}
+		for _, p := range input.Paths {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			doc, err := lib.Read(p)
+			if err != nil {
+				return "", err
+			}
+			result = append(result, doc)
+		}
+		return marshalToolJSON(result)
 	})
 }
 

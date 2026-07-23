@@ -251,6 +251,32 @@ describe('agent-ui', () => {
     ])
   })
 
+  it('同状态 replay 片段更稀疏时保留已有 tool 输出，避免渲染被覆盖为空', () => {
+    const messages = normalizeAgentUIMessages([
+      {
+        id: 'history-tool',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [
+          { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-1', state: 'output-available', input: { path: 'a.md' }, output: 'persisted' },
+        ],
+      },
+      {
+        id: 'replay-tool',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [
+          { type: 'dynamic-tool', toolName: 'read_file', toolCallId: 'tool-1', state: 'output-available', input: { path: 'a.md' } },
+        ],
+      },
+    ] as AgentUIMessage[])
+
+    expect(messages).toHaveLength(1)
+    expect(messages[0].parts).toEqual([
+      expect.objectContaining({ type: 'dynamic-tool', toolCallId: 'tool-1', state: 'output-available', output: 'persisted' }),
+    ])
+  })
+
   it('恢复流中的同一段 reasoning 继续增长时仍更新历史 part 而不是追加新卡片', () => {
     const base = '这是一段已经持久化的思考内容，用来模拟刷新前已经落入历史的推理文本。'
     const messages = normalizeAgentUIMessages([
@@ -272,6 +298,28 @@ describe('agent-ui', () => {
     expect(messages[0].parts).toEqual([
       expect.objectContaining({ type: 'reasoning', text: `${base}继续补充。` }),
     ])
+  })
+
+  it('同 run 的不同 reasoning 片段前缀相同也不会误合并', () => {
+    const prefix = '这是一个会重复出现的推理前缀，用于模拟不同 reasoning 片段。'
+    const messages = normalizeAgentUIMessages([
+      {
+        id: 'reasoning-a',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [{ type: 'reasoning', text: `${prefix}第一条结论：先调查脚印。` }],
+      },
+      {
+        id: 'reasoning-b',
+        role: 'assistant',
+        metadata: { run_id: 'run-1' },
+        parts: [{ type: 'reasoning', text: `${prefix}第二条结论：再核对时间线。` }],
+      },
+    ] as AgentUIMessage[])
+
+    expect(messages).toHaveLength(2)
+    expect(messages[0].parts[0]).toEqual(expect.objectContaining({ type: 'reasoning', text: `${prefix}第一条结论：先调查脚印。` }))
+    expect(messages[1].parts[0]).toEqual(expect.objectContaining({ type: 'reasoning', text: `${prefix}第二条结论：再核对时间线。` }))
   })
 })
 

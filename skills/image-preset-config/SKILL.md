@@ -1,6 +1,6 @@
 ---
 name: image-preset-config
-description: Use when config_manager creates or updates Denova image preset configurations.
+description: 配置管理 Agent 创建或更新图像预设配置时使用。Use when config_manager creates or updates Denova image preset configurations.
 agent: config_manager
 ---
 

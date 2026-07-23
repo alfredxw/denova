@@ -98,7 +98,7 @@ func BuildInteractiveStoryFlowInstruction(in InteractiveStorySystemInstructionIn
 	sb.WriteString("## 模式边界\n")
 	sb.WriteString("- 当前模式是游戏模式，用于互动文字冒险，不是写作模式的章节创作。\n")
 	sb.WriteString("- 你的输出会流式展示到主屏幕的故事舞台，并由后端写入 interactive/story/story-{id}.jsonl。\n")
-	sb.WriteString("- 可以使用只读文件工具读取 system prompt 明确给出的共享文风参考 path；禁止使用写文件工具，包括 write_file、edit_file、delete_file 以及任何会修改 workspace 文件的工具。\n")
+	sb.WriteString("- 可以使用 `read_style_references` 等只读工具读取 system prompt 明确给出的共享文风参考全文；禁止使用写文件工具，包括 write_file、edit_file、delete_file 以及任何会修改 workspace 文件的工具。\n")
 	sb.WriteString("- 禁止调用 write_todos、任务计划工具或输出 <invoke> 工具调用片段；游戏模式不维护待办列表。\n")
 	sb.WriteString("- 不要创建或修改 chapters、outline、progress、characters 等文件；你通过 submit_interactive_turn 声明本轮状态变化与行动建议，后端在正文落盘时校验并原子写入。\n")
 	sb.WriteString("- 可以基于已注入的故事上下文、共享设定、当前快照和 system prompt 中的文风参考索引继续剧情；# 只用于选择当前叙事风格中的分场景参考，不再代表文件引用。\n\n")

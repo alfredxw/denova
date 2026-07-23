@@ -234,5 +234,5 @@ func syncRootDirectory(root *os.Root, rel string) error {
 		return err
 	}
 	defer dir.Close()
-	return dir.Sync()
+	return syncDirectory(dir)
 }

@@ -15,8 +15,8 @@ import (
 )
 
 type readLoreItemsInput struct {
-	IDs   []string `json:"ids,omitempty" jsonschema:"description=资料库条目 ID 列表；优先使用 names 按唯一名称读取"`
-	Names []string `json:"names,omitempty" jsonschema:"description=资料库条目唯一名称列表；Director 和创作 Agent 优先使用名称读取"`
+	IDs   []string `json:"ids,omitempty" jsonschema:"description=资料库条目 ID 列表；可与 names 混合使用，结果按 ID 去重"`
+	Names []string `json:"names,omitempty" jsonschema:"description=资料库条目唯一名称列表；可与 ids 混合使用，结果按 ID 去重"`
 }
 
 type listLoreItemsInput struct {
@@ -49,7 +49,27 @@ type writeLoreItemInput struct {
 }
 
 type loreToolsOptions struct {
-	ReadPolicy *loreReadPolicy
+	ReadPolicy  *loreReadPolicy
+	WritePolicy *loreWritePolicy
+}
+
+// loreWritePolicy bounds write operations to prevent the model from generating
+// enormous JSON payloads that block the tool pipeline for tens of seconds.
+type loreWritePolicy struct {
+	MaxItemsPerCall int
+	MaxContentBytes int
+}
+
+const (
+	defaultLoreWriteMaxItems        = 8
+	defaultLoreWriteMaxContentBytes = 128 * 1024
+)
+
+func defaultLoreWritePolicy() *loreWritePolicy {
+	return &loreWritePolicy{
+		MaxItemsPerCall: defaultLoreWriteMaxItems,
+		MaxContentBytes: defaultLoreWriteMaxContentBytes,
+	}
 }
 
 // loreReadPolicy bounds task-specific model context and observes only lore
@@ -66,8 +86,8 @@ type loreReadPolicy struct {
 
 const (
 	defaultLoreReadMaxItems       = 16
-	defaultLoreReadMaxResultBytes = 64 * 1024
-	defaultLoreReadMaxTotalBytes  = 128 * 1024
+	defaultLoreReadMaxResultBytes = 128 * 1024
+	defaultLoreReadMaxTotalBytes  = 256 * 1024
 )
 
 func defaultLoreReadPolicy() *loreReadPolicy {
@@ -79,9 +99,6 @@ func defaultLoreReadPolicy() *loreReadPolicy {
 }
 
 func (p *loreReadPolicy) validateBatch(input readLoreItemsInput) error {
-	if len(input.IDs) > 0 && len(input.Names) > 0 {
-		return fmt.Errorf("ids 和 names 只能选择一种读取方式")
-	}
 	count := len(input.IDs) + len(input.Names)
 	if count == 0 {
 		return fmt.Errorf("至少提供一个资料 ID 或唯一名称")
@@ -132,16 +149,41 @@ func (p *loreReadPolicy) accept(output string, items []book.LoreItem) error {
 	return nil
 }
 
+func (p *loreWritePolicy) validate(input writeLoreItemsInput) error {
+	if p == nil {
+		return nil
+	}
+	total := len(input.Items) + len(input.DeleteIDs)
+	if p.MaxItemsPerCall > 0 && total > p.MaxItemsPerCall {
+		return fmt.Errorf("单次最多写入 %d 个资料条目（含删除），当前 %d 个；请分批提交", p.MaxItemsPerCall, total)
+	}
+	if p.MaxContentBytes > 0 {
+		totalBytes := 0
+		for _, item := range input.Items {
+			totalBytes += len(item.Content)
+		}
+		if totalBytes > p.MaxContentBytes {
+			return fmt.Errorf("资料正文总大小超过单次写入上限: %d > %d bytes；请减少条目或拆分过长内容", totalBytes, p.MaxContentBytes)
+		}
+	}
+	return nil
+}
+
 func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions) ([]tool.BaseTool, error) {
 	workspace = strings.TrimSpace(workspace)
 	var readPolicy *loreReadPolicy
+	var writePolicy *loreWritePolicy
 	if len(options) > 0 {
 		readPolicy = options[0].ReadPolicy
+		writePolicy = options[0].WritePolicy
 	}
 	if readPolicy == nil {
 		readPolicy = defaultLoreReadPolicy()
 	}
-	readTool, err := utils.InferTool("read_lore_items", "按资料库条目 ID 或唯一名称批量读取完整正文。名称已在上下文目录中出现时可直接读取，无需先调用 list_lore_items。", func(ctx context.Context, input readLoreItemsInput) (string, error) {
+	if writePolicy == nil {
+		writePolicy = defaultLoreWritePolicy()
+	}
+	readTool, err := utils.InferTool("read_lore_items", "按资料库条目 ID 或唯一名称批量读取完整正文，可在一次调用中混合传入 ids 和 names。名称已在上下文目录中出现时可直接读取，无需先调用 list_lore_items。", func(ctx context.Context, input readLoreItemsInput) (string, error) {
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法读取资料库")
@@ -151,14 +193,30 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 		}
 		store := book.NewLoreStore(workspace)
 		var items []book.LoreItem
-		var err error
-		if len(input.Names) > 0 {
-			items, err = store.ReadManyNames(input.Names)
-		} else {
-			items, err = store.ReadMany(input.IDs)
+		seen := make(map[string]bool)
+		if len(input.IDs) > 0 {
+			byID, err := store.ReadMany(input.IDs)
+			if err != nil {
+				return "", err
+			}
+			for _, item := range byID {
+				if !seen[item.ID] {
+					seen[item.ID] = true
+					items = append(items, item)
+				}
+			}
 		}
-		if err != nil {
-			return "", err
+		if len(input.Names) > 0 {
+			byName, err := store.ReadManyNames(input.Names)
+			if err != nil {
+				return "", err
+			}
+			for _, item := range byName {
+				if !seen[item.ID] {
+					seen[item.ID] = true
+					items = append(items, item)
+				}
+			}
 		}
 		output := formatLoreItems(items)
 		if err := readPolicy.accept(output, items); err != nil {
@@ -231,6 +289,11 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法写入资料库")
+		}
+		if writePolicy != nil {
+			if err := writePolicy.validate(input); err != nil {
+				return "", err
+			}
 		}
 		store := book.NewLoreStore(workspace)
 		ops, err := buildWriteLoreOperations(store, input)

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -367,6 +368,9 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings, b
 		return config.LayeredSettings{}, err
 	}
 	if err := config.WriteSettingsFileIfRevision(path, prepared, baseRevision); err != nil {
+		if errors.Is(err, config.ErrSettingsUnchanged) {
+			return s.Settings()
+		}
 		return config.LayeredSettings{}, err
 	}
 	log.Printf("[settings] 用户配置已保存 path=%s", path)
@@ -401,6 +405,9 @@ func (s *WorkspaceRuntimeManager) UpdateWorkspaceSettings(settings config.Settin
 	}
 	prepared := config.PrepareWorkspaceAgentSettingsForWrite(existing, settings)
 	if err := config.WriteSettingsFileIfRevision(path, prepared, baseRevision); err != nil {
+		if errors.Is(err, config.ErrSettingsUnchanged) {
+			return s.Settings()
+		}
 		return config.LayeredSettings{}, err
 	}
 	log.Printf("[settings] 工作区 Agent 定制已保存 path=%s", path)

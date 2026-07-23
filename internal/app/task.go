@@ -26,6 +26,7 @@ var taskSeq atomic.Uint64
 
 // Task 表示一个后台运行的 Agent 任务，独立于 HTTP 连接生命周期。
 // 事件缓冲到内存，SSE 客户端作为订阅者消费事件。
+// 高频事件（thinking、tool_args_delta）会批量合并，减少通道发送次数和锁竞争。
 type Task struct {
 	id        string
 	startedAt time.Time
@@ -35,7 +36,19 @@ type Task struct {
 	events    []agent.Event
 	subs      []chan agent.Event
 	cancel    context.CancelFunc
+
+	// 批量节流：高频事件合并后按类型分间隔发送
+	batchMu      sync.Mutex
+	batchPending []agent.Event // thinking / tool_args_delta / chunk
+	batchTimer   *time.Timer
 }
+
+const (
+	taskSubscriberBuffer     = 1024                  // channel 缓冲大小（原 256）
+	taskBatchInterval        = 30 * time.Millisecond // 批量事件统一合并间隔（顺序优先）
+	taskBatchSize            = 200                   // 达到此数量立即 flush
+	taskSubscribeReplaySlack = 256                   // 回放期间给实时事件预留的额外缓冲
+)
 
 // NewTask 创建并启动后台任务。run 函数在独立 goroutine 中执行。
 func NewTask(run func(ctx context.Context, task *Task, emit func(agent.Event))) *Task {
@@ -53,6 +66,7 @@ func NewTask(run func(ctx context.Context, task *Task, emit func(agent.Event))) 
 				observability.Error("agent-task", "task_panic_recovered", slog.String("task_id", t.id), slog.Any("error", recovered))
 				t.emit(agent.Event{Type: "error", Data: map[string]string{"message": "Agent 后台任务异常中断"}})
 			}
+			t.flushBatch()
 			t.finish()
 		}()
 		run(ctx, t, t.emit)
@@ -61,7 +75,69 @@ func NewTask(run func(ctx context.Context, task *Task, emit func(agent.Event))) 
 }
 
 // emit 缓冲事件并广播给所有订阅者。
+// 高频事件统一进入单一队列批量发送，保证跨类型（thinking/chunk/tool_args_delta）顺序稳定。
 func (t *Task) emit(ev agent.Event) {
+	// 关键事件立即发送
+	if !shouldBatchEvent(ev.Type) {
+		t.sendEvent(ev)
+		return
+	}
+
+	t.batchMu.Lock()
+	t.batchPending = append(t.batchPending, ev)
+	if len(t.batchPending) >= taskBatchSize {
+		batch := t.batchPending
+		t.batchPending = nil
+		if t.batchTimer != nil {
+			t.batchTimer.Stop()
+			t.batchTimer = nil
+		}
+		t.batchMu.Unlock()
+		t.sendBatch(batch)
+		return
+	}
+	if t.batchTimer == nil {
+		t.batchTimer = time.AfterFunc(taskBatchInterval, func() {
+			t.batchMu.Lock()
+			batch := t.batchPending
+			t.batchPending = nil
+			t.batchTimer = nil
+			t.batchMu.Unlock()
+			if len(batch) > 0 {
+				t.sendBatch(batch)
+			}
+		})
+	}
+	t.batchMu.Unlock()
+}
+
+// flushBatch 发送所有积压的批量事件（任务结束时调用）。
+func (t *Task) flushBatch() {
+	t.batchMu.Lock()
+	if t.batchTimer != nil {
+		t.batchTimer.Stop()
+		t.batchTimer = nil
+	}
+	batch := t.batchPending
+	t.batchPending = nil
+	t.batchMu.Unlock()
+	if len(batch) > 0 {
+		t.sendBatch(batch)
+	}
+}
+
+// shouldBatchEvent 判断事件类型是否应该合并。
+func shouldBatchEvent(eventType string) bool {
+	switch eventType {
+	case "thinking", "tool_args_delta", "chunk":
+		return true
+	default:
+		return false
+	}
+}
+
+// sendEvent 立即发送单个事件给所有订阅者。
+func (t *Task) sendEvent(ev agent.Event) {
 	t.mu.Lock()
 	t.events = append(t.events, ev)
 	if ev.Type == "error" {
@@ -70,7 +146,8 @@ func (t *Task) emit(ev agent.Event) {
 	if ev.Type == "aborted" {
 		t.status = TaskAborted
 	}
-	subs := append([]chan agent.Event(nil), t.subs...)
+	subs := make([]chan agent.Event, len(t.subs))
+	copy(subs, t.subs)
 	eventCount := len(t.events)
 	subCount := len(t.subs)
 	t.mu.Unlock()
@@ -81,10 +158,61 @@ func (t *Task) emit(ev agent.Event) {
 		select {
 		case ch <- ev:
 		default:
-			// 订阅者消费太慢，丢弃（SSE 是尽力送达）
 			observability.Warn("agent-task", "task_event_dropped", slog.String("task_id", t.id), slog.String("event_type", ev.Type), slog.String("reason", "subscriber_slow"))
 		}
 	}
+}
+
+// sendBatch 批量发送合并事件。使用单个合并事件包装，大幅减少通道发送次数。
+func (t *Task) sendBatch(batch []agent.Event) {
+	if len(batch) == 0 {
+		return
+	}
+	t.mu.Lock()
+	// 将批量事件追加到历史，但不逐个新增事件计数
+	t.events = append(t.events, batch...)
+	subs := make([]chan agent.Event, len(t.subs))
+	copy(subs, t.subs)
+	subCount := len(t.subs)
+	t.mu.Unlock()
+	if subCount == 0 {
+		return
+	}
+	// 单个合并事件发送给订阅者
+	merged := agent.Event{
+		Type: "batch",
+		Data: map[string]interface{}{
+			"events": batch,
+			"count":  len(batch),
+			"kinds":  batchKinds(batch),
+		},
+	}
+	for _, ch := range subs {
+		select {
+		case ch <- merged:
+		default:
+			for _, ev := range batch {
+				// 合并发送失败时，尽力逐条发送批量中的每个事件
+				if !shouldBatchEvent(ev.Type) {
+					continue
+				}
+				select {
+				case ch <- ev:
+				default:
+				}
+			}
+			observability.Warn("agent-task", "task_batch_dropped", slog.String("task_id", t.id), slog.Int("dropped", len(batch)), slog.String("reason", "subscriber_slow"))
+		}
+	}
+}
+
+// batchKinds 返回批量中不同事件类型的计数摘要。
+func batchKinds(batch []agent.Event) map[string]int {
+	kinds := make(map[string]int, 2)
+	for _, ev := range batch {
+		kinds[ev.Type]++
+	}
+	return kinds
 }
 
 // finish 标记任务完成，关闭所有订阅者 channel。
@@ -118,7 +246,11 @@ func (t *Task) Subscribe() ([]agent.Event, <-chan agent.Event) {
 		return snapshot, ch
 	}
 
-	ch := make(chan agent.Event, 256)
+	bufferSize := taskSubscriberBuffer
+	if replayBuffer := len(snapshot) + taskSubscribeReplaySlack; replayBuffer > bufferSize {
+		bufferSize = replayBuffer
+	}
+	ch := make(chan agent.Event, bufferSize)
 	t.subs = append(t.subs, ch)
 	observability.Info("agent-task", "task_subscribe", slog.String("task_id", t.id), slog.String("status", string(t.status)), slog.Int("replay", len(snapshot)), slog.Int("subscribers", len(t.subs)), slog.Bool("live", true))
 	return snapshot, ch

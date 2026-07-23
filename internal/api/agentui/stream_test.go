@@ -103,6 +103,46 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	assertStartMetadata(t, chunks[0])
 }
 
+func TestStreamEncoderExpandsTypedBatchEvents(t *testing.T) {
+	var out bytes.Buffer
+	encoder := NewStreamEncoder(&out)
+
+	events := []agent.Event{
+		{Type: "batch", Data: map[string]any{
+			"events": []agent.Event{
+				{Type: "thinking", Data: map[string]any{"content": "分析中", "run_id": "run-2"}},
+				{Type: "chunk", Data: map[string]any{"content": "最终正文", "run_id": "run-2"}},
+			},
+		}},
+		{Type: "done", Data: map[string]any{}},
+	}
+
+	for _, event := range events {
+		if err := encoder.WriteEvent(event); err != nil {
+			t.Fatalf("WriteEvent(%s) failed: %v", event.Type, err)
+		}
+	}
+
+	chunks, done := parseUIStreamChunks(t, out.String())
+	if !done {
+		t.Fatalf("expected [DONE] marker, got stream:\n%s", out.String())
+	}
+
+	expectedTypes := []string{
+		"start",
+		"reasoning-start",
+		"reasoning-delta",
+		"reasoning-end",
+		"text-start",
+		"text-delta",
+		"text-end",
+		"finish",
+	}
+	if got := chunkTypes(chunks); strings.Join(got, ",") != strings.Join(expectedTypes, ",") {
+		t.Fatalf("chunk types mismatch\nwant: %v\n got: %v", expectedTypes, got)
+	}
+}
+
 func parseUIStreamChunks(t *testing.T, raw string) ([]map[string]any, bool) {
 	t.Helper()
 	chunks := []map[string]any{}

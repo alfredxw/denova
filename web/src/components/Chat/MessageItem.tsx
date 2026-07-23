@@ -94,7 +94,9 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
       const streamingTargetContent = message.streaming === true && message.streaming_target_content && message.streaming_target_content !== content
         ? message.streaming_target_content
         : undefined
-      const visibleContent = sanitizeThinkTags(streamingTargetContent || content).trim()
+      const sanitizedContent = sanitizeThinkTags(content)
+      const sanitizedTargetContent = streamingTargetContent ? sanitizeThinkTags(streamingTargetContent) : undefined
+      const visibleContent = (sanitizedTargetContent || sanitizedContent).trim()
       const reserveMetaSpace = message.streaming === true || Boolean(canEditAssistantReply || onGenerateInteractiveImage || onRegenerate || onSwitchVersion)
       return (
         <AIMessage from="assistant" className="max-w-none">
@@ -104,9 +106,9 @@ export const MessageItem = memo(function MessageItem({ message, highlightDialogu
                 {message.streaming && !visibleContent ? (
                   <StreamingPlaceholder />
                 ) : message.streaming ? (
-                  <StreamingMarkdown content={content} targetContent={streamingTargetContent} highlightDialogue={highlightDialogue} />
+                  <StreamingMarkdown content={sanitizedContent} targetContent={sanitizedTargetContent} highlightDialogue={highlightDialogue} />
                 ) : (
-                  <MarkdownContent content={content} highlightDialogue={highlightDialogue} />
+                  <MarkdownContent content={sanitizedContent} highlightDialogue={highlightDialogue} />
                 )}
               </AIMessageContent>
               <InteractiveImageStrip message={message} />
@@ -1586,6 +1588,22 @@ function sanitizeThinkTags(text: string): string {
   if (close >= 0) {
     result = result.slice(close).replace(/<\s*\/\s*think\s*>/i, '')
   }
+  // 部分模型会把"思考过程"这类标题残片泄漏到正文开头，仅清理前几行，避免误伤正文中合法出现的同名段落。
+  const headLines = result.split('\n')
+  const headLimit = Math.min(headLines.length, 8)
+  for (let i = 0; i < headLimit; i++) {
+    if (/^\s*(思考过程|思考|thinking(?:\s+process)?)[\s)）.:：-]*$/i.test(headLines[i])) {
+      headLines[i] = ''
+    }
+    // 清理部分 provider 泄漏的跨行元叙事壳："(Proceeding to write ... the scene)."
+    if (/^\s*\(?\s*proceeding to write\s*$/i.test(headLines[i])) {
+      headLines[i] = ''
+    }
+    if (/^\s*the scene\)\.?\s*$/i.test(headLines[i])) {
+      headLines[i] = ''
+    }
+  }
+  result = headLines.join('\n').replace(/^\n+/, '')
   // 清理任何残留 think 标签
   return result.replace(/<\/?\s*think\s*>/gi, '')
 }

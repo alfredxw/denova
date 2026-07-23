@@ -1,6 +1,6 @@
 ---
 name: teller-config
-description: Use when config_manager creates or updates Denova narrative style configurations.
+description: 配置管理 Agent 创建或更新叙事风格配置时使用。Use when config_manager creates or updates Denova narrative style configurations.
 agent: config_manager
 ---
 

@@ -256,3 +256,47 @@ describe('InputArea prefill clearing', () => {
     })
   })
 })
+
+describe('InputArea prompt recall', () => {
+  it('restores the last submitted prompt when ArrowUp is pressed on an empty input', async () => {
+    const user = userEvent.setup()
+    render(<InputArea onSend={vi.fn()} disabled={false} />)
+
+    const textbox = screen.getByRole('textbox')
+    const prompt = 'restart scene one optimization and explain every change'
+    await user.type(textbox, prompt)
+    const submittedPrompt = textbox.textContent || ''
+    expect(submittedPrompt.length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    await waitFor(() => {
+      expect(textbox).toHaveTextContent('')
+    })
+
+    textbox.focus()
+    await user.keyboard('{ArrowUp}')
+
+    expect(textbox).toHaveTextContent(submittedPrompt)
+  })
+
+  it('does not override existing input when ArrowUp is pressed with non-empty content', async () => {
+    const user = userEvent.setup()
+    render(<InputArea onSend={vi.fn()} disabled={false} />)
+
+    const textbox = screen.getByRole('textbox')
+    await user.type(textbox, 'previous prompt')
+    await user.click(screen.getByRole('button', { name: '发送' }))
+
+    await waitFor(() => {
+      expect(textbox).toHaveTextContent('')
+    })
+
+    const currentDraft = 'new draft'
+    await user.type(textbox, currentDraft)
+    const renderedDraft = textbox.textContent || ''
+    expect(renderedDraft.length).toBeGreaterThan(0)
+    await user.keyboard('{ArrowUp}')
+
+    expect(textbox).toHaveTextContent(renderedDraft)
+  })
+})

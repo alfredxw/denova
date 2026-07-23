@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChat as useAIChat } from '@ai-sdk/react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -88,6 +88,8 @@ export function useAgentChat(options: ChatOptions = {}) {
   const [defaultPlanMode, setDefaultPlanMode] = useState(false)
   const [planModes, setPlanModes] = useState<Record<string, boolean>>(() => readChatPlanModes())
   const activePlanMode = planModeForSession(planModes, activeSessionId, defaultPlanMode)
+  const activePlanModeRef = useRef(activePlanMode)
+  activePlanModeRef.current = activePlanMode
 
   useEffect(() => {
     let cancelled = false
@@ -109,12 +111,13 @@ export function useAgentChat(options: ChatOptions = {}) {
   }, [])
 
   const setActivePlanMode = useCallback((value: boolean) => {
+    activePlanModeRef.current = value
     setSessionPlanMode(activeSessionId || 'default', value)
   }, [activeSessionId, setSessionPlanMode])
 
   const togglePlanMode = useCallback(() => {
-    setActivePlanMode(!activePlanMode)
-  }, [activePlanMode, setActivePlanMode])
+    setActivePlanMode(!activePlanModeRef.current)
+  }, [setActivePlanMode])
 
   const loadSessions = useCallback(async () => {
     try {
@@ -172,7 +175,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       }
     }
 
-    let planMode = forcedPlanMode ?? activePlanMode
+    let planMode = forcedPlanMode ?? activePlanModeRef.current
     let userMessage = input
     if (input.startsWith('/plan')) {
       planMode = true
@@ -194,7 +197,7 @@ export function useAgentChat(options: ChatOptions = {}) {
       composerTextSelections: textSelections,
       planMode,
     }
-  }, [activePlanMode, loreReferences, references, styleScenes, t, textSelections])
+  }, [loreReferences, references, styleScenes, t, textSelections])
 
   const send = useCallback(async (input: string, sendOptions: ChatSendOptions = {}) => {
     if (isStreaming) return false

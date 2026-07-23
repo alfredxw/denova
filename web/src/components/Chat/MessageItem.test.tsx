@@ -74,6 +74,47 @@ describe('MessageItem', () => {
     expect(container.querySelector('.chat-agent-message')).toHaveTextContent('第二行内容')
   })
 
+  it('assistant 渲染时会清理泄漏到首行的思考过程标题残片', () => {
+    render(<MessageItem message={{ role: 'assistant', content: '思考过程).\n\n于**“环境的野性化”**继续优化。' }} />)
+
+    expect(screen.queryByText(/思考过程\)/)).not.toBeInTheDocument()
+    expect(screen.getByText(/于/)).toBeInTheDocument()
+    expect(screen.getByText(/环境的野性化/)).toBeInTheDocument()
+  })
+
+  it('assistant 渲染时会清理分裂的 Proceeding-to-write 思考壳文案', () => {
+    render(
+      <MessageItem
+        message={{
+          role: 'assistant',
+          content: '*   *Writing Style:* Direct, Crude, Sensory.\n\n(Proceeding to write\n为了优化**\n\n思考过程\n the scene).\n\n第三场应强化环境压迫感。',
+        }}
+      />,
+    )
+
+    expect(screen.queryByText(/Proceeding to write/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/the scene\)\.?/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^思考过程$/)).not.toBeInTheDocument()
+    expect(screen.getByText(/第三场应强化环境压迫感/)).toBeInTheDocument()
+  })
+
+  it('流式 assistant 会基于清洗后的 target content 判断占位并渲染', () => {
+    const { container } = render(
+      <MessageItem
+        message={{
+          role: 'assistant',
+          content: '',
+          streaming: true,
+          streaming_target_content: '<think>先分析</think>\n\n正文开始。',
+        }}
+      />,
+    )
+
+    expect(container.querySelector('[role="status"]')).toBeNull()
+    expect(container.querySelector('.chat-agent-message')).toHaveTextContent('正文开始。')
+    expect(container.querySelector('.chat-agent-message')).not.toHaveTextContent('先分析')
+  })
+
   it('流式和持久化 assistant 消息使用一致的 Markdown DOM 结构', () => {
     const content = '# 标题\n\n第一段。\n\n- 条目 A\n- 条目 B\n\n> 引用'
     const { container, rerender } = render(<MessageItem message={{ role: 'assistant', content, streaming: true }} />)

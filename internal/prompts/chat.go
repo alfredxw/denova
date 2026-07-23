@@ -111,7 +111,7 @@ type StyleRule struct {
 func StyleRulesInstruction(rules []StyleRule) string {
 	var sb strings.Builder
 	sb.WriteString("## 文风参考\n\n")
-	sb.WriteString("当前叙事风格配置了以下文风参考索引。文风参考是所有叙事风格共享的 Markdown 文件，统一存放在 `.denova/styles/`；索引只提供 name、description、path，不包含全文。\n")
+	sb.WriteString("当前叙事风格配置了以下文风参考索引。文风参考是所有叙事风格共享的 Markdown 文件，统一存放在 `.denova/styles/`；索引只提供 name、description、path，不包含全文。需要全文时请用 `read_style_references` 工具，不要用 `read_file` 读取 `.denova/styles/` 路径。\n")
 	wrote := 0
 	for _, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)

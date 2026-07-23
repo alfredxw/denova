@@ -8,11 +8,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 新增 `writing-common` 公共写作规范 Skill：提取写作范围判断、上下文读取、工具使用规范、写入错误检查、读回验证、章节正文格式和状态文件边界等共享规则，供 novel-lite / novel-standard / novel-heavy / continue / rewrite 引用，消除三件套大量重复内容。
+- Added `writing-common` shared writing conventions Skill: extracts writing scope judgment, context reading, tool usage rules, write error checking, read-back verification, chapter prose format, and state file boundaries as shared rules referenced by novel-lite / novel-standard / novel-heavy / continue / rewrite, eliminating heavy duplication across the three writing flow skills.
+- 新增 `event-package-config` Skill：从 `story-director-config` 中拆分出事件包和事件卡的创建/更新指南，按需加载以减少单 Skill 上下文 token 消耗。
+- Added `event-package-config` Skill: split event package and event card creation/update guidance out of `story-director-config` for on-demand loading, reducing per-skill context token cost.
+- 新增 `novel-under-plan` 写作 Skill：自包含的多角色审稿管线（不依赖 `novel-heavy` 等其他 novel-* Skill），严格按粗纲/计划逐分场写作，每场字数达标才推进；在分场定位、计划确认、字数门控和完稿确认等环节提供高交互性，定位介于 Plan Mode 和普通写作模式之间（会写作的 Plan / 会提问的 Agent）。与其他 novel-* Skill 互斥，选中后不加载其他写作流程 Skill。
+- Added `novel-under-plan` writing Skill: a self-contained multi-role review pipeline (no dependency on `novel-heavy` or other novel-* Skills) that writes strictly plan-driven, scene by scene, advancing only when each scene meets its word-count target; provides high interactivity at scene location, plan confirmation, word-count gating, and final approval stages — positioned between Plan Mode and normal writing mode (a Plan that can write / an Agent that asks questions). Mutually exclusive with other novel-* Skills.
+- 新增 `count_words` 工具：由 Go 后端精确统计文件或内联文本的字数，返回 `chinese_chars`（中文字数，CJK 统一表意文字逐字计数）、`chars_no_space`、`chars_with_space`、`lines`、`non_cjk_words` 多维度指标，避免模型 token 化估算带来的计数错误、多语言误差或幻觉；门控在 `file_read` 能力下，写作类 Agent 可直接调用。`writing-common` 与 `novel-under-plan` 已改为以该工具的 `chinese_chars` 作为字数门控依据。
+- Added `count_words` tool: the Go backend precisely counts words/characters for a file or inline text, returning multi-dimensional metrics — `chinese_chars` (Chinese word count, counting each CJK unified ideograph), `chars_no_space`, `chars_with_space`, `lines`, and `non_cjk_words` — avoiding token-based estimation errors, multilingual drift, or hallucination; gated under the `file_read` capability and callable by writing agents. `writing-common` and `novel-under-plan` now use this tool's `chinese_chars` as the word-count gate.
 - 写作模式编辑器查找栏新增替换与正则匹配：可展开替换输入框，支持替换当前匹配或全部替换；开启正则后查找与替换均按正则表达式执行，替换文本支持 `$1` 等捕获组引用。
 - The Writing Mode editor search bar now supports replace and regex matching: expand a replace field to replace the current match or all matches; with regex enabled, both find and replace use regular expressions, and the replacement text supports capture group references like `$1`.
+- 新增 `read_style_references` 工具：Agent 可通过 config manager 工具按路径批量读取 `.denova/styles/` 中的文风参考 Markdown 全文，不再受 read_file 的 workspace 边界限制。
+- Added `read_style_references` tool: agents can batch-read style reference Markdown files under `.denova/styles/` via config manager tools, no longer blocked by read_file workspace boundaries.
 
 ### Changed
 
+- `novel-under-plan` 字数不足时的扩写交互增强：不再由模型自行决定扩写方向，而是向用户报告字数差距并提供扩写方向选项（外貌 / 动作 / 心理 / 回忆 / 环境 / 对话 / 冲突 / 过渡）供选择；用户未选择时默认回退参考当前叙事方案（Teller / Narrative Style）的风格倾向，无法确定时默认「心理描写 + 环境描写」。
+- Enhanced `novel-under-plan` under-length expansion interaction: instead of the model deciding expansion direction on its own, it now reports the word-count gap and offers expansion-direction options (appearance / action / psychology / flashback / environment / dialogue / conflict / transition) for the user to choose; when the user does not choose, it falls back to the current narrative style (Teller / Narrative Style) tendency, defaulting to "psychology + environment" when undetermined.
+- 重构 `novel-lite`、`novel-standard`、`novel-heavy` 三个写作流程 Skill：移除重复的写作范围判断、工具使用要求和错误检查段落，改为引用 `writing-common` 公共规范，各 Skill 只保留自身流程差异。
+- Refactored `novel-lite`, `novel-standard`, and `novel-heavy` writing flow Skills: removed duplicated writing scope judgment, tool usage requirements, and error checking paragraphs; now reference `writing-common` shared conventions, with each skill retaining only its flow-specific differences.
+- 修复 `orchestrate-projects` Skill：移除错误的 "Codex" 引用，对齐 Denova 创作工作流，description 改为中英双语。
+- Fixed `orchestrate-projects` Skill: removed incorrect "Codex" reference, aligned with Denova creative workflow, and made the description bilingual.
+- 优化 `rewrite` Skill：按修改类型区分 `edit_file`（局部修改）和 `write_file`（大幅重写），状态更新改为仅在情节/角色状态发生实质变化时触发，补充错误检查和读回验证。
+- Improved `rewrite` Skill: differentiates `edit_file` (local edits) vs `write_file` (major rewrites) by modification type; state updates now trigger only on substantive plot/character changes; added error checking and read-back verification.
+- 优化 `continue` Skill：移除与 `writing-common` 重复的写作格式和状态文件规则，改为引用公共规范；description 改为中英双语。
+- Improved `continue` Skill: removed writing format and state file rules duplicated with `writing-common`, now references shared conventions; description is now bilingual.
+- 优化 `outline` Skill：移除遗留的负面指令（"不要再生成 characters.md"），改为正面表述；补充错误检查；description 改为中英双语。
+- Improved `outline` Skill: removed legacy negative instructions ("do not generate characters.md"), replaced with positive guidance; added error checking; description is now bilingual.
+- 拆分 `story-director-config`：Event Cards 部分（schema、内容规则、生成策略）移至独立的 `event-package-config` Skill，原 Skill 只保留 director 结构、module_refs、Rule Checks 和 State System 内容。
+- Split `story-director-config`: Event Cards section (schema, content rules, generation strategy) moved to the standalone `event-package-config` Skill; the original skill now retains only director structure, module_refs, Rule Checks, and State System content.
+- 所有 Skill 的 `description` 字段统一为中英双语格式。
+- All Skill `description` fields are now bilingual (Chinese + English).
+- 为 `chapter-illustration`、`interactive-image`、`group-plan`、`lore-init` 补充错误处理指引（工具调用失败时不得假装成功）。
+- Added error handling guidance to `chapter-illustration`, `interactive-image`, `group-plan`, and `lore-init` (must not claim success when tool calls fail).
 - Home、Settings、Agents、Skills 和 Automations 统一使用共享页面框架、分区导航、表单字段、资源目录、空状态与确认弹窗；资料库和方案预设同时复用自适应面板与移动端入口。
 - Home, Settings, Agents, Skills, and Automations now share page shells, section navigation, form fields, resource directories, empty states, and confirmation dialogs; Lore and Presets also reuse adaptive panes and mobile entry points.
 - 写作与游戏模式的 Agent 对话统一为单一挂载的聊天面板，并共享持久化输入偏好、上下文分析展示、文本测量和底部滚动控制，避免布局切换时重复初始化会话状态。
@@ -24,9 +52,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复 `read_lore_items` 工具同时传入 `ids` 和 `names` 时报错"ids 和 names 只能选择一种读取方式"的问题：现在支持混合传入，结果按 ID 去重后合并返回。
+- Fixed `read_lore_items` rejecting calls that pass both `ids` and `names` with "ids 和 names 只能选择一种读取方式": the tool now accepts mixed input and deduplicates by ID.
+- 修复 context-planner 等 Agent 使用 `read_file` 读取 `.denova/styles/` 下文风参考时被 workspace 边界拒绝的问题（`file_path is outside the active workspace`）。
+- Fixed agents (e.g., context-planner) being rejected by workspace boundaries when reading style references under `.denova/styles/` via `read_file`.
+- 写作模式与游戏模式的 system prompt 已更新，引导 Agent 使用 `read_style_references` 读取文风参考全文，不再错误依赖 `read_file`。
+- Writing and Game mode system prompts now guide agents to use `read_style_references` for style reference content instead of `read_file`.
+- `read_file` 文件未找到时自动尝试路径容错：将 ` - ` 规范化为 `-`（如 `第一卷 - 诅咒的觉醒` → `第一卷-诅咒的觉醒`），避免模型从 display name 反推路径时的空格偏差导致 file not found。
+- `read_file` now auto-retries with normalized paths when file not found: collapses spaces around dashes (e.g. `卷一 - 名` → `卷一-名`), fixing model path reconstruction errors from display names.
+- `execute` 工具现在自动解码模型在 shell 命令中输出的 HTML 实体（如 `&amp;&amp;` → `&&`），解决本地模型因实体编码导致 shell 命令反复失败并陷入 `execute→失败→read→execute` 死循环的问题。
+- The `execute` tool now auto-unescapes HTML entities in shell commands (e.g. `&amp;&amp;` → `&&`), fixing local models getting stuck in `execute→fail→read→execute` dead-loops due to entity-encoded shell operators.
+- `write_file` / `edit_file` 被 revision 冲突拒绝时，错误消息现在明确引导 Agent 重新 read_file 获取最新 revision 后重试，并警告不要退而使用 execute 等 shell 命令（它们更慢、串行且绕过 revision 保护）。
+- When `write_file` / `edit_file` is rejected due to revision conflict, the error now explicitly guides the agent to re-read the file for the latest revision and retry, while warning against falling back to shell commands like `execute` (which are slower, serialized, and bypass revision protection).
+- 设置文件写入时若序列化内容与磁盘完全一致则跳过磁盘 I/O，避免前端自动保存导致的每秒空写（如 `[settings] 用户配置已保存` 日志刷屏）。
+- Settings file writes now skip disk I/O when serialized content is identical to the existing file, eliminating no-op writes caused by frontend autosave (e.g., repeated `[settings]` save logs).
+- `read_file` 新增内存缓存：同一文件未修改时自动命中缓存（仅 `stat()` 验证 mtime），避免 agent 上下文窗口受限后反复磁盘 I/O。缓存上限 64 MiB，LRU 淘汰。
+- `read_file` now uses an in-memory cache: unchanged files hit cache with only a stat() check, avoiding repeated disk I/O when agent context pushes older tool results out. Capped at 64 MiB with LRU eviction.
 - 修复 Agent `prefill failed: unexpected control character ... char 2000`：JSON 形态 tool result 不再按默认 2000 字硬截断并拼接换行 marker。
 - Fixed Agent `prefill failed: unexpected control character ... char 2000`: stop mid-cutting JSON tool results at the default 2000-rune preview with a newline marker.
-
 - 写作模式现在会隔离参数不是合法 JSON 的工具调用及其结果；已经保存的异常调用链也会在下次请求前被过滤，长参数则使用合法 JSON 回执保留上下文，避免会话被永久冻结。
 - Writing Mode now isolates tool calls with invalid JSON arguments and their results; previously saved malformed pairs are filtered before the next request, while large arguments use a valid JSON receipt so sessions do not become permanently frozen.
 - 设置与 Agents 的分层草稿、自动保存和输入区偏好持久化现在会串行写入，并在 revision 冲突时按原始基线重新拉取、合并和重试；卸载或过期请求不再回写状态。

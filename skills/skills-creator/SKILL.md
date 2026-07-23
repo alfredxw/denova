@@ -1,6 +1,6 @@
 ---
 name: skills-creator
-description: Use this skill when the user wants to create, revise, review, or organize Denova custom Skills in user or workspace scope.
+description: 创建、修订、审查或整理 Denova 自定义 Skill 时使用。Use when the user wants to create, revise, review, or organize Denova custom Skills in user or workspace scope.
 agent: ide,config_manager,automation
 ---
 

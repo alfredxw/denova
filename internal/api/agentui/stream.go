@@ -119,6 +119,15 @@ func (e *StreamEncoder) WriteEvent(ev agent.Event) error {
 		return e.writeChunk(map[string]any{"type": "abort", "reason": firstNonEmpty(readString(data, "message"), "user cancelled")})
 	case "done":
 		return e.Finish("stop")
+	case "batch":
+		// 批量合并的高频事件（thinking、tool_args_delta），展开后逐个写入
+		events := batchEvents(data["events"])
+		for _, item := range events {
+			if err := e.WriteEvent(item); err != nil {
+				return err
+			}
+		}
+		return nil
 	default:
 		if err := e.closeOpenContent(); err != nil {
 			return err
@@ -468,6 +477,43 @@ func cloneMap(in map[string]any) map[string]any {
 		out[key] = value
 	}
 	return out
+}
+
+func batchEvents(raw any) []agent.Event {
+	if raw == nil {
+		return nil
+	}
+	if events, ok := raw.([]agent.Event); ok {
+		result := make([]agent.Event, 0, len(events))
+		for _, item := range events {
+			if strings.TrimSpace(item.Type) == "" {
+				continue
+			}
+			result = append(result, item)
+		}
+		return result
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	result := make([]agent.Event, 0, len(items))
+	for _, item := range items {
+		entry, ok := item.(map[string]any)
+		if !ok {
+			if generic, ok := item.(map[string]interface{}); ok {
+				entry = generic
+			} else {
+				continue
+			}
+		}
+		evType := readString(entry, "type")
+		if strings.TrimSpace(evType) == "" {
+			continue
+		}
+		result = append(result, agent.Event{Type: evType, Data: entry})
+	}
+	return result
 }
 
 func emptyValue(value any) bool {

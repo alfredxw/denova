@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/cloudwego/eino/adk/filesystem"
 )
@@ -15,9 +17,111 @@ import (
 type agentFilesystemBackend struct {
 	filesystem.Backend
 	workspace string
+	cache     *fileReadCache
 }
 
 const agentFileReadDefaultLimitLines = 2000
+
+// fileReadCache avoids repeated disk reads when the agent re-reads the same
+// file across multiple turns (common when context-window limits push older
+// tool results out). Entries are validated by file size + modification time
+// and evicted LRU under a configurable byte limit.
+type fileReadCache struct {
+	mu       sync.RWMutex
+	entries  map[string]*fileReadCacheEntry
+	maxBytes int64
+	curBytes int64
+}
+
+type fileReadCacheEntry struct {
+	content string
+	size    int64
+	modTime time.Time
+	atime   time.Time
+}
+
+const fileReadCacheDefaultMaxBytes = 64 * 1024 * 1024 // 64 MiB
+
+func newFileReadCache(maxBytes int64) *fileReadCache {
+	if maxBytes <= 0 {
+		maxBytes = fileReadCacheDefaultMaxBytes
+	}
+	return &fileReadCache{
+		entries:  map[string]*fileReadCacheEntry{},
+		maxBytes: maxBytes,
+	}
+}
+
+func (c *fileReadCache) get(path string) (string, bool) {
+	if c == nil {
+		return "", false
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", false
+	}
+	c.mu.RLock()
+	entry, ok := c.entries[path]
+	c.mu.RUnlock()
+	if !ok {
+		return "", false
+	}
+	if entry.size != info.Size() || !entry.modTime.Equal(info.ModTime()) {
+		c.mu.Lock()
+		delete(c.entries, path)
+		c.curBytes -= int64(len(entry.content))
+		c.mu.Unlock()
+		return "", false
+	}
+	c.mu.Lock()
+	entry.atime = time.Now()
+	c.mu.Unlock()
+	return entry.content, true
+}
+
+func (c *fileReadCache) set(path, content string) {
+	if c == nil {
+		return
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	size := int64(len(content))
+	if size > c.maxBytes {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if existing, ok := c.entries[path]; ok {
+		c.curBytes -= int64(len(existing.content))
+	}
+	for c.curBytes+size > c.maxBytes && len(c.entries) > 0 {
+		c.evictOldestLocked()
+	}
+	c.entries[path] = &fileReadCacheEntry{
+		content: content,
+		size:    info.Size(),
+		modTime: info.ModTime(),
+		atime:   time.Now(),
+	}
+	c.curBytes += size
+}
+
+func (c *fileReadCache) evictOldestLocked() {
+	var oldestKey string
+	var oldestTime time.Time
+	for key, entry := range c.entries {
+		if oldestKey == "" || entry.atime.Before(oldestTime) {
+			oldestKey = key
+			oldestTime = entry.atime
+		}
+	}
+	if oldestKey != "" {
+		c.curBytes -= int64(len(c.entries[oldestKey].content))
+		delete(c.entries, oldestKey)
+	}
+}
 
 func newAgentFilesystemBackend(inner filesystem.Backend, workspaces ...string) filesystem.Backend {
 	if inner == nil {
@@ -30,7 +134,11 @@ func newAgentFilesystemBackend(inner filesystem.Backend, workspaces ...string) f
 			workspace = filepath.Clean(workspace)
 		}
 	}
-	return &agentFilesystemBackend{Backend: inner, workspace: workspace}
+	return &agentFilesystemBackend{
+		Backend:   inner,
+		workspace: workspace,
+		cache:     newFileReadCache(fileReadCacheDefaultMaxBytes),
+	}
 }
 
 func (b *agentFilesystemBackend) Read(ctx context.Context, req *filesystem.ReadRequest) (*filesystem.FileContent, error) {

@@ -1,6 +1,6 @@
 ---
 name: lore
-description: 使用资料库工具读取、整理、更新或删除长期设定时使用；覆盖 list_lore_items、read_lore_items 和 write_lore_items 的基本方法。
+description: 使用资料库工具读取、整理、更新或删除长期设定时使用；覆盖 list_lore_items、read_lore_items 和 write_lore_items 的基本方法。Read, organize, update, or delete long-term lore entries via lore tools.
 agent: ide,config_manager,interactive_story
 ---
 

@@ -1,19 +1,19 @@
 ---
 name: story-director-config
-description: Use when config_manager creates or updates Denova Story Director resources.
+description: 配置管理 Agent 创建或更新 Story Director 资源时使用。Use when config_manager creates or updates Denova Story Director resources.
 agent: config_manager
 ---
 
 # Story Director Config
 
-Use this skill before calling `write_story_directors`, `write_event_packages`, or `write_actor_states`.
+Use this skill before calling `write_story_directors` or `write_actor_states`. For event package and event card creation/update, load `event-package-config` instead.
 
 ## Workflow
 
 1. Call `list_story_directors` first. For updates, call `read_story_directors` for the exact director IDs.
-2. Call `list_event_packages` before changing a director's event package references. For event-card content updates, call `read_event_packages` for exact package IDs.
+2. Call `list_event_packages` before changing a director's event package references. For event-card content changes, load `event-package-config`.
 3. Call `list_actor_states` before changing a director's `actor_state_id`; call `read_actor_states` before editing state templates, fields, trait pools, or trait rules.
-4. Use `write_story_directors` for director create/update/delete, `write_event_packages` for event package create/update/delete, and `write_actor_states` for State System schema changes. Do not edit JSON files directly.
+4. Use `write_story_directors` for director create/update/delete and `write_actor_states` for State System schema changes. Do not edit JSON files directly.
 5. Built-in story directors, event packages, and State Systems can be read and copied as examples. Deleting built-ins restores their built-in version.
 6. For update, preserve sections the user did not ask to change.
 7. For delete, require an explicit user request.
@@ -38,46 +38,9 @@ Do not use empty IDs to mean disabled; use the explicit `*_disabled` switches. E
 
 ## Event Cards
 
-Event packages are standalone resources made of rich event cards. Do not generate keyword-only category packages.
+Event package and event card creation/update is handled by the `event-package-config` skill. Load that skill when the user asks to create or modify event cards.
 
-Each `events[]` item in an event package should use this schema:
-
-- `id`: stable ASCII ID, unique inside the director.
-- `type_name`: user-visible event type name, for example `外门考核打脸`.
-- `description_markdown`: Markdown event card, up to 8000 characters.
-- `enabled`: boolean.
-- `category`: broad category such as `打脸`, `奇遇`, `学院`, `恋爱`.
-- `tags`: short searchable labels.
-- `weight`: positive number, usually `1`.
-- `cooldown_turns`: non-negative integer, usually `2`.
-- `intensity`: short value such as `low`, `medium`, `high`.
-
-`description_markdown` should contain these sections:
-
-```markdown
-## 触发场景
-
-## 背景融合方式
-
-## 大致事件逻辑（起承转合）
-
-## 事件回收 / 后果
-
-## 奖励 / 代价
-
-## 避免生硬的约束
-```
-
-Every card must bind to at least one concrete source from the work: a world rule, faction, place, item, character relationship, current conflict source, or user-provided premise. Do not generate generic "any protagonist anywhere" cards unless the user explicitly asks for a generic template package.
-
-Default generation strategy:
-
-- Generate 12-24 event cards in one package when the user asks for an event pack. Write the package with `write_event_packages`, then add its ID to `story_director.module_refs.event_package_ids` only if the user asked to attach it to a director.
-- Cover a mix of 打脸, 扮猪吃虎, 奇遇, 秘境, 天降, 意外, 世界事件, 冲突, 学院, 比拼, 排行, 恋爱, 英雄救美, 误会与消解 where suitable for the actual work.
-- Each card should describe a flexible reusable situation, not a fixed future chapter outline.
-- The event must integrate with user action and current background; do not force the protagonist into a single choice.
-- Include payoff/recovery hooks so the Director Agent can close the event later without leaving dangling pressure.
-- If lore was not read, write cards using only user-provided facts and clearly keep them generic.
+To attach an existing event package to a director, add its ID to `module_refs.event_package_ids` and write the director back with `write_story_directors`.
 
 ## Rule Checks
 
@@ -85,4 +48,4 @@ Use the fixed-d20 rule-template schema. `dice` must be `1d20`. `modifier` is a n
 
 Rules are guidance for the Interactive Agent when it decides whether to call `prepare_interactive_turn`; the actual tool performs one d20 check per turn. Do not store advantage/disadvantage in the template; the Agent chooses runtime `roll_mode` from current character state. `modifier` is tool-side fixed difficulty correction, not prose guidance. Put reusable state-mutation principles in `state_effect_guidance`; concrete numeric changes still belong in the turn outcome or state-system tools.
 
-When writing the director back, use `write_story_directors` with the complete updated director object, preserve unrelated `module_refs`, and include a concise change message. When writing event cards, use `write_event_packages` with the complete updated package object.
+When writing the director back, use `write_story_directors` with the complete updated director object, preserve unrelated `module_refs`, and include a concise change message.

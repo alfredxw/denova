@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"os/exec"
@@ -52,7 +53,16 @@ func (s *agentStreamingShell) ExecuteStreaming(ctx context.Context, input *files
 		return nil, fmt.Errorf("background shell execution is disabled because its lifetime cannot be coordinated with workspace writes; run the command in the foreground")
 	}
 
-	cmd, stdout, stderr, err := s.initCommand(ctx, input.Command)
+	// Unescape HTML entities that local models sometimes emit in tool arguments
+	// (e.g. &amp;&amp; instead of &&).
+	command := input.Command
+	if strings.Contains(command, "&") {
+		if unescaped := html.UnescapeString(command); unescaped != command {
+			command = unescaped
+		}
+	}
+
+	cmd, stdout, stderr, err := s.initCommand(ctx, command)
 	if err != nil {
 		return nil, err
 	}

@@ -119,17 +119,15 @@ func (b *agentFilesystemBackend) ReadFileSelection(ctx context.Context, req *fil
 	if err != nil {
 		return "", err
 	}
-	var file *os.File
-	if b.workspace != "" {
-		root, rootErr := os.OpenRoot(b.workspace)
-		if rootErr != nil {
-			return "", rootErr
-		}
-		defer root.Close()
-		file, err = root.Open(filepath.FromSlash(rel))
-	} else {
-		file, err = os.Open(filePath)
+	offset, limit := normalizeWorkspaceReadWindow(req.Offset, req.Limit)
+
+	// Full-file reads (offset=1, large limit) can skip re-reading disk when
+	// the file hasn't changed since the last read.
+	if cached, ok := b.cache.get(filePath); ok {
+		return applyFileWindow(cached, offset, limit)
 	}
+
+	file, err := openWorkspaceFile(b.workspace, rel)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", fmt.Errorf("file not found: %s", filePath)
@@ -137,7 +135,75 @@ func (b *agentFilesystemBackend) ReadFileSelection(ctx context.Context, req *fil
 		return "", fmt.Errorf("failed to open file: %w", err)
 	}
 	defer file.Close()
-	return selectWorkspaceFileWindow(ctx, file, req.Offset, req.Limit)
+
+	content, err := selectWorkspaceFileWindow(ctx, file, offset, limit)
+	if err != nil {
+		return "", err
+	}
+	// Cache only full-file reads under the per-entry size threshold.
+	if offset == 1 && limit >= agentFileReadDefaultLimitLines && len(content) <= workspaceReadFileMaxSelectedBytes/2 {
+		b.cache.set(filePath, content)
+	}
+	return content, nil
+}
+
+// applyFileWindow slices cached full-file content by offset and limit.
+func applyFileWindow(full string, offset, limit int) (string, error) {
+	lines := strings.Split(full, "\n")
+	start := offset - 1
+	if start < 0 {
+		start = 0
+	}
+	if start >= len(lines) {
+		return "", nil
+	}
+	end := start + limit
+	if end > len(lines) {
+		end = len(lines)
+	}
+	return strings.Join(lines[start:end], "\n"), nil
+}
+
+// openWorkspaceFile opens a workspace-relative file, trying normalized path
+// variants when the original path is not found. This tolerates common model
+// path construction errors such as inserting spaces around dashes (e.g.
+// "卷一 - 名称" instead of "卷一-名称").
+func openWorkspaceFile(workspace, rel string) (*os.File, error) {
+	candidates := []string{rel}
+	if alt := normalizeWorkspaceFilePath(rel); alt != rel {
+		candidates = append(candidates, alt)
+	}
+	var lastErr error
+	for _, candidate := range candidates {
+		var f *os.File
+		var err error
+		if workspace != "" {
+			root, rootErr := os.OpenRoot(workspace)
+			if rootErr != nil {
+				return nil, rootErr
+			}
+			f, err = root.Open(filepath.FromSlash(candidate))
+			// os.Root.Open 返回的 *os.File 独立于 root，关闭 root 不影响已打开的文件。
+			root.Close()
+		} else {
+			fullPath := filepath.Join(workspace, filepath.FromSlash(candidate))
+			f, err = os.Open(fullPath)
+		}
+		if err == nil {
+			return f, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
+// normalizeWorkspaceFilePath returns a path with common model construction
+// errors corrected: spaces around dashes are collapsed (e.g. "卷 - 名" → "卷-名").
+func normalizeWorkspaceFilePath(rel string) string {
+	normalized := strings.ReplaceAll(rel, " - ", "-")
+	normalized = strings.ReplaceAll(normalized, " -", "-")
+	normalized = strings.ReplaceAll(normalized, "- ", "-")
+	return normalized
 }
 
 func selectWorkspaceFileWindow(ctx context.Context, source io.Reader, offset, limit int) (string, error) {

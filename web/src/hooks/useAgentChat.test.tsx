@@ -113,4 +113,17 @@ describe('useAgentChat submitted references', () => {
     await waitFor(() => expect(result.current.references).toEqual(['chapters/ch01.md']))
     expect(onSubmissionError).toHaveBeenCalledTimes(1)
   })
+
+  it('uses the latest plan mode when switching and sending immediately', async () => {
+    chatMock.sendMessage.mockResolvedValue(undefined)
+    const { result } = renderHook(() => useAgentChat())
+
+    await act(async () => {
+      result.current.setPlanMode(true)
+      await result.current.send('请按计划执行')
+    })
+
+    const sendOptions = chatMock.sendMessage.mock.calls[0]?.[1]
+    expect((sendOptions?.body as Record<string, unknown>)?.plan_mode).toBe(true)
+  })
 })

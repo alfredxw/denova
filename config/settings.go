@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -368,6 +369,11 @@ type LayeredSettings struct {
 
 var ErrSettingsRevisionConflict = errors.New("配置已被其他操作更新，请重新加载后再保存")
 
+// ErrSettingsUnchanged is a sentinel error (not a real failure) indicating the
+// serialized settings are identical to the existing file content. Callers should
+// treat it as a successful no-op and skip save-success logging.
+var ErrSettingsUnchanged = errors.New("配置内容未变化，跳过写入")
+
 // SettingsPaths 是设置页只读展示的真实配置路径。
 type SettingsPaths struct {
 	DenovaDir       string `json:"denova_dir"`
@@ -417,6 +423,7 @@ func WriteSettingsFile(path string, s Settings) error {
 }
 
 // WriteSettingsFileIfRevision 写入配置；expectedRevision 非空时要求磁盘文件未被外部改动。
+// 当序列化内容与磁盘现有内容完全一致时跳过写入，避免频繁空写。
 func WriteSettingsFileIfRevision(path string, s Settings, expectedRevision string) error {
 	if expectedRevision != "" {
 		current, err := SettingsFileRevision(path)
@@ -427,12 +434,16 @@ func WriteSettingsFileIfRevision(path string, s Settings, expectedRevision strin
 			return ErrSettingsRevisionConflict
 		}
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return fmt.Errorf("创建目录失败: %w", err)
-	}
-	data, err := toml.Marshal(sanitizeEditableSettings(s))
+	s = sanitizeEditableSettings(s)
+	data, err := toml.Marshal(s)
 	if err != nil {
 		return fmt.Errorf("序列化失败: %w", err)
+	}
+	if existing, readErr := os.ReadFile(path); readErr == nil && bytes.Equal(existing, data) {
+		return ErrSettingsUnchanged
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("创建目录失败: %w", err)
 	}
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		return fmt.Errorf("写入 %s 失败: %w", path, err)

@@ -285,6 +285,17 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 			return newWebSearchTools()
 		},
 	})
+	toolRegistrations = append(toolRegistrations, agenttools.ToolRegistration{
+		Name:    "count_words",
+		Enabled: agenttools.CapabilityAllowed(config.AgentToolFileRead),
+		Build: func(agenttools.Settings) ([]tool.BaseTool, error) {
+			countTool, err := newCountWordsTool(workspace)
+			if err != nil {
+				return nil, fmt.Errorf("创建 count_words 工具失败: %w", err)
+			}
+			return []tool.BaseTool{countTool}, nil
+		},
+	})
 	assembly, err := agenttools.Build(ctx, agenttools.BuildRequest{
 		Settings:    settings,
 		Middlewares: middlewares,
@@ -418,9 +429,21 @@ func isTransientModelError(_ context.Context, err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(err.Error(), "429") ||
-		strings.Contains(err.Error(), "Too Many Requests") ||
-		strings.Contains(err.Error(), "qpm limit")
+	msg := err.Error()
+	// Rate limiting
+	if strings.Contains(msg, "429") ||
+		strings.Contains(msg, "Too Many Requests") ||
+		strings.Contains(msg, "qpm limit") {
+		return true
+	}
+	// Provider-side tool call JSON parse errors (e.g., llama-server)
+	// These are recoverable — the model just needs to regenerate.
+	if strings.Contains(msg, "Failed to parse tool call") ||
+		strings.Contains(msg, "status code: 500") ||
+		strings.Contains(msg, "500 Internal Server Error") {
+		return true
+	}
+	return false
 }
 
 func buildSubAgentInstruction(parent deepAgentSpec, sub config.SubAgentConfig) string {

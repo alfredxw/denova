@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	localbk "github.com/cloudwego/eino-ext/adk/backend/local"
 	"github.com/cloudwego/eino/adk/filesystem"
@@ -159,4 +160,86 @@ func readFile(t *testing.T, filePath string) string {
 		t.Fatal(err)
 	}
 	return string(content)
+}
+
+func TestFileReadCacheHitReturnsCachedContent(t *testing.T) {
+	path := writeTempFile(t, "line one\nline two\nline three\n")
+	cache := newFileReadCache(fileReadCacheDefaultMaxBytes)
+	cache.set(path, "line one\nline two\nline three\n")
+
+	got, ok := cache.get(path)
+	if !ok {
+		t.Fatal("cache should return cached content")
+	}
+	if got != "line one\nline two\nline three\n" {
+		t.Fatalf("cached content = %q, want %q", got, "line one\nline two\nline three\n")
+	}
+}
+
+func TestFileReadCacheMissesWhenFileModified(t *testing.T) {
+	path := writeTempFile(t, "original\n")
+	cache := newFileReadCache(fileReadCacheDefaultMaxBytes)
+	cache.set(path, "original\n")
+
+	// Modify the file on disk
+	time.Sleep(10 * time.Millisecond) // ensure mtime changes on fast filesystems
+	if err := os.WriteFile(path, []byte("modified\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := cache.get(path); ok {
+		t.Fatal("cache should miss when file mtime changed")
+	}
+}
+
+func TestFileReadCacheEvictsLRUWhenFull(t *testing.T) {
+	dir := t.TempDir()
+	cache := newFileReadCache(20) // tiny cache, only ~20 bytes
+
+	// Write two files, each ~15 bytes of content (total ~30 > 20)
+	path1 := filepath.Join(dir, "a.txt")
+	path2 := filepath.Join(dir, "b.txt")
+	writeFile(t, path1, "aaaaaaaaaaaaaaa\n")
+	writeFile(t, path2, "bbbbbbbbbbbbbbb\n")
+
+	cache.set(path1, "aaaaaaaaaaaaaaa\n")
+	cache.set(path2, "bbbbbbbbbbbbbbb\n")
+
+	// The first entry should have been evicted
+	if _, ok := cache.get(path1); ok {
+		t.Fatal("oldest entry should be evicted when cache overflows")
+	}
+	// The second entry should still be present
+	if _, ok := cache.get(path2); !ok {
+		t.Fatal("newer entry should remain in cache")
+	}
+}
+
+func TestApplyFileWindowSlicesByOffsetAndLimit(t *testing.T) {
+	full := "line1\nline2\nline3\nline4\nline5"
+	got, err := applyFileWindow(full, 2, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "line2\nline3" {
+		t.Fatalf("window [2,2] = %q, want %q", got, "line2\nline3")
+	}
+}
+
+func TestApplyFileWindowClampsToEnd(t *testing.T) {
+	full := "a\nb\nc"
+	got, err := applyFileWindow(full, 2, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "b\nc" {
+		t.Fatalf("window beyond end = %q, want %q", got, "b\nc")
+	}
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }

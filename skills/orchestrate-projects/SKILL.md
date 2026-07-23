@@ -1,32 +1,30 @@
 ---
 name: orchestrate-projects
-description: Use when the user wants Codex to coordinate a long-running or multi-milestone project, especially when work may span threads, subagents, reviews, local browser/desktop checks, or persistent Goal-mode objectives.
+description: 协调长期或多里程碑创作项目，跨会话追踪目标、委派子任务并验证成果。Coordinate long-running or multi-milestone creative projects with goal tracking, delegation, and evidence-based completion.
 agent: ide
 ---
 
 # Orchestrate Projects
 
-Coordinate long-running work around current evidence, not the first plan.
+围绕当前证据协调长期创作工作，而非固守最初的计划。
 
-## Workflow
+## 工作流程
 
-1. Start conversationally. Interview the user for goal, constraints, risks, success evidence, and any local-only requirements before turning rough ideas into a plan.
-2. For projects with multiple milestones, create or update `GOALS.md` as the shared roadmap. Organize each milestone by outcome, scope, decisions, blockers, and evidence required.
-3. Keep one active objective at a time. If Goal mode is available, set the current objective from the active milestone and define what evidence is required before marking it complete.
-4. Keep the main thread focused on coordination: objective, constraints, decisions, current state, delegation, and result evaluation.
-5. Delegate bounded implementation, research, testing, or review to subagents or separate threads. Use separate threads when the user may want visible history or later continuation; use subagents for disposable bounded work.
-6. Require workers to return conclusions, changed files, evidence, blockers, and recommended next action. Do not pull full transcripts, large logs, or unrelated details back into the coordinator context.
-7. After each milestone, audit `GOALS.md` against the actual repository state and run a code review when implementation changed. Update the roadmap before activating the next objective.
-8. Use local threads for checks that need the user's machine: signed-in browser state, credentials, desktop apps, permissions, simulators, or device-specific behavior. Feed screenshots, logs, and findings back into the main thread.
-9. When project state changes, report only:
-   - What's done
-   - What's next
-   - Any blockers
-10. For projects with several milestones or parallel workstreams, maintain `progress-dashboard.html` with active goal, milestone status, evidence, blockers, decisions, and recent updates.
+1. 先以对话方式了解用户的目标、约束、风险、成功标准和特殊要求，再将粗略想法转化为计划。
+2. 对多里程碑项目，创建或更新 `GOALS.md` 作为共享路线图。每个里程碑按成果、范围、决策、阻断项和所需证据组织。
+3. 同一时间只保留一个活跃目标。定义完成该目标所需的证据。
+4. 主线程聚焦于协调：目标、约束、决策、当前状态、委派和结果评估。
+5. 将有界的实现、研究、测试或审稿工作委派给 subagent。使用 `task` 工具时写清角色名、目标、上下文来源、允许/禁止写入和期望交付物。
+6. 要求执行者返回结论、变更文件、证据、阻断项和建议下一步。不要把完整记录、大段日志或无关细节拉回协调上下文。
+7. 每个里程碑完成后，对照实际工作区状态审计 `GOALS.md`，并在实现发生变更时进行代码/内容审查。激活下一个目标前更新路线图。
+8. 项目状态变化时，只报告：
+   - 已完成什么
+   - 下一步是什么
+   - 阻断项
 
-## Constraints
+## 约束
 
-- Revise the roadmap when new evidence changes the plan; do not preserve stale assumptions.
-- Do not declare a milestone complete until the agreed evidence exists.
-- Keep injected context bounded and source-labeled; summarize worker findings instead of copying full histories or logs.
-- Ask the user for decisions only when the next step is risky, blocked, or materially changes scope.
+- 当新证据改变计划时修订路线图，不保留过时的假设。
+- 在约定的证据存在之前，不宣布里程碑完成。
+- 注入的上下文必须有界且标注来源；总结执行者的发现，而非复制完整历史或日志。
+- 只在下一步有风险、被阻断或实质性改变范围时才请求用户决策。

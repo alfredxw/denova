@@ -161,6 +161,11 @@ function normalizeRepeatedAgentUIParts(messages: AgentUIMessage[]) {
         return
       }
       const existingMessage = normalized[existing.messageIndex]
+      const existingPart = existingMessage.parts[existing.partIndex]
+      if (!canMergeAgentUIParts(existingPart, part)) {
+        locationByKey.set(`${key}#${messageIndex}:${partIndex}`, { messageIndex, partIndex })
+        return
+      }
       existingMessage.parts[existing.partIndex] = mergeDuplicateAgentUIPart(existingMessage.parts[existing.partIndex], part)
       existingMessage.metadata = mergeAgentMessageMetadata(existingMessage.metadata, message.metadata)
       removed.add(`${messageIndex}:${partIndex}`)
@@ -244,18 +249,52 @@ function mergeDuplicateAgentUIPart(existing: AgentUIMessage['parts'][number], in
   const incomingRaw = incoming as Record<string, unknown>
   const type = readString(incomingRaw.type)
   if (type === 'dynamic-tool' || type.startsWith('tool-')) {
-    return toolPartStateRank(readString(incomingRaw.state)) >= toolPartStateRank(readString(existingRaw.state))
+    const incomingRank = toolPartStateRank(readString(incomingRaw.state))
+    const existingRank = toolPartStateRank(readString(existingRaw.state))
+    if (incomingRank > existingRank) return incoming
+    if (incomingRank < existingRank) return existing
+    return toolPartPayloadScore(incomingRaw) >= toolPartPayloadScore(existingRaw)
       ? incoming
       : existing
   }
   if (isAgentDataPartType(type)) {
     const incomingStatus = readString(objectData(incomingRaw.data).status)
     const existingStatus = readString(objectData(existingRaw.data).status)
-    return dataPartStatusRank(incomingStatus) >= dataPartStatusRank(existingStatus)
+    const incomingRank = dataPartStatusRank(incomingStatus)
+    const existingRank = dataPartStatusRank(existingStatus)
+    if (incomingRank > existingRank) return incoming
+    if (incomingRank < existingRank) return existing
+    return dataPartPayloadScore(incomingRaw) >= dataPartPayloadScore(existingRaw)
       ? incoming
       : existing
   }
+  if (type === 'text' || type === 'reasoning') {
+    const incomingText = readString(incomingRaw.text)
+    const existingText = readString(existingRaw.text)
+    if (incomingText.length > existingText.length) return incoming
+    if (incomingText.length < existingText.length) return existing
+    const incomingDone = readString(incomingRaw.state) === 'done'
+    const existingDone = readString(existingRaw.state) === 'done'
+    if (incomingDone && !existingDone) return incoming
+    if (!incomingDone && existingDone) return existing
+    return incoming
+  }
   return incoming
+}
+
+function canMergeAgentUIParts(existing: AgentUIMessage['parts'][number], incoming: AgentUIMessage['parts'][number]) {
+  const existingRaw = existing as Record<string, unknown>
+  const incomingRaw = incoming as Record<string, unknown>
+  const existingType = readString(existingRaw.type)
+  const incomingType = readString(incomingRaw.type)
+  if (existingType !== incomingType) return false
+  if (incomingType !== 'text' && incomingType !== 'reasoning') return true
+  const existingText = readString(existingRaw.text).trim()
+  const incomingText = readString(incomingRaw.text).trim()
+  if (!existingText || !incomingText) return true
+  return existingText === incomingText
+    || existingText.startsWith(incomingText)
+    || incomingText.startsWith(existingText)
 }
 
 function mergeAgentMessageMetadata(left?: AgentMessageMetadata, right?: AgentMessageMetadata): AgentMessageMetadata | undefined {
@@ -278,6 +317,36 @@ function dataPartStatusRank(status: string) {
   return 0
 }
 
+function toolPartPayloadScore(raw: Record<string, unknown>) {
+  return valueScore(raw.input)
+    + valueScore(raw.output)
+    + readString(raw.errorText).length
+    + readString(raw.state).length
+}
+
+function dataPartPayloadScore(raw: Record<string, unknown>) {
+  const data = objectData(raw.data)
+  return readString(raw.id).length
+    + readString(raw.type).length
+    + readString(data.content).length
+    + readString(data.message).length
+    + readString(data.error).length
+    + readString(data.status).length
+    + valueScore(data.result)
+    + valueScore(data.plan_action)
+}
+
+function valueScore(value: unknown) {
+  if (value === null || value === undefined) return 0
+  if (typeof value === 'string') return value.length
+  try {
+    const serialized = JSON.stringify(value)
+    return serialized ? serialized.length : 1
+  } catch {
+    return 1
+  }
+}
+
 function textFingerprint(value: string) {
   let hash = 0
   for (let index = 0; index < value.length; index += 1) {
@@ -287,7 +356,9 @@ function textFingerprint(value: string) {
 }
 
 function contentPrefixFingerprint(value: string) {
-  const prefix = value.length > 24 ? value.slice(0, 24) : value
+  const prefixRunes = 24
+  const runes = [...value]
+  const prefix = runes.length > prefixRunes ? runes.slice(0, prefixRunes).join('') : value
   return textFingerprint(prefix)
 }
 

@@ -60,6 +60,8 @@ type CommandScope = 'all' | 'skills' | 'none'
 type BuiltinCommand = typeof COMMANDS[number]['cmd']
 const MAX_TOKEN_USAGE_MENU_COUNT = 10
 const inputDrafts = new Map<string, string>()
+const submittedPromptHistory = new Map<string, string>()
+const defaultDraftHistoryKey = '__default__'
 
 interface InputAreaProps {
   onSend: (message: string) => boolean | void | Promise<boolean | void>
@@ -159,6 +161,7 @@ export function InputArea({
   const inputRef = useRef<ComposerTokenInputHandle>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const submittingRef = useRef(false)
+  const draftHistoryKey = draftKey || defaultDraftHistoryKey
   const commandItemRefs = useRef<Array<HTMLDivElement | null>>([])
   const effectiveCommandScope: CommandScope = commandsEnabled ? commandScope : 'none'
   const defaultPlaceholder = skills.length > 0 && effectiveCommandScope !== 'none'
@@ -314,6 +317,34 @@ export function InputArea({
     const isMod = e.metaKey || e.ctrlKey
     const canPickCommand = effectiveCommandScope !== 'none' && showCommands && filteredCommands.length > 0
 
+    if (
+      e.key === 'ArrowUp'
+      && !isMod
+      && !e.altKey
+      && !e.shiftKey
+      && !disabled
+      && !showCommands
+      && referenceQuery === null
+      && styleSceneQuery === null
+      && value.trim() === ''
+    ) {
+      const previousPrompt = submittedPromptHistory.get(draftHistoryKey)
+      if (previousPrompt) {
+        e.preventDefault()
+        setValue(previousPrompt)
+        setCommandQuery(null)
+        setShowCommands(false)
+        setActiveCommandIndex(0)
+        setReferenceQuery(null)
+        setStyleSceneQuery(null)
+        window.requestAnimationFrame(() => {
+          inputRef.current?.focus()
+          inputRef.current?.setSelectionRange(previousPrompt.length, previousPrompt.length)
+        })
+        return true
+      }
+    }
+
     if (e.key === 'Tab' && e.shiftKey && onTogglePlanMode && !disabled) {
       e.preventDefault()
       onTogglePlanMode()
@@ -410,7 +441,11 @@ export function InputArea({
     setStyleSceneQuery(null)
     if (result && typeof (result as PromiseLike<boolean | void>).then === 'function') {
       void Promise.resolve(result).then((accepted) => {
-        if (accepted === false) setValue((current) => current || submittedValue)
+        if (accepted === false) {
+          setValue((current) => current || submittedValue)
+          return
+        }
+        submittedPromptHistory.set(draftHistoryKey, trimmed)
       }).catch(() => {
         setValue((current) => current || submittedValue)
       }).finally(() => {
@@ -422,6 +457,7 @@ export function InputArea({
       submittingRef.current = false
       setSubmitting(false)
     } else {
+      submittedPromptHistory.set(draftHistoryKey, trimmed)
       submittingRef.current = false
       setSubmitting(false)
     }

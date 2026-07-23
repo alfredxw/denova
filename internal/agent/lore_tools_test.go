@@ -128,6 +128,18 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	if !strings.Contains(readOutput, "完整正文不应出现在索引里") {
 		t.Fatalf("read_lore_items should resolve unique names:\n%s", readOutput)
 	}
+
+	// Mixed ids and names in a single call should work and deduplicate.
+	mixedOutput, err := readTool.InvokableRun(context.Background(), `{"ids":["hero"],"names":["林川"]}`)
+	if err != nil {
+		t.Fatalf("read_lore_items should accept mixed ids and names: %v", err)
+	}
+	if !strings.Contains(mixedOutput, "完整正文不应出现在索引里") {
+		t.Fatalf("mixed ids+names should return content:\n%s", mixedOutput)
+	}
+	if strings.Count(mixedOutput, "ID：hero") != 1 {
+		t.Fatalf("mixed ids+names should deduplicate by ID:\n%s", mixedOutput)
+	}
 }
 
 func TestListLoreItemsFiltersByResidentLoadMode(t *testing.T) {
