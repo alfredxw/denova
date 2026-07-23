@@ -228,6 +228,12 @@ func (a *App) Close() {
 	if a.automationTriggers != nil {
 		a.automationTriggers.Close()
 	}
+	a.mu.RLock()
+	versionService := a.versionService
+	a.mu.RUnlock()
+	if versionService != nil {
+		versionService.Close()
+	}
 	a.stopWorkspaceDirectorTasks()
 }
 

@@ -33,8 +33,6 @@ export interface Settings {
   chapter_group_max?: number | null
   version_timed_enabled?: boolean | null
   version_timed_interval_minutes?: number | null
-  version_agent_enabled?: boolean | null
-  version_agent_char_threshold?: number | null
   ui_font_family?: string
   ui_font_size?: number | null
   reading_font_family?: string

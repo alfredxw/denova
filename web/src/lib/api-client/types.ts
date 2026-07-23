@@ -503,8 +503,6 @@ export interface VersionEntry {
 interface VersionAutoInfo {
   timed_enabled: boolean
   timed_interval_minutes: number
-  agent_enabled: boolean
-  agent_char_threshold: number
   retention: number
   last_auto_at?: string
 }

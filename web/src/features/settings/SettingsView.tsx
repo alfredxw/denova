@@ -459,13 +459,8 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                    onChange={(v) => setField('version_timed_enabled', v)} />
           <Num label={t('settings.versions.timedInterval')} value={draft.version_timed_interval_minutes ?? null}
                placeholder={placeholderFor('version_timed_interval_minutes')}
+               min={1}
                onChange={(v) => setField('version_timed_interval_minutes', v)} />
-          <BoolTri label={t('settings.versions.agentAuto')} value={draft.version_agent_enabled ?? null}
-                   effective={effective.version_agent_enabled}
-                   onChange={(v) => setField('version_agent_enabled', v)} />
-          <Num label={t('settings.versions.agentThreshold')} value={draft.version_agent_char_threshold ?? null}
-               placeholder={placeholderFor('version_agent_char_threshold')}
-               onChange={(v) => setField('version_agent_char_threshold', v)} />
         </>
       ),
     },

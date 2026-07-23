@@ -312,6 +312,40 @@ describe('MarkdownEditor', () => {
     expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第二版\n', '')
   })
 
+  it('旧快照保存完成时新草稿仍等待自动保存，状态继续显示未保存', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<{ revision: string }>()
+    const onSave = vi.fn(() => firstSave.promise)
+
+    render(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content="初始"
+        revision="r1"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '第一版'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+      tiptapMock.markdown = '第二版'
+      tiptapMock.emit('update')
+    })
+
+    await act(async () => {
+      firstSave.resolve({ revision: 'r2' })
+      await firstSave.promise
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('内容有未保存改动')).toBeInTheDocument()
+  })
+
   it('前一次保存返回新 revision 后，排队的编辑在真正发送时沿用该 revision', async () => {
     vi.useFakeTimers()
     const firstSave = deferred<{ revision: string }>()
@@ -348,6 +382,64 @@ describe('MarkdownEditor', () => {
     expect(onSave).toHaveBeenCalledTimes(2)
     expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第二版\n', 'r2')
     expect(conflictArchiveMock.preserve).not.toHaveBeenCalled()
+  })
+
+  it('保存中的旧快照先回灌时仍保留手动保存的新草稿，且不误报并发修改', async () => {
+    vi.useFakeTimers()
+    const firstSave = deferred<{ revision: string }>()
+    const secondSave = deferred<{ revision: string }>()
+    const onSave = vi.fn((_path: string, content: string) => (
+      content === '第一版\n' ? firstSave.promise : secondSave.promise
+    ))
+    const { rerender } = render(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content="初始"
+        revision="r1"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '第一版'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+      tiptapMock.markdown = '第二版'
+      tiptapMock.emit('update')
+      fireEvent.click(screen.getByRole('button', { name: '保存' }))
+    })
+    expect(onSave).toHaveBeenCalledTimes(1)
+
+    // useWorkspace publishes the acknowledged file snapshot before its async
+    // save callback finishes (it still refreshes summary/version state).
+    rerender(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content={'第一版\n'}
+        revision="r2"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+
+    await act(async () => {
+      firstSave.resolve({ revision: 'r2' })
+      await firstSave.promise
+      await Promise.resolve()
+    })
+
+    expect(conflictArchiveMock.preserve).not.toHaveBeenCalled()
+    expect(onSave).toHaveBeenCalledTimes(2)
+    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '第二版\n', 'r2')
+    expect(screen.getByLabelText('正在保存')).toBeInTheDocument()
+
+    await act(async () => {
+      secondSave.resolve({ revision: 'r3' })
+      await secondSave.promise
+    })
   })
 
   it('切换 workspace 后丢弃旧工作区中尚未执行的保存', async () => {
@@ -1004,6 +1096,7 @@ describe('MarkdownEditor', () => {
     rerender(<MarkdownEditor fileName="chapters/ch01.md" content="Agent 新版本" onSave={onSave} autoSaveEnabled={false} />)
 
     expect(screen.getByRole('alert')).toHaveTextContent('检测到并发编辑')
+    expect(screen.getByRole('alert')).toHaveTextContent('自动保存已暂停')
     expect(conflictArchiveMock.preserve).toHaveBeenCalledOnce()
     expect(tiptapMock.chainApi.setContent).not.toHaveBeenCalledWith('Agent 新版本', expect.anything())
 
@@ -1014,7 +1107,7 @@ describe('MarkdownEditor', () => {
     expect(tiptapMock.chainApi.setContent).toHaveBeenLastCalledWith('Agent 新版本', { emitUpdate: false, contentType: 'markdown' })
   })
 
-  it('重叠修改归档后按原 afterDelay 自动保存默认合并结果并收起提示', async () => {
+  it('重叠修改归档后暂停自动保存，明确保留合并结果后才写入', async () => {
     vi.useFakeTimers()
     const onSave = vi.fn().mockResolvedValue({ revision: 'rev-3' })
     const { rerender } = render(
@@ -1045,10 +1138,81 @@ describe('MarkdownEditor', () => {
     )
 
     expect(screen.getByRole('alert')).toHaveTextContent('检测到并发编辑')
-    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+    expect(onSave).not.toHaveBeenCalled()
 
-    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '本地草稿\n', 'rev-2')
+    act(() => {
+      tiptapMock.markdown = '冲突后继续编辑'
+      tiptapMock.emit('update')
+    })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(onSave).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保留合并结果' }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '冲突后继续编辑\n', 'rev-2')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('自动保存收到重叠 revision 冲突时暂停，不在后台自动重试覆盖', async () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn((_path: string, _content: string, baseRevision: string) => {
+      if (baseRevision === 'rev-1') {
+        return Promise.reject(new WorkspaceFileRevisionConflictError(
+          new Error('revision conflict'),
+          {
+            workspace: '/books/demo',
+            content: 'Agent 新版本',
+            revision: 'rev-2',
+          },
+        ))
+      }
+      return Promise.resolve({ revision: 'rev-3' })
+    })
+    render(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content="初始"
+        revision="rev-1"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+
+    act(() => {
+      tiptapMock.markdown = '本地草稿'
+      tiptapMock.emit('update')
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(onSave).toHaveBeenCalledTimes(1)
+    expect(conflictArchiveMock.preserve).toHaveBeenCalledOnce()
+    expect(screen.getByRole('alert')).toHaveTextContent('自动保存已暂停')
+
+    act(() => {
+      tiptapMock.markdown = '冲突后继续编辑'
+      tiptapMock.emit('update')
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(onSave).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保留合并结果' }))
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(onSave).toHaveBeenLastCalledWith('chapters/ch01.md', '冲突后继续编辑\n', 'rev-2')
   })
 
   it('保留合并结果会显式保存，失败时保留冲突提示以便重试', async () => {

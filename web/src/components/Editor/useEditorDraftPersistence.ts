@@ -3,15 +3,12 @@ import type { Editor } from '@tiptap/core'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 
-import { preserveAutosaveConflict, type PreservedAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
+import type { PreservedAutosaveConflict } from '@/lib/api-client/autosave-conflicts'
 import { rebaseTextWithConflicts } from '@/lib/three-way-rebase'
-import {
-  AUTOSAVE_CONFLICT_PRESERVED_EVENT,
-  type AutosaveConflictPreservedDetail,
-} from '@/lib/autosave/rebase-with-recovery'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 import { useSaveLane } from '@/hooks/use-save-lane'
 import type { SaveStatus } from './EditorToolbar'
+import { preserveEditorConflict } from './editorConflictRecovery'
 import { readEditorText } from './editorDocument'
 
 export type EditorFlushHandler = () => Promise<boolean>
@@ -36,6 +33,12 @@ type PendingSaveBatch = {
 type SavedEditorRequest = {
   request: PendingSave
   revision: string
+}
+
+type LocalSaveEcho = {
+  content: string
+  /** null while the parent save callback can already publish this snapshot. */
+  revision: string | null
 }
 
 type EditorSaveResult = {
@@ -119,51 +122,6 @@ function normalizeAutoSaveDelayMs(value: number | undefined): number {
   return Math.floor(value)
 }
 
-interface PreserveEditorConflictOptions {
-  workspace: string
-  fileName: string
-  baseContent: string
-  baseRevision: string
-  localContent: string
-  externalContent: string
-  externalRevision: string
-  mergedContent: string
-  conflictPaths: string[][]
-}
-
-async function preserveEditorConflict({
-  workspace,
-  fileName,
-  baseContent,
-  baseRevision,
-  localContent,
-  externalContent,
-  externalRevision,
-  mergedContent,
-  conflictPaths,
-}: PreserveEditorConflictOptions): Promise<PreservedAutosaveConflict> {
-  const saved = await preserveAutosaveConflict({
-    resource: 'workspace_file',
-    scope: workspace || 'editor',
-    id: fileName,
-    base: { revision: baseRevision, value: baseContent },
-    local: { revision: baseRevision, value: localContent },
-    external: { revision: externalRevision, value: externalContent },
-    merged: { revision: externalRevision, value: mergedContent },
-    strategy: 'merge_non_overlap_prefer_local',
-    conflict_paths: conflictPaths,
-  })
-  window.dispatchEvent(new CustomEvent<AutosaveConflictPreservedDetail>(AUTOSAVE_CONFLICT_PRESERVED_EVENT, {
-    detail: {
-      ...saved,
-      resource: 'workspace_file',
-      scope: workspace || 'editor',
-      resourceID: fileName,
-    },
-  }))
-  return saved
-}
-
 /** Editor adapter: TipTap/external-sync concerns stay here; timing and serialization live in SaveLane. */
 export function useEditorDraftPersistence({
   workspace,
@@ -196,7 +154,7 @@ export function useEditorDraftPersistence({
   const dirtyRef = useRef(false)
   const externalConflictRef = useRef<ExternalContentConflict | null>(null)
   const recoveryRef = useRef<ConflictRecovery | null>(null)
-  const localSaveEchoesRef = useRef(new Map<string, { content: string; revision: string }>())
+  const localSaveEchoesRef = useRef(new Map<string, LocalSaveEcho>())
   const confirmedSnapshotsRef = useRef(new Map<string, { content: string; revision: string }>())
   // SaveLane remains latest-only; the editor adapter's value is a keyed batch
   // so coalescing one document never discards a different document.
@@ -223,22 +181,79 @@ export function useEditorDraftPersistence({
     }, delay)
   }, [clearSaveStatusTimer])
 
+  const updateExternalConflict = useCallback((next: ExternalContentConflict | null) => {
+    externalConflictRef.current = next
+    setExternalConflict(next)
+  }, [])
+
+  const archiveConflict = useCallback((
+    conflict: ExternalContentConflict,
+    baselineContent: string,
+    baselineRevision: string,
+    externalRevision: string,
+    conflictPaths: string[][] = [[]],
+  ) => {
+    const key = documentSaveKey(conflict.workspace, conflict.fileName)
+    const retry = (): Promise<PreservedAutosaveConflict> => {
+      const promise = preserveEditorConflict({
+        workspace: conflict.workspace,
+        fileName: conflict.fileName,
+        baseContent: baselineContent,
+        baseRevision: baselineRevision,
+        localContent: conflict.localContent,
+        externalContent: conflict.externalContent,
+        externalRevision,
+        mergedContent: conflict.mergedContent,
+        conflictPaths,
+      })
+      recoveryRef.current = { key, promise, retry }
+      void promise.then(saved => {
+        const active = externalConflictRef.current
+        if (!active || documentSaveKey(active.workspace, active.fileName) !== key) return
+        updateExternalConflict({ ...active, recoveryID: saved.id, recoveryPath: saved.path })
+      }).catch(error => {
+        if (recoveryRef.current?.key === key && recoveryRef.current.promise === promise) {
+          recoveryRef.current = { key, promise: null, retry }
+        }
+        console.error('[useEditorDraftPersistence.ts] failed to preserve concurrent editor versions', {
+          workspace: conflict.workspace,
+          path: conflict.fileName,
+          error,
+        })
+        if (workspaceRef.current === conflict.workspace && fileNameRef.current === conflict.fileName) {
+          setSaveStatus('error')
+          toast.error(tRef.current('editor.externalConflict.archiveFailed'))
+        }
+      })
+      return promise
+    }
+    return retry()
+  }, [updateExternalConflict])
+
   const applySavedResults = (results: SavedEditorRequest[]) => {
     for (const { request, revision: savedRevision } of results) {
       if (workspaceRef.current !== request.workspace || fileNameRef.current !== request.fileName) continue
       lastSyncedContentRef.current = request.text
       lastSyncedRevisionRef.current = savedRevision
-      if (editor && !editor.isDestroyed && readEditorText(editor, request.fileName) === request.text) dirtyRef.current = false
-      const conflict = externalConflictRef.current
-      if (conflict && conflict.workspace === request.workspace && conflict.fileName === request.fileName) {
-        externalConflictRef.current = null
-        recoveryRef.current = null
-        setExternalConflict(null)
-        setExternalConflictSaving(false)
+      const submittedSnapshotIsCurrent = !editor
+        || editor.isDestroyed
+        || readEditorText(editor, request.fileName) === request.text
+      dirtyRef.current = !submittedSnapshotIsCurrent
+      if (submittedSnapshotIsCurrent) {
+        const conflict = externalConflictRef.current
+        if (conflict && conflict.workspace === request.workspace && conflict.fileName === request.fileName) {
+          externalConflictRef.current = null
+          recoveryRef.current = null
+          setExternalConflict(null)
+          setExternalConflictSaving(false)
+        }
+        const status: SaveStatus = request.mode === 'auto' ? 'auto-saved' : 'manual-saved'
+        setSaveStatus(status)
+        scheduleSaveStatusClear(status, request.mode === 'auto' ? 1400 : 2000)
+      } else {
+        clearSaveStatusTimer()
+        setSaveStatus('dirty')
       }
-      const status: SaveStatus = request.mode === 'auto' ? 'auto-saved' : 'manual-saved'
-      setSaveStatus(status)
-      scheduleSaveStatusClear(status, request.mode === 'auto' ? 1400 : 2000)
     }
   }
 
@@ -248,8 +263,52 @@ export function useEditorDraftPersistence({
     save: async ({ value: batch }) => {
       const results: SavedEditorRequest[] = []
       const failures: FailedEditorRequest[] = []
+      const pauseAutoSaveForConflict = async (
+        request: PendingSave,
+        key: string,
+        externalContent: string,
+        externalRevision: string,
+        merged: ReturnType<typeof rebaseTextWithConflicts>,
+        active: boolean,
+      ) => {
+        if (request.mode !== 'auto' || merged.conflicts.length === 0) return false
+        const conflict: ExternalContentConflict = {
+          workspace: request.workspace,
+          fileName: request.fileName,
+          localContent: request.text,
+          externalContent,
+          mergedContent: merged.value,
+        }
+        if (active) {
+          lastSyncedContentRef.current = externalContent
+          lastSyncedRevisionRef.current = externalRevision
+          dirtyRef.current = true
+          if (!editor || editor.isDestroyed || merged.value !== readEditorText(editor, request.fileName)) {
+            applyExternalContent(request.fileName, merged.value, { resetHistory: false, preserveSelection: true })
+          }
+          clearSaveStatusTimer()
+          setSaveStatus('dirty')
+          updateExternalConflict(conflict)
+          setExternalConflictSaving(false)
+          onExternalConflict?.({
+            fileName: request.fileName,
+            localContent: request.text,
+            externalContent,
+          })
+        }
+        await archiveConflict(
+          conflict,
+          request.baseContent,
+          request.baseRevision,
+          externalRevision,
+          merged.conflicts.map(item => item.path),
+        )
+        if (queuedRequestsRef.current.get(key) === request) queuedRequestsRef.current.delete(key)
+        return true
+      }
       for (const request of batch.requests) {
         const key = documentSaveKey(request.workspace, request.fileName)
+        let localSaveEcho: LocalSaveEcho | null = null
         if (queuedRequestsRef.current.get(key) !== request) continue
         try {
           if (request.recovery) await request.recovery
@@ -269,6 +328,10 @@ export function useEditorDraftPersistence({
               rebasedAgainstNewerBaseline = true
               const merged = rebaseTextWithConflicts(request.baseContent, request.text, confirmed.content)
               if (merged.conflicts.length > 0) {
+                if (await pauseAutoSaveForConflict(request, key, confirmed.content, confirmed.revision, merged, active)) {
+                  superseded = true
+                  break
+                }
                 await preserveEditorConflict({
                   workspace: request.workspace,
                   fileName: request.fileName,
@@ -291,9 +354,19 @@ export function useEditorDraftPersistence({
             }
 
             try {
+              // The owner may publish its canonical file state before the async
+              // save callback resolves (for example while refreshing summaries).
+              // Register the submitted snapshot first so that render is treated
+              // as our own acknowledgement instead of an external concurrent edit.
+              localSaveEcho = { content: request.text, revision: null }
+              localSaveEchoesRef.current.set(key, localSaveEcho)
               response = await request.save(request.fileName, request.text, request.baseRevision)
               break
             } catch (error) {
+              if (localSaveEchoesRef.current.get(key) === localSaveEcho) {
+                localSaveEchoesRef.current.delete(key)
+              }
+              localSaveEcho = null
               if (!(error instanceof WorkspaceFileRevisionConflictError)
                 || error.latest.workspace !== request.workspace
                 || attempt + 1 >= MAX_EDITOR_REVISION_SAVE_ATTEMPTS) {
@@ -312,6 +385,10 @@ export function useEditorDraftPersistence({
               }
               const merged = rebaseTextWithConflicts(request.baseContent, request.text, error.latest.content)
               if (merged.conflicts.length > 0) {
+                if (await pauseAutoSaveForConflict(request, key, error.latest.content, error.latest.revision, merged, active)) {
+                  superseded = true
+                  break
+                }
                 await preserveEditorConflict({
                   workspace: request.workspace,
                   fileName: request.fileName,
@@ -339,11 +416,10 @@ export function useEditorDraftPersistence({
           const nextRevision = typeof response === 'object' && response.revision
             ? response.revision
             : request.baseRevision
+          if (localSaveEcho && localSaveEchoesRef.current.get(key) === localSaveEcho) {
+            localSaveEcho.revision = nextRevision
+          }
           confirmedSnapshotsRef.current.set(key, { content: request.text, revision: nextRevision })
-          localSaveEchoesRef.current.set(key, {
-            content: request.text,
-            revision: nextRevision,
-          })
           const queuedAfterSave = queuedRequestsRef.current.get(key)
           if (queuedAfterSave && queuedAfterSave !== request && !rebasedAgainstNewerBaseline) {
             // This newer editor snapshot was created after the submitted text.
@@ -358,6 +434,9 @@ export function useEditorDraftPersistence({
           }
           results.push({ request: { ...request }, revision: nextRevision })
         } catch (error) {
+          if (localSaveEcho && localSaveEchoesRef.current.get(key) === localSaveEcho) {
+            localSaveEchoesRef.current.delete(key)
+          }
           failures.push({ request, error })
         }
       }
@@ -436,11 +515,6 @@ export function useEditorDraftPersistence({
     resetLane(scopeKey)
   }, [resetLane])
 
-  const updateExternalConflict = useCallback((next: ExternalContentConflict | null) => {
-    externalConflictRef.current = next
-    setExternalConflict(next)
-  }, [])
-
   const pendingSave = useCallback((
     targetWorkspace: string,
     targetFile: string,
@@ -461,44 +535,6 @@ export function useEditorDraftPersistence({
       recovery,
     }
   }, [])
-
-  const archiveConflict = useCallback((conflict: ExternalContentConflict, baselineContent: string, baselineRevision: string, externalRevision: string) => {
-    const key = documentSaveKey(conflict.workspace, conflict.fileName)
-    const retry = (): Promise<PreservedAutosaveConflict> => {
-      const promise = preserveEditorConflict({
-        workspace: conflict.workspace,
-        fileName: conflict.fileName,
-        baseContent: baselineContent,
-        baseRevision: baselineRevision,
-        localContent: conflict.localContent,
-        externalContent: conflict.externalContent,
-        externalRevision,
-        mergedContent: conflict.mergedContent,
-        conflictPaths: [[]],
-      })
-      recoveryRef.current = { key, promise, retry }
-      void promise.then(saved => {
-        const active = externalConflictRef.current
-        if (!active || documentSaveKey(active.workspace, active.fileName) !== key) return
-        updateExternalConflict({ ...active, recoveryID: saved.id, recoveryPath: saved.path })
-      }).catch(error => {
-        if (recoveryRef.current?.key === key && recoveryRef.current.promise === promise) {
-          recoveryRef.current = { key, promise: null, retry }
-        }
-        console.error('[useEditorDraftPersistence.ts] failed to preserve concurrent editor versions', {
-          workspace: conflict.workspace,
-          path: conflict.fileName,
-          error,
-        })
-        if (workspaceRef.current === conflict.workspace && fileNameRef.current === conflict.fileName) {
-          setSaveStatus('error')
-          toast.error(tRef.current('editor.externalConflict.archiveFailed'))
-        }
-      })
-      return promise
-    }
-    return retry()
-  }, [updateExternalConflict])
 
   // Synchronize canonical props with the active editor. Dirty reloads are
   // rebased; only actual editor update events establish a new delay deadline.
@@ -523,11 +559,14 @@ export function useEditorDraftPersistence({
 
     const currentKey = fileName ? documentSaveKey(workspace, fileName) : ''
     const echo = currentKey ? localSaveEchoesRef.current.get(currentKey) : undefined
-    if (!fileChanged && echo && echo.content === content && (!revision || echo.revision === revision)) {
+    if (!fileChanged && echo && echo.content === content && (
+      echo.revision === null || !revision || echo.revision === revision
+    )) {
+      const acknowledgedRevision = revision || echo.revision || lastSyncedRevisionRef.current
       lastSyncedContentRef.current = content
-      lastSyncedRevisionRef.current = revision || echo.revision
+      lastSyncedRevisionRef.current = acknowledgedRevision
       localSaveEchoesRef.current.delete(currentKey)
-      confirmedSnapshotsRef.current.set(currentKey, { content, revision: revision || echo.revision })
+      confirmedSnapshotsRef.current.set(currentKey, { content, revision: acknowledgedRevision })
       if (readEditorText(editor, fileName) === content) dirtyRef.current = false
       workspaceRef.current = workspace
       fileNameRef.current = fileName
@@ -560,16 +599,18 @@ export function useEditorDraftPersistence({
         }
         updateExternalConflict(conflict)
         setExternalConflictSaving(false)
+        // 与 VS Code 的 dirty-write 防护一致：真实重叠出现后不再自动覆盖，
+        // 仅保留用户明确触发的“保留合并结果”或手动保存。
+        cancelDocumentSave(workspace, targetFile, true)
         archiveConflict(conflict, baselineContent, baselineRevision, revision)
         onExternalConflict?.({ fileName: targetFile, localContent, externalContent: content })
       } else {
         recoveryRef.current = null
         updateExternalConflict(null)
-      }
-
-      if (dirtyRef.current && autoSaveEnabledRef.current && targetFile) {
-        const next = pendingSave(workspace, targetFile, merged.value, 'auto')
-        queueSave(next, true)
+        if (dirtyRef.current && autoSaveEnabledRef.current && targetFile) {
+          const next = pendingSave(workspace, targetFile, merged.value, 'auto')
+          queueSave(next, true)
+        }
       }
       return
     }
@@ -610,7 +651,7 @@ export function useEditorDraftPersistence({
         scrollEl.style.visibility = ''
       })
     }
-  }, [applyExternalContent, archiveConflict, content, editor, editorContainerRef, fileName, flush, onExternalConflict, pendingSave, queueSave, resetQueuedSaves, revision, updateExternalConflict, workspace])
+  }, [applyExternalContent, archiveConflict, cancelDocumentSave, content, editor, editorContainerRef, fileName, flush, onExternalConflict, pendingSave, queueSave, resetQueuedSaves, revision, updateExternalConflict, workspace])
 
   useEffect(() => clearSaveStatusTimer, [clearSaveStatusTimer])
 
@@ -675,6 +716,8 @@ export function useEditorDraftPersistence({
       clearSaveStatusTimer()
       setSaveStatus('dirty')
       if (!autoSaveEnabledRef.current) return
+      const conflict = externalConflictRef.current
+      if (conflict?.workspace === workspaceRef.current && conflict.fileName === targetFile) return
       queueSave(pendingSave(
         workspaceRef.current,
         targetFile,

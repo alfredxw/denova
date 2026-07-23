@@ -6,7 +6,96 @@ import (
 	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 )
+
+func TestDefaultAutoSettingsEnablesAutomaticVersionsEveryTenMinutes(t *testing.T) {
+	settings := DefaultAutoSettings()
+	if !settings.TimedEnabled {
+		t.Fatal("automatic versions should default on")
+	}
+	if settings.TimedIntervalMinutes != 10 {
+		t.Fatalf("automatic version interval=%d want=10", settings.TimedIntervalMinutes)
+	}
+}
+
+func TestScheduleAutoVersionDebouncesWorkspaceChanges(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	service.autoVersionIdleDelay = 30 * time.Millisecond
+	t.Cleanup(service.Close)
+	settings := DefaultAutoSettings()
+
+	writeFile(t, dir, "chapters/ch0001.md", "第一段")
+	service.ScheduleAutoVersion(settings)
+	time.Sleep(20 * time.Millisecond)
+	writeFile(t, dir, "chapters/ch0001.md", "第一段，继续写作")
+	service.ScheduleAutoVersion(settings)
+	time.Sleep(20 * time.Millisecond)
+
+	history, err := service.History(10)
+	if err != nil {
+		t.Fatalf("History before idle failed: %v", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("automatic version should wait for the latest idle period: %#v", history)
+	}
+
+	deadline := time.Now().Add(300 * time.Millisecond)
+	for len(history) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		history, err = service.History(10)
+		if err != nil {
+			t.Fatalf("History after idle failed: %v", err)
+		}
+	}
+	if len(history) != 1 || history[0].Source != VersionSourceTimer {
+		t.Fatalf("expected one automatic version after idle, got %#v", history)
+	}
+}
+
+func TestScheduleAutoVersionCanBeDisabled(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	service.autoVersionIdleDelay = 30 * time.Millisecond
+	t.Cleanup(service.Close)
+	settings := DefaultAutoSettings()
+
+	writeFile(t, dir, "chapters/ch0001.md", "不会自动创建版本")
+	service.ScheduleAutoVersion(settings)
+	settings.TimedEnabled = false
+	service.ConfigureAutoVersion(settings)
+	time.Sleep(60 * time.Millisecond)
+
+	history, err := service.History(10)
+	if err != nil {
+		t.Fatalf("History failed: %v", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("disabled automatic versions should not create history: %#v", history)
+	}
+}
+
+func TestMaybeCreateTimedHonorsConfiguredMinimumInterval(t *testing.T) {
+	dir := t.TempDir()
+	service := NewService(dir)
+	settings := DefaultAutoSettings()
+	settings.TimedIntervalMinutes = 20
+
+	writeFile(t, dir, "chapters/ch0001.md", "第一版")
+	first, err := service.MaybeCreateTimed(settings)
+	if err != nil || first.Version == nil {
+		t.Fatalf("create first automatic version: result=%#v err=%v", first, err)
+	}
+	writeFile(t, dir, "chapters/ch0001.md", "第二版")
+	second, err := service.MaybeCreateTimed(settings)
+	if err != nil {
+		t.Fatalf("check second automatic version: %v", err)
+	}
+	if !second.Skipped || second.RetryAfter < 19*time.Minute {
+		t.Fatalf("configured interval should defer the second version: %#v", second)
+	}
+}
 
 func TestGoGitVersionCreateDiffAndRestore(t *testing.T) {
 	dir := t.TempDir()

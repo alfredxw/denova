@@ -762,6 +762,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 	store := a.interactive
 	state := a.bookState
 	bookService := a.bookService
+	versionService := a.versionService
 	chatService := a.chatService
 	sessionStore := a.sessionStore
 	runtimeCfg := *a.cfg
@@ -885,16 +886,20 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, storyI
 			emit(event)
 		}
 		chatService.RunWithOptions(ctx, runner, conversation, bookService, req, agent.RunOptions{
-			AgentKind:           agent.AgentKindInteractiveStory,
-			TaskID:              task.ID(),
-			StoryID:             storyID,
-			BranchID:            conversation.branchID,
-			Workspace:           workspace,
-			Mode:                "interactive",
-			IdleTimeout:         agentIdleTimeout(runtimeCfg),
-			ToolResultMaxBytes:  agentToolResultMaxBytes(runtimeCfg),
-			SystemPromptLog:     agent.BuildInteractiveStoryInstructionComposition(&runtimeCfg, state, tellerSystemInput),
-			OnMutationsVerified: a.automationMutationCallback("interactive_agent_post_run"),
+			AgentKind:          agent.AgentKindInteractiveStory,
+			TaskID:             task.ID(),
+			StoryID:            storyID,
+			BranchID:           conversation.branchID,
+			Workspace:          workspace,
+			Mode:               "interactive",
+			IdleTimeout:        agentIdleTimeout(runtimeCfg),
+			ToolResultMaxBytes: agentToolResultMaxBytes(runtimeCfg),
+			SystemPromptLog:    agent.BuildInteractiveStoryInstructionComposition(&runtimeCfg, state, tellerSystemInput),
+			OnMutationsVerified: a.verifiedWorkspaceMutationCallback(
+				"interactive_agent_post_run",
+				versionService,
+				versionAutoSettingsForConfig(&runtimeCfg),
+			),
 		}, interactiveEmit)
 		if turn, _, ok := conversation.LastTurnForState(); ok && ctx.Err() == nil && !maintenanceScheduled {
 			scheduleMaintenance(turn, nil)

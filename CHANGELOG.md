@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- 编辑器自动保存统一为修改后延迟保存：连续输入会重置延迟，停止输入后只保存最新草稿，不再依赖固定周期；目录与章节统计也不再每 3 秒扫描整本作品。
+- Writing-editor Auto Save now consistently uses after-delay semantics: continued typing resets the delay, and only the latest draft is saved after input stops. Workspace tree and chapter statistics also no longer scan the whole project every three seconds.
+- Git 自动版本改为修改后延迟创建：工作区修改会重置 30 秒空闲计时，停止修改且达到用户配置的最小间隔后才在后台创建版本。该功能默认开启、默认间隔 10 分钟，并可在设置中修改或关闭。
+- Automatic Git versions now use an after-change delay: workspace changes reset a 30-second idle timer, and a version is created in the background only after editing stops and the user-configured minimum interval has elapsed. The feature defaults to on with a 10-minute interval and can be changed or disabled in Settings.
+- 编辑器、写作 Agent、游戏 Agent 和配置 Agent 的文件修改统一使用同一套自动版本策略；独立的 Agent 字数阈值设置已移除，旧的 `version_agent_enabled` 与 `version_agent_char_threshold` 配置不再生效。
+- Editor, Writing Agent, Game Agent, and Configuration Agent file changes now share the same automatic-version policy. The separate Agent character threshold has been removed, and the legacy `version_agent_enabled` and `version_agent_char_threshold` settings no longer take effect.
+
+### Fixed
+
+- 写作编辑器不再把尚未结束的本地保存回灌误判为并发修改；保存期间继续输入并手动保存时，最新草稿会按新 revision 立即排队，且旧快照完成后仍准确显示未保存状态。
+- The Writing editor no longer mistakes an in-flight local save echo for a concurrent edit. Typing and manually saving during persistence now queues the latest draft against the new revision, while an older acknowledgement keeps the unsaved status accurate.
+- 文件成功落盘后会立即结束编辑器保存状态；章节字数统计改为后台合并刷新，不再让统计扫描阻塞手动保存或堆积并行请求。
+- The editor now finishes its saving state as soon as the file is durably written. Chapter statistics refresh in a coalesced background task instead of blocking manual saves or piling up parallel scans.
+- 普通文件保存不再同步检查或创建 Git 版本；保存期间触发的 Git 自动版本会串行后台执行，继续编辑只会重置下一轮空闲计时，不再阻塞保存响应。
+- Ordinary file saves no longer synchronously check or create Git versions. Automatic Git versions run serially in the background, and edits made during a version operation only reset the next idle cycle instead of blocking the save response.
+- 本地草稿与外部版本真实重叠时会保留双方版本并暂停自动保存；用户明确选择保留合并结果或载入工作区版本后才继续，非重叠修改仍自动合并。
+- When a local draft truly overlaps an external version, both versions are preserved and Auto Save pauses until the user keeps the merged result or loads the workspace version. Non-overlapping edits still merge automatically.
+
 ## [v0.3.1] - 2026-07-23
 
 ### Changed

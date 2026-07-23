@@ -41,6 +41,7 @@ func (s *ConfigManagerAppService) StartTask(ctx context.Context, req ConfigManag
 	workspace := a.workspace
 	sessionStore := a.sessionStore
 	bookService := a.bookService
+	versionService := a.versionService
 	chatService := a.chatService
 	a.mu.Unlock()
 	if state == nil || cfg == nil || sessionStore == nil {
@@ -82,15 +83,19 @@ func (s *ConfigManagerAppService) StartTask(ctx context.Context, req ConfigManag
 			Message:        message,
 			LoreReferences: req.References,
 		}, agent.RunOptions{
-			AgentKind:           agent.AgentKindConfigManager,
-			TaskID:              task.ID(),
-			SessionID:           sess.ID,
-			Workspace:           workspace,
-			Mode:                "config_manager",
-			IdleTimeout:         agentIdleTimeout(runtimeCfg),
-			ToolResultMaxBytes:  agentToolResultMaxBytes(runtimeCfg),
-			SystemPromptLog:     agent.BuildConfigManagerInstructionComposition(&runtimeCfg, state, resourceSkills...),
-			OnMutationsVerified: a.automationMutationCallback("config_manager_post_run"),
+			AgentKind:          agent.AgentKindConfigManager,
+			TaskID:             task.ID(),
+			SessionID:          sess.ID,
+			Workspace:          workspace,
+			Mode:               "config_manager",
+			IdleTimeout:        agentIdleTimeout(runtimeCfg),
+			ToolResultMaxBytes: agentToolResultMaxBytes(runtimeCfg),
+			SystemPromptLog:    agent.BuildConfigManagerInstructionComposition(&runtimeCfg, state, resourceSkills...),
+			OnMutationsVerified: a.verifiedWorkspaceMutationCallback(
+				"config_manager_post_run",
+				versionService,
+				versionAutoSettingsForConfig(&runtimeCfg),
+			),
 		}, emit)
 		log.Printf("[config-manager] run end id=%s status=%s", task.ID(), task.Status())
 	})

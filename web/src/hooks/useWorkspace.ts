@@ -29,8 +29,6 @@ interface WorkspaceFileDocumentState {
   revision: string
 }
 
-const TREE_AUTO_REFRESH_INTERVAL_MS = 3000
-
 interface WorkspaceRefreshOptions {
   showLoading?: boolean
   clearOnError?: boolean
@@ -64,6 +62,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const treeRequestRef = useRef(0)
   const summaryRequestRef = useRef(0)
   const booksRequestRef = useRef(0)
+  const backgroundSummaryRefreshRef = useRef<Promise<void> | null>(null)
+  const backgroundSummaryRefreshQueuedRef = useRef(false)
   const fileVersionsRef = useRef<Map<string, { revision: string; workspace: string; generation: number }>>(new Map())
   const fileReadGenerationsRef = useRef<Map<string, number>>(new Map())
   const selectFileRequestRef = useRef(0)
@@ -82,6 +82,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     workspaceEpochRef.current += 1
     treeRequestRef.current += 1
     summaryRequestRef.current += 1
+    backgroundSummaryRefreshRef.current = null
+    backgroundSummaryRefreshQueuedRef.current = false
     selectFileRequestRef.current += 1
     fileVersionsRef.current.clear()
     fileReadGenerationsRef.current.clear()
@@ -115,6 +117,8 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const resetWorkspaceState = useCallback(() => {
     treeRequestRef.current += 1
     summaryRequestRef.current += 1
+    backgroundSummaryRefreshRef.current = null
+    backgroundSummaryRefreshQueuedRef.current = false
     setTree([])
     setLoading(false)
     setSelectedFile(null)
@@ -193,6 +197,27 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     }
   }, [workspace])
 
+  /** 合并保存触发的统计刷新，保证大作品最多只有一次全量扫描在途。 */
+  const queueSummaryRefreshAfterSave = useCallback(() => {
+    if (backgroundSummaryRefreshRef.current) {
+      backgroundSummaryRefreshQueuedRef.current = true
+      return
+    }
+
+    const run = () => {
+      backgroundSummaryRefreshQueuedRef.current = false
+      const request = fetchSummary({ clearOnError: false })
+      backgroundSummaryRefreshRef.current = request
+      void request.finally(() => {
+        if (backgroundSummaryRefreshRef.current !== request) return
+        backgroundSummaryRefreshRef.current = null
+        if (backgroundSummaryRefreshQueuedRef.current) run()
+      })
+    }
+
+    run()
+  }, [fetchSummary])
+
   /** 获取当前 Nova 数据目录下实际存在的书籍列表 */
   const fetchBooks = useCallback(async () => {
     const requestID = booksRequestRef.current + 1
@@ -223,18 +248,12 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     void Promise.all([fetchTree(), fetchSummary()])
   }, [fetchSummary, fetchTree, resetWorkspaceState, workspace, workspaceLoaded])
 
-  // 自动刷新目录树，覆盖 AI Agent 直接写入文件后的结构变化。
+  // 窗口重新激活时刷新派生状态；Agent 的文件事件另有即时刷新，避免固定周期扫描整本作品。
   useEffect(() => {
     if (!autoRefreshEnabled || !workspaceLoaded || !workspace) return
     let cancelled = false
-    let timer: number | null = null
     let inFlight: Promise<void> | null = null
     const backgroundOptions = { showLoading: false, clearOnError: false }
-    const clearTimer = () => {
-      if (timer === null) return
-      window.clearTimeout(timer)
-      timer = null
-    }
     const refreshIfVisible = () => {
       if (cancelled || document.visibilityState !== 'visible') return Promise.resolve()
       if (inFlight) return inFlight
@@ -246,31 +265,19 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
       })
       return inFlight
     }
-    const scheduleNext = () => {
-      clearTimer()
-      if (cancelled || document.visibilityState !== 'visible') return
-      timer = window.setTimeout(() => {
-        timer = null
-        void refreshIfVisible().finally(scheduleNext)
-      }, TREE_AUTO_REFRESH_INTERVAL_MS)
-    }
-    const refreshAndReschedule = () => {
-      clearTimer()
-      void refreshIfVisible().finally(scheduleNext)
+    const refreshOnWakeup = () => {
+      void refreshIfVisible()
     }
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') refreshAndReschedule()
-      else clearTimer()
+      if (document.visibilityState === 'visible') refreshOnWakeup()
     }
 
-    scheduleNext()
-    window.addEventListener('focus', refreshAndReschedule)
+    window.addEventListener('focus', refreshOnWakeup)
     document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       cancelled = true
-      clearTimer()
-      window.removeEventListener('focus', refreshAndReschedule)
+      window.removeEventListener('focus', refreshOnWakeup)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [autoRefreshEnabled, fetchTree, fetchSummary, workspace, workspaceLoaded])
@@ -388,9 +395,10 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
         setFileDocument({ content, revision: result.revision })
       }
     }
-    await fetchSummary()
+    // 文件写入成功即完成保存；章节统计是派生数据，不能延长编辑器的 saving 状态。
+    queueSummaryRefreshAfterSave()
     return result
-  }, [fetchSummary, recordFileVersion, setFileDocument, workspace])
+  }, [queueSummaryRefreshAfterSave, recordFileVersion, setFileDocument, workspace])
 
   /** 保存指定文件内容；路径和 revision 绑定，避免文件切换期间的迟到响应串写。 */
   const saveFileContent = useCallback(async (path: string, content: string): Promise<boolean> => {

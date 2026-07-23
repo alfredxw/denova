@@ -210,7 +210,7 @@ func normalizeVersionSource(source string) string {
 func defaultVersionMessage(source string) string {
 	switch source {
 	case VersionSourceTimer:
-		return "定时自动保存"
+		return "自动版本"
 	case VersionSourceAgent:
 		return "Agent 自动保存"
 	case VersionSourceRollbackBackup:

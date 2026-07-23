@@ -51,7 +51,7 @@ func (a *App) CreateWorkspaceItem(ctx context.Context, path, itemType, content s
 		if err := runtime.bookService.Create(path, itemType, content); err != nil {
 			return err
 		}
-		maybeCreateTimedVersion(runtime.versionService, runtime.versionSettings)
+		scheduleAutoVersion(runtime.versionService, runtime.versionSettings)
 		return nil
 	})
 }
@@ -66,7 +66,7 @@ func (a *App) DeleteWorkspaceItem(ctx context.Context, path string) error {
 		if err := runtime.bookService.Delete(path); err != nil {
 			return err
 		}
-		maybeCreateTimedVersion(runtime.versionService, runtime.versionSettings)
+		scheduleAutoVersion(runtime.versionService, runtime.versionSettings)
 		return nil
 	})
 }
@@ -80,7 +80,7 @@ func (a *App) RenameWorkspaceItem(ctx context.Context, path, newName string) (st
 		if err != nil {
 			return err
 		}
-		maybeCreateTimedVersion(runtime.versionService, runtime.versionSettings)
+		scheduleAutoVersion(runtime.versionService, runtime.versionSettings)
 		return nil
 	})
 	return newPath, err
@@ -92,7 +92,7 @@ func (a *App) CopyWorkspaceItem(ctx context.Context, from, to string) error {
 		if err := runtime.bookService.Copy(from, to); err != nil {
 			return err
 		}
-		maybeCreateTimedVersion(runtime.versionService, runtime.versionSettings)
+		scheduleAutoVersion(runtime.versionService, runtime.versionSettings)
 		return nil
 	})
 }
@@ -103,7 +103,7 @@ func (a *App) MoveWorkspaceItem(ctx context.Context, from, to string) error {
 		if err := runtime.bookService.Move(from, to); err != nil {
 			return err
 		}
-		maybeCreateTimedVersion(runtime.versionService, runtime.versionSettings)
+		scheduleAutoVersion(runtime.versionService, runtime.versionSettings)
 		return nil
 	})
 }

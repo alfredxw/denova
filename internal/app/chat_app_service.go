@@ -276,18 +276,6 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 	}
 	a.mu.Unlock()
 
-	var beforeVersionState book.VersionWorkspaceState
-	var hasBeforeVersionState bool
-	if runtime.versionService != nil {
-		state, err := runtime.versionService.CaptureState()
-		if err != nil {
-			log.Printf("[versions] 捕获 Agent 运行前状态失败 workspace=%s err=%v", runtime.workspace, err)
-		} else {
-			beforeVersionState = state
-			hasBeforeVersionState = true
-		}
-	}
-
 	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill)
 		runtimeContexts := agent.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
@@ -307,33 +295,22 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 			}
 		}
 		runtime.chatService.RunWithOptions(ctx, runner, conversation, runtime.bookService, req, agent.RunOptions{
-			AgentKind:              agent.AgentKindIDE,
-			TaskID:                 task.ID(),
-			SessionID:              runtime.sess.ID,
-			ReviewThreadID:         req.ResolvedReviewFeedback.PrimaryReviewThreadID(),
-			Workspace:              runtime.workspace,
-			Mode:                   "ide",
-			IdleTimeout:            agentIdleTimeout(runtime.cfg),
-			ToolResultMaxBytes:     agentToolResultMaxBytes(runtime.cfg),
-			SystemPromptLog:        agent.BuildInstructionComposition(&runtime.cfg, runtime.state, runtime.ideTeller),
-			OnMutationsVerified:    a.automationMutationCallback("ide_agent_post_run"),
+			AgentKind:          agent.AgentKindIDE,
+			TaskID:             task.ID(),
+			SessionID:          runtime.sess.ID,
+			ReviewThreadID:     req.ResolvedReviewFeedback.PrimaryReviewThreadID(),
+			Workspace:          runtime.workspace,
+			Mode:               "ide",
+			IdleTimeout:        agentIdleTimeout(runtime.cfg),
+			ToolResultMaxBytes: agentToolResultMaxBytes(runtime.cfg),
+			SystemPromptLog:    agent.BuildInstructionComposition(&runtime.cfg, runtime.state, runtime.ideTeller),
+			OnMutationsVerified: a.verifiedWorkspaceMutationCallback(
+				"ide_agent_post_run",
+				runtime.versionService,
+				versionAutoSettingsForConfig(&runtime.cfg),
+			),
 			OnUserMessageCommitted: onUserMessageCommitted,
 		}, emit)
-		if runtime.versionService != nil && hasBeforeVersionState {
-			settings := book.DefaultVersionAutoSettings()
-			settings.TimedEnabled = runtime.cfg.VersionTimedEnabled
-			settings.TimedIntervalMinutes = runtime.cfg.VersionTimedIntervalMinutes
-			settings.AgentEnabled = runtime.cfg.VersionAgentEnabled
-			settings.AgentCharThreshold = runtime.cfg.VersionAgentCharThreshold
-			result, err := runtime.versionService.MaybeCreateAgent(beforeVersionState, settings)
-			if err != nil {
-				log.Printf("[versions] Agent 自动保存失败 workspace=%s err=%v", runtime.workspace, err)
-			} else if result.Skipped {
-				log.Printf("[versions] Agent 自动保存跳过 workspace=%s reason=%q chars=%d", runtime.workspace, result.Reason, result.Chars)
-			} else if result.Version != nil {
-				log.Printf("[versions] Agent 自动保存完成 workspace=%s version=%s chars=%d", runtime.workspace, result.Version.ID, result.Chars)
-			}
-		}
 		log.Printf("[agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	})
 
