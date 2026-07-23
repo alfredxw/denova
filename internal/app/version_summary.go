@@ -140,7 +140,7 @@ func versionChangeContext(bookService *book.Service, versionService *book.Versio
 func fallbackVersionMessage(source string, changes []book.VersionChange) string {
 	prefix := map[string]string{
 		book.VersionSourceManual:         "手动保存",
-		book.VersionSourceTimer:          "定时自动保存",
+		book.VersionSourceTimer:          "自动版本",
 		book.VersionSourceAgent:          "Agent 自动保存",
 		book.VersionSourceRollbackBackup: "回滚前备份",
 	}[source]
@@ -179,7 +179,7 @@ func versionSourceLabel(source string) string {
 	case book.VersionSourceManual:
 		return "手动保存"
 	case book.VersionSourceTimer:
-		return "定时自动保存"
+		return "自动版本"
 	case book.VersionSourceAgent:
 		return "Agent 自动保存"
 	case book.VersionSourceRollbackBackup:
