@@ -8,17 +8,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 func TestHarnessEngineRunCompletesAndConsumesTurnSpec(t *testing.T) {
 	engine := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
 	var legacyEvents []Event
 	err := registerAcceptedHarnessTurn(engine, "turn-complete", HarnessTurnSpec{
-		Runner: newRunControlTestRunner(t, &runControlFixedModel{message: &schema.Message{
-			Role:             schema.Assistant,
+		Runner: newRunControlTestRunner(t, &runControlFixedModel{message: &adk.Message{
+			Role:             adk.Assistant,
 			Content:          "finished answer",
 			ReasoningContent: "final thought",
 		}}, true),
@@ -31,27 +31,27 @@ func TestHarnessEngineRunCompletesAndConsumesTurnSpec(t *testing.T) {
 		t.Fatalf("register turn spec: %v", err)
 	}
 
-	var events []agentruntime.EngineEvent
-	result, err := runHarnessEngine(engine, context.Background(), harnessEngineRequest("turn-complete", nil), func(event agentruntime.EngineEvent) error {
+	var events []runstate.EngineEvent
+	result, err := runHarnessEngine(engine, context.Background(), harnessEngineRequest("turn-complete", nil), func(event runstate.EngineEvent) error {
 		events = append(events, event)
 		return nil
 	})
 	if err != nil {
 		t.Fatalf("run harness engine: %v", err)
 	}
-	if result.Status != agentruntime.EngineCompleted {
+	if result.Status != runstate.EngineCompleted {
 		t.Fatalf("result status = %q, want completed", result.Status)
 	}
 
 	var content, thinking strings.Builder
-	var final agentruntime.EngineAssistantFinal
+	var final runstate.EngineAssistantFinal
 	for _, event := range events {
 		switch event := event.(type) {
-		case agentruntime.EngineAssistantDelta:
+		case runstate.EngineAssistantDelta:
 			content.WriteString(event.Delta)
-		case agentruntime.EngineThinkingDelta:
+		case runstate.EngineThinkingDelta:
 			thinking.WriteString(event.Delta)
-		case agentruntime.EngineAssistantFinal:
+		case runstate.EngineAssistantFinal:
 			final = event
 		}
 	}
@@ -65,7 +65,7 @@ func TestHarnessEngineRunCompletesAndConsumesTurnSpec(t *testing.T) {
 		t.Fatalf("cycle-level done must wait for durable operation settlement: %#v", legacyEvents)
 	}
 
-	_, err = runHarnessEngine(engine, context.Background(), harnessEngineRequest("turn-complete", nil), func(agentruntime.EngineEvent) error { return nil })
+	_, err = runHarnessEngine(engine, context.Background(), harnessEngineRequest("turn-complete", nil), func(runstate.EngineEvent) error { return nil })
 	if !errors.Is(err, ErrHarnessTurnSpecNotFound) {
 		t.Fatalf("second run error = %v, want missing one-shot spec", err)
 	}
@@ -74,7 +74,7 @@ func TestHarnessEngineRunCompletesAndConsumesTurnSpec(t *testing.T) {
 func TestHarnessEngineFactoryRejectsMismatchedBindingBeforeConsumingTurnSpec(t *testing.T) {
 	owner := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
 	if err := registerAcceptedHarnessTurn(owner, "turn-binding-mismatch", HarnessTurnSpec{
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("done", nil)}, true),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("done", nil)}, true),
 		Conversation: &runControlConversation{},
 		Request:      ChatRequest{Message: "write"},
 		Options:      testHarnessRunOptions(),
@@ -89,11 +89,11 @@ func TestHarnessEngineFactoryRejectsMismatchedBindingBeforeConsumingTurnSpec(t *
 	mismatched := harnessEngineRequest("turn-binding-mismatch", nil)
 	mismatched.Binding.SessionID = "another-session"
 	mismatched.Snapshot.Binding = mismatched.Binding
-	if _, err := bound.Run(context.Background(), mismatched, func(agentruntime.EngineEvent) error { return nil }); !errors.Is(err, ErrHarnessBindingMismatch) {
+	if _, err := bound.Run(context.Background(), mismatched, func(runstate.EngineEvent) error { return nil }); !errors.Is(err, ErrHarnessBindingMismatch) {
 		t.Fatalf("mismatched request error = %v, want ErrHarnessBindingMismatch", err)
 	}
 
-	if _, err := bound.Run(context.Background(), harnessEngineRequest("turn-binding-mismatch", nil), func(agentruntime.EngineEvent) error { return nil }); err != nil {
+	if _, err := bound.Run(context.Background(), harnessEngineRequest("turn-binding-mismatch", nil), func(runstate.EngineEvent) error { return nil }); err != nil {
 		t.Fatalf("matching request could not consume preserved turn spec: %v", err)
 	}
 }
@@ -103,7 +103,7 @@ func TestHarnessEngineRejectsTurnSpecWhoseProfileDoesNotMatchBinding(t *testing.
 	options := testHarnessRunOptions()
 	options.AgentKind = AgentKindConfigManager
 	if err := registerAcceptedHarnessTurn(owner, "turn-profile-mismatch", HarnessTurnSpec{
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("must not run", nil)}, true),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("must not run", nil)}, true),
 		Conversation: &runControlConversation{},
 		Request:      ChatRequest{Message: "write"},
 		Options:      options,
@@ -114,7 +114,7 @@ func TestHarnessEngineRejectsTurnSpecWhoseProfileDoesNotMatchBinding(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bound.Run(context.Background(), harnessEngineRequest("turn-profile-mismatch", nil), func(agentruntime.EngineEvent) error { return nil }); !errors.Is(err, ErrHarnessBindingMismatch) {
+	if _, err := bound.Run(context.Background(), harnessEngineRequest("turn-profile-mismatch", nil), func(runstate.EngineEvent) error { return nil }); !errors.Is(err, ErrHarnessBindingMismatch) {
 		t.Fatalf("profile mismatch error = %v, want ErrHarnessBindingMismatch", err)
 	}
 }
@@ -131,7 +131,7 @@ func TestHarnessEngineRejectsIncompleteExecutableBeforeModelEffects(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bound.Run(context.Background(), harnessEngineRequest("turn-incomplete", nil), func(agentruntime.EngineEvent) error { return nil }); !errors.Is(err, ErrHarnessTurnSpecInvalid) {
+	if _, err := bound.Run(context.Background(), harnessEngineRequest("turn-incomplete", nil), func(runstate.EngineEvent) error { return nil }); !errors.Is(err, ErrHarnessTurnSpecInvalid) {
 		t.Fatalf("incomplete turn error = %v, want ErrHarnessTurnSpecInvalid", err)
 	}
 }
@@ -140,7 +140,7 @@ func TestHarnessEngineReportsLegacyOutcome(t *testing.T) {
 	engine := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
 	outcomes := make(chan RunOutcome, 1)
 	if err := registerAcceptedHarnessTurn(engine, "turn-outcome", HarnessTurnSpec{
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("reported answer", nil)}, true),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("reported answer", nil)}, true),
 		Conversation: &runControlConversation{},
 		Request:      ChatRequest{Message: "write"},
 		Options:      RunOptions{AgentKind: AgentKindIDE, RootAgentName: "run-control-test"},
@@ -149,7 +149,7 @@ func TestHarnessEngineReportsLegacyOutcome(t *testing.T) {
 		t.Fatalf("register turn spec: %v", err)
 	}
 
-	if _, err := runHarnessEngine(engine, context.Background(), harnessEngineRequest("turn-outcome", nil), func(agentruntime.EngineEvent) error { return nil }); err != nil {
+	if _, err := runHarnessEngine(engine, context.Background(), harnessEngineRequest("turn-outcome", nil), func(runstate.EngineEvent) error { return nil }); err != nil {
 		t.Fatalf("run harness engine: %v", err)
 	}
 	select {
@@ -171,7 +171,7 @@ func TestHarnessEngineMaterializesQueuedTurnAtExecutionTime(t *testing.T) {
 		Prepare: func(context.Context) (HarnessTurnExecution, error) {
 			prepared = true
 			return HarnessTurnExecution{
-				Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("fresh context", nil)}, true),
+				Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("fresh context", nil)}, true),
 				Conversation: &runControlConversation{},
 				Request:      ChatRequest{Message: "queued request"},
 				Options:      RunOptions{AgentKind: AgentKindIDE, RootAgentName: "run-control-test"},
@@ -184,9 +184,9 @@ func TestHarnessEngineMaterializesQueuedTurnAtExecutionTime(t *testing.T) {
 		t.Fatal("queued turn was prepared during durable admission")
 	}
 
-	var final agentruntime.EngineAssistantFinal
-	_, err := runHarnessEngine(engine, context.Background(), harnessEngineRequest("turn-lazy", nil), func(event agentruntime.EngineEvent) error {
-		if value, ok := event.(agentruntime.EngineAssistantFinal); ok {
+	var final runstate.EngineAssistantFinal
+	_, err := runHarnessEngine(engine, context.Background(), harnessEngineRequest("turn-lazy", nil), func(event runstate.EngineEvent) error {
+		if value, ok := event.(runstate.EngineAssistantFinal); ok {
 			final = value
 		}
 		return nil
@@ -204,7 +204,7 @@ func TestHarnessEngineReleasesCancelledPendingTurnSpec(t *testing.T) {
 	if err := registerAcceptedHarnessTurn(engine, "queued-turn", HarnessTurnSpec{}); err != nil {
 		t.Fatal(err)
 	}
-	engine.ReleasePendingInput(context.Background(), agentruntime.UserInput{TurnSpecRef: "queued-turn"})
+	engine.ReleasePendingInput(context.Background(), runstate.UserInput{TurnSpecRef: "queued-turn"})
 	if _, err := engine.take("queued-turn"); !errors.Is(err, ErrHarnessTurnSpecNotFound) {
 		t.Fatalf("released spec lookup error = %v, want ErrHarnessTurnSpecNotFound", err)
 	}
@@ -214,8 +214,8 @@ func TestHarnessEngineBindsDurableCycleIdentityBeforeExecution(t *testing.T) {
 	engine := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
 	conversation := &identityBindingConversation{}
 	if err := registerAcceptedHarnessTurn(engine, "turn-identity", HarnessTurnSpec{
-		CommandID:    agentruntime.CommandID("command-1"),
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("done", nil)}, true),
+		CommandID:    runstate.CommandID("command-1"),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("done", nil)}, true),
 		Conversation: conversation,
 		Request:      ChatRequest{Message: "play"},
 		Options:      RunOptions{AgentKind: AgentKindInteractiveStory, RootAgentName: "run-control-test"},
@@ -223,9 +223,9 @@ func TestHarnessEngineBindsDurableCycleIdentityBeforeExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := harnessEngineRequest("turn-identity", nil)
-	request.Snapshot.OperationID = agentruntime.OperationID("operation-1")
+	request.Snapshot.OperationID = runstate.OperationID("operation-1")
 	request.Snapshot.Cycle = 3
-	if _, err := runHarnessEngine(engine, context.Background(), request, func(agentruntime.EngineEvent) error { return nil }); err != nil {
+	if _, err := runHarnessEngine(engine, context.Background(), request, func(runstate.EngineEvent) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	want := (HarnessCycleIdentity{CommandID: "command-1", OperationID: "operation-1", Cycle: 3})
@@ -238,8 +238,8 @@ func TestHarnessEnginePreparesCycleAfterIdentityAndBeforeRuntime(t *testing.T) {
 	engine := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
 	conversation := &orderedCycleConversation{}
 	if err := registerAcceptedHarnessTurn(engine, "turn-prepare-order", HarnessTurnSpec{
-		CommandID:    agentruntime.CommandID("command-prepare"),
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("done", nil)}, true),
+		CommandID:    runstate.CommandID("command-prepare"),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("done", nil)}, true),
 		Conversation: conversation,
 		Request:      ChatRequest{Message: "play"},
 		Options:      RunOptions{AgentKind: AgentKindInteractiveStory, RootAgentName: "run-control-test"},
@@ -247,9 +247,9 @@ func TestHarnessEnginePreparesCycleAfterIdentityAndBeforeRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := harnessEngineRequest("turn-prepare-order", nil)
-	request.Snapshot.OperationID = agentruntime.OperationID("operation-prepare")
+	request.Snapshot.OperationID = runstate.OperationID("operation-prepare")
 	request.Snapshot.Cycle = 2
-	if _, err := runHarnessEngine(engine, context.Background(), request, func(agentruntime.EngineEvent) error { return nil }); err != nil {
+	if _, err := runHarnessEngine(engine, context.Background(), request, func(runstate.EngineEvent) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"bind", "prepare", "runtime"}
@@ -264,8 +264,8 @@ func TestHarnessEnginePreparationFailureStopsCycleBeforeRuntime(t *testing.T) {
 	conversation := &orderedCycleConversation{prepareErr: wantErr}
 	outcomes := make(chan RunOutcome, 1)
 	if err := registerAcceptedHarnessTurn(engine, "turn-prepare-error", HarnessTurnSpec{
-		CommandID:    agentruntime.CommandID("command-prepare-error"),
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("must not run", nil)}, true),
+		CommandID:    runstate.CommandID("command-prepare-error"),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("must not run", nil)}, true),
 		Conversation: conversation,
 		Request:      ChatRequest{Message: "play"},
 		Options:      RunOptions{AgentKind: AgentKindInteractiveStory, RootAgentName: "run-control-test"},
@@ -274,9 +274,9 @@ func TestHarnessEnginePreparationFailureStopsCycleBeforeRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := harnessEngineRequest("turn-prepare-error", nil)
-	request.Snapshot.OperationID = agentruntime.OperationID("operation-prepare-error")
+	request.Snapshot.OperationID = runstate.OperationID("operation-prepare-error")
 	request.Snapshot.Cycle = 1
-	if _, err := runHarnessEngine(engine, context.Background(), request, func(agentruntime.EngineEvent) error { return nil }); !errors.Is(err, wantErr) {
+	if _, err := runHarnessEngine(engine, context.Background(), request, func(runstate.EngineEvent) error { return nil }); !errors.Is(err, wantErr) {
 		t.Fatalf("prepare error = %v, want %v", err, wantErr)
 	}
 	if got := strings.Join(conversation.order, ","); got != "bind,prepare" {
@@ -298,17 +298,17 @@ func TestHarnessEnginePreparationFailureStopsCycleBeforeRuntime(t *testing.T) {
 func TestHarnessEngineControlInterruptsBlockingPreparation(t *testing.T) {
 	tests := []struct {
 		name        string
-		control     agentruntime.EngineControlKind
-		wantEngine  agentruntime.EngineStatus
+		control     runstate.EngineControlKind
+		wantEngine  runstate.EngineStatus
 		wantOutcome RunOutcomeStatus
 	}{
 		{
-			name: "preempt", control: agentruntime.EngineControlPreempt,
-			wantEngine: agentruntime.EnginePreempted, wantOutcome: RunOutcomePreempted,
+			name: "preempt", control: runstate.EngineControlPreempt,
+			wantEngine: runstate.EnginePreempted, wantOutcome: RunOutcomePreempted,
 		},
 		{
-			name: "abort", control: agentruntime.EngineControlAbort,
-			wantEngine: agentruntime.EngineAborted, wantOutcome: RunOutcomeAborted,
+			name: "abort", control: runstate.EngineControlAbort,
+			wantEngine: runstate.EngineAborted, wantOutcome: RunOutcomeAborted,
 		},
 	}
 	for _, test := range tests {
@@ -318,8 +318,8 @@ func TestHarnessEngineControlInterruptsBlockingPreparation(t *testing.T) {
 			outcomes := make(chan RunOutcome, 1)
 			ref := "turn-blocking-prepare-" + test.name
 			if err := registerAcceptedHarnessTurn(engine, ref, HarnessTurnSpec{
-				CommandID:    agentruntime.CommandID("command-" + test.name),
-				Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("must not run", nil)}, true),
+				CommandID:    runstate.CommandID("command-" + test.name),
+				Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("must not run", nil)}, true),
 				Conversation: conversation,
 				Request:      ChatRequest{Message: "play"},
 				Options:      RunOptions{AgentKind: AgentKindInteractiveStory, RootAgentName: "run-control-test"},
@@ -327,13 +327,13 @@ func TestHarnessEngineControlInterruptsBlockingPreparation(t *testing.T) {
 			}); err != nil {
 				t.Fatal(err)
 			}
-			controls := make(chan agentruntime.EngineControl, 1)
+			controls := make(chan runstate.EngineControl, 1)
 			done := make(chan harnessEngineTestResult, 1)
-			runHarnessEngineTestGoroutine(done, "controlled preparation run", func() (agentruntime.EngineResult, error) {
-				return runHarnessEngine(engine, context.Background(), harnessEngineRequest(ref, controls), func(agentruntime.EngineEvent) error { return nil })
+			runHarnessEngineTestGoroutine(done, "controlled preparation run", func() (runstate.EngineResult, error) {
+				return runHarnessEngine(engine, context.Background(), harnessEngineRequest(ref, controls), func(runstate.EngineEvent) error { return nil })
 			})
 			waitHarnessEngineSignal(t, conversation.started, "cycle preparation")
-			controls <- agentruntime.EngineControl{Kind: test.control}
+			controls <- runstate.EngineControl{Kind: test.control}
 
 			select {
 			case got := <-done:
@@ -363,7 +363,7 @@ func TestHarnessEngineCycleCommitRunsOnceBeforeSettlementAndFailsOperation(t *te
 	commits := 0
 	engine := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
 	if err := registerAcceptedHarnessTurn(engine, "turn-commit-error", HarnessTurnSpec{
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("persisted answer", nil)}, true),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("persisted answer", nil)}, true),
 		Conversation: &runControlConversation{},
 		Request:      ChatRequest{Message: "play"},
 		Options:      RunOptions{AgentKind: AgentKindInteractiveStory, RootAgentName: "run-control-test"},
@@ -378,7 +378,7 @@ func TestHarnessEngineCycleCommitRunsOnceBeforeSettlementAndFailsOperation(t *te
 		t.Fatalf("register turn spec: %v", err)
 	}
 
-	_, err := runHarnessEngine(engine, context.Background(), harnessEngineRequest("turn-commit-error", nil), func(agentruntime.EngineEvent) error { return nil })
+	_, err := runHarnessEngine(engine, context.Background(), harnessEngineRequest("turn-commit-error", nil), func(runstate.EngineEvent) error { return nil })
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("run error = %v, want commit error", err)
 	}
@@ -399,14 +399,14 @@ func TestHarnessEngineBridgesPreemptControl(t *testing.T) {
 		t.Fatalf("register turn spec: %v", err)
 	}
 
-	controls := make(chan agentruntime.EngineControl)
+	controls := make(chan runstate.EngineControl)
 	done := make(chan harnessEngineTestResult, 1)
-	runHarnessEngineTestGoroutine(done, "preempt bridge run", func() (agentruntime.EngineResult, error) {
-		return runHarnessEngine(engine, context.Background(), harnessEngineRequest("turn-preempt", controls), func(agentruntime.EngineEvent) error { return nil })
+	runHarnessEngineTestGoroutine(done, "preempt bridge run", func() (runstate.EngineResult, error) {
+		return runHarnessEngine(engine, context.Background(), harnessEngineRequest("turn-preempt", controls), func(runstate.EngineEvent) error { return nil })
 	})
 
 	waitHarnessEngineSignal(t, model.blocked, "second model call")
-	controls <- agentruntime.EngineControl{Kind: agentruntime.EngineControlPreempt}
+	controls <- runstate.EngineControl{Kind: runstate.EngineControlPreempt}
 	select {
 	case got := <-done:
 		t.Fatalf("preempt returned before the model safe point: %#v", got)
@@ -419,7 +419,7 @@ func TestHarnessEngineBridgesPreemptControl(t *testing.T) {
 		if got.err != nil {
 			t.Fatalf("preempt run: %v", got.err)
 		}
-		if got.result.Status != agentruntime.EnginePreempted {
+		if got.result.Status != runstate.EnginePreempted {
 			t.Fatalf("preempt status = %q, want preempted", got.result.Status)
 		}
 	case <-time.After(500 * time.Millisecond):
@@ -432,7 +432,7 @@ func TestHarnessEngineRejectsMissingOrConflictingTurnSpec(t *testing.T) {
 	if err := registerAcceptedHarnessTurn(engine, "", HarnessTurnSpec{}); !errors.Is(err, ErrHarnessTurnSpecRefRequired) {
 		t.Fatalf("empty ref error = %v", err)
 	}
-	first := agentruntime.StartTurn{ID: "duplicate", Input: agentruntime.UserInput{Text: "same", TurnSpecRef: "duplicate"}}
+	first := runstate.StartTurn{ID: "duplicate", Input: runstate.UserInput{Text: "same", TurnSpecRef: "duplicate"}}
 	firstLease, err := engine.register("duplicate", first, HarnessTurnSpec{Request: ChatRequest{Message: "same"}})
 	if err != nil {
 		t.Fatalf("first registration: %v", err)
@@ -443,12 +443,12 @@ func TestHarnessEngineRejectsMissingOrConflictingTurnSpec(t *testing.T) {
 		t.Fatalf("equal retry registration: %v", err)
 	}
 	retryLease.release()
-	conflict := agentruntime.StartTurn{ID: "duplicate", Input: agentruntime.UserInput{Text: "different", TurnSpecRef: "duplicate"}}
-	if _, err := engine.register("duplicate", conflict, HarnessTurnSpec{}); !errors.Is(err, ErrHarnessTurnSpecConflict) || !errors.Is(err, agentruntime.ErrInvalidCommand) {
+	conflict := runstate.StartTurn{ID: "duplicate", Input: runstate.UserInput{Text: "different", TurnSpecRef: "duplicate"}}
+	if _, err := engine.register("duplicate", conflict, HarnessTurnSpec{}); !errors.Is(err, ErrHarnessTurnSpecConflict) || !errors.Is(err, runstate.ErrInvalidCommand) {
 		t.Fatalf("conflicting registration error = %v", err)
 	}
 
-	_, err = runHarnessEngine(engine, context.Background(), harnessEngineRequest("missing", nil), func(agentruntime.EngineEvent) error { return nil })
+	_, err = runHarnessEngine(engine, context.Background(), harnessEngineRequest("missing", nil), func(runstate.EngineEvent) error { return nil })
 	if !errors.Is(err, ErrHarnessTurnSpecNotFound) {
 		t.Fatalf("missing ref error = %v", err)
 	}
@@ -457,7 +457,7 @@ func TestHarnessEngineRejectsMissingOrConflictingTurnSpec(t *testing.T) {
 func TestHarnessEngineReturnsSinkError(t *testing.T) {
 	engine := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
 	if err := registerAcceptedHarnessTurn(engine, "turn-sink-error", HarnessTurnSpec{
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("answer", nil)}, true),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("answer", nil)}, true),
 		Conversation: &runControlConversation{},
 		Request:      ChatRequest{Message: "write"},
 		Options:      RunOptions{AgentKind: AgentKindIDE, RootAgentName: "run-control-test"},
@@ -468,8 +468,8 @@ func TestHarnessEngineReturnsSinkError(t *testing.T) {
 	wantErr := errors.New("sink unavailable")
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
-	_, err := runHarnessEngine(engine, ctx, harnessEngineRequest("turn-sink-error", nil), func(event agentruntime.EngineEvent) error {
-		if _, ok := event.(agentruntime.EngineAssistantDelta); ok {
+	_, err := runHarnessEngine(engine, ctx, harnessEngineRequest("turn-sink-error", nil), func(event runstate.EngineEvent) error {
+		if _, ok := event.(runstate.EngineAssistantDelta); ok {
 			return wantErr
 		}
 		return nil
@@ -482,12 +482,12 @@ func TestHarnessEngineReturnsSinkError(t *testing.T) {
 func TestHarnessEngineMapsDescriptorRecoveryToRetrySafety(t *testing.T) {
 	tests := []struct {
 		name string
-		want agentruntime.RetrySafety
+		want runstate.RetrySafety
 	}{
-		{name: "read_file", want: agentruntime.RetrySafe},
-		{name: "write_file", want: agentruntime.RetryUnknown},
-		{name: "bash", want: agentruntime.RetryUnsafe},
-		{name: "read_side_effecting_unknown_api", want: agentruntime.RetryUnsafe},
+		{name: "read_file", want: runstate.RetrySafe},
+		{name: "write_file", want: runstate.RetryUnknown},
+		{name: "bash", want: runstate.RetryUnsafe},
+		{name: "read_side_effecting_unknown_api", want: runstate.RetryUnsafe},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -501,9 +501,9 @@ func TestHarnessEngineMapsDescriptorRecoveryToRetrySafety(t *testing.T) {
 func TestHarnessEngineConcurrentRegistrationLeasesPreserveAcceptedSpec(t *testing.T) {
 	engine := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
 	const contenders = 16
-	command := agentruntime.FollowUp{
+	command := runstate.FollowUp{
 		ID: "shared-command", OperationID: "shared-operation",
-		Input: agentruntime.UserInput{Text: "same input", TurnSpecRef: "shared"},
+		Input: runstate.UserInput{Text: "same input", TurnSpecRef: "shared"},
 	}
 	leases := make(chan *harnessTurnSpecLease, contenders)
 	errs := make(chan error, contenders)
@@ -555,9 +555,9 @@ func TestHarnessEngineConcurrentRegistrationLeasesPreserveAcceptedSpec(t *testin
 
 func TestHarnessEngineRegistrationRejectsDifferentCommandSemantics(t *testing.T) {
 	engine := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
-	first := agentruntime.FollowUp{
+	first := runstate.FollowUp{
 		ID: "shared-command", OperationID: "shared-operation",
-		Input: agentruntime.UserInput{Text: "first payload", TurnSpecRef: "shared"},
+		Input: runstate.UserInput{Text: "first payload", TurnSpecRef: "shared"},
 	}
 	lease, err := engine.register("shared", first, HarnessTurnSpec{Request: ChatRequest{Message: "first payload"}})
 	if err != nil {
@@ -566,7 +566,7 @@ func TestHarnessEngineRegistrationRejectsDifferentCommandSemantics(t *testing.T)
 	defer lease.release()
 	conflict := first
 	conflict.Input.Text = "different payload"
-	if _, err := engine.register("shared", conflict, HarnessTurnSpec{Request: ChatRequest{Message: "different payload"}}); !errors.Is(err, agentruntime.ErrInvalidCommand) || !errors.Is(err, ErrHarnessTurnSpecConflict) {
+	if _, err := engine.register("shared", conflict, HarnessTurnSpec{Request: ChatRequest{Message: "different payload"}}); !errors.Is(err, runstate.ErrInvalidCommand) || !errors.Is(err, ErrHarnessTurnSpecConflict) {
 		t.Fatalf("conflicting semantic registration error = %v", err)
 	}
 	spec, err := engine.take("shared")
@@ -580,9 +580,9 @@ func TestHarnessEngineRegistrationRejectsDifferentCommandSemantics(t *testing.T)
 
 func TestHarnessEngineRegistrationRejectsDifferentRuntimeDescriptor(t *testing.T) {
 	engine := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
-	command := agentruntime.StartTurn{
+	command := runstate.StartTurn{
 		ID:    "shared-runtime-command",
-		Input: agentruntime.UserInput{Text: "same payload", TurnSpecRef: "shared-runtime"},
+		Input: runstate.UserInput{Text: "same payload", TurnSpecRef: "shared-runtime"},
 	}
 	first := HarnessTurnSpec{
 		Request: ChatRequest{Message: "same payload"},
@@ -595,18 +595,18 @@ func TestHarnessEngineRegistrationRejectsDifferentRuntimeDescriptor(t *testing.T
 	defer lease.release()
 	conflict := first
 	conflict.Options.RootAgentName = "different-profile-graph"
-	if _, err := engine.register("shared-runtime", command, conflict); !errors.Is(err, agentruntime.ErrInvalidCommand) || !errors.Is(err, ErrHarnessTurnSpecConflict) {
+	if _, err := engine.register("shared-runtime", command, conflict); !errors.Is(err, runstate.ErrInvalidCommand) || !errors.Is(err, ErrHarnessTurnSpecConflict) {
 		t.Fatalf("conflicting runtime descriptor error = %v", err)
 	}
 }
 
-func harnessEngineRequest(ref string, controls <-chan agentruntime.EngineControl) agentruntime.EngineRequest {
+func harnessEngineRequest(ref string, controls <-chan runstate.EngineControl) runstate.EngineRequest {
 	binding := testHarnessBindingRef()
-	return agentruntime.EngineRequest{
+	return runstate.EngineRequest{
 		Binding: binding,
-		Snapshot: agentruntime.TurnSnapshot{
+		Snapshot: runstate.TurnSnapshot{
 			Binding: binding,
-			Input:   agentruntime.UserInput{Text: "write", TurnSpecRef: ref},
+			Input:   runstate.UserInput{Text: "write", TurnSpecRef: ref},
 		},
 		Controls: controls,
 	}
@@ -615,13 +615,13 @@ func harnessEngineRequest(ref string, controls <-chan agentruntime.EngineControl
 // runHarnessEngine exercises the shared execution core in unit tests that do
 // not care about factory binding. Binding-specific behavior is covered through
 // NewEngine in the dedicated factory tests above.
-func runHarnessEngine(engine *harnessEngine, ctx context.Context, request agentruntime.EngineRequest, emit agentruntime.EngineEventSink) (agentruntime.EngineResult, error) {
+func runHarnessEngine(engine *harnessEngine, ctx context.Context, request runstate.EngineRequest, emit runstate.EngineEventSink) (runstate.EngineResult, error) {
 	return engine.run(ctx, request, emit, nil)
 }
 
-func testHarnessBindingRef() agentruntime.BindingRef {
-	return agentruntime.BindingRef{
-		Kind: agentruntime.BindingWriting, Profile: agentruntime.ProfileWriting,
+func testHarnessBindingRef() runstate.BindingRef {
+	return runstate.BindingRef{
+		Kind: runstate.BindingWriting, Profile: runstate.ProfileWriting,
 		Workspace: "/test/workspace", SessionID: "test-session",
 	}
 }
@@ -706,9 +706,9 @@ func registerAcceptedHarnessTurn(engine *harnessEngine, ref string, spec Harness
 	if message == "" {
 		message = "test input"
 	}
-	lease, err := engine.register(ref, agentruntime.StartTurn{
-		ID: agentruntime.CommandID("test-" + ref),
-		Input: agentruntime.UserInput{
+	lease, err := engine.register(ref, runstate.StartTurn{
+		ID: runstate.CommandID("test-" + ref),
+		Input: runstate.UserInput{
 			Text:        message,
 			TurnSpecRef: ref,
 		},

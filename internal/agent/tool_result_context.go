@@ -4,7 +4,7 @@ import (
 	"log"
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -37,7 +37,7 @@ func (p ToolResultContextPolicy) normalized() ToolResultContextPolicy {
 }
 
 type toolResultContextConversation interface {
-	AppendContextMessage(msg *schema.Message) error
+	AppendContextMessage(msg *adk.Message) error
 	ToolResultContextPolicy() ToolResultContextPolicy
 }
 
@@ -59,7 +59,7 @@ func newToolResultContextRecorder(conversation Conversation) *toolResultContextR
 	return &toolResultContextRecorder{conversation: contextConversation, policy: policy}
 }
 
-func (r *toolResultContextRecorder) RecordAssistantToolCalls(msg *schema.Message, meta agentEventMetadata) {
+func (r *toolResultContextRecorder) RecordAssistantToolCalls(msg *adk.Message, meta agentEventMetadata) {
 	if r == nil || r.conversation == nil || meta.SubAgent || msg == nil || len(msg.ToolCalls) == 0 {
 		return
 	}
@@ -85,7 +85,7 @@ func (r *toolResultContextRecorder) RecordToolResult(toolName, toolCallID, conte
 	if r == nil || r.conversation == nil || meta.SubAgent || isPlanProtocolToolName(toolName) || !retainToolContextAcrossTurns(toolName, r.policy) || !r.retainedCall(toolCallID) {
 		return
 	}
-	msg := schema.ToolMessage(toolResultContextContent(toolName, content, r.policy), toolCallID, schema.WithToolName(toolName))
+	msg := adk.ToolMessage(toolResultContextContent(toolName, content, r.policy), toolCallID, adk.WithToolName(toolName))
 	if err := r.conversation.AppendContextMessage(msg); err != nil {
 		logAgentContextPersistError("tool_result", err)
 	}
@@ -103,11 +103,11 @@ func logAgentContextPersistError(kind string, err error) {
 	log.Printf("[agent-run] persist tool result context failed kind=%s err=%v", kind, err)
 }
 
-func assistantToolContextMessage(msg *schema.Message, policy ToolResultContextPolicy) *schema.Message {
+func assistantToolContextMessage(msg *adk.Message, policy ToolResultContextPolicy) *adk.Message {
 	if msg == nil || len(msg.ToolCalls) == 0 {
 		return nil
 	}
-	calls := make([]schema.ToolCall, 0, len(msg.ToolCalls))
+	calls := make([]adk.ToolCall, 0, len(msg.ToolCalls))
 	for _, call := range msg.ToolCalls {
 		if isPlanProtocolToolName(call.Function.Name) || !retainToolContextAcrossTurns(call.Function.Name, policy) {
 			continue
@@ -123,7 +123,7 @@ func assistantToolContextMessage(msg *schema.Message, policy ToolResultContextPo
 	if len(calls) == 0 {
 		return nil
 	}
-	return schema.AssistantMessage("", calls)
+	return adk.AssistantMessage("", calls)
 }
 
 func retainedToolCallArguments(arguments string) (string, bool) {
@@ -140,7 +140,7 @@ func toolResultContextContent(toolName, content string, policy ToolResultContext
 	return semanticToolResultContextContent(toolName, content, policy)
 }
 
-func applyToolResultContextPolicy(messages []*schema.Message, policy ToolResultContextPolicy) []*schema.Message {
+func applyToolResultContextPolicy(messages []*adk.Message, policy ToolResultContextPolicy) []*adk.Message {
 	if len(messages) == 0 {
 		return messages
 	}
@@ -152,8 +152,8 @@ func applyToolResultContextPolicy(messages []*schema.Message, policy ToolResultC
 	return filterToolContextMessages(messages, policy, true)
 }
 
-func sanitizedToolContextMessage(msg *schema.Message, policy ToolResultContextPolicy) *schema.Message {
-	if msg == nil || msg.Role != schema.Tool {
+func sanitizedToolContextMessage(msg *adk.Message, policy ToolResultContextPolicy) *adk.Message {
+	if msg == nil || msg.Role != adk.Tool {
 		return msg
 	}
 	content := semanticToolResultContextContent(msg.ToolName, msg.Content, policy)
@@ -165,6 +165,6 @@ func sanitizedToolContextMessage(msg *schema.Message, policy ToolResultContextPo
 	return &next
 }
 
-func ApplyToolResultContextPolicyForConversation(messages []*schema.Message, policy ToolResultContextPolicy) []*schema.Message {
+func ApplyToolResultContextPolicyForConversation(messages []*adk.Message, policy ToolResultContextPolicy) []*adk.Message {
 	return applyToolResultContextPolicy(messages, policy)
 }

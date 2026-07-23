@@ -8,9 +8,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 )
 
 const (
@@ -85,15 +83,15 @@ type interactiveCompletionRetryReason struct {
 // caching and provides a narrative-only fallback when a model submits before
 // producing a prose candidate.
 type interactiveTurnProtocolMiddleware struct {
-	*adk.BaseChatModelAgentMiddleware
+	*adk.BaseMiddleware
 	ready              func() bool
 	narrativeMaxTokens int
 }
 
 func newInteractiveTurnProtocolMiddleware(ready func() bool, narrativeMaxTokens ...int) *interactiveTurnProtocolMiddleware {
 	middleware := &interactiveTurnProtocolMiddleware{
-		BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
-		ready:                        ready,
+		BaseMiddleware: &adk.BaseMiddleware{},
+		ready:          ready,
 	}
 	if len(narrativeMaxTokens) > 0 && narrativeMaxTokens[0] > 0 {
 		middleware.narrativeMaxTokens = narrativeMaxTokens[0]
@@ -101,11 +99,11 @@ func newInteractiveTurnProtocolMiddleware(ready func() bool, narrativeMaxTokens 
 	return middleware
 }
 
-func (m *interactiveTurnProtocolMiddleware) BeforeAgent(ctx context.Context, runCtx *adk.ChatModelAgentContext) (context.Context, *adk.ChatModelAgentContext, error) {
+func (m *interactiveTurnProtocolMiddleware) BeforeAgent(ctx context.Context, runCtx *adk.RunContext) (context.Context, *adk.RunContext, error) {
 	return context.WithValue(ctx, interactiveTurnProtocolStateKey{}, &interactiveTurnProtocolRunState{}), runCtx, nil
 }
 
-func (m *interactiveTurnProtocolMiddleware) WrapModel(_ context.Context, wrapped model.BaseChatModel, _ *adk.ModelContext) (model.BaseChatModel, error) {
+func (m *interactiveTurnProtocolMiddleware) WrapModel(_ context.Context, wrapped adk.BaseChatModel, _ *adk.ModelContext) (adk.BaseChatModel, error) {
 	if m != nil && m.narrativeMaxTokens > 0 {
 		wrapped = &interactiveNarrativeBudgetModel{BaseChatModel: wrapped, maxTokens: m.narrativeMaxTokens}
 	}
@@ -119,32 +117,32 @@ func (m *interactiveTurnProtocolMiddleware) WrapModel(_ context.Context, wrapped
 // only while producing the first visible narrative. Structured retries keep the
 // provider/model limit so a large but valid state submission is not truncated.
 type interactiveNarrativeBudgetModel struct {
-	model.BaseChatModel
+	adk.BaseChatModel
 	maxTokens int
 }
 
-func (m *interactiveNarrativeBudgetModel) Generate(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+func (m *interactiveNarrativeBudgetModel) Generate(ctx context.Context, messages []*adk.Message, opts ...adk.ModelOption) (*adk.Message, error) {
 	return m.BaseChatModel.Generate(ctx, messages, interactiveNarrativeBudgetOptions(ctx, m.maxTokens, opts)...)
 }
 
-func (m *interactiveNarrativeBudgetModel) Stream(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+func (m *interactiveNarrativeBudgetModel) Stream(ctx context.Context, messages []*adk.Message, opts ...adk.ModelOption) (*adk.StreamReader[*adk.Message], error) {
 	return m.BaseChatModel.Stream(ctx, messages, interactiveNarrativeBudgetOptions(ctx, m.maxTokens, opts)...)
 }
 
-func interactiveNarrativeBudgetOptions(ctx context.Context, maxTokens int, opts []model.Option) []model.Option {
+func interactiveNarrativeBudgetOptions(ctx context.Context, maxTokens int, opts []adk.ModelOption) []adk.ModelOption {
 	state := interactiveTurnProtocolState(ctx)
 	if maxTokens <= 0 || (state != nil && state.narrativeCandidateReady.Load()) {
 		return opts
 	}
-	common := model.GetCommonOptions(&model.Options{}, opts...)
+	common := adk.GetCommonOptions(&adk.Options{}, opts...)
 	if common.MaxTokens != nil && *common.MaxTokens <= maxTokens {
 		return opts
 	}
-	bounded := append([]model.Option(nil), opts...)
-	return append(bounded, model.WithMaxTokens(maxTokens))
+	bounded := append([]adk.ModelOption(nil), opts...)
+	return append(bounded, adk.WithMaxTokens(maxTokens))
 }
 
-func (m *interactiveTurnProtocolMiddleware) AfterModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, _ *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
+func (m *interactiveTurnProtocolMiddleware) AfterModelRewriteState(ctx context.Context, state *adk.RunState, _ *adk.ModelContext) (context.Context, *adk.RunState, error) {
 	if m == nil || m.ready == nil || !m.ready() || state == nil || len(state.Messages) == 0 {
 		return ctx, state, nil
 	}
@@ -156,23 +154,23 @@ func (m *interactiveTurnProtocolMiddleware) AfterModelRewriteState(ctx context.C
 }
 
 type interactiveNarrativeOnlyModel struct {
-	model.BaseChatModel
+	adk.BaseChatModel
 }
 
-func (m *interactiveNarrativeOnlyModel) Generate(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
-	narrativeOpts := append([]model.Option(nil), opts...)
-	narrativeOpts = append(narrativeOpts, model.WithToolChoice(schema.ToolChoiceForbidden))
+func (m *interactiveNarrativeOnlyModel) Generate(ctx context.Context, messages []*adk.Message, opts ...adk.ModelOption) (*adk.Message, error) {
+	narrativeOpts := append([]adk.ModelOption(nil), opts...)
+	narrativeOpts = append(narrativeOpts, adk.WithToolChoice(adk.ToolChoiceForbidden))
 	return m.BaseChatModel.Generate(ctx, messages, narrativeOpts...)
 }
 
-func (m *interactiveNarrativeOnlyModel) Stream(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
-	narrativeOpts := append([]model.Option(nil), opts...)
-	narrativeOpts = append(narrativeOpts, model.WithToolChoice(schema.ToolChoiceForbidden))
+func (m *interactiveNarrativeOnlyModel) Stream(ctx context.Context, messages []*adk.Message, opts ...adk.ModelOption) (*adk.StreamReader[*adk.Message], error) {
+	narrativeOpts := append([]adk.ModelOption(nil), opts...)
+	narrativeOpts = append(narrativeOpts, adk.WithToolChoice(adk.ToolChoiceForbidden))
 	return m.BaseChatModel.Stream(ctx, messages, narrativeOpts...)
 }
 
 // newInteractiveCompletionGuard retains a prose-only response as the visible
-// candidate while the hidden TurnResult is still missing. Eino retries with a
+// candidate while the hidden TurnResult is still missing. The native loop retries with a
 // bounded, ephemeral copy so the model can submit matching structured state.
 func newInteractiveCompletionGuard(ready func() bool) func(context.Context, *adk.RetryContext) *adk.RetryDecision {
 	return func(ctx context.Context, retryCtx *adk.RetryContext) *adk.RetryDecision {
@@ -187,14 +185,14 @@ func newInteractiveCompletionGuard(ready func() bool) func(context.Context, *adk
 			return nil
 		}
 
-		messages := interactiveRetryBaseMessages(retryCtx.InputMessages)
+		messages := interactiveRetryBaseMessages(retryCtx.Messages)
 		candidate := ""
 		if state != nil {
 			candidate = state.retainedNarrativeCandidate()
 		}
 		if strings.TrimSpace(candidate) != "" {
 			draft, _ := truncateUTF8Bytes(candidate, interactiveRetryDraftMaxBytes)
-			messages = append(messages, schema.AssistantMessage(fmt.Sprintf(
+			messages = append(messages, adk.AssistantMessage(fmt.Sprintf(
 				"%s limit=%d bytes]\n%s",
 				interactiveRetryCandidatePrefix,
 				interactiveRetryDraftMaxBytes,
@@ -207,17 +205,16 @@ func newInteractiveCompletionGuard(ready func() bool) func(context.Context, *adk
 			"首个正文候选已经锁定并展示。现在只调用 submit_interactive_turn，并只提供 retry_modules 指定的字段；已 accepted 的模块不要重交，ready=true 后不要重复输出或改写正文。",
 			"Do not finish this turn before both submission modules are accepted.",
 		}, "\n"), interactiveRetryFeedbackMaxBytes)
-		messages = append(messages, schema.UserMessage(feedback))
+		messages = append(messages, adk.UserMessage(feedback))
 		return &adk.RetryDecision{
-			Retry:                        true,
-			ModifiedInputMessages:        messages,
-			PersistModifiedInputMessages: false,
-			RejectReason:                 interactiveCompletionRetryReason{Code: interactiveCompletionRetryCode},
+			Retry:        true,
+			Messages:     messages,
+			RejectReason: interactiveCompletionRetryReason{Code: interactiveCompletionRetryCode},
 		}
 	}
 }
 
-func interactiveOutputContainsNarrativeCandidate(message *schema.Message) bool {
+func interactiveOutputContainsNarrativeCandidate(message *adk.Message) bool {
 	if message == nil || strings.TrimSpace(message.Content) == "" {
 		return false
 	}
@@ -241,16 +238,16 @@ func IsInteractiveTurnSubmissionTool(name string) bool {
 	}
 }
 
-func interactiveRetryBaseMessages(messages []*schema.Message) []*schema.Message {
-	base := make([]*schema.Message, 0, len(messages))
+func interactiveRetryBaseMessages(messages []*adk.Message) []*adk.Message {
+	base := make([]*adk.Message, 0, len(messages))
 	for _, message := range messages {
 		if message == nil {
 			continue
 		}
-		if message.Role == schema.Assistant && strings.HasPrefix(message.Content, interactiveRetryCandidatePrefix) {
+		if message.Role == adk.Assistant && strings.HasPrefix(message.Content, interactiveRetryCandidatePrefix) {
 			continue
 		}
-		if message.Role == schema.User && strings.HasPrefix(message.Content, interactiveRetryFeedbackPrefix) {
+		if message.Role == adk.User && strings.HasPrefix(message.Content, interactiveRetryFeedbackPrefix) {
 			continue
 		}
 		base = append(base, message)

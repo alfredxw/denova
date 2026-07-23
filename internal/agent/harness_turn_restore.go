@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 const harnessTurnRestoreDescriptorVersion = 2
@@ -23,11 +23,11 @@ var ErrHarnessTurnRestoreUnavailable = errors.New("agent harness turn restore de
 // queued Steer, FollowUp, or NextTurn bounded durable descriptor. The host resolves fresh
 // Runner, Conversation, BookService, callbacks, and server-owned context.
 type HarnessTurnRestoreRequest struct {
-	Binding          agentruntime.BindingRef
+	Binding          runstate.BindingRef
 	Kind             AgentCommandKind
-	CommandID        agentruntime.CommandID
-	OperationID      agentruntime.OperationID
-	AfterOperationID agentruntime.OperationID
+	CommandID        runstate.CommandID
+	OperationID      runstate.OperationID
+	AfterOperationID runstate.OperationID
 	Request          ChatRequest
 	Options          RunOptions
 	Deferred         bool
@@ -44,7 +44,7 @@ type HarnessTurnRestorer func(context.Context, HarnessTurnRestoreRequest) (Harne
 type harnessTurnRestoreDescriptor struct {
 	Version          int                          `json:"version"`
 	Kind             AgentCommandKind             `json:"kind"`
-	AfterOperationID agentruntime.OperationID     `json:"after_operation_id"`
+	AfterOperationID runstate.OperationID         `json:"after_operation_id"`
 	Request          harnessTurnRequestDescriptor `json:"request"`
 	Options          harnessTurnOptionsDescriptor `json:"options"`
 	Deferred         bool                         `json:"deferred"`
@@ -87,20 +87,20 @@ func encodeHarnessTurnRestoreDescriptor(spec AgentCommandSpec) (json.RawMessage,
 // InputLimits.MaxRestoreDescriptorBytes (8 MiB by default), comfortably above
 // the 128 KiB product context floor without making the journal unbounded.
 func withHarnessInputMaterializationDescriptor(
-	input agentruntime.UserInput,
+	input runstate.UserInput,
 	spec AgentCommandSpec,
-) (agentruntime.UserInput, error) {
+) (runstate.UserInput, error) {
 	encoded, err := encodeHarnessTurnRestoreDescriptor(spec)
 	if err != nil {
-		return agentruntime.UserInput{}, err
+		return runstate.UserInput{}, err
 	}
 	input.RestoreDescriptor = encoded
 	return input, nil
 }
 
 func decodeHarnessTurnRestoreRequest(
-	binding agentruntime.BindingRef,
-	input agentruntime.QueuedInput,
+	binding runstate.BindingRef,
+	input runstate.QueuedInput,
 ) (HarnessTurnRestoreRequest, error) {
 	if len(input.Input.RestoreDescriptor) == 0 {
 		return HarnessTurnRestoreRequest{}, fmt.Errorf("%w: durable descriptor is absent", ErrHarnessTurnRestoreUnavailable)
@@ -137,7 +137,7 @@ func decodeHarnessTurnRestoreRequest(
 	if err != nil {
 		return HarnessTurnRestoreRequest{}, fmt.Errorf("%w: restore binding: %v", ErrHarnessTurnRestoreUnavailable, err)
 	}
-	resolvedRef, err := agentruntime.BindingReference(resolvedBinding)
+	resolvedRef, err := runstate.BindingReference(resolvedBinding)
 	if err != nil || resolvedRef != binding {
 		return HarnessTurnRestoreRequest{}, fmt.Errorf("%w: durable descriptor binding does not match runtime", ErrHarnessTurnRestoreUnavailable)
 	}
@@ -166,13 +166,13 @@ func decodeHarnessTurnRestoreRequest(
 	}, nil
 }
 
-func agentCommandKindForQueuedDelivery(delivery agentruntime.DeliveryKind) (AgentCommandKind, error) {
+func agentCommandKindForQueuedDelivery(delivery runstate.DeliveryKind) (AgentCommandKind, error) {
 	switch delivery {
-	case agentruntime.DeliverySteer:
+	case runstate.DeliverySteer:
 		return AgentCommandSteer, nil
-	case agentruntime.DeliveryFollowUp:
+	case runstate.DeliveryFollowUp:
 		return AgentCommandFollowUp, nil
-	case agentruntime.DeliveryNextTurn:
+	case runstate.DeliveryNextTurn:
 		return AgentCommandNextTurn, nil
 	default:
 		return "", fmt.Errorf("%w: delivery %q is not restorable", ErrHarnessTurnRestoreUnavailable, delivery)

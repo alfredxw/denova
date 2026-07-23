@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 var (
@@ -41,7 +41,7 @@ type harnessTurnSpecLease struct {
 // paired with the other's process-local state.
 func (e *harnessEngine) register(
 	ref string,
-	command agentruntime.Command,
+	command runstate.Command,
 	spec HarnessTurnSpec,
 ) (*harnessTurnSpecLease, error) {
 	if e == nil {
@@ -52,7 +52,7 @@ func (e *harnessEngine) register(
 		return nil, ErrHarnessTurnSpecRefRequired
 	}
 	if command == nil {
-		return nil, fmt.Errorf("%w: command is required", agentruntime.ErrInvalidCommand)
+		return nil, fmt.Errorf("%w: command is required", runstate.ErrInvalidCommand)
 	}
 	fingerprint := harnessCommandSemanticFingerprint(command) + ":" + harnessTurnRuntimeSemanticFingerprint(spec)
 
@@ -66,7 +66,7 @@ func (e *harnessEngine) register(
 		if entry.fingerprint != fingerprint {
 			return nil, fmt.Errorf(
 				"%w: %w for reference %q",
-				agentruntime.ErrInvalidCommand,
+				runstate.ErrInvalidCommand,
 				ErrHarnessTurnSpecConflict,
 				ref,
 			)
@@ -157,8 +157,8 @@ func (e *harnessEngine) discard(ref string) {
 
 func (e *harnessEngine) restorePendingInput(
 	ctx context.Context,
-	binding agentruntime.BindingRef,
-	input agentruntime.QueuedInput,
+	binding runstate.BindingRef,
+	input runstate.QueuedInput,
 ) error {
 	if e == nil {
 		return fmt.Errorf("%w: engine is nil", ErrHarnessTurnRestoreUnavailable)
@@ -220,23 +220,23 @@ func (e *harnessEngine) restorePendingInput(
 	return nil
 }
 
-func restoredQueuedCommand(request HarnessTurnRestoreRequest, input agentruntime.UserInput) (agentruntime.Command, error) {
+func restoredQueuedCommand(request HarnessTurnRestoreRequest, input runstate.UserInput) (runstate.Command, error) {
 	switch request.Kind {
 	case AgentCommandSteer:
-		return agentruntime.Steer{ID: request.CommandID, OperationID: request.OperationID, Input: input}, nil
+		return runstate.Steer{ID: request.CommandID, OperationID: request.OperationID, Input: input}, nil
 	case AgentCommandFollowUp:
-		return agentruntime.FollowUp{ID: request.CommandID, OperationID: request.OperationID, Input: input}, nil
+		return runstate.FollowUp{ID: request.CommandID, OperationID: request.OperationID, Input: input}, nil
 	case AgentCommandNextTurn:
-		return agentruntime.NextTurn{ID: request.CommandID, AfterOperationID: request.AfterOperationID, Input: input}, nil
+		return runstate.NextTurn{ID: request.CommandID, AfterOperationID: request.AfterOperationID, Input: input}, nil
 	default:
 		return nil, fmt.Errorf("%w: queued command kind %q is not restorable", ErrHarnessTurnRestoreUnavailable, request.Kind)
 	}
 }
 
-// ReleasePendingInput implements agentruntime.EnginePendingInputReleaser. The
+// ReleasePendingInput implements runstate.EnginePendingInputReleaser. The
 // coordinator calls it only after QueueCancelled is durable and reduced, so a
 // queued adapter spec remains available until the command can no longer run.
-func (e *harnessEngine) ReleasePendingInput(_ context.Context, input agentruntime.UserInput) {
+func (e *harnessEngine) ReleasePendingInput(_ context.Context, input runstate.UserInput) {
 	if e == nil {
 		return
 	}

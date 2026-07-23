@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 )
 
 const (
@@ -99,7 +99,7 @@ type ContextProjector interface {
 }
 
 type AssembleRequest struct {
-	Messages     []*schema.Message
+	Messages     []*adk.Message
 	Fragments    []Fragment
 	Projectors   []ContextProjector
 	PreviewChars int
@@ -143,7 +143,7 @@ func (a *Assembler) Assemble(ctx stdcontext.Context, req AssembleRequest) (Resul
 	ledger := make([]LedgerPart, 0, len(requestedFragments))
 	analysis := make([]AnalysisPart, 0, len(requestedFragments))
 	injectedBytes := 0
-	hasFinalUserMessage := len(messages) > 0 && messages[len(messages)-1] != nil && messages[len(messages)-1].Role == schema.User
+	hasFinalUserMessage := len(messages) > 0 && messages[len(messages)-1] != nil && messages[len(messages)-1].Role == adk.User
 
 	for _, fragment := range requestedFragments {
 		resolved, err := resolveFragment(fragment, budget, hasFinalUserMessage)
@@ -179,9 +179,9 @@ func (a *Assembler) Assemble(ctx stdcontext.Context, req AssembleRequest) (Resul
 	}
 
 	if len(leading) > 0 {
-		leadingMessages := make([]*schema.Message, 0, len(leading))
+		leadingMessages := make([]*adk.Message, 0, len(leading))
 		for _, source := range leading {
-			leadingMessages = append(leadingMessages, schema.UserMessage(StandaloneMessage(source.Title, source.Content, "")))
+			leadingMessages = append(leadingMessages, adk.UserMessage(StandaloneMessage(source.Title, source.Content, "")))
 		}
 		messages = append(leadingMessages, messages...)
 	}
@@ -449,7 +449,7 @@ func analysisPartForFragment(index int, fragment Fragment) AnalysisPart {
 		ID:      fmt.Sprintf("source_%d", index),
 		Source:  fragment.Source,
 		Title:   fragment.Title,
-		Role:    string(schema.User),
+		Role:    string(adk.User),
 		Content: fragment.Content,
 		Note:    fragment.Note,
 		Bytes:   len(fragment.Content),

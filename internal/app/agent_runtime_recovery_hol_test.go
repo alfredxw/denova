@@ -9,11 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/interactive"
 )
 
@@ -70,7 +68,7 @@ func TestColdRecoveryKeepsOneTaskAcrossConsecutiveQueuedPauses(t *testing.T) {
 				t.Fatal("cold runtime projection unavailable")
 			}
 			actions := agent.RuntimeRecoveryActions(status)
-			if status.Phase != agentruntime.PhaseRunning || !status.RecoveryPaused || len(actions) != 3 ||
+			if status.Phase != runstate.PhaseRunning || !status.RecoveryPaused || len(actions) != 3 ||
 				actions[2].Kind != agent.RuntimeRecoverySteer || actions[2].CommandID != "hol-steer" {
 				t.Fatalf("initial HOL actions = %#v status=%#v", actions, status)
 			}
@@ -104,8 +102,8 @@ func TestColdRecoveryKeepsOneTaskAcrossConsecutiveQueuedPauses(t *testing.T) {
 				t.Fatalf("consecutive recovery task events = %#v", events)
 			}
 			status, projected = consecutiveRecoveryProjection(reopened, mode, storyID)
-			if !projected || status.Phase != agentruntime.PhaseIdle || status.LastOperation == nil ||
-				status.LastOperation.Status != agentruntime.OperationSucceeded || len(agent.RuntimeRecoveryActions(status)) != 0 {
+			if !projected || status.Phase != runstate.PhaseIdle || status.LastOperation == nil ||
+				status.LastOperation.Status != runstate.OperationSucceeded || len(agent.RuntimeRecoveryActions(status)) != 0 {
 				t.Fatalf("consecutive recovery terminal status = %#v projected=%t", status, projected)
 			}
 		})
@@ -176,8 +174,8 @@ func TestRecoveryTaskAbortRetriesFailOnceInputMaterialization(t *testing.T) {
 		t.Fatalf("Task.Abort input materialization attempts = %d, want fail plus exact replay", got)
 	}
 	status, projected = reopened.WritingAgentRuntimeProjection(context.Background())
-	if !projected || status.Phase != agentruntime.PhaseIdle || status.InputRecovery != nil ||
-		status.LastOperation == nil || status.LastOperation.Status != agentruntime.OperationAborted {
+	if !projected || status.Phase != runstate.PhaseIdle || status.InputRecovery != nil ||
+		status.LastOperation == nil || status.LastOperation.Status != runstate.OperationAborted {
 		t.Fatalf("Task.Abort terminal runtime = %#v projected=%t", status, projected)
 	}
 }
@@ -205,7 +203,7 @@ func runConsecutiveRecoveryCrashSeed(t *testing.T, mode string) {
 	}
 	vanished := make(chan struct{})
 	accepted, err := application.chatService.StartWithOptions(
-		context.Background(), newInteractiveReplayRunner(t, &interactiveReplayModel{message: schema.AssistantMessage("must not run", nil)}),
+		context.Background(), newInteractiveReplayRunner(t, &interactiveReplayModel{message: agent.AssistantMessage("must not run", nil)}),
 		&interactiveCrashConversation{vanished: vanished}, application.bookService,
 		agent.ChatRequest{CommandID: "hol-start", Message: "parent before crash"}, options, nil,
 	)
@@ -254,7 +252,7 @@ func installConsecutiveRecoveryTestChat(
 			t.Fatal(err)
 		}
 	}
-	runner := newInteractiveReplayRunner(t, &interactiveReplayModel{message: schema.AssistantMessage("recovered cycle", nil)})
+	runner := newInteractiveReplayRunner(t, &interactiveReplayModel{message: agent.AssistantMessage("recovered cycle", nil)})
 	restored := func(_ context.Context, request agent.HarnessTurnRestoreRequest) (agent.HarnessTurnSpec, error) {
 		if request.CommandID == "hol-follow-up" && !allowFollowUp.Load() {
 			return agent.HarnessTurnSpec{}, errors.New("follow-up dependency temporarily unavailable")
@@ -282,7 +280,7 @@ func installConsecutiveRecoveryTestChat(
 
 type failOnceHarnessInputMaterializer struct {
 	delegate agent.HarnessInputMaterializer
-	target   agentruntime.CommandID
+	target   runstate.CommandID
 
 	targetCalls atomic.Int32
 }
@@ -290,22 +288,22 @@ type failOnceHarnessInputMaterializer struct {
 func (m *failOnceHarnessInputMaterializer) PlanHarnessInputMaterialization(
 	ctx context.Context,
 	request agent.HarnessInputMaterializationRequest,
-) (agentruntime.InputMaterializationPlan, error) {
+) (runstate.InputMaterializationPlan, error) {
 	return m.delegate.PlanHarnessInputMaterialization(ctx, request)
 }
 
 func (m *failOnceHarnessInputMaterializer) MaterializeHarnessInput(
 	ctx context.Context,
 	request agent.HarnessInputMaterializationRequest,
-	plan agentruntime.InputMaterializationPlan,
-) (agentruntime.InputMaterializationReceipt, error) {
+	plan runstate.InputMaterializationPlan,
+) (runstate.InputMaterializationReceipt, error) {
 	if request.Identity.CommandID == m.target && m.targetCalls.Add(1) == 1 {
-		return agentruntime.InputMaterializationReceipt{}, errors.New("accepted input store failed once during Task.Abort")
+		return runstate.InputMaterializationReceipt{}, errors.New("accepted input store failed once during Task.Abort")
 	}
 	return m.delegate.MaterializeHarnessInput(ctx, request, plan)
 }
 
-func consecutiveRecoveryProjection(application *App, mode, storyID string) (agentruntime.StatusSnapshot, bool) {
+func consecutiveRecoveryProjection(application *App, mode, storyID string) (runstate.StatusSnapshot, bool) {
 	if mode == "game" {
 		return application.InteractiveAgentRuntimeProjection(context.Background(), storyID, "main")
 	}

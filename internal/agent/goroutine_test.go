@@ -3,7 +3,7 @@ package agent
 import (
 	"fmt"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 // runOutcomeTestGoroutine keeps asynchronous Agent tests subject to the same
@@ -25,14 +25,14 @@ func runOutcomeTestGoroutine(destination chan<- RunOutcome, scope string, run fu
 }
 
 type harnessEngineTestResult struct {
-	result agentruntime.EngineResult
+	result runstate.EngineResult
 	err    error
 }
 
 func runHarnessEngineTestGoroutine(
 	destination chan<- harnessEngineTestResult,
 	scope string,
-	run func() (agentruntime.EngineResult, error),
+	run func() (runstate.EngineResult, error),
 ) {
 	go func() {
 		defer func() {

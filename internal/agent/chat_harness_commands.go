@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cloudwego/eino/adk"
+	"github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/book"
 )
 
@@ -30,8 +30,8 @@ const (
 type AgentCommandSpec struct {
 	Kind             AgentCommandKind
 	CommandID        string
-	OperationID      agentruntime.OperationID
-	AfterOperationID agentruntime.OperationID
+	OperationID      runstate.OperationID
+	AfterOperationID runstate.OperationID
 	Reason           string
 	Runner           *adk.Runner
 	Conversation     Conversation
@@ -45,24 +45,24 @@ type AgentCommandSpec struct {
 // SubmitCommand durably accepts one command and returns without waiting for
 // the selected cycle to execute. commandID is the idempotency key and must be
 // reused by a transport retry.
-func (s *ChatService) SubmitCommand(ctx context.Context, spec AgentCommandSpec) (agentruntime.Receipt, error) {
+func (s *ChatService) SubmitCommand(ctx context.Context, spec AgentCommandSpec) (runstate.Receipt, error) {
 	if s == nil || s.harness == nil || s.harness.runtime == nil || s.harness.engine == nil {
-		return agentruntime.Receipt{}, fmt.Errorf("agent durable runtime is unavailable")
+		return runstate.Receipt{}, fmt.Errorf("agent durable runtime is unavailable")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if err := ctx.Err(); err != nil {
-		return agentruntime.Receipt{}, err
+		return runstate.Receipt{}, err
 	}
 	commandID := strings.TrimSpace(spec.CommandID)
 	if commandID == "" {
-		return agentruntime.Receipt{}, fmt.Errorf("%w: command_id is required", agentruntime.ErrInvalidCommand)
+		return runstate.Receipt{}, fmt.Errorf("%w: command_id is required", runstate.ErrInvalidCommand)
 	}
 	// Reject oversized or otherwise invalid caller identities before computing
 	// semantic fingerprints, opening a binding, or registering process state.
 	if err := s.harness.runtime.ValidateCommandID(commandID); err != nil {
-		return agentruntime.Receipt{}, err
+		return runstate.Receipt{}, err
 	}
 	spec.Request = CaptureChatRequestCallerInput(spec.Request)
 	workspace := ""
@@ -72,16 +72,16 @@ func (s *ChatService) SubmitCommand(ctx context.Context, spec AgentCommandSpec) 
 	spec.Options = spec.Options.normalized(workspace)
 	binding, err := harnessBindingForOptions(spec.Options)
 	if err != nil {
-		return agentruntime.Receipt{}, err
+		return runstate.Receipt{}, err
 	}
 	harness, err := s.harness.runtime.Open(ctx, binding)
 	if err != nil {
-		return agentruntime.Receipt{}, err
+		return runstate.Receipt{}, err
 	}
 
 	if spec.Kind == AgentCommandAbort {
-		return harness.Submit(ctx, agentruntime.Abort{
-			ID:          agentruntime.CommandID(commandID),
+		return harness.Submit(ctx, runstate.Abort{
+			ID:          runstate.CommandID(commandID),
 			OperationID: spec.OperationID,
 			Reason:      strings.TrimSpace(spec.Reason),
 		})
@@ -90,29 +90,29 @@ func (s *ChatService) SubmitCommand(ctx context.Context, spec AgentCommandSpec) 
 	turnSemantics := harnessTurnSpecSemanticFingerprint(spec)
 	turnRef := harnessCommandTurnRef(binding, commandID, turnSemantics)
 	caller := chatRequestCallerView(spec.Request)
-	input := agentruntime.UserInput{
+	input := runstate.UserInput{
 		Text: caller.Message, ContextRefs: harnessContextRefs(spec.Request), TurnSpecRef: turnRef,
 	}
 	input, err = withHarnessInputMaterializationDescriptor(input, spec)
 	if err != nil {
-		return agentruntime.Receipt{}, err
+		return runstate.Receipt{}, err
 	}
-	var command agentruntime.Command
+	var command runstate.Command
 	switch spec.Kind {
 	case AgentCommandStartTurn:
-		command = agentruntime.StartTurn{ID: agentruntime.CommandID(commandID), Input: input}
+		command = runstate.StartTurn{ID: runstate.CommandID(commandID), Input: input}
 	case AgentCommandSteer:
-		command = agentruntime.Steer{ID: agentruntime.CommandID(commandID), OperationID: spec.OperationID, Input: input}
+		command = runstate.Steer{ID: runstate.CommandID(commandID), OperationID: spec.OperationID, Input: input}
 	case AgentCommandFollowUp:
-		command = agentruntime.FollowUp{ID: agentruntime.CommandID(commandID), OperationID: spec.OperationID, Input: input}
+		command = runstate.FollowUp{ID: runstate.CommandID(commandID), OperationID: spec.OperationID, Input: input}
 	case AgentCommandNextTurn:
-		command = agentruntime.NextTurn{ID: agentruntime.CommandID(commandID), AfterOperationID: spec.AfterOperationID, Input: input}
+		command = runstate.NextTurn{ID: runstate.CommandID(commandID), AfterOperationID: spec.AfterOperationID, Input: input}
 	default:
-		return agentruntime.Receipt{}, fmt.Errorf("%w: unsupported command kind %q", agentruntime.ErrInvalidCommand, spec.Kind)
+		return runstate.Receipt{}, fmt.Errorf("%w: unsupported command kind %q", runstate.ErrInvalidCommand, spec.Kind)
 	}
 
 	registration, err := s.harness.engine.register(turnRef, command, HarnessTurnSpec{
-		CommandID: agentruntime.CommandID(commandID), CommandKind: spec.Kind,
+		CommandID: runstate.CommandID(commandID), CommandKind: spec.Kind,
 		Runner: spec.Runner, Conversation: spec.Conversation,
 		BookService: spec.BookService, Request: spec.Request,
 		Options: spec.Options, Emit: spec.Emit,
@@ -120,12 +120,12 @@ func (s *ChatService) SubmitCommand(ctx context.Context, spec AgentCommandSpec) 
 		CycleCommit: harnessCycleCommitForConversation(spec.Conversation),
 	})
 	if err != nil {
-		return agentruntime.Receipt{}, err
+		return runstate.Receipt{}, err
 	}
 	defer registration.release()
 	receipt, err := harness.Submit(ctx, command)
 	if err != nil {
-		return agentruntime.Receipt{}, err
+		return runstate.Receipt{}, err
 	}
 	// A fresh acceptance still owns this registered adapter state until Engine
 	// consumes it. A replay after consumption registered a redundant state and
@@ -136,7 +136,7 @@ func (s *ChatService) SubmitCommand(ctx context.Context, spec AgentCommandSpec) 
 	return receipt, nil
 }
 
-func harnessCommandSemanticFingerprint(command agentruntime.Command) string {
+func harnessCommandSemanticFingerprint(command runstate.Command) string {
 	return semanticJSONFingerprint("agent-adapter-command.v1", command)
 }
 
@@ -271,15 +271,15 @@ func harnessTurnRuntimeSemanticFingerprint(spec HarnessTurnSpec) string {
 	return semanticJSONFingerprint("agent-turn-runtime.v1", descriptor)
 }
 
-func harnessCommandTurnRef(binding agentruntime.Binding, commandID, turnSemantics string) string {
-	bindingRef, err := agentruntime.BindingReference(binding)
+func harnessCommandTurnRef(binding runstate.Binding, commandID, turnSemantics string) string {
+	bindingRef, err := runstate.BindingReference(binding)
 	if err != nil {
-		bindingRef = agentruntime.BindingRef{}
+		bindingRef = runstate.BindingRef{}
 	}
 	identity := struct {
-		Binding       agentruntime.BindingRef `json:"binding"`
-		CommandID     string                  `json:"command_id"`
-		TurnSemantics string                  `json:"turn_semantics"`
+		Binding       runstate.BindingRef `json:"binding"`
+		CommandID     string              `json:"command_id"`
+		TurnSemantics string              `json:"turn_semantics"`
 	}{
 		Binding: bindingRef, CommandID: strings.TrimSpace(commandID),
 		TurnSemantics: strings.TrimSpace(turnSemantics),

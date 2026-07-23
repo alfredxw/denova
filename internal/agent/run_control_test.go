@@ -8,19 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/compose"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 func TestRunWithOptionsReturnsCompletedOutcome(t *testing.T) {
-	runner := newRunControlTestRunner(t, &runControlFixedModel{message: &schema.Message{
-		Role:             schema.Assistant,
+	runner := newRunControlTestRunner(t, &runControlFixedModel{message: &adk.Message{
+		Role:             adk.Assistant,
 		Content:          "finished answer",
 		ReasoningContent: "final thought",
 	}}, true)
@@ -204,7 +200,7 @@ func TestRuntimeAbortEscalatesPendingPreempt(t *testing.T) {
 func TestRuntimeClosedControlsChannelDoesNotAbort(t *testing.T) {
 	controls := make(chan RunControl)
 	close(controls)
-	runner := newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("done", nil)}, true)
+	runner := newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("done", nil)}, true)
 
 	outcome := newTurnExecutor(DefaultLoopPolicy()).Run(
 		context.Background(),
@@ -228,7 +224,7 @@ func TestRuntimeCanceledContextReturnsAbortedOutcome(t *testing.T) {
 
 	outcome := newTurnExecutor(DefaultLoopPolicy()).Run(
 		ctx,
-		newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("unused", nil)}, true),
+		newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("unused", nil)}, true),
 		&runControlConversation{},
 		nil,
 		ChatRequest{Message: "write"},
@@ -278,8 +274,8 @@ func TestRuntimePanicAfterPersistenceKeepsFinalOutputInFailedOutcome(t *testing.
 
 	outcome := newTurnExecutor(DefaultLoopPolicy()).Run(
 		context.Background(),
-		newRunControlTestRunner(t, &runControlFixedModel{message: &schema.Message{
-			Role:             schema.Assistant,
+		newRunControlTestRunner(t, &runControlFixedModel{message: &adk.Message{
+			Role:             adk.Assistant,
 			Content:          "persisted before panic",
 			ReasoningContent: "thinking before panic",
 		}}, true),
@@ -318,9 +314,9 @@ func TestRunControlWatcherRecoversCancellationPanicAndExits(t *testing.T) {
 	waitRunControlSignal(t, done, "recovered control watcher exit")
 }
 
-func newRunControlTestRunner(t *testing.T, chatModel model.BaseChatModel, streaming bool) *adk.Runner {
+func newRunControlTestRunner(t *testing.T, chatModel adk.BaseChatModel, streaming bool) *adk.Runner {
 	t.Helper()
-	builtAgent, err := adk.NewChatModelAgent(context.Background(), &adk.ChatModelAgentConfig{
+	builtAgent, err := adk.NewAgent(context.Background(), adk.AgentConfig{
 		Name:        "run-control-test",
 		Description: "run control test",
 		Instruction: "test",
@@ -329,24 +325,22 @@ func newRunControlTestRunner(t *testing.T, chatModel model.BaseChatModel, stream
 	if err != nil {
 		t.Fatal(err)
 	}
-	return adk.NewRunner(context.Background(), adk.RunnerConfig{Agent: builtAgent, EnableStreaming: streaming})
+	return adk.NewRunner(adk.RunnerConfig{Agent: builtAgent, EnableStreaming: streaming})
 }
 
-func newRunControlTwoPhaseRunner(t *testing.T, chatModel model.BaseChatModel) *adk.Runner {
+func newRunControlTwoPhaseRunner(t *testing.T, chatModel adk.BaseChatModel) *adk.Runner {
 	t.Helper()
-	builtAgent, err := adk.NewChatModelAgent(context.Background(), &adk.ChatModelAgentConfig{
+	builtAgent, err := adk.NewAgent(context.Background(), adk.AgentConfig{
 		Name:        "run-control-test",
 		Description: "run control test",
 		Instruction: "test",
 		Model:       chatModel,
-		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{
-			Tools: []tool.BaseTool{runControlTestTool{}},
-		}},
+		Tools:       []adk.BaseTool{runControlTestTool{}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return adk.NewRunner(context.Background(), adk.RunnerConfig{Agent: builtAgent, EnableStreaming: true})
+	return adk.NewRunner(adk.RunnerConfig{Agent: builtAgent, EnableStreaming: true})
 }
 
 func waitRunControlSignal(t *testing.T, signal <-chan struct{}, description string) {
@@ -404,19 +398,19 @@ func (c *runControlConversation) PendingInterruption() *session.Interruption { r
 func (c *runControlConversation) ResolveInterruption(string) error { return nil }
 
 type runControlFixedModel struct {
-	message *schema.Message
+	message *adk.Message
 	err     error
 }
 
-func (m *runControlFixedModel) Generate(context.Context, []*schema.Message, ...model.Option) (*schema.Message, error) {
+func (m *runControlFixedModel) Generate(context.Context, []*adk.Message, ...adk.ModelOption) (*adk.Message, error) {
 	return m.message, m.err
 }
 
-func (m *runControlFixedModel) Stream(context.Context, []*schema.Message, ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+func (m *runControlFixedModel) Stream(context.Context, []*adk.Message, ...adk.ModelOption) (*adk.StreamReader[*adk.Message], error) {
 	if m.err != nil {
 		return nil, m.err
 	}
-	return schema.StreamReaderFromArray([]*schema.Message{m.message}), nil
+	return adk.StreamReaderFromArray([]*adk.Message{m.message}), nil
 }
 
 type runControlTwoPhaseModel struct {
@@ -437,31 +431,31 @@ func newRunControlTwoPhaseModel(content, thinking string) *runControlTwoPhaseMod
 	}
 }
 
-func (m *runControlTwoPhaseModel) Generate(ctx context.Context, _ []*schema.Message, _ ...model.Option) (*schema.Message, error) {
+func (m *runControlTwoPhaseModel) Generate(ctx context.Context, _ []*adk.Message, _ ...adk.ModelOption) (*adk.Message, error) {
 	return m.next(ctx)
 }
 
-func (m *runControlTwoPhaseModel) Stream(ctx context.Context, _ []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+func (m *runControlTwoPhaseModel) Stream(ctx context.Context, _ []*adk.Message, _ ...adk.ModelOption) (*adk.StreamReader[*adk.Message], error) {
 	message, err := m.next(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return schema.StreamReaderFromArray([]*schema.Message{message}), nil
+	return adk.StreamReaderFromArray([]*adk.Message{message}), nil
 }
 
-func (m *runControlTwoPhaseModel) next(context.Context) (*schema.Message, error) {
+func (m *runControlTwoPhaseModel) next(context.Context) (*adk.Message, error) {
 	m.mu.Lock()
 	m.calls++
 	call := m.calls
 	m.mu.Unlock()
 	if call == 1 {
-		return &schema.Message{
-			Role:             schema.Assistant,
+		return &adk.Message{
+			Role:             adk.Assistant,
 			Content:          m.content,
 			ReasoningContent: m.thinking,
-			ToolCalls: []schema.ToolCall{{
+			ToolCalls: []adk.ToolCall{{
 				ID: "run-control-tool-call",
-				Function: schema.FunctionCall{
+				Function: adk.FunctionCall{
 					Name:      "run_control_test_tool",
 					Arguments: `{}`,
 				},
@@ -471,35 +465,35 @@ func (m *runControlTwoPhaseModel) next(context.Context) (*schema.Message, error)
 	if call == 2 {
 		close(m.blocked)
 		<-m.release
-		return &schema.Message{
-			Role:    schema.Assistant,
+		return &adk.Message{
+			Role:    adk.Assistant,
 			Content: "model output after control",
-			ToolCalls: []schema.ToolCall{{
+			ToolCalls: []adk.ToolCall{{
 				ID: "run-control-second-tool-call",
-				Function: schema.FunctionCall{
+				Function: adk.FunctionCall{
 					Name:      "run_control_test_tool",
 					Arguments: `{}`,
 				},
 			}},
 		}, nil
 	}
-	return schema.AssistantMessage("model output after second tool", nil), nil
+	return adk.AssistantMessage("model output after second tool", nil), nil
 }
 
 type runControlTestTool struct{}
 
-func (runControlTestTool) Info(context.Context) (*schema.ToolInfo, error) {
-	return &schema.ToolInfo{
+func (runControlTestTool) Info(context.Context) (*adk.ToolInfo, error) {
+	return &adk.ToolInfo{
 		Name:        "run_control_test_tool",
 		Desc:        "complete the first test phase",
-		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{}),
+		ParamsOneOf: adk.NewParamsOneOfByParams(map[string]*adk.ParameterInfo{}),
 	}, nil
 }
 
-func (runControlTestTool) InvokableRun(context.Context, string, ...tool.Option) (string, error) {
+func (runControlTestTool) InvokableRun(context.Context, string, ...adk.ToolOption) (string, error) {
 	return "first phase complete", nil
 }
 
-var _ model.BaseChatModel = (*runControlFixedModel)(nil)
-var _ model.BaseChatModel = (*runControlTwoPhaseModel)(nil)
-var _ tool.InvokableTool = runControlTestTool{}
+var _ adk.BaseChatModel = (*runControlFixedModel)(nil)
+var _ adk.BaseChatModel = (*runControlTwoPhaseModel)(nil)
+var _ adk.InvokableTool = runControlTestTool{}

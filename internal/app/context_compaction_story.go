@@ -7,7 +7,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/interactive"
 )
 
@@ -77,7 +77,7 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 		return prepared, fmt.Errorf("没有可压缩的互动上下文")
 	}
 	event := interactiveCompactionEvent(recordID, expectedParent, len(storyCtx.Snapshot.Turns), prepared)
-	ref := agentruntime.ContextCompactionRef{
+	ref := runstate.ContextCompactionRef{
 		Source: "story.turn_events", Purpose: "persist a bounded model-history checkpoint",
 		Resource: storyID + "/" + branchID, ExpectedRevision: contextStoryRevision(expectedParent), Force: true,
 	}
@@ -214,7 +214,7 @@ func (s *InteractiveAppService) executeInteractiveContextCompactionRemoval(ctx c
 		ID: recordID, AgentKind: config.AgentKindInteractiveStory, CompactionID: compactionID,
 		SourceTurnCount: sourceTurns, Reason: "user_removed", ExpectedParentID: &expectedParent,
 	}
-	ref := agentruntime.ContextCompactionRef{
+	ref := runstate.ContextCompactionRef{
 		Source: "story.context_compaction", Purpose: "restore canonical story turn history",
 		Resource: storyID + "/" + branchID, ExpectedRevision: contextStoryRevision(expectedParent), CompactionID: compactionID,
 	}

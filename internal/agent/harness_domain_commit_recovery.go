@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 // HarnessDomainCommitReconciler resolves an exact identity+hash against the
@@ -11,5 +11,5 @@ import (
 // Found must never be inferred from command or operation identity alone.
 type HarnessDomainCommitReconciler func(
 	context.Context,
-	agentruntime.DomainCommitReconcileRequest,
-) (agentruntime.DomainCommitReconcileResult, error)
+	runstate.DomainCommitReconcileRequest,
+) (runstate.DomainCommitReconcileResult, error)

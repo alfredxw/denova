@@ -3,7 +3,7 @@ package agent
 import (
 	"testing"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/alfredxw/denova/adk/model/openai"
 
 	"denova/config"
 )

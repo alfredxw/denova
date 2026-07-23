@@ -5,9 +5,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/compose"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 	"denova/internal/interactive"
@@ -28,30 +26,28 @@ func TestInteractiveDirectorPlanSubmissionTerminatesAgentRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chatModel := &interactiveTurnProtocolChatModel{responses: []*schema.Message{
-		schema.AssistantMessage("", []schema.ToolCall{{
+	chatModel := &interactiveTurnProtocolChatModel{responses: []*adk.Message{
+		adk.AssistantMessage("", []adk.ToolCall{{
 			ID: "call-director-plan",
-			Function: schema.FunctionCall{
+			Function: adk.FunctionCall{
 				Name:      submitDirectorPlanUpdateToolName,
 				Arguments: `{"decision":{"mode":"keep","reason":"当前规划仍然有效"},"updates":[],"finalize":true}`,
 			},
 		}}),
-		schema.AssistantMessage("不应在结构化提交后再次调用模型。", nil),
+		adk.AssistantMessage("不应在结构化提交后再次调用模型。", nil),
 	}}
-	builtAgent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+	builtAgent, err := adk.NewAgent(ctx, adk.AgentConfig{
 		Name:          "interactive-director-terminal-submission-test",
 		Description:   "test",
 		Instruction:   "test",
 		Model:         chatModel,
 		MaxIterations: 3,
-		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{
-			Tools: tools,
-		}},
+		Tools:         tools,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: builtAgent, EnableStreaming: true})
+	runner := adk.NewRunner(adk.RunnerConfig{Agent: builtAgent, EnableStreaming: true})
 	conversation := &singleInstructionConversation{instruction: "更新导演规划"}
 	var events []Event
 	outcome := newTurnExecutor(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "更新导演规划"}, RunOptions{

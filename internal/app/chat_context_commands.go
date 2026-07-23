@@ -6,7 +6,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 func (a *App) AnalyzeContext(ctx context.Context, req agent.ChatRequest) (agent.ContextAnalysis, error) {

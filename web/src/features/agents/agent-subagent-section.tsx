@@ -9,18 +9,18 @@ import { Textarea } from '@/components/ui/textarea'
 import type { AgentModelOverride, AgentToolOverride, LayeredSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
 import { toolRowsForAgent } from './agent-configuration-sections'
 import { Field, SectionTitle, SwitchWithInheritance, ToggleSwitch, thinkingDisplayValue, thinkingStatusLabel } from './agent-form-controls'
-import { DEEP_AGENT_PARENT_KEYS, TOOL_ROWS } from './agent-registry'
-import type { DeepAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
+import { SUB_AGENT_PARENT_KEYS, TOOL_ROWS } from './agent-registry'
+import type { SubAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
 
 export function AgentSubAgentSection({ agent, inheritedModel, generalSettings, effectiveGeneralSettings, subAgents, effectiveSubAgents, profiles, onGeneralChange, onChange }: {
-  agent: DeepAgentParentKey
+  agent: SubAgentParentKey
   inheritedModel: AgentModelOverride
   generalSettings: Settings['general_sub_agents']
   effectiveGeneralSettings: Settings['general_sub_agents']
   subAgents: SubAgentConfig[]
   effectiveSubAgents: SubAgentConfig[]
   profiles: Array<{ id: string; label: string }>
-  onGeneralChange: (agent: DeepAgentParentKey, value: boolean | null) => void
+  onGeneralChange: (agent: SubAgentParentKey, value: boolean | null) => void
   onChange: (updater: (current: SubAgentConfig[]) => SubAgentConfig[]) => void
 }) {
   const { t } = useTranslation()
@@ -56,7 +56,7 @@ export function AgentSubAgentSection({ agent, inheritedModel, generalSettings, e
     if (!id) return
     const currentParents = effectiveSubAgentParents(subAgent)
     const nextParents = available
-      ? DEEP_AGENT_PARENT_KEYS.filter((parent) => parent === agent || currentParents.includes(parent))
+      ? SUB_AGENT_PARENT_KEYS.filter((parent) => parent === agent || currentParents.includes(parent))
       : currentParents.filter((parent) => parent !== agent)
     updateSubAgent(id, { parents: nextParents, enabled: true })
   }
@@ -208,7 +208,7 @@ export function AgentSubAgentSection({ agent, inheritedModel, generalSettings, e
 }
 
 function SubAgentRow({ agent, subAgent, onToggle, onEdit, onDelete }: {
-  agent: DeepAgentParentKey
+  agent: SubAgentParentKey
   subAgent: SubAgentConfig
   onToggle: (enabled: boolean) => void
   onEdit: () => void
@@ -254,7 +254,7 @@ function SubAgentRow({ agent, subAgent, onToggle, onEdit, onDelete }: {
 
 function SubAgentEditor({ id, agent, subAgent, inheritedModel, profiles, onChange }: {
   id: string
-  agent: DeepAgentParentKey
+  agent: SubAgentParentKey
   subAgent: SubAgentConfig
   inheritedModel: AgentModelOverride
   profiles: Array<{ id: string; label: string }>
@@ -275,12 +275,12 @@ function SubAgentEditor({ id, agent, subAgent, inheritedModel, profiles, onChang
     if (value === null) delete nextTools[key]
     onChange(id, { tools: nextTools })
   }
-  const setParent = (parent: DeepAgentParentKey, checked: boolean) => {
+  const setParent = (parent: SubAgentParentKey, checked: boolean) => {
     const current = effectiveSubAgentParents(subAgent)
     const next = new Set(current)
     if (checked) next.add(parent)
     else next.delete(parent)
-    const ordered = DEEP_AGENT_PARENT_KEYS.filter((key) => next.has(key))
+    const ordered = SUB_AGENT_PARENT_KEYS.filter((key) => next.has(key))
     onChange(id, { parents: ordered })
   }
 
@@ -361,7 +361,7 @@ function SubAgentEditor({ id, agent, subAgent, inheritedModel, profiles, onChang
       <div>
         <div className="mb-1.5 text-[var(--nova-text-muted)]">{t('agents.subAgents.parents')}</div>
         <div className="flex flex-wrap gap-2">
-          {DEEP_AGENT_PARENT_KEYS.map((parent) => (
+          {SUB_AGENT_PARENT_KEYS.map((parent) => (
             <label key={parent} className="inline-flex items-center gap-1.5 rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-2 py-1 text-[11px] text-[var(--nova-text-muted)]">
               <input type="checkbox" checked={parentSet.has(parent)} onChange={(e) => setParent(parent, e.target.checked)} />
               {t(`agents.subAgents.parent.${parent}`)}
@@ -393,8 +393,8 @@ function SubAgentEditor({ id, agent, subAgent, inheritedModel, profiles, onChang
   )
 }
 
-export function isDeepAgentParent(agent: VisibleAgentKey): agent is DeepAgentParentKey {
-  return (DEEP_AGENT_PARENT_KEYS as string[]).includes(agent)
+export function isSubAgentParent(agent: VisibleAgentKey): agent is SubAgentParentKey {
+  return (SUB_AGENT_PARENT_KEYS as string[]).includes(agent)
 }
 
 const GENERAL_SUB_AGENT_KEYS = ['default', 'ide', 'interactive_story', 'config_manager', 'automation'] as const
@@ -423,7 +423,7 @@ function mergeGeneralSubAgentSettings(parent: Settings['general_sub_agents'], ch
   return out
 }
 
-function resolveGeneralSubAgentEnabled(settings: Settings['general_sub_agents'], agent: DeepAgentParentKey) {
+function resolveGeneralSubAgentEnabled(settings: Settings['general_sub_agents'], agent: SubAgentParentKey) {
   const fallback = settings?.default ?? false
   return settings?.[agent] ?? fallback
 }
@@ -500,15 +500,15 @@ function upsertSubAgentOverride(current: SubAgentConfig[], next: SubAgentConfig,
 
 function sanitizeSubAgentParents(value?: string[]) {
   if (!value || value.length === 0) return []
-  const selected = DEEP_AGENT_PARENT_KEYS.filter((parent) => value.includes(parent))
+  const selected = SUB_AGENT_PARENT_KEYS.filter((parent) => value.includes(parent))
   return selected
 }
 
-function effectiveSubAgentParents(subAgent: SubAgentConfig): DeepAgentParentKey[] {
+function effectiveSubAgentParents(subAgent: SubAgentConfig): SubAgentParentKey[] {
   const parents = sanitizeSubAgentParents(subAgent.parents)
-  return parents as DeepAgentParentKey[]
+  return parents as SubAgentParentKey[]
 }
 
-function subAgentParentsWithout(subAgent: SubAgentConfig, agent: DeepAgentParentKey): DeepAgentParentKey[] {
+function subAgentParentsWithout(subAgent: SubAgentConfig, agent: SubAgentParentKey): SubAgentParentKey[] {
   return effectiveSubAgentParents(subAgent).filter((parent) => parent !== agent)
 }

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"denova/internal/agent"
+	"denova/internal/agent/session"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 func (c *interactiveConversation) AppendDisplayEvent(event session.DisplayEvent) error {

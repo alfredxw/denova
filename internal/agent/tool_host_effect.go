@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 const toolMutationHostEffectVersion = 1
@@ -32,9 +32,9 @@ type ToolMutationOrigin struct {
 // host reconciler. EffectID is the idempotency key; returning nil means the
 // host has durably admitted the obligation, not merely queued process work.
 type CommittedToolMutation struct {
-	EffectID         agentruntime.HostEffectID
-	Binding          agentruntime.BindingRef
-	RuntimeOperation agentruntime.OperationID
+	EffectID         runstate.HostEffectID
+	Binding          runstate.BindingRef
+	RuntimeOperation runstate.OperationID
 	RuntimeCycle     int
 	ToolCallID       string
 	Origin           ToolMutationOrigin
@@ -62,15 +62,15 @@ func toolMutationOrigin(options RunOptions) ToolMutationOrigin {
 }
 
 func newCommittedToolMutationHostEffect(
-	binding agentruntime.BindingRef,
-	operationID agentruntime.OperationID,
+	binding runstate.BindingRef,
+	operationID runstate.OperationID,
 	cycle int,
 	record ToolExecutionRecord,
 	options RunOptions,
-) (agentruntime.HostEffect, bool, error) {
+) (runstate.HostEffect, bool, error) {
 	mutation, ok := toolMutationFromExecutionRecord(record)
 	if !ok {
-		return agentruntime.HostEffect{}, false, nil
+		return runstate.HostEffect{}, false, nil
 	}
 	origin := toolMutationOrigin(options)
 	if strings.TrimSpace(mutation.Workspace) == "" {
@@ -80,20 +80,20 @@ func newCommittedToolMutationHostEffect(
 		Version: toolMutationHostEffectVersion, Origin: origin, Mutation: mutation,
 	})
 	if err != nil {
-		return agentruntime.HostEffect{}, false, fmt.Errorf("encode committed tool mutation: %w", err)
+		return runstate.HostEffect{}, false, fmt.Errorf("encode committed tool mutation: %w", err)
 	}
-	effect, err := agentruntime.NewToolHostEffect(
+	effect, err := runstate.NewToolHostEffect(
 		binding, operationID, cycle, record.ToolCallID, 0,
-		agentruntime.HostEffectToolMutationCommitted, payload,
+		runstate.HostEffectToolMutationCommitted, payload,
 	)
 	if err != nil {
-		return agentruntime.HostEffect{}, false, fmt.Errorf("build committed tool mutation host effect: %w", err)
+		return runstate.HostEffect{}, false, fmt.Errorf("build committed tool mutation host effect: %w", err)
 	}
 	return effect, true, nil
 }
 
-func decodeCommittedToolMutationHostEffect(binding agentruntime.BindingRef, effect agentruntime.HostEffect) (CommittedToolMutation, error) {
-	if effect.Kind != agentruntime.HostEffectToolMutationCommitted {
+func decodeCommittedToolMutationHostEffect(binding runstate.BindingRef, effect runstate.HostEffect) (CommittedToolMutation, error) {
+	if effect.Kind != runstate.HostEffectToolMutationCommitted {
 		return CommittedToolMutation{}, fmt.Errorf("unsupported agent host effect kind %q", effect.Kind)
 	}
 	var payload toolMutationHostEffectPayload
@@ -121,7 +121,7 @@ func decodeCommittedToolMutationHostEffect(binding agentruntime.BindingRef, effe
 	if err != nil {
 		return CommittedToolMutation{}, fmt.Errorf("resolve committed tool mutation binding: %w", err)
 	}
-	ref, err := agentruntime.BindingReference(resolved)
+	ref, err := runstate.BindingReference(resolved)
 	if err != nil || ref != binding {
 		return CommittedToolMutation{}, fmt.Errorf("committed tool mutation binding does not match runtime")
 	}

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 func TestInteractiveDirectorDisplayHidesDirectorPlanWriteInput(t *testing.T) {

@@ -6,12 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 // PlanHarnessInputMaterialization derives the canonical semantic hash without
@@ -19,66 +17,66 @@ import (
 func (a *App) PlanHarnessInputMaterialization(
 	ctx context.Context,
 	request agent.HarnessInputMaterializationRequest,
-) (agentruntime.InputMaterializationPlan, error) {
+) (runstate.InputMaterializationPlan, error) {
 	switch request.Binding.Profile {
-	case agentruntime.ProfileWriting, agentruntime.ProfileConfigManager, agentruntime.ProfileImage, agentruntime.ProfileAutomation:
+	case runstate.ProfileWriting, runstate.ProfileConfigManager, runstate.ProfileImage, runstate.ProfileAutomation:
 		intent, err := a.sessionAcceptedInputIntent(ctx, request)
 		if err != nil {
-			return agentruntime.InputMaterializationPlan{}, err
+			return runstate.InputMaterializationPlan{}, err
 		}
-		return agentruntime.InputMaterializationPlan{Required: true, Hash: intent.Hash}, nil
-	case agentruntime.ProfileGame:
+		return runstate.InputMaterializationPlan{Required: true, Hash: intent.Hash}, nil
+	case runstate.ProfileGame:
 		intent, err := gameAcceptedInputIntent(request)
 		if err != nil {
-			return agentruntime.InputMaterializationPlan{}, err
+			return runstate.InputMaterializationPlan{}, err
 		}
-		return agentruntime.InputMaterializationPlan{Required: true, Hash: intent.Hash}, nil
-	case agentruntime.ProfileDirector:
-		return agentruntime.InputMaterializationPlan{}, nil
+		return runstate.InputMaterializationPlan{Required: true, Hash: intent.Hash}, nil
+	case runstate.ProfileDirector:
+		return runstate.InputMaterializationPlan{}, nil
 	default:
-		return agentruntime.InputMaterializationPlan{}, fmt.Errorf("unsupported Agent profile %q for accepted input", request.Binding.Profile)
+		return runstate.InputMaterializationPlan{}, fmt.Errorf("unsupported Agent profile %q for accepted input", request.Binding.Profile)
 	}
 }
 
 func (a *App) MaterializeHarnessInput(
 	ctx context.Context,
 	request agent.HarnessInputMaterializationRequest,
-	plan agentruntime.InputMaterializationPlan,
-) (agentruntime.InputMaterializationReceipt, error) {
+	plan runstate.InputMaterializationPlan,
+) (runstate.InputMaterializationReceipt, error) {
 	if !plan.Required || strings.TrimSpace(plan.Hash) == "" {
-		return agentruntime.InputMaterializationReceipt{}, fmt.Errorf("accepted input materialization requires an exact semantic hash")
+		return runstate.InputMaterializationReceipt{}, fmt.Errorf("accepted input materialization requires an exact semantic hash")
 	}
 	switch request.Binding.Profile {
-	case agentruntime.ProfileWriting, agentruntime.ProfileConfigManager, agentruntime.ProfileImage, agentruntime.ProfileAutomation:
+	case runstate.ProfileWriting, runstate.ProfileConfigManager, runstate.ProfileImage, runstate.ProfileAutomation:
 		intent, err := a.sessionAcceptedInputIntent(ctx, request)
 		if err != nil {
-			return agentruntime.InputMaterializationReceipt{}, err
+			return runstate.InputMaterializationReceipt{}, err
 		}
 		if intent.Hash != plan.Hash {
-			return agentruntime.InputMaterializationReceipt{}, fmt.Errorf("%w: accepted Session input changed after planning", session.ErrDomainCommitIdentityConflict)
+			return runstate.InputMaterializationReceipt{}, fmt.Errorf("%w: accepted Session input changed after planning", session.ErrDomainCommitIdentityConflict)
 		}
 		receipt, err := a.commitSessionAcceptedInput(ctx, request.Binding, intent)
 		if err != nil {
-			return agentruntime.InputMaterializationReceipt{}, err
+			return runstate.InputMaterializationReceipt{}, err
 		}
-		return agentruntime.InputMaterializationReceipt{Revision: strconv.FormatUint(receipt.ContextRevision, 10)}, nil
-	case agentruntime.ProfileGame:
+		return runstate.InputMaterializationReceipt{Revision: strconv.FormatUint(receipt.ContextRevision, 10)}, nil
+	case runstate.ProfileGame:
 		intent, err := gameAcceptedInputIntent(request)
 		if err != nil {
-			return agentruntime.InputMaterializationReceipt{}, err
+			return runstate.InputMaterializationReceipt{}, err
 		}
 		if intent.Hash != plan.Hash {
-			return agentruntime.InputMaterializationReceipt{}, fmt.Errorf("%w: accepted player input changed after planning", interactive.ErrPlayerInputIdentityConflict)
+			return runstate.InputMaterializationReceipt{}, fmt.Errorf("%w: accepted player input changed after planning", interactive.ErrPlayerInputIdentityConflict)
 		}
 		receipt, err := interactive.NewStore(request.Binding.Workspace).CommitPlayerInput(request.Binding.StoryID, intent)
 		if err != nil {
-			return agentruntime.InputMaterializationReceipt{}, err
+			return runstate.InputMaterializationReceipt{}, err
 		}
-		return agentruntime.InputMaterializationReceipt{Revision: receipt.Revision}, nil
-	case agentruntime.ProfileDirector:
-		return agentruntime.InputMaterializationReceipt{}, fmt.Errorf("Director profile has no canonical user input")
+		return runstate.InputMaterializationReceipt{Revision: receipt.Revision}, nil
+	case runstate.ProfileDirector:
+		return runstate.InputMaterializationReceipt{}, fmt.Errorf("Director profile has no canonical user input")
 	default:
-		return agentruntime.InputMaterializationReceipt{}, fmt.Errorf("unsupported Agent profile %q for accepted input", request.Binding.Profile)
+		return runstate.InputMaterializationReceipt{}, fmt.Errorf("unsupported Agent profile %q for accepted input", request.Binding.Profile)
 	}
 }
 
@@ -98,14 +96,14 @@ func (a *App) sessionAcceptedInputIntent(
 	}
 	return session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(request.Identity.CommandID), OperationID: string(request.Identity.OperationID), Cycle: request.Identity.Cycle,
-	}, schema.UserMessage(request.Message), session.MessageMetadata{
+	}, agent.UserMessage(request.Message), session.MessageMetadata{
 		AgentKind: request.AgentKind, UserReferences: agent.UserMessageReferencesForRequest(resolved),
 	})
 }
 
 func (a *App) commitSessionAcceptedInput(
 	ctx context.Context,
-	binding agentruntime.BindingRef,
+	binding runstate.BindingRef,
 	intent session.DomainCommitIntent,
 ) (session.DomainCommitReceipt, error) {
 	if a != nil {

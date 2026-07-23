@@ -6,42 +6,44 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/adk/prebuilt/deep"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/compose"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 	"denova/internal/interactive"
 )
 
-func TestDeepAgentBuiltInToolsPassDescriptorGuard(t *testing.T) {
+func TestNativeAgentBuiltInToolsPassDescriptorGuard(t *testing.T) {
 	ctx := context.Background()
 	chatModel := &descriptorGuardProbeModel{}
-	builtAgent, err := deep.New(ctx, &deep.Config{
-		Name:                   "tool-descriptor-deep-agent-test",
-		Description:            "verify the final model-visible tool surface",
-		Instruction:            "Reply without calling tools.",
-		ChatModel:              chatModel,
-		MaxIteration:           1,
-		WithoutWriteTodos:      false,
-		WithoutGeneralSubAgent: false,
-		Handlers:               []adk.ChatModelAgentMiddleware{newToolDescriptorGuardMiddleware()},
+	todoTool, err := newWriteTodosTool()
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskTool, err := newTaskTool(ctx, []adk.Runnable{fakeAgent{name: generalSubAgentName, description: "test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	builtAgent, err := adk.NewAgent(ctx, adk.AgentConfig{
+		Name:          "tool-descriptor-native-agent-test",
+		Description:   "verify the final model-visible tool surface",
+		Instruction:   "Reply without calling tools.",
+		Model:         chatModel,
+		MaxIterations: 1,
+		Tools:         []adk.BaseTool{todoTool, taskTool},
+		Middlewares:   []adk.Middleware{newToolDescriptorGuardMiddleware()},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	iterator := adk.NewRunner(ctx, adk.RunnerConfig{Agent: builtAgent}).Query(ctx, "hello")
+	iterator := adk.NewRunner(adk.RunnerConfig{Agent: builtAgent}).Query(ctx, "hello")
 	for {
 		event, ok := iterator.Next()
 		if !ok {
 			break
 		}
 		if event.Err != nil {
-			t.Fatalf("deep agent rejected its final tool surface before the provider call: %v", event.Err)
+			t.Fatalf("native Agent rejected its final tool surface before the provider call: %v", event.Err)
 		}
 	}
 	if chatModel.calls != 1 {
@@ -55,7 +57,7 @@ func TestDeepAgentBuiltInToolsPassDescriptorGuard(t *testing.T) {
 	}
 	for _, name := range []string{"write_todos", "task"} {
 		if !toolNames[name] {
-			t.Fatalf("deep agent provider tool surface missing %q: %v", name, toolNames)
+			t.Fatalf("native Agent provider tool surface missing %q: %v", name, toolNames)
 		}
 	}
 }
@@ -91,26 +93,32 @@ func TestWritingAgentFinalRuntimeToolSurfacePassesDescriptorGuard(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
+	todoTool, err := newWriteTodosTool()
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskTool, err := newTaskTool(ctx, []adk.Runnable{fakeAgent{name: generalSubAgentName, description: "test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools := append([]adk.BaseTool(nil), assembly.Tools...)
+	tools = append(tools, todoTool, taskTool)
 
 	chatModel := &descriptorGuardProbeModel{}
-	builtAgent, err := deep.New(ctx, &deep.Config{
-		Name:                   "writing-tool-surface-test",
-		Description:            "verify the writing Agent's final model-visible tool surface",
-		Instruction:            "Reply without calling tools.",
-		ChatModel:              chatModel,
-		MaxIteration:           1,
-		WithoutWriteTodos:      !settings.Todo,
-		WithoutGeneralSubAgent: false,
-		Handlers:               assembly.Handlers,
-		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{
-			Tools: assembly.Tools,
-		}},
+	builtAgent, err := adk.NewAgent(ctx, adk.AgentConfig{
+		Name:          "writing-tool-surface-test",
+		Description:   "verify the writing Agent's final model-visible tool surface",
+		Instruction:   "Reply without calling tools.",
+		Model:         chatModel,
+		MaxIterations: 1,
+		Middlewares:   assembly.Middlewares,
+		Tools:         tools,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	iterator := adk.NewRunner(ctx, adk.RunnerConfig{Agent: builtAgent}).Query(ctx, "hello")
+	iterator := adk.NewRunner(adk.RunnerConfig{Agent: builtAgent}).Query(ctx, "hello")
 	for {
 		event, ok := iterator.Next()
 		if !ok {
@@ -165,41 +173,41 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		build func() ([]tool.BaseTool, error)
+		build func() ([]adk.BaseTool, error)
 	}{
 		{
 			name: "writing",
-			build: func() ([]tool.BaseTool, error) {
+			build: func() ([]adk.BaseTool, error) {
 				return ideToolsFactory(cfg)(config.ResolveAgentTools(cfg, config.AgentKindIDE))
 			},
 		},
 		{
 			name: "game",
-			build: func() ([]tool.BaseTool, error) {
+			build: func() ([]adk.BaseTool, error) {
 				return interactiveStoryToolsFactory(cfg, storyContext)(config.ResolveAgentTools(cfg, config.AgentKindInteractiveStory))
 			},
 		},
 		{
 			name: "game director",
-			build: func() ([]tool.BaseTool, error) {
+			build: func() ([]adk.BaseTool, error) {
 				return interactiveDirectorToolsFactory(cfg, directorContext)(config.ResolveAgentTools(cfg, config.AgentKindInteractiveDirector))
 			},
 		},
 		{
 			name: "config manager",
-			build: func() ([]tool.BaseTool, error) {
+			build: func() ([]adk.BaseTool, error) {
 				return configManagerToolsFactory(cfg)(config.ResolveAgentTools(cfg, config.AgentKindConfigManager))
 			},
 		},
 		{
 			name: "image",
-			build: func() ([]tool.BaseTool, error) {
+			build: func() ([]adk.BaseTool, error) {
 				return imageToolsFactory(cfg)(config.ResolveAgentTools(cfg, config.AgentKindImage))
 			},
 		},
 		{
 			name: "automation",
-			build: func() ([]tool.BaseTool, error) {
+			build: func() ([]adk.BaseTool, error) {
 				return loreToolsFactory(cfg, false)(config.ResolveAgentTools(cfg, config.AgentKindAutomation))
 			},
 		},
@@ -224,19 +232,19 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 
 type descriptorGuardProbeModel struct {
 	calls int
-	tools []*schema.ToolInfo
+	tools []*adk.ToolInfo
 }
 
-func (m *descriptorGuardProbeModel) Generate(_ context.Context, _ []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+func (m *descriptorGuardProbeModel) Generate(_ context.Context, _ []*adk.Message, opts ...adk.ModelOption) (*adk.Message, error) {
 	m.calls++
-	m.tools = model.GetCommonOptions(&model.Options{}, opts...).Tools
-	return schema.AssistantMessage("ok", nil), nil
+	m.tools = adk.GetCommonOptions(&adk.Options{}, opts...).Tools
+	return adk.AssistantMessage("ok", nil), nil
 }
 
-func (m *descriptorGuardProbeModel) Stream(ctx context.Context, messages []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+func (m *descriptorGuardProbeModel) Stream(ctx context.Context, messages []*adk.Message, opts ...adk.ModelOption) (*adk.StreamReader[*adk.Message], error) {
 	message, err := m.Generate(ctx, messages, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return schema.StreamReaderFromArray([]*schema.Message{message}), nil
+	return adk.StreamReaderFromArray([]*adk.Message{message}), nil
 }

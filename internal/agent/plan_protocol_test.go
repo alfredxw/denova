@@ -5,8 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 )
 
 func TestPlanProtocolParserExtractsBlocksAcrossChunks(t *testing.T) {
@@ -156,9 +155,9 @@ func TestPlanProtocolToolCallEmitsPlanCardInsteadOfToolCall(t *testing.T) {
 		AgentKind: AgentKindIDE,
 		RunID:     "run-plan-tool",
 	}, func(Event) {})
-	msg := schema.AssistantMessage("", []schema.ToolCall{{
+	msg := adk.AssistantMessage("", []adk.ToolCall{{
 		ID: "call-plan",
-		Function: schema.FunctionCall{
+		Function: adk.FunctionCall{
 			Name:      "plan_questions",
 			Arguments: `{"questions":[{"id":"scope","question":"确认范围？"}]}`,
 		},

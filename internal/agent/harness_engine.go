@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cloudwego/eino/adk"
+	"github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/book"
 )
 
@@ -25,8 +25,8 @@ type HarnessCycleCommitter interface {
 // commit so retries and crash reconciliation never infer identity from display
 // events or process-local task IDs.
 type HarnessCycleIdentity struct {
-	CommandID   agentruntime.CommandID
-	OperationID agentruntime.OperationID
+	CommandID   runstate.CommandID
+	OperationID runstate.OperationID
 	Cycle       int
 }
 
@@ -73,7 +73,7 @@ type HarnessTurnSpec struct {
 	// CommandID correlates the cycle with the user command that selected its
 	// TurnSpec. It is display metadata only; durable command identity remains in
 	// the coordinator journal.
-	CommandID    agentruntime.CommandID
+	CommandID    runstate.CommandID
 	CommandKind  AgentCommandKind
 	Runner       *adk.Runner
 	Conversation Conversation
@@ -96,9 +96,9 @@ type HarnessTurnSpec struct {
 	Outcome chan<- RunOutcome
 }
 
-// harnessEngine adapts the existing Agent runtime to agentruntime.Engine. It
+// harnessEngine adapts the existing Agent runtime to runstate.Engine. It
 // also implements EngineFactory; one concurrent registry can therefore serve
-// every binding opened by an agentruntime.Runtime.
+// every binding opened by an runstate.Runtime.
 type harnessEngine struct {
 	runtime                *turnExecutor
 	turnRestorer           HarnessTurnRestorer
@@ -119,7 +119,7 @@ var ErrHarnessBindingMismatch = errors.New("agent harness binding mismatch")
 
 type bindingHarnessEngine struct {
 	owner   *harnessEngine
-	binding agentruntime.BindingRef
+	binding runstate.BindingRef
 
 	recoveryMu    sync.RWMutex
 	recoveryRoute recoveryDisplayRoute
@@ -141,8 +141,8 @@ func newHarnessEngine(runtime *turnExecutor, turnRestorers ...HarnessTurnRestore
 
 // NewEngine returns a lightweight binding guard over the shared turn registry.
 // Mutable adapter state remains shared, while every Run is fenced to the exact
-// profile and lifecycle identity selected by agentruntime.Runtime.Open.
-func (e *harnessEngine) NewEngine(_ context.Context, binding agentruntime.BindingRef) (agentruntime.Engine, error) {
+// profile and lifecycle identity selected by runstate.Runtime.Open.
+func (e *harnessEngine) NewEngine(_ context.Context, binding runstate.BindingRef) (runstate.Engine, error) {
 	if e == nil {
 		return nil, fmt.Errorf("create agent harness engine: engine is nil")
 	}
@@ -151,14 +151,14 @@ func (e *harnessEngine) NewEngine(_ context.Context, binding agentruntime.Bindin
 
 func (e *bindingHarnessEngine) Run(
 	ctx context.Context,
-	request agentruntime.EngineRequest,
-	emit agentruntime.EngineEventSink,
-) (agentruntime.EngineResult, error) {
+	request runstate.EngineRequest,
+	emit runstate.EngineEventSink,
+) (runstate.EngineResult, error) {
 	if e == nil || e.owner == nil {
-		return agentruntime.EngineResult{}, fmt.Errorf("run agent harness engine: engine is nil")
+		return runstate.EngineResult{}, fmt.Errorf("run agent harness engine: engine is nil")
 	}
 	if request.Binding != e.binding || request.Snapshot.Binding != e.binding {
-		return agentruntime.EngineResult{}, fmt.Errorf(
+		return runstate.EngineResult{}, fmt.Errorf(
 			"%w: factory=%+v request=%+v snapshot=%+v",
 			ErrHarnessBindingMismatch,
 			e.binding,
@@ -169,14 +169,14 @@ func (e *bindingHarnessEngine) Run(
 	return e.owner.run(ctx, request, emit, &e.binding)
 }
 
-func (e *bindingHarnessEngine) ReleasePendingInput(ctx context.Context, input agentruntime.UserInput) {
+func (e *bindingHarnessEngine) ReleasePendingInput(ctx context.Context, input runstate.UserInput) {
 	if e == nil || e.owner == nil {
 		return
 	}
 	e.owner.ReleasePendingInput(ctx, input)
 }
 
-func (e *bindingHarnessEngine) RestorePendingInput(ctx context.Context, input agentruntime.QueuedInput) error {
+func (e *bindingHarnessEngine) RestorePendingInput(ctx context.Context, input runstate.QueuedInput) error {
 	if e == nil || e.owner == nil {
 		return fmt.Errorf("restore agent harness pending input: engine is nil")
 	}
@@ -230,13 +230,13 @@ func (e *bindingHarnessEngine) withRecoveryRoute(ctx context.Context) context.Co
 
 func (e *bindingHarnessEngine) ReconcileDomainCommit(
 	ctx context.Context,
-	request agentruntime.DomainCommitReconcileRequest,
-) (agentruntime.DomainCommitReconcileResult, error) {
+	request runstate.DomainCommitReconcileRequest,
+) (runstate.DomainCommitReconcileResult, error) {
 	if e == nil || e.owner == nil {
-		return agentruntime.DomainCommitReconcileResult{}, fmt.Errorf("reconcile agent harness domain commit: engine is nil")
+		return runstate.DomainCommitReconcileResult{}, fmt.Errorf("reconcile agent harness domain commit: engine is nil")
 	}
 	if request.Binding != e.binding {
-		return agentruntime.DomainCommitReconcileResult{}, fmt.Errorf(
+		return runstate.DomainCommitReconcileResult{}, fmt.Errorf(
 			"%w: factory=%+v request=%+v",
 			ErrHarnessBindingMismatch,
 			e.binding,
@@ -244,12 +244,12 @@ func (e *bindingHarnessEngine) ReconcileDomainCommit(
 		)
 	}
 	if e.owner.domainCommitReconciler == nil {
-		return agentruntime.DomainCommitReconcileResult{}, nil
+		return runstate.DomainCommitReconcileResult{}, nil
 	}
 	return e.owner.domainCommitReconciler(ctx, request)
 }
 
-func (e *bindingHarnessEngine) ReconcileHostEffect(ctx context.Context, effect agentruntime.HostEffect) error {
+func (e *bindingHarnessEngine) ReconcileHostEffect(ctx context.Context, effect runstate.HostEffect) error {
 	if e == nil || e.owner == nil {
 		return fmt.Errorf("reconcile agent harness host effect: engine is nil")
 	}
@@ -265,31 +265,31 @@ func (e *bindingHarnessEngine) ReconcileHostEffect(ctx context.Context, effect a
 
 func (e *harnessEngine) run(
 	ctx context.Context,
-	request agentruntime.EngineRequest,
-	emit agentruntime.EngineEventSink,
-	expectedBinding *agentruntime.BindingRef,
-) (agentruntime.EngineResult, error) {
+	request runstate.EngineRequest,
+	emit runstate.EngineEventSink,
+	expectedBinding *runstate.BindingRef,
+) (runstate.EngineResult, error) {
 	if e == nil {
-		return agentruntime.EngineResult{}, fmt.Errorf("run agent harness engine: engine is nil")
+		return runstate.EngineResult{}, fmt.Errorf("run agent harness engine: engine is nil")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if emit == nil {
-		return agentruntime.EngineResult{}, fmt.Errorf("run agent harness engine: event sink is required")
+		return runstate.EngineResult{}, fmt.Errorf("run agent harness engine: event sink is required")
 	}
 
 	spec, err := e.take(request.Snapshot.Input.TurnSpecRef)
 	if err != nil {
-		return agentruntime.EngineResult{}, err
+		return runstate.EngineResult{}, err
 	}
 	if expectedBinding != nil {
 		if err := validateHarnessTurnBinding(spec.Options, *expectedBinding); err != nil {
-			return agentruntime.EngineResult{}, err
+			return runstate.EngineResult{}, err
 		}
 		if spec.Prepare == nil {
 			if err := validateHarnessTurnExecutable(spec); err != nil {
-				return agentruntime.EngineResult{}, err
+				return runstate.EngineResult{}, err
 			}
 		}
 	}
@@ -312,7 +312,7 @@ func (e *harnessEngine) run(
 			cancel()
 			outcome, controlErr := harnessPreparationControlOutcome(*preparationControl)
 			if controlErr != nil {
-				return agentruntime.EngineResult{}, controlErr
+				return runstate.EngineResult{}, controlErr
 			}
 			reportHarnessOutcome(ctx, spec, outcome)
 			return harnessEngineResult(outcome)
@@ -324,17 +324,17 @@ func (e *harnessEngine) run(
 			}
 			reportHarnessOutcome(ctx, spec, outcome)
 			cancel()
-			return agentruntime.EngineResult{}, prepareErr
+			return runstate.EngineResult{}, prepareErr
 		}
 		spec = prepared
 		if expectedBinding != nil {
 			if err := validateHarnessTurnBinding(spec.Options, *expectedBinding); err != nil {
 				cancel()
-				return agentruntime.EngineResult{}, err
+				return runstate.EngineResult{}, err
 			}
 			if err := validateHarnessTurnExecutable(spec); err != nil {
 				cancel()
-				return agentruntime.EngineResult{}, err
+				return runstate.EngineResult{}, err
 			}
 		}
 	}
@@ -366,7 +366,7 @@ func (e *harnessEngine) run(
 			cancel()
 			outcome, controlErr := harnessPreparationControlOutcome(*preparationControl)
 			if controlErr != nil {
-				return agentruntime.EngineResult{}, controlErr
+				return runstate.EngineResult{}, controlErr
 			}
 			reportHarnessOutcome(ctx, spec, outcome)
 			return harnessEngineResult(outcome)
@@ -378,7 +378,7 @@ func (e *harnessEngine) run(
 			}
 			reportHarnessOutcome(ctx, spec, outcome)
 			cancel()
-			return agentruntime.EngineResult{}, prepareErr
+			return runstate.EngineResult{}, prepareErr
 		}
 	}
 	// The legacy control bridge starts only after preparation. During preparation
@@ -405,7 +405,7 @@ func (e *harnessEngine) run(
 		spec.Options,
 		func(event Event) {
 			// "done" is an operation terminal signal in the legacy UI protocol,
-			// while one harness operation may contain several Eino cycles after
+			// while one harness operation may contain several Agent cycles after
 			// steer/follow-up. The coordinator emits it once after durable settle.
 			if spec.Emit != nil && event.Type != "done" {
 				spec.Emit(event)
@@ -431,25 +431,25 @@ func (e *harnessEngine) run(
 	cancel()
 	bridgeErr := <-bridgeDone
 	if sinkErr := sink.failure(); sinkErr != nil {
-		return agentruntime.EngineResult{}, sinkErr
+		return runstate.EngineResult{}, sinkErr
 	}
 	if bridgeErr != nil {
-		return agentruntime.EngineResult{}, bridgeErr
+		return runstate.EngineResult{}, bridgeErr
 	}
-	if err := sink.send(agentruntime.EngineAssistantFinal{
+	if err := sink.send(runstate.EngineAssistantFinal{
 		Content: outcome.Content, Thinking: outcome.Thinking,
 	}); err != nil {
-		return agentruntime.EngineResult{}, err
+		return runstate.EngineResult{}, err
 	}
 	return harnessEngineResult(outcome)
 }
 
-func validateHarnessTurnBinding(options RunOptions, expected agentruntime.BindingRef) error {
+func validateHarnessTurnBinding(options RunOptions, expected runstate.BindingRef) error {
 	binding, err := harnessBindingForOptions(options)
 	if err != nil {
 		return fmt.Errorf("%w: resolve turn profile: %v", ErrHarnessBindingMismatch, err)
 	}
-	actual, err := agentruntime.BindingReference(binding)
+	actual, err := runstate.BindingReference(binding)
 	if err != nil {
 		return fmt.Errorf("%w: resolve turn binding: %v", ErrHarnessBindingMismatch, err)
 	}
@@ -508,14 +508,14 @@ func preserveHarnessBindingOptions(binding, execution RunOptions) RunOptions {
 	return execution
 }
 
-func harnessEngineResult(outcome RunOutcome) (agentruntime.EngineResult, error) {
+func harnessEngineResult(outcome RunOutcome) (runstate.EngineResult, error) {
 	switch outcome.Status {
 	case RunOutcomeCompleted:
-		return agentruntime.EngineResult{Status: agentruntime.EngineCompleted}, outcome.Error
+		return runstate.EngineResult{Status: runstate.EngineCompleted}, outcome.Error
 	case RunOutcomePreempted:
-		return agentruntime.EngineResult{Status: agentruntime.EnginePreempted}, outcome.Error
+		return runstate.EngineResult{Status: runstate.EnginePreempted}, outcome.Error
 	case RunOutcomeAborted:
-		return agentruntime.EngineResult{Status: agentruntime.EngineAborted}, outcome.Error
+		return runstate.EngineResult{Status: runstate.EngineAborted}, outcome.Error
 	case RunOutcomeFailed:
 		err := outcome.Error
 		if err == nil {
@@ -525,16 +525,16 @@ func harnessEngineResult(outcome RunOutcome) (agentruntime.EngineResult, error) 
 			}
 			err = errors.New(reason)
 		}
-		return agentruntime.EngineResult{}, err
+		return runstate.EngineResult{}, err
 	default:
-		return agentruntime.EngineResult{}, fmt.Errorf("unsupported agent run outcome status %q", outcome.Status)
+		return runstate.EngineResult{}, fmt.Errorf("unsupported agent run outcome status %q", outcome.Status)
 	}
 }
 
-var _ agentruntime.EngineFactory = (*harnessEngine)(nil)
-var _ agentruntime.Engine = (*bindingHarnessEngine)(nil)
-var _ agentruntime.EnginePendingInputReleaser = (*bindingHarnessEngine)(nil)
-var _ agentruntime.EnginePendingInputRestorer = (*bindingHarnessEngine)(nil)
-var _ agentruntime.EngineRecoveryContextBinder = (*bindingHarnessEngine)(nil)
-var _ agentruntime.EngineRecoveryContextUnbinder = (*bindingHarnessEngine)(nil)
-var _ agentruntime.EngineDomainCommitReconciler = (*bindingHarnessEngine)(nil)
+var _ runstate.EngineFactory = (*harnessEngine)(nil)
+var _ runstate.Engine = (*bindingHarnessEngine)(nil)
+var _ runstate.EnginePendingInputReleaser = (*bindingHarnessEngine)(nil)
+var _ runstate.EnginePendingInputRestorer = (*bindingHarnessEngine)(nil)
+var _ runstate.EngineRecoveryContextBinder = (*bindingHarnessEngine)(nil)
+var _ runstate.EngineRecoveryContextUnbinder = (*bindingHarnessEngine)(nil)
+var _ runstate.EngineDomainCommitReconciler = (*bindingHarnessEngine)(nil)

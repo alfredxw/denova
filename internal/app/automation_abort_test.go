@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
 )
 
@@ -19,7 +19,7 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 	if err := os.MkdirAll(workspace, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.Config{NovaDir: root, Workspace: workspace}
+	cfg := &config.Config{NovaDir: root, Workspace: workspace, OpenAIModel: "test-model"}
 	application, err := New(context.Background(), cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -32,7 +32,7 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	const runID = "run-abort-replay"
-	const operationID = agentruntime.OperationID("operation-abort-replay")
+	const operationID = runstate.OperationID("operation-abort-replay")
 	const commandID = "abort-command-replay"
 	run := automation.RunRecord{
 		ID: runID, TaskID: taskDef.ID, SessionID: automationRunSessionID(runID),
@@ -46,8 +46,8 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ref := agentruntime.BindingRef{
-		Kind: agentruntime.BindingAutomation, Profile: agentruntime.ProfileAutomation,
+	ref := runstate.BindingRef{
+		Kind: runstate.BindingAutomation, Profile: runstate.ProfileAutomation,
 		Workspace: run.Workspace, SessionID: run.SessionID, TaskID: taskDef.ID,
 	}
 	key, err := json.Marshal(ref)
@@ -55,7 +55,7 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		application.Close()
 		t.Fatal(err)
 	}
-	journalStore, err := agentruntime.NewFileJournalStore(filepath.Join(root, "agent-runtime"))
+	journalStore, err := runstate.NewFileJournalStore(filepath.Join(root, "agent-runtime"))
 	if err != nil {
 		application.Close()
 		t.Fatal(err)
@@ -65,18 +65,18 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		application.Close()
 		t.Fatal(err)
 	}
-	abort := agentruntime.Abort{ID: commandID, OperationID: operationID, Reason: "user_requested"}
-	abortFingerprint, err := agentruntime.CommandFingerprint(abort)
+	abort := runstate.Abort{ID: commandID, OperationID: operationID, Reason: "user_requested"}
+	abortFingerprint, err := runstate.CommandFingerprint(abort)
 	if err != nil {
 		application.Close()
 		t.Fatal(err)
 	}
-	_, err = journal.Append(context.Background(), 0, []agentruntime.EventPayload{
-		agentruntime.CommandAcceptedEvent{CommandID: agentruntime.CommandID(automationRunAgentCommandID(runID)), CommandKind: "start_turn", OperationID: operationID, Fingerprint: "seed-start"},
-		agentruntime.OperationStartedEvent{OperationID: operationID},
-		agentruntime.CommandAcceptedEvent{CommandID: commandID, CommandKind: "abort", OperationID: operationID, Fingerprint: abortFingerprint},
-		agentruntime.AbortRequestedEvent{OperationID: operationID, Reason: abort.Reason},
-		agentruntime.OperationSettledEvent{OperationID: operationID, Status: agentruntime.OperationAborted, Reason: abort.Reason},
+	_, err = journal.Append(context.Background(), 0, []runstate.EventPayload{
+		runstate.CommandAcceptedEvent{CommandID: runstate.CommandID(automationRunAgentCommandID(runID)), CommandKind: "start_turn", OperationID: operationID, Fingerprint: "seed-start"},
+		runstate.OperationStartedEvent{OperationID: operationID},
+		runstate.CommandAcceptedEvent{CommandID: commandID, CommandKind: "abort", OperationID: operationID, Fingerprint: abortFingerprint},
+		runstate.AbortRequestedEvent{OperationID: operationID, Reason: abort.Reason},
+		runstate.OperationSettledEvent{OperationID: operationID, Status: runstate.OperationAborted, Reason: abort.Reason},
 	})
 	if closeErr := journal.Close(); err != nil || closeErr != nil {
 		application.Close()
@@ -84,7 +84,7 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 	}
 	application.Close()
 
-	reopened, err := New(context.Background(), &config.Config{NovaDir: root, Workspace: workspace})
+	reopened, err := New(context.Background(), &config.Config{NovaDir: root, Workspace: workspace, OpenAIModel: "test-model"})
 	if err != nil {
 		t.Fatal(err)
 	}

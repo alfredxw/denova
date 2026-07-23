@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	agentcontext "denova/internal/agent/context"
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/prompts"
-	"denova/internal/session"
 	"denova/internal/workspacepath"
 )
 

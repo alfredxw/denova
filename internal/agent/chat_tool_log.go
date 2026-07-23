@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 )
 
 func logToolCall(name, id string, argsBytes int, source string) {
@@ -132,7 +132,7 @@ func safeLogPreview(content string, limit int) string {
 }
 
 // mergeToolCalls 合并流式 frame 中分散的 tool call 信息。
-func mergeToolCalls(existing []schema.ToolCall, incoming []schema.ToolCall) []schema.ToolCall {
+func mergeToolCalls(existing []adk.ToolCall, incoming []adk.ToolCall) []adk.ToolCall {
 	for _, tc := range incoming {
 		idx := tc.Index
 		if idx == nil {
@@ -144,7 +144,7 @@ func mergeToolCalls(existing []schema.ToolCall, incoming []schema.ToolCall) []sc
 
 		i := *idx
 		for len(existing) <= i {
-			existing = append(existing, schema.ToolCall{})
+			existing = append(existing, adk.ToolCall{})
 		}
 		if tc.Function.Name != "" {
 			existing[i].Function.Name = tc.Function.Name

@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
-	"denova/internal/session"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 )
 
 func TestSessionConversationStructuralCursorRejectsStaleContextWrite(t *testing.T) {
@@ -22,10 +22,10 @@ func TestSessionConversationStructuralCursorRejectsStaleContextWrite(t *testing.
 	}
 	cursor := sess.ContextCursor()
 	conversation := NewSessionConversation(sess).WithContextCursorBarrier(cursor)
-	if err := sess.Append(schema.UserMessage("concurrent input")); err != nil {
+	if err := sess.Append(adk.UserMessage("concurrent input")); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.AppendContextMessage(schema.UserMessage("stale structural context")); !errors.Is(err, session.ErrContextRevisionConflict) {
+	if err := conversation.AppendContextMessage(adk.UserMessage("stale structural context")); !errors.Is(err, session.ErrContextRevisionConflict) {
 		t.Fatalf("stale structural write error = %v, want %v", err, session.ErrContextRevisionConflict)
 	}
 }
@@ -43,7 +43,7 @@ func TestSessionConversationRejectsCanonicalWritesWithoutDurableCycleIdentity(t 
 	if err := conversation.AppendAssistant("must not bypass actor"); !errors.Is(err, ErrMissingAgentCycleIdentity) {
 		t.Fatalf("assistant append error = %v, want %v", err, ErrMissingAgentCycleIdentity)
 	}
-	if err := conversation.AppendContextMessage(schema.ToolMessage("must not bypass actor", "call-1")); !errors.Is(err, ErrMissingAgentCycleIdentity) {
+	if err := conversation.AppendContextMessage(adk.ToolMessage("must not bypass actor", "call-1")); !errors.Is(err, ErrMissingAgentCycleIdentity) {
 		t.Fatalf("context append error = %v, want %v", err, ErrMissingAgentCycleIdentity)
 	}
 	if got := sess.MessageCountTotal(); got != 0 {
@@ -61,7 +61,7 @@ func TestSessionConversationStagesAssistantUntilAuthorizedCycleCommit(t *testing
 		t.Fatal(err)
 	}
 	conversation := NewSessionConversation(sess)
-	identity := HarnessCycleIdentity{CommandID: agentruntime.CommandID("command-1"), OperationID: agentruntime.OperationID("operation-1"), Cycle: 1}
+	identity := HarnessCycleIdentity{CommandID: runstate.CommandID("command-1"), OperationID: runstate.OperationID("operation-1"), Cycle: 1}
 	conversation.BindAgentCycleIdentity(identity)
 	if _, err := assembleAndCommitModelContextForTest(conversation, "user input", "user input"); err != nil {
 		t.Fatal(err)

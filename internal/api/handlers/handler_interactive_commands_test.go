@@ -7,7 +7,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 func TestInteractiveAgentCommandKindIsClosed(t *testing.T) {
@@ -21,7 +21,7 @@ func TestInteractiveAgentCommandKindIsClosed(t *testing.T) {
 
 func TestAgentCommandErrorMapsDomainCommitWinnerToConflict(t *testing.T) {
 	requestContext := app.NewContext(0)
-	(&Handlers{}).writeAgentCommandError(requestContext, agentruntime.ErrDomainCommitRejected, "operation-commit")
+	(&Handlers{}).writeAgentCommandError(requestContext, runstate.ErrDomainCommitRejected, "operation-commit")
 
 	if got := requestContext.Response.StatusCode(); got != http.StatusConflict {
 		t.Fatalf("status = %d, want %d", got, http.StatusConflict)

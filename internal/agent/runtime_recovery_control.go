@@ -7,24 +7,24 @@ import (
 	"log"
 	"strings"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 // recoveryCancellationAbortIdentity preserves idempotency while cancellation
 // retries one operation, then rotates identity when the durable binding advances
 // to an accepted successor operation.
 type recoveryCancellationAbortIdentity struct {
-	operationID agentruntime.OperationID
-	commandID   agentruntime.CommandID
+	operationID runstate.OperationID
+	commandID   runstate.CommandID
 }
 
-func (i *recoveryCancellationAbortIdentity) forOperation(operationID agentruntime.OperationID) agentruntime.CommandID {
+func (i *recoveryCancellationAbortIdentity) forOperation(operationID runstate.OperationID) runstate.CommandID {
 	if operationID == "" {
 		return ""
 	}
 	if i.operationID != operationID {
 		i.operationID = operationID
-		i.commandID = agentruntime.CommandID(newHarnessIdentity("recovery-abort"))
+		i.commandID = runstate.CommandID(newHarnessIdentity("recovery-abort"))
 	}
 	return i.commandID
 }
@@ -34,16 +34,16 @@ func (r *RecoveryObservation) Resume(
 	action RuntimeRecoveryAction,
 	taskID string,
 	emit func(Event),
-) (agentruntime.Receipt, error) {
+) (runstate.Receipt, error) {
 	if r == nil || r.harness == nil {
-		return agentruntime.Receipt{}, ErrRuntimeProjectionUnavailable
+		return runstate.Receipt{}, ErrRuntimeProjectionUnavailable
 	}
 	status, err := r.harness.Status(ctx)
 	if err != nil {
-		return agentruntime.Receipt{}, err
+		return runstate.Receipt{}, err
 	}
 	if !containsRuntimeRecoveryAction(RuntimeRecoveryActions(status), action) {
-		return agentruntime.Receipt{}, fmt.Errorf("%w: kind=%q command_id=%q operation_id=%q", ErrRecoveryActionChanged, action.Kind, action.CommandID, action.OperationID)
+		return runstate.Receipt{}, fmt.Errorf("%w: kind=%q command_id=%q operation_id=%q", ErrRecoveryActionChanged, action.Kind, action.CommandID, action.OperationID)
 	}
 	recoveryCtx := withRecoveryDisplayRoute(ctx, recoveryDisplayRoute{TaskID: taskID, Emit: emit})
 	r.harness.BindRecoveryContext(recoveryCtx)
@@ -51,33 +51,33 @@ func (r *RecoveryObservation) Resume(
 	r.boundRoute = recoveryDisplayRoute{TaskID: strings.TrimSpace(taskID), Emit: emit}
 	r.mu.Unlock()
 	if action.Kind == RuntimeRecoveryAttach {
-		return agentruntime.Receipt{
+		return runstate.Receipt{
 			CommandID: action.CommandID, OperationID: action.OperationID,
 			Cursor: status.Cursor, Replayed: true,
 		}, nil
 	}
 	if action.Kind == RuntimeRecoveryAbort {
-		receipt, err := r.harness.Submit(recoveryCtx, agentruntime.Abort{
+		receipt, err := r.harness.Submit(recoveryCtx, runstate.Abort{
 			ID: action.CommandID, OperationID: action.OperationID,
 			Reason: "user explicitly aborted a recovery-paused operation",
 		})
 		return receipt, err
 	}
-	var delivery agentruntime.DeliveryKind
+	var delivery runstate.DeliveryKind
 	switch action.Kind {
 	case RuntimeRecoverySteer:
-		delivery = agentruntime.DeliverySteer
+		delivery = runstate.DeliverySteer
 	case RuntimeRecoveryFollowUp:
-		delivery = agentruntime.DeliveryFollowUp
+		delivery = runstate.DeliveryFollowUp
 	case RuntimeRecoveryNextTurn:
-		delivery = agentruntime.DeliveryNextTurn
+		delivery = runstate.DeliveryNextTurn
 	default:
-		return agentruntime.Receipt{}, fmt.Errorf("%w: structural action requires the structural recovery seam", ErrRecoveryActionChanged)
+		return runstate.Receipt{}, fmt.Errorf("%w: structural action requires the structural recovery seam", ErrRecoveryActionChanged)
 	}
-	receipt, err := r.harness.RecoverAcceptedInput(recoveryCtx, agentruntime.RecoveryAction{
+	receipt, err := r.harness.RecoverAcceptedInput(recoveryCtx, runstate.RecoveryAction{
 		Kind: delivery, CommandID: action.CommandID, OperationID: action.OperationID,
 	})
-	if errors.Is(err, agentruntime.ErrRecoveryActionChanged) {
+	if errors.Is(err, runstate.ErrRecoveryActionChanged) {
 		return receipt, fmt.Errorf("%w: %v", ErrRecoveryActionChanged, err)
 	}
 	return receipt, err
@@ -105,8 +105,8 @@ func (r *RecoveryObservation) Wait(ctx context.Context, emit func(Event)) RunOut
 		ctx = context.Background()
 	}
 	initial := r.InitialStatus()
-	if initial.Phase == agentruntime.PhaseIdle && len(initial.Queue) == 0 && initial.LastOperation != nil {
-		outcome := replayedOutcomeForSettlement(ctx, r.harness, initial.LastOperation.OperationID, agentruntime.OperationSettledEvent{
+	if initial.Phase == runstate.PhaseIdle && len(initial.Queue) == 0 && initial.LastOperation != nil {
+		outcome := replayedOutcomeForSettlement(ctx, r.harness, initial.LastOperation.OperationID, runstate.OperationSettledEvent{
 			OperationID: initial.LastOperation.OperationID, Status: initial.LastOperation.Status, Reason: initial.LastOperation.Reason,
 		})
 		emitReplayedRunOutcome(emit, outcome)
@@ -123,16 +123,16 @@ func (r *RecoveryObservation) Wait(ctx context.Context, emit func(Event)) RunOut
 			return
 		}
 		status, _ := r.harness.Status(context.Background())
-		if status.Phase == agentruntime.PhaseIdle || status.ActiveOperation == "" {
+		if status.Phase == runstate.PhaseIdle || status.ActiveOperation == "" {
 			return
 		}
-		_, abortErr := r.harness.Submit(context.Background(), agentruntime.Abort{
+		_, abortErr := r.harness.Submit(context.Background(), runstate.Abort{
 			ID: cancellationAbortIdentity.forOperation(status.ActiveOperation), OperationID: status.ActiveOperation,
 			Reason: "recovery display task canceled",
 		})
-		if abortErr != nil && !errors.Is(abortErr, agentruntime.ErrInvalidCommand) &&
-			!errors.Is(abortErr, agentruntime.ErrStaleOperation) &&
-			!errors.Is(abortErr, agentruntime.ErrDomainCommitRejected) {
+		if abortErr != nil && !errors.Is(abortErr, runstate.ErrInvalidCommand) &&
+			!errors.Is(abortErr, runstate.ErrStaleOperation) &&
+			!errors.Is(abortErr, runstate.ErrDomainCommitRejected) {
 			log.Printf("[agent-recovery] abort after display cancellation failed operation_id=%s err=%v", status.ActiveOperation, abortErr)
 		}
 	}
@@ -144,7 +144,7 @@ func (r *RecoveryObservation) Wait(ctx context.Context, emit func(Event)) RunOut
 				continue
 			}
 			switch event.Payload.(type) {
-			case agentruntime.OperationRecoveryPausedEvent, agentruntime.InputMaterializationRecoveryPendingEvent:
+			case runstate.OperationRecoveryPausedEvent, runstate.InputMaterializationRecoveryPendingEvent:
 				status, statusErr := r.harness.Status(context.Background())
 				if statusErr != nil {
 					emitHarnessError(emit, statusErr)
@@ -168,16 +168,16 @@ func (r *RecoveryObservation) Wait(ctx context.Context, emit func(Event)) RunOut
 					// an observer that is concurrently closing.
 					continue
 				}
-			case agentruntime.OperationSettledEvent, agentruntime.OperationInterruptedEvent:
+			case runstate.OperationSettledEvent, runstate.OperationInterruptedEvent:
 				status, statusErr := r.harness.Status(context.Background())
 				if statusErr != nil {
 					emitHarnessError(emit, statusErr)
 					return outcomeFromOutput(RunOutcomeFailed, statusErr, statusErr.Error(), "", "")
 				}
-				if status.Phase != agentruntime.PhaseIdle || len(status.Queue) != 0 || status.LastOperation == nil {
+				if status.Phase != runstate.PhaseIdle || len(status.Queue) != 0 || status.LastOperation == nil {
 					continue
 				}
-				outcome := replayedOutcomeForSettlement(context.Background(), r.harness, status.LastOperation.OperationID, agentruntime.OperationSettledEvent{
+				outcome := replayedOutcomeForSettlement(context.Background(), r.harness, status.LastOperation.OperationID, runstate.OperationSettledEvent{
 					OperationID: status.LastOperation.OperationID, Status: status.LastOperation.Status, Reason: status.LastOperation.Reason,
 				})
 				emitRecoveryTerminal(emit, outcome)

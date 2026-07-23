@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 const defaultUserSessionID = "default"

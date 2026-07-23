@@ -7,7 +7,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 // restoreHarnessTurn reconstructs only process-local execution dependencies.
@@ -19,9 +19,9 @@ func (a *App) restoreHarnessTurn(_ context.Context, request agent.HarnessTurnRes
 		return agent.HarnessTurnSpec{}, agent.ErrHarnessTurnRestoreUnavailable
 	}
 	switch request.Binding.Profile {
-	case agentruntime.ProfileWriting:
+	case runstate.ProfileWriting:
 		return a.restoreWritingHarnessTurn(request), nil
-	case agentruntime.ProfileGame:
+	case runstate.ProfileGame:
 		return a.restoreInteractiveHarnessTurn(request), nil
 	default:
 		return agent.HarnessTurnSpec{}, fmt.Errorf(

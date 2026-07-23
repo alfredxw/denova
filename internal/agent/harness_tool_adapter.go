@@ -7,18 +7,18 @@ import (
 	"strings"
 	"sync"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 // harnessDisplayEngineEvent maps display deltas only. Tool execution events
 // deliberately come from harnessToolLifecycleObserver instead of legacy UI
 // events, because recovery requires the start record before the real effect.
-func harnessDisplayEngineEvent(event Event) (agentruntime.EngineEvent, bool) {
+func harnessDisplayEngineEvent(event Event) (runstate.EngineEvent, bool) {
 	switch event.Type {
 	case "chunk":
-		return agentruntime.EngineAssistantDelta{Delta: eventDataString(event.Data, "content")}, true
+		return runstate.EngineAssistantDelta{Delta: eventDataString(event.Data, "content")}, true
 	case "thinking":
-		return agentruntime.EngineThinkingDelta{Delta: eventDataString(event.Data, "content")}, true
+		return runstate.EngineThinkingDelta{Delta: eventDataString(event.Data, "content")}, true
 	default:
 		return nil, false
 	}
@@ -26,8 +26,8 @@ func harnessDisplayEngineEvent(event Event) (agentruntime.EngineEvent, bool) {
 
 type harnessToolLifecycleObserver struct {
 	sink        *harnessEngineSink
-	binding     agentruntime.BindingRef
-	operationID agentruntime.OperationID
+	binding     runstate.BindingRef
+	operationID runstate.OperationID
 	cycle       int
 	options     RunOptions
 }
@@ -36,7 +36,7 @@ func (o harnessToolLifecycleObserver) BeforeTool(_ context.Context, decision Too
 	if o.sink == nil {
 		return fmt.Errorf("agent harness tool lifecycle sink is nil")
 	}
-	return o.sink.send(agentruntime.EngineToolStarted{
+	return o.sink.send(runstate.EngineToolStarted{
 		CallID:    decision.ToolCallID,
 		Name:      decision.ToolName,
 		Arguments: json.RawMessage(append([]byte(nil), arguments...)),
@@ -51,7 +51,7 @@ func (o harnessToolLifecycleObserver) AfterTool(_ context.Context, record ToolEx
 	if err != nil {
 		return err
 	}
-	finished := agentruntime.EngineToolFinished{
+	finished := runstate.EngineToolFinished{
 		CallID:      record.ToolCallID,
 		Name:        record.ToolName,
 		Result:      record.Result,
@@ -59,7 +59,7 @@ func (o harnessToolLifecycleObserver) AfterTool(_ context.Context, record ToolEx
 		RetrySafety: harnessToolRetrySafety(record.ToolName),
 	}
 	if hasEffect {
-		finished.HostEffects = []agentruntime.HostEffect{effect}
+		finished.HostEffects = []runstate.HostEffect{effect}
 	}
 	if err := o.sink.send(finished); err != nil {
 		return err
@@ -70,23 +70,23 @@ func (o harnessToolLifecycleObserver) AfterTool(_ context.Context, record ToolEx
 	return nil
 }
 
-func harnessToolRetrySafety(name string) agentruntime.RetrySafety {
+func harnessToolRetrySafety(name string) runstate.RetrySafety {
 	switch DescriptorForTool(name).Recovery {
 	case ToolRecoveryReadOnly, ToolRecoveryIdempotent:
-		return agentruntime.RetrySafe
+		return runstate.RetrySafe
 	case ToolRecoveryReconcilable:
 		// Reconciliation can determine the effect, but blind retry is not safe.
-		return agentruntime.RetryUnknown
+		return runstate.RetryUnknown
 	case ToolRecoveryNonIdempotent:
-		return agentruntime.RetryUnsafe
+		return runstate.RetryUnsafe
 	default:
-		return agentruntime.RetryUnknown
+		return runstate.RetryUnknown
 	}
 }
 
 type harnessEngineSink struct {
 	mu     sync.Mutex
-	emit   agentruntime.EngineEventSink
+	emit   runstate.EngineEventSink
 	cancel context.CancelFunc
 	err    error
 }
@@ -94,7 +94,7 @@ type harnessEngineSink struct {
 // send serializes legacy deltas and potentially parallel tool callbacks. The
 // first sink failure cancels the Agent run and remains the terminal adapter
 // error; later cleanup events must not obscure it.
-func (s *harnessEngineSink) send(event agentruntime.EngineEvent) error {
+func (s *harnessEngineSink) send(event runstate.EngineEvent) error {
 	if s == nil {
 		return fmt.Errorf("agent harness engine sink is nil")
 	}

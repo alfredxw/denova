@@ -8,11 +8,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
-	"denova/internal/agentruntime"
-	"denova/internal/session"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 )
 
 type recordingContextStructuralOperation struct {
@@ -33,7 +33,7 @@ func TestSessionPostSettlementCompactionPublishesAfterAssistantCursor(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(schema.UserMessage("old user")); err != nil {
+	if err := sess.Append(adk.UserMessage("old user")); err != nil {
 		t.Fatal(err)
 	}
 	conversation := NewSessionConversationForAgent(sess, &config.Config{}, AgentKindIDE)
@@ -44,7 +44,7 @@ func TestSessionPostSettlementCompactionPublishesAfterAssistantCursor(t *testing
 		},
 		SourceStartIndex: 0, SourceEndIndex: 1,
 	})
-	if err := sess.Append(schema.AssistantMessage("settled assistant", nil)); err != nil {
+	if err := sess.Append(adk.AssistantMessage("settled assistant", nil)); err != nil {
 		t.Fatal(err)
 	}
 	spec, err := conversation.PostSettlementContextStructuralSpec(context.Background(), "settled-operation", RunOptions{
@@ -113,7 +113,7 @@ func (o *recordingContextStructuralOperation) Reconcile(context.Context) (Contex
 }
 
 func TestExecuteContextStructuralOperationUsesDurableBindingAndReceipt(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestExecuteContextStructuralOperationUsesDurableBindingAndReceipt(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	bindingRef, err := agentruntime.BindingReference(binding)
+	bindingRef, err := runstate.BindingReference(binding)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestExecuteContextStructuralOperationUsesDurableBindingAndReceipt(t *testin
 	result, err := service.ExecuteContextStructuralOperation(context.Background(), ContextStructuralSpec{
 		CommandID: "manual-compaction-context-7",
 		Action:    ContextStructuralCompact,
-		Ref: agentruntime.ContextCompactionRef{
+		Ref: runstate.ContextCompactionRef{
 			Source: "session.effective_messages", Purpose: "bounded model history checkpoint",
 			Resource: "session-1", ExpectedRevision: "context:7", Force: true,
 		},
@@ -182,14 +182,14 @@ func TestExecuteContextStructuralOperationRejectsUnrecoverableSpec(t *testing.T)
 	_, err := service.ExecuteContextStructuralOperation(context.Background(), ContextStructuralSpec{
 		CommandID: "missing-restore-plan",
 		Action:    ContextStructuralCompact,
-		Ref: agentruntime.ContextCompactionRef{
+		Ref: runstate.ContextCompactionRef{
 			Source: "session.effective_messages", Purpose: "test invalid admission",
 			Resource: "session-1", ExpectedRevision: "context:7",
 		},
 		Options:   RunOptions{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "session-1"},
 		Operation: &recordingContextStructuralOperation{},
 	})
-	if !errors.Is(err, agentruntime.ErrInvalidCommand) {
+	if !errors.Is(err, runstate.ErrInvalidCommand) {
 		t.Fatalf("error = %v, want ErrInvalidCommand", err)
 	}
 }
@@ -198,13 +198,13 @@ func TestStructuralRecoveryPinsExactReplayRegistrationUntilEngineTake(t *testing
 	t.Parallel()
 
 	engine := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
-	binding := agentruntime.BindingRef{
-		Kind: agentruntime.BindingWriting, Profile: agentruntime.ProfileWriting,
+	binding := runstate.BindingRef{
+		Kind: runstate.BindingWriting, Profile: runstate.ProfileWriting,
 		Workspace: "/book", SessionID: "recovered-structural",
 	}
 	guard := &bindingHarnessEngine{owner: engine, binding: binding}
 	ref := "recovered-structural-spec"
-	command := agentruntime.CompactIfNeeded{ID: "recovered-structural", Ref: agentruntime.ContextCompactionRef{
+	command := runstate.CompactIfNeeded{ID: "recovered-structural", Ref: runstate.ContextCompactionRef{
 		SpecRef: ref, Source: "session.messages", Purpose: "checkpoint",
 		Resource: "recovered-structural", ExpectedRevision: "context:7",
 	}}
@@ -218,9 +218,9 @@ func TestStructuralRecoveryPinsExactReplayRegistrationUntilEngineTake(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := guard.RestoreStructuralOperation(context.Background(), agentruntime.StructuralOperationSnapshot{
+	if err := guard.RestoreStructuralOperation(context.Background(), runstate.StructuralOperationSnapshot{
 		Binding: binding, CommandID: command.ID, OperationID: "operation", Cycle: 1,
-		Kind: agentruntime.StructuralCompactContext, Ref: command.Ref,
+		Kind: runstate.StructuralCompactContext, Ref: command.Ref,
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cloudwego/eino/adk"
+	"github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/book"
 )
 
@@ -54,9 +54,9 @@ func (h *chatHarness) start(
 	if bookService != nil {
 		workspace = bookService.Workspace()
 	}
-	commandID := agentruntime.CommandID(strings.TrimSpace(req.CommandID))
+	commandID := runstate.CommandID(strings.TrimSpace(req.CommandID))
 	if commandID == "" {
-		return nil, fmt.Errorf("%w: command_id is required", agentruntime.ErrInvalidCommand)
+		return nil, fmt.Errorf("%w: command_id is required", runstate.ErrInvalidCommand)
 	}
 	if err := h.runtime.ValidateCommandID(string(commandID)); err != nil {
 		return nil, err
@@ -104,7 +104,7 @@ func (h *chatHarness) start(
 	if !receipt.Replayed {
 		registration.accept()
 	}
-	_, ephemeral := binding.(agentruntime.AutomationBinding)
+	_, ephemeral := binding.(runstate.AutomationBinding)
 	return &AcceptedRun{
 		owner: h, harness: harness, observation: observation, receipt: receipt,
 		conversation: conversation, options: options,
@@ -114,13 +114,13 @@ func (h *chatHarness) start(
 }
 
 func newHarnessStartTurn(
-	binding agentruntime.Binding,
-	commandID agentruntime.CommandID,
+	binding runstate.Binding,
+	commandID runstate.CommandID,
 	req ChatRequest,
 	options RunOptions,
-) (agentruntime.StartTurn, string, error) {
+) (runstate.StartTurn, string, error) {
 	if strings.TrimSpace(string(commandID)) == "" {
-		return agentruntime.StartTurn{}, "", fmt.Errorf("%w: command_id is required", agentruntime.ErrInvalidCommand)
+		return runstate.StartTurn{}, "", fmt.Errorf("%w: command_id is required", runstate.ErrInvalidCommand)
 	}
 	req = CaptureChatRequestCallerInput(req)
 	semanticSpec := AgentCommandSpec{
@@ -129,13 +129,13 @@ func newHarnessStartTurn(
 	}
 	turnRef := harnessCommandTurnRef(binding, string(commandID), harnessTurnSpecSemanticFingerprint(semanticSpec))
 	caller := chatRequestCallerView(req)
-	input, err := withHarnessInputMaterializationDescriptor(agentruntime.UserInput{
+	input, err := withHarnessInputMaterializationDescriptor(runstate.UserInput{
 		Text: caller.Message, ContextRefs: harnessContextRefs(req), TurnSpecRef: turnRef,
 	}, semanticSpec)
 	if err != nil {
-		return agentruntime.StartTurn{}, "", err
+		return runstate.StartTurn{}, "", err
 	}
-	return agentruntime.StartTurn{
+	return runstate.StartTurn{
 		ID:    commandID,
 		Input: input,
 	}, turnRef, nil
@@ -146,9 +146,9 @@ func newHarnessStartTurn(
 // process-local execution state. Adapters persist it before admission so cold
 // reconciliation can distinguish an exact replay from command-ID reuse.
 func DurableStartTurnFingerprint(req ChatRequest, options RunOptions, workspace string) (string, error) {
-	commandID := agentruntime.CommandID(strings.TrimSpace(req.CommandID))
+	commandID := runstate.CommandID(strings.TrimSpace(req.CommandID))
 	if commandID == "" {
-		return "", fmt.Errorf("%w: command_id is required", agentruntime.ErrInvalidCommand)
+		return "", fmt.Errorf("%w: command_id is required", runstate.ErrInvalidCommand)
 	}
 	options = options.normalized(workspace)
 	req = CaptureChatRequestCallerInput(req)
@@ -160,7 +160,7 @@ func DurableStartTurnFingerprint(req ChatRequest, options RunOptions, workspace 
 	if err != nil {
 		return "", err
 	}
-	return agentruntime.CommandFingerprint(command)
+	return runstate.CommandFingerprint(command)
 }
 
 // submitStartWhenIdle preserves the product contract that independent calls
@@ -168,12 +168,12 @@ func DurableStartTurnFingerprint(req ChatRequest, options RunOptions, workspace 
 // operation implicitly.
 func (h *chatHarness) submitStartWhenIdle(
 	caller context.Context,
-	harness *agentruntime.Harness,
-	observation agentruntime.Observation,
-	command agentruntime.StartTurn,
-) (agentruntime.Receipt, error) {
+	harness *runstate.Harness,
+	observation runstate.Observation,
+	command runstate.StartTurn,
+) (runstate.Receipt, error) {
 	if snapshotRequiresExplicitRecovery(observation.Snapshot) {
-		return agentruntime.Receipt{}, ErrRecoveryRequired
+		return runstate.Receipt{}, ErrRecoveryRequired
 	}
 	events := observation.Events
 	errorsCh := observation.Errors
@@ -182,11 +182,11 @@ func (h *chatHarness) submitStartWhenIdle(
 		if err == nil {
 			return receipt, nil
 		}
-		if !errors.Is(err, agentruntime.ErrBusy) {
-			return agentruntime.Receipt{}, err
+		if !errors.Is(err, runstate.ErrBusy) {
+			return runstate.Receipt{}, err
 		}
 		if _, resumed, resumeErr := h.resumeRecoveredContextStructuralOperation(caller, harness, ""); resumeErr != nil {
-			return agentruntime.Receipt{}, resumeErr
+			return runstate.Receipt{}, resumeErr
 		} else if resumed {
 			goto retry
 		}
@@ -194,37 +194,37 @@ func (h *chatHarness) submitStartWhenIdle(
 			select {
 			case event, ok := <-events:
 				if !ok {
-					return agentruntime.Receipt{}, fmt.Errorf("agent observation closed while waiting for an idle binding")
+					return runstate.Receipt{}, fmt.Errorf("agent observation closed while waiting for an idle binding")
 				}
 				switch event.Payload.(type) {
-				case agentruntime.OperationSettledEvent, agentruntime.OperationInterruptedEvent:
+				case runstate.OperationSettledEvent, runstate.OperationInterruptedEvent:
 					goto retry
-				case agentruntime.OperationRecoveryPausedEvent:
-					return agentruntime.Receipt{}, ErrRecoveryRequired
+				case runstate.OperationRecoveryPausedEvent:
+					return runstate.Receipt{}, ErrRecoveryRequired
 				}
 			case observationErr, ok := <-errorsCh:
 				if !ok {
-					return agentruntime.Receipt{}, fmt.Errorf("agent observation errors closed while waiting for an idle binding")
+					return runstate.Receipt{}, fmt.Errorf("agent observation errors closed while waiting for an idle binding")
 				}
 				if observationErr != nil {
-					return agentruntime.Receipt{}, observationErr
+					return runstate.Receipt{}, observationErr
 				}
 			case <-caller.Done():
-				return agentruntime.Receipt{}, caller.Err()
+				return runstate.Receipt{}, caller.Err()
 			case <-h.lifecycle.Done():
-				return agentruntime.Receipt{}, h.lifecycle.Err()
+				return runstate.Receipt{}, h.lifecycle.Err()
 			}
 		}
 	retry:
 	}
 }
 
-func snapshotRequiresExplicitRecovery(snapshot agentruntime.StateSnapshot) bool {
+func snapshotRequiresExplicitRecovery(snapshot runstate.StateSnapshot) bool {
 	if snapshot.RecoveryPaused {
 		return true
 	}
 	for _, item := range snapshot.Queue {
-		if item.Delivery == agentruntime.DeliveryNextTurn {
+		if item.Delivery == runstate.DeliveryNextTurn {
 			return true
 		}
 	}

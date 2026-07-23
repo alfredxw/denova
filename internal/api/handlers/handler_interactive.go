@@ -9,7 +9,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/internal/agentruntime"
 	appsvc "denova/internal/app"
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
@@ -212,7 +211,7 @@ func (h *Handlers) HandleInteractiveImageGenerate(ctx context.Context, c *app.Re
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试请求 / command_id is required for safe request retries", nil)
 		return
 	}
-	if err := agentruntime.ValidateCommandID(body.CommandID, agentruntime.DefaultInputLimits()); err != nil {
+	if err := appsvc.ValidateAgentCommandID(body.CommandID); err != nil {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "command_id 请求标识无效 / invalid request identifier command_id", nil)
 		return
 	}
@@ -224,7 +223,7 @@ func (h *Handlers) HandleInteractiveImageGenerate(ctx context.Context, c *app.Re
 		switch {
 		case errors.Is(err, appsvc.ErrAgentCommandIDRequired):
 			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试请求 / command_id is required for safe request retries", nil)
-		case errors.Is(err, agentruntime.ErrInvalidCommand):
+		case errors.Is(err, appsvc.ErrInvalidAgentCommand):
 			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "command_id 请求标识无效 / invalid request identifier command_id", nil)
 		case errors.Is(err, appsvc.ErrAgentCommandConflict):
 			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.command_conflict", "command_id 已用于其他请求 / command_id was already used for a different request", nil)
@@ -331,7 +330,7 @@ func (h *Handlers) HandleInteractiveContextCompaction(ctx context.Context, c *ap
 		branchID = body.Branch
 	}
 	body.CommandID = strings.TrimSpace(body.CommandID)
-	if err := agentruntime.ValidateCommandID(body.CommandID, agentruntime.DefaultInputLimits()); err != nil {
+	if err := appsvc.ValidateAgentCommandID(body.CommandID); err != nil {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少或无效的 command_id，无法安全重试 / command_id is required and must be valid for safe retries", nil)
 		return
 	}
@@ -345,7 +344,7 @@ func (h *Handlers) HandleInteractiveContextCompaction(ctx context.Context, c *ap
 
 func (h *Handlers) HandleInteractiveContextCompactionRemove(ctx context.Context, c *app.RequestContext) {
 	commandID := strings.TrimSpace(c.Query("command_id"))
-	if err := agentruntime.ValidateCommandID(commandID, agentruntime.DefaultInputLimits()); err != nil {
+	if err := appsvc.ValidateAgentCommandID(commandID); err != nil {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少或无效的 command_id，无法安全重试 / command_id is required and must be valid for safe retries", nil)
 		return
 	}

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 const ContextStructuralRestorePlanVersion = 1
@@ -114,7 +114,7 @@ func (descriptor contextStructuralResultDescriptor) result() ContextStructuralRe
 // JSON mutation. Invalid JSON is rejected; there is no formatting fallback.
 func ContextStructuralIntentHash(
 	action ContextStructuralAction,
-	binding agentruntime.BindingRef,
+	binding runstate.BindingRef,
 	expectedRevision string,
 	recordID string,
 	mutation json.RawMessage,
@@ -129,7 +129,7 @@ func ContextStructuralIntentHash(
 	if expectedRevision == "" {
 		return "", fmt.Errorf("structural context expected revision is required")
 	}
-	limits := agentruntime.DefaultInputLimits()
+	limits := runstate.DefaultInputLimits()
 	if len(expectedRevision) > limits.MaxContextRefFieldBytes {
 		return "", fmt.Errorf("structural context expected revision exceeds %d bytes", limits.MaxContextRefFieldBytes)
 	}
@@ -149,7 +149,7 @@ func ContextStructuralIntentHash(
 	}
 	envelope := struct {
 		Action           ContextStructuralAction `json:"action"`
-		Binding          agentruntime.BindingRef `json:"binding"`
+		Binding          runstate.BindingRef     `json:"binding"`
 		ExpectedRevision string                  `json:"expected_revision"`
 		RecordID         string                  `json:"record_id"`
 		Mutation         json.RawMessage         `json:"mutation"`
@@ -170,20 +170,20 @@ func ContextStructuralIntentHash(
 // command admission so custom smaller Runtime limits remain authoritative.
 func EncodeContextStructuralRestorePlan(
 	plan ContextStructuralRestorePlan,
-	binding agentruntime.BindingRef,
+	binding runstate.BindingRef,
 	expectedRevision string,
 ) (json.RawMessage, error) {
-	return encodeContextStructuralRestorePlan(plan, binding, expectedRevision, agentruntime.DefaultInputLimits().MaxRestoreDescriptorBytes)
+	return encodeContextStructuralRestorePlan(plan, binding, expectedRevision, runstate.DefaultInputLimits().MaxRestoreDescriptorBytes)
 }
 
 func encodeContextStructuralRestorePlan(
 	plan ContextStructuralRestorePlan,
-	binding agentruntime.BindingRef,
+	binding runstate.BindingRef,
 	expectedRevision string,
 	maxBytes int,
 ) (json.RawMessage, error) {
 	if maxBytes <= 0 {
-		maxBytes = agentruntime.DefaultInputLimits().MaxRestoreDescriptorBytes
+		maxBytes = runstate.DefaultInputLimits().MaxRestoreDescriptorBytes
 	}
 	if contextStructuralRestorePlanDeclaredBytes(plan) > int64(maxBytes) {
 		return nil, fmt.Errorf("structural context restore plan exceeds %d bytes", maxBytes)
@@ -219,16 +219,16 @@ func contextStructuralRestorePlanDeclaredBytes(plan ContextStructuralRestorePlan
 // descriptor against the immutable binding/revision carried by its snapshot.
 func DecodeContextStructuralRestorePlan(
 	descriptor json.RawMessage,
-	binding agentruntime.BindingRef,
+	binding runstate.BindingRef,
 	expectedRevision string,
 ) (ContextStructuralRestorePlan, error) {
 	if len(descriptor) == 0 {
 		return ContextStructuralRestorePlan{}, fmt.Errorf("structural context restore descriptor is absent")
 	}
-	if len(descriptor) > agentruntime.DefaultInputLimits().MaxRestoreDescriptorBytes {
+	if len(descriptor) > runstate.DefaultInputLimits().MaxRestoreDescriptorBytes {
 		return ContextStructuralRestorePlan{}, fmt.Errorf(
 			"structural context restore descriptor exceeds %d bytes",
-			agentruntime.DefaultInputLimits().MaxRestoreDescriptorBytes,
+			runstate.DefaultInputLimits().MaxRestoreDescriptorBytes,
 		)
 	}
 	var wire contextStructuralRestorePlanWire
@@ -287,7 +287,7 @@ func requireContextStructuralJSONField(fields map[string]json.RawMessage, name s
 
 func validateContextStructuralRestorePlan(
 	plan ContextStructuralRestorePlan,
-	binding agentruntime.BindingRef,
+	binding runstate.BindingRef,
 	expectedRevision string,
 ) (ContextStructuralRestorePlan, error) {
 	if plan.Version != ContextStructuralRestorePlanVersion {
@@ -298,11 +298,11 @@ func validateContextStructuralRestorePlan(
 	}
 	switch plan.Domain {
 	case ContextStructuralDomainSession:
-		if binding.Kind != agentruntime.BindingWriting {
+		if binding.Kind != runstate.BindingWriting {
 			return ContextStructuralRestorePlan{}, fmt.Errorf("session structural plan does not match %q binding", binding.Kind)
 		}
 	case ContextStructuralDomainStory:
-		if binding.Kind != agentruntime.BindingGame {
+		if binding.Kind != runstate.BindingGame {
 			return ContextStructuralRestorePlan{}, fmt.Errorf("story structural plan does not match %q binding", binding.Kind)
 		}
 	default:
@@ -338,27 +338,27 @@ func validateContextStructuralRestorePlan(
 	return plan, nil
 }
 
-func validateContextStructuralBindingRef(binding agentruntime.BindingRef) error {
-	var candidate agentruntime.Binding
+func validateContextStructuralBindingRef(binding runstate.BindingRef) error {
+	var candidate runstate.Binding
 	switch binding.Kind {
-	case agentruntime.BindingWriting:
-		candidate = agentruntime.WritingBinding{
+	case runstate.BindingWriting:
+		candidate = runstate.WritingBinding{
 			Workspace: binding.Workspace, SessionID: binding.SessionID,
 			StoryID: binding.StoryID, BranchID: binding.BranchID, Profile: binding.Profile,
 		}
-	case agentruntime.BindingGame:
-		candidate = agentruntime.GameBinding{
+	case runstate.BindingGame:
+		candidate = runstate.GameBinding{
 			Workspace: binding.Workspace, SessionID: binding.SessionID,
 			StoryID: binding.StoryID, BranchID: binding.BranchID, Profile: binding.Profile,
 		}
-	case agentruntime.BindingAutomation:
-		candidate = agentruntime.AutomationBinding{
+	case runstate.BindingAutomation:
+		candidate = runstate.AutomationBinding{
 			Workspace: binding.Workspace, SessionID: binding.SessionID, TaskID: binding.TaskID, Profile: binding.Profile,
 		}
 	default:
 		return fmt.Errorf("invalid structural context binding kind %q", binding.Kind)
 	}
-	resolved, err := agentruntime.BindingReference(candidate)
+	resolved, err := runstate.BindingReference(candidate)
 	if err != nil {
 		return fmt.Errorf("validate structural context binding: %w", err)
 	}

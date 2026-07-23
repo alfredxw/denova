@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 func TestDurableChatServiceRestoresAcceptedNextTurnAcrossReopen(t *testing.T) {
@@ -23,7 +23,7 @@ func TestDurableChatServiceRestoresAcceptedNextTurnAcrossReopen(t *testing.T) {
 	blocking := newBlockingPreparationConversation()
 	started, err := first.SubmitCommand(context.Background(), AgentCommandSpec{
 		Kind: AgentCommandStartTurn, CommandID: "restore-start",
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("unused", nil)}, true),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("unused", nil)}, true),
 		Conversation: blocking, Request: ChatRequest{Message: "first"}, Options: options,
 	})
 	if err != nil {
@@ -33,7 +33,7 @@ func TestDurableChatServiceRestoresAcceptedNextTurnAcrossReopen(t *testing.T) {
 	nextRequest := ChatRequest{Message: "second", Locale: "zh-CN"}
 	next, err := first.SubmitCommand(context.Background(), AgentCommandSpec{
 		Kind: AgentCommandNextTurn, CommandID: "restore-next", AfterOperationID: started.OperationID,
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("unused next", nil)}, true),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("unused next", nil)}, true),
 		Conversation: &runControlConversation{}, Request: nextRequest, Options: options,
 	})
 	if err != nil {
@@ -51,7 +51,7 @@ func TestDurableChatServiceRestoresAcceptedNextTurnAcrossReopen(t *testing.T) {
 		WithHarnessTurnRestorer(func(_ context.Context, request HarnessTurnRestoreRequest) (HarnessTurnSpec, error) {
 			restoredRequest <- request
 			return HarnessTurnSpec{
-				Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("restored answer", nil)}, true),
+				Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("restored answer", nil)}, true),
 				Conversation: restoredConversation,
 				Request:      request.Request,
 				Options:      request.Options,
@@ -74,7 +74,7 @@ func TestDurableChatServiceRestoresAcceptedNextTurnAcrossReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != agentruntime.PhaseIdle || len(status.Queue) != 1 || status.Queue[0].CommandID != "restore-next" {
+	if status.Phase != runstate.PhaseIdle || len(status.Queue) != 1 || status.Queue[0].CommandID != "restore-next" {
 		t.Fatalf("reopen did not preserve accepted NextTurn: %#v", status)
 	}
 	select {
@@ -86,7 +86,7 @@ func TestDurableChatServiceRestoresAcceptedNextTurnAcrossReopen(t *testing.T) {
 		Kind: AgentCommandNextTurn, CommandID: "restore-next", AfterOperationID: started.OperationID,
 		Request: nextRequest, Options: options.normalized(""),
 	}
-	replayInput := agentruntime.UserInput{
+	replayInput := runstate.UserInput{
 		Text:        nextRequest.Message,
 		ContextRefs: harnessContextRefs(nextRequest),
 		TurnSpecRef: harnessCommandTurnRef(
@@ -99,7 +99,7 @@ func TestDurableChatServiceRestoresAcceptedNextTurnAcrossReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	replayed, err := harness.Submit(context.Background(), agentruntime.NextTurn{
+	replayed, err := harness.Submit(context.Background(), runstate.NextTurn{
 		ID: "restore-next", AfterOperationID: started.OperationID, Input: replayInput,
 	})
 	if err != nil {
@@ -127,16 +127,16 @@ func TestDurableChatServiceRestoresAcceptedNextTurnAcrossReopen(t *testing.T) {
 	}
 	for {
 		if observation.Snapshot.LastOperation != nil && observation.Snapshot.LastOperation.OperationID == next.OperationID {
-			if observation.Snapshot.LastOperation.Status != agentruntime.OperationSucceeded {
+			if observation.Snapshot.LastOperation.Status != runstate.OperationSucceeded {
 				t.Fatalf("restored NextTurn status = %q", observation.Snapshot.LastOperation.Status)
 			}
 			break
 		}
 		select {
 		case event := <-observation.Events:
-			settled, ok := event.Payload.(agentruntime.OperationSettledEvent)
+			settled, ok := event.Payload.(runstate.OperationSettledEvent)
 			if ok && settled.OperationID == next.OperationID {
-				if settled.Status != agentruntime.OperationSucceeded {
+				if settled.Status != runstate.OperationSucceeded {
 					t.Fatalf("restored NextTurn status = %q", settled.Status)
 				}
 				goto settled
@@ -163,17 +163,17 @@ func TestDecodeHarnessTurnRestoreRequestSupportsTransientQueueCommands(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	bindingRef, err := agentruntime.BindingReference(binding)
+	bindingRef, err := runstate.BindingReference(binding)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
 		name     string
 		kind     AgentCommandKind
-		delivery agentruntime.DeliveryKind
+		delivery runstate.DeliveryKind
 	}{
-		{name: "steer", kind: AgentCommandSteer, delivery: agentruntime.DeliverySteer},
-		{name: "follow-up", kind: AgentCommandFollowUp, delivery: agentruntime.DeliveryFollowUp},
+		{name: "steer", kind: AgentCommandSteer, delivery: runstate.DeliverySteer},
+		{name: "follow-up", kind: AgentCommandFollowUp, delivery: runstate.DeliveryFollowUp},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			spec := AgentCommandSpec{
@@ -181,7 +181,7 @@ func TestDecodeHarnessTurnRestoreRequestSupportsTransientQueueCommands(t *testin
 				Request: ChatRequest{Message: "continue", Locale: "en-US"}, Options: options,
 				Prepare: func(context.Context) (HarnessTurnExecution, error) { return HarnessTurnExecution{}, nil },
 			}
-			input := agentruntime.UserInput{
+			input := runstate.UserInput{
 				Text:        spec.Request.Message,
 				ContextRefs: harnessContextRefs(spec.Request),
 				TurnSpecRef: harnessCommandTurnRef(binding, spec.CommandID, harnessTurnSpecSemanticFingerprint(spec)),
@@ -190,8 +190,8 @@ func TestDecodeHarnessTurnRestoreRequestSupportsTransientQueueCommands(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
-			queued := agentruntime.QueuedInput{
-				CommandID: agentruntime.CommandID(spec.CommandID), OperationID: spec.OperationID,
+			queued := runstate.QueuedInput{
+				CommandID: runstate.CommandID(spec.CommandID), OperationID: spec.OperationID,
 				Delivery: test.delivery, Input: input,
 			}
 			request, err := decodeHarnessTurnRestoreRequest(bindingRef, queued)
@@ -206,11 +206,11 @@ func TestDecodeHarnessTurnRestoreRequestSupportsTransientQueueCommands(t *testin
 				t.Fatal(err)
 			}
 			switch typed := command.(type) {
-			case agentruntime.Steer:
+			case runstate.Steer:
 				if test.kind != AgentCommandSteer || typed.OperationID != queued.OperationID {
 					t.Fatalf("restored steer = %#v", typed)
 				}
-			case agentruntime.FollowUp:
+			case runstate.FollowUp:
 				if test.kind != AgentCommandFollowUp || typed.OperationID != queued.OperationID {
 					t.Fatalf("restored follow-up = %#v", typed)
 				}

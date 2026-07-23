@@ -5,9 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -119,43 +117,27 @@ func TestToolResultMetadataIncludesRecoveryContract(t *testing.T) {
 }
 
 func TestValidateToolDescriptorsRejectsUndeclaredTools(t *testing.T) {
-	err := validateToolDescriptors(context.Background(), []tool.BaseTool{descriptorTestTool{name: "write_custom_plugin_state"}})
+	err := validateToolDescriptors(context.Background(), []adk.BaseTool{descriptorTestTool{name: "write_custom_plugin_state"}})
 	if err == nil || !strings.Contains(err.Error(), "write_custom_plugin_state") {
 		t.Fatalf("expected undeclared descriptor error, got %v", err)
 	}
-	if err := validateToolDescriptors(context.Background(), []tool.BaseTool{descriptorTestTool{name: "write_file"}}); err != nil {
+	if err := validateToolDescriptors(context.Background(), []adk.BaseTool{descriptorTestTool{name: "write_file"}}); err != nil {
 		t.Fatalf("declared tool rejected: %v", err)
-	}
-	if err := validateToolDescriptorNames([]string{"ls", "skill"}); err != nil {
-		t.Fatalf("declared middleware tools rejected: %v", err)
-	}
-	if err := validateToolDescriptorNames([]string{"dynamic_unknown"}); err == nil || !strings.Contains(err.Error(), "dynamic_unknown") {
-		t.Fatalf("undeclared middleware tool error = %v", err)
 	}
 }
 
 func TestValidateToolSurfaceRejectsDuplicateNames(t *testing.T) {
-	if err := validateToolDescriptors(context.Background(), []tool.BaseTool{
+	if err := validateToolDescriptors(context.Background(), []adk.BaseTool{
 		descriptorTestTool{name: "read_file"},
 		descriptorTestTool{name: " READ_FILE "},
 	}); err == nil || !strings.Contains(err.Error(), "duplicate model-visible tool") {
 		t.Fatalf("duplicate static tool error = %v", err)
 	}
-	if err := validateToolDescriptorNames([]string{"skill", " SKILL "}); err == nil || !strings.Contains(err.Error(), "duplicate middleware") {
-		t.Fatalf("duplicate middleware tool error = %v", err)
-	}
-	if err := validateToolSurface(
-		context.Background(),
-		[]tool.BaseTool{descriptorTestTool{name: "read_file"}},
-		[]string{"READ_FILE"},
-	); err == nil || !strings.Contains(err.Error(), "across static and middleware") {
-		t.Fatalf("cross-registration duplicate error = %v", err)
-	}
 }
 
 func TestToolDescriptorGuardValidatesDynamicallyInjectedTools(t *testing.T) {
 	guard := newToolDescriptorGuardMiddleware()
-	runCtx := &adk.ChatModelAgentContext{Tools: []tool.BaseTool{
+	runCtx := &adk.RunContext{Tools: []adk.BaseTool{
 		descriptorTestTool{name: "read_file"},
 		descriptorTestTool{name: "skill"},
 	}}
@@ -172,8 +154,8 @@ func TestToolDescriptorGuardValidatesDynamicallyInjectedTools(t *testing.T) {
 
 type descriptorTestTool struct{ name string }
 
-func (t descriptorTestTool) Info(context.Context) (*schema.ToolInfo, error) {
-	return &schema.ToolInfo{Name: t.name}, nil
+func (t descriptorTestTool) Info(context.Context) (*adk.ToolInfo, error) {
+	return &adk.ToolInfo{Name: t.name}, nil
 }
 
 func containsLine(content, line string) bool {

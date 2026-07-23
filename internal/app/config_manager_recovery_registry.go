@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 const maxRememberedConfigManagerRecoveries = 128
@@ -18,7 +18,7 @@ type configManagerRecoveryRun struct {
 	sessionID       string
 	task            *Task
 	recovery        *agent.RecoveryObservation
-	recoveryActions map[string]agentruntime.Receipt
+	recoveryActions map[string]runstate.Receipt
 }
 
 type configManagerRecoveryRegistry struct {

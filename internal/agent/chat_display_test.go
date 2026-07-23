@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 func TestAppendAssistantIfAnyReturnsPersistenceFailure(t *testing.T) {

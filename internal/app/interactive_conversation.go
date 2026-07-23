@@ -7,15 +7,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
 	"denova/internal/agent"
 	agentcontext "denova/internal/agent/context"
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/prompts"
-	"denova/internal/session"
 )
 
 type interactiveConversation struct {
@@ -511,14 +509,14 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		PreviousTurnsSummary:        turnHistory.PreviousSummary,
 		LoreContext:                 loreRuntime,
 	})
-	history := make([]*schema.Message, 0, len(turnHistory.Turns)*2+4)
+	history := make([]*agent.Message, 0, len(turnHistory.Turns)*2+4)
 	if storyCtx.Snapshot.ContextCompaction != nil && strings.TrimSpace(storyCtx.Snapshot.ContextCompaction.Summary) != "" {
 		history = append(history, agent.NewContextCompactionSummaryMessage(storyCtx.Snapshot.ContextCompaction.Epoch, storyCtx.Snapshot.ContextCompaction.Summary))
 	}
 	for _, turn := range turnHistory.Turns {
-		history = append(history, schema.UserMessage(turn.User))
+		history = append(history, agent.UserMessage(turn.User))
 		history = append(history, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
-		history = append(history, schema.AssistantMessage(turn.Narrative, nil))
+		history = append(history, agent.AssistantMessage(turn.Narrative, nil))
 	}
 	cycleIdentity := c.agentCycleIdentitySnapshot()
 	pendingInputMessages := make([]string, 0, len(storyCtx.Snapshot.PendingPlayerInputs))
@@ -532,7 +530,7 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		}
 		message := interruptedPlayerInputModelMessage(pending)
 		pendingInputMessages = append(pendingInputMessages, message)
-		history = append(history, schema.UserMessage(message))
+		history = append(history, agent.UserMessage(message))
 	}
 	history = agent.ApplyToolResultContextPolicyForConversation(history, c.ToolResultContextPolicy())
 	fragments := append([]agentcontext.Fragment(nil), input.Fragments...)
@@ -559,7 +557,7 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		})
 	}
 	baseInstruction := prompts.InteractiveStoryTurnInstruction(input.UserMessage, "", "")
-	history = append(history, schema.UserMessage(baseInstruction))
+	history = append(history, agent.UserMessage(baseInstruction))
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{Messages: history, Fragments: fragments})
 	if err != nil {
 		return agent.ModelContextResult{}, err
@@ -664,7 +662,7 @@ func (c *interactiveConversation) ContextLedgerParts() []agent.ContextLedgerPart
 	return append([]agent.ContextLedgerPart(nil), c.lastContextLedgerParts...)
 }
 
-func (c *interactiveConversation) ContextLedgerPartsForMessages(messages []*schema.Message) []agent.ContextLedgerPart {
+func (c *interactiveConversation) ContextLedgerPartsForMessages(messages []*agent.Message) []agent.ContextLedgerPart {
 	if c == nil {
 		return nil
 	}

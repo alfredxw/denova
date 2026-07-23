@@ -7,20 +7,18 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/internal/agent"
-	"denova/internal/agentruntime"
 	novaApp "denova/internal/app"
 )
 
 type interactiveAgentCommandRequest struct {
-	Type              string            `json:"type"`
-	CommandID         string            `json:"command_id"`
-	TargetOperationID string            `json:"target_operation_id"`
-	StoryID           string            `json:"story_id"`
-	BranchID          string            `json:"branch_id,omitempty"`
-	Branch            string            `json:"branch,omitempty"`
-	Input             agent.ChatRequest `json:"input"`
-	Reason            string            `json:"reason,omitempty"`
+	Type              string                   `json:"type"`
+	CommandID         string                   `json:"command_id"`
+	TargetOperationID string                   `json:"target_operation_id"`
+	StoryID           string                   `json:"story_id"`
+	BranchID          string                   `json:"branch_id,omitempty"`
+	Branch            string                   `json:"branch,omitempty"`
+	Input             novaApp.AgentChatRequest `json:"input"`
+	Reason            string                   `json:"reason,omitempty"`
 }
 
 // HandleInteractiveChatCommand accepts a typed command for the current game
@@ -40,7 +38,7 @@ func (h *Handlers) HandleInteractiveChatCommand(ctx context.Context, c *app.Requ
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "命令类型、command_id、target_operation_id 和 story_id 为必填项 / Command type, command_id, target_operation_id, and story_id are required", nil)
 		return
 	}
-	if kind != agent.AgentCommandAbort && strings.TrimSpace(body.Input.Message) == "" {
+	if kind != novaApp.AgentCommandAbort && strings.TrimSpace(body.Input.Message) == "" {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "消息不能为空 / Message is required", nil)
 		return
 	}
@@ -51,7 +49,7 @@ func (h *Handlers) HandleInteractiveChatCommand(ctx context.Context, c *app.Requ
 	}
 	receipt, err := h.app.SubmitInteractiveAgentCommand(ctx, novaApp.InteractiveAgentCommand{
 		Kind: kind, CommandID: strings.TrimSpace(body.CommandID),
-		OperationID: agentruntime.OperationID(strings.TrimSpace(body.TargetOperationID)),
+		OperationID: novaApp.AgentOperationID(strings.TrimSpace(body.TargetOperationID)),
 		StoryID:     strings.TrimSpace(body.StoryID), BranchID: branchID,
 		Reason: body.Reason, Input: body.Input,
 	})
@@ -64,17 +62,17 @@ func (h *Handlers) HandleInteractiveChatCommand(ctx context.Context, c *app.Requ
 	})
 }
 
-func interactiveAgentCommandKind(value string) (agent.AgentCommandKind, error) {
+func interactiveAgentCommandKind(value string) (novaApp.AgentCommandKind, error) {
 	switch strings.TrimSpace(value) {
-	case string(agent.AgentCommandSteer):
-		return agent.AgentCommandSteer, nil
-	case string(agent.AgentCommandFollowUp):
-		return agent.AgentCommandFollowUp, nil
-	case string(agent.AgentCommandNextTurn):
-		return agent.AgentCommandNextTurn, nil
-	case string(agent.AgentCommandAbort):
-		return agent.AgentCommandAbort, nil
+	case string(novaApp.AgentCommandSteer):
+		return novaApp.AgentCommandSteer, nil
+	case string(novaApp.AgentCommandFollowUp):
+		return novaApp.AgentCommandFollowUp, nil
+	case string(novaApp.AgentCommandNextTurn):
+		return novaApp.AgentCommandNextTurn, nil
+	case string(novaApp.AgentCommandAbort):
+		return novaApp.AgentCommandAbort, nil
 	default:
-		return "", agentruntime.ErrInvalidCommand
+		return "", novaApp.ErrInvalidAgentCommand
 	}
 }

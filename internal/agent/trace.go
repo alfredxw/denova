@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
+	"github.com/alfredxw/denova/adk/model/openai"
 
 	"denova/config"
 )
@@ -308,7 +308,7 @@ func newTraceSpanID() string {
 	return fmt.Sprintf("span-%d", time.Now().UTC().UnixNano())
 }
 
-func beginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg openai.ChatModelConfig, messages []*schema.Message, tools []*schema.ToolInfo, stream bool) (*traceSpanHandle, string, context.Context) {
+func beginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg openai.Config, messages []*adk.Message, tools []*adk.ToolInfo, stream bool) (*traceSpanHandle, string, context.Context) {
 	callID := newModelInputCallID()
 	attrs := map[string]any{
 		"call_id":       callID,
@@ -350,7 +350,7 @@ func beginLLMCallTrace(ctx context.Context, agentKind, source, mode string, cfg 
 	return span, callID, spanCtx
 }
 
-func finishLLMCallTrace(span *traceSpanHandle, callID, agentKind, source, mode, modelName string, callIndex int, msg *schema.Message, err error, extra map[string]any) {
+func finishLLMCallTrace(span *traceSpanHandle, callID, agentKind, source, mode, modelName string, callIndex int, msg *adk.Message, err error, extra map[string]any) {
 	attrs := cloneTraceAttrs(extra)
 	runID := ""
 	if span != nil {
@@ -387,7 +387,7 @@ func finishLLMCallTrace(span *traceSpanHandle, callID, agentKind, source, mode, 
 	}
 }
 
-func addTokenUsageAttrs(attrs map[string]any, usage *schema.TokenUsage) {
+func addTokenUsageAttrs(attrs map[string]any, usage *adk.TokenUsage) {
 	if attrs == nil || usage == nil {
 		return
 	}

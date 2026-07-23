@@ -10,7 +10,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
 )
 
@@ -275,7 +275,7 @@ func TestCommittedAutomationHostEffectEnablesOneTriggerPassAcrossRedelivery(t *t
 
 func TestDecodeAdmittedToolMutationRejectsIncompleteIdentity(t *testing.T) {
 	_, err := decodeAdmittedToolMutation(automation.HostEffectObligation{
-		ID: "incomplete", Kind: string(agentruntime.HostEffectToolMutationCommitted),
+		ID: "incomplete", Kind: string(runstate.HostEffectToolMutationCommitted),
 		Payload: []byte(`{"version":1}`),
 	})
 	if err == nil {

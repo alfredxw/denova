@@ -13,6 +13,8 @@ jobs:
   test-build:
     name: Test and build
     runs-on: ubuntu-latest
+    env:
+      GO_MODULES: ". adk adk/model/openai"
 
     steps:
       - name: Checkout
@@ -23,6 +25,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: |
+            go.sum
+            adk/go.sum
+            adk/model/openai/go.sum
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -42,11 +48,43 @@ jobs:
       - name: Check whitespace
         run: git diff --check
 
+      - name: Check Go module manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for module in ${GO_MODULES}; do
+            echo "==> go mod tidy -diff (${module})"
+            (cd "${module}" && go mod tidy -diff)
+          done
+
       - name: Run Go tests
-        run: go test ./...
+        shell: bash
+        run: |
+          set -euo pipefail
+          for module in ${GO_MODULES}; do
+            echo "==> go test (${module})"
+            (cd "${module}" && go test ./...)
+          done
+
+      - name: Run Go vet
+        shell: bash
+        run: |
+          set -euo pipefail
+          for module in ${GO_MODULES}; do
+            echo "==> go vet (${module})"
+            (cd "${module}" && go vet ./...)
+          done
 
       - name: Check reachable Go vulnerabilities
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck="$(go env GOPATH)/bin/govulncheck"
+          for module in ${GO_MODULES}; do
+            echo "==> govulncheck (${module})"
+            (cd "${module}" && "${govulncheck}" ./...)
+          done
 
       - name: Run frontend tests
         run: pnpm --dir web test

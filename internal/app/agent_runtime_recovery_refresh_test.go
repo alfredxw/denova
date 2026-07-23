@@ -8,13 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/book"
-	"denova/internal/session"
 )
 
 func TestRecoveredStructuralSessionRefreshRemainsRetryableAfterTerminal(t *testing.T) {
@@ -71,7 +69,7 @@ func TestRecoveredStructuralSessionRefreshRemainsRetryableAfterTerminal(t *testi
 
 	// The production path returns the exact durable structural receipt after
 	// the retry rather than resubmitting a terminal runtime command.
-	run := &writingTaskRun{recoveryActions: map[string]agentruntime.Receipt{
+	run := &writingTaskRun{recoveryActions: map[string]runstate.Receipt{
 		recoveryActionKey(action): {CommandID: action.CommandID, OperationID: action.OperationID, Replayed: true},
 	}}
 	receipt := run.recoveryActions[recoveryActionKey(action)]
@@ -107,7 +105,7 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 	// application-level projection refresh latch is resolved.
 	seeded, err := chat.StartWithOptions(
 		context.Background(),
-		newInteractiveReplayRunner(t, &interactiveReplayModel{message: schema.AssistantMessage("seeded terminal", nil)}),
+		newInteractiveReplayRunner(t, &interactiveReplayModel{message: agent.AssistantMessage("seeded terminal", nil)}),
 		&interactiveReplayConversation{}, bookService,
 		agent.ChatRequest{CommandID: "refresh-protocol-seed", Message: "seed runtime terminal"},
 		options, nil,
@@ -123,7 +121,7 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 		t.Fatal(err)
 	}
 	initial := recovery.InitialStatus()
-	if initial.Phase != agentruntime.PhaseIdle || initial.LastOperation == nil {
+	if initial.Phase != runstate.PhaseIdle || initial.LastOperation == nil {
 		recovery.Close()
 		t.Fatalf("seeded runtime status = %#v", initial)
 	}
@@ -145,7 +143,7 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 		t.Fatal(err)
 	}
 	const canonicalMessage = "canonical state committed by recovered structural operation"
-	if err := external.Append(schema.UserMessage(canonicalMessage)); err != nil {
+	if err := external.Append(agent.UserMessage(canonicalMessage)); err != nil {
 		recovery.Close()
 		t.Fatal(err)
 	}
@@ -166,7 +164,7 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 				chatService: chat, workspace: selectedWorkspace,
 			},
 			recovery:             recovery,
-			recoveryActions:      map[string]agentruntime.Receipt{recoveryActionKey(action): {CommandID: action.CommandID, OperationID: action.OperationID, Cursor: initial.Cursor, Replayed: true}},
+			recoveryActions:      map[string]runstate.Receipt{recoveryActionKey(action): {CommandID: action.CommandID, OperationID: action.OperationID, Cursor: initial.Cursor, Replayed: true}},
 			recoveryRefreshReady: make(chan struct{}),
 		}
 		application.activeTask = task

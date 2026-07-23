@@ -6,8 +6,6 @@ import (
 	"log"
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
 	"denova/internal/agent"
 	agentcontext "denova/internal/agent/context"
@@ -204,16 +202,16 @@ func newDirectorContextBudget(cfg *config.Config, task string, stableContext int
 	if task == interactiveDirectorTaskOpeningPlan {
 		emptyPrompt = prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{OpeningInitialization: true})
 	}
-	overheadMessages := []*schema.Message{
-		schema.SystemMessage(composition.Instruction()),
-		schema.UserMessage(emptyPrompt),
+	overheadMessages := []*agent.Message{
+		agent.SystemMessage(composition.Instruction()),
+		agent.UserMessage(emptyPrompt),
 	}
 	if stable := strings.TrimSpace(stableContext.Content); stable != "" {
 		title := strings.TrimSpace(stableContext.Title)
 		if title == "" {
 			title = "稳定模型上下文"
 		}
-		overheadMessages = append(overheadMessages, schema.UserMessage(agentcontext.StandaloneMessage(title, stable, "")))
+		overheadMessages = append(overheadMessages, agent.UserMessage(agentcontext.StandaloneMessage(title, stable, "")))
 	}
 	overheadTokens := agent.EstimateContextTokens(overheadMessages, nil)
 	completionReserve, toolReserve := agent.EstimateContextProjectionReserves(cfg, config.AgentKindInteractiveDirector, 1024)
@@ -234,7 +232,7 @@ func (b *directorContextBudget) take(source, value string, fragmentLimit int) st
 	}
 	kept := boundedText(value, fragmentLimit)
 	kept = fitTextToTokenBudget(kept, b.remainingTokens)
-	usedTokens := agent.EstimateContextTokens([]*schema.Message{schema.UserMessage(kept)}, nil)
+	usedTokens := agent.EstimateContextTokens([]*agent.Message{agent.UserMessage(kept)}, nil)
 	if strings.TrimSpace(kept) == "" {
 		usedTokens = 0
 	}
@@ -251,14 +249,14 @@ func fitTextToTokenBudget(value string, tokenBudget int) string {
 	if tokenBudget <= 0 || strings.TrimSpace(value) == "" {
 		return ""
 	}
-	if agent.EstimateContextTokens([]*schema.Message{schema.UserMessage(value)}, nil) <= tokenBudget {
+	if agent.EstimateContextTokens([]*agent.Message{agent.UserMessage(value)}, nil) <= tokenBudget {
 		return value
 	}
 	low, high := 0, len(value)
 	for low < high {
 		mid := low + (high-low+1)/2
 		candidate, _ := trimStringToUTF8Bytes(value, mid)
-		if agent.EstimateContextTokens([]*schema.Message{schema.UserMessage(candidate)}, nil) <= tokenBudget {
+		if agent.EstimateContextTokens([]*agent.Message{agent.UserMessage(candidate)}, nil) <= tokenBudget {
 			low = mid
 		} else {
 			high = mid - 1

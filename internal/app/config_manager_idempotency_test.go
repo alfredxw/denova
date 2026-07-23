@@ -8,14 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
-	"denova/internal/session"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 )
 
 func TestConfigManagerInitialStartReusesExactTaskAndRejectsConflict(t *testing.T) {
@@ -63,7 +61,7 @@ func TestConfigManagerInitialStartRequiresCallerCommandID(t *testing.T) {
 func TestConfigManagerInitialStartRejectsOversizedCommandIDBeforeWorkspaceAccess(t *testing.T) {
 	service := &ConfigManagerAppService{}
 	request := ConfigManagerRequest{CommandID: strings.Repeat("x", 4097), Instruction: "update"}
-	if task, err := service.StartTaskWithError(context.Background(), request); task != nil || !errors.Is(err, agentruntime.ErrInvalidCommand) {
+	if task, err := service.StartTaskWithError(context.Background(), request); task != nil || !errors.Is(err, runstate.ErrInvalidCommand) {
 		t.Fatalf("oversized command_id = task=%v err=%v", task, err)
 	}
 }
@@ -115,7 +113,7 @@ func TestConfigManagerReplayCapacityRejectsBeforeRuntimeAdmission(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != agentruntime.PhaseIdle || status.ActiveOperation != "" || status.LastOperation != nil || len(status.Queue) != 0 {
+	if status.Phase != runstate.PhaseIdle || status.ActiveOperation != "" || status.LastOperation != nil || len(status.Queue) != 0 {
 		t.Fatalf("Runtime was mutated before capacity admission: %#v", status)
 	}
 }
@@ -200,24 +198,24 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 
 func newConfigManagerColdReplayRunner(t *testing.T, answer string) *adk.Runner {
 	t.Helper()
-	built, err := adk.NewChatModelAgent(context.Background(), &adk.ChatModelAgentConfig{
+	built, err := adk.NewAgent(context.Background(), adk.AgentConfig{
 		Name: "DenovaConfigManagerAgent", Description: "Config replay test",
 		Instruction: "Return the fixed answer.", Model: configManagerColdReplayModel{answer: answer},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return adk.NewRunner(context.Background(), adk.RunnerConfig{Agent: built, EnableStreaming: true})
+	return adk.NewRunner(adk.RunnerConfig{Agent: built, EnableStreaming: true})
 }
 
 type configManagerColdReplayModel struct{ answer string }
 
-func (m configManagerColdReplayModel) Generate(context.Context, []*schema.Message, ...model.Option) (*schema.Message, error) {
-	return schema.AssistantMessage(m.answer, nil), nil
+func (m configManagerColdReplayModel) Generate(context.Context, []*agent.Message, ...adk.ModelOption) (*agent.Message, error) {
+	return agent.AssistantMessage(m.answer, nil), nil
 }
 
-func (m configManagerColdReplayModel) Stream(context.Context, []*schema.Message, ...model.Option) (*schema.StreamReader[*schema.Message], error) {
-	return schema.StreamReaderFromArray([]*schema.Message{schema.AssistantMessage(m.answer, nil)}), nil
+func (m configManagerColdReplayModel) Stream(context.Context, []*agent.Message, ...adk.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+	return agent.StreamReaderFromArray([]*agent.Message{agent.AssistantMessage(m.answer, nil)}), nil
 }
 
 type configManagerColdReplayConversation struct{}

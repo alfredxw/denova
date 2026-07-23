@@ -7,10 +7,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 // Conversation 抽象 Agent 对话的上下文读取与结果写入。
@@ -46,7 +46,7 @@ type ContextLedgerReporter interface {
 // exact message list sent to the model after context compaction. Implementers
 // must not retain full message bodies in the returned durable records.
 type FinalContextLedgerReporter interface {
-	ContextLedgerPartsForMessages(messages []*schema.Message) []ContextLedgerPart
+	ContextLedgerPartsForMessages(messages []*adk.Message) []ContextLedgerPart
 }
 
 // RunTraceMetadata is the bounded interactive identity attached to one run.
@@ -203,7 +203,7 @@ func (c *SessionConversation) ContextSourceSummary() string {
 	return c.lastContextSummary
 }
 
-func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input ContextCompactionInput) ([]*schema.Message, ContextCompactionResult, error) {
+func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input ContextCompactionInput) ([]*adk.Message, ContextCompactionResult, error) {
 	policy := c.compactionPolicy()
 	input = withDefaultContextProjectionReserves(c.cfg, c.agentKind, input, 0)
 	phase := strings.TrimSpace(input.Phase)
@@ -256,7 +256,7 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	leading, compactableMessages := c.splitLeadingRuntimeMessages(input.Messages)
 	newMessages := compactMessagesForModel(compactableMessages, summary, epoch, policy.RetainedTurns)
 	if len(leading) > 0 {
-		newMessages = append(append([]*schema.Message(nil), leading...), newMessages...)
+		newMessages = append(append([]*adk.Message(nil), leading...), newMessages...)
 	}
 	result.Triggered = true
 	result.Epoch = epoch
@@ -279,7 +279,7 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	return newMessages, result, nil
 }
 
-func (c *SessionConversation) splitLeadingRuntimeMessages(messages []*schema.Message) ([]*schema.Message, []*schema.Message) {
+func (c *SessionConversation) splitLeadingRuntimeMessages(messages []*adk.Message) ([]*adk.Message, []*adk.Message) {
 	leading := c.leadingRuntimeMessages()
 	if len(leading) == 0 || len(messages) < len(leading) {
 		return nil, messages
@@ -308,7 +308,7 @@ func (c *SessionConversation) nextCompactionEpoch() int {
 	return c.session.NextContextCompactionEpoch(c.agentKind)
 }
 
-func (c *SessionConversation) compactionIncrementalSource(keepLatestUser bool) ([]*schema.Message, string, int, int) {
+func (c *SessionConversation) compactionIncrementalSource(keepLatestUser bool) ([]*adk.Message, string, int, int) {
 	if c == nil || c.session == nil {
 		return nil, "", 0, 0
 	}
@@ -339,8 +339,8 @@ func (c *SessionConversation) compactionIncrementalSource(keepLatestUser bool) (
 	return source, existingCheckpoint, sourceStart, sourceEnd
 }
 
-func compactionSourceMessages(messages []*schema.Message, keepLatestUser bool) []*schema.Message {
-	source := make([]*schema.Message, 0, len(messages))
+func compactionSourceMessages(messages []*adk.Message, keepLatestUser bool) []*adk.Message {
+	source := make([]*adk.Message, 0, len(messages))
 	for _, msg := range messages {
 		if msg == nil {
 			continue
@@ -350,13 +350,13 @@ func compactionSourceMessages(messages []*schema.Message, keepLatestUser bool) [
 		}
 		source = append(source, sanitizeCompactionSourceMessage(msg))
 	}
-	if !keepLatestUser && len(source) > 0 && source[len(source)-1].Role == schema.User {
+	if !keepLatestUser && len(source) > 0 && source[len(source)-1].Role == adk.User {
 		source = source[:len(source)-1]
 	}
 	return source
 }
 
-func sanitizeCompactionSourceMessage(msg *schema.Message) *schema.Message {
+func sanitizeCompactionSourceMessage(msg *adk.Message) *adk.Message {
 	if msg == nil {
 		return nil
 	}
@@ -365,7 +365,7 @@ func sanitizeCompactionSourceMessage(msg *schema.Message) *schema.Message {
 	return &copied
 }
 
-func retainTailByUserTurns(messages []*schema.Message, retainedTurns int) []*schema.Message {
+func retainTailByUserTurns(messages []*adk.Message, retainedTurns int) []*adk.Message {
 	if retainedTurns <= 0 {
 		retainedTurns = config.DefaultContextCompactionRetainedTurns
 	}
@@ -375,7 +375,7 @@ func retainTailByUserTurns(messages []*schema.Message, retainedTurns int) []*sch
 	userCount := 0
 	start := 0
 	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i] == nil || messages[i].Role != schema.User {
+		if messages[i] == nil || messages[i].Role != adk.User {
 			continue
 		}
 		userCount++
@@ -387,7 +387,7 @@ func retainTailByUserTurns(messages []*schema.Message, retainedTurns int) []*sch
 	if userCount < retainedTurns {
 		return messages
 	}
-	return append([]*schema.Message(nil), messages[start:]...)
+	return append([]*adk.Message(nil), messages[start:]...)
 }
 
 func (c *SessionConversation) AppendAssistant(content string) error {
@@ -404,7 +404,7 @@ func (c *SessionConversation) AppendAssistantWithMetadata(content, _ string, met
 	}
 	intent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
-	}, schema.AssistantMessage(content, nil), metadata)
+	}, adk.AssistantMessage(content, nil), metadata)
 	if err != nil {
 		return err
 	}
@@ -560,7 +560,7 @@ func (c *SessionConversation) agentCycleCursorSnapshot() session.ContextCursor {
 	return cursor
 }
 
-func (c *SessionConversation) AppendContextMessage(msg *schema.Message) error {
+func (c *SessionConversation) AppendContextMessage(msg *adk.Message) error {
 	if c == nil || c.session == nil {
 		return fmt.Errorf("会话不存在")
 	}

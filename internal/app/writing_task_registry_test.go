@@ -6,13 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
@@ -112,7 +110,7 @@ func writingColdReplayConfig(root string) *config.Config {
 
 func newWritingColdReplayRunner(t *testing.T, answer string) *adk.Runner {
 	t.Helper()
-	built, err := adk.NewChatModelAgent(context.Background(), &adk.ChatModelAgentConfig{
+	built, err := adk.NewAgent(context.Background(), adk.AgentConfig{
 		Name:        "DenovaAgent",
 		Description: "Writing cold replay test",
 		Instruction: "Return the fixed test answer.",
@@ -121,7 +119,7 @@ func newWritingColdReplayRunner(t *testing.T, answer string) *adk.Runner {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return adk.NewRunner(context.Background(), adk.RunnerConfig{Agent: built, EnableStreaming: true})
+	return adk.NewRunner(adk.RunnerConfig{Agent: built, EnableStreaming: true})
 }
 
 type writingColdReplayModel struct {
@@ -148,10 +146,10 @@ func (writingColdReplayConversation) PendingInterruption() *session.Interruption
 
 func (writingColdReplayConversation) ResolveInterruption(string) error { return nil }
 
-func (m writingColdReplayModel) Generate(context.Context, []*schema.Message, ...model.Option) (*schema.Message, error) {
-	return schema.AssistantMessage(m.answer, nil), nil
+func (m writingColdReplayModel) Generate(context.Context, []*agent.Message, ...adk.ModelOption) (*agent.Message, error) {
+	return agent.AssistantMessage(m.answer, nil), nil
 }
 
-func (m writingColdReplayModel) Stream(context.Context, []*schema.Message, ...model.Option) (*schema.StreamReader[*schema.Message], error) {
-	return schema.StreamReaderFromArray([]*schema.Message{schema.AssistantMessage(m.answer, nil)}), nil
+func (m writingColdReplayModel) Stream(context.Context, []*agent.Message, ...adk.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+	return agent.StreamReaderFromArray([]*agent.Message{agent.AssistantMessage(m.answer, nil)}), nil
 }

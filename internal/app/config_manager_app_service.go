@@ -11,9 +11,9 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/book"
-	"denova/internal/session"
 )
 
 type ConfigManagerAppService struct {
@@ -72,7 +72,7 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 	if req.CommandID == "" {
 		return nil, ErrAgentCommandIDRequired
 	}
-	if err := agentruntime.ValidateCommandID(req.CommandID, agentruntime.DefaultInputLimits()); err != nil {
+	if err := runstate.ValidateCommandID(req.CommandID, runstate.DefaultInputLimits()); err != nil {
 		return nil, err
 	}
 	a := s.app

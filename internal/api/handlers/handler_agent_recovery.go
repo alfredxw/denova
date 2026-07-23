@@ -8,8 +8,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/internal/agent"
-	"denova/internal/agentruntime"
 	novaApp "denova/internal/app"
 )
 
@@ -73,15 +71,13 @@ func bindAgentRecoveryRequest(c *app.RequestContext, interactive bool) (novaApp.
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_recovery", "恢复请求格式无效 / Invalid recovery request", nil)
 		return novaApp.AgentRuntimeRecoveryRequest{}, false
 	}
-	action := agent.RuntimeRecoveryAction{
-		Kind:        agent.RuntimeRecoveryActionKind(strings.TrimSpace(body.Action.Kind)),
-		CommandID:   agentruntime.CommandID(strings.TrimSpace(body.Action.CommandID)),
-		OperationID: agentruntime.OperationID(strings.TrimSpace(body.Action.OperationID)),
+	action := novaApp.AgentRuntimeRecoveryAction{
+		Kind:        novaApp.AgentRuntimeRecoveryActionKind(strings.TrimSpace(body.Action.Kind)),
+		CommandID:   novaApp.AgentCommandID(strings.TrimSpace(body.Action.CommandID)),
+		OperationID: novaApp.AgentOperationID(strings.TrimSpace(body.Action.OperationID)),
 	}
-	limits := agentruntime.DefaultInputLimits()
 	if !validRecoveryActionKind(action.Kind) ||
-		agentruntime.ValidateCommandID(string(action.CommandID), limits) != nil ||
-		action.OperationID == "" || len(action.OperationID) > limits.MaxOperationIDBytes {
+		novaApp.ValidateAgentRecoveryIdentity(string(action.CommandID), string(action.OperationID)) != nil {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_recovery", "恢复操作 identity 不完整 / Recovery action identity is incomplete", nil)
 		return novaApp.AgentRuntimeRecoveryRequest{}, false
 	}
@@ -100,15 +96,15 @@ func bindAgentRecoveryRequest(c *app.RequestContext, interactive bool) (novaApp.
 	return request, true
 }
 
-func validRecoveryActionKind(kind agent.RuntimeRecoveryActionKind) bool {
+func validRecoveryActionKind(kind novaApp.AgentRuntimeRecoveryActionKind) bool {
 	switch kind {
-	case agent.RuntimeRecoveryAttach,
-		agent.RuntimeRecoveryAbort,
-		agent.RuntimeRecoverySteer,
-		agent.RuntimeRecoveryFollowUp,
-		agent.RuntimeRecoveryNextTurn,
-		agent.RuntimeRecoveryCompactContext,
-		agent.RuntimeRecoveryRemoveCompaction:
+	case novaApp.AgentRuntimeRecoveryAttach,
+		novaApp.AgentRuntimeRecoveryAbort,
+		novaApp.AgentRuntimeRecoverySteer,
+		novaApp.AgentRuntimeRecoveryFollowUp,
+		novaApp.AgentRuntimeRecoveryNextTurn,
+		novaApp.AgentRuntimeRecoveryCompactContext,
+		novaApp.AgentRuntimeRecoveryRemoveCompaction:
 		return true
 	default:
 		return false
@@ -126,18 +122,18 @@ func writeAgentRecoveryResponse(c *app.RequestContext, result novaApp.AgentRunti
 	})
 }
 
-func (h *Handlers) writeAgentRecoveryError(c *app.RequestContext, err error, action agent.RuntimeRecoveryAction) {
+func (h *Handlers) writeAgentRecoveryError(c *app.RequestContext, err error, action novaApp.AgentRuntimeRecoveryAction) {
 	details := map[string]any{
 		"kind": string(action.Kind), "command_id": string(action.CommandID), "operation_id": string(action.OperationID),
 	}
 	switch {
-	case errors.Is(err, agent.ErrRecoveryActionChanged), errors.Is(err, agentruntime.ErrRecoveryActionChanged):
+	case errors.Is(err, novaApp.ErrAgentRecoveryActionChanged), errors.Is(err, novaApp.ErrAgentRuntimeRecoveryActionChanged):
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.recovery_changed", "可恢复操作已变化，请刷新状态 / The recoverable action changed; refresh runtime status", details)
 	case errors.Is(err, novaApp.ErrAgentOperationActive):
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.stream_attached", "该运行已有展示流 / This runtime already has an attached display stream", details)
 	case errors.Is(err, novaApp.ErrWorkspaceTransition), errors.Is(err, novaApp.ErrAgentContextChanged), errors.Is(err, novaApp.ErrWorkspaceChanged):
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.context_changed", "Agent 运行上下文已变化 / The agent runtime context changed", details)
-	case errors.Is(err, agentruntime.ErrInvalidCommand), errors.Is(err, agentruntime.ErrInvalidBinding):
+	case errors.Is(err, novaApp.ErrInvalidAgentCommand), errors.Is(err, novaApp.ErrInvalidAgentBinding):
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_recovery", "Agent 恢复请求无效 / Invalid agent recovery request", details)
 	case errors.Is(err, novaApp.ErrNoWorkspace):
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.no_workspace", "尚未选择工作区 / No workspace is open", nil)

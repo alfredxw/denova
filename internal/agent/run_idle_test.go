@@ -6,8 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 )
 
 func TestWaitForRunnerEventTimesOutWhenIteratorIsIdle(t *testing.T) {
@@ -25,7 +24,7 @@ func TestWaitForRunnerEventTimesOutWhenIteratorIsIdle(t *testing.T) {
 }
 
 func TestRecvMessageFrameTimesOutAndClosesStream(t *testing.T) {
-	reader, writer := schema.Pipe[*schema.Message](1)
+	reader, writer := adk.Pipe[*adk.Message](1)
 	defer writer.Close()
 
 	_, err := recvMessageFrame(context.Background(), reader, 5*time.Millisecond)
@@ -49,8 +48,8 @@ func TestRecvMessageFrameRecoversProducerPanic(t *testing.T) {
 
 type panickingMessageFrameStream struct{}
 
-func (panickingMessageFrameStream) Recv() (*schema.Message, error) { panic("boom") }
-func (panickingMessageFrameStream) Close()                         {}
+func (panickingMessageFrameStream) Recv() (*adk.Message, error) { panic("boom") }
+func (panickingMessageFrameStream) Close()                      {}
 
 func TestWaitForAsyncResultRecoversPanic(t *testing.T) {
 	_, ok, err := waitForAsyncResult(context.Background(), time.Second, "测试", nil, func() (int, bool, error) {

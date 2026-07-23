@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	einoopenai "github.com/cloudwego/eino-ext/components/model/openai"
+	adkopenai "github.com/alfredxw/denova/adk/model/openai"
 )
 
 func TestClassifyModelErrorUsesStructuredProviderStatus(t *testing.T) {
@@ -26,7 +26,7 @@ func TestClassifyModelErrorUsesStructuredProviderStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprint(tt.status), func(t *testing.T) {
-			err := fmt.Errorf("model call: %w", &einoopenai.APIError{HTTPStatusCode: tt.status, Message: "provider failed"})
+			err := fmt.Errorf("model call: %w", providerAPIError(tt.status))
 			classification := ClassifyModelError(err)
 			if classification.Class != tt.class || classification.Retryable != tt.retryable || classification.StatusCode != tt.status {
 				t.Fatalf("classification = %+v", classification)
@@ -38,10 +38,14 @@ func TestClassifyModelErrorUsesStructuredProviderStatus(t *testing.T) {
 func TestTransientModelErrorStopsWhenRunContextIsCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := &einoopenai.APIError{HTTPStatusCode: http.StatusTooManyRequests, Message: "rate limited"}
+	err := providerAPIError(http.StatusTooManyRequests)
 	if isTransientModelError(ctx, err) {
 		t.Fatal("cancelled run must not schedule another provider retry")
 	}
+}
+
+func providerAPIError(status int) *adkopenai.APIError {
+	return &adkopenai.APIError{StatusCode: status}
 }
 
 func TestClassifyModelErrorRecognizesWrappedContextCancellation(t *testing.T) {

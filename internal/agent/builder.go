@@ -3,46 +3,37 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log"
-	"math"
 	"strings"
 
-	localbk "github.com/cloudwego/eino-ext/adk/backend/local"
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/adk/middlewares/skill"
-	"github.com/cloudwego/eino/adk/prebuilt/deep"
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/compose"
+	"github.com/alfredxw/denova/adk"
+	"github.com/alfredxw/denova/adk/model/openai"
+	providercompat "github.com/alfredxw/denova/adk/model/openai/compat"
 
 	"denova/config"
+	novaskills "denova/internal/agent/skills"
 	agenttools "denova/internal/agent/tools"
 	"denova/internal/book"
 	"denova/internal/prompts"
-	"denova/internal/providercompat"
-	novaskills "denova/internal/skills"
 )
 
-var newDeepAgent = deep.New
+var newNativeAgent = func(ctx context.Context, cfg adk.AgentConfig) (adk.Runnable, error) {
+	return adk.NewAgent(ctx, cfg)
+}
 
-// Eino requires an integer even when Denova's product policy is unlimited.
-// MaxInt is an adapter sentinel, not a user-visible run limit.
-const unlimitedAgentMaxIterations = math.MaxInt
-
-// Build 构建小说创作 Agent（deep agent + 文件系统工具 + Skill 中间件）。
-func Build(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (adk.Agent, error) {
+// Build 构建小说创作 Agent（native loop + 文件系统工具 + Skills）。
+func Build(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (adk.Runnable, error) {
 	built, _, err := BuildWithComposition(ctx, cfg, state, teller)
 	return built, err
 }
 
 // BuildWithComposition returns the exact admitted prompt artifact consumed by
 // the constructed Agent so RunOptions never needs to rebuild mutable sources.
-func BuildWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (adk.Agent, SystemPromptComposition, error) {
+func BuildWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller IDEStoryTeller) (adk.Runnable, SystemPromptComposition, error) {
 	composition, err := ComposeInstruction(cfg, state, teller)
 	if err != nil {
 		return nil, SystemPromptComposition{}, err
 	}
-	built, err := buildDeepAgent(ctx, cfg, deepAgentSpec{
+	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindIDE,
 		Name:              "DenovaAgent",
 		Description:       "AI 小说创作助手",
@@ -53,13 +44,13 @@ func BuildWithComposition(ctx context.Context, cfg *config.Config, state *book.S
 	return built, composition, err
 }
 
-func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...InteractiveStoryToolContext) (adk.Agent, error) {
+func BuildInteractiveStory(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...InteractiveStoryToolContext) (adk.Runnable, error) {
 	built, _, err := BuildInteractiveStoryWithComposition(ctx, cfg, state, teller, toolContexts...)
 	return built, err
 }
 
-func BuildInteractiveStoryWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...InteractiveStoryToolContext) (adk.Agent, SystemPromptComposition, error) {
-	handlers := []adk.ChatModelAgentMiddleware{newInteractiveStoryToolMiddleware()}
+func BuildInteractiveStoryWithComposition(ctx context.Context, cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, toolContexts ...InteractiveStoryToolContext) (adk.Runnable, SystemPromptComposition, error) {
+	handlers := []adk.Middleware{newInteractiveStoryToolMiddleware()}
 	var outputGuard func(context.Context, *adk.RetryContext) *adk.RetryDecision
 	if len(toolContexts) > 0 && toolContexts[0].TurnResultReady != nil {
 		completionTokens, _ := EstimateContextProjectionReserves(cfg, config.AgentKindInteractiveStory, teller.ReplyTargetChars)
@@ -70,55 +61,55 @@ func BuildInteractiveStoryWithComposition(ctx context.Context, cfg *config.Confi
 	if err != nil {
 		return nil, SystemPromptComposition{}, err
 	}
-	built, err := buildDeepAgent(ctx, cfg, deepAgentSpec{
+	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindInteractiveStory,
 		Name:              "DenovaInteractiveStoryAgent",
 		Description:       "AI 互动故事叙事助手",
 		Composition:       composition,
 		EnableSkills:      true,
 		DisableWriteTodos: true,
-		ExtraHandlers:     handlers,
+		ExtraMiddlewares:  handlers,
 		ExtraToolsFactory: interactiveStoryToolsFactory(cfg, toolContexts...),
 		ModelOutputGuard:  outputGuard,
 	})
 	return built, composition, err
 }
 
-func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...InteractiveStoryToolContext) (adk.Agent, error) {
+func BuildInteractiveDirector(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...InteractiveStoryToolContext) (adk.Runnable, error) {
 	built, _, err := BuildInteractiveDirectorWithComposition(ctx, cfg, state, toolContexts...)
 	return built, err
 }
 
-func BuildInteractiveDirectorWithComposition(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...InteractiveStoryToolContext) (adk.Agent, SystemPromptComposition, error) {
+func BuildInteractiveDirectorWithComposition(ctx context.Context, cfg *config.Config, state *book.State, toolContexts ...InteractiveStoryToolContext) (adk.Runnable, SystemPromptComposition, error) {
 	composition, err := ComposeInteractiveDirectorInstruction(cfg, state)
 	if err != nil {
 		return nil, SystemPromptComposition{}, err
 	}
-	built, err := buildDeepAgent(ctx, cfg, deepAgentSpec{
+	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindInteractiveDirector,
 		Name:              "DenovaInteractiveDirectorAgent",
 		Description:       "AI 互动故事后台导演",
 		Composition:       composition,
 		EnableSkills:      false,
 		DisableWriteTodos: true,
-		ExtraHandlers:     []adk.ChatModelAgentMiddleware{newInteractiveDirectorPlanFileMiddleware()},
+		ExtraMiddlewares:  []adk.Middleware{newInteractiveDirectorPlanFileMiddleware()},
 		ExtraToolsFactory: interactiveDirectorToolsFactory(cfg, toolContexts...),
 	})
 	return built, composition, err
 }
 
-// BuildConfigManagerAgent 构建统一配置管理 Agent（deep agent + 通用工具 + Skill + 模块资源工具）。
-func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) (adk.Agent, error) {
+// BuildConfigManagerAgent 构建统一配置管理 Agent（native loop + 通用工具 + Skills + 模块资源工具）。
+func BuildConfigManagerAgent(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) (adk.Runnable, error) {
 	built, _, err := BuildConfigManagerAgentWithComposition(ctx, cfg, state, resourceSkills...)
 	return built, err
 }
 
-func BuildConfigManagerAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) (adk.Agent, SystemPromptComposition, error) {
+func BuildConfigManagerAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) (adk.Runnable, SystemPromptComposition, error) {
 	composition, err := ComposeConfigManagerInstruction(cfg, state, resourceSkills...)
 	if err != nil {
 		return nil, SystemPromptComposition{}, err
 	}
-	built, err := buildDeepAgent(ctx, cfg, deepAgentSpec{
+	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindConfigManager,
 		Name:              "DenovaConfigManagerAgent",
 		Description:       "AI 配置与资源管理助手",
@@ -130,17 +121,17 @@ func BuildConfigManagerAgentWithComposition(ctx context.Context, cfg *config.Con
 }
 
 // BuildAutomationAgent 构建后台自动化 Agent。工具权限由调用方按任务写入策略提前收敛到 cfg.AgentTools.Automation。
-func BuildAutomationAgent(ctx context.Context, cfg *config.Config, state *book.State, task AutomationTaskInstruction) (adk.Agent, error) {
+func BuildAutomationAgent(ctx context.Context, cfg *config.Config, state *book.State, task AutomationTaskInstruction) (adk.Runnable, error) {
 	built, _, err := BuildAutomationAgentWithComposition(ctx, cfg, state, task)
 	return built, err
 }
 
-func BuildAutomationAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, task AutomationTaskInstruction) (adk.Agent, SystemPromptComposition, error) {
+func BuildAutomationAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, task AutomationTaskInstruction) (adk.Runnable, SystemPromptComposition, error) {
 	composition, err := ComposeAutomationInstruction(cfg, state, task)
 	if err != nil {
 		return nil, SystemPromptComposition{}, err
 	}
-	built, err := buildDeepAgent(ctx, cfg, deepAgentSpec{
+	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindAutomation,
 		Name:              "DenovaAutomationAgent",
 		Description:       "AI 自动化任务助手",
@@ -152,17 +143,17 @@ func BuildAutomationAgentWithComposition(ctx context.Context, cfg *config.Config
 }
 
 // BuildImageAgent 构建通用图像 Agent。调用方通过运行时上下文和 Skill 约束具体用途。
-func BuildImageAgent(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (adk.Agent, error) {
+func BuildImageAgent(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (adk.Runnable, error) {
 	built, _, err := BuildImageAgentWithComposition(ctx, cfg, state, systemPrompt)
 	return built, err
 }
 
-func BuildImageAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (adk.Agent, SystemPromptComposition, error) {
+func BuildImageAgentWithComposition(ctx context.Context, cfg *config.Config, state *book.State, systemPrompt string) (adk.Runnable, SystemPromptComposition, error) {
 	composition, err := ComposeImageInstruction(cfg, state, systemPrompt)
 	if err != nil {
 		return nil, SystemPromptComposition{}, err
 	}
-	built, err := buildDeepAgent(ctx, cfg, deepAgentSpec{
+	built, err := buildAgent(ctx, cfg, agentBuildSpec{
 		Kind:              config.AgentKindImage,
 		Name:              "DenovaImageAgent",
 		Description:       "AI 图像生成助手",
@@ -174,7 +165,7 @@ func BuildImageAgentWithComposition(ctx context.Context, cfg *config.Config, sta
 	return built, composition, err
 }
 
-type deepAgentSpec struct {
+type agentBuildSpec struct {
 	Kind              string
 	Name              string
 	Description       string
@@ -182,20 +173,20 @@ type deepAgentSpec struct {
 	Composition       SystemPromptComposition
 	EnableSkills      bool
 	DisableWriteTodos bool
-	ExtraHandlers     []adk.ChatModelAgentMiddleware
-	ExtraTools        []tool.BaseTool
-	ExtraToolsFactory func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error)
+	ExtraMiddlewares  []adk.Middleware
+	ExtraTools        []adk.BaseTool
+	ExtraToolsFactory func(config.ResolvedAgentToolSettings) ([]adk.BaseTool, error)
 	ModelOutputGuard  func(context.Context, *adk.RetryContext) *adk.RetryDecision
 }
 
-func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec) (adk.Agent, error) {
-	composition, err := resolveDeepAgentSystemPrompt(cfg, spec)
+func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (adk.Runnable, error) {
+	composition, err := resolveAgentSystemPrompt(cfg, spec)
 	if err != nil {
 		return nil, err
 	}
 	modelCfg := chatModelConfigForAgent(cfg, spec.Kind)
 	toolSettings := config.ResolveAgentTools(cfg, spec.Kind)
-	cm, err := openai.NewChatModel(ctx, &modelCfg)
+	cm, err := openai.New(ctx, &modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建模型失败: %w", err)
 	}
@@ -208,7 +199,7 @@ func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec)
 		ModelCfg:              modelCfg,
 		ToolSettings:          toolSettings,
 		EnableSkills:          spec.EnableSkills,
-		ExtraHandlers:         spec.ExtraHandlers,
+		ExtraMiddlewares:      spec.ExtraMiddlewares,
 		ExtraTools:            spec.ExtraTools,
 		ExtraToolsFactory:     spec.ExtraToolsFactory,
 		IncludeCompaction:     true,
@@ -218,35 +209,59 @@ func buildDeepAgent(ctx context.Context, cfg *config.Config, spec deepAgentSpec)
 	if err != nil {
 		return nil, err
 	}
-	subAgents, err := buildConfiguredSubAgents(ctx, cfg, spec, toolSettings)
+	configuredSubAgents, err := buildConfiguredSubAgents(ctx, cfg, spec, toolSettings)
 	if err != nil {
 		return nil, err
 	}
 
-	return newDeepAgent(ctx, &deep.Config{
-		Name:                   spec.Name,
-		Description:            spec.Description,
-		ChatModel:              chatModel,
-		Instruction:            composition.Instruction(),
-		SubAgents:              subAgents,
-		WithoutWriteTodos:      spec.DisableWriteTodos || !toolSettings.Todo,
-		WithoutGeneralSubAgent: !config.GeneralSubAgentEnabled(cfg, spec.Kind),
-		MaxIteration:           configMaxIteration(cfg),
-		Handlers:               assembly.Handlers,
-		ToolsConfig: adk.ToolsConfig{
-			EmitInternalEvents: true,
-			ToolsNodeConfig: compose.ToolsNodeConfig{
-				Tools: assembly.Tools,
-				// 当 LLM 幻觉出不存在的工具时，把错误信息以 ToolMessage 形式回传，
-				// 让 Agent 在下一轮自行修正工具名或改用其他方案，避免整次任务被 NodeRunError 中断。
-				UnknownToolsHandler: handleUnknownTool,
-			},
-		},
-		ModelRetryConfig: modelRetryConfig(cfg, spec.ModelOutputGuard),
+	taskAgents := append([]adk.Runnable(nil), configuredSubAgents...)
+	if config.GeneralSubAgentEnabled(cfg, spec.Kind) {
+		general, err := newNativeAgent(ctx, adk.AgentConfig{
+			Name:          generalSubAgentName,
+			Description:   "通用子 Agent，用于研究复杂问题、搜索代码和执行独立的多步骤任务。",
+			Instruction:   composition.Instruction(),
+			Model:         chatModel,
+			Tools:         assembly.Tools,
+			Middlewares:   assembly.Middlewares,
+			MaxIterations: configMaxIteration(cfg),
+			Retry:         modelRetryConfig(cfg, nil),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("创建通用子 Agent 失败: %w", err)
+		}
+		taskAgents = append([]adk.Runnable{general}, taskAgents...)
+	}
+
+	tools := append([]adk.BaseTool(nil), assembly.Tools...)
+	if !spec.DisableWriteTodos && toolSettings.Todo {
+		todoTool, err := newWriteTodosTool()
+		if err != nil {
+			return nil, fmt.Errorf("创建 write_todos 工具失败: %w", err)
+		}
+		tools = append(tools, todoTool)
+	}
+	if taskTool, err := newTaskTool(ctx, taskAgents); err != nil {
+		return nil, fmt.Errorf("创建 task 工具失败: %w", err)
+	} else if taskTool != nil {
+		tools = append(tools, taskTool)
+	}
+	if err := validateToolDescriptors(ctx, tools); err != nil {
+		return nil, err
+	}
+
+	return newNativeAgent(ctx, adk.AgentConfig{
+		Name:          spec.Name,
+		Description:   spec.Description,
+		Instruction:   composition.Instruction(),
+		Model:         chatModel,
+		Tools:         tools,
+		Middlewares:   assembly.Middlewares,
+		MaxIterations: configMaxIteration(cfg),
+		Retry:         modelRetryConfig(cfg, spec.ModelOutputGuard),
 	})
 }
 
-func resolveDeepAgentSystemPrompt(cfg *config.Config, spec deepAgentSpec) (SystemPromptComposition, error) {
+func resolveAgentSystemPrompt(cfg *config.Config, spec agentBuildSpec) (SystemPromptComposition, error) {
 	composition := spec.Composition
 	if composition.Err() != nil {
 		return SystemPromptComposition{}, composition.Err()
@@ -265,7 +280,7 @@ func resolveDeepAgentSystemPrompt(cfg *config.Config, spec deepAgentSpec) (Syste
 		return SystemPromptComposition{}, fmt.Errorf("system prompt composition is required: agent=%s", spec.Kind)
 	}
 	return composeSystemPrompt(cfg, spec.Kind, spec.Kind, "", []SystemPromptFragment{{
-		ID: "legacy_deep_agent_instruction", Source: "legacy deep agent spec", Title: "Agent system instruction",
+		ID: "agent_instruction", Source: "agent build specification", Title: "Agent system instruction",
 		Purpose: "provide a compatibility instruction for internal Agent construction", Content: instruction,
 		Required: true, Overflow: SystemPromptOverflowReject,
 	}})
@@ -284,69 +299,47 @@ func workspaceForPrompt(cfg *config.Config, state *book.State) string {
 type chatModelAgentAssemblySpec struct {
 	Kind                  string
 	ToolPolicyKind        string
-	ModelCfg              openai.ChatModelConfig
+	ModelCfg              openai.Config
 	ToolSettings          config.ResolvedAgentToolSettings
 	EnableSkills          bool
-	ExtraHandlers         []adk.ChatModelAgentMiddleware
-	ExtraTools            []tool.BaseTool
-	ExtraToolsFactory     func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error)
+	ExtraMiddlewares      []adk.Middleware
+	ExtraTools            []adk.BaseTool
+	ExtraToolsFactory     func(config.ResolvedAgentToolSettings) ([]adk.BaseTool, error)
 	IncludeCompaction     bool
 	ContextWindowTokens   int
 	ProviderInputMaxBytes int
 }
 
 type chatModelAgentAssembly struct {
-	Tools    []tool.BaseTool
-	Handlers []adk.ChatModelAgentMiddleware
+	Tools       []adk.BaseTool
+	Middlewares []adk.Middleware
 }
 
 func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec chatModelAgentAssemblySpec) (chatModelAgentAssembly, error) {
-	localBackend, err := localbk.NewBackend(ctx, &localbk.Config{})
-	if err != nil {
-		return chatModelAgentAssembly{}, fmt.Errorf("创建 backend 失败: %w", err)
-	}
 	workspace := ""
 	if cfg != nil {
 		workspace = cfg.Workspace
 	}
-	backend := newAgentFilesystemBackend(localBackend, workspace)
 	executionGate := sharedToolExecutionGate(workspace)
 	settings := spec.ToolSettings
-	middlewares := []agenttools.MiddlewareRegistration{
-		{
-			Name:              "filesystem",
-			Enabled:           agenttools.FilesystemAllowed,
-			ModelVisibleTools: filesystemMiddlewareToolNames,
-			Build: func(ctx context.Context, _ agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
-				return newFilesystemMiddleware(ctx, backend, newAgentStreamingShell(workspace), spec.ToolSettings, workspace)
-			},
-		},
-		{
-			Name:              "skills",
-			Enabled:           agenttools.CapabilityAllowed(config.AgentToolSkills),
-			ModelVisibleTools: []string{"skill"},
-			Build: func(ctx context.Context, settings agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
-				return newSkillMiddleware(ctx, cfg, spec.Kind, spec.EnableSkills, settings)
-			},
-		},
-	}
-	middlewares = append(middlewares, staticMiddlewareRegistrations("extra_handler", spec.ExtraHandlers)...)
+	var middlewares []agenttools.MiddlewareRegistration
+	middlewares = append(middlewares, staticMiddlewareRegistrations("extra_handler", spec.ExtraMiddlewares)...)
 	middlewares = append(middlewares,
 		agenttools.MiddlewareRegistration{
 			Name: "context_compaction",
 			Enabled: func(agenttools.Settings) bool {
 				return spec.IncludeCompaction
 			},
-			Build: func(context.Context, agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
+			Build: func(context.Context, agenttools.Settings) (adk.Middleware, error) {
 				return &contextCompactionMiddleware{
-					BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
-					agentKind:                    spec.Kind,
+					BaseMiddleware: &adk.BaseMiddleware{},
+					agentKind:      spec.Kind,
 				}, nil
 			},
 		},
 		agenttools.MiddlewareRegistration{
 			Name: "tool_orchestrator",
-			Build: func(context.Context, agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
+			Build: func(context.Context, agenttools.Settings) (adk.Middleware, error) {
 				return &toolOrchestratorMiddleware{
 					agentKind:           spec.Kind,
 					policyKind:          firstNonEmpty(spec.ToolPolicyKind, spec.Kind),
@@ -359,19 +352,31 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 		},
 		agenttools.MiddlewareRegistration{
 			Name: "model_input_logging",
-			Build: func(context.Context, agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
+			Build: func(context.Context, agenttools.Settings) (adk.Middleware, error) {
 				return &modelInputLoggingMiddleware{
-					BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
-					agentKind:                    spec.Kind,
-					config:                       spec.ModelCfg,
-					contextWindowTokens:          spec.ContextWindowTokens,
-					providerInputMaxBytes:        spec.ProviderInputMaxBytes,
+					BaseMiddleware:        &adk.BaseMiddleware{},
+					agentKind:             spec.Kind,
+					config:                spec.ModelCfg,
+					contextWindowTokens:   spec.ContextWindowTokens,
+					providerInputMaxBytes: spec.ProviderInputMaxBytes,
 				}, nil
 			},
 		},
 	)
 	toolRegistrations := []agenttools.ToolRegistration{
 		agenttools.StaticTools("extra_tools", spec.ExtraTools...),
+		{
+			Name:    "filesystem",
+			Enabled: agenttools.FilesystemAllowed,
+			Build:   filesystemToolsFactory(workspace),
+		},
+		{
+			Name:    "skills",
+			Enabled: agenttools.CapabilityAllowed(config.AgentToolSkills),
+			Build: func(settings agenttools.Settings) ([]adk.BaseTool, error) {
+				return buildSkillTools(ctx, cfg, spec.Kind, spec.EnableSkills, settings)
+			},
+		},
 	}
 	if spec.ExtraToolsFactory != nil {
 		toolRegistrations = append(toolRegistrations, agenttools.ToolRegistration{
@@ -382,7 +387,7 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	toolRegistrations = append(toolRegistrations, agenttools.ToolRegistration{
 		Name:    "web_search",
 		Enabled: stableWebSearchSchemaAllowed(firstNonEmpty(spec.ToolPolicyKind, spec.Kind)),
-		Build: func(agenttools.Settings) ([]tool.BaseTool, error) {
+		Build: func(agenttools.Settings) ([]adk.BaseTool, error) {
 			return newWebSearchTools()
 		},
 	})
@@ -394,23 +399,23 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	if err != nil {
 		return chatModelAgentAssembly{}, err
 	}
-	if err := validateToolSurface(ctx, assembly.Tools, assembly.MiddlewareToolNames); err != nil {
+	if err := validateToolSurface(ctx, assembly.Tools); err != nil {
 		return chatModelAgentAssembly{}, err
 	}
-	// Keep this last: it validates the concrete tool set after filesystem,
-	// skills, and every app middleware has completed BeforeAgent injection.
-	assembly.Handlers = append(assembly.Handlers, newToolDescriptorGuardMiddleware())
-	return chatModelAgentAssembly{Tools: assembly.Tools, Handlers: assembly.Handlers}, nil
+	// Keep this last: it validates the final concrete tool set immediately
+	// before every model run.
+	assembly.Middlewares = append(assembly.Middlewares, newToolDescriptorGuardMiddleware())
+	return chatModelAgentAssembly{Tools: assembly.Tools, Middlewares: assembly.Middlewares}, nil
 }
 
-func staticMiddlewareRegistrations(prefix string, handlers []adk.ChatModelAgentMiddleware) []agenttools.MiddlewareRegistration {
+func staticMiddlewareRegistrations(prefix string, handlers []adk.Middleware) []agenttools.MiddlewareRegistration {
 	registrations := make([]agenttools.MiddlewareRegistration, 0, len(handlers))
 	for i, handler := range handlers {
 		handler := handler
 		name := fmt.Sprintf("%s_%d", prefix, i+1)
 		registrations = append(registrations, agenttools.MiddlewareRegistration{
 			Name: name,
-			Build: func(context.Context, agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
+			Build: func(context.Context, agenttools.Settings) (adk.Middleware, error) {
 				return handler, nil
 			},
 		})
@@ -418,7 +423,7 @@ func staticMiddlewareRegistrations(prefix string, handlers []adk.ChatModelAgentM
 	return registrations
 }
 
-func newSkillMiddleware(ctx context.Context, cfg *config.Config, agentKind string, enabled bool, settings agenttools.Settings) (adk.ChatModelAgentMiddleware, error) {
+func buildSkillTools(ctx context.Context, cfg *config.Config, agentKind string, enabled bool, settings agenttools.Settings) ([]adk.BaseTool, error) {
 	if !enabled || !settings.Skills || cfg == nil {
 		return nil, nil
 	}
@@ -427,31 +432,25 @@ func newSkillMiddleware(ctx context.Context, cfg *config.Config, agentKind strin
 		agentKind,
 		config.ResolveAgentSkillOverrides(cfg, agentKind),
 	)
-	availableSkills, listErr := skillBackend.List(ctx)
-	if listErr != nil {
-		log.Printf("[agent] 加载 Skills 列表失败 agent=%s err=%v", agentKind, listErr)
-		return nil, nil
-	}
-	if len(availableSkills) == 0 {
-		return nil, nil
-	}
-	skillMw, err := skill.NewMiddleware(ctx, &skill.Config{Backend: skillBackend})
+	skillTool, err := newSkillTool(ctx, skillBackend, config.ResolveAgentContext(cfg, agentKind).MaxFragmentBytes)
 	if err != nil {
-		log.Printf("[agent] 创建 Skill middleware 失败 agent=%s err=%v", agentKind, err)
+		return nil, fmt.Errorf("创建 Skill 工具失败 agent=%s: %w", agentKind, err)
+	}
+	if skillTool == nil {
 		return nil, nil
 	}
-	return skillMw, nil
+	return []adk.BaseTool{skillTool}, nil
 }
 
-func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent deepAgentSpec, parentTools config.ResolvedAgentToolSettings) ([]adk.Agent, error) {
-	if cfg == nil || !config.IsDeepAgentParentKind(parent.Kind) {
+func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent agentBuildSpec, parentTools config.ResolvedAgentToolSettings) ([]adk.Runnable, error) {
+	if cfg == nil || !config.IsSubAgentParentKind(parent.Kind) {
 		return nil, nil
 	}
 	subConfigs := config.SanitizeSubAgents(cfg.SubAgents)
 	if len(subConfigs) == 0 {
 		return nil, nil
 	}
-	subAgents := make([]adk.Agent, 0, len(subConfigs))
+	subAgents := make([]adk.Runnable, 0, len(subConfigs))
 	for _, sub := range subConfigs {
 		if !config.SubAgentAllowedForParent(sub, parent.Kind) {
 			continue
@@ -465,14 +464,14 @@ func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent de
 	return subAgents, nil
 }
 
-func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent deepAgentSpec, parentTools config.ResolvedAgentToolSettings, sub config.SubAgentConfig) (adk.Agent, error) {
+func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent agentBuildSpec, parentTools config.ResolvedAgentToolSettings, sub config.SubAgentConfig) (adk.Runnable, error) {
 	composition, err := composeSubAgentInstruction(cfg, parent, sub)
 	if err != nil {
 		return nil, fmt.Errorf("assemble sub Agent system prompt id=%s: %w", sub.ID, err)
 	}
 	resolvedModel := config.ResolveSubAgentModel(cfg, parent.Kind, sub)
 	modelCfg := chatModelConfigFromResolved(resolvedModel)
-	cm, err := openai.NewChatModel(ctx, &modelCfg)
+	cm, err := openai.New(ctx, &modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建子 Agent 模型失败 id=%s: %w", sub.ID, err)
 	}
@@ -492,33 +491,27 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent dee
 	if err != nil {
 		return nil, err
 	}
-	return adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+	return newNativeAgent(ctx, adk.AgentConfig{
 		Name:          sub.ID,
 		Description:   sub.Description,
 		Instruction:   composition.Instruction(),
 		Model:         subChatModel,
 		MaxIterations: configMaxIteration(cfg),
-		Handlers:      assembly.Handlers,
-		ToolsConfig: adk.ToolsConfig{
-			EmitInternalEvents: true,
-			ToolsNodeConfig: compose.ToolsNodeConfig{
-				Tools:               assembly.Tools,
-				UnknownToolsHandler: handleUnknownTool,
-			},
-		},
-		ModelRetryConfig: modelRetryConfig(cfg, nil),
+		Middlewares:   assembly.Middlewares,
+		Tools:         assembly.Tools,
+		Retry:         modelRetryConfig(cfg, nil),
 	})
 }
 
-func modelRetryConfig(cfg *config.Config, outputGuard func(context.Context, *adk.RetryContext) *adk.RetryDecision) *adk.ModelRetryConfig {
-	retryConfig := &adk.ModelRetryConfig{
+func modelRetryConfig(cfg *config.Config, outputGuard func(context.Context, *adk.RetryContext) *adk.RetryDecision) *adk.RetryConfig {
+	retryConfig := &adk.RetryConfig{
 		MaxRetries:  configModelMaxRetries(cfg),
-		IsRetryAble: isTransientModelError,
+		IsRetryable: isTransientModelError,
 	}
 	if outputGuard == nil {
 		return retryConfig
 	}
-	retryConfig.IsRetryAble = nil
+	retryConfig.IsRetryable = nil
 	retryConfig.ShouldRetry = func(ctx context.Context, retryCtx *adk.RetryContext) *adk.RetryDecision {
 		if retryCtx != nil && retryCtx.Err != nil {
 			return &adk.RetryDecision{Retry: isTransientModelError(ctx, retryCtx.Err)}
@@ -535,7 +528,7 @@ func isTransientModelError(ctx context.Context, err error) bool {
 	return ClassifyModelError(err).Retryable
 }
 
-func buildSubAgentInstruction(parent deepAgentSpec, sub config.SubAgentConfig) string {
+func buildSubAgentInstruction(parent agentBuildSpec, sub config.SubAgentConfig) string {
 	composition, err := composeSubAgentInstruction(&config.Config{}, parent, sub)
 	if err != nil {
 		return ""
@@ -543,8 +536,8 @@ func buildSubAgentInstruction(parent deepAgentSpec, sub config.SubAgentConfig) s
 	return composition.Instruction()
 }
 
-func composeSubAgentInstruction(cfg *config.Config, parent deepAgentSpec, sub config.SubAgentConfig) (SystemPromptComposition, error) {
-	parentComposition, err := resolveDeepAgentSystemPrompt(cfg, parent)
+func composeSubAgentInstruction(cfg *config.Config, parent agentBuildSpec, sub config.SubAgentConfig) (SystemPromptComposition, error) {
+	parentComposition, err := resolveAgentSystemPrompt(cfg, parent)
 	if err != nil {
 		return SystemPromptComposition{}, err
 	}
@@ -576,7 +569,7 @@ func composeSubAgentInstruction(cfg *config.Config, parent deepAgentSpec, sub co
 
 func configMaxIteration(cfg *config.Config) int {
 	if cfg == nil || cfg.MaxIteration <= 0 {
-		return unlimitedAgentMaxIterations
+		return 0
 	}
 	return cfg.MaxIteration
 }
@@ -593,11 +586,4 @@ func configToolResultMaxBytes(cfg *config.Config) int {
 		return defaultToolResultMaxBytes
 	}
 	return cfg.AgentToolResultLimitKB * 1024
-}
-
-// handleUnknownTool 拦截 LLM 调用未知工具的错误，把可读提示作为工具结果回传给模型，
-// 引导 Agent 在后续轮次基于该反馈自我修正（例如改用正确的工具名）。
-func handleUnknownTool(_ context.Context, name, input string) (string, error) {
-	log.Printf("[agent] LLM 调用了不存在的工具 name=%s args=%s", name, input)
-	return prompts.UnknownToolMessage(name), nil
 }

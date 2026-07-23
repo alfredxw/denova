@@ -1,23 +1,23 @@
 package agent
 
 import (
-	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strings"
 
-	"github.com/cloudwego/eino/adk/filesystem"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/internal/workspacechange"
 )
+
+const shellStderrDiagnosticMaxBytes = 1024 * 1024
 
 type agentStreamingShell struct {
 	goos      string
@@ -26,66 +26,104 @@ type agentStreamingShell struct {
 	changes   *workspacechange.Service
 }
 
-func newAgentStreamingShell(workspaces ...string) filesystem.StreamingShell {
-	shell := &agentStreamingShell{
-		goos:     runtime.GOOS,
-		lookPath: exec.LookPath,
-	}
-	if len(workspaces) > 0 {
-		shell.workspace = strings.TrimSpace(workspaces[0])
-		if shell.workspace != "" {
-			shell.workspace = filepath.Clean(shell.workspace)
-			shell.changes, _ = workspacechange.ForWorkspace(shell.workspace)
-		}
-	}
-	return shell
-}
-
-func (s *agentStreamingShell) ExecuteStreaming(ctx context.Context, input *filesystem.ExecuteRequest) (*schema.StreamReader[*filesystem.ExecuteResponse], error) {
-	if input == nil {
-		return nil, fmt.Errorf("execute request is nil")
-	}
-	if input.Command == "" {
-		return nil, fmt.Errorf("command is required")
-	}
-	if input.RunInBackendGround {
-		return nil, fmt.Errorf("background shell execution is disabled because its lifetime cannot be coordinated with workspace writes; run the command in the foreground")
-	}
-
-	cmd, stdout, stderr, err := s.initCommand(ctx, input.Command)
+func newAgentStreamingShell(workspace string) (*agentStreamingShell, error) {
+	backend, err := newAgentFilesystemBackend(workspace)
 	if err != nil {
 		return nil, err
 	}
-
-	if s.workspace != "" {
-		cmd.Dir = s.workspace
+	changes, err := workspacechange.ForWorkspace(backend.Workspace())
+	if err != nil {
+		return nil, fmt.Errorf("coordinate shell workspace: %w", err)
 	}
-
-	sr, w := schema.Pipe[*filesystem.ExecuteResponse](100)
-	go s.runForeground(ctx, cmd, stdout, stderr, w)
-	return sr, nil
+	return &agentStreamingShell{
+		goos:      runtime.GOOS,
+		lookPath:  exec.LookPath,
+		workspace: backend.Workspace(),
+		changes:   changes,
+	}, nil
 }
 
-func (s *agentStreamingShell) runForeground(
-	ctx context.Context,
-	cmd *exec.Cmd,
-	stdout, stderr io.ReadCloser,
-	w *schema.StreamWriter[*filesystem.ExecuteResponse],
-) {
+func (s *agentStreamingShell) ExecuteStreaming(ctx context.Context, command string) (*adk.StreamReader[string], error) {
+	if s == nil {
+		return nil, fmt.Errorf("streaming shell is nil")
+	}
+	if strings.TrimSpace(command) == "" {
+		return nil, fmt.Errorf("command is required")
+	}
+	if strings.TrimSpace(s.workspace) == "" {
+		return nil, fmt.Errorf("shell workspace is required")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	reader, writer := adk.Pipe[string](100)
+	go s.runForeground(ctx, command, writer)
+	return reader, nil
+}
+
+func (s *agentStreamingShell) runForeground(ctx context.Context, command string, writer *adk.StreamWriter[string]) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			sendShellErrorAndClose(w, fmt.Errorf("shell execution panic: %v\n%s", recovered, string(debug.Stack())))
+			_ = writer.Send("", fmt.Errorf("shell execution panic: %v\n%s", recovered, string(debug.Stack())))
 		}
+		writer.Close()
 	}()
+
 	run := func() error {
+		name, args := shellCommandArgs(s.goos, s.lookPath, command)
+		cmd := exec.CommandContext(ctx, name, args...)
+		cmd.Dir = s.workspace
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return fmt.Errorf("create command stdout pipe: %w", err)
+		}
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			_ = stdout.Close()
+			return fmt.Errorf("create command stderr pipe: %w", err)
+		}
 		if err := cmd.Start(); err != nil {
 			_ = stdout.Close()
 			_ = stderr.Close()
-			return fmt.Errorf("failed to start command: %w", err)
+			return fmt.Errorf("start command: %w", err)
 		}
-		streamShellOutput(ctx, cmd, stdout, stderr, w)
+
+		stderrResult := make(chan shellStderrResult, 1)
+		go readShellStderr(stderr, stderrResult)
+		hasOutput, stdoutErr := streamShellStdout(ctx, cmd, stdout, writer)
+		diagnostic := <-stderrResult
+		waitErr := cmd.Wait()
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		if stdoutErr != nil {
+			return stdoutErr
+		}
+		if diagnostic.err != nil {
+			return diagnostic.err
+		}
+		if waitErr != nil {
+			var exitError *exec.ExitError
+			if !errors.As(waitErr, &exitError) {
+				return fmt.Errorf("command failed: %w", waitErr)
+			}
+			parts := []string{fmt.Sprintf("[Command failed with exit code %d]", exitError.ExitCode())}
+			if diagnostic.content != "" {
+				parts = append(parts, "[stderr]:\n"+diagnostic.content)
+			}
+			if diagnostic.truncated {
+				parts = append(parts, "[stderr was truncated due to size limits]")
+			}
+			_ = writer.Send("\n"+strings.Join(parts, "\n"), nil)
+			return nil
+		}
+		if !hasOutput {
+			_ = writer.Send("[Command executed successfully with no output]", nil)
+		}
 		return nil
 	}
+
 	var err error
 	if s.changes != nil {
 		err = s.changes.WithExclusiveWorkspace(ctx, run)
@@ -93,24 +131,68 @@ func (s *agentStreamingShell) runForeground(
 		err = run()
 	}
 	if err != nil {
-		sendShellErrorAndClose(w, err)
+		_ = writer.Send("", err)
 	}
 }
 
-func (s *agentStreamingShell) initCommand(ctx context.Context, command string) (*exec.Cmd, io.ReadCloser, io.ReadCloser, error) {
-	name, args := shellCommandArgs(s.goos, s.lookPath, command)
-	cmd := exec.CommandContext(ctx, name, args...)
+type shellStderrResult struct {
+	content   string
+	truncated bool
+	err       error
+}
 
-	stdout, err := cmd.StdoutPipe()
+func readShellStderr(stderr io.ReadCloser, result chan<- shellStderrResult) {
+	var output shellStderrResult
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			output.err = fmt.Errorf("read command stderr panic: %v\n%s", recovered, string(debug.Stack()))
+		}
+		_ = stderr.Close()
+		result <- output
+	}()
+
+	limited := &io.LimitedReader{R: stderr, N: shellStderrDiagnosticMaxBytes + 1}
+	data, err := io.ReadAll(limited)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to create stdout pipe: %w", err)
+		output.err = fmt.Errorf("read command stderr: %w", err)
+		return
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		_ = stdout.Close()
-		return nil, nil, nil, fmt.Errorf("failed to create stderr pipe: %w", err)
+	if len(data) > shellStderrDiagnosticMaxBytes {
+		data = data[:shellStderrDiagnosticMaxBytes]
+		output.truncated = true
 	}
-	return cmd, stdout, stderr, nil
+	if _, err := io.Copy(io.Discard, stderr); err != nil && output.err == nil {
+		output.err = fmt.Errorf("drain command stderr: %w", err)
+	}
+	output.content = string(data)
+}
+
+func streamShellStdout(ctx context.Context, cmd *exec.Cmd, stdout io.ReadCloser, writer *adk.StreamWriter[string]) (bool, error) {
+	defer stdout.Close()
+	buffer := make([]byte, 32*1024)
+	hasOutput := false
+	for {
+		count, err := stdout.Read(buffer)
+		if count > 0 {
+			hasOutput = true
+			if writer.Send(string(buffer[:count]), nil) {
+				killShellProcess(cmd)
+				return hasOutput, adk.ErrRecvAfterClosed
+			}
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return hasOutput, nil
+			}
+			return hasOutput, fmt.Errorf("read command stdout: %w", err)
+		}
+		select {
+		case <-ctx.Done():
+			killShellProcess(cmd)
+			return hasOutput, ctx.Err()
+		default:
+		}
+	}
 }
 
 func shellCommandArgs(goos string, lookPath func(string) (string, error), command string) (string, []string) {
@@ -149,113 +231,60 @@ func isWindowsPowerShell(shell string) bool {
 	return base == "powershell.exe" || base == "powershell"
 }
 
-func streamShellOutput(ctx context.Context, cmd *exec.Cmd, stdout, stderr io.ReadCloser, w *schema.StreamWriter[*filesystem.ExecuteResponse]) {
-	defer func() {
-		if pe := recover(); pe != nil {
-			w.Send(nil, fmt.Errorf("panic: %v,\n stack: %s", pe, string(debug.Stack())))
-		}
-		w.Close()
-		_ = stdout.Close()
-		_ = stderr.Close()
-	}()
-
-	stderrData, stderrErr := readShellStderrAsync(stderr)
-	hasOutput, err := streamShellStdout(ctx, cmd, stdout, w)
-	if err != nil {
-		w.Send(nil, err)
-		return
-	}
-
-	if err := <-stderrErr; err != nil {
-		w.Send(nil, err)
-		return
-	}
-	handleShellCompletion(cmd, stderrData, hasOutput, w)
-}
-
-func readShellStderrAsync(stderr io.Reader) (*[]byte, <-chan error) {
-	stderrData := new([]byte)
-	stderrErr := make(chan error, 1)
-	go func() {
-		defer func() {
-			if pe := recover(); pe != nil {
-				stderrErr <- fmt.Errorf("panic: %v,\n stack: %s", pe, string(debug.Stack()))
-				return
-			}
-			close(stderrErr)
-		}()
-		var err error
-		*stderrData, err = io.ReadAll(stderr)
-		if err != nil {
-			stderrErr <- fmt.Errorf("failed to read stderr: %w", err)
-		}
-	}()
-	return stderrData, stderrErr
-}
-
-func streamShellStdout(ctx context.Context, cmd *exec.Cmd, stdout io.Reader, w *schema.StreamWriter[*filesystem.ExecuteResponse]) (bool, error) {
-	reader := bufio.NewReader(stdout)
-	hasOutput := false
-	for {
-		line, err := reader.ReadString('\n')
-		if line != "" {
-			hasOutput = true
-			select {
-			case <-ctx.Done():
-				killShellProcess(cmd)
-				return hasOutput, ctx.Err()
-			default:
-				w.Send(&filesystem.ExecuteResponse{Output: line}, nil)
-			}
-		}
-		if err != nil {
-			if err != io.EOF {
-				return hasOutput, fmt.Errorf("error reading stdout: %w", err)
-			}
-			break
-		}
-	}
-	return hasOutput, nil
-}
-
-func handleShellCompletion(cmd *exec.Cmd, stderrData *[]byte, hasOutput bool, w *schema.StreamWriter[*filesystem.ExecuteResponse]) {
-	if err := cmd.Wait(); err != nil {
-		var exitError *exec.ExitError
-		if errors.As(err, &exitError) {
-			exitCode := exitError.ExitCode()
-			parts := []string{fmt.Sprintf("command exited with non-zero code %d", exitCode)}
-			if stderrStr := string(*stderrData); stderrStr != "" {
-				parts = append(parts, "[stderr]:\n"+stderrStr)
-			}
-			w.Send(&filesystem.ExecuteResponse{
-				Output:   strings.Join(parts, "\n"),
-				ExitCode: &exitCode,
-			}, nil)
-			return
-		}
-		w.Send(nil, fmt.Errorf("command failed: %w", err))
-		return
-	}
-
-	if !hasOutput {
-		exitCode := 0
-		w.Send(&filesystem.ExecuteResponse{ExitCode: &exitCode}, nil)
-	}
-}
-
-func sendShellErrorAndClose(w *schema.StreamWriter[*filesystem.ExecuteResponse], err error) {
-	defer func() {
-		if pe := recover(); pe != nil {
-			log.Printf("[agent shell] send error panic: %v\n%s", pe, string(debug.Stack()))
-		}
-		w.Close()
-	}()
-	w.Send(nil, err)
-}
-
 func killShellProcess(cmd *exec.Cmd) {
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
 	_ = cmd.Process.Kill()
 }
+
+type workspaceExecuteInput struct {
+	Command string `json:"command" jsonschema_description:"Foreground command to execute from the active workspace."`
+}
+
+type workspaceExecuteTool struct {
+	shell *agentStreamingShell
+}
+
+func newWorkspaceExecuteTool(shell *agentStreamingShell) (adk.BaseTool, error) {
+	if _, err := adk.GoStruct2ToolInfo[workspaceExecuteInput]("execute", workspaceExecuteToolDescription); err != nil {
+		return nil, fmt.Errorf("build execute tool schema: %w", err)
+	}
+	return &workspaceExecuteTool{shell: shell}, nil
+}
+
+func (tool *workspaceExecuteTool) Info(context.Context) (*adk.ToolInfo, error) {
+	return adk.GoStruct2ToolInfo[workspaceExecuteInput]("execute", workspaceExecuteToolDescription)
+}
+
+func (tool *workspaceExecuteTool) StreamableRun(ctx context.Context, arguments string, _ ...adk.ToolOption) (*adk.StreamReader[string], error) {
+	decoder := json.NewDecoder(strings.NewReader(arguments))
+	decoder.DisallowUnknownFields()
+	var input workspaceExecuteInput
+	if err := decoder.Decode(&input); err != nil {
+		return nil, fmt.Errorf("decode execute arguments: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return nil, fmt.Errorf("decode execute arguments: multiple JSON values are not allowed")
+		}
+		return nil, fmt.Errorf("decode execute arguments: invalid trailing JSON: %w", err)
+	}
+	if tool == nil || tool.shell == nil {
+		return nil, fmt.Errorf("shell_execute capability is disabled")
+	}
+	return tool.shell.ExecuteStreaming(ctx, input.Command)
+}
+
+var workspaceExecuteToolDescription = strings.TrimSpace(`Execute one foreground command from the active workspace and stream stdout while it runs.
+- The command always starts with the workspace as its working directory.
+- Background execution is not supported; cancellation terminates the process.
+- Use read_file, glob, and grep instead of shell commands for reading or searching files.
+- A non-zero exit code is returned as an explicit result marker with bounded stderr diagnostics.
+
+在当前 workspace 中以前台方式执行一条命令，并在运行期间流式返回 stdout。
+- 命令始终以 workspace 作为工作目录启动。
+- 不支持后台执行；取消调用会终止进程。
+- 读取或搜索文件时应使用 read_file、glob 和 grep，而不是 shell 命令。
+- 非零退出码会作为明确结果标记返回，stderr 诊断有大小上限。`)

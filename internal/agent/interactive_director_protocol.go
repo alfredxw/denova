@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/cloudwego/eino/adk"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )

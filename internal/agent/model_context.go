@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 	agentcontext "denova/internal/agent/context"
@@ -22,7 +22,7 @@ type ModelContextInput struct {
 // ModelContextResult returns both exact model messages and the assembly audit.
 // Callers must not persist Messages as display history.
 type ModelContextResult struct {
-	Messages []*schema.Message
+	Messages []*adk.Message
 	Context  agentcontext.Result
 	// CommitState is opaque conversation-owned data derived during pure
 	// assembly and applied only by CommitModelInput. Generic callers must not
@@ -74,7 +74,7 @@ func ContextBudgetForAgent(cfg *config.Config, agentKind string) agentcontext.Bu
 // turn fragments.
 func AssembleSingleUserModelContext(ctx context.Context, input ModelContextInput) (ModelContextResult, error) {
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage(input.UserMessage)}, Fragments: input.Fragments,
+		Messages: []*adk.Message{adk.UserMessage(input.UserMessage)}, Fragments: input.Fragments,
 	})
 	if err != nil {
 		return ModelContextResult{}, err

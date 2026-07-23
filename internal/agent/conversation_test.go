@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 func TestSessionConversationKeepsFullEffectiveHistoryBeforeCompaction(t *testing.T) {
@@ -21,10 +21,10 @@ func TestSessionConversationKeepsFullEffectiveHistoryBeforeCompaction(t *testing
 		t.Fatal(err)
 	}
 	for i := 1; i <= 4; i++ {
-		if err := sess.Append(schema.UserMessage("user " + string(rune('0'+i)))); err != nil {
+		if err := sess.Append(adk.UserMessage("user " + string(rune('0'+i)))); err != nil {
 			t.Fatal(err)
 		}
-		if err := sess.Append(schema.AssistantMessage("assistant "+string(rune('0'+i)), nil)); err != nil {
+		if err := sess.Append(adk.AssistantMessage("assistant "+string(rune('0'+i)), nil)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -90,10 +90,10 @@ func TestSessionConversationPrependsDynamicContextInsideFinalUserMessageOnly(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(schema.UserMessage("旧用户请求")); err != nil {
+	if err := sess.Append(adk.UserMessage("旧用户请求")); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(schema.AssistantMessage("旧助手回复", nil)); err != nil {
+	if err := sess.Append(adk.AssistantMessage("旧助手回复", nil)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -138,10 +138,10 @@ func TestSessionConversationPrependsStableContextBeforeHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(schema.UserMessage("旧用户请求")); err != nil {
+	if err := sess.Append(adk.UserMessage("旧用户请求")); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(schema.AssistantMessage("旧助手回复", nil)); err != nil {
+	if err := sess.Append(adk.AssistantMessage("旧助手回复", nil)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -181,7 +181,7 @@ func TestSessionConversationPrependsStableContextBeforeHistory(t *testing.T) {
 func TestSessionConversationKeepsStableContextBeforeCompactionSummary(t *testing.T) {
 	previous := summarizeContextForCompaction
 	defer func() { summarizeContextForCompaction = previous }()
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*schema.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*adk.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
 		return "压缩摘要：旧对话已合并。", 100, nil
 	}
 
@@ -193,10 +193,10 @@ func TestSessionConversationKeepsStableContextBeforeCompactionSummary(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(schema.UserMessage("旧用户请求")); err != nil {
+	if err := sess.Append(adk.UserMessage("旧用户请求")); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(schema.AssistantMessage("旧助手回复", nil)); err != nil {
+	if err := sess.Append(adk.AssistantMessage("旧助手回复", nil)); err != nil {
 		t.Fatal(err)
 	}
 	conversation := NewSessionConversationForAgentWithRuntimeContexts(
@@ -238,8 +238,8 @@ func TestSessionConversationPreparesIncrementalCompactionWithoutAdvancingCanonic
 	defer func() { summarizeContextForCompaction = previous }()
 
 	var capturedExisting string
-	var capturedSource []*schema.Message
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, existingCheckpoint string, source []*schema.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
+	var capturedSource []*adk.Message
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, existingCheckpoint string, source []*adk.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
 		capturedExisting = existingCheckpoint
 		capturedSource = source
 		return "新压缩摘要：旧目标与新增进展都已合并。", 200, nil
@@ -253,11 +253,11 @@ func TestSessionConversationPreparesIncrementalCompactionWithoutAdvancingCanonic
 	if err != nil {
 		t.Fatal(err)
 	}
-	messages := []*schema.Message{
-		schema.UserMessage("已压缩用户 1"),
-		schema.AssistantMessage("已压缩助手 1", nil),
-		schema.UserMessage("新增用户 2"),
-		schema.AssistantMessage("新增助手 2", nil),
+	messages := []*adk.Message{
+		adk.UserMessage("已压缩用户 1"),
+		adk.AssistantMessage("已压缩助手 1", nil),
+		adk.UserMessage("新增用户 2"),
+		adk.AssistantMessage("新增助手 2", nil),
 	}
 	for _, msg := range messages {
 		if err := sess.Append(msg); err != nil {
@@ -315,10 +315,10 @@ func TestSessionConversationUsesCompactionSummaryRetainedTailAndAppendedMessages
 		t.Fatal(err)
 	}
 	for i := 1; i <= 2; i++ {
-		if err := sess.Append(schema.UserMessage("user " + string(rune('0'+i)))); err != nil {
+		if err := sess.Append(adk.UserMessage("user " + string(rune('0'+i)))); err != nil {
 			t.Fatal(err)
 		}
-		if err := sess.Append(schema.AssistantMessage("assistant "+string(rune('0'+i)), nil)); err != nil {
+		if err := sess.Append(adk.AssistantMessage("assistant "+string(rune('0'+i)), nil)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -341,7 +341,7 @@ func TestSessionConversationUsesCompactionSummaryRetainedTailAndAppendedMessages
 	if len(history) != 6 {
 		t.Fatalf("history length = %d, want 6: %#v", len(history), history)
 	}
-	if !isContextCompactionMessage(history[0]) || history[0].Role != schema.User {
+	if !isContextCompactionMessage(history[0]) || history[0].Role != adk.User {
 		t.Fatalf("first message should be compaction summary: %#v", history[0])
 	}
 	if history[1].Content != "user 1" || history[2].Content != "assistant 1" || history[3].Content != "user 2" || history[4].Content != "assistant 2" || history[5].Content != "agent user 3" {
@@ -362,10 +362,10 @@ func TestSessionConversationKeepsPostCompactionTurnsUntilNextCompaction(t *testi
 		t.Fatal(err)
 	}
 	for i := 1; i <= 5; i++ {
-		if err := sess.Append(schema.UserMessage("user " + string(rune('0'+i)))); err != nil {
+		if err := sess.Append(adk.UserMessage("user " + string(rune('0'+i)))); err != nil {
 			t.Fatal(err)
 		}
-		if err := sess.Append(schema.AssistantMessage("assistant "+string(rune('0'+i)), nil)); err != nil {
+		if err := sess.Append(adk.AssistantMessage("assistant "+string(rune('0'+i)), nil)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -411,7 +411,7 @@ func TestSessionConversationKeepsPostCompactionTurnsUntilNextCompaction(t *testi
 	}
 }
 
-func messageContents(messages []*schema.Message) []string {
+func messageContents(messages []*adk.Message) []string {
 	contents := make([]string, 0, len(messages))
 	for _, msg := range messages {
 		if msg == nil {
@@ -429,7 +429,7 @@ func TestContextLedgerPartsForConversationIncludesDomainFragments(t *testing.T) 
 		Source: "LoreContext", Title: "常驻资料", Bytes: 128, Chars: 64, Included: true,
 	}}}
 
-	parts := contextLedgerPartsForConversation(log, conversation, []*schema.Message{schema.UserMessage("推门")})
+	parts := contextLedgerPartsForConversation(log, conversation, []*adk.Message{adk.UserMessage("推门")})
 	if len(parts) != 2 || parts[0].Source != "用户输入" || parts[1].Source != "LoreContext" {
 		t.Fatalf("domain context fragments were not merged into the durable ledger: %#v", parts)
 	}
@@ -439,9 +439,9 @@ func TestContextLedgerPartsForConversationUsesPostCompactionMessages(t *testing.
 	log := newContextBuildLog(DefaultLoopPolicy().ContextLedger)
 	log.add("文件引用", "removed.md", "压缩前引用正文", "")
 	conversation := &finalContextLedgerReportingConversation{}
-	finalMessages := []*schema.Message{
+	finalMessages := []*adk.Message{
 		NewContextCompactionSummaryMessage(2, "有界摘要"),
-		schema.UserMessage("最终用户消息"),
+		adk.UserMessage("最终用户消息"),
 	}
 
 	parts := contextLedgerPartsForConversation(log, conversation, finalMessages)
@@ -477,7 +477,7 @@ type finalContextLedgerReportingConversation struct {
 	lastContent  string
 }
 
-func (c *finalContextLedgerReportingConversation) ContextLedgerPartsForMessages(messages []*schema.Message) []ContextLedgerPart {
+func (c *finalContextLedgerReportingConversation) ContextLedgerPartsForMessages(messages []*adk.Message) []ContextLedgerPart {
 	c.messageCount = len(messages)
 	if len(messages) > 0 && messages[len(messages)-1] != nil {
 		c.lastContent = messages[len(messages)-1].Content

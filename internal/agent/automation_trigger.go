@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
+	"github.com/alfredxw/denova/adk/model/openai"
 
 	"denova/config"
 )
@@ -25,7 +25,7 @@ func GenerateAutomationTriggerEvaluation(ctx context.Context, cfg *config.Config
 	modelCfg.ResponseFormat = &openai.ChatCompletionResponseFormat{
 		Type: openai.ChatCompletionResponseFormatTypeJSONObject,
 	}
-	cm, err := openai.NewChatModel(traceCtx, &modelCfg)
+	cm, err := openai.New(traceCtx, &modelCfg)
 	if err != nil {
 		runErr = err
 		return "", fmt.Errorf("创建自动化触发评估模型失败: %w", err)
@@ -37,9 +37,9 @@ func GenerateAutomationTriggerEvaluation(ctx context.Context, cfg *config.Config
 		runErr = err
 		return "", err
 	}
-	messages := []*schema.Message{
-		schema.SystemMessage(composition.Instruction()),
-		schema.UserMessage(instruction),
+	messages := []*adk.Message{
+		adk.SystemMessage(composition.Instruction()),
+		adk.UserMessage(instruction),
 	}
 	if err := validateConfiguredProviderInput(cfg, config.AgentKindAutomation, messages, nil); err != nil {
 		runErr = err

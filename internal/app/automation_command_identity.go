@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 // automationManualRunID turns the caller-owned HTTP command identity into the
@@ -19,7 +19,7 @@ func automationManualRunID(taskID, commandID string) (string, error) {
 	if taskID == "" || commandID == "" {
 		return "", ErrAgentCommandIDRequired
 	}
-	if err := agentruntime.ValidateCommandID(commandID, agentruntime.DefaultInputLimits()); err != nil {
+	if err := runstate.ValidateCommandID(commandID, runstate.DefaultInputLimits()); err != nil {
 		return "", err
 	}
 	sum := sha256.Sum256([]byte(fmt.Sprintf("manual\x00%s\x00%s", taskID, commandID)))

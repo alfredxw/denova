@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cloudwego/eino/components/tool"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 	"denova/internal/automation"
@@ -65,7 +65,7 @@ func TestListAutomationsToolUsesTheUserCatalogAcrossWorkspaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := listTool.(tool.InvokableTool).InvokableRun(context.Background(), `{}`)
+	output, err := listTool.(adk.InvokableTool).InvokableRun(context.Background(), `{}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestPresetConfigManagerToolIndexesDescribeFixedModuleOwnership(t *testing.T
 	novaDir := t.TempDir()
 	for _, tc := range []struct {
 		name     string
-		build    func(string) (tool.BaseTool, error)
+		build    func(string) (adk.BaseTool, error)
 		required []string
 	}{
 		{
@@ -140,7 +140,7 @@ func TestPresetConfigManagerToolIndexesDescribeFixedModuleOwnership(t *testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
-			output, err := base.(tool.InvokableTool).InvokableRun(context.Background(), `{}`)
+			output, err := base.(adk.InvokableTool).InvokableRun(context.Background(), `{}`)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -187,7 +187,7 @@ func TestListAgentConfigsReturnsAllLayersWithoutAPIKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := listTool.(tool.InvokableTool).InvokableRun(context.Background(), `{}`)
+	output, err := listTool.(adk.InvokableTool).InvokableRun(context.Background(), `{}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,10 +208,10 @@ func TestWriteAgentConfigsRequiresExplicitScopeAndWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writeTool.(tool.InvokableTool).InvokableRun(context.Background(), `{"operations":[]}`); err == nil {
+	if _, err := writeTool.(adk.InvokableTool).InvokableRun(context.Background(), `{"operations":[]}`); err == nil {
 		t.Fatalf("write_agent_configs should require explicit scope")
 	}
-	if _, err := writeTool.(tool.InvokableTool).InvokableRun(context.Background(), `{"scope":"workspace","operations":[]}`); err == nil {
+	if _, err := writeTool.(adk.InvokableTool).InvokableRun(context.Background(), `{"scope":"workspace","operations":[]}`); err == nil {
 		t.Fatalf("write_agent_configs should reject workspace scope without workspace")
 	}
 
@@ -219,7 +219,7 @@ func TestWriteAgentConfigsRequiresExplicitScopeAndWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writeTool.(tool.InvokableTool).InvokableRun(context.Background(), `{"scope":"workspace","operations":[{"op":"set_agent_override","agent":"ide","model":{"profile_id":"workspace-model"}}]}`); err == nil {
+	if _, err := writeTool.(adk.InvokableTool).InvokableRun(context.Background(), `{"scope":"workspace","operations":[{"op":"set_agent_override","agent":"ide","model":{"profile_id":"workspace-model"}}]}`); err == nil {
 		t.Fatalf("write_agent_configs should keep model selection user-scoped")
 	}
 }
@@ -266,7 +266,7 @@ func TestWriteAgentConfigsPreservesUnrelatedSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writeTool.(tool.InvokableTool).InvokableRun(context.Background(), string(data)); err != nil {
+	if _, err := writeTool.(adk.InvokableTool).InvokableRun(context.Background(), string(data)); err != nil {
 		t.Fatal(err)
 	}
 	read, err := config.ReadSettingsFile(path)
@@ -361,12 +361,12 @@ func TestWriteAutomationsRequiresExplicitCreateTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = writeTool.(tool.InvokableTool).InvokableRun(context.Background(), `{
+	_, err = writeTool.(adk.InvokableTool).InvokableRun(context.Background(), `{
 		"operations": [{
 			"op": "create",
 			"task": {
 				"name": "Missing target",
-				"template": "custom",
+				"template": "custom_prompt",
 				"prompt": "Run without an implicit workspace",
 				"write_mode": "read_only",
 				"write_scope": "none",
@@ -376,6 +376,185 @@ func TestWriteAutomationsRequiresExplicitCreateTarget(t *testing.T) {
 	}`)
 	if err == nil || !strings.Contains(err.Error(), "target") {
 		t.Fatalf("automation create should require an explicit target, got %v", err)
+	}
+}
+
+func TestConfigManagerWriteSchemasKeepConditionalFieldsOptional(t *testing.T) {
+	novaDir := t.TempDir()
+	cfg := &config.Config{NovaDir: novaDir, Workspace: t.TempDir()}
+	tests := []struct {
+		name              string
+		build             func() (adk.BaseTool, error)
+		optionalOperation []string
+		requiredOperation []string
+	}{
+		{name: "style references", build: func() (adk.BaseTool, error) { return newWriteStyleReferencesTool(novaDir) }, optionalOperation: []string{"path", "reference"}},
+		{name: "tellers", build: func() (adk.BaseTool, error) { return newWriteTellersTool(novaDir) }, optionalOperation: []string{"id", "teller"}},
+		{name: "story directors", build: func() (adk.BaseTool, error) { return newWriteStoryDirectorsTool(novaDir) }, optionalOperation: []string{"id", "director"}},
+		{name: "event packages", build: func() (adk.BaseTool, error) { return newWriteEventPackagesTool(novaDir) }, optionalOperation: []string{"id", "package"}},
+		{name: "actor states", build: func() (adk.BaseTool, error) { return newWriteActorStatesTool(novaDir) }, optionalOperation: []string{"id", "actor_state"}},
+		{name: "image presets", build: func() (adk.BaseTool, error) { return newWriteImagePresetsTool(novaDir) }, optionalOperation: []string{"id", "preset"}},
+		{name: "automations", build: func() (adk.BaseTool, error) { return newWriteAutomationsTool(novaDir, cfg.Workspace, nil) }, optionalOperation: []string{"id", "task"}},
+		{name: "skills", build: func() (adk.BaseTool, error) { return newWriteSkillsTool(cfg) }, optionalOperation: []string{"description", "agents", "content"}, requiredOperation: []string{"scope", "name"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			base, err := test.build()
+			if err != nil {
+				t.Fatal(err)
+			}
+			info, err := base.Info(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			schema, err := info.ToJSONSchema()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !configManagerSchemaRequires(schema.Required, "operations") || configManagerSchemaRequires(schema.Required, "message") {
+				t.Fatalf("top-level required fields = %v, want operations without message", schema.Required)
+			}
+			operations, ok := schema.Properties.Get("operations")
+			if !ok || operations.Items == nil {
+				t.Fatalf("operations schema missing: %#v", operations)
+			}
+			if operations.MinItems == nil || *operations.MinItems != 1 {
+				t.Fatalf("operations minItems = %v, want 1", operations.MinItems)
+			}
+			operation := operations.Items
+			if !configManagerSchemaRequires(operation.Required, "op") {
+				t.Fatalf("operation required fields = %v, want op", operation.Required)
+			}
+			for _, field := range test.optionalOperation {
+				if configManagerSchemaRequires(operation.Required, field) {
+					t.Fatalf("operation field %q must be conditional, required=%v", field, operation.Required)
+				}
+			}
+			for _, field := range test.requiredOperation {
+				if !configManagerSchemaRequires(operation.Required, field) {
+					t.Fatalf("operation field %q must be required, required=%v", field, operation.Required)
+				}
+			}
+		})
+	}
+}
+
+func TestWriteAutomationsSchemaOnlyExposesEditableDefinition(t *testing.T) {
+	base, err := newWriteAutomationsTool(t.TempDir(), t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := base.Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, err := info.ToJSONSchema()
+	if err != nil {
+		t.Fatal(err)
+	}
+	operations, _ := schema.Properties.Get("operations")
+	operation := operations.Items
+	task, ok := operation.Properties.Get("task")
+	if !ok {
+		t.Fatal("write_automations schema is missing task")
+	}
+	if len(task.Required) != 0 {
+		t.Fatalf("automation definition fields are action-dependent or defaulted, required=%v", task.Required)
+	}
+	for _, field := range []string{"revision", "target", "enabled", "name", "template", "prompt", "model_profile_id", "schedule", "triggers", "write_mode", "write_scope", "output_policy", "output_path"} {
+		if _, exists := task.Properties.Get(field); !exists {
+			t.Fatalf("editable automation field %q is missing", field)
+		}
+	}
+	for _, field := range []string{"id", "catalog_id", "scope", "default_action_policy", "trigger_state", "last_run", "recent_runs", "created_at", "updated_at", "archived_at"} {
+		if _, exists := task.Properties.Get(field); exists {
+			t.Fatalf("runtime or derived automation field %q leaked into write schema", field)
+		}
+	}
+	target, _ := task.Properties.Get("target")
+	if !configManagerSchemaRequires(target.Required, "kind") || configManagerSchemaRequires(target.Required, "workspace") {
+		t.Fatalf("target required fields = %v, want only kind", target.Required)
+	}
+	schedule, _ := task.Properties.Get("schedule")
+	if len(schedule.Required) != 0 {
+		t.Fatalf("defaulted schedule fields must be optional, required=%v", schedule.Required)
+	}
+	if _, exists := schedule.Properties.Get("cron"); exists {
+		t.Fatal("derived cron field leaked into write schema")
+	}
+}
+
+func TestWriteAutomationsAcceptsMinimalDefinitionAndRejectsUnknownFields(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := t.TempDir()
+	writeTool, err := newWriteAutomationsTool(novaDir, workspace, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invokable := writeTool.(adk.InvokableTool)
+	if _, err := invokable.InvokableRun(context.Background(), `{
+		"operations": [{"op": "create", "task": {"target": {"kind": "user"}, "name": "Minimal"}}]
+	}`); err != nil {
+		t.Fatalf("minimal automation definition should use backend defaults: %v", err)
+	}
+	tasks, err := configManagerAutomationStore(novaDir, workspace, nil).List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tasks) != 1 {
+		t.Fatalf("created tasks = %d, want 1", len(tasks))
+	}
+	created := tasks[0]
+	if created.Template != automation.TemplateCustomPrompt || created.WriteMode != automation.WriteModeReadOnly || created.OutputPolicy != automation.OutputPolicyRunRecordOnly {
+		t.Fatalf("minimal definition did not receive defaults: %#v", created)
+	}
+	_, err = invokable.InvokableRun(context.Background(), `{
+		"operations": [{"op": "create", "task": {"target": {"kind": "user"}, "created_at": "2026-01-01T00:00:00Z"}}]
+	}`)
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("runtime and unknown fields must remain rejected, got %v", err)
+	}
+}
+
+func TestWriteAutomationsPartialUpdatePreservesOmittedDefinitionFields(t *testing.T) {
+	novaDir := t.TempDir()
+	workspace := t.TempDir()
+	store := automation.NewStore(novaDir, workspace)
+	created, err := store.Create(automation.Task{
+		Target:   automation.ExecutionTarget{Kind: automation.TargetKindWorkspace, Workspace: workspace},
+		Enabled:  true,
+		Name:     "Before",
+		Template: automation.TemplateReview,
+		Prompt:   "keep this prompt",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "After"
+	payload, err := json.Marshal(automationWriteInput{Operations: []automationWriteOperation{{
+		Op: "update",
+		ID: created.CatalogID,
+		Task: &automationTaskWriteInput{
+			Revision: created.Revision,
+			Name:     &name,
+		},
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTool, err := newWriteAutomationsTool(novaDir, workspace, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeTool.(adk.InvokableTool).InvokableRun(context.Background(), string(payload)); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := store.Get(created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Name != name || !updated.Enabled || updated.Template != automation.TemplateReview || updated.Prompt != "keep this prompt" {
+		t.Fatalf("partial update lost omitted definition fields: %#v", updated)
 	}
 }
 
@@ -395,12 +574,14 @@ func TestWriteAutomationsRejectsAStaleAgentDefinition(t *testing.T) {
 	if _, err := store.UpdateIfRevision(created.ID, automation.Task{Prompt: "user autosave"}, created.Revision); err != nil {
 		t.Fatal(err)
 	}
-	staleAgentTask := created
-	staleAgentTask.Name = "stale Agent name"
+	staleAgentName := "stale Agent name"
 	payload, err := json.Marshal(automationWriteInput{Operations: []automationWriteOperation{{
-		Op:   "update",
-		ID:   created.CatalogID,
-		Task: staleAgentTask,
+		Op: "update",
+		ID: created.CatalogID,
+		Task: &automationTaskWriteInput{
+			Revision: created.Revision,
+			Name:     &staleAgentName,
+		},
 	}}})
 	if err != nil {
 		t.Fatal(err)
@@ -409,7 +590,7 @@ func TestWriteAutomationsRejectsAStaleAgentDefinition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = writeTool.(tool.InvokableTool).InvokableRun(context.Background(), string(payload))
+	_, err = writeTool.(adk.InvokableTool).InvokableRun(context.Background(), string(payload))
 	if err == nil || !strings.Contains(err.Error(), "revision conflict") {
 		t.Fatalf("stale Agent update should fail with revision conflict, got %v", err)
 	}
@@ -422,7 +603,7 @@ func TestWriteAutomationsRejectsAStaleAgentDefinition(t *testing.T) {
 	}
 }
 
-func configManagerToolNameSet(t *testing.T, tools []tool.BaseTool) map[string]bool {
+func configManagerToolNameSet(t *testing.T, tools []adk.BaseTool) map[string]bool {
 	t.Helper()
 	names := make(map[string]bool, len(tools))
 	for _, item := range tools {
@@ -433,4 +614,13 @@ func configManagerToolNameSet(t *testing.T, tools []tool.BaseTool) map[string]bo
 		names[info.Name] = true
 	}
 	return names
+}
+
+func configManagerSchemaRequires(required []string, field string) bool {
+	for _, item := range required {
+		if item == field {
+			return true
+		}
+	}
+	return false
 }

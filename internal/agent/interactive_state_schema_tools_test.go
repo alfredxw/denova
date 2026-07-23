@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/components/tool"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/internal/interactive"
 )
@@ -49,7 +49,7 @@ func TestOpeningGameStateSchemaToolUsesDedicatedStructureOnlyEntry(t *testing.T)
 	if strings.Contains(schemaText, `"initial_actor_ops"`) || strings.Contains(schemaText, `"actor_ops"`) {
 		t.Fatalf("opening structure-only schema must not expose Actor value operations: %s", schemaText)
 	}
-	invokable := tools[0].(tool.InvokableTool)
+	invokable := tools[0].(adk.InvokableTool)
 	if _, err := invokable.InvokableRun(context.Background(), `{"summary":"现有字段覆盖开局需求","items":[{"item_id":"schema-covered-review","requirements":[{"source":{"kind":"opening","id":"opening-draft"},"requirement":"主角姓名需要长期记录，现有字段已覆盖","value_policy":"schema_only","expected_type":"string","decision":"covered","template_id":"protagonist","field_id":"姓名"}],"adaptation":{"template_ops":[]}}],"finalize":true}`); err != nil {
 		t.Fatal(err)
 	}

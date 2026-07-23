@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
 )
 
@@ -57,7 +57,7 @@ func TestAutomationManualRunIDRequiresCallerIdentity(t *testing.T) {
 	if _, err := automationManualRunID("task", ""); !errors.Is(err, ErrAgentCommandIDRequired) {
 		t.Fatalf("error = %v, want ErrAgentCommandIDRequired", err)
 	}
-	if _, err := automationManualRunID("task", strings.Repeat("x", 4097)); !errors.Is(err, agentruntime.ErrInvalidCommand) {
+	if _, err := automationManualRunID("task", strings.Repeat("x", 4097)); !errors.Is(err, runstate.ErrInvalidCommand) {
 		t.Fatalf("oversized error = %v, want ErrInvalidCommand", err)
 	}
 }
@@ -92,13 +92,13 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	if _, err := store.AppendRun(taskDef.ID, run); err != nil {
 		t.Fatal(err)
 	}
-	seedAutomationRuntimeJournal(t, dataDir, taskDef, run, []agentruntime.EventPayload{
-		agentruntime.CommandAcceptedEvent{CommandID: agentruntime.CommandID(rootCommandID), CommandKind: "start_turn", OperationID: "manual-root-operation", Fingerprint: "manual-root"},
-		agentruntime.OperationStartedEvent{OperationID: "manual-root-operation"},
-		agentruntime.OperationSettledEvent{OperationID: "manual-root-operation", Status: agentruntime.OperationSucceeded},
+	seedAutomationRuntimeJournal(t, dataDir, taskDef, run, []runstate.EventPayload{
+		runstate.CommandAcceptedEvent{CommandID: runstate.CommandID(rootCommandID), CommandKind: "start_turn", OperationID: "manual-root-operation", Fingerprint: "manual-root"},
+		runstate.OperationStartedEvent{OperationID: "manual-root-operation"},
+		runstate.OperationSettledEvent{OperationID: "manual-root-operation", Status: runstate.OperationSucceeded},
 	})
 
-	application, err := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace})
+	application, err := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace, OpenAIModel: "test-model"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,15 +120,15 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	<-secondTask.Done()
 	application.Close()
 
-	ref := agentruntime.BindingRef{
-		Kind: agentruntime.BindingAutomation, Profile: agentruntime.ProfileAutomation,
+	ref := runstate.BindingRef{
+		Kind: runstate.BindingAutomation, Profile: runstate.ProfileAutomation,
 		Workspace: workspace, SessionID: run.SessionID, TaskID: taskDef.ID,
 	}
 	key, err := json.Marshal(ref)
 	if err != nil {
 		t.Fatal(err)
 	}
-	journalStore, err := agentruntime.NewFileJournalStore(filepath.Join(dataDir, "agent-runtime"))
+	journalStore, err := runstate.NewFileJournalStore(filepath.Join(dataDir, "agent-runtime"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	}
 	accepted := 0
 	for _, event := range events {
-		if payload, ok := event.Payload.(agentruntime.CommandAcceptedEvent); ok && payload.CommandKind == "start_turn" {
+		if payload, ok := event.Payload.(runstate.CommandAcceptedEvent); ok && payload.CommandKind == "start_turn" {
 			accepted++
 		}
 	}
@@ -184,7 +184,7 @@ func TestAutomationCompletedFollowUpReplaysFromDurableIntentAfterRestart(t *test
 		t.Fatal(err)
 	}
 
-	application, err := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace})
+	application, err := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace, OpenAIModel: "test-model"})
 	if err != nil {
 		t.Fatal(err)
 	}

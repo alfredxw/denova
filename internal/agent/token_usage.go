@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 )
 
 type runTokenUsage struct {
@@ -54,7 +54,7 @@ func newRunTokenUsageCollector(runID, agentKind string) *runTokenUsageCollector 
 	}
 }
 
-func (c *runTokenUsageCollector) AddMessage(msg *schema.Message) {
+func (c *runTokenUsageCollector) AddMessage(msg *adk.Message) {
 	if c == nil || msg == nil {
 		return
 	}
@@ -137,7 +137,7 @@ func (c *runTokenUsageCollector) EmitIfAny(emit func(Event), generatedBytes int)
 	}})
 }
 
-func toolNamesFromCalls(calls []schema.ToolCall) []string {
+func toolNamesFromCalls(calls []adk.ToolCall) []string {
 	if len(calls) == 0 {
 		return nil
 	}

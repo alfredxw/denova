@@ -1,11 +1,8 @@
 package handlers
 
-import (
-	"denova/internal/agent"
-	"denova/internal/agentruntime"
-)
+import appsvc "denova/internal/app"
 
-// HTTP projection DTOs intentionally do not mirror agentruntime structs. This
+// HTTP projection DTOs intentionally do not mirror runtime structs. This
 // keeps internal journal/context fields out of the shared writing/game API as
 // the runtime evolves.
 type agentRuntimeProjectionDTO struct {
@@ -66,12 +63,12 @@ const agentRuntimeProjectionTextMaxBytes = 1 << 20
 type agentRuntimeProjectionOptions struct {
 	Available       bool
 	StreamAttached  bool
-	RecoveryActions []agent.RuntimeRecoveryAction
+	RecoveryActions []appsvc.AgentRuntimeRecoveryAction
 }
 
 func addAgentRuntimeProjection(
 	response map[string]interface{},
-	snapshot agentruntime.StatusSnapshot,
+	snapshot appsvc.AgentRuntimeStatus,
 	options agentRuntimeProjectionOptions,
 ) {
 	if !options.Available {
@@ -85,7 +82,7 @@ func addAgentRuntimeProjection(
 		// temporarily unavailable, keep the public protocol exhaustive instead
 		// of exposing an empty phase alongside an actionable recovery fence.
 		if dto.Phase == "" {
-			dto.Phase = string(agentruntime.PhaseIdle)
+			dto.Phase = string(appsvc.AgentRuntimePhaseIdle)
 		}
 		dto.RecoveryPaused = true
 		dto.RuntimeRecoverable = true
@@ -112,7 +109,7 @@ func addAgentRuntimeProjection(
 	}
 }
 
-func newAgentRuntimeProjectionDTO(snapshot agentruntime.StatusSnapshot) agentRuntimeProjectionDTO {
+func newAgentRuntimeProjectionDTO(snapshot appsvc.AgentRuntimeStatus) agentRuntimeProjectionDTO {
 	content, contentTruncated := boundedRuntimeProjectionText(snapshot.ActiveOutput.Content)
 	thinking, thinkingTruncated := boundedRuntimeProjectionText(snapshot.ActiveOutput.Thinking)
 	queue := make([]agentRuntimeQueueDTO, 0, len(snapshot.Queue))
@@ -146,7 +143,7 @@ func newAgentRuntimeProjectionDTO(snapshot agentruntime.StatusSnapshot) agentRun
 			ReasonTruncated: snapshot.LastOperation.ReasonTruncated || truncated,
 		}
 	}
-	recoveryPlan := agent.RuntimeRecoveryActions(snapshot)
+	recoveryPlan := appsvc.AgentRuntimeRecoveryActions(snapshot)
 	recoveryActions := make([]agentRuntimeRecoveryActionDTO, 0, len(recoveryPlan))
 	for _, action := range recoveryPlan {
 		recoveryActions = append(recoveryActions, agentRuntimeRecoveryActionDTO{

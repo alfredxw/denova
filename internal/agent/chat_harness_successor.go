@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 const (
@@ -19,9 +19,9 @@ const (
 // successor, pause for exact recovery, or receive Task.Abort.
 func (h *chatHarness) followAcceptedSuccessors(
 	caller context.Context,
-	harness *agentruntime.Harness,
-	observation agentruntime.Observation,
-	settledOperation agentruntime.OperationID,
+	harness *runstate.Harness,
+	observation runstate.Observation,
+	settledOperation runstate.OperationID,
 	initial RunOutcome,
 	emit func(Event),
 ) (RunOutcome, bool) {
@@ -38,7 +38,7 @@ func (h *chatHarness) followAcceptedSuccessors(
 	}
 	current, followed, terminal := acceptedSuccessorFromStatus(status, settledOperation)
 	if terminal != nil {
-		return replayedOutcomeForSettlement(context.Background(), harness, terminal.OperationID, agentruntime.OperationSettledEvent{
+		return replayedOutcomeForSettlement(context.Background(), harness, terminal.OperationID, runstate.OperationSettledEvent{
 			OperationID: terminal.OperationID, Status: terminal.Status, Reason: terminal.Reason,
 		}), true
 	}
@@ -49,7 +49,7 @@ func (h *chatHarness) followAcceptedSuccessors(
 	events := observation.Events
 	errorsCh := observation.Errors
 	callerDone := caller.Done()
-	abortSentFor := agentruntime.OperationID("")
+	abortSentFor := runstate.OperationID("")
 	for {
 		if status.RecoveryPaused {
 			if caller.Err() == nil {
@@ -61,13 +61,13 @@ func (h *chatHarness) followAcceptedSuccessors(
 		}
 		if caller.Err() != nil && abortSentFor != current {
 			abortSentFor = current
-			_, abortErr := harness.Submit(context.Background(), agentruntime.Abort{
-				ID: agentruntime.CommandID(newHarnessIdentity("successor-abort")), OperationID: current,
+			_, abortErr := harness.Submit(context.Background(), runstate.Abort{
+				ID: runstate.CommandID(newHarnessIdentity("successor-abort")), OperationID: current,
 				Reason: "agent display task canceled while following accepted NextTurn",
 			})
-			if abortErr != nil && !errors.Is(abortErr, agentruntime.ErrInvalidCommand) &&
-				!errors.Is(abortErr, agentruntime.ErrStaleOperation) &&
-				!errors.Is(abortErr, agentruntime.ErrDomainCommitRejected) {
+			if abortErr != nil && !errors.Is(abortErr, runstate.ErrInvalidCommand) &&
+				!errors.Is(abortErr, runstate.ErrStaleOperation) &&
+				!errors.Is(abortErr, runstate.ErrDomainCommitRejected) {
 				emitHarnessError(emit, abortErr)
 				return outcomeFromOutput(RunOutcomeFailed, abortErr, abortErr.Error(), initial.Content, initial.Thinking), true
 			}
@@ -80,13 +80,13 @@ func (h *chatHarness) followAcceptedSuccessors(
 				continue
 			}
 			switch payload := event.Payload.(type) {
-			case agentruntime.OperationRecoveryPausedEvent, agentruntime.InputMaterializationRecoveryPendingEvent:
+			case runstate.OperationRecoveryPausedEvent, runstate.InputMaterializationRecoveryPendingEvent:
 				status, err = harness.Status(context.Background())
 				if err != nil {
 					emitHarnessError(emit, err)
 					return outcomeFromOutput(RunOutcomeFailed, err, err.Error(), initial.Content, initial.Thinking), true
 				}
-			case agentruntime.OperationSettledEvent:
+			case runstate.OperationSettledEvent:
 				if payload.OperationID != current {
 					continue
 				}
@@ -101,7 +101,7 @@ func (h *chatHarness) followAcceptedSuccessors(
 					return outcome, true
 				}
 				current = next
-			case agentruntime.OperationInterruptedEvent:
+			case runstate.OperationInterruptedEvent:
 				if payload.OperationID != current {
 					continue
 				}
@@ -135,7 +135,7 @@ func (h *chatHarness) followAcceptedSuccessors(
 		case <-h.lifecycle.Done():
 			err := h.lifecycle.Err()
 			if err == nil {
-				err = agentruntime.ErrRuntimeClosed
+				err = runstate.ErrRuntimeClosed
 			}
 			return outcomeFromOutput(RunOutcomeAborted, err, err.Error(), initial.Content, initial.Thinking), true
 		}
@@ -148,13 +148,13 @@ func (h *chatHarness) followAcceptedSuccessors(
 }
 
 func acceptedSuccessorFromStatus(
-	status agentruntime.StatusSnapshot,
-	settledOperation agentruntime.OperationID,
-) (agentruntime.OperationID, bool, *agentruntime.OperationSummary) {
+	status runstate.StatusSnapshot,
+	settledOperation runstate.OperationID,
+) (runstate.OperationID, bool, *runstate.OperationSummary) {
 	if status.ActiveOperation != "" && status.ActiveOperation != settledOperation {
 		return status.ActiveOperation, true, nil
 	}
-	if status.Phase == agentruntime.PhaseIdle && status.LastOperation != nil && status.LastOperation.OperationID != settledOperation {
+	if status.Phase == runstate.PhaseIdle && status.LastOperation != nil && status.LastOperation.OperationID != settledOperation {
 		for _, summary := range status.RecentOperations {
 			if summary.OperationID == settledOperation {
 				terminal := *status.LastOperation
@@ -165,7 +165,7 @@ func acceptedSuccessorFromStatus(
 	return "", false, nil
 }
 
-func emitRuntimeRecoveryRequired(emit func(Event), status agentruntime.StatusSnapshot) {
+func emitRuntimeRecoveryRequired(emit func(Event), status runstate.StatusSnapshot) {
 	if emit == nil {
 		return
 	}

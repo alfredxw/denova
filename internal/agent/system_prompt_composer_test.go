@@ -6,8 +6,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/adk/prebuilt/deep"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -103,9 +102,9 @@ func TestComposeInstructionBudgetsDynamicTellerMetadataAndStyleProtocolOnce(t *t
 	}
 }
 
-func TestDeepAgentFailsClosedBeforeModelConstructionOnPromptAdmission(t *testing.T) {
+func TestAgentBuildFailsClosedBeforeModelConstructionOnPromptAdmission(t *testing.T) {
 	cfg := systemPromptBudgetConfig(8, 1024, 16, 256)
-	_, err := buildDeepAgent(context.Background(), cfg, deepAgentSpec{
+	_, err := buildAgent(context.Background(), cfg, agentBuildSpec{
 		Kind: config.AgentKindIDE, Name: "test", Description: "test", Instruction: "123456789",
 	})
 	if err == nil || !strings.Contains(err.Error(), "per-source limit") {
@@ -119,12 +118,14 @@ func TestDeepAgentFailsClosedBeforeModelConstructionOnPromptAdmission(t *testing
 func TestBuildWithCompositionReturnsExactRunnerInstructionArtifact(t *testing.T) {
 	off := false
 	var captured string
-	previous := newDeepAgent
-	newDeepAgent = func(_ context.Context, cfg *deep.Config) (adk.ResumableAgent, error) {
-		captured = cfg.Instruction
+	previous := newNativeAgent
+	newNativeAgent = func(_ context.Context, cfg adk.AgentConfig) (adk.Runnable, error) {
+		if cfg.Name == "DenovaAgent" {
+			captured = cfg.Instruction
+		}
 		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
 	}
-	t.Cleanup(func() { newDeepAgent = previous })
+	t.Cleanup(func() { newNativeAgent = previous })
 	cfg := &config.Config{
 		OpenAIBaseURL: "https://example.invalid", OpenAIModel: "test-model",
 		AgentTools: config.AgentToolSettings{Default: config.AgentToolOverride{

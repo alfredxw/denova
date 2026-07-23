@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/components/tool"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/internal/book"
 )
@@ -30,7 +30,7 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	byName := map[string]tool.BaseTool{}
+	byName := map[string]adk.BaseTool{}
 	for _, item := range tools {
 		info, err := item.Info(context.Background())
 		if err != nil {
@@ -47,7 +47,7 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 		}
 	}
 
-	listTool, ok := byName["list_lore_items"].(tool.InvokableTool)
+	listTool, ok := byName["list_lore_items"].(adk.InvokableTool)
 	if !ok {
 		t.Fatalf("list_lore_items should be invokable: %T", byName["list_lore_items"])
 	}
@@ -117,7 +117,7 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 			t.Fatalf("list_lore_items should reject invalid args: %s", args)
 		}
 	}
-	readTool, ok := byName["read_lore_items"].(tool.InvokableTool)
+	readTool, ok := byName["read_lore_items"].(adk.InvokableTool)
 	if !ok {
 		t.Fatalf("read_lore_items should be invokable: %T", byName["read_lore_items"])
 	}
@@ -145,14 +145,14 @@ func TestListLoreItemsFiltersByResidentLoadMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var listTool tool.InvokableTool
+	var listTool adk.InvokableTool
 	for _, candidate := range tools {
 		info, err := candidate.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
 		if info.Name == "list_lore_items" {
-			listTool, _ = candidate.(tool.InvokableTool)
+			listTool, _ = candidate.(adk.InvokableTool)
 		}
 	}
 	if listTool == nil {
@@ -191,14 +191,14 @@ func TestLoreReadPolicyTracksVisibleItemsAndEnforcesHardBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var readTool tool.InvokableTool
+	var readTool adk.InvokableTool
 	for _, candidate := range tools {
 		info, err := candidate.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
 		if info.Name == "read_lore_items" {
-			readTool, _ = candidate.(tool.InvokableTool)
+			readTool, _ = candidate.(adk.InvokableTool)
 		}
 	}
 	if readTool == nil {
@@ -232,7 +232,7 @@ func TestLoreReadPolicyTracksVisibleItemsAndEnforcesHardBounds(t *testing.T) {
 		if info.Name != "read_lore_items" {
 			continue
 		}
-		if _, err := candidate.(tool.InvokableTool).InvokableRun(context.Background(), `{"ids":["rule-a"]}`); err == nil {
+		if _, err := candidate.(adk.InvokableTool).InvokableRun(context.Background(), `{"ids":["rule-a"]}`); err == nil {
 			t.Fatal("read result exceeding the context budget must be rejected")
 		}
 	}

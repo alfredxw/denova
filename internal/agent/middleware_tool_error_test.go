@@ -8,9 +8,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 )
 
 type capturingToolLifecycleObserver struct {
@@ -34,7 +32,7 @@ func TestToolOrchestratorBoundsInvokableEndpointErrorsForModelAndPersistence(t *
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			return "", hugeError
 		},
 		&adk.ToolContext{Name: "read_file", CallID: "call-error"},
@@ -73,7 +71,7 @@ func TestToolOrchestratorNormalizesInvalidUTF8InEndpointErrors(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 256}
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			return "", invalidError
 		},
 		&adk.ToolContext{Name: "read_file", CallID: "call-invalid-utf8-error"},
@@ -98,7 +96,7 @@ func TestStreamableToolNeverInfersMutationReceiptFromTruncatedPreview(t *testing
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: limit}
 	endpoint, err := middleware.WrapStreamableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+		func(context.Context, string, ...adk.ToolOption) (*adk.StreamReader[string], error) {
 			// The retained prefix is valid receipt JSON plus whitespace even though
 			// the actual stream is larger. Parsing that prefix would falsely treat
 			// a display truncation boundary as an execution receipt boundary.
@@ -140,7 +138,7 @@ func TestToolOrchestratorBoundsStreamableEndpointErrorsForModelAndPersistence(t 
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
 	endpoint, err := middleware.WrapStreamableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+		func(context.Context, string, ...adk.ToolOption) (*adk.StreamReader[string], error) {
 			return nil, hugeError
 		},
 		&adk.ToolContext{Name: "read_file", CallID: "call-stream-error"},
@@ -179,8 +177,8 @@ func TestToolOrchestratorBoundsStreamReadErrorsForModelAndPersistence(t *testing
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
 	endpoint, err := middleware.WrapStreamableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
-			reader, writer := schema.Pipe[string](1)
+		func(context.Context, string, ...adk.ToolOption) (*adk.StreamReader[string], error) {
+			reader, writer := adk.Pipe[string](1)
 			_ = writer.Send("", hugeError)
 			writer.Close()
 			return reader, nil
@@ -219,7 +217,7 @@ func TestToolOrchestratorProjectsNilStreamAsBoundedToolError(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
 	endpoint, err := middleware.WrapStreamableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+		func(context.Context, string, ...adk.ToolOption) (*adk.StreamReader[string], error) {
 			return nil, nil
 		},
 		&adk.ToolContext{Name: "read_file", CallID: "call-nil-stream"},
@@ -249,8 +247,8 @@ func TestToolOrchestratorProjectsStreamPanicsAsBoundedToolError(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
 	endpoint, err := middleware.WrapStreamableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
-			return &schema.StreamReader[string]{}, nil
+		func(context.Context, string, ...adk.ToolOption) (*adk.StreamReader[string], error) {
+			return &adk.StreamReader[string]{}, nil
 		},
 		&adk.ToolContext{Name: "read_file", CallID: "call-panic-stream"},
 	)

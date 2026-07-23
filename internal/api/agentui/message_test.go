@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/interactive"
 )
 
@@ -26,8 +26,8 @@ func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
 	sessionID := application.session.ID
 	application.mu.RUnlock()
 	writingRequest := agent.HarnessTurnRestoreRequest{
-		Binding: agentruntime.BindingRef{
-			Kind: agentruntime.BindingWriting, Profile: agentruntime.ProfileWriting,
+		Binding: runstate.BindingRef{
+			Kind: runstate.BindingWriting, Profile: runstate.ProfileWriting,
 			Workspace: workspace, SessionID: sessionID,
 		},
 		Kind: agent.AgentCommandFollowUp, CommandID: "restore-writing-follow-up",
@@ -56,8 +56,8 @@ func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 	gameRequest := agent.HarnessTurnRestoreRequest{
-		Binding: agentruntime.BindingRef{
-			Kind: agentruntime.BindingGame, Profile: agentruntime.ProfileGame,
+		Binding: runstate.BindingRef{
+			Kind: runstate.BindingGame, Profile: runstate.ProfileGame,
 			Workspace: workspace, StoryID: story.ID, BranchID: "main",
 		},
 		Kind: agent.AgentCommandSteer, CommandID: "restore-game-steer",
@@ -84,7 +84,7 @@ func TestAppRestoresWritingAndGameQueuedTurnDependencies(t *testing.T) {
 func TestAppRejectsQueuedTurnRecoveryForUnsupportedProfile(t *testing.T) {
 	application := &App{}
 	_, err := application.restoreHarnessTurn(context.Background(), agent.HarnessTurnRestoreRequest{
-		Binding: agentruntime.BindingRef{Profile: agentruntime.ProfileDirector},
+		Binding: runstate.BindingRef{Profile: runstate.ProfileDirector},
 	})
 	if !errors.Is(err, agent.ErrHarnessTurnRestoreUnavailable) {
 		t.Fatalf("unsupported profile restore error = %v", err)

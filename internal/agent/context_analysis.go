@@ -6,14 +6,14 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 	agentcontext "denova/internal/agent/context"
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/prompts"
-	"denova/internal/session"
 )
 
 type ContextAnalysis struct {
@@ -93,7 +93,7 @@ func NewContextAnalysisPart(in ContextAnalysisPartInput) ContextAnalysisPart {
 	}
 }
 
-func contextAnalysisPartFromMessage(id, source, title string, msg *schema.Message) ContextAnalysisPart {
+func contextAnalysisPartFromMessage(id, source, title string, msg *adk.Message) ContextAnalysisPart {
 	if msg == nil {
 		return NewContextAnalysisPart(ContextAnalysisPartInput{ID: id, Source: source, Title: title})
 	}
@@ -106,9 +106,9 @@ func contextAnalysisPartFromMessage(id, source, title string, msg *schema.Messag
 		Content: msg.Content,
 	}
 	switch msg.Role {
-	case schema.User:
+	case adk.User:
 		input.Kind = "body"
-	case schema.Assistant:
+	case adk.Assistant:
 		input.Kind = "body"
 		if len(msg.ToolCalls) > 0 {
 			input.Kind = "tool_call"
@@ -122,7 +122,7 @@ func contextAnalysisPartFromMessage(id, source, title string, msg *schema.Messag
 				input.Content = strings.TrimRight(msg.Content, "\n") + "\n\n" + contextAnalysisToolCallsContent(msg.ToolCalls)
 			}
 		}
-	case schema.Tool:
+	case adk.Tool:
 		input.Kind = "tool_result"
 		input.ToolName = msg.ToolName
 		input.ToolCallID = msg.ToolCallID
@@ -134,7 +134,7 @@ func contextAnalysisPartFromMessage(id, source, title string, msg *schema.Messag
 	return NewContextAnalysisPart(input)
 }
 
-func contextAnalysisToolCallNames(calls []schema.ToolCall) string {
+func contextAnalysisToolCallNames(calls []adk.ToolCall) string {
 	names := make([]string, 0, len(calls))
 	seen := make(map[string]bool, len(calls))
 	for _, call := range calls {
@@ -148,7 +148,7 @@ func contextAnalysisToolCallNames(calls []schema.ToolCall) string {
 	return strings.Join(names, ", ")
 }
 
-func contextAnalysisToolCallIDs(calls []schema.ToolCall) string {
+func contextAnalysisToolCallIDs(calls []adk.ToolCall) string {
 	ids := make([]string, 0, len(calls))
 	for _, call := range calls {
 		if id := strings.TrimSpace(call.ID); id != "" {
@@ -158,7 +158,7 @@ func contextAnalysisToolCallIDs(calls []schema.ToolCall) string {
 	return strings.Join(ids, ", ")
 }
 
-func contextAnalysisToolCallsContent(calls []schema.ToolCall) string {
+func contextAnalysisToolCallsContent(calls []adk.ToolCall) string {
 	if len(calls) == 0 {
 		return ""
 	}
@@ -435,12 +435,12 @@ func (u contextUsageAnalysis) compactionEpoch(compaction *session.ContextCompact
 	return compaction.Epoch
 }
 
-func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, messages []*schema.Message, expectedOutputChars int) contextUsageAnalysis {
+func analyzeContextUsage(cfg *config.Config, agentKind, systemPrompt string, messages []*adk.Message, expectedOutputChars int) contextUsageAnalysis {
 	modelSettings := config.ResolveAgentModel(cfg, agentKind)
 	contextSettings := config.ResolveAgentContext(cfg, agentKind)
-	estimatedMessages := make([]*schema.Message, 0, len(messages)+1)
+	estimatedMessages := make([]*adk.Message, 0, len(messages)+1)
 	if strings.TrimSpace(systemPrompt) != "" {
-		estimatedMessages = append(estimatedMessages, schema.SystemMessage(systemPrompt))
+		estimatedMessages = append(estimatedMessages, adk.SystemMessage(systemPrompt))
 	}
 	estimatedMessages = append(estimatedMessages, messages...)
 	tokens := EstimateContextTokens(estimatedMessages, nil)

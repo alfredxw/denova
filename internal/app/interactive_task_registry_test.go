@@ -11,15 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 func TestInteractiveStartRegistryRequiresIdentityAndReplaysExactSettledTask(t *testing.T) {
@@ -120,7 +118,7 @@ func TestInteractiveInitialStartColdReplayBuildsBoundedTaskWithoutGameCycle(t *t
 		first.Close()
 		t.Fatal(err)
 	}
-	chatModel := &interactiveReplayModel{message: schema.AssistantMessage("持久化回答", nil)}
+	chatModel := &interactiveReplayModel{message: agent.AssistantMessage("持久化回答", nil)}
 	accepted, err := first.chatService.StartWithOptions(
 		context.Background(), newInteractiveReplayRunner(t, chatModel), &interactiveReplayConversation{},
 		first.bookService, identity.chatRequest, identity.options("seed-display-task"), nil,
@@ -202,10 +200,10 @@ func TestInteractiveInitialStartColdReplayBuildsBoundedTaskWithoutGameCycle(t *t
 }
 
 func TestInteractiveStatusOwnsInterruptedCommand(t *testing.T) {
-	status := agentruntime.StatusSnapshot{
-		LastOperation: &agentruntime.OperationSummary{CommandID: "newer", Status: agentruntime.OperationSucceeded},
-		RecentOperations: []agentruntime.OperationSummary{{
-			CommandID: "game-cold-interrupted", Status: agentruntime.OperationInterrupted,
+	status := runstate.StatusSnapshot{
+		LastOperation: &runstate.OperationSummary{CommandID: "newer", Status: runstate.OperationSucceeded},
+		RecentOperations: []runstate.OperationSummary{{
+			CommandID: "game-cold-interrupted", Status: runstate.OperationInterrupted,
 		}},
 	}
 	if !interactiveStatusOwnsCommand(status, "game-cold-interrupted") {
@@ -259,7 +257,7 @@ func TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle(t *test
 		t.Fatal("cold Game runtime projection unavailable")
 	}
 	actions := agent.RuntimeRecoveryActions(status)
-	if status.Phase != agentruntime.PhaseRunning || !status.RecoveryPaused || len(actions) != 2 ||
+	if status.Phase != runstate.PhaseRunning || !status.RecoveryPaused || len(actions) != 2 ||
 		actions[0].Kind != agent.RuntimeRecoveryAttach || actions[0].CommandID != "game-cold-interrupted" ||
 		actions[1].Kind != agent.RuntimeRecoveryAbort {
 		t.Fatalf("cold Game recovery actions = %#v status=%#v", actions, status)
@@ -304,7 +302,7 @@ func TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle(t *test
 		t.Fatalf("accepted player input was not independently durable: %#v", snapshot.PendingPlayerInputs)
 	}
 	status, projected = reopened.InteractiveAgentRuntimeProjection(context.Background(), story.ID, "main")
-	if !projected || status.Phase != agentruntime.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentruntime.OperationAborted || len(agent.RuntimeRecoveryActions(status)) != 0 {
+	if !projected || status.Phase != runstate.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != runstate.OperationAborted || len(agent.RuntimeRecoveryActions(status)) != 0 {
 		t.Fatalf("cold Game abort terminal projection = %#v projected=%t", status, projected)
 	}
 }
@@ -330,7 +328,7 @@ func runInteractiveCrashSeed(t *testing.T) {
 	vanished := make(chan struct{})
 	conversation := &interactiveCrashConversation{vanished: vanished}
 	if _, err := application.chatService.StartWithOptions(
-		context.Background(), newInteractiveReplayRunner(t, &interactiveReplayModel{message: schema.AssistantMessage("must not run", nil)}),
+		context.Background(), newInteractiveReplayRunner(t, &interactiveReplayModel{message: agent.AssistantMessage("must not run", nil)}),
 		conversation, application.bookService, identity.chatRequest, identity.options("crashed-display-task"), nil,
 	); err != nil {
 		t.Fatal(err)
@@ -411,29 +409,29 @@ func (*interactiveCrashConversation) PendingInterruption() *session.Interruption
 func (*interactiveCrashConversation) ResolveInterruption(string) error { return nil }
 
 type interactiveReplayModel struct {
-	message *schema.Message
+	message *agent.Message
 	calls   atomic.Int32
 }
 
-func (m *interactiveReplayModel) Generate(context.Context, []*schema.Message, ...model.Option) (*schema.Message, error) {
+func (m *interactiveReplayModel) Generate(context.Context, []*agent.Message, ...adk.ModelOption) (*agent.Message, error) {
 	m.calls.Add(1)
 	return m.message, nil
 }
 
-func (m *interactiveReplayModel) Stream(context.Context, []*schema.Message, ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+func (m *interactiveReplayModel) Stream(context.Context, []*agent.Message, ...adk.ModelOption) (*agent.StreamReader[*agent.Message], error) {
 	m.calls.Add(1)
-	return schema.StreamReaderFromArray([]*schema.Message{m.message}), nil
+	return agent.StreamReaderFromArray([]*agent.Message{m.message}), nil
 }
 
-func newInteractiveReplayRunner(t *testing.T, chatModel model.BaseChatModel) *adk.Runner {
+func newInteractiveReplayRunner(t *testing.T, chatModel adk.BaseChatModel) *adk.Runner {
 	t.Helper()
-	built, err := adk.NewChatModelAgent(context.Background(), &adk.ChatModelAgentConfig{
+	built, err := adk.NewAgent(context.Background(), adk.AgentConfig{
 		Name: "DenovaInteractiveStoryAgent", Description: "game replay test", Instruction: "test", Model: chatModel,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return adk.NewRunner(context.Background(), adk.RunnerConfig{Agent: built, EnableStreaming: true})
+	return adk.NewRunner(adk.RunnerConfig{Agent: built, EnableStreaming: true})
 }
 
-var _ model.BaseChatModel = (*interactiveReplayModel)(nil)
+var _ adk.BaseChatModel = (*interactiveReplayModel)(nil)

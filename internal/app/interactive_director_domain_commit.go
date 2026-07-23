@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/interactive"
 )
 
@@ -192,6 +192,6 @@ func interactiveDirectorCustomCycleIdentity(token interactive.DirectorPlanRunTok
 	}
 	operationID = strings.Replace(operationID, "interactive-director:", "interactive-director-operation:", 1)
 	return agent.HarnessCycleIdentity{
-		CommandID: agentruntime.CommandID(commandID), OperationID: agentruntime.OperationID(operationID), Cycle: 1,
+		CommandID: runstate.CommandID(commandID), OperationID: runstate.OperationID(operationID), Cycle: 1,
 	}, nil
 }

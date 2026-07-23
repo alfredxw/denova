@@ -27,23 +27,23 @@ type AgentGeneralSubAgentSettings struct {
 	Automation       *bool `toml:"automation,omitempty" json:"automation,omitempty"`
 }
 
-var deepAgentParentKinds = []string{
+var subAgentParentKinds = []string{
 	AgentKindIDE,
 	AgentKindInteractiveStory,
 	AgentKindConfigManager,
 	AgentKindAutomation,
 }
 
-// DeepAgentParentKinds returns the parent agents that expose Eino task delegation.
-func DeepAgentParentKinds() []string {
-	out := make([]string, len(deepAgentParentKinds))
-	copy(out, deepAgentParentKinds)
+// SubAgentParentKinds returns the Agent kinds that support task delegation.
+func SubAgentParentKinds() []string {
+	out := make([]string, len(subAgentParentKinds))
+	copy(out, subAgentParentKinds)
 	return out
 }
 
-func IsDeepAgentParentKind(kind string) bool {
+func IsSubAgentParentKind(kind string) bool {
 	kind = strings.TrimSpace(kind)
-	for _, parent := range deepAgentParentKinds {
+	for _, parent := range subAgentParentKinds {
 		if kind == parent {
 			return true
 		}
@@ -182,7 +182,7 @@ func SubAgentEnabled(sub SubAgentConfig) bool {
 }
 
 func SubAgentAllowedForParent(sub SubAgentConfig, parentKind string) bool {
-	if !SubAgentEnabled(sub) || !IsDeepAgentParentKind(parentKind) {
+	if !SubAgentEnabled(sub) || !IsSubAgentParentKind(parentKind) {
 		return false
 	}
 	if len(sub.Parents) == 0 {
@@ -262,7 +262,7 @@ func sanitizeSubAgentParents(parents []string) []string {
 	seen := map[string]bool{}
 	for _, parent := range parents {
 		parent = strings.TrimSpace(parent)
-		if !IsDeepAgentParentKind(parent) || seen[parent] {
+		if !IsSubAgentParentKind(parent) || seen[parent] {
 			continue
 		}
 		seen[parent] = true

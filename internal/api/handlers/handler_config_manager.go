@@ -8,7 +8,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/internal/agentruntime"
 	"denova/internal/api/agentui"
 	"denova/internal/api/sse"
 	appsvc "denova/internal/app"
@@ -28,7 +27,7 @@ func (h *Handlers) HandleConfigManagerStream(ctx context.Context, c *app.Request
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试请求 / command_id is required for safe request retries", nil)
 		return
 	}
-	if err := agentruntime.ValidateCommandID(req.CommandID, agentruntime.DefaultInputLimits()); err != nil {
+	if err := appsvc.ValidateAgentCommandID(req.CommandID); err != nil {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "command_id 请求标识无效 / invalid request identifier command_id", nil)
 		return
 	}

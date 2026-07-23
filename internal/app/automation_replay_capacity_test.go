@@ -9,7 +9,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
 )
 
@@ -68,7 +68,7 @@ func TestAutomationRootReplayCapacityRejectsBeforeRunOrRuntimeAdmission(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != agentruntime.PhaseIdle || status.ActiveOperation != "" || status.LastOperation != nil || len(status.Queue) != 0 {
+	if status.Phase != runstate.PhaseIdle || status.ActiveOperation != "" || status.LastOperation != nil || len(status.Queue) != 0 {
 		t.Fatalf("Runtime was mutated before Automation replay admission: %#v", status)
 	}
 }

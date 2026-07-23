@@ -8,9 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cloudwego/eino/compose"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/internal/workspacechange"
 )
@@ -46,24 +44,48 @@ type workspaceChangeService interface {
 	ReplaceFile(context.Context, workspacechange.ReplaceFileRequest) (workspacechange.ChangeSet, error)
 }
 
+// disabledWorkspaceChangeService publishes the stable write/edit schemas for a
+// read-only Agent without initializing workspace mutation storage. The tool
+// orchestrator blocks these calls first; this adapter is a second fail-closed
+// boundary if a caller constructs the tools without the policy middleware.
+type disabledWorkspaceChangeService struct {
+	workspace string
+}
+
+func (service disabledWorkspaceChangeService) Workspace() string {
+	return service.workspace
+}
+
+func (disabledWorkspaceChangeService) ReadFile(string) (string, string, error) {
+	return "", "", fmt.Errorf("file_write capability is disabled")
+}
+
+func (disabledWorkspaceChangeService) ApplyEdits(context.Context, workspacechange.ApplyEditsRequest) (workspacechange.ChangeSet, error) {
+	return workspacechange.ChangeSet{}, fmt.Errorf("file_write capability is disabled")
+}
+
+func (disabledWorkspaceChangeService) ReplaceFile(context.Context, workspacechange.ReplaceFileRequest) (workspacechange.ChangeSet, error) {
+	return workspacechange.ChangeSet{}, fmt.Errorf("file_write capability is disabled")
+}
+
 type workspaceEditFileInput struct {
-	FilePath string                      `json:"file_path" jsonschema:"required,description=Absolute or workspace-relative path of the single file to edit"`
-	Edits    []workspaceEditFileTextEdit `json:"edits" jsonschema:"required,description=One or more non-overlapping exact replacements evaluated against the same original file snapshot"`
+	FilePath string                      `json:"file_path" jsonschema_description:"Absolute or workspace-relative path of the single file to edit."`
+	Edits    []workspaceEditFileTextEdit `json:"edits" jsonschema:"minItems=1" jsonschema_description:"One or more non-overlapping exact replacements evaluated against the same original file snapshot."`
 }
 
 type workspaceEditFileTextEdit struct {
-	ID         string `json:"id,omitempty" jsonschema:"description=Optional stable identifier used to associate review comments with this edit"`
-	OldString  string `json:"old_string" jsonschema:"required,description=Exact non-empty text to replace in the original file snapshot"`
-	NewString  string `json:"new_string" jsonschema:"description=Replacement text; an empty string deletes the matched text"`
-	ReplaceAll bool   `json:"replace_all,omitempty" jsonschema:"description=Replace every exact occurrence of old_string; defaults to false"`
+	ID         string `json:"id,omitempty" jsonschema_description:"Optional stable identifier used to associate review comments with this edit."`
+	OldString  string `json:"old_string" jsonschema_description:"Exact non-empty text to replace in the original file snapshot."`
+	NewString  string `json:"new_string" jsonschema_description:"Replacement text; an empty string deletes the matched text."`
+	ReplaceAll bool   `json:"replace_all,omitempty" jsonschema_description:"Replace every exact occurrence of old_string; defaults to false."`
 }
 
 type workspaceWriteFileInput struct {
-	FilePath string `json:"file_path" jsonschema:"required,description=Absolute or workspace-relative path of the file to replace"`
-	Content  string `json:"content" jsonschema:"description=Complete new file content"`
+	FilePath string `json:"file_path" jsonschema_description:"Absolute or workspace-relative path of the file to replace."`
+	Content  string `json:"content" jsonschema_description:"Complete new file content."`
 }
 
-func newWorkspaceEditFileTool(changes workspaceChangeService) (tool.BaseTool, error) {
+func newWorkspaceEditFileTool(changes workspaceChangeService) (adk.BaseTool, error) {
 	if changes == nil {
 		return nil, fmt.Errorf("workspace change service is nil")
 	}
@@ -71,7 +93,13 @@ func newWorkspaceEditFileTool(changes workspaceChangeService) (tool.BaseTool, er
 	if err != nil {
 		return nil, err
 	}
-	return utils.InferTool("edit_file", workspaceEditFileToolDescription, func(ctx context.Context, input workspaceEditFileInput) (string, error) {
+	return adk.InferTool("edit_file", workspaceEditFileToolDescription, func(ctx context.Context, input workspaceEditFileInput) (string, error) {
+		if strings.TrimSpace(input.FilePath) == "" {
+			return "", fmt.Errorf("file_path is required")
+		}
+		if len(input.Edits) == 0 {
+			return "", fmt.Errorf("at least one edit is required")
+		}
 		baseRevision, err := currentWorkspaceBaseRevision(changes, input.FilePath)
 		if err != nil {
 			return "", err
@@ -98,7 +126,7 @@ func newWorkspaceEditFileTool(changes workspaceChangeService) (tool.BaseTool, er
 	})
 }
 
-func newWorkspaceWriteFileTool(changes workspaceChangeService) (tool.BaseTool, error) {
+func newWorkspaceWriteFileTool(changes workspaceChangeService) (adk.BaseTool, error) {
 	if changes == nil {
 		return nil, fmt.Errorf("workspace change service is nil")
 	}
@@ -106,7 +134,10 @@ func newWorkspaceWriteFileTool(changes workspaceChangeService) (tool.BaseTool, e
 	if err != nil {
 		return nil, err
 	}
-	return utils.InferTool("write_file", workspaceWriteFileToolDescription, func(ctx context.Context, input workspaceWriteFileInput) (string, error) {
+	return adk.InferTool("write_file", workspaceWriteFileToolDescription, func(ctx context.Context, input workspaceWriteFileInput) (string, error) {
+		if strings.TrimSpace(input.FilePath) == "" {
+			return "", fmt.Errorf("file_path is required")
+		}
 		baseRevision, err := currentWorkspaceBaseRevisionOrMissing(changes, input.FilePath)
 		if err != nil {
 			return "", err
@@ -164,7 +195,7 @@ func currentWorkspaceBaseRevisionOrMissing(changes workspaceChangeService, path 
 }
 
 func workspaceChangeMetadata(ctx context.Context) workspacechange.ChangeMetadata {
-	callID := strings.TrimSpace(compose.GetToolCallID(ctx))
+	callID := strings.TrimSpace(adk.ToolCallID(ctx))
 	runID := ""
 	sessionID := ""
 	reviewThreadID := ""

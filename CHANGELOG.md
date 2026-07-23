@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 新增独立的 `github.com/alfredxw/denova/adk` Go module：提供与模型供应商无关的 Message、Model、Tool、Registry、Middleware、Runner、取消/中断和原生 Agentic Loop；同时提供完整外部 Agent Host 接口，便于后续接入 Codex、Claude Code 等独立执行宿主。
+- Added the standalone `github.com/alfredxw/denova/adk` Go module with provider-neutral messages, models, tools, registries, middleware, runners, cancellation/interruption, and a native agentic loop. A complete external Agent Host interface also enables future Codex, Claude Code, and similar host integrations.
+- 新增独立的 `github.com/alfredxw/denova/adk/model/openai` 适配 module，OpenAI 协议、兼容层和 SDK 类型全部限制在供应商边界内；核心 ADK 的模块依赖图不再包含任何模型供应商 SDK，产品 Agent 也不再依赖 Eino 的消息、工具、流和运行时抽象。
+- Added the standalone `github.com/alfredxw/denova/adk/model/openai` adapter module, containing the OpenAI protocol, compatibility behavior, and SDK types at the provider boundary. The core ADK module graph no longer contains a model-provider SDK, and product Agents no longer depend on Eino message, tool, stream, or runtime abstractions.
 - 写作与游戏模式新增共用的持久化 Agent Runtime：以 workspace/session/story/branch 的稳定 Binding 隔离运行，使用 append-only 校验日志、单写 Actor、operation/cycle 状态机、幂等 command ID、精确 target operation、可恢复队列和保守工具崩溃恢复；公开 API 仅投影有界输出、队列和工具元数据，不泄露内部工具参数。
 - Writing and Game modes now share a durable Agent Runtime with stable workspace/session/story/branch bindings, a checksummed append-only journal, single-writer actors, operation/cycle state machines, idempotent command IDs, exact operation targeting, recoverable queues, and conservative tool crash recovery. Public APIs expose only bounded output, queue, and tool metadata without leaking internal arguments.
 - Agent 上下文新增显式片段装配器与 Tool Descriptor 目录：system、turn context、state memory、工具结果和用户消息分别记录来源、用途、位置、hash 与高上限预算；工具副作用在执行前持久化 start、流排空后持久化 finish，未知工具默认采用不可重试的保守恢复策略。
@@ -17,6 +21,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Agent 依赖方向收敛为 `API → App → Agent → ADK`。产品能力集中在 `internal/agent/{runtime,session,skills,tools}`，SSE 展示转换移至 API 层；包按职责和变化原因拆分，不再使用 `agentruntime` 这类黏连命名。
+- Agent dependencies now flow as `API → App → Agent → ADK`. Product capabilities live under `internal/agent/{runtime,session,skills,tools}`, while SSE display transforms belong to the API layer; packages are split by responsibility and change reason without concatenated names such as `agentruntime`.
+- CI 与 GitHub Release 构建现在把根 module、核心 ADK 和 OpenAI adapter 作为三个独立 Go module 分别执行依赖一致性检查、测试与静态检查；CI 的可达漏洞扫描也覆盖全部 module，避免 nested module 回归被根目录命令漏过。
+- CI and GitHub Release builds now validate the root module, core ADK, and OpenAI adapter as three independent Go modules with separate dependency-drift checks, tests, and static analysis. CI reachable-vulnerability scans also cover every module so root commands cannot hide nested-module regressions.
+- Agent 执行链完全移除 Eino，改用原生循环和原生文件、搜索、Skill、Todo、Task 工具；模型调用、流读取和工具批次均可立即响应取消，默认不写死迭代次数或运行超时。
+- The Agent execution path removes Eino completely in favor of the native loop and native filesystem, search, Skill, Todo, and Task tools. Model calls, stream reads, and tool batches respond immediately to cancellation, with no hard-coded default iteration or runtime timeout.
+- ADK 公共 API 收敛为 `AgentConfig`、`Middleware`、`RetryConfig`、`NewAgent` 与 `NewRunner` 一套原生命名；删除无实际语义的 checkpoint、recursive cancel 和旧 ChatModel Agent 兼容入口。OpenAI adapter 同步只保留 `Config` 与 `New`。
+- The ADK public API now has one native vocabulary built around `AgentConfig`, `Middleware`, `RetryConfig`, `NewAgent`, and `NewRunner`. No-op checkpoint/recursive-cancel options and legacy ChatModel Agent compatibility entry points are removed, while the OpenAI adapter exposes only `Config` and `New`.
+- Beta 不兼容：Config Manager 的 `deep_agent_parent` / `deep_agent_parents` 字段更名为 `subagent_parent` / `subagent_parents`；内部 Runtime、Session、Skills 包路径已迁移到 `internal/agent` 分层，旧内部路径不再保留兼容转发。
+- Beta breaking: Config Manager fields `deep_agent_parent` / `deep_agent_parents` are renamed to `subagent_parent` / `subagent_parents`. Internal Runtime, Session, and Skills package paths move under `internal/agent`, without compatibility forwarding from the former internal paths.
 - 编辑器自动保存统一为修改后延迟保存：连续输入会重置延迟，停止输入后只保存最新草稿，不再依赖固定周期；目录与章节统计也不再每 3 秒扫描整本作品。
 - Writing-editor Auto Save now consistently uses after-delay semantics: continued typing resets the delay, and only the latest draft is saved after input stops. Workspace tree and chapter statistics also no longer scan the whole project every three seconds.
 - Git 自动版本改为修改后延迟创建：工作区修改会重置 30 秒空闲计时，停止修改且达到用户配置的最小间隔后才在后台创建版本。该功能默认开启、默认间隔 10 分钟，并可在设置中修改或关闭。
@@ -60,6 +74,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复原生 Agentic Loop 在运行 goroutine panic 时可能先关闭事件迭代器、首帧前流错误无法重试、零帧流被当作成功、流错误已经暴露后仍浪费供应商重试、并行工具中断丢失已完成兄弟结果、工具中断被当成普通 JSON 继续运行，以及排队等待 workspace 独占权的工具在取消后仍可能启动的问题；panic、stream error、interrupt 和 cancel 现在都有唯一且可审计的终态。
+- Fixed native agentic-loop cases where a recovered run panic could close the iterator before publishing its error, pre-first-frame stream failures could not retry, empty streams looked successful, retries continued after exposed stream failures, parallel interruption discarded completed sibling results, tool interruption became ordinary JSON, or a queued workspace tool started after cancellation. Panics, stream failures, interruptions, and cancellations now each have one auditable terminal outcome.
+- 修复外部 Agent Host 可通过自报更大上限绕过调用方上下文预算、取消请求接受未知模式位，以及非标准 OpenAI 兼容端点的文本工具调用在多轮中重复合成 ID 的问题；ADK 现在在自有边界执行响应预算与取消模式校验，adapter 生成跨响应和进程唯一的工具调用 ID。
+- Fixed external Agent Hosts being able to widen caller-owned context budgets, cancellation requests accepting unknown mode bits, and textual tool calls from non-standard OpenAI-compatible endpoints reusing synthetic IDs across turns. ADK now enforces response budgets and cancellation modes at its own boundary, while the adapter generates IDs unique across responses and processes.
 - 写作编辑器不再把尚未结束的本地保存回灌误判为并发修改；保存期间继续输入并手动保存时，最新草稿会按新 revision 立即排队，且旧快照完成后仍准确显示未保存状态。
 - The Writing editor no longer mistakes an in-flight local save echo for a concurrent edit. Typing and manually saving during persistence now queues the latest draft against the new revision, while an older acknowledgement keeps the unsaved status accurate.
 - 文件成功落盘后会立即结束编辑器保存状态；章节字数统计改为后台合并刷新，不再让统计扫描阻塞手动保存或堆积并行请求。
@@ -70,8 +88,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - When a local draft truly overlaps an external version, both versions are preserved and Auto Save pauses until the user keeps the merged result or loads the workspace version. Non-overlapping edits still merge automatically.
 - 修复 Game 已落盘回合在刷新后仍把保留的已结算展示 Task 当作活动运行、从零游标重放最新一轮的问题；普通终态现在直接使用规范 Story 历史，显式恢复边界仍会精确重连。
 - Fixed Game refreshes treating a retained settled display Task as active and replaying the latest persisted turn from cursor zero. Ordinary terminal views now use canonical Story history directly, while explicit recovery boundaries still reattach exactly.
-- 修复创作 Agent 因 Eino 内置 `write_todos` 缺少显式 Tool Descriptor、在首次模型请求前被安全校验终止而无法对话的问题；新增真实 Deep Agent 与完整创作工具面的运行测试，并校验写作、游戏、后台导演、配置管理、图像、自动化和网页搜索的全部具体工具均已声明恢复契约。
-- Fixed Creation Agent conversations being terminated before the first model request because Eino's built-in `write_todos` lacked an explicit Tool Descriptor. Real Deep Agent and complete Writing tool-surface tests now cover the runtime boundary, while every concrete Writing, Game, Director, Config Manager, Image, Automation, and web-search tool is checked for a declared recovery contract.
+- 修复内置 `write_todos` 缺少显式 Tool Descriptor、在首次模型请求前被安全校验终止而无法对话的问题；原生 Agent 与完整创作工具面的运行测试现覆盖该边界，并校验写作、游戏、后台导演、配置管理、图像、自动化和网页搜索的全部具体工具均已声明恢复契约。
+- Fixed Creation Agent conversations being terminated before the first model request because the built-in `write_todos` tool lacked an explicit Tool Descriptor. Native Agent and complete Writing tool-surface tests now cover the runtime boundary, while every concrete Writing, Game, Director, Config Manager, Image, Automation, and web-search tool is checked for a declared recovery contract.
 - 修复 Harness 在 emit、提交或回调 panic/提前返回时未取消 cycle 子上下文，以及已完成/启动失败的展示 Task 关闭 `Done` 后仍保留活动上下文的问题；桥接控制、ADK 子任务和 `AfterFunc` 现在都会随精确生命周期边界释放。
 - Fixed cycle child contexts surviving Harness emit/commit/callback panics or early returns, plus completed or start-rejected display Tasks publishing `Done` while retaining a live context. Control bridges, ADK child work, and `AfterFunc` callbacks now release with the exact lifecycle boundary.
 - 修复 Agent 冷恢复在结构操作已落盘、但规范 Session / Story 刷新失败后丢失精确重试入口，以及旧完成 Task 被重复挂接、连续队首恢复动作跨 Task 交接、取消后继 NextTurn 时复用旧 Abort 身份等问题；恢复义务现在作为服务级准入栅栏保留到规范投影成功，写作与游戏始终沿用同一可观察 Task，并按当前 operation 生成控制身份。

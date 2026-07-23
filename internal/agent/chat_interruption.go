@@ -4,8 +4,8 @@ import (
 	"log"
 	"strings"
 
+	"denova/internal/agent/session"
 	"denova/internal/prompts"
-	"denova/internal/session"
 )
 
 func markInterruptionIfNeeded(conversation Conversation, resumed *session.Interruption, userMessage, assistantContent, reason string) {

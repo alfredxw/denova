@@ -73,7 +73,7 @@ default_output_format = "png"
 # system_prompt = "更主动地制造 NPC 反应和场景压力，但不要替玩家做重大选择。"
 #
 # 可选：按 Agent 调整工具权限。字段不填表示继承内置默认值；
-# `web_search` 使用 Eino Ext DuckDuckGo V2 预制工具注册为网页搜索。
+# `web_search` 使用 Denova 内置的多引擎网页搜索工具。
 #
 # [agent_tools.ide]
 # web_search = true

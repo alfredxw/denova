@@ -7,15 +7,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/documentreview"
-	"denova/internal/session"
 	"denova/internal/workspacechange"
 	"denova/internal/workspacepath"
 )
@@ -346,8 +344,8 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	}
 	identity := agent.HarnessCycleIdentity{CommandID: "review-feedback-commit", OperationID: "review-feedback-operation", Cycle: 1}
 	plan, err := application.PlanHarnessInputMaterialization(context.Background(), agent.HarnessInputMaterializationRequest{
-		Binding: agentruntime.BindingRef{
-			Kind: agentruntime.BindingWriting, Profile: agentruntime.ProfileWriting,
+		Binding: runstate.BindingRef{
+			Kind: runstate.BindingWriting, Profile: runstate.ProfileWriting,
 			Workspace: workspace, SessionID: sess.ID,
 		},
 		Identity: identity, AgentKind: agent.AgentKindIDE,
@@ -358,7 +356,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	}
 	normalIntent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
-	}, schema.UserMessage(req.Message), session.MessageMetadata{
+	}, agent.UserMessage(req.Message), session.MessageMetadata{
 		AgentKind: agent.AgentKindIDE, UserReferences: agent.UserMessageReferencesForRequest(req),
 	})
 	if err != nil {
@@ -369,7 +367,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	}
 
 	ctx := context.Background()
-	builtAgent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+	builtAgent, err := adk.NewAgent(ctx, adk.AgentConfig{
 		Name:          "review-feedback-commit-test",
 		Description:   "test",
 		Instruction:   "test",
@@ -379,7 +377,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: builtAgent, EnableStreaming: true})
+	runner := adk.NewRunner(adk.RunnerConfig{Agent: builtAgent, EnableStreaming: true})
 	var callbackSawDurableReference bool
 	agent.NewEphemeralChatService().RunWithOptions(
 		ctx,
@@ -439,12 +437,12 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 
 type reviewFeedbackCommitChatModel struct{}
 
-func (*reviewFeedbackCommitChatModel) Generate(context.Context, []*schema.Message, ...model.Option) (*schema.Message, error) {
-	return schema.AssistantMessage("Acknowledged.", nil), nil
+func (*reviewFeedbackCommitChatModel) Generate(context.Context, []*agent.Message, ...adk.ModelOption) (*agent.Message, error) {
+	return agent.AssistantMessage("Acknowledged.", nil), nil
 }
 
-func (*reviewFeedbackCommitChatModel) Stream(context.Context, []*schema.Message, ...model.Option) (*schema.StreamReader[*schema.Message], error) {
-	return schema.StreamReaderFromArray([]*schema.Message{schema.AssistantMessage("Acknowledged.", nil)}), nil
+func (*reviewFeedbackCommitChatModel) Stream(context.Context, []*agent.Message, ...adk.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+	return agent.StreamReaderFromArray([]*agent.Message{agent.AssistantMessage("Acknowledged.", nil)}), nil
 }
 
 func TestResolveReviewFeedbackUsesCanonicalWorkspaceLedger(t *testing.T) {

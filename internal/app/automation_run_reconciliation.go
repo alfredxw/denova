@@ -8,20 +8,20 @@ import (
 	"time"
 
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
 )
 
 const maxRecoveredAutomationSummaryChars = 8 * 1024
 
-type automationRuntimeProjectionFunc func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (agentruntime.StatusSnapshot, error)
+type automationRuntimeProjectionFunc func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (runstate.StatusSnapshot, error)
 
-func (s *AutomationAppService) automationRuntimeProjection(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord) (agentruntime.StatusSnapshot, error) {
+func (s *AutomationAppService) automationRuntimeProjection(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord) (runstate.StatusSnapshot, error) {
 	if s.runtimeProjector != nil {
 		return s.runtimeProjector(ctx, snap, task, run)
 	}
 	if snap == nil || snap.chatService == nil {
-		return agentruntime.StatusSnapshot{}, agent.ErrRuntimeProjectionUnavailable
+		return runstate.StatusSnapshot{}, agent.ErrRuntimeProjectionUnavailable
 	}
 	return snap.chatService.RuntimeRecoveryStatusProjection(ctx, agent.RunOptions{
 		AgentKind: agent.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: task.ID,
@@ -138,7 +138,7 @@ func (s *AutomationAppService) reconcileAutomationRunReceipt(ctx context.Context
 		// added. Pending successor promotion never uses this fallback.
 		receiptCursor = status.Cursor
 	}
-	receipt := agentruntime.Receipt{CommandID: agentruntime.CommandID(commandID), OperationID: agentruntime.OperationID(operationID), Cursor: receiptCursor}
+	receipt := runstate.Receipt{CommandID: runstate.CommandID(commandID), OperationID: runstate.OperationID(operationID), Cursor: receiptCursor}
 	if candidate.RootRuntimeCommandID == "" && commandID == automationRunAgentCommandID(candidate.ID) {
 		rootReceipt := receipt
 		if legacy := automationRootReceipt(candidate); legacy.CommandID != "" {
@@ -158,7 +158,7 @@ func (s *AutomationAppService) reconcileAutomationRunReceipt(ctx context.Context
 			if candidate.RuntimeCommandID == commandID && candidate.RuntimeOperationID == operationID {
 				pendingReplayedCurrent = true
 				if uint64(receipt.Cursor) < candidate.RuntimeReceiptCursor {
-					receipt.Cursor = agentruntime.Cursor(candidate.RuntimeReceiptCursor)
+					receipt.Cursor = runstate.Cursor(candidate.RuntimeReceiptCursor)
 				}
 				if err := applyAutomationCurrentReceipt(&candidate, receipt, pendingCommandID); err != nil {
 					return automation.RunRecord{}, false, err
@@ -178,7 +178,7 @@ func (s *AutomationAppService) reconcileAutomationRunReceipt(ctx context.Context
 				expectedCurrent = commandID
 			}
 			if candidate.RuntimeOperationID == operationID && uint64(receipt.Cursor) < candidate.RuntimeReceiptCursor {
-				receipt.Cursor = agentruntime.Cursor(candidate.RuntimeReceiptCursor)
+				receipt.Cursor = runstate.Cursor(candidate.RuntimeReceiptCursor)
 			}
 			if err := applyAutomationCurrentReceipt(&candidate, receipt, expectedCurrent); err != nil {
 				return automation.RunRecord{}, false, err
@@ -205,7 +205,7 @@ func (s *AutomationAppService) reconcileAutomationRunReceipt(ctx context.Context
 		candidate.RuntimeRecoveryRequired = false
 		candidate.FinishedAt = time.Now().UTC()
 		switch match.status {
-		case agentruntime.OperationSucceeded:
+		case runstate.OperationSucceeded:
 			candidate.Status = automation.RunStatusSuccess
 			candidate.Error = ""
 			if summary := recoveredAutomationRunSummary(snap, candidate); summary != "" {
@@ -213,10 +213,10 @@ func (s *AutomationAppService) reconcileAutomationRunReceipt(ctx context.Context
 			} else if strings.TrimSpace(candidate.Summary) == "" {
 				candidate.Summary = "自动化运行已从持久化运行时恢复。 / Automation run recovered from the durable runtime."
 			}
-		case agentruntime.OperationAborted:
+		case runstate.OperationAborted:
 			candidate.Status = automation.RunStatusAborted
 			candidate.Error = recoveredAutomationRunError(match.reason)
-		case agentruntime.OperationFailed, agentruntime.OperationInterrupted:
+		case runstate.OperationFailed, runstate.OperationInterrupted:
 			candidate.Status = automation.RunStatusFailed
 			candidate.Error = recoveredAutomationRunError(match.reason)
 		default:
@@ -242,13 +242,13 @@ func (s *AutomationAppService) reconcileAutomationRunReceipt(ctx context.Context
 	return candidate, true, nil
 }
 
-func automationTerminalStatusMatches(runStatus string, operationStatus agentruntime.OperationStatus) bool {
+func automationTerminalStatusMatches(runStatus string, operationStatus runstate.OperationStatus) bool {
 	switch operationStatus {
-	case agentruntime.OperationSucceeded:
+	case runstate.OperationSucceeded:
 		return runStatus == automation.RunStatusSuccess
-	case agentruntime.OperationAborted:
+	case runstate.OperationAborted:
 		return runStatus == automation.RunStatusAborted
-	case agentruntime.OperationFailed, agentruntime.OperationInterrupted:
+	case runstate.OperationFailed, runstate.OperationInterrupted:
 		return runStatus == automation.RunStatusFailed
 	default:
 		return false
@@ -259,13 +259,13 @@ type automationRuntimeReceiptMatch struct {
 	commandID     string
 	operationID   string
 	fingerprint   string
-	receiptCursor agentruntime.Cursor
-	status        agentruntime.OperationStatus
+	receiptCursor runstate.Cursor
+	status        runstate.OperationStatus
 	reason        string
 	active        bool
 }
 
-func automationRuntimeReceipt(status agentruntime.StatusSnapshot, candidate automation.RunRecord) automationRuntimeReceiptMatch {
+func automationRuntimeReceipt(status runstate.StatusSnapshot, candidate automation.RunRecord) automationRuntimeReceiptMatch {
 	wanted := strings.TrimSpace(candidate.RuntimeOperationID)
 	wantedCommand := strings.TrimSpace(candidate.RuntimeCommandID)
 	pendingCommand := strings.TrimSpace(candidate.PendingRuntimeCommandID)
@@ -282,13 +282,13 @@ func automationRuntimeReceipt(status agentruntime.StatusSnapshot, candidate auto
 	if wantedCommand == "" && strings.TrimSpace(candidate.ID) != "" {
 		wantedCommand = automationRunAgentCommandID(candidate.ID)
 	}
-	matches := func(summary agentruntime.OperationSummary) bool {
+	matches := func(summary runstate.OperationSummary) bool {
 		if wanted != "" {
 			return string(summary.OperationID) == wanted
 		}
 		return wantedCommand == "" || string(summary.CommandID) == wantedCommand
 	}
-	if status.ActiveOperation != "" && matches(agentruntime.OperationSummary{OperationID: status.ActiveOperation, CommandID: status.ActiveCommandID}) {
+	if status.ActiveOperation != "" && matches(runstate.OperationSummary{OperationID: status.ActiveOperation, CommandID: status.ActiveCommandID}) {
 		return automationRuntimeReceiptMatch{
 			commandID: string(status.ActiveCommandID), operationID: string(status.ActiveOperation),
 			fingerprint: status.ActiveCommandFingerprint, receiptCursor: status.ActiveReceiptCursor, active: true,
@@ -306,7 +306,7 @@ func automationRuntimeReceipt(status agentruntime.StatusSnapshot, candidate auto
 	return automationRuntimeReceiptMatch{}
 }
 
-func automationRuntimeMatchFromSummary(summary agentruntime.OperationSummary) automationRuntimeReceiptMatch {
+func automationRuntimeMatchFromSummary(summary runstate.OperationSummary) automationRuntimeReceiptMatch {
 	return automationRuntimeReceiptMatch{
 		commandID: string(summary.CommandID), operationID: string(summary.OperationID),
 		fingerprint: summary.CommandFingerprint, receiptCursor: summary.ReceiptCursor,

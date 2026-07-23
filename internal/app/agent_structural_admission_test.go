@@ -6,12 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 func TestWritingDrainRetriesPendingRecoveryRefreshBeforeSessionSwitch(t *testing.T) {
@@ -36,7 +34,7 @@ func TestWritingDrainRetriesPendingRecoveryRefreshBeforeSessionSwitch(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := external.Append(schema.UserMessage("canonical message appended by recovered structural commit")); err != nil {
+	if err := external.Append(agent.UserMessage("canonical message appended by recovered structural commit")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -47,7 +45,7 @@ func TestWritingDrainRetriesPendingRecoveryRefreshBeforeSessionSwitch(t *testing
 	run := &writingTaskRun{task: task, runtime: ideChatRuntime{workspace: "/book", sess: selected}}
 	action := agent.RuntimeRecoveryAction{
 		Kind: agent.RuntimeRecoveryCompactContext, CommandID: "refresh-before-switch",
-		OperationID: agentruntime.OperationID("operation-refresh-before-switch"),
+		OperationID: runstate.OperationID("operation-refresh-before-switch"),
 	}
 	application := &App{
 		workspace: "/book", workspaceGeneration: 1, sessionStore: store,
@@ -101,7 +99,7 @@ func TestClearSessionDrainsExactWritingTaskBeforeMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(schema.UserMessage("keep in display history")); err != nil {
+	if err := sess.Append(agent.UserMessage("keep in display history")); err != nil {
 		t.Fatal(err)
 	}
 	chat := agent.NewEphemeralChatService()

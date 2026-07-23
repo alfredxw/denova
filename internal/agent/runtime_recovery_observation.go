@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 type recoveryDisplayRouteContextKey struct{}
@@ -46,13 +46,13 @@ func recoveryEventEmitter(ctx context.Context) func(Event) {
 // reaches a terminal idle state with no accepted queue.
 type RecoveryObservation struct {
 	owner       *chatHarness
-	harness     *agentruntime.Harness
-	observation agentruntime.Observation
-	binding     agentruntime.BindingRef
+	harness     *runstate.Harness
+	observation runstate.Observation
+	binding     runstate.BindingRef
 	cancel      context.CancelFunc
 
 	mu         sync.Mutex
-	initial    agentruntime.StatusSnapshot
+	initial    runstate.StatusSnapshot
 	boundRoute recoveryDisplayRoute
 }
 
@@ -102,31 +102,31 @@ func (r *RecoveryObservation) Close() {
 func (s *ChatService) openRecoveryHarness(
 	ctx context.Context,
 	options RunOptions,
-) (*agentruntime.Harness, agentruntime.BindingRef, error) {
+) (*runstate.Harness, runstate.BindingRef, error) {
 	if s == nil || s.harness == nil || s.harness.runtime == nil {
-		return nil, agentruntime.BindingRef{}, ErrRuntimeProjectionUnavailable
+		return nil, runstate.BindingRef{}, ErrRuntimeProjectionUnavailable
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	binding, err := harnessBindingForOptions(options)
 	if err != nil {
-		return nil, agentruntime.BindingRef{}, err
+		return nil, runstate.BindingRef{}, err
 	}
-	ref, err := agentruntime.BindingReference(binding)
+	ref, err := runstate.BindingReference(binding)
 	if err != nil {
-		return nil, agentruntime.BindingRef{}, err
+		return nil, runstate.BindingRef{}, err
 	}
 	harness, err := s.harness.runtime.Open(ctx, binding)
 	if err != nil {
-		return nil, agentruntime.BindingRef{}, err
+		return nil, runstate.BindingRef{}, err
 	}
 	return harness, ref, nil
 }
 
-func (r *RecoveryObservation) InitialStatus() agentruntime.StatusSnapshot {
+func (r *RecoveryObservation) InitialStatus() runstate.StatusSnapshot {
 	if r == nil {
-		return agentruntime.StatusSnapshot{}
+		return runstate.StatusSnapshot{}
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -135,9 +135,9 @@ func (r *RecoveryObservation) InitialStatus() agentruntime.StatusSnapshot {
 
 // CurrentStatus re-reads the actor-owned projection. It remains available after
 // Close because closing a display observer does not close the durable binding.
-func (r *RecoveryObservation) CurrentStatus(ctx context.Context) (agentruntime.StatusSnapshot, error) {
+func (r *RecoveryObservation) CurrentStatus(ctx context.Context) (runstate.StatusSnapshot, error) {
 	if r == nil || r.harness == nil {
-		return agentruntime.StatusSnapshot{}, ErrRuntimeProjectionUnavailable
+		return runstate.StatusSnapshot{}, ErrRuntimeProjectionUnavailable
 	}
 	return r.harness.Status(ctx)
 }
@@ -188,7 +188,7 @@ func (r *RecoveryObservation) DisplayMetadata(
 	return metadata, nil
 }
 
-func recoveryDisplayRequest(binding agentruntime.BindingRef, input agentruntime.UserInput) (HarnessTurnRestoreRequest, bool) {
+func recoveryDisplayRequest(binding runstate.BindingRef, input runstate.UserInput) (HarnessTurnRestoreRequest, bool) {
 	if len(input.RestoreDescriptor) == 0 {
 		return HarnessTurnRestoreRequest{}, false
 	}
@@ -205,7 +205,7 @@ func recoveryDisplayRequest(binding agentruntime.BindingRef, input agentruntime.
 	if err != nil {
 		return HarnessTurnRestoreRequest{}, false
 	}
-	resolvedRef, err := agentruntime.BindingReference(resolvedBinding)
+	resolvedRef, err := runstate.BindingReference(resolvedBinding)
 	if err != nil || resolvedRef != binding {
 		return HarnessTurnRestoreRequest{}, false
 	}

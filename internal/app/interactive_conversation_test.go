@@ -5,11 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/agent/session"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t *testing.T) {
@@ -244,17 +243,17 @@ func TestInteractiveConversationDropsTransientIndexAndThinkingFromNextTurn(t *te
 	if err := conversation.AppendDisplayEvent(session.DisplayEvent{Role: "thinking", Content: "隐藏思考"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.AppendContextMessage(schema.AssistantMessage("", []schema.ToolCall{{
+	if err := conversation.AppendContextMessage(agent.AssistantMessage("", []agent.ToolCall{{
 		ID:   "call-lore",
 		Type: "function",
-		Function: schema.FunctionCall{
+		Function: agent.FunctionCall{
 			Name:      "list_lore_items",
 			Arguments: `{"keywords":["门"]}`,
 		},
 	}})); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.AppendContextMessage(schema.ToolMessage("找到门的机关设定", "call-lore", schema.WithToolName("list_lore_items"))); err != nil {
+	if err := conversation.AppendContextMessage(agent.ToolMessage("找到门的机关设定", "call-lore", agent.WithToolName("list_lore_items"))); err != nil {
 		t.Fatal(err)
 	}
 	submitTestTurnResult(t, conversation, "观察门缝", "确认蓝光来源")
@@ -269,10 +268,10 @@ func TestInteractiveConversationDropsTransientIndexAndThinkingFromNextTurn(t *te
 	}
 
 	for _, msg := range messages {
-		if msg.Role == schema.Assistant && len(msg.ToolCalls) == 1 && msg.ToolCalls[0].Function.Name == "list_lore_items" {
+		if msg.Role == agent.RoleAssistant && len(msg.ToolCalls) == 1 && msg.ToolCalls[0].Function.Name == "list_lore_items" {
 			t.Fatalf("transient Lore index call must not enter next-turn context: %#v", msg)
 		}
-		if msg.Role == schema.Tool && msg.ToolName == "list_lore_items" {
+		if msg.Role == agent.RoleTool && msg.ToolName == "list_lore_items" {
 			t.Fatalf("transient Lore index result must not enter next-turn context: %#v", msg)
 		}
 		if msg.Content == "隐藏思考" || msg.ReasoningContent == "隐藏思考" {

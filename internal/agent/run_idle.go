@@ -7,8 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 )
 
 func agentIdleTimeoutError(scope string, idle time.Duration) error {
@@ -32,11 +31,11 @@ func waitForRunnerEvent(ctx context.Context, events *adk.AsyncIterator[*adk.Agen
 // messageFrameStream isolates the third-party receive boundary so the waiting
 // goroutine can guarantee panic recovery and sequential Close ownership.
 type messageFrameStream interface {
-	Recv() (*schema.Message, error)
+	Recv() (*adk.Message, error)
 	Close()
 }
 
-func recvMessageFrame(ctx context.Context, stream messageFrameStream, idle time.Duration) (*schema.Message, error) {
+func recvMessageFrame(ctx context.Context, stream messageFrameStream, idle time.Duration) (*adk.Message, error) {
 	if stream == nil {
 		return nil, nil
 	}
@@ -47,7 +46,7 @@ func recvMessageFrame(ctx context.Context, stream messageFrameStream, idle time.
 		return stream.Recv()
 	}
 	type receiveResult struct {
-		frame *schema.Message
+		frame *adk.Message
 		err   error
 	}
 	const (
@@ -68,9 +67,9 @@ func recvMessageFrame(ctx context.Context, stream messageFrameStream, idle time.
 		}()
 		defer func() {
 			if !state.CompareAndSwap(receiveActive, receiveCompleted) {
-				// Eino StreamReader.Close races with an in-flight Recv. Once the
-				// caller has abandoned this receive, the receiver goroutine owns
-				// cleanup and closes only after Recv has returned.
+				// A provider-backed Close may race with an in-flight Recv. Once the
+				// caller abandons this receive, the receiver goroutine owns cleanup
+				// and closes only after Recv returns.
 				stream.Close()
 			}
 		}()
@@ -83,7 +82,7 @@ func recvMessageFrame(ctx context.Context, stream messageFrameStream, idle time.
 		timerC = timer.C
 		defer timer.Stop()
 	}
-	abandon := func(cause error) (*schema.Message, error) {
+	abandon := func(cause error) (*adk.Message, error) {
 		if !state.CompareAndSwap(receiveActive, receiveAbandoned) {
 			// Recv already finished, so closing here is sequential with it.
 			stream.Close()
@@ -107,9 +106,9 @@ type asyncWaitResult[T any] struct {
 }
 
 // waitForAsyncResult makes a blocking third-party receive responsive to a
-// caller context or an optional idle deadline. cancel is advisory: neither
-// Eino StreamReader.Close nor every model provider guarantees that an already
-// blocked receive wakes synchronously. The result channel is therefore
+// caller context or an optional idle deadline. cancel is advisory because not
+// every model provider guarantees that an already blocked receive wakes
+// synchronously. The result channel is therefore
 // buffered and timeout paths never join the tail goroutine. It exits when the
 // producer honors cancellation or eventually closes its stream.
 func waitForAsyncResult[T any](ctx context.Context, idle time.Duration, scope string, cancel func(), receive func() (T, bool, error)) (T, bool, error) {

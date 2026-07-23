@@ -4,21 +4,21 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 func TestIncompleteToolExchangeGetsStableUnknownEffectResult(t *testing.T) {
 	t.Parallel()
 
-	messages := []*schema.Message{
-		schema.UserMessage("update the chapter"),
-		schema.AssistantMessage("", []schema.ToolCall{{
-			ID: "call-write", Function: schema.FunctionCall{Name: "write_file", Arguments: `{"path":"chapter.md"}`},
+	messages := []*adk.Message{
+		adk.UserMessage("update the chapter"),
+		adk.AssistantMessage("", []adk.ToolCall{{
+			ID: "call-write", Function: adk.FunctionCall{Name: "write_file", Arguments: `{"path":"chapter.md"}`},
 		}}),
-		schema.UserMessage("continue"),
+		adk.UserMessage("continue"),
 	}
 	policy := ToolResultContextPolicy{Enabled: false}
 	first := applyToolResultContextPolicy(messages, policy)
@@ -26,11 +26,11 @@ func TestIncompleteToolExchangeGetsStableUnknownEffectResult(t *testing.T) {
 	if len(first) != 4 || len(second) != len(first) {
 		t.Fatalf("recovered model context lengths = %d then %d, want stable four-message exchange", len(first), len(second))
 	}
-	if first[1].Role != schema.Assistant || len(first[1].ToolCalls) != 1 || first[1].ToolCalls[0].ID != "call-write" {
+	if first[1].Role != adk.Assistant || len(first[1].ToolCalls) != 1 || first[1].ToolCalls[0].ID != "call-write" {
 		t.Fatalf("recovered tool call = %#v", first[1])
 	}
 	result := first[2]
-	if result.Role != schema.Tool || result.ToolCallID != "call-write" || result.ToolName != "write_file" {
+	if result.Role != adk.Tool || result.ToolCallID != "call-write" || result.ToolName != "write_file" {
 		t.Fatalf("synthetic tool result identity = %#v", result)
 	}
 	var payload struct {
@@ -52,12 +52,12 @@ func TestIncompleteToolExchangeGetsStableUnknownEffectResult(t *testing.T) {
 func TestIncompleteParallelToolCallsCompleteOnlyMissingResults(t *testing.T) {
 	t.Parallel()
 
-	messages := []*schema.Message{
-		schema.AssistantMessage("", []schema.ToolCall{
-			{ID: "call-read", Function: schema.FunctionCall{Name: "read_file", Arguments: `{"path":"a.md"}`}},
-			{ID: "call-write", Function: schema.FunctionCall{Name: "write_file", Arguments: `{"path":"b.md"}`}},
+	messages := []*adk.Message{
+		adk.AssistantMessage("", []adk.ToolCall{
+			{ID: "call-read", Function: adk.FunctionCall{Name: "read_file", Arguments: `{"path":"a.md"}`}},
+			{ID: "call-write", Function: adk.FunctionCall{Name: "write_file", Arguments: `{"path":"b.md"}`}},
 		}),
-		schema.ToolMessage("read result", "call-read", schema.WithToolName("read_file")),
+		adk.ToolMessage("read result", "call-read", adk.WithToolName("read_file")),
 	}
 	got := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true})
 	if len(got) != 3 {
@@ -65,7 +65,7 @@ func TestIncompleteParallelToolCallsCompleteOnlyMissingResults(t *testing.T) {
 	}
 	counts := map[string]int{}
 	for _, message := range got {
-		if message.Role == schema.Tool {
+		if message.Role == adk.Tool {
 			counts[message.ToolCallID]++
 		}
 	}
@@ -85,18 +85,18 @@ func TestCanonicalSessionHistoryProjectsUnknownToolEffectIntoNextModelContext(t 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(schema.UserMessage("update the chapter")); err != nil {
+	if err := sess.Append(adk.UserMessage("update the chapter")); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendContextMessage(schema.AssistantMessage("", []schema.ToolCall{{
-		ID: "canonical-call", Function: schema.FunctionCall{Name: "write_file", Arguments: `{"path":"chapter.md"}`},
+	if err := sess.AppendContextMessage(adk.AssistantMessage("", []adk.ToolCall{{
+		ID: "canonical-call", Function: adk.FunctionCall{Name: "write_file", Arguments: `{"path":"chapter.md"}`},
 	}})); err != nil {
 		t.Fatal(err)
 	}
 	conversation := NewSessionConversationForAgent(sess, &config.Config{}, AgentKindIDE)
 	messages := conversation.modelHistory(sess.SnapshotContext(AgentKindIDE))
-	if len(messages) != 3 || messages[1].Role != schema.Assistant || len(messages[1].ToolCalls) != 1 ||
-		messages[2].Role != schema.Tool || messages[2].ToolCallID != "canonical-call" ||
+	if len(messages) != 3 || messages[1].Role != adk.Assistant || len(messages[1].ToolCalls) != 1 ||
+		messages[2].Role != adk.Tool || messages[2].ToolCallID != "canonical-call" ||
 		!isUnknownToolEffectResult(messages[2].Content) {
 		t.Fatalf("canonical next model context did not contain a complete unknown-effect exchange: %#v", messages)
 	}

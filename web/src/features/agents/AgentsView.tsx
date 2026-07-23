@@ -15,9 +15,9 @@ import { getSkills } from '@/lib/api'
 import type { SkillSummary } from '@/lib/api'
 import { AgentRuntimeContextSection } from './AgentRuntimeContextSection'
 import { AgentBuiltInCapabilitySection, AgentContextSection, AgentModelOnlySection, AgentModelSection, AgentPromptSection, AgentSkillSection, AgentToolSection, mergeAgentContextOverride, mergeAgentModelOverride, mergeAgentPromptOverride } from './agent-configuration-sections'
-import { AgentSubAgentSection, isDeepAgentParent, previewGeneralSubAgentSettings } from './agent-subagent-section'
+import { AgentSubAgentSection, isSubAgentParent, previewGeneralSubAgentSettings } from './agent-subagent-section'
 import { AGENTS, FALLBACK_AGENT_TOOL_VALUES, resolveEffectiveTools } from './agent-registry'
-import type { AgentViewDefinition, DeepAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
+import type { AgentViewDefinition, SubAgentParentKey, ToolKey, VisibleAgentKey } from './agent-registry'
 
 const tabCls = 'nova-nav-item rounded-[var(--nova-radius)] px-2.5 py-1 text-xs'
 
@@ -159,7 +159,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
     }))
   }
 
-  const setGeneralSubAgent = (agent: DeepAgentParentKey, value: boolean | null) => {
+  const setGeneralSubAgent = (agent: SubAgentParentKey, value: boolean | null) => {
     setDraft((current) => {
       const next = { ...(current.general_sub_agents ?? {}) }
       if (value === null) delete next[agent]
@@ -303,7 +303,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
                     effective={effectiveTools}
                     onChange={setAgentTool}
                   />
-                  {isDeepAgentParent(activeAgent) && (
+                  {isSubAgentParent(activeAgent) && (
                     <AgentSubAgentSection
                       agent={activeAgent}
                       inheritedModel={inheritedModel}

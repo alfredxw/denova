@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/internal/agentruntime"
-	"denova/internal/session"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 )
 
 // HarnessInputMaterializationRequest is the provider-free semantic projection
@@ -15,7 +15,7 @@ import (
 // descriptor; process-local Runner, Conversation, and resolved prompt context
 // are intentionally absent.
 type HarnessInputMaterializationRequest struct {
-	Binding        agentruntime.BindingRef
+	Binding        runstate.BindingRef
 	Identity       HarnessCycleIdentity
 	CommandKind    AgentCommandKind
 	AgentKind      string
@@ -30,41 +30,41 @@ type HarnessInputMaterializationRequest struct {
 // hash because the runtime invokes it again only after a lost receipt cannot be
 // proven by reconciliation.
 type HarnessInputMaterializer interface {
-	PlanHarnessInputMaterialization(context.Context, HarnessInputMaterializationRequest) (agentruntime.InputMaterializationPlan, error)
-	MaterializeHarnessInput(context.Context, HarnessInputMaterializationRequest, agentruntime.InputMaterializationPlan) (agentruntime.InputMaterializationReceipt, error)
+	PlanHarnessInputMaterialization(context.Context, HarnessInputMaterializationRequest) (runstate.InputMaterializationPlan, error)
+	MaterializeHarnessInput(context.Context, HarnessInputMaterializationRequest, runstate.InputMaterializationPlan) (runstate.InputMaterializationReceipt, error)
 }
 
 func (e *bindingHarnessEngine) PlanInputMaterialization(
 	ctx context.Context,
-	request agentruntime.InputMaterializationRequest,
-) (agentruntime.InputMaterializationPlan, error) {
+	request runstate.InputMaterializationRequest,
+) (runstate.InputMaterializationPlan, error) {
 	materialization, err := e.acceptedInputMaterializationRequest(request)
 	if err != nil {
-		return agentruntime.InputMaterializationPlan{}, err
+		return runstate.InputMaterializationPlan{}, err
 	}
 	if e.owner.inputMaterializer == nil {
-		return agentruntime.InputMaterializationPlan{}, nil
+		return runstate.InputMaterializationPlan{}, nil
 	}
 	return e.owner.inputMaterializer.PlanHarnessInputMaterialization(ctx, materialization)
 }
 
 func (e *bindingHarnessEngine) MaterializeInput(
 	ctx context.Context,
-	request agentruntime.InputMaterializationRequest,
-	plan agentruntime.InputMaterializationPlan,
-) (agentruntime.InputMaterializationReceipt, error) {
+	request runstate.InputMaterializationRequest,
+	plan runstate.InputMaterializationPlan,
+) (runstate.InputMaterializationReceipt, error) {
 	materialization, err := e.acceptedInputMaterializationRequest(request)
 	if err != nil {
-		return agentruntime.InputMaterializationReceipt{}, err
+		return runstate.InputMaterializationReceipt{}, err
 	}
 	if e.owner.inputMaterializer == nil {
-		return agentruntime.InputMaterializationReceipt{}, fmt.Errorf("agent harness input materializer is unavailable")
+		return runstate.InputMaterializationReceipt{}, fmt.Errorf("agent harness input materializer is unavailable")
 	}
 	return e.owner.inputMaterializer.MaterializeHarnessInput(ctx, materialization, plan)
 }
 
 func (e *bindingHarnessEngine) acceptedInputMaterializationRequest(
-	request agentruntime.InputMaterializationRequest,
+	request runstate.InputMaterializationRequest,
 ) (HarnessInputMaterializationRequest, error) {
 	if e == nil || e.owner == nil {
 		return HarnessInputMaterializationRequest{}, fmt.Errorf("materialize agent harness input: engine is nil")
@@ -82,8 +82,8 @@ func (e *bindingHarnessEngine) acceptedInputMaterializationRequest(
 }
 
 func decodeHarnessInputMaterializationRequest(
-	binding agentruntime.BindingRef,
-	snapshot agentruntime.TurnSnapshot,
+	binding runstate.BindingRef,
+	snapshot runstate.TurnSnapshot,
 ) (HarnessInputMaterializationRequest, error) {
 	if len(snapshot.Input.RestoreDescriptor) == 0 {
 		return HarnessInputMaterializationRequest{}, fmt.Errorf("accepted input durable descriptor is absent")
@@ -110,7 +110,7 @@ func decodeHarnessInputMaterializationRequest(
 	if err != nil {
 		return HarnessInputMaterializationRequest{}, fmt.Errorf("accepted input durable descriptor binding: %w", err)
 	}
-	resolvedRef, err := agentruntime.BindingReference(resolvedBinding)
+	resolvedRef, err := runstate.BindingReference(resolvedBinding)
 	if err != nil || resolvedRef != binding {
 		return HarnessInputMaterializationRequest{}, fmt.Errorf("%w: durable input descriptor does not match runtime binding", ErrHarnessBindingMismatch)
 	}

@@ -8,14 +8,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cloudwego/eino/adk"
-
 	"denova/config"
 	"denova/internal/agent"
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/lifecycle"
-	"denova/internal/session"
 )
 
 // App 是 API 层使用的应用门面；具体业务由领域应用服务承接。
@@ -28,8 +26,8 @@ type App struct {
 	interactive                     *interactive.Store
 	sessionStore                    *session.Store
 	session                         *session.Session
-	agentRunner                     *adk.Runner
-	interactiveStoryRunner          *adk.Runner
+	agentRunner                     *agent.Runner
+	interactiveStoryRunner          *agent.Runner
 	chatService                     *agent.ChatService
 	bookRegistry                    *BookRegistry
 	bookMetaStore                   *BookMetaStore

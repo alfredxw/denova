@@ -9,46 +9,46 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 func TestChatServiceRejectsOversizedCommandBeforeOpeningBinding(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer service.Close(context.Background())
 
-	limits := agentruntime.DefaultInputLimits()
+	limits := runstate.DefaultInputLimits()
 	_, err = service.SubmitCommand(context.Background(), AgentCommandSpec{
 		Kind: AgentCommandStartTurn, CommandID: strings.Repeat("x", limits.MaxCommandIDBytes+1),
 		Request: ChatRequest{Message: "must not be fingerprinted or registered"},
 	})
-	if !errors.Is(err, agentruntime.ErrInvalidCommand) {
+	if !errors.Is(err, runstate.ErrInvalidCommand) {
 		t.Fatalf("oversized command error = %v", err)
 	}
 }
 
 func TestChatServiceStartRejectsOversizedCommandBeforeOpeningBinding(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer service.Close(context.Background())
 
-	limits := agentruntime.DefaultInputLimits()
+	limits := runstate.DefaultInputLimits()
 	_, err = service.StartWithOptions(context.Background(), nil, nil, nil, ChatRequest{
 		CommandID: strings.Repeat("x", limits.MaxCommandIDBytes+1), Message: "must not open a binding",
 	}, RunOptions{}, nil)
-	if !errors.Is(err, agentruntime.ErrInvalidCommand) {
+	if !errors.Is(err, runstate.ErrInvalidCommand) {
 		t.Fatalf("oversized start command error = %v", err)
 	}
 }
 
 func TestChatServiceSubmitSteerTargetsActiveOperation(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestChatServiceSubmitSteerTargetsActiveOperation(t *testing.T) {
 	receipt, err := service.SubmitCommand(context.Background(), AgentCommandSpec{
 		Kind: AgentCommandSteer, CommandID: "steer-1",
 		OperationID:  active.Snapshot.ActiveOperation,
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("steered answer", nil)}, true),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("steered answer", nil)}, true),
 		Conversation: &runControlConversation{}, Request: ChatRequest{Message: "change direction"},
 		Options: RunOptions{AgentKind: AgentKindIDE, RootAgentName: "run-control-test", Workspace: "/book", SessionID: "commands"},
 		Emit:    emit,
@@ -112,7 +112,7 @@ func TestChatServiceSubmitSteerTargetsActiveOperation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if settled.Snapshot.Phase != agentruntime.PhaseIdle {
+	if settled.Snapshot.Phase != runstate.PhaseIdle {
 		t.Fatalf("phase = %q, want idle", settled.Snapshot.Phase)
 	}
 	if got := settled.Snapshot.Messages[len(settled.Snapshot.Messages)-1].Content; got != "steered answer" {
@@ -126,7 +126,7 @@ func TestChatServiceSubmitSteerTargetsActiveOperation(t *testing.T) {
 }
 
 func TestChatServiceAcceptedRunFollowsNextTurnAndRemainsControllable(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestChatServiceAcceptedRunFollowsNextTurnAndRemainsControllable(t *testing.
 
 	followUpReceipt, err := service.SubmitCommand(context.Background(), AgentCommandSpec{
 		Kind: AgentCommandFollowUp, CommandID: "successor-follow-up", OperationID: nextReceipt.OperationID,
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("follow-up after successor", nil)}, true),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("follow-up after successor", nil)}, true),
 		Conversation: &runControlConversation{}, Request: ChatRequest{Message: "continue successor"}, Emit: emit,
 		Options: RunOptions{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "next-turn-control"},
 	})
@@ -226,7 +226,7 @@ func TestChatServiceAcceptedRunFollowsNextTurnAndRemainsControllable(t *testing.
 }
 
 func TestChatServiceCommitsInitialAndFollowUpCyclesExactlyOnce(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestChatServiceCommitsInitialAndFollowUpCyclesExactlyOnce(t *testing.T) {
 	}
 	followUpSpec := AgentCommandSpec{
 		Kind: AgentCommandFollowUp, CommandID: "follow-up-1", OperationID: active.Snapshot.ActiveOperation,
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("follow-up answer", nil)}, true),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("follow-up answer", nil)}, true),
 		Conversation: followUp, Request: ChatRequest{Message: "continue"},
 		Options: RunOptions{AgentKind: AgentKindInteractiveStory, Workspace: "/book", StoryID: "story", BranchID: "main"},
 		Emit:    emit,
@@ -280,7 +280,7 @@ func TestChatServiceCommitsInitialAndFollowUpCyclesExactlyOnce(t *testing.T) {
 	}
 	queuedRetryConversation := &harnessCommitConversation{runControlConversation: &runControlConversation{}}
 	queuedRetry := followUpSpec
-	queuedRetry.Runner = newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("must not run", nil)}, true)
+	queuedRetry.Runner = newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("must not run", nil)}, true)
 	queuedRetry.Conversation = queuedRetryConversation
 	replayedReceipt, err := service.SubmitCommand(context.Background(), queuedRetry)
 	if err != nil {
@@ -291,12 +291,12 @@ func TestChatServiceCommitsInitialAndFollowUpCyclesExactlyOnce(t *testing.T) {
 	}
 	conflict := queuedRetry
 	conflict.Request.Message = "different input"
-	if _, err := service.SubmitCommand(context.Background(), conflict); !errors.Is(err, agentruntime.ErrInvalidCommand) {
+	if _, err := service.SubmitCommand(context.Background(), conflict); !errors.Is(err, runstate.ErrInvalidCommand) {
 		t.Fatalf("same command id with different input error = %v", err)
 	}
 	hiddenConflict := queuedRetry
 	hiddenConflict.Request.PlanMode = !queuedRetry.Request.PlanMode
-	if _, err := service.SubmitCommand(context.Background(), hiddenConflict); !errors.Is(err, agentruntime.ErrInvalidCommand) {
+	if _, err := service.SubmitCommand(context.Background(), hiddenConflict); !errors.Is(err, runstate.ErrInvalidCommand) {
 		t.Fatalf("same command id with different adapter payload error = %v", err)
 	}
 	close(model.release)
@@ -354,7 +354,7 @@ func TestChatServiceCommitsInitialAndFollowUpCyclesExactlyOnce(t *testing.T) {
 }
 
 func TestChatServiceSteerPreemptsBlockingPreparationBeforeModelEffects(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,7 +377,7 @@ func TestChatServiceSteerPreemptsBlockingPreparationBeforeModelEffects(t *testin
 	initial := newBlockingPreparationConversation()
 	startReceipt, err := service.SubmitCommand(context.Background(), AgentCommandSpec{
 		Kind: AgentCommandStartTurn, CommandID: "prepare-start",
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("must not run", nil)}, true),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("must not run", nil)}, true),
 		Conversation: initial, Request: ChatRequest{Message: "initial"}, Options: options,
 	})
 	if err != nil {
@@ -388,7 +388,7 @@ func TestChatServiceSteerPreemptsBlockingPreparationBeforeModelEffects(t *testin
 	steered := &runControlConversation{}
 	steerReceipt, err := service.SubmitCommand(context.Background(), AgentCommandSpec{
 		Kind: AgentCommandSteer, CommandID: "prepare-steer", OperationID: startReceipt.OperationID,
-		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("steered answer", nil)}, true),
+		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("steered answer", nil)}, true),
 		Conversation: steered, Request: ChatRequest{Message: "redirect"}, Options: options,
 	})
 	if err != nil {
@@ -405,7 +405,7 @@ func TestChatServiceSteerPreemptsBlockingPreparationBeforeModelEffects(t *testin
 			if !ok {
 				t.Fatal("observation closed before steered operation settled")
 			}
-			if eventPayload, ok := event.Payload.(agentruntime.OperationSettledEvent); ok && eventPayload.OperationID == startReceipt.OperationID {
+			if eventPayload, ok := event.Payload.(runstate.OperationSettledEvent); ok && eventPayload.OperationID == startReceipt.OperationID {
 				settled = true
 			}
 		case observationErr := <-observation.Errors:
@@ -426,19 +426,19 @@ func TestChatServiceSteerPreemptsBlockingPreparationBeforeModelEffects(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Snapshot.Phase != agentruntime.PhaseIdle {
+	if snapshot.Snapshot.Phase != runstate.PhaseIdle {
 		t.Fatalf("phase = %q, want idle", snapshot.Snapshot.Phase)
 	}
 }
 
 func TestChatHarnessCloseClearsDurablyAcceptedTurnSpec(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := agentruntime.StartTurn{
+	command := runstate.StartTurn{
 		ID:    "accepted-before-close",
-		Input: agentruntime.UserInput{Text: "queued", TurnSpecRef: "accepted-before-close"},
+		Input: runstate.UserInput{Text: "queued", TurnSpecRef: "accepted-before-close"},
 	}
 	lease, err := service.harness.engine.register(
 		"accepted-before-close",

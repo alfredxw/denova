@@ -59,8 +59,8 @@ func TestProtectedSystemInstructionGuidesThinkingLanguageFromConfig(t *testing.T
 	}
 }
 
-func TestDeepAgentParentRuntimeContractsIncludeSubAgentDelegationProtocol(t *testing.T) {
-	for _, agentKind := range config.DeepAgentParentKinds() {
+func TestSubAgentParentRuntimeContractsIncludeDelegationProtocol(t *testing.T) {
+	for _, agentKind := range config.SubAgentParentKinds() {
 		t.Run(agentKind, func(t *testing.T) {
 			instruction := protectedSystemInstruction(&config.Config{}, agentKind, "BUILT IN PROMPT")
 			for _, required := range []string{

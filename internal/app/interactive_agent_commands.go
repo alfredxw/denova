@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 // InteractiveAgentCommand contains only the selected game resource and typed
@@ -15,21 +15,21 @@ import (
 type InteractiveAgentCommand struct {
 	Kind        agent.AgentCommandKind
 	CommandID   string
-	OperationID agentruntime.OperationID
+	OperationID runstate.OperationID
 	StoryID     string
 	BranchID    string
 	Reason      string
 	Input       agent.ChatRequest
 }
 
-func (a *App) SubmitInteractiveAgentCommand(ctx context.Context, command InteractiveAgentCommand) (agentruntime.Receipt, error) {
+func (a *App) SubmitInteractiveAgentCommand(ctx context.Context, command InteractiveAgentCommand) (runstate.Receipt, error) {
 	return a.interactiveService().SubmitAgentCommand(ctx, command)
 }
 
-func (s *InteractiveAppService) SubmitAgentCommand(ctx context.Context, command InteractiveAgentCommand) (agentruntime.Receipt, error) {
+func (s *InteractiveAppService) SubmitAgentCommand(ctx context.Context, command InteractiveAgentCommand) (runstate.Receipt, error) {
 	target, err := s.activeAgentCommandTarget(command.StoryID, command.BranchID)
 	if err != nil {
-		return agentruntime.Receipt{}, err
+		return runstate.Receipt{}, err
 	}
 	if command.Kind == agent.AgentCommandAbort {
 		return target.chatService.SubmitCommand(ctx, agent.AgentCommandSpec{
@@ -43,7 +43,7 @@ func (s *InteractiveAppService) SubmitAgentCommand(ctx context.Context, command 
 		})
 	}
 	if command.Kind != agent.AgentCommandSteer && command.Kind != agent.AgentCommandFollowUp && command.Kind != agent.AgentCommandNextTurn {
-		return agentruntime.Receipt{}, fmt.Errorf("%w: unsupported game command %q", agentruntime.ErrInvalidCommand, command.Kind)
+		return runstate.Receipt{}, fmt.Errorf("%w: unsupported game command %q", runstate.ErrInvalidCommand, command.Kind)
 	}
 
 	prepare := func(prepareCtx context.Context) (agent.HarnessTurnExecution, error) {

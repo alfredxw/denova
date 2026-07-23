@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"unicode"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -53,14 +53,14 @@ func projectedContextTokens(promptTokens int, input ContextCompactionInput) int 
 	return max(1, promptTokens+max(0, input.ReservedCompletionTokens)+max(0, input.ReservedToolResultTokens))
 }
 
-func compactionSourceBaseMessages(input ContextCompactionInput) []*schema.Message {
+func compactionSourceBaseMessages(input ContextCompactionInput) []*adk.Message {
 	if len(input.SourceMessages) > 0 {
 		return input.SourceMessages
 	}
 	return input.Messages
 }
 
-func EstimateContextTokens(messages []*schema.Message, tools []*schema.ToolInfo) int {
+func EstimateContextTokens(messages []*adk.Message, tools []*adk.ToolInfo) int {
 	tokens := 0
 	for _, msg := range messages {
 		tokens += estimateMessageTokens(msg)
@@ -79,7 +79,7 @@ func EstimateContextTokens(messages []*schema.Message, tools []*schema.ToolInfo)
 	return tokens
 }
 
-func estimateMessageTokens(msg *schema.Message) int {
+func estimateMessageTokens(msg *adk.Message) int {
 	if msg == nil {
 		return 0
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 // AcceptedRun is a StartTurn command that has crossed the durable command
@@ -13,23 +13,23 @@ import (
 // authority for the returned outcome.
 type AcceptedRun struct {
 	owner            *chatHarness
-	harness          *agentruntime.Harness
-	observation      agentruntime.Observation
-	receipt          agentruntime.Receipt
+	harness          *runstate.Harness
+	observation      runstate.Observation
+	receipt          runstate.Receipt
 	conversation     Conversation
 	options          RunOptions
 	outcomes         <-chan RunOutcome
 	emit             func(Event)
 	stopObserving    context.CancelFunc
 	registration     *harnessTurnSpecLease
-	binding          agentruntime.Binding
+	binding          runstate.Binding
 	ephemeralBinding bool
 }
 
 // Receipt returns the durable StartTurn acceptance receipt.
-func (r *AcceptedRun) Receipt() agentruntime.Receipt {
+func (r *AcceptedRun) Receipt() runstate.Receipt {
 	if r == nil {
-		return agentruntime.Receipt{}
+		return runstate.Receipt{}
 	}
 	return r.receipt
 }

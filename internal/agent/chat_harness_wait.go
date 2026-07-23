@@ -6,19 +6,19 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 func (h *chatHarness) waitForOperation(
 	caller context.Context,
-	harness *agentruntime.Harness,
-	observation agentruntime.Observation,
-	receipt agentruntime.Receipt,
+	harness *runstate.Harness,
+	observation runstate.Observation,
+	receipt runstate.Receipt,
 	outcomes <-chan RunOutcome,
 	emit func(Event),
 ) RunOutcome {
 	var terminal *RunOutcome
-	var settlement *agentruntime.OperationSettledEvent
+	var settlement *runstate.OperationSettledEvent
 	if receipt.Replayed {
 		terminal, settlement = replayedTerminalFromSnapshot(observation.Snapshot, receipt)
 		if terminal == nil && observation.Snapshot.ActiveOperation != receipt.OperationID {
@@ -47,17 +47,17 @@ func (h *chatHarness) waitForOperation(
 				continue
 			}
 			switch payload := event.Payload.(type) {
-			case agentruntime.OperationSettledEvent:
+			case runstate.OperationSettledEvent:
 				if payload.OperationID == receipt.OperationID {
 					captured := payload
 					settlement = &captured
 				}
-			case agentruntime.OperationInterruptedEvent:
+			case runstate.OperationInterruptedEvent:
 				if payload.OperationID == receipt.OperationID {
 					err := errors.New(payload.Reason)
 					failed := outcomeFromOutput(RunOutcomeFailed, err, payload.Reason, "", "")
 					terminal = &failed
-					settled := agentruntime.OperationSettledEvent{OperationID: payload.OperationID, Status: agentruntime.OperationInterrupted}
+					settled := runstate.OperationSettledEvent{OperationID: payload.OperationID, Status: runstate.OperationInterrupted}
 					settlement = &settled
 				}
 			}
@@ -80,22 +80,22 @@ func (h *chatHarness) waitForOperation(
 			if err := caller.Err(); err != nil {
 				reason = err.Error()
 			}
-			_, err := harness.Submit(h.lifecycle, agentruntime.Abort{
-				ID:          agentruntime.CommandID(newHarnessIdentity("command")),
+			_, err := harness.Submit(h.lifecycle, runstate.Abort{
+				ID:          runstate.CommandID(newHarnessIdentity("command")),
 				OperationID: receipt.OperationID,
 				Reason:      reason,
 			})
 			if err != nil &&
-				!errors.Is(err, agentruntime.ErrInvalidCommand) &&
-				!errors.Is(err, agentruntime.ErrStaleOperation) &&
-				!errors.Is(err, agentruntime.ErrDomainCommitRejected) {
+				!errors.Is(err, runstate.ErrInvalidCommand) &&
+				!errors.Is(err, runstate.ErrStaleOperation) &&
+				!errors.Is(err, runstate.ErrDomainCommitRejected) {
 				emitHarnessError(emit, err)
 				return outcomeFromOutput(RunOutcomeFailed, err, err.Error(), outputContent(terminal), outputThinking(terminal))
 			}
 		case <-h.lifecycle.Done():
 			err := h.lifecycle.Err()
 			if err == nil {
-				err = agentruntime.ErrRuntimeClosed
+				err = runstate.ErrRuntimeClosed
 			}
 			return outcomeFromOutput(RunOutcomeAborted, err, err.Error(), outputContent(terminal), outputThinking(terminal))
 		}
@@ -125,7 +125,7 @@ func (h *chatHarness) waitForOperation(
 		}
 	}
 	outcome := outcomeForSettlement(*terminal, settlement.Status)
-	if settlement.Status == agentruntime.OperationSucceeded {
+	if settlement.Status == runstate.OperationSucceeded {
 		if content, thinking, ok := settledAssistantOutput(h.lifecycle, harness, receipt.OperationID); ok {
 			outcome.Content = content
 			outcome.Thinking = thinking
@@ -135,22 +135,22 @@ func (h *chatHarness) waitForOperation(
 }
 
 func replayedTerminalFromSnapshot(
-	snapshot agentruntime.StateSnapshot,
-	receipt agentruntime.Receipt,
-) (*RunOutcome, *agentruntime.OperationSettledEvent) {
+	snapshot runstate.StateSnapshot,
+	receipt runstate.Receipt,
+) (*RunOutcome, *runstate.OperationSettledEvent) {
 	summary := replayedOperationSummary(snapshot, receipt)
 	if summary == nil {
 		return nil, nil
 	}
 	content, thinking := assistantOutputFromMessages(snapshot.Messages, receipt.OperationID)
-	settlement := &agentruntime.OperationSettledEvent{
+	settlement := &runstate.OperationSettledEvent{
 		OperationID: summary.OperationID, Status: summary.Status, Reason: summary.Reason,
 	}
 	outcome := outcomeFromOperationStatus(summary.Status, summary.Reason, content, thinking)
 	return &outcome, settlement
 }
 
-func replayedOperationSummary(snapshot agentruntime.StateSnapshot, receipt agentruntime.Receipt) *agentruntime.OperationSummary {
+func replayedOperationSummary(snapshot runstate.StateSnapshot, receipt runstate.Receipt) *runstate.OperationSummary {
 	for index := len(snapshot.RecentOperations) - 1; index >= 0; index-- {
 		summary := snapshot.RecentOperations[index]
 		if summary.OperationID == receipt.OperationID && summary.CommandID == receipt.CommandID {
@@ -165,21 +165,21 @@ func replayedOperationSummary(snapshot agentruntime.StateSnapshot, receipt agent
 
 func replayedOutcomeForSettlement(
 	ctx context.Context,
-	harness *agentruntime.Harness,
-	operationID agentruntime.OperationID,
-	settlement agentruntime.OperationSettledEvent,
+	harness *runstate.Harness,
+	operationID runstate.OperationID,
+	settlement runstate.OperationSettledEvent,
 ) RunOutcome {
 	content, thinking, _ := settledAssistantOutput(ctx, harness, operationID)
 	return outcomeFromOperationStatus(settlement.Status, settlement.Reason, content, thinking)
 }
 
-func outcomeFromOperationStatus(status agentruntime.OperationStatus, reason, content, thinking string) RunOutcome {
+func outcomeFromOperationStatus(status runstate.OperationStatus, reason, content, thinking string) RunOutcome {
 	switch status {
-	case agentruntime.OperationSucceeded:
+	case runstate.OperationSucceeded:
 		return outcomeFromOutput(RunOutcomeCompleted, nil, "", content, thinking)
-	case agentruntime.OperationAborted:
+	case runstate.OperationAborted:
 		return outcomeFromOutput(RunOutcomeAborted, nil, strings.TrimSpace(reason), content, thinking)
-	case agentruntime.OperationFailed, agentruntime.OperationInterrupted:
+	case runstate.OperationFailed, runstate.OperationInterrupted:
 		reason = strings.TrimSpace(reason)
 		if reason == "" {
 			reason = "agent operation failed"
@@ -191,28 +191,28 @@ func outcomeFromOperationStatus(status agentruntime.OperationStatus, reason, con
 	}
 }
 
-func assistantOutputFromMessages(messages []agentruntime.Message, operationID agentruntime.OperationID) (string, string) {
+func assistantOutputFromMessages(messages []runstate.Message, operationID runstate.OperationID) (string, string) {
 	for index := len(messages) - 1; index >= 0; index-- {
 		message := messages[index]
-		if message.Operation == operationID && message.Role == agentruntime.RoleAssistant {
+		if message.Operation == operationID && message.Role == runstate.RoleAssistant {
 			return message.Content, message.Thinking
 		}
 	}
 	return "", ""
 }
 
-func outcomeForSettlement(outcome RunOutcome, status agentruntime.OperationStatus) RunOutcome {
+func outcomeForSettlement(outcome RunOutcome, status runstate.OperationStatus) RunOutcome {
 	switch status {
-	case agentruntime.OperationSucceeded:
+	case runstate.OperationSucceeded:
 		outcome.Status = RunOutcomeCompleted
 		outcome.Error = nil
 		outcome.Reason = ""
 		return outcome
-	case agentruntime.OperationAborted:
+	case runstate.OperationAborted:
 		outcome.Status = RunOutcomeAborted
 		outcome.Error = nil
 		return outcome
-	case agentruntime.OperationFailed, agentruntime.OperationInterrupted:
+	case runstate.OperationFailed, runstate.OperationInterrupted:
 		if outcome.Error == nil {
 			reason := strings.TrimSpace(outcome.Reason)
 			if reason == "" {
@@ -228,7 +228,7 @@ func outcomeForSettlement(outcome RunOutcome, status agentruntime.OperationStatu
 	}
 }
 
-func settledAssistantOutput(ctx context.Context, harness *agentruntime.Harness, operationID agentruntime.OperationID) (string, string, bool) {
+func settledAssistantOutput(ctx context.Context, harness *runstate.Harness, operationID runstate.OperationID) (string, string, bool) {
 	if harness == nil {
 		return "", "", false
 	}
@@ -241,7 +241,7 @@ func settledAssistantOutput(ctx context.Context, harness *agentruntime.Harness, 
 	cancel()
 	for index := len(observation.Snapshot.Messages) - 1; index >= 0; index-- {
 		message := observation.Snapshot.Messages[index]
-		if message.Operation == operationID && message.Role == agentruntime.RoleAssistant {
+		if message.Operation == operationID && message.Role == runstate.RoleAssistant {
 			return message.Content, message.Thinking, true
 		}
 	}

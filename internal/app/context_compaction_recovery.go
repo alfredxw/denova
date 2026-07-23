@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 func (s *ChatAppService) resumeWritingContextStructuralOperation(
@@ -140,7 +140,7 @@ func (a *App) restoreSessionContextStructuralOperation(
 	request agent.HarnessStructuralRestoreRequest,
 ) (agent.ContextStructuralOperation, error) {
 	binding := request.Binding
-	if binding.Kind != agentruntime.BindingWriting || binding.Profile != agentruntime.ProfileWriting ||
+	if binding.Kind != runstate.BindingWriting || binding.Profile != runstate.ProfileWriting ||
 		strings.TrimSpace(binding.SessionID) == "" || request.Snapshot.Ref.Resource != binding.SessionID {
 		return nil, fmt.Errorf("structural Session restore binding does not match its resource")
 	}
@@ -224,7 +224,7 @@ func restoreStoryContextStructuralOperation(
 	request agent.HarnessStructuralRestoreRequest,
 ) (agent.ContextStructuralOperation, error) {
 	binding := request.Binding
-	if binding.Kind != agentruntime.BindingGame || binding.Profile != agentruntime.ProfileGame ||
+	if binding.Kind != runstate.BindingGame || binding.Profile != runstate.ProfileGame ||
 		strings.TrimSpace(binding.Workspace) == "" || strings.TrimSpace(binding.StoryID) == "" ||
 		strings.TrimSpace(binding.BranchID) == "" || request.Snapshot.Ref.Resource != binding.StoryID+"/"+binding.BranchID {
 		return nil, fmt.Errorf("structural Story restore binding does not match its resource")
@@ -337,8 +337,8 @@ func fixedContextStructuralOperation(
 func newContextStructuralRestorePlan(
 	domain agent.ContextStructuralDomain,
 	action agent.ContextStructuralAction,
-	binding agentruntime.BindingRef,
-	ref agentruntime.ContextCompactionRef,
+	binding runstate.BindingRef,
+	ref runstate.ContextCompactionRef,
 	recordID string,
 	result agent.ContextStructuralResult,
 	mutation any,
@@ -357,15 +357,15 @@ func newContextStructuralRestorePlan(
 	}, nil
 }
 
-func writingContextStructuralBinding(workspace, sessionID string) (agentruntime.BindingRef, error) {
-	return agentruntime.BindingReference(agentruntime.WritingBinding{
-		Workspace: workspace, SessionID: sessionID, Profile: agentruntime.ProfileWriting,
+func writingContextStructuralBinding(workspace, sessionID string) (runstate.BindingRef, error) {
+	return runstate.BindingReference(runstate.WritingBinding{
+		Workspace: workspace, SessionID: sessionID, Profile: runstate.ProfileWriting,
 	})
 }
 
-func storyContextStructuralBinding(workspace, storyID, branchID string) (agentruntime.BindingRef, error) {
-	return agentruntime.BindingReference(agentruntime.GameBinding{
-		Workspace: workspace, StoryID: storyID, BranchID: branchID, Profile: agentruntime.ProfileGame,
+func storyContextStructuralBinding(workspace, storyID, branchID string) (runstate.BindingRef, error) {
+	return runstate.BindingReference(runstate.GameBinding{
+		Workspace: workspace, StoryID: storyID, BranchID: branchID, Profile: runstate.ProfileGame,
 	})
 }
 

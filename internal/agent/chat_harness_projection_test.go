@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 func TestDefaultChatServiceUsesDurableMemoryHarness(t *testing.T) {
@@ -18,13 +18,13 @@ func TestDefaultChatServiceUsesDurableMemoryHarness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Binding.Profile != agentruntime.ProfileWriting || snapshot.Phase != agentruntime.PhaseIdle {
+	if snapshot.Binding.Profile != runstate.ProfileWriting || snapshot.Phase != runstate.PhaseIdle {
 		t.Fatalf("default durable projection = %#v", snapshot)
 	}
 }
 
 func TestRuntimeStatusProjectionDerivesProfileBindings(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,21 +37,21 @@ func TestRuntimeStatusProjectionDerivesProfileBindings(t *testing.T) {
 	tests := []struct {
 		name    string
 		options RunOptions
-		want    agentruntime.BindingRef
+		want    runstate.BindingRef
 	}{
 		{
 			name:    "writing",
 			options: RunOptions{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "session-1"},
-			want: agentruntime.BindingRef{
-				Kind: agentruntime.BindingWriting, Profile: agentruntime.ProfileWriting,
+			want: runstate.BindingRef{
+				Kind: runstate.BindingWriting, Profile: runstate.ProfileWriting,
 				Workspace: "/book", SessionID: "session-1",
 			},
 		},
 		{
 			name:    "game",
 			options: RunOptions{AgentKind: AgentKindInteractiveStory, Workspace: "/book", StoryID: "story-1", BranchID: "main"},
-			want: agentruntime.BindingRef{
-				Kind: agentruntime.BindingGame, Profile: agentruntime.ProfileGame,
+			want: runstate.BindingRef{
+				Kind: runstate.BindingGame, Profile: runstate.ProfileGame,
 				Workspace: "/book", StoryID: "story-1", BranchID: "main",
 			},
 		},
@@ -65,7 +65,7 @@ func TestRuntimeStatusProjectionDerivesProfileBindings(t *testing.T) {
 			if snapshot.Binding != test.want {
 				t.Fatalf("binding = %#v, want %#v", snapshot.Binding, test.want)
 			}
-			if snapshot.Cursor != 0 || snapshot.Phase != agentruntime.PhaseIdle {
+			if snapshot.Cursor != 0 || snapshot.Phase != runstate.PhaseIdle {
 				t.Fatalf("new projection = %#v, want cursor=0 phase=idle", snapshot)
 			}
 		})

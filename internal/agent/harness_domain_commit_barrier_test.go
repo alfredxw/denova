@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
-	"denova/internal/session"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 )
 
 func TestHarnessDomainCommitBarrierAbortBeforeOutputIntentKeepsUserOnly(t *testing.T) {
@@ -25,7 +25,7 @@ func TestHarnessDomainCommitBarrierAbortBeforeOutputIntentKeepsUserOnly(t *testi
 	waitHarnessEngineSignal(t, conversation.beforeOutputIntent, "pending output intent")
 	harness := openHarnessBarrierBinding(t, service, options)
 	operationID := activeHarnessBarrierOperation(t, harness)
-	if _, err := harness.Submit(context.Background(), agentruntime.Abort{
+	if _, err := harness.Submit(context.Background(), runstate.Abort{
 		ID: "abort-before-output", OperationID: operationID, Reason: "user stopped",
 	}); err != nil {
 		t.Fatalf("submit abort before output intent: %v", err)
@@ -45,7 +45,7 @@ func TestHarnessDomainCommitBarrierAbortBeforeOutputIntentKeepsUserOnly(t *testi
 			continue
 		}
 		canonicalMessages++
-		if entry.Role != string(schema.User) || entry.AgentCommandID == "" {
+		if entry.Role != string(adk.User) || entry.AgentCommandID == "" {
 			t.Fatalf("unexpected canonical message after abort: %+v", entry)
 		}
 	}
@@ -75,18 +75,18 @@ func TestHarnessDomainCommitBarrierOutputIntentBeforeAbortCommitsAndWins(t *test
 	}
 	foundOutputIntent := false
 	for _, commit := range observation.Snapshot.DomainCommits {
-		if commit.Identity.Stage == agentruntime.DomainCommitOutput {
+		if commit.Identity.Stage == runstate.DomainCommitOutput {
 			foundOutputIntent = true
 		}
 	}
 	if !foundOutputIntent {
 		t.Fatalf("output commit callback ran before actor authorization: %+v", observation.Snapshot.DomainCommits)
 	}
-	_, abortErr := harness.Submit(context.Background(), agentruntime.Abort{
+	_, abortErr := harness.Submit(context.Background(), runstate.Abort{
 		ID: "abort-after-output", OperationID: operationID, Reason: "too late",
 	})
-	if !errors.Is(abortErr, agentruntime.ErrDomainCommitRejected) {
-		t.Fatalf("late abort error = %v, want %v", abortErr, agentruntime.ErrDomainCommitRejected)
+	if !errors.Is(abortErr, runstate.ErrDomainCommitRejected) {
+		t.Fatalf("late abort error = %v, want %v", abortErr, runstate.ErrDomainCommitRejected)
 	}
 	conversation.releaseCommit()
 	outcome := waitRunControlOutcome(t, done)
@@ -110,7 +110,7 @@ func TestHarnessCallerCancelWaitsWhenOutputCommitAlreadyFinalizing(t *testing.T)
 	options := harnessBarrierRunOptions(sess.ID)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan RunOutcome, 1)
-	runner := newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("canonical answer", nil)}, true)
+	runner := newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("canonical answer", nil)}, true)
 	runOutcomeTestGoroutine(done, "domain commit barrier run", func() RunOutcome {
 		return service.RunWithOptions(ctx, runner, conversation, nil, ChatRequest{CommandID: "domain-commit-barrier", Message: "user input"}, options, nil)
 	})
@@ -187,7 +187,7 @@ func newHarnessBarrierSessionConversation(t *testing.T) (*harnessBarrierConversa
 
 func newHarnessBarrierChatService(t *testing.T) *ChatService {
 	t.Helper()
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func harnessBarrierRunOptions(sessionID string) RunOptions {
 func runHarnessBarrierChat(t *testing.T, service *ChatService, conversation Conversation, options RunOptions) <-chan RunOutcome {
 	t.Helper()
 	done := make(chan RunOutcome, 1)
-	runner := newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("canonical answer", nil)}, true)
+	runner := newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("canonical answer", nil)}, true)
 	runOutcomeTestGoroutine(done, "domain commit race run", func() RunOutcome {
 		return service.RunWithOptions(
 			context.Background(),
@@ -213,7 +213,7 @@ func runHarnessBarrierChat(t *testing.T, service *ChatService, conversation Conv
 	return done
 }
 
-func openHarnessBarrierBinding(t *testing.T, service *ChatService, options RunOptions) *agentruntime.Harness {
+func openHarnessBarrierBinding(t *testing.T, service *ChatService, options RunOptions) *runstate.Harness {
 	t.Helper()
 	binding, err := harnessBindingForOptions(options)
 	if err != nil {
@@ -226,7 +226,7 @@ func openHarnessBarrierBinding(t *testing.T, service *ChatService, options RunOp
 	return harness
 }
 
-func activeHarnessBarrierOperation(t *testing.T, harness *agentruntime.Harness) agentruntime.OperationID {
+func activeHarnessBarrierOperation(t *testing.T, harness *runstate.Harness) runstate.OperationID {
 	t.Helper()
 	observation, err := harness.ObserveFromNow(context.Background())
 	if err != nil {

@@ -7,10 +7,10 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 func TestAppMaterializesAcceptedWritingInputExactlyOnce(t *testing.T) {
@@ -30,8 +30,8 @@ func TestAppMaterializesAcceptedWritingInputExactlyOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := agent.HarnessInputMaterializationRequest{
-		Binding: agentruntime.BindingRef{
-			Kind: agentruntime.BindingWriting, Profile: agentruntime.ProfileWriting,
+		Binding: runstate.BindingRef{
+			Kind: runstate.BindingWriting, Profile: runstate.ProfileWriting,
 			Workspace: workspace, SessionID: "accepted-writing",
 		},
 		Identity: agent.HarnessCycleIdentity{
@@ -87,8 +87,8 @@ func TestAppMaterializesAcceptedGameInputAsPendingWithoutNarrative(t *testing.T)
 		t.Fatal(err)
 	}
 	request := agent.HarnessInputMaterializationRequest{
-		Binding: agentruntime.BindingRef{
-			Kind: agentruntime.BindingGame, Profile: agentruntime.ProfileGame,
+		Binding: runstate.BindingRef{
+			Kind: runstate.BindingGame, Profile: runstate.ProfileGame,
 			Workspace: workspace, StoryID: story.ID, BranchID: "main",
 		},
 		Identity: agent.HarnessCycleIdentity{

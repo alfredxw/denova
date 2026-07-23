@@ -7,37 +7,37 @@ import (
 	"testing"
 	"time"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
 )
 
 func TestAutomationRuntimeReceiptFindsOlderInitialOperationByStableCommand(t *testing.T) {
 	run := automation.RunRecord{ID: "run-1"}
-	status := agentruntime.StatusSnapshot{
-		LastOperation: &agentruntime.OperationSummary{
-			OperationID: "follow-up-operation", CommandID: "follow-up-command", Status: agentruntime.OperationSucceeded,
+	status := runstate.StatusSnapshot{
+		LastOperation: &runstate.OperationSummary{
+			OperationID: "follow-up-operation", CommandID: "follow-up-command", Status: runstate.OperationSucceeded,
 		},
-		RecentOperations: []agentruntime.OperationSummary{
-			{OperationID: "initial-operation", CommandID: agentruntime.CommandID(automationRunAgentCommandID(run.ID)), Status: agentruntime.OperationSucceeded},
-			{OperationID: "follow-up-operation", CommandID: "follow-up-command", Status: agentruntime.OperationSucceeded},
+		RecentOperations: []runstate.OperationSummary{
+			{OperationID: "initial-operation", CommandID: runstate.CommandID(automationRunAgentCommandID(run.ID)), Status: runstate.OperationSucceeded},
+			{OperationID: "follow-up-operation", CommandID: "follow-up-command", Status: runstate.OperationSucceeded},
 		},
 	}
 	match := automationRuntimeReceipt(status, run)
-	if match.active || match.commandID != automationRunAgentCommandID(run.ID) || match.operationID != "initial-operation" || match.status != agentruntime.OperationSucceeded {
+	if match.active || match.commandID != automationRunAgentCommandID(run.ID) || match.operationID != "initial-operation" || match.status != runstate.OperationSucceeded {
 		t.Fatalf("receipt command=%q operation=%q status=%q active=%v", match.commandID, match.operationID, match.status, match.active)
 	}
 }
 
 func TestAutomationRootReceiptIsExactAndDoesNotOverwriteCurrent(t *testing.T) {
 	run := automation.RunRecord{ID: "receipt-run"}
-	root := agentruntime.Receipt{
-		CommandID:   agentruntime.CommandID(automationRunAgentCommandID(run.ID)),
+	root := runstate.Receipt{
+		CommandID:   runstate.CommandID(automationRunAgentCommandID(run.ID)),
 		OperationID: "root-operation", Cursor: 3,
 	}
 	if err := applyAutomationRootReceipt(&run, root); err != nil {
 		t.Fatal(err)
 	}
-	current := agentruntime.Receipt{CommandID: "follow-up", OperationID: "follow-up-operation", Cursor: 8}
+	current := runstate.Receipt{CommandID: "follow-up", OperationID: "follow-up-operation", Cursor: 8}
 	if err := applyAutomationCurrentReceipt(&run, current, "follow-up"); err != nil {
 		t.Fatal(err)
 	}
@@ -60,13 +60,13 @@ func TestAutomationCurrentReceiptIsMonotonicAndSuccessorOnly(t *testing.T) {
 		RootRuntimeOperationID: "root-operation", RootRuntimeReceiptCursor: 2,
 		RuntimeCommandID: automationRunAgentCommandID("receipt-run"), RuntimeOperationID: "root-operation", RuntimeReceiptCursor: 2,
 	}
-	regressed := agentruntime.Receipt{
-		CommandID: agentruntime.CommandID(run.RuntimeCommandID), OperationID: agentruntime.OperationID(run.RuntimeOperationID), Cursor: 1,
+	regressed := runstate.Receipt{
+		CommandID: runstate.CommandID(run.RuntimeCommandID), OperationID: runstate.OperationID(run.RuntimeOperationID), Cursor: 1,
 	}
 	if err := applyAutomationCurrentReceipt(&run, regressed, run.RuntimeCommandID); !errors.Is(err, automation.ErrRunIdentityConflict) {
 		t.Fatalf("regressed current error = %v, want identity conflict", err)
 	}
-	replaced := agentruntime.Receipt{CommandID: "follow-up", OperationID: "follow-up-operation", Cursor: 4}
+	replaced := runstate.Receipt{CommandID: "follow-up", OperationID: "follow-up-operation", Cursor: 4}
 	if err := applyAutomationCurrentReceipt(&run, replaced, "follow-up"); !errors.Is(err, automation.ErrRunIdentityConflict) {
 		t.Fatalf("direct operation replacement error = %v, want identity conflict", err)
 	}
@@ -76,7 +76,7 @@ func TestAutomationCurrentReceiptIsMonotonicAndSuccessorOnly(t *testing.T) {
 	if run.RuntimeCommandID != "follow-up" || run.RuntimeOperationID != "follow-up-operation" || run.RuntimeReceiptCursor != 4 {
 		t.Fatalf("successor receipt = %#v", run)
 	}
-	staleSuccessor := agentruntime.Receipt{CommandID: "another", OperationID: "another-operation", Cursor: 4}
+	staleSuccessor := runstate.Receipt{CommandID: "another", OperationID: "another-operation", Cursor: 4}
 	if err := advanceAutomationCurrentReceipt(&run, staleSuccessor, "another"); !errors.Is(err, automation.ErrRunIdentityConflict) {
 		t.Fatalf("stale successor error = %v, want identity conflict", err)
 	}
@@ -90,7 +90,7 @@ func TestAutomationFollowUpReceiptReplaysExactCurrentOperation(t *testing.T) {
 		RuntimeCommandID: "follow-up-command", RuntimeOperationID: "follow-up-operation",
 		RuntimeReceiptCursor: 9, RuntimeCommandFingerprint: "runtime-fingerprint",
 	}
-	replayed := agentruntime.Receipt{
+	replayed := runstate.Receipt{
 		CommandID: "follow-up-command", OperationID: "follow-up-operation", Cursor: 4, Replayed: true,
 	}
 	if err := applyAutomationFollowUpReceipt(&run, replayed, "follow-up-command", "runtime-fingerprint"); err != nil {
@@ -126,11 +126,11 @@ func TestAutomationPendingReconciliationRequiresExactRuntimeFingerprint(t *testi
 		t.Fatal(err)
 	}
 	service := (&App{}).automation()
-	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (agentruntime.StatusSnapshot, error) {
-		return agentruntime.StatusSnapshot{
+	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (runstate.StatusSnapshot, error) {
+		return runstate.StatusSnapshot{
 			Cursor: 20,
-			LastOperation: &agentruntime.OperationSummary{
-				CommandID: "reused-command", OperationID: "old-operation", Status: agentruntime.OperationSucceeded,
+			LastOperation: &runstate.OperationSummary{
+				CommandID: "reused-command", OperationID: "old-operation", Status: runstate.OperationSucceeded,
 				CommandFingerprint: "old-runtime-fingerprint", ReceiptCursor: 2,
 			},
 		}, nil
@@ -172,11 +172,11 @@ func TestAutomationPendingReconciliationClearsExactCurrentReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := (&App{}).automation()
-	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (agentruntime.StatusSnapshot, error) {
-		return agentruntime.StatusSnapshot{
+	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (runstate.StatusSnapshot, error) {
+		return runstate.StatusSnapshot{
 			Cursor: 30,
-			LastOperation: &agentruntime.OperationSummary{
-				CommandID: "follow-up-command", OperationID: "follow-up-operation", Status: agentruntime.OperationSucceeded,
+			LastOperation: &runstate.OperationSummary{
+				CommandID: "follow-up-command", OperationID: "follow-up-operation", Status: runstate.OperationSucceeded,
 				CommandFingerprint: "follow-up-runtime", ReceiptCursor: 4,
 			},
 		}, nil

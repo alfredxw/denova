@@ -22,6 +22,12 @@ TARGETS=(
   "windows-x64:windows:amd64:denova.exe:denova-updater.exe:zip"
 )
 
+GO_MODULES=(
+  "."
+  "adk"
+  "adk/model/openai"
+)
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "错误: 未找到命令 $1" >&2
@@ -83,6 +89,19 @@ validate_release_metadata() {
   fi
 }
 
+verify_go_modules() {
+  local module
+  for module in "${GO_MODULES[@]}"; do
+    echo "==> 校验 Go module: ${module}"
+    (
+      cd "${ROOT_DIR}/${module}"
+      go mod tidy -diff
+      go test ./...
+      go vet ./...
+    )
+  done
+}
+
 write_release_notes() {
   local release_tag
   release_tag="v$(release_version_without_prefix)"
@@ -100,7 +119,7 @@ write_release_notes() {
 
 ## Verification / 验证
 
-- Backend: `go test ./...`, `go vet ./...`, and `go mod tidy -diff`.
+- Backend: all Go modules passed `go mod tidy -diff`, `go test ./...`, and `go vet ./...`.
 - Frontend: complete Vitest suite, i18n key check, TypeScript check, and production Vite build.
 - Packaging: five platform archives are generated from the same source revision and listed in `checksums.txt`.
 
@@ -143,9 +162,7 @@ mkdir -p "${DIST_DIR}" "${BUILD_DIR}"
 
 echo "==> 安装前端依赖并执行发布校验"
 run_pnpm -C "${ROOT_DIR}/web" install --frozen-lockfile
-go mod tidy -diff
-go test ./...
-go vet ./...
+verify_go_modules
 run_pnpm -C "${ROOT_DIR}/web" test
 run_pnpm -C "${ROOT_DIR}/web" check:i18n
 

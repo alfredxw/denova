@@ -5,8 +5,8 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
+	"denova/internal/agent/session"
 	"denova/internal/book"
-	"denova/internal/session"
 )
 
 // ChatAppService 负责普通创作 Agent 任务与会话管理。

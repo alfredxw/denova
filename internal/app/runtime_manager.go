@@ -11,9 +11,9 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 // WorkspaceRuntimeManager 负责工作区运行时、书籍元信息、本地版本服务与设置等跨领域基础能力。

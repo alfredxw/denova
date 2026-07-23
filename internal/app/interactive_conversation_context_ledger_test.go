@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
 	"denova/internal/agent"
 	agentcontext "denova/internal/agent/context"
@@ -155,7 +153,7 @@ func TestResolvedInteractiveContextSourcesNeverAuditUnassembledBodiesAsVisible(t
 		Source: "DirectorPlan", Title: "正文 Agent 简报", Purpose: "turn runtime",
 		Content: "只有未裁剪原文才包含的秘密尾段", Limit: 128,
 	}}
-	resolved := resolveInteractiveContextSources(parts, []*schema.Message{schema.UserMessage("只有未裁剪原文")})
+	resolved := resolveInteractiveContextSources(parts, []*agent.Message{agent.UserMessage("只有未裁剪原文")})
 	if len(resolved) != 1 || resolved[0].Content != "" || !resolved[0].Truncated || !strings.Contains(resolved[0].Note, "not_present_after_context_assembly") {
 		t.Fatalf("unassembled domain source must become bounded omission metadata: %#v", resolved)
 	}
@@ -163,7 +161,7 @@ func TestResolvedInteractiveContextSourcesNeverAuditUnassembledBodiesAsVisible(t
 	if strings.Contains(summary, "秘密尾段") {
 		t.Fatalf("source summary leaked the unassembled source body: %s", summary)
 	}
-	ledger := interactiveContextLedgerParts(resolved, []*schema.Message{schema.UserMessage("只有未裁剪原文")}, agent.ToolResultContextPolicy{})
+	ledger := interactiveContextLedgerParts(resolved, []*agent.Message{agent.UserMessage("只有未裁剪原文")}, agent.ToolResultContextPolicy{})
 	if len(ledger) != 1 || ledger[0].Included || ledger[0].Bytes != 0 || !ledger[0].Truncated {
 		t.Fatalf("ledger must describe the final omission, not the original body: %#v", ledger)
 	}

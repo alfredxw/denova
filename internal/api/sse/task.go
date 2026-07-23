@@ -11,9 +11,8 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	"denova/internal/agent"
-	agentmiddleware "denova/internal/agent/middleware"
 	"denova/internal/api/agentui"
+	ssetransform "denova/internal/api/sse/transform"
 	novaApp "denova/internal/app"
 )
 
@@ -230,10 +229,10 @@ func writeUITaskCheckpoint(writeUI *uiWriteHandler, checkpoint novaApp.TaskDispl
 		// Preserve a typed data part for the Writing client before surfacing the
 		// user-visible error. AI SDK errorText alone cannot carry a stable code or
 		// the exact Task identity that must no longer be reconnected.
-		if err := writeUI.Handle(novaApp.TaskEvent{Event: agent.Event{Type: taskRehydrateRequiredEventType, Data: data}}); err != nil {
+		if err := writeUI.Handle(novaApp.TaskEvent{Event: novaApp.AgentEvent{Type: taskRehydrateRequiredEventType, Data: data}}); err != nil {
 			return false, err
 		}
-		if err := writeUI.Handle(novaApp.TaskEvent{Event: agent.Event{Type: "error", Data: data}}); err != nil {
+		if err := writeUI.Handle(novaApp.TaskEvent{Event: novaApp.AgentEvent{Type: "error", Data: data}}); err != nil {
 			return false, err
 		}
 		if err := writeUI.Finish("error"); err != nil {
@@ -266,10 +265,10 @@ func writeTaskCursorError(c *app.RequestContext, task *novaApp.Task, err error) 
 func newSSEWriteHandler(w io.Writer, options ...StreamOption) func(novaApp.TaskEvent) error {
 	opts := applyStreamOptions(options...)
 	var cursor uint64
-	chain := agentmiddleware.NewSSEEventMiddlewareChain(
-		agentmiddleware.WithHideChapterBodyLiveOutput(opts.HideChapterBodyLiveOutput),
+	chain := ssetransform.NewSSEEventMiddlewareChain(
+		ssetransform.WithHideChapterBodyLiveOutput(opts.HideChapterBodyLiveOutput),
 	)
-	handler := chain.Next(func(ev agent.Event) error {
+	handler := chain.Next(func(ev novaApp.AgentEvent) error {
 		if cursor == 0 {
 			return writeEventWithoutCursor(w, ev.Type, ev.Data)
 		}
@@ -283,17 +282,17 @@ func newSSEWriteHandler(w io.Writer, options ...StreamOption) func(novaApp.TaskE
 
 type uiWriteHandler struct {
 	encoder *agentui.StreamEncoder
-	handler agentmiddleware.SSEEventHandler
+	handler ssetransform.SSEEventHandler
 }
 
 func newUIWriteHandler(w io.Writer, options ...StreamOption) *uiWriteHandler {
 	opts := applyStreamOptions(options...)
 	encoder := agentui.NewStreamEncoder(w)
-	chain := agentmiddleware.NewSSEEventMiddlewareChain(
-		agentmiddleware.WithHideChapterBodyLiveOutput(opts.HideChapterBodyLiveOutput),
+	chain := ssetransform.NewSSEEventMiddlewareChain(
+		ssetransform.WithHideChapterBodyLiveOutput(opts.HideChapterBodyLiveOutput),
 	)
 	h := &uiWriteHandler{encoder: encoder}
-	h.handler = chain.Next(func(ev agent.Event) error {
+	h.handler = chain.Next(func(ev novaApp.AgentEvent) error {
 		return encoder.WriteEvent(ev)
 	})
 	return h

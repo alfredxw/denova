@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cloudwego/eino/adk"
+	"github.com/alfredxw/denova/adk"
 )
 
 // RunControlKind is the closed set of controls accepted by one Agent run.
@@ -88,7 +88,6 @@ func (s *runControlState) request(control RunControl, cancel adk.AgentCancelFunc
 	case RunControlAbort:
 		options = append(options, adk.WithAgentCancelMode(adk.CancelImmediate))
 	}
-	options = append(options, adk.WithRecursive())
 	_, contributed := cancel(options...)
 	slog.Info("agent run control cancellation requested", "control", control.Kind, "contributed", contributed)
 	if !contributed {

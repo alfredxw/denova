@@ -9,19 +9,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/components/tool"
-
-	"denova/internal/workspacechange"
+	adk "github.com/alfredxw/denova/adk"
 )
 
 func TestWorkspaceReadFileToolReturnsPartialWindowWithoutRevision(t *testing.T) {
 	content := "first\nsecond\nthird\nfourth"
-	path := writeTempFile(t, content)
-	base, err := newWorkspaceReadFileTool(newTestAgentFilesystemBackend(t))
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "story.txt")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	base, err := newWorkspaceReadFileTool(newTestAgentFilesystemBackend(t, workspace))
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := base.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"`+path+`","offset":2,"limit":1}`)
+	result, err := base.(adk.InvokableTool).InvokableRun(context.Background(), `{"file_path":"`+path+`","offset":2,"limit":1}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,44 +73,17 @@ func TestWorkspaceReadFileToolPreservesDefaultWindowSchema(t *testing.T) {
 	}
 }
 
-func TestWorkspaceEditFileUsesCurrentRevisionWithoutReadDependency(t *testing.T) {
-	workspace := t.TempDir()
-	path := filepath.Join(workspace, "ideas.md")
-	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("manual update"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	service, err := workspacechange.NewService(workspace)
-	if err != nil {
-		t.Fatal(err)
-	}
-	editTool, err := newWorkspaceEditFileTool(service)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = editTool.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","edits":[{"old_string":"manual update","new_string":"agent update"}]}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	content, readErr := os.ReadFile(path)
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if string(content) != "agent update" {
-		t.Fatalf("edit_file did not apply against its current snapshot: %q", content)
-	}
-}
-
 func TestWorkspaceReadFileToolRejectsPathOutsideWorkspace(t *testing.T) {
 	workspace := t.TempDir()
-	outside := writeTempFile(t, "outside")
-	base, err := newWorkspaceReadFileTool(newTestAgentFilesystemBackend(t, workspace), workspace)
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	base, err := newWorkspaceReadFileTool(newTestAgentFilesystemBackend(t, workspace))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = base.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"`+outside+`"}`)
+	_, err = base.(adk.InvokableTool).InvokableRun(context.Background(), `{"file_path":"`+outside+`"}`)
 	if err == nil || !strings.Contains(err.Error(), "outside the active workspace") {
 		t.Fatalf("outside read should be rejected, got %v", err)
 	}
@@ -120,11 +95,11 @@ func TestWorkspaceReadFileToolBoundsOneVeryLongLine(t *testing.T) {
 	if err := os.WriteFile(path, []byte(strings.Repeat("x", workspaceReadFileMaxSelectedBytes+1)), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	base, err := newWorkspaceReadFileTool(newTestAgentFilesystemBackend(t, workspace), workspace)
+	base, err := newWorkspaceReadFileTool(newTestAgentFilesystemBackend(t, workspace))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = base.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"`+path+`"}`)
+	_, err = base.(adk.InvokableTool).InvokableRun(context.Background(), `{"file_path":"`+path+`"}`)
 	if err == nil || !strings.Contains(err.Error(), "selected read_file window exceeds") {
 		t.Fatalf("oversized selected line should be rejected, got %v", err)
 	}
@@ -135,17 +110,41 @@ func TestWorkspaceReadFileToolRejectsSymlinkEscape(t *testing.T) {
 		t.Skip("symlink permissions vary on Windows")
 	}
 	workspace := t.TempDir()
-	outside := writeTempFile(t, "outside")
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	link := filepath.Join(workspace, "escape.txt")
 	if err := os.Symlink(outside, link); err != nil {
 		t.Fatal(err)
 	}
-	base, err := newWorkspaceReadFileTool(newTestAgentFilesystemBackend(t, workspace), workspace)
+	base, err := newWorkspaceReadFileTool(newTestAgentFilesystemBackend(t, workspace))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = base.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"`+link+`"}`)
+	_, err = base.(adk.InvokableTool).InvokableRun(context.Background(), `{"file_path":"`+link+`"}`)
 	if err == nil {
 		t.Fatal("workspace read must not follow a symlink outside the active workspace")
+	}
+}
+
+func TestWorkspaceReadFileToolAcceptsWorkspaceRelativePath(t *testing.T) {
+	workspace := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, "chapters"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, "chapters", "ch01.md"), []byte("opening"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	base, err := newWorkspaceReadFileTool(newTestAgentFilesystemBackend(t, workspace))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := base.(adk.InvokableTool).InvokableRun(context.Background(), `{"file_path":"chapters/ch01.md"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result, "     1\topening") {
+		t.Fatalf("unexpected relative read result: %q", result)
 	}
 }

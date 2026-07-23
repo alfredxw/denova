@@ -6,35 +6,17 @@ import (
 	"strings"
 	"testing"
 
-	localbk "github.com/cloudwego/eino-ext/adk/backend/local"
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
-
-// TestHandleUnknownTool 验证 LLM 幻觉调用不存在工具时，处理器返回引导性
-// ToolMessage 而不是抛出错误，从而让 Agent 自行修正。
-func TestHandleUnknownTool(t *testing.T) {
-	result, err := handleUnknownTool(context.Background(), "write_todo", `{"todos":[]}`)
-	if err != nil {
-		t.Fatalf("处理未知工具不应返回错误: %v", err)
-	}
-	if !strings.Contains(result, "write_todo") {
-		t.Fatalf("结果应包含工具名: %s", result)
-	}
-	if !strings.Contains(result, "[tool error]") {
-		t.Fatalf("结果应携带 [tool error] 前缀以提示模型自我修复: %s", result)
-	}
-}
 
 func TestInteractiveStoryToolMiddlewareBlocksWriteTools(t *testing.T) {
 	middleware := newInteractiveStoryToolMiddleware()
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
 		},
@@ -74,7 +56,7 @@ func TestInteractiveStoryToolMiddlewareAllowsReadTools(t *testing.T) {
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
 		},
@@ -98,7 +80,7 @@ func TestInteractiveDirectorPlanFileMiddlewareBlocksStateTools(t *testing.T) {
 		called := false
 		endpoint, err := middleware.WrapInvokableToolCall(
 			context.Background(),
-			func(context.Context, string, ...tool.Option) (string, error) {
+			func(context.Context, string, ...adk.ToolOption) (string, error) {
 				called = true
 				return "ok", nil
 			},
@@ -130,7 +112,7 @@ func TestInteractiveDirectorPlanMiddlewareAllowsStructuredSubmitAndBlocksFiles(t
 		called := false
 		endpoint, err := middleware.WrapInvokableToolCall(
 			context.Background(),
-			func(context.Context, string, ...tool.Option) (string, error) {
+			func(context.Context, string, ...adk.ToolOption) (string, error) {
 				called = true
 				return "ok", nil
 			},
@@ -157,7 +139,7 @@ func TestInteractiveDirectorPlanFileMiddlewareBlocksUnauthorizedTools(t *testing
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
 		},
@@ -183,7 +165,7 @@ func TestToolOrchestratorBlocksInteractiveWriteTools(t *testing.T) {
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
 		},
@@ -209,7 +191,7 @@ func TestToolOrchestratorBlocksInteractiveSubAgentWriteTools(t *testing.T) {
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
 		},
@@ -235,7 +217,7 @@ func TestToolOrchestratorAllowsIDEWriteAndFiltersResult(t *testing.T) {
 	content := strings.Repeat("正文", 100)
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			return content, nil
 		},
 		&adk.ToolContext{Name: "write_file", CallID: "call-1"},
@@ -261,7 +243,7 @@ func TestToolOrchestratorTruncatesResultWhenLimitConfigured(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 128}
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			return strings.Repeat("正文", 200), nil
 		},
 		&adk.ToolContext{Name: "write_file", CallID: "call-1"},
@@ -284,7 +266,7 @@ func TestToolOrchestratorBlocksMalformedJSONArguments(t *testing.T) {
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
 		},
@@ -322,7 +304,7 @@ func TestToolOrchestratorBlocksValidArgumentsWhenModelHitOutputLimit(t *testing.
 			called := false
 			endpoint, err := middleware.WrapInvokableToolCall(
 				context.Background(),
-				func(context.Context, string, ...tool.Option) (string, error) {
+				func(context.Context, string, ...adk.ToolOption) (string, error) {
 					called = true
 					return "ok", nil
 				},
@@ -359,7 +341,7 @@ func TestStreamableToolBlocksValidArgumentsWhenModelHitOutputLimit(t *testing.T)
 	called := false
 	endpoint, err := middleware.WrapStreamableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+		func(context.Context, string, ...adk.ToolOption) (*adk.StreamReader[string], error) {
 			called = true
 			return singleChunkReader("unsafe"), nil
 		},
@@ -399,7 +381,7 @@ func TestToolOrchestratorReturnsContentFilterContextForIncompleteWriteArguments(
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
 		},
@@ -467,7 +449,7 @@ func TestToolOrchestratorBlocksValidArgumentsWhenModelWasContentFiltered(t *test
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			called = true
 			return "unsafe", nil
 		},
@@ -506,7 +488,7 @@ func TestToolOrchestratorAllowsEscapedSpecialCharactersInJSONArguments(t *testin
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
 		},
@@ -529,7 +511,7 @@ func TestToolOrchestratorBlocksMalformedJSONArgumentsForStream(t *testing.T) {
 	called := false
 	endpoint, err := middleware.WrapStreamableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+		func(context.Context, string, ...adk.ToolOption) (*adk.StreamReader[string], error) {
 			called = true
 			return singleChunkReader("ok"), nil
 		},
@@ -566,7 +548,7 @@ func TestToolOrchestratorBlocksDisabledCapability(t *testing.T) {
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
 		},
@@ -606,7 +588,7 @@ func TestToolOrchestratorTruncatesStreamResultWhenLimitConfigured(t *testing.T) 
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
 	endpoint, err := middleware.WrapStreamableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+		func(context.Context, string, ...adk.ToolOption) (*adk.StreamReader[string], error) {
 			return singleChunkReader(strings.Repeat("流式正文", 100)), nil
 		},
 		&adk.ToolContext{Name: "read_file", CallID: "call-1"},
@@ -631,12 +613,8 @@ func TestToolOrchestratorTruncatesStreamResultWhenLimitConfigured(t *testing.T) 
 	}
 }
 
-func TestNewFilesystemMiddlewareRespectsToolSettings(t *testing.T) {
-	backend, err := localbk.NewBackend(context.Background(), &localbk.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	middleware, err := newFilesystemMiddleware(context.Background(), backend, backend, config.ResolvedAgentToolSettings{
+func TestFilesystemToolsKeepStableSchemaAcrossSettings(t *testing.T) {
+	tools, err := filesystemToolsFactory(t.TempDir())(config.ResolvedAgentToolSettings{
 		FileRead:     true,
 		FileWrite:    false,
 		ShellExecute: false,
@@ -644,15 +622,8 @@ func TestNewFilesystemMiddlewareRespectsToolSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if middleware == nil {
-		t.Fatal("filesystem middleware should be registered when read tools are enabled")
-	}
-	_, runCtx, err := middleware.BeforeAgent(context.Background(), &adk.ChatModelAgentContext{})
-	if err != nil {
-		t.Fatal(err)
-	}
 	names := map[string]bool{}
-	for _, item := range runCtx.Tools {
+	for _, item := range tools {
 		info, err := item.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)

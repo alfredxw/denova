@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/internal/agentruntime"
-	"denova/internal/session"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 )
 
 // PostSettlementContextStructuralProvider exposes a checkpoint prepared during
@@ -19,7 +19,7 @@ import (
 type PostSettlementContextStructuralProvider interface {
 	PostSettlementContextStructuralSpec(
 		context.Context,
-		agentruntime.OperationID,
+		runstate.OperationID,
 		RunOptions,
 	) (*ContextStructuralSpec, error)
 }
@@ -42,7 +42,7 @@ func (c *SessionConversation) stagePreparedSessionCompaction(prepared preparedSe
 
 func (c *SessionConversation) PostSettlementContextStructuralSpec(
 	ctx context.Context,
-	settledOperationID agentruntime.OperationID,
+	settledOperationID runstate.OperationID,
 	options RunOptions,
 ) (*ContextStructuralSpec, error) {
 	if c == nil || c.session == nil {
@@ -79,11 +79,11 @@ func (c *SessionConversation) PostSettlementContextStructuralSpec(
 	if err != nil {
 		return nil, err
 	}
-	bindingRef, err := agentruntime.BindingReference(binding)
+	bindingRef, err := runstate.BindingReference(binding)
 	if err != nil {
 		return nil, err
 	}
-	ref := agentruntime.ContextCompactionRef{
+	ref := runstate.ContextCompactionRef{
 		Source: "session.effective_messages", Purpose: "persist an automatic bounded model-history checkpoint after turn settlement",
 		Resource: c.session.ID, ExpectedRevision: fmt.Sprintf("session-context:%d", cursor.Revision),
 	}

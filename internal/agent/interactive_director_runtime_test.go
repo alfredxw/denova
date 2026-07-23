@@ -8,10 +8,10 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/book"
 )
 
@@ -54,7 +54,7 @@ func TestGenerateInteractiveDirectorWithToolsRequiresCommandIDBeforeBuildingAgen
 		InteractiveStoryToolContext{StoryID: "story-1", BranchID: "main"},
 		"更新导演规划",
 	)
-	if !errors.Is(err, agentruntime.ErrInvalidCommand) || !strings.Contains(err.Error(), "command_id") {
+	if !errors.Is(err, runstate.ErrInvalidCommand) || !strings.Contains(err.Error(), "command_id") {
 		t.Fatalf("missing Director command_id error = %v", err)
 	}
 }
@@ -70,7 +70,7 @@ func TestSingleInstructionConversationKeepsRuntimeOpenUntilDirectorOutputCommitR
 		AgentKind: config.AgentKindInteractiveDirector, Workspace: "director-workspace",
 		StoryID: "story-1", BranchID: "main", MaintenanceTask: "director_plan_update",
 	}
-	runner := newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("done", nil)}, true)
+	runner := newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("done", nil)}, true)
 	done := make(chan RunOutcome, 1)
 	go func() {
 		defer func() {
@@ -89,7 +89,7 @@ func TestSingleInstructionConversationKeepsRuntimeOpenUntilDirectorOutputCommitR
 	}
 	foundOutputIntent := false
 	for _, commit := range observation.Snapshot.DomainCommits {
-		if commit.Identity.Stage == agentruntime.DomainCommitOutput && commit.Revision == "" {
+		if commit.Identity.Stage == runstate.DomainCommitOutput && commit.Revision == "" {
 			foundOutputIntent = true
 		}
 	}

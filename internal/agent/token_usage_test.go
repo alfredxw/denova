@@ -3,23 +3,23 @@ package agent
 import (
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 )
 
 func TestRunTokenUsageCollectorRecordsToolContext(t *testing.T) {
 	collector := newRunTokenUsageCollector("run-1", "interactive")
 	collector.NoteToolResult("read_workspace_file")
 
-	collector.AddMessage(&schema.Message{
-		ToolCalls: []schema.ToolCall{{
+	collector.AddMessage(&adk.Message{
+		ToolCalls: []adk.ToolCall{{
 			ID:       "call-1",
-			Function: schema.FunctionCall{Name: "write_workspace_file"},
+			Function: adk.FunctionCall{Name: "write_workspace_file"},
 		}},
-		ResponseMeta: &schema.ResponseMeta{
+		ResponseMeta: &adk.ResponseMeta{
 			FinishReason: "tool_calls",
-			Usage: &schema.TokenUsage{
+			Usage: &adk.TokenUsage{
 				PromptTokens:       100,
-				PromptTokenDetails: schema.PromptTokenDetails{CachedTokens: 40},
+				PromptTokenDetails: adk.PromptTokenDetails{CachedTokens: 40},
 				CompletionTokens:   20,
 				TotalTokens:        120,
 			},
@@ -43,12 +43,12 @@ func TestRunTokenUsageCollectorRecordsToolContext(t *testing.T) {
 		t.Fatalf("uncached prompt tokens not recorded: call=%#v stats=%#v", call, collector.stats)
 	}
 
-	collector.AddMessage(&schema.Message{
-		ResponseMeta: &schema.ResponseMeta{
+	collector.AddMessage(&adk.Message{
+		ResponseMeta: &adk.ResponseMeta{
 			FinishReason: "stop",
-			Usage: &schema.TokenUsage{
+			Usage: &adk.TokenUsage{
 				PromptTokens:       80,
-				PromptTokenDetails: schema.PromptTokenDetails{CachedTokens: 100},
+				PromptTokenDetails: adk.PromptTokenDetails{CachedTokens: 100},
 				CompletionTokens:   10,
 				TotalTokens:        90,
 			},

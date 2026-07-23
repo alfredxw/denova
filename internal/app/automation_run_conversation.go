@@ -6,7 +6,7 @@ import (
 
 	"denova/internal/agent"
 	agentcontext "denova/internal/agent/context"
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 type automationOutputConversation interface {

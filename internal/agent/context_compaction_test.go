@@ -6,17 +6,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
 
 func TestCompactionSourceExcludesReasoningCurrentUserAndOldSummary(t *testing.T) {
-	messages := []*schema.Message{
+	messages := []*adk.Message{
 		NewContextCompactionSummaryMessage(1, "旧摘要"),
-		schema.UserMessage("上一轮用户"),
-		schema.AssistantMessage("上一轮回复", nil),
-		schema.UserMessage("当前用户"),
+		adk.UserMessage("上一轮用户"),
+		adk.AssistantMessage("上一轮回复", nil),
+		adk.UserMessage("当前用户"),
 	}
 	messages[1].ReasoningContent = "user thinking"
 	messages[2].ReasoningContent = "assistant thinking"
@@ -55,20 +55,20 @@ func TestBuildContextCompactionUsesExplicitSourceTranscript(t *testing.T) {
 	previous := summarizeContextForCompaction
 	defer func() { summarizeContextForCompaction = previous }()
 
-	var capturedSource []*schema.Message
+	var capturedSource []*adk.Message
 	var capturedReference string
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, source []*schema.Message, referenceContext string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, source []*adk.Message, referenceContext string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
 		capturedSource = source
 		capturedReference = referenceContext
 		return "压缩摘要：保留用户意图。", 100, nil
 	}
 
-	modelMessages := []*schema.Message{
-		schema.UserMessage("当前模型指令"),
+	modelMessages := []*adk.Message{
+		adk.UserMessage("当前模型指令"),
 	}
-	sourceMessages := []*schema.Message{
-		schema.UserMessage("原始用户行动"),
-		schema.AssistantMessage("原始剧情正文", nil),
+	sourceMessages := []*adk.Message{
+		adk.UserMessage("原始用户行动"),
+		adk.AssistantMessage("原始剧情正文", nil),
 	}
 	sourceMessages[1].ReasoningContent = "剧情 thinking 不应进入压缩源"
 
@@ -104,7 +104,7 @@ func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 	defer func() { summarizeContextForCompaction = previous }()
 
 	var capturedPolicy contextCompactionPolicy
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*schema.Message, _ string, _ int, policy contextCompactionPolicy, _ func(int, string)) (string, int, error) {
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*adk.Message, _ string, _ int, policy contextCompactionPolicy, _ func(int, string)) (string, int, error) {
 		capturedPolicy = policy
 		return "较完整的压缩摘要，保留用户目标、约束、事件和待办。", 100, nil
 	}
@@ -118,9 +118,9 @@ func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 		},
 	}}
 	_, _, err := PrepareContextCompaction(context.Background(), cfg, config.AgentKindIDE, ContextCompactionInput{
-		Messages: []*schema.Message{
-			schema.UserMessage("用户说了很多重要要求"),
-			schema.AssistantMessage("助手完成了一些重要工作", nil),
+		Messages: []*adk.Message{
+			adk.UserMessage("用户说了很多重要要求"),
+			adk.AssistantMessage("助手完成了一些重要工作", nil),
 		},
 		Force:          true,
 		KeepLatestUser: true,
@@ -136,15 +136,15 @@ func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 func TestBuildContextCompactionTriggersOnProjectedNinetyPercentUsage(t *testing.T) {
 	previous := summarizeContextForCompaction
 	defer func() { summarizeContextForCompaction = previous }()
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*schema.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*adk.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
 		return "压缩后的事实摘要。", 100, nil
 	}
 
 	cfg := &config.Config{OpenAIContextWindowTokens: 1000}
-	messages := []*schema.Message{
-		schema.UserMessage("上一轮用户行动"),
-		schema.AssistantMessage("上一轮剧情结果", nil),
-		schema.UserMessage("当前用户行动"),
+	messages := []*adk.Message{
+		adk.UserMessage("上一轮用户行动"),
+		adk.AssistantMessage("上一轮剧情结果", nil),
+		adk.UserMessage("当前用户行动"),
 	}
 	_, result, err := PrepareContextCompaction(context.Background(), cfg, config.AgentKindInteractiveStory, ContextCompactionInput{
 		Messages:                 messages,
@@ -166,7 +166,7 @@ func TestBuildContextCompactionEmitsStreamingSummaryDelta(t *testing.T) {
 	previous := summarizeContextForCompaction
 	defer func() { summarizeContextForCompaction = previous }()
 
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*schema.Message, _ string, _ int, _ contextCompactionPolicy, emitDelta func(int, string)) (string, int, error) {
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, _ string, _ []*adk.Message, _ string, _ int, _ contextCompactionPolicy, emitDelta func(int, string)) (string, int, error) {
 		emitDelta(1, "第一段")
 		emitDelta(1, "第二段")
 		return "第一段第二段", 100, nil
@@ -174,9 +174,9 @@ func TestBuildContextCompactionEmitsStreamingSummaryDelta(t *testing.T) {
 
 	var events []Event
 	_, result, err := PrepareContextCompaction(context.Background(), &config.Config{}, config.AgentKindIDE, ContextCompactionInput{
-		Messages: []*schema.Message{
-			schema.UserMessage("用户提出了一个很长的需求"),
-			schema.AssistantMessage("助手完成了很多上下文相关工作", nil),
+		Messages: []*adk.Message{
+			adk.UserMessage("用户提出了一个很长的需求"),
+			adk.AssistantMessage("助手完成了很多上下文相关工作", nil),
 		},
 		Force:          true,
 		KeepLatestUser: true,
@@ -232,9 +232,9 @@ func TestContextCompactionPolicyUsesConfiguredRetainedTurns(t *testing.T) {
 }
 
 func TestBuildContextCompactionTranscriptKeepsAllIncrementalMessagesAndReferenceContext(t *testing.T) {
-	messages := make([]*schema.Message, 0, 40)
+	messages := make([]*adk.Message, 0, 40)
 	for i := 1; i <= 40; i++ {
-		messages = append(messages, schema.UserMessage(strings.Repeat("旧消息", 2000)+":"+string(rune('A'+i%26))))
+		messages = append(messages, adk.UserMessage(strings.Repeat("旧消息", 2000)+":"+string(rune('A'+i%26))))
 	}
 	policy := contextCompactionPolicy{TargetMinRatio: 0.10, TargetMaxRatio: 0.25}
 	existing := "既有压缩摘要：主角进入旧城。"

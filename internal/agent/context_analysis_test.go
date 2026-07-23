@@ -7,16 +7,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/prompts"
-	"denova/internal/session"
 )
 
 type contextAnalysisConversation struct {
-	prepare func(originalMessage, agentMessage string) ([]*schema.Message, error)
+	prepare func(originalMessage, agentMessage string) ([]*adk.Message, error)
 }
 
 func (c contextAnalysisConversation) AssembleModelContext(_ context.Context, originalMessage string, input ModelContextInput) (ModelContextResult, error) {
@@ -29,7 +29,7 @@ func (contextAnalysisConversation) MarkInterrupted(string, string, string) error
 func (contextAnalysisConversation) PendingInterruption() *session.Interruption   { return nil }
 func (contextAnalysisConversation) ResolveInterruption(string) error             { return nil }
 
-func buildIDEContextAnalysisForTest(t *testing.T, cfg *config.Config, state *book.State, teller IDEStoryTeller, bookService *book.Service, messages []*schema.Message, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest) (ContextAnalysis, *SessionConversation) {
+func buildIDEContextAnalysisForTest(t *testing.T, cfg *config.Config, state *book.State, teller IDEStoryTeller, bookService *book.Service, messages []*adk.Message, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest) (ContextAnalysis, *SessionConversation) {
 	t.Helper()
 	store, err := session.NewStore(t.TempDir())
 	if err != nil {
@@ -74,11 +74,11 @@ func TestInteractiveContextAnalysisLabelsDynamicContextAtFinalMessage(t *testing
 		nil,
 		ChatRequest{Message: "我点燃火把"},
 		nil,
-		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*schema.Message, error) {
-			return []*schema.Message{
-				schema.UserMessage("我推开门"),
-				schema.AssistantMessage("门后传来风声。", nil),
-				schema.UserMessage(agentMessage + "\n\n[本轮动态上下文]\n## 当前互动状态快照(JSON)\n{}"),
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*adk.Message, error) {
+			return []*adk.Message{
+				adk.UserMessage("我推开门"),
+				adk.AssistantMessage("门后传来风声。", nil),
+				adk.UserMessage(agentMessage + "\n\n[本轮动态上下文]\n## 当前互动状态快照(JSON)\n{}"),
 			}, nil
 		}},
 	)
@@ -121,8 +121,8 @@ func TestInteractiveContextAnalysisSplitsCurrentTurnByRuntimeSource(t *testing.T
 		nil,
 		ChatRequest{Message: "我推开藏书阁的门"},
 		nil,
-		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*schema.Message, error) {
-			return []*schema.Message{schema.UserMessage(turnInstruction)}, nil
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*adk.Message, error) {
+			return []*adk.Message{adk.UserMessage(turnInstruction)}, nil
 		}},
 	)
 	if err != nil {
@@ -171,8 +171,8 @@ func TestInteractiveContextAnalysisUsesConfiguredContextWindow(t *testing.T) {
 		nil,
 		ChatRequest{Message: "继续"},
 		nil,
-		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*schema.Message, error) {
-			return []*schema.Message{schema.UserMessage(agentMessage)}, nil
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*adk.Message, error) {
+			return []*adk.Message{adk.UserMessage(agentMessage)}, nil
 		}},
 	)
 	if err != nil {
@@ -191,8 +191,8 @@ func TestInteractiveContextAnalysisShowsDirectNarrativeOutputProtocol(t *testing
 		nil,
 		ChatRequest{Message: "继续"},
 		nil,
-		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*schema.Message, error) {
-			return []*schema.Message{schema.UserMessage(agentMessage)}, nil
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*adk.Message, error) {
+			return []*adk.Message{adk.UserMessage(agentMessage)}, nil
 		}},
 	)
 	if err != nil {
@@ -288,18 +288,18 @@ func TestIDEContextAnalysisShowsExactModelVisibleToolContext(t *testing.T) {
 		nil,
 		IDEStoryTeller{},
 		nil,
-		[]*schema.Message{
-			schema.UserMessage("读取第一章"),
-			schema.AssistantMessage("", []schema.ToolCall{{
+		[]*adk.Message{
+			adk.UserMessage("读取第一章"),
+			adk.AssistantMessage("", []adk.ToolCall{{
 				ID:   "call-read",
 				Type: "function",
-				Function: schema.FunctionCall{
+				Function: adk.FunctionCall{
 					Name:      "read_file",
 					Arguments: `{"path":"chapters/1.md"}`,
 				},
 			}}),
-			schema.ToolMessage(result, "call-read", schema.WithToolName("read_file")),
-			schema.AssistantMessage("已读取", nil),
+			adk.ToolMessage(result, "call-read", adk.WithToolName("read_file")),
+			adk.AssistantMessage("已读取", nil),
 		},
 		nil,
 		nil,
@@ -374,8 +374,8 @@ func TestInteractiveContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing
 			StyleRules: []StyleRule{{Scene: "日常对话", StyleContents: []string{"克制对白"}}},
 		},
 		nil,
-		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*schema.Message, error) {
-			return []*schema.Message{schema.UserMessage(agentMessage)}, nil
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*adk.Message, error) {
+			return []*adk.Message{adk.UserMessage(agentMessage)}, nil
 		}},
 	)
 	if err != nil {
@@ -397,13 +397,13 @@ func TestInteractiveContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing
 }
 
 func TestIDEContextAnalysisMatchesPureRuntimeAssemblyWithoutSideEffects(t *testing.T) {
-	messages := []*schema.Message{
-		schema.UserMessage("user 1"),
-		schema.AssistantMessage("assistant 1", nil),
-		schema.UserMessage("user 2"),
-		schema.AssistantMessage("assistant 2", nil),
-		schema.UserMessage("user 3"),
-		schema.AssistantMessage("assistant 3", nil),
+	messages := []*adk.Message{
+		adk.UserMessage("user 1"),
+		adk.AssistantMessage("assistant 1", nil),
+		adk.UserMessage("user 2"),
+		adk.AssistantMessage("assistant 2", nil),
+		adk.UserMessage("user 3"),
+		adk.AssistantMessage("assistant 3", nil),
 	}
 	compaction := &session.ContextCompaction{
 		Epoch:          1,

@@ -4,8 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
 	"denova/internal/agent"
 	agentcontext "denova/internal/agent/context"
@@ -31,10 +29,10 @@ func TestDirectorContextBudgetCountsExactComposedSystemInstruction(t *testing.T)
 		t.Fatal(err)
 	}
 	emptyPrompt := prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{})
-	overheadMessages := []*schema.Message{
-		schema.SystemMessage(composition.Instruction()),
-		schema.UserMessage(emptyPrompt),
-		schema.UserMessage(agentcontext.StandaloneMessage(stable.Title, stable.Content, "")),
+	overheadMessages := []*agent.Message{
+		agent.SystemMessage(composition.Instruction()),
+		agent.UserMessage(emptyPrompt),
+		agent.UserMessage(agentcontext.StandaloneMessage(stable.Title, stable.Content, "")),
 	}
 	overheadTokens := agent.EstimateContextTokens(overheadMessages, nil)
 	completionReserve, toolReserve := agent.EstimateContextProjectionReserves(cfg, config.AgentKindInteractiveDirector, 1024)

@@ -6,14 +6,12 @@ import (
 	"log"
 	"strings"
 
-	"github.com/cloudwego/eino/adk"
-
 	"denova/config"
 	"denova/internal/agent"
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/prompts"
-	"denova/internal/session"
 )
 
 // interactiveAgentCycle is the complete, process-local adapter state for one
@@ -35,7 +33,7 @@ type interactiveAgentCycle struct {
 	branchID       string
 	storyContext   interactive.StoryContext
 	tellerInput    prompts.InteractiveStorySystemInstructionInput
-	runner         *adk.Runner
+	runner         *agent.Runner
 	systemPrompt   agent.SystemPromptComposition
 	conversation   *interactiveConversation
 	request        agent.ChatRequest

@@ -9,7 +9,7 @@ import (
 	"sync"
 
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 const maxRememberedWritingStarts = 128
@@ -21,7 +21,7 @@ type writingTaskRun struct {
 	task               *Task
 	runtime            ideChatRuntime
 	recovery           *agent.RecoveryObservation
-	recoveryActions    map[string]agentruntime.Receipt
+	recoveryActions    map[string]runstate.Receipt
 	recoveryStructural bool
 
 	recoveryMutationMu sync.Mutex
@@ -347,7 +347,7 @@ func (s *ChatAppService) replayDurableWritingStart(
 	releaseAcceptance()
 	if err != nil {
 		rollbackWritingReplayTask(a, task, err)
-		if errors.Is(err, agentruntime.ErrInvalidCommand) {
+		if errors.Is(err, runstate.ErrInvalidCommand) {
 			return nil, true, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, req.CommandID)
 		}
 		return nil, true, err
@@ -378,7 +378,7 @@ func (s *ChatAppService) replayDurableWritingStart(
 	return task, true, nil
 }
 
-func agentStatusOwnsCommand(status agentruntime.StatusSnapshot, commandID string) bool {
+func agentStatusOwnsCommand(status runstate.StatusSnapshot, commandID string) bool {
 	commandID = strings.TrimSpace(commandID)
 	if commandID == "" {
 		return false

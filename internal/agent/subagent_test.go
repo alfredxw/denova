@@ -5,35 +5,32 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/adk/prebuilt/deep"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
-func TestConfigMaxIterationDefaultsToUnlimited(t *testing.T) {
-	if got := configMaxIteration(&config.Config{}); got != unlimitedAgentMaxIterations {
-		t.Fatalf("default max iteration = %d, want %d", got, unlimitedAgentMaxIterations)
+func TestConfigMaxIterationDefaultsToNativeUnlimited(t *testing.T) {
+	if got := configMaxIteration(&config.Config{}); got != 0 {
+		t.Fatalf("default max iteration = %d, want native unlimited zero", got)
 	}
 	if got := configMaxIteration(&config.Config{MaxIteration: 32}); got != 32 {
 		t.Fatalf("configured max iteration = %d, want 32", got)
 	}
 }
 
-func TestBuildDeepAgentPassesGeneralAndConfiguredSubAgents(t *testing.T) {
+func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T) {
 	off := false
-	var captured *deep.Config
-	previous := newDeepAgent
-	newDeepAgent = func(_ context.Context, cfg *deep.Config) (adk.ResumableAgent, error) {
-		copied := *cfg
-		captured = &copied
+	var captured []adk.AgentConfig
+	previous := newNativeAgent
+	newNativeAgent = func(_ context.Context, cfg adk.AgentConfig) (adk.Runnable, error) {
+		captured = append(captured, cfg)
 		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
 	}
-	t.Cleanup(func() { newDeepAgent = previous })
+	t.Cleanup(func() { newNativeAgent = previous })
 
-	_, err := buildDeepAgent(context.Background(), &config.Config{
+	_, err := buildAgent(context.Background(), &config.Config{
 		OpenAIBaseURL: "https://example.invalid",
 		OpenAIModel:   "test-model",
 		AgentTools: config.AgentToolSettings{
@@ -55,7 +52,7 @@ func TestBuildDeepAgentPassesGeneralAndConfiguredSubAgents(t *testing.T) {
 			SystemPrompt: "Return concise findings.",
 			Parents:      []string{config.AgentKindIDE},
 		}},
-	}, deepAgentSpec{
+	}, agentBuildSpec{
 		Kind:        config.AgentKindIDE,
 		Name:        "DenovaAgent",
 		Description: "test",
@@ -64,26 +61,21 @@ func TestBuildDeepAgentPassesGeneralAndConfiguredSubAgents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if captured == nil {
-		t.Fatalf("expected deep config to be captured")
+	if len(captured) != 3 {
+		t.Fatalf("native Agent constructions = %d, want configured + general + root", len(captured))
 	}
-	if captured.WithoutGeneralSubAgent {
-		t.Fatalf("general subagent must stay enabled")
+	if captured[0].Name != "researcher" || captured[1].Name != generalSubAgentName || captured[2].Name != "DenovaAgent" {
+		t.Fatalf("unexpected native Agent construction order: %q %q %q", captured[0].Name, captured[1].Name, captured[2].Name)
 	}
-	if !captured.ToolsConfig.EmitInternalEvents {
-		t.Fatalf("parent DeepAgent should emit nested internal events")
-	}
-	if len(captured.SubAgents) != 1 {
-		t.Fatalf("expected one configured subagent, got %d", len(captured.SubAgents))
-	}
-	if got := captured.SubAgents[0].Name(context.Background()); got != "researcher" {
-		t.Fatalf("unexpected subagent name: %s", got)
+	rootTools := toolNamesForTest(t, captured[2].Tools)
+	if !rootTools["task"] {
+		t.Fatalf("root Agent task tool missing: %v", rootTools)
 	}
 }
 
 func TestBuildSubAgentInstructionInheritsParentSystemPrompt(t *testing.T) {
 	parentInstruction := "# Denova 运行时契约（不可覆盖）\n\n作品根目录：/tmp/book\n父级工具权限边界。"
-	instruction := buildSubAgentInstruction(deepAgentSpec{
+	instruction := buildSubAgentInstruction(agentBuildSpec{
 		Kind:        config.AgentKindIDE,
 		Instruction: parentInstruction,
 	}, config.SubAgentConfig{
@@ -115,7 +107,7 @@ func TestBuildSubAgentInstructionInheritsParentSystemPrompt(t *testing.T) {
 
 func TestBuildSubAgentInstructionInheritsInteractiveStoryBoundary(t *testing.T) {
 	parentInstruction := protectedSystemInstruction(&config.Config{}, config.AgentKindInteractiveStory, "互动故事父级内置规则")
-	instruction := buildSubAgentInstruction(deepAgentSpec{
+	instruction := buildSubAgentInstruction(agentBuildSpec{
 		Kind:        config.AgentKindInteractiveStory,
 		Instruction: parentInstruction,
 	}, config.SubAgentConfig{
@@ -137,18 +129,17 @@ func TestBuildSubAgentInstructionInheritsInteractiveStoryBoundary(t *testing.T) 
 	}
 }
 
-func TestBuildDeepAgentCanDisableGeneralSubAgent(t *testing.T) {
+func TestBuildAgentCanDisableGeneralSubAgent(t *testing.T) {
 	off := false
-	var captured *deep.Config
-	previous := newDeepAgent
-	newDeepAgent = func(_ context.Context, cfg *deep.Config) (adk.ResumableAgent, error) {
-		copied := *cfg
-		captured = &copied
+	var captured []adk.AgentConfig
+	previous := newNativeAgent
+	newNativeAgent = func(_ context.Context, cfg adk.AgentConfig) (adk.Runnable, error) {
+		captured = append(captured, cfg)
 		return fakeAgent{name: cfg.Name, description: cfg.Description}, nil
 	}
-	t.Cleanup(func() { newDeepAgent = previous })
+	t.Cleanup(func() { newNativeAgent = previous })
 
-	_, err := buildDeepAgent(context.Background(), &config.Config{
+	_, err := buildAgent(context.Background(), &config.Config{
 		OpenAIBaseURL: "https://example.invalid",
 		OpenAIModel:   "test-model",
 		GeneralSubAgents: config.AgentGeneralSubAgentSettings{
@@ -166,7 +157,7 @@ func TestBuildDeepAgentCanDisableGeneralSubAgent(t *testing.T) {
 				WebSearch:    &off,
 			},
 		},
-	}, deepAgentSpec{
+	}, agentBuildSpec{
 		Kind:        config.AgentKindIDE,
 		Name:        "DenovaAgent",
 		Description: "test",
@@ -175,8 +166,11 @@ func TestBuildDeepAgentCanDisableGeneralSubAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if captured == nil || !captured.WithoutGeneralSubAgent {
-		t.Fatalf("general subagent should be disabled when configured off: %#v", captured)
+	if len(captured) != 1 || captured[0].Name != "DenovaAgent" {
+		t.Fatalf("general subagent should be absent when configured off: %#v", captured)
+	}
+	if toolNamesForTest(t, captured[0].Tools)["task"] {
+		t.Fatalf("task tool should be absent without any available subagent")
 	}
 }
 
@@ -200,7 +194,7 @@ func TestSubAgentAssemblyUsesParentToolPolicyKind(t *testing.T) {
 		t.Fatal(err)
 	}
 	var orchestrator *toolOrchestratorMiddleware
-	for _, handler := range assembly.Handlers {
+	for _, handler := range assembly.Middlewares {
 		if middleware, ok := handler.(*toolOrchestratorMiddleware); ok {
 			orchestrator = middleware
 			break
@@ -233,7 +227,7 @@ func TestBuildChatModelAgentAssemblyPassesToolResultLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	var orchestrator *toolOrchestratorMiddleware
-	for _, handler := range assembly.Handlers {
+	for _, handler := range assembly.Middlewares {
 		if middleware, ok := handler.(*toolOrchestratorMiddleware); ok {
 			orchestrator = middleware
 			break
@@ -251,7 +245,7 @@ func TestSubAgentStreamingDoesNotAppendParentAssistantContent(t *testing.T) {
 	var fullContent, fullThinking strings.Builder
 	var events []Event
 	meta := agentEventMetadata{AgentName: "researcher", RootAgentName: "DenovaAgent", RunPath: []string{"DenovaAgent", "researcher"}, SubAgent: true}
-	processNonStreamingEvent(&adk.MessageVariant{Message: schema.AssistantMessage("sub draft", nil)}, &fullContent, &fullThinking, 0, meta, nil, func(ev Event) {
+	processNonStreamingEvent(&adk.MessageVariant{Message: adk.AssistantMessage("sub draft", nil)}, &fullContent, &fullThinking, 0, meta, nil, func(ev Event) {
 		events = append(events, ev)
 	})
 	if fullContent.Len() != 0 || fullThinking.Len() != 0 {
@@ -262,7 +256,7 @@ func TestSubAgentStreamingDoesNotAppendParentAssistantContent(t *testing.T) {
 	}
 
 	rootMeta := agentEventMetadata{AgentName: "DenovaAgent", RootAgentName: "DenovaAgent", RunPath: []string{"DenovaAgent"}}
-	processNonStreamingEvent(&adk.MessageVariant{Message: schema.AssistantMessage("root final", nil)}, &fullContent, &fullThinking, 0, rootMeta, nil, func(Event) {})
+	processNonStreamingEvent(&adk.MessageVariant{Message: adk.AssistantMessage("root final", nil)}, &fullContent, &fullThinking, 0, rootMeta, nil, func(Event) {})
 	if got := fullContent.String(); got != "root final" {
 		t.Fatalf("root output should append to parent builder, got %q", got)
 	}
@@ -361,6 +355,54 @@ func (a *fakeDisplayAppender) AppendDisplayEventContent(id, role, delta string) 
 	return nil
 }
 
+func TestRunSubAgentForwardsDrainedChildEvents(t *testing.T) {
+	child := &streamingSubAgent{}
+	var forwarded []*adk.AgentEvent
+	ctx := adk.ContextWithEventSink(context.Background(), func(event *adk.AgentEvent) {
+		forwarded = append(forwarded, event)
+	})
+
+	result, err := runSubAgent(ctx, child, "inspect the draft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != "child result" || child.request != "inspect the draft" {
+		t.Fatalf("subagent result=%q request=%q", result, child.request)
+	}
+	if len(forwarded) != 1 || forwarded[0].AgentName != "reviewer" || len(forwarded[0].RunPath) != 1 {
+		t.Fatalf("forwarded events = %#v", forwarded)
+	}
+	variant := forwarded[0].Output.MessageOutput
+	if variant == nil || variant.IsStreaming || variant.MessageStream != nil || variant.Message == nil || variant.Message.Content != "child result" {
+		t.Fatalf("forwarded child stream must become one reusable complete message: %#v", variant)
+	}
+}
+
+type streamingSubAgent struct {
+	request string
+}
+
+func (*streamingSubAgent) Name(context.Context) string        { return "reviewer" }
+func (*streamingSubAgent) Description(context.Context) string { return "Reviews delegated work." }
+func (agent *streamingSubAgent) Run(_ context.Context, input *adk.AgentInput, _ ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
+	if input != nil && len(input.Messages) > 0 && input.Messages[0] != nil {
+		agent.request = input.Messages[0].Content
+	}
+	stream, writer := adk.Pipe[*adk.Message](-1)
+	writer.Send(adk.AssistantMessage("child result", nil), nil)
+	writer.Close()
+	iterator, generator := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+	generator.Send(&adk.AgentEvent{
+		AgentName: "reviewer",
+		RunPath:   []adk.RunStep{adk.NewRunStep("reviewer")},
+		Output: &adk.AgentOutput{MessageOutput: &adk.MessageVariant{
+			IsStreaming: true, MessageStream: stream, Role: adk.Assistant,
+		}},
+	})
+	generator.Close()
+	return iterator
+}
+
 type fakeAgent struct {
 	name        string
 	description string
@@ -373,8 +415,16 @@ func (f fakeAgent) Run(context.Context, *adk.AgentInput, ...adk.AgentRunOption) 
 	gen.Close()
 	return iter
 }
-func (f fakeAgent) Resume(context.Context, *adk.ResumeInfo, ...adk.AgentRunOption) *adk.AsyncIterator[*adk.AgentEvent] {
-	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
-	gen.Close()
-	return iter
+
+func toolNamesForTest(t *testing.T, tools []adk.BaseTool) map[string]bool {
+	t.Helper()
+	names := make(map[string]bool, len(tools))
+	for _, current := range tools {
+		info, err := current.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		names[info.Name] = true
+	}
+	return names
 }

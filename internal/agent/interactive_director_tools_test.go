@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/components/tool"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/internal/interactive"
 )
@@ -34,7 +34,7 @@ func TestInteractiveDirectorPlanToolSubmitsMarkdownPatchPayload(t *testing.T) {
 	if info.Name != submitDirectorPlanUpdateToolName {
 		t.Fatalf("tool name = %s", info.Name)
 	}
-	invokable, ok := tools[0].(tool.InvokableTool)
+	invokable, ok := tools[0].(adk.InvokableTool)
 	if !ok {
 		t.Fatal("director plan tool must be invokable")
 	}

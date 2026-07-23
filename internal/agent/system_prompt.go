@@ -81,7 +81,7 @@ func runtimeContractForAgent(cfg *config.Config, agentKind string) string {
 		"- 如果当前 Agent 已启用 Skills，用户输入 /<skill-name> 表示要求你调用 skill 工具加载该 Skill 后再继续处理；未启用 Skills 时不得假装使用。",
 	}, "\n")
 	sections := []string{common, thinkingLanguageContract(cfg)}
-	if config.IsDeepAgentParentKind(agentKind) {
+	if config.IsSubAgentParentKind(agentKind) {
 		sections = append(sections, subAgentDelegationContract())
 	}
 	if specific := agentRuntimeContract(agentKind); specific != "" {

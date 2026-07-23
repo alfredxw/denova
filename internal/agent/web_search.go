@@ -11,9 +11,7 @@ import (
 	"sync"
 
 	"github.com/PuerkitoBio/goquery"
-	duckduckgo "github.com/cloudwego/eino-ext/components/tool/duckduckgo/v2"
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/components/tool/utils"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -21,14 +19,15 @@ import (
 const webSearchToolDescription = "Search the public web for current or external information. Return result titles, URLs, and short summaries; cite useful URLs in the final answer."
 
 const (
-	webSearchPerEngine = 20
-	webSearchMaxTotal  = 50
-	webSearchUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+	webSearchPerEngine    = 20
+	webSearchMaxTotal     = 50
+	webSearchMaxHTMLBytes = 8 * 1024 * 1024
+	webSearchUserAgent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
-func newWebSearchTools() ([]tool.BaseTool, error) {
+func newWebSearchTools() ([]adk.BaseTool, error) {
 	aggregator := newDefaultWebSearchAggregator()
-	searchTool, err := utils.InferTool[webSearchToolInput, webSearchResponse](
+	searchTool, err := adk.InferTool[webSearchToolInput, webSearchResponse](
 		config.AgentToolWebSearch,
 		webSearchToolDescription,
 		func(ctx context.Context, in webSearchToolInput) (webSearchResponse, error) {
@@ -42,7 +41,7 @@ func newWebSearchTools() ([]tool.BaseTool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("创建网页搜索工具失败: %w", err)
 	}
-	return []tool.BaseTool{searchTool}, nil
+	return []adk.BaseTool{searchTool}, nil
 }
 
 type webSearchToolInput struct {
@@ -84,18 +83,12 @@ type webSearchAggregator struct {
 }
 
 func defaultWebSearchEngines() []webSearchEngine {
-	engines := make([]webSearchEngine, 0, 4)
-	if eng, err := newDuckDuckGoEngine(webSearchPerEngine); err == nil {
-		engines = append(engines, eng)
-	} else {
-		log.Printf("[agent] web_search 初始化 duckduckgo 引擎失败: %v", err)
-	}
-	engines = append(engines,
+	return []webSearchEngine{
+		newDuckDuckGoEngine(webSearchPerEngine),
 		newBingEngine(webSearchPerEngine),
 		newBaiduEngine(webSearchPerEngine),
 		newGoogleEngine(webSearchPerEngine),
-	)
-	return engines
+	}
 }
 
 func newDefaultWebSearchAggregator() *webSearchAggregator {
@@ -245,9 +238,12 @@ func fetchSearchHTML(ctx context.Context, client *http.Client, target, referer s
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("非预期状态码 %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, webSearchMaxHTMLBytes+1))
 	if err != nil {
 		return "", fmt.Errorf("读取响应失败: %w", err)
+	}
+	if len(data) > webSearchMaxHTMLBytes {
+		return "", fmt.Errorf("搜索响应超过 %d 字节上限", webSearchMaxHTMLBytes)
 	}
 	return string(data), nil
 }
@@ -264,39 +260,6 @@ func unwrapGoogleURL(href string) string {
 	return href
 }
 
-type duckDuckGoEngine struct {
-	name string
-	cli  duckduckgo.Search
-}
-
-func newDuckDuckGoEngine(maxResults int) (webSearchEngine, error) {
-	cli, err := duckduckgo.NewSearch(context.Background(), &duckduckgo.Config{
-		MaxResults: maxResults,
-		Region:     duckduckgo.RegionWT,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &duckDuckGoEngine{name: "duckduckgo", cli: cli}, nil
-}
-
-func (e *duckDuckGoEngine) Name() string { return e.name }
-
-func (e *duckDuckGoEngine) Search(ctx context.Context, req webSearchRequest) ([]webSearchResult, error) {
-	resp, err := e.cli.TextSearch(ctx, &duckduckgo.TextSearchRequest{
-		Query:     req.Query,
-		TimeRange: duckduckgo.TimeRange(req.TimeRange),
-	})
-	if err != nil {
-		return nil, err
-	}
-	results := make([]webSearchResult, 0, len(resp.Results))
-	for _, r := range resp.Results {
-		results = append(results, webSearchResult{Title: r.Title, URL: r.URL, Summary: r.Summary, Engine: e.name})
-	}
-	return results, nil
-}
-
 type htmlSearchEngine struct {
 	name     string
 	max      int
@@ -304,6 +267,24 @@ type htmlSearchEngine struct {
 	referer  string
 	buildURL func(query, timeRange string) string
 	parse    func(html string) []webSearchResult
+}
+
+func newDuckDuckGoEngine(max int) webSearchEngine {
+	return &htmlSearchEngine{
+		name:    "duckduckgo",
+		max:     max,
+		client:  &http.Client{},
+		referer: "https://html.duckduckgo.com/",
+		buildURL: func(q, tr string) string {
+			u := "https://html.duckduckgo.com/html/?q=" + url.QueryEscape(q)
+			switch tr {
+			case "d", "w", "m", "y":
+				u += "&df=" + tr
+			}
+			return u
+		},
+		parse: parseDuckDuckGoResults,
+	}
 }
 
 func (e *htmlSearchEngine) Name() string { return e.name }
@@ -334,6 +315,40 @@ func newBingEngine(max int) webSearchEngine {
 		},
 		parse: parseBingResults,
 	}
+}
+
+func parseDuckDuckGoResults(htmlText string) []webSearchResult {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(htmlText))
+	if err != nil {
+		return nil
+	}
+	var results []webSearchResult
+	doc.Find(".result").Each(func(_ int, selection *goquery.Selection) {
+		link := selection.Find("a.result__a").First()
+		if link.Length() == 0 {
+			return
+		}
+		href, _ := link.Attr("href")
+		href = unwrapDuckDuckGoURL(href)
+		title := strings.TrimSpace(link.Text())
+		if normalizeSearchURL(href) == "" || title == "" {
+			return
+		}
+		summary := strings.TrimSpace(selection.Find(".result__snippet").First().Text())
+		results = append(results, webSearchResult{Title: title, URL: href, Summary: summary})
+	})
+	return results
+}
+
+func unwrapDuckDuckGoURL(href string) string {
+	parsed, err := url.Parse(strings.TrimSpace(href))
+	if err != nil {
+		return href
+	}
+	if target := parsed.Query().Get("uddg"); target != "" {
+		return target
+	}
+	return href
 }
 
 func newBaiduEngine(max int) webSearchEngine {

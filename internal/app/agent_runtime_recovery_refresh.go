@@ -6,14 +6,14 @@ import (
 	"strings"
 
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
-	"denova/internal/session"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 )
 
 func emitWritingRecoveryRefreshRequired(
 	emit func(agent.Event),
 	action agent.RuntimeRecoveryAction,
-	cursor agentruntime.Cursor,
+	cursor runstate.Cursor,
 ) {
 	if emit == nil {
 		return

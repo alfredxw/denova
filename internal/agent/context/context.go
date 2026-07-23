@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 )
 
 type Placement string
@@ -37,7 +37,7 @@ type Source struct {
 }
 
 type Result struct {
-	Messages      []*schema.Message
+	Messages      []*adk.Message
 	Ledger        []LedgerPart
 	AnalysisParts []AnalysisPart
 	Fragments     []Fragment
@@ -177,11 +177,11 @@ func finalUserSourceBlock(source Source) string {
 	return sb.String()
 }
 
-func cloneMessages(messages []*schema.Message) []*schema.Message {
+func cloneMessages(messages []*adk.Message) []*adk.Message {
 	if len(messages) == 0 {
 		return nil
 	}
-	out := make([]*schema.Message, 0, len(messages))
+	out := make([]*adk.Message, 0, len(messages))
 	for _, msg := range messages {
 		if msg == nil {
 			out = append(out, nil)

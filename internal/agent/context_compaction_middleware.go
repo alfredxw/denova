@@ -5,19 +5,18 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
+	"denova/internal/agent/session"
 	"denova/internal/observability"
-	"denova/internal/session"
 )
 
 type contextCompactionMiddleware struct {
-	*adk.BaseChatModelAgentMiddleware
+	*adk.BaseMiddleware
 	agentKind string
 }
 
-func (m *contextCompactionMiddleware) BeforeModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, _ *adk.ModelContext) (context.Context, *adk.ChatModelAgentState, error) {
+func (m *contextCompactionMiddleware) BeforeModelRewriteState(ctx context.Context, state *adk.RunState, _ *adk.ModelContext) (context.Context, *adk.RunState, error) {
 	if state == nil {
 		return ctx, state, nil
 	}
@@ -25,7 +24,7 @@ func (m *contextCompactionMiddleware) BeforeModelRewriteState(ctx context.Contex
 	if controller == nil || controller.conversation == nil {
 		return ctx, state, nil
 	}
-	messages := append([]*schema.Message(nil), state.Messages...)
+	messages := append([]*adk.Message(nil), state.Messages...)
 	newMessages, result, err := controller.conversation.CompactContextIfNeeded(ctx, ContextCompactionInput{
 		Messages: messages,
 		Tools:    state.ToolInfos,

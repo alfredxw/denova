@@ -10,13 +10,13 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 	agentcontext "denova/internal/agent/context"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/book"
-	"denova/internal/session"
 )
 
 var modelContextTestCycle atomic.Uint64
@@ -25,7 +25,7 @@ type pureTurnTestConversation struct{}
 
 func (pureTurnTestConversation) AssembleModelContext(ctx context.Context, _ string, input ModelContextInput) (ModelContextResult, error) {
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage(input.UserMessage)}, Fragments: input.Fragments,
+		Messages: []*adk.Message{adk.UserMessage(input.UserMessage)}, Fragments: input.Fragments,
 	})
 	return ModelContextResult{Messages: assembled.Messages, Context: assembled}, err
 }
@@ -49,7 +49,7 @@ func assembleTurnForTest(t *testing.T, req ChatRequest, pending *session.Interru
 func finalAssembledUserMessage(t *testing.T, assembled ModelContextResult) string {
 	t.Helper()
 	for index := len(assembled.Messages) - 1; index >= 0; index-- {
-		if assembled.Messages[index] != nil && assembled.Messages[index].Role == schema.User {
+		if assembled.Messages[index] != nil && assembled.Messages[index].Role == adk.User {
 			return assembled.Messages[index].Content
 		}
 	}
@@ -57,15 +57,15 @@ func finalAssembledUserMessage(t *testing.T, assembled ModelContextResult) strin
 	return ""
 }
 
-func assembleAndCommitModelContextForTest(conversation Conversation, originalMessage, userMessage string) ([]*schema.Message, error) {
+func assembleAndCommitModelContextForTest(conversation Conversation, originalMessage, userMessage string) ([]*adk.Message, error) {
 	if sessionConversation, ok := conversation.(*SessionConversation); ok {
 		identity := sessionConversation.agentCycleIdentitySnapshot()
 		_, alreadyCommitted := sessionConversation.LastAgentCycleCommitReceipt(HarnessDomainCommitInput)
 		if !validHarnessCycleIdentity(identity) || alreadyCommitted {
 			cycle := modelContextTestCycle.Add(1)
 			sessionConversation.BindAgentCycleIdentity(HarnessCycleIdentity{
-				CommandID:   agentruntime.CommandID(fmt.Sprintf("test-command-%d", cycle)),
-				OperationID: agentruntime.OperationID(fmt.Sprintf("test-operation-%d", cycle)),
+				CommandID:   runstate.CommandID(fmt.Sprintf("test-command-%d", cycle)),
+				OperationID: runstate.OperationID(fmt.Sprintf("test-operation-%d", cycle)),
 				Cycle:       1,
 			})
 		}
@@ -176,7 +176,7 @@ func TestSessionConversationAssemblesTurnAndRuntimeFragmentsUnderOneBudget(t *te
 			t.Fatalf("fragment[%d] = %#v, want complete bounded provenance for %q", i, fragment, want)
 		}
 	}
-	if len(result.Messages) == 0 || result.Messages[len(result.Messages)-1].Role != schema.User || !strings.HasSuffix(strings.TrimSpace(result.Messages[len(result.Messages)-1].Content), "continue") {
+	if len(result.Messages) == 0 || result.Messages[len(result.Messages)-1].Role != adk.User || !strings.HasSuffix(strings.TrimSpace(result.Messages[len(result.Messages)-1].Content), "continue") {
 		t.Fatalf("final model message does not retain the raw request at highest priority: %#v", result.Messages)
 	}
 	if visible := sess.History(); len(visible) != 0 {
@@ -207,7 +207,7 @@ func TestSessionConversationReusesMaterializedInputExactlyOnceInRealModelAssembl
 	references := []session.UserMessageReference{{Kind: "file", Label: "chapters/01.md"}}
 	intent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
-	}, schema.UserMessage("继续写"), session.MessageMetadata{AgentKind: config.AgentKindIDE, UserReferences: references})
+	}, adk.UserMessage("继续写"), session.MessageMetadata{AgentKind: config.AgentKindIDE, UserReferences: references})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestSessionConversationReusesMaterializedInputExactlyOnceInRealModelAssembl
 	}
 	userMessages := 0
 	for _, message := range assembled.Messages {
-		if message != nil && message.Role == schema.User && strings.Contains(message.Content, "继续写") {
+		if message != nil && message.Role == adk.User && strings.Contains(message.Content, "继续写") {
 			userMessages++
 			if message.Content == "继续写" {
 				t.Fatal("materialized raw input was duplicated beside the enhanced final user message")
@@ -265,7 +265,7 @@ func TestSessionConversationRejectsCommitAfterContextSnapshotChanges(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendContextMessage(schema.UserMessage("concurrent structural context")); err != nil {
+	if err := sess.AppendContextMessage(adk.UserMessage("concurrent structural context")); err != nil {
 		t.Fatal(err)
 	}
 	if err := conversation.CommitModelInput(context.Background(), "stale input", assembled); !errors.Is(err, session.ErrContextRevisionConflict) {

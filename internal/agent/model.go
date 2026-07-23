@@ -1,19 +1,19 @@
 package agent
 
 import (
-	"github.com/cloudwego/eino-ext/components/model/openai"
+	"github.com/alfredxw/denova/adk/model/openai"
+	providercompat "github.com/alfredxw/denova/adk/model/openai/compat"
 
 	"denova/config"
-	"denova/internal/providercompat"
 )
 
-func chatModelConfigForAgent(cfg *config.Config, agentKind string) openai.ChatModelConfig {
+func chatModelConfigForAgent(cfg *config.Config, agentKind string) openai.Config {
 	resolved := config.ResolveAgentModel(cfg, agentKind)
 	return chatModelConfigFromResolved(resolved)
 }
 
-func chatModelConfigFromResolved(resolved config.ResolvedModelSettings) openai.ChatModelConfig {
-	modelCfg := openai.ChatModelConfig{
+func chatModelConfigFromResolved(resolved config.ResolvedModelSettings) openai.Config {
+	modelCfg := openai.Config{
 		APIKey:     resolved.OpenAIAPIKey,
 		Model:      resolved.OpenAIModel,
 		BaseURL:    resolved.OpenAIBaseURL,

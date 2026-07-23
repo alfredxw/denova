@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 )
 
 type chatLoopAction uint8
@@ -31,7 +30,7 @@ type chatAgentLoop struct {
 	planParser  *planProtocolParser
 }
 
-func newChatAgentLoop(run *chatRun, history []*schema.Message, agentMessage string) *chatAgentLoop {
+func newChatAgentLoop(run *chatRun, history []*adk.Message, agentMessage string) *chatAgentLoop {
 	runCtx, cancelRun := context.WithCancel(contextWithCompactionController(ContextWithRunObserver(run.traceCtx, run.observer), run.conversation))
 	cancelOption, cancelAgent := adk.WithCancel()
 	runOptions := []adk.AgentRunOption{cancelOption}
@@ -41,10 +40,6 @@ func newChatAgentLoop(run *chatRun, history []*schema.Message, agentMessage stri
 	} else if isInteractiveDirectorPlanRun(run.options.AgentKind, run.options.MaintenanceTask) {
 		runCtx = withInteractiveDirectorPlanCancel(runCtx, protocolCancel)
 	}
-	if run.checkpointID != "" {
-		runOptions = append(runOptions, adk.WithCheckPointID(run.checkpointID))
-	}
-
 	loop := &chatAgentLoop{
 		run:         run,
 		ctx:         runCtx,
@@ -101,6 +96,9 @@ func (l *chatAgentLoop) next() chatLoopResult {
 	if !ok {
 		return chatLoopResult{action: chatLoopStop}
 	}
+	if event.Action != nil && event.Action.Interrupted != nil {
+		return l.runnerFailed(event.Action.Interrupted)
+	}
 	if event.Err != nil {
 		return l.runnerFailed(event.Err)
 	}
@@ -144,16 +142,10 @@ func (l *chatAgentLoop) waitFailed(waitErr error) chatLoopResult {
 func (l *chatAgentLoop) runnerFailed(runErr error) chatLoopResult {
 	run := l.run
 	if run.control.protocolTriggered() && interactiveTurnCompletedByCancel(runErr, run.options.AgentKind, run.conversation, run.fullContent.Len()) {
-		if err := removeCheckpoint(run.options.Workspace, run.options.AgentKind, run.checkpointID); err != nil {
-			run.logger.Warn("interactive_completion_checkpoint_cleanup_failed", slog.String("checkpoint_id", run.checkpointID), slog.Any("error", err))
-		}
 		run.logger.Info("interactive_turn_completed_after_submission", slog.Int("generated_bytes", run.fullContent.Len()))
 		return chatLoopResult{action: chatLoopStop}
 	}
 	if run.control.protocolTriggered() && interactiveDirectorPlanCompletedByCancel(runErr, run.options.AgentKind, run.options.MaintenanceTask) {
-		if err := removeCheckpoint(run.options.Workspace, run.options.AgentKind, run.checkpointID); err != nil {
-			run.logger.Warn("interactive_director_completion_checkpoint_cleanup_failed", slog.String("checkpoint_id", run.checkpointID), slog.Any("error", err))
-		}
 		run.logger.Info("interactive_director_plan_completed_after_submission")
 		return chatLoopResult{action: chatLoopStop}
 	}

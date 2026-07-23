@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/cloudwego/eino/adk"
+	"github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/book"
 	"denova/internal/prompts"
 )
@@ -170,7 +170,7 @@ func NewEphemeralChatService() *ChatService {
 // NewEphemeralChatServiceWithPolicy creates an ephemeral service with an
 // explicit loop policy.
 func NewEphemeralChatServiceWithPolicy(policy LoopPolicy) *ChatService {
-	service, err := newHarnessChatService(context.Background(), policy, agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), policy, runstate.NewMemoryJournalStore())
 	if err != nil {
 		// The in-memory store and built-in factory are fully local invariants; a
 		// construction error is a programming bug, not a legacy fallback signal.

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,9 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -25,7 +24,7 @@ func TestToolExecutionGateAllowsReadOnlyCallsInParallel(t *testing.T) {
 	}
 	entered := make(chan string, 2)
 	release := make(chan struct{})
-	endpoint := func(ctx context.Context, args string, _ ...tool.Option) (string, error) {
+	endpoint := func(ctx context.Context, args string, _ ...adk.ToolOption) (string, error) {
 		entered <- args
 		select {
 		case <-release:
@@ -61,7 +60,7 @@ func TestToolExecutionGateSerializesWritesAcrossMiddlewareInstances(t *testing.T
 	secondRelease := make(chan struct{})
 	var callMu sync.Mutex
 	call := 0
-	endpoint := func(ctx context.Context, _ string, _ ...tool.Option) (string, error) {
+	endpoint := func(ctx context.Context, _ string, _ ...adk.ToolOption) (string, error) {
 		callMu.Lock()
 		call++
 		index := call
@@ -96,6 +95,60 @@ func TestToolExecutionGateSerializesWritesAcrossMiddlewareInstances(t *testing.T
 	waitForGateTestResults(t, errs, 2)
 }
 
+func TestToolExecutionGateCanceledWaiterDoesNotStartEndpoint(t *testing.T) {
+	tests := []struct {
+		name string
+		mode toolExecutionMode
+	}{
+		{name: "parallel read", mode: toolExecutionParallelRead},
+		{name: "exclusive", mode: toolExecutionExclusive},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gate := &toolExecutionGate{}
+			releaseBlocker, err := gate.acquire(context.Background(), toolExecutionExclusive)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer releaseBlocker()
+
+			ctx, cancel := context.WithCancel(context.Background())
+			acquireObserved := make(chan struct{})
+			waitingCtx := &gateTestObservedContext{Context: ctx, doneObserved: acquireObserved}
+			endpointStarted := make(chan struct{}, 1)
+			result := make(chan error, 1)
+			go func() {
+				release, err := gate.acquire(waitingCtx, tt.mode)
+				if err != nil {
+					result <- err
+					return
+				}
+				defer release()
+				endpointStarted <- struct{}{}
+				result <- nil
+			}()
+
+			<-acquireObserved
+			cancel()
+			select {
+			case err := <-result:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("queued acquisition error = %v, want context.Canceled", err)
+				}
+			case <-time.After(250 * time.Millisecond):
+				t.Fatal("canceled acquisition did not return while exclusive admission was held")
+			}
+
+			releaseBlocker()
+			select {
+			case <-endpointStarted:
+				t.Fatal("endpoint started after its queued acquisition was canceled")
+			default:
+			}
+		})
+	}
+}
+
 func TestToolExecutionGateCanonicalizesWorkspaceSymlink(t *testing.T) {
 	workspace := t.TempDir()
 	link := filepath.Join(t.TempDir(), "workspace-link")
@@ -114,10 +167,10 @@ func TestToolExecutionGateHoldsStreamLockUntilResultEOF(t *testing.T) {
 		enforceToolSettings: true,
 		executionGate:       gate,
 	}
-	sourceReader, sourceWriter := schema.Pipe[string](1)
+	sourceReader, sourceWriter := adk.Pipe[string](1)
 	stream, err := middleware.WrapStreamableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+		func(context.Context, string, ...adk.ToolOption) (*adk.StreamReader[string], error) {
 			return sourceReader, nil
 		},
 		&adk.ToolContext{Name: "execute"},
@@ -132,7 +185,7 @@ func TestToolExecutionGateHoldsStreamLockUntilResultEOF(t *testing.T) {
 
 	entered := make(chan string, 1)
 	releaseWrite := make(chan struct{})
-	edit := mustWrapGateTestEndpoint(t, middleware, "edit_file", func(ctx context.Context, _ string, _ ...tool.Option) (string, error) {
+	edit := mustWrapGateTestEndpoint(t, middleware, "edit_file", func(ctx context.Context, _ string, _ ...adk.ToolOption) (string, error) {
 		entered <- "edit"
 		select {
 		case <-releaseWrite:
@@ -169,10 +222,10 @@ func TestToolExecutionGateKeepsStreamLockAfterContextCancelUntilReaderEnds(t *te
 		enforceToolSettings: true,
 		executionGate:       gate,
 	}
-	sourceReader, sourceWriter := schema.Pipe[string](1)
+	sourceReader, sourceWriter := adk.Pipe[string](1)
 	stream, err := middleware.WrapStreamableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+		func(context.Context, string, ...adk.ToolOption) (*adk.StreamReader[string], error) {
 			return sourceReader, nil
 		},
 		&adk.ToolContext{Name: "execute"},
@@ -188,7 +241,7 @@ func TestToolExecutionGateKeepsStreamLockAfterContextCancelUntilReaderEnds(t *te
 
 	entered := make(chan string, 1)
 	releaseWrite := make(chan struct{})
-	edit := mustWrapGateTestEndpoint(t, middleware, "edit_file", func(ctx context.Context, _ string, _ ...tool.Option) (string, error) {
+	edit := mustWrapGateTestEndpoint(t, middleware, "edit_file", func(ctx context.Context, _ string, _ ...adk.ToolOption) (string, error) {
 		entered <- "edit"
 		select {
 		case <-releaseWrite:
@@ -277,4 +330,17 @@ func waitForGateTestResults(t *testing.T, results <-chan error, count int) {
 			t.Fatal("tool endpoint did not finish before test deadline")
 		}
 	}
+}
+
+type gateTestObservedContext struct {
+	context.Context
+	doneObserved chan struct{}
+	once         sync.Once
+}
+
+func (c *gateTestObservedContext) Done() <-chan struct{} {
+	c.once.Do(func() {
+		close(c.doneObserved)
+	})
+	return c.Context.Done()
 }

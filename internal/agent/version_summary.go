@@ -6,8 +6,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
+	"github.com/alfredxw/denova/adk/model/openai"
 
 	"denova/config"
 )
@@ -23,7 +23,7 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 	})
 	defer func() { finishTrace(runErr) }()
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindVersionSummary)
-	cm, err := openai.NewChatModel(traceCtx, &modelCfg)
+	cm, err := openai.New(traceCtx, &modelCfg)
 	if err != nil {
 		runErr = err
 		return "", fmt.Errorf("创建版本说明模型失败: %w", err)
@@ -34,9 +34,9 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 		runErr = err
 		return "", err
 	}
-	messages := []*schema.Message{
-		schema.SystemMessage(composition.Instruction()),
-		schema.UserMessage(instruction),
+	messages := []*adk.Message{
+		adk.SystemMessage(composition.Instruction()),
+		adk.UserMessage(instruction),
 	}
 	if err := validateConfiguredProviderInput(cfg, config.AgentKindVersionSummary, messages, nil); err != nil {
 		runErr = err

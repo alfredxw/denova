@@ -3,11 +3,13 @@ package agent
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/components/tool"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -31,7 +33,7 @@ func TestNewWebSearchToolsRegistersWebSearch(t *testing.T) {
 	if len(tools) != 1 {
 		t.Fatalf("expected one web search tool, got %d", len(tools))
 	}
-	if _, ok := tools[0].(tool.InvokableTool); !ok {
+	if _, ok := tools[0].(adk.InvokableTool); !ok {
 		t.Fatalf("web search tool should be invokable: %T", tools[0])
 	}
 	info, err := tools[0].Info(context.Background())
@@ -49,6 +51,17 @@ func TestWebSearchAggregatorLeavesRuntimeDeadlineToCaller(t *testing.T) {
 	aggregator.run(context.Background(), webSearchRequest{Query: "test"})
 	if probe.hadDeadline {
 		t.Fatal("web search injected a hard-coded deadline instead of inheriting the Agent run context")
+	}
+}
+
+func TestFetchSearchHTMLRejectsOversizedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", webSearchMaxHTMLBytes+1)))
+	}))
+	t.Cleanup(server.Close)
+
+	if _, err := fetchSearchHTML(context.Background(), server.Client(), server.URL, ""); err == nil || !strings.Contains(err.Error(), "字节上限") {
+		t.Fatalf("oversized response error = %v", err)
 	}
 }
 

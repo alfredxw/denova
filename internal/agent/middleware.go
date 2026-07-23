@@ -9,10 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/compose"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -21,7 +18,7 @@ const maxToolErrorDiagnosticBytes = 4 * 1024
 
 // toolOrchestratorMiddleware centralizes Nova's internal tool execution policy.
 type toolOrchestratorMiddleware struct {
-	*adk.BaseChatModelAgentMiddleware
+	*adk.BaseMiddleware
 	agentKind           string
 	policyKind          string
 	toolSettings        config.ResolvedAgentToolSettings
@@ -31,11 +28,11 @@ type toolOrchestratorMiddleware struct {
 }
 
 type interactiveStoryToolMiddleware struct {
-	*adk.BaseChatModelAgentMiddleware
+	*adk.BaseMiddleware
 }
 
 type interactiveDirectorPlanFileMiddleware struct {
-	*adk.BaseChatModelAgentMiddleware
+	*adk.BaseMiddleware
 }
 
 func newInteractiveStoryToolMiddleware() *interactiveStoryToolMiddleware {
@@ -51,7 +48,7 @@ func (m *interactiveDirectorPlanFileMiddleware) WrapInvokableToolCall(
 	endpoint adk.InvokableToolCallEndpoint,
 	toolCtx *adk.ToolContext,
 ) (adk.InvokableToolCallEndpoint, error) {
-	return func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
+	return func(ctx context.Context, args string, opts ...adk.ToolOption) (string, error) {
 		if msg := m.blockedDirectorToolMessage(toolName(toolCtx), args); msg != "" {
 			return msg, nil
 		}
@@ -64,7 +61,7 @@ func (m *interactiveDirectorPlanFileMiddleware) WrapStreamableToolCall(
 	endpoint adk.StreamableToolCallEndpoint,
 	toolCtx *adk.ToolContext,
 ) (adk.StreamableToolCallEndpoint, error) {
-	return func(ctx context.Context, args string, opts ...tool.Option) (*schema.StreamReader[string], error) {
+	return func(ctx context.Context, args string, opts ...adk.ToolOption) (*adk.StreamReader[string], error) {
 		if msg := m.blockedDirectorToolMessage(toolName(toolCtx), args); msg != "" {
 			return singleChunkReader(msg), nil
 		}
@@ -91,7 +88,7 @@ func (m *interactiveStoryToolMiddleware) WrapInvokableToolCall(
 	endpoint adk.InvokableToolCallEndpoint,
 	toolCtx *adk.ToolContext,
 ) (adk.InvokableToolCallEndpoint, error) {
-	return func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
+	return func(ctx context.Context, args string, opts ...adk.ToolOption) (string, error) {
 		if isInteractiveStoryWriteTool(toolName(toolCtx)) {
 			return interactiveStoryWriteToolBlockedMessage(toolName(toolCtx)), nil
 		}
@@ -104,7 +101,7 @@ func (m *interactiveStoryToolMiddleware) WrapStreamableToolCall(
 	endpoint adk.StreamableToolCallEndpoint,
 	toolCtx *adk.ToolContext,
 ) (adk.StreamableToolCallEndpoint, error) {
-	return func(ctx context.Context, args string, opts ...tool.Option) (*schema.StreamReader[string], error) {
+	return func(ctx context.Context, args string, opts ...adk.ToolOption) (*adk.StreamReader[string], error) {
 		if isInteractiveStoryWriteTool(toolName(toolCtx)) {
 			return singleChunkReader(interactiveStoryWriteToolBlockedMessage(toolName(toolCtx))), nil
 		}
@@ -188,7 +185,7 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 	endpoint adk.InvokableToolCallEndpoint,
 	toolCtx *adk.ToolContext,
 ) (adk.InvokableToolCallEndpoint, error) {
-	return func(ctx context.Context, args string, opts ...tool.Option) (string, error) {
+	return func(ctx context.Context, args string, opts ...adk.ToolOption) (string, error) {
 		decision := m.buildToolDecision(toolCtx, args)
 		observer := RunObserverFromContext(ctx)
 		outcome := LLMOutcome{}
@@ -206,9 +203,18 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 			observer.RecordToolExecution(blockedToolExecutionRecord(decision, msg))
 			return msg, nil
 		}
-		release := m.acquireToolExecution(decision)
+		release, err := m.acquireToolExecution(ctx, decision)
+		if err != nil {
+			return "", err
+		}
 		defer release()
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
 		if err := recordToolStart(ctx, decision, args); err != nil {
+			return "", err
+		}
+		if err := ctx.Err(); err != nil {
 			return "", err
 		}
 		result, err := endpoint(ctx, args, opts...)
@@ -217,7 +223,7 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 			if recordErr := recordToolFinish(ctx, record); recordErr != nil {
 				return "", recordErr
 			}
-			if _, ok := compose.IsInterruptRerunError(err); ok {
+			if adk.IsInterruptError(err) {
 				return "", err
 			}
 			return msg, nil
@@ -272,7 +278,7 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 	endpoint adk.StreamableToolCallEndpoint,
 	toolCtx *adk.ToolContext,
 ) (adk.StreamableToolCallEndpoint, error) {
-	return func(ctx context.Context, args string, opts ...tool.Option) (*schema.StreamReader[string], error) {
+	return func(ctx context.Context, args string, opts ...adk.ToolOption) (*adk.StreamReader[string], error) {
 		decision := m.buildToolDecision(toolCtx, args)
 		observer := RunObserverFromContext(ctx)
 		outcome := LLMOutcome{}
@@ -290,8 +296,19 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 			observer.RecordToolExecution(blockedToolExecutionRecord(decision, msg))
 			return singleChunkReader(msg), nil
 		}
-		release := m.acquireToolExecution(decision)
+		release, err := m.acquireToolExecution(ctx, decision)
+		if err != nil {
+			return nil, err
+		}
+		if err := ctx.Err(); err != nil {
+			release()
+			return nil, err
+		}
 		if err := recordToolStart(ctx, decision, args); err != nil {
+			release()
+			return nil, err
+		}
+		if err := ctx.Err(); err != nil {
 			release()
 			return nil, err
 		}
@@ -302,7 +319,7 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 			if recordErr := recordToolFinish(ctx, record); recordErr != nil {
 				return nil, recordErr
 			}
-			if _, ok := compose.IsInterruptRerunError(err); ok {
+			if adk.IsInterruptError(err) {
 				return nil, err
 			}
 			return singleChunkReader(msg), nil
@@ -364,23 +381,26 @@ func boundedToolErrorDiagnostic(err error) string {
 	return strings.TrimSpace(diagnostic[:end]) + suffix
 }
 
-func (m *toolOrchestratorMiddleware) acquireToolExecution(decision ToolDecision) func() {
+func (m *toolOrchestratorMiddleware) acquireToolExecution(ctx context.Context, decision ToolDecision) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if m == nil || m.executionGate == nil {
-		return func() {}
+		return func() {}, nil
 	}
 	manifest := ManifestForTool(decision.ToolName)
-	return m.executionGate.acquire(executionModeForTool(manifest))
+	return m.executionGate.acquire(ctx, executionModeForTool(manifest))
 }
 
-func singleChunkReader(msg string) *schema.StreamReader[string] {
-	r, w := schema.Pipe[string](1)
+func singleChunkReader(msg string) *adk.StreamReader[string] {
+	r, w := adk.Pipe[string](1)
 	_ = w.Send(msg, nil)
 	w.Close()
 	return r
 }
 
-func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string], decision ToolDecision, args string, maxBytes int, releases ...func()) *schema.StreamReader[string] {
-	r, w := schema.Pipe[string](1)
+func filterToolResultReader(ctx context.Context, sr *adk.StreamReader[string], decision ToolDecision, args string, maxBytes int, releases ...func()) *adk.StreamReader[string] {
+	r, w := adk.Pipe[string](1)
 	go func() {
 		defer w.Close()
 		defer func() {

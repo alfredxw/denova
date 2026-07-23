@@ -9,11 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
@@ -56,7 +54,7 @@ func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
 		t.Fatal("writing recovery projection unavailable")
 	}
 	actions := agent.RuntimeRecoveryActions(status)
-	if status.Phase != agentruntime.PhaseRunning || !status.RecoveryPaused || len(actions) != 2 || actions[0].Kind != agent.RuntimeRecoveryAttach || actions[0].CommandID != "writing-recovery-start" || actions[1].Kind != agent.RuntimeRecoveryAbort {
+	if status.Phase != runstate.PhaseRunning || !status.RecoveryPaused || len(actions) != 2 || actions[0].Kind != agent.RuntimeRecoveryAttach || actions[0].CommandID != "writing-recovery-start" || actions[1].Kind != agent.RuntimeRecoveryAbort {
 		t.Fatalf("cold recovery actions = %#v status=%#v", actions, status)
 	}
 	abortAction := actions[1]
@@ -114,7 +112,7 @@ func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
 		t.Fatal("rehydrated interrupted Start did not settle after explicit abort")
 	}
 	status, ok = reopened.WritingAgentRuntimeProjection(context.Background())
-	if !ok || status.Phase != agentruntime.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentruntime.OperationAborted {
+	if !ok || status.Phase != runstate.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != runstate.OperationAborted {
 		t.Fatalf("aborted cold recovery status = %#v projected=%t", status, ok)
 	}
 }
@@ -136,7 +134,7 @@ func runWritingRecoveryCrashSeed(t *testing.T) {
 	vanished := make(chan struct{})
 	if _, err := application.chatService.StartWithOptions(
 		context.Background(),
-		newInteractiveReplayRunner(t, &interactiveReplayModel{message: schema.AssistantMessage("must not run", nil)}),
+		newInteractiveReplayRunner(t, &interactiveReplayModel{message: agent.AssistantMessage("must not run", nil)}),
 		&interactiveCrashConversation{vanished: vanished},
 		application.bookService,
 		agent.ChatRequest{CommandID: "writing-recovery-start", Message: "persist before crash"},

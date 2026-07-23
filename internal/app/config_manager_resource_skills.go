@@ -9,7 +9,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	novaskills "denova/internal/skills"
+	novaskills "denova/internal/agent/skills"
 )
 
 const (

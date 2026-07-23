@@ -10,8 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/components/tool/utils"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 	"denova/internal/book"
@@ -68,13 +67,13 @@ type generatedImageToolImage struct {
 	RevisedPrompt string `json:"revised_prompt,omitempty"`
 }
 
-func newIllustrationTools(cfg *config.Config) ([]tool.BaseTool, error) {
+func newIllustrationTools(cfg *config.Config) ([]adk.BaseTool, error) {
 	if cfg == nil {
 		return nil, nil
 	}
 	workspace := strings.TrimSpace(cfg.Workspace)
 	description := "生成图像并保存到 workspace。普通图像保存到 assets/image/generated/；purpose=chapter_illustration 时基于 target_path 指向的章节生成一张非剧透插画，保存到 assets/illustrations/ 并返回可手动插入正文的 Markdown 图像引用；purpose=interactive_image 时必须填写 story_id、branch_id、turn_id，保存到 assets/interactive/images/。只写图像和元数据，不会自动修改正文。" + generateImageSupportedSizeDescription
-	generateTool, err := utils.InferTool(generateImageToolName, description, func(ctx context.Context, input generateImageInput) (string, error) {
+	generateTool, err := adk.InferTool(generateImageToolName, description, func(ctx context.Context, input generateImageInput) (string, error) {
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法生成图像")
 		}
@@ -92,7 +91,7 @@ func newIllustrationTools(cfg *config.Config) ([]tool.BaseTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []tool.BaseTool{generateTool}, nil
+	return []adk.BaseTool{generateTool}, nil
 }
 
 func generateImageForTool(ctx context.Context, cfg *config.Config, bookService *book.Service, input generateImageInput) (any, error) {

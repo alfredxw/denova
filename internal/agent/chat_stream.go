@@ -8,8 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 )
 
 // interactiveContentReclassifiedEvent tells the Game UI to retract provisional
@@ -19,13 +18,13 @@ const interactiveContentReclassifiedEvent = "interactive_content_reclassified"
 // processStreamingEvent 处理流式助手消息，输出领域事件。
 // 工具调用在流中一检测到名称就立即 emit，让前端尽早展示 running 卡片。
 // 参数在流中逐帧 emit tool_args_delta，调用方可在对外传输前按展示策略过滤。
-func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, toolResultMaxBytes int, meta agentEventMetadata, planParser *planProtocolParser, emit func(Event)) (*schema.Message, error) {
-	mv.MessageStream.SetAutomaticClose()
-	var accumulatedToolCalls []schema.ToolCall
+func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, toolResultMaxBytes int, meta agentEventMetadata, planParser *planProtocolParser, emit func(Event)) (*adk.Message, error) {
+	defer mv.MessageStream.Close()
+	var accumulatedToolCalls []adk.ToolCall
 	emittedTools := make(map[int]bool) // 按 index 记录已 emit tool_call 的工具
 	lastArgsLen := make(map[int]int)   // 记录上次已发送的参数长度
 	loggedToolPaths := make(map[int]bool)
-	var chunks []*schema.Message
+	var chunks []*adk.Message
 	var interactiveContent strings.Builder
 	interactiveContentReclassified := false
 	isInteractiveRoot := meta.AgentKind == AgentKindInteractiveStory && !meta.SubAgent
@@ -182,7 +181,7 @@ func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullCont
 	return msg, nil
 }
 
-func interactiveToolCallsRequireReclassification(calls []schema.ToolCall, complete bool) bool {
+func interactiveToolCallsRequireReclassification(calls []adk.ToolCall, complete bool) bool {
 	for _, call := range calls {
 		name := strings.TrimSpace(call.Function.Name)
 		if name == "" {
@@ -213,11 +212,11 @@ func finalizeInteractiveStreamContent(fullContent, fullThinking, content *string
 	}
 }
 
-func concatStreamingChunks(chunks []*schema.Message) (*schema.Message, error) {
+func concatStreamingChunks(chunks []*adk.Message) (*adk.Message, error) {
 	if len(chunks) == 0 {
 		return nil, nil
 	}
-	message, err := schema.ConcatMessages(chunks)
+	message, err := adk.ConcatMessages(chunks)
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +284,7 @@ func processNonStreamingEvent(mv *adk.MessageVariant, fullContent, fullThinking 
 	}
 }
 
-func filterPlanProtocolToolCalls(calls []schema.ToolCall) []schema.ToolCall {
+func filterPlanProtocolToolCalls(calls []adk.ToolCall) []adk.ToolCall {
 	if len(calls) == 0 {
 		return calls
 	}
@@ -324,7 +323,7 @@ func flushPlanProtocolParser(planParser *planProtocolParser, fullContent *string
 // drainContent 从 MessageVariant 中提取完整内容。
 func drainContent(ctx context.Context, mv *adk.MessageVariant, idleTimeout time.Duration) (string, error) {
 	if mv.IsStreaming && mv.MessageStream != nil {
-		mv.MessageStream.SetAutomaticClose()
+		defer mv.MessageStream.Close()
 		var sb strings.Builder
 		for {
 			chunk, err := recvMessageFrame(ctx, mv.MessageStream, idleTimeout)

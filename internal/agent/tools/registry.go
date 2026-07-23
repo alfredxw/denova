@@ -3,8 +3,7 @@ package tools
 import (
 	"context"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/tool"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -37,18 +36,13 @@ func Allowed(settings Settings, source string) bool {
 	return config.AgentToolAllowed(settings, source)
 }
 
-type MiddlewareFactory func(context.Context, Settings) (adk.ChatModelAgentMiddleware, error)
-type ToolsFactory func(Settings) ([]tool.BaseTool, error)
+type MiddlewareFactory func(context.Context, Settings) (adk.Middleware, error)
+type ToolsFactory func(Settings) ([]adk.BaseTool, error)
 
 type MiddlewareRegistration struct {
 	Name    string
 	Enabled func(Settings) bool
 	Build   MiddlewareFactory
-	// ModelVisibleTools declares every tool name this middleware may append in
-	// BeforeAgent. The host validates these names against its descriptor catalog
-	// at construction and validates the concrete runtime tool set again after
-	// all middleware has run.
-	ModelVisibleTools []string
 }
 
 type ToolRegistration struct {
@@ -66,9 +60,8 @@ type BuildRequest struct {
 
 // BuildResult is the tool and middleware assembly consumed by an Agent builder.
 type BuildResult struct {
-	Tools               []tool.BaseTool
-	Handlers            []adk.ChatModelAgentMiddleware
-	MiddlewareToolNames []string
+	Tools       []adk.BaseTool
+	Middlewares []adk.Middleware
 }
 
 // Build assembles model-callable tools and middleware in one stable order.
@@ -83,8 +76,7 @@ func Build(ctx context.Context, req BuildRequest) (BuildResult, error) {
 			return BuildResult{}, err
 		}
 		if mw != nil {
-			result.Handlers = append(result.Handlers, mw)
-			result.MiddlewareToolNames = append(result.MiddlewareToolNames, registration.ModelVisibleTools...)
+			result.Middlewares = append(result.Middlewares, mw)
 		}
 	}
 	for _, registration := range req.Tools {
@@ -114,11 +106,11 @@ func FilesystemAllowed(settings Settings) bool {
 	return settings.FileRead || settings.FileWrite || settings.ShellExecute
 }
 
-func StaticTools(name string, tools ...tool.BaseTool) ToolRegistration {
+func StaticTools(name string, tools ...adk.BaseTool) ToolRegistration {
 	return ToolRegistration{
 		Name: name,
-		Build: func(Settings) ([]tool.BaseTool, error) {
-			return append([]tool.BaseTool(nil), tools...), nil
+		Build: func(Settings) ([]adk.BaseTool, error) {
+			return append([]adk.BaseTool(nil), tools...), nil
 		},
 	}
 }

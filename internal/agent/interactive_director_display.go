@@ -6,7 +6,7 @@ import (
 	"unicode/utf8"
 
 	"denova/config"
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 func (c *singleInstructionConversation) AppendDisplayEvent(event session.DisplayEvent) error {

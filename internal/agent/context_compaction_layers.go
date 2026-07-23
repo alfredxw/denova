@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -19,7 +19,7 @@ func summarizeContextInLayers(
 	cfg *config.Config,
 	agentKind string,
 	existingCheckpoint string,
-	source []*schema.Message,
+	source []*adk.Message,
 	referenceContext string,
 	sourceTokens int,
 	policy contextCompactionPolicy,
@@ -32,9 +32,9 @@ func summarizeContextInLayers(
 	if err != nil {
 		return "", inputChars, err
 	}
-	probe := []*schema.Message{
-		schema.SystemMessage(composition.Instruction()),
-		schema.UserMessage(buildContextCompactionTranscript(source, existingCheckpoint, referenceContext, sourceTokens, inputChars, policy)),
+	probe := []*adk.Message{
+		adk.SystemMessage(composition.Instruction()),
+		adk.UserMessage(buildContextCompactionTranscript(source, existingCheckpoint, referenceContext, sourceTokens, inputChars, policy)),
 	}
 	modelWindow := config.ResolveAgentModel(cfg, config.AgentKindContextCompaction).ContextWindowTokens
 	if validateProviderInput(config.AgentKindContextCompaction, probe, nil, maxBytes, modelWindow) == nil {
@@ -65,7 +65,7 @@ func summarizeContextInLayers(
 	return rolling, inputChars, nil
 }
 
-func compactionSourceBatches(existingCheckpoint, referenceContext string, source []*schema.Message, maxProviderBytes, maxProviderTokens int) [][]*schema.Message {
+func compactionSourceBatches(existingCheckpoint, referenceContext string, source []*adk.Message, maxProviderBytes, maxProviderTokens int) [][]*adk.Message {
 	if maxProviderBytes <= 0 {
 		maxProviderBytes = config.DefaultAgentContextMaxProviderInputBytes
 	}
@@ -96,11 +96,11 @@ func compactionSourceBatches(existingCheckpoint, referenceContext string, source
 		}
 	}
 
-	var batches [][]*schema.Message
-	var batch []*schema.Message
+	var batches [][]*adk.Message
+	var batch []*adk.Message
 	batchBytes := 0
 	appendPart := func(part string) {
-		message := schema.UserMessage(part)
+		message := adk.UserMessage(part)
 		partBytes := len(part)
 		if batchBytes > 0 && batchBytes+partBytes > payloadLimit {
 			batches = append(batches, batch)

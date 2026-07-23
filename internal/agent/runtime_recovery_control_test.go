@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 func TestRecoveryWaitCancellationAbortsAcceptedSuccessorWithFreshCommandIdentity(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,9 +103,9 @@ func TestRecoveryCancellationAbortIdentityReusesCommandForFailOnceRetry(t *testi
 
 func waitForRecoveryAbortCommand(
 	t *testing.T,
-	observation agentruntime.Observation,
-	operationID agentruntime.OperationID,
-) agentruntime.CommandID {
+	observation runstate.Observation,
+	operationID runstate.OperationID,
+) runstate.CommandID {
 	t.Helper()
 	timer := time.NewTimer(500 * time.Millisecond)
 	defer timer.Stop()
@@ -115,7 +115,7 @@ func waitForRecoveryAbortCommand(
 			if !ok {
 				t.Fatal("recovery audit observation closed before Abort was accepted")
 			}
-			accepted, ok := event.Payload.(agentruntime.CommandAcceptedEvent)
+			accepted, ok := event.Payload.(runstate.CommandAcceptedEvent)
 			if ok && accepted.CommandKind == "abort" && accepted.OperationID == operationID {
 				return accepted.CommandID
 			}

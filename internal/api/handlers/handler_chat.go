@@ -9,8 +9,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/internal/agent"
-	"denova/internal/agentruntime"
 	"denova/internal/api/sse"
 	novaApp "denova/internal/app"
 	"denova/internal/workspacechange"
@@ -21,7 +19,7 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 	if !h.requireWorkspace(c) {
 		return
 	}
-	var req agent.ChatRequest
+	var req novaApp.AgentChatRequest
 	if err := c.BindJSON(&req); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
@@ -50,7 +48,7 @@ func (h *Handlers) HandleChatContextAnalysis(ctx context.Context, c *app.Request
 	if !h.requireWorkspace(c) {
 		return
 	}
-	var req agent.ChatRequest
+	var req novaApp.AgentChatRequest
 	if err := c.BindJSON(&req); err != nil {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidBody")
 		return
@@ -73,7 +71,7 @@ func (h *Handlers) writeChatPreparationError(c *app.RequestContext, err error) {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试请求 / command_id is required for safe request retries", nil)
 		return
 	}
-	if errors.Is(err, agentruntime.ErrInvalidCommand) {
+	if errors.Is(err, novaApp.ErrInvalidAgentCommand) {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", err.Error(), nil)
 		return
 	}
@@ -85,7 +83,7 @@ func (h *Handlers) writeChatPreparationError(c *app.RequestContext, err error) {
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.busy", "已有 Agent 正在运行，请使用 Follow Up、Steer 或 Stop / An agent is already running; use Follow Up, Steer, or Stop", nil)
 		return
 	}
-	if errors.Is(err, agent.ErrRecoveryRequired) {
+	if errors.Is(err, novaApp.ErrAgentRecoveryRequired) {
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.recovery_required", "存在需要恢复的 Agent 运行，请先重新挂接或提交恢复操作 / A durable agent run requires recovery before starting a new one", nil)
 		return
 	}
@@ -121,7 +119,7 @@ func (h *Handlers) HandleChatContextCompaction(ctx context.Context, c *app.Reque
 		return
 	}
 	body.CommandID = strings.TrimSpace(body.CommandID)
-	if err := agentruntime.ValidateCommandID(body.CommandID, agentruntime.DefaultInputLimits()); err != nil {
+	if err := novaApp.ValidateAgentCommandID(body.CommandID); err != nil {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少或无效的 command_id，无法安全重试 / command_id is required and must be valid for safe retries", nil)
 		return
 	}
@@ -138,7 +136,7 @@ func (h *Handlers) HandleChatContextCompactionRemove(ctx context.Context, c *app
 		return
 	}
 	commandID := strings.TrimSpace(c.Query("command_id"))
-	if err := agentruntime.ValidateCommandID(commandID, agentruntime.DefaultInputLimits()); err != nil {
+	if err := novaApp.ValidateAgentCommandID(commandID); err != nil {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少或无效的 command_id，无法安全重试 / command_id is required and must be valid for safe retries", nil)
 		return
 	}

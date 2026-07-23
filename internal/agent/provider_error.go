@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	einoopenai "github.com/cloudwego/eino-ext/components/model/openai"
+	adkopenai "github.com/alfredxw/denova/adk/model/openai"
 )
 
 type ModelErrorClass string
@@ -43,9 +43,9 @@ func ClassifyModelError(err error) ModelErrorClassification {
 		return ModelErrorClassification{Class: ModelErrorTimeout, Retryable: true}
 	}
 
-	var providerError *einoopenai.APIError
+	var providerError *adkopenai.APIError
 	if errors.As(err, &providerError) {
-		return classifyModelHTTPStatus(providerError.HTTPStatusCode)
+		return classifyModelHTTPStatus(providerError.StatusCode)
 	}
 	var networkError net.Error
 	if errors.As(err, &networkError) {

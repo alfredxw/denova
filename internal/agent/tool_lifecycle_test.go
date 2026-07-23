@@ -8,11 +8,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 type recordingToolLifecycleObserver struct {
@@ -50,7 +48,7 @@ func TestToolLifecycleStartIsRecordedBeforeInvokableEffect(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			observer.record("effect")
 			return "ok", nil
 		},
@@ -79,7 +77,7 @@ func TestToolLifecycleStartFailurePreventsEffect(t *testing.T) {
 	called := false
 	endpoint, err := middleware.WrapInvokableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (string, error) {
+		func(context.Context, string, ...adk.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
 		},
@@ -105,16 +103,16 @@ func TestCommittedToolMutationRemainsRuntimeOwnedUntilOutputCommit(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref, err := agentruntime.BindingReference(binding)
+	ref, err := runstate.BindingReference(binding)
 	if err != nil {
 		t.Fatal(err)
 	}
 	events := make([]string, 0, 3)
-	sink := &harnessEngineSink{emit: func(event agentruntime.EngineEvent) error {
+	sink := &harnessEngineSink{emit: func(event runstate.EngineEvent) error {
 		switch event.(type) {
-		case agentruntime.EngineToolFinished:
+		case runstate.EngineToolFinished:
 			events = append(events, "durable-finish")
-		case agentruntime.EngineHostEffectAcknowledged:
+		case runstate.EngineHostEffectAcknowledged:
 			events = append(events, "runtime-ack")
 		}
 		return nil
@@ -166,7 +164,7 @@ func TestToolLifecycleFinishIsRecordedAfterStreamDrain(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
 	endpoint, err := middleware.WrapStreamableToolCall(
 		context.Background(),
-		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+		func(context.Context, string, ...adk.ToolOption) (*adk.StreamReader[string], error) {
 			observer.record("effect")
 			return singleChunkReader("ok"), nil
 		},

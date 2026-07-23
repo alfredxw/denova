@@ -6,20 +6,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	agentcontext "denova/internal/agent/context"
+	"denova/internal/agent/session"
 	"denova/internal/book"
-	"denova/internal/session"
 )
 
 func TestMergeToolCalls(t *testing.T) {
 	idx := 0
-	calls := mergeToolCalls(nil, []schema.ToolCall{
-		{Index: &idx, Function: schema.FunctionCall{Name: "write_file", Arguments: `{"path":`}},
+	calls := mergeToolCalls(nil, []adk.ToolCall{
+		{Index: &idx, Function: adk.FunctionCall{Name: "write_file", Arguments: `{"path":`}},
 	})
-	calls = mergeToolCalls(calls, []schema.ToolCall{
-		{Index: &idx, Function: schema.FunctionCall{Arguments: `"chapters/ch01.md"}`}},
+	calls = mergeToolCalls(calls, []adk.ToolCall{
+		{Index: &idx, Function: adk.FunctionCall{Arguments: `"chapters/ch01.md"}`}},
 	})
 
 	if len(calls) != 1 {
@@ -35,11 +35,11 @@ func TestMergeToolCalls(t *testing.T) {
 
 func TestMergeToolCallsHandlesSparseIndexes(t *testing.T) {
 	idx := 2
-	calls := mergeToolCalls(nil, []schema.ToolCall{
-		{Index: &idx, ID: "call-2", Function: schema.FunctionCall{Name: "edit_file", Arguments: `{"path":`}},
+	calls := mergeToolCalls(nil, []adk.ToolCall{
+		{Index: &idx, ID: "call-2", Function: adk.FunctionCall{Name: "edit_file", Arguments: `{"path":`}},
 	})
-	calls = mergeToolCalls(calls, []schema.ToolCall{
-		{Index: &idx, Function: schema.FunctionCall{Arguments: `"chapters/ch02.md"}`}},
+	calls = mergeToolCalls(calls, []adk.ToolCall{
+		{Index: &idx, Function: adk.FunctionCall{Arguments: `"chapters/ch02.md"}`}},
 	})
 
 	if len(calls) != 3 {

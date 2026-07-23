@@ -6,7 +6,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/interactive"
 )
 
@@ -27,7 +27,7 @@ func (c *interactiveConversation) stagePreparedInteractiveCompaction(prepared pr
 
 func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 	ctx context.Context,
-	settledOperationID agentruntime.OperationID,
+	settledOperationID runstate.OperationID,
 	options agent.RunOptions,
 ) (*agent.ContextStructuralSpec, error) {
 	if c == nil || c.store == nil {
@@ -77,7 +77,7 @@ func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 	}
 	options.StoryID = c.storyID
 	options.BranchID = branchID
-	ref := agentruntime.ContextCompactionRef{
+	ref := runstate.ContextCompactionRef{
 		Source: "story.turn_events", Purpose: "persist an automatic bounded model-history checkpoint after turn settlement",
 		Resource: c.storyID + "/" + branchID, ExpectedRevision: contextStoryRevision(expectedParent),
 	}

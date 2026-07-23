@@ -7,8 +7,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
+	"github.com/alfredxw/denova/adk/model/openai"
 
 	"denova/config"
 	"denova/internal/book"
@@ -56,8 +56,8 @@ func ClassifyLoreItems(ctx context.Context, cfg *config.Config, inputs []book.Lo
 	return result, runErr
 }
 
-func generateLoreClassifications(ctx context.Context, cfg *config.Config, modelCfg openai.ChatModelConfig, instruction string, inputs []book.LoreClassificationInput, attempt string) ([]book.LoreClassificationSuggestion, error) {
-	cm, err := openai.NewChatModel(ctx, &modelCfg)
+func generateLoreClassifications(ctx context.Context, cfg *config.Config, modelCfg openai.Config, instruction string, inputs []book.LoreClassificationInput, attempt string) ([]book.LoreClassificationSuggestion, error) {
+	cm, err := openai.New(ctx, &modelCfg)
 	if err != nil {
 		return nil, fmt.Errorf("创建工具 Agent 模型失败: %w", err)
 	}
@@ -65,9 +65,9 @@ func generateLoreClassifications(ctx context.Context, cfg *config.Config, modelC
 	if err != nil {
 		return nil, err
 	}
-	messages := []*schema.Message{
-		schema.SystemMessage(composition.Instruction()),
-		schema.UserMessage(instruction),
+	messages := []*adk.Message{
+		adk.SystemMessage(composition.Instruction()),
+		adk.UserMessage(instruction),
 	}
 	if err := validateConfiguredProviderInput(cfg, config.AgentKindToolAgent, messages, nil); err != nil {
 		return nil, err

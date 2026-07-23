@@ -6,14 +6,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 	agentcontext "denova/internal/agent/context"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 const interactiveDirectorAgentLabel = "interactive-director-agent"
@@ -36,7 +36,7 @@ func GenerateInteractiveDirectorWithTools(ctx context.Context, chatService *Chat
 		return "", fmt.Errorf("互动导演故事状态不存在")
 	}
 	toolContext.CommandID = strings.TrimSpace(toolContext.CommandID)
-	if err := agentruntime.ValidateCommandID(toolContext.CommandID, agentruntime.DefaultInputLimits()); err != nil {
+	if err := runstate.ValidateCommandID(toolContext.CommandID, runstate.DefaultInputLimits()); err != nil {
 		return "", fmt.Errorf("互动导演 command_id 无效: %w", err)
 	}
 	builtAgent, systemPrompt, err := BuildInteractiveDirectorWithComposition(ctx, cfg, state, toolContext)
@@ -185,7 +185,7 @@ func (c *singleInstructionConversation) AssembleModelContext(ctx context.Context
 		})
 	}
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage(message)}, Fragments: fragments,
+		Messages: []*adk.Message{adk.UserMessage(message)}, Fragments: fragments,
 	})
 	if err != nil {
 		return ModelContextResult{}, err
@@ -248,17 +248,17 @@ func (c *singleInstructionConversation) ContextLedgerParts() []ContextLedgerPart
 		return nil
 	}
 	stableMessage := c.stableContextModelMessage()
-	return c.ContextLedgerPartsForMessages([]*schema.Message{schema.UserMessage(stableMessage)})
+	return c.ContextLedgerPartsForMessages([]*adk.Message{adk.UserMessage(stableMessage)})
 }
 
-func (c *singleInstructionConversation) ContextLedgerPartsForMessages(messages []*schema.Message) []ContextLedgerPart {
+func (c *singleInstructionConversation) ContextLedgerPartsForMessages(messages []*adk.Message) []ContextLedgerPart {
 	if c == nil || strings.TrimSpace(c.stableContext) == "" {
 		return nil
 	}
 	stableMessage := c.stableContextModelMessage()
 	included := false
 	for _, message := range messages {
-		if message != nil && message.Role == schema.User && strings.TrimSpace(message.Content) == stableMessage {
+		if message != nil && message.Role == adk.User && strings.TrimSpace(message.Content) == stableMessage {
 			included = true
 			break
 		}

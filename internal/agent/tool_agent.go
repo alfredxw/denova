@@ -7,8 +7,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
+	"github.com/alfredxw/denova/adk/model/openai"
 
 	"denova/config"
 )
@@ -60,9 +60,9 @@ func InferChapterSplitRegex(ctx context.Context, cfg *config.Config, sample stri
 	return regex, nil
 }
 
-func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg openai.ChatModelConfig, instruction, attempt string) (string, error) {
+func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg openai.Config, instruction, attempt string) (string, error) {
 	log.Printf("[tool-agent] chapter regex model config attempt=%s model=%q base_url=%q max_tokens=%d json_mode=%t", attempt, modelCfg.Model, modelCfg.BaseURL, valueOrZero(modelCfg.MaxTokens), modelCfg.ResponseFormat != nil)
-	cm, err := openai.NewChatModel(ctx, &modelCfg)
+	cm, err := openai.New(ctx, &modelCfg)
 	if err != nil {
 		log.Printf("[tool-agent] create chapter regex model failed attempt=%s err=%v", attempt, err)
 		return "", fmt.Errorf("创建工具 Agent 模型失败: %w", err)
@@ -71,9 +71,9 @@ func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg
 	if err != nil {
 		return "", err
 	}
-	messages := []*schema.Message{
-		schema.SystemMessage(composition.Instruction()),
-		schema.UserMessage(instruction),
+	messages := []*adk.Message{
+		adk.SystemMessage(composition.Instruction()),
+		adk.UserMessage(instruction),
 	}
 	if err := validateConfiguredProviderInput(cfg, config.AgentKindToolAgent, messages, nil); err != nil {
 		return "", err

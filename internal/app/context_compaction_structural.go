@@ -8,13 +8,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 type contextStructuralOperationFuncs struct {
@@ -94,7 +92,7 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 	if endOffset > len(messages) {
 		endOffset = len(messages)
 	}
-	source := append([]*schema.Message(nil), messages[startOffset:endOffset]...)
+	source := append([]*agent.Message(nil), messages[startOffset:endOffset]...)
 	commandID, err := resolveContextStructuralCommandID(
 		requestedCommandID,
 		contextStructuralCommandID("writing-compact", runtime.workspace, runtime.sess.ID, fmt.Sprint(cursor.Revision)),
@@ -120,7 +118,7 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 		return prepared, fmt.Errorf("没有可压缩的上下文")
 	}
 	record := sessionCompactionRecord(recordID, config.AgentKindIDE, sourceStart, sourceEnd, prepared)
-	ref := agentruntime.ContextCompactionRef{
+	ref := runstate.ContextCompactionRef{
 		Source: "session.effective_messages", Purpose: "persist a bounded model-history checkpoint",
 		Resource: runtime.sess.ID, ExpectedRevision: fmt.Sprintf("session-context:%d", cursor.Revision), Force: true,
 	}
@@ -232,7 +230,7 @@ func (s *ChatAppService) executeWritingContextCompactionRemoval(ctx context.Cont
 		ID: recordID, AgentKind: config.AgentKindIDE, CompactionID: compaction.ID,
 		SourceStartIndex: compaction.SourceStartIndex, SourceEndIndex: compaction.SourceEndIndex, Reason: "user_removed",
 	}
-	ref := agentruntime.ContextCompactionRef{
+	ref := runstate.ContextCompactionRef{
 		Source: "session.context_compaction", Purpose: "restore raw canonical session history",
 		Resource: sess.ID, ExpectedRevision: fmt.Sprintf("session-context:%d", cursor.Revision), CompactionID: compaction.ID,
 	}
@@ -345,7 +343,7 @@ func resolveContextStructuralCommandID(requested, fallback string) (string, erro
 	if commandID == "" {
 		commandID = strings.TrimSpace(fallback)
 	}
-	if err := agentruntime.ValidateCommandID(commandID, agentruntime.DefaultInputLimits()); err != nil {
+	if err := runstate.ValidateCommandID(commandID, runstate.DefaultInputLimits()); err != nil {
 		return "", err
 	}
 	return commandID, nil

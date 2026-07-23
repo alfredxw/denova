@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 var ErrHarnessStructuralRestoreUnavailable = errors.New("agent harness structural restore dependency is unavailable")
@@ -18,8 +18,8 @@ var ErrHarnessStructuralRestoreUnavailable = errors.New("agent harness structura
 // strictly decoded deterministic mutation. The host may resolve canonical
 // stores and callbacks, but must not perform model, tool, or canonical writes.
 type HarnessStructuralRestoreRequest struct {
-	Binding  agentruntime.BindingRef
-	Snapshot agentruntime.StructuralOperationSnapshot
+	Binding  runstate.BindingRef
+	Snapshot runstate.StructuralOperationSnapshot
 	Options  RunOptions
 	Plan     ContextStructuralRestorePlan
 }
@@ -31,7 +31,7 @@ type HarnessStructuralRestorer func(context.Context, HarnessStructuralRestoreReq
 
 func (e *harnessEngine) restoreStructuralOperation(
 	ctx context.Context,
-	snapshot agentruntime.StructuralOperationSnapshot,
+	snapshot runstate.StructuralOperationSnapshot,
 ) error {
 	if e == nil {
 		return fmt.Errorf("%w: engine is nil", ErrHarnessStructuralRestoreUnavailable)
@@ -123,49 +123,49 @@ func (e *harnessEngine) restoreStructuralOperation(
 }
 
 func contextStructuralCommand(
-	commandID agentruntime.CommandID,
+	commandID runstate.CommandID,
 	action ContextStructuralAction,
-	ref agentruntime.ContextCompactionRef,
-) agentruntime.Command {
+	ref runstate.ContextCompactionRef,
+) runstate.Command {
 	switch action {
 	case ContextStructuralCompact:
-		return agentruntime.CompactIfNeeded{ID: commandID, Ref: cloneContextCompactionRef(ref)}
+		return runstate.CompactIfNeeded{ID: commandID, Ref: cloneContextCompactionRef(ref)}
 	case ContextStructuralRemove:
-		return agentruntime.RemoveCompaction{ID: commandID, Ref: cloneContextCompactionRef(ref)}
+		return runstate.RemoveCompaction{ID: commandID, Ref: cloneContextCompactionRef(ref)}
 	default:
 		return nil
 	}
 }
 
-func contextStructuralActionForKind(kind agentruntime.StructuralOperationKind) ContextStructuralAction {
+func contextStructuralActionForKind(kind runstate.StructuralOperationKind) ContextStructuralAction {
 	switch kind {
-	case agentruntime.StructuralCompactContext:
+	case runstate.StructuralCompactContext:
 		return ContextStructuralCompact
-	case agentruntime.StructuralRemoveCompaction:
+	case runstate.StructuralRemoveCompaction:
 		return ContextStructuralRemove
 	default:
 		return ""
 	}
 }
 
-func contextStructuralBindingOptions(binding agentruntime.BindingRef, options RunOptions) (RunOptions, error) {
+func contextStructuralBindingOptions(binding runstate.BindingRef, options RunOptions) (RunOptions, error) {
 	options.Workspace = binding.Workspace
 	options.SessionID = binding.SessionID
 	options.StoryID = binding.StoryID
 	options.BranchID = binding.BranchID
 	options.AutomationTaskID = ""
 	switch binding.Profile {
-	case agentruntime.ProfileWriting:
+	case runstate.ProfileWriting:
 		options.AgentKind = AgentKindIDE
 		options.Mode = "ide"
-	case agentruntime.ProfileGame:
+	case runstate.ProfileGame:
 		options.AgentKind = AgentKindInteractiveStory
 		options.Mode = "interactive"
-	case agentruntime.ProfileConfigManager:
+	case runstate.ProfileConfigManager:
 		options.AgentKind = AgentKindConfigManager
-	case agentruntime.ProfileImage:
+	case runstate.ProfileImage:
 		options.AgentKind = AgentKindImage
-	case agentruntime.ProfileDirector:
+	case runstate.ProfileDirector:
 		options.AgentKind = config.AgentKindInteractiveDirector
 		options.Mode = "interactive"
 	default:
@@ -176,7 +176,7 @@ func contextStructuralBindingOptions(binding agentruntime.BindingRef, options Ru
 	if err != nil {
 		return RunOptions{}, err
 	}
-	resolvedRef, err := agentruntime.BindingReference(resolved)
+	resolvedRef, err := runstate.BindingReference(resolved)
 	if err != nil {
 		return RunOptions{}, err
 	}
@@ -186,12 +186,12 @@ func contextStructuralBindingOptions(binding agentruntime.BindingRef, options Ru
 	return options, nil
 }
 
-func cloneContextStructuralSnapshot(snapshot agentruntime.StructuralOperationSnapshot) agentruntime.StructuralOperationSnapshot {
+func cloneContextStructuralSnapshot(snapshot runstate.StructuralOperationSnapshot) runstate.StructuralOperationSnapshot {
 	snapshot.Ref = cloneContextCompactionRef(snapshot.Ref)
 	return snapshot
 }
 
-func cloneContextCompactionRef(ref agentruntime.ContextCompactionRef) agentruntime.ContextCompactionRef {
+func cloneContextCompactionRef(ref runstate.ContextCompactionRef) runstate.ContextCompactionRef {
 	ref.RestoreDescriptor = cloneJSONRawMessage(ref.RestoreDescriptor)
 	return ref
 }
@@ -246,7 +246,7 @@ func (s *ChatService) ResumeRecoveredContextStructuralOperation(
 
 func (h *chatHarness) resumeRecoveredContextStructuralOperation(
 	ctx context.Context,
-	harness *agentruntime.Harness,
+	harness *runstate.Harness,
 	expectedAction ContextStructuralAction,
 ) (ContextStructuralResult, bool, error) {
 	if h == nil || harness == nil {
@@ -256,7 +256,7 @@ func (h *chatHarness) resumeRecoveredContextStructuralOperation(
 	if err != nil {
 		return ContextStructuralResult{}, false, err
 	}
-	if !status.RecoveryPaused || status.Phase != agentruntime.PhaseCompacting || status.ActiveStructural == nil {
+	if !status.RecoveryPaused || status.Phase != runstate.PhaseCompacting || status.ActiveStructural == nil {
 		return ContextStructuralResult{}, false, nil
 	}
 	snapshot := cloneContextStructuralSnapshot(*status.ActiveStructural)
@@ -318,9 +318,9 @@ func (h *chatHarness) resumeRecoveredContextStructuralOperation(
 // become authoritative behind the selected in-memory projection.
 func (h *chatHarness) waitForRecoveredStructuralSettlement(
 	caller context.Context,
-	harness *agentruntime.Harness,
-	observation agentruntime.Observation,
-	receipt agentruntime.Receipt,
+	harness *runstate.Harness,
+	observation runstate.Observation,
+	receipt runstate.Receipt,
 ) error {
 	if status, err := harness.Status(h.lifecycle); err == nil && operationAlreadySettled(status, receipt) {
 		return structuralSettlementError(status.LastOperation)
@@ -339,13 +339,13 @@ func (h *chatHarness) waitForRecoveredStructuralSettlement(
 				continue
 			}
 			switch payload := event.Payload.(type) {
-			case agentruntime.OperationSettledEvent:
+			case runstate.OperationSettledEvent:
 				if payload.OperationID == receipt.OperationID {
-					return structuralSettlementError(&agentruntime.OperationSummary{
+					return structuralSettlementError(&runstate.OperationSummary{
 						OperationID: payload.OperationID, Status: payload.Status, Reason: payload.Reason,
 					})
 				}
-			case agentruntime.OperationInterruptedEvent:
+			case runstate.OperationInterruptedEvent:
 				if payload.OperationID == receipt.OperationID {
 					return fmt.Errorf("structural context operation interrupted: %s", payload.Reason)
 				}
@@ -367,11 +367,11 @@ func (h *chatHarness) waitForRecoveredStructuralSettlement(
 			if err := caller.Err(); err != nil {
 				reason = err.Error()
 			}
-			_, err := harness.Submit(h.lifecycle, agentruntime.Abort{
-				ID: agentruntime.CommandID(newHarnessIdentity("command")), OperationID: receipt.OperationID, Reason: reason,
+			_, err := harness.Submit(h.lifecycle, runstate.Abort{
+				ID: runstate.CommandID(newHarnessIdentity("command")), OperationID: receipt.OperationID, Reason: reason,
 			})
-			if err != nil && !errors.Is(err, agentruntime.ErrInvalidCommand) &&
-				!errors.Is(err, agentruntime.ErrStaleOperation) && !errors.Is(err, agentruntime.ErrDomainCommitRejected) {
+			if err != nil && !errors.Is(err, runstate.ErrInvalidCommand) &&
+				!errors.Is(err, runstate.ErrStaleOperation) && !errors.Is(err, runstate.ErrDomainCommitRejected) {
 				return err
 			}
 		case <-h.lifecycle.Done():

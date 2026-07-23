@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 // chatHarness coordinates the durable command lane with the profile-specific
@@ -16,7 +16,7 @@ type chatHarness struct {
 	lifecycle context.Context
 	cancel    context.CancelFunc
 	engine    *harnessEngine
-	runtime   *agentruntime.Runtime
+	runtime   *runstate.Runtime
 }
 
 // DurableChatServiceOption configures process-level durable adapter seams.
@@ -111,7 +111,7 @@ func NewDurableChatService(ctx context.Context, dataDir string, serviceOptions .
 			return nil, err
 		}
 	}
-	store, err := agentruntime.NewFileJournalStore(filepath.Join(root, "agent-runtime"))
+	store, err := runstate.NewFileJournalStore(filepath.Join(root, "agent-runtime"))
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +121,7 @@ func NewDurableChatService(ctx context.Context, dataDir string, serviceOptions .
 func newHarnessChatService(
 	ctx context.Context,
 	policy LoopPolicy,
-	journals agentruntime.JournalStore,
+	journals runstate.JournalStore,
 	turnRestorers ...HarnessTurnRestorer,
 ) (*ChatService, error) {
 	options := durableChatServiceOptions{}
@@ -134,7 +134,7 @@ func newHarnessChatService(
 func newHarnessChatServiceWithOptions(
 	ctx context.Context,
 	policy LoopPolicy,
-	journals agentruntime.JournalStore,
+	journals runstate.JournalStore,
 	options durableChatServiceOptions,
 ) (*ChatService, error) {
 	if ctx == nil {
@@ -147,7 +147,7 @@ func newHarnessChatServiceWithOptions(
 	engine.domainCommitReconciler = options.domainCommitReconciler
 	engine.inputMaterializer = options.inputMaterializer
 	engine.hostEffectReconciler = options.hostEffectReconciler
-	runtime, err := agentruntime.NewRuntime(engine, journals, agentruntime.RuntimeConfig{Lifecycle: lifecycle})
+	runtime, err := runstate.NewRuntime(engine, journals, runstate.RuntimeConfig{Lifecycle: lifecycle})
 	if err != nil {
 		cancel()
 		return nil, err

@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/components/tool/utils"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -33,7 +32,7 @@ type agentConfigWriteOperation struct {
 type agentConfigSnapshot struct {
 	Paths            config.SettingsPaths          `json:"paths"`
 	Agents           []agentConfigAgentDefinition  `json:"agents"`
-	DeepAgentParents []string                      `json:"deep_agent_parents"`
+	SubAgentParents  []string                      `json:"subagent_parents"`
 	ToolCapabilities []agentConfigToolCapability   `json:"tool_capabilities"`
 	Layers           agentConfigLayeredSnapshot    `json:"layers"`
 	SubAgentIndex    []agentConfigSubAgentIndexRow `json:"sub_agent_index"`
@@ -41,9 +40,9 @@ type agentConfigSnapshot struct {
 }
 
 type agentConfigAgentDefinition struct {
-	Kind            string `json:"kind"`
-	SessionID       string `json:"session_id,omitempty"`
-	DeepAgentParent bool   `json:"deep_agent_parent"`
+	Kind           string `json:"kind"`
+	SessionID      string `json:"session_id,omitempty"`
+	SubAgentParent bool   `json:"subagent_parent"`
 }
 
 type agentConfigToolCapability struct {
@@ -99,8 +98,8 @@ type agentConfigSubAgentIndexRow struct {
 	Layer       string   `json:"layer"`
 }
 
-func newListAgentConfigsTool(cfg *config.Config) (tool.BaseTool, error) {
-	return utils.InferTool("list_agent_configs", "一次性读取 Agent 页相关配置：Agent kind、工具能力、user/workspace/effective 三层配置、自定义 SubAgent 索引和配置文件路径；不会返回 API key。", func(ctx context.Context, input struct{}) (string, error) {
+func newListAgentConfigsTool(cfg *config.Config) (adk.BaseTool, error) {
+	return adk.InferTool("list_agent_configs", "一次性读取 Agent 页相关配置：Agent kind、工具能力、user/workspace/effective 三层配置、自定义 SubAgent 索引和配置文件路径；不会返回 API key。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
 		layered, err := loadAgentConfigLayered(cfg)
@@ -110,7 +109,7 @@ func newListAgentConfigsTool(cfg *config.Config) (tool.BaseTool, error) {
 		snapshot := agentConfigSnapshot{
 			Paths:            layered.Paths,
 			Agents:           agentConfigDefinitions(),
-			DeepAgentParents: config.DeepAgentParentKinds(),
+			SubAgentParents:  config.SubAgentParentKinds(),
 			ToolCapabilities: agentConfigToolCapabilities(),
 			Layers: agentConfigLayeredSnapshot{
 				User:      agentConfigLayer(layered.User),
@@ -130,8 +129,8 @@ func newListAgentConfigsTool(cfg *config.Config) (tool.BaseTool, error) {
 	})
 }
 
-func newWriteAgentConfigsTool(cfg *config.Config) (tool.BaseTool, error) {
-	return utils.InferTool("write_agent_configs", "批量写入 Agent 页配置。必须显式指定 scope=user 或 scope=workspace；Agent 模型选择只能写入 user，workspace 只支持提示词、工具、Skill、上下文和 SubAgent 定制。", func(ctx context.Context, input agentConfigWriteInput) (string, error) {
+func newWriteAgentConfigsTool(cfg *config.Config) (adk.BaseTool, error) {
+	return adk.InferTool("write_agent_configs", "批量写入 Agent 页配置。必须显式指定 scope=user 或 scope=workspace；Agent 模型选择只能写入 user，workspace 只支持提示词、工具、Skill、上下文和 SubAgent 定制。", func(ctx context.Context, input agentConfigWriteInput) (string, error) {
 		_ = ctx
 		scope := strings.TrimSpace(input.Scope)
 		if scope != "user" && scope != "workspace" {
@@ -290,9 +289,9 @@ func agentConfigDefinitions() []agentConfigAgentDefinition {
 	out := make([]agentConfigAgentDefinition, 0, len(definitions))
 	for _, definition := range definitions {
 		out = append(out, agentConfigAgentDefinition{
-			Kind:            definition.Kind,
-			SessionID:       definition.SessionID,
-			DeepAgentParent: config.IsDeepAgentParentKind(definition.Kind),
+			Kind:           definition.Kind,
+			SessionID:      definition.SessionID,
+			SubAgentParent: config.IsSubAgentParentKind(definition.Kind),
 		})
 	}
 	return out
@@ -393,7 +392,7 @@ func validGeneralSubAgentKey(agent string) bool {
 	if agent == "default" {
 		return true
 	}
-	return config.IsDeepAgentParentKind(agent)
+	return config.IsSubAgentParentKind(agent)
 }
 
 func setAgentModelOverride(settings *config.Settings, agent string, value config.AgentModelOverride) {

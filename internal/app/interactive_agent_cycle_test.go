@@ -7,7 +7,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -20,7 +20,7 @@ func TestInteractiveConversationPublishesOnlyAuthorizedOutputStage(t *testing.T)
 		t.Fatal(err)
 	}
 	aborted := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "先观察", 800, nil)
-	aborted.BindAgentCycleIdentity(agent.HarnessCycleIdentity{CommandID: agentruntime.CommandID("command-abort"), OperationID: agentruntime.OperationID("operation-abort"), Cycle: 1})
+	aborted.BindAgentCycleIdentity(agent.HarnessCycleIdentity{CommandID: runstate.CommandID("command-abort"), OperationID: runstate.OperationID("operation-abort"), Cycle: 1})
 	materializeInteractiveInputForTest(t, aborted, aborted.agentCycleIdentitySnapshot())
 	submitTestTurnResult(t, aborted, "观察", "确认环境")
 	if err := aborted.AppendAssistant("尚未授权的叙事"); err != nil {
@@ -37,7 +37,7 @@ func TestInteractiveConversationPublishesOnlyAuthorizedOutputStage(t *testing.T)
 	}
 
 	completed := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "再观察", 800, nil)
-	completed.BindAgentCycleIdentity(agent.HarnessCycleIdentity{CommandID: agentruntime.CommandID("command-complete"), OperationID: agentruntime.OperationID("operation-complete"), Cycle: 1})
+	completed.BindAgentCycleIdentity(agent.HarnessCycleIdentity{CommandID: runstate.CommandID("command-complete"), OperationID: runstate.OperationID("operation-complete"), Cycle: 1})
 	materializeInteractiveInputForTest(t, completed, completed.agentCycleIdentitySnapshot())
 	submitTestTurnResult(t, completed, "观察", "发现线索")
 	if err := completed.AppendAssistant("授权后写入的叙事"); err != nil {

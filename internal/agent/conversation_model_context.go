@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	agentcontext "denova/internal/agent/context"
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 var ErrMissingAgentCycleIdentity = errors.New("session canonical write requires durable agent cycle identity")
@@ -45,7 +45,7 @@ func (c *SessionConversation) AssembleModelContext(ctx context.Context, _ string
 		snapshot, inputIndex, materialized, err = c.session.SnapshotContextForDomainCommit(
 			c.agentKind,
 			intent.Identity,
-			schema.User,
+			adk.User,
 			intent.Hash,
 		)
 		if err != nil {
@@ -123,7 +123,7 @@ func (c *SessionConversation) acceptedInputDomainCommitIntent(message string) (s
 	}
 	return session.NewDomainCommitIntent(session.DomainCommitIdentity{
 		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
-	}, schema.UserMessage(message), session.MessageMetadata{AgentKind: c.agentKind, UserReferences: references})
+	}, adk.UserMessage(message), session.MessageMetadata{AgentKind: c.agentKind, UserReferences: references})
 }
 
 func (c *SessionConversation) modelMessagesWithAcceptedInput(
@@ -131,18 +131,18 @@ func (c *SessionConversation) modelMessagesWithAcceptedInput(
 	inputIndex int,
 	materialized bool,
 	agentMessage string,
-) []*schema.Message {
+) []*adk.Message {
 	if materialized {
-		snapshot.EffectiveMessages = append([]*schema.Message(nil), snapshot.EffectiveMessages...)
-		snapshot.EffectiveMessages[inputIndex] = schema.UserMessage(agentMessage)
+		snapshot.EffectiveMessages = append([]*adk.Message(nil), snapshot.EffectiveMessages...)
+		snapshot.EffectiveMessages[inputIndex] = adk.UserMessage(agentMessage)
 		return c.modelHistory(snapshot)
 	}
 	history := c.modelHistory(snapshot)
-	return append(history, schema.UserMessage(agentMessage))
+	return append(history, adk.UserMessage(agentMessage))
 }
 
-func (c *SessionConversation) modelHistory(snapshot session.ContextSnapshot) []*schema.Message {
-	history := append([]*schema.Message(nil), snapshot.EffectiveMessages...)
+func (c *SessionConversation) modelHistory(snapshot session.ContextSnapshot) []*adk.Message {
+	history := append([]*adk.Message(nil), snapshot.EffectiveMessages...)
 	policy := c.compactionPolicy()
 	if snapshot.Compaction != nil && strings.TrimSpace(snapshot.Compaction.Summary) != "" {
 		compaction := *snapshot.Compaction
@@ -153,14 +153,14 @@ func (c *SessionConversation) modelHistory(snapshot session.ContextSnapshot) []*
 			retainedTurns = policy.RetainedTurns
 		}
 		tail := compactedMessagesAfterSource(history, effectiveStart, compaction.SourceEndIndex, retainedTurns)
-		history = make([]*schema.Message, 0, 1+len(tail))
+		history = make([]*adk.Message, 0, 1+len(tail))
 		history = append(history, NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
 		history = append(history, tail...)
 	}
 	return applyToolResultContextPolicy(history, c.ToolResultContextPolicy())
 }
 
-func (c *SessionConversation) leadingRuntimeMessages() []*schema.Message {
+func (c *SessionConversation) leadingRuntimeMessages() []*adk.Message {
 	if c == nil || strings.TrimSpace(c.stableContext) == "" {
 		return nil
 	}
@@ -168,7 +168,7 @@ func (c *SessionConversation) leadingRuntimeMessages() []*schema.Message {
 	if strings.TrimSpace(content) == "" {
 		return nil
 	}
-	return []*schema.Message{schema.UserMessage(content)}
+	return []*adk.Message{adk.UserMessage(content)}
 }
 
 func (c *SessionConversation) runtimeContextFragments() []agentcontext.Fragment {

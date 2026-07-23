@@ -3,9 +3,9 @@ package agent
 import (
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 // completeUnknownToolResults repairs only a missing result half. A durable
@@ -13,7 +13,7 @@ import (
 // the next provider input receives a complete call/result exchange that says
 // exactly that and forbids automatic retry. Existing results always win, and
 // running this projection repeatedly is idempotent.
-func completeUnknownToolResults(messages []*schema.Message) []*schema.Message {
+func completeUnknownToolResults(messages []*adk.Message) []*adk.Message {
 	if len(messages) == 0 {
 		return messages
 	}
@@ -23,27 +23,27 @@ func completeUnknownToolResults(messages []*schema.Message) []*schema.Message {
 		if message == nil {
 			continue
 		}
-		if message.Role == schema.Assistant {
+		if message.Role == adk.Assistant {
 			for _, call := range message.ToolCalls {
 				if callID := strings.TrimSpace(call.ID); callID != "" {
 					callCounts[callID]++
 				}
 			}
 		}
-		if message.Role == schema.Tool {
+		if message.Role == adk.Tool {
 			if callID := strings.TrimSpace(message.ToolCallID); callID != "" {
 				resultCounts[callID]++
 			}
 		}
 	}
 
-	completed := make([]*schema.Message, 0, len(messages))
+	completed := make([]*adk.Message, 0, len(messages))
 	for _, message := range messages {
 		if message == nil {
 			continue
 		}
 		completed = append(completed, message)
-		if message.Role != schema.Assistant {
+		if message.Role != adk.Assistant {
 			continue
 		}
 		for _, call := range message.ToolCalls {
@@ -55,10 +55,10 @@ func completeUnknownToolResults(messages []*schema.Message) []*schema.Message {
 			if _, valid := retainedToolCallArguments(call.Function.Arguments); !valid {
 				continue
 			}
-			completed = append(completed, schema.ToolMessage(
-				agentruntime.UnknownToolEffectResult,
+			completed = append(completed, adk.ToolMessage(
+				runstate.UnknownToolEffectResult,
 				callID,
-				schema.WithToolName(toolName),
+				adk.WithToolName(toolName),
 			))
 		}
 	}
@@ -66,5 +66,5 @@ func completeUnknownToolResults(messages []*schema.Message) []*schema.Message {
 }
 
 func isUnknownToolEffectResult(content string) bool {
-	return strings.TrimSpace(content) == agentruntime.UnknownToolEffectResult
+	return strings.TrimSpace(content) == runstate.UnknownToolEffectResult
 }

@@ -8,8 +8,8 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
+	"denova/internal/agent/session"
 	"denova/internal/book"
-	"denova/internal/session"
 )
 
 // automationWorkspaceSnapshot binds asynchronous trigger evaluation and any

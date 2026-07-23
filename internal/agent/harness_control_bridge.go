@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 // bridgeHarnessControls owns the only goroutine introduced by this adapter.
@@ -13,7 +13,7 @@ import (
 // for complete cleanup without a timeout or a leaked blocked send.
 func bridgeHarnessControls(
 	ctx context.Context,
-	source <-chan agentruntime.EngineControl,
+	source <-chan runstate.EngineControl,
 	cancel context.CancelFunc,
 ) (<-chan RunControl, <-chan error) {
 	if source == nil {
@@ -70,11 +70,11 @@ func bridgeHarnessControls(
 	return destination, done
 }
 
-func harnessRunControl(control agentruntime.EngineControl) (RunControl, error) {
+func harnessRunControl(control runstate.EngineControl) (RunControl, error) {
 	switch control.Kind {
-	case agentruntime.EngineControlPreempt:
+	case runstate.EngineControlPreempt:
 		return RunControl{Kind: RunControlPreempt, Reason: string(control.Kind)}, nil
-	case agentruntime.EngineControlAbort:
+	case runstate.EngineControlAbort:
 		return RunControl{Kind: RunControlAbort, Reason: string(control.Kind)}, nil
 	default:
 		return RunControl{}, fmt.Errorf("unsupported agent harness engine control %q", control.Kind)

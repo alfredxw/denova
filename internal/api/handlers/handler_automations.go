@@ -10,7 +10,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/internal/agentruntime"
 	"denova/internal/api/agentui"
 	"denova/internal/api/sse"
 	appsvc "denova/internal/app"
@@ -154,7 +153,7 @@ func (h *Handlers) HandleAutomationRunStream(ctx context.Context, c *app.Request
 	}
 	task, run, err := h.app.StartAutomationTaskCommand(ctx, c.Param("id"), req.CommandID, req.TriggerEvidence)
 	if err != nil {
-		if errors.Is(err, agentruntime.ErrInvalidCommand) {
+		if errors.Is(err, appsvc.ErrInvalidAgentCommand) {
 			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", err.Error(), nil)
 			return
 		}
@@ -202,7 +201,7 @@ func (h *Handlers) HandleAutomationRunChatStream(ctx context.Context, c *app.Req
 	}
 	task, run, err := h.app.ContinueAutomationRun(ctx, c.Param("run_id"), req.CommandID, req.Message)
 	if err != nil {
-		if errors.Is(err, agentruntime.ErrInvalidCommand) {
+		if errors.Is(err, appsvc.ErrInvalidAgentCommand) {
 			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", err.Error(), nil)
 			return
 		}
@@ -237,7 +236,7 @@ func (h *Handlers) HandleAutomationRunAbort(ctx context.Context, c *app.RequestC
 	}
 	receipt, err := h.app.AbortAutomationRunCommand(
 		ctx, c.Param("run_id"), req.CommandID,
-		agentruntime.OperationID(strings.TrimSpace(req.TargetOperationID)), req.Reason,
+		appsvc.AgentOperationID(strings.TrimSpace(req.TargetOperationID)), req.Reason,
 	)
 	if err != nil {
 		h.writeAgentCommandError(c, err, req.TargetOperationID)

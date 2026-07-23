@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 // HarnessCyclePreparer runs after the durable cycle identity is bound and
@@ -29,15 +29,15 @@ func prepareHarnessCycle(ctx context.Context, preparer HarnessCyclePreparer) (er
 }
 
 type harnessPreparationControlResult struct {
-	control *agentruntime.EngineControl
+	control *runstate.EngineControl
 	err     error
 }
 
 func prepareHarnessCycleWithControls(
 	ctx context.Context,
-	controls <-chan agentruntime.EngineControl,
+	controls <-chan runstate.EngineControl,
 	preparer HarnessCyclePreparer,
-) (*agentruntime.EngineControl, error) {
+) (*runstate.EngineControl, error) {
 	if controls == nil {
 		return nil, prepareHarnessCycle(ctx, preparer)
 	}
@@ -57,7 +57,7 @@ func prepareHarnessCycleWithControls(
 // legacy turnExecutor.Run channel, which has no consumer until preparation succeeds.
 func watchHarnessPreparationControl(
 	ctx context.Context,
-	controls <-chan agentruntime.EngineControl,
+	controls <-chan runstate.EngineControl,
 	cancel context.CancelFunc,
 ) <-chan harnessPreparationControlResult {
 	done := make(chan harnessPreparationControlResult, 1)
@@ -96,8 +96,8 @@ func watchHarnessPreparationControl(
 
 func receiveHarnessPreparationControl(
 	ctx context.Context,
-	controls <-chan agentruntime.EngineControl,
-) (agentruntime.EngineControl, bool) {
+	controls <-chan runstate.EngineControl,
+) (runstate.EngineControl, bool) {
 	select {
 	case control, ok := <-controls:
 		return control, ok
@@ -113,16 +113,16 @@ func receiveHarnessPreparationControl(
 		case control, ok := <-controls:
 			return control, ok
 		default:
-			return agentruntime.EngineControl{}, false
+			return runstate.EngineControl{}, false
 		}
 	}
 }
 
-func harnessPreparationControlOutcome(control agentruntime.EngineControl) (RunOutcome, error) {
+func harnessPreparationControlOutcome(control runstate.EngineControl) (RunOutcome, error) {
 	switch control.Kind {
-	case agentruntime.EngineControlPreempt:
+	case runstate.EngineControlPreempt:
 		return outcomeFromOutput(RunOutcomePreempted, nil, string(control.Kind), "", ""), nil
-	case agentruntime.EngineControlAbort:
+	case runstate.EngineControlAbort:
 		return outcomeFromOutput(RunOutcomeAborted, nil, string(control.Kind), "", ""), nil
 	default:
 		return RunOutcome{}, fmt.Errorf("unsupported agent harness preparation control %q", control.Kind)

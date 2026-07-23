@@ -8,16 +8,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 func TestChatHarnessRunsLegacyRequestThroughDurableLane(t *testing.T) {
 	service, err := newHarnessChatService(
 		context.Background(),
 		DefaultLoopPolicy(),
-		agentruntime.NewMemoryJournalStore(),
+		runstate.NewMemoryJournalStore(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -27,7 +27,7 @@ func TestChatHarnessRunsLegacyRequestThroughDurableLane(t *testing.T) {
 	conversation := &runControlConversation{}
 	outcome := service.RunWithOptions(
 		context.Background(),
-		newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("durable answer", nil)}, true),
+		newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("durable answer", nil)}, true),
 		conversation,
 		nil,
 		ChatRequest{CommandID: "legacy-durable-lane", Message: "write"},
@@ -50,7 +50,7 @@ func TestChatHarnessRunsLegacyRequestThroughDurableLane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if observation.Snapshot.Phase != agentruntime.PhaseIdle || len(observation.Snapshot.Messages) != 2 {
+	if observation.Snapshot.Phase != runstate.PhaseIdle || len(observation.Snapshot.Messages) != 2 {
 		t.Fatalf("durable snapshot = %#v", observation.Snapshot)
 	}
 }
@@ -59,7 +59,7 @@ func TestChatHarnessCallerCancellationUsesTypedAbort(t *testing.T) {
 	service, err := newHarnessChatService(
 		context.Background(),
 		DefaultLoopPolicy(),
-		agentruntime.NewMemoryJournalStore(),
+		runstate.NewMemoryJournalStore(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestChatHarnessStartReturnsDurableAcceptanceBeforeWait(t *testing.T) {
 	service, err := newHarnessChatService(
 		context.Background(),
 		DefaultLoopPolicy(),
-		agentruntime.NewMemoryJournalStore(),
+		runstate.NewMemoryJournalStore(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +127,7 @@ func TestChatHarnessStartReturnsDurableAcceptanceBeforeWait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if projection.ActiveOperation != accepted.Receipt().OperationID || projection.Phase != agentruntime.PhaseRunning {
+	if projection.ActiveOperation != accepted.Receipt().OperationID || projection.Phase != runstate.PhaseRunning {
 		t.Fatalf("runtime projection was not active after acceptance: %#v receipt=%#v", projection, accepted.Receipt())
 	}
 
@@ -155,7 +155,7 @@ type postSettlementHarnessConversation struct {
 
 func (c *postSettlementHarnessConversation) PostSettlementContextStructuralSpec(
 	_ context.Context,
-	settledOperationID agentruntime.OperationID,
+	settledOperationID runstate.OperationID,
 	options RunOptions,
 ) (*ContextStructuralSpec, error) {
 	c.calls++
@@ -166,7 +166,7 @@ func (c *postSettlementHarnessConversation) PostSettlementContextStructuralSpec(
 	if err != nil {
 		return nil, err
 	}
-	bindingRef, err := agentruntime.BindingReference(binding)
+	bindingRef, err := runstate.BindingReference(binding)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +204,7 @@ func (c *postSettlementHarnessConversation) PostSettlementContextStructuralSpec(
 	return &ContextStructuralSpec{
 		CommandID: "post-settlement-" + string(settledOperationID),
 		Action:    ContextStructuralCompact,
-		Ref: agentruntime.ContextCompactionRef{
+		Ref: runstate.ContextCompactionRef{
 			Source: "test.history", Purpose: "verify post-settlement ordering", Resource: options.SessionID,
 			ExpectedRevision: "test-revision:1",
 		},
@@ -214,7 +214,7 @@ func (c *postSettlementHarnessConversation) PostSettlementContextStructuralSpec(
 }
 
 func TestAcceptedRunCommitsPreparedCompactionBeforeReturning(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestAcceptedRunCommitsPreparedCompactionBeforeReturning(t *testing.T) {
 	events := make([]Event, 0, 2)
 	outcome := service.RunWithOptions(
 		context.Background(),
-		newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("durable answer", nil)}, true),
+		newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("durable answer", nil)}, true),
 		conversation,
 		nil,
 		ChatRequest{CommandID: "post-settlement-compaction", Message: "write"},
@@ -250,7 +250,7 @@ func TestAcceptedRunCommitsPreparedCompactionBeforeReturning(t *testing.T) {
 }
 
 func TestAcceptedRunReportsCompactionFailureWithoutReversingCommittedTurn(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +260,7 @@ func TestAcceptedRunReportsCompactionFailureWithoutReversingCommittedTurn(t *tes
 	events := make([]Event, 0, 2)
 	outcome := service.RunWithOptions(
 		context.Background(),
-		newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("committed answer", nil)}, true),
+		newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("committed answer", nil)}, true),
 		conversation,
 		nil,
 		ChatRequest{CommandID: "post-settlement-compaction-failure", Message: "write"},
@@ -283,22 +283,22 @@ func TestHarnessBindingForProfiles(t *testing.T) {
 	tests := []struct {
 		name    string
 		options RunOptions
-		want    agentruntime.BindingRef
+		want    runstate.BindingRef
 	}{
 		{
 			name:    "writing",
 			options: RunOptions{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "s"},
-			want:    agentruntime.BindingRef{Kind: agentruntime.BindingWriting, Profile: agentruntime.ProfileWriting, Workspace: "/book", SessionID: "s"},
+			want:    runstate.BindingRef{Kind: runstate.BindingWriting, Profile: runstate.ProfileWriting, Workspace: "/book", SessionID: "s"},
 		},
 		{
 			name:    "game",
 			options: RunOptions{AgentKind: AgentKindInteractiveStory, Workspace: "/book", StoryID: "story", BranchID: "main"},
-			want:    agentruntime.BindingRef{Kind: agentruntime.BindingGame, Profile: agentruntime.ProfileGame, Workspace: "/book", StoryID: "story", BranchID: "main"},
+			want:    runstate.BindingRef{Kind: runstate.BindingGame, Profile: runstate.ProfileGame, Workspace: "/book", StoryID: "story", BranchID: "main"},
 		},
 		{
 			name:    "automation_global",
 			options: RunOptions{AgentKind: AgentKindAutomation, SessionID: "run", TaskID: "task"},
-			want:    agentruntime.BindingRef{Kind: agentruntime.BindingAutomation, Profile: agentruntime.ProfileAutomation, SessionID: "run", TaskID: "task"},
+			want:    runstate.BindingRef{Kind: runstate.BindingAutomation, Profile: runstate.ProfileAutomation, SessionID: "run", TaskID: "task"},
 		},
 	}
 	for _, tt := range tests {
@@ -313,25 +313,25 @@ func TestHarnessBindingForProfiles(t *testing.T) {
 		})
 	}
 
-	if _, err := harnessBindingForOptions(RunOptions{AgentKind: AgentKindIDE, Workspace: "/book"}); !errors.Is(err, agentruntime.ErrInvalidBinding) {
+	if _, err := harnessBindingForOptions(RunOptions{AgentKind: AgentKindIDE, Workspace: "/book"}); !errors.Is(err, runstate.ErrInvalidBinding) {
 		t.Fatalf("missing session error = %v", err)
 	}
 }
 
-func bindingRefForTest(binding agentruntime.Binding) agentruntime.BindingRef {
+func bindingRefForTest(binding runstate.Binding) runstate.BindingRef {
 	switch binding := binding.(type) {
-	case agentruntime.WritingBinding:
-		return agentruntime.BindingRef{Kind: agentruntime.BindingWriting, Profile: profileOr(binding.Profile, agentruntime.ProfileWriting), Workspace: binding.Workspace, SessionID: binding.SessionID, StoryID: binding.StoryID, BranchID: binding.BranchID}
-	case agentruntime.GameBinding:
-		return agentruntime.BindingRef{Kind: agentruntime.BindingGame, Profile: profileOr(binding.Profile, agentruntime.ProfileGame), Workspace: binding.Workspace, SessionID: binding.SessionID, StoryID: binding.StoryID, BranchID: binding.BranchID}
-	case agentruntime.AutomationBinding:
-		return agentruntime.BindingRef{Kind: agentruntime.BindingAutomation, Profile: profileOr(binding.Profile, agentruntime.ProfileAutomation), Workspace: binding.Workspace, SessionID: binding.SessionID, TaskID: binding.TaskID}
+	case runstate.WritingBinding:
+		return runstate.BindingRef{Kind: runstate.BindingWriting, Profile: profileOr(binding.Profile, runstate.ProfileWriting), Workspace: binding.Workspace, SessionID: binding.SessionID, StoryID: binding.StoryID, BranchID: binding.BranchID}
+	case runstate.GameBinding:
+		return runstate.BindingRef{Kind: runstate.BindingGame, Profile: profileOr(binding.Profile, runstate.ProfileGame), Workspace: binding.Workspace, SessionID: binding.SessionID, StoryID: binding.StoryID, BranchID: binding.BranchID}
+	case runstate.AutomationBinding:
+		return runstate.BindingRef{Kind: runstate.BindingAutomation, Profile: profileOr(binding.Profile, runstate.ProfileAutomation), Workspace: binding.Workspace, SessionID: binding.SessionID, TaskID: binding.TaskID}
 	default:
-		return agentruntime.BindingRef{}
+		return runstate.BindingRef{}
 	}
 }
 
-func profileOr(profile, fallback agentruntime.AgentProfile) agentruntime.AgentProfile {
+func profileOr(profile, fallback runstate.AgentProfile) runstate.AgentProfile {
 	if profile != "" {
 		return profile
 	}

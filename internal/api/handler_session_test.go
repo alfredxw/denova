@@ -7,16 +7,15 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
 	"github.com/cloudwego/hertz/pkg/common/ut"
 
 	"denova/config"
 	"denova/internal/agent"
+	"denova/internal/agent/session"
 	"denova/internal/api/agentui"
 	runtimeapp "denova/internal/app"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 type testSessionDTO struct {
@@ -33,7 +32,7 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 	server := NewServer(application, "0")
 	defaultID := application.Session().ID
 
-	if err := application.Session().Append(schema.UserMessage("默认会话消息")); err != nil {
+	if err := application.Session().Append(agent.UserMessage("默认会话消息")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -58,7 +57,7 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 	if created.ID == "" || created.ID == defaultID || !created.Active || created.Title != "会话 B" {
 		t.Fatalf("创建会话返回不符合预期: %#v", created)
 	}
-	if err := application.Session().Append(schema.UserMessage("会话 B 消息")); err != nil {
+	if err := application.Session().Append(agent.UserMessage("会话 B 消息")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -113,7 +112,7 @@ func TestSessionMessagesAPIPaginatesNewestHistoryWithoutChangingLegacyResponse(t
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 	for _, content := range []string{"消息 1", "消息 2", "消息 3", "消息 4", "消息 5"} {
-		if err := application.Session().Append(schema.UserMessage(content)); err != nil {
+		if err := application.Session().Append(agent.UserMessage(content)); err != nil {
 			t.Fatal(err)
 		}
 	}

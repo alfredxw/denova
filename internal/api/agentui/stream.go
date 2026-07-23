@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"denova/internal/agent"
+	appsvc "denova/internal/app"
 )
 
 // StreamEncoder writes Agent events using the AI SDK UI message stream
@@ -35,7 +35,7 @@ func NewStreamEncoder(w io.Writer) *StreamEncoder {
 	}
 }
 
-func (e *StreamEncoder) WriteEvent(ev agent.Event) error {
+func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 	if e.finished {
 		return nil
 	}
@@ -149,7 +149,7 @@ func (e *StreamEncoder) Finish(reason string) error {
 	return nil
 }
 
-func (e *StreamEncoder) ensureStarted(ev agent.Event) error {
+func (e *StreamEncoder) ensureStarted(ev appsvc.AgentEvent) error {
 	if e.started {
 		return nil
 	}

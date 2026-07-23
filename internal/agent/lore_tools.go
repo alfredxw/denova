@@ -8,8 +8,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/components/tool/utils"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/internal/book"
 )
@@ -132,7 +131,7 @@ func (p *loreReadPolicy) accept(output string, items []book.LoreItem) error {
 	return nil
 }
 
-func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions) ([]tool.BaseTool, error) {
+func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions) ([]adk.BaseTool, error) {
 	workspace = strings.TrimSpace(workspace)
 	var readPolicy *loreReadPolicy
 	if len(options) > 0 {
@@ -141,7 +140,7 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 	if readPolicy == nil {
 		readPolicy = defaultLoreReadPolicy()
 	}
-	readTool, err := utils.InferTool("read_lore_items", "按资料库条目 ID 或唯一名称批量读取完整正文。名称已在上下文目录中出现时可直接读取，无需先调用 list_lore_items。", func(ctx context.Context, input readLoreItemsInput) (string, error) {
+	readTool, err := adk.InferTool("read_lore_items", "按资料库条目 ID 或唯一名称批量读取完整正文。名称已在上下文目录中出现时可直接读取，无需先调用 list_lore_items。", func(ctx context.Context, input readLoreItemsInput) (string, error) {
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法读取资料库")
@@ -169,7 +168,7 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 	if err != nil {
 		return nil, err
 	}
-	listTool, err := utils.InferTool("list_lore_items", "浏览或检索启用的资料库。空筛选返回最多 256 KiB 的名称目录；筛选时 detail=index 返回简介，detail=full 可在同一次调用中返回完整正文。已知唯一名称时可直接使用 read_lore_items。", func(ctx context.Context, input listLoreItemsInput) (string, error) {
+	listTool, err := adk.InferTool("list_lore_items", "浏览或检索启用的资料库。空筛选返回最多 256 KiB 的名称目录；筛选时 detail=index 返回简介，detail=full 可在同一次调用中返回完整正文。已知唯一名称时可直接使用 read_lore_items。", func(ctx context.Context, input listLoreItemsInput) (string, error) {
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法列出资料库")
@@ -223,11 +222,11 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 	if err != nil {
 		return nil, err
 	}
-	tools := []tool.BaseTool{listTool, readTool}
+	tools := []adk.BaseTool{listTool, readTool}
 	if !allowWrite {
 		return tools, nil
 	}
-	writeTool, err := utils.InferTool("write_lore_items", "批量创建、更新或删除资料库条目。用于同步角色身份、人设、长期关系、能力体系、世界规则、地点、势力和物品等稳定设定；章节新增或实质性改写后的当前位置、伤势、心理、目标、持有物等当前角色状态应写入 setting/character-states.md，不要默认写入资料库；每个创建或更新的条目都要填写 brief_description；不要写入章节规划或未来剧情。", func(ctx context.Context, input writeLoreItemsInput) (string, error) {
+	writeTool, err := adk.InferTool("write_lore_items", "批量创建、更新或删除资料库条目。用于同步角色身份、人设、长期关系、能力体系、世界规则、地点、势力和物品等稳定设定；章节新增或实质性改写后的当前位置、伤势、心理、目标、持有物等当前角色状态应写入 setting/character-states.md，不要默认写入资料库；每个创建或更新的条目都要填写 brief_description；不要写入章节规划或未来剧情。", func(ctx context.Context, input writeLoreItemsInput) (string, error) {
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法写入资料库")

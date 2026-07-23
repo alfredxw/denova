@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/components/tool/utils"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/internal/interactive"
 )
@@ -90,7 +89,7 @@ func (input openingStateSchemaBatchToolInput) batch() interactive.ActorStateSche
 	return batch
 }
 
-func newInteractiveOpeningStateSchemaTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
+func newInteractiveOpeningStateSchemaTools(ctx InteractiveStoryToolContext) ([]adk.BaseTool, error) {
 	if ctx.SubmitStateSchemaBatch == nil {
 		return nil, nil
 	}
@@ -103,7 +102,7 @@ func newInteractiveOpeningStateSchemaTools(ctx InteractiveStoryToolContext) ([]t
 		"finalized 回执包含 initialization_guide：auto_initialized_fields 已由模板默认值或初始 Actor 值覆盖；required_state_changes 列出首次 submit_interactive_turn 必须一次填写的精确 actor_id、template_id、field_id 和 type。不得用空字符串、未设置、未知或待定占位。",
 		"草稿不会单独写入；只有结构、正文、所有初始字段和 choices 全部通过时才原子落盘。Actor 创建与所有初始值稍后通过 submit_interactive_turn.state_changes 提交。",
 	}, "\n")
-	submitTool, err := utils.InferTool(
+	submitTool, err := adk.InferTool(
 		initializeStoryStateSchemaToolName,
 		description,
 		func(callCtx context.Context, input openingStateSchemaBatchToolInput) (string, error) {
@@ -121,5 +120,5 @@ func newInteractiveOpeningStateSchemaTools(ctx InteractiveStoryToolContext) ([]t
 	if err != nil {
 		return nil, err
 	}
-	return []tool.BaseTool{submitTool}, nil
+	return []adk.BaseTool{submitTool}, nil
 }

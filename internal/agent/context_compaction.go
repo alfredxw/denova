@@ -8,8 +8,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
+	"github.com/alfredxw/denova/adk/model/openai"
 
 	"denova/config"
 )
@@ -55,7 +55,7 @@ type ContextCompactionResult struct {
 	RetainedTurns            int
 }
 
-type contextCompactionSummaryFunc func(ctx context.Context, cfg *config.Config, agentKind string, existingCheckpoint string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, int, error)
+type contextCompactionSummaryFunc func(ctx context.Context, cfg *config.Config, agentKind string, existingCheckpoint string, source []*adk.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, int, error)
 
 type contextCompactionController struct {
 	conversation ContextCompactionConversation
@@ -64,13 +64,13 @@ type contextCompactionController struct {
 // ContextCompactionConversation is implemented by conversations that can
 // persist and rebuild model-visible compaction epochs.
 type ContextCompactionConversation interface {
-	CompactContextIfNeeded(ctx context.Context, input ContextCompactionInput) ([]*schema.Message, ContextCompactionResult, error)
+	CompactContextIfNeeded(ctx context.Context, input ContextCompactionInput) ([]*adk.Message, ContextCompactionResult, error)
 }
 
 type ContextCompactionInput struct {
-	Messages            []*schema.Message
-	SourceMessages      []*schema.Message
-	Tools               []*schema.ToolInfo
+	Messages            []*adk.Message
+	SourceMessages      []*adk.Message
+	Tools               []*adk.ToolInfo
 	Phase               string
 	Emit                func(Event)
 	Force               bool
@@ -148,7 +148,7 @@ func (p contextCompactionPolicy) shouldCompact(tokens int, force bool) (bool, st
 // PrepareContextCompaction performs bounded policy evaluation and summary
 // generation without mutating Session or Story storage. Canonical publication
 // belongs to a durable structural command's Commit phase.
-func PrepareContextCompaction(ctx context.Context, cfg *config.Config, agentKind string, input ContextCompactionInput, epoch int) ([]*schema.Message, ContextCompactionResult, error) {
+func PrepareContextCompaction(ctx context.Context, cfg *config.Config, agentKind string, input ContextCompactionInput, epoch int) ([]*adk.Message, ContextCompactionResult, error) {
 	policy := resolveContextCompactionPolicy(cfg, agentKind)
 	if input.ContextWindowTokens > 0 {
 		policy.ContextWindowTokens = input.ContextWindowTokens
@@ -207,7 +207,7 @@ func PrepareContextCompaction(ctx context.Context, cfg *config.Config, agentKind
 	return newMessages, result, nil
 }
 
-func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, agentKind string, existingCheckpoint string, source []*schema.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, int, error) {
+func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, agentKind string, existingCheckpoint string, source []*adk.Message, referenceContext string, sourceTokens int, policy contextCompactionPolicy, emitDelta func(attempt int, delta string)) (string, int, error) {
 	var runErr error
 	traceCtx, finishTrace := withStandaloneRunTrace(ctx, cfg, config.AgentKindContextCompaction, "context_compaction", "generate", map[string]any{
 		"source_agent_kind": strings.TrimSpace(agentKind),
@@ -217,7 +217,7 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 	defer func() { finishTrace(runErr) }()
 	modelCfg := chatModelConfigForAgent(cfg, config.AgentKindContextCompaction)
 	inputChars := contextCompactionInputChars(existingCheckpoint, source, referenceContext)
-	cm, err := openai.NewChatModel(traceCtx, &modelCfg)
+	cm, err := openai.New(traceCtx, &modelCfg)
 	if err != nil {
 		runErr = err
 		return "", inputChars, fmt.Errorf("创建上下文压缩模型失败: %w", err)
@@ -227,9 +227,9 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 		runErr = err
 		return "", inputChars, err
 	}
-	input := []*schema.Message{
-		schema.SystemMessage(composition.Instruction()),
-		schema.UserMessage(buildContextCompactionTranscript(source, existingCheckpoint, referenceContext, sourceTokens, inputChars, policy)),
+	input := []*adk.Message{
+		adk.SystemMessage(composition.Instruction()),
+		adk.UserMessage(buildContextCompactionTranscript(source, existingCheckpoint, referenceContext, sourceTokens, inputChars, policy)),
 	}
 	resolvedContext := config.ResolveAgentContext(cfg, config.AgentKindContextCompaction)
 	contextWindow := config.ResolveAgentModel(cfg, config.AgentKindContextCompaction).ContextWindowTokens
@@ -259,13 +259,13 @@ func generateContextCompactionSummary(ctx context.Context, cfg *config.Config, a
 	return summary, inputChars, nil
 }
 
-func streamContextCompactionAttempt(ctx context.Context, cm *openai.ChatModel, input []*schema.Message, attempt int, emitDelta func(attempt int, delta string)) (*schema.Message, error) {
+func streamContextCompactionAttempt(ctx context.Context, cm *openai.ChatModel, input []*adk.Message, attempt int, emitDelta func(attempt int, delta string)) (*adk.Message, error) {
 	stream, err := cm.Stream(ctx, input)
 	if err != nil {
 		return nil, err
 	}
 	defer stream.Close()
-	var chunks []*schema.Message
+	var chunks []*adk.Message
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
@@ -282,7 +282,7 @@ func streamContextCompactionAttempt(ctx context.Context, cm *openai.ChatModel, i
 			emitDelta(attempt, msg.Content)
 		}
 	}
-	return schema.ConcatMessages(chunks)
+	return adk.ConcatMessages(chunks)
 }
 
 func contextCompactionRatio(partChars, inputChars int) float64 {
@@ -394,7 +394,7 @@ func contextCompactionSystemInstruction() string {
 `)
 }
 
-func buildContextCompactionTranscript(messages []*schema.Message, existingCheckpoint, referenceContext string, sourceTokens, inputChars int, policy contextCompactionPolicy) string {
+func buildContextCompactionTranscript(messages []*adk.Message, existingCheckpoint, referenceContext string, sourceTokens, inputChars int, policy contextCompactionPolicy) string {
 	blocks := make([]string, 0, len(messages))
 	for i, msg := range messages {
 		if msg == nil {
@@ -431,7 +431,7 @@ func buildContextCompactionTranscript(messages []*schema.Message, existingCheckp
 	return sb.String()
 }
 
-func contextCompactionInputChars(existingCheckpoint string, messages []*schema.Message, referenceContext string) int {
+func contextCompactionInputChars(existingCheckpoint string, messages []*adk.Message, referenceContext string) int {
 	total := countRunes(existingCheckpoint)
 	total += countRunes(referenceContext)
 	for i, msg := range messages {
@@ -447,7 +447,7 @@ func countRunes(value string) int {
 	return utf8.RuneCountInString(strings.TrimSpace(value))
 }
 
-func formatCompactionMessage(index int, msg *schema.Message) string {
+func formatCompactionMessage(index int, msg *adk.Message) string {
 	role := string(msg.Role)
 	content := strings.TrimSpace(msg.Content)
 	if len(msg.ToolCalls) > 0 {

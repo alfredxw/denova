@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -21,7 +21,7 @@ func TestProviderHardLimitRejectsLongHistoryWhenSemanticCompactionIsDisabled(t *
 	if resolved.CompactionEnabled {
 		t.Fatal("test requires user-controlled semantic compaction to be disabled")
 	}
-	messages := []*schema.Message{schema.UserMessage(strings.Repeat("历史正文。", maxBytes))}
+	messages := []*adk.Message{adk.UserMessage(strings.Repeat("历史正文。", maxBytes))}
 	err := validateProviderInput(config.AgentKindIDE, messages, nil, resolved.MaxProviderInputBytes, config.ResolveAgentModel(cfg, config.AgentKindIDE).ContextWindowTokens)
 	var limitErr *ProviderInputLimitError
 	if !errors.As(err, &limitErr) || limitErr.Bytes <= limitErr.MaxBytes {
@@ -34,9 +34,9 @@ func TestStandaloneProviderBoundaryUsesResolvedAgentLimit(t *testing.T) {
 	cfg := &config.Config{AgentContexts: config.AgentContextSettings{Automation: config.AgentContextOverride{
 		MaxProviderInputBytes: &maxBytes,
 	}}}
-	messages := []*schema.Message{
-		schema.SystemMessage("bounded standalone agent"),
-		schema.UserMessage(strings.Repeat("语义触发证据。", maxBytes)),
+	messages := []*adk.Message{
+		adk.SystemMessage("bounded standalone agent"),
+		adk.UserMessage(strings.Repeat("语义触发证据。", maxBytes)),
 	}
 	err := validateConfiguredProviderInput(cfg, config.AgentKindAutomation, messages, nil)
 	var limitErr *ProviderInputLimitError
@@ -54,7 +54,7 @@ func TestCompactionSummarizerLayersOversizedSourceWithoutDroppingBytes(t *testin
 	t.Cleanup(func() { summarizeContextForCompaction = original })
 	calls := 0
 	observedBytes := 0
-	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, checkpoint string, source []*schema.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
+	summarizeContextForCompaction = func(_ context.Context, _ *config.Config, _ string, checkpoint string, source []*adk.Message, _ string, _ int, _ contextCompactionPolicy, _ func(int, string)) (string, int, error) {
 		calls++
 		batchBytes := 0
 		for _, message := range source {
@@ -69,8 +69,8 @@ func TestCompactionSummarizerLayersOversizedSourceWithoutDroppingBytes(t *testin
 		return checkpoint + strings.Repeat("摘要", 32), batchBytes, nil
 	}
 	payload := strings.Repeat("不可丢失的历史事实。", 2500)
-	messages := []*schema.Message{
-		schema.UserMessage(payload), schema.AssistantMessage(payload, nil), schema.UserMessage(payload),
+	messages := []*adk.Message{
+		adk.UserMessage(payload), adk.AssistantMessage(payload, nil), adk.UserMessage(payload),
 	}
 	_, result, err := PrepareContextCompaction(context.Background(), cfg, config.AgentKindIDE, ContextCompactionInput{
 		Messages: messages, Force: true, KeepLatestUser: true,

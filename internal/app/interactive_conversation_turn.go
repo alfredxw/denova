@@ -6,12 +6,10 @@ import (
 	"log"
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
 	"denova/internal/agent"
+	"denova/internal/agent/session"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 func (c *interactiveConversation) PrepareInteractiveTurn(ctx context.Context, request interactive.TurnCheckRequest) (interactive.RuleResolution, error) {
@@ -98,7 +96,7 @@ func (c *interactiveConversation) InteractiveNarrativeReady() bool {
 	return c.turnProtocol.narrativeReady()
 }
 
-func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, input agent.ContextCompactionInput) ([]*schema.Message, agent.ContextCompactionResult, error) {
+func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, input agent.ContextCompactionInput) ([]*agent.Message, agent.ContextCompactionResult, error) {
 	if c == nil || c.store == nil {
 		return input.Messages, agent.ContextCompactionResult{}, fmt.Errorf("互动故事不存在")
 	}
@@ -146,37 +144,37 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	return newMessages, result, nil
 }
 
-func interactiveTurnMessages(turns []interactive.TurnEvent) []*schema.Message {
-	messages := make([]*schema.Message, 0, len(turns)*2)
+func interactiveTurnMessages(turns []interactive.TurnEvent) []*agent.Message {
+	messages := make([]*agent.Message, 0, len(turns)*2)
 	for _, turn := range turns {
 		if strings.TrimSpace(turn.User) != "" {
-			messages = append(messages, schema.UserMessage(turn.User))
+			messages = append(messages, agent.UserMessage(turn.User))
 		}
 		messages = append(messages, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
 		if strings.TrimSpace(turn.Narrative) != "" {
-			messages = append(messages, schema.AssistantMessage(turn.Narrative, nil))
+			messages = append(messages, agent.AssistantMessage(turn.Narrative, nil))
 		}
 	}
 	return messages
 }
 
-func interactiveContextMessageFromSchema(msg *schema.Message) (interactive.ModelContextMessage, bool) {
+func interactiveContextMessageFromSchema(msg *agent.Message) (interactive.ModelContextMessage, bool) {
 	if msg == nil {
 		return interactive.ModelContextMessage{}, false
 	}
 	switch msg.Role {
-	case schema.Assistant:
+	case agent.RoleAssistant:
 		calls := interactiveToolCallsFromSchema(msg.ToolCalls)
 		if len(calls) == 0 {
 			return interactive.ModelContextMessage{}, false
 		}
-		return interactive.ModelContextMessage{Role: string(schema.Assistant), ToolCalls: calls}, true
-	case schema.Tool:
+		return interactive.ModelContextMessage{Role: string(agent.RoleAssistant), ToolCalls: calls}, true
+	case agent.RoleTool:
 		if strings.TrimSpace(msg.ToolCallID) == "" && strings.TrimSpace(msg.ToolName) == "" {
 			return interactive.ModelContextMessage{}, false
 		}
 		return interactive.ModelContextMessage{
-			Role:       string(schema.Tool),
+			Role:       string(agent.RoleTool),
 			Content:    msg.Content,
 			Name:       msg.Name,
 			ToolCallID: msg.ToolCallID,
@@ -187,7 +185,7 @@ func interactiveContextMessageFromSchema(msg *schema.Message) (interactive.Model
 	}
 }
 
-func interactiveToolCallsFromSchema(calls []schema.ToolCall) []interactive.ModelContextToolCall {
+func interactiveToolCallsFromSchema(calls []agent.ToolCall) []interactive.ModelContextToolCall {
 	if len(calls) == 0 {
 		return nil
 	}
@@ -210,41 +208,41 @@ func interactiveToolCallsFromSchema(calls []schema.ToolCall) []interactive.Model
 	return result
 }
 
-func schemaMessagesFromInteractiveContext(messages []interactive.ModelContextMessage) []*schema.Message {
+func schemaMessagesFromInteractiveContext(messages []interactive.ModelContextMessage) []*agent.Message {
 	if len(messages) == 0 {
 		return nil
 	}
-	result := make([]*schema.Message, 0, len(messages))
+	result := make([]*agent.Message, 0, len(messages))
 	for _, msg := range messages {
 		switch strings.TrimSpace(msg.Role) {
-		case string(schema.Assistant):
+		case string(agent.RoleAssistant):
 			calls := schemaToolCallsFromInteractive(msg.ToolCalls)
 			if len(calls) > 0 {
-				result = append(result, schema.AssistantMessage("", calls))
+				result = append(result, agent.AssistantMessage("", calls))
 			}
-		case string(schema.Tool):
+		case string(agent.RoleTool):
 			if strings.TrimSpace(msg.ToolCallID) != "" || strings.TrimSpace(msg.ToolName) != "" {
-				result = append(result, schema.ToolMessage(msg.Content, msg.ToolCallID, schema.WithToolName(msg.ToolName)))
+				result = append(result, agent.ToolMessage(msg.Content, msg.ToolCallID, agent.WithToolName(msg.ToolName)))
 			}
 		}
 	}
 	return result
 }
 
-func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []schema.ToolCall {
+func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []agent.ToolCall {
 	if len(calls) == 0 {
 		return nil
 	}
-	result := make([]schema.ToolCall, 0, len(calls))
+	result := make([]agent.ToolCall, 0, len(calls))
 	for _, call := range calls {
 		if strings.TrimSpace(call.Function.Name) == "" {
 			continue
 		}
-		result = append(result, schema.ToolCall{
+		result = append(result, agent.ToolCall{
 			Index: call.Index,
 			ID:    call.ID,
 			Type:  call.Type,
-			Function: schema.FunctionCall{
+			Function: agent.FunctionCall{
 				Name:      call.Function.Name,
 				Arguments: call.Function.Arguments,
 			},
@@ -254,7 +252,7 @@ func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []
 	return result
 }
 
-func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent) ([]*schema.Message, string) {
+func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent) ([]*agent.Message, string) {
 	sourceStart := 0
 	existingCheckpoint := ""
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
@@ -270,16 +268,16 @@ func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *inte
 	return interactiveCompactionTurnMessages(turns[sourceStart:]), existingCheckpoint
 }
 
-func interactiveCompactionTurnMessages(turns []interactive.TurnEvent) []*schema.Message {
-	messages := make([]*schema.Message, 0, len(turns)*2)
+func interactiveCompactionTurnMessages(turns []interactive.TurnEvent) []*agent.Message {
+	messages := make([]*agent.Message, 0, len(turns)*2)
 	for _, turn := range turns {
 		source := fmt.Sprintf("[source turn_id=%s branch_id=%s]", turn.ID, turn.BranchID)
 		if strings.TrimSpace(turn.User) != "" {
-			messages = append(messages, schema.UserMessage(source+"\n"+turn.User))
+			messages = append(messages, agent.UserMessage(source+"\n"+turn.User))
 		}
 		messages = append(messages, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
 		if strings.TrimSpace(turn.Narrative) != "" {
-			messages = append(messages, schema.AssistantMessage(source+"\n"+turn.Narrative, nil))
+			messages = append(messages, agent.AssistantMessage(source+"\n"+turn.Narrative, nil))
 		}
 	}
 	return messages
@@ -289,7 +287,7 @@ func (c *interactiveConversation) AppendAssistant(content string) error {
 	return c.AppendAssistantWithThinking(content, "")
 }
 
-func (c *interactiveConversation) AppendContextMessage(msg *schema.Message) error {
+func (c *interactiveConversation) AppendContextMessage(msg *agent.Message) error {
 	if c == nil || msg == nil {
 		return nil
 	}

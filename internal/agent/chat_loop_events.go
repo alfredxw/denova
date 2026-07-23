@@ -4,8 +4,7 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 )
 
 func (l *chatAgentLoop) handleOutput(event *adk.AgentEvent) chatLoopResult {
@@ -13,10 +12,10 @@ func (l *chatAgentLoop) handleOutput(event *adk.AgentEvent) chatLoopResult {
 	eventMeta := run.subAgentSessions.decorate(metadataForAgentEvent(event, run.options.RootAgentName))
 	eventMeta.AgentKind = run.options.AgentKind
 	messageOutput := event.Output.MessageOutput
-	if messageOutput.Role == schema.Tool {
+	if messageOutput.Role == adk.Tool {
 		return l.handleToolOutput(messageOutput, eventMeta)
 	}
-	if messageOutput.Role != schema.Assistant && messageOutput.Role != "" {
+	if messageOutput.Role != adk.Assistant && messageOutput.Role != "" {
 		return chatLoopResult{action: chatLoopContinue}
 	}
 	return l.handleAssistantOutput(messageOutput, eventMeta)

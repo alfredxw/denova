@@ -1,14 +1,10 @@
 package agent
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/adk/filesystem"
-	filesystemmw "github.com/cloudwego/eino/adk/middlewares/filesystem"
-	"github.com/cloudwego/eino/components/tool"
+	"github.com/alfredxw/denova/adk"
 
 	"denova/config"
 	"denova/internal/workspacechange"
@@ -16,8 +12,8 @@ import (
 
 // Tool factories are kept apart from Agent construction so adding a product
 // tool surface does not make the model/middleware assembly module a catch-all.
-func loreToolsFactory(cfg *config.Config, forceReadOnly bool) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+func loreToolsFactory(cfg *config.Config, forceReadOnly bool) func(config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
 		if cfg == nil || (!settings.LoreRead && !settings.LoreWrite) {
 			return nil, nil
 		}
@@ -26,8 +22,8 @@ func loreToolsFactory(cfg *config.Config, forceReadOnly bool) func(config.Resolv
 	}
 }
 
-func ideToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-	return func(_ config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+func ideToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
+	return func(_ config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
 		if cfg == nil {
 			return nil, nil
 		}
@@ -39,14 +35,14 @@ func ideToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) 
 		if err != nil {
 			return nil, err
 		}
-		tools := append([]tool.BaseTool{}, loreTools...)
+		tools := append([]adk.BaseTool{}, loreTools...)
 		tools = append(tools, imageTools...)
 		return tools, nil
 	}
 }
 
-func imageToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-	return func(_ config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+func imageToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
+	return func(_ config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
 		if cfg == nil {
 			return nil, nil
 		}
@@ -54,9 +50,9 @@ func imageToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings
 	}
 }
 
-func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...InteractiveStoryToolContext) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-	return func(_ config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-		var tools []tool.BaseTool
+func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...InteractiveStoryToolContext) func(config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
+	return func(_ config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
+		var tools []adk.BaseTool
 		if cfg != nil {
 			loreTools, err := newLoreTools(cfg.Workspace, false)
 			if err != nil {
@@ -85,9 +81,9 @@ func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...Interactiv
 	}
 }
 
-func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...InteractiveStoryToolContext) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-		var tools []tool.BaseTool
+func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...InteractiveStoryToolContext) func(config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
+		var tools []adk.BaseTool
 		var storyToolContext InteractiveStoryToolContext
 		if len(toolContexts) > 0 {
 			storyToolContext = toolContexts[0]
@@ -130,8 +126,8 @@ func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...Interac
 	}
 }
 
-func configManagerToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
-	return func(settings config.ResolvedAgentToolSettings) ([]tool.BaseTool, error) {
+func configManagerToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
 		if cfg == nil || !configManagerFactoryAllowed(settings) {
 			return nil, nil
 		}
@@ -148,52 +144,64 @@ func configManagerFactoryAllowed(settings config.ResolvedAgentToolSettings) bool
 		settings.AgentConfigWrite
 }
 
-var filesystemMiddlewareToolNames = []string{"ls", "read_file", "glob", "grep", "write_file", "edit_file", "execute"}
-
-func newFilesystemMiddleware(ctx context.Context, backend filesystem.Backend, streamingShell filesystem.StreamingShell, settings config.ResolvedAgentToolSettings, workspaces ...string) (adk.ChatModelAgentMiddleware, error) {
-	if backend == nil || (!settings.FileRead && !settings.FileWrite && !settings.ShellExecute) {
-		return nil, nil
-	}
-	workspace := ""
-	if len(workspaces) > 0 {
-		workspace = strings.TrimSpace(workspaces[0])
-	}
-	readTool, err := newWorkspaceReadFileTool(backend, workspace)
-	if err != nil {
-		return nil, fmt.Errorf("创建 read_file 工具失败: %w", err)
-	}
-	readToolConfig := &filesystemmw.ToolConfig{CustomTool: readTool}
-	writeToolConfig := &filesystemmw.ToolConfig{}
-	editToolConfig := &filesystemmw.ToolConfig{}
-	if workspace != "" && settings.FileWrite {
-		changes, err := workspacechange.ForWorkspace(workspace)
+// filesystemToolsFactory assembles native workspace tools as ordinary ADK
+// tools, keeping the concrete surface visible to construction-time validation.
+func filesystemToolsFactory(workspace string) func(config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]adk.BaseTool, error) {
+		if !settings.FileRead && !settings.FileWrite && !settings.ShellExecute {
+			return nil, nil
+		}
+		backend, err := newAgentFilesystemBackend(workspace)
 		if err != nil {
-			return nil, fmt.Errorf("创建 workspace change service 失败: %w", err)
+			return nil, fmt.Errorf("create workspace filesystem backend: %w", err)
+		}
+
+		listTool, err := newWorkspaceListTool(backend)
+		if err != nil {
+			return nil, fmt.Errorf("create ls tool: %w", err)
+		}
+		readTool, err := newWorkspaceReadFileTool(backend)
+		if err != nil {
+			return nil, fmt.Errorf("create read_file tool: %w", err)
+		}
+		globTool, err := newWorkspaceGlobTool(backend)
+		if err != nil {
+			return nil, fmt.Errorf("create glob tool: %w", err)
+		}
+		grepTool, err := newWorkspaceGrepTool(backend)
+		if err != nil {
+			return nil, fmt.Errorf("create grep tool: %w", err)
+		}
+
+		var changes workspaceChangeService = disabledWorkspaceChangeService{workspace: backend.Workspace()}
+		if settings.FileWrite {
+			changes, err = workspacechange.ForWorkspace(backend.Workspace())
+			if err != nil {
+				return nil, fmt.Errorf("create workspace change service: %w", err)
+			}
 		}
 		writeTool, err := newWorkspaceWriteFileTool(changes)
 		if err != nil {
-			return nil, fmt.Errorf("创建 write_file 工具失败: %w", err)
+			return nil, fmt.Errorf("create write_file tool: %w", err)
 		}
 		editTool, err := newWorkspaceEditFileTool(changes)
 		if err != nil {
-			return nil, fmt.Errorf("创建 edit_file 工具失败: %w", err)
+			return nil, fmt.Errorf("create edit_file tool: %w", err)
 		}
-		writeToolConfig.CustomTool = writeTool
-		editToolConfig.CustomTool = editTool
+
+		var shell *agentStreamingShell
+		if settings.ShellExecute {
+			shell, err = newAgentStreamingShell(backend.Workspace())
+			if err != nil {
+				return nil, fmt.Errorf("create execute shell: %w", err)
+			}
+		}
+		executeTool, err := newWorkspaceExecuteTool(shell)
+		if err != nil {
+			return nil, fmt.Errorf("create execute tool: %w", err)
+		}
+		return []adk.BaseTool{listTool, readTool, globTool, grepTool, writeTool, editTool, executeTool}, nil
 	}
-	mwConfig := &filesystemmw.MiddlewareConfig{
-		Backend:             backend,
-		LsToolConfig:        &filesystemmw.ToolConfig{},
-		ReadFileToolConfig:  readToolConfig,
-		GlobToolConfig:      &filesystemmw.ToolConfig{},
-		GrepToolConfig:      &filesystemmw.ToolConfig{},
-		WriteFileToolConfig: writeToolConfig,
-		EditFileToolConfig:  editToolConfig,
-	}
-	if streamingShell != nil {
-		mwConfig.StreamingShell = streamingShell
-	}
-	return filesystemmw.New(ctx, mwConfig)
 }
 
 func stableWebSearchSchemaAllowed(agentKind string) func(config.ResolvedAgentToolSettings) bool {

@@ -12,9 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
+	"github.com/alfredxw/denova/adk/model/openai"
 )
 
 func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
@@ -36,21 +35,21 @@ func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 		AgentKind: "test_agent",
 		Source:    "test",
 		Mode:      "generate",
-		Config: openai.ChatModelConfig{
+		Config: openai.Config{
 			APIKey:  "secret-key-must-not-be-logged",
 			Model:   "test-model",
 			BaseURL: "https://example.test/v1",
 		},
-		Messages: []*schema.Message{
-			schema.SystemMessage("system"),
-			schema.UserMessage(longContent),
+		Messages: []*adk.Message{
+			adk.SystemMessage("system"),
+			adk.UserMessage(longContent),
 		},
-		Tools: []*schema.ToolInfo{
+		Tools: []*adk.ToolInfo{
 			{
 				Name: "read_file",
 				Desc: "Read a file",
-				ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
-					"path": {Type: schema.String, Desc: "File path", Required: true},
+				ParamsOneOf: adk.NewParamsOneOfByParams(map[string]*adk.ParameterInfo{
+					"path": {Type: adk.String, Desc: "File path", Required: true},
 				}),
 			},
 		},
@@ -96,16 +95,16 @@ func TestLogFullModelInputWritesUntruncatedMessages(t *testing.T) {
 }
 
 func TestModelInputLogCacheAttributionFingerprintsToolSchema(t *testing.T) {
-	messages := []*schema.Message{
-		schema.SystemMessage("system"),
-		schema.UserMessage("hello"),
+	messages := []*adk.Message{
+		adk.SystemMessage("system"),
+		adk.UserMessage("hello"),
 	}
-	tools := []*schema.ToolInfo{
+	tools := []*adk.ToolInfo{
 		{
 			Name: "read_file",
 			Desc: "Read a file",
-			ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
-				"path": {Type: schema.String, Desc: "File path", Required: true},
+			ParamsOneOf: adk.NewParamsOneOfByParams(map[string]*adk.ParameterInfo{
+				"path": {Type: adk.String, Desc: "File path", Required: true},
 			}),
 		},
 	}
@@ -129,13 +128,13 @@ func TestModelInputLogCacheAttributionFingerprintsToolSchema(t *testing.T) {
 		t.Fatalf("same input should produce stable attribution: first=%#v second=%#v", first, second)
 	}
 
-	changedTools := modelInputLogTools([]*schema.ToolInfo{
+	changedTools := modelInputLogTools([]*adk.ToolInfo{
 		{
 			Name: "read_file",
 			Desc: "Read a file with line offsets",
-			ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
-				"path":   {Type: schema.String, Desc: "File path", Required: true},
-				"offset": {Type: schema.Number, Desc: "Line offset"},
+			ParamsOneOf: adk.NewParamsOneOfByParams(map[string]*adk.ParameterInfo{
+				"path":   {Type: adk.String, Desc: "File path", Required: true},
+				"offset": {Type: adk.Number, Desc: "Line offset"},
 			}),
 		},
 	})
@@ -149,32 +148,32 @@ func TestModelInputLogCacheAttributionFingerprintsToolSchema(t *testing.T) {
 }
 
 func TestModelInputLoggingUsesStableToolSnapshot(t *testing.T) {
-	originalTools := []*schema.ToolInfo{
+	originalTools := []*adk.ToolInfo{
 		{
 			Name:  "read_file",
 			Desc:  "Read a file",
 			Extra: map[string]any{"capability": "file_read"},
-			ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
-				"path": {Type: schema.String, Desc: "File path", Required: true},
+			ParamsOneOf: adk.NewParamsOneOfByParams(map[string]*adk.ParameterInfo{
+				"path": {Type: adk.String, Desc: "File path", Required: true},
 			}),
 		},
 	}
 	stableTools := cloneToolInfos(originalTools)
 	originalTools[0].Desc = "mutated before provider call"
 	originalTools[0].Extra["capability"] = "mutated"
-	originalTools[0].ParamsOneOf = schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
-		"path":   {Type: schema.String, Desc: "File path", Required: true},
-		"offset": {Type: schema.Number, Desc: "Line offset"},
+	originalTools[0].ParamsOneOf = adk.NewParamsOneOfByParams(map[string]*adk.ParameterInfo{
+		"path":   {Type: adk.String, Desc: "File path", Required: true},
+		"offset": {Type: adk.Number, Desc: "Line offset"},
 	})
 
 	capture := &toolCaptureChatModel{}
 	wrapper := &modelInputLoggingChatModel{
 		inner:     capture,
 		agentKind: "test_agent",
-		config:    openai.ChatModelConfig{Model: "test-model"},
+		config:    openai.Config{Model: "test-model"},
 		tools:     stableTools,
 	}
-	if _, err := wrapper.Generate(context.Background(), []*schema.Message{schema.UserMessage("hello")}); err != nil {
+	if _, err := wrapper.Generate(context.Background(), []*adk.Message{adk.UserMessage("hello")}); err != nil {
 		t.Fatal(err)
 	}
 	if len(capture.tools) != 1 {
@@ -191,7 +190,7 @@ func TestModelInputLoggingUsesStableToolSnapshot(t *testing.T) {
 	}
 
 	capture.tools[0].Desc = "provider mutated schema"
-	if _, err := wrapper.Generate(context.Background(), []*schema.Message{schema.UserMessage("again")}); err != nil {
+	if _, err := wrapper.Generate(context.Background(), []*adk.Message{adk.UserMessage("again")}); err != nil {
 		t.Fatal(err)
 	}
 	if capture.tools[0].Desc != "Read a file" {
@@ -200,16 +199,16 @@ func TestModelInputLoggingUsesStableToolSnapshot(t *testing.T) {
 }
 
 type toolCaptureChatModel struct {
-	tools []*schema.ToolInfo
+	tools []*adk.ToolInfo
 }
 
-func (m *toolCaptureChatModel) Generate(_ context.Context, _ []*schema.Message, opts ...model.Option) (*schema.Message, error) {
-	common := model.GetCommonOptions(&model.Options{}, opts...)
+func (m *toolCaptureChatModel) Generate(_ context.Context, _ []*adk.Message, opts ...adk.ModelOption) (*adk.Message, error) {
+	common := adk.GetCommonOptions(&adk.Options{}, opts...)
 	m.tools = common.Tools
-	return schema.AssistantMessage("ok", nil), nil
+	return adk.AssistantMessage("ok", nil), nil
 }
 
-func (m *toolCaptureChatModel) Stream(context.Context, []*schema.Message, ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+func (m *toolCaptureChatModel) Stream(context.Context, []*adk.Message, ...adk.ModelOption) (*adk.StreamReader[*adk.Message], error) {
 	return nil, io.EOF
 }
 
@@ -231,17 +230,17 @@ func TestLogModelProviderRequestIDUpdatesModelInputRecord(t *testing.T) {
 		AgentKind: "test_agent",
 		Source:    "test",
 		Mode:      "generate",
-		Config: openai.ChatModelConfig{
+		Config: openai.Config{
 			Model: "test-model",
 		},
-		Messages: []*schema.Message{
-			schema.UserMessage("hello"),
+		Messages: []*adk.Message{
+			adk.UserMessage("hello"),
 		},
 	})
 	if callID == "" {
 		t.Fatal("expected model input call id")
 	}
-	msg := schema.AssistantMessage("world", nil)
+	msg := adk.AssistantMessage("world", nil)
 	msg.Extra = map[string]any{"openai-request-id": " req-provider-123 "}
 
 	got := logModelProviderRequestIDForCall(callID, "test_agent", "test", "generate", "test-model", "", 0, msg)
@@ -285,14 +284,14 @@ func TestLogModelProviderRequestIDWithoutCallIDDoesNotAttachInputRecord(t *testi
 		AgentKind: "main_agent",
 		Source:    "adk",
 		Mode:      "stream",
-		Config: openai.ChatModelConfig{
+		Config: openai.Config{
 			Model: "test-model",
 		},
-		Messages: []*schema.Message{
-			schema.UserMessage("hello"),
+		Messages: []*adk.Message{
+			adk.UserMessage("hello"),
 		},
 	})
-	msg := schema.AssistantMessage("world", nil)
+	msg := adk.AssistantMessage("world", nil)
 	msg.Extra = map[string]any{"openai-request-id": "req-adk-456"}
 
 	logModelProviderRequestID("main_agent", "adk", "response", "", "run-1", 1, msg)
@@ -338,29 +337,29 @@ func TestLogModelProviderRequestIDKeepsExplicitConcurrentCallMapping(t *testing.
 		AgentKind: "main_agent",
 		Source:    "adk",
 		Mode:      "stream",
-		Config: openai.ChatModelConfig{
+		Config: openai.Config{
 			Model: "test-model",
 		},
-		Messages: []*schema.Message{
-			schema.UserMessage("first"),
+		Messages: []*adk.Message{
+			adk.UserMessage("first"),
 		},
 	})
 	secondCallID := logFullModelInput(modelInputLogOptions{
 		AgentKind: "main_agent",
 		Source:    "adk",
 		Mode:      "stream",
-		Config: openai.ChatModelConfig{
+		Config: openai.Config{
 			Model: "test-model",
 		},
-		Messages: []*schema.Message{
-			schema.UserMessage("second"),
+		Messages: []*adk.Message{
+			adk.UserMessage("second"),
 		},
 	})
 
-	firstMsg := schema.AssistantMessage("first response", nil)
+	firstMsg := adk.AssistantMessage("first response", nil)
 	firstMsg.Extra = map[string]any{"openai-request-id": "req-first"}
 	logModelProviderRequestIDForCall(firstCallID, "main_agent", "adk", "response", "", "run-1", 1, firstMsg)
-	msg := schema.AssistantMessage("second response", nil)
+	msg := adk.AssistantMessage("second response", nil)
 	msg.Extra = map[string]any{"openai-request-id": "req-second"}
 	logModelProviderRequestIDForCall(secondCallID, "main_agent", "adk", "response", "", "run-1", 2, msg)
 	modelInputLogWG.Wait()
@@ -415,11 +414,11 @@ func TestLogFullModelInputSkipsWhenDisabled(t *testing.T) {
 		AgentKind: "test_agent",
 		Source:    "test",
 		Mode:      "generate",
-		Config: openai.ChatModelConfig{
+		Config: openai.Config{
 			Model: "test-model",
 		},
-		Messages: []*schema.Message{
-			schema.UserMessage("hidden unless dev mode is enabled"),
+		Messages: []*adk.Message{
+			adk.UserMessage("hidden unless dev mode is enabled"),
 		},
 	})
 

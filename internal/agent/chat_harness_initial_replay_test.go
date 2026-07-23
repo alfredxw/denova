@@ -6,13 +6,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 func TestInitialStartRejectsMissingCallerCommandID(t *testing.T) {
-	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), runstate.NewMemoryJournalStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,14 +21,14 @@ func TestInitialStartRejectsMissingCallerCommandID(t *testing.T) {
 		context.Background(), nil, nil, nil, ChatRequest{Message: "write"},
 		RunOptions{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "missing-command"}, nil,
 	)
-	if !errors.Is(err, agentruntime.ErrInvalidCommand) || accepted != nil {
+	if !errors.Is(err, runstate.ErrInvalidCommand) || accepted != nil {
 		t.Fatalf("missing command id = accepted=%v err=%v", accepted, err)
 	}
 }
 
 func TestInitialStartColdReplayReturnsDurableOutcomeWithoutEngine(t *testing.T) {
 	journalRoot := t.TempDir()
-	firstStore, err := agentruntime.NewFileJournalStore(journalRoot)
+	firstStore, err := runstate.NewFileJournalStore(journalRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestInitialStartColdReplayReturnsDurableOutcomeWithoutEngine(t *testing.T) 
 	}
 	firstOutcome := firstService.RunWithOptions(
 		context.Background(),
-		newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("durable answer", nil)}, true),
+		newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage("durable answer", nil)}, true),
 		&runControlConversation{}, nil, request, options, nil,
 	)
 	if firstOutcome.Status != RunOutcomeCompleted || firstOutcome.Content != "durable answer" {
@@ -53,7 +53,7 @@ func TestInitialStartColdReplayReturnsDurableOutcomeWithoutEngine(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	secondStore, err := agentruntime.NewFileJournalStore(journalRoot)
+	secondStore, err := runstate.NewFileJournalStore(journalRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestInitialStartColdReplayReturnsDurableOutcomeWithoutEngine(t *testing.T) 
 
 func TestOlderSettledInitialStartColdReplayDoesNotWaitForFutureEvents(t *testing.T) {
 	journalRoot := t.TempDir()
-	store, err := agentruntime.NewFileJournalStore(journalRoot)
+	store, err := runstate.NewFileJournalStore(journalRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestOlderSettledInitialStartColdReplayDoesNotWaitForFutureEvents(t *testing
 	for index := range requests {
 		outcome := service.RunWithOptions(
 			context.Background(),
-			newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage(answers[index], nil)}, true),
+			newRunControlTestRunner(t, &runControlFixedModel{message: adk.AssistantMessage(answers[index], nil)}, true),
 			&runControlConversation{}, nil, requests[index], options, nil,
 		)
 		if outcome.Status != RunOutcomeCompleted || outcome.Content != answers[index] {
@@ -120,7 +120,7 @@ func TestOlderSettledInitialStartColdReplayDoesNotWaitForFutureEvents(t *testing
 		t.Fatal(err)
 	}
 
-	reopenedStore, err := agentruntime.NewFileJournalStore(journalRoot)
+	reopenedStore, err := runstate.NewFileJournalStore(journalRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestOlderSettledInitialStartColdReplayDoesNotWaitForFutureEvents(t *testing
 }
 
 func TestInterruptedInitialStartColdReplayRequiresExplicitRecoveryWithoutEngine(t *testing.T) {
-	store := agentruntime.NewMemoryJournalStore()
+	store := runstate.NewMemoryJournalStore()
 	request := CaptureChatRequestCallerInput(ChatRequest{CommandID: "interrupted-start", Message: "write"})
 	options := RunOptions{
 		AgentKind: AgentKindIDE, RootAgentName: "run-control-test",
@@ -157,7 +157,7 @@ func TestInterruptedInitialStartColdReplayRequiresExplicitRecoveryWithoutEngine(
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref, err := agentruntime.BindingReference(binding)
+	ref, err := runstate.BindingReference(binding)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,15 +169,15 @@ func TestInterruptedInitialStartColdReplayRequiresExplicitRecoveryWithoutEngine(
 	if err != nil {
 		t.Fatal(err)
 	}
-	operationID := agentruntime.OperationID("interrupted-operation")
-	_, err = journal.Append(context.Background(), 0, []agentruntime.EventPayload{
-		agentruntime.CommandAcceptedEvent{CommandID: command.ID, CommandKind: "start_turn", OperationID: operationID, Fingerprint: harnessCommandSemanticFingerprint(command)},
-		agentruntime.OperationStartedEvent{OperationID: operationID},
-		agentruntime.UserMessageCommittedEvent{Message: agentruntime.Message{
-			ID: "interrupted-user", Role: agentruntime.RoleUser, Content: command.Input.Text,
+	operationID := runstate.OperationID("interrupted-operation")
+	_, err = journal.Append(context.Background(), 0, []runstate.EventPayload{
+		runstate.CommandAcceptedEvent{CommandID: command.ID, CommandKind: "start_turn", OperationID: operationID, Fingerprint: harnessCommandSemanticFingerprint(command)},
+		runstate.OperationStartedEvent{OperationID: operationID},
+		runstate.UserMessageCommittedEvent{Message: runstate.Message{
+			ID: "interrupted-user", Role: runstate.RoleUser, Content: command.Input.Text,
 			Input: command.Input, Operation: operationID,
 		}},
-		agentruntime.CycleStartedEvent{OperationID: operationID, Cycle: 1, SnapshotID: "interrupted-snapshot"},
+		runstate.CycleStartedEvent{OperationID: operationID, Cycle: 1, SnapshotID: "interrupted-snapshot"},
 	})
 	if err != nil {
 		_ = journal.Close()
@@ -200,7 +200,7 @@ func TestInterruptedInitialStartColdReplayRequiresExplicitRecoveryWithoutEngine(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != agentruntime.PhaseRunning || !status.RecoveryPaused || status.ActiveOperation != operationID {
+	if status.Phase != runstate.PhaseRunning || !status.RecoveryPaused || status.ActiveOperation != operationID {
 		t.Fatalf("interrupted cold projection = %#v", status)
 	}
 }

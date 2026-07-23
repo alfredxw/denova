@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/session"
+	"denova/internal/agent/session"
 )
 
 // appendAssistantIfAny persists generated output and returns the persistence

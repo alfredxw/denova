@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	agentcontext "denova/internal/agent/context"
 )
@@ -77,7 +77,7 @@ func (l *contextBuildLog) Audit() []ContextLedgerPart {
 	return l.ledger.Parts()
 }
 
-func (l *contextBuildLog) auditForMessages(messages []*schema.Message) []ContextLedgerPart {
+func (l *contextBuildLog) auditForMessages(messages []*adk.Message) []ContextLedgerPart {
 	if l == nil || l.ledger == nil {
 		return nil
 	}
@@ -114,7 +114,7 @@ func (l *contextBuildLog) FullParts() []ContextAnalysisPart {
 	return result
 }
 
-func contextLedgerPartsForConversation(log *contextBuildLog, conversation Conversation, messages []*schema.Message) []ContextLedgerPart {
+func contextLedgerPartsForConversation(log *contextBuildLog, conversation Conversation, messages []*adk.Message) []ContextLedgerPart {
 	parts := log.auditForMessages(messages)
 	if reporter, ok := conversation.(FinalContextLedgerReporter); ok {
 		return append(parts, reporter.ContextLedgerPartsForMessages(messages)...)
@@ -136,7 +136,7 @@ func trimmedNonEmpty(values []string) []string {
 	return result
 }
 
-func messageListSummary(messages []*schema.Message) string {
+func messageListSummary(messages []*adk.Message) string {
 	if len(messages) == 0 {
 		return "count=0"
 	}
@@ -162,7 +162,7 @@ func messageListSummary(messages []*schema.Message) string {
 	return fmt.Sprintf("count=%d roles=%s total_bytes=%d total_chars=%d parts=[%s]", len(messages), roleCountSummary(roleCounts), totalBytes, totalChars, strings.Join(parts, "; "))
 }
 
-func messageSummary(index, total int, msg *schema.Message) string {
+func messageSummary(index, total int, msg *adk.Message) string {
 	if msg == nil {
 		return fmt.Sprintf("%d:<nil>", index)
 	}

@@ -5,14 +5,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 )
 
 func TestProcessStreamingEventPreservesProviderThinkingVerbatim(t *testing.T) {
-	reader, writer := schema.Pipe[*schema.Message](1)
+	reader, writer := adk.Pipe[*adk.Message](1)
 	rawThinking := "开局：" + strings.Repeat("规划目标、约束与状态。", 300) + "供应商思考尾部必须完整展示"
-	writer.Send(&schema.Message{Role: schema.Assistant, ReasoningContent: rawThinking}, nil)
+	writer.Send(&adk.Message{Role: adk.Assistant, ReasoningContent: rawThinking}, nil)
 	writer.Close()
 
 	var content strings.Builder
@@ -20,7 +19,7 @@ func TestProcessStreamingEventPreservesProviderThinkingVerbatim(t *testing.T) {
 	var events []Event
 	_, err := processStreamingEvent(
 		context.Background(),
-		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: schema.Assistant},
+		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: adk.Assistant},
 		&content,
 		&thinking,
 		0,
@@ -42,9 +41,9 @@ func TestProcessStreamingEventPreservesProviderThinkingVerbatim(t *testing.T) {
 
 func TestProcessNonStreamingEventPreservesToolArgumentsVerbatim(t *testing.T) {
 	rawArgs := `{"path":"chapters/ch01.md","content":"` + strings.Repeat("正文", 300) + `工具输入尾部必须完整展示"}`
-	message := &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{
+	message := &adk.Message{Role: adk.Assistant, ToolCalls: []adk.ToolCall{{
 		ID: "call-write",
-		Function: schema.FunctionCall{
+		Function: adk.FunctionCall{
 			Name:      "write_file",
 			Arguments: rawArgs,
 		},
@@ -54,7 +53,7 @@ func TestProcessNonStreamingEventPreservesToolArgumentsVerbatim(t *testing.T) {
 	var events []Event
 
 	processNonStreamingEvent(
-		&adk.MessageVariant{Message: message, Role: schema.Assistant},
+		&adk.MessageVariant{Message: message, Role: adk.Assistant},
 		&content,
 		&thinking,
 		0,
@@ -72,11 +71,11 @@ func TestProcessNonStreamingEventPreservesToolArgumentsVerbatim(t *testing.T) {
 }
 
 func TestProcessStreamingEventReclassifiesInteractiveToolPreambleAsThinking(t *testing.T) {
-	reader, writer := schema.Pipe[*schema.Message](3)
-	writer.Send(&schema.Message{Role: schema.Assistant, Content: "我先检查资料，再开始写正文。"}, nil)
-	writer.Send(&schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{
+	reader, writer := adk.Pipe[*adk.Message](3)
+	writer.Send(&adk.Message{Role: adk.Assistant, Content: "我先检查资料，再开始写正文。"}, nil)
+	writer.Send(&adk.Message{Role: adk.Assistant, ToolCalls: []adk.ToolCall{{
 		ID: "call-lore",
-		Function: schema.FunctionCall{
+		Function: adk.FunctionCall{
 			Name:      "list_lore_items",
 			Arguments: `{}`,
 		},
@@ -88,7 +87,7 @@ func TestProcessStreamingEventReclassifiesInteractiveToolPreambleAsThinking(t *t
 	var events []Event
 	_, err := processStreamingEvent(
 		context.Background(),
-		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: schema.Assistant},
+		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: adk.Assistant},
 		&content,
 		&thinking,
 		0,
@@ -112,8 +111,8 @@ func TestProcessStreamingEventReclassifiesInteractiveToolPreambleAsThinking(t *t
 }
 
 func TestProcessStreamingEventStreamsFirstInteractiveNarrativeCandidate(t *testing.T) {
-	reader, writer := schema.Pipe[*schema.Message](1)
-	writer.Send(&schema.Message{Role: schema.Assistant, Content: "夜雨落在青石街上。"}, nil)
+	reader, writer := adk.Pipe[*adk.Message](1)
+	writer.Send(&adk.Message{Role: adk.Assistant, Content: "夜雨落在青石街上。"}, nil)
 	writer.Close()
 
 	var content strings.Builder
@@ -121,7 +120,7 @@ func TestProcessStreamingEventStreamsFirstInteractiveNarrativeCandidate(t *testi
 	var events []Event
 	_, err := processStreamingEvent(
 		context.Background(),
-		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: schema.Assistant},
+		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: adk.Assistant},
 		&content,
 		&thinking,
 		0,
@@ -145,8 +144,8 @@ func TestProcessStreamingEventStreamsFirstInteractiveNarrativeCandidate(t *testi
 }
 
 func TestProcessStreamingEventKeepsFirstInteractiveCandidateWhenLaterProseArrives(t *testing.T) {
-	reader, writer := schema.Pipe[*schema.Message](1)
-	writer.Send(&schema.Message{Role: schema.Assistant, Content: "废弃料场里又出现了另一段正文。"}, nil)
+	reader, writer := adk.Pipe[*adk.Message](1)
+	writer.Send(&adk.Message{Role: adk.Assistant, Content: "废弃料场里又出现了另一段正文。"}, nil)
 	writer.Close()
 
 	var content strings.Builder
@@ -155,7 +154,7 @@ func TestProcessStreamingEventKeepsFirstInteractiveCandidateWhenLaterProseArrive
 	var events []Event
 	_, err := processStreamingEvent(
 		context.Background(),
-		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: schema.Assistant},
+		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: adk.Assistant},
 		&content,
 		&thinking,
 		0,
@@ -185,7 +184,7 @@ func TestProcessNonStreamingEventKeepsFirstInteractiveCandidateWhenLaterProseArr
 	var events []Event
 
 	processNonStreamingEvent(
-		&adk.MessageVariant{Message: schema.AssistantMessage("废弃料场里又出现了另一段正文。", nil), Role: schema.Assistant},
+		&adk.MessageVariant{Message: adk.AssistantMessage("废弃料场里又出现了另一段正文。", nil), Role: adk.Assistant},
 		&content,
 		&thinking,
 		0,
@@ -206,11 +205,11 @@ func TestProcessNonStreamingEventKeepsFirstInteractiveCandidateWhenLaterProseArr
 }
 
 func TestProcessStreamingEventKeepsInteractiveCompletionRetryInternal(t *testing.T) {
-	reader, writer := schema.Pipe[*schema.Message](2)
-	writer.Send(&schema.Message{
-		Role:    schema.Assistant,
+	reader, writer := adk.Pipe[*adk.Message](2)
+	writer.Send(&adk.Message{
+		Role:    adk.Assistant,
 		Content: "门后传来锁链拖地的声音。",
-		ResponseMeta: &schema.ResponseMeta{Usage: &schema.TokenUsage{
+		ResponseMeta: &adk.ResponseMeta{Usage: &adk.TokenUsage{
 			PromptTokens:     120,
 			CompletionTokens: 12,
 			TotalTokens:      132,
@@ -223,7 +222,7 @@ func TestProcessStreamingEventKeepsInteractiveCompletionRetryInternal(t *testing
 	var events []Event
 	message, err := processStreamingEvent(
 		context.Background(),
-		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: schema.Assistant},
+		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: adk.Assistant},
 		&content,
 		&thinking,
 		0,
@@ -250,11 +249,11 @@ func TestProcessStreamingEventKeepsInteractiveCompletionRetryInternal(t *testing
 }
 
 func TestProcessStreamingEventKeepsContentBeforeSubmitAsNarrative(t *testing.T) {
-	reader, writer := schema.Pipe[*schema.Message](2)
-	writer.Send(&schema.Message{Role: schema.Assistant, Content: "石门在轰鸣中开启。"}, nil)
-	writer.Send(&schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{
+	reader, writer := adk.Pipe[*adk.Message](2)
+	writer.Send(&adk.Message{Role: adk.Assistant, Content: "石门在轰鸣中开启。"}, nil)
+	writer.Send(&adk.Message{Role: adk.Assistant, ToolCalls: []adk.ToolCall{{
 		ID: "call-submit",
-		Function: schema.FunctionCall{
+		Function: adk.FunctionCall{
 			Name:      "submit_actor_state_patches",
 			Arguments: `{"patches":[]}`,
 		},
@@ -266,7 +265,7 @@ func TestProcessStreamingEventKeepsContentBeforeSubmitAsNarrative(t *testing.T) 
 	var events []Event
 	_, err := processStreamingEvent(
 		context.Background(),
-		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: schema.Assistant},
+		&adk.MessageVariant{IsStreaming: true, MessageStream: reader, Role: adk.Assistant},
 		&content,
 		&thinking,
 		0,

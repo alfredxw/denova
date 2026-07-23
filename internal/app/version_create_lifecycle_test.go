@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"denova/config"
+	"denova/internal/agent/session"
 	"denova/internal/book"
-	"denova/internal/session"
 )
 
 func TestCreateVersionCancellationDoesNotCommitFallbackOrAgentJournal(t *testing.T) {

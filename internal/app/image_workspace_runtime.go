@@ -7,9 +7,9 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 // imageWorkspaceRuntime pins every image path to one exact workspace

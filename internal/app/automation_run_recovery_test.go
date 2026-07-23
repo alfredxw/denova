@@ -11,7 +11,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
 )
 
@@ -36,7 +36,7 @@ func TestAutomationColdAcceptedRunStaysRecoveryRequiredUntilExplicitAbort(t *tes
 		t.Fatal(err)
 	}
 	const runID = "cold-accepted-run"
-	const operationID = agentruntime.OperationID("cold-accepted-operation")
+	const operationID = runstate.OperationID("cold-accepted-operation")
 	commandID := automationRunAgentCommandID(runID)
 	evidence := []automation.TriggerEvidence{{Source: "schedule", Title: "daily", Snippet: "0 9 * * *"}}
 	run := automation.RunRecord{
@@ -65,31 +65,31 @@ func TestAutomationColdAcceptedRunStaysRecoveryRequiredUntilExplicitAbort(t *tes
 	if _, err := store.UpdateTriggerState(taskDef.ID, "schedule", automation.TriggerState{Evaluation: &evaluation}); err != nil {
 		t.Fatal(err)
 	}
-	seedAutomationRuntimeJournal(t, dataDir, taskDef, run, []agentruntime.EventPayload{
-		agentruntime.CommandAcceptedEvent{CommandID: agentruntime.CommandID(commandID), CommandKind: "start_turn", OperationID: operationID, Fingerprint: "cold-start"},
-		agentruntime.OperationStartedEvent{OperationID: operationID},
-		agentruntime.UserMessageCommittedEvent{Message: agentruntime.Message{
-			ID: "cold-accepted-user", Role: agentruntime.RoleUser, Content: "run automation",
-			Input: agentruntime.UserInput{Text: "run automation"}, Operation: operationID,
+	seedAutomationRuntimeJournal(t, dataDir, taskDef, run, []runstate.EventPayload{
+		runstate.CommandAcceptedEvent{CommandID: runstate.CommandID(commandID), CommandKind: "start_turn", OperationID: operationID, Fingerprint: "cold-start"},
+		runstate.OperationStartedEvent{OperationID: operationID},
+		runstate.UserMessageCommittedEvent{Message: runstate.Message{
+			ID: "cold-accepted-user", Role: runstate.RoleUser, Content: "run automation",
+			Input: runstate.UserInput{Text: "run automation"}, Operation: operationID,
 		}},
-		agentruntime.CycleStartedEvent{OperationID: operationID, Cycle: 1, SnapshotID: "cold-accepted-snapshot"},
-		agentruntime.DomainCommitIntentAcceptedEvent{
-			Identity: agentruntime.DomainCommitIdentity{
-				CommandID: agentruntime.CommandID(commandID), OperationID: operationID,
-				Cycle: 1, Stage: agentruntime.DomainCommitInput,
+		runstate.CycleStartedEvent{OperationID: operationID, Cycle: 1, SnapshotID: "cold-accepted-snapshot"},
+		runstate.DomainCommitIntentAcceptedEvent{
+			Identity: runstate.DomainCommitIdentity{
+				CommandID: runstate.CommandID(commandID), OperationID: operationID,
+				Cycle: 1, Stage: runstate.DomainCommitInput,
 			},
 			Hash: "cold-accepted-input",
 		},
-		agentruntime.DomainCommitReceiptEvent{
-			Identity: agentruntime.DomainCommitIdentity{
-				CommandID: agentruntime.CommandID(commandID), OperationID: operationID,
-				Cycle: 1, Stage: agentruntime.DomainCommitInput,
+		runstate.DomainCommitReceiptEvent{
+			Identity: runstate.DomainCommitIdentity{
+				CommandID: runstate.CommandID(commandID), OperationID: operationID,
+				Cycle: 1, Stage: runstate.DomainCommitInput,
 			},
 			Hash: "cold-accepted-input", Revision: "1",
 		},
 	})
 
-	application, err := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace})
+	application, err := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace, OpenAIModel: "test-model"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestAutomationStartupScanFinalizesTerminalRuntimeEffectsExactlyOnce(t *test
 		t.Fatal(err)
 	}
 	const runID = "terminal-missing-append"
-	const operationID = agentruntime.OperationID("terminal-operation")
+	const operationID = runstate.OperationID("terminal-operation")
 	commandID := automationRunAgentCommandID(runID)
 	run := automation.RunRecord{
 		ID: runID, TaskID: taskDef.ID, SessionID: automationRunSessionID(runID),
@@ -156,14 +156,14 @@ func TestAutomationStartupScanFinalizesTerminalRuntimeEffectsExactlyOnce(t *test
 	if _, err := store.AppendRun(taskDef.ID, run); err != nil {
 		t.Fatal(err)
 	}
-	seedAutomationRuntimeJournal(t, dataDir, taskDef, run, []agentruntime.EventPayload{
-		agentruntime.CommandAcceptedEvent{CommandID: agentruntime.CommandID(commandID), CommandKind: "start_turn", OperationID: operationID, Fingerprint: "terminal-start"},
-		agentruntime.OperationStartedEvent{OperationID: operationID},
-		agentruntime.OperationSettledEvent{OperationID: operationID, Status: agentruntime.OperationSucceeded},
+	seedAutomationRuntimeJournal(t, dataDir, taskDef, run, []runstate.EventPayload{
+		runstate.CommandAcceptedEvent{CommandID: runstate.CommandID(commandID), CommandKind: "start_turn", OperationID: operationID, Fingerprint: "terminal-start"},
+		runstate.OperationStartedEvent{OperationID: operationID},
+		runstate.OperationSettledEvent{OperationID: operationID, Status: runstate.OperationSucceeded},
 	})
 
 	openAndWait := func() {
-		application, openErr := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace})
+		application, openErr := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace, OpenAIModel: "test-model"})
 		if openErr != nil {
 			t.Fatal(openErr)
 		}
@@ -204,8 +204,8 @@ func TestAutomationColdFollowUpPublishesAndAbortsCurrentOperation(t *testing.T) 
 		t.Fatal(err)
 	}
 	const runID = "cold-follow-up-run"
-	const rootOperationID = agentruntime.OperationID("cold-follow-up-root-operation")
-	const currentOperationID = agentruntime.OperationID("cold-follow-up-current-operation")
+	const rootOperationID = runstate.OperationID("cold-follow-up-root-operation")
+	const currentOperationID = runstate.OperationID("cold-follow-up-current-operation")
 	rootCommandID := automationRunAgentCommandID(runID)
 	const currentCommandID = "cold-follow-up-command"
 	run := automation.RunRecord{
@@ -218,41 +218,41 @@ func TestAutomationColdFollowUpPublishesAndAbortsCurrentOperation(t *testing.T) 
 	if _, err := store.AppendRun(taskDef.ID, run); err != nil {
 		t.Fatal(err)
 	}
-	seedAutomationRuntimeJournal(t, dataDir, taskDef, run, []agentruntime.EventPayload{
-		agentruntime.CommandAcceptedEvent{CommandID: agentruntime.CommandID(rootCommandID), CommandKind: "start_turn", OperationID: rootOperationID, Fingerprint: "root-start"},
-		agentruntime.OperationStartedEvent{OperationID: rootOperationID},
-		agentruntime.UserMessageCommittedEvent{Message: agentruntime.Message{
-			ID: "follow-up-root-user", Role: agentruntime.RoleUser, Content: "run automation",
-			Input: agentruntime.UserInput{Text: "run automation"}, Operation: rootOperationID,
+	seedAutomationRuntimeJournal(t, dataDir, taskDef, run, []runstate.EventPayload{
+		runstate.CommandAcceptedEvent{CommandID: runstate.CommandID(rootCommandID), CommandKind: "start_turn", OperationID: rootOperationID, Fingerprint: "root-start"},
+		runstate.OperationStartedEvent{OperationID: rootOperationID},
+		runstate.UserMessageCommittedEvent{Message: runstate.Message{
+			ID: "follow-up-root-user", Role: runstate.RoleUser, Content: "run automation",
+			Input: runstate.UserInput{Text: "run automation"}, Operation: rootOperationID,
 		}},
-		agentruntime.CycleStartedEvent{OperationID: rootOperationID, Cycle: 1, SnapshotID: "follow-up-root-snapshot"},
-		agentruntime.DomainCommitIntentAcceptedEvent{
-			Identity: agentruntime.DomainCommitIdentity{CommandID: agentruntime.CommandID(rootCommandID), OperationID: rootOperationID, Cycle: 1, Stage: agentruntime.DomainCommitInput},
+		runstate.CycleStartedEvent{OperationID: rootOperationID, Cycle: 1, SnapshotID: "follow-up-root-snapshot"},
+		runstate.DomainCommitIntentAcceptedEvent{
+			Identity: runstate.DomainCommitIdentity{CommandID: runstate.CommandID(rootCommandID), OperationID: rootOperationID, Cycle: 1, Stage: runstate.DomainCommitInput},
 			Hash:     "follow-up-root-input",
 		},
-		agentruntime.DomainCommitReceiptEvent{
-			Identity: agentruntime.DomainCommitIdentity{CommandID: agentruntime.CommandID(rootCommandID), OperationID: rootOperationID, Cycle: 1, Stage: agentruntime.DomainCommitInput},
+		runstate.DomainCommitReceiptEvent{
+			Identity: runstate.DomainCommitIdentity{CommandID: runstate.CommandID(rootCommandID), OperationID: rootOperationID, Cycle: 1, Stage: runstate.DomainCommitInput},
 			Hash:     "follow-up-root-input", Revision: "1",
 		},
-		agentruntime.OperationSettledEvent{OperationID: rootOperationID, Status: agentruntime.OperationSucceeded},
-		agentruntime.CommandAcceptedEvent{CommandID: currentCommandID, CommandKind: "start_turn", OperationID: currentOperationID, Fingerprint: "follow-up-start"},
-		agentruntime.OperationStartedEvent{OperationID: currentOperationID},
-		agentruntime.UserMessageCommittedEvent{Message: agentruntime.Message{
-			ID: "follow-up-current-user", Role: agentruntime.RoleUser, Content: "continue automation",
-			Input: agentruntime.UserInput{Text: "continue automation"}, Operation: currentOperationID,
+		runstate.OperationSettledEvent{OperationID: rootOperationID, Status: runstate.OperationSucceeded},
+		runstate.CommandAcceptedEvent{CommandID: currentCommandID, CommandKind: "start_turn", OperationID: currentOperationID, Fingerprint: "follow-up-start"},
+		runstate.OperationStartedEvent{OperationID: currentOperationID},
+		runstate.UserMessageCommittedEvent{Message: runstate.Message{
+			ID: "follow-up-current-user", Role: runstate.RoleUser, Content: "continue automation",
+			Input: runstate.UserInput{Text: "continue automation"}, Operation: currentOperationID,
 		}},
-		agentruntime.CycleStartedEvent{OperationID: currentOperationID, Cycle: 1, SnapshotID: "follow-up-current-snapshot"},
-		agentruntime.DomainCommitIntentAcceptedEvent{
-			Identity: agentruntime.DomainCommitIdentity{CommandID: currentCommandID, OperationID: currentOperationID, Cycle: 1, Stage: agentruntime.DomainCommitInput},
+		runstate.CycleStartedEvent{OperationID: currentOperationID, Cycle: 1, SnapshotID: "follow-up-current-snapshot"},
+		runstate.DomainCommitIntentAcceptedEvent{
+			Identity: runstate.DomainCommitIdentity{CommandID: currentCommandID, OperationID: currentOperationID, Cycle: 1, Stage: runstate.DomainCommitInput},
 			Hash:     "follow-up-current-input",
 		},
-		agentruntime.DomainCommitReceiptEvent{
-			Identity: agentruntime.DomainCommitIdentity{CommandID: currentCommandID, OperationID: currentOperationID, Cycle: 1, Stage: agentruntime.DomainCommitInput},
+		runstate.DomainCommitReceiptEvent{
+			Identity: runstate.DomainCommitIdentity{CommandID: currentCommandID, OperationID: currentOperationID, Cycle: 1, Stage: runstate.DomainCommitInput},
 			Hash:     "follow-up-current-input", Revision: "2",
 		},
 	})
 
-	application, err := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace})
+	application, err := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace, OpenAIModel: "test-model"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestAutomationColdFollowUpPublishesAndAbortsCurrentOperation(t *testing.T) 
 	if active.Run.RootRuntimeCommandID != rootCommandID || active.Run.RootRuntimeOperationID != string(rootOperationID) {
 		t.Fatalf("follow-up changed immutable root receipt: %#v", active.Run)
 	}
-	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-stale-root", rootOperationID, "stale"); !errors.Is(err, agentruntime.ErrStaleOperation) {
+	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-stale-root", rootOperationID, "stale"); !errors.Is(err, runstate.ErrStaleOperation) {
 		t.Fatalf("root-operation abort error = %v, want stale operation", err)
 	}
 	receipt, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-current-follow-up", currentOperationID, "user_requested")
@@ -297,8 +297,8 @@ func TestAutomationPendingFollowUpIntentRecoversActiveSuccessorAfterCrash(t *tes
 		t.Fatal(err)
 	}
 	const runID = "pending-follow-up-run"
-	const rootOperationID = agentruntime.OperationID("pending-root-operation")
-	const successorOperationID = agentruntime.OperationID("pending-successor-operation")
+	const rootOperationID = runstate.OperationID("pending-root-operation")
+	const successorOperationID = runstate.OperationID("pending-successor-operation")
 	rootCommandID := automationRunAgentCommandID(runID)
 	const successorCommandID = "pending-successor-command"
 	run := automation.RunRecord{
@@ -314,28 +314,28 @@ func TestAutomationPendingFollowUpIntentRecoversActiveSuccessorAfterCrash(t *tes
 	if _, err := store.AppendRun(taskDef.CatalogID, run); err != nil {
 		t.Fatal(err)
 	}
-	seedAutomationRuntimeJournal(t, dataDir, taskDef, run, []agentruntime.EventPayload{
-		agentruntime.CommandAcceptedEvent{CommandID: agentruntime.CommandID(rootCommandID), CommandKind: "start_turn", OperationID: rootOperationID, Fingerprint: "pending-root"},
-		agentruntime.OperationStartedEvent{OperationID: rootOperationID},
-		agentruntime.OperationSettledEvent{OperationID: rootOperationID, Status: agentruntime.OperationSucceeded},
-		agentruntime.CommandAcceptedEvent{CommandID: successorCommandID, CommandKind: "start_turn", OperationID: successorOperationID, Fingerprint: "pending-successor"},
-		agentruntime.OperationStartedEvent{OperationID: successorOperationID},
-		agentruntime.UserMessageCommittedEvent{Message: agentruntime.Message{
-			ID: "pending-successor-user", Role: agentruntime.RoleUser, Content: "continue automation",
-			Input: agentruntime.UserInput{Text: "continue automation"}, Operation: successorOperationID,
+	seedAutomationRuntimeJournal(t, dataDir, taskDef, run, []runstate.EventPayload{
+		runstate.CommandAcceptedEvent{CommandID: runstate.CommandID(rootCommandID), CommandKind: "start_turn", OperationID: rootOperationID, Fingerprint: "pending-root"},
+		runstate.OperationStartedEvent{OperationID: rootOperationID},
+		runstate.OperationSettledEvent{OperationID: rootOperationID, Status: runstate.OperationSucceeded},
+		runstate.CommandAcceptedEvent{CommandID: successorCommandID, CommandKind: "start_turn", OperationID: successorOperationID, Fingerprint: "pending-successor"},
+		runstate.OperationStartedEvent{OperationID: successorOperationID},
+		runstate.UserMessageCommittedEvent{Message: runstate.Message{
+			ID: "pending-successor-user", Role: runstate.RoleUser, Content: "continue automation",
+			Input: runstate.UserInput{Text: "continue automation"}, Operation: successorOperationID,
 		}},
-		agentruntime.CycleStartedEvent{OperationID: successorOperationID, Cycle: 1, SnapshotID: "pending-successor-snapshot"},
-		agentruntime.DomainCommitIntentAcceptedEvent{
-			Identity: agentruntime.DomainCommitIdentity{CommandID: successorCommandID, OperationID: successorOperationID, Cycle: 1, Stage: agentruntime.DomainCommitInput},
+		runstate.CycleStartedEvent{OperationID: successorOperationID, Cycle: 1, SnapshotID: "pending-successor-snapshot"},
+		runstate.DomainCommitIntentAcceptedEvent{
+			Identity: runstate.DomainCommitIdentity{CommandID: successorCommandID, OperationID: successorOperationID, Cycle: 1, Stage: runstate.DomainCommitInput},
 			Hash:     "pending-successor-input",
 		},
-		agentruntime.DomainCommitReceiptEvent{
-			Identity: agentruntime.DomainCommitIdentity{CommandID: successorCommandID, OperationID: successorOperationID, Cycle: 1, Stage: agentruntime.DomainCommitInput},
+		runstate.DomainCommitReceiptEvent{
+			Identity: runstate.DomainCommitIdentity{CommandID: successorCommandID, OperationID: successorOperationID, Cycle: 1, Stage: runstate.DomainCommitInput},
 			Hash:     "pending-successor-input", Revision: "2",
 		},
 	})
 
-	application, err := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace})
+	application, err := New(context.Background(), &config.Config{NovaDir: dataDir, Workspace: workspace, OpenAIModel: "test-model"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -380,10 +380,10 @@ func TestAutomationRecoveryFailureCannotFinalizeAnActiveProjection(t *testing.T)
 	application.ensureServices()
 	t.Cleanup(application.Close)
 	service := application.automation()
-	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (agentruntime.StatusSnapshot, error) {
-		return agentruntime.StatusSnapshot{
-			Cursor: 9, Phase: agentruntime.PhaseRunning,
-			ActiveCommandID: agentruntime.CommandID(run.RuntimeCommandID), ActiveOperation: agentruntime.OperationID(run.RuntimeOperationID),
+	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (runstate.StatusSnapshot, error) {
+		return runstate.StatusSnapshot{
+			Cursor: 9, Phase: runstate.PhaseRunning,
+			ActiveCommandID: runstate.CommandID(run.RuntimeCommandID), ActiveOperation: runstate.OperationID(run.RuntimeOperationID),
 		}, nil
 	}
 	snapshot := &automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir}
@@ -406,17 +406,17 @@ func TestAutomationRecoveryFailureCannotFinalizeAnActiveProjection(t *testing.T)
 	}
 }
 
-func seedAutomationRuntimeJournal(t *testing.T, dataDir string, taskDef automation.Task, run automation.RunRecord, events []agentruntime.EventPayload) {
+func seedAutomationRuntimeJournal(t *testing.T, dataDir string, taskDef automation.Task, run automation.RunRecord, events []runstate.EventPayload) {
 	t.Helper()
-	ref := agentruntime.BindingRef{
-		Kind: agentruntime.BindingAutomation, Profile: agentruntime.ProfileAutomation,
+	ref := runstate.BindingRef{
+		Kind: runstate.BindingAutomation, Profile: runstate.ProfileAutomation,
 		Workspace: run.Workspace, SessionID: run.SessionID, TaskID: taskDef.ID,
 	}
 	key, err := json.Marshal(ref)
 	if err != nil {
 		t.Fatal(err)
 	}
-	journalStore, err := agentruntime.NewFileJournalStore(filepath.Join(dataDir, "agent-runtime"))
+	journalStore, err := runstate.NewFileJournalStore(filepath.Join(dataDir, "agent-runtime"))
 	if err != nil {
 		t.Fatal(err)
 	}

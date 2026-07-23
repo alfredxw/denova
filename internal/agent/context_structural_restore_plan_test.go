@@ -9,12 +9,12 @@ import (
 	"sync"
 	"testing"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 func TestContextStructuralRestorePlanStrictRoundTrip(t *testing.T) {
-	binding := agentruntime.BindingRef{
-		Kind: agentruntime.BindingWriting, Profile: agentruntime.ProfileWriting,
+	binding := runstate.BindingRef{
+		Kind: runstate.BindingWriting, Profile: runstate.ProfileWriting,
 		Workspace: "/book", SessionID: "restore-plan",
 	}
 	mutation := json.RawMessage(` { "summary" : "bounded", "counter": 9007199254740993, "id" : "cc-1" } `)
@@ -62,8 +62,8 @@ func TestContextStructuralRestorePlanStrictRoundTrip(t *testing.T) {
 }
 
 func TestContextStructuralRestorePlanRejectsInvalidDescriptors(t *testing.T) {
-	binding := agentruntime.BindingRef{
-		Kind: agentruntime.BindingWriting, Profile: agentruntime.ProfileWriting,
+	binding := runstate.BindingRef{
+		Kind: runstate.BindingWriting, Profile: runstate.ProfileWriting,
 		Workspace: "/book", SessionID: "invalid-plan",
 	}
 	mutation := json.RawMessage(`{"id":"cc-1"}`)
@@ -189,13 +189,13 @@ func (o *recoveredFixedStructuralOperation) Reconcile(context.Context) (ContextS
 }
 
 func TestResumeRecoveredContextStructuralOperationColdRestoresExactPlanOnce(t *testing.T) {
-	store := agentruntime.NewMemoryJournalStore()
+	store := runstate.NewMemoryJournalStore()
 	options := RunOptions{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "cold-structural", Mode: "ide"}.normalized("")
 	binding, err := harnessBindingForOptions(options)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bindingRef, err := agentruntime.BindingReference(binding)
+	bindingRef, err := runstate.BindingReference(binding)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,14 +214,14 @@ func TestResumeRecoveredContextStructuralOperationColdRestoresExactPlanOnce(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := agentruntime.CompactIfNeeded{ID: "cold-structural-command", Ref: agentruntime.ContextCompactionRef{
+	command := runstate.CompactIfNeeded{ID: "cold-structural-command", Ref: runstate.ContextCompactionRef{
 		SpecRef: "cold-structural-spec", Source: "session.effective_messages", Purpose: "checkpoint",
 		Resource: options.SessionID, ExpectedRevision: "context:7", RestoreDescriptor: descriptor,
 	}}
-	operationID := agentruntime.OperationID("cold-structural-operation")
-	snapshot := agentruntime.StructuralOperationSnapshot{
+	operationID := runstate.OperationID("cold-structural-operation")
+	snapshot := runstate.StructuralOperationSnapshot{
 		Binding: bindingRef, CommandID: command.ID, OperationID: operationID, Cycle: 1,
-		Kind: agentruntime.StructuralCompactContext, Ref: command.Ref, ContextCursor: 2,
+		Kind: runstate.StructuralCompactContext, Ref: command.Ref, ContextCursor: 2,
 	}
 	key, err := json.Marshal(bindingRef)
 	if err != nil {
@@ -231,17 +231,17 @@ func TestResumeRecoveredContextStructuralOperationColdRestoresExactPlanOnce(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	fingerprint, err := agentruntime.CommandFingerprint(command)
+	fingerprint, err := runstate.CommandFingerprint(command)
 	if err != nil {
 		_ = journal.Close()
 		t.Fatal(err)
 	}
-	if _, err := journal.Append(context.Background(), 0, []agentruntime.EventPayload{
-		agentruntime.CommandAcceptedEvent{
+	if _, err := journal.Append(context.Background(), 0, []runstate.EventPayload{
+		runstate.CommandAcceptedEvent{
 			CommandID: command.ID, CommandKind: "compact_context", OperationID: operationID,
 			Fingerprint: fingerprint,
 		},
-		agentruntime.OperationStartedEvent{OperationID: operationID, Phase: agentruntime.PhaseCompacting, Structural: &snapshot},
+		runstate.OperationStartedEvent{OperationID: operationID, Phase: runstate.PhaseCompacting, Structural: &snapshot},
 	}); err != nil {
 		_ = journal.Close()
 		t.Fatal(err)
@@ -265,7 +265,7 @@ func TestResumeRecoveredContextStructuralOperationColdRestoresExactPlanOnce(t *t
 			// request mutations above must not alias its retained plan either.
 			return ContextStructuralSpec{
 				CommandID: "wrong", Action: ContextStructuralRemove,
-				Ref:       agentruntime.ContextCompactionRef{SpecRef: "wrong"},
+				Ref:       runstate.ContextCompactionRef{SpecRef: "wrong"},
 				Options:   RunOptions{AgentKind: AgentKindInteractiveStory, Workspace: "/wrong", StoryID: "wrong", BranchID: "wrong"},
 				Operation: operation,
 			}, nil
@@ -283,7 +283,7 @@ func TestResumeRecoveredContextStructuralOperationColdRestoresExactPlanOnce(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !status.RecoveryPaused || status.Phase != agentruntime.PhaseCompacting || restoreCalls != 0 {
+	if !status.RecoveryPaused || status.Phase != runstate.PhaseCompacting || restoreCalls != 0 {
 		t.Fatalf("open must only pause cold structural recovery: status=%#v restore_calls=%d", status, restoreCalls)
 	}
 	result, resumed, err := service.ResumeRecoveredContextStructuralOperation(context.Background(), options, ContextStructuralCompact)

@@ -5,11 +5,12 @@ import (
 	"errors"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/adk/filesystem"
+	"github.com/alfredxw/denova/adk"
 )
 
 func TestShellCommandArgsUsesUnixShellOutsideWindows(t *testing.T) {
@@ -61,75 +62,86 @@ func TestShellCommandArgsFallsBackToWindowsPowerShell(t *testing.T) {
 	}
 }
 
-func TestAgentStreamingShellStreamsOutput(t *testing.T) {
-	sh := &agentStreamingShell{goos: runtime.GOOS, lookPath: exec.LookPath}
-	command := "printf 'nova-shell\\n'"
+func TestAgentStreamingShellStreamsOutputFromWorkspace(t *testing.T) {
+	workspace := t.TempDir()
+	shell := newTestAgentStreamingShell(t, workspace)
+	command := "printf 'nova-shell:%s\\n' \"$PWD\""
 	if runtime.GOOS == "windows" {
-		command = "Write-Output nova-shell"
+		command = "Write-Output nova-shell:$PWD"
 	}
 
-	output, err := collectShellOutput(context.Background(), sh, command)
+	output, err := collectShellOutput(context.Background(), shell, command)
 	if err != nil {
 		t.Fatalf("execute streaming failed: %v", err)
 	}
-	if !strings.Contains(output, "nova-shell") {
-		t.Fatalf("expected streamed output, got %q", output)
+	if !strings.Contains(output, "nova-shell") || !strings.Contains(filepath.Clean(output), filepath.Clean(workspace)) {
+		t.Fatalf("expected streamed workspace output, got %q", output)
 	}
 }
 
-func TestAgentStreamingShellReportsExitCode(t *testing.T) {
-	sh := &agentStreamingShell{goos: runtime.GOOS, lookPath: exec.LookPath}
-	sr, err := sh.ExecuteStreaming(context.Background(), &filesystem.ExecuteRequest{Command: "exit 3"})
+func TestAgentStreamingShellReportsExitCodeAndBoundedStderr(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("exit syntax differs on Windows")
+	}
+	shell := newTestAgentStreamingShell(t, t.TempDir())
+	output, err := collectShellOutput(context.Background(), shell, "printf 'failure detail' >&2; exit 3")
 	if err != nil {
 		t.Fatalf("execute streaming failed: %v", err)
 	}
-
-	var exitCode *int
-	for {
-		resp, recvErr := sr.Recv()
-		if errors.Is(recvErr, io.EOF) {
-			break
-		}
-		if recvErr != nil {
-			t.Fatalf("receive failed: %v", recvErr)
-		}
-		if resp != nil && resp.ExitCode != nil {
-			exitCode = resp.ExitCode
-		}
-	}
-	if exitCode == nil || *exitCode != 3 {
-		t.Fatalf("expected exit code 3, got %v", exitCode)
+	if !strings.Contains(output, "exit code 3") || !strings.Contains(output, "failure detail") {
+		t.Fatalf("expected exit diagnostics, got %q", output)
 	}
 }
 
-func TestAgentStreamingShellRejectsBackgroundExecution(t *testing.T) {
-	sh := &agentStreamingShell{goos: runtime.GOOS, lookPath: exec.LookPath}
-	_, err := sh.ExecuteStreaming(context.Background(), &filesystem.ExecuteRequest{
-		Command:            "echo unsafe",
-		RunInBackendGround: true,
-	})
-	if err == nil || !strings.Contains(err.Error(), "background shell execution is disabled") {
-		t.Fatalf("background execution should be rejected, got %v", err)
+func TestWorkspaceExecuteToolIsStreamableAndRejectsUnknownArguments(t *testing.T) {
+	shell := newTestAgentStreamingShell(t, t.TempDir())
+	base, err := newWorkspaceExecuteTool(shell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamable, ok := base.(adk.StreamableTool)
+	if !ok {
+		t.Fatal("execute should be a native streamable ADK tool")
+	}
+	if _, err := streamable.StreamableRun(context.Background(), `{"command":"echo ok","background":true}`); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("unexpected execute argument validation: %v", err)
 	}
 }
 
-func collectShellOutput(ctx context.Context, sh *agentStreamingShell, command string) (string, error) {
-	sr, err := sh.ExecuteStreaming(ctx, &filesystem.ExecuteRequest{Command: command})
+func TestAgentStreamingShellHonorsCanceledContext(t *testing.T) {
+	shell := newTestAgentStreamingShell(t, t.TempDir())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := collectShellOutput(ctx, shell, "echo should-not-run")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled execute should return context cancellation, got %v", err)
+	}
+}
+
+func newTestAgentStreamingShell(t *testing.T, workspace string) *agentStreamingShell {
+	t.Helper()
+	shell, err := newAgentStreamingShell(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return shell
+}
+
+func collectShellOutput(ctx context.Context, shell *agentStreamingShell, command string) (string, error) {
+	reader, err := shell.ExecuteStreaming(ctx, command)
 	if err != nil {
 		return "", err
 	}
+	defer reader.Close()
 	var output strings.Builder
 	for {
-		resp, recvErr := sr.Recv()
+		fragment, recvErr := reader.Recv()
 		if errors.Is(recvErr, io.EOF) {
-			break
+			return output.String(), nil
 		}
 		if recvErr != nil {
 			return output.String(), recvErr
 		}
-		if resp != nil {
-			output.WriteString(resp.Output)
-		}
+		output.WriteString(fragment)
 	}
-	return output.String(), nil
 }

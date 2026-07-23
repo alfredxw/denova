@@ -7,7 +7,7 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 )
 
 type HarnessDomainCommitStage string
@@ -60,7 +60,7 @@ func runOutcomeMayCommitDomain(outcome RunOutcome) bool {
 
 func coordinateHarnessDomainCommit(
 	ctx context.Context,
-	emit agentruntime.EngineEventSink,
+	emit runstate.EngineEventSink,
 	participant HarnessDomainCommitParticipant,
 	stage HarnessDomainCommitStage,
 	outcome RunOutcome,
@@ -81,14 +81,14 @@ func coordinateHarnessDomainCommit(
 	if intent.Stage != stage || !validHarnessCycleIdentity(intent.Identity) || strings.TrimSpace(intent.Hash) == "" {
 		return fmt.Errorf("invalid %s domain commit intent", stage)
 	}
-	identity, err := agentruntimeDomainCommitIdentity(intent)
+	identity, err := runtimeDomainCommitIdentity(intent)
 	if err != nil {
 		return err
 	}
 	if emit == nil {
 		return fmt.Errorf("authorize %s domain commit: engine sink is nil", stage)
 	}
-	if err := emit(agentruntime.EngineDomainCommitIntent{Identity: identity, Hash: intent.Hash}); err != nil {
+	if err := emit(runstate.EngineDomainCommitIntent{Identity: identity, Hash: intent.Hash}); err != nil {
 		if stage == HarnessDomainCommitOutput {
 			_ = commitHarnessCycleStage(ctx, participant, stage, RunOutcome{Status: RunOutcomeAborted, Error: err, Reason: err.Error(), Content: outcome.Content, Thinking: outcome.Thinking})
 		}
@@ -108,7 +108,7 @@ func coordinateHarnessDomainCommit(
 	if receipt.Stage != stage || receipt.Identity != intent.Identity || receipt.Hash != intent.Hash || strings.TrimSpace(receipt.Revision) == "" {
 		return fmt.Errorf("%s domain commit returned a mismatched canonical receipt", stage)
 	}
-	receiptEvent := agentruntime.EngineDomainCommitReceipt{
+	receiptEvent := runstate.EngineDomainCommitReceipt{
 		Identity: identity, Hash: receipt.Hash, Revision: receipt.Revision,
 	}
 	if err := emit(receiptEvent); err != nil {
@@ -121,12 +121,12 @@ func coordinateHarnessDomainCommit(
 	return nil
 }
 
-func agentruntimeDomainCommitIdentity(intent HarnessDomainCommitIntent) (agentruntime.DomainCommitIdentity, error) {
-	stage := agentruntime.DomainCommitStage(intent.Stage)
-	if stage != agentruntime.DomainCommitInput && stage != agentruntime.DomainCommitOutput {
-		return agentruntime.DomainCommitIdentity{}, fmt.Errorf("unsupported domain commit stage %q", intent.Stage)
+func runtimeDomainCommitIdentity(intent HarnessDomainCommitIntent) (runstate.DomainCommitIdentity, error) {
+	stage := runstate.DomainCommitStage(intent.Stage)
+	if stage != runstate.DomainCommitInput && stage != runstate.DomainCommitOutput {
+		return runstate.DomainCommitIdentity{}, fmt.Errorf("unsupported domain commit stage %q", intent.Stage)
 	}
-	return agentruntime.DomainCommitIdentity{
+	return runstate.DomainCommitIdentity{
 		CommandID: intent.Identity.CommandID, OperationID: intent.Identity.OperationID,
 		Cycle: intent.Identity.Cycle, Stage: stage,
 	}, nil

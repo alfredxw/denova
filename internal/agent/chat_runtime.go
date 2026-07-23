@@ -8,12 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/observability"
-	"denova/internal/session"
 )
 
 // chatRun owns the mutable state of one turnExecutor.Run invocation. Keeping this
@@ -29,17 +28,16 @@ type chatRun struct {
 	options      RunOptions
 	emit         func(Event)
 
-	logger       *slog.Logger
-	policy       LoopPolicy
-	workspace    string
-	ledger       *RunLedger
-	rootSpan     *traceSpanHandle
-	runID        string
-	traceCtx     context.Context
-	checkpointID string
-	observer     *RunObserver
-	usage        *runTokenUsageCollector
-	finished     bool
+	logger    *slog.Logger
+	policy    LoopPolicy
+	workspace string
+	ledger    *RunLedger
+	rootSpan  *traceSpanHandle
+	runID     string
+	traceCtx  context.Context
+	observer  *RunObserver
+	usage     *runTokenUsageCollector
+	finished  bool
 
 	assistantMetadata session.MessageMetadata
 	subAgentSessions  *subAgentSessionTracker
@@ -118,7 +116,6 @@ func newChatRun(
 		rootSpan:         rootSpan,
 		runID:            runID,
 		traceCtx:         ContextWithRunTrace(ctx, runID, ledger, rootSpanID),
-		checkpointID:     options.checkpointID(runID),
 		observer:         newRunObserverWithIdentity(ledger, rootSpanID, runID, options.SessionID, options.ReviewThreadID),
 		usage:            newRunTokenUsageCollector(runID, options.AgentKind),
 		subAgentSessions: newSubAgentSessionTracker(runID),
@@ -211,13 +208,12 @@ func (r *chatRun) recordStarted() {
 		"selections":       len(r.req.Selections),
 		"plan_mode":        r.req.PlanMode,
 		"writing_skill":    r.req.WritingSkill,
-		"checkpoint_id":    r.checkpointID,
 	}); err != nil {
 		r.logger.Warn("run_ledger_start_failed", slog.String("run_id", r.runID), slog.Any("error", err))
 	}
 }
 
-func (r *chatRun) prepareContext() ([]*schema.Message, string, RunOutcome, bool) {
+func (r *chatRun) prepareContext() ([]*adk.Message, string, RunOutcome, bool) {
 	var pendingInterruption *session.Interruption
 	if shouldResumeInterruptedRequest(r.req.Message) {
 		pendingInterruption = r.conversation.PendingInterruption()
@@ -309,16 +305,16 @@ func (r *chatRun) prepareContext() ([]*schema.Message, string, RunOutcome, bool)
 	return history, agentMessage, RunOutcome{}, false
 }
 
-func finalModelUserMessage(messages []*schema.Message, fallback string) string {
+func finalModelUserMessage(messages []*adk.Message, fallback string) string {
 	for index := len(messages) - 1; index >= 0; index-- {
-		if messages[index] != nil && messages[index].Role == schema.User {
+		if messages[index] != nil && messages[index].Role == adk.User {
 			return messages[index].Content
 		}
 	}
 	return fallback
 }
 
-func (r *chatRun) compactContext(history []*schema.Message) ([]*schema.Message, RunOutcome, bool) {
+func (r *chatRun) compactContext(history []*adk.Message) ([]*adk.Message, RunOutcome, bool) {
 	compactor, ok := r.conversation.(ContextCompactionConversation)
 	if !ok {
 		return history, RunOutcome{}, false

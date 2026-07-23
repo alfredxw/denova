@@ -7,7 +7,7 @@ import (
 	"log"
 
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/book"
 )
 
@@ -68,7 +68,7 @@ func (s *ConfigManagerAppService) replayDurableStart(
 	if err != nil {
 		startReservation.rollback()
 		rollbackConfigManagerReplayTask(a, task, err)
-		if errors.Is(err, agentruntime.ErrInvalidCommand) {
+		if errors.Is(err, runstate.ErrInvalidCommand) {
 			return nil, true, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, chatReq.CommandID)
 		}
 		return nil, true, err

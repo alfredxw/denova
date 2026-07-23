@@ -4,8 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/tool"
+	"github.com/alfredxw/denova/adk"
 )
 
 func TestCapabilitiesExposeStableManifest(t *testing.T) {
@@ -34,45 +33,43 @@ func TestAllowedUsesResolvedSettingsProjection(t *testing.T) {
 
 func TestBuildAssemblesEnabledAdaptersInOrder(t *testing.T) {
 	calls := []string{}
-	mw := &adk.BaseChatModelAgentMiddleware{}
+	mw := &adk.BaseMiddleware{}
 	result, err := Build(context.Background(), BuildRequest{
 		Settings: Settings{FileRead: true, Skills: true, WebSearch: true},
 		Middlewares: []MiddlewareRegistration{
 			{
-				Name:              "filesystem",
-				Enabled:           FilesystemAllowed,
-				ModelVisibleTools: []string{"ls", "read_file"},
-				Build: func(context.Context, Settings) (adk.ChatModelAgentMiddleware, error) {
+				Name:    "filesystem",
+				Enabled: FilesystemAllowed,
+				Build: func(context.Context, Settings) (adk.Middleware, error) {
 					calls = append(calls, "filesystem")
 					return mw, nil
 				},
 			},
 			{
-				Name:              "skills",
-				Enabled:           CapabilityAllowed(AgentToolSkills),
-				ModelVisibleTools: []string{"skill"},
-				Build: func(context.Context, Settings) (adk.ChatModelAgentMiddleware, error) {
+				Name:    "skills",
+				Enabled: CapabilityAllowed(AgentToolSkills),
+				Build: func(context.Context, Settings) (adk.Middleware, error) {
 					calls = append(calls, "skills")
 					return mw, nil
 				},
 			},
 			{
 				Name: "compaction",
-				Build: func(context.Context, Settings) (adk.ChatModelAgentMiddleware, error) {
+				Build: func(context.Context, Settings) (adk.Middleware, error) {
 					calls = append(calls, "compaction")
 					return mw, nil
 				},
 			},
 			{
 				Name: "orchestrator",
-				Build: func(context.Context, Settings) (adk.ChatModelAgentMiddleware, error) {
+				Build: func(context.Context, Settings) (adk.Middleware, error) {
 					calls = append(calls, "orchestrator")
 					return mw, nil
 				},
 			},
 			{
 				Name: "model_log",
-				Build: func(context.Context, Settings) (adk.ChatModelAgentMiddleware, error) {
+				Build: func(context.Context, Settings) (adk.Middleware, error) {
 					calls = append(calls, "model_log")
 					return mw, nil
 				},
@@ -82,17 +79,17 @@ func TestBuildAssemblesEnabledAdaptersInOrder(t *testing.T) {
 			StaticTools("static", nil),
 			{
 				Name: "extra",
-				Build: func(Settings) ([]tool.BaseTool, error) {
+				Build: func(Settings) ([]adk.BaseTool, error) {
 					calls = append(calls, "extra")
-					return []tool.BaseTool{nil}, nil
+					return []adk.BaseTool{nil}, nil
 				},
 			},
 			{
 				Name:    "web_search",
 				Enabled: CapabilityAllowed(AgentToolWebSearch),
-				Build: func(Settings) ([]tool.BaseTool, error) {
+				Build: func(Settings) ([]adk.BaseTool, error) {
 					calls = append(calls, "web_search")
-					return []tool.BaseTool{nil}, nil
+					return []adk.BaseTool{nil}, nil
 				},
 			},
 		},
@@ -107,26 +104,24 @@ func TestBuildAssemblesEnabledAdaptersInOrder(t *testing.T) {
 	if len(result.Tools) != 3 {
 		t.Fatalf("tools = %d, want 3", len(result.Tools))
 	}
-	if len(result.Handlers) != 5 {
-		t.Fatalf("handlers = %d, want 5", len(result.Handlers))
-	}
-	if want := []string{"ls", "read_file", "skill"}; !sameStrings(result.MiddlewareToolNames, want) {
-		t.Fatalf("middleware tool names = %#v, want %#v", result.MiddlewareToolNames, want)
+	if len(result.Middlewares) != 5 {
+		t.Fatalf("handlers = %d, want 5", len(result.Middlewares))
 	}
 }
 
-func TestBuildOmitsToolDeclarationsForDisabledOrAbsentMiddleware(t *testing.T) {
+func TestBuildOmitsDisabledOrAbsentMiddleware(t *testing.T) {
 	result, err := Build(context.Background(), BuildRequest{
 		Settings: Settings{},
 		Middlewares: []MiddlewareRegistration{
 			{
-				Name: "absent", ModelVisibleTools: []string{"absent_tool"},
-				Build: func(context.Context, Settings) (adk.ChatModelAgentMiddleware, error) { return nil, nil },
+				Name:  "absent",
+				Build: func(context.Context, Settings) (adk.Middleware, error) { return nil, nil },
 			},
 			{
-				Name: "disabled", Enabled: CapabilityAllowed(AgentToolSkills), ModelVisibleTools: []string{"skill"},
-				Build: func(context.Context, Settings) (adk.ChatModelAgentMiddleware, error) {
-					return &adk.BaseChatModelAgentMiddleware{}, nil
+				Name:    "disabled",
+				Enabled: CapabilityAllowed(AgentToolSkills),
+				Build: func(context.Context, Settings) (adk.Middleware, error) {
+					return &adk.BaseMiddleware{}, nil
 				},
 			},
 		},
@@ -134,8 +129,8 @@ func TestBuildOmitsToolDeclarationsForDisabledOrAbsentMiddleware(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.MiddlewareToolNames) != 0 {
-		t.Fatalf("inactive middleware declarations leaked into assembly: %#v", result.MiddlewareToolNames)
+	if len(result.Middlewares) != 0 {
+		t.Fatalf("inactive middleware leaked into assembly: %#v", result.Middlewares)
 	}
 }
 
@@ -146,7 +141,7 @@ func TestBuildSkipsWebSearchWhenCapabilityDisabled(t *testing.T) {
 		Tools: []ToolRegistration{{
 			Name:    "web_search",
 			Enabled: CapabilityAllowed(AgentToolWebSearch),
-			Build: func(Settings) ([]tool.BaseTool, error) {
+			Build: func(Settings) ([]adk.BaseTool, error) {
 				called = true
 				return nil, nil
 			},

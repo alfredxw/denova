@@ -4,10 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
-	"denova/internal/session"
+	"denova/internal/agent"
+	"denova/internal/agent/session"
 )
 
 func TestAgentSessionIDCoversBuiltInModelAgents(t *testing.T) {
@@ -111,14 +110,14 @@ func TestConfigManagerScopedSessionsAreIsolated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := automationSession.Append(schema.UserMessage("自动化配置")); err != nil {
+	if err := automationSession.Append(agent.UserMessage("自动化配置")); err != nil {
 		t.Fatal(err)
 	}
 	loreSession, err := store.GetOrCreate(loreID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := loreSession.Append(schema.UserMessage("资料库配置")); err != nil {
+	if err := loreSession.Append(agent.UserMessage("资料库配置")); err != nil {
 		t.Fatal(err)
 	}
 

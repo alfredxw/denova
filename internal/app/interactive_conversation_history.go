@@ -9,13 +9,11 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
 	"denova/internal/agent"
+	"denova/internal/agent/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 func (c *interactiveConversation) MarkInterrupted(userMessage, assistantContent, reason string) error {
@@ -128,7 +126,7 @@ func formatInteractiveTurnHistoryWithCheckpoint(turnHistory interactiveTurnHisto
 	return result
 }
 
-func interactiveMessageListSummary(messages []*schema.Message) string {
+func interactiveMessageListSummary(messages []*agent.Message) string {
 	if len(messages) == 0 {
 		return "count=0"
 	}
@@ -139,7 +137,7 @@ func interactiveMessageListSummary(messages []*schema.Message) string {
 	return fmt.Sprintf("count=%d parts=[%s]", len(messages), strings.Join(parts, "; "))
 }
 
-func interactiveMessageSummary(index, total int, msg *schema.Message) string {
+func interactiveMessageSummary(index, total int, msg *agent.Message) string {
 	if msg == nil {
 		return fmt.Sprintf("%d:<nil>", index)
 	}

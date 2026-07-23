@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/internal/agent"
 	agentcontext "denova/internal/agent/context"
 	"denova/internal/book"
@@ -44,15 +42,15 @@ func (c *interactiveConversation) stableLeadingMessageSnapshot() string {
 // preserveInteractiveStableLeadingMessage keeps complete resident Lore outside
 // the compactable history tail, mirroring the stable-prefix behavior used by
 // writing-mode sessions.
-func preserveInteractiveStableLeadingMessage(messages []*schema.Message, content string) []*schema.Message {
+func preserveInteractiveStableLeadingMessage(messages []*agent.Message, content string) []*agent.Message {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return messages
 	}
-	result := make([]*schema.Message, 0, len(messages)+1)
-	result = append(result, schema.UserMessage(content))
+	result := make([]*agent.Message, 0, len(messages)+1)
+	result = append(result, agent.UserMessage(content))
 	for _, msg := range messages {
-		if msg != nil && msg.Role == schema.User && strings.TrimSpace(msg.Content) == content {
+		if msg != nil && msg.Role == agent.RoleUser && strings.TrimSpace(msg.Content) == content {
 			continue
 		}
 		result = append(result, msg)
@@ -60,7 +58,7 @@ func preserveInteractiveStableLeadingMessage(messages []*schema.Message, content
 	return result
 }
 
-func interactiveCompactionResultForMessages(result agent.ContextCompactionResult, messages []*schema.Message, tools []*schema.ToolInfo) agent.ContextCompactionResult {
+func interactiveCompactionResultForMessages(result agent.ContextCompactionResult, messages []*agent.Message, tools []*agent.ToolInfo) agent.ContextCompactionResult {
 	previousTokens := result.TokensAfter
 	result.TokensAfter = agent.EstimateContextTokens(messages, tools)
 	result.ProjectedTokensAfter += result.TokensAfter - previousTokens
@@ -149,7 +147,7 @@ func interactiveStoryContextSources(title, origin string, teller interactive.Tel
 	return parts
 }
 
-func interactiveContextLedgerParts(parts []interactiveContextSource, messages []*schema.Message, policy agent.ToolResultContextPolicy) []agent.ContextLedgerPart {
+func interactiveContextLedgerParts(parts []interactiveContextSource, messages []*agent.Message, policy agent.ToolResultContextPolicy) []agent.ContextLedgerPart {
 	ledger := agent.NewContextLedger(agent.DefaultLoopPolicy().ContextLedger)
 	for _, part := range parts {
 		matchedMessage, visible := interactiveContextSourceMessage(part, messages)
@@ -184,7 +182,7 @@ func interactiveContextLedgerParts(parts []interactiveContextSource, messages []
 // projection of the final assembled messages. A source that did not survive
 // the hard assembly budget is retained as bounded metadata only; its original
 // unbounded body is never reported as model-visible content.
-func resolveInteractiveContextSources(parts []interactiveContextSource, messages []*schema.Message) []interactiveContextSource {
+func resolveInteractiveContextSources(parts []interactiveContextSource, messages []*agent.Message) []interactiveContextSource {
 	resolved := cloneInteractiveContextSources(parts)
 	for i := range resolved {
 		part := &resolved[i]
@@ -210,7 +208,7 @@ func cloneInteractiveContextSources(parts []interactiveContextSource) []interact
 	return result
 }
 
-func interactiveContextSourceMessage(part interactiveContextSource, messages []*schema.Message) (string, bool) {
+func interactiveContextSourceMessage(part interactiveContextSource, messages []*agent.Message) (string, bool) {
 	content := strings.TrimSpace(part.Content)
 	if content == "" {
 		return "", false
@@ -245,7 +243,7 @@ func joinInteractiveContextNote(existing, extra string) string {
 	return existing + "; " + extra
 }
 
-func addFinalInteractiveMessageContextParts(ledger *agent.ContextLedger, messages []*schema.Message, policy agent.ToolResultContextPolicy) {
+func addFinalInteractiveMessageContextParts(ledger *agent.ContextLedger, messages []*agent.Message, policy agent.ToolResultContextPolicy) {
 	resultLimit := policy.MaxResultBytes
 	for index, msg := range messages {
 		if msg == nil {
@@ -257,7 +255,7 @@ func addFinalInteractiveMessageContextParts(ledger *agent.ContextLedger, message
 				msg.Content, "source=committed context compaction; final_message=true", true, false, interactiveStoryRuntimeContextBytes,
 			)
 		}
-		if msg.Role == schema.Assistant && len(msg.ToolCalls) > 0 {
+		if msg.Role == agent.RoleAssistant && len(msg.ToolCalls) > 0 {
 			for _, call := range msg.ToolCalls {
 				data, _ := json.Marshal(call)
 				toolName := strings.TrimSpace(call.Function.Name)
@@ -269,7 +267,7 @@ func addFinalInteractiveMessageContextParts(ledger *agent.ContextLedger, message
 				)
 			}
 		}
-		if msg.Role == schema.Tool {
+		if msg.Role == agent.RoleTool {
 			toolName := strings.TrimSpace(msg.ToolName)
 			toolID := strings.TrimSpace(msg.ToolCallID)
 			note := fmt.Sprintf("tool_name=%s; tool_call_id=%s; semantic_filtered=true; single_result_limit_bytes=%d; final_message=true", toolName, toolID, resultLimit)

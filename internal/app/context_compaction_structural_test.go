@@ -4,13 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
@@ -22,7 +20,7 @@ func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(schema.UserMessage("raw history remains canonical")); err != nil {
+	if err := sess.Append(agent.UserMessage("raw history remains canonical")); err != nil {
 		t.Fatal(err)
 	}
 	compaction, err := sess.AppendContextCompaction(session.ContextCompaction{
@@ -59,7 +57,7 @@ func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != agentruntime.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentruntime.OperationSucceeded ||
+	if status.Phase != runstate.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != runstate.OperationSucceeded ||
 		status.LastDomainCommit == nil || status.LastDomainCommit.Revision == "" {
 		t.Fatalf("durable structural settlement missing: %#v", status)
 	}
@@ -108,7 +106,7 @@ func TestInteractiveCompactionRemovalUsesDurableStructuralCommand(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != agentruntime.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentruntime.OperationSucceeded ||
+	if status.Phase != runstate.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != runstate.OperationSucceeded ||
 		status.LastDomainCommit == nil || status.LastDomainCommit.Revision == "" {
 		t.Fatalf("durable game structural settlement missing: %#v", status)
 	}

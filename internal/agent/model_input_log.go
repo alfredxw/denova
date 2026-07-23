@@ -15,11 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	openaiprotocol "github.com/cloudwego/eino-ext/libs/acl/openai"
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
+	"github.com/alfredxw/denova/adk/model/openai"
 )
 
 var (
@@ -44,9 +41,9 @@ type modelInputLogOptions struct {
 	AgentKind string
 	Source    string
 	Mode      string
-	Config    openai.ChatModelConfig
-	Messages  []*schema.Message
-	Tools     []*schema.ToolInfo
+	Config    openai.Config
+	Messages  []*adk.Message
+	Tools     []*adk.ToolInfo
 }
 
 type modelInputLogRecord struct {
@@ -63,7 +60,7 @@ type modelInputLogRecord struct {
 	MessageCount int                      `json:"message_count"`
 	ToolCount    int                      `json:"tool_count"`
 	Cache        modelInputLogCache       `json:"cache_attribution"`
-	Messages     []*schema.Message        `json:"messages"`
+	Messages     []*adk.Message           `json:"messages"`
 	Tools        []modelInputLogTool      `json:"tools,omitempty"`
 }
 
@@ -75,11 +72,11 @@ type modelInputLogInputJob struct {
 	AgentKind    string
 	Source       string
 	Mode         string
-	Config       openai.ChatModelConfig
+	Config       openai.Config
 	MessageCount int
 	ToolCount    int
-	Messages     []*schema.Message
-	Tools        []*schema.ToolInfo
+	Messages     []*adk.Message
+	Tools        []*adk.ToolInfo
 }
 
 type modelInputLogProviderRequestIDRecord struct {
@@ -101,22 +98,13 @@ type modelInputLogJob struct {
 }
 
 type modelInputLogModelConfig struct {
-	Model               string                      `json:"model,omitempty"`
-	BaseURL             string                      `json:"base_url,omitempty"`
-	MaxTokens           *int                        `json:"max_tokens,omitempty"`
-	MaxCompletionTokens *int                        `json:"max_completion_tokens,omitempty"`
-	Temperature         *float32                    `json:"temperature,omitempty"`
-	TopP                *float32                    `json:"top_p,omitempty"`
-	Stop                []string                    `json:"stop,omitempty"`
-	PresencePenalty     *float32                    `json:"presence_penalty,omitempty"`
-	ResponseFormat      any                         `json:"response_format,omitempty"`
-	Seed                *int                        `json:"seed,omitempty"`
-	FrequencyPenalty    *float32                    `json:"frequency_penalty,omitempty"`
-	LogitBias           map[string]int              `json:"logit_bias,omitempty"`
-	User                *string                     `json:"user,omitempty"`
-	ExtraFields         map[string]any              `json:"extra_fields,omitempty"`
-	ReasoningEffort     openai.ReasoningEffortLevel `json:"reasoning_effort,omitempty"`
-	Modalities          []openai.Modality           `json:"modalities,omitempty"`
+	Model           string                      `json:"model,omitempty"`
+	BaseURL         string                      `json:"base_url,omitempty"`
+	MaxTokens       *int                        `json:"max_tokens,omitempty"`
+	Temperature     *float32                    `json:"temperature,omitempty"`
+	ResponseFormat  any                         `json:"response_format,omitempty"`
+	ExtraFields     map[string]any              `json:"extra_fields,omitempty"`
+	ReasoningEffort openai.ReasoningEffortLevel `json:"reasoning_effort,omitempty"`
 }
 
 type modelInputLogTool struct {
@@ -173,7 +161,7 @@ func logFullModelInput(opts modelInputLogOptions) string {
 		Config:       opts.Config,
 		MessageCount: len(opts.Messages),
 		ToolCount:    len(opts.Tools),
-		Messages:     append([]*schema.Message(nil), opts.Messages...),
+		Messages:     append([]*adk.Message(nil), opts.Messages...),
 		Tools:        cloneToolInfos(opts.Tools),
 	}
 
@@ -185,11 +173,11 @@ func logFullModelInput(opts modelInputLogOptions) string {
 	return callID
 }
 
-func logModelProviderRequestID(agentKind, source, mode, modelName, runID string, callIndex int, msg *schema.Message) string {
+func logModelProviderRequestID(agentKind, source, mode, modelName, runID string, callIndex int, msg *adk.Message) string {
 	return logModelProviderRequestIDForCall("", agentKind, source, mode, modelName, runID, callIndex, msg)
 }
 
-func logModelProviderRequestIDForCall(callID, agentKind, source, mode, modelName, runID string, callIndex int, msg *schema.Message) string {
+func logModelProviderRequestIDForCall(callID, agentKind, source, mode, modelName, runID string, callIndex int, msg *adk.Message) string {
 	requestID := providerRequestIDFromMessage(msg)
 	if requestID == "" {
 		return ""
@@ -208,12 +196,9 @@ func logModelProviderRequestIDForCall(callID, agentKind, source, mode, modelName
 	return requestID
 }
 
-func providerRequestIDFromMessage(msg *schema.Message) string {
+func providerRequestIDFromMessage(msg *adk.Message) string {
 	if msg == nil {
 		return ""
-	}
-	if requestID := strings.TrimSpace(openaiprotocol.GetRequestID(msg)); requestID != "" {
-		return requestID
 	}
 	if msg.Extra == nil {
 		return ""
@@ -442,28 +427,19 @@ func lastModelInputLogLines(data []byte, maxLines int) []byte {
 	return data
 }
 
-func modelInputLogConfigFromOpenAI(cfg openai.ChatModelConfig) modelInputLogModelConfig {
+func modelInputLogConfigFromOpenAI(cfg openai.Config) modelInputLogModelConfig {
 	return modelInputLogModelConfig{
-		Model:               cfg.Model,
-		BaseURL:             cfg.BaseURL,
-		MaxTokens:           cfg.MaxTokens,
-		MaxCompletionTokens: cfg.MaxCompletionTokens,
-		Temperature:         cfg.Temperature,
-		TopP:                cfg.TopP,
-		Stop:                cfg.Stop,
-		PresencePenalty:     cfg.PresencePenalty,
-		ResponseFormat:      cfg.ResponseFormat,
-		Seed:                cfg.Seed,
-		FrequencyPenalty:    cfg.FrequencyPenalty,
-		LogitBias:           cfg.LogitBias,
-		User:                cfg.User,
-		ExtraFields:         cfg.ExtraFields,
-		ReasoningEffort:     cfg.ReasoningEffort,
-		Modalities:          cfg.Modalities,
+		Model:           cfg.Model,
+		BaseURL:         cfg.BaseURL,
+		MaxTokens:       cfg.MaxTokens,
+		Temperature:     cfg.Temperature,
+		ResponseFormat:  cfg.ResponseFormat,
+		ExtraFields:     cfg.ExtraFields,
+		ReasoningEffort: cfg.ReasoningEffort,
 	}
 }
 
-func modelInputLogTools(tools []*schema.ToolInfo) []modelInputLogTool {
+func modelInputLogTools(tools []*adk.ToolInfo) []modelInputLogTool {
 	if len(tools) == 0 {
 		return nil
 	}
@@ -490,7 +466,7 @@ func modelInputLogTools(tools []*schema.ToolInfo) []modelInputLogTool {
 	return result
 }
 
-func modelInputLogCacheAttribution(messages []*schema.Message, tools []modelInputLogTool) modelInputLogCache {
+func modelInputLogCacheAttribution(messages []*adk.Message, tools []modelInputLogTool) modelInputLogCache {
 	return modelInputLogCache{
 		MessageFingerprint:      modelInputLogFingerprint(messages),
 		SystemPromptFingerprint: modelInputLogFingerprint(modelInputLogSystemMessages(messages)),
@@ -502,13 +478,13 @@ func modelInputLogCacheAttribution(messages []*schema.Message, tools []modelInpu
 	}
 }
 
-func modelInputLogSystemMessages(messages []*schema.Message) []*schema.Message {
+func modelInputLogSystemMessages(messages []*adk.Message) []*adk.Message {
 	if len(messages) == 0 {
 		return nil
 	}
-	var result []*schema.Message
+	var result []*adk.Message
 	for _, msg := range messages {
-		if msg == nil || msg.Role != schema.System {
+		if msg == nil || msg.Role != adk.System {
 			continue
 		}
 		result = append(result, msg)
@@ -559,14 +535,14 @@ func modelInputLogFingerprint(value any) string {
 }
 
 type modelInputLoggingMiddleware struct {
-	*adk.BaseChatModelAgentMiddleware
+	*adk.BaseMiddleware
 	agentKind             string
-	config                openai.ChatModelConfig
+	config                openai.Config
 	contextWindowTokens   int
 	providerInputMaxBytes int
 }
 
-func (m *modelInputLoggingMiddleware) WrapModel(ctx context.Context, wrapped model.BaseChatModel, mc *adk.ModelContext) (model.BaseChatModel, error) {
+func (m *modelInputLoggingMiddleware) WrapModel(ctx context.Context, wrapped adk.BaseChatModel, mc *adk.ModelContext) (adk.BaseChatModel, error) {
 	return &modelInputLoggingChatModel{
 		inner:                 wrapped,
 		agentKind:             m.agentKind,
@@ -578,15 +554,15 @@ func (m *modelInputLoggingMiddleware) WrapModel(ctx context.Context, wrapped mod
 }
 
 type modelInputLoggingChatModel struct {
-	inner                 model.BaseChatModel
+	inner                 adk.BaseChatModel
 	agentKind             string
-	config                openai.ChatModelConfig
-	tools                 []*schema.ToolInfo
+	config                openai.Config
+	tools                 []*adk.ToolInfo
 	contextWindowTokens   int
 	providerInputMaxBytes int
 }
 
-func (m *modelInputLoggingChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+func (m *modelInputLoggingChatModel) Generate(ctx context.Context, input []*adk.Message, opts ...adk.ModelOption) (*adk.Message, error) {
 	if err := validateProviderInput(m.agentKind, input, m.tools, m.providerInputMaxBytes, m.contextWindowTokens); err != nil {
 		return nil, err
 	}
@@ -596,20 +572,20 @@ func (m *modelInputLoggingChatModel) Generate(ctx context.Context, input []*sche
 	return msg, err
 }
 
-func (m *modelInputLoggingChatModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+func (m *modelInputLoggingChatModel) Stream(ctx context.Context, input []*adk.Message, opts ...adk.ModelOption) (*adk.StreamReader[*adk.Message], error) {
 	if err := validateProviderInput(m.agentKind, input, m.tools, m.providerInputMaxBytes, m.contextWindowTokens); err != nil {
 		return nil, err
 	}
 	span, callID, spanCtx := beginLLMCallTrace(ctx, m.agentKind, "adk", "stream", m.config, input, m.tools, true)
 	started := time.Now()
 	var firstChunk time.Time
-	var chunks []*schema.Message
+	var chunks []*adk.Message
 	stream, err := m.inner.Stream(spanCtx, input, stableToolModelOptions(opts, m.tools)...)
 	if err != nil {
 		finishLLMCallTrace(span, callID, m.agentKind, "adk", "stream", m.config.Model, 0, nil, err, nil)
 		return nil, err
 	}
-	return schema.StreamReaderWithConvert(stream, func(msg *schema.Message) (*schema.Message, error) {
+	return adk.StreamReaderWithConvert(stream, func(msg *adk.Message) (*adk.Message, error) {
 		if msg != nil {
 			if firstChunk.IsZero() {
 				firstChunk = time.Now()
@@ -617,13 +593,13 @@ func (m *modelInputLoggingChatModel) Stream(ctx context.Context, input []*schema
 			chunks = append(chunks, msg)
 		}
 		return msg, nil
-	}, schema.WithErrWrapper(func(err error) error {
+	}, adk.WithErrWrapper(func(err error) error {
 		finishLLMCallTrace(span, callID, m.agentKind, "adk", "stream", m.config.Model, 0, nil, err, map[string]any{
 			"ttft_ms": durationMilliseconds(started, firstChunk),
 		})
 		return err
-	}), schema.WithOnEOF(func() (any, error) {
-		msg, concatErr := schema.ConcatMessages(chunks)
+	}), adk.WithOnEOF(func() (any, error) {
+		msg, concatErr := adk.ConcatMessages(chunks)
 		finishLLMCallTrace(span, callID, m.agentKind, "adk", "stream", m.config.Model, 0, msg, concatErr, map[string]any{
 			"ttft_ms": durationMilliseconds(started, firstChunk),
 		})
@@ -631,28 +607,28 @@ func (m *modelInputLoggingChatModel) Stream(ctx context.Context, input []*schema
 	})), nil
 }
 
-func modelInputToolsFromContext(mc *adk.ModelContext) []*schema.ToolInfo {
+func modelInputToolsFromContext(mc *adk.ModelContext) []*adk.ToolInfo {
 	if mc == nil || len(mc.Tools) == 0 {
 		return nil
 	}
 	return cloneToolInfos(mc.Tools)
 }
 
-func stableToolModelOptions(opts []model.Option, tools []*schema.ToolInfo) []model.Option {
+func stableToolModelOptions(opts []adk.ModelOption, tools []*adk.ToolInfo) []adk.ModelOption {
 	if len(tools) == 0 {
 		return opts
 	}
-	next := make([]model.Option, 0, len(opts)+1)
+	next := make([]adk.ModelOption, 0, len(opts)+1)
 	next = append(next, opts...)
-	next = append(next, model.WithTools(cloneToolInfos(tools)))
+	next = append(next, adk.WithTools(cloneToolInfos(tools)))
 	return next
 }
 
-func cloneToolInfos(tools []*schema.ToolInfo) []*schema.ToolInfo {
+func cloneToolInfos(tools []*adk.ToolInfo) []*adk.ToolInfo {
 	if len(tools) == 0 {
 		return nil
 	}
-	result := make([]*schema.ToolInfo, 0, len(tools))
+	result := make([]*adk.ToolInfo, 0, len(tools))
 	for _, item := range tools {
 		if item == nil {
 			continue
@@ -662,18 +638,18 @@ func cloneToolInfos(tools []*schema.ToolInfo) []*schema.ToolInfo {
 	return result
 }
 
-func cloneToolInfo(item *schema.ToolInfo) *schema.ToolInfo {
+func cloneToolInfo(item *adk.ToolInfo) *adk.ToolInfo {
 	if item == nil {
 		return nil
 	}
 	data, err := json.Marshal(item)
 	if err == nil {
-		var cloned schema.ToolInfo
+		var cloned adk.ToolInfo
 		if unmarshalErr := json.Unmarshal(data, &cloned); unmarshalErr == nil {
 			return &cloned
 		}
 	}
-	cloned := &schema.ToolInfo{
+	cloned := &adk.ToolInfo{
 		Name:        item.Name,
 		Desc:        item.Desc,
 		Extra:       cloneStringAnyMap(item.Extra),
@@ -682,15 +658,15 @@ func cloneToolInfo(item *schema.ToolInfo) *schema.ToolInfo {
 	return cloned
 }
 
-func cloneParamsOneOf(params *schema.ParamsOneOf) *schema.ParamsOneOf {
+func cloneParamsOneOf(params *adk.ParamsOneOf) *adk.ParamsOneOf {
 	if params == nil {
 		return nil
 	}
-	data, err := json.Marshal(&schema.ToolInfo{ParamsOneOf: params})
+	data, err := json.Marshal(&adk.ToolInfo{ParamsOneOf: params})
 	if err != nil {
 		return params
 	}
-	var cloned schema.ToolInfo
+	var cloned adk.ToolInfo
 	if err := json.Unmarshal(data, &cloned); err != nil {
 		return params
 	}

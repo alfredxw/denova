@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino/components/tool"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/internal/workspacechange"
 )
@@ -83,7 +83,7 @@ func TestWorkspaceEditFileToolBatchesOneFileAndReturnsBoundedReceipt(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	invokable, ok := base.(tool.InvokableTool)
+	invokable, ok := base.(adk.InvokableTool)
 	if !ok {
 		t.Fatal("edit_file should be invokable")
 	}
@@ -125,6 +125,36 @@ func TestWorkspaceEditFileToolBatchesOneFileAndReturnsBoundedReceipt(t *testing.
 	}
 }
 
+func TestWorkspaceEditFileUsesCurrentRevisionWithoutReadDependency(t *testing.T) {
+	workspace := t.TempDir()
+	path := filepath.Join(workspace, "ideas.md")
+	if err := os.WriteFile(path, []byte("original"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("manual update"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service, err := workspacechange.NewService(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	editTool, err := newWorkspaceEditFileTool(service)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = editTool.(adk.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","edits":[{"old_string":"manual update","new_string":"agent update"}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(content) != "agent update" {
+		t.Fatalf("edit_file did not apply against its current snapshot: %q", content)
+	}
+}
+
 func TestWorkspaceChangeMetadataUsesStableRunIdentityWithoutLedger(t *testing.T) {
 	observer := newRunObserverWithIdentity(nil, "", "task-run", "session-1", "review-thread-1")
 	metadata := workspaceChangeMetadata(ContextWithRunObserver(context.Background(), observer))
@@ -134,6 +164,14 @@ func TestWorkspaceChangeMetadataUsesStableRunIdentityWithoutLedger(t *testing.T)
 	}
 	if metadata.SessionID != "session-1" || metadata.ReviewThreadID != "review-thread-1" {
 		t.Fatalf("review linkage metadata was lost: %#v", metadata)
+	}
+}
+
+func TestWorkspaceChangeMetadataUsesNativeADKToolCallIdentity(t *testing.T) {
+	ctx := adk.ContextWithToolCall(context.Background(), "call-native", "edit_file")
+	metadata := workspaceChangeMetadata(ctx)
+	if metadata.ToolCallID != "call-native" || metadata.ChangeGroupID != "call-native" {
+		t.Fatalf("native tool call identity was not propagated: %#v", metadata)
 	}
 }
 
@@ -197,7 +235,7 @@ func TestWorkspaceWriteFileToolUsesChangeService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := base.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","content":"new"}`)
+	result, err := base.(adk.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","content":"new"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,7 +293,7 @@ func TestWorkspaceEditFileToolLeavesFileUntouchedWhenOneBatchEditFails(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = base.(tool.InvokableTool).InvokableRun(context.Background(), `{
+	_, err = base.(adk.InvokableTool).InvokableRun(context.Background(), `{
 	        "file_path":"chapters/ch01.md",
 	        "edits":[
           {"id":"valid","old_string":"opening","new_string":"new opening"},
@@ -320,7 +358,7 @@ func TestWorkspaceFileToolsResolveCurrentRevisionWithoutModelInput(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := edit.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","edits":[{"old_string":"a","new_string":"b"}]}`); err != nil {
+	if _, err := edit.(adk.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","edits":[{"old_string":"a","new_string":"b"}]}`); err != nil {
 		t.Fatal(err)
 	}
 	if service.applyCalls != 1 || service.applyRequest.BaseRevision != "sha256:current" {
@@ -331,7 +369,7 @@ func TestWorkspaceFileToolsResolveCurrentRevisionWithoutModelInput(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := write.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","content":"new"}`); err != nil {
+	if _, err := write.(adk.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","content":"new"}`); err != nil {
 		t.Fatal(err)
 	}
 	if service.replaceCalls != 1 || service.replaceRequest.BaseRevision != "sha256:current" || service.readCalls != 2 {
@@ -349,7 +387,7 @@ func TestWorkspaceWriteFileToolDetectsMissingFileInternally(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := write.(tool.InvokableTool).InvokableRun(context.Background(), `{"file_path":"new.md","content":"new"}`); err != nil {
+	if _, err := write.(adk.InvokableTool).InvokableRun(context.Background(), `{"file_path":"new.md","content":"new"}`); err != nil {
 		t.Fatal(err)
 	}
 	if service.replaceCalls != 1 || service.replaceRequest.BaseRevision != "missing" {

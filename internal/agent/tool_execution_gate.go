@@ -1,17 +1,23 @@
 package agent
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"golang.org/x/sync/semaphore"
 )
 
+const toolExecutionGateCapacity int64 = 1<<63 - 1
+
 // toolExecutionGate coordinates model-requested tool side effects for one
-// workspace. Eino may invoke every tool call in an assistant message in
-// parallel, so the gate keeps proven read-only tools concurrent while making
+// workspace. The native loop may invoke every tool call in an assistant message
+// in parallel, so the gate keeps proven read-only tools concurrent while making
 // stateful and unclassified tools exclusive.
 type toolExecutionGate struct {
-	mu sync.RWMutex
+	init      sync.Once
+	admission *semaphore.Weighted
 }
 
 type toolExecutionMode uint8
@@ -40,24 +46,40 @@ func sharedToolExecutionGate(workspace string) *toolExecutionGate {
 	return gate.(*toolExecutionGate)
 }
 
-func (g *toolExecutionGate) acquire(mode toolExecutionMode) func() {
-	if g == nil {
-		return func() {}
+func (g *toolExecutionGate) acquire(ctx context.Context, mode toolExecutionMode) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
-	if mode == toolExecutionUncoordinated {
-		return func() {}
+	if g == nil || mode == toolExecutionUncoordinated {
+		return func() {}, nil
 	}
-	var once sync.Once
+
+	weight := toolExecutionGateCapacity
 	if mode == toolExecutionParallelRead {
-		g.mu.RLock()
-		return func() {
-			once.Do(g.mu.RUnlock)
-		}
+		weight = 1
 	}
-	g.mu.Lock()
+	admission := g.weightedAdmission()
+	if err := admission.Acquire(ctx, weight); err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
+		admission.Release(weight)
+		return nil, err
+	}
+
+	var once sync.Once
 	return func() {
-		once.Do(g.mu.Unlock)
-	}
+		once.Do(func() {
+			admission.Release(weight)
+		})
+	}, nil
+}
+
+func (g *toolExecutionGate) weightedAdmission() *semaphore.Weighted {
+	g.init.Do(func() {
+		g.admission = semaphore.NewWeighted(toolExecutionGateCapacity)
+	})
+	return g.admission
 }
 
 func executionModeForTool(manifest ToolManifest) toolExecutionMode {

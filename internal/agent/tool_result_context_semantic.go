@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 
 	"denova/config"
 )
@@ -113,11 +113,11 @@ func appendUniqueRetainedValue(values []string, value string) []string {
 	return append(values, value)
 }
 
-func filterSemanticToolContextMessages(messages []*schema.Message, policy ToolResultContextPolicy) []*schema.Message {
+func filterSemanticToolContextMessages(messages []*adk.Message, policy ToolResultContextPolicy) []*adk.Message {
 	return filterToolContextMessages(messages, policy, true)
 }
 
-func filterToolContextMessages(messages []*schema.Message, policy ToolResultContextPolicy, retainNormalResults bool) []*schema.Message {
+func filterToolContextMessages(messages []*adk.Message, policy ToolResultContextPolicy, retainNormalResults bool) []*adk.Message {
 	type retainedCall struct {
 		toolName  string
 		arguments string
@@ -131,7 +131,7 @@ func filterToolContextMessages(messages []*schema.Message, policy ToolResultCont
 		if msg == nil {
 			continue
 		}
-		if msg.Role == schema.Assistant {
+		if msg.Role == adk.Assistant {
 			for _, call := range msg.ToolCalls {
 				callID := strings.TrimSpace(call.ID)
 				toolName := normalizeToolName(call.Function.Name)
@@ -153,7 +153,7 @@ func filterToolContextMessages(messages []*schema.Message, policy ToolResultCont
 			}
 			continue
 		}
-		if msg.Role == schema.Tool {
+		if msg.Role == adk.Tool {
 			callID := strings.TrimSpace(msg.ToolCallID)
 			if callID != "" {
 				resultCountsByID[callID]++
@@ -164,13 +164,13 @@ func filterToolContextMessages(messages []*schema.Message, policy ToolResultCont
 		}
 	}
 
-	filtered := make([]*schema.Message, 0, len(messages))
+	filtered := make([]*adk.Message, 0, len(messages))
 	for _, msg := range messages {
 		if msg == nil {
 			continue
 		}
 		switch msg.Role {
-		case schema.Assistant:
+		case adk.Assistant:
 			if len(msg.ToolCalls) == 0 {
 				filtered = append(filtered, msg)
 				continue
@@ -190,7 +190,7 @@ func filterToolContextMessages(messages []*schema.Message, policy ToolResultCont
 			if len(next.ToolCalls) > 0 || strings.TrimSpace(next.Content) != "" {
 				filtered = append(filtered, &next)
 			}
-		case schema.Tool:
+		case adk.Tool:
 			callID := strings.TrimSpace(msg.ToolCallID)
 			callPolicy, ok := callsByID[callID]
 			if callID == "" || !ok || !callPolicy.valid || resultCountsByID[callID] != 1 ||

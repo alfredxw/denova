@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"denova/config"
+	"denova/internal/agent/session"
 	"denova/internal/automation"
 	"denova/internal/book"
-	"denova/internal/session"
 )
 
 // acquireTargetRuntime admits the target lifecycle before constructing any

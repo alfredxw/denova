@@ -7,10 +7,8 @@ import (
 	"log"
 	"strings"
 
-	"github.com/cloudwego/eino/components/tool"
-	"github.com/cloudwego/eino/components/tool/utils"
-	"github.com/cloudwego/eino/schema"
-	contribjsonschema "github.com/eino-contrib/jsonschema"
+	adk "github.com/alfredxw/denova/adk"
+	"github.com/invopop/jsonschema"
 
 	"denova/internal/interactive"
 )
@@ -94,13 +92,13 @@ func (input interactiveTurnCheckToolInput) request() interactive.TurnCheckReques
 	}
 }
 
-func newInteractiveHistoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
+func newInteractiveHistoryTools(ctx InteractiveStoryToolContext) ([]adk.BaseTool, error) {
 	ctx.StoryID = strings.TrimSpace(ctx.StoryID)
 	ctx.BranchID = strings.TrimSpace(ctx.BranchID)
 	if ctx.Store == nil || ctx.StoryID == "" {
 		return nil, nil
 	}
-	searchTool, err := utils.InferTool("search_story_history", "检索当前分支已经提交的历史回合。Turn 事件是历史事实真源；结果只返回有界的玩家行动、叙事片段、状态变化和精确 turn_id，可随时从事件日志重建。需要承接较早人物、地点、线索、承诺或因果时使用；不要把检索结果当作当前 Actor State 或未来 Director 计划。", func(callCtx context.Context, input searchStoryHistoryInput) (string, error) {
+	searchTool, err := adk.InferTool("search_story_history", "检索当前分支已经提交的历史回合。Turn 事件是历史事实真源；结果只返回有界的玩家行动、叙事片段、状态变化和精确 turn_id，可随时从事件日志重建。需要承接较早人物、地点、线索、承诺或因果时使用；不要把检索结果当作当前 Actor State 或未来 Director 计划。", func(callCtx context.Context, input searchStoryHistoryInput) (string, error) {
 		_ = callCtx
 		result, err := ctx.Store.SearchStoryHistory(ctx.StoryID, ctx.BranchID, interactive.StoryHistorySearchRequest{
 			Keywords:     input.Keywords,
@@ -117,14 +115,14 @@ func newInteractiveHistoryTools(ctx InteractiveStoryToolContext) ([]tool.BaseToo
 	if err != nil {
 		return nil, err
 	}
-	return []tool.BaseTool{searchTool}, nil
+	return []adk.BaseTool{searchTool}, nil
 }
 
-func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, error) {
+func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]adk.BaseTool, error) {
 	if ctx.PrepareTurn == nil && ctx.SubmitTurnResult == nil {
 		return nil, nil
 	}
-	tools := make([]tool.BaseTool, 0, 2)
+	tools := make([]adk.BaseTool, 0, 2)
 	if ctx.PrepareTurn != nil {
 		desc := strings.Join([]string{
 			"执行本回合一次固定 d20 规则检定。Interactive Agent 负责填写用户行为、意图、挑战、消耗、当前状态说明、投前裁定依据、运行时加成来源和值、难度等级，以及大成功/成功/失败/大失败四档后果；本工具负责掷骰、应用优势或劣势、计算目标、判定结果，并返回命中的最终后果。",
@@ -133,7 +131,7 @@ func newInteractiveTurnTools(ctx InteractiveStoryToolContext) ([]tool.BaseTool, 
 			"若配置提供 state_bindings，请选择 binding_id，并填写 actor_id 与必要的 target_actor_id；binding 中的 modifiers 和 outcome_state_changes 会由工具自动读取 Actor State 并计算，不要重复手算。narrative_state_refs 只用于帮助你投前写好四档 outcomes.*.result。",
 			`最小示例：{"action":"撬锁","intent":"潜入仓库","challenge":"巡逻逼近时开锁","cost":"失败会暴露行踪","state":"主角有简易工具。","adjudication":{"reason":"开锁有时间压力且失败会改变警戒状态。","stakes":"失败会让巡逻靠近。","difficulty_reason":"旧锁简单但附近有人巡逻，维持普通难度。","roll_mode_reason":"工具合适但环境紧张，正常投骰。","state_refs":[{"actor_id":"protagonist","field_id":"体力"}]},"rule":{"template_id":"dm-osr-player-skill","label":"OSR 型 DM：玩家技巧优先","failure_policy":"blocked","modifier":0},"bonuses":[{"kind":"equipment","reason":"有简易开锁工具","value":2}],"difficulty":"normal","outcomes":{"critical_success":{"result":"无声开锁并发现额外线索。"},"success":{"result":"开锁成功但耗时。"},"failure":{"result":"没能打开，巡逻更近。"},"critical_failure":{"result":"工具折断并惊动巡逻。"}}}`,
 		}, "\n")
-		prepareTool, err := utils.InferTool("prepare_interactive_turn", desc, func(callCtx context.Context, input interactiveTurnCheckToolInput) (string, error) {
+		prepareTool, err := adk.InferTool("prepare_interactive_turn", desc, func(callCtx context.Context, input interactiveTurnCheckToolInput) (string, error) {
 			resolution, err := ctx.PrepareTurn(callCtx, input.request())
 			if err != nil {
 				return "", err
@@ -220,12 +218,12 @@ type submitInteractiveTurnRestoreChangeSchema struct {
 }
 
 type submitInteractiveTurnTool struct {
-	info   *schema.ToolInfo
+	info   *adk.ToolInfo
 	submit func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)
 }
 
-func newSubmitInteractiveTurnTool(description string, submit func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)) (tool.InvokableTool, error) {
-	info, err := utils.GoStruct2ToolInfo[submitInteractiveTurnToolSchema](interactiveTurnSubmissionToolName, description)
+func newSubmitInteractiveTurnTool(description string, submit func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error)) (adk.InvokableTool, error) {
+	info, err := adk.GoStruct2ToolInfo[submitInteractiveTurnToolSchema](interactiveTurnSubmissionToolName, description)
 	if err != nil {
 		return nil, err
 	}
@@ -265,16 +263,16 @@ func newSubmitInteractiveTurnTool(description string, submit func(context.Contex
 	if err != nil {
 		return nil, err
 	}
-	stateChanges.Items = &contribjsonschema.Schema{
-		OneOf:       []*contribjsonschema.Schema{replaceVariant, deltaVariant, createVariant, archiveVariant, restoreVariant},
+	stateChanges.Items = &jsonschema.Schema{
+		OneOf:       []*jsonschema.Schema{replaceVariant, deltaVariant, createVariant, archiveVariant, restoreVariant},
 		Description: "严格选择 replace、delta、create、archive、restore 之一；不得混用不同操作的字段。",
 	}
-	info.ParamsOneOf = schema.NewParamsOneOfByJSONSchema(parameters)
+	info.ParamsOneOf = adk.NewParamsOneOfByJSONSchema(parameters)
 	return &submitInteractiveTurnTool{info: info, submit: submit}, nil
 }
 
-func turnToolParameterSchema[T any]() (*contribjsonschema.Schema, error) {
-	params, err := utils.GoStruct2ParamsOneOf[T]()
+func turnToolParameterSchema[T any]() (*jsonschema.Schema, error) {
+	params, err := adk.GoStruct2ParamsOneOf[T]()
 	if err != nil {
 		return nil, fmt.Errorf("build submit_interactive_turn variant schema: %w", err)
 	}
@@ -285,11 +283,11 @@ func turnToolParameterSchema[T any]() (*contribjsonschema.Schema, error) {
 	return result, nil
 }
 
-func (t *submitInteractiveTurnTool) Info(context.Context) (*schema.ToolInfo, error) {
+func (t *submitInteractiveTurnTool) Info(context.Context) (*adk.ToolInfo, error) {
 	return t.info, nil
 }
 
-func (t *submitInteractiveTurnTool) InvokableRun(ctx context.Context, argumentsInJSON string, _ ...tool.Option) (string, error) {
+func (t *submitInteractiveTurnTool) InvokableRun(ctx context.Context, argumentsInJSON string, _ ...adk.ToolOption) (string, error) {
 	input := interactive.DecodeInteractiveTurnSubmissionInput(argumentsInJSON)
 	receipt, err := t.submit(ctx, input)
 	if err != nil {

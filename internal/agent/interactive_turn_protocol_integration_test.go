@@ -10,33 +10,30 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cloudwego/eino/adk"
-	"github.com/cloudwego/eino/components/model"
-	"github.com/cloudwego/eino/compose"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
 
+	"denova/internal/agent/session"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 func TestInteractiveProtocolRetryRevalidatesCompleteProviderInput(t *testing.T) {
 	ctx := context.Background()
 	var ready atomic.Bool
-	chatModel := &interactiveTurnProtocolChatModel{responses: []*schema.Message{
-		schema.AssistantMessage(strings.Repeat("候选正文。", 2_000), nil),
+	chatModel := &interactiveTurnProtocolChatModel{responses: []*adk.Message{
+		adk.AssistantMessage(strings.Repeat("候选正文。", 2_000), nil),
 	}}
 	const providerInputMaxBytes = 12 * 1024
-	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+	agent, err := adk.NewAgent(ctx, adk.AgentConfig{
 		Name: "interactive-provider-boundary-test", Description: "test", Instruction: "test", Model: chatModel, MaxIterations: 2,
-		Handlers: []adk.ChatModelAgentMiddleware{
+		Middlewares: []adk.Middleware{
 			newInteractiveTurnProtocolMiddleware(ready.Load),
 			&modelInputLoggingMiddleware{
-				BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
-				agentKind:                    AgentKindInteractiveStory,
-				providerInputMaxBytes:        providerInputMaxBytes,
+				BaseMiddleware:        &adk.BaseMiddleware{},
+				agentKind:             AgentKindInteractiveStory,
+				providerInputMaxBytes: providerInputMaxBytes,
 			},
 		},
-		ModelRetryConfig: &adk.ModelRetryConfig{
+		Retry: &adk.RetryConfig{
 			MaxRetries:  1,
 			ShouldRetry: newInteractiveCompletionGuard(ready.Load),
 			BackoffFunc: func(context.Context, int) time.Duration { return time.Nanosecond },
@@ -45,8 +42,8 @@ func TestInteractiveProtocolRetryRevalidatesCompleteProviderInput(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
-	iterator := runner.Run(ctx, []*schema.Message{schema.UserMessage(strings.Repeat("初始事实。", 400))})
+	runner := adk.NewRunner(adk.RunnerConfig{Agent: agent, EnableStreaming: true})
+	iterator := runner.Run(ctx, []*adk.Message{adk.UserMessage(strings.Repeat("初始事实。", 400))})
 	var limitErr *ProviderInputLimitError
 	for {
 		event, ok := iterator.Next()
@@ -80,17 +77,15 @@ func TestInteractiveTurnProtocolRecoversMissingSubmissionInsideAgentLoop(t *test
 		t.Fatal(err)
 	}
 	chatModel := &interactiveTurnProtocolChatModel{}
-	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+	agent, err := adk.NewAgent(ctx, adk.AgentConfig{
 		Name:          "interactive-protocol-test",
 		Description:   "test",
 		Instruction:   "test",
 		Model:         chatModel,
 		MaxIterations: 4,
-		Handlers:      []adk.ChatModelAgentMiddleware{newInteractiveTurnProtocolMiddleware(ready.Load)},
-		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{
-			Tools: tools,
-		}},
-		ModelRetryConfig: &adk.ModelRetryConfig{
+		Middlewares:   []adk.Middleware{newInteractiveTurnProtocolMiddleware(ready.Load)},
+		Tools:         tools,
+		Retry: &adk.RetryConfig{
 			MaxRetries:  1,
 			ShouldRetry: newInteractiveCompletionGuard(ready.Load),
 			BackoffFunc: func(context.Context, int) time.Duration { return time.Nanosecond },
@@ -99,10 +94,9 @@ func TestInteractiveTurnProtocolRecoversMissingSubmissionInsideAgentLoop(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
-	iterator := runner.Run(ctx, []*schema.Message{schema.UserMessage("推开石门")})
+	runner := adk.NewRunner(adk.RunnerConfig{Agent: agent, EnableStreaming: true})
+	iterator := runner.Run(ctx, []*adk.Message{adk.UserMessage("推开石门")})
 	final := ""
-	sawInternalRetry := false
 	for {
 		event, ok := iterator.Next()
 		if !ok {
@@ -120,25 +114,24 @@ func TestInteractiveTurnProtocolRecoversMissingSubmissionInsideAgentLoop(t *test
 		message, streamErr := readInteractiveProtocolMessage(event.Output.MessageOutput)
 		if streamErr != nil {
 			if _, retrying := interactiveCompletionRetryFromError(streamErr); retrying {
-				sawInternalRetry = true
 				continue
 			}
 			t.Fatalf("message stream failed: %v", streamErr)
 		}
-		if message != nil && message.Role == schema.Assistant && len(message.ToolCalls) == 0 {
+		if message != nil && message.Role == adk.Assistant && len(message.ToolCalls) == 0 {
 			final = message.Content
 		}
 	}
 
 	calls, toolCounts, inputs := chatModel.snapshot()
-	if !sawInternalRetry || !ready.Load() || calls != 3 || final != "石门缓缓开启。" {
-		t.Fatalf("protocol did not recover in one streaming run: retry=%t ready=%t calls=%d final=%q", sawInternalRetry, ready.Load(), calls, final)
+	if !ready.Load() || calls != 3 || final != "石门缓缓开启。" {
+		t.Fatalf("protocol did not recover in one streaming run: ready=%t calls=%d final=%q", ready.Load(), calls, final)
 	}
 	if len(toolCounts) != 3 || toolCounts[0] == 0 || toolCounts[1] == 0 || toolCounts[2] == 0 {
 		t.Fatalf("tool schemas should remain stable across the narrative-only phase: %#v", toolCounts)
 	}
 	toolChoices := chatModel.toolChoicesSnapshot()
-	if len(toolChoices) != 3 || toolChoices[2] != string(schema.ToolChoiceForbidden) {
+	if len(toolChoices) != 3 || toolChoices[2] != string(adk.ToolChoiceForbidden) {
 		t.Fatalf("accepted TurnResult phase must set tool_choice=none without changing schemas: %#v", toolChoices)
 	}
 	if len(inputs) < 2 || !messageSliceContains(inputs[1], "backend completion guard") {
@@ -159,17 +152,15 @@ func TestInteractiveTurnProtocolAccountsRejectedModelCallUsage(t *testing.T) {
 		t.Fatal(err)
 	}
 	chatModel := &interactiveTurnProtocolChatModel{}
-	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+	agent, err := adk.NewAgent(ctx, adk.AgentConfig{
 		Name:          "interactive-protocol-usage-test",
 		Description:   "test",
 		Instruction:   "test",
 		Model:         chatModel,
 		MaxIterations: 4,
-		Handlers:      []adk.ChatModelAgentMiddleware{newInteractiveTurnProtocolMiddleware(ready.Load)},
-		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{
-			Tools: tools,
-		}},
-		ModelRetryConfig: &adk.ModelRetryConfig{
+		Middlewares:   []adk.Middleware{newInteractiveTurnProtocolMiddleware(ready.Load)},
+		Tools:         tools,
+		Retry: &adk.RetryConfig{
 			MaxRetries:  1,
 			ShouldRetry: newInteractiveCompletionGuard(ready.Load),
 			BackoffFunc: func(context.Context, int) time.Duration { return time.Nanosecond },
@@ -178,7 +169,7 @@ func TestInteractiveTurnProtocolAccountsRejectedModelCallUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
+	runner := adk.NewRunner(adk.RunnerConfig{Agent: agent, EnableStreaming: true})
 	conversation := &interactiveProtocolConversation{ready: &ready}
 	var usage map[string]any
 	var events []Event
@@ -253,31 +244,29 @@ func TestInteractiveTurnProtocolRetriesRejectedModulesBeforeReusingCandidate(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	chatModel := &interactiveTurnProtocolChatModel{responses: []*schema.Message{
-		schema.AssistantMessage("门后传来锁链拖地的声音。", nil),
-		schema.AssistantMessage("", []schema.ToolCall{{
-			ID: "call-submit-1", Function: schema.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":[{"op":"replace","actor_id":"story","field_id":"当前事件","value":1}],"choices":["进入房间","观察门后","检查锁链","询问同伴","退后戒备"]}`},
+	chatModel := &interactiveTurnProtocolChatModel{responses: []*adk.Message{
+		adk.AssistantMessage("门后传来锁链拖地的声音。", nil),
+		adk.AssistantMessage("", []adk.ToolCall{{
+			ID: "call-submit-1", Function: adk.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":[{"op":"replace","actor_id":"story","field_id":"当前事件","value":1}],"choices":["进入房间","观察门后","检查锁链","询问同伴","退后戒备"]}`},
 		}}),
-		schema.AssistantMessage("", []schema.ToolCall{{
+		adk.AssistantMessage("", []adk.ToolCall{{
 			ID: "call-submit-2",
-			Function: schema.FunctionCall{
+			Function: adk.FunctionCall{
 				Name:      interactiveTurnSubmissionToolName,
 				Arguments: `{"state_changes":[{"op":"replace","actor_id":"story","field_id":"当前事件","value":"石门开启"}]}`,
 			},
 		}}),
-		schema.AssistantMessage("不应再次生成正文。", nil),
+		adk.AssistantMessage("不应再次生成正文。", nil),
 	}}
-	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+	agent, err := adk.NewAgent(ctx, adk.AgentConfig{
 		Name:          "interactive-protocol-module-retry-test",
 		Description:   "test",
 		Instruction:   "test",
 		Model:         chatModel,
 		MaxIterations: 5,
-		Handlers:      []adk.ChatModelAgentMiddleware{newInteractiveTurnProtocolMiddleware(ready.Load)},
-		ToolsConfig: adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{
-			Tools: tools,
-		}},
-		ModelRetryConfig: &adk.ModelRetryConfig{
+		Middlewares:   []adk.Middleware{newInteractiveTurnProtocolMiddleware(ready.Load)},
+		Tools:         tools,
+		Retry: &adk.RetryConfig{
 			MaxRetries:  1,
 			ShouldRetry: newInteractiveCompletionGuard(ready.Load),
 			BackoffFunc: func(context.Context, int) time.Duration { return time.Nanosecond },
@@ -286,7 +275,7 @@ func TestInteractiveTurnProtocolRetriesRejectedModulesBeforeReusingCandidate(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
+	runner := adk.NewRunner(adk.RunnerConfig{Agent: agent, EnableStreaming: true})
 	conversation := &interactiveProtocolConversation{ready: &ready}
 	var events []Event
 	newTurnExecutor(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "推开石门"}, RunOptions{
@@ -353,26 +342,26 @@ func TestInteractiveTurnProtocolLocksFirstCandidateAcrossMalformedModuleAndLater
 	}
 	const candidateA = "乱石坡上，主角藏在巨石后观察二十五丈外的敌人。"
 	const laterProseB = "废弃灵木料场里，主角躲在断木桩后，看见十五丈外持破灵镜的瘦高个。"
-	chatModel := &interactiveTurnProtocolChatModel{responses: []*schema.Message{
-		schema.AssistantMessage(candidateA, nil),
-		schema.AssistantMessage("", []schema.ToolCall{{
-			ID: "bad-state-good-choices", Function: schema.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":"not-an-array","choices":["继续观察","绕到侧面","悄然后退","制造声响","询问同伴"]}`},
+	chatModel := &interactiveTurnProtocolChatModel{responses: []*adk.Message{
+		adk.AssistantMessage(candidateA, nil),
+		adk.AssistantMessage("", []adk.ToolCall{{
+			ID: "bad-state-good-choices", Function: adk.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":"not-an-array","choices":["继续观察","绕到侧面","悄然后退","制造声响","询问同伴"]}`},
 		}}),
-		schema.AssistantMessage(laterProseB, nil),
-		schema.AssistantMessage("", []schema.ToolCall{{
-			ID: "good-state", Function: schema.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":[{"op":"replace","actor_id":"story","field_id":"当前事件","value":"主角在乱石坡观察敌情"}]}`},
+		adk.AssistantMessage(laterProseB, nil),
+		adk.AssistantMessage("", []adk.ToolCall{{
+			ID: "good-state", Function: adk.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":[{"op":"replace","actor_id":"story","field_id":"当前事件","value":"主角在乱石坡观察敌情"}]}`},
 		}}),
 	}}
-	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+	agent, err := adk.NewAgent(ctx, adk.AgentConfig{
 		Name: "interactive-protocol-first-candidate-test", Description: "test", Instruction: "test", Model: chatModel, MaxIterations: 6,
-		Handlers:         []adk.ChatModelAgentMiddleware{newInteractiveTurnProtocolMiddleware(ready.Load)},
-		ToolsConfig:      adk.ToolsConfig{ToolsNodeConfig: compose.ToolsNodeConfig{Tools: tools}},
-		ModelRetryConfig: &adk.ModelRetryConfig{MaxRetries: 1, ShouldRetry: newInteractiveCompletionGuard(ready.Load), BackoffFunc: func(context.Context, int) time.Duration { return time.Nanosecond }},
+		Middlewares: []adk.Middleware{newInteractiveTurnProtocolMiddleware(ready.Load)},
+		Tools:       tools,
+		Retry:       &adk.RetryConfig{MaxRetries: 1, ShouldRetry: newInteractiveCompletionGuard(ready.Load), BackoffFunc: func(context.Context, int) time.Duration { return time.Nanosecond }},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
+	runner := adk.NewRunner(adk.RunnerConfig{Agent: agent, EnableStreaming: true})
 	conversation := &interactiveProtocolConversation{ready: &ready}
 	newTurnExecutor(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "观察敌情"}, RunOptions{
 		AgentKind: AgentKindInteractiveStory, RootAgentName: "interactive-protocol-first-candidate-test",
@@ -437,26 +426,26 @@ type interactiveTurnProtocolChatModel struct {
 	toolCounts  []int
 	toolChoices []string
 	inputs      [][]string
-	responses   []*schema.Message
+	responses   []*adk.Message
 }
 
-func (m *interactiveTurnProtocolChatModel) Generate(_ context.Context, messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+func (m *interactiveTurnProtocolChatModel) Generate(_ context.Context, messages []*adk.Message, opts ...adk.ModelOption) (*adk.Message, error) {
 	return m.nextMessage(messages, opts...)
 }
 
-func (m *interactiveTurnProtocolChatModel) Stream(_ context.Context, messages []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+func (m *interactiveTurnProtocolChatModel) Stream(_ context.Context, messages []*adk.Message, opts ...adk.ModelOption) (*adk.StreamReader[*adk.Message], error) {
 	message, err := m.nextMessage(messages, opts...)
 	if err != nil {
 		return nil, err
 	}
-	return schema.StreamReaderFromArray([]*schema.Message{message}), nil
+	return adk.StreamReaderFromArray([]*adk.Message{message}), nil
 }
 
-func (m *interactiveTurnProtocolChatModel) nextMessage(messages []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+func (m *interactiveTurnProtocolChatModel) nextMessage(messages []*adk.Message, opts ...adk.ModelOption) (*adk.Message, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.calls++
-	common := model.GetCommonOptions(&model.Options{}, opts...)
+	common := adk.GetCommonOptions(&adk.Options{}, opts...)
 	m.toolCounts = append(m.toolCounts, len(common.Tools))
 	toolChoice := ""
 	if common.ToolChoice != nil {
@@ -470,22 +459,22 @@ func (m *interactiveTurnProtocolChatModel) nextMessage(messages []*schema.Messag
 		}
 	}
 	m.inputs = append(m.inputs, input)
-	var message *schema.Message
+	var message *adk.Message
 	if m.calls <= len(m.responses) {
 		message = m.responses[m.calls-1]
 	} else {
 		switch m.calls {
 		case 1:
-			message = schema.AssistantMessage("门后传来锁链拖地的声音。", nil)
+			message = adk.AssistantMessage("门后传来锁链拖地的声音。", nil)
 		case 2:
-			message = schema.AssistantMessage("", []schema.ToolCall{{
-				ID: "call-submit", Function: schema.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":[],"choices":["进入房间","观察门后","检查锁链","询问同伴","退后戒备"]}`},
+			message = adk.AssistantMessage("", []adk.ToolCall{{
+				ID: "call-submit", Function: adk.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":[],"choices":["进入房间","观察门后","检查锁链","询问同伴","退后戒备"]}`},
 			}})
 		default:
-			message = schema.AssistantMessage("石门缓缓开启。", nil)
+			message = adk.AssistantMessage("石门缓缓开启。", nil)
 		}
 	}
-	message.ResponseMeta = &schema.ResponseMeta{Usage: &schema.TokenUsage{
+	message.ResponseMeta = &adk.ResponseMeta{Usage: &adk.TokenUsage{
 		PromptTokens:     m.calls * 100,
 		CompletionTokens: m.calls * 10,
 		TotalTokens:      m.calls * 110,
@@ -548,16 +537,15 @@ func messageSliceContains(messages []string, needle string) bool {
 	return false
 }
 
-func readInteractiveProtocolMessage(variant *adk.MessageVariant) (*schema.Message, error) {
+func readInteractiveProtocolMessage(variant *adk.MessageVariant) (*adk.Message, error) {
 	if variant == nil {
 		return nil, nil
 	}
 	if !variant.IsStreaming || variant.MessageStream == nil {
 		return variant.Message, nil
 	}
-	variant.MessageStream.SetAutomaticClose()
 	defer variant.MessageStream.Close()
-	chunks := make([]*schema.Message, 0, 1)
+	chunks := make([]*adk.Message, 0, 1)
 	for {
 		chunk, err := variant.MessageStream.Recv()
 		if err == nil {
@@ -572,5 +560,5 @@ func readInteractiveProtocolMessage(variant *adk.MessageVariant) (*schema.Messag
 	if len(chunks) == 0 {
 		return nil, nil
 	}
-	return schema.ConcatMessages(chunks)
+	return adk.ConcatMessages(chunks)
 }

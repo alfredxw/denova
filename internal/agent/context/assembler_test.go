@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/cloudwego/eino/schema"
+	adk "github.com/alfredxw/denova/adk"
 )
 
 type fixedProjector struct {
@@ -16,7 +16,7 @@ type fixedProjector struct {
 
 func TestAssemblerRejectsUnknownPlacement(t *testing.T) {
 	_, err := NewAssembler(Budget{}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage("继续写")},
+		Messages: []*adk.Message{adk.UserMessage("继续写")},
 		Fragments: []Fragment{{
 			Source:    "workspace.invalid",
 			Purpose:   "test invalid placement",
@@ -33,7 +33,7 @@ func TestAssemblerRejectsUnknownPlacement(t *testing.T) {
 func TestAssemblerBoundsInvalidPlacementDiagnosticAsMetadata(t *testing.T) {
 	const tail = "UNBOUNDED_PLACEMENT_TAIL"
 	_, err := NewAssembler(Budget{MaxMetadataFieldBytes: 7}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage("继续写")},
+		Messages: []*adk.Message{adk.UserMessage("继续写")},
 		Fragments: []Fragment{{
 			Content:   "payload",
 			Placement: Placement(strings.Repeat("界", 100) + tail),
@@ -49,7 +49,7 @@ func TestAssemblerBoundsInvalidPlacementDiagnosticAsMetadata(t *testing.T) {
 
 func TestAssemblerMarksFragmentExcludedWhenBudgetCannotFitOneRune(t *testing.T) {
 	result, err := NewAssembler(Budget{MaxFragmentBytes: 8, MaxTotalBytes: 1}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage("继续写")},
+		Messages: []*adk.Message{adk.UserMessage("继续写")},
 		Fragments: []Fragment{{
 			Source:    "workspace.unicode",
 			Purpose:   "verify UTF-8 budget safety",
@@ -78,7 +78,7 @@ func TestAssemblerTotalBudgetIncludesRenderedWrapperAndTitle(t *testing.T) {
 		MaxFragmentBytes: 64,
 		MaxTotalBytes:    maxInjectedBytes,
 	}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage(userMessage)},
+		Messages: []*adk.Message{adk.UserMessage(userMessage)},
 		Fragments: []Fragment{{
 			Source:    "workspace.progress",
 			Title:     "动态状态",
@@ -108,7 +108,7 @@ func TestAssemblerTotalBudgetIncludesLeadingMessageWrapper(t *testing.T) {
 		MaxFragmentBytes: 64,
 		MaxTotalBytes:    len(wantLeading),
 	}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage("继续写")},
+		Messages: []*adk.Message{adk.UserMessage("继续写")},
 		Fragments: []Fragment{{
 			Source:    "workspace.stable",
 			Title:     "稳定标题",
@@ -146,7 +146,7 @@ func TestAssemblerRejectsFragmentCountAboveExplicitLimit(t *testing.T) {
 		MaxFragmentBytes: 64,
 		MaxTotalBytes:    256,
 	}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage("继续写")},
+		Messages: []*adk.Message{adk.UserMessage("继续写")},
 		Fragments: []Fragment{
 			{Content: "one", Placement: PlacementAuditOnly},
 			{Content: "two", Placement: PlacementAuditOnly},
@@ -166,7 +166,7 @@ func TestAssemblerBoundsMetadataFieldsAndLedgerPreviewAtUTF8Boundaries(t *testin
 		MaxFragmentBytes:      12,
 		MaxTotalBytes:         1024,
 	}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage("继续写")},
+		Messages: []*adk.Message{adk.UserMessage("继续写")},
 		Fragments: []Fragment{{
 			ID:        "标识标识",
 			Source:    "来源来源",
@@ -207,7 +207,7 @@ func TestAssemblerBoundsMatchingProjectorMetadataBeforeValidation(t *testing.T) 
 		MaxFragmentBytes:      64,
 		MaxTotalBytes:         512,
 	}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage("继续写")},
+		Messages: []*adk.Message{adk.UserMessage("继续写")},
 		Projectors: []ContextProjector{fixedProjector{
 			descriptor: ContextDescriptor{
 				ID:        "标识标识",
@@ -235,7 +235,7 @@ func TestAssemblerBoundsMatchingProjectorMetadataBeforeValidation(t *testing.T) 
 
 func TestAuditOnlyFragmentDoesNotEnterModelMessages(t *testing.T) {
 	result, err := NewAssembler(Budget{}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage("继续写")},
+		Messages: []*adk.Message{adk.UserMessage("继续写")},
 		Fragments: []Fragment{{
 			Source:    "display.thinking",
 			Purpose:   "retain bounded diagnostics without model injection",
@@ -257,7 +257,7 @@ func TestAuditOnlyFragmentDoesNotEnterModelMessages(t *testing.T) {
 
 func TestAssemblerDoesNotInjectExplicitlyExcludedFragment(t *testing.T) {
 	result, err := NewAssembler(Budget{}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage("继续写")},
+		Messages: []*adk.Message{adk.UserMessage("继续写")},
 		Fragments: []Fragment{{
 			Source:    "workspace.optional",
 			Purpose:   "optional context omitted by its projector",
@@ -276,7 +276,7 @@ func TestAssemblerDoesNotInjectExplicitlyExcludedFragment(t *testing.T) {
 
 func TestAssemblerDoesNotPrefixNonUserFinalMessage(t *testing.T) {
 	result, err := NewAssembler(Budget{}).Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.AssistantMessage("已有回复", nil)},
+		Messages: []*adk.Message{adk.AssistantMessage("已有回复", nil)},
 		Fragments: []Fragment{{
 			Source:    "workspace.progress",
 			Purpose:   "turn-scoped context requires a user request",
@@ -309,7 +309,7 @@ func TestAssemblerEnforcesFragmentAndTotalBudgets(t *testing.T) {
 		MaxTotalBytes:    len(wantMessage) - len(userMessage),
 	})
 	result, err := assembler.Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage(userMessage)},
+		Messages: []*adk.Message{adk.UserMessage(userMessage)},
 		Fragments: []Fragment{
 			{
 				Source:    "workspace.outline",
@@ -360,7 +360,7 @@ func TestAssemblerEnforcesFragmentAndTotalBudgets(t *testing.T) {
 func TestAssemblerAppliesProjectorDescriptorToEveryFragment(t *testing.T) {
 	assembler := NewAssembler(Budget{MaxFragmentBytes: 64, MaxTotalBytes: 128})
 	result, err := assembler.Assemble(stdcontext.Background(), AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage("继续写")},
+		Messages: []*adk.Message{adk.UserMessage("继续写")},
 		Projectors: []ContextProjector{fixedProjector{
 			descriptor: ContextDescriptor{
 				ID:        "writing.progress",

@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"denova/config"
+	"denova/internal/agent/session"
 	"denova/internal/book"
-	"denova/internal/session"
 )
 
 // versionCreateRuntime is the immutable identity and dependency set for one

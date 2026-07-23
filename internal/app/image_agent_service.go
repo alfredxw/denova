@@ -8,14 +8,12 @@ import (
 	"log"
 	"strings"
 
-	"github.com/cloudwego/eino/schema"
-
 	"denova/config"
 	"denova/internal/agent"
 	agentcontext "denova/internal/agent/context"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/interactiveimage"
-	"denova/internal/session"
 )
 
 type ImageAgentGenerateRequest struct {
@@ -130,7 +128,7 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 		}
 	})
 	if err != nil {
-		if errors.Is(err, agentruntime.ErrInvalidCommand) {
+		if errors.Is(err, runstate.ErrInvalidCommand) {
 			return result, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, req.CommandID)
 		}
 		return result, err
@@ -187,7 +185,7 @@ func validateImageAgentCommandID(commandID string) error {
 	if commandID == "" {
 		return ErrAgentCommandIDRequired
 	}
-	return agentruntime.ValidateCommandID(commandID, agentruntime.DefaultInputLimits())
+	return runstate.ValidateCommandID(commandID, runstate.DefaultInputLimits())
 }
 
 type imageAgentConversation struct {
@@ -219,7 +217,7 @@ func (c *imageAgentConversation) AssembleModelContext(ctx context.Context, _ str
 		})
 	}
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{
-		Messages: []*schema.Message{schema.UserMessage(c.message)}, Fragments: fragments,
+		Messages: []*agent.Message{agent.UserMessage(c.message)}, Fragments: fragments,
 	})
 	if err != nil {
 		return agent.ModelContextResult{}, err

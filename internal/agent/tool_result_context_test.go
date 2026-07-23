@@ -3,12 +3,14 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/schema"
+	"github.com/alfredxw/denova/adk"
+	"github.com/alfredxw/denova/adk/model/openai"
 
 	"denova/config"
 )
@@ -16,14 +18,14 @@ import (
 func TestApplyToolResultContextPolicyPreservesToolExchangeExactly(t *testing.T) {
 	arguments := "  {\"path\":\"chapter.md\",\"selection\":\"" + strings.Repeat("段落", 3000) + "\"}  "
 	content := "{\"items\":[" + strings.Repeat("{\"name\":\"条目\"},", 3000) + "\nnot-valid-inner-json"
-	messages := []*schema.Message{
-		schema.UserMessage("读取资料"),
-		schema.AssistantMessage("", []schema.ToolCall{{
+	messages := []*adk.Message{
+		adk.UserMessage("读取资料"),
+		adk.AssistantMessage("", []adk.ToolCall{{
 			ID: "call-large", Type: "function",
-			Function: schema.FunctionCall{Name: "read_file", Arguments: arguments},
+			Function: adk.FunctionCall{Name: "read_file", Arguments: arguments},
 		}}),
-		schema.ToolMessage(content, "call-large", schema.WithToolName("read_file")),
-		schema.UserMessage("继续"),
+		adk.ToolMessage(content, "call-large", adk.WithToolName("read_file")),
+		adk.UserMessage("继续"),
 	}
 
 	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true})
@@ -44,32 +46,39 @@ func TestApplyToolResultContextPolicyPreservesToolExchangeExactly(t *testing.T) 
 func TestOpenAIRequestAssemblyKeepsToolContentAsString(t *testing.T) {
 	arguments := `{"path":"chapter.md","offset":1,"limit":200}`
 	content := "{\"items\":[" + strings.Repeat("{\"name\":\"条目\"},", 2000) + "\nnot-valid-inner-json"
-	messages := applyToolResultContextPolicy([]*schema.Message{
-		schema.AssistantMessage("", []schema.ToolCall{{
+	messages := applyToolResultContextPolicy([]*adk.Message{
+		adk.AssistantMessage("", []adk.ToolCall{{
 			ID: "call-json", Type: "function",
-			Function: schema.FunctionCall{Name: "read_file", Arguments: arguments},
+			Function: adk.FunctionCall{Name: "read_file", Arguments: arguments},
 		}}),
-		schema.ToolMessage(content, "call-json", schema.WithToolName("read_file")),
-		schema.UserMessage("基于结果继续"),
+		adk.ToolMessage(content, "call-json", adk.WithToolName("read_file")),
+		adk.UserMessage("基于结果继续"),
 	}, ToolResultContextPolicy{Enabled: true})
 
-	chatModel, err := openai.NewChatModel(context.Background(), &openai.ChatModelConfig{
-		APIKey: "test-key",
-		Model:  "test-model",
+	var rawRequest []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, readErr := io.ReadAll(r.Body)
+		if readErr != nil {
+			t.Errorf("read OpenAI request: %v", readErr)
+			http.Error(w, "read request", http.StatusInternalServerError)
+			return
+		}
+		rawRequest = append([]byte(nil), body...)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"response-1","model":"test-model","created":1,"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
+	}))
+	t.Cleanup(server.Close)
+
+	chatModel, err := openai.New(context.Background(), &openai.Config{
+		APIKey:  "test-key",
+		Model:   "test-model",
+		BaseURL: server.URL,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stop := errors.New("request captured")
-	var rawRequest []byte
-	_, err = chatModel.Generate(context.Background(), messages, openai.WithRequestPayloadModifier(
-		func(_ context.Context, _ []*schema.Message, rawBody []byte) ([]byte, error) {
-			rawRequest = append([]byte(nil), rawBody...)
-			return nil, stop
-		},
-	))
-	if !errors.Is(err, stop) {
-		t.Fatalf("request capture should stop before network I/O: %v", err)
+	if _, err = chatModel.Generate(context.Background(), messages); err != nil {
+		t.Fatalf("generate through capture server: %v", err)
 	}
 	if len(rawRequest) == 0 {
 		t.Fatalf("OpenAI adapter did not assemble a request: %v", err)
@@ -103,15 +112,15 @@ func TestOpenAIRequestAssemblyKeepsToolContentAsString(t *testing.T) {
 }
 
 func TestApplyToolResultContextPolicyDisabledRemovesToolContext(t *testing.T) {
-	messages := []*schema.Message{
-		schema.UserMessage("查资料"),
-		schema.AssistantMessage("", []schema.ToolCall{{ID: "call-1", Type: "function", Function: schema.FunctionCall{Name: "read_file", Arguments: `{}`}}}),
-		schema.ToolMessage("result", "call-1", schema.WithToolName("read_file")),
-		schema.AssistantMessage("完成", nil),
+	messages := []*adk.Message{
+		adk.UserMessage("查资料"),
+		adk.AssistantMessage("", []adk.ToolCall{{ID: "call-1", Type: "function", Function: adk.FunctionCall{Name: "read_file", Arguments: `{}`}}}),
+		adk.ToolMessage("result", "call-1", adk.WithToolName("read_file")),
+		adk.AssistantMessage("完成", nil),
 	}
 
 	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: false})
-	if len(filtered) != 2 || filtered[0].Role != schema.User || filtered[1].Content != "完成" {
+	if len(filtered) != 2 || filtered[0].Role != adk.User || filtered[1].Content != "完成" {
 		t.Fatalf("disabled retention should remove context-only tool messages: %#v", filtered)
 	}
 }
@@ -120,8 +129,8 @@ func TestToolResultContextRecorderPersistsAlreadyBoundedResultExactly(t *testing
 	conversation := &recordedToolContextConversation{policy: ToolResultContextPolicy{Enabled: true, MaxResultBytes: 256}}
 	recorder := newToolResultContextRecorder(conversation)
 	arguments := `{"path":"chapter.md"}`
-	recorder.RecordAssistantToolCalls(schema.AssistantMessage("", []schema.ToolCall{{
-		ID: "call-1", Type: "function", Function: schema.FunctionCall{Name: "read_file", Arguments: arguments},
+	recorder.RecordAssistantToolCalls(adk.AssistantMessage("", []adk.ToolCall{{
+		ID: "call-1", Type: "function", Function: adk.FunctionCall{Name: "read_file", Arguments: arguments},
 	}}), agentEventMetadata{})
 	bounded := FilterToolResultForModelWithLimit("read_file", arguments, strings.Repeat("正文", 500), 256)
 	recorder.RecordToolResult("read_file", "call-1", bounded.Content, agentEventMetadata{})
@@ -143,9 +152,9 @@ func TestToolResultContextRecorderPersistsAlreadyBoundedResultExactly(t *testing
 func TestToolResultContextRecorderSkipsMalformedCallAndResult(t *testing.T) {
 	conversation := &recordedToolContextConversation{policy: ToolResultContextPolicy{Enabled: true}}
 	recorder := newToolResultContextRecorder(conversation)
-	recorder.RecordAssistantToolCalls(schema.AssistantMessage("", []schema.ToolCall{{
+	recorder.RecordAssistantToolCalls(adk.AssistantMessage("", []adk.ToolCall{{
 		ID: "call-invalid", Type: "function",
-		Function: schema.FunctionCall{Name: "write_file", Arguments: `{"content":`},
+		Function: adk.FunctionCall{Name: "write_file", Arguments: `{"content":`},
 	}}), agentEventMetadata{})
 	recorder.RecordToolResult("write_file", "call-invalid", "invalid arguments", agentEventMetadata{})
 	if len(conversation.messages) != 0 {
@@ -154,28 +163,28 @@ func TestToolResultContextRecorderSkipsMalformedCallAndResult(t *testing.T) {
 }
 
 func TestApplyToolResultContextPolicyDropsMalformedAndOrphanedPairsAndCompletesMissingResult(t *testing.T) {
-	messages := []*schema.Message{
-		schema.AssistantMessage("useful narration", []schema.ToolCall{
-			{ID: "invalid", Type: "function", Function: schema.FunctionCall{Name: "read_file", Arguments: `{"path":`}},
-			{ID: "missing", Type: "function", Function: schema.FunctionCall{Name: "read_file", Arguments: `{}`}},
+	messages := []*adk.Message{
+		adk.AssistantMessage("useful narration", []adk.ToolCall{
+			{ID: "invalid", Type: "function", Function: adk.FunctionCall{Name: "read_file", Arguments: `{"path":`}},
+			{ID: "missing", Type: "function", Function: adk.FunctionCall{Name: "read_file", Arguments: `{}`}},
 		}),
-		schema.ToolMessage("invalid arguments", "invalid", schema.WithToolName("read_file")),
-		schema.ToolMessage("orphan result", "unknown", schema.WithToolName("read_file")),
-		schema.UserMessage("继续"),
+		adk.ToolMessage("invalid arguments", "invalid", adk.WithToolName("read_file")),
+		adk.ToolMessage("orphan result", "unknown", adk.WithToolName("read_file")),
+		adk.UserMessage("继续"),
 	}
 	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true})
 	if len(filtered) != 3 || filtered[0].Content != "useful narration" || len(filtered[0].ToolCalls) != 1 ||
-		filtered[0].ToolCalls[0].ID != "missing" || filtered[1].Role != schema.Tool ||
-		filtered[1].ToolCallID != "missing" || !isUnknownToolEffectResult(filtered[1].Content) || filtered[2].Role != schema.User {
+		filtered[0].ToolCalls[0].ID != "missing" || filtered[1].Role != adk.Tool ||
+		filtered[1].ToolCallID != "missing" || !isUnknownToolEffectResult(filtered[1].Content) || filtered[2].Role != adk.User {
 		t.Fatalf("malformed/orphaned protocol must be dropped while a unique missing result is recovered: %#v", filtered)
 	}
 }
 
 func TestApplyToolResultContextPolicyDropsTransientIndexesWithTheirCalls(t *testing.T) {
-	messages := []*schema.Message{
-		schema.AssistantMessage("", []schema.ToolCall{{ID: "call-list", Type: "function", Function: schema.FunctionCall{Name: "list_lore_items", Arguments: `{"keywords":["门"]}`}}}),
-		schema.ToolMessage("很长的资料索引", "call-list", schema.WithToolName("list_lore_items")),
-		schema.AssistantMessage("继续故事", nil),
+	messages := []*adk.Message{
+		adk.AssistantMessage("", []adk.ToolCall{{ID: "call-list", Type: "function", Function: adk.FunctionCall{Name: "list_lore_items", Arguments: `{"keywords":["门"]}`}}}),
+		adk.ToolMessage("很长的资料索引", "call-list", adk.WithToolName("list_lore_items")),
+		adk.AssistantMessage("继续故事", nil),
 	}
 	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true})
 	if len(filtered) != 1 || filtered[0].Content != "继续故事" {
@@ -197,15 +206,15 @@ func TestToolResultContextReplacesLoreBodiesWithSourceReceipt(t *testing.T) {
 }
 
 func TestInteractiveStoryToolContextKeepsOnlySemanticReadReceipts(t *testing.T) {
-	messages := []*schema.Message{
-		schema.AssistantMessage("", []schema.ToolCall{
-			{ID: "prepare", Type: "function", Function: schema.FunctionCall{Name: "prepare_interactive_turn", Arguments: `{}`}},
-			{ID: "file", Type: "function", Function: schema.FunctionCall{Name: "read_file", Arguments: `{}`}},
-			{ID: "lore", Type: "function", Function: schema.FunctionCall{Name: "read_lore_items", Arguments: `{}`}},
+	messages := []*adk.Message{
+		adk.AssistantMessage("", []adk.ToolCall{
+			{ID: "prepare", Type: "function", Function: adk.FunctionCall{Name: "prepare_interactive_turn", Arguments: `{}`}},
+			{ID: "file", Type: "function", Function: adk.FunctionCall{Name: "read_file", Arguments: `{}`}},
+			{ID: "lore", Type: "function", Function: adk.FunctionCall{Name: "read_lore_items", Arguments: `{}`}},
 		}),
-		schema.ToolMessage(`{"outcome":"success"}`, "prepare", schema.WithToolName("prepare_interactive_turn")),
-		schema.ToolMessage("文风正文", "file", schema.WithToolName("read_file")),
-		schema.ToolMessage("# 资料库条目\n\n## 酒馆\nID：lore-tavern\n\n秘密正文", "lore", schema.WithToolName("read_lore_items")),
+		adk.ToolMessage(`{"outcome":"success"}`, "prepare", adk.WithToolName("prepare_interactive_turn")),
+		adk.ToolMessage("文风正文", "file", adk.WithToolName("read_file")),
+		adk.ToolMessage("# 资料库条目\n\n## 酒馆\nID：lore-tavern\n\n秘密正文", "lore", adk.WithToolName("read_lore_items")),
 	}
 	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{AgentKind: config.AgentKindInteractiveStory, Enabled: true})
 	if len(filtered) != 2 || len(filtered[0].ToolCalls) != 1 || filtered[0].ToolCalls[0].Function.Name != "read_lore_items" || !strings.Contains(filtered[1].Content, retainedToolReceiptSchema) {
@@ -214,13 +223,13 @@ func TestInteractiveStoryToolContextKeepsOnlySemanticReadReceipts(t *testing.T) 
 }
 
 func TestApplyToolResultContextPolicyPairsByCallIDWhenResultToolNameMissing(t *testing.T) {
-	messages := []*schema.Message{
-		schema.AssistantMessage("", []schema.ToolCall{
-			{ID: "call-list", Type: "function", Function: schema.FunctionCall{Name: "list_lore_items", Arguments: `{}`}},
-			{ID: "call-read", Type: "function", Function: schema.FunctionCall{Name: "read_lore_items", Arguments: `{}`}},
+	messages := []*adk.Message{
+		adk.AssistantMessage("", []adk.ToolCall{
+			{ID: "call-list", Type: "function", Function: adk.FunctionCall{Name: "list_lore_items", Arguments: `{}`}},
+			{ID: "call-read", Type: "function", Function: adk.FunctionCall{Name: "read_lore_items", Arguments: `{}`}},
 		}),
-		schema.ToolMessage("索引结果", "call-list"),
-		schema.ToolMessage("# 资料库条目\n\n## 酒馆\nID：lore-tavern\n\n秘密正文", "call-read"),
+		adk.ToolMessage("索引结果", "call-list"),
+		adk.ToolMessage("# 资料库条目\n\n## 酒馆\nID：lore-tavern\n\n秘密正文", "call-read"),
 	}
 	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true})
 	if len(filtered) != 2 || len(filtered[0].ToolCalls) != 1 || filtered[0].ToolCalls[0].ID != "call-read" {
@@ -232,12 +241,12 @@ func TestApplyToolResultContextPolicyPairsByCallIDWhenResultToolNameMissing(t *t
 }
 
 func TestApplyToolResultContextPolicyDropsAmbiguousDuplicatePair(t *testing.T) {
-	messages := []*schema.Message{
-		schema.AssistantMessage("", []schema.ToolCall{
-			{ID: "duplicate", Type: "function", Function: schema.FunctionCall{Name: "read_file", Arguments: `{}`}},
-			{ID: "duplicate", Type: "function", Function: schema.FunctionCall{Name: "read_lore_items", Arguments: `{}`}},
+	messages := []*adk.Message{
+		adk.AssistantMessage("", []adk.ToolCall{
+			{ID: "duplicate", Type: "function", Function: adk.FunctionCall{Name: "read_file", Arguments: `{}`}},
+			{ID: "duplicate", Type: "function", Function: adk.FunctionCall{Name: "read_lore_items", Arguments: `{}`}},
 		}),
-		schema.ToolMessage("ambiguous", "duplicate"),
+		adk.ToolMessage("ambiguous", "duplicate"),
 	}
 	if filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true}); len(filtered) != 0 {
 		t.Fatalf("duplicate call ids must be dropped instead of mispaired: %#v", filtered)
@@ -253,11 +262,11 @@ func TestToolResultContextKeepsLoreErrorsInsteadOfPositiveReceipt(t *testing.T) 
 
 type recordedToolContextConversation struct {
 	Conversation
-	messages []*schema.Message
+	messages []*adk.Message
 	policy   ToolResultContextPolicy
 }
 
-func (c *recordedToolContextConversation) AppendContextMessage(msg *schema.Message) error {
+func (c *recordedToolContextConversation) AppendContextMessage(msg *adk.Message) error {
 	c.messages = append(c.messages, msg)
 	return nil
 }

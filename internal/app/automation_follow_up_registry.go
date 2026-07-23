@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
 )
 
@@ -28,7 +28,7 @@ func newAutomationFollowUpIdentity(runID, commandID, message string) (automation
 	if commandID == "" {
 		return automationFollowUpIdentity{}, ErrAgentCommandIDRequired
 	}
-	if err := agentruntime.ValidateCommandID(commandID, agentruntime.DefaultInputLimits()); err != nil {
+	if err := runstate.ValidateCommandID(commandID, runstate.DefaultInputLimits()); err != nil {
 		return automationFollowUpIdentity{}, err
 	}
 	if runID == "" || message == "" {

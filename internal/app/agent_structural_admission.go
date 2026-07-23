@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"denova/internal/agent"
-	"denova/internal/agentruntime"
+	runstate "denova/internal/agent/runtime"
+	"denova/internal/agent/session"
 	"denova/internal/interactive"
-	"denova/internal/session"
 )
 
 // writingStructuralFence is the immutable admission snapshot used by session
@@ -61,8 +61,8 @@ func (s *ChatAppService) drainWritingBinding(ctx context.Context, sessionID stri
 	if err := s.retryPendingWritingRecoveryRefresh(ctx, fence.workspace, fence.selected); err != nil {
 		return writingStructuralFence{}, err
 	}
-	if err := closeRuntimeBinding(ctx, fence.chat, agentruntime.BindingSelector{
-		Kind: agentruntime.BindingWriting, Profile: agentruntime.ProfileWriting,
+	if err := closeRuntimeBinding(ctx, fence.chat, runstate.BindingSelector{
+		Kind: runstate.BindingWriting, Profile: runstate.ProfileWriting,
 		Workspace: fence.workspace, SessionID: sessionID,
 	}); err != nil {
 		return writingStructuralFence{}, err
@@ -146,8 +146,8 @@ func (s *InteractiveAppService) drainInteractiveBinding(ctx context.Context, sto
 	if err := abortAndWaitTask(ctx, fence.task); err != nil {
 		return interactiveStructuralFence{}, err
 	}
-	selector := agentruntime.BindingSelector{
-		Kind: agentruntime.BindingGame, Workspace: fence.workspace,
+	selector := runstate.BindingSelector{
+		Kind: runstate.BindingGame, Workspace: fence.workspace,
 		StoryID: storyID, BranchID: branchID,
 	}
 	if err := closeRuntimeBinding(ctx, fence.chat, selector); err != nil {
@@ -226,7 +226,7 @@ func abortAndWaitTask(ctx context.Context, task *Task) error {
 	}
 }
 
-func closeRuntimeBinding(ctx context.Context, chat *agent.ChatService, selector agentruntime.BindingSelector) error {
+func closeRuntimeBinding(ctx context.Context, chat *agent.ChatService, selector runstate.BindingSelector) error {
 	if chat == nil {
 		return nil
 	}
