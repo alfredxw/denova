@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [v0.3.2] - 2026-07-23
+
 ### Changed
 
 - 编辑器自动保存统一为修改后延迟保存：连续输入会重置延迟，停止输入后只保存最新草稿，不再依赖固定周期；目录与章节统计也不再每 3 秒扫描整本作品。
