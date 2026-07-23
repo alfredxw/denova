@@ -68,9 +68,9 @@ func (a *App) WithWorkspaceChangeService(
 // WorkspaceChangeMutationHooks describes post-mutation work that must stay
 // bound to the same workspace lease as the durable change operation.
 type WorkspaceChangeMutationHooks struct {
-	CreateTimedVersion bool
-	AutomationSource   string
-	Paths              []string
+	ScheduleAutoVersion bool
+	AutomationSource    string
+	Paths               []string
 }
 
 // WithWorkspaceChangeMutation runs a durable workspace mutation and its
@@ -102,8 +102,8 @@ func (a *App) WithWorkspaceChangeMutation(
 	if err != nil {
 		return "", err
 	}
-	if hooks.CreateTimedVersion {
-		maybeCreateTimedVersion(a.versionService, versionAutoSettingsForConfig(a.cfg))
+	if hooks.ScheduleAutoVersion {
+		scheduleAutoVersion(a.versionService, versionAutoSettingsForConfig(a.cfg))
 	}
 	if strings.TrimSpace(hooks.AutomationSource) != "" && len(hooks.Paths) > 0 {
 		if automation := a.automationSnapshotLocked(); automation != nil {

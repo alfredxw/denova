@@ -40,8 +40,6 @@ func (s *Service) statusLocked(settings VersionAutoSettings) (VersionStatus, err
 		Auto: VersionAutoInfo{
 			TimedEnabled:         settings.TimedEnabled,
 			TimedIntervalMinutes: settings.TimedIntervalMinutes,
-			AgentEnabled:         settings.AgentEnabled,
-			AgentCharThreshold:   settings.AgentCharThreshold,
 			Retention:            settings.Retention,
 			LastAutoAt:           lastAutoVersionAt(items),
 		},

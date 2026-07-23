@@ -160,10 +160,8 @@ const settings = {
   'settings.motion.full': 'Full',
   'settings.motion.reduced': 'Reduced',
   'settings.motion.off': 'Off',
-  'settings.versions.agentAuto': 'Agent Output Auto Version',
-  'settings.versions.agentThreshold': 'Agent Trigger Characters',
-  'settings.versions.timedAuto': 'Timed Auto Version',
-  'settings.versions.timedInterval': 'Timed Save Interval (minutes)',
+  'settings.versions.timedAuto': 'Create Git Versions Automatically',
+  'settings.versions.timedInterval': 'Minimum Auto-Version Interval (minutes)',
 } as const
 
 export default settings

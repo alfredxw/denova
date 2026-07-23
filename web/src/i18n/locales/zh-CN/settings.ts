@@ -160,10 +160,8 @@ const settings = {
   'settings.motion.full': '完整',
   'settings.motion.reduced': '减少',
   'settings.motion.off': '关闭',
-  'settings.versions.agentAuto': 'Agent 大量输出自动保存',
-  'settings.versions.agentThreshold': 'Agent 触发字数',
-  'settings.versions.timedAuto': '定时自动保存版本',
-  'settings.versions.timedInterval': '定时保存间隔 (分钟)',
+  'settings.versions.timedAuto': '自动创建 Git 版本',
+  'settings.versions.timedInterval': '自动版本最小间隔（分钟）',
 } as const
 
 export default settings

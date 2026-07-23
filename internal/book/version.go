@@ -4,7 +4,6 @@ import "denova/internal/book/versions"
 
 const (
 	DefaultTimedVersionIntervalMinutes = versions.DefaultTimedVersionIntervalMinutes
-	DefaultAgentVersionCharThreshold   = versions.DefaultAgentVersionCharThreshold
 	DefaultAutoVersionRetention        = versions.DefaultAutoVersionRetention
 )
 
@@ -36,8 +35,6 @@ type VersionRestoreChange = versions.VersionRestoreChange
 type VersionDiff = versions.VersionDiff
 type VersionAutoSettings = versions.VersionAutoSettings
 type VersionAutoResult = versions.VersionAutoResult
-type VersionWorkspaceState = versions.VersionWorkspaceState
-type VersionFileState = versions.VersionFileState
 type VersionService = versions.Service
 
 func NewVersionService(workspace string) *VersionService {

@@ -101,9 +101,9 @@ func (h *Handlers) HandleWorkspaceChangeReview(ctx context.Context, c *app.Reque
 				return denovaapp.WorkspaceChangeMutationHooks{}, nil
 			}
 			return denovaapp.WorkspaceChangeMutationHooks{
-				CreateTimedVersion: true,
-				AutomationSource:   "workspace_change_review_reject",
-				Paths:              affectedPaths,
+				ScheduleAutoVersion: true,
+				AutomationSource:    "workspace_change_review_reject",
+				Paths:               affectedPaths,
 			}, nil
 		},
 	)
@@ -151,9 +151,9 @@ func (h *Handlers) handleWorkspaceChangeHistory(ctx context.Context, c *app.Requ
 				source = "workspace_change_redo"
 			}
 			return denovaapp.WorkspaceChangeMutationHooks{
-				CreateTimedVersion: true,
-				AutomationSource:   source,
-				Paths:              affectedPaths,
+				ScheduleAutoVersion: true,
+				AutomationSource:    source,
+				Paths:               affectedPaths,
 			}, nil
 		},
 	)
