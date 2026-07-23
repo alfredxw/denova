@@ -110,5 +110,15 @@ func readBuiltinWritingPreset(t *testing.T, name string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(data)
+	content := string(data)
+	// If the skill declares depends: writing-common, append the dependency
+	// content so tests validate the effective instructions the model receives.
+	if strings.Contains(content, "depends: writing-common") {
+		depData, depErr := os.ReadFile(filepath.Join("..", "..", "skills", "writing-common", SkillFileName))
+		if depErr != nil {
+			t.Fatalf("skill %s depends on writing-common but reading it failed: %v", name, depErr)
+		}
+		content = content + "\n" + string(depData)
+	}
+	return content
 }

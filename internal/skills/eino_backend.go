@@ -37,10 +37,40 @@ func (b *Backend) List(ctx context.Context) ([]einoskill.FrontMatter, error) {
 }
 
 func (b *Backend) Get(ctx context.Context, name string) (einoskill.Skill, error) {
-	for _, rec := range b.activeRecords(ctx) {
+	records := b.activeRecords(ctx)
+	for _, rec := range records {
 		if rec.skill.Name == name {
-			return rec.skill, nil
+			return b.resolveDepends(ctx, records, rec, map[string]bool{name: true}), nil
 		}
 	}
 	return einoskill.Skill{}, fmt.Errorf("skill not found: %s", name)
+}
+
+// resolveDepends prepends dependency skill content before the requesting skill's
+// own content so the model receives shared conventions without an extra tool call.
+func (b *Backend) resolveDepends(ctx context.Context, records []record, rec record, visited map[string]bool) einoskill.Skill {
+	if len(rec.depends) == 0 {
+		return rec.skill
+	}
+	var parts []string
+	for _, dep := range rec.depends {
+		if visited[dep] {
+			continue
+		}
+		visited[dep] = true
+		for _, depRec := range records {
+			if depRec.skill.Name == dep {
+				resolved := b.resolveDepends(ctx, records, depRec, visited)
+				parts = append(parts, resolved.Content)
+				break
+			}
+		}
+	}
+	if len(parts) == 0 {
+		return rec.skill
+	}
+	parts = append(parts, rec.skill.Content)
+	out := rec.skill
+	out.Content = strings.Join(parts, "\n\n---\n\n")
+	return out
 }

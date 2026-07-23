@@ -2,6 +2,7 @@
 name: novel-heavy
 description: 关键内容、复杂剧情和长篇连续性要求高的写作流程；先规划、综合审稿、再生成状态更新。Heavy writing flow for critical scenes with planning, multi-role review, and state patching.
 agent: ide
+depends: writing-common
 ---
 
 # novel-heavy

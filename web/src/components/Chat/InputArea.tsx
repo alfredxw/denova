@@ -326,8 +326,10 @@ export function InputArea({
       && !showCommands
       && referenceQuery === null
       && styleSceneQuery === null
-      && value.trim() === ''
     ) {
+      // 直接读取 TipTap 编辑器实际内容，避免 React 状态闭包与编辑器不同步。
+      const editorContent = inputRef.current?.getValue() ?? value
+      if (editorContent.trim() !== '') return false
       const previousPrompt = submittedPromptHistory.get(draftHistoryKey)
       if (previousPrompt) {
         e.preventDefault()

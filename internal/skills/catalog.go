@@ -17,6 +17,7 @@ import (
 type record struct {
 	skill   einoskill.Skill
 	summary SkillSummary
+	depends []string
 }
 
 func SnapshotFor(ctx context.Context, dirs []Directory) (Snapshot, error) {
@@ -171,6 +172,7 @@ func parseRecord(ctx context.Context, dir Directory, path, data string) (record,
 			Content:       strings.TrimSpace(body),
 			BaseDirectory: baseDir,
 		},
+		depends: parseDepends(frontmatter),
 		summary: SkillSummary{
 			Name:        fm.Name,
 			Description: fm.Description,

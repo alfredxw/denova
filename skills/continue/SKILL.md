@@ -2,6 +2,7 @@
 name: continue
 description: 续写小说章节。当用户要求写下一章、继续写、开始写某一章时使用。Continue writing the next novel chapter based on outline, character states, and prior text.
 agent: ide,interactive_story
+depends: writing-common
 ---
 
 # 章节续写

@@ -2,6 +2,7 @@
 name: novel-standard
 description: 默认写作流程，由主 Agent 写作和修订，审稿子 Agent 严格审稿，在质量和速度之间取得平衡。Default writing flow with main agent drafting and a reviewer subagent for quality balance.
 agent: ide
+depends: writing-common
 ---
 
 # novel-standard

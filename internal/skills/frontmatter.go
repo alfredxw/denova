@@ -14,6 +14,25 @@ type frontMatterFile struct {
 	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
 	Agent       string `yaml:"agent,omitempty"`
+	Depends     string `yaml:"depends,omitempty"`
+}
+
+// parseDepends extracts the depends field from raw frontmatter YAML.
+func parseDepends(frontmatter string) []string {
+	var fm frontMatterFile
+	if err := yaml.Unmarshal([]byte(frontmatter), &fm); err != nil {
+		return nil
+	}
+	var deps []string
+	for _, part := range strings.FieldsFunc(fm.Depends, func(r rune) bool {
+		return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\t'
+	}) {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			deps = append(deps, part)
+		}
+	}
+	return deps
 }
 
 func ValidateName(name string) error {

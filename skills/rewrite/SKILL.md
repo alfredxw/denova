@@ -2,6 +2,7 @@
 name: rewrite
 description: 重写或修改已有章节。当用户要求修改某章、改写某段、换视角重写、调整对话时使用。Rewrite or revise existing chapters, paragraphs, dialogue, or perspective.
 agent: ide
+depends: writing-common
 ---
 
 # 章节重写与修改
