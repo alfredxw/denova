@@ -323,8 +323,8 @@ type fakeDisplayConversation struct {
 	appender *fakeDisplayAppender
 }
 
-func (c fakeDisplayConversation) PrepareMessages(_, _ string) ([]*schema.Message, error) {
-	return nil, nil
+func (c fakeDisplayConversation) AssembleModelContext(ctx context.Context, _ string, input ModelContextInput) (ModelContextResult, error) {
+	return AssembleSingleUserModelContext(ctx, input)
 }
 func (c fakeDisplayConversation) AppendAssistant(string) error               { return nil }
 func (c fakeDisplayConversation) MarkInterrupted(_, _, _ string) error       { return nil }

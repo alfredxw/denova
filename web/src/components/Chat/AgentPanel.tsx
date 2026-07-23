@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { removeChatContextCompaction } from '@/lib/api'
-import type { ChapterIllustration, ChapterSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
+import type { AgentCommandDelivery, ActiveChatTask, ChapterIllustration, ChapterSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { agentSubAgentSessionKey, agentViewContent, buildAgentMessageViews, selectAgentTokenUsageRecords, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
@@ -49,6 +49,9 @@ interface AgentPanelProps {
   sessions: SessionSummary[]
   activeSessionId: string
   isStreaming: boolean
+  runtimeProjection?: ActiveChatTask | null
+  abortPending?: boolean
+  commandSubmitting?: boolean
   activityContent: string
   references: string[]
   loreReferences: string[]
@@ -104,6 +107,9 @@ export function AgentPanel({
   sessions,
   activeSessionId,
   isStreaming,
+  runtimeProjection = null,
+  abortPending = false,
+  commandSubmitting = false,
   activityContent,
   references,
   loreReferences,
@@ -156,6 +162,15 @@ export function AgentPanel({
   const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
   const [selectedTraceRunId, setSelectedTraceRunId] = useState('')
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
+  const [activeDelivery, setActiveDelivery] = useState<AgentCommandDelivery>('follow_up')
+  const activeDeliveryQueued = isStreaming && Boolean(runtimeProjection?.queue?.some((item) => item.delivery === activeDelivery))
+  const recoveryPaused = Boolean(runtimeProjection?.recovery_paused)
+  const runtimeRecovering = Boolean(runtimeProjection?.runtime_recoverable && (!runtimeProjection.stream_attached || recoveryPaused))
+  const recoveryAbortAvailable = Boolean(runtimeProjection?.recovery_actions?.some((action) => action.kind === 'abort'))
+  const activeControlsDisabled = isStreaming && (
+    !runtimeProjection?.active_operation_id?.trim() ||
+    Boolean(runtimeProjection.runtime_recoverable && !runtimeProjection.stream_attached)
+  )
   const [chatPaneHost] = useState(() => createStablePortalHost('relative flex h-full min-h-0 w-full min-w-0 flex-col'))
   const ideTellerId = persistedSettings.values.ide_story_teller_id
   const imagePresetId = persistedSettings.values.ide_image_preset_id
@@ -301,6 +316,7 @@ export function AgentPanel({
       onReviewFeedbackSubmissionFailed?.(feedbackSelection)
     }
     const accepted = await onSend(effectiveMessage, {
+      delivery: isStreaming ? activeDelivery : undefined,
       writingSkill,
       ideContext,
       imagePresetId,
@@ -322,7 +338,9 @@ export function AgentPanel({
   const messageListProps = {
     messages,
     isStreaming,
-    activityContent,
+    activityContent: runtimeRecovering
+      ? t('chat.activity.recovering')
+      : recoveryPaused ? t('chat.activity.recoveryPaused') : activityContent,
     scrollResetKey: `${workspace || 'none'}:${activeSessionId || 'current'}`,
     bottomPaddingClassName: 'pb-36',
     bottomPaddingPx: messageListBottomPadding,
@@ -344,7 +362,15 @@ export function AgentPanel({
   const inputAreaProps = {
     onSend: sendWithWritingSkill,
     onStop,
-    disabled: isStreaming,
+    disabled: false,
+    generationActive: isStreaming,
+    activeDelivery,
+    onActiveDeliveryChange: setActiveDelivery,
+    abortPending,
+    commandSubmitting,
+    activeControlsDisabled,
+    activeStopDisabled: activeControlsDisabled && !recoveryAbortAvailable,
+    sendBlocked: activeDeliveryQueued,
     planMode,
     onTogglePlanMode: onPlanModeToggle,
     draftKey: `ide-agent:${workspace || 'global'}`,
@@ -375,7 +401,7 @@ export function AgentPanel({
     workspace,
     writingSkillControl: (
       <WritingComposerSettingsMenu
-        enabled={Boolean(workspace) && !persistedSettings.loading}
+        enabled={Boolean(workspace) && !persistedSettings.loading && !isStreaming}
         tellers={tellers}
         tellerID={ideTellerId}
         imagePresets={imagePresets}

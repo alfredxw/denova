@@ -43,34 +43,30 @@ func (a *App) CreateVersion(ctx context.Context, message string) (book.VersionCo
 }
 
 func (s *WorkspaceRuntimeManager) CreateVersion(ctx context.Context, message string) (book.VersionCommandResult, error) {
-	a := s.app
-	a.mu.RLock()
-	workspace := a.workspace
-	versionService := a.versionService
-	settings := versionAutoSettingsForConfig(a.cfg)
-	a.mu.RUnlock()
-	if workspace == "" || versionService == nil {
-		return book.VersionCommandResult{}, ErrNoWorkspace
-	}
-	message = s.inferVersionMessage(ctx, message, book.VersionSourceManual, versionService, settings)
-
-	// Message inference may call an LLM, so it intentionally happens outside
-	// the App lease. Recheck the captured identity before taking the workspace
-	// write lease to avoid committing the old summary into a newly selected book.
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	if a.workspace != workspace || a.versionService != versionService {
-		return book.VersionCommandResult{}, ErrWorkspaceChanged
-	}
-	changeService, err := workspacechange.ForWorkspace(workspace)
+	runtime, err := s.acquireVersionCreateRuntime(ctx)
 	if err != nil {
 		return book.VersionCommandResult{}, err
 	}
-	settings = versionAutoSettingsForConfig(a.cfg)
+	defer runtime.Release()
+
+	message, err = s.inferVersionMessage(runtime.Context(), message, book.VersionSourceManual, runtime)
+	if err != nil {
+		return book.VersionCommandResult{}, err
+	}
+	if err := runtime.Context().Err(); err != nil {
+		return book.VersionCommandResult{}, err
+	}
+	if !runtime.matches(s.app) {
+		return book.VersionCommandResult{}, ErrWorkspaceChanged
+	}
+	changeService, err := workspacechange.ForWorkspace(runtime.workspace)
+	if err != nil {
+		return book.VersionCommandResult{}, err
+	}
 	var result book.VersionCommandResult
-	err = changeService.WithConsistentWorkspaceSnapshot(ctx, func() error {
+	err = changeService.WithConsistentWorkspaceSnapshot(runtime.Context(), func() error {
 		var createErr error
-		result, createErr = versionService.Create(message, book.VersionSourceManual, settings)
+		result, createErr = runtime.versionService.Create(message, book.VersionSourceManual, runtime.settings)
 		return createErr
 	})
 	return result, err

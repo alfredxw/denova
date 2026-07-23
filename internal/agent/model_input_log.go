@@ -560,27 +560,36 @@ func modelInputLogFingerprint(value any) string {
 
 type modelInputLoggingMiddleware struct {
 	*adk.BaseChatModelAgentMiddleware
-	agentKind string
-	config    openai.ChatModelConfig
+	agentKind             string
+	config                openai.ChatModelConfig
+	contextWindowTokens   int
+	providerInputMaxBytes int
 }
 
 func (m *modelInputLoggingMiddleware) WrapModel(ctx context.Context, wrapped model.BaseChatModel, mc *adk.ModelContext) (model.BaseChatModel, error) {
 	return &modelInputLoggingChatModel{
-		inner:     wrapped,
-		agentKind: m.agentKind,
-		config:    m.config,
-		tools:     modelInputToolsFromContext(mc),
+		inner:                 wrapped,
+		agentKind:             m.agentKind,
+		config:                m.config,
+		tools:                 modelInputToolsFromContext(mc),
+		contextWindowTokens:   m.contextWindowTokens,
+		providerInputMaxBytes: m.providerInputMaxBytes,
 	}, nil
 }
 
 type modelInputLoggingChatModel struct {
-	inner     model.BaseChatModel
-	agentKind string
-	config    openai.ChatModelConfig
-	tools     []*schema.ToolInfo
+	inner                 model.BaseChatModel
+	agentKind             string
+	config                openai.ChatModelConfig
+	tools                 []*schema.ToolInfo
+	contextWindowTokens   int
+	providerInputMaxBytes int
 }
 
 func (m *modelInputLoggingChatModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	if err := validateProviderInput(m.agentKind, input, m.tools, m.providerInputMaxBytes, m.contextWindowTokens); err != nil {
+		return nil, err
+	}
 	span, callID, spanCtx := beginLLMCallTrace(ctx, m.agentKind, "adk", "generate", m.config, input, m.tools, false)
 	msg, err := m.inner.Generate(spanCtx, input, stableToolModelOptions(opts, m.tools)...)
 	finishLLMCallTrace(span, callID, m.agentKind, "adk", "generate", m.config.Model, 0, msg, err, nil)
@@ -588,6 +597,9 @@ func (m *modelInputLoggingChatModel) Generate(ctx context.Context, input []*sche
 }
 
 func (m *modelInputLoggingChatModel) Stream(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	if err := validateProviderInput(m.agentKind, input, m.tools, m.providerInputMaxBytes, m.contextWindowTokens); err != nil {
+		return nil, err
+	}
 	span, callID, spanCtx := beginLLMCallTrace(ctx, m.agentKind, "adk", "stream", m.config, input, m.tools, true)
 	started := time.Now()
 	var firstChunk time.Time

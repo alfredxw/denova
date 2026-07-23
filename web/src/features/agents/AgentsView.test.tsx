@@ -111,9 +111,13 @@ describe('AgentsView', () => {
     expect(screen.getByText('压缩后保留回合')).toBeInTheDocument()
     expect(screen.getByText('流程规则')).toBeInTheDocument()
     expect(screen.queryByDisplayValue('12')).not.toBeInTheDocument()
-    expect(screen.getByDisplayValue('4')).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: '压缩后保留回合' })).toHaveValue(4)
     expect(screen.getByDisplayValue('9')).toBeInTheDocument()
     expect(screen.getByDisplayValue('31')).toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: '单片段上限 (KB)' })).toHaveValue(256)
+    expect(screen.getByRole('spinbutton', { name: '本轮注入总上限 (KB)' })).toHaveValue(1024)
+    expect(screen.getByRole('spinbutton', { name: '本轮片段数量上限' })).toHaveValue(256)
+    expect(screen.getByRole('spinbutton', { name: '来源元数据上限 (KB)' })).toHaveValue(4)
   })
 
   it('keeps execute configurable on Windows runtimes', async () => {

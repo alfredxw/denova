@@ -44,6 +44,11 @@ type MiddlewareRegistration struct {
 	Name    string
 	Enabled func(Settings) bool
 	Build   MiddlewareFactory
+	// ModelVisibleTools declares every tool name this middleware may append in
+	// BeforeAgent. The host validates these names against its descriptor catalog
+	// at construction and validates the concrete runtime tool set again after
+	// all middleware has run.
+	ModelVisibleTools []string
 }
 
 type ToolRegistration struct {
@@ -61,8 +66,9 @@ type BuildRequest struct {
 
 // BuildResult is the tool and middleware assembly consumed by an Agent builder.
 type BuildResult struct {
-	Tools    []tool.BaseTool
-	Handlers []adk.ChatModelAgentMiddleware
+	Tools               []tool.BaseTool
+	Handlers            []adk.ChatModelAgentMiddleware
+	MiddlewareToolNames []string
 }
 
 // Build assembles model-callable tools and middleware in one stable order.
@@ -78,6 +84,7 @@ func Build(ctx context.Context, req BuildRequest) (BuildResult, error) {
 		}
 		if mw != nil {
 			result.Handlers = append(result.Handlers, mw)
+			result.MiddlewareToolNames = append(result.MiddlewareToolNames, registration.ModelVisibleTools...)
 		}
 	}
 	for _, registration := range req.Tools {

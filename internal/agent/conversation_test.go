@@ -29,7 +29,7 @@ func TestSessionConversationKeepsFullEffectiveHistoryBeforeCompaction(t *testing
 		}
 	}
 	conversation := NewSessionConversation(sess)
-	history, err := conversation.PrepareMessages("user 5", "agent user 5")
+	history, err := assembleAndCommitModelContextForTest(conversation, "user 5", "agent user 5")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestSessionConversationPersistsUserMessageReferencesOutsideModelContent(t *
 		{Kind: "review_comment", ID: "comment-1", Label: "setting/progress.md", Detail: "需要增加爽点"},
 	})
 
-	history, err := conversation.PrepareMessages("请统一修改", "请统一修改")
+	history, err := assembleAndCommitModelContextForTest(conversation, "请统一修改", "请统一修改")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestSessionConversationPrependsDynamicContextInsideFinalUserMessageOnly(t *
 		"本轮动态作品状态",
 		"## 大纲\n\n主角进入废城。",
 	)
-	history, err := conversation.PrepareMessages("继续写", "继续写")
+	history, err := assembleAndCommitModelContextForTest(conversation, "继续写", "继续写")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestSessionConversationPrependsDynamicContextInsideFinalUserMessageOnly(t *
 	if got := visible[len(visible)-1].Content; got != "继续写" {
 		t.Fatalf("visible session history should keep original user message, got %q", got)
 	}
-	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, "本轮动态上下文") || !strings.Contains(sources, "prepended_to_final_user_message") {
+	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, `source="workspace.runtime.dynamic"`) || !strings.Contains(sources, `placement="final_user_prefix"`) || !strings.Contains(sources, `purpose="provide turn-scoped workspace state for the current request"`) {
 		t.Fatalf("runtime context source summary missing dynamic context: %s", sources)
 	}
 }
@@ -154,7 +154,7 @@ func TestSessionConversationPrependsStableContextBeforeHistory(t *testing.T) {
 		"本轮动态作品状态",
 		"## 当前进度\n\n刚抵达废城。",
 	)
-	history, err := conversation.PrepareMessages("继续写", "继续写")
+	history, err := assembleAndCommitModelContextForTest(conversation, "继续写", "继续写")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestSessionConversationPrependsStableContextBeforeHistory(t *testing.T) {
 	if visible := sess.History(); len(visible) != 3 || visible[2].Content != "继续写" {
 		t.Fatalf("visible session history should only include raw user request: %#v", visible)
 	}
-	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, "prepended_to_model_messages") || !strings.Contains(sources, "prepended_to_final_user_message") {
+	if sources := conversation.ContextSourceSummary(); !strings.Contains(sources, `source="workspace.runtime.stable"`) || !strings.Contains(sources, `placement="leading_message"`) || !strings.Contains(sources, `source="workspace.runtime.dynamic"`) || !strings.Contains(sources, `placement="final_user_prefix"`) {
 		t.Fatalf("runtime context source summary missing stable/dynamic locations: %s", sources)
 	}
 }
@@ -208,7 +208,7 @@ func TestSessionConversationKeepsStableContextBeforeCompactionSummary(t *testing
 		"本轮动态作品状态",
 		"## 当前进度\n\n刚抵达废城。",
 	)
-	history, err := conversation.PrepareMessages("继续写", "继续写")
+	history, err := assembleAndCommitModelContextForTest(conversation, "继续写", "继续写")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func TestSessionConversationKeepsStableContextBeforeCompactionSummary(t *testing
 	}
 }
 
-func TestSessionConversationCompactsOnlyMessagesAfterPreviousCompaction(t *testing.T) {
+func TestSessionConversationPreparesIncrementalCompactionWithoutAdvancingCanonicalCheckpoint(t *testing.T) {
 	previous := summarizeContextForCompaction
 	defer func() { summarizeContextForCompaction = previous }()
 
@@ -300,8 +300,8 @@ func TestSessionConversationCompactsOnlyMessagesAfterPreviousCompaction(t *testi
 			t.Fatalf("source[%d] = %q, want %q; all=%#v", i, got[i], want[i], got)
 		}
 	}
-	if record, ok := sess.LatestContextCompaction(config.AgentKindIDE); !ok || record.SourceStartIndex != 2 || record.SourceEndIndex != 4 {
-		t.Fatalf("new compaction should record incremental source range, got ok=%v record=%#v", ok, record)
+	if record, ok := sess.LatestContextCompaction(config.AgentKindIDE); !ok || record.SourceStartIndex != 0 || record.SourceEndIndex != 2 || record.Epoch != 1 {
+		t.Fatalf("transient compaction must not advance canonical checkpoint before a structural command: ok=%v record=%#v", ok, record)
 	}
 }
 
@@ -334,7 +334,7 @@ func TestSessionConversationUsesCompactionSummaryRetainedTailAndAppendedMessages
 
 	cfg := &config.Config{}
 	conversation := NewSessionConversationForAgent(sess, cfg, config.AgentKindIDE)
-	history, err := conversation.PrepareMessages("user 3", "agent user 3")
+	history, err := assembleAndCommitModelContextForTest(conversation, "user 3", "agent user 3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,7 +381,7 @@ func TestSessionConversationKeepsPostCompactionTurnsUntilNextCompaction(t *testi
 
 	cfg := &config.Config{}
 	conversation := NewSessionConversationForAgent(sess, cfg, config.AgentKindIDE)
-	history, err := conversation.PrepareMessages("user 6", "agent user 6")
+	history, err := assembleAndCommitModelContextForTest(conversation, "user 6", "agent user 6")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,6 +467,10 @@ type contextLedgerReportingConversation struct {
 	metadata RunTraceMetadata
 }
 
+func (c *contextLedgerReportingConversation) AssembleModelContext(ctx context.Context, _ string, input ModelContextInput) (ModelContextResult, error) {
+	return AssembleSingleUserModelContext(ctx, input)
+}
+
 type finalContextLedgerReportingConversation struct {
 	contextLedgerReportingConversation
 	messageCount int
@@ -481,9 +485,6 @@ func (c *finalContextLedgerReportingConversation) ContextLedgerPartsForMessages(
 	return []ContextLedgerPart{{Source: "final_messages", Included: true}}
 }
 
-func (c *contextLedgerReportingConversation) PrepareMessages(string, string) ([]*schema.Message, error) {
-	return nil, nil
-}
 func (c *contextLedgerReportingConversation) AppendAssistant(string) error { return nil }
 func (c *contextLedgerReportingConversation) MarkInterrupted(string, string, string) error {
 	return nil

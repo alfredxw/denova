@@ -180,6 +180,27 @@ func interactiveContextLedgerParts(parts []interactiveContextSource, messages []
 	return ledger.Parts()
 }
 
+// resolveInteractiveContextSources makes the semantic domain ledger a
+// projection of the final assembled messages. A source that did not survive
+// the hard assembly budget is retained as bounded metadata only; its original
+// unbounded body is never reported as model-visible content.
+func resolveInteractiveContextSources(parts []interactiveContextSource, messages []*schema.Message) []interactiveContextSource {
+	resolved := cloneInteractiveContextSources(parts)
+	for i := range resolved {
+		part := &resolved[i]
+		if part.MetadataOnly || strings.TrimSpace(part.Content) == "" {
+			continue
+		}
+		if _, visible := interactiveContextSourceMessage(*part, messages); visible {
+			continue
+		}
+		part.Content = ""
+		part.Truncated = true
+		part.Note = joinInteractiveContextNote(part.Note, "not_present_after_context_assembly")
+	}
+	return resolved
+}
+
 func cloneInteractiveContextSources(parts []interactiveContextSource) []interactiveContextSource {
 	if len(parts) == 0 {
 		return nil
@@ -306,8 +327,15 @@ func interactiveTellerSlotSummary(teller interactive.Teller, targets ...string) 
 	return fmt.Sprintf("count=%d names=%q", len(names), names)
 }
 
-func interactiveContextSourceListSummary(parts []interactiveContextSource) string {
-	sources := make([]agentcontext.Source, 0, len(parts))
+func interactiveContextSourceListSummary(parts []interactiveContextSource, fragments []agentcontext.Fragment) string {
+	sources := make([]agentcontext.Source, 0, len(fragments)+len(parts))
+	for _, fragment := range fragments {
+		sources = append(sources, agentcontext.Source{
+			Source: fragment.Source, Title: fragment.Title, Purpose: fragment.Purpose,
+			Content: fragment.Content, Placement: fragment.Placement, Limit: fragment.Limit,
+			Included: fragment.Included, Truncated: fragment.Truncated, Note: fragment.Note,
+		})
+	}
 	for _, part := range parts {
 		sources = append(sources, agentcontext.Source{
 			Source: part.Source, Title: part.Title, Purpose: part.Purpose, Content: part.Content,

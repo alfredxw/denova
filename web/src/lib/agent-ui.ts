@@ -48,10 +48,16 @@ export type AgentDataParts = {
 export type AgentUIMessage = UIMessage<AgentMessageMetadata, AgentDataParts>
 
 interface AgentChatRequestBody {
+  command_id?: string
   references?: string[]
   lore_references?: string[]
   style_scenes?: string[]
-  selections?: Array<{ file_name: string; start_line: number; end_line: number; content: string }>
+  selections?: Array<{
+    file_name: string
+    start_line: number
+    end_line: number
+    content: string
+  }>
   ide_context?: { current_file?: string; open_files?: string[] }
   plan_mode?: boolean
   writing_skill?: string
@@ -66,35 +72,87 @@ interface AgentChatRequestBody {
 
 export class AgentChatTransport implements ChatTransport<AgentUIMessage> {
   private readonly transport: DefaultChatTransport<AgentUIMessage>
+  private activeStreamTaskID = ''
+  private activeStreamAfter = 0
+  private readonly initialSubmissionOutcomes = new Map<string, InitialSubmissionOutcome>()
 
   constructor() {
     this.transport = new DefaultChatTransport<AgentUIMessage>({
       api: '/api/chat',
-      fetch: fetchAPI,
+      fetch: async (input, init) => {
+        const commandID = initialCommandIDFromRequest(init)
+        try {
+          const response = await fetchAPI(input, init)
+          if (commandID) this.initialSubmissionOutcomes.set(commandID, initialSubmissionOutcomeForStatus(response.status))
+          return response
+        } catch (error) {
+          if (commandID) this.initialSubmissionOutcomes.set(commandID, 'uncertain')
+          throw error
+        }
+      },
       prepareSendMessagesRequest: ({ messages, body }) => ({
         body: {
           ...(body || {}),
           message: bodyMessage(body) || latestUserText(messages),
         },
       }),
-      prepareReconnectToStreamRequest: () => ({
-        api: '/api/chat/stream',
-      }),
+      prepareReconnectToStreamRequest: () => ({ api: this.activeStreamURL() }),
     })
   }
 
   sendMessages(options: Parameters<ChatTransport<AgentUIMessage>['sendMessages']>[0]) {
+    // A new POST creates a new backend task. It must be rebound from `/active`
+    // before any reconnect can target a stream.
+    this.activeStreamTaskID = ''
+    this.activeStreamAfter = 0
     return this.transport.sendMessages(options)
   }
 
   reconnectToStream(options: Parameters<ChatTransport<AgentUIMessage>['reconnectToStream']>[0]) {
     return this.transport.reconnectToStream(options)
   }
+
+  /** Select the exact backend task and optional server-issued display cursor. */
+  setActiveStreamTarget(taskID: string, after?: number) {
+    const nextTaskID = taskID.trim()
+    if (!nextTaskID) throw new Error('Cannot select an empty Agent stream task')
+    const nextAfter = after ?? 0
+    if (!Number.isSafeInteger(nextAfter) || nextAfter < 0) {
+      throw new Error('Cannot select an invalid Agent stream cursor')
+    }
+    this.activeStreamTaskID = nextTaskID
+    this.activeStreamAfter = nextAfter
+  }
+
+  clearActiveStreamTarget() {
+    this.activeStreamTaskID = ''
+    this.activeStreamAfter = 0
+  }
+
+  /** Consume the acceptance classification captured at the HTTP boundary. */
+  takeInitialSubmissionOutcome(commandID: string): InitialSubmissionOutcome {
+    const key = commandID.trim()
+    const outcome = this.initialSubmissionOutcomes.get(key) || 'uncertain'
+    this.initialSubmissionOutcomes.delete(key)
+    return outcome
+  }
+
+  private activeStreamURL() {
+    if (!this.activeStreamTaskID) throw new Error('Cannot reconnect without an exact Agent stream task')
+    const query = new URLSearchParams({ task_id: this.activeStreamTaskID })
+    if (this.activeStreamAfter > 0) query.set('after', String(this.activeStreamAfter))
+    // The recovery cursor is a one-connection hand-off. If that connection is
+    // interrupted, the next inspection canonically reloads again before
+    // selecting another replay/suffix boundary.
+    this.activeStreamAfter = 0
+    return `/api/chat/stream?${query.toString()}`
+  }
 }
 
 export function buildAgentChatRequestBody(body: AgentChatRequestBody): AgentChatRequestBody {
   const reviewFeedback = normalizeReviewFeedbackRefs(body.review_feedback)
   return {
+    ...(body.command_id?.trim() ? { command_id: body.command_id.trim() } : {}),
     references: body.references || [],
     lore_references: body.lore_references || [],
     style_scenes: body.style_scenes || [],
@@ -108,7 +166,28 @@ export function buildAgentChatRequestBody(body: AgentChatRequestBody): AgentChat
   }
 }
 
-function normalizeReviewFeedbackRefs(feedback: AgentChatRequestBody['review_feedback']): NonNullable<AgentChatRequestBody['review_feedback']> {
+export type InitialSubmissionOutcome = 'accepted' | 'rejected' | 'uncertain'
+
+/** 2xx proves durable acceptance; 4xx proves rejection; 5xx remains ambiguous. */
+export function initialSubmissionOutcomeForStatus(status: number): InitialSubmissionOutcome {
+  if (status >= 200 && status < 300) return 'accepted'
+  if (status >= 400 && status < 500) return 'rejected'
+  return 'uncertain'
+}
+
+function initialCommandIDFromRequest(init?: RequestInit) {
+  if (typeof init?.body !== 'string') return ''
+  try {
+    const body = JSON.parse(init.body) as { command_id?: unknown }
+    return typeof body.command_id === 'string' ? body.command_id.trim() : ''
+  } catch {
+    return ''
+  }
+}
+
+function normalizeReviewFeedbackRefs(
+  feedback: AgentChatRequestBody['review_feedback'],
+): NonNullable<AgentChatRequestBody['review_feedback']> {
   const merged = new Map<string, NonNullable<AgentChatRequestBody['review_feedback']>[number]>()
   for (const selection of feedback ?? []) {
     const reviewThreadID = selection.review_thread_id.trim()
@@ -146,11 +225,14 @@ function normalizeRepeatedAgentUIMessageIDs(messages: AgentUIMessage[]) {
   return normalized
 }
 
-const messagePartDedupeKeysCache = new WeakMap<AgentUIMessage, {
-  metadata: AgentUIMessage['metadata']
-  parts: AgentUIMessage['parts']
-  keys: string[]
-}>()
+const messagePartDedupeKeysCache = new WeakMap<
+  AgentUIMessage,
+  {
+    metadata: AgentUIMessage['metadata']
+    parts: AgentUIMessage['parts']
+    keys: string[]
+  }
+>()
 
 function normalizeRepeatedAgentUIParts(messages: AgentUIMessage[]) {
   const normalized = [...messages]
@@ -195,14 +277,18 @@ function normalizeRepeatedAgentUIParts(messages: AgentUIMessage[]) {
         parts: message.parts.filter((_part, partIndex) => !removedParts.has(partIndex)),
       } as AgentUIMessage
     })
-    .filter(message => message.parts.length > 0)
+    .filter((message) => message.parts.length > 0)
 }
 
 function agentUIPartDedupeKeys(message: AgentUIMessage) {
   const cached = messagePartDedupeKeysCache.get(message)
   if (cached && cached.metadata === message.metadata && cached.parts === message.parts) return cached.keys
   const keys = message.parts.map((part) => agentUIPartDedupeKey(message, part))
-  messagePartDedupeKeysCache.set(message, { metadata: message.metadata, parts: message.parts, keys })
+  messagePartDedupeKeysCache.set(message, {
+    metadata: message.metadata,
+    parts: message.parts,
+    keys,
+  })
   return keys
 }
 
@@ -232,9 +318,7 @@ function agentUIPartDedupeKey(message: AgentUIMessage, part: AgentUIMessage['par
   if ((type === 'text' || type === 'reasoning') && runID) {
     const text = readString(raw.text).trim()
     if (!text) return ''
-    const fingerprint = type === 'reasoning'
-      ? contentPrefixFingerprint(text)
-      : textFingerprint(text)
+    const fingerprint = type === 'reasoning' ? contentPrefixFingerprint(text) : textFingerprint(text)
     return `run:${runID}:content:${type}:${fingerprint}`
   }
 
@@ -252,9 +336,8 @@ function agentPartMetadata(message: AgentUIMessage, raw: Record<string, unknown>
 function agentMetadataFromProvider(metadata: unknown): AgentMessageMetadata {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {}
   const agent = (metadata as Record<string, unknown>).agent
-  const raw = agent && typeof agent === 'object' && !Array.isArray(agent)
-    ? agent as Record<string, unknown>
-    : metadata as Record<string, unknown>
+  const raw =
+    agent && typeof agent === 'object' && !Array.isArray(agent) ? (agent as Record<string, unknown>) : (metadata as Record<string, unknown>)
   return {
     run_id: readString(raw.run_id) || undefined,
     agent_kind: readString(raw.agent_kind) || undefined,
@@ -275,16 +358,12 @@ function mergeDuplicateAgentUIPart(existing: AgentUIMessage['parts'][number], in
   const incomingRaw = incoming as Record<string, unknown>
   const type = readString(incomingRaw.type)
   if (type === 'dynamic-tool' || type.startsWith('tool-')) {
-    return toolPartStateRank(readString(incomingRaw.state)) >= toolPartStateRank(readString(existingRaw.state))
-      ? incoming
-      : existing
+    return toolPartStateRank(readString(incomingRaw.state)) >= toolPartStateRank(readString(existingRaw.state)) ? incoming : existing
   }
   if (isAgentDataPartType(type)) {
     const incomingStatus = readString(objectData(incomingRaw.data).status)
     const existingStatus = readString(objectData(existingRaw.data).status)
-    return dataPartStatusRank(incomingStatus) >= dataPartStatusRank(existingStatus)
-      ? incoming
-      : existing
+    return dataPartStatusRank(incomingStatus) >= dataPartStatusRank(existingStatus) ? incoming : existing
   }
   return incoming
 }
@@ -312,7 +391,7 @@ function dataPartStatusRank(status: string) {
 function textFingerprint(value: string) {
   let hash = 0
   for (let index = 0; index < value.length; index += 1) {
-    hash = ((hash * 31) + value.charCodeAt(index)) | 0
+    hash = (hash * 31 + value.charCodeAt(index)) | 0
   }
   return `${value.length}:${(hash >>> 0).toString(36)}`
 }
@@ -331,14 +410,17 @@ function latestUserText(messages: AgentUIMessage[]) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]
     if (message.role !== 'user') continue
-    const text = message.parts.map(part => part.type === 'text' ? part.text : '').join('').trim()
+    const text = message.parts
+      .map((part) => (part.type === 'text' ? part.text : ''))
+      .join('')
+      .trim()
     if (text) return text
   }
   return ''
 }
 
 function objectData(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
 }
 
 function readString(value: unknown) {
@@ -350,5 +432,5 @@ function isAgentDataPartType(type: string): type is `data-agent-${string}` {
 }
 
 function firstNonEmpty(...values: Array<string | undefined>) {
-  return values.find(value => value && value.trim()) || ''
+  return values.find((value) => value && value.trim()) || ''
 }

@@ -19,7 +19,10 @@ import (
 // interactive story run. The story and branch are fixed by the backend; the
 // model never supplies them.
 type InteractiveStoryToolContext struct {
-	Store           *interactive.Store
+	Store *interactive.Store
+	// CommandID is the App-derived durable identity for this root Director run.
+	// Callers must reuse it only for the same immutable plan token and task.
+	CommandID       string
 	StoryID         string
 	BranchID        string
 	TurnID          string
@@ -32,6 +35,10 @@ type InteractiveStoryToolContext struct {
 	OnLoreItemsRead          func([]string)
 	SubmitStateSchemaBatch   func(context.Context, interactive.ActorStateSchemaBatch) (interactive.ActorStateSchemaBatchResult, error)
 	SubmitDirectorPlanUpdate func(context.Context, interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error)
+	// DomainCommitParticipant owns the canonical Director result. The App
+	// supplies it so the durable harness can authorize and acknowledge the
+	// final plan write before settling the model cycle successfully.
+	DomainCommitParticipant HarnessDomainCommitParticipant
 	// DisplayConversation receives display-only progress for background helper
 	// agents. It must not receive final assistant text as model-visible context.
 	DisplayConversation Conversation

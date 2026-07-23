@@ -55,3 +55,10 @@ func userMessageReferencesForRequest(req ChatRequest) []session.UserMessageRefer
 	}
 	return result
 }
+
+// UserMessageReferencesForRequest returns the Session metadata source shared
+// by normal model-input commit and provider-free accepted-input materialization.
+// Hosts call it only after resolving canonical review IDs.
+func UserMessageReferencesForRequest(req ChatRequest) []session.UserMessageReference {
+	return userMessageReferencesForRequest(req)
+}

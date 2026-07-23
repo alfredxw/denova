@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	agentcontext "denova/internal/agent/context"
 	"denova/internal/book"
 )
 
@@ -14,7 +15,8 @@ func TestExplicitFileReferenceKeepsContentBelow128KBComplete(t *testing.T) {
 	content := strings.Repeat("x", 96*1024)
 	mustWriteTestFile(t, workspace, "references/large.md", content)
 
-	got := appendReferenceContext(book.NewService(workspace), "请完整参考", []string{"references/large.md"})
+	_, assembled := assembleTurnForTest(t, ChatRequest{Message: "请完整参考", References: []string{"references/large.md"}}, nil, book.NewService(workspace), agentcontext.DefaultBudget())
+	got := finalAssembledUserMessage(t, assembled)
 	if !strings.Contains(got, content) {
 		t.Fatalf("explicit reference below 128KB should be included in full, got %d bytes", len(got))
 	}
@@ -23,14 +25,14 @@ func TestExplicitFileReferenceKeepsContentBelow128KBComplete(t *testing.T) {
 	}
 }
 
-func TestImmediateAgentResultLimitsAreAtLeast128KB(t *testing.T) {
+func TestImmediateAgentResultLimitsAreAbove128KB(t *testing.T) {
 	limits := map[string]int{
 		"explicit file reference":          maxReferenceFileBytes,
 		"interactive director tool result": interactiveDirectorToolResultMaxBytes,
 	}
 	for name, limit := range limits {
-		if limit < minimumCompleteAgentContextBytes {
-			t.Errorf("%s limit = %d bytes, want at least %d", name, limit, minimumCompleteAgentContextBytes)
+		if limit <= minimumCompleteAgentContextBytes {
+			t.Errorf("%s limit = %d bytes, want above %d", name, limit, minimumCompleteAgentContextBytes)
 		}
 	}
 }

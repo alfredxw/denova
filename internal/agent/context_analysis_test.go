@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,57 @@ import (
 	"denova/internal/session"
 )
 
+type contextAnalysisConversation struct {
+	prepare func(originalMessage, agentMessage string) ([]*schema.Message, error)
+}
+
+func (c contextAnalysisConversation) AssembleModelContext(_ context.Context, originalMessage string, input ModelContextInput) (ModelContextResult, error) {
+	messages, err := c.prepare(originalMessage, input.UserMessage)
+	return ModelContextResult{Messages: messages}, err
+}
+
+func (contextAnalysisConversation) AppendAssistant(string) error                 { return nil }
+func (contextAnalysisConversation) MarkInterrupted(string, string, string) error { return nil }
+func (contextAnalysisConversation) PendingInterruption() *session.Interruption   { return nil }
+func (contextAnalysisConversation) ResolveInterruption(string) error             { return nil }
+
+func buildIDEContextAnalysisForTest(t *testing.T, cfg *config.Config, state *book.State, teller IDEStoryTeller, bookService *book.Service, messages []*schema.Message, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest) (ContextAnalysis, *SessionConversation) {
+	t.Helper()
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("context-analysis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range messages {
+		if message != nil {
+			if err := sess.Append(message); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if compaction != nil {
+		record := *compaction
+		record.AgentKind = config.AgentKindIDE
+		if _, err := sess.AppendContextCompaction(record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runtimeContexts := IDEWorkspaceRuntimeContextsForRequest(state, req)
+	conversation := NewSessionConversationForAgentWithRuntimeContexts(
+		sess, cfg, config.AgentKindIDE,
+		runtimeContexts.StableTitle, runtimeContexts.Stable,
+		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
+	)
+	analysis, err := BuildIDEContextAnalysis(cfg, state, teller, bookService, compaction, pending, req, conversation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return analysis, conversation
+}
+
 func TestInteractiveContextAnalysisLabelsDynamicContextAtFinalMessage(t *testing.T) {
 	analysis, err := BuildInteractiveStoryContextAnalysis(
 		&config.Config{},
@@ -22,13 +74,13 @@ func TestInteractiveContextAnalysisLabelsDynamicContextAtFinalMessage(t *testing
 		nil,
 		ChatRequest{Message: "我点燃火把"},
 		nil,
-		func(originalMessage, agentMessage string) ([]*schema.Message, error) {
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*schema.Message, error) {
 			return []*schema.Message{
 				schema.UserMessage("我推开门"),
 				schema.AssistantMessage("门后传来风声。", nil),
 				schema.UserMessage(agentMessage + "\n\n[本轮动态上下文]\n## 当前互动状态快照(JSON)\n{}"),
 			}, nil
-		},
+		}},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -69,9 +121,9 @@ func TestInteractiveContextAnalysisSplitsCurrentTurnByRuntimeSource(t *testing.T
 		nil,
 		ChatRequest{Message: "我推开藏书阁的门"},
 		nil,
-		func(originalMessage, agentMessage string) ([]*schema.Message, error) {
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*schema.Message, error) {
 			return []*schema.Message{schema.UserMessage(turnInstruction)}, nil
-		},
+		}},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -119,9 +171,9 @@ func TestInteractiveContextAnalysisUsesConfiguredContextWindow(t *testing.T) {
 		nil,
 		ChatRequest{Message: "继续"},
 		nil,
-		func(originalMessage, agentMessage string) ([]*schema.Message, error) {
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*schema.Message, error) {
 			return []*schema.Message{schema.UserMessage(agentMessage)}, nil
-		},
+		}},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -139,9 +191,9 @@ func TestInteractiveContextAnalysisShowsDirectNarrativeOutputProtocol(t *testing
 		nil,
 		ChatRequest{Message: "继续"},
 		nil,
-		func(originalMessage, agentMessage string) ([]*schema.Message, error) {
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*schema.Message, error) {
 			return []*schema.Message{schema.UserMessage(agentMessage)}, nil
-		},
+		}},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -231,7 +283,7 @@ func TestInteractiveDirectorContextAnalysisIncludesStableResidentLoreMessage(t *
 
 func TestIDEContextAnalysisShowsExactModelVisibleToolContext(t *testing.T) {
 	result := "第一章内容\n\n" + toolResultMetadataHeader + "\nschema: tool_result.v1"
-	analysis, err := BuildIDEContextAnalysis(
+	analysis, _ := buildIDEContextAnalysisForTest(t,
 		&config.Config{},
 		nil,
 		IDEStoryTeller{},
@@ -249,14 +301,10 @@ func TestIDEContextAnalysisShowsExactModelVisibleToolContext(t *testing.T) {
 			schema.ToolMessage(result, "call-read", schema.WithToolName("read_file")),
 			schema.AssistantMessage("已读取", nil),
 		},
-		4,
 		nil,
 		nil,
 		ChatRequest{Message: "继续"},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var sawToolCall, sawToolResult bool
 	for _, part := range analysis.ContextMessages {
 		switch part.Kind {
@@ -278,7 +326,7 @@ func TestIDEContextAnalysisShowsExactModelVisibleToolContext(t *testing.T) {
 }
 
 func TestIDEContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {
-	analysis, err := BuildIDEContextAnalysis(
+	analysis, _ := buildIDEContextAnalysisForTest(t,
 		&config.Config{},
 		nil,
 		IDEStoryTeller{
@@ -287,7 +335,6 @@ func TestIDEContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {
 		},
 		nil,
 		nil,
-		0,
 		nil,
 		nil,
 		ChatRequest{
@@ -295,9 +342,6 @@ func TestIDEContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing.T) {
 			StyleRules: []StyleRule{{Scene: "激烈打斗", StyleContents: []string{"短句留白"}}},
 		},
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 	var foundSystemPart bool
 	for _, part := range analysis.SystemPromptParts {
 		if part.Title == "文风参考：激烈打斗" && strings.Contains(part.Content, "短句留白") {
@@ -330,9 +374,9 @@ func TestInteractiveContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing
 			StyleRules: []StyleRule{{Scene: "日常对话", StyleContents: []string{"克制对白"}}},
 		},
 		nil,
-		func(originalMessage, agentMessage string) ([]*schema.Message, error) {
+		contextAnalysisConversation{prepare: func(originalMessage, agentMessage string) ([]*schema.Message, error) {
 			return []*schema.Message{schema.UserMessage(agentMessage)}, nil
-		},
+		}},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -352,7 +396,7 @@ func TestInteractiveContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing
 	}
 }
 
-func TestIDEContextAnalysisKeepsPostCompactionMessages(t *testing.T) {
+func TestIDEContextAnalysisMatchesPureRuntimeAssemblyWithoutSideEffects(t *testing.T) {
 	messages := []*schema.Message{
 		schema.UserMessage("user 1"),
 		schema.AssistantMessage("assistant 1", nil),
@@ -368,27 +412,29 @@ func TestIDEContextAnalysisKeepsPostCompactionMessages(t *testing.T) {
 		RetainedTurns:  1,
 	}
 	cfg := &config.Config{}
-
-	analysisMessages := buildIDEAnalysisMessages(cfg, messages, len(messages), compaction)
-	got := messageContents(analysisMessages)
-	want := []string{
-		analysisMessages[0].Content,
-		"user 1",
-		"assistant 1",
-		"user 2",
-		"assistant 2",
-		"user 3",
-		"assistant 3",
+	req := ChatRequest{Message: "continue after compaction"}
+	analysis, conversation := buildIDEContextAnalysisForTest(t, cfg, nil, IDEStoryTeller{}, nil, messages, compaction, nil, req)
+	before := conversation.session.MessageCountTotal()
+	projection := projectTurnInput(req, nil, nil, conversation.ModelContextBudget())
+	assembled, err := AssembleModelContext(context.Background(), conversation, projection.OriginalMessage, ModelContextInput{
+		UserMessage: req.Message, Fragments: projection.Fragments, Budget: conversation.ModelContextBudget(),
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !isContextCompactionMessage(analysisMessages[0]) {
-		t.Fatalf("first message should be compaction summary: %#v", analysisMessages[0])
+	if after := conversation.session.MessageCountTotal(); after != before {
+		t.Fatalf("analysis or pure assembly changed session history: before=%d after=%d", before, after)
 	}
-	if len(got) != len(want) {
-		t.Fatalf("analysis messages = %#v, want %#v", got, want)
+	if _, pending, err := conversation.PendingAgentCycleCommit(HarnessDomainCommitInput); err != nil || pending {
+		t.Fatalf("analysis staged an input intent pending=%t err=%v", pending, err)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("analysis message %d = %q, want %q; all=%#v", i, got[i], want[i], got)
+	if len(analysis.ContextMessages) != len(assembled.Messages) {
+		t.Fatalf("analysis messages=%d runtime assembly=%d", len(analysis.ContextMessages), len(assembled.Messages))
+	}
+	for index, message := range assembled.Messages {
+		part := analysis.ContextMessages[index]
+		if message == nil || part.Role != string(message.Role) || part.Content != message.Content {
+			t.Fatalf("message %d differs: analysis=%+v runtime=%+v", index, part, message)
 		}
 	}
 }
@@ -428,26 +474,24 @@ func TestIDEContextAnalysisSplitsStableAndDynamicWorkspaceState(t *testing.T) {
 		t.Fatalf("create lore item failed: %v", err)
 	}
 
-	analysis, err := BuildIDEContextAnalysis(
-		&config.Config{Workspace: dir},
+	cfg := &config.Config{Workspace: dir}
+	req := ChatRequest{
+		Message: "继续写",
+		IDEContext: IDEContextRef{
+			CurrentFile: "chapters/ch0001-开局.md",
+			OpenFiles:   []string{"chapters/ch0001-开局.md", "setting/progress.md"},
+		},
+	}
+	analysis, _ := buildIDEContextAnalysisForTest(t,
+		cfg,
 		state,
 		IDEStoryTeller{},
 		nil,
 		nil,
-		0,
 		nil,
 		nil,
-		ChatRequest{
-			Message: "继续写",
-			IDEContext: IDEContextRef{
-				CurrentFile: "chapters/ch0001-开局.md",
-				OpenFiles:   []string{"chapters/ch0001-开局.md", "setting/progress.md"},
-			},
-		},
+		req,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	for _, part := range analysis.SystemPromptParts {
 		if part.Source == ".nova/lore/items.json" {

@@ -353,6 +353,9 @@ func TestSubAgentAssistantDisplayChunksPersistOutsideEffectiveContext(t *testing
 	if err := sess.AppendDisplayEventContent("run-1-subagent-01-researcher", "assistant", "第二段"); err != nil {
 		t.Fatal(err)
 	}
+	if err := sess.FlushDisplayEventContent("run-1-subagent-01-researcher", "assistant"); err != nil {
+		t.Fatal(err)
+	}
 
 	reloadedStore, err := NewStore(dir)
 	if err != nil {
@@ -377,7 +380,7 @@ func TestSubAgentAssistantDisplayChunksPersistOutsideEffectiveContext(t *testing
 	}
 }
 
-func TestDisplayToolArgsDeltasArePersistedOnFinalResult(t *testing.T) {
+func TestDisplayToolArgsDeltasAreBatchedAndFlushedOnFinalResult(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)
 	if err != nil {
@@ -407,7 +410,7 @@ func TestDisplayToolArgsDeltasArePersistedOnFinalResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	if history := beforeResult.History(); len(history) != 1 || history[0].Args != "" {
-		t.Fatalf("小块工具参数不应每帧落盘: %#v", history)
+		t.Fatalf("小块流式参数应等待工具终态批量落盘: %#v", history)
 	}
 
 	if err := sess.UpdateDisplayToolResult("call-1", "write_file", "success", "ok"); err != nil {

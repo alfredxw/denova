@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	semanticLoreClassificationMaxBytes  = 64 * 1024
-	semanticLoreClassificationBodyBytes = 2 * 1024
+	semanticLoreClassificationMaxBytes  = 256 * 1024
+	semanticLoreClassificationBodyBytes = 8 * 1024
 )
 
 func applySemanticTavernLoreClassification(ops []LoreOperation, stats *tavernImportStats, classifier LoreSemanticClassifier) error {
@@ -48,7 +48,12 @@ func applySemanticTavernLoreClassification(ops []LoreOperation, stats *tavernImp
 		return nil
 	}
 	if len(inputs) < len(stats.UncertainOpIndexes) {
-		stats.Warnings = append(stats.Warnings, fmt.Sprintf("语义分类输入达到 64 KiB 上限；其余 %d 条保留本地分类结果", len(stats.UncertainOpIndexes)-len(inputs)))
+		omitted := len(stats.UncertainOpIndexes) - len(inputs)
+		stats.Warnings = append(stats.Warnings, fmt.Sprintf(
+			"语义分类输入达到 %d KiB 上限；其余 %d 条保留本地分类结果 / Semantic classification input reached the %d KiB limit; %d remaining items keep local results",
+			semanticLoreClassificationMaxBytes/1024, omitted,
+			semanticLoreClassificationMaxBytes/1024, omitted,
+		))
 	}
 	suggestions, err := classifier(inputs)
 	if err != nil {

@@ -153,7 +153,7 @@ func TestToolResultContextRecorderSkipsMalformedCallAndResult(t *testing.T) {
 	}
 }
 
-func TestApplyToolResultContextPolicyDropsMalformedAndOrphanedPairs(t *testing.T) {
+func TestApplyToolResultContextPolicyDropsMalformedAndOrphanedPairsAndCompletesMissingResult(t *testing.T) {
 	messages := []*schema.Message{
 		schema.AssistantMessage("useful narration", []schema.ToolCall{
 			{ID: "invalid", Type: "function", Function: schema.FunctionCall{Name: "read_file", Arguments: `{"path":`}},
@@ -164,8 +164,10 @@ func TestApplyToolResultContextPolicyDropsMalformedAndOrphanedPairs(t *testing.T
 		schema.UserMessage("继续"),
 	}
 	filtered := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true})
-	if len(filtered) != 2 || filtered[0].Content != "useful narration" || len(filtered[0].ToolCalls) != 0 || filtered[1].Role != schema.User {
-		t.Fatalf("invalid protocol messages must not enter the next request: %#v", filtered)
+	if len(filtered) != 3 || filtered[0].Content != "useful narration" || len(filtered[0].ToolCalls) != 1 ||
+		filtered[0].ToolCalls[0].ID != "missing" || filtered[1].Role != schema.Tool ||
+		filtered[1].ToolCallID != "missing" || !isUnknownToolEffectResult(filtered[1].Content) || filtered[2].Role != schema.User {
+		t.Fatalf("malformed/orphaned protocol must be dropped while a unique missing result is recovered: %#v", filtered)
 	}
 }
 

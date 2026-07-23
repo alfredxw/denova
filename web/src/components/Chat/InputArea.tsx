@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, Eraser, Layers3, List, ListTree, PenLine, ScrollText, Send, Sparkles, Square, WandSparkles } from 'lucide-react'
+import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, Eraser, Layers3, List, ListTree, PenLine, ScrollText, Sparkles, WandSparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
 import { TokenUsageDialog, type TokenUsageRecord } from './TokenUsagePanel'
@@ -18,17 +18,12 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
+import { AgentComposerControls } from './AgentComposerControls'
+import type { AgentCommandDelivery } from '@/lib/api'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -58,6 +53,7 @@ type CommandOption = {
 
 type CommandScope = 'all' | 'skills' | 'none'
 type BuiltinCommand = typeof COMMANDS[number]['cmd']
+export type ActiveDelivery = AgentCommandDelivery
 const MAX_TOKEN_USAGE_MENU_COUNT = 10
 const inputDrafts = new Map<string, string>()
 
@@ -65,6 +61,15 @@ interface InputAreaProps {
   onSend: (message: string) => boolean | void | Promise<boolean | void>
   onStop?: () => void
   disabled: boolean
+  /** Agent execution and editor availability are independent: active runs can still accept instructions. */
+  generationActive?: boolean
+  activeDelivery?: ActiveDelivery
+  onActiveDeliveryChange?: (delivery: ActiveDelivery) => void
+  abortPending?: boolean
+  commandSubmitting?: boolean
+  activeControlsDisabled?: boolean
+  activeStopDisabled?: boolean
+  sendBlocked?: boolean
   planMode?: boolean
   onTogglePlanMode?: () => void
   draftKey?: string
@@ -109,6 +114,14 @@ export function InputArea({
   onSend,
   onStop,
   disabled,
+  generationActive,
+  activeDelivery = 'follow_up',
+  onActiveDeliveryChange,
+  abortPending = false,
+  commandSubmitting = false,
+  activeControlsDisabled = false,
+  activeStopDisabled,
+  sendBlocked = false,
   planMode = false,
   onTogglePlanMode,
   draftKey,
@@ -226,6 +239,8 @@ export function InputArea({
     () => Math.min(MAX_TOKEN_USAGE_MENU_COUNT, tokenUsageMessages.filter((message) => (!message.role || message.role === 'token_usage') && Number(message.model_calls || 0) > 0).length),
     [tokenUsageMessages],
   )
+  // Preserve stop controls for legacy callers that still model an active run as `disabled`.
+  const isGenerationActive = generationActive ?? Boolean(disabled && onStop)
 
   useEffect(() => {
     if (!draftKey) return
@@ -242,6 +257,15 @@ export function InputArea({
     if (value) inputDrafts.set(draftKey, value)
     else inputDrafts.delete(draftKey)
   }, [draftKey, value])
+
+  // The initial AI SDK promise spans the response stream. Once generation is
+  // visibly active, release the request-level composer lock so operation-scoped
+  // Follow Up/Steer commands can be submitted independently.
+  useEffect(() => {
+    if (!isGenerationActive || !submittingRef.current) return
+    submittingRef.current = false
+    setSubmitting(false)
+  }, [isGenerationActive])
 
   useEffect(() => {
     if (activeCommandIndex >= filteredCommands.length) setActiveCommandIndex(0)
@@ -628,7 +652,7 @@ export function InputArea({
                   <>
                     <DropdownMenuCheckboxItem
                       checked={planMode}
-                      disabled={disabled}
+                      disabled={disabled || isGenerationActive}
                       onCheckedChange={() => onTogglePlanMode()}
                       className="cursor-pointer pr-16 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
                       title={t('chat.plan.shiftTabHint')}
@@ -651,7 +675,7 @@ export function InputArea({
                 </DropdownMenuItem>
                 <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
                 <DropdownMenuItem
-                  disabled={disabled}
+                  disabled={disabled || isGenerationActive}
                   onSelect={handleContextAnalyze}
                   className="cursor-pointer text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
                 >
@@ -673,21 +697,22 @@ export function InputArea({
             <TokenUsageDialog open={tokenUsageOpen} messages={tokenUsageMessages} onOpenChange={setTokenUsageOpen} onOpenTrace={onOpenTrace} />
           </>
         }
-        toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled} />}
-        submitControl={
-          <Button
-            type="button"
-            onClick={disabled ? onStop : handleSend}
-            disabled={disabled ? !onStop : submitting || (!value.trim() && !hasReviewFeedback)}
-            size="icon-sm"
-            className={`nova-agent-composer-submit h-9 w-9 shrink-0 rounded-[10px] text-[var(--nova-text)] shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ${
-              disabled ? 'bg-[var(--nova-danger-bg)] hover:bg-[var(--nova-danger-bg)]' : 'bg-[var(--nova-active)] hover:bg-[var(--nova-hover)] disabled:bg-[var(--nova-active)]'
-            }`}
-            aria-label={disabled ? t('chat.input.stop') : t('chat.input.send')}
-          >
-            {disabled ? <Square className="h-3.5 w-3.5 fill-current" /> : <Send className="h-4 w-4" />}
-          </Button>
-        }
+        toolbarEnd={<ModelProfileSwitcher agentKey={agentKey} workspace={workspace} disabled={disabled || isGenerationActive} />}
+        submitControl={(
+          <AgentComposerControls
+            generationActive={isGenerationActive}
+            delivery={activeDelivery}
+            onDeliveryChange={onActiveDeliveryChange}
+            onStop={onStop}
+            onSend={handleSend}
+            sendDisabled={sendBlocked || submitting || (!value.trim() && !hasReviewFeedback)}
+            disabled={disabled}
+            abortPending={abortPending}
+            actionPending={commandSubmitting}
+            activeControlsDisabled={activeControlsDisabled}
+            stopDisabled={activeStopDisabled}
+          />
+        )}
       />
     </div>
   )

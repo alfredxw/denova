@@ -67,6 +67,68 @@ func TestUserCatalogListsTasksFromEveryWorkspaceWithExplicitTargets(t *testing.T
 	}
 }
 
+func TestCatalogLocatorsDisambiguateImportedTaskIDsAcrossWorkspaces(t *testing.T) {
+	root := t.TempDir()
+	userDir := filepath.Join(root, "user")
+	workspaceA := filepath.Join(root, "book-a")
+	workspaceB := filepath.Join(root, "book-b")
+	storeA := NewStore(userDir, workspaceA)
+	storeB := NewStore(userDir, workspaceB)
+	taskA, err := storeA.Create(Task{Scope: ScopeWorkspace, Name: "A", Template: TemplateReview})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storeB.Create(Task{Scope: ScopeWorkspace, Name: "B", Template: TemplateReview}); err != nil {
+		t.Fatal(err)
+	}
+	// Imported workspace data can legitimately preserve a task's compact ID.
+	// Reproduce that collision without relying on random ID generation.
+	tasksB, err := storeB.readScope(ScopeWorkspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tasksB[0].ID = taskA.ID
+	if err := storeB.writeScope(ScopeWorkspace, tasksB); err != nil {
+		t.Fatal(err)
+	}
+
+	locatorA := CatalogTaskID(ScopeWorkspace, workspaceA, taskA.ID)
+	locatorB := CatalogTaskID(ScopeWorkspace, workspaceB, taskA.ID)
+	if locatorA == locatorB {
+		t.Fatalf("workspace catalog locators collided: %q", locatorA)
+	}
+	catalog := NewStore(userDir, "").WithWorkspaces(workspaceA, workspaceB)
+	resolvedA, err := catalog.Get(locatorA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolvedB, err := catalog.Get(locatorB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolvedA.Name != "A" || resolvedB.Name != "B" || resolvedA.ID != resolvedB.ID {
+		t.Fatalf("catalog collision resolution A=%#v B=%#v", resolvedA, resolvedB)
+	}
+	if _, err := catalog.AppendRun(locatorA, RunRecord{ID: "run-a", TaskID: taskA.ID, Scope: ScopeWorkspace, Workspace: workspaceA, Trigger: TriggerManual, Status: RunStatusSuccess}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := catalog.AppendRun(locatorB, RunRecord{ID: "run-b", TaskID: taskA.ID, Scope: ScopeWorkspace, Workspace: workspaceB, Trigger: TriggerManual, Status: RunStatusSuccess}); err != nil {
+		t.Fatal(err)
+	}
+	latestA, err := storeA.Get(locatorA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latestB, err := storeB.Get(locatorB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(latestA.RecentRuns) != 1 || latestA.RecentRuns[0].ID != "run-a" ||
+		len(latestB.RecentRuns) != 1 || latestB.RecentRuns[0].ID != "run-b" {
+		t.Fatalf("catalog run writes crossed workspaces: A=%#v B=%#v", latestA.RecentRuns, latestB.RecentRuns)
+	}
+}
+
 func TestUserCatalogSelectsOnlyTasksForOneExecutionTarget(t *testing.T) {
 	root := t.TempDir()
 	userDir := filepath.Join(root, "user")

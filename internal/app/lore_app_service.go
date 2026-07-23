@@ -123,15 +123,32 @@ func (s *LoreAppService) StartLoreImagesGenerateTask(request LoreImagesGenerateR
 	}
 	a := s.app
 	a.mu.Lock()
-	defer a.mu.Unlock()
+	if a.workspaceTransition {
+		a.mu.Unlock()
+		return nil, ErrWorkspaceTransition
+	}
 	if a.activeLoreImageTask != nil {
 		if !a.activeLoreImageTask.Finished() {
+			a.mu.Unlock()
 			return nil, ErrLoreImageTaskRunning
 		}
 		a.activeLoreImageTask = nil
 	}
+	workspace := a.workspace
+	a.mu.Unlock()
 
-	task := NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
+	task, err := NewRegisteredTask(func(task *Task) error {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		if a.activeLoreImageTask != nil && !a.activeLoreImageTask.Finished() {
+			return ErrLoreImageTaskRunning
+		}
+		if err := a.registerWorkspaceTaskLocked(task, workspace, true); err != nil {
+			return err
+		}
+		a.activeLoreImageTask = task
+		return nil
+	}, func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		defer s.clearLoreImageTask(task)
 		log.Printf("[lore-image] batch begin task_id=%s items=%d overwrite=%v", task.ID(), len(request.ItemIDs), request.OverwriteExisting)
 		emit(agent.Event{Type: "thinking", Data: map[string]string{"content": "正在准备批量生成资料项图片。"}})
@@ -149,13 +166,15 @@ func (s *LoreAppService) StartLoreImagesGenerateTask(request LoreImagesGenerateR
 		}})
 		log.Printf("[lore-image] batch done task_id=%s generated=%d skipped=%d failed=%d", task.ID(), generated, skipped, failed)
 	})
-
-	a.activeLoreImageTask = task
+	if err != nil {
+		return nil, err
+	}
 	return task, nil
 }
 
 func (s *LoreAppService) clearLoreImageTask(task *Task) {
 	a := s.app
+	a.unregisterWorkspaceTask(task)
 	a.mu.Lock()
 	if a.activeLoreImageTask == task {
 		a.activeLoreImageTask = nil
@@ -219,10 +238,18 @@ func (s *LoreAppService) runLoreImagesGenerateBatch(ctx context.Context, request
 }
 
 func (s *LoreAppService) generateLoreItemImage(ctx context.Context, id string, request LoreItemImageGenerateRequest) (book.LoreItem, error) {
-	store, cfg, bookService, err := s.loreImageRuntimeSnapshot()
+	runtime, err := s.app.images().acquireWorkspaceRuntime(ctx)
 	if err != nil {
 		return book.LoreItem{}, err
 	}
+	defer runtime.Release()
+	cfg := runtime.cfg
+	if layered, loadErr := config.LoadLayeredWithStartupConfig(cfg.DataDir(), runtime.workspace); loadErr == nil {
+		applyLayeredSettingsToConfig(&cfg, layered)
+	} else {
+		log.Printf("[lore-image] 加载分层配置失败 workspace=%s err=%v", runtime.workspace, loadErr)
+	}
+	store := book.NewLoreStore(runtime.workspace)
 	item, err := store.ReadAny(id)
 	if err != nil {
 		return book.LoreItem{}, err
@@ -231,7 +258,7 @@ func (s *LoreAppService) generateLoreItemImage(ctx context.Context, id string, r
 	if err != nil {
 		return book.LoreItem{}, err
 	}
-	image, err := loreimage.NewService().Generate(ctx, &cfg, bookService, loreimage.GenerateRequest{
+	image, err := loreimage.NewService().Generate(runtime.Context(), &cfg, runtime.bookService, loreimage.GenerateRequest{
 		Item:              item,
 		Instruction:       request.Instruction,
 		ImagePresetID:     preset.ID,
@@ -241,7 +268,7 @@ func (s *LoreAppService) generateLoreItemImage(ctx context.Context, id string, r
 	if err != nil {
 		return book.LoreItem{}, err
 	}
-	if err := ctx.Err(); err != nil {
+	if err := runtime.Context().Err(); err != nil {
 		return book.LoreItem{}, err
 	}
 	updated, err := store.SetImage(item.ID, &image)

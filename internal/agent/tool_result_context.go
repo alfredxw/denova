@@ -144,11 +144,12 @@ func applyToolResultContextPolicy(messages []*schema.Message, policy ToolResultC
 	if len(messages) == 0 {
 		return messages
 	}
+	messages = completeUnknownToolResults(messages)
 	policy = policy.normalized()
 	if !policy.Enabled {
-		return removeToolContextMessages(messages)
+		return filterToolContextMessages(messages, policy, false)
 	}
-	return filterSemanticToolContextMessages(messages, policy)
+	return filterToolContextMessages(messages, policy, true)
 }
 
 func sanitizedToolContextMessage(msg *schema.Message, policy ToolResultContextPolicy) *schema.Message {
@@ -166,27 +167,4 @@ func sanitizedToolContextMessage(msg *schema.Message, policy ToolResultContextPo
 
 func ApplyToolResultContextPolicyForConversation(messages []*schema.Message, policy ToolResultContextPolicy) []*schema.Message {
 	return applyToolResultContextPolicy(messages, policy)
-}
-
-func removeToolContextMessages(messages []*schema.Message) []*schema.Message {
-	filtered := make([]*schema.Message, 0, len(messages))
-	for _, msg := range messages {
-		if msg == nil {
-			continue
-		}
-		if msg.Role == schema.Tool {
-			continue
-		}
-		if msg.Role == schema.Assistant && len(msg.ToolCalls) > 0 {
-			if strings.TrimSpace(msg.Content) == "" {
-				continue
-			}
-			next := *msg
-			next.ToolCalls = nil
-			filtered = append(filtered, &next)
-			continue
-		}
-		filtered = append(filtered, msg)
-	}
-	return filtered
 }

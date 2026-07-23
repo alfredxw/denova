@@ -104,22 +104,6 @@ func (contexts ReviewFeedbackContexts) EncodedSize() int {
 	return len(reviewFeedbackPrefix) + len(encoded) + len(reviewFeedbackSuffix)
 }
 
-func appendReviewFeedbackContext(message string, feedback ReviewFeedbackContexts, logs ...*contextBuildLog) string {
-	block, ok := reviewFeedbackContextBlockFromNormalized(feedback.normalized())
-	if !ok {
-		return message
-	}
-
-	var sb strings.Builder
-	sb.Grow(len(message) + len(block))
-	sb.WriteString(message)
-	sb.WriteString(block)
-
-	note := fmt.Sprintf("selections=%d comments=%d max_bytes=%d", len(feedback), feedback.CommentCount(), MaxReviewFeedbackContextBytes)
-	addContextLog(logs, "Review Feedback", "用户明确引用的审阅意见", block, note)
-	return sb.String()
-}
-
 // normalized drops empty contexts and canonicalizes each source so callers
 // build context from a single, deterministic representation.
 func (contexts ReviewFeedbackContexts) normalized() ReviewFeedbackContexts {
@@ -156,6 +140,9 @@ func reviewFeedbackContextBlock(feedback ReviewFeedbackContexts) (string, error)
 // already-normalized contexts. The ok return is false when the block exceeds
 // the configured byte budget.
 func reviewFeedbackContextBlockFromNormalized(normalized ReviewFeedbackContexts) (string, bool) {
+	if len(normalized) == 0 {
+		return "", false
+	}
 	encoded, err := json.Marshal(normalized)
 	if err != nil {
 		return "", false

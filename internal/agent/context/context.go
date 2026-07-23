@@ -1,11 +1,9 @@
 package context
 
 import (
-	stdcontext "context"
 	"fmt"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -18,6 +16,10 @@ const (
 	PlacementAuditOnly       Placement = "audit_only"
 
 	DefaultPreviewChars = 100
+
+	finalUserSourceNote     = "状态快照可能过期，以工具读取为准。"
+	contextSourceSeparator  = "\n\n---\n\n"
+	finalUserRequestWrapper = "\n\n---\n\n# 本轮用户请求（最高优先级）\n\n"
 )
 
 // Source is one bounded context fragment intentionally made visible to the model
@@ -34,42 +36,29 @@ type Source struct {
 	Note      string
 }
 
-type Request struct {
-	Messages     []*schema.Message
-	Sources      []Source
-	Adapter      ModeAdapter
-	PreviewChars int
-}
-
-// ModeAdapter lets IDE, interactive, automation, and future modes provide
-// domain-specific context sources without owning final message placement.
-type ModeAdapter interface {
-	Sources(stdcontext.Context) ([]Source, error)
-}
-
-type ModeAdapterFunc func(stdcontext.Context) ([]Source, error)
-
-func (fn ModeAdapterFunc) Sources(ctx stdcontext.Context) ([]Source, error) {
-	return fn(ctx)
-}
-
 type Result struct {
 	Messages      []*schema.Message
 	Ledger        []LedgerPart
 	AnalysisParts []AnalysisPart
+	Fragments     []Fragment
+	// InjectedBytes is the exact rendered string overhead introduced into
+	// Messages by included fragments; the pre-existing transcript is excluded.
+	InjectedBytes int
 }
 
 type LedgerPart struct {
-	Source    string `json:"source"`
-	Title     string `json:"title"`
-	Purpose   string `json:"purpose,omitempty"`
-	Bytes     int    `json:"bytes"`
-	Chars     int    `json:"chars"`
-	Preview   string `json:"preview"`
-	Note      string `json:"note,omitempty"`
-	Included  bool   `json:"included"`
-	Truncated bool   `json:"truncated,omitempty"`
-	Limit     int    `json:"limit,omitempty"`
+	Source    string    `json:"source"`
+	Title     string    `json:"title"`
+	Purpose   string    `json:"purpose,omitempty"`
+	Placement Placement `json:"placement"`
+	Bytes     int       `json:"bytes"`
+	Chars     int       `json:"chars"`
+	Preview   string    `json:"preview"`
+	Hash      string    `json:"hash"`
+	Note      string    `json:"note,omitempty"`
+	Included  bool      `json:"included"`
+	Truncated bool      `json:"truncated,omitempty"`
+	Limit     int       `json:"limit,omitempty"`
 }
 
 type AnalysisPart struct {
@@ -81,64 +70,6 @@ type AnalysisPart struct {
 	Note    string `json:"note,omitempty"`
 	Bytes   int    `json:"bytes"`
 	Chars   int    `json:"chars"`
-}
-
-func Build(ctx stdcontext.Context, req Request) (Result, error) {
-	if err := ctx.Err(); err != nil {
-		return Result{}, err
-	}
-	sources := append([]Source(nil), req.Sources...)
-	if req.Adapter != nil {
-		adapterSources, err := req.Adapter.Sources(ctx)
-		if err != nil {
-			return Result{}, err
-		}
-		sources = append(sources, adapterSources...)
-	}
-	previewChars := req.PreviewChars
-	if previewChars <= 0 {
-		previewChars = DefaultPreviewChars
-	}
-	messages := cloneMessages(req.Messages)
-	var ledger []LedgerPart
-	var analysis []AnalysisPart
-	var leadingSources []Source
-	var finalUserSources []Source
-	for _, source := range sources {
-		source = normalizeSource(source)
-		if source.Content == "" && source.Source == "" && source.Title == "" {
-			continue
-		}
-		ledger = append(ledger, ledgerPart(source, previewChars))
-		if source.Included {
-			analysis = append(analysis, analysisPart(len(analysis)+1, source))
-		}
-		switch source.Placement {
-		case PlacementLeadingMessage:
-			if source.Included && strings.TrimSpace(source.Content) != "" {
-				leadingSources = append(leadingSources, source)
-			}
-		case PlacementFinalUserPrefix:
-			if source.Included && strings.TrimSpace(source.Content) != "" && len(messages) > 0 {
-				finalUserSources = append(finalUserSources, source)
-			}
-		case PlacementAuditOnly:
-		default:
-		}
-	}
-	if len(leadingSources) > 0 {
-		leadingMessages := make([]*schema.Message, 0, len(leadingSources))
-		for _, source := range leadingSources {
-			leadingMessages = append(leadingMessages, schema.UserMessage(StandaloneMessage(source.Title, source.Content, "")))
-		}
-		messages = append(leadingMessages, messages...)
-	}
-	if len(finalUserSources) > 0 && len(messages) > 0 {
-		last := *messages[len(messages)-1]
-		last.Content = PrependFinalUserSources(last.Content, finalUserSources)
-		messages[len(messages)-1] = &last
-	}
-	return Result{Messages: messages, Ledger: ledger, AnalysisParts: analysis}, nil
 }
 
 func SourceSummary(sources []Source, previewChars int) string {
@@ -158,9 +89,11 @@ func SourceSummary(sources []Source, previewChars int) string {
 		fields := []string{
 			fmt.Sprintf("%d:source=%q", i, part.Source),
 			fmt.Sprintf("title=%q", part.Title),
+			fmt.Sprintf("placement=%q", part.Placement),
 			"bytes=" + intString(part.Bytes),
 			"chars=" + intString(part.Chars),
 			"preview=" + strconv.Quote(part.Preview),
+			"hash=" + part.Hash,
 		}
 		if part.Purpose != "" {
 			fields = append(fields, "purpose="+strconv.Quote(part.Purpose))
@@ -203,23 +136,7 @@ func StandaloneMessage(title, content, note string) string {
 }
 
 func PrependFinalUserSource(agentMessage, title, content string) string {
-	content = strings.TrimSpace(content)
-	if content == "" {
-		return agentMessage
-	}
-	title = strings.TrimSpace(title)
-	if title == "" {
-		title = "本轮动态上下文"
-	}
-	var sb strings.Builder
-	sb.WriteString("# ")
-	sb.WriteString(title)
-	sb.WriteString("\n\n")
-	sb.WriteString("状态快照可能过期，以工具读取为准。\n\n")
-	sb.WriteString(content)
-	sb.WriteString("\n\n---\n\n# 本轮用户请求（最高优先级）\n\n")
-	sb.WriteString(strings.TrimSpace(agentMessage))
-	return sb.String()
+	return PrependFinalUserSources(agentMessage, []Source{{Title: title, Content: content, Included: true}})
 }
 
 func PrependFinalUserSources(agentMessage string, sources []Source) string {
@@ -233,27 +150,30 @@ func PrependFinalUserSources(agentMessage string, sources []Source) string {
 	if len(included) == 0 {
 		return agentMessage
 	}
-	if len(included) == 1 {
-		source := included[0]
-		return PrependFinalUserSource(agentMessage, source.Title, source.Content)
-	}
 	var sb strings.Builder
 	for i, source := range included {
-		title := strings.TrimSpace(source.Title)
-		if title == "" {
-			title = "本轮动态上下文"
-		}
 		if i > 0 {
-			sb.WriteString("\n\n---\n\n")
+			sb.WriteString(contextSourceSeparator)
 		}
-		sb.WriteString("# ")
-		sb.WriteString(title)
-		sb.WriteString("\n\n")
-		sb.WriteString("状态快照可能过期，以工具读取为准。\n\n")
-		sb.WriteString(strings.TrimSpace(source.Content))
+		sb.WriteString(finalUserSourceBlock(source))
 	}
-	sb.WriteString("\n\n---\n\n# 本轮用户请求（最高优先级）\n\n")
+	sb.WriteString(finalUserRequestWrapper)
 	sb.WriteString(strings.TrimSpace(agentMessage))
+	return sb.String()
+}
+
+func finalUserSourceBlock(source Source) string {
+	title := strings.TrimSpace(source.Title)
+	if title == "" {
+		title = "本轮动态上下文"
+	}
+	var sb strings.Builder
+	sb.WriteString("# ")
+	sb.WriteString(title)
+	sb.WriteString("\n\n")
+	sb.WriteString(finalUserSourceNote)
+	sb.WriteString("\n\n")
+	sb.WriteString(strings.TrimSpace(source.Content))
 	return sb.String()
 }
 
@@ -289,31 +209,14 @@ func normalizeSource(source Source) Source {
 }
 
 func ledgerPart(source Source, previewChars int) LedgerPart {
-	return LedgerPart{
-		Source:    source.Source,
-		Title:     source.Title,
-		Purpose:   source.Purpose,
-		Bytes:     len(source.Content),
-		Chars:     utf8.RuneCountInString(source.Content),
-		Preview:   Preview(source.Content, previewChars),
-		Note:      source.Note,
-		Included:  source.Included,
-		Truncated: source.Truncated,
-		Limit:     source.Limit,
-	}
-}
-
-func analysisPart(index int, source Source) AnalysisPart {
-	return AnalysisPart{
-		ID:      fmt.Sprintf("source_%d", index),
-		Source:  source.Source,
-		Title:   source.Title,
-		Role:    string(schema.User),
-		Content: source.Content,
-		Note:    source.Note,
-		Bytes:   len(source.Content),
-		Chars:   utf8.RuneCountInString(source.Content),
-	}
+	source = normalizeSource(source)
+	fragment := boundFragmentMetadata(Fragment{
+		Source: source.Source, Title: source.Title, Purpose: source.Purpose,
+		Content: source.Content, Placement: source.Placement, Limit: source.Limit,
+		Included: source.Included, Truncated: source.Truncated, Note: source.Note,
+		Hash: fragmentContentHash(source.Content),
+	}, DefaultMaxMetadataFieldBytes)
+	return ledgerPartForFragment(fragment, previewChars, DefaultMaxMetadataFieldBytes)
 }
 
 func Preview(value string, maxRunes int) string {

@@ -47,7 +47,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 
 	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我在黄泉酒馆点燃火把", story.ReplyTargetChars, nil)
-	history, err := conversation.PrepareMessages("我在黄泉酒馆点燃火把", "我在黄泉酒馆点燃火把")
+	history, err := assembleAndCommitInteractiveContextForTest(conversation, "我在黄泉酒馆点燃火把", "我在黄泉酒馆点燃火把")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 
 	submitTestTurnResult(t, conversation, "点燃火把", "照亮酒馆墙面")
-	if err := conversation.AppendAssistantWithThinking("火光照亮了墙上的新线索。", "先判断现场风险。"); err != nil {
+	if err := commitInteractiveAssistantForTest(t, conversation, "火光照亮了墙上的新线索。", "先判断现场风险。"); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "")
@@ -238,7 +238,7 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	}
 
 	submitTestTurnResult(t, conversation, "继续调查", "确认柜台后的通道")
-	if err := conversation.AppendAssistant("柜台后的影子露出一道能通往地窖的缝。"); err != nil {
+	if err := commitInteractiveAssistantForTest(t, conversation, "柜台后的影子露出一道能通往地窖的缝。", ""); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err = store.Snapshot(story.ID, "")
@@ -336,7 +336,7 @@ func TestInteractiveConversationInjectsStoryDirectorStrategyPrompt(t *testing.T)
 	}
 
 	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我跟上灯影", story.ReplyTargetChars, nil)
-	history, err := conversation.PrepareMessages("我跟上灯影", "我跟上灯影")
+	history, err := assembleAndCommitInteractiveContextForTest(conversation, "我跟上灯影", "我跟上灯影")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +420,7 @@ func TestInteractiveConversationKeepsEventCardsForDirectorOnly(t *testing.T) {
 	}
 
 	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我看向质疑我的同门", story.ReplyTargetChars, nil)
-	history, err := conversation.PrepareMessages("我看向质疑我的同门", "我看向质疑我的同门")
+	history, err := assembleAndCommitInteractiveContextForTest(conversation, "我看向质疑我的同门", "我看向质疑我的同门")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -520,7 +520,7 @@ func TestInteractiveConversationPersistsRuleResolution(t *testing.T) {
 		t.Fatal(err)
 	}
 	submitTestTurnResult(t, conversation, "闯入秘境", "裁定入口禁制")
-	if err := conversation.AppendAssistant("秘境入口的白光猛然坍缩，主角被禁制震回台阶。"); err != nil {
+	if err := commitInteractiveAssistantForTest(t, conversation, "秘境入口的白光猛然坍缩，主角被禁制震回台阶。", ""); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -625,7 +625,7 @@ func TestInteractiveConversationPersistsDisplayEventTimeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	submitTestTurnResult(t, conversation, "调查档案柜", "找到档案室线索")
-	if err := conversation.AppendAssistantWithThinking("档案柜里露出一张潮湿的地图。", "先分析档案室线索。第二轮基于工具结果继续判断。"); err != nil {
+	if err := commitInteractiveAssistantForTest(t, conversation, "档案柜里露出一张潮湿的地图。", "先分析档案室线索。第二轮基于工具结果继续判断。"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -700,7 +700,7 @@ func TestInteractiveConversationIgnoresLegacyTellerReplyTargetChars(t *testing.T
 	}
 
 	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我观察四周", story.ReplyTargetChars, nil)
-	history, err := conversation.PrepareMessages("我观察四周", "我观察四周")
+	history, err := assembleAndCommitInteractiveContextForTest(conversation, "我观察四周", "我观察四周")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -738,7 +738,7 @@ func TestInteractiveConversationKeepsFullHistoryWithoutSlidingWindow(t *testing.
 	}
 	cfg := &config.Config{}
 	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, cfg)
-	history, err := conversation.PrepareMessages("我继续探索", "我继续探索")
+	history, err := assembleAndCommitInteractiveContextForTest(conversation, "我继续探索", "我继续探索")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -784,7 +784,7 @@ func TestInteractiveConversationUsesDefaultCompactionRetainedTurns(t *testing.T)
 
 	cfg := &config.Config{}
 	conversation := newInteractiveConversation(store, novaDir, workspace, story.ID, "", "我继续探索", story.ReplyTargetChars, cfg)
-	history, err := conversation.PrepareMessages("我继续探索", "我继续探索")
+	history, err := assembleAndCommitInteractiveContextForTest(conversation, "我继续探索", "我继续探索")
 	if err != nil {
 		t.Fatal(err)
 	}

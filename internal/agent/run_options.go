@@ -17,19 +17,24 @@ const (
 
 // RunOptions identifies one Agent run across runtime, trace, and UI surfaces.
 type RunOptions struct {
-	AgentKind              string
-	RootAgentName          string
-	TaskID                 string
-	SessionID              string
-	ReviewThreadID         string
-	StoryID                string
-	BranchID               string
-	TurnID                 string
-	MaintenanceTask        string
-	Workspace              string
-	Mode                   string
-	IdleTimeout            time.Duration
-	ToolResultMaxBytes     int
+	AgentKind     string
+	RootAgentName string
+	TaskID        string
+	// AutomationTaskID is the stable automation definition identity used by
+	// the durable binding. TaskID remains the individual run/trace identity.
+	AutomationTaskID   string
+	SessionID          string
+	ReviewThreadID     string
+	StoryID            string
+	BranchID           string
+	TurnID             string
+	MaintenanceTask    string
+	Workspace          string
+	Mode               string
+	IdleTimeout        time.Duration
+	ToolResultMaxBytes int
+	// Controls carries lifecycle requests for this run only. Closing it is a no-op.
+	Controls               <-chan RunControl
 	SystemPromptLog        SystemPromptCompositionLog
 	OnMutationsVerified    func(context.Context, []ToolMutation, PostRunVerification)
 	OnUserMessageCommitted func(context.Context) error
@@ -45,6 +50,7 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 		o.RootAgentName = rootAgentNameForKind(o.AgentKind)
 	}
 	o.TaskID = strings.TrimSpace(o.TaskID)
+	o.AutomationTaskID = strings.TrimSpace(o.AutomationTaskID)
 	o.SessionID = strings.TrimSpace(o.SessionID)
 	o.ReviewThreadID = strings.TrimSpace(o.ReviewThreadID)
 	o.StoryID = strings.TrimSpace(o.StoryID)

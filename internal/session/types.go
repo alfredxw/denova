@@ -8,17 +8,17 @@ import (
 )
 
 const (
-	defaultSessionID             = "default"
-	defaultSessionTitle          = "新会话"
-	displayToolArgsPersistBytes  = 4 * 1024
-	maxTokenUsageDisplayEvents   = 10
-	historyTypeMessage           = "message"
-	historyTypeContextMessage    = "context_message"
-	historyTypeDisplay           = "display"
-	historyTypeClear             = "clear"
-	historyTypeInterrupt         = "interrupt"
-	historyTypeCompaction        = "context_compaction"
-	historyTypeCompactionRemoved = "context_compaction_removed"
+	defaultSessionID               = "default"
+	defaultSessionTitle            = "新会话"
+	displayStreamPersistBatchBytes = 4 * 1024
+	maxTokenUsageDisplayEvents     = 10
+	historyTypeMessage             = "message"
+	historyTypeContextMessage      = "context_message"
+	historyTypeDisplay             = "display"
+	historyTypeClear               = "clear"
+	historyTypeInterrupt           = "interrupt"
+	historyTypeCompaction          = "context_compaction"
+	historyTypeCompactionRemoved   = "context_compaction_removed"
 
 	InterruptionPending  = "pending"
 	InterruptionResolved = "resolved"
@@ -61,6 +61,11 @@ type HistoryEntry struct {
 	SSEDisplayNotice     string                 `json:"sse_display_notice,omitempty"`
 	SSEGeneratedChars    int                    `json:"sse_generated_chars,omitempty"`
 	UserReferences       []UserMessageReference `json:"user_references,omitempty"`
+	AgentCommandID       string                 `json:"agent_command_id,omitempty"`
+	AgentOperationID     string                 `json:"agent_operation_id,omitempty"`
+	AgentCycle           int                    `json:"agent_cycle,omitempty"`
+	DomainCommitHash     string                 `json:"domain_commit_hash,omitempty"`
+	ContextRevision      uint64                 `json:"context_revision,omitempty"`
 }
 
 // UserMessageReference is display-only context attached to one durable user
@@ -75,6 +80,14 @@ type UserMessageReference struct {
 }
 
 type MessageMetadata struct {
+	// MessageID and the coordinator identity form the stable cross-domain key
+	// for one Agent cycle. They are model-invisible but survive journal replay.
+	MessageID         string                 `json:"message_id,omitempty"`
+	AgentCommandID    string                 `json:"agent_command_id,omitempty"`
+	AgentOperationID  string                 `json:"agent_operation_id,omitempty"`
+	AgentCycle        int                    `json:"agent_cycle,omitempty"`
+	DomainCommitHash  string                 `json:"domain_commit_hash,omitempty"`
+	ContextRevision   uint64                 `json:"context_revision,omitempty"`
 	RunID             string                 `json:"run_id,omitempty"`
 	AgentKind         string                 `json:"agent_kind,omitempty"`
 	AgentName         string                 `json:"agent_name,omitempty"`
@@ -87,16 +100,17 @@ type MessageMetadata struct {
 }
 
 type historyRecord struct {
-	kind              string
-	message           *schema.Message
-	messageMetadata   MessageMetadata
-	display           *DisplayEvent
-	interruption      *Interruption
-	compaction        *ContextCompaction
-	compactionRemoval *ContextCompactionRemoval
-	createdAt         time.Time
-
-	displayArgsPersistedBytes int
+	journalID                    string
+	kind                         string
+	message                      *schema.Message
+	messageMetadata              MessageMetadata
+	display                      *DisplayEvent
+	interruption                 *Interruption
+	compaction                   *ContextCompaction
+	compactionRemoval            *ContextCompactionRemoval
+	createdAt                    time.Time
+	displayArgsPersistedBytes    int
+	displayContentPersistedBytes int
 }
 
 type messageRecord struct {
@@ -208,6 +222,7 @@ type ContextCompaction struct {
 	Reason              string    `json:"reason,omitempty"`
 	Phase               string    `json:"phase,omitempty"`
 	CreatedAt           time.Time `json:"created_at"`
+	ContextRevision     uint64    `json:"context_revision,omitempty"`
 }
 
 // ContextCompactionRemoval soft-disables the active model-visible compaction
@@ -221,6 +236,7 @@ type ContextCompactionRemoval struct {
 	SourceEndIndex   int       `json:"source_end_index"`
 	Reason           string    `json:"reason,omitempty"`
 	CreatedAt        time.Time `json:"created_at"`
+	ContextRevision  uint64    `json:"context_revision,omitempty"`
 }
 
 // Session 保存单个会话的内存状态。
@@ -229,12 +245,20 @@ type Session struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
-	filePath        string
-	title           string
-	clearAfterIndex int
-	mu              sync.Mutex
-	messages        []*schema.Message
-	records         []historyRecord
+	filePath           string
+	title              string
+	clearAfterIndex    int
+	contextRevision    uint64
+	journalSize        int64
+	journalOffset      int64
+	journalIncarnation string
+	journalNeedsLF     bool
+	journalLineCount   int
+	lastReplayBytes    int64
+	lastReplayRecords  int
+	mu                 sync.Mutex
+	messages           []*schema.Message
+	records            []historyRecord
 }
 
 // SessionMeta 是会话列表摘要。

@@ -14,7 +14,7 @@ import (
 	"denova/internal/book"
 )
 
-const loreClassificationInputMaxBytes = 64 * 1024
+const loreClassificationInputMaxBytes = 256 * 1024
 
 type loreClassificationPayload struct {
 	Items []book.LoreClassificationSuggestion `json:"items"`
@@ -34,7 +34,7 @@ func ClassifyLoreItems(ctx context.Context, cfg *config.Config, inputs []book.Lo
 		return nil, err
 	}
 	if len(data) > loreClassificationInputMaxBytes {
-		return nil, fmt.Errorf("资料分类输入超过 64 KiB 上限")
+		return nil, fmt.Errorf("资料分类输入超过 %d KiB 上限", loreClassificationInputMaxBytes/1024)
 	}
 	traceCtx, finishTrace := withStandaloneRunTrace(ctx, cfg, config.AgentKindToolAgent, "tool_agent_lore_classification", "generate", map[string]any{"items": len(inputs), "bytes": len(data)})
 	var runErr error
@@ -61,9 +61,16 @@ func generateLoreClassifications(ctx context.Context, cfg *config.Config, modelC
 	if err != nil {
 		return nil, fmt.Errorf("创建工具 Agent 模型失败: %w", err)
 	}
+	composition, err := composeBuiltinSystemInstruction(cfg, config.AgentKindToolAgent, "tool_agent", cfg.Workspace, "builtin_base", "资料分类任务", "define the structured lore classification task", loreClassificationSystemInstruction())
+	if err != nil {
+		return nil, err
+	}
 	messages := []*schema.Message{
-		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindToolAgent, loreClassificationSystemInstruction())),
+		schema.SystemMessage(composition.Instruction()),
 		schema.UserMessage(instruction),
+	}
+	if err := validateConfiguredProviderInput(cfg, config.AgentKindToolAgent, messages, nil); err != nil {
+		return nil, err
 	}
 	mode := "generate_" + attempt
 	span, callID, traceCtx := beginLLMCallTrace(ctx, config.AgentKindToolAgent, "tool_agent_lore_classification", mode, modelCfg, messages, nil, false)

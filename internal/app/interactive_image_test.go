@@ -1,12 +1,55 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	"denova/internal/agentruntime"
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
 )
+
+func TestInteractiveImageRequiresBoundedCallerCommandIDBeforeWorkspaceAccess(t *testing.T) {
+	service := &InteractiveAppService{app: &App{}}
+	if _, err := service.GenerateInteractiveImage(context.Background(), "story", interactive.InteractiveImageGenerateRequest{}); !errors.Is(err, ErrAgentCommandIDRequired) {
+		t.Fatalf("missing command_id error = %v", err)
+	}
+	request := interactive.InteractiveImageGenerateRequest{CommandID: strings.Repeat("x", 4097)}
+	if _, err := service.GenerateInteractiveImage(context.Background(), "story", request); !errors.Is(err, agentruntime.ErrInvalidCommand) {
+		t.Fatalf("oversized command_id error = %v", err)
+	}
+}
+
+func TestInteractiveImageDisplayIdentityIsBoundToCommand(t *testing.T) {
+	first := interactiveImageEventID("image-command-1")
+	if first == "" || first != interactiveImageEventID("image-command-1") {
+		t.Fatalf("same command produced unstable display identity: %q", first)
+	}
+	if first == interactiveImageEventID("image-command-2") {
+		t.Fatalf("different commands produced the same display identity: %q", first)
+	}
+}
+
+func TestImageAgentSemanticMessageIncludesBoundedContextHashes(t *testing.T) {
+	base := ImageAgentGenerateRequest{
+		CommandID: "image-command", Purpose: "interactive_image", StoryID: "story", BranchID: "main", TurnID: "turn",
+		SourceContext: "secret scene one", SystemPrompt: "system one", ToolPrompt: "tool one",
+	}
+	first := imageAgentMessage(base)
+	if strings.Contains(first, "secret scene one") {
+		t.Fatalf("semantic message leaked raw source context: %s", first)
+	}
+	if first != imageAgentMessage(base) {
+		t.Fatal("same image request produced an unstable semantic message")
+	}
+	changed := base
+	changed.SourceContext = "secret scene two"
+	if first == imageAgentMessage(changed) {
+		t.Fatal("source context change was absent from image command semantics")
+	}
+}
 
 func TestShouldGenerateInteractiveImageModes(t *testing.T) {
 	turns := []interactive.TurnEvent{{ID: "t1"}, {ID: "t2"}, {ID: "t3"}}

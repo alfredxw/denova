@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, ChevronDown, Edit3, FileText, Loader2, Plus, Sparkles, Trash2, Upload } from 'lucide-react'
 import { readUIMessageStream } from 'ai'
 import { useTranslation } from 'react-i18next'
-import { runConfigManagerStream } from '@/lib/api'
+import { createAgentCommandID, runConfigManagerStream } from '@/lib/api'
+import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 import { isSaveShortcut } from '@/lib/keyboard'
 import { readTextFile } from '@/lib/text-file'
 import { rebaseText } from '@/lib/three-way-rebase'
@@ -336,6 +337,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
   const editBaselineRevisionRef = useRef('')
   const editContentRef = useRef('')
   const editPathRef = useRef('')
+  const extractionCommandIDsRef = useRef(new Map<string, string>())
   editContentRef.current = editContent
   editPathRef.current = editPath
   const summary = refs.length === 0 && contents.length === 0 ? t('settingPanel.style.noSelected') : t('settingPanel.style.button', { count: refs.length + contents.length })
@@ -513,6 +515,7 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
 
   const extractWithAgent = async () => {
     if (!uploadDraft || uploading) return
+    let retryKey = ''
     setUploading('extract')
     setUploadError('')
     setUploadNotice('')
@@ -520,11 +523,19 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
     try {
       const request = normalizeStyleUploadDraft(uploadDraft)
       const targetPath = styleReferenceTargetPath(request)
+      retryKey = agentCommandRetryKey('config-manager:style-extraction', 'start', {
+        targetPath,
+        name: request.name,
+        description: request.description,
+        content: request.content,
+      })
+      const commandID = rememberAgentCommandID(extractionCommandIDsRef.current, retryKey, createAgentCommandID)
       setExtractMessages([
         createAgentTextMessage('user', `${t('settingPanel.style.extractSave')}: ${request.name}`),
         createAgentTextMessage('system', t('settingPanel.style.extractProgress.connecting')),
       ])
       const stream = await runConfigManagerStream({
+        command_id: commandID,
         origin: 'teller',
         resource_id: '__style_reference_extract__',
         instruction: buildStyleExtractionInstruction(request),
@@ -534,6 +545,8 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
           style_reference_mode: 'extract_and_write_markdown',
         },
       })
+      // A 2xx response proves that the backend durably admitted this start.
+      extractionCommandIDsRef.current.delete(retryKey)
       const toolArgsByKey: Record<string, { name: string; args: string }> = {}
       let generated = ''
       for await (const message of readUIMessageStream<AgentUIMessage>({ stream, terminateOnError: true })) {
@@ -568,6 +581,9 @@ function StyleReferenceControls({ references, refreshReferences, refs, contents 
         content: `${t('settingPanel.style.extractProgress.saved')}: ${created.display_path}`,
       })])
     } catch (err) {
+      // Definite client rejections are safe to submit as a fresh logical command;
+      // network and server failures may have been accepted and retain their ID.
+      if (retryKey && isKnownAgentCommandOutcome(err)) extractionCommandIDsRef.current.delete(retryKey)
       setUploadError(err instanceof Error ? err.message : t('settingPanel.style.extractFailed'))
       setExtractMessages((current) => [...current, createAgentDataMessage('agent-error', {
         content: err instanceof Error ? err.message : t('settingPanel.style.extractFailed'),

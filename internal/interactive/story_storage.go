@@ -3,7 +3,9 @@ package interactive
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,14 +55,11 @@ func (s *Store) readIndexLocked() (Index, error) {
 }
 
 func (s *Store) writeIndexLocked(index Index) error {
-	if err := os.MkdirAll(s.storyDir(), 0o755); err != nil {
-		return err
-	}
 	data, err := json.MarshalIndent(index, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.indexPath(), data, 0o644)
+	return writeAtomicBytes(s.indexPath(), append(data, '\n'), 0o644)
 }
 
 func (s *Store) touchIndexLocked(storyID, updatedAt string, eventDelta int) error {
@@ -95,34 +94,13 @@ func (s *Store) updateIndexBranchesLocked(storyID string, branches int, updatedA
 }
 
 func (s *Store) readStoryLocked(storyID string) (StoryMeta, []StoryEventRecord, error) {
-	file, err := os.Open(s.storyPath(storyID))
+	release, err := s.acquireStoryReadLeaseLocked(storyID)
 	if err != nil {
 		return StoryMeta{}, nil, err
 	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	scanner.Buffer(make([]byte, 64*1024), maxStoryLineBytes)
-	if !scanner.Scan() {
-		return StoryMeta{}, nil, fmt.Errorf("故事文件为空: %s", storyID)
-	}
-	var meta StoryMeta
-	if err := json.Unmarshal(scanner.Bytes(), &meta); err != nil {
-		return StoryMeta{}, nil, fmt.Errorf("解析故事元信息失败: %w", err)
-	}
-	meta = normalizeStoryMeta(meta)
-	if err := validateStoryMeta(meta); err != nil {
-		return StoryMeta{}, nil, fmt.Errorf("校验故事元信息失败: %w", err)
-	}
-	var lines []StoryEventRecord
-	for scanner.Scan() {
-		record, err := decodeStoryEventRecord(scanner.Bytes())
-		if err != nil {
-			return StoryMeta{}, nil, fmt.Errorf("解析故事事件失败: %w", err)
-		}
-		lines = append(lines, record)
-	}
-	if err := scanner.Err(); err != nil {
+	defer release()
+	meta, lines, err := s.readStoryJournalWithRepairLocked(storyID, true)
+	if err != nil {
 		return StoryMeta{}, nil, err
 	}
 	if err := s.freezeLegacyActorStateSchemaLocked(storyID, &meta, lines); err != nil {
@@ -133,6 +111,149 @@ func (s *Store) readStoryLocked(storyID string) (StoryMeta, []StoryEventRecord, 
 	// actual frozen schema without changing the schema itself.
 	normalizeFixedStoryStateSchemaInitialization(&meta)
 	return meta, lines, nil
+}
+
+// readStoryJournalLocked is the read-only half of story loading. Receipt
+// reconciliation uses it so opening an unfinished Agent operation cannot
+// trigger legacy migrations or any other canonical write.
+func (s *Store) readStoryJournalLocked(storyID string) (StoryMeta, []StoryEventRecord, error) {
+	release, err := s.acquireStoryReadLeaseLocked(storyID)
+	if err != nil {
+		return StoryMeta{}, nil, err
+	}
+	defer release()
+	return s.readStoryJournalWithRepairLocked(storyID, false)
+}
+
+func (s *Store) readStoryJournalWithRepairLocked(storyID string, repairTornTail bool) (StoryMeta, []StoryEventRecord, error) {
+	file, err := os.Open(s.storyPath(storyID))
+	if err != nil {
+		return StoryMeta{}, nil, err
+	}
+	reader := bufio.NewReaderSize(file, 64*1024)
+	var stats StoryJournalReplayStats
+	first, readErr := reader.ReadBytes('\n')
+	stats.BytesRead += int64(len(first))
+	if len(first) == 0 {
+		_ = file.Close()
+		if readErr != nil && !errors.Is(readErr, io.EOF) {
+			return StoryMeta{}, nil, readErr
+		}
+		return StoryMeta{}, nil, fmt.Errorf("故事文件为空: %s", storyID)
+	}
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		_ = file.Close()
+		return StoryMeta{}, nil, readErr
+	}
+	first = trimJSONLRecord(first)
+	if len(first) == 0 {
+		_ = file.Close()
+		return StoryMeta{}, nil, fmt.Errorf("故事元信息为空: %s", storyID)
+	}
+	var meta StoryMeta
+	if err := json.Unmarshal(first, &meta); err != nil {
+		_ = file.Close()
+		return StoryMeta{}, nil, fmt.Errorf("解析故事元信息失败: %w", err)
+	}
+	meta = normalizeStoryMeta(meta)
+	if err := validateStoryMeta(meta); err != nil {
+		_ = file.Close()
+		return StoryMeta{}, nil, fmt.Errorf("校验故事元信息失败: %w", err)
+	}
+	canonicalStoryID := meta.StoryID
+	stats.RecordsRead = 1
+	validBytes := stats.BytesRead
+	var lines []StoryEventRecord
+	lineNumber := 1
+	for {
+		recordBytes, recordErr := reader.ReadBytes('\n')
+		stats.BytesRead += int64(len(recordBytes))
+		if len(recordBytes) == 0 && errors.Is(recordErr, io.EOF) {
+			break
+		}
+		lineNumber++
+		hasNewline := len(recordBytes) > 0 && recordBytes[len(recordBytes)-1] == '\n'
+		line := trimJSONLRecord(recordBytes)
+		if len(line) == 0 {
+			_ = file.Close()
+			return StoryMeta{}, nil, fmt.Errorf("解析故事事件失败: line %d is empty", lineNumber)
+		}
+		transactionMeta, transactionEvents, isTransaction, decodeErr := decodeStoryAppendTransaction(line)
+		if decodeErr != nil {
+			if repairTornTail && errors.Is(recordErr, io.EOF) && !hasNewline && isTornStoryJSON(line, decodeErr) {
+				if closeErr := file.Close(); closeErr != nil {
+					return StoryMeta{}, nil, closeErr
+				}
+				file = nil
+				if repairErr := repairTornStoryTail(s.storyPath(storyID), validBytes); repairErr != nil {
+					return StoryMeta{}, nil, fmt.Errorf("备份并修复故事日志尾部失败: %w", repairErr)
+				}
+				stats.BytesRead = validBytes
+				break
+			}
+			_ = file.Close()
+			return StoryMeta{}, nil, fmt.Errorf("解析故事事件失败 (line %d): %w", lineNumber, decodeErr)
+		}
+		if isTransaction {
+			if transactionMeta.StoryID != canonicalStoryID {
+				_ = file.Close()
+				return StoryMeta{}, nil, fmt.Errorf("故事追加事务 identity 不匹配: have %s want %s", transactionMeta.StoryID, canonicalStoryID)
+			}
+			meta = transactionMeta
+			lines = append(lines, transactionEvents...)
+			stats.TransactionsRead++
+			stats.EventsRead += int64(len(transactionEvents))
+		} else {
+			record, err := decodeStoryEventRecord(line)
+			if err != nil {
+				_ = file.Close()
+				return StoryMeta{}, nil, fmt.Errorf("解析故事事件失败 (line %d): %w", lineNumber, err)
+			}
+			lines = append(lines, record)
+			stats.EventsRead++
+		}
+		stats.RecordsRead++
+		validBytes += int64(len(recordBytes))
+		if recordErr != nil && !errors.Is(recordErr, io.EOF) {
+			_ = file.Close()
+			return StoryMeta{}, nil, recordErr
+		}
+		if errors.Is(recordErr, io.EOF) {
+			break
+		}
+	}
+	if file != nil {
+		if err := file.Close(); err != nil {
+			return StoryMeta{}, nil, err
+		}
+	}
+	s.rememberStoryReplayStats(storyID, stats)
+	return meta, lines, nil
+}
+
+func trimJSONLRecord(record []byte) []byte {
+	if len(record) > 0 && record[len(record)-1] == '\n' {
+		record = record[:len(record)-1]
+	}
+	if len(record) > 0 && record[len(record)-1] == '\r' {
+		record = record[:len(record)-1]
+	}
+	return record
+}
+
+func isTornStoryJSON(line []byte, decodeErr error) bool {
+	var syntaxErr *json.SyntaxError
+	if !errors.As(decodeErr, &syntaxErr) {
+		return false
+	}
+	return syntaxErr.Offset >= int64(len(line)) && strings.Contains(syntaxErr.Error(), "unexpected end of JSON input")
+}
+
+func (s *Store) rememberStoryReplayStats(storyID string, stats StoryJournalReplayStats) {
+	if s.lastStoryReplayByStory == nil {
+		s.lastStoryReplayByStory = make(map[string]StoryJournalReplayStats)
+	}
+	s.lastStoryReplayByStory[strings.TrimSpace(storyID)] = stats
 }
 
 func (s *Store) freezeLegacyActorStateSchemaLocked(storyID string, meta *StoryMeta, events []StoryEventRecord) error {
@@ -218,16 +339,25 @@ func (s *Store) rewriteStoryLocked(storyID string, meta StoryMeta, events []Stor
 		}
 		lines = append(lines, record.Raw)
 	}
-	return writeJSONL(s.storyPath(storyID), lines)
+	writer := writeJSONL
+	if s.rewriteJSONL != nil {
+		writer = s.rewriteJSONL
+	}
+	return writer(s.storyPath(storyID), lines)
 }
 
 func writeJSONL(path string, lines []any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	file, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	file, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
+		return err
+	}
+	tmp := file.Name()
+	defer os.Remove(tmp)
+	if err := file.Chmod(0o644); err != nil {
+		_ = file.Close()
 		return err
 	}
 	enc := json.NewEncoder(file)
@@ -238,10 +368,58 @@ func writeJSONL(path string, lines []any) error {
 			return err
 		}
 	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
 	if err := file.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return syncDirectory(filepath.Dir(path))
+}
+
+func writeAtomicBytes(path string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	file, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := file.Name()
+	defer os.Remove(tmp)
+	if err := file.Chmod(mode); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		return err
+	}
+	return syncDirectory(dir)
+}
+
+func syncDirectory(path string) error {
+	dir, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	return dir.Sync()
 }
 
 func mapToStruct(raw map[string]any, out any) error {

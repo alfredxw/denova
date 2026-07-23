@@ -184,7 +184,7 @@ func abortAutomationTestRun(application *App, runID string) {
 	}
 	_, finished := active.Subscribe()
 	active.Abort()
-	for range finished {
+	for range finished.Events() {
 	}
 }
 

@@ -7,6 +7,73 @@ import (
 	"denova/internal/workspacepath"
 )
 
+// StyleRulesProtocolHeader and StyleRulesProtocolFooter are the stable framing
+// around independently budgeted style entries. Keeping framing separate lets
+// the Agent context assembler audit and truncate each user-owned rule without
+// duplicating the protocol for every rule.
+func StyleRulesProtocolHeader() string {
+	return "## 文风参考\n\n当前叙事风格配置了以下文风参考索引。文风参考是所有叙事风格共享的 Markdown 文件，统一存放在 `.denova/styles/`；索引只提供 name、description、path，不包含全文。\n"
+}
+
+func StyleRuleEntryInstruction(rule StyleRule, ordinal int) string {
+	scene := strings.TrimSpace(rule.Scene)
+	if !rule.Global && scene == "" {
+		return ""
+	}
+	if len(rule.StyleReferences) == 0 && len(rule.StyleContents) == 0 {
+		return ""
+	}
+	if ordinal <= 0 {
+		ordinal = 1
+	}
+	var sb strings.Builder
+	if rule.Global {
+		fmt.Fprintf(&sb, "%d. 全局文风参考：所有正文生成默认生效\n", ordinal)
+	} else {
+		fmt.Fprintf(&sb, "%d. 场景：%s\n", ordinal, scene)
+	}
+	for _, ref := range rule.StyleReferences {
+		name := strings.TrimSpace(ref.Name)
+		if name == "" {
+			name = strings.TrimSpace(ref.DisplayPath)
+		}
+		path := strings.TrimSpace(ref.Path)
+		if path == "" {
+			path = strings.TrimSpace(ref.DisplayPath)
+		}
+		if name == "" || path == "" {
+			continue
+		}
+		fmt.Fprintf(&sb, "   - name: %s\n", name)
+		if desc := strings.TrimSpace(ref.Description); desc != "" {
+			fmt.Fprintf(&sb, "     description: %s\n", desc)
+		}
+		if display := strings.TrimSpace(ref.DisplayPath); display != "" {
+			fmt.Fprintf(&sb, "     display_path: %s\n", display)
+		}
+		fmt.Fprintf(&sb, "     path: %s\n", path)
+		if ref.Missing {
+			sb.WriteString("     status: missing")
+			if errText := strings.TrimSpace(ref.Error); errText != "" {
+				fmt.Fprintf(&sb, " (%s)", errText)
+			}
+			sb.WriteString("\n")
+		}
+	}
+	for i, content := range rule.StyleContents {
+		content = strings.TrimSpace(content)
+		if content == "" {
+			continue
+		}
+		fmt.Fprintf(&sb, "   旧版内联风格内容 %d：\n```markdown\n%s\n```\n", i+1, content)
+	}
+	return strings.TrimSpace(sb.String())
+}
+
+func StyleRulesProtocolFooter() string {
+	return "触发规则：仅当本轮要执行『章节正文的创作 / 续写 / 重写』或『互动故事下一回合正文生成』时使用文风参考。全局文风参考默认适用于所有正文生成；互动故事下一回合正文生成时，如果本段列出了全局文风参考 path，编制故事正文前必须先用 read_file 读取这些全局参考文件。分场景文风参考仍根据当前章节内容、互动场景或本轮 # 场景选择最贴近的场景；若没有场景明显匹配，不要强行选择分场景参考。若需要使用某条分场景文风参考 path，也必须先用 read_file 读取真正需要的参考文件，再把其作为文风、节奏、叙述方式、句式和氛围参考；不要照搬其中的人物、情节或设定。\n若本轮属于脑暴、大纲、设定、问答、规划等非正文生成场景，请完全忽略以上参考；若没有场景明显匹配，也不必强行选择分场景参考。"
+}
+
 // SystemInstructionInput 用于构建 Agent 系统指令的可注入上下文。
 type SystemInstructionInput struct {
 	// CreatorPrompt 来自 workspace 根目录 CREATOR.md 的内容；为空则不注入“创作者指令”块。

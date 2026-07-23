@@ -12,6 +12,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"denova/internal/agent"
+	"denova/internal/agentruntime"
 	"denova/internal/book"
 	"denova/internal/documentreview"
 	"denova/internal/session"
@@ -333,14 +334,38 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	chat := &ChatAppService{app: application}
 	runtime := ideChatRuntime{workspace: workspace, sess: sess}
 	req := agent.ChatRequest{
-		Message: "Please handle this review comment.",
+		CommandID: "review-feedback-commit", Message: "Please handle this review comment.",
 		ReviewFeedback: agent.ReviewFeedbackRefs{{
 			ReviewThreadID: "thread-1",
 			CommentIDs:     []string{comment.ID},
 		}},
 	}
+	acceptedRequest := agent.CaptureChatRequestCallerInput(req)
 	if err := chat.resolveReviewFeedback(context.Background(), runtime, &req); err != nil {
 		t.Fatal(err)
+	}
+	identity := agent.HarnessCycleIdentity{CommandID: "review-feedback-commit", OperationID: "review-feedback-operation", Cycle: 1}
+	plan, err := application.PlanHarnessInputMaterialization(context.Background(), agent.HarnessInputMaterializationRequest{
+		Binding: agentruntime.BindingRef{
+			Kind: agentruntime.BindingWriting, Profile: agentruntime.ProfileWriting,
+			Workspace: workspace, SessionID: sess.ID,
+		},
+		Identity: identity, AgentKind: agent.AgentKindIDE,
+		Message: req.Message, Request: acceptedRequest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	normalIntent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
+		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
+	}, schema.UserMessage(req.Message), session.MessageMetadata{
+		AgentKind: agent.AgentKindIDE, UserReferences: agent.UserMessageReferencesForRequest(req),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Required || plan.Hash != normalIntent.Hash {
+		t.Fatalf("provider-free review input hash = %#v, normal hash = %q", plan, normalIntent.Hash)
 	}
 
 	ctx := context.Background()
@@ -356,7 +381,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	}
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: builtAgent, EnableStreaming: true})
 	var callbackSawDurableReference bool
-	agent.NewChatService().RunWithOptions(
+	agent.NewEphemeralChatService().RunWithOptions(
 		ctx,
 		runner,
 		agent.NewSessionConversation(sess),

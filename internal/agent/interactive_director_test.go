@@ -1,10 +1,9 @@
 package agent
 
 import (
+	"context"
 	"strings"
 	"testing"
-
-	"github.com/cloudwego/eino/schema"
 
 	"denova/config"
 	"denova/internal/session"
@@ -87,8 +86,8 @@ type directorDisplayConversation struct {
 	events []session.DisplayEvent
 }
 
-func (c *directorDisplayConversation) PrepareMessages(_, _ string) ([]*schema.Message, error) {
-	return nil, nil
+func (c *directorDisplayConversation) AssembleModelContext(ctx context.Context, _ string, input ModelContextInput) (ModelContextResult, error) {
+	return AssembleSingleUserModelContext(ctx, input)
 }
 func (c *directorDisplayConversation) AppendAssistant(string) error               { return nil }
 func (c *directorDisplayConversation) MarkInterrupted(_, _, _ string) error       { return nil }

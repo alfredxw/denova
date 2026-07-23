@@ -273,6 +273,8 @@ export interface ContextAnalysis {
 }
 
 export interface SSEEvent {
+  /** Durable streams use the SSE id as their replay cursor. */
+  id?: string
   event: string
   data: string
 }
@@ -788,6 +790,9 @@ export interface AutomationRunRecord {
   trigger: 'manual' | 'schedule' | 'condition' | 'inbox_confirmation' | 'write_confirmation'
   source_run_id?: string
   trigger_evidence?: AutomationTriggerEvidence[]
+  runtime_command_id?: string
+  runtime_operation_id?: string
+  runtime_receipt_cursor?: number
   status: 'running' | 'success' | 'failed' | 'aborted'
   started_at: string
   finished_at?: string
@@ -886,6 +891,7 @@ export interface AutomationInboxItem {
   notify_policy: AutomationNotifyPolicy
   title: string
   summary: string
+  action_error?: string
   evidence: AutomationTriggerEvidence[]
   fingerprint: string
   run_id?: string

@@ -1,0 +1,366 @@
+package interactive
+
+import (
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"strings"
+	"time"
+)
+
+// ErrAgentTurnIdentityConflict means one durable Agent command attempted to
+// commit two different game turns. Returning the original turn for an exact
+// retry is safe; accepting a different payload under the same command ID is
+// not.
+var ErrAgentTurnIdentityConflict = errors.New("agent turn identity conflict")
+
+// DomainCommitIdentity is shared with the durable Agent coordinator without
+// coupling story storage to the runtime package.
+type DomainCommitIdentity struct {
+	CommandID   string `json:"command_id"`
+	OperationID string `json:"operation_id"`
+	Cycle       int    `json:"cycle"`
+}
+
+type DomainCommitIntent struct {
+	Identity DomainCommitIdentity
+	Hash     string
+	Request  AppendTurnWithStateRequest
+}
+
+type DomainCommitReceipt struct {
+	Identity DomainCommitIdentity `json:"identity"`
+	Hash     string               `json:"hash"`
+	Revision string               `json:"revision"`
+	Turn     TurnEvent            `json:"turn"`
+	Delta    *StateDeltaEvent     `json:"delta,omitempty"`
+}
+
+func NewDomainCommitIntent(req AppendTurnWithStateRequest) (DomainCommitIntent, error) {
+	identity := DomainCommitIdentity{
+		CommandID:   strings.TrimSpace(req.AgentCommandID),
+		OperationID: strings.TrimSpace(req.AgentOperationID),
+		Cycle:       req.AgentCycle,
+	}
+	if identity.CommandID == "" || identity.OperationID == "" || identity.Cycle <= 0 {
+		return DomainCommitIntent{}, fmt.Errorf("%w: command_id, operation_id, and positive cycle are required together", ErrAgentTurnIdentityConflict)
+	}
+	hash, err := agentTurnRequestHash(req)
+	if err != nil {
+		return DomainCommitIntent{}, err
+	}
+	return DomainCommitIntent{Identity: identity, Hash: hash, Request: req}, nil
+}
+
+// CommitDomainTurn publishes the staged game turn through the canonical story
+// store. Turn ID is the native append-only revision returned to the actor.
+func (s *Store) CommitDomainTurn(storyID string, intent DomainCommitIntent) (DomainCommitReceipt, error) {
+	canonical, err := NewDomainCommitIntent(intent.Request)
+	if err != nil {
+		return DomainCommitReceipt{}, err
+	}
+	if canonical.Identity != intent.Identity || canonical.Hash != strings.TrimSpace(intent.Hash) {
+		return DomainCommitReceipt{}, fmt.Errorf("%w: staged intent identity or hash changed", ErrAgentTurnIdentityConflict)
+	}
+	turn, delta, err := s.AppendTurnWithState(storyID, intent.Request)
+	if err != nil {
+		return DomainCommitReceipt{}, err
+	}
+	return DomainCommitReceipt{
+		Identity: canonical.Identity, Hash: canonical.Hash, Revision: turn.ID,
+		Turn: turn, Delta: delta,
+	}, nil
+}
+
+// AppendTurnWithState atomically publishes one canonical turn and its state
+// delta. Durable Agent identities make the write idempotent and allow an
+// ambiguous post-rename filesystem error to reconcile the exact committed
+// turn without executing the cycle twice.
+func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateRequest) (TurnEvent, *StateDeltaEvent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	releaseStory, err := s.acquireStoryMutationLeaseLocked(storyID)
+	if err != nil {
+		return TurnEvent{}, nil, err
+	}
+	defer releaseStory()
+
+	meta, lines, err := s.readStoryLocked(storyID)
+	if err != nil {
+		return TurnEvent{}, nil, err
+	}
+	branchID := req.BranchID
+	if branchID == "" {
+		branchID = meta.CurrentBranch
+	}
+	branch, ok := meta.Branches[branchID]
+	if !ok {
+		return TurnEvent{}, nil, fmt.Errorf("分支不存在: %s", branchID)
+	}
+	if existing, delta, found, err := committedAgentTurnForRequest(lines, branchID, req); err != nil {
+		return TurnEvent{}, nil, err
+	} else if found {
+		s.syncStoryIndexProjectionLocked(storyID, meta, len(lines))
+		return existing, delta, nil
+	}
+	playerInput, hasPlayerInput, err := playerInputForTurnRequest(lines, branchID, req)
+	if err != nil {
+		return TurnEvent{}, nil, err
+	}
+	if strings.TrimSpace(req.AgentCommandID) != "" && !hasPlayerInput {
+		return TurnEvent{}, nil, fmt.Errorf("%w: canonical player input is missing for completed turn", ErrPlayerInputIdentityConflict)
+	}
+	if req.ExpectedParentID != nil && branch.Head != strings.TrimSpace(*req.ExpectedParentID) {
+		return TurnEvent{}, nil, fmt.Errorf("%w: 当前分支已前进，拒绝提交基于旧版本的回合: expected_parent=%s current_head=%s", ErrStoryContextRevisionConflict, strings.TrimSpace(*req.ExpectedParentID), branch.Head)
+	}
+	commitParentID := branch.Head
+	if replaceTurnID := strings.TrimSpace(req.ReplaceTurnID); replaceTurnID != "" {
+		commitParentID, err = regenerationParentOnCurrentPath(lines, branch.Head, replaceTurnID)
+		if err != nil {
+			return TurnEvent{}, nil, err
+		}
+	}
+	if branchIsTerminal(lines, commitParentID) {
+		return TurnEvent{}, nil, fmt.Errorf("当前分支已终局，请从历史回合创建新分支后继续")
+	}
+	parentID := any(nil)
+	if commitParentID != "" {
+		parentID = commitParentID
+	}
+	path, _ := eventPath(commitParentID, eventsByID(lines))
+	state := stateFromPath(path)
+	director := s.storyDirectorForMeta(meta)
+	actorState := actorStateSystemFromSnapshot(meta.ActorStateSchema, director.ActorState)
+	applyLegacyActorStateAliases(state, meta.ActorStateSchema)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	terminal := (req.TerminalOutcome != nil && req.TerminalOutcome.Terminal) || (req.RuleResolution != nil && req.RuleResolution.TerminalCandidate != nil)
+	turnResult := normalizeTurnResultPointer(req.TurnResult, meta.ChoiceCount, terminal)
+	if req.TurnResult != nil && turnResult == nil {
+		return TurnEvent{}, nil, fmt.Errorf("TurnResult 未通过校验")
+	}
+	agentCommitHash := ""
+	if strings.TrimSpace(req.AgentCommandID) != "" {
+		agentCommitHash, err = agentTurnRequestHash(req)
+		if err != nil {
+			return TurnEvent{}, nil, err
+		}
+	}
+	turn := TurnEvent{
+		V:                    schemaVersion,
+		Type:                 StoryEventTypeTurn,
+		ID:                   newID("ev"),
+		ParentID:             parentID,
+		BranchID:             branchID,
+		Ts:                   now,
+		User:                 req.User,
+		Narrative:            req.Narrative,
+		Thinking:             strings.TrimSpace(req.Thinking),
+		RunID:                strings.TrimSpace(req.RunID),
+		AgentKind:            strings.TrimSpace(req.AgentKind),
+		AgentCommandID:       strings.TrimSpace(req.AgentCommandID),
+		AgentOperationID:     strings.TrimSpace(req.AgentOperationID),
+		AgentCycle:           req.AgentCycle,
+		AgentCommitHash:      agentCommitHash,
+		PlayerInputID:        playerInput.ID,
+		PlayerInputHash:      playerInput.AgentCommitHash,
+		DisplayEvents:        sanitizeDisplayEvents(req.DisplayEvents),
+		ModelContextMessages: sanitizeModelContextMessages(req.ModelContextMessages),
+		RuleResolution:       normalizeRuleResolutionPointer(req.RuleResolution),
+		TurnResult:           turnResult,
+		TerminalOutcome:      normalizeTerminalOutcomePointer(req.TerminalOutcome),
+		Flags:                map[string]bool{"pinned": false, "locked": false},
+	}
+	actorState, openingOps, openingActorOps, err := prepareOpeningGameStateSchemaCommit(&meta, lines, state, actorState, branchID, turn.ID, now, req.StateSchemaProposal)
+	if err != nil {
+		return TurnEvent{}, nil, err
+	}
+	ops := normalizeStateOps(append(openingOps, req.Ops...))
+	actorOps := normalizeActorStateOps(append(openingActorOps, req.ActorOps...))
+	if turn.TurnResult != nil && len(turn.TurnResult.StateUpdates) > 0 {
+		compiled, err := CompileTurnStateUpdates(actorState, state, turn.TurnResult.StateUpdates, TurnStateUpdateCompileOptions{
+			SourceTurnID:             turn.ID,
+			RuleResolution:           turn.RuleResolution,
+			RuleStateConsumptionMode: director.Strategy.RuleStateConsumptionMode,
+		})
+		if err != nil {
+			return TurnEvent{}, nil, fmt.Errorf("TurnResult state_updates 校验失败: %w", err)
+		}
+		turn.TurnResult.StateUpdates = compiled.Updates
+		for i := range compiled.Ops {
+			compiled.Ops[i].SourceKind = StateOpSourceTurnResult
+			compiled.Ops[i].SourceID = turn.ID
+			compiled.Ops[i].SourceTurnID = turn.ID
+		}
+		ops = append(ops, compiled.Ops...)
+		for i := range compiled.ActorOps {
+			compiled.ActorOps[i].SourceKind = StateOpSourceTurnResult
+			compiled.ActorOps[i].SourceID = turn.ID
+			compiled.ActorOps[i].SourceTurnID = turn.ID
+		}
+		actorOps = append(actorOps, compiled.ActorOps...)
+	}
+	if turn.RuleResolution != nil {
+		ruleOps, ruleActorOps := applyRuleStateConsumptionV2(state, actorState, turn.ID, turn.RuleResolution, director.Strategy.RuleStateConsumptionMode)
+		ops = append(ops, ruleOps...)
+		actorOps = append(actorOps, ruleActorOps...)
+	}
+	branch.Head = turn.ID
+
+	var delta *StateDeltaEvent
+	actorOps = normalizeActorStateOps(actorOps)
+	if len(ops) > 0 || len(actorOps) > 0 {
+		for _, op := range ops {
+			if err := validateStateOp(op); err != nil {
+				return TurnEvent{}, nil, err
+			}
+		}
+		for _, op := range actorOps {
+			if err := validateActorStateOp(op); err != nil {
+				return TurnEvent{}, nil, err
+			}
+		}
+		stateDelta := newStateDeltaWithActorOps(ops, actorOps)
+		turn.StateDelta = &stateDelta
+		turn.StateStatus = "ready"
+		stateDeltaEvent := newStateDeltaEventWithActorOps(turn.ID, parentIDString(parentID), branchID, now, ops, actorOps)
+		delta = &stateDeltaEvent
+	} else if turn.TurnResult != nil {
+		turn.StateStatus = "ready"
+	} else {
+		turn.StateStatus = "pending"
+	}
+
+	meta.Branches[branchID] = branch
+	meta.UpdatedAt = now
+	newEvents := []any{turn}
+	if appendErr := s.appendStoryTransactionLocked(storyID, meta, newEvents...); appendErr != nil {
+		return TurnEvent{}, nil, appendErr
+	}
+	s.syncStoryIndexProjectionLocked(storyID, meta, len(lines)+len(newEvents))
+	return turn, delta, nil
+}
+
+func committedAgentTurnForRequest(lines []StoryEventRecord, branchID string, req AppendTurnWithStateRequest) (TurnEvent, *StateDeltaEvent, bool, error) {
+	commandID := strings.TrimSpace(req.AgentCommandID)
+	operationID := strings.TrimSpace(req.AgentOperationID)
+	hasIdentity := commandID != "" || operationID != "" || req.AgentCycle != 0
+	if hasIdentity && (commandID == "" || operationID == "" || req.AgentCycle <= 0) {
+		return TurnEvent{}, nil, false, fmt.Errorf("%w: command_id, operation_id, and positive cycle are required together", ErrAgentTurnIdentityConflict)
+	}
+	if commandID == "" {
+		return TurnEvent{}, nil, false, nil
+	}
+	commitHash, err := agentTurnRequestHash(req)
+	if err != nil {
+		return TurnEvent{}, nil, false, err
+	}
+	for _, record := range lines {
+		if record.Envelope.Type != StoryEventTypeTurn {
+			continue
+		}
+		var turn TurnEvent
+		if err := mapToStruct(record.Raw, &turn); err != nil {
+			return TurnEvent{}, nil, false, fmt.Errorf("decode committed agent turn: %w", err)
+		}
+		if strings.TrimSpace(turn.AgentCommandID) != commandID {
+			continue
+		}
+		if turn.BranchID != branchID || strings.TrimSpace(turn.AgentOperationID) != operationID || turn.AgentCycle != req.AgentCycle || strings.TrimSpace(turn.AgentCommitHash) == "" || turn.AgentCommitHash != commitHash {
+			return TurnEvent{}, nil, false, fmt.Errorf("%w: command_id=%q existing_operation=%q requested_operation=%q existing_cycle=%d requested_cycle=%d", ErrAgentTurnIdentityConflict, commandID, turn.AgentOperationID, operationID, turn.AgentCycle, req.AgentCycle)
+		}
+		return turn, stateDeltaEventForCommittedTurn(turn), true, nil
+	}
+	return TurnEvent{}, nil, false, nil
+}
+
+func agentTurnRequestHash(req AppendTurnWithStateRequest) (string, error) {
+	payload := struct {
+		BranchID             string
+		ExpectedParentID     *string
+		ReplaceTurnID        string
+		User                 string
+		Narrative            string
+		Thinking             string
+		RunID                string
+		AgentKind            string
+		DisplayEvents        []DisplayEvent
+		ModelContextMessages []ModelContextMessage
+		Ops                  []StateOp
+		ActorOps             []ActorStateOp
+		RuleResolution       *RuleResolution
+		TurnResult           *TurnResult
+		TerminalOutcome      *TerminalOutcome
+		StateSchemaProposal  *ActorStateSchemaProposal
+	}{
+		BranchID: strings.TrimSpace(req.BranchID), ExpectedParentID: req.ExpectedParentID,
+		ReplaceTurnID: strings.TrimSpace(req.ReplaceTurnID),
+		User:          req.User, Narrative: req.Narrative, Thinking: req.Thinking,
+		RunID: req.RunID, AgentKind: req.AgentKind,
+		DisplayEvents: req.DisplayEvents, ModelContextMessages: req.ModelContextMessages,
+		Ops: req.Ops, ActorOps: req.ActorOps, RuleResolution: req.RuleResolution,
+		TurnResult: req.TurnResult, TerminalOutcome: req.TerminalOutcome,
+		StateSchemaProposal: req.StateSchemaProposal,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("hash agent turn commit payload: %w", err)
+	}
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("sha256:%x", sum[:]), nil
+}
+
+func stateDeltaEventForCommittedTurn(turn TurnEvent) *StateDeltaEvent {
+	if turn.StateDelta == nil {
+		return nil
+	}
+	event := newStateDeltaEventWithActorOps(
+		turn.ID, parentIDString(turn.ParentID), turn.BranchID, turn.Ts,
+		append([]StateOp(nil), turn.StateDelta.Ops...), append([]ActorStateOp(nil), turn.StateDelta.ActorOps...),
+	)
+	event.SchemaVersion = turn.StateDelta.SchemaVersion
+	return &event
+}
+
+// syncStoryIndexProjectionLocked updates the rebuildable story catalog from
+// canonical JSONL state. A projection failure is logged but never turns an
+// already-durable turn into a false-negative operation result.
+func (s *Store) syncStoryIndexProjectionLocked(storyID string, meta StoryMeta, eventCount int) {
+	index, err := s.readIndexLocked()
+	if err != nil {
+		log.Printf("[interactive-story] index projection read failed after canonical commit story_id=%s err=%v", storyID, err)
+		return
+	}
+	summary := storySummaryFromMeta(meta, eventCount)
+	found := false
+	for i := range index.Stories {
+		if index.Stories[i].ID == storyID {
+			index.Stories[i] = summary
+			found = true
+			break
+		}
+	}
+	if !found {
+		index.Stories = append(index.Stories, summary)
+	}
+	if strings.TrimSpace(index.CurrentStoryID) == "" {
+		index.CurrentStoryID = storyID
+	}
+	if err := s.writeIndexLocked(index); err != nil {
+		log.Printf("[interactive-story] index projection write failed after canonical commit story_id=%s events=%d err=%v", storyID, eventCount, err)
+	}
+}
+
+func storySummaryFromMeta(meta StoryMeta, eventCount int) StorySummary {
+	return normalizeStorySummary(StorySummary{
+		ID: meta.StoryID, Title: meta.Title, Origin: meta.Origin,
+		StoryTellerID: meta.StoryTellerID, StoryDirectorID: normalizedStoryDirectorID(meta.StoryDirectorID),
+		DirectorRunPolicy: cloneStoryDirectorRunPolicy(meta.DirectorRunPolicy), ModuleRefs: cloneStoryDirectorModuleRefs(meta.ModuleRefs),
+		ReplyTargetChars: meta.ReplyTargetChars, ChoiceCount: meta.ChoiceCount,
+		Opening: meta.Opening, ImageSettings: meta.ImageSettings,
+		StateSchemaPolicy: cloneStoryStateSchemaPolicy(meta.StateSchemaPolicy),
+		CreatedAt:         meta.CreatedAt, UpdatedAt: meta.UpdatedAt,
+		Branches: len(meta.Branches), Events: eventCount,
+	})
+}

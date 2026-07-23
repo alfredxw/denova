@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"strings"
 	"time"
 )
@@ -8,9 +9,16 @@ import (
 // AppendContextCompaction persists a compaction epoch. It intentionally does
 // not append to messages, so user-visible history stays uncompressed.
 func (s *Session) AppendContextCompaction(record ContextCompaction) (ContextCompaction, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	result := record
+	err := s.withCanonicalMutation(context.Background(), "append context compaction", func() error {
+		var appendErr error
+		result, appendErr = s.appendContextCompactionLocked(record)
+		return appendErr
+	})
+	return result, err
+}
 
+func (s *Session) appendContextCompactionLocked(record ContextCompaction) (ContextCompaction, error) {
 	now := time.Now().UTC()
 	record.Type = historyTypeCompaction
 	if strings.TrimSpace(record.ID) == "" {
@@ -34,17 +42,30 @@ func (s *Session) AppendContextCompaction(record ContextCompaction) (ContextComp
 	if record.SourceMessageCount <= 0 {
 		record.SourceMessageCount = record.SourceEndIndex - record.SourceStartIndex
 	}
+	record.ContextRevision = s.contextRevision + 1
+	if err := s.appendJournalRecordLocked(record); err != nil {
+		return record, err
+	}
+	s.contextRevision = record.ContextRevision
 	s.records = append(s.records, historyRecord{kind: historyTypeCompaction, compaction: &record, createdAt: record.CreatedAt})
-	s.UpdatedAt = record.CreatedAt
-	return record, s.persistLocked()
+	advanceUpdatedAt(s, record.CreatedAt)
+	return record, nil
 }
 
 // RemoveLatestContextCompaction soft-disables the latest active compaction for
 // an agent. Raw messages remain untouched so context can reconnect to history.
 func (s *Session) RemoveLatestContextCompaction(agentKind, reason string) (ContextCompactionRemoval, bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	var result ContextCompactionRemoval
+	var removed bool
+	err := s.withCanonicalMutation(context.Background(), "remove latest context compaction", func() error {
+		var removeErr error
+		result, removed, removeErr = s.removeLatestContextCompactionLocked(agentKind, reason)
+		return removeErr
+	})
+	return result, removed, err
+}
 
+func (s *Session) removeLatestContextCompactionLocked(agentKind, reason string) (ContextCompactionRemoval, bool, error) {
 	compaction, ok := s.latestActiveContextCompactionLocked(agentKind)
 	if !ok {
 		return ContextCompactionRemoval{}, false, nil
@@ -59,13 +80,18 @@ func (s *Session) RemoveLatestContextCompaction(agentKind, reason string) (Conte
 		SourceEndIndex:   compaction.SourceEndIndex,
 		Reason:           strings.TrimSpace(reason),
 		CreatedAt:        now,
+		ContextRevision:  s.contextRevision + 1,
 	}
 	if strings.TrimSpace(record.AgentKind) == "" {
 		record.AgentKind = strings.TrimSpace(agentKind)
 	}
+	if err := s.appendJournalRecordLocked(record); err != nil {
+		return record, false, err
+	}
+	s.contextRevision = record.ContextRevision
 	s.records = append(s.records, historyRecord{kind: historyTypeCompactionRemoved, compactionRemoval: &record, createdAt: record.CreatedAt})
-	s.UpdatedAt = record.CreatedAt
-	return record, true, s.persistLocked()
+	advanceUpdatedAt(s, record.CreatedAt)
+	return record, true, nil
 }
 
 // LatestContextCompaction returns the newest compaction epoch after the latest

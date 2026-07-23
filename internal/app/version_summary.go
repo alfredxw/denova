@@ -6,7 +6,6 @@ import (
 	"log"
 	"sort"
 	"strings"
-	"time"
 	"unicode/utf8"
 
 	"denova/config"
@@ -20,54 +19,71 @@ const (
 	versionSummaryMaxPromptRunes  = 7000
 )
 
-func (s *WorkspaceRuntimeManager) inferVersionMessage(ctx context.Context, explicitMessage, source string, versionService *book.VersionService, settings book.VersionAutoSettings) string {
-	if message := strings.TrimSpace(explicitMessage); message != "" {
-		return message
+type versionSummaryGeneratorFunc func(context.Context, *config.Config, string) (string, error)
+
+func (a *App) setVersionSummaryGeneratorForTest(generator versionSummaryGeneratorFunc) func() {
+	if a == nil {
+		return func() {}
 	}
-	status, err := versionService.Status(settings)
+	a.mu.Lock()
+	previous := a.versionSummaryGenerator
+	a.versionSummaryGenerator = generator
+	a.mu.Unlock()
+	return func() {
+		a.mu.Lock()
+		a.versionSummaryGenerator = previous
+		a.mu.Unlock()
+	}
+}
+
+func (a *App) versionSummaryGeneratorSnapshot() versionSummaryGeneratorFunc {
+	if a == nil {
+		return agent.GenerateVersionSummary
+	}
+	a.mu.RLock()
+	generator := a.versionSummaryGenerator
+	a.mu.RUnlock()
+	if generator == nil {
+		return agent.GenerateVersionSummary
+	}
+	return generator
+}
+
+func (s *WorkspaceRuntimeManager) inferVersionMessage(ctx context.Context, explicitMessage, source string, runtime *versionCreateRuntime) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if message := strings.TrimSpace(explicitMessage); message != "" {
+		return message, nil
+	}
+	status, err := runtime.versionService.Status(runtime.settings)
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		log.Printf("[versions] 读取变更状态用于生成版本说明失败 source=%s err=%v", source, err)
-		return fallbackVersionMessage(source, nil)
+		return fallbackVersionMessage(source, nil), nil
 	}
 
-	runtimeCfg, workspace := s.versionSummaryConfig()
-	instruction := s.buildVersionSummaryInstruction(status, source)
+	instruction := buildVersionSummaryInstruction(status, source, runtime.bookService, runtime.versionService)
 	if instruction != "" {
-		summaryCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
-		defer cancel()
-		if summary, err := agent.GenerateVersionSummary(summaryCtx, &runtimeCfg, instruction); err == nil && strings.TrimSpace(summary) != "" {
-			s.app.persistAgentCall(config.AgentKindVersionSummary, instruction, summary)
-			return strings.TrimSpace(summary)
+		generator := s.app.versionSummaryGeneratorSnapshot()
+		if summary, err := generator(ctx, &runtime.cfg, instruction); err == nil && strings.TrimSpace(summary) != "" {
+			persistAgentCallWithStore(runtime.sessionStore, config.AgentKindVersionSummary, instruction, summary)
+			return strings.TrimSpace(summary), nil
 		} else if err != nil {
-			log.Printf("[versions] LLM 生成版本说明失败 source=%s workspace=%s err=%v", source, workspace, err)
-			s.app.persistAgentCall(config.AgentKindVersionSummary, instruction, "执行失败："+err.Error())
+			if ctx.Err() != nil {
+				return "", ctx.Err()
+			}
+			log.Printf("[versions] LLM 生成版本说明失败 source=%s workspace=%s err=%v", source, runtime.workspace, err)
+			persistAgentCallWithStore(runtime.sessionStore, config.AgentKindVersionSummary, instruction, "执行失败："+err.Error())
 		}
 	}
-	return fallbackVersionMessage(source, status.Changes)
+	return fallbackVersionMessage(source, status.Changes), nil
 }
 
-func (s *WorkspaceRuntimeManager) versionSummaryConfig() (config.Config, string) {
-	a := s.app
-	a.mu.RLock()
-	var runtimeCfg config.Config
-	if a.cfg != nil {
-		runtimeCfg = *a.cfg
-	}
-	workspace := a.workspace
-	novaDir := runtimeCfg.DataDir()
-	a.mu.RUnlock()
-
-	runtimeCfg.Workspace = workspace
-	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
-		applyLayeredSettingsToConfig(&runtimeCfg, layered)
-	} else {
-		log.Printf("[versions] 加载分层配置用于版本说明失败 workspace=%s err=%v", workspace, err)
-	}
-	return runtimeCfg, workspace
-}
-
-func (s *WorkspaceRuntimeManager) buildVersionSummaryInstruction(status book.VersionStatus, source string) string {
-	changes := status.Changes
+func buildVersionSummaryInstruction(status book.VersionStatus, source string, bookService *book.Service, versionService *book.VersionService) string {
+	changes := append([]book.VersionChange(nil), status.Changes...)
 	if len(changes) == 0 {
 		return ""
 	}
@@ -87,8 +103,6 @@ func (s *WorkspaceRuntimeManager) buildVersionSummaryInstruction(status book.Ver
 		sb.WriteString(fmt.Sprintf("- %s %s\n", versionStatusLabel(change.Status), change.Path))
 	}
 
-	bookService := s.BookService()
-	versionService := s.versionService()
 	if bookService == nil || versionService == nil {
 		return limitRunes(sb.String(), versionSummaryMaxPromptRunes)
 	}

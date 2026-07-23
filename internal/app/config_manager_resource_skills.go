@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strings"
 	"unicode/utf8"
@@ -12,8 +13,12 @@ import (
 )
 
 const (
-	configManagerResourceSkillMaxBytes      = 128 * 1024
-	configManagerResourceSkillMaxTotalBytes = 3 * configManagerResourceSkillMaxBytes
+	// Resource Skills are loaded exactly up to these non-configurable safety
+	// boundaries. The lower, user-configurable model injection limits belong to
+	// the system-prompt composer so it can emit a visible truncation marker and
+	// an original/included provenance receipt from the same source.
+	configManagerResourceSkillMaxSourceBytes      = 512 * 1024
+	configManagerResourceSkillMaxTotalSourceBytes = 3 * configManagerResourceSkillMaxSourceBytes
 
 	configManagerAutomationSkill    = "automation-config"
 	configManagerTellerSkill        = "teller-config"
@@ -24,10 +29,10 @@ const (
 	configManagerLoreSkill          = "lore"
 )
 
-func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, req ConfigManagerRequest) []agent.ConfigManagerResourceSkill {
+func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, req ConfigManagerRequest) ([]agent.ConfigManagerResourceSkill, error) {
 	names := configManagerResourceSkillNames(req)
 	if len(names) == 0 || cfg == nil {
-		return nil
+		return nil, nil
 	}
 	backend := novaskills.NewAgentBackend(
 		novaskills.NewDirectories(cfg.SkillsDir, cfg.DataDir(), cfg.Workspace),
@@ -35,13 +40,13 @@ func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, re
 		config.ResolveAgentSkillOverrides(cfg, config.AgentKindConfigManager),
 	)
 	loaded := make([]agent.ConfigManagerResourceSkill, 0, len(names))
-	remaining := configManagerResourceSkillMaxTotalBytes
+	totalSourceBytes := 0
 	for _, name := range names {
-		if remaining <= 0 {
-			break
-		}
 		skill, err := backend.Get(ctx, name)
 		if err != nil {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			log.Printf("[config-manager] resource skill unavailable name=%s err=%v", name, err)
 			continue
 		}
@@ -49,18 +54,20 @@ func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, re
 		if content == "" {
 			continue
 		}
-		limit := configManagerResourceSkillMaxBytes
-		if remaining < limit {
-			limit = remaining
+		sourceBytes := len(content)
+		if sourceBytes > configManagerResourceSkillMaxSourceBytes {
+			return nil, fmt.Errorf(
+				"resource Skill exceeds hard source limit / 配置 Skill 超过加载硬上限: name=%s bytes=%d limit=%d",
+				name, sourceBytes, configManagerResourceSkillMaxSourceBytes,
+			)
 		}
-		content, truncated := trimStringToUTF8Bytes(content, limit)
-		if truncated {
-			log.Printf("[config-manager] resource skill truncated name=%s limit=%d", name, limit)
+		if sourceBytes > configManagerResourceSkillMaxTotalSourceBytes-totalSourceBytes {
+			return nil, fmt.Errorf(
+				"resource Skills exceed hard total source limit / 配置 Skills 超过加载总硬上限: next_name=%s loaded_bytes=%d next_bytes=%d limit=%d",
+				name, totalSourceBytes, sourceBytes, configManagerResourceSkillMaxTotalSourceBytes,
+			)
 		}
-		if content == "" {
-			continue
-		}
-		remaining -= len([]byte(content))
+		totalSourceBytes += sourceBytes
 		loaded = append(loaded, agent.ConfigManagerResourceSkill{
 			Name:        skill.Name,
 			Description: skill.Description,
@@ -74,7 +81,7 @@ func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, re
 		}
 		log.Printf("[config-manager] loaded resource skills origin=%s names=%s", req.Origin, strings.Join(loadedNames, ","))
 	}
-	return loaded
+	return loaded, nil
 }
 
 func configManagerResourceSkillNames(req ConfigManagerRequest) []string {

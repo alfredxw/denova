@@ -13,6 +13,11 @@ const maxEditableTurnNarrativeBytes = 512 * 1024
 func (s *Store) UpdateTurnNarrative(storyID string, req UpdateTurnNarrativeRequest) (UpdateTurnNarrativeResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	releaseStory, err := s.acquireStoryMutationLeaseLocked(storyID)
+	if err != nil {
+		return UpdateTurnNarrativeResult{}, err
+	}
+	defer releaseStory()
 
 	turnID := strings.TrimSpace(req.TurnID)
 	if turnID == "" {

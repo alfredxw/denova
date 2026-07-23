@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/PuerkitoBio/goquery"
 	duckduckgo "github.com/cloudwego/eino-ext/components/tool/duckduckgo/v2"
@@ -24,10 +23,7 @@ const webSearchToolDescription = "Search the public web for current or external 
 const (
 	webSearchPerEngine = 20
 	webSearchMaxTotal  = 50
-	webSearchTimeout   = 30 * time.Second
-	// webSearchAggTimeout 是一次聚合搜索的整体时间上限（略大于单引擎超时），作为兜底
-	webSearchAggTimeout = 40 * time.Second
-	webSearchUserAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+	webSearchUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 
 func newWebSearchTools() ([]tool.BaseTool, error) {
@@ -89,15 +85,15 @@ type webSearchAggregator struct {
 
 func defaultWebSearchEngines() []webSearchEngine {
 	engines := make([]webSearchEngine, 0, 4)
-	if eng, err := newDuckDuckGoEngine(webSearchPerEngine, webSearchTimeout); err == nil {
+	if eng, err := newDuckDuckGoEngine(webSearchPerEngine); err == nil {
 		engines = append(engines, eng)
 	} else {
 		log.Printf("[agent] web_search 初始化 duckduckgo 引擎失败: %v", err)
 	}
 	engines = append(engines,
-		newBingEngine(webSearchPerEngine, webSearchTimeout),
-		newBaiduEngine(webSearchPerEngine, webSearchTimeout),
-		newGoogleEngine(webSearchPerEngine, webSearchTimeout),
+		newBingEngine(webSearchPerEngine),
+		newBaiduEngine(webSearchPerEngine),
+		newGoogleEngine(webSearchPerEngine),
 	)
 	return engines
 }
@@ -129,8 +125,9 @@ func (a *webSearchAggregator) fanOut(ctx context.Context, req webSearchRequest) 
 }
 
 func (a *webSearchAggregator) run(ctx context.Context, req webSearchRequest) webSearchResponse {
-	ctx, cancel := context.WithTimeout(ctx, webSearchAggTimeout)
-	defer cancel()
+	// The owning Agent operation controls cancellation. Installing a tool-local
+	// deadline here used to terminate otherwise healthy long-running model turns
+	// after a hard-coded wall-clock duration.
 	outcomes := a.fanOut(ctx, req)
 
 	var okNames, failedNames []string
@@ -272,10 +269,9 @@ type duckDuckGoEngine struct {
 	cli  duckduckgo.Search
 }
 
-func newDuckDuckGoEngine(maxResults int, timeout time.Duration) (webSearchEngine, error) {
+func newDuckDuckGoEngine(maxResults int) (webSearchEngine, error) {
 	cli, err := duckduckgo.NewSearch(context.Background(), &duckduckgo.Config{
 		MaxResults: maxResults,
-		Timeout:    timeout,
 		Region:     duckduckgo.RegionWT,
 	})
 	if err != nil {
@@ -327,11 +323,11 @@ func (e *htmlSearchEngine) Search(ctx context.Context, req webSearchRequest) ([]
 	return results, nil
 }
 
-func newBingEngine(max int, timeout time.Duration) webSearchEngine {
+func newBingEngine(max int) webSearchEngine {
 	return &htmlSearchEngine{
 		name:    "bing",
 		max:     max,
-		client:  &http.Client{Timeout: timeout},
+		client:  &http.Client{},
 		referer: "https://www.bing.com/",
 		buildURL: func(q, _ string) string {
 			return "https://www.bing.com/search?mkt=zh-CN&setlang=zh-CN&q=" + url.QueryEscape(q)
@@ -340,11 +336,11 @@ func newBingEngine(max int, timeout time.Duration) webSearchEngine {
 	}
 }
 
-func newBaiduEngine(max int, timeout time.Duration) webSearchEngine {
+func newBaiduEngine(max int) webSearchEngine {
 	return &htmlSearchEngine{
 		name:    "baidu",
 		max:     max,
-		client:  &http.Client{Timeout: timeout},
+		client:  &http.Client{},
 		referer: "https://m.baidu.com/",
 		buildURL: func(q, _ string) string {
 			// 移动端比 PC 端更少返回“百度安全验证”反爬页。
@@ -354,11 +350,11 @@ func newBaiduEngine(max int, timeout time.Duration) webSearchEngine {
 	}
 }
 
-func newGoogleEngine(max int, timeout time.Duration) webSearchEngine {
+func newGoogleEngine(max int) webSearchEngine {
 	return &htmlSearchEngine{
 		name:    "google",
 		max:     max,
-		client:  &http.Client{Timeout: timeout},
+		client:  &http.Client{},
 		referer: "https://www.google.com/",
 		buildURL: func(q, tr string) string {
 			u := "https://www.google.com/search?hl=en&q=" + url.QueryEscape(q)

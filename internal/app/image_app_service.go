@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"denova/config"
-	"denova/internal/book"
 	"denova/internal/imagegen"
 )
 
@@ -41,12 +39,16 @@ func (a *App) GenerateImage(ctx context.Context, request imagegen.GenerateReques
 }
 
 func (s *ImageAppService) Generate(ctx context.Context, request imagegen.GenerateRequest) (ImageGenerateResult, error) {
-	cfg, bookService, err := s.runtimeSnapshot()
+	runtime, err := s.acquireWorkspaceRuntime(ctx)
 	if err != nil {
 		return ImageGenerateResult{}, err
 	}
-	result, err := imagegen.NewService().Generate(ctx, &cfg, request)
+	defer runtime.Release()
+	result, err := imagegen.NewService().Generate(runtime.Context(), &runtime.cfg, request)
 	if err != nil {
+		return ImageGenerateResult{}, err
+	}
+	if err := runtime.Context().Err(); err != nil {
 		return ImageGenerateResult{}, err
 	}
 	saved := ImageGenerateResult{
@@ -64,7 +66,10 @@ func (s *ImageAppService) Generate(ctx context.Context, request imagegen.Generat
 		if err != nil {
 			return ImageGenerateResult{}, err
 		}
-		if err := bookService.WriteBinaryFile(relPath, image.Data); err != nil {
+		if err := runtime.Context().Err(); err != nil {
+			return ImageGenerateResult{}, err
+		}
+		if err := runtime.bookService.WriteBinaryFile(relPath, image.Data); err != nil {
 			return ImageGenerateResult{}, fmt.Errorf("保存生成图像失败: %w", err)
 		}
 		log.Printf("[imagegen] saved image path=%s bytes=%d mime=%s", relPath, len(image.Data), image.MIMEType)
@@ -76,20 +81,6 @@ func (s *ImageAppService) Generate(ctx context.Context, request imagegen.Generat
 		})
 	}
 	return saved, nil
-}
-
-func (s *ImageAppService) runtimeSnapshot() (config.Config, *book.Service, error) {
-	app := s.app
-	app.mu.RLock()
-	defer app.mu.RUnlock()
-	if app.workspace == "" || app.bookService == nil {
-		return config.Config{}, nil, ErrNoWorkspace
-	}
-	if app.cfg == nil {
-		return config.Config{}, nil, fmt.Errorf("运行配置未初始化")
-	}
-	cfg := *app.cfg
-	return cfg, app.bookService, nil
 }
 
 func generatedImagePath(index int, extension string) (string, error) {

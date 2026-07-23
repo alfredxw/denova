@@ -114,6 +114,10 @@ func appendUniqueRetainedValue(values []string, value string) []string {
 }
 
 func filterSemanticToolContextMessages(messages []*schema.Message, policy ToolResultContextPolicy) []*schema.Message {
+	return filterToolContextMessages(messages, policy, true)
+}
+
+func filterToolContextMessages(messages []*schema.Message, policy ToolResultContextPolicy, retainNormalResults bool) []*schema.Message {
 	type retainedCall struct {
 		toolName  string
 		arguments string
@@ -122,6 +126,7 @@ func filterSemanticToolContextMessages(messages []*schema.Message, policy ToolRe
 	}
 	callsByID := make(map[string]retainedCall)
 	resultCountsByID := make(map[string]int)
+	unknownResultsByID := make(map[string]bool)
 	for _, msg := range messages {
 		if msg == nil {
 			continue
@@ -142,7 +147,7 @@ func filterSemanticToolContextMessages(messages []*schema.Message, policy ToolRe
 				callsByID[callID] = retainedCall{
 					toolName:  toolName,
 					arguments: arguments,
-					retain:    retainToolContextAcrossTurns(toolName, policy),
+					retain:    retainNormalResults && retainToolContextAcrossTurns(toolName, policy),
 					valid:     valid,
 				}
 			}
@@ -152,6 +157,9 @@ func filterSemanticToolContextMessages(messages []*schema.Message, policy ToolRe
 			callID := strings.TrimSpace(msg.ToolCallID)
 			if callID != "" {
 				resultCountsByID[callID]++
+				if isUnknownToolEffectResult(msg.Content) {
+					unknownResultsByID[callID] = true
+				}
 			}
 		}
 	}
@@ -172,7 +180,8 @@ func filterSemanticToolContextMessages(messages []*schema.Message, policy ToolRe
 			for _, call := range msg.ToolCalls {
 				callID := strings.TrimSpace(call.ID)
 				callPolicy, knownCall := callsByID[callID]
-				if callID == "" || !knownCall || !callPolicy.valid || resultCountsByID[callID] != 1 || !callPolicy.retain {
+				if callID == "" || !knownCall || !callPolicy.valid || resultCountsByID[callID] != 1 ||
+					(!callPolicy.retain && !unknownResultsByID[callID]) {
 					continue
 				}
 				call.Function.Arguments = callPolicy.arguments
@@ -184,7 +193,8 @@ func filterSemanticToolContextMessages(messages []*schema.Message, policy ToolRe
 		case schema.Tool:
 			callID := strings.TrimSpace(msg.ToolCallID)
 			callPolicy, ok := callsByID[callID]
-			if callID == "" || !ok || !callPolicy.valid || resultCountsByID[callID] != 1 || !callPolicy.retain {
+			if callID == "" || !ok || !callPolicy.valid || resultCountsByID[callID] != 1 ||
+				(!callPolicy.retain && !unknownResultsByID[callID]) {
 				continue
 			}
 			next := *msg

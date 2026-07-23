@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -8,26 +9,35 @@ import (
 
 // AppendDisplayEvent 追加仅用于前端展示的事件，不进入 Agent 有效上下文。
 func (s *Session) AppendDisplayEvent(event DisplayEvent) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if strings.TrimSpace(event.Role) == "" {
 		return fmt.Errorf("展示事件 role 不能为空")
 	}
-	if event.CreatedAt.IsZero() {
-		event.CreatedAt = time.Now().UTC()
-	}
-	s.records = append(s.records, historyRecord{
-		kind:                      historyTypeDisplay,
-		display:                   &event,
-		createdAt:                 event.CreatedAt,
-		displayArgsPersistedBytes: len(event.Args),
+	return s.withCanonicalMutation(context.Background(), "append display event", func() error {
+		if event.CreatedAt.IsZero() {
+			event.CreatedAt = time.Now().UTC()
+		}
+		recordID := newDisplayRecordID()
+		if err := s.appendJournalRecordLocked(displayRecord{
+			Type:         historyTypeDisplay,
+			RecordID:     recordID,
+			DisplayEvent: event,
+		}); err != nil {
+			return err
+		}
+		s.records = append(s.records, historyRecord{
+			journalID:                    recordID,
+			kind:                         historyTypeDisplay,
+			display:                      &event,
+			createdAt:                    event.CreatedAt,
+			displayArgsPersistedBytes:    len(event.Args),
+			displayContentPersistedBytes: len(event.Content),
+		})
+		if event.Role == "token_usage" {
+			s.trimTokenUsageDisplayEventsLocked(event.AgentKind)
+		}
+		advanceUpdatedAt(s, event.CreatedAt)
+		return nil
 	})
-	if event.Role == "token_usage" {
-		s.trimTokenUsageDisplayEventsLocked(event.AgentKind)
-	}
-	s.UpdatedAt = event.CreatedAt
-	return s.persistLocked()
 }
 
 func (s *Session) trimTokenUsageDisplayEventsLocked(agentKind string) {
@@ -66,49 +76,77 @@ func tokenUsageAgentKey(agentKind string) string {
 
 // UpdateDisplayToolStatus 更新已持久化工具卡片的执行状态，不保存工具参数或输出。
 func (s *Session) UpdateDisplayToolStatus(id, name, status string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	id = strings.TrimSpace(id)
 	name = strings.TrimSpace(name)
-	if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
-		s.records[index].display.Status = status
-		s.UpdatedAt = time.Now().UTC()
-		return s.persistLocked()
-	}
-	return nil
+	return s.withCanonicalMutation(context.Background(), "update display tool status", func() error {
+		if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
+			record := &s.records[index]
+			now := time.Now().UTC()
+			statusCopy := status
+			pendingArgs := record.display.Args[record.displayArgsPersistedBytes:]
+			if err := s.appendJournalRecordLocked(displayPatchRecord{
+				Type:           historyTypeDisplayPatch,
+				TargetRecordID: s.records[index].journalID,
+				CreatedAt:      now,
+				Status:         &statusCopy,
+				ArgsAppend:     pendingArgs,
+			}); err != nil {
+				return err
+			}
+			record.display.Status = status
+			record.displayArgsPersistedBytes = len(record.display.Args)
+			advanceUpdatedAt(s, now)
+		}
+		return nil
+	})
 }
 
 // AppendDisplayToolArgs appends streamed tool arguments to a persisted tool card.
 func (s *Session) AppendDisplayToolArgs(id, name, delta string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	id = strings.TrimSpace(id)
 	name = strings.TrimSpace(name)
 	if delta == "" {
 		return nil
 	}
+	appliedLocally := false
+	shouldFlush := false
+	s.mu.Lock()
 	if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
 		record := &s.records[index]
 		record.display.Args += delta
-		s.UpdatedAt = time.Now().UTC()
-		if !shouldPersistDisplayToolArgs(record) {
-			return nil
-		}
-		record.displayArgsPersistedBytes = len(record.display.Args)
-		// 流式工具参数按批次保存；后续 tool_result 会再落完整卡片状态。
-		_ = s.persistLocked()
+		appliedLocally = true
+		shouldFlush = len(record.display.Args)-record.displayArgsPersistedBytes >= displayStreamPersistBatchBytes
+		advanceUpdatedAt(s, time.Now().UTC())
+	}
+	s.mu.Unlock()
+	if appliedLocally && !shouldFlush {
 		return nil
 	}
-	return nil
-}
-
-func shouldPersistDisplayToolArgs(record *historyRecord) bool {
-	if record == nil || record.display == nil {
-		return false
-	}
-	return len(record.display.Args)-record.displayArgsPersistedBytes >= displayToolArgsPersistBytes
+	return s.withCanonicalMutation(context.Background(), "append display tool arguments", func() error {
+		if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
+			record := &s.records[index]
+			now := time.Now().UTC()
+			if !appliedLocally {
+				record.display.Args += delta
+			}
+			pending := record.display.Args[record.displayArgsPersistedBytes:]
+			if len(pending) < displayStreamPersistBatchBytes {
+				advanceUpdatedAt(s, now)
+				return nil
+			}
+			if err := s.appendJournalRecordLocked(displayPatchRecord{
+				Type:           historyTypeDisplayPatch,
+				TargetRecordID: s.records[index].journalID,
+				CreatedAt:      now,
+				ArgsAppend:     pending,
+			}); err != nil {
+				return err
+			}
+			record.displayArgsPersistedBytes = len(record.display.Args)
+			advanceUpdatedAt(s, now)
+		}
+		return nil
+	})
 }
 
 func truncateUTF8ByBytes(value string, maxBytes int) string {
@@ -133,59 +171,161 @@ func truncateUTF8ByBytes(value string, maxBytes int) string {
 
 // UpdateDisplayToolResult stores the result preview for a persisted tool card.
 func (s *Session) UpdateDisplayToolResult(id, name, status, result string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	id = strings.TrimSpace(id)
 	name = strings.TrimSpace(name)
-	if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
-		s.records[index].display.Status = status
-		s.records[index].display.Result = result
-		s.UpdatedAt = time.Now().UTC()
-		return s.persistLocked()
-	}
-	return nil
+	return s.withCanonicalMutation(context.Background(), "update display tool result", func() error {
+		if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
+			record := &s.records[index]
+			now := time.Now().UTC()
+			statusCopy := status
+			resultCopy := result
+			pendingArgs := record.display.Args[record.displayArgsPersistedBytes:]
+			if err := s.appendJournalRecordLocked(displayPatchRecord{
+				Type:           historyTypeDisplayPatch,
+				TargetRecordID: s.records[index].journalID,
+				CreatedAt:      now,
+				Status:         &statusCopy,
+				Result:         &resultCopy,
+				ArgsAppend:     pendingArgs,
+			}); err != nil {
+				return err
+			}
+			record.display.Status = status
+			record.display.Result = result
+			record.displayArgsPersistedBytes = len(record.display.Args)
+			advanceUpdatedAt(s, now)
+		}
+		return nil
+	})
 }
 
 func (s *Session) UpdateDisplayToolIllustration(id, name string, illustration *ChapterIllustration) error {
 	if illustration == nil {
 		return nil
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	id = strings.TrimSpace(id)
 	name = strings.TrimSpace(name)
-	if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
-		s.records[index].display.Illustration = cloneChapterIllustration(illustration)
-		s.UpdatedAt = time.Now().UTC()
-		return s.persistLocked()
-	}
-	return nil
+	return s.withCanonicalMutation(context.Background(), "update display tool illustration", func() error {
+		if index := findDisplayToolRecordIndex(s.records, id, name); index >= 0 {
+			now := time.Now().UTC()
+			illustrationCopy := cloneChapterIllustration(illustration)
+			if err := s.appendJournalRecordLocked(displayPatchRecord{
+				Type:           historyTypeDisplayPatch,
+				TargetRecordID: s.records[index].journalID,
+				CreatedAt:      now,
+				Illustration:   illustrationCopy,
+			}); err != nil {
+				return err
+			}
+			s.records[index].display.Illustration = illustrationCopy
+			advanceUpdatedAt(s, now)
+		}
+		return nil
+	})
 }
 
 // AppendDisplayEventContent appends streamed display-only content to a card.
 func (s *Session) AppendDisplayEventContent(id, role, delta string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	id = strings.TrimSpace(id)
 	role = strings.TrimSpace(role)
 	if id == "" || role == "" || delta == "" {
 		return nil
 	}
+	appliedLocally := false
+	shouldFlush := false
+	s.mu.Lock()
 	for i := len(s.records) - 1; i >= 0; i-- {
-		record := s.records[i]
-		if record.kind != historyTypeDisplay || record.display == nil {
+		record := &s.records[i]
+		if record.kind != historyTypeDisplay || record.display == nil || record.display.ID != id || record.display.Role != role {
 			continue
 		}
-		if record.display.ID == id && record.display.Role == role {
-			s.records[i].display.Content += delta
-			s.UpdatedAt = time.Now().UTC()
-			return s.persistLocked()
+		record.display.Content += delta
+		appliedLocally = true
+		shouldFlush = len(record.display.Content)-record.displayContentPersistedBytes >= displayStreamPersistBatchBytes
+		advanceUpdatedAt(s, time.Now().UTC())
+		break
+	}
+	s.mu.Unlock()
+	if appliedLocally && !shouldFlush {
+		return nil
+	}
+	return s.withCanonicalMutation(context.Background(), "append display event content", func() error {
+		for i := len(s.records) - 1; i >= 0; i-- {
+			record := &s.records[i]
+			if record.kind != historyTypeDisplay || record.display == nil {
+				continue
+			}
+			if record.display.ID == id && record.display.Role == role {
+				if !appliedLocally {
+					record.display.Content += delta
+				}
+				pending := record.display.Content[record.displayContentPersistedBytes:]
+				now := time.Now().UTC()
+				if len(pending) < displayStreamPersistBatchBytes {
+					advanceUpdatedAt(s, now)
+					return nil
+				}
+				if err := s.appendJournalRecordLocked(displayPatchRecord{
+					Type:           historyTypeDisplayPatch,
+					TargetRecordID: record.journalID,
+					CreatedAt:      now,
+					ContentAppend:  pending,
+				}); err != nil {
+					return err
+				}
+				record.displayContentPersistedBytes = len(record.display.Content)
+				advanceUpdatedAt(s, now)
+				return nil
+			}
+		}
+		return nil
+	})
+}
+
+// FlushDisplayEventContent commits the final sub-agent display tail at a run
+// boundary without forcing one fsync per streamed token.
+func (s *Session) FlushDisplayEventContent(id, role string) error {
+	id = strings.TrimSpace(id)
+	role = strings.TrimSpace(role)
+	if id == "" || role == "" {
+		return nil
+	}
+	hasPending := false
+	s.mu.Lock()
+	for i := len(s.records) - 1; i >= 0; i-- {
+		record := &s.records[i]
+		if record.kind == historyTypeDisplay && record.display != nil && record.display.ID == id && record.display.Role == role {
+			hasPending = record.displayContentPersistedBytes < len(record.display.Content)
+			break
 		}
 	}
-	return nil
+	s.mu.Unlock()
+	if !hasPending {
+		return nil
+	}
+	return s.withCanonicalMutation(context.Background(), "flush display event content", func() error {
+		for i := len(s.records) - 1; i >= 0; i-- {
+			record := &s.records[i]
+			if record.kind != historyTypeDisplay || record.display == nil || record.display.ID != id || record.display.Role != role {
+				continue
+			}
+			pending := record.display.Content[record.displayContentPersistedBytes:]
+			if pending == "" {
+				return nil
+			}
+			now := time.Now().UTC()
+			if err := s.appendJournalRecordLocked(displayPatchRecord{
+				Type: historyTypeDisplayPatch, TargetRecordID: record.journalID,
+				CreatedAt: now, ContentAppend: pending,
+			}); err != nil {
+				return err
+			}
+			record.displayContentPersistedBytes = len(record.display.Content)
+			advanceUpdatedAt(s, now)
+			return nil
+		}
+		return nil
+	})
 }
 
 func findDisplayToolRecordIndex(records []historyRecord, id, name string) int {

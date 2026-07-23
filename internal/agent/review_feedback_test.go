@@ -3,9 +3,11 @@ package agent
 import (
 	"strings"
 	"testing"
+
+	agentcontext "denova/internal/agent/context"
 )
 
-func TestComposeAgentInputInjectsOnlyResolvedReviewFeedbackWithSource(t *testing.T) {
+func TestTurnInputProjectionInjectsOnlyResolvedReviewFeedbackWithSource(t *testing.T) {
 	req := ChatRequest{
 		Message: "Please revise this draft.",
 		ReviewFeedback: ReviewFeedbackRefs{{
@@ -38,7 +40,8 @@ func TestComposeAgentInputInjectsOnlyResolvedReviewFeedbackWithSource(t *testing
 		}},
 	}
 
-	composition := composeAgentInput(req, nil, nil, DefaultLoopPolicy())
+	composition, assembled := assembleTurnForTest(t, req, nil, nil, agentcontext.DefaultBudget())
+	modelMessage := finalAssembledUserMessage(t, assembled)
 	for _, expected := range []string{
 		`"source":"workspace_change"`,
 		`"review_thread_id":"thread-ledger"`,
@@ -51,12 +54,12 @@ func TestComposeAgentInputInjectsOnlyResolvedReviewFeedbackWithSource(t *testing
 		`"review_thread_id":"document-thread"`,
 		"Make the image more concrete.",
 	} {
-		if !strings.Contains(composition.AgentMessage, expected) {
-			t.Fatalf("agent message is missing %q: %s", expected, composition.AgentMessage)
+		if !strings.Contains(modelMessage, expected) {
+			t.Fatalf("agent message is missing %q: %s", expected, modelMessage)
 		}
 	}
-	if strings.Contains(composition.AgentMessage, "forged-client-id") || strings.Contains(composition.AgentMessage, "thread-client") {
-		t.Fatalf("unresolved client review data reached the model: %s", composition.AgentMessage)
+	if strings.Contains(modelMessage, "forged-client-id") || strings.Contains(modelMessage, "thread-client") {
+		t.Fatalf("unresolved client review data reached the model: %s", modelMessage)
 	}
 	if composition.OriginalMessage != req.Message {
 		t.Fatalf("original message changed: %q", composition.OriginalMessage)
@@ -75,8 +78,11 @@ func TestReviewFeedbackContextEnforcesWholeBlockByteLimit(t *testing.T) {
 	if got := feedback.EncodedSize(); got <= MaxReviewFeedbackContextBytes {
 		t.Fatalf("oversized feedback reported %d bytes", got)
 	}
-	if got := appendReviewFeedbackContext("original", feedback); got != "original" {
-		t.Fatal("oversized feedback should not be partially injected")
+	fragments := projectTurnContextFragments(ChatRequest{ResolvedReviewFeedback: feedback}, nil, nil, agentcontext.DefaultBudget())
+	for _, fragment := range fragments {
+		if fragment.Source == "workspace.review.feedback" {
+			t.Fatal("oversized feedback should not be partially projected")
+		}
 	}
 
 	feedback[0].Comments[0].Body = "concise"
@@ -86,5 +92,17 @@ func TestReviewFeedbackContextEnforcesWholeBlockByteLimit(t *testing.T) {
 	}
 	if len(block) == 0 || len(block) > MaxReviewFeedbackContextBytes {
 		t.Fatalf("review feedback block bytes=%d", len(block))
+	}
+}
+
+func TestEmptyReviewFeedbackDoesNotProduceModelContext(t *testing.T) {
+	if block, ok := reviewFeedbackContextBlockFromNormalized(nil); ok || block != "" {
+		t.Fatalf("empty review feedback produced model context: ok=%v block=%q", ok, block)
+	}
+	projection := projectTurnInput(ChatRequest{Message: "continue"}, nil, nil, agentcontext.DefaultBudget())
+	for _, fragment := range projection.Fragments {
+		if fragment.Source == "workspace.review.feedback" {
+			t.Fatalf("empty review feedback produced an injected fragment: %#v", fragment)
+		}
 	}
 }

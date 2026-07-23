@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { ChatMessage } from '@/lib/api'
+import type { AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeQueuedCommand } from '@/lib/api'
 import type { BranchSummary, InteractiveSubmode, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StorySummary, Teller, TurnEvent } from '../types'
 
 const CURRENT_STORY_STORAGE_KEY = 'nova.interactive.current_story.v1'
@@ -12,6 +13,23 @@ export interface StoryStageRunState {
   liveMessages: ChatMessage[]
   rewindTurnId?: string
   retryMessage?: string
+  runtime: StoryStageRuntimeState
+}
+
+export interface StoryStageRuntimeState {
+  /** Display SSE replay cursor; intentionally distinct from the durable runtime journal cursor. */
+  streamEventCursor: string
+  cursor: number
+  phase: string
+  recoveryPaused: boolean
+  recoveryAbortAvailable: boolean
+  operationId: string
+  cycle: number
+  activeOutput?: AgentRuntimeActiveOutput
+  queue: AgentRuntimeQueuedCommand[]
+  openTools: AgentRuntimeOpenTool[]
+  connection: 'disconnected' | 'connecting' | 'connected'
+  abortPending: boolean
 }
 
 interface InteractiveStore {
@@ -39,7 +57,24 @@ interface InteractiveStore {
 }
 
 export function emptyStoryStageRun(): StoryStageRunState {
-  return { streaming: false, activityContent: '', liveMessages: [] }
+  return {
+    streaming: false,
+    activityContent: '',
+    liveMessages: [],
+    runtime: {
+      streamEventCursor: '',
+      cursor: 0,
+      phase: 'idle',
+      recoveryPaused: false,
+      recoveryAbortAvailable: false,
+      operationId: '',
+      cycle: 0,
+      queue: [],
+      openTools: [],
+      connection: 'disconnected',
+      abortPending: false,
+    },
+  }
 }
 
 function readRememberedBranches(): Record<string, string> {

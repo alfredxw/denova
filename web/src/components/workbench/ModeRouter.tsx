@@ -13,7 +13,7 @@ import { getImagePresets, getInteractiveTellers } from '@/features/interactive/a
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { BookRecord, BookSortMode, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
+import type { ActiveChatTask, BookRecord, BookSortMode, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
@@ -52,6 +52,9 @@ interface ModeRouterProps {
   currentChapter?: ChapterSummary
   chapterStats: Record<string, ChapterSummary>
   isStreaming: boolean
+  runtimeProjection?: ActiveChatTask | null
+  abortPending?: boolean
+  commandSubmitting?: boolean
   projectVisible: boolean
   activityBarExpanded: boolean
   rightPanel: RightPanel
@@ -148,6 +151,9 @@ export function ModeRouter(props: ModeRouterProps) {
     currentChapter,
     chapterStats,
     isStreaming,
+    runtimeProjection,
+    abortPending,
+    commandSubmitting,
     projectVisible,
     activityBarExpanded,
     rightPanel,
@@ -748,6 +754,9 @@ export function ModeRouter(props: ModeRouterProps) {
       sessions={sessions}
       activeSessionId={activeSessionId}
       isStreaming={isStreaming}
+      runtimeProjection={runtimeProjection}
+      abortPending={abortPending}
+      commandSubmitting={commandSubmitting}
       activityContent={activityContent}
       references={references}
       loreReferences={loreReferences}

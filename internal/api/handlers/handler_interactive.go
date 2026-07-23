@@ -3,15 +3,14 @@ package handlers
 import (
 	"context"
 	"errors"
-	"log"
 	"path/filepath"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
-	"denova/internal/api/sse"
-	novaApp "denova/internal/app"
+	"denova/internal/agentruntime"
+	appsvc "denova/internal/app"
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
 )
@@ -209,12 +208,31 @@ func (h *Handlers) HandleInteractiveImageGenerate(ctx context.Context, c *app.Re
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
 		return
 	}
+	if strings.TrimSpace(body.CommandID) == "" {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试请求 / command_id is required for safe request retries", nil)
+		return
+	}
+	if err := agentruntime.ValidateCommandID(body.CommandID, agentruntime.DefaultInputLimits()); err != nil {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "command_id 请求标识无效 / invalid request identifier command_id", nil)
+		return
+	}
 	if body.BranchID == "" {
 		body.BranchID = c.Query("branch")
 	}
 	result, err := h.app.GenerateInteractiveImage(ctx, c.Param("id"), body)
 	if err != nil {
-		writeError(c, consts.StatusBadRequest, err.Error())
+		switch {
+		case errors.Is(err, appsvc.ErrAgentCommandIDRequired):
+			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试请求 / command_id is required for safe request retries", nil)
+		case errors.Is(err, agentruntime.ErrInvalidCommand):
+			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "command_id 请求标识无效 / invalid request identifier command_id", nil)
+		case errors.Is(err, appsvc.ErrAgentCommandConflict):
+			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.command_conflict", "command_id 已用于其他请求 / command_id was already used for a different request", nil)
+		case errors.Is(err, appsvc.ErrImageAgentExecution), errors.Is(err, appsvc.ErrImageAgentReplayResultUnavailable):
+			writeError(c, consts.StatusInternalServerError, err.Error())
+		default:
+			writeError(c, consts.StatusBadRequest, err.Error())
+		}
 		return
 	}
 	writeJSON(c, consts.StatusOK, result)
@@ -298,127 +316,11 @@ func (h *Handlers) HandleInteractiveTurnNarrativeUpdate(ctx context.Context, c *
 	writeJSON(c, consts.StatusOK, result)
 }
 
-func (h *Handlers) HandleInteractiveChat(ctx context.Context, c *app.RequestContext) {
-	var body struct {
-		Mode               string   `json:"mode"`
-		StoryID            string   `json:"story_id"`
-		Branch             string   `json:"branch"`
-		Message            string   `json:"message"`
-		StyleScenes        []string `json:"style_scenes"`
-		RegenerateFromTurn string   `json:"regenerate_from_turn_id"`
-	}
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	if strings.TrimSpace(body.Message) == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
-		return
-	}
-	if strings.TrimSpace(body.StoryID) == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyIDRequired")
-		return
-	}
-	if body.Mode != "" && body.Mode != "story" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyModeOnly")
-		return
-	}
-
-	var task *novaApp.Task
-	locale := requestLocale(c)
-	if strings.TrimSpace(body.RegenerateFromTurn) != "" {
-		task = h.app.StartInteractiveRegenerateTask(ctx, body.StoryID, body.Branch, body.RegenerateFromTurn, body.Message, body.StyleScenes, locale)
-	} else {
-		task = h.app.StartInteractiveTask(ctx, body.StoryID, body.Branch, body.Message, body.StyleScenes, locale)
-	}
-	if task == nil {
-		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
-		return
-	}
-	sse.StreamTask(c, task)
-}
-
-func (h *Handlers) HandleInteractiveChatContextAnalysis(ctx context.Context, c *app.RequestContext) {
-	var body struct {
-		Mode        string   `json:"mode"`
-		StoryID     string   `json:"story_id"`
-		Branch      string   `json:"branch"`
-		Message     string   `json:"message"`
-		StyleScenes []string `json:"style_scenes"`
-	}
-	if err := c.BindJSON(&body); err != nil {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
-		return
-	}
-	if strings.TrimSpace(body.Message) == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
-		return
-	}
-	if strings.TrimSpace(body.StoryID) == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyIDRequired")
-		return
-	}
-	if body.Mode != "" && body.Mode != "story" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyModeOnly")
-		return
-	}
-	analysis, err := h.app.AnalyzeInteractiveContext(body.StoryID, body.Branch, body.Message, body.StyleScenes, requestLocale(c))
-	if err != nil {
-		writeError(c, consts.StatusConflict, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, analysis)
-}
-
-// HandleInteractiveChatStream reconnects to the active game-mode turn and
-// replays its buffered SSE events before following live output.
-func (h *Handlers) HandleInteractiveChatStream(ctx context.Context, c *app.RequestContext) {
-	storyID := strings.TrimSpace(c.Query("story_id"))
-	branchID := strings.TrimSpace(c.Query("branch"))
-	taskID := strings.TrimSpace(c.Query("task_id"))
-	if storyID == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyIDRequired")
-		return
-	}
-	task, info := h.app.ActiveInteractiveTaskFor(storyID, branchID)
-	if task == nil || (taskID != "" && info.TaskID != taskID) {
-		writeErrorKey(c, consts.StatusNotFound, "api.chat.noActiveTask")
-		return
-	}
-	log.Printf("[interactive-agent-sse] attach active task_id=%s story_id=%s branch_id=%s status=%s", task.ID(), info.StoryID, info.BranchID, task.Status())
-	sse.StreamTask(c, task)
-}
-
-// HandleInteractiveChatActive reports the active turn identity and original
-// player message so a refreshed stage can reconstruct its optimistic turn.
-func (h *Handlers) HandleInteractiveChatActive(ctx context.Context, c *app.RequestContext) {
-	storyID := strings.TrimSpace(c.Query("story_id"))
-	branchID := strings.TrimSpace(c.Query("branch"))
-	if storyID == "" {
-		writeErrorKey(c, consts.StatusBadRequest, "api.interactive.storyIDRequired")
-		return
-	}
-	task, info := h.app.ActiveInteractiveTaskFor(storyID, branchID)
-	if task == nil {
-		writeJSON(c, consts.StatusOK, map[string]any{"active": false})
-		return
-	}
-	status := task.Status()
-	writeJSON(c, consts.StatusOK, map[string]any{
-		"active":                  status == novaApp.TaskRunning,
-		"status":                  status,
-		"task_id":                 info.TaskID,
-		"story_id":                info.StoryID,
-		"branch_id":               info.BranchID,
-		"message":                 info.Message,
-		"regenerate_from_turn_id": info.RegenerateFromTurnID,
-	})
-}
-
 func (h *Handlers) HandleInteractiveContextCompaction(ctx context.Context, c *app.RequestContext) {
 	var body struct {
-		BranchID string `json:"branch_id"`
-		Branch   string `json:"branch"`
+		CommandID string `json:"command_id"`
+		BranchID  string `json:"branch_id"`
+		Branch    string `json:"branch"`
 	}
 	if err := c.BindJSON(&body); err != nil && len(c.Request.Body()) > 0 {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidRequestWithDetail", "detail", err.Error())
@@ -428,7 +330,12 @@ func (h *Handlers) HandleInteractiveContextCompaction(ctx context.Context, c *ap
 	if strings.TrimSpace(branchID) == "" {
 		branchID = body.Branch
 	}
-	result, err := h.app.CompactInteractiveContext(ctx, c.Param("id"), branchID)
+	body.CommandID = strings.TrimSpace(body.CommandID)
+	if err := agentruntime.ValidateCommandID(body.CommandID, agentruntime.DefaultInputLimits()); err != nil {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少或无效的 command_id，无法安全重试 / command_id is required and must be valid for safe retries", nil)
+		return
+	}
+	result, err := h.app.CompactInteractiveContextCommand(ctx, c.Param("id"), branchID, body.CommandID)
 	if err != nil {
 		writeError(c, consts.StatusConflict, err.Error())
 		return
@@ -437,20 +344,17 @@ func (h *Handlers) HandleInteractiveContextCompaction(ctx context.Context, c *ap
 }
 
 func (h *Handlers) HandleInteractiveContextCompactionRemove(ctx context.Context, c *app.RequestContext) {
-	removed, err := h.app.RemoveInteractiveContextCompaction(c.Param("id"), c.Query("branch"))
+	commandID := strings.TrimSpace(c.Query("command_id"))
+	if err := agentruntime.ValidateCommandID(commandID, agentruntime.DefaultInputLimits()); err != nil {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少或无效的 command_id，无法安全重试 / command_id is required and must be valid for safe retries", nil)
+		return
+	}
+	removed, err := h.app.RemoveInteractiveContextCompactionCommand(ctx, c.Param("id"), c.Query("branch"), commandID)
 	if err != nil {
 		writeError(c, consts.StatusConflict, err.Error())
 		return
 	}
 	writeJSON(c, consts.StatusOK, map[string]bool{"removed": removed})
-}
-
-func (h *Handlers) HandleInteractiveChatAbort(ctx context.Context, c *app.RequestContext) {
-	if task := h.app.ActiveInteractiveTask(); task != nil {
-		log.Printf("[interactive-agent-sse] abort requested task_id=%s status=%s", task.ID(), task.Status())
-	}
-	h.app.AbortInteractiveTask()
-	c.JSON(consts.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *Handlers) HandleInteractiveTellers(ctx context.Context, c *app.RequestContext) {

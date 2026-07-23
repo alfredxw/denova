@@ -33,10 +33,14 @@ func TestAppendTurnWithStatePersistsStateOpSchemaVersion(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("jsonl line count = %d, want 2\n%s", len(lines), string(data))
 	}
-	var raw map[string]any
-	if err := json.Unmarshal([]byte(lines[1]), &raw); err != nil {
+	var transaction storyAppendTransaction
+	if err := json.Unmarshal([]byte(lines[1]), &transaction); err != nil {
 		t.Fatal(err)
 	}
+	if len(transaction.Events) != 1 {
+		t.Fatalf("append transaction events = %d, want 1", len(transaction.Events))
+	}
+	raw := transaction.Events[0]
 	stateDelta, ok := raw["state_delta"].(map[string]any)
 	if !ok {
 		t.Fatalf("turn %s should carry state_delta: %#v", turn.ID, raw)

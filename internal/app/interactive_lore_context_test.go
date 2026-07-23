@@ -36,7 +36,7 @@ func TestInteractiveStoryLoadsAllResidentLoreAndActiveOnDemandLore(t *testing.T)
 		t.Fatal(err)
 	}
 	conversation := newInteractiveConversation(store, "", workspace, story.ID, "main", "", story.ReplyTargetChars, &config.Config{})
-	messages, err := conversation.PrepareMessages("", "我走进演武场")
+	messages, err := assembleAndCommitInteractiveContextForTest(conversation, "", "我走进演武场")
 	if err != nil {
 		t.Fatal(err)
 	}

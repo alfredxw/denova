@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	loreClassificationPreviewMaxBytes = 64 * 1024
-	loreClassificationBodyMaxBytes    = 2 * 1024
+	loreClassificationPreviewMaxBytes = 256 * 1024
+	loreClassificationBodyMaxBytes    = 8 * 1024
 )
 
 type LoreClassificationPreviewRequest struct {
@@ -112,7 +112,11 @@ func (s *LoreAppService) PreviewLoreClassification(ctx context.Context, request 
 	}
 	if mode == book.LoreClassificationModeSemantic {
 		if omitted := semanticEligible - len(semanticInputs); omitted > 0 && preview.Warning == "" {
-			preview.Warning = fmt.Sprintf("分类输入达到 64 KiB 上限；%d 条保留本地分析结果", omitted)
+			preview.Warning = fmt.Sprintf(
+				"分类输入达到 %d KiB 上限；%d 条保留本地分析结果 / Classification input reached the %d KiB limit; %d items keep local analysis results",
+				loreClassificationPreviewMaxBytes/1024, omitted,
+				loreClassificationPreviewMaxBytes/1024, omitted,
+			)
 		}
 	}
 	for _, item := range preview.Items {

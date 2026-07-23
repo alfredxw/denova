@@ -159,6 +159,9 @@ function App() {
     sessions,
     activeSessionId,
     isStreaming,
+    runtimeProjection,
+    abortPending,
+    commandSubmitting,
     activityContent,
     references,
     styleScenes,
@@ -745,6 +748,9 @@ function App() {
         currentChapter={currentChapter}
         chapterStats={chapterStats}
         isStreaming={isStreaming}
+        runtimeProjection={runtimeProjection}
+        abortPending={abortPending}
+        commandSubmitting={commandSubmitting}
         projectVisible={projectVisible}
         activityBarExpanded={activityBarExpanded}
         rightPanel={rightPanel}

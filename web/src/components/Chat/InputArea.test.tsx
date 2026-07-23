@@ -197,6 +197,65 @@ describe('InputArea command menu', () => {
   })
 })
 
+describe('InputArea active generation controls', () => {
+  it('keeps the composer editable and exposes independent send and stop actions', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn()
+    const handleStop = vi.fn()
+
+    render(
+      <InputArea
+        onSend={handleSend}
+        onStop={handleStop}
+        disabled={false}
+        generationActive
+        activeDelivery="follow_up"
+        onActiveDeliveryChange={vi.fn()}
+        inputPrefill={{ prompt: 'Add more atmosphere', nonce: 1 }}
+      />,
+    )
+
+    const textbox = screen.getByRole('textbox')
+    await waitFor(() => expect(textbox).toHaveTextContent('Add more atmosphere'))
+    expect(textbox).toHaveAttribute('contenteditable', 'true')
+
+    const sendButton = screen.getByRole('button', { name: '发送' })
+    const stopButton = screen.getByRole('button', { name: '中断 AI 执行' })
+    expect(sendButton).toBeEnabled()
+    expect(stopButton).toBeEnabled()
+
+    await user.click(sendButton)
+    expect(handleSend).toHaveBeenCalledWith('Add more atmosphere')
+    expect(handleStop).not.toHaveBeenCalled()
+
+    await user.click(stopButton)
+    expect(handleStop).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets the user explicitly switch an active instruction from Follow Up to Steer', async () => {
+    const user = userEvent.setup()
+    const handleDeliveryChange = vi.fn()
+
+    render(
+      <InputArea
+        onSend={vi.fn()}
+        onStop={vi.fn()}
+        disabled={false}
+        generationActive
+        activeDelivery="follow_up"
+        onActiveDeliveryChange={handleDeliveryChange}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '发送方式：追加' }))
+    const steerOption = screen.getByRole('menuitemradio', { name: /转向/ })
+    expect(steerOption).toHaveAttribute('aria-checked', 'false')
+    await user.click(steerOption)
+
+    expect(handleDeliveryChange).toHaveBeenCalledWith('steer')
+  })
+})
+
 describe('InputArea prefill clearing', () => {
   it('clears prefilled prompt after sending without disabled transition', async () => {
     const user = userEvent.setup()

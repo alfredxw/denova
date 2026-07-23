@@ -1,0 +1,112 @@
+package handlers
+
+import (
+	"context"
+	"errors"
+	"strings"
+
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/protocol/consts"
+
+	"denova/internal/agent"
+	"denova/internal/agentruntime"
+	novaApp "denova/internal/app"
+)
+
+type chatAgentCommandRequest struct {
+	Type              string            `json:"type"`
+	CommandID         string            `json:"command_id"`
+	TargetOperationID string            `json:"target_operation_id"`
+	Input             agent.ChatRequest `json:"input"`
+	Reason            string            `json:"reason,omitempty"`
+}
+
+type agentCommandReceiptResponse struct {
+	CommandID   string `json:"command_id"`
+	OperationID string `json:"operation_id"`
+	Cursor      uint64 `json:"cursor"`
+}
+
+type agentRuntimeErrorResponse struct {
+	Error   string         `json:"error"`
+	Code    string         `json:"code"`
+	Details map[string]any `json:"details,omitempty"`
+}
+
+func (h *Handlers) HandleChatCommand(ctx context.Context, c *app.RequestContext) {
+	if !h.requireWorkspace(c) {
+		return
+	}
+	var body chatAgentCommandRequest
+	if err := c.BindJSON(&body); err != nil {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "命令格式无效 / Invalid agent command", nil)
+		return
+	}
+	kind, err := writingAgentCommandKind(body.Type)
+	if err != nil || strings.TrimSpace(body.CommandID) == "" || strings.TrimSpace(body.TargetOperationID) == "" {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "命令类型、command_id 和 target_operation_id 为必填项 / Command type, command_id, and target_operation_id are required", nil)
+		return
+	}
+	if kind != agent.AgentCommandAbort && strings.TrimSpace(body.Input.Message) == "" {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "消息不能为空 / Message is required", nil)
+		return
+	}
+	body.Input.Locale = requestLocale(c)
+	receipt, err := h.app.SubmitChatAgentCommand(ctx, novaApp.ChatAgentCommand{
+		Kind: kind, CommandID: strings.TrimSpace(body.CommandID),
+		OperationID: agentruntime.OperationID(strings.TrimSpace(body.TargetOperationID)),
+		Reason:      body.Reason, Input: body.Input,
+	})
+	if err != nil {
+		h.writeAgentCommandError(c, err, body.TargetOperationID)
+		return
+	}
+	c.JSON(consts.StatusAccepted, agentCommandReceiptResponse{
+		CommandID: string(receipt.CommandID), OperationID: string(receipt.OperationID), Cursor: uint64(receipt.Cursor),
+	})
+}
+
+func writingAgentCommandKind(value string) (agent.AgentCommandKind, error) {
+	switch strings.TrimSpace(value) {
+	case string(agent.AgentCommandSteer):
+		return agent.AgentCommandSteer, nil
+	case string(agent.AgentCommandFollowUp):
+		return agent.AgentCommandFollowUp, nil
+	case string(agent.AgentCommandNextTurn):
+		return agent.AgentCommandNextTurn, nil
+	case string(agent.AgentCommandAbort):
+		return agent.AgentCommandAbort, nil
+	default:
+		return "", agentruntime.ErrInvalidCommand
+	}
+}
+
+func (h *Handlers) writeAgentCommandError(c *app.RequestContext, err error, target string) {
+	details := map[string]any{"target_operation_id": strings.TrimSpace(target)}
+	switch {
+	case errors.Is(err, novaApp.ErrNoActiveAgentOperation):
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.invalid_phase", "当前没有运行中的 Agent / No agent operation is running", details)
+	case errors.Is(err, agentruntime.ErrStaleOperation):
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.target_operation_mismatch", "目标 Agent 运行已变化 / The target agent operation has changed", details)
+	case errors.Is(err, agentruntime.ErrQueueConflict):
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.queue_conflict", "同类指令已在队列中 / A command of this kind is already queued", details)
+	case errors.Is(err, agentruntime.ErrBusy):
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.busy", "Agent 正忙 / Agent is busy", details)
+	case errors.Is(err, novaApp.ErrAgentOperationActive):
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.busy", "Agent 正忙 / Agent is busy", details)
+	case errors.Is(err, agentruntime.ErrDomainCommitRejected):
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.commit_won", "Agent 输出已进入规范提交，当前控制命令未生效 / The agent output is already committing; this control command was not applied", details)
+	case errors.Is(err, novaApp.ErrWorkspaceTransition), errors.Is(err, novaApp.ErrAgentContextChanged), errors.Is(err, novaApp.ErrWorkspaceChanged):
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.context_changed", "Agent 运行上下文已变化 / The agent runtime context changed", details)
+	case errors.Is(err, agentruntime.ErrInvalidCommand), errors.Is(err, agentruntime.ErrInvalidBinding):
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "Agent 命令无效 / Invalid agent command", details)
+	case errors.Is(err, novaApp.ErrNoWorkspace):
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.no_workspace", "尚未选择工作区 / No workspace is open", nil)
+	default:
+		writeAgentRuntimeError(c, consts.StatusInternalServerError, "agent_runtime.failed", "Agent 命令提交失败 / Failed to submit agent command", details)
+	}
+}
+
+func writeAgentRuntimeError(c *app.RequestContext, status int, code, message string, details map[string]any) {
+	c.JSON(status, agentRuntimeErrorResponse{Error: message, Code: code, Details: details})
+}

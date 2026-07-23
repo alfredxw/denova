@@ -185,29 +185,33 @@ func contextAnalysisToolCallsContent(calls []schema.ToolCall) string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDEStoryTeller, bookService *book.Service, effectiveMessages []*schema.Message, totalMessages int, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest) (ContextAnalysis, error) {
+func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDEStoryTeller, bookService *book.Service, compaction *session.ContextCompaction, pending *session.Interruption, req ChatRequest, conversation Conversation) (ContextAnalysis, error) {
 	if len(teller.StyleRules) == 0 && len(req.StyleRules) > 0 {
 		teller.StyleRules = req.StyleRules
 	}
-	systemPrompt, systemParts := buildIDESystemPromptAnalysis(cfg, state, teller)
+	systemPrompt, systemParts, err := buildIDESystemPromptAnalysis(cfg, state, teller)
+	if err != nil {
+		return ContextAnalysis{}, err
+	}
 	policy := DefaultLoopPolicy().normalized()
-	composition := composeAgentInput(req, pending, bookService, policy)
-	messages := buildIDEAnalysisMessages(cfg, effectiveMessages, totalMessages, compaction)
-	messages = applyToolResultContextPolicy(messages, resolveToolResultContextPolicy(cfg, config.AgentKindIDE))
-	runtimeContexts := IDEWorkspaceRuntimeContextsForRequest(state, req)
-	messages = append(messages, schema.UserMessage(composition.AgentMessage))
-	contextResult, err := agentcontext.Build(context.Background(), agentcontext.Request{
-		Messages: messages,
-		Sources:  ideRuntimeContextSources(runtimeContexts),
+	budget := contextBudgetForAgent(cfg, config.AgentKindIDE)
+	projection := projectTurnInput(req, pending, bookService, budget)
+	prepared, err := AssembleModelContext(context.Background(), conversation, projection.OriginalMessage, ModelContextInput{
+		UserMessage: req.Message,
+		Fragments:   projection.Fragments,
+		Budget:      budget,
 	})
 	if err != nil {
 		return ContextAnalysis{}, err
 	}
-	messages = contextResult.Messages
+	messages := prepared.Messages
+	runtimeContexts := IDEWorkspaceRuntimeContextsForRequest(state, req)
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
 	stableMessageCount := 0
-	if strings.TrimSpace(runtimeContexts.Stable) != "" {
-		stableMessageCount = 1
+	for _, fragment := range prepared.Context.Fragments {
+		if fragment.Included && fragment.Placement == agentcontext.PlacementLeadingMessage {
+			stableMessageCount++
+		}
 	}
 	for i, msg := range messages {
 		if msg == nil {
@@ -237,7 +241,7 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 		Mode:                     "ide",
 		SystemPrompt:             systemPrompt,
 		SystemPromptParts:        systemParts,
-		ContextParts:             composition.ContextLog.FullParts(),
+		ContextParts:             contextBuildLogFromAssembly(policy.ContextLedger, projection.OriginalMessage, prepared.Context).FullParts(),
 		ContextMessages:          contextMessages,
 		MessageCount:             len(contextMessages),
 		TokenEstimate:            usage.tokens,
@@ -253,42 +257,26 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 	}, nil
 }
 
-func ideRuntimeContextSources(contexts IDEWorkspaceRuntimeContexts) []agentcontext.Source {
-	var sources []agentcontext.Source
-	if strings.TrimSpace(contexts.Stable) != "" {
-		sources = append(sources, agentcontext.Source{
-			Source:    "稳定作品上下文",
-			Title:     contexts.StableTitle,
-			Content:   contexts.Stable,
-			Placement: agentcontext.PlacementLeadingMessage,
-			Included:  true,
-			Note:      "prepended_to_model_messages",
-		})
-	}
-	if strings.TrimSpace(contexts.Dynamic) != "" {
-		sources = append(sources, agentcontext.Source{
-			Source:    "本轮上下文",
-			Title:     contexts.DynamicTitle,
-			Content:   contexts.Dynamic,
-			Placement: agentcontext.PlacementFinalUserPrefix,
-			Included:  true,
-			Note:      "prepended_to_final_user_message",
-		})
-	}
-	return sources
-}
-
-func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, bookService *book.Service, req ChatRequest, compaction *interactive.ContextCompactionEvent, prepareMessages func(originalMessage, agentMessage string) ([]*schema.Message, error)) (ContextAnalysis, error) {
+func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, bookService *book.Service, req ChatRequest, compaction *interactive.ContextCompactionEvent, conversation Conversation) (ContextAnalysis, error) {
 	if len(teller.StyleRules) == 0 && len(req.StyleRules) > 0 {
 		teller.StyleRules = req.StyleRules
 	}
-	systemPrompt, systemParts := buildInteractiveStorySystemPromptAnalysis(cfg, state, teller)
-	policy := DefaultLoopPolicy().normalized()
-	composition := composeAgentInput(req, nil, bookService, policy)
-	messages, err := prepareMessages(composition.OriginalMessage, composition.AgentMessage)
+	systemPrompt, systemParts, err := buildInteractiveStorySystemPromptAnalysis(cfg, state, teller)
 	if err != nil {
 		return ContextAnalysis{}, err
 	}
+	policy := DefaultLoopPolicy().normalized()
+	budget := modelContextBudgetForConversation(conversation)
+	projection := projectTurnInput(req, nil, bookService, budget)
+	prepared, err := AssembleModelContext(context.Background(), conversation, projection.OriginalMessage, ModelContextInput{
+		UserMessage: req.Message,
+		Fragments:   projection.Fragments,
+		Budget:      budget,
+	})
+	if err != nil {
+		return ContextAnalysis{}, err
+	}
+	messages := prepared.Messages
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
 	compactionEpoch := 0
 	for i, msg := range messages {
@@ -318,7 +306,7 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		Mode:                     "interactive",
 		SystemPrompt:             systemPrompt,
 		SystemPromptParts:        systemParts,
-		ContextParts:             composition.ContextLog.FullParts(),
+		ContextParts:             contextBuildLogFromAssembly(policy.ContextLedger, projection.OriginalMessage, prepared.Context).FullParts(),
 		ContextMessages:          contextMessages,
 		MessageCount:             len(contextMessages),
 		TokenEstimate:            usage.tokens,
@@ -342,17 +330,25 @@ func BuildInteractiveDirectorContextAnalysis(cfg *config.Config, instruction str
 // two-message layout used by the tool-enabled Director when resident Lore is
 // present, rather than hiding that stable prefix from context diagnostics.
 func BuildInteractiveDirectorContextAnalysisWithStableContext(cfg *config.Config, stableTitle, stableContext string, stableMaxBytes int, instruction string) (ContextAnalysis, error) {
-	systemPrompt, systemParts := buildInteractiveDirectorSystemPromptAnalysis(cfg)
+	systemPrompt, systemParts, err := buildInteractiveDirectorSystemPromptAnalysis(cfg)
+	if err != nil {
+		return ContextAnalysis{}, err
+	}
 	conversation := &singleInstructionConversation{
 		instruction:           instruction,
 		stableContextTitle:    stableTitle,
 		stableContext:         stableContext,
 		stableContextMaxBytes: stableMaxBytes,
+		contextBudget:         contextBudgetForAgent(cfg, config.AgentKindInteractiveDirector),
 	}
-	messages, err := conversation.PrepareMessages("", instruction)
+	prepared, err := AssembleModelContext(context.Background(), conversation, "", ModelContextInput{
+		UserMessage: instruction,
+		Budget:      conversation.ModelContextBudget(),
+	})
 	if err != nil {
 		return ContextAnalysis{}, err
 	}
+	messages := prepared.Messages
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages)+8)
 	if len(messages) > 1 {
 		part := contextAnalysisPartFromMessage("resident_lore", "enabled resident lore", strings.TrimSpace(stableTitle), messages[0])
@@ -370,7 +366,7 @@ func BuildInteractiveDirectorContextAnalysisWithStableContext(cfg *config.Config
 		Mode:                     "interactive_director",
 		SystemPrompt:             systemPrompt,
 		SystemPromptParts:        systemParts,
-		ContextParts:             contextMessages,
+		ContextParts:             contextBuildLogFromAssembly(DefaultLoopPolicy().ContextLedger, instruction, prepared.Context).FullParts(),
 		ContextMessages:          contextMessages,
 		MessageCount:             len(messages),
 		TokenEstimate:            usage.tokens,
@@ -420,27 +416,6 @@ func contextAnalysisCompactionFromInteractive(compaction *interactive.ContextCom
 		SourceTurnCount: compaction.SourceTurnCount,
 		Removable:       true,
 	}
-}
-
-func buildIDEAnalysisMessages(cfg *config.Config, effectiveMessages []*schema.Message, totalMessages int, compaction *session.ContextCompaction) []*schema.Message {
-	messages := make([]*schema.Message, 0, len(effectiveMessages)+1)
-	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
-		effectiveStart := totalMessages - len(effectiveMessages)
-		retainedTurns := compaction.RetainedTurns
-		if retainedTurns <= 0 {
-			retainedTurns = config.DefaultContextCompactionRetainedTurns
-		}
-		tail := compactedMessagesAfterSource(effectiveMessages, effectiveStart, compaction.SourceEndIndex, retainedTurns)
-		messages = append(messages, NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
-		messages = append(messages, tail...)
-		return messages
-	}
-	for _, msg := range effectiveMessages {
-		if msg != nil {
-			messages = append(messages, msg)
-		}
-	}
-	return messages
 }
 
 type contextUsageAnalysis struct {
@@ -496,186 +471,58 @@ func parseCompactionEpoch(content string) int {
 	return epoch
 }
 
-func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller IDEStoryTeller) (string, []ContextAnalysisPart) {
-	builtIn, workspace, creator, _ := buildIDEBuiltinInstruction(cfg, state, teller)
-	systemPrompt := protectedSystemInstruction(cfg, config.AgentKindIDE, builtIn)
-	resolved := config.ResolveAgentPrompt(cfg, config.AgentKindIDE)
-	parts := []ContextAnalysisPart{
-		NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "runtime_contract",
-			Source:  "Denova runtime",
-			Title:   "运行契约",
-			Content: runtimeContractForAgent(cfg, config.AgentKindIDE),
-		}),
+func buildIDESystemPromptAnalysis(cfg *config.Config, state *book.State, teller IDEStoryTeller) (string, []ContextAnalysisPart, error) {
+	composition, err := ComposeInstruction(cfg, state, teller)
+	if err != nil {
+		return "", nil, err
 	}
-	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(config.AgentKindIDE)); outputProtocol != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "output_protocol",
-			Source:  "Denova runtime",
-			Title:   "输出格式",
-			Content: outputProtocol,
-		}))
+	return composition.Instruction(), systemPromptAnalysisParts(composition), nil
+}
+
+func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (string, []ContextAnalysisPart, error) {
+	composition, err := ComposeInteractiveStoryInstruction(cfg, state, teller)
+	if err != nil {
+		return "", nil, err
 	}
-	if flow := strings.TrimSpace(resolved.FlowPrompt); flow != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "custom_flow",
-			Source:  "user/workspace config",
-			Title:   "用户自定义流程规则",
-			Content: flow,
-		}))
+	return composition.Instruction(), systemPromptAnalysisParts(composition), nil
+}
+
+func buildInteractiveDirectorSystemPromptAnalysis(cfg *config.Config) (string, []ContextAnalysisPart, error) {
+	composition, err := ComposeInteractiveDirectorInstruction(cfg, nil)
+	if err != nil {
+		return "", nil, err
 	}
-	if custom := strings.TrimSpace(resolved.SystemPrompt); custom != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "custom_system",
-			Source:  "user/workspace config",
-			Title:   "用户自定义系统提示",
-			Content: custom,
-		}))
+	return composition.Instruction(), systemPromptAnalysisParts(composition), nil
+}
+
+func systemPromptAnalysisParts(composition SystemPromptComposition) []ContextAnalysisPart {
+	fragments := make(map[string]SystemPromptFragment, len(composition.fragments))
+	for _, fragment := range composition.fragments {
+		fragments[fragment.ID] = fragment
 	}
-	if strings.TrimSpace(creator) != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "creator",
-			Source:  "CREATOR.md",
-			Title:   "创作者指令",
-			Content: creator,
-		}))
-	}
-	if strings.TrimSpace(teller.Prompt) != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "ide_teller",
-			Source:  teller.ID,
-			Title:   "写作模式默认导演规则",
-			Content: teller.Prompt,
-		}))
-	}
-	if strings.TrimSpace(teller.ImagePresetSystemPrompt) != "" {
-		title := "图像方案系统规则"
-		if strings.TrimSpace(teller.ImagePresetName) != "" {
-			title = "图像方案系统规则：" + strings.TrimSpace(teller.ImagePresetName)
+	parts := make([]ContextAnalysisPart, 0, len(composition.manifest))
+	for _, entry := range composition.manifest {
+		fragment, included := fragments[entry.ID]
+		content := ""
+		if included {
+			content = fragment.Prefix + fragment.Content + fragment.Suffix
+		}
+		note := fmt.Sprintf("included=%t; original_bytes=%d; included_bytes=%d; original_sha=%s; included_sha=%s", entry.Included, entry.OriginalBytes, entry.IncludedBytes, entry.OriginalSHA, entry.IncludedSHA)
+		if entry.Truncated {
+			note += "; truncated=true"
+		}
+		if entry.Rejected {
+			note += "; rejected=true"
+		}
+		if entry.Reason != "" {
+			note += "; reason=" + entry.Reason
 		}
 		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "image_preset_system",
-			Source:  teller.ImagePresetID,
-			Title:   title,
-			Content: teller.ImagePresetSystemPrompt,
-			Note:    "仅用于图像生成 system prompt",
+			ID: entry.ID, Source: entry.Source, Title: entry.Title, Role: "system", Kind: "system_fragment",
+			Content: content, Note: note,
 		}))
 	}
-	parts = append(parts, styleRuleContextAnalysisParts(teller.StyleRules)...)
-	parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-		ID:      "flow",
-		Source:  "Denova built-in",
-		Title:   "写作模式流程配置",
-		Content: ideFlowInstruction(cfg, workspace),
-	}))
-	return systemPrompt, parts
-}
-
-func buildInteractiveStorySystemPromptAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) (string, []ContextAnalysisPart) {
-	builtIn, workspace, creator := buildInteractiveStoryBuiltinInstruction(cfg, state, teller)
-	systemPrompt := protectedSystemInstruction(cfg, config.AgentKindInteractiveStory, builtIn)
-	resolved := config.ResolveAgentPrompt(cfg, config.AgentKindInteractiveStory)
-	parts := []ContextAnalysisPart{
-		NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "runtime_contract",
-			Source:  "Denova runtime",
-			Title:   "运行契约",
-			Content: runtimeContractForAgent(cfg, config.AgentKindInteractiveStory),
-		}),
-	}
-	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(config.AgentKindInteractiveStory)); outputProtocol != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "output_protocol",
-			Source:  "Denova runtime",
-			Title:   "输出格式",
-			Content: outputProtocol,
-		}))
-	}
-	if flow := strings.TrimSpace(resolved.FlowPrompt); flow != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "custom_flow",
-			Source:  "user/workspace config",
-			Title:   "用户自定义流程规则",
-			Content: flow,
-		}))
-	}
-	if custom := strings.TrimSpace(resolved.SystemPrompt); custom != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "custom_system",
-			Source:  "user/workspace config",
-			Title:   "用户自定义系统提示",
-			Content: custom,
-		}))
-	}
-	if strings.TrimSpace(creator) != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "creator",
-			Source:  "CREATOR.md",
-			Title:   "创作者指令",
-			Content: creator,
-		}))
-	}
-	if strings.TrimSpace(teller.StoryTellerSystemPrompt) != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "interactive_teller",
-			Source:  teller.StoryTellerID,
-			Title:   "互动叙事风格系统规则",
-			Content: teller.StoryTellerSystemPrompt,
-		}))
-	}
-	parts = append(parts, styleRuleContextAnalysisParts(teller.StyleRules)...)
-	parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-		ID:      "flow",
-		Source:  "Denova built-in",
-		Title:   "互动故事流程规则",
-		Content: interactiveStoryFlowInstruction(cfg, workspace),
-	}))
-	return systemPrompt, parts
-}
-
-func buildInteractiveDirectorSystemPromptAnalysis(cfg *config.Config) (string, []ContextAnalysisPart) {
-	builtIn := prompts.BuildInteractiveDirectorSystemInstruction()
-	systemPrompt := protectedSystemInstruction(cfg, config.AgentKindInteractiveDirector, builtIn)
-	resolved := config.ResolveAgentPrompt(cfg, config.AgentKindInteractiveDirector)
-	parts := []ContextAnalysisPart{
-		NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "runtime_contract",
-			Source:  "Denova runtime",
-			Title:   "运行契约",
-			Content: runtimeContractForAgent(cfg, config.AgentKindInteractiveDirector),
-		}),
-	}
-	if outputProtocol := strings.TrimSpace(outputProtocolForAgent(config.AgentKindInteractiveDirector)); outputProtocol != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "output_protocol",
-			Source:  "Denova runtime",
-			Title:   "输出格式",
-			Content: outputProtocol,
-		}))
-	}
-	if flow := strings.TrimSpace(resolved.FlowPrompt); flow != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "custom_flow",
-			Source:  "user/workspace config",
-			Title:   "用户自定义流程规则",
-			Content: flow,
-		}))
-	}
-	if custom := strings.TrimSpace(resolved.SystemPrompt); custom != "" {
-		parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-			ID:      "custom_system",
-			Source:  "user/workspace config",
-			Title:   "用户自定义系统提示",
-			Content: custom,
-		}))
-	}
-	parts = append(parts, NewContextAnalysisPart(ContextAnalysisPartInput{
-		ID:      "flow",
-		Source:  "Denova built-in",
-		Title:   "后台导演系统规则",
-		Content: builtIn,
-	}))
-	return systemPrompt, parts
+	return parts
 }
 
 func buildInteractiveDirectorInstructionContextParts(instruction string) []ContextAnalysisPart {
@@ -762,7 +609,6 @@ func directorInstructionHeadingMeta(heading string) (title, source, note string)
 }
 
 func styleRuleContextAnalysisParts(rules []StyleRule) []ContextAnalysisPart {
-	rules = boundedStyleRules(rules, maxStyleRuleContextChars)
 	parts := make([]ContextAnalysisPart, 0, len(rules))
 	for i, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
@@ -792,58 +638,4 @@ func styleRuleAnalysisTitle(rule StyleRule) string {
 		return "全局"
 	}
 	return strings.TrimSpace(rule.Scene)
-}
-
-type agentInputComposition struct {
-	OriginalMessage    string
-	Request            ChatRequest
-	AgentMessage       string
-	ContextLog         *contextBuildLog
-	ResumeInterruption *session.Interruption
-}
-
-func composeAgentInput(req ChatRequest, pending *session.Interruption, bookService *book.Service, policy LoopPolicy) agentInputComposition {
-	originalMessage := req.Message
-	resumeInterruption := pending
-	if !shouldResumeInterruptedRequest(req.Message) {
-		resumeInterruption = nil
-	}
-	if resumeInterruption != nil {
-		req.Message = buildInterruptedResumeMessage(req.Message, resumeInterruption)
-	}
-	agentMessage := req.Message
-	contextLog := newContextBuildLog(policy.ContextLedger)
-	contextLog.add("用户输入", "本轮原始请求", originalMessage, "")
-	if resumeInterruption != nil {
-		contextLog.add("运行时恢复", "异常中断恢复上下文", req.Message, "包含上一轮原始请求、已生成助手内容和中断原因")
-	}
-	if req.PlanMode {
-		agentMessage = appendPlanModeInstruction(agentMessage)
-		contextLog.add("注入规则", "规划模式", prompts.PlanMode(""), "")
-	}
-	if strings.TrimSpace(req.WritingSkill) != "" {
-		agentMessage = appendWritingSkillLoadHint(agentMessage, req.WritingSkill, contextLog)
-	}
-	if len(req.References) > 0 {
-		agentMessage = appendReferenceContext(bookService, agentMessage, req.References, contextLog)
-	}
-	if len(req.LoreReferences) > 0 {
-		agentMessage = appendLoreReferenceContext(bookService, agentMessage, req.LoreReferences, contextLog)
-	}
-	if len(req.Selections) > 0 {
-		agentMessage = appendSelectionContext(agentMessage, req.Selections)
-		contextLog.addSelections(req.Selections)
-	}
-	if !req.ResolvedReviewFeedback.Empty() {
-		agentMessage = appendReviewFeedbackContext(agentMessage, req.ResolvedReviewFeedback, contextLog)
-	}
-	agentMessage = appendContextBoundaryInstruction(agentMessage)
-	contextLog.add("注入规则", "上下文边界", prompts.ContextBoundary(""), "")
-	return agentInputComposition{
-		OriginalMessage:    originalMessage,
-		Request:            req,
-		AgentMessage:       agentMessage,
-		ContextLog:         contextLog,
-		ResumeInterruption: resumeInterruption,
-	}
 }

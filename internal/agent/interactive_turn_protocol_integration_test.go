@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"sync"
@@ -17,6 +18,57 @@ import (
 	"denova/internal/interactive"
 	"denova/internal/session"
 )
+
+func TestInteractiveProtocolRetryRevalidatesCompleteProviderInput(t *testing.T) {
+	ctx := context.Background()
+	var ready atomic.Bool
+	chatModel := &interactiveTurnProtocolChatModel{responses: []*schema.Message{
+		schema.AssistantMessage(strings.Repeat("候选正文。", 2_000), nil),
+	}}
+	const providerInputMaxBytes = 12 * 1024
+	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
+		Name: "interactive-provider-boundary-test", Description: "test", Instruction: "test", Model: chatModel, MaxIterations: 2,
+		Handlers: []adk.ChatModelAgentMiddleware{
+			newInteractiveTurnProtocolMiddleware(ready.Load),
+			&modelInputLoggingMiddleware{
+				BaseChatModelAgentMiddleware: &adk.BaseChatModelAgentMiddleware{},
+				agentKind:                    AgentKindInteractiveStory,
+				providerInputMaxBytes:        providerInputMaxBytes,
+			},
+		},
+		ModelRetryConfig: &adk.ModelRetryConfig{
+			MaxRetries:  1,
+			ShouldRetry: newInteractiveCompletionGuard(ready.Load),
+			BackoffFunc: func(context.Context, int) time.Duration { return time.Nanosecond },
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
+	iterator := runner.Run(ctx, []*schema.Message{schema.UserMessage(strings.Repeat("初始事实。", 400))})
+	var limitErr *ProviderInputLimitError
+	for {
+		event, ok := iterator.Next()
+		if !ok {
+			break
+		}
+		if errors.As(event.Err, &limitErr) {
+			break
+		}
+		if event.Output == nil || event.Output.MessageOutput == nil {
+			continue
+		}
+		_, streamErr := readInteractiveProtocolMessage(event.Output.MessageOutput)
+		if errors.As(streamErr, &limitErr) {
+			break
+		}
+	}
+	calls, _, _ := chatModel.snapshot()
+	if limitErr == nil || calls != 1 {
+		t.Fatalf("retry provider boundary: error=%v calls=%d, want hard-limit rejection before call 2", limitErr, calls)
+	}
+}
 
 func TestInteractiveTurnProtocolRecoversMissingSubmissionInsideAgentLoop(t *testing.T) {
 	ctx := context.Background()
@@ -130,7 +182,7 @@ func TestInteractiveTurnProtocolAccountsRejectedModelCallUsage(t *testing.T) {
 	conversation := &interactiveProtocolConversation{ready: &ready}
 	var usage map[string]any
 	var events []Event
-	NewRuntime(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "推开石门"}, RunOptions{
+	outcome := newTurnExecutor(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "推开石门"}, RunOptions{
 		AgentKind:     AgentKindInteractiveStory,
 		RootAgentName: "interactive-protocol-usage-test",
 	}, func(event Event) {
@@ -143,6 +195,9 @@ func TestInteractiveTurnProtocolAccountsRejectedModelCallUsage(t *testing.T) {
 	calls, toolCounts, inputs := chatModel.snapshot()
 	if conversation.assistant != "门后传来锁链拖地的声音。" {
 		t.Fatalf("final narrative = %q ready=%t calls=%d tools=%#v inputs=%#v usage=%#v", conversation.assistant, ready.Load(), calls, toolCounts, inputs, usage)
+	}
+	if outcome.Status != RunOutcomeCompleted {
+		t.Fatalf("interactive protocol cancel outcome = %#v, want completed", outcome)
 	}
 	if calls != 2 || usage == nil || usage["model_calls"] != 2 || usage["total_tokens"] != 330 {
 		t.Fatalf("usage must include only the candidate and submit model responses: calls=%d usage=%#v", calls, usage)
@@ -234,7 +289,7 @@ func TestInteractiveTurnProtocolRetriesRejectedModulesBeforeReusingCandidate(t *
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
 	conversation := &interactiveProtocolConversation{ready: &ready}
 	var events []Event
-	NewRuntime(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "推开石门"}, RunOptions{
+	newTurnExecutor(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "推开石门"}, RunOptions{
 		AgentKind:     AgentKindInteractiveStory,
 		RootAgentName: "interactive-protocol-module-retry-test",
 	}, func(event Event) { events = append(events, event) })
@@ -319,7 +374,7 @@ func TestInteractiveTurnProtocolLocksFirstCandidateAcrossMalformedModuleAndLater
 	}
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
 	conversation := &interactiveProtocolConversation{ready: &ready}
-	NewRuntime(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "观察敌情"}, RunOptions{
+	newTurnExecutor(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "观察敌情"}, RunOptions{
 		AgentKind: AgentKindInteractiveStory, RootAgentName: "interactive-protocol-first-candidate-test",
 	}, func(Event) {})
 
@@ -356,8 +411,12 @@ type interactiveProtocolConversation struct {
 	assistant string
 }
 
-func (c *interactiveProtocolConversation) PrepareMessages(_, agentMessage string) ([]*schema.Message, error) {
-	return []*schema.Message{schema.UserMessage(agentMessage)}, nil
+func (c *interactiveProtocolConversation) AssembleModelContext(
+	ctx context.Context,
+	_ string,
+	input ModelContextInput,
+) (ModelContextResult, error) {
+	return AssembleSingleUserModelContext(ctx, input)
 }
 func (c *interactiveProtocolConversation) AppendAssistant(content string) error {
 	c.assistant = content

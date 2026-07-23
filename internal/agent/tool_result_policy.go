@@ -24,14 +24,172 @@ const (
 	ToolSourceImage   ToolSource = "image"
 )
 
-// ToolManifest describes the loop-level contract for a model-visible tool result.
-type ToolManifest struct {
-	Name              string     `json:"name"`
-	Source            ToolSource `json:"source"`
-	Capability        string     `json:"capability,omitempty"`
-	MutatesWorkspace  bool       `json:"mutates_workspace"`
-	MaxResultBytes    int        `json:"max_result_bytes"`
-	RequiresPostCheck bool       `json:"requires_post_check"`
+// ToolExecutionClass declares the workspace lease held while a tool runs.
+// Unknown tools are deliberately exclusive until their registration provides a
+// stronger contract.
+type ToolExecutionClass string
+
+const (
+	ToolExecutionParallelRead       ToolExecutionClass = "parallel_read"
+	ToolExecutionWorkspaceExclusive ToolExecutionClass = "workspace_exclusive"
+	ToolExecutionChild              ToolExecutionClass = "child"
+)
+
+// ToolRecoveryClass declares what recovery may safely do after observing a
+// durable tool-start record without a matching completion record.
+type ToolRecoveryClass string
+
+const (
+	ToolRecoveryReadOnly      ToolRecoveryClass = "read_only"
+	ToolRecoveryIdempotent    ToolRecoveryClass = "idempotent"
+	ToolRecoveryReconcilable  ToolRecoveryClass = "reconcilable"
+	ToolRecoveryNonIdempotent ToolRecoveryClass = "non_idempotent"
+)
+
+type ToolResultProjection string
+
+const (
+	ToolResultBoundedModelContext ToolResultProjection = "bounded_model_context"
+)
+
+// ToolDescriptor is the loop-level contract for a model-visible tool. The
+// contract is registered explicitly; the runtime must never infer side effects
+// or retry safety from a tool-name prefix.
+type ToolDescriptor struct {
+	Name              string               `json:"name"`
+	Source            ToolSource           `json:"source"`
+	Capability        string               `json:"capability,omitempty"`
+	Execution         ToolExecutionClass   `json:"execution"`
+	Recovery          ToolRecoveryClass    `json:"recovery"`
+	ResultProjection  ToolResultProjection `json:"result_projection"`
+	MutatesWorkspace  bool                 `json:"mutates_workspace"`
+	MaxResultBytes    int                  `json:"max_result_bytes"`
+	RequiresPostCheck bool                 `json:"requires_post_check"`
+}
+
+// ToolManifest remains an alias while callers migrate to descriptor wording.
+// It is intentionally not a second representation of tool semantics.
+type ToolManifest = ToolDescriptor
+
+/*
+Tool descriptors form an explicit catalog because recovery is a correctness
+boundary. Adding a new model-visible tool requires choosing its execution and
+recovery classes instead of accidentally inheriting behavior from its name.
+*/
+var toolDescriptorCatalog = buildToolDescriptorCatalog()
+
+func buildToolDescriptorCatalog() map[string]ToolDescriptor {
+	catalog := make(map[string]ToolDescriptor)
+	register := func(names []string, descriptor ToolDescriptor) {
+		for _, name := range names {
+			entry := descriptor
+			entry.Name = normalizeToolName(name)
+			entry.MaxResultBytes = defaultToolResultMaxBytes
+			entry.ResultProjection = ToolResultBoundedModelContext
+			catalog[entry.Name] = entry
+		}
+	}
+
+	register([]string{"read_file", "list_files", "ls", "glob", "grep", "search_file", "search_workspace"}, ToolDescriptor{
+		Source: ToolSourceRead, Capability: config.AgentToolFileRead,
+		Execution: ToolExecutionParallelRead, Recovery: ToolRecoveryReadOnly,
+	})
+	register([]string{"write_file", "edit_file", "delete_file", "create_file", "move_file", "copy_file", "rename_file", "mkdir", "remove_file"}, ToolDescriptor{
+		Source: ToolSourceWrite, Capability: config.AgentToolFileWrite,
+		Execution: ToolExecutionWorkspaceExclusive, Recovery: ToolRecoveryReconcilable,
+		MutatesWorkspace: true, RequiresPostCheck: true,
+	})
+	register([]string{"bash", "shell", "execute", "execute_shell", "execute_command", "run_command", "terminal"}, ToolDescriptor{
+		Source: ToolSourceShell, Capability: config.AgentToolShellExecute,
+		Execution: ToolExecutionWorkspaceExclusive, Recovery: ToolRecoveryNonIdempotent,
+		MutatesWorkspace: true, RequiresPostCheck: true,
+	})
+	register([]string{"read_lore_items", "list_lore_items"}, ToolDescriptor{
+		Source: ToolSourceLore, Capability: config.AgentToolLoreRead,
+		Execution: ToolExecutionParallelRead, Recovery: ToolRecoveryReadOnly,
+	})
+	register([]string{"write_lore_items"}, ToolDescriptor{
+		Source: ToolSourceLore, Capability: config.AgentToolLoreWrite,
+		Execution: ToolExecutionWorkspaceExclusive, Recovery: ToolRecoveryReconcilable,
+		MutatesWorkspace: true, RequiresPostCheck: true,
+	})
+	register([]string{"search_story_history", "read_event_cards"}, ToolDescriptor{
+		Source: ToolSourceHistory, Execution: ToolExecutionParallelRead, Recovery: ToolRecoveryReadOnly,
+	})
+	register([]string{"prepare_interactive_turn", initializeStoryStateSchemaToolName, interactiveTurnSubmissionToolName, legacyActorStatePatchesToolName, legacyInteractiveChoicesToolName, submitDirectorPlanUpdateToolName}, ToolDescriptor{
+		Source: ToolSourceHistory, Execution: ToolExecutionWorkspaceExclusive, Recovery: ToolRecoveryReconcilable,
+	})
+	register([]string{generateImageToolName, generateChapterIllustrationToolName, "generate_interactive_image"}, ToolDescriptor{
+		Source: ToolSourceImage, Capability: config.AgentToolImageGeneration,
+		Execution: ToolExecutionWorkspaceExclusive, Recovery: ToolRecoveryNonIdempotent,
+		MutatesWorkspace: true, RequiresPostCheck: true,
+	})
+	register([]string{"web_search", "search_web", "duckduckgo_search", "browser_search"}, ToolDescriptor{
+		Source: ToolSourceWeb, Capability: config.AgentToolWebSearch,
+		Execution: ToolExecutionParallelRead, Recovery: ToolRecoveryReadOnly,
+	})
+	register([]string{"task"}, ToolDescriptor{
+		Source: ToolSourceOther, Execution: ToolExecutionChild, Recovery: ToolRecoveryNonIdempotent,
+	})
+	register([]string{"skill"}, ToolDescriptor{
+		Source: ToolSourceOther, Capability: config.AgentToolSkills,
+		Execution: ToolExecutionParallelRead, Recovery: ToolRecoveryReadOnly,
+	})
+
+	registerConfigManagerDescriptors(register)
+	return catalog
+}
+
+func registerConfigManagerDescriptors(register func([]string, ToolDescriptor)) {
+	readGroups := map[string][]string{
+		config.AgentToolLoreRead:        {"list_style_references", "list_tellers", "read_tellers", "list_story_directors", "read_story_directors", "list_event_packages", "read_event_packages", "list_actor_states", "read_actor_states", "list_image_presets", "read_image_presets"},
+		config.AgentToolTodo:            {"list_automations", "read_automations"},
+		config.AgentToolSkills:          {"list_skills", "read_skills"},
+		config.AgentToolAgentConfigRead: {"list_agent_configs"},
+	}
+	for capability, names := range readGroups {
+		register(names, ToolDescriptor{
+			Source: ToolSourceRead, Capability: capability,
+			Execution: ToolExecutionParallelRead, Recovery: ToolRecoveryReadOnly,
+		})
+	}
+	writeGroups := map[string][]string{
+		config.AgentToolLoreWrite:        {"write_style_references", "write_tellers", "write_story_directors", "write_event_packages", "write_actor_states", "write_image_presets"},
+		config.AgentToolTodo:             {"write_automations"},
+		config.AgentToolSkills:           {"write_skills"},
+		config.AgentToolAgentConfigWrite: {"write_agent_configs"},
+	}
+	for capability, names := range writeGroups {
+		register(names, ToolDescriptor{
+			Source: ToolSourceWrite, Capability: capability,
+			Execution: ToolExecutionWorkspaceExclusive, Recovery: ToolRecoveryReconcilable,
+			MutatesWorkspace: true, RequiresPostCheck: true,
+		})
+	}
+}
+
+// DescriptorForTool resolves a declared contract. Unknown tools receive a
+// conservative, non-retryable descriptor; their spelling does not grant them
+// read-only concurrency or implicit idempotency.
+func DescriptorForTool(name string) ToolDescriptor {
+	if descriptor, ok := declaredToolDescriptor(name); ok {
+		return descriptor
+	}
+	normalized := normalizeToolName(name)
+	if normalized == "" {
+		normalized = "unknown_tool"
+	}
+	return ToolDescriptor{
+		Name: normalized, Source: ToolSourceOther,
+		Execution: ToolExecutionWorkspaceExclusive, Recovery: ToolRecoveryNonIdempotent,
+		ResultProjection: ToolResultBoundedModelContext,
+		MaxResultBytes:   defaultToolResultMaxBytes,
+	}
+}
+
+func declaredToolDescriptor(name string) (ToolDescriptor, bool) {
+	descriptor, ok := toolDescriptorCatalog[normalizeToolName(name)]
+	return descriptor, ok
 }
 
 type FilteredToolResult struct {
@@ -50,75 +208,7 @@ const (
 )
 
 func ManifestForTool(name string) ToolManifest {
-	normalized := normalizeToolName(name)
-	manifest := ToolManifest{
-		Name:           normalized,
-		Source:         ToolSourceOther,
-		MaxResultBytes: defaultToolResultMaxBytes,
-	}
-	switch {
-	case normalized == generateImageToolName || normalized == generateChapterIllustrationToolName:
-		manifest.Source = ToolSourceImage
-		manifest.Capability = config.AgentToolImageGeneration
-		manifest.MutatesWorkspace = true
-		manifest.RequiresPostCheck = true
-	case normalized == "write_lore_items":
-		manifest.Source = ToolSourceLore
-		manifest.Capability = config.AgentToolLoreWrite
-		manifest.MutatesWorkspace = true
-		manifest.RequiresPostCheck = true
-	case normalized == "read_lore_items" || normalized == "list_lore_items":
-		manifest.Source = ToolSourceLore
-		manifest.Capability = config.AgentToolLoreRead
-	case normalized == "search_story_history":
-		manifest.Source = ToolSourceHistory
-	case capabilityForConfigManagerTool(normalized) != "":
-		manifest.Capability = capabilityForConfigManagerTool(normalized)
-		if strings.HasPrefix(normalized, "write_") {
-			manifest.Source = ToolSourceWrite
-			manifest.MutatesWorkspace = true
-			manifest.RequiresPostCheck = true
-		} else {
-			manifest.Source = ToolSourceRead
-		}
-	case isToolWriteLike(normalized):
-		manifest.Source = ToolSourceWrite
-		manifest.Capability = config.AgentToolFileWrite
-		manifest.MutatesWorkspace = true
-		manifest.RequiresPostCheck = true
-	case isToolReadLike(normalized):
-		manifest.Source = ToolSourceRead
-		manifest.Capability = config.AgentToolFileRead
-	case isToolShellLike(normalized):
-		manifest.Source = ToolSourceShell
-		manifest.Capability = config.AgentToolShellExecute
-	case isToolWebLike(normalized):
-		manifest.Source = ToolSourceWeb
-		manifest.Capability = config.AgentToolWebSearch
-	}
-	if manifest.Name == "" {
-		manifest.Name = "unknown_tool"
-	}
-	return manifest
-}
-
-func capabilityForConfigManagerTool(name string) string {
-	switch name {
-	case "list_style_references", "list_tellers", "read_tellers", "list_story_directors", "read_story_directors", "list_actor_states", "read_actor_states", "list_image_presets", "read_image_presets":
-		return config.AgentToolLoreRead
-	case "write_style_references", "write_tellers", "write_story_directors", "write_actor_states", "write_image_presets":
-		return config.AgentToolLoreWrite
-	case "list_automations", "read_automations", "write_automations":
-		return config.AgentToolTodo
-	case "list_skills", "read_skills", "write_skills":
-		return config.AgentToolSkills
-	case "list_agent_configs":
-		return config.AgentToolAgentConfigRead
-	case "write_agent_configs":
-		return config.AgentToolAgentConfigWrite
-	default:
-		return ""
-	}
+	return DescriptorForTool(name)
 }
 
 func FilterToolResultForModel(toolName, args, content string) FilteredToolResult {
@@ -182,48 +272,6 @@ func normalizeToolName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
-func isToolWriteLike(name string) bool {
-	switch name {
-	case "write_file", "edit_file", "delete_file", "create_file", "move_file", "copy_file", "rename_file", "mkdir", "remove_file":
-		return true
-	}
-	return strings.HasPrefix(name, "write_") ||
-		strings.HasPrefix(name, "edit_") ||
-		strings.HasPrefix(name, "delete_") ||
-		strings.HasPrefix(name, "create_") ||
-		strings.HasPrefix(name, "move_") ||
-		strings.HasPrefix(name, "copy_") ||
-		strings.HasPrefix(name, "rename_") ||
-		strings.HasPrefix(name, "remove_")
-}
-
-func isToolReadLike(name string) bool {
-	switch name {
-	case "read_file", "list_files", "ls", "glob", "grep", "search_file", "search_workspace":
-		return true
-	default:
-		return strings.HasPrefix(name, "read_") ||
-			strings.HasPrefix(name, "list_") ||
-			strings.HasPrefix(name, "search_")
-	}
-}
-
-func isToolShellLike(name string) bool {
-	switch name {
-	case "bash", "shell", "execute", "execute_command", "run_command", "terminal":
-		return true
-	default:
-		return strings.Contains(name, "shell") || strings.Contains(name, "command")
-	}
-}
-
-func isToolWebLike(name string) bool {
-	return strings.Contains(name, "web") ||
-		strings.Contains(name, "search") ||
-		strings.Contains(name, "duckduckgo") ||
-		strings.Contains(name, "browser")
-}
-
 func truncateUTF8Bytes(content string, limit int) (string, bool) {
 	if limit <= 0 || len(content) <= limit {
 		return content, false
@@ -248,6 +296,9 @@ func formatToolResultMetadata(manifest ToolManifest, originalBytes, returnedBody
 		"schema: tool_result.v1",
 		"source: " + string(manifest.Source),
 		"capability: " + firstNonEmpty(manifest.Capability, "unclassified"),
+		"execution: " + string(manifest.Execution),
+		"recovery: " + string(manifest.Recovery),
+		"result_projection: " + string(manifest.ResultProjection),
 		fmt.Sprintf("mutates_workspace: %t", manifest.MutatesWorkspace),
 		fmt.Sprintf("requires_post_check: %t", manifest.RequiresPostCheck),
 		fmt.Sprintf("max_result_bytes: %d", manifest.MaxResultBytes),

@@ -21,7 +21,6 @@ const interactiveContentReclassifiedEvent = "interactive_content_reclassified"
 // 参数在流中逐帧 emit tool_args_delta，调用方可在对外传输前按展示策略过滤。
 func processStreamingEvent(ctx context.Context, mv *adk.MessageVariant, fullContent, fullThinking *strings.Builder, idleTimeout time.Duration, toolResultMaxBytes int, meta agentEventMetadata, narrativeReady bool, planParser *planProtocolParser, emit func(Event)) (*schema.Message, error) {
 	mv.MessageStream.SetAutomaticClose()
-	defer mv.MessageStream.Close()
 	var accumulatedToolCalls []schema.ToolCall
 	emittedTools := make(map[int]bool) // 按 index 记录已 emit tool_call 的工具
 	lastArgsLen := make(map[int]int)   // 记录上次已发送的参数长度
@@ -331,7 +330,6 @@ func flushPlanProtocolParser(planParser *planProtocolParser, fullContent *string
 func drainContent(ctx context.Context, mv *adk.MessageVariant, idleTimeout time.Duration) (string, error) {
 	if mv.IsStreaming && mv.MessageStream != nil {
 		mv.MessageStream.SetAutomaticClose()
-		defer mv.MessageStream.Close()
 		var sb strings.Builder
 		for {
 			chunk, err := recvMessageFrame(ctx, mv.MessageStream, idleTimeout)

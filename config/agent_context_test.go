@@ -102,3 +102,32 @@ func TestResolveAgentContextUsesPerAgentOverride(t *testing.T) {
 		t.Fatalf("per-agent recent turns = %v, want 2", got)
 	}
 }
+
+func TestResolveAgentContextAssemblyBudgetDefaultsAndPerAgentOverride(t *testing.T) {
+	resolved := ResolveAgentContext(&Config{}, AgentKindIDE)
+	if resolved.MaxFragmentBytes <= 128*1024 || resolved.MaxTotalInjectedBytes <= 128*1024 || resolved.MaxProviderInputBytes <= 128*1024 {
+		t.Fatalf("default assembly budget is too small: %#v", resolved)
+	}
+	if resolved.MaxFragments <= 0 || resolved.MaxMetadataFieldBytes <= 0 {
+		t.Fatalf("default assembly budget is incomplete: %#v", resolved)
+	}
+
+	fragmentBytes := 384 * 1024
+	totalBytes := 2 * 1024 * 1024
+	fragments := 64
+	metadataBytes := 8 * 1024
+	providerBytes := 8 * 1024 * 1024
+	cfg := &Config{AgentContexts: AgentContextSettings{
+		IDE: AgentContextOverride{
+			MaxFragmentBytes:      &fragmentBytes,
+			MaxTotalInjectedBytes: &totalBytes,
+			MaxFragments:          &fragments,
+			MaxMetadataFieldBytes: &metadataBytes,
+			MaxProviderInputBytes: &providerBytes,
+		},
+	}}
+	resolved = ResolveAgentContext(cfg, AgentKindIDE)
+	if resolved.MaxFragmentBytes != fragmentBytes || resolved.MaxTotalInjectedBytes != totalBytes || resolved.MaxFragments != fragments || resolved.MaxMetadataFieldBytes != metadataBytes || resolved.MaxProviderInputBytes != providerBytes {
+		t.Fatalf("resolved assembly budget = %#v", resolved)
+	}
+}

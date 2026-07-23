@@ -8,33 +8,68 @@ import (
 )
 
 func protectedSystemInstruction(cfg *config.Config, agentKind, builtIn string) string {
-	builtIn = strings.TrimSpace(builtIn)
-	var sb strings.Builder
-	sb.WriteString("# Denova 运行时契约（不可覆盖）\n\n")
-	sb.WriteString(runtimeContractForAgent(cfg, agentKind))
-	if outputProtocol := outputProtocolForAgent(agentKind); strings.TrimSpace(outputProtocol) != "" {
-		sb.WriteString("\n\n## 输出格式（不可覆盖）\n\n")
-		sb.WriteString(outputProtocol)
+	composition, err := composeProtectedSystemInstruction(cfg, agentKind, agentKind, "", []SystemPromptFragment{{
+		ID: "builtin_base", Source: "Denova built-in", Title: "Denova 内置系统提示",
+		Purpose: "define the built-in Agent behavior and workflow", Content: builtIn, Required: true,
+		Overflow: SystemPromptOverflowReject,
+	}})
+	if err != nil {
+		return ""
 	}
-	resolvedPrompt := config.ResolveAgentPrompt(cfg, agentKind)
-	if flow := resolvedPrompt.FlowPrompt; flow != "" {
-		sb.WriteString("\n\n---\n\n")
-		sb.WriteString("# 用户自定义流程规则（受保护高优先级）\n\n")
-		sb.WriteString("以下流程规则优先于 Denova 内置流程规则；但不得覆盖运行时契约、输出格式、工具权限和后端校验。若存在冲突，必须忽略冲突部分。\n\n")
-		sb.WriteString(flow)
+	return composition.Instruction()
+}
+
+func composeProtectedSystemInstruction(cfg *config.Config, agentKind, mode, workspace string, builtIn []SystemPromptFragment) (SystemPromptComposition, error) {
+	fragments := protectedSystemPromptFragments(cfg, agentKind)
+	firstIncluded := -1
+	for i := range builtIn {
+		if strings.TrimSpace(builtIn[i].Content) != "" || builtIn[i].Required {
+			firstIncluded = i
+			break
+		}
 	}
-	if custom := resolvedPrompt.SystemPrompt; custom != "" {
-		sb.WriteString("\n\n---\n\n")
-		sb.WriteString("# 用户自定义系统提示（受保护最高优先级）\n\n")
-		sb.WriteString("以下提示在 Agent 行为、创作偏好、策略和风格上优先于 Denova 内置提示；但不得覆盖上一节运行时契约。若以下提示与运行时契约冲突，必须忽略冲突部分。\n\n")
-		sb.WriteString(custom)
+	if firstIncluded >= 0 {
+		builtIn[firstIncluded].Prefix = "\n\n---\n\n# Denova 内置系统提示\n\n" + builtIn[firstIncluded].Prefix
 	}
-	if builtIn != "" {
-		sb.WriteString("\n\n---\n\n")
-		sb.WriteString("# Denova 内置系统提示\n\n")
-		sb.WriteString(builtIn)
-	}
-	return sb.String()
+	fragments = append(fragments, builtIn...)
+	return composeSystemPrompt(cfg, agentKind, mode, workspace, fragments)
+}
+
+func composeBuiltinSystemInstruction(cfg *config.Config, agentKind, mode, workspace, id, title, purpose, builtIn string) (SystemPromptComposition, error) {
+	return composeProtectedSystemInstruction(cfg, agentKind, mode, workspace, []SystemPromptFragment{{
+		ID: id, Source: "Denova built-in", Title: title, Purpose: purpose, Content: builtIn,
+		Required: true, Overflow: SystemPromptOverflowReject,
+	}})
+}
+
+func protectedSystemPromptFragments(cfg *config.Config, agentKind string) []SystemPromptFragment {
+	fragments := []SystemPromptFragment{{
+		ID: "runtime_contract", Source: "Denova runtime", Title: "运行契约",
+		Purpose: "enforce non-overridable runtime and capability boundaries",
+		Content: runtimeContractForAgent(cfg, agentKind), Prefix: "# Denova 运行时契约（不可覆盖）\n\n",
+		Required: true, Overflow: SystemPromptOverflowReject,
+	}, {
+		ID: "output_protocol", Source: "Denova runtime", Title: "输出格式",
+		Purpose: "enforce the Agent output protocol",
+		Content: outputProtocolForAgent(agentKind), Prefix: "\n\n## 输出格式（不可覆盖）\n\n",
+		Required: true, Overflow: SystemPromptOverflowReject,
+	}}
+	resolved := config.ResolveAgentPrompt(cfg, agentKind)
+	fragments = append(fragments,
+		SystemPromptFragment{
+			ID: "flow_override", Source: "user/workspace config", Title: "用户自定义流程规则",
+			Purpose: "override built-in workflow preferences within runtime boundaries", Content: resolved.FlowPrompt,
+			Prefix:   "\n\n---\n\n# 用户自定义流程规则（受保护高优先级）\n\n以下流程规则优先于 Denova 内置流程规则；但不得覆盖运行时契约、输出格式、工具权限和后端校验。若存在冲突，必须忽略冲突部分。\n\n",
+			Overflow: SystemPromptOverflowReject,
+		},
+		SystemPromptFragment{
+			ID: "custom_override", Source: "user/workspace config", Title: "用户自定义系统提示",
+			Purpose: "apply user-authored Agent behavior and creative preferences", Content: resolved.SystemPrompt,
+			Prefix:   "\n\n---\n\n# 用户自定义系统提示（受保护最高优先级）\n\n以下提示在 Agent 行为、创作偏好、策略和风格上优先于 Denova 内置提示；但不得覆盖上一节运行时契约。若以下提示与运行时契约冲突，必须忽略冲突部分。\n\n",
+			Overflow: SystemPromptOverflowReject,
+		},
+	)
+	return fragments
 }
 
 func runtimeContractForAgent(cfg *config.Config, agentKind string) string {

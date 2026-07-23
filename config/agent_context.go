@@ -7,6 +7,24 @@ const (
 	MaxContextCompactionRetainedTurns     = 30
 
 	AgentContextCompactionStrategySummaryAgent = "summary_agent"
+
+	// Context assembly defaults are deliberately generous for creative work.
+	// They are injection limits, not transcript limits: persisted conversation
+	// history is governed by compaction and is never silently rewritten here.
+	DefaultAgentContextMaxFragmentBytes      = 256 * 1024
+	DefaultAgentContextMaxTotalInjectedBytes = 1024 * 1024
+	DefaultAgentContextMaxFragments          = 256
+	DefaultAgentContextMaxMetadataFieldBytes = 4 * 1024
+	// Provider input is a non-disableable safety boundary over the complete
+	// serialized prompt (history, tools, and injected context), not a semantic
+	// compaction preference.
+	DefaultAgentContextMaxProviderInputBytes = 4 * 1024 * 1024
+
+	MaxAgentContextFragmentBytes      = 16 * 1024 * 1024
+	MaxAgentContextTotalInjectedBytes = 64 * 1024 * 1024
+	MaxAgentContextFragments          = 4096
+	MaxAgentContextMetadataFieldBytes = 64 * 1024
+	MaxAgentContextProviderInputBytes = 64 * 1024 * 1024
 )
 
 // AgentContextSettings stores per-agent context compaction settings.
@@ -31,6 +49,11 @@ type AgentContextOverride struct {
 	CompactionTargetMin        *float64 `toml:"compaction_target_min_ratio,omitempty" json:"compaction_target_min_ratio,omitempty"`
 	CompactionTargetMax        *float64 `toml:"compaction_target_max_ratio,omitempty" json:"compaction_target_max_ratio,omitempty"`
 	ToolResultRetentionEnabled *bool    `toml:"tool_result_retention_enabled,omitempty" json:"tool_result_retention_enabled,omitempty"`
+	MaxFragmentBytes           *int     `toml:"max_fragment_bytes,omitempty" json:"max_fragment_bytes,omitempty"`
+	MaxTotalInjectedBytes      *int     `toml:"max_total_injected_bytes,omitempty" json:"max_total_injected_bytes,omitempty"`
+	MaxFragments               *int     `toml:"max_fragments,omitempty" json:"max_fragments,omitempty"`
+	MaxMetadataFieldBytes      *int     `toml:"max_metadata_field_bytes,omitempty" json:"max_metadata_field_bytes,omitempty"`
+	MaxProviderInputBytes      *int     `toml:"max_provider_input_bytes,omitempty" json:"max_provider_input_bytes,omitempty"`
 }
 
 type ResolvedAgentContextSettings struct {
@@ -41,6 +64,11 @@ type ResolvedAgentContextSettings struct {
 	CompactionTargetMin        float64 `json:"compaction_target_min_ratio"`
 	CompactionTargetMax        float64 `json:"compaction_target_max_ratio"`
 	ToolResultRetentionEnabled bool    `json:"tool_result_retention_enabled"`
+	MaxFragmentBytes           int     `json:"max_fragment_bytes"`
+	MaxTotalInjectedBytes      int     `json:"max_total_injected_bytes"`
+	MaxFragments               int     `json:"max_fragments"`
+	MaxMetadataFieldBytes      int     `json:"max_metadata_field_bytes"`
+	MaxProviderInputBytes      int     `json:"max_provider_input_bytes"`
 }
 
 func DefaultAgentContextSettings() AgentContextSettings {
@@ -52,6 +80,11 @@ func DefaultAgentContextSettings() AgentContextSettings {
 			CompactionRecentTurns: intPtr(DefaultContextCompactionRetainedTurns),
 			CompactionTargetMin:   floatPtr(0.05),
 			CompactionTargetMax:   floatPtr(0.20),
+			MaxFragmentBytes:      intPtr(DefaultAgentContextMaxFragmentBytes),
+			MaxTotalInjectedBytes: intPtr(DefaultAgentContextMaxTotalInjectedBytes),
+			MaxFragments:          intPtr(DefaultAgentContextMaxFragments),
+			MaxMetadataFieldBytes: intPtr(DefaultAgentContextMaxMetadataFieldBytes),
+			MaxProviderInputBytes: intPtr(DefaultAgentContextMaxProviderInputBytes),
 		},
 	}
 }
@@ -116,6 +149,11 @@ func ResolveAgentContext(cfg *Config, agentKind string) ResolvedAgentContextSett
 	if override.ToolResultRetentionEnabled != nil {
 		toolResultRetentionEnabled = *override.ToolResultRetentionEnabled
 	}
+	maxFragmentBytes := resolvedPositiveLimit(override.MaxFragmentBytes, DefaultAgentContextMaxFragmentBytes, MaxAgentContextFragmentBytes)
+	maxTotalInjectedBytes := resolvedPositiveLimit(override.MaxTotalInjectedBytes, DefaultAgentContextMaxTotalInjectedBytes, MaxAgentContextTotalInjectedBytes)
+	maxFragments := resolvedPositiveLimit(override.MaxFragments, DefaultAgentContextMaxFragments, MaxAgentContextFragments)
+	maxMetadataFieldBytes := resolvedPositiveLimit(override.MaxMetadataFieldBytes, DefaultAgentContextMaxMetadataFieldBytes, MaxAgentContextMetadataFieldBytes)
+	maxProviderInputBytes := resolvedPositiveLimit(override.MaxProviderInputBytes, DefaultAgentContextMaxProviderInputBytes, MaxAgentContextProviderInputBytes)
 	return ResolvedAgentContextSettings{
 		CompactionEnabled:          compactionEnabled,
 		CompactionStrategy:         compactionStrategy,
@@ -124,6 +162,11 @@ func ResolveAgentContext(cfg *Config, agentKind string) ResolvedAgentContextSett
 		CompactionTargetMin:        compactionTargetMin,
 		CompactionTargetMax:        compactionTargetMax,
 		ToolResultRetentionEnabled: toolResultRetentionEnabled,
+		MaxFragmentBytes:           maxFragmentBytes,
+		MaxTotalInjectedBytes:      maxTotalInjectedBytes,
+		MaxFragments:               maxFragments,
+		MaxMetadataFieldBytes:      maxMetadataFieldBytes,
+		MaxProviderInputBytes:      maxProviderInputBytes,
 	}
 }
 
@@ -149,6 +192,21 @@ func mergeAgentContextOverride(parent, child AgentContextOverride) AgentContextO
 	}
 	if child.ToolResultRetentionEnabled != nil {
 		out.ToolResultRetentionEnabled = child.ToolResultRetentionEnabled
+	}
+	if child.MaxFragmentBytes != nil {
+		out.MaxFragmentBytes = child.MaxFragmentBytes
+	}
+	if child.MaxTotalInjectedBytes != nil {
+		out.MaxTotalInjectedBytes = child.MaxTotalInjectedBytes
+	}
+	if child.MaxFragments != nil {
+		out.MaxFragments = child.MaxFragments
+	}
+	if child.MaxMetadataFieldBytes != nil {
+		out.MaxMetadataFieldBytes = child.MaxMetadataFieldBytes
+	}
+	if child.MaxProviderInputBytes != nil {
+		out.MaxProviderInputBytes = child.MaxProviderInputBytes
 	}
 	return out
 }
@@ -198,7 +256,29 @@ func sanitizeAgentContextOverride(override AgentContextOverride) AgentContextOve
 	if override.CompactionTargetMin != nil && override.CompactionTargetMax != nil && *override.CompactionTargetMax < *override.CompactionTargetMin {
 		*override.CompactionTargetMax = *override.CompactionTargetMin
 	}
+	sanitizePositiveLimit(override.MaxFragmentBytes, DefaultAgentContextMaxFragmentBytes, MaxAgentContextFragmentBytes)
+	sanitizePositiveLimit(override.MaxTotalInjectedBytes, DefaultAgentContextMaxTotalInjectedBytes, MaxAgentContextTotalInjectedBytes)
+	sanitizePositiveLimit(override.MaxFragments, DefaultAgentContextMaxFragments, MaxAgentContextFragments)
+	sanitizePositiveLimit(override.MaxMetadataFieldBytes, DefaultAgentContextMaxMetadataFieldBytes, MaxAgentContextMetadataFieldBytes)
+	sanitizePositiveLimit(override.MaxProviderInputBytes, DefaultAgentContextMaxProviderInputBytes, MaxAgentContextProviderInputBytes)
 	return override
+}
+
+func resolvedPositiveLimit(value *int, fallback, maximum int) int {
+	if value == nil || *value <= 0 {
+		return fallback
+	}
+	if *value > maximum {
+		return maximum
+	}
+	return *value
+}
+
+func sanitizePositiveLimit(value *int, fallback, maximum int) {
+	if value == nil {
+		return
+	}
+	*value = resolvedPositiveLimit(value, fallback, maximum)
 }
 
 func normalizeCompactionStrategy(value string) string {

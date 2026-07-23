@@ -3,19 +3,20 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/cloudwego/eino/schema"
 
 	"denova/config"
-	agentcontext "denova/internal/agent/context"
 	"denova/internal/session"
 )
 
 // Conversation 抽象 Agent 对话的上下文读取与结果写入。
 // 写作模式写入普通 session，游戏模式可写入 interactive/story。
 type Conversation interface {
-	PrepareMessages(originalMessage, agentMessage string) ([]*schema.Message, error)
+	ModelContextAssembler
 	AppendAssistant(content string) error
 	MarkInterrupted(userMessage, assistantContent, reason string) error
 	PendingInterruption() *session.Interruption
@@ -29,7 +30,7 @@ type UserMessageReferencesSetter interface {
 }
 
 // ContextSourceReporter 可由 Conversation 提供本轮已拼装的业务上下文来源。
-// ChatService 会在 PrepareMessages 后追加打印，便于排查非通用注入内容。
+// ChatService 会在 CommitModelInput 后追加打印，便于排查非通用注入内容。
 type ContextSourceReporter interface {
 	ContextSourceSummary() string
 }
@@ -77,13 +78,35 @@ type SessionConversation struct {
 	dynamicContextTitle   string
 	dynamicContext        string
 	userMessageReferences []session.UserMessageReference
+	lastContextSummary    string
+
+	cycleMu            sync.Mutex
+	cycleIdentity      HarnessCycleIdentity
+	cycleCursor        session.ContextCursor
+	structuralCursor   *session.ContextCursor
+	structuralCommit   func(func() error) error
+	pendingCommits     map[HarnessDomainCommitStage]*session.DomainCommitIntent
+	lastCommitReceipts map[HarnessDomainCommitStage]*session.DomainCommitReceipt
+	inputCommit        func() error
+	pendingCompaction  *preparedSessionContextCompaction
 }
 
 func (c *SessionConversation) SetUserMessageReferences(references []session.UserMessageReference) {
 	if c == nil {
 		return
 	}
+	c.cycleMu.Lock()
 	c.userMessageReferences = append([]session.UserMessageReference(nil), references...)
+	c.cycleMu.Unlock()
+}
+
+func (c *SessionConversation) BindHarnessAgentKind(agentKind string) {
+	if c == nil {
+		return
+	}
+	c.cycleMu.Lock()
+	c.agentKind = strings.TrimSpace(agentKind)
+	c.cycleMu.Unlock()
 }
 
 func NewSessionConversation(sess *session.Session, options ...SessionConversationOption) *SessionConversation {
@@ -143,28 +166,40 @@ func WithSessionStableRuntimeContext(title, content string) SessionConversationO
 	}
 }
 
-func (c *SessionConversation) PrepareMessages(originalMessage, agentMessage string) ([]*schema.Message, error) {
-	if c == nil || c.session == nil {
-		return nil, fmt.Errorf("会话不存在")
+// WithContextCursorBarrier pins structural context writes to an immutable
+// session snapshot even when the conversation is not running inside a Harness
+// cycle (for example a manual compaction request).
+func (c *SessionConversation) WithContextCursorBarrier(cursor session.ContextCursor) *SessionConversation {
+	if c == nil {
+		return c
 	}
-	if err := c.session.AppendWithMetadata(schema.UserMessage(originalMessage), session.MessageMetadata{UserReferences: c.userMessageReferences}); err != nil {
-		return nil, err
+	c.cycleMu.Lock()
+	c.cycleCursor = cursor
+	c.structuralCursor = &cursor
+	c.cycleMu.Unlock()
+	return c
+}
+
+// WithContextCommitGate lets the App revalidate its workspace generation and
+// hold its short admission lock across the final journal append. The gate must
+// not perform model work or wait for task settlement.
+func (c *SessionConversation) WithContextCommitGate(gate func(func() error) error) *SessionConversation {
+	if c == nil {
+		return c
 	}
-	result, err := agentcontext.Build(context.Background(), agentcontext.Request{
-		Messages: c.modelMessages(agentMessage),
-		Sources:  c.runtimeContextSources(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return result.Messages, nil
+	c.cycleMu.Lock()
+	c.structuralCommit = gate
+	c.cycleMu.Unlock()
+	return c
 }
 
 func (c *SessionConversation) ContextSourceSummary() string {
-	if c == nil || (strings.TrimSpace(c.stableContext) == "" && strings.TrimSpace(c.dynamicContext) == "") {
+	if c == nil {
 		return ""
 	}
-	return agentcontext.SourceSummary(c.runtimeContextSources(), defaultContextLedgerPreviewChars)
+	c.cycleMu.Lock()
+	defer c.cycleMu.Unlock()
+	return c.lastContextSummary
 }
 
 func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input ContextCompactionInput) ([]*schema.Message, ContextCompactionResult, error) {
@@ -230,97 +265,17 @@ func (c *SessionConversation) CompactContextIfNeeded(ctx context.Context, input 
 	result.TargetRatio = contextCompactionRatio(countRunes(summary), inputChars)
 	result.SourceMessageCount = len(source)
 	result.MessageCountAfter = len(newMessages)
-	record := contextCompactionRecordFromResult(result, c.agentKind, sourceStart, sourceEnd, policy.RetainedTurns, summary)
-	record, err = c.session.AppendContextCompaction(record)
-	if err != nil {
-		emitContextCompactionEvent(input.Emit, phase, "failed", result)
-		return input.Messages, result, err
+	if !input.Force && (phase == contextCompactionPhasePreRun || phase == contextCompactionPhaseMidRun) {
+		c.stagePreparedSessionCompaction(preparedSessionContextCompaction{
+			Result: result, SourceStartIndex: sourceStart, SourceEndIndex: sourceEnd,
+		})
 	}
-	if record.Epoch != epoch {
-		result.Epoch = record.Epoch
-		newMessages = compactMessagesForModel(compactableMessages, summary, record.Epoch, policy.RetainedTurns)
-		if len(leading) > 0 {
-			newMessages = append(append([]*schema.Message(nil), leading...), newMessages...)
-		}
-		result.TokensAfter = EstimateContextTokens(newMessages, input.Tools)
-		result.ProjectedTokensAfter = projectedContextTokens(result.TokensAfter, input)
-		result.MessageCountAfter = len(newMessages)
-	}
+	// Automatic pre/mid-run compaction is intentionally transient. Publishing
+	// a checkpoint while the turn actor is still running would let canonical
+	// history advance outside a typed structural operation and could survive a
+	// failed turn. Manual and post-settlement persistence use CompactIfNeeded.
 	emitContextCompactionEvent(input.Emit, phase, "completed", result)
 	return newMessages, result, nil
-}
-
-func (c *SessionConversation) modelMessages(agentMessage string) []*schema.Message {
-	history := append([]*schema.Message(nil), c.session.GetEffectiveMessages()...)
-	policy := c.compactionPolicy()
-	if compaction, ok := c.session.LatestContextCompaction(c.agentKind); ok && strings.TrimSpace(compaction.Summary) != "" {
-		total := c.session.MessageCountTotal()
-		effectiveStart := total - len(history)
-		retainedTurns := compaction.RetainedTurns
-		if retainedTurns <= 0 {
-			retainedTurns = policy.RetainedTurns
-		}
-		tail := compactedMessagesAfterSource(history, effectiveStart, compaction.SourceEndIndex, retainedTurns)
-		history = make([]*schema.Message, 0, 1+len(tail))
-		history = append(history, NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary))
-		history = append(history, tail...)
-	}
-	history = applyToolResultContextPolicy(history, c.ToolResultContextPolicy())
-	if len(history) > 0 {
-		history[len(history)-1] = schema.UserMessage(agentMessage)
-	}
-	return history
-}
-
-func standaloneRuntimeContextMessage(title, content, note string) string {
-	return agentcontext.StandaloneMessage(title, content, note)
-}
-
-func (c *SessionConversation) leadingRuntimeMessages() []*schema.Message {
-	if c == nil || strings.TrimSpace(c.stableContext) == "" {
-		return nil
-	}
-	content := standaloneRuntimeContextMessage(c.stableContextTitle, c.stableContext, "")
-	if strings.TrimSpace(content) == "" {
-		return nil
-	}
-	return []*schema.Message{schema.UserMessage(content)}
-}
-
-func (c *SessionConversation) runtimeContextSources() []agentcontext.Source {
-	if c == nil {
-		return nil
-	}
-	var sources []agentcontext.Source
-	if strings.TrimSpace(c.stableContext) != "" {
-		title := strings.TrimSpace(c.stableContextTitle)
-		if title == "" {
-			title = "稳定上下文"
-		}
-		sources = append(sources, agentcontext.Source{
-			Source:    "稳定上下文",
-			Title:     title,
-			Content:   c.stableContext,
-			Placement: agentcontext.PlacementLeadingMessage,
-			Included:  true,
-			Note:      "prepended_to_model_messages",
-		})
-	}
-	if strings.TrimSpace(c.dynamicContext) != "" {
-		title := strings.TrimSpace(c.dynamicContextTitle)
-		if title == "" {
-			title = "本轮动态上下文"
-		}
-		sources = append(sources, agentcontext.Source{
-			Source:    "本轮动态上下文",
-			Title:     title,
-			Content:   c.dynamicContext,
-			Placement: agentcontext.PlacementFinalUserPrefix,
-			Included:  true,
-			Note:      "prepended_to_final_user_message",
-		})
-	}
-	return sources
 }
 
 func (c *SessionConversation) splitLeadingRuntimeMessages(messages []*schema.Message) ([]*schema.Message, []*schema.Message) {
@@ -442,14 +397,195 @@ func (c *SessionConversation) AppendAssistantWithMetadata(content, _ string, met
 	if c == nil || c.session == nil {
 		return fmt.Errorf("会话不存在")
 	}
-	return c.session.AppendWithMetadata(schema.AssistantMessage(content, nil), metadata)
+	identity := c.agentCycleIdentitySnapshot()
+	if !validHarnessCycleIdentity(identity) {
+		return ErrMissingAgentCycleIdentity
+	}
+	intent, err := session.NewDomainCommitIntent(session.DomainCommitIdentity{
+		CommandID: string(identity.CommandID), OperationID: string(identity.OperationID), Cycle: identity.Cycle,
+	}, schema.AssistantMessage(content, nil), metadata)
+	if err != nil {
+		return err
+	}
+	c.cycleMu.Lock()
+	defer c.cycleMu.Unlock()
+	c.ensureCycleCommitMapsLocked()
+	intent = intent.WithExpectedContextCursor(c.cycleCursor)
+	if pending := c.pendingCommits[HarnessDomainCommitOutput]; pending != nil && pending.Hash != intent.Hash {
+		return fmt.Errorf("agent cycle staged multiple assistant payloads")
+	}
+	c.pendingCommits[HarnessDomainCommitOutput] = &intent
+	return nil
+}
+
+// BindAgentCycleIdentity resets process-local staging for the exact durable
+// coordinator cycle selected before model execution.
+func (c *SessionConversation) BindAgentCycleIdentity(identity HarnessCycleIdentity) {
+	if c == nil {
+		return
+	}
+	cursor := c.session.ContextCursor()
+	c.cycleMu.Lock()
+	c.cycleIdentity = identity
+	c.cycleCursor = cursor
+	c.structuralCursor = nil
+	c.structuralCommit = nil
+	c.pendingCommits = make(map[HarnessDomainCommitStage]*session.DomainCommitIntent)
+	c.lastCommitReceipts = make(map[HarnessDomainCommitStage]*session.DomainCommitReceipt)
+	c.inputCommit = nil
+	c.cycleMu.Unlock()
+}
+
+func (c *SessionConversation) BindAgentCycleInputCommit(commit func() error) {
+	if c == nil {
+		return
+	}
+	c.cycleMu.Lock()
+	c.inputCommit = commit
+	c.cycleMu.Unlock()
+}
+
+func (c *SessionConversation) agentCycleIdentitySnapshot() HarnessCycleIdentity {
+	if c == nil {
+		return HarnessCycleIdentity{}
+	}
+	c.cycleMu.Lock()
+	defer c.cycleMu.Unlock()
+	return c.cycleIdentity
+}
+
+func (c *SessionConversation) PendingAgentCycleCommit(stage HarnessDomainCommitStage) (HarnessDomainCommitIntent, bool, error) {
+	if c == nil {
+		return HarnessDomainCommitIntent{}, false, nil
+	}
+	c.cycleMu.Lock()
+	defer c.cycleMu.Unlock()
+	pending := c.pendingCommits[stage]
+	if pending == nil {
+		return HarnessDomainCommitIntent{}, false, nil
+	}
+	return HarnessDomainCommitIntent{Identity: c.cycleIdentity, Stage: stage, Hash: pending.Hash}, true, nil
+}
+
+// CommitAgentCycle publishes only actor-authorized terminal outcomes. Abort and
+// failure discard staged output; the accepted user input remains canonical.
+func (c *SessionConversation) CommitAgentCycle(ctx context.Context, outcome RunOutcome) error {
+	return c.CommitAgentCycleStage(ctx, HarnessDomainCommitOutput, outcome)
+}
+
+func (c *SessionConversation) CommitAgentCycleStage(_ context.Context, stage HarnessDomainCommitStage, outcome RunOutcome) error {
+	if c == nil || c.session == nil {
+		return nil
+	}
+	c.cycleMu.Lock()
+	c.ensureCycleCommitMapsLocked()
+	if stage == HarnessDomainCommitOutput && !runOutcomeMayCommitDomain(outcome) {
+		delete(c.pendingCommits, stage)
+		delete(c.lastCommitReceipts, stage)
+		c.cycleMu.Unlock()
+		return nil
+	}
+	if c.pendingCommits[stage] == nil {
+		delete(c.lastCommitReceipts, stage)
+		c.cycleMu.Unlock()
+		return nil
+	}
+	intent := *c.pendingCommits[stage]
+	c.cycleMu.Unlock()
+
+	receipt, err := c.session.CommitDomainMessage(intent)
+	if err != nil {
+		return err
+	}
+	cursor := c.session.ContextCursor()
+	c.cycleMu.Lock()
+	delete(c.pendingCommits, stage)
+	c.lastCommitReceipts[stage] = &receipt
+	c.cycleCursor = cursor
+	c.cycleMu.Unlock()
+	return nil
+}
+
+func (c *SessionConversation) LastAgentCycleCommitReceipt(stage HarnessDomainCommitStage) (HarnessDomainCommitReceipt, bool) {
+	if c == nil {
+		return HarnessDomainCommitReceipt{}, false
+	}
+	c.cycleMu.Lock()
+	defer c.cycleMu.Unlock()
+	receipt := c.lastCommitReceipts[stage]
+	if receipt == nil {
+		return HarnessDomainCommitReceipt{}, false
+	}
+	return HarnessDomainCommitReceipt{
+		Identity: c.cycleIdentity, Stage: stage, Hash: receipt.Hash,
+		Revision: strconv.FormatUint(receipt.ContextRevision, 10),
+	}, true
+}
+
+func (c *SessionConversation) ensureCycleCommitMapsLocked() {
+	if c.pendingCommits == nil {
+		c.pendingCommits = make(map[HarnessDomainCommitStage]*session.DomainCommitIntent)
+	}
+	if c.lastCommitReceipts == nil {
+		c.lastCommitReceipts = make(map[HarnessDomainCommitStage]*session.DomainCommitReceipt)
+	}
+}
+
+func (c *SessionConversation) advanceCycleCursor() {
+	if c == nil || c.session == nil {
+		return
+	}
+	cursor := c.session.ContextCursor()
+	c.cycleMu.Lock()
+	c.cycleCursor = cursor
+	if c.structuralCursor != nil {
+		*c.structuralCursor = cursor
+	}
+	c.cycleMu.Unlock()
+}
+
+func (c *SessionConversation) agentCycleCursorSnapshot() session.ContextCursor {
+	if c == nil || c.session == nil {
+		return session.ContextCursor{}
+	}
+	c.cycleMu.Lock()
+	identity := c.cycleIdentity
+	cursor := c.cycleCursor
+	structural := c.structuralCursor != nil
+	c.cycleMu.Unlock()
+	if !structural && !validHarnessCycleIdentity(identity) {
+		return c.session.ContextCursor()
+	}
+	return cursor
 }
 
 func (c *SessionConversation) AppendContextMessage(msg *schema.Message) error {
 	if c == nil || c.session == nil {
 		return fmt.Errorf("会话不存在")
 	}
-	return c.session.AppendContextMessage(msg)
+	identity := c.agentCycleIdentitySnapshot()
+	c.cycleMu.Lock()
+	structural := c.structuralCursor != nil
+	c.cycleMu.Unlock()
+	var err error
+	if structural || validHarnessCycleIdentity(identity) {
+		commit := func() error { return c.session.AppendContextMessageAt(c.agentCycleCursorSnapshot(), msg) }
+		c.cycleMu.Lock()
+		gate := c.structuralCommit
+		c.cycleMu.Unlock()
+		if gate != nil {
+			err = gate(commit)
+		} else {
+			err = commit()
+		}
+	} else {
+		return ErrMissingAgentCycleIdentity
+	}
+	if err != nil {
+		return err
+	}
+	c.advanceCycleCursor()
+	return nil
 }
 
 func (c *SessionConversation) ToolResultContextPolicy() ToolResultContextPolicy {
@@ -482,6 +618,13 @@ func (c *SessionConversation) AppendDisplayToolArgs(id, name, delta string) erro
 		return fmt.Errorf("会话不存在")
 	}
 	return c.session.AppendDisplayToolArgs(id, name, delta)
+}
+
+func (c *SessionConversation) FlushDisplayEventContent(id, role string) error {
+	if c == nil || c.session == nil {
+		return fmt.Errorf("会话不存在")
+	}
+	return c.session.FlushDisplayEventContent(id, role)
 }
 
 func (c *SessionConversation) UpdateDisplayToolResult(id, name, status, result string) error {

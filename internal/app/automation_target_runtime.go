@@ -7,11 +7,42 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
 	"denova/internal/automation"
 	"denova/internal/book"
 	"denova/internal/session"
 )
+
+// acquireTargetRuntime admits the target lifecycle before constructing any
+// workspace adapters. The returned operation must remain owned until the
+// synchronous call finishes or a background Task has atomically acquired its
+// own lease.
+func (s *AutomationAppService) acquireTargetRuntime(ctx context.Context, target automation.ExecutionTarget) (*automationWorkspaceSnapshot, *appOperation, error) {
+	if s == nil || s.app == nil {
+		return nil, nil, fmt.Errorf("automation app is unavailable")
+	}
+	var (
+		operation *appOperation
+		err       error
+	)
+	if target.Kind == automation.TargetKindUser {
+		operation, err = s.app.acquireRootOperation(ctx)
+	} else {
+		workspace := canonicalAutomationWorkspace(target.Workspace)
+		if workspace == "" {
+			return nil, nil, fmt.Errorf("automation workspace target is required")
+		}
+		operation, err = s.app.acquireWorkspaceOperation(ctx, workspace, false)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	snapshot, err := s.automationSnapshotForTarget(operation.Context(), target)
+	if err != nil {
+		operation.Release()
+		return nil, nil, err
+	}
+	return snapshot, operation, nil
+}
 
 // automationSnapshotForTarget resolves an execution context without changing the
 // workspace selected in the UI. Inactive books are loaded lazily only when a
@@ -49,9 +80,6 @@ func (s *AutomationAppService) automationSnapshotForTarget(ctx context.Context, 
 	if err != nil {
 		return nil, fmt.Errorf("open automation sessions for %s: %w", workspace, err)
 	}
-	if chatService == nil {
-		chatService = agent.NewChatService()
-	}
 	return &automationWorkspaceSnapshot{
 		workspace:    workspace,
 		novaDir:      baseCfg.DataDir(),
@@ -80,17 +108,10 @@ func (s *AutomationAppService) globalAutomationSnapshot() (*automationWorkspaceS
 	if err != nil {
 		return nil, fmt.Errorf("open global automation sessions: %w", err)
 	}
-	if chatService == nil {
-		chatService = agent.NewChatService()
-	}
 	return &automationWorkspaceSnapshot{
 		novaDir:      novaDir,
 		cfg:          baseCfg,
 		sessionStore: sessionStore,
 		chatService:  chatService,
 	}, nil
-}
-
-func (s *AutomationAppService) automationSnapshotForTask(ctx context.Context, task automation.Task) (*automationWorkspaceSnapshot, error) {
-	return s.automationSnapshotForTarget(ctx, task.Target)
 }

@@ -119,7 +119,7 @@ func TestWorkspaceChangeReviewCommentUndoRedoAPI(t *testing.T) {
 	decodeResponse(t, feedbackResp.Body.Bytes(), &analysis)
 	var trustedFeedback agent.ReviewFeedbackContexts
 	for _, part := range analysis.ContextParts {
-		if part.Source != "Review Feedback" {
+		if part.Source != "workspace.review.feedback" {
 			continue
 		}
 		const fence = "```json\n"

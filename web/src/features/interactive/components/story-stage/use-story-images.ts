@@ -1,0 +1,129 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { TFunction } from 'i18next'
+import { createAgentCommandID, type ChatMessage, type InteractiveImage } from '@/lib/api'
+import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
+import { generateInteractiveImage } from '../../api'
+import type { Snapshot } from '../../types'
+
+interface UseStoryImagesOptions {
+  stageKey: string
+  storyId: string
+  branchId: string
+  snapshot: Snapshot | null
+  t: TFunction
+  onDone: (options?: { silent?: boolean }) => void | Promise<Snapshot | void>
+  setActivity: (content: string) => void
+  setMessages: (updater: ChatMessage[] | ((current: ChatMessage[]) => ChatMessage[])) => void
+}
+
+// Keeps optimistic image projection and generation lifecycle separate from the
+// chat stream lifecycle. Image completion refreshes the persisted snapshot but
+// never mutates the active agent operation.
+export function useStoryImages({
+  stageKey,
+  storyId,
+  branchId,
+  snapshot,
+  t,
+  onDone,
+  setActivity,
+  setMessages,
+}: UseStoryImagesOptions) {
+  const [optimisticImages, setOptimisticImages] = useState<Record<string, InteractiveImage[]>>({})
+  const [generatingTurnId, setGeneratingTurnId] = useState<string | null>(null)
+  const manualCommandIDsRef = useRef(new Map<string, string>())
+
+  useEffect(() => setOptimisticImages({}), [stageKey])
+
+  const rememberImage = useCallback((image?: InteractiveImage) => {
+    if (!image?.turn_id || !image.image_path) return
+    setOptimisticImages((current) => {
+      const images = current[image.turn_id] || []
+      if (images.some((item) => item.image_path === image.image_path)) return current
+      return { ...current, [image.turn_id]: [...images, image] }
+    })
+  }, [])
+
+  const generateForMessage = useCallback(async (
+    message: ChatMessage,
+    source: 'manual' | 'auto' = 'manual',
+    force = true,
+  ) => {
+    if (!message.turn_id || !storyId || generatingTurnId) return null
+    const targetBranchID = branchId || snapshot?.branch_id || ''
+    const retryKey = agentCommandRetryKey(stageKey, 'interactive-image', {
+      storyId,
+      branchId: targetBranchID,
+      turnId: message.turn_id,
+      source,
+      force,
+    })
+    const commandID = source === 'auto'
+      ? automaticInteractiveImageCommandID(storyId, targetBranchID, message.turn_id)
+      : rememberAgentCommandID(manualCommandIDsRef.current, retryKey, createAgentCommandID)
+    setGeneratingTurnId(message.turn_id)
+    setActivity(t('storyStage.interactiveImage.generating'))
+    try {
+      const result = await generateInteractiveImage(storyId, {
+        command_id: commandID,
+        branch_id: targetBranchID,
+        turn_id: message.turn_id,
+        source,
+        force,
+      })
+      if (source === 'manual') manualCommandIDsRef.current.delete(retryKey)
+      rememberImage(result.image)
+      await onDone({ silent: true })
+      return result
+    } catch (error) {
+      if (source === 'manual' && isKnownAgentCommandOutcome(error)) manualCommandIDsRef.current.delete(retryKey)
+      setMessages((current) => [
+        ...current,
+        { role: 'error', content: error instanceof Error ? error.message : t('storyStage.interactiveImage.generateFailed') },
+      ])
+      return null
+    } finally {
+      setGeneratingTurnId(null)
+      setActivity('')
+    }
+  }, [branchId, generatingTurnId, onDone, rememberImage, setActivity, setMessages, snapshot?.branch_id, stageKey, storyId, t])
+
+  const maybeGenerateAutomatically = useCallback(async (nextSnapshot: Snapshot | void) => {
+    const targetSnapshot = nextSnapshot || snapshot
+    const turn = targetSnapshot?.turns?.[targetSnapshot.turns.length - 1]
+    if (!turn || !storyId) return
+    const targetBranchID = targetSnapshot.branch_id || branchId
+    const result = await generateInteractiveImage(storyId, {
+      command_id: automaticInteractiveImageCommandID(storyId, targetBranchID, turn.id),
+      branch_id: targetBranchID,
+      turn_id: turn.id,
+      source: 'auto',
+      force: false,
+    }).catch((error) => {
+      console.warn('[interactive-stage] 自动生成互动图像失败', error)
+      return null
+    })
+    if (result && !result.skipped) {
+      rememberImage(result.image)
+      await onDone({ silent: true })
+    }
+  }, [branchId, onDone, rememberImage, snapshot, storyId])
+
+  return {
+    generateForMessage,
+    generatingTurnId,
+    maybeGenerateAutomatically,
+    optimisticImages,
+  }
+}
+
+// Automatic generation is one durable operation per persisted story turn.
+// Story, branch, and turn IDs are server-generated bounded identifiers, so the
+// encoded command stays deterministic across remounts without local storage.
+export function automaticInteractiveImageCommandID(storyID: string, branchID: string, turnID: string) {
+  return ['interactive-image', 'auto', storyID, branchID, turnID]
+    .map((part) => encodeURIComponent(part))
+    .join(':')
+}
+
+export type StoryImagesController = ReturnType<typeof useStoryImages>

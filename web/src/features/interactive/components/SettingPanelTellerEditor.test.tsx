@@ -8,7 +8,8 @@ import { TellerEditor } from './SettingPanelTellerEditor'
 import { getStyleReferences, readStyleReferenceFile, saveStyleReference, updateStyleReferenceFile } from '../api'
 import type { ImagePreset, Teller } from '../types'
 
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/api')>(),
   runConfigManagerStream: vi.fn(),
 }))
 

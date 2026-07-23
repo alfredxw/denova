@@ -2,11 +2,12 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
-	"time"
 
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
@@ -32,16 +33,21 @@ func (a *App) GenerateInteractiveImage(ctx context.Context, storyID string, req 
 }
 
 func (s *InteractiveAppService) GenerateInteractiveImage(ctx context.Context, storyID string, req interactive.InteractiveImageGenerateRequest) (InteractiveImageGenerateResult, error) {
-	a := s.app
-	a.mu.RLock()
-	store := a.interactive
-	workspace := a.workspace
-	novaDir := ""
-	if a.cfg != nil {
-		novaDir = a.cfg.DataDir()
+	req.CommandID = strings.TrimSpace(req.CommandID)
+	if err := validateImageAgentCommandID(req.CommandID); err != nil {
+		return InteractiveImageGenerateResult{}, err
 	}
-	a.mu.RUnlock()
-	if store == nil || strings.TrimSpace(workspace) == "" {
+	if s == nil || s.app == nil {
+		return InteractiveImageGenerateResult{}, ErrNoWorkspace
+	}
+	a := s.app
+	runtime, err := a.images().acquireWorkspaceRuntime(ctx)
+	if err != nil {
+		return InteractiveImageGenerateResult{}, err
+	}
+	defer runtime.Release()
+	store := runtime.interactive
+	if store == nil {
 		return InteractiveImageGenerateResult{}, ErrNoWorkspace
 	}
 	storyCtx, err := store.StoryContext(storyID, req.BranchID)
@@ -53,6 +59,13 @@ func (s *InteractiveAppService) GenerateInteractiveImage(ctx context.Context, st
 		return InteractiveImageGenerateResult{}, err
 	}
 	source := normalizeInteractiveImageSource(req.Source)
+	eventID := interactiveImageEventID(req.CommandID)
+	if image, settled, projectionErr := interactiveImageCommandProjection(turn.DisplayEvents, eventID); settled {
+		if projectionErr != nil {
+			return InteractiveImageGenerateResult{}, projectionErr
+		}
+		return InteractiveImageGenerateResult{Enabled: true, Image: image}, nil
+	}
 	should, reason := shouldGenerateInteractiveImage(storyCtx.Meta.ImageSettings, storyCtx.Snapshot.Turns, turnIndex, source, req.Force)
 	if !should {
 		return InteractiveImageGenerateResult{Enabled: storyCtx.Meta.ImageSettings.Mode != interactive.StoryImageModeManual, Skipped: true, SkippedReason: reason}, nil
@@ -60,23 +73,13 @@ func (s *InteractiveAppService) GenerateInteractiveImage(ctx context.Context, st
 	if existing := interactiveImageDisplayEvent(turn.DisplayEvents); existing != nil && !req.Force {
 		return InteractiveImageGenerateResult{Enabled: true, Skipped: true, SkippedReason: "already_exists"}, nil
 	}
-	eventID := interactiveImageEventID(turn.ID)
-	if err := store.AppendTurnDisplayEvent(storyID, storyCtx.Snapshot.BranchID, turn.ID, interactive.DisplayEvent{
-		ID:      eventID,
-		Role:    "tool_call",
-		Content: interactiveImageToolName,
-		Name:    interactiveImageToolName,
-		Status:  "running",
-		Args:    interactiveImageEventArgs(source, req.Force),
-	}); err != nil {
-		return InteractiveImageGenerateResult{}, err
-	}
 
-	preset := loadImagePreset(novaDir, storyCtx.Meta.ImageSettings.PresetID)
+	preset := loadImagePreset(runtime.cfg.DataDir(), storyCtx.Meta.ImageSettings.PresetID)
 	sourceContext := interactiveImageSourceContext(storyCtx.Meta, storyCtx.Snapshot.Turns, turnIndex)
 	systemPrompt := interactiveImageSystemPrompt(preset)
 	toolPrompt := preset.PromptForTargets(imagepreset.TargetToolRequest)
-	result, err := a.GenerateImageWithAgent(ctx, ImageAgentGenerateRequest{
+	result, err := a.images().generateWithAgentUsingHooks(runtime, ImageAgentGenerateRequest{
+		CommandID:     req.CommandID,
 		Purpose:       "interactive_image",
 		SourceContext: sourceContext,
 		SystemPrompt:  systemPrompt,
@@ -86,18 +89,52 @@ func (s *InteractiveAppService) GenerateInteractiveImage(ctx context.Context, st
 		BranchID:      storyCtx.Snapshot.BranchID,
 		TurnID:        turn.ID,
 		AltText:       interactiveImageAltText(storyCtx.Meta.Title, turnIndex),
+	}, imageAgentRunHooks{
+		OnAccepted: func(admission imageAgentAdmission) error {
+			if admission.Replayed {
+				return nil
+			}
+			return store.AppendTurnDisplayEvent(storyID, storyCtx.Snapshot.BranchID, turn.ID, interactive.DisplayEvent{
+				ID: eventID, Role: "tool_call", Content: interactiveImageToolName, Name: interactiveImageToolName,
+				Status: "running", Args: interactiveImageEventArgs(req.CommandID, source, req.Force),
+			})
+		},
+		OnInteractiveImage: func(image *interactiveimage.Result) error {
+			return appendInteractiveImageSuccess(store, storyID, storyCtx.Snapshot.BranchID, turn.ID, eventID, req.CommandID, source, req.Force, image)
+		},
 	})
 	if err != nil {
+		if errors.Is(err, ErrAgentCommandConflict) {
+			return InteractiveImageGenerateResult{}, err
+		}
+		if errors.Is(err, ErrImageAgentReplayResultUnavailable) {
+			latest, projectionErr := store.StoryContext(storyID, storyCtx.Snapshot.BranchID)
+			if projectionErr == nil {
+				if latestTurn, _, targetErr := interactiveImageTargetTurn(latest.Snapshot.Turns, turn.ID); targetErr == nil {
+					if image, settled, eventErr := interactiveImageCommandProjection(latestTurn.DisplayEvents, eventID); settled {
+						if eventErr != nil {
+							return InteractiveImageGenerateResult{}, eventErr
+						}
+						return InteractiveImageGenerateResult{Enabled: true, Image: image}, nil
+					}
+				}
+			}
+			return InteractiveImageGenerateResult{}, err
+		}
+		resultErr := err
+		if runtime.Context().Err() != nil {
+			resultErr = runtime.Context().Err()
+		}
 		_ = store.AppendTurnDisplayEvent(storyID, storyCtx.Snapshot.BranchID, turn.ID, interactive.DisplayEvent{
 			ID:      eventID,
 			Role:    "tool_call",
 			Content: interactiveImageToolName,
 			Name:    interactiveImageToolName,
 			Status:  "error",
-			Args:    interactiveImageEventArgs(source, req.Force),
-			Result:  interactiveImageErrorResult(err),
+			Args:    interactiveImageEventArgs(req.CommandID, source, req.Force),
+			Result:  interactiveImageErrorResult(resultErr),
 		})
-		return InteractiveImageGenerateResult{}, err
+		return InteractiveImageGenerateResult{}, fmt.Errorf("%w: %v", ErrImageAgentExecution, resultErr)
 	}
 	if result.InteractiveImage == nil {
 		err := fmt.Errorf("图像 Agent 未返回互动图像")
@@ -107,25 +144,16 @@ func (s *InteractiveAppService) GenerateInteractiveImage(ctx context.Context, st
 			Content: interactiveImageToolName,
 			Name:    interactiveImageToolName,
 			Status:  "error",
-			Args:    interactiveImageEventArgs(source, req.Force),
+			Args:    interactiveImageEventArgs(req.CommandID, source, req.Force),
 			Result:  interactiveImageErrorResult(err),
 		})
-		return InteractiveImageGenerateResult{}, err
+		return InteractiveImageGenerateResult{}, fmt.Errorf("%w: %v", ErrImageAgentExecution, err)
 	}
-	data, err := json.Marshal(result.InteractiveImage)
-	if err != nil {
-		return InteractiveImageGenerateResult{}, err
+	if err := runtime.Context().Err(); err != nil {
+		return InteractiveImageGenerateResult{}, fmt.Errorf("%w: %v", ErrImageAgentExecution, err)
 	}
-	if err := store.AppendTurnDisplayEvent(storyID, storyCtx.Snapshot.BranchID, turn.ID, interactive.DisplayEvent{
-		ID:      eventID,
-		Role:    "tool_call",
-		Content: interactiveImageToolName,
-		Name:    interactiveImageToolName,
-		Status:  "success",
-		Args:    interactiveImageEventArgs(source, req.Force),
-		Result:  string(data),
-	}); err != nil {
-		return InteractiveImageGenerateResult{}, err
+	if err := appendInteractiveImageSuccess(store, storyID, storyCtx.Snapshot.BranchID, turn.ID, eventID, req.CommandID, source, req.Force, result.InteractiveImage); err != nil {
+		return InteractiveImageGenerateResult{}, fmt.Errorf("%w: %v", ErrImageAgentExecution, err)
 	}
 	return InteractiveImageGenerateResult{Enabled: true, Image: result.InteractiveImage}, nil
 }
@@ -205,14 +233,71 @@ func interactiveImageDisplayEvent(events []interactive.DisplayEvent) *interactiv
 	return nil
 }
 
-func interactiveImageEventID(turnID string) string {
-	return fmt.Sprintf("interactive-image-%s-%d", strings.TrimSpace(turnID), time.Now().UTC().UnixNano())
+func interactiveImageDisplayEventByID(events []interactive.DisplayEvent, eventID string) *interactive.DisplayEvent {
+	eventID = strings.TrimSpace(eventID)
+	for i := len(events) - 1; i >= 0; i-- {
+		if strings.TrimSpace(events[i].ID) == eventID && strings.TrimSpace(events[i].Role) == "tool_call" {
+			return &events[i]
+		}
+	}
+	return nil
 }
 
-func interactiveImageEventArgs(source string, force bool) string {
+func interactiveImageCommandProjection(events []interactive.DisplayEvent, eventID string) (*interactiveimage.Result, bool, error) {
+	event := interactiveImageDisplayEventByID(events, eventID)
+	if event == nil {
+		return nil, false, nil
+	}
+	switch strings.TrimSpace(event.Status) {
+	case "success":
+		var image interactiveimage.Result
+		if err := json.Unmarshal([]byte(event.Result), &image); err != nil {
+			return nil, true, fmt.Errorf("互动图像展示结果损坏: %w", err)
+		}
+		if strings.TrimSpace(image.ImagePath) == "" {
+			return nil, true, fmt.Errorf("互动图像展示结果缺少图像路径")
+		}
+		return &image, true, nil
+	case "error":
+		var payload struct {
+			Error string `json:"error"`
+		}
+		_ = json.Unmarshal([]byte(event.Result), &payload)
+		return nil, true, errors.New(firstNonEmpty(strings.TrimSpace(payload.Error), "互动图像生成失败"))
+	default:
+		return nil, false, nil
+	}
+}
+
+func appendInteractiveImageSuccess(
+	store *interactive.Store,
+	storyID, branchID, turnID, eventID, commandID, source string,
+	force bool,
+	image *interactiveimage.Result,
+) error {
+	if image == nil {
+		return fmt.Errorf("图像 Agent 未返回互动图像")
+	}
+	data, err := json.Marshal(image)
+	if err != nil {
+		return err
+	}
+	return store.AppendTurnDisplayEvent(storyID, branchID, turnID, interactive.DisplayEvent{
+		ID: eventID, Role: "tool_call", Content: interactiveImageToolName, Name: interactiveImageToolName,
+		Status: "success", Args: interactiveImageEventArgs(commandID, source, force), Result: string(data),
+	})
+}
+
+func interactiveImageEventID(commandID string) string {
+	digest := sha256.Sum256([]byte(strings.TrimSpace(commandID)))
+	return fmt.Sprintf("interactive-image-command-%x", digest[:16])
+}
+
+func interactiveImageEventArgs(commandID, source string, force bool) string {
 	data, _ := json.Marshal(map[string]any{
-		"source": source,
-		"force":  force,
+		"command_id": strings.TrimSpace(commandID),
+		"source":     source,
+		"force":      force,
 	})
 	return string(data)
 }

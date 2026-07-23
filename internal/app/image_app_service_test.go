@@ -85,6 +85,48 @@ func TestGenerateImageSavesOpenAIResultToAssets(t *testing.T) {
 	}
 }
 
+func TestGenerateImageWorkspaceTransitionCancelsBeforeAssetWrite(t *testing.T) {
+	workspace := t.TempDir()
+	requestStarted := make(chan struct{})
+	releaseResponse := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(requestStarted)
+		<-releaseResponse
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{"b64_json": base64.StdEncoding.EncodeToString(testPNGBytes())}},
+		})
+	}))
+	defer server.Close()
+	application := &App{
+		cfg: &config.Config{
+			Workspace: workspace, ImageAPIKey: "test-key", ImageAPIBaseURL: server.URL, ImageAPIModel: "gpt-image-1",
+		},
+		workspace: workspace, bookService: book.NewService(workspace),
+	}
+	generateDone := make(chan error, 1)
+	runAppErrorTestGoroutine(generateDone, "workspace image generation", func() error {
+		_, err := application.GenerateImage(context.Background(), imagegen.GenerateRequest{Prompt: "cancelled image"})
+		return err
+	})
+	<-requestStarted
+
+	_, scopes, _, err := application.beginWorkspaceTransitionTo(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := waitLifecycleScopes(context.Background(), scopes); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-generateDone; err == nil {
+		t.Fatal("workspace transition should cancel the in-flight image operation")
+	}
+	close(releaseResponse)
+	if matches, err := filepath.Glob(filepath.Join(workspace, "assets", "image", "generated", "*")); err != nil || len(matches) != 0 {
+		t.Fatalf("cancelled image wrote assets: matches=%v err=%v", matches, err)
+	}
+}
+
 func testPNGBytes() []byte {
 	return []byte{
 		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,

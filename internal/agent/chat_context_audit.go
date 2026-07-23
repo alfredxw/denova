@@ -8,20 +8,8 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
-	"denova/internal/prompts"
+	agentcontext "denova/internal/agent/context"
 )
-
-// appendPlanModeInstruction 在用户消息前追加规划模式指令，让模型先提问和形成可审阅计划。
-func appendPlanModeInstruction(message string) string {
-	return prompts.PlanMode(message)
-}
-
-// appendContextBoundaryInstruction 在用户消息前追加上下文边界说明，
-// 强调当前请求才是"这次要做什么"，工作区/已确认小说状态是"背景是什么"，
-// 历史对话只能用于辅助理解，不能直接成为本轮执行依据。
-func appendContextBoundaryInstruction(message string) string {
-	return prompts.ContextBoundary(message)
-}
 
 type contextBuildLog struct {
 	ledger *ContextLedger
@@ -49,17 +37,30 @@ func (l *contextBuildLog) add(source, title, content, note string) {
 	}))
 }
 
-func (l *contextBuildLog) addSelections(selections []TextSelectionRef) {
-	for _, sel := range selections {
-		title := strings.TrimSpace(sel.FileName)
-		if title == "" {
-			title = "未命名选区"
-		}
-		if sel.StartLine > 0 || sel.EndLine > 0 {
-			title = fmt.Sprintf("%s:L%d-L%d", title, sel.StartLine, sel.EndLine)
-		}
-		l.add("编辑器选区", title, sel.Content, "")
+func (l *contextBuildLog) addFragment(fragment agentcontext.Fragment) {
+	if l == nil {
+		return
 	}
+	l.ledger.AddPart(
+		fragment.Source, fragment.Title, fragment.Purpose, fragment.Content,
+		fragment.Note, fragment.Included, fragment.Truncated, fragment.Limit,
+	)
+	l.parts = append(l.parts, NewContextAnalysisPart(ContextAnalysisPartInput{
+		ID:      fragment.ID,
+		Source:  fragment.Source,
+		Title:   fragment.Title,
+		Content: fragment.Content,
+		Note:    fragment.Note,
+	}))
+}
+
+func contextBuildLogFromAssembly(policy ContextLedgerPolicy, originalMessage string, result agentcontext.Result) *contextBuildLog {
+	log := newContextBuildLog(policy)
+	log.add("用户输入", "本轮原始请求", originalMessage, "display history; not charged to injection budget")
+	for _, fragment := range result.Fragments {
+		log.addFragment(fragment)
+	}
+	return log
 }
 
 func (l *contextBuildLog) String() string {
@@ -122,14 +123,6 @@ func contextLedgerPartsForConversation(log *contextBuildLog, conversation Conver
 		parts = append(parts, reporter.ContextLedgerParts()...)
 	}
 	return parts
-}
-
-func addContextLog(logs []*contextBuildLog, source, title, content, note string) {
-	for _, l := range logs {
-		if l != nil {
-			l.add(source, title, content, note)
-		}
-	}
 }
 
 func trimmedNonEmpty(values []string) []string {

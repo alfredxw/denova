@@ -8,6 +8,7 @@ import (
 
 	"github.com/cloudwego/eino/schema"
 
+	agentcontext "denova/internal/agent/context"
 	"denova/internal/book"
 	"denova/internal/session"
 )
@@ -67,8 +68,8 @@ func TestParseWriteLoreItemsToolResultReturnsChangedIDs(t *testing.T) {
 	}
 }
 
-func TestComposeAgentInputDoesNotInjectImagePresetContext(t *testing.T) {
-	composition := composeAgentInput(ChatRequest{
+func TestTurnInputProjectionDoesNotInjectImagePresetContext(t *testing.T) {
+	composition, assembled := assembleTurnForTest(t, ChatRequest{
 		Message:       "给当前章节生成插画",
 		ImagePresetID: "realistic",
 		ImagePreset: ImagePresetContext{
@@ -77,55 +78,56 @@ func TestComposeAgentInputDoesNotInjectImagePresetContext(t *testing.T) {
 			AgentSystemPrompt: "系统理解规则。",
 			ToolRequestPrompt: "真实光影和摄影感。",
 		},
-	}, nil, nil, DefaultLoopPolicy())
-	if strings.Contains(composition.AgentMessage, "真实光影和摄影感") || strings.Contains(composition.AgentMessage, "图像方案预设") {
-		t.Fatalf("image preset should not be injected into turn message:\n%s", composition.AgentMessage)
+	}, nil, nil, agentcontext.DefaultBudget())
+	modelMessage := finalAssembledUserMessage(t, assembled)
+	if strings.Contains(modelMessage, "真实光影和摄影感") || strings.Contains(modelMessage, "图像方案预设") {
+		t.Fatalf("image preset should not be injected into turn message:\n%s", modelMessage)
 	}
-	if composition.ContextLog != nil && strings.Contains(composition.ContextLog.String(), "图像方案预设") {
-		t.Fatalf("context log should not record image preset as turn context:\n%s", composition.ContextLog.String())
+	contextLog := contextBuildLogFromAssembly(DefaultLoopPolicy().ContextLedger, composition.OriginalMessage, assembled.Context)
+	if strings.Contains(contextLog.String(), "图像方案预设") {
+		t.Fatalf("context log should not record image preset as turn context:\n%s", contextLog.String())
 	}
 }
 
-func TestAppendReferenceContextDedupesAndReportsReadFailure(t *testing.T) {
+func TestTurnContextReferenceProjectionDedupesAndReportsReadFailure(t *testing.T) {
 	workspace := t.TempDir()
 	mustWriteTestFile(t, workspace, "chapters/ch01.md", "第一章正文")
 	service := book.NewService(workspace)
 
-	got := appendReferenceContext(service, "请参考", []string{
-		"chapters/ch01.md",
-		"chapters/ch01.md",
-		"chapters/missing.md",
-	})
+	_, assembled := assembleTurnForTest(t, ChatRequest{Message: "请参考", References: []string{
+		"chapters/ch01.md", "chapters/ch01.md", "chapters/missing.md",
+	}}, nil, service, agentcontext.DefaultBudget())
+	got := finalAssembledUserMessage(t, assembled)
 
 	assertContains(t, got, "请参考")
-	assertContains(t, got, "以下是用户引用的文件")
-	assertContains(t, got, "## @chapters/ch01.md")
+	assertContains(t, got, "# @chapters/ch01.md")
 	assertContains(t, got, "```markdown\n第一章正文\n```")
-	assertContains(t, got, "## @chapters/missing.md")
+	assertContains(t, got, "# @chapters/missing.md")
 	assertContains(t, got, "读取失败：")
-	if count := strings.Count(got, "## @chapters/ch01.md"); count != 1 {
+	if count := strings.Count(got, "# @chapters/ch01.md"); count != 1 {
 		t.Fatalf("重复引用应去重，实际出现 %d 次\n%s", count, got)
 	}
 }
 
-func TestAppendSelectionContextIncludesFileAndLineRange(t *testing.T) {
-	got := appendSelectionContext("修改这段", []TextSelectionRef{
+func TestTurnContextSelectionProjectionIncludesFileAndLineRange(t *testing.T) {
+	_, assembled := assembleTurnForTest(t, ChatRequest{Message: "修改这段", Selections: []TextSelectionRef{
 		{
 			FileName:  "chapters/ch03.md",
 			StartLine: 12,
 			EndLine:   18,
 			Content:   "选中的正文",
 		},
-	})
+	}}, nil, nil, agentcontext.DefaultBudget())
+	got := finalAssembledUserMessage(t, assembled)
 
 	assertContains(t, got, "修改这段")
-	assertContains(t, got, "以下是用户在编辑器中选中的文本片段")
-	assertContains(t, got, "## 选中内容来自 chapters/ch03.md:L12-L18")
+	assertContains(t, got, "# chapters/ch03.md:L12-L18")
 	assertContains(t, got, "```\n选中的正文\n```")
 }
 
-func TestAppendPlanModeInstructionUsesStructuredPlanningProtocol(t *testing.T) {
-	got := appendPlanModeInstruction("重构章节")
+func TestTurnContextPlanModeUsesStructuredPlanningProtocol(t *testing.T) {
+	_, assembled := assembleTurnForTest(t, ChatRequest{Message: "重构章节", PlanMode: true}, nil, nil, agentcontext.DefaultBudget())
+	got := finalAssembledUserMessage(t, assembled)
 
 	assertContains(t, got, "[Plan Mode / 规划模式]")
 	assertContains(t, got, "不要直接执行")
@@ -134,14 +136,16 @@ func TestAppendPlanModeInstructionUsesStructuredPlanningProtocol(t *testing.T) {
 	assertContains(t, got, "# 计划标题")
 	assertContains(t, got, "## Summary")
 	assertContains(t, got, "## Key Changes")
-	assertContains(t, got, "用户需求：\n重构章节")
+	assertContains(t, got, "用户需求：")
+	assertContains(t, got, "# 本轮用户请求（最高优先级）\n\n重构章节")
 	if strings.Contains(got, "Tests、Assumptions") || strings.Contains(got, "Test Plan") {
 		t.Fatalf("Plan Mode 最终方案模板不应强制输出测试或假设小节:\n%s", got)
 	}
 }
 
-func TestAppendContextBoundaryInstructionEmphasizesCurrentRequest(t *testing.T) {
-	got := appendContextBoundaryInstruction("帮我写第三章")
+func TestTurnContextBoundaryEmphasizesCurrentRequest(t *testing.T) {
+	_, assembled := assembleTurnForTest(t, ChatRequest{Message: "帮我写第三章"}, nil, nil, agentcontext.DefaultBudget())
+	got := finalAssembledUserMessage(t, assembled)
 
 	assertContains(t, got, "[上下文边界]")
 	assertContains(t, got, "当前用户请求是“这次要做什么”")
@@ -149,7 +153,8 @@ func TestAppendContextBoundaryInstructionEmphasizesCurrentRequest(t *testing.T) 
 	assertContains(t, got, "背景是什么")
 	assertContains(t, got, "历史对话只能辅助理解")
 	assertContains(t, got, "以当前请求为准")
-	assertContains(t, got, "本轮请求：\n帮我写第三章")
+	assertContains(t, got, "本轮请求：")
+	assertContains(t, got, "# 本轮用户请求（最高优先级）\n\n帮我写第三章")
 }
 
 func TestStyleRulesSystemInstructionEmitsSceneAndStyles(t *testing.T) {

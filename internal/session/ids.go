@@ -29,8 +29,16 @@ func newSessionID() string {
 	return fmt.Sprintf("s-%d", time.Now().UTC().UnixNano())
 }
 
+func newSessionJournalIncarnationID() string {
+	return "journal-" + strings.TrimPrefix(newSessionID(), "s-")
+}
+
 func newInterruptionID() string {
 	return strings.TrimPrefix(newSessionID(), "s-")
+}
+
+func newDisplayRecordID() string {
+	return "display-" + strings.TrimPrefix(newSessionID(), "s-")
 }
 
 func newContextCompactionID() string {

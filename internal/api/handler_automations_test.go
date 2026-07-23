@@ -2,10 +2,39 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"denova/internal/automation"
 )
+
+func TestAutomationAgentStreamsRequireCallerCommandID(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+	created, err := application.CreateAutomation(automation.Task{
+		Scope: automation.ScopeWorkspace, Name: "Review", Template: automation.TemplateReview, Prompt: "review",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	run := performJSONRequest(t, server, http.MethodPost, "/api/automations/"+created.ID+"/run/stream", map[string]any{})
+	if run.Code != http.StatusBadRequest || !strings.Contains(run.Body.String(), "command_id") || !strings.Contains(run.Body.String(), "无法安全重试") {
+		t.Fatalf("run status=%d body=%s", run.Code, run.Body.String())
+	}
+	followUp := performJSONRequest(t, server, http.MethodPost, "/api/automations/runs/missing/chat/stream", map[string]any{"message": "continue"})
+	if followUp.Code != http.StatusBadRequest || !strings.Contains(followUp.Body.String(), "command_id") || !strings.Contains(followUp.Body.String(), "follow-up") {
+		t.Fatalf("follow-up status=%d body=%s", followUp.Code, followUp.Body.String())
+	}
+	abort := performJSONRequest(t, server, http.MethodPost, "/api/automations/runs/missing/abort", map[string]any{})
+	if abort.Code != http.StatusBadRequest || !strings.Contains(abort.Body.String(), "target_operation_id") {
+		t.Fatalf("abort status=%d body=%s", abort.Code, abort.Body.String())
+	}
+	legacy := performJSONRequest(t, server, http.MethodPost, "/api/automations/"+created.ID+"/run", map[string]any{})
+	if legacy.Code != http.StatusNotFound && legacy.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("legacy non-idempotent run route remains reachable: status=%d body=%s", legacy.Code, legacy.Body.String())
+	}
+}
 
 func TestAutomationUpdateRejectsStaleRevisionAPI(t *testing.T) {
 	application := newTestApplication(t)

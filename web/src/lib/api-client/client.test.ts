@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
 import { setConfiguredLocale } from '@/i18n'
-import { APIError, clearRemoteAccessCredentials, fetchAPI, parseSSEStream, requestJSON, setRemoteAccessCredentials } from './client'
+import { APIError, clearRemoteAccessCredentials, fetchAPI, parseSSEStream, requestJSON, responseAPIError, setRemoteAccessCredentials } from './client'
 
 vi.mock('sonner', () => ({
   toast: {
@@ -110,12 +110,21 @@ describe('api client backend availability toast', () => {
       details: { path: 'chapters/ch01.md', expected: 'sha256:old', actual: 'sha256:new' },
     })
   })
+
+  it('preserves status for streaming response failures', async () => {
+    const error = await responseAPIError(new Response(JSON.stringify({
+      error: 'command rejected', code: 'agent_runtime.invalid_command',
+    }), { status: 400, headers: { 'Content-Type': 'application/json' } }))
+
+    expect(error).toBeInstanceOf(APIError)
+    expect(error).toMatchObject({ status: 400, code: 'agent_runtime.invalid_command', message: 'command rejected' })
+  })
 })
 
 describe('parseSSEStream', () => {
   it('preserves split boundaries, multiline data, CRLF, and a final unterminated event', async () => {
     const source = [
-      'event: tool\ndata: first',
+      'id: 41\nevent: tool\ndata: first',
       '\ndata: second\n\n',
       'event: chunk\r\ndata: third\r\n\r',
       '\nevent: done\ndata: {}',
@@ -137,7 +146,7 @@ describe('parseSSEStream', () => {
     }
 
     expect(events).toEqual([
-      { event: 'tool', data: 'first\nsecond' },
+      { id: '41', event: 'tool', data: 'first\nsecond' },
       { event: 'chunk', data: 'third' },
       { event: 'done', data: '{}' },
     ])

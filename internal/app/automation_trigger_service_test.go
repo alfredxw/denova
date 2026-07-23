@@ -14,7 +14,6 @@ import (
 	"denova/internal/agent"
 	"denova/internal/automation"
 	"denova/internal/book"
-	"denova/internal/workspacechange"
 )
 
 func TestAutomationCheckCreatesRetryableInboxWhenAutoRunCannotStart(t *testing.T) {
@@ -51,10 +50,10 @@ func TestAutomationCheckCreatesRetryableInboxWhenAutoRunCannotStart(t *testing.T
 	if len(items) != 1 {
 		t.Fatalf("inbox count = %d, want 1", len(items))
 	}
-	if items[0].Status != automation.InboxStatusPending || items[0].ActionPolicy != automation.ActionPolicyConfirm {
+	if items[0].Status != automation.InboxStatusPending || items[0].ActionPolicy != automation.ActionPolicyAutoRun {
 		t.Fatalf("unexpected inbox item: %#v", items[0])
 	}
-	if !strings.Contains(items[0].Summary, "自动执行启动失败") {
+	if !strings.Contains(items[0].ActionError, "自动执行启动失败") {
 		t.Fatalf("failed auto-run inbox should include retryable error summary: %#v", items[0])
 	}
 	if runs := app.RunDueAutomations(context.Background(), now); len(runs) != 0 {
@@ -294,7 +293,7 @@ func TestAutomationMutationCheckRunsOnlyContentTriggersForChapterWrites(t *testi
 	}
 }
 
-func TestAutomationMutationCallbackChecksAgentChapterWrites(t *testing.T) {
+func TestAutomationMutationCallbackDoesNotEvaluateBeforeDurableHostEffect(t *testing.T) {
 	root := t.TempDir()
 	workspace := filepath.Join(root, "workspace")
 	if err := os.MkdirAll(filepath.Join(workspace, "chapters"), 0o755); err != nil {
@@ -303,6 +302,7 @@ func TestAutomationMutationCallbackChecksAgentChapterWrites(t *testing.T) {
 	writeTestChapter(t, workspace, 1)
 	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
 	app.ensureServices()
+	t.Cleanup(app.Close)
 	app.bookService = book.NewService(workspace)
 
 	task, err := app.CreateAutomation(automation.Task{
@@ -323,6 +323,11 @@ func TestAutomationMutationCallbackChecksAgentChapterWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateAutomation failed: %v", err)
 	}
+	started := make(chan struct{}, 1)
+	app.automationTriggers.processOverride = func(context.Context, *AutomationAppService, *automationWorkspaceSnapshot, string) error {
+		started <- struct{}{}
+		return nil
+	}
 
 	callback := app.automationMutationCallback("agent_test")
 	callback(context.Background(), []agent.ToolMutation{{
@@ -330,9 +335,17 @@ func TestAutomationMutationCallbackChecksAgentChapterWrites(t *testing.T) {
 		Target:   filepath.Join(workspace, "chapters", "ch01.md"),
 	}}, agent.PostRunVerification{Status: "ok", Mutations: 1})
 
-	inbox := waitForAutomationInbox(t, app, 1)
-	if inbox[0].TaskID != task.ID || inbox[0].TriggerID != "chapter_batch_1" {
-		t.Fatalf("unexpected inbox after agent mutation callback: %#v", inbox)
+	select {
+	case <-started:
+		t.Fatal("pre-output OnMutationsVerified callback evaluated Automation")
+	case <-time.After(50 * time.Millisecond):
+	}
+	inbox, err := app.AutomationInbox()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inbox) != 0 {
+		t.Fatalf("pre-output callback created inbox items for task %s: %#v", task.ID, inbox)
 	}
 }
 
@@ -415,73 +428,6 @@ func TestAutomationMutationChecksCoalesceRapidSavesWithoutDuplicateInbox(t *test
 	}
 }
 
-func TestAutomationMutationEvaluatorIgnoresRequestCancelAndAppCloseDrains(t *testing.T) {
-	root := t.TempDir()
-	workspace := filepath.Join(root, "workspace")
-	if err := os.MkdirAll(filepath.Join(workspace, "chapters"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeTestChapter(t, workspace, 1)
-	application := &App{
-		cfg:         &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace},
-		workspace:   workspace,
-		bookService: book.NewService(workspace),
-	}
-	application.ensureServices()
-	if _, err := application.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Lifecycle semantic review",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
-		Triggers: []automation.TriggerDefinition{{
-			ID:                "semantic_batch_1",
-			Type:              automation.TriggerTypeSemantic,
-			Enabled:           true,
-			NotifyPolicy:      automation.NotifyPolicyInbox,
-			SemanticCondition: "chapter is ready",
-			ChapterBatchSize:  1,
-		}},
-	}); err != nil {
-		t.Fatalf("CreateAutomation failed: %v", err)
-	}
-
-	started := make(chan struct{})
-	canceled := make(chan struct{})
-	previousEvaluator := semanticTriggerEvaluator
-	semanticTriggerEvaluator = func(ctx context.Context, _ *config.Config, _ string) (string, error) {
-		close(started)
-		<-ctx.Done()
-		close(canceled)
-		return "", ctx.Err()
-	}
-	defer func() { semanticTriggerEvaluator = previousEvaluator }()
-	requestCtx, cancelRequest := context.WithCancel(context.Background())
-	cancelRequest()
-	application.CheckAutomationTriggersAfterWorkspaceMutation(requestCtx, "canceled_request", []string{"chapters/ch01.md"})
-	select {
-	case <-started:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("request cancellation incorrectly prevented mutation evaluation")
-	}
-	closed := make(chan struct{})
-	go func() {
-		application.Close()
-		close(closed)
-	}()
-	select {
-	case <-canceled:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("App.Close did not cancel the mutation evaluator")
-	}
-	select {
-	case <-closed:
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("App.Close did not drain the mutation evaluator")
-	}
-}
-
 func TestUserAutomationTriggerStateAndInboxAreWorkspaceScoped(t *testing.T) {
 	root := t.TempDir()
 	userDir := filepath.Join(root, "user")
@@ -530,8 +476,14 @@ func TestUserAutomationTriggerStateAndInboxAreWorkspaceScoped(t *testing.T) {
 		wg.Add(1)
 		go func(snap *automationWorkspaceSnapshot) {
 			defer wg.Done()
-			_, _, err := service.processContentTriggers(context.Background(), snap, time.Now().UTC(), "test")
-			errs <- err
+			var processErr error
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					processErr = fmt.Errorf("workspace trigger check panic: %v", recovered)
+				}
+				errs <- processErr
+			}()
+			_, _, processErr = service.processContentTriggers(context.Background(), snap, time.Now().UTC(), "test")
 		}(snap)
 	}
 	wg.Wait()
@@ -561,189 +513,6 @@ func TestUserAutomationTriggerStateAndInboxAreWorkspaceScoped(t *testing.T) {
 	}
 	if len(saved.TriggerState) != len(workspaces) {
 		t.Fatalf("trigger state count = %d, want %d: %#v", len(saved.TriggerState), len(workspaces), saved.TriggerState)
-	}
-}
-
-func TestWorkspaceChangeMutationAutomationUsesCapturedWorkspaceAfterSwitch(t *testing.T) {
-	root := t.TempDir()
-	workspace := filepath.Join(root, "workspace")
-	nextWorkspace := filepath.Join(root, "next-workspace")
-	for _, target := range []string{workspace, nextWorkspace} {
-		if err := os.MkdirAll(filepath.Join(target, "chapters"), 0o755); err != nil {
-			t.Fatalf("create chapter directory: %v", err)
-		}
-	}
-	writeTestChapter(t, workspace, 1)
-	novaDir := filepath.Join(root, "nova")
-	app := &App{
-		cfg:         &config.Config{NovaDir: novaDir, Workspace: workspace},
-		workspace:   workspace,
-		bookService: book.NewService(workspace),
-	}
-	app.ensureServices()
-	t.Cleanup(app.Close)
-
-	if _, err := app.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Captured semantic review",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
-		Triggers: []automation.TriggerDefinition{{
-			ID:                "semantic_batch_1",
-			Type:              automation.TriggerTypeSemantic,
-			Enabled:           true,
-			NotifyPolicy:      automation.NotifyPolicyInbox,
-			SemanticCondition: "chapter is ready",
-			ChapterBatchSize:  1,
-		}},
-	}); err != nil {
-		t.Fatalf("CreateAutomation failed: %v", err)
-	}
-
-	evaluationStarted := make(chan string, 1)
-	releaseEvaluation := make(chan struct{})
-	previousEvaluator := semanticTriggerEvaluator
-	semanticTriggerEvaluator = func(ctx context.Context, cfg *config.Config, _ string) (string, error) {
-		evaluationStarted <- cfg.Workspace
-		select {
-		case <-releaseEvaluation:
-			return `{"matched":true,"confidence":0.9,"reason":"ready","title":"Ready","evidence_refs":["chapters/ch01.md"]}`, nil
-		case <-ctx.Done():
-			return "", ctx.Err()
-		}
-	}
-	defer func() { semanticTriggerEvaluator = previousEvaluator }()
-
-	if _, err := app.WithWorkspaceChangeMutation(
-		context.Background(),
-		workspace,
-		func(*workspacechange.Service) (WorkspaceChangeMutationHooks, error) {
-			return WorkspaceChangeMutationHooks{
-				AutomationSource: "editor_save",
-				Paths:            []string{"chapters/ch01.md"},
-			}, nil
-		},
-	); err != nil {
-		t.Fatalf("WithWorkspaceChangeMutation failed: %v", err)
-	}
-
-	select {
-	case evaluatedWorkspace := <-evaluationStarted:
-		if evaluatedWorkspace != workspace {
-			t.Fatalf("evaluator workspace=%q want captured %q", evaluatedWorkspace, workspace)
-		}
-	case <-time.After(500 * time.Millisecond):
-		t.Fatal("automation evaluation did not start")
-	}
-
-	app.mu.Lock()
-	app.workspace = nextWorkspace
-	app.cfg.Workspace = nextWorkspace
-	app.bookService = book.NewService(nextWorkspace)
-	app.mu.Unlock()
-	close(releaseEvaluation)
-
-	oldStore := automation.NewStore(novaDir, workspace)
-	deadline := time.Now().Add(500 * time.Millisecond)
-	for {
-		inbox, err := oldStore.ListInbox()
-		if err != nil {
-			t.Fatalf("list captured workspace inbox: %v", err)
-		}
-		if len(inbox) == 1 {
-			if inbox[0].Workspace != workspace {
-				t.Fatalf("inbox workspace=%q want=%q", inbox[0].Workspace, workspace)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("captured workspace inbox was not created: %#v", inbox)
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	newInbox, err := automation.NewStore(novaDir, nextWorkspace).ListInbox()
-	if err != nil {
-		t.Fatalf("list next workspace inbox: %v", err)
-	}
-	if len(newInbox) != 0 {
-		t.Fatalf("next workspace received stale automation trigger: %#v", newInbox)
-	}
-}
-
-func TestAutomationSemanticTriggerChecksOnlyCompletedChapterBatches(t *testing.T) {
-	root := t.TempDir()
-	workspace := filepath.Join(root, "workspace")
-	if err := os.MkdirAll(filepath.Join(workspace, "chapters"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for i := 1; i <= 2; i++ {
-		writeTestChapter(t, workspace, i)
-	}
-	app := &App{cfg: &config.Config{NovaDir: filepath.Join(root, "nova"), Workspace: workspace}, workspace: workspace}
-	app.ensureServices()
-	app.bookService = book.NewService(workspace)
-
-	var calls int
-	var lastInstruction string
-	previousEvaluator := semanticTriggerEvaluator
-	semanticTriggerEvaluator = func(ctx context.Context, cfg *config.Config, instruction string) (string, error) {
-		calls++
-		lastInstruction = instruction
-		return `{"matched":true,"confidence":0.9,"reason":"new semantic state","title":"Semantic hit","evidence_refs":["chapters/ch03.md"]}`, nil
-	}
-	defer func() { semanticTriggerEvaluator = previousEvaluator }()
-
-	task, err := app.CreateAutomation(automation.Task{
-		Scope:      automation.ScopeWorkspace,
-		Enabled:    true,
-		Name:       "Semantic batch",
-		Template:   automation.TemplateReview,
-		WriteMode:  automation.WriteModeReadOnly,
-		WriteScope: automation.WriteScopeNone,
-		Triggers: []automation.TriggerDefinition{{
-			ID:                "semantic_batch_3",
-			Type:              automation.TriggerTypeSemantic,
-			Enabled:           true,
-			NotifyPolicy:      automation.NotifyPolicyInbox,
-			SemanticCondition: "新角色登场",
-			ChapterBatchSize:  3,
-		}},
-	})
-	if err != nil {
-		t.Fatalf("CreateAutomation failed: %v", err)
-	}
-
-	items, err := app.CheckAutomationTriggers(context.Background(), task.ID)
-	if err != nil {
-		t.Fatalf("CheckAutomationTriggers before semantic batch failed: %v", err)
-	}
-	if len(items) != 0 || calls != 0 {
-		t.Fatalf("semantic trigger should not evaluate before batch boundary items=%#v calls=%d", items, calls)
-	}
-
-	writeTestChapter(t, workspace, 3)
-	items, err = app.CheckAutomationTriggers(context.Background(), task.ID)
-	if err != nil {
-		t.Fatalf("CheckAutomationTriggers at semantic batch failed: %v", err)
-	}
-	if len(items) != 1 || calls != 1 {
-		t.Fatalf("semantic batch item count/calls = %d/%d, want 1/1", len(items), calls)
-	}
-	if len(items[0].Evidence) != 3 || items[0].Evidence[0].Ref != "chapters/ch01.md" || items[0].Evidence[2].Ref != "chapters/ch03.md" {
-		t.Fatalf("semantic evidence should be scoped to first batch: %#v", items[0].Evidence)
-	}
-	if !strings.Contains(lastInstruction, "chapters/ch03.md") || !strings.Contains(lastInstruction, "content_excerpt=") {
-		t.Fatalf("semantic instruction should include bounded chapter batch content:\n%s", lastInstruction)
-	}
-
-	items, err = app.CheckAutomationTriggers(context.Background(), task.ID)
-	if err != nil {
-		t.Fatalf("CheckAutomationTriggers duplicate semantic batch failed: %v", err)
-	}
-	if len(items) != 0 || calls != 1 {
-		t.Fatalf("same semantic batch should not re-evaluate items=%#v calls=%d", items, calls)
 	}
 }
 

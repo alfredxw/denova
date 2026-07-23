@@ -32,7 +32,7 @@ const (
 	maxTurnSubmissionDiagnostics       = 8
 	maxTurnSubmissionDiagnosticMessage = 1024
 	maxTurnSubmissionAllowedFields     = 16
-	maxTurnSubmissionArgumentsBytes    = 64 * 1024
+	maxTurnSubmissionArgumentsBytes    = 256 * 1024
 	maxTurnSubmissionChoiceBytes       = 512
 )
 

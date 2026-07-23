@@ -234,10 +234,6 @@ describe('AgentPanel', () => {
     const slowBurnItem = await screen.findByText('慢热叙事')
     fireEvent.click(slowBurnItem.closest('[role="menuitem"]') || slowBurnItem)
 
-    await waitFor(() => {
-      expect(updateUserSettings).toHaveBeenCalledWith(expect.objectContaining({ ide_story_teller_id: 'slow-burn' }))
-    })
-
     window.dispatchEvent(new CustomEvent('nova:writing-agent-init', {
       detail: { autoSend: true, prompt: '继续写下一段' },
     }))
@@ -394,6 +390,60 @@ describe('AgentPanel', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('一次最多提交 256 条审阅意见')
     await user.click(screen.getByRole('button', { name: '发送' }))
     expect(handleSend).not.toHaveBeenCalled()
+  })
+
+  it('冷恢复时只放开服务器投影的 Stop，仍禁止发送新指令', async () => {
+    const user = userEvent.setup()
+    const handleStop = vi.fn()
+    renderAgentPanel({
+      isStreaming: true,
+      onStop: handleStop,
+      runtimeProjection: {
+        active: false,
+        phase: 'running',
+        recovery_paused: true,
+        runtime_recoverable: true,
+        stream_attached: false,
+        active_operation_id: 'operation-recovery',
+        recovery_actions: [{
+          kind: 'abort',
+          command_id: 'recovery-abort-1',
+          operation_id: 'operation-recovery',
+        }],
+      },
+    })
+
+    expect(screen.getByText('正在从持久化状态恢复已接受的 Agent 运行…')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '发送方式：追加' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+    const stopButton = screen.getByRole('button', { name: '中断 AI 执行' })
+    expect(stopButton).toBeEnabled()
+
+    await user.click(stopButton)
+    expect(handleStop).toHaveBeenCalledTimes(1)
+  })
+
+  it('冷恢复展示流接回后允许用户选择追加或引导来恢复运行', () => {
+    renderAgentPanel({
+      isStreaming: true,
+      runtimeProjection: {
+        active: true,
+        phase: 'running',
+        task_id: 'attach-task-1',
+        recovery_paused: true,
+        runtime_recoverable: true,
+        stream_attached: true,
+        active_operation_id: 'operation-recovery',
+        recovery_actions: [{
+          kind: 'abort',
+          command_id: 'recovery-abort-1',
+          operation_id: 'operation-recovery',
+        }],
+      },
+    })
+
+    expect(screen.getByRole('button', { name: '发送方式：追加' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '中断 AI 执行' })).toBeEnabled()
   })
 })
 

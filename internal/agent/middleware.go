@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
@@ -15,6 +16,8 @@ import (
 
 	"denova/config"
 )
+
+const maxToolErrorDiagnosticBytes = 4 * 1024
 
 // toolOrchestratorMiddleware centralizes Nova's internal tool execution policy.
 type toolOrchestratorMiddleware struct {
@@ -155,6 +158,7 @@ type ToolExecutionRecord struct {
 	ToolCallID            string   `json:"tool_call_id,omitempty"`
 	Workspace             string   `json:"workspace,omitempty"`
 	Status                string   `json:"status"`
+	Result                string   `json:"result,omitempty"`
 	DomainStatus          string   `json:"domain_status,omitempty"`
 	DomainDiagnosticCount int      `json:"domain_diagnostic_count,omitempty"`
 	RetryModules          []string `json:"retry_modules,omitempty"`
@@ -173,6 +177,10 @@ type ToolExecutionRecord struct {
 	ChangeSetID           string   `json:"change_set_id,omitempty"`
 	BaseRevision          string   `json:"base_revision,omitempty"`
 	Revision              string   `json:"revision,omitempty"`
+	ReviewStatus          string   `json:"review_status,omitempty"`
+	ApplyState            string   `json:"apply_state,omitempty"`
+	LoreItemIDs           []string `json:"lore_item_ids,omitempty"`
+	DeletedLoreItemIDs    []string `json:"deleted_lore_item_ids,omitempty"`
 }
 
 func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
@@ -187,6 +195,7 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 		if observer != nil {
 			outcome = observer.LastLLMOutcome()
 		}
+		decision = applyModelOutputToolSafety(decision, outcome)
 		decision = applyToolArgumentValidation(decision, args, outcome)
 		observer.RecordToolDecision(decision)
 		if decision.Action == "blocked" {
@@ -199,37 +208,27 @@ func (m *toolOrchestratorMiddleware) WrapInvokableToolCall(
 		}
 		release := m.acquireToolExecution(decision)
 		defer release()
+		if err := recordToolStart(ctx, decision, args); err != nil {
+			return "", err
+		}
 		result, err := endpoint(ctx, args, opts...)
 		if err != nil {
+			msg, record := projectToolError(decision, args, err, m.toolResultLimitBytes())
+			if recordErr := recordToolFinish(ctx, record); recordErr != nil {
+				return "", recordErr
+			}
 			if _, ok := compose.IsInterruptRerunError(err); ok {
 				return "", err
 			}
-			msg := toolEndpointErrorMessage(decision.ToolName, err)
-			observer.RecordToolExecution(ToolExecutionRecord{
-				ToolName:   decision.ToolName,
-				ToolCallID: decision.ToolCallID,
-				Status:     "error",
-				Capability: decision.Capability,
-				Target:     decision.Target,
-				Error:      err.Error(),
-			})
 			return msg, nil
 		}
 		filtered := FilterToolResultForModelWithLimit(toolName(toolCtx), args, result, m.toolResultLimitBytes())
-		record := ToolExecutionRecord{
-			ToolName:       filtered.Manifest.Name,
-			ToolCallID:     decision.ToolCallID,
-			Status:         "success",
-			Capability:     filtered.Manifest.Capability,
-			OriginalBytes:  filtered.OriginalBytes,
-			ReturnedBytes:  filtered.ReturnedBytes,
-			Truncated:      filtered.Truncated,
-			Target:         filtered.Target,
-			IdempotencyKey: filtered.IdempotencyKey,
-		}
-		applyWorkspaceChangeReceiptToExecutionRecord(&record, result)
+		record := toolExecutionRecordFromFiltered(decision, filtered, "success")
+		applyToolMutationReceiptToExecutionRecord(&record, result)
 		applyInteractiveTurnReceiptToExecutionRecord(&record, result)
-		observer.RecordToolExecution(record)
+		if err := recordToolFinish(ctx, record); err != nil {
+			return "", err
+		}
 		return filtered.Content, nil
 	}, nil
 }
@@ -280,6 +279,7 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 		if observer != nil {
 			outcome = observer.LastLLMOutcome()
 		}
+		decision = applyModelOutputToolSafety(decision, outcome)
 		decision = applyToolArgumentValidation(decision, args, outcome)
 		observer.RecordToolDecision(decision)
 		if decision.Action == "blocked" {
@@ -291,23 +291,23 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 			return singleChunkReader(msg), nil
 		}
 		release := m.acquireToolExecution(decision)
+		if err := recordToolStart(ctx, decision, args); err != nil {
+			release()
+			return nil, err
+		}
 		sr, err := endpoint(ctx, args, opts...)
 		if err != nil {
 			release()
+			msg, record := projectToolError(decision, args, err, m.toolResultLimitBytes())
+			if recordErr := recordToolFinish(ctx, record); recordErr != nil {
+				return nil, recordErr
+			}
 			if _, ok := compose.IsInterruptRerunError(err); ok {
 				return nil, err
 			}
-			observer.RecordToolExecution(ToolExecutionRecord{
-				ToolName:   decision.ToolName,
-				ToolCallID: decision.ToolCallID,
-				Status:     "error",
-				Capability: decision.Capability,
-				Target:     decision.Target,
-				Error:      err.Error(),
-			})
-			return singleChunkReader(toolEndpointErrorMessage(decision.ToolName, err)), nil
+			return singleChunkReader(msg), nil
 		}
-		return filterToolResultReader(ctx, sr, toolCtx, args, m.toolResultLimitBytes(), release), nil
+		return filterToolResultReader(ctx, sr, decision, args, m.toolResultLimitBytes(), release), nil
 	}, nil
 }
 
@@ -316,6 +316,52 @@ func toolEndpointErrorMessage(toolName string, err error) string {
 		return msg
 	}
 	return fmt.Sprintf("[tool error] %v", err)
+}
+
+func projectToolError(decision ToolDecision, args string, err error, maxBytes int) (string, ToolExecutionRecord) {
+	modelError := strings.ToValidUTF8(toolEndpointErrorMessage(decision.ToolName, err), "\uFFFD")
+	filtered := FilterToolResultForModelWithLimit(
+		decision.ToolName,
+		args,
+		modelError,
+		maxBytes,
+	)
+	record := toolExecutionRecordFromFiltered(decision, filtered, "error")
+	record.Error = boundedToolErrorDiagnostic(err)
+	return filtered.Content, record
+}
+
+func toolExecutionRecordFromFiltered(decision ToolDecision, filtered FilteredToolResult, status string) ToolExecutionRecord {
+	return ToolExecutionRecord{
+		ToolName:       filtered.Manifest.Name,
+		ToolCallID:     decision.ToolCallID,
+		Status:         status,
+		Capability:     filtered.Manifest.Capability,
+		OriginalBytes:  filtered.OriginalBytes,
+		ReturnedBytes:  filtered.ReturnedBytes,
+		Truncated:      filtered.Truncated,
+		Target:         filtered.Target,
+		IdempotencyKey: filtered.IdempotencyKey,
+		Result:         filtered.Content,
+	}
+}
+
+func boundedToolErrorDiagnostic(err error) string {
+	diagnostic := "tool execution failed"
+	if err != nil {
+		if value := strings.TrimSpace(strings.ToValidUTF8(err.Error(), "\uFFFD")); value != "" {
+			diagnostic = value
+		}
+	}
+	if len(diagnostic) <= maxToolErrorDiagnosticBytes {
+		return diagnostic
+	}
+	const suffix = "\n[tool error diagnostic truncated]"
+	end := maxToolErrorDiagnosticBytes - len(suffix)
+	for end > 0 && !utf8.RuneStart(diagnostic[end]) {
+		end--
+	}
+	return strings.TrimSpace(diagnostic[:end]) + suffix
 }
 
 func (m *toolOrchestratorMiddleware) acquireToolExecution(decision ToolDecision) func() {
@@ -333,7 +379,7 @@ func singleChunkReader(msg string) *schema.StreamReader[string] {
 	return r
 }
 
-func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string], toolCtx *adk.ToolContext, args string, maxBytes int, releases ...func()) *schema.StreamReader[string] {
+func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string], decision ToolDecision, args string, maxBytes int, releases ...func()) *schema.StreamReader[string] {
 	r, w := schema.Pipe[string](1)
 	go func() {
 		defer w.Close()
@@ -346,50 +392,65 @@ func filterToolResultReader(ctx context.Context, sr *schema.StreamReader[string]
 		}()
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				_ = w.Send(fmt.Sprintf("\n[tool error] panic while reading tool result: %v", recovered), nil)
+				panicErr := fmt.Errorf("panic while reading tool result: %v", recovered)
+				msg, record := projectToolError(decision, args, panicErr, maxBytes)
+				if err := recordToolFinish(ctx, record); err != nil {
+					_ = w.Send("", err)
+					return
+				}
+				_ = w.Send(msg, nil)
 			}
 		}()
 		if sr == nil {
-			_ = w.Send("\n[tool error] streamable tool returned a nil result stream", nil)
+			streamErr := errors.New("streamable tool returned a nil result stream")
+			msg, record := projectToolError(decision, args, streamErr, maxBytes)
+			if err := recordToolFinish(ctx, record); err != nil {
+				_ = w.Send("", err)
+				return
+			}
+			_ = w.Send(msg, nil)
 			return
 		}
 		defer sr.Close()
-		name := toolName(toolCtx)
-		manifest := ManifestForTool(name)
+		manifest := ManifestForTool(decision.ToolName)
 		manifest.MaxResultBytes = normalizeToolResultLimitBytes(maxBytes)
 		limit := normalizedToolResultLimit(manifest)
 		var content strings.Builder
 		originalBytes := 0
 		for {
+			// This goroutine owns both the source stream and the workspace safety
+			// lease. Keep draining the actual producer after caller cancellation:
+			// releasing the lease while a non-cooperative tool may still mutate
+			// files would let another writer overlap it.
 			chunk, err := sr.Recv()
 			if errors.Is(err, io.EOF) {
-				filtered := filteredToolResultFromBody(manifest, args, content.String(), originalBytes, originalBytes > content.Len())
-				record := ToolExecutionRecord{
-					ToolName:       filtered.Manifest.Name,
-					ToolCallID:     toolCallID(toolCtx),
-					Status:         "success",
-					Capability:     filtered.Manifest.Capability,
-					OriginalBytes:  filtered.OriginalBytes,
-					ReturnedBytes:  filtered.ReturnedBytes,
-					Truncated:      filtered.Truncated,
-					Target:         filtered.Target,
-					IdempotencyKey: filtered.IdempotencyKey,
+				body := content.String()
+				truncated := originalBytes > len(body)
+				filtered := filteredToolResultFromBody(manifest, args, body, originalBytes, truncated)
+				record := toolExecutionRecordFromFiltered(decision, filtered, "success")
+				// Structured receipts are safety evidence, not display hints. Never
+				// infer them from the bounded model preview: a complete-looking JSON
+				// prefix can still omit fields from the actual stream. The durable
+				// execution record still carries tool identity and the args-derived
+				// target, so mutating streams produce a conservative HostEffect.
+				if !truncated {
+					applyToolMutationReceiptToExecutionRecord(&record, body)
+					applyInteractiveTurnReceiptToExecutionRecord(&record, body)
 				}
-				applyWorkspaceChangeReceiptToExecutionRecord(&record, content.String())
-				RunObserverFromContext(ctx).RecordToolExecution(record)
+				if err := recordToolFinish(ctx, record); err != nil {
+					_ = w.Send("", err)
+					return
+				}
 				_ = w.Send(filtered.Content, nil)
 				return
 			}
 			if err != nil {
-				RunObserverFromContext(ctx).RecordToolExecution(ToolExecutionRecord{
-					ToolName:   manifest.Name,
-					ToolCallID: toolCallID(toolCtx),
-					Status:     "error",
-					Capability: manifest.Capability,
-					Target:     toolPathFromArgs(args),
-					Error:      err.Error(),
-				})
-				_ = w.Send(fmt.Sprintf("\n[tool error] %v", err), nil)
+				msg, record := projectToolError(decision, args, err, maxBytes)
+				if recordErr := recordToolFinish(ctx, record); recordErr != nil {
+					_ = w.Send("", recordErr)
+					return
+				}
+				_ = w.Send(msg, nil)
 				return
 			}
 			originalBytes += len(chunk)
@@ -426,9 +487,21 @@ func applyWorkspaceChangeReceiptToExecutionRecord(record *ToolExecutionRecord, c
 	record.ChangeSetID = receipt.ChangeSetID
 	record.BaseRevision = receipt.BaseRevision
 	record.Revision = receipt.Revision
+	record.ReviewStatus = receipt.ReviewStatus
+	record.ApplyState = receipt.ApplyState
 	if strings.TrimSpace(receipt.Path) != "" {
 		record.Target = receipt.Path
 	}
+}
+
+func applyToolMutationReceiptToExecutionRecord(record *ToolExecutionRecord, content string) {
+	if record == nil {
+		return
+	}
+	applyWorkspaceChangeReceiptToExecutionRecord(record, content)
+	itemIDs, deletedIDs := parseWriteLoreItemsToolResult(record.ToolName, content)
+	record.LoreItemIDs = uniqueStrings(itemIDs)
+	record.DeletedLoreItemIDs = uniqueStrings(deletedIDs)
 }
 
 func blockedToolExecutionRecord(decision ToolDecision, msg string) ToolExecutionRecord {
@@ -454,7 +527,10 @@ func (m *toolOrchestratorMiddleware) toolResultLimitBytes() int {
 
 func (m *toolOrchestratorMiddleware) buildToolDecision(toolCtx *adk.ToolContext, args string) ToolDecision {
 	name := toolName(toolCtx)
-	manifest := ManifestForTool(name)
+	manifest, declared := declaredToolDescriptor(name)
+	if !declared {
+		manifest = DescriptorForTool(name)
+	}
 	decision := ToolDecision{
 		ToolName:          manifest.Name,
 		ToolCallID:        toolCallID(toolCtx),
@@ -471,6 +547,11 @@ func (m *toolOrchestratorMiddleware) buildToolDecision(toolCtx *adk.ToolContext,
 		decision.Reason = interactiveStoryWriteToolBlockedMessage(name)
 		return decision
 	}
+	if m != nil && m.enforceToolSettings && !declared {
+		decision.Action = "blocked"
+		decision.Reason = fmt.Sprintf("[tool error] 工具 %q 没有显式 ToolDescriptor，已在执行前拒绝；请先注册能力、并发和恢复策略。 / Tool %q has no explicit ToolDescriptor and was rejected before execution.", manifest.Name, manifest.Name)
+		return decision
+	}
 	if m != nil && m.enforceToolSettings && manifest.Capability != "" && !config.AgentToolAllowed(m.toolSettings, manifest.Capability) {
 		decision.Action = "blocked"
 		decision.Reason = disabledToolCapabilityMessage(manifest.Name, manifest.Capability)
@@ -480,6 +561,83 @@ func (m *toolOrchestratorMiddleware) buildToolDecision(toolCtx *adk.ToolContext,
 
 func disabledToolCapabilityMessage(name, capability string) string {
 	return fmt.Sprintf("[tool error] 工具 %q 需要当前 Agent 启用 %s 能力，但该能力已关闭。请改用已授权工具，或请用户在 Agent Tools 中开启该能力。 / Tool %q requires capability %s, which is disabled for this Agent.", name, capability, name, capability)
+}
+
+// applyModelOutputToolSafety rejects every tool call from a model response
+// that ended at its output-token limit. A truncated suffix can still happen to
+// be valid JSON; syntax validation alone therefore cannot prove the arguments
+// represent the model's complete intent.
+func applyModelOutputToolSafety(decision ToolDecision, outcome LLMOutcome) ToolDecision {
+	reason := strings.TrimSpace(outcome.FinishReason)
+	outputLimited := isOutputTokenLimitFinishReason(reason)
+	contentFiltered := strings.EqualFold(reason, "content_filter")
+	if !outputLimited && !contentFiltered {
+		return decision
+	}
+	argsComplete := false
+	decision.ArgsComplete = &argsComplete
+	decision.ModelFinishReason = reason
+	if decision.Action == "blocked" {
+		return decision
+	}
+	decision.Action = "blocked"
+	if contentFiltered {
+		decision.Reason = contentFilteredModelToolArgumentsMessage(decision, reason)
+	} else {
+		decision.Reason = truncatedModelToolArgumentsMessage(decision, reason)
+	}
+	return decision
+}
+
+func isOutputTokenLimitFinishReason(reason string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(reason))
+	normalized = strings.NewReplacer("-", "_", " ", "_").Replace(normalized)
+	switch normalized {
+	case "length", "max_tokens", "max_output_tokens", "token_limit":
+		return true
+	default:
+		return false
+	}
+}
+
+func truncatedModelToolArgumentsMessage(decision ToolDecision, finishReason string) string {
+	target := strings.TrimSpace(decision.Target)
+	if target == "" {
+		target = "(unknown)"
+	}
+	return fmt.Sprintf(`[tool error]
+type: incomplete_tool_arguments
+tool: %s
+reason: model_output_token_limit
+retryable: true
+workspace_mutated: false
+args_complete: false
+args_bytes: %d
+model_finish_reason: %s
+target: %s
+
+中文：模型在生成本条回复时达到了输出 token 上限，因此本条回复中的工具参数不能视为完整意图；即使 arguments 恰好是合法 JSON，Denova 也已阻止执行且未产生工具副作用。请缩短参数或拆分任务后重新发起工具调用。
+English: The model reached its output-token limit while generating this response, so this response's tool arguments cannot be treated as complete intent. Denova blocked execution even though the remaining arguments may be valid JSON, and the tool produced no side effects. Retry with shorter arguments or split the task.`, decision.ToolName, decision.ArgsBytes, finishReason, target)
+}
+
+func contentFilteredModelToolArgumentsMessage(decision ToolDecision, finishReason string) string {
+	target := strings.TrimSpace(decision.Target)
+	if target == "" {
+		target = "(unknown)"
+	}
+	return fmt.Sprintf(`[tool error]
+type: incomplete_tool_arguments
+tool: %s
+reason: model_output_interrupted_by_content_filter
+retryable: false
+workspace_mutated: false
+args_complete: false
+args_bytes: %d
+model_finish_reason: %s
+target: %s
+
+中文：模型回复被内容过滤中断，因此其中的工具参数不能视为完整意图；即使 arguments 恰好是合法 JSON，Denova 也已阻止执行，文件未写入且工具未产生副作用。请直接告知用户本次失败原因，不要重试同一个工具调用。
+English: Content filtering interrupted the model response, so its tool arguments cannot be treated as complete intent. Denova blocked execution even if the remaining arguments happen to be valid JSON; no file was written and the tool produced no side effects. Tell the user why it failed and do not retry the same tool call.`, decision.ToolName, decision.ArgsBytes, finishReason, target)
 }
 
 func applyToolArgumentValidation(decision ToolDecision, args string, outcome LLMOutcome) ToolDecision {

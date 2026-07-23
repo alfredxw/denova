@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -93,16 +94,57 @@ func (s *WorkspaceRuntimeManager) SwitchWorkspace(ctx context.Context, path stri
 	if err != nil || !info.IsDir() {
 		return "", fmt.Errorf("目录不存在: %s", absPath)
 	}
-
-	runtime, err := buildRuntime(ctx, a.cfg, absPath)
+	tasks, scopes, currentWorkspace, err := a.beginWorkspaceTransitionTo(absPath)
 	if err != nil {
 		return "", err
 	}
+	defer a.endWorkspaceTransition()
+	if err := abortAndWaitTasks(ctx, tasks, currentWorkspace); err != nil {
+		// Cancellation stops this caller's wait, not the transition owner. Keep
+		// the generations fenced until every previously admitted lease drains,
+		// then reinstall a usable generation for the still-current runtime.
+		drainErr := waitLifecycleScopes(context.Background(), scopes)
+		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
+		if drainErr != nil {
+			return "", errors.Join(err, drainErr)
+		}
+		return "", err
+	}
+	// Director jobs write story/lore projections outside the foreground Task
+	// registry. Quiesce them before buildRuntime reads or initializes either the
+	// current or target workspace, including same-path runtime refreshes.
 	a.stopWorkspaceDirectorTasks()
+	if err := waitLifecycleScopes(context.Background(), scopes); err != nil {
+		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
+		a.restoreWorkspaceDirectorTasks(currentWorkspace)
+		return "", err
+	}
+	if err := a.closeWorkspaceRuntimeBindings(context.Background(), currentWorkspace, absPath); err != nil {
+		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
+		a.restoreWorkspaceDirectorTasks(currentWorkspace)
+		return "", err
+	}
+	runtime, err := buildRuntimeExclusively(ctx, a.cfg, absPath)
+	if err != nil {
+		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
+		a.restoreWorkspaceDirectorTasks(currentWorkspace)
+		return "", err
+	}
 
+	chatApp := a.chat()
 	a.mu.Lock()
+	if err := a.replaceWorkspaceScopeLocked(runtime.workspace); err != nil {
+		a.mu.Unlock()
+		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace, absPath)
+		a.restoreWorkspaceDirectorTasks(currentWorkspace)
+		return "", err
+	}
+	if oldKey := lifecycleWorkspaceKey(currentWorkspace); oldKey != "" && oldKey != lifecycleWorkspaceKey(runtime.workspace) {
+		delete(a.workspaceScopes, oldKey)
+	}
 	a.applyRuntime(runtime)
 	a.cfg.Workspace = runtime.workspace
+	chatApp.clearRecoveryRefreshObligations(runtime.workspace)
 	a.mu.Unlock()
 
 	_ = a.bookRegistry.Touch(runtime.workspace)
@@ -228,8 +270,32 @@ func (s *WorkspaceRuntimeManager) activateFallbackWorkspace(ctx context.Context)
 		}
 		log.Printf("[books] 切换删除后的备用书籍失败 path=%s err=%v", record.Path, err)
 	}
+	tasks, scopes, currentWorkspace, err := a.beginWorkspaceTransitionTo()
+	if err != nil {
+		return "", err
+	}
+	defer a.endWorkspaceTransition()
+	if err := abortAndWaitTasks(ctx, tasks, currentWorkspace); err != nil {
+		drainErr := waitLifecycleScopes(context.Background(), scopes)
+		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace)
+		if drainErr != nil {
+			return "", errors.Join(err, drainErr)
+		}
+		return "", err
+	}
 	a.stopWorkspaceDirectorTasks()
+	if err := waitLifecycleScopes(context.Background(), scopes); err != nil {
+		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace)
+		a.restoreWorkspaceDirectorTasks(currentWorkspace)
+		return "", err
+	}
+	if err := a.closeWorkspaceRuntimeBindings(context.Background(), currentWorkspace); err != nil {
+		a.restoreWorkspaceGenerationAfterFailedTransition(currentWorkspace)
+		a.restoreWorkspaceDirectorTasks(currentWorkspace)
+		return "", err
+	}
 	a.mu.Lock()
+	delete(a.workspaceScopes, lifecycleWorkspaceKey(currentWorkspace))
 	a.clearRuntime()
 	a.mu.Unlock()
 	return "", nil

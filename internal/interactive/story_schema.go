@@ -7,13 +7,15 @@ import (
 )
 
 const (
-	StoryEventTypeMeta              = "meta"
-	StoryEventTypeTurn              = "turn"
-	StoryEventTypeStateDelta        = "state_delta"
-	StoryEventTypeBranch            = "branch"
-	StoryEventTypeHotChoices        = "hot_choices"
-	StoryEventTypeCompaction        = "context_compaction"
-	StoryEventTypeCompactionRemoved = "context_compaction_removed"
+	StoryEventTypeMeta                = "meta"
+	StoryEventTypePlayerInput         = "player_input_accepted"
+	StoryEventTypeTurn                = "turn"
+	StoryEventTypeStateDelta          = "state_delta"
+	StoryEventTypeBranch              = "branch"
+	StoryEventTypeHotChoices          = "hot_choices"
+	StoryEventTypeCompaction          = "context_compaction"
+	StoryEventTypeCompactionRemoved   = "context_compaction_removed"
+	StoryEventTypeTurnVersionSelected = "turn_version_selected"
 
 	stateOpSchemaVersion = 2
 )
@@ -72,6 +74,15 @@ func mapToStoryEventRecord(raw map[string]any) (StoryEventRecord, error) {
 		}
 		if err := validateStateDelta(StateDelta{SchemaVersion: delta.SchemaVersion, Ops: delta.Ops, ActorOps: delta.ActorOps}); err != nil {
 			return StoryEventRecord{}, fmt.Errorf("校验状态变化事件失败: %w", err)
+		}
+	}
+	if envelope.Type == StoryEventTypeTurnVersionSelected {
+		var selection TurnVersionSelectionEvent
+		if err := mapToStruct(raw, &selection); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if err := validateTurnVersionSelection(selection); err != nil {
+			return StoryEventRecord{}, err
 		}
 	}
 	return StoryEventRecord{Envelope: envelope, Raw: raw}, nil
@@ -169,7 +180,7 @@ func validateStoryEventEnvelope(envelope StoryEventEnvelope) error {
 		return fmt.Errorf("故事事件 schema 版本不支持: %d", envelope.V)
 	}
 	switch envelope.Type {
-	case StoryEventTypeTurn, StoryEventTypeStateDelta, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeCompaction, StoryEventTypeCompactionRemoved:
+	case StoryEventTypePlayerInput, StoryEventTypeTurn, StoryEventTypeStateDelta, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeCompaction, StoryEventTypeCompactionRemoved, StoryEventTypeTurnVersionSelected:
 	default:
 		return fmt.Errorf("未知故事事件类型: %q", envelope.Type)
 	}
@@ -181,6 +192,30 @@ func validateStoryEventEnvelope(envelope StoryEventEnvelope) error {
 	}
 	if strings.TrimSpace(envelope.Ts) == "" {
 		return fmt.Errorf("故事事件缺少 ts: %s", envelope.ID)
+	}
+	return nil
+}
+
+func validateTurnVersionSelection(selection TurnVersionSelectionEvent) error {
+	if strings.TrimSpace(selection.ReplacedTurnID) == "" || strings.TrimSpace(selection.SelectedTurnID) == "" {
+		return fmt.Errorf("回合版本选择缺少 replaced_turn_id 或 selected_turn_id")
+	}
+	if strings.TrimSpace(selection.ProjectedHeadID) == "" || strings.TrimSpace(selection.ParentID) != strings.TrimSpace(selection.ProjectedHeadID) {
+		return fmt.Errorf("回合版本选择的 projected_head_id 与 parent_id 不一致")
+	}
+	seenSources := make(map[string]bool, len(selection.ProjectedEvents))
+	seenProjected := make(map[string]bool, len(selection.ProjectedEvents))
+	for _, projection := range selection.ProjectedEvents {
+		sourceID := strings.TrimSpace(projection.SourceID)
+		projectedID := strings.TrimSpace(projection.ProjectedID)
+		if sourceID == "" || projectedID == "" || strings.TrimSpace(projection.EventType) == "" {
+			return fmt.Errorf("回合版本选择包含不完整的 suffix 投影")
+		}
+		if seenSources[sourceID] || seenProjected[projectedID] {
+			return fmt.Errorf("回合版本选择包含重复的 suffix 投影")
+		}
+		seenSources[sourceID] = true
+		seenProjected[projectedID] = true
 	}
 	return nil
 }

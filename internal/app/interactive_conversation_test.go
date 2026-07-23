@@ -70,7 +70,7 @@ func TestSubmitTurnResultValidatesFrozenStatePathsAndRetainsChoicesAcrossRetry(t
 	if err != nil || !receipt.Ready || len(receipt.Diagnostics) != 1 || receipt.Diagnostics[0].Code != "turn_result_already_accepted" {
 		t.Fatalf("duplicate accepted result should be idempotent: receipt=%#v err=%v", receipt, err)
 	}
-	if err := conversation.AppendAssistantWithThinking("主角平复了呼吸。", ""); err != nil {
+	if err := commitInteractiveAssistantForTest(t, conversation, "主角平复了呼吸。", ""); err != nil {
 		t.Fatalf("validated result and narrative should commit atomically: %v", err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -126,7 +126,7 @@ func TestSubmitTurnResultRequiresAndCommitsStoryContext(t *testing.T) {
 	if err != nil || !receipt.Ready {
 		t.Fatalf("complete story context should be accepted: receipt=%#v err=%v", receipt, err)
 	}
-	if err := conversation.AppendAssistantWithThinking("主角推门走进黄泉酒馆。", ""); err != nil {
+	if err := commitInteractiveAssistantForTest(t, conversation, "主角推门走进黄泉酒馆。", ""); err != nil {
 		t.Fatalf("commit narrative with story context: %v", err)
 	}
 
@@ -152,8 +152,14 @@ func testTurnSubmissionInput(updates []interactive.StateUpdate, includeChoices b
 }
 
 func TestDirectorContextBudgetFollowsModelWindowAndCapsEachSource(t *testing.T) {
-	small := newDirectorContextBudget(&config.Config{OpenAIContextWindowTokens: 128000}, interactiveDirectorTaskDirectorPlanUpdate, interactiveDirectorStableContext{})
-	large := newDirectorContextBudget(&config.Config{OpenAIContextWindowTokens: 400000}, interactiveDirectorTaskDirectorPlanUpdate, interactiveDirectorStableContext{})
+	small, err := newDirectorContextBudget(&config.Config{OpenAIContextWindowTokens: 128000}, interactiveDirectorTaskDirectorPlanUpdate, interactiveDirectorStableContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	large, err := newDirectorContextBudget(&config.Config{OpenAIContextWindowTokens: 400000}, interactiveDirectorTaskDirectorPlanUpdate, interactiveDirectorStableContext{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if small.thresholdTokens != 115200 || large.thresholdTokens != 360000 {
 		t.Fatalf("threshold tokens should follow the configured 90%% model window: small=%d large=%d", small.thresholdTokens, large.thresholdTokens)
 	}
@@ -252,12 +258,12 @@ func TestInteractiveConversationDropsTransientIndexAndThinkingFromNextTurn(t *te
 		t.Fatal(err)
 	}
 	submitTestTurnResult(t, conversation, "观察门缝", "确认蓝光来源")
-	if err := conversation.AppendAssistantWithThinking("门缝里透出蓝光。", "隐藏思考"); err != nil {
+	if err := commitInteractiveAssistantForTest(t, conversation, "门缝里透出蓝光。", "隐藏思考"); err != nil {
 		t.Fatal(err)
 	}
 
 	next := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续观察", 800, &config.Config{})
-	messages, err := next.PrepareMessages("继续观察", "继续观察")
+	messages, err := assembleAndCommitInteractiveContextForTest(next, "继续观察", "继续观察")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +307,7 @@ func TestInteractiveConversationPersistsNarrativeAnchorBeforeSubmissionTools(t *
 		t.Fatal(err)
 	}
 	submitTestTurnResult(t, conversation, "观察门缝", "确认蓝光来源")
-	if err := conversation.AppendAssistantWithThinking("门缝里透出蓝光。", "先观察环境。"); err != nil {
+	if err := commitInteractiveAssistantForTest(t, conversation, "门缝里透出蓝光。", "先观察环境。"); err != nil {
 		t.Fatal(err)
 	}
 

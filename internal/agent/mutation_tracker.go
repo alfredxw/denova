@@ -173,6 +173,25 @@ func (t *mutationTracker) observeToolResult(data any) {
 	}
 }
 
+func toolMutationFromExecutionRecord(record ToolExecutionRecord) (ToolMutation, bool) {
+	manifest := ManifestForTool(record.ToolName)
+	if !manifest.MutatesWorkspace || !strings.EqualFold(strings.TrimSpace(record.Status), "success") {
+		return ToolMutation{}, false
+	}
+	mutation := ToolMutation{
+		ToolName: manifest.Name, ToolCallID: strings.TrimSpace(record.ToolCallID),
+		Workspace: strings.TrimSpace(record.Workspace), Target: filepath.ToSlash(strings.TrimSpace(record.Target)),
+		Source: manifest.Source, RequiresPostCheck: manifest.RequiresPostCheck,
+		IdempotencyKey: strings.TrimSpace(record.IdempotencyKey),
+		ChangeGroupID:  strings.TrimSpace(record.ChangeGroupID), ReviewThreadID: strings.TrimSpace(record.ReviewThreadID),
+		ChangeSetID: strings.TrimSpace(record.ChangeSetID), BaseRevision: strings.TrimSpace(record.BaseRevision),
+		Revision: strings.TrimSpace(record.Revision), ReviewStatus: strings.TrimSpace(record.ReviewStatus),
+		ApplyState:  strings.TrimSpace(record.ApplyState),
+		LoreItemIDs: uniqueStrings(record.LoreItemIDs), DeletedLoreItemIDs: uniqueStrings(record.DeletedLoreItemIDs),
+	}
+	return mutation, true
+}
+
 func (t *mutationTracker) ensureCallLocked(id, name string) *trackedToolCall {
 	call := t.calls[id]
 	if call == nil {

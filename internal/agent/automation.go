@@ -21,17 +21,64 @@ type AutomationTaskInstruction struct {
 }
 
 func BuildAutomationInstruction(cfg *config.Config, state *book.State, task AutomationTaskInstruction) string {
-	return protectedSystemInstruction(cfg, config.AgentKindAutomation, editableAutomationBuiltinInstruction(cfg, state, task))
+	return BuildAutomationInstructionComposition(cfg, state, task).Instruction()
+}
+
+// ComposeAutomationInstruction admits automation task configuration and the
+// user-authored task prompt as separate, auditable system sources.
+func ComposeAutomationInstruction(cfg *config.Config, state *book.State, task AutomationTaskInstruction) (SystemPromptComposition, error) {
+	workspace := automationInstructionWorkspace(cfg, state, task)
+	creator := ""
+	if state != nil {
+		creator = state.ReadCreatorPrompt()
+	}
+	builtIn := []SystemPromptFragment{creatorSystemPromptFragment(creator), {
+		ID: "builtin_base", Source: "Denova built-in", Title: "自动化 Agent 工作方式",
+		Purpose: "define the built-in automation workflow and write safety boundary",
+		Content: automationBaseInstruction(workspace), Required: true, Overflow: SystemPromptOverflowReject,
+	}, {
+		ID: "automation_task_fields", Source: "automation task definition", Title: "任务配置",
+		Purpose: "provide the captured automation execution and output policy",
+		Content: automationTaskFieldsInstruction(workspace, task), Prefix: "\n\n## 任务配置\n\n",
+		Required: true, Overflow: SystemPromptOverflowReject,
+	}, {
+		ID: "automation_user_prompt", Source: "automation task definition", Title: "用户任务",
+		Purpose: "provide the user-authored automation objective",
+		Content: automationTaskUserPrompt(task), Prefix: "\n\n## 用户任务\n\n",
+		Required: true, Overflow: SystemPromptOverflowReject,
+	}}
+	return composeProtectedSystemInstruction(cfg, config.AgentKindAutomation, "automation", workspace, builtIn)
+}
+
+func BuildAutomationInstructionComposition(cfg *config.Config, state *book.State, task AutomationTaskInstruction) SystemPromptComposition {
+	composition, err := ComposeAutomationInstruction(cfg, state, task)
+	if err != nil {
+		return failedSystemPromptComposition("automation", config.AgentKindAutomation, automationInstructionWorkspace(cfg, state, task), err)
+	}
+	return composition
 }
 
 func editableAutomationBuiltinInstruction(cfg *config.Config, state *book.State, task AutomationTaskInstruction) string {
-	workspace := task.Workspace
+	workspace := automationInstructionWorkspace(cfg, state, task)
+	return strings.TrimSpace(strings.Join([]string{
+		automationBaseInstruction(workspace),
+		"## 任务配置\n\n" + automationTaskFieldsInstruction(workspace, task),
+		"## 用户任务\n\n" + automationTaskUserPrompt(task),
+	}, "\n\n"))
+}
+
+func automationInstructionWorkspace(cfg *config.Config, state *book.State, task AutomationTaskInstruction) string {
+	workspace := strings.TrimSpace(task.Workspace)
 	if workspace == "" && cfg != nil {
-		workspace = cfg.Workspace
+		workspace = strings.TrimSpace(cfg.Workspace)
 	}
 	if workspace == "" && state != nil {
-		workspace = state.Workspace()
+		workspace = strings.TrimSpace(state.Workspace())
 	}
+	return workspace
+}
+
+func automationBaseInstruction(workspace string) string {
 	var sb strings.Builder
 	sb.WriteString("你是 Denova 的自动化Agent，负责按用户配置的后台自动化任务自主完成工作。\n\n")
 	sb.WriteString("## 工作方式\n\n")
@@ -45,9 +92,14 @@ func editableAutomationBuiltinInstruction(cfg *config.Config, state *book.State,
 	sb.WriteString("- 所有写入必须遵守本轮执行模式、写入范围和实际启用工具。没有写权限时，只输出建议和补丁计划，不要声称已经修改。\n")
 	sb.WriteString("- `read_only` 模式只能输出 review、建议或方案；`confirm_write` 的首轮也是只读方案；`auto_write` 或用户确认后的写入 run 才能在写入范围内实际修改。\n")
 	sb.WriteString("- 如果任务需要续写章节，先检查 `setting/outline.md`、`setting/chapter-groups/`、`setting/progress.md`、`setting/character-states.md`、最近实际章节和资料库，以实际章节路径与非空正文决定目标章节；完成正文自检与最后修订后，在同一轮同步进度和角色状态，章节状态标签不构成同步门槛。\n")
-	sb.WriteString("- 输出最终摘要时说明你实际完成了什么、写入了哪些路径、还有哪些需要用户确认。\n\n")
-	sb.WriteString("## 任务配置\n\n")
+	sb.WriteString("- 输出最终摘要时说明你实际完成了什么、写入了哪些路径、还有哪些需要用户确认。")
+	return sb.String()
+}
+
+func automationTaskFieldsInstruction(workspace string, task AutomationTaskInstruction) string {
+	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("- 名称：%s\n", strings.TrimSpace(task.Name)))
+	sb.WriteString(fmt.Sprintf("- 模板：%s\n", strings.TrimSpace(task.Template)))
 	sb.WriteString(fmt.Sprintf("- 工作区：%s\n", workspace))
 	sb.WriteString(fmt.Sprintf("- 执行模式：%s\n", strings.TrimSpace(task.WriteMode)))
 	sb.WriteString(fmt.Sprintf("- 写入范围：%s\n", strings.TrimSpace(task.WriteScope)))
@@ -55,12 +107,12 @@ func editableAutomationBuiltinInstruction(cfg *config.Config, state *book.State,
 	if strings.TrimSpace(task.OutputPath) != "" {
 		sb.WriteString(fmt.Sprintf("- 输出路径：%s\n", strings.TrimSpace(task.OutputPath)))
 	}
+	return strings.TrimSpace(sb.String())
+}
+
+func automationTaskUserPrompt(task AutomationTaskInstruction) string {
 	if prompt := strings.TrimSpace(task.Prompt); prompt != "" {
-		sb.WriteString("\n## 用户任务\n\n")
-		sb.WriteString(prompt)
-	} else {
-		sb.WriteString("\n## 用户任务\n\n")
-		sb.WriteString("根据任务配置完成这次自动化。请先自行读取必要信息，再执行；如果任务目标不明确，只输出你需要用户补充的配置建议。")
+		return prompt
 	}
-	return sb.String()
+	return "根据任务配置完成这次自动化。请先自行读取必要信息，再执行；如果任务目标不明确，只输出你需要用户补充的配置建议。"
 }

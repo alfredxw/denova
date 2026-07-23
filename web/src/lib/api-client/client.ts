@@ -56,14 +56,32 @@ export async function requestJSON<T>(url: string, init?: RequestInit): Promise<T
     }
   }
   if (!res.ok) {
-    const message = typeof data.error === 'string' && data.error ? data.error : `HTTP ${res.status}`
-    const code = typeof data.code === 'string' && data.code ? data.code : undefined
-    const details = data.details && typeof data.details === 'object' && !Array.isArray(data.details)
-      ? data.details as Record<string, unknown>
-      : undefined
-    throw new APIError(message, { status: res.status, code, details, payload: data })
+    throw apiErrorFromPayload(res.status, data)
   }
   return data as T
+}
+
+/** Preserve status and structured error details for streaming HTTP requests. */
+export async function responseAPIError(res: Response): Promise<APIError> {
+  const text = await res.text()
+  let payload: Record<string, unknown> = {}
+  if (text) {
+    try {
+      payload = JSON.parse(text) as Record<string, unknown>
+    } catch {
+      payload = { error: text }
+    }
+  }
+  return apiErrorFromPayload(res.status, payload)
+}
+
+function apiErrorFromPayload(status: number, payload: Record<string, unknown>): APIError {
+  const message = typeof payload.error === 'string' && payload.error ? payload.error : `HTTP ${status}`
+  const code = typeof payload.code === 'string' && payload.code ? payload.code : undefined
+  const details = payload.details && typeof payload.details === 'object' && !Array.isArray(payload.details)
+    ? payload.details as Record<string, unknown>
+    : undefined
+  return new APIError(message, { status, code, details, payload })
 }
 
 export async function readErrorMessage(res: Response): Promise<string> {
@@ -142,6 +160,7 @@ function findSSEBoundary(value: string, fromIndex: number): { index: number; len
 
 function enqueueSSEBlock<T extends SSEEvent>(controller: ReadableStreamDefaultController<T>, block: string) {
   if (!block.trim()) return false
+  let id: string | undefined
   let event = ''
   const data: string[] = []
   for (const line of block.split(/\r\n|\r|\n/)) {
@@ -150,11 +169,12 @@ function enqueueSSEBlock<T extends SSEEvent>(controller: ReadableStreamDefaultCo
     const field = separator >= 0 ? line.slice(0, separator) : line
     const rawValue = separator >= 0 ? line.slice(separator + 1) : ''
     const value = rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue
-    if (field === 'event') event = value
+    if (field === 'id') id = value
+    else if (field === 'event') event = value
     else if (field === 'data') data.push(value)
   }
   if (!event) return false
-  controller.enqueue({ event, data: data.join('\n') } as T)
+  controller.enqueue({ ...(id === undefined ? {} : { id }), event, data: data.join('\n') } as T)
   return true
 }
 

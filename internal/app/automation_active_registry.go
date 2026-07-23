@@ -2,9 +2,11 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"denova/internal/automation"
+	"denova/internal/lifecycle"
 )
 
 // automationRunState and automationRunClaim keep active execution identity
@@ -29,21 +31,32 @@ type automationRunClaim struct {
 func (s *AutomationAppService) ActiveAutomationRuns() []automation.ActiveRun {
 	snap, err := s.runtimeSnapshot()
 	if err != nil {
-		return nil
+		// A workspace is optional for user-scoped automations. When no selected
+		// runtime can be captured, keep the public projection useful without
+		// leaking runs owned by an unrelated workspace.
+		return s.activeAutomationRunsForWorkspace("", false)
 	}
 	return s.activeAutomationRuns(snap)
 }
 
 func (s *AutomationAppService) activeAutomationRuns(snap *automationWorkspaceSnapshot) []automation.ActiveRun {
-	workspace := ""
-	if snap != nil {
-		workspace = canonicalAutomationWorkspace(snap.workspace)
+	if snap == nil {
+		// Internal callers use nil explicitly for the catalog-wide diagnostic
+		// view. The public method above always chooses a concrete scope.
+		return s.activeAutomationRunsForWorkspace("", true)
 	}
+	return s.activeAutomationRunsForWorkspace(canonicalAutomationWorkspace(snap.workspace), false)
+}
+
+func (s *AutomationAppService) activeAutomationRunsForWorkspace(workspace string, includeAll bool) []automation.ActiveRun {
 	s.app.mu.RLock()
 	defer s.app.mu.RUnlock()
 	result := make([]automation.ActiveRun, 0, len(s.app.activeAutomationRuns))
 	for _, state := range s.app.activeAutomationRuns {
-		if workspace != "" && state.Workspace != workspace {
+		// Global runs are relevant in every selected workspace. Workspace runs
+		// remain isolated from one another, and a workspace-less public view is
+		// deliberately global-only.
+		if !includeAll && state.Workspace != "" && state.Workspace != workspace {
 			continue
 		}
 		task := s.app.activeAutomationTasks[state.TaskKey]
@@ -57,6 +70,21 @@ func (s *AutomationAppService) activeAutomationRuns(snap *automationWorkspaceSna
 
 func (a *App) ActiveAutomationRuns() []automation.ActiveRun {
 	return a.automation().ActiveAutomationRuns()
+}
+
+func (s *AutomationAppService) hasActiveAutomationDefinition(taskID string) bool {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return false
+	}
+	s.app.mu.RLock()
+	defer s.app.mu.RUnlock()
+	for _, claim := range s.app.activeAutomationClaims {
+		if claim != nil && claim.taskID == taskID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *AutomationAppService) ActiveAutomationTaskByRunID(runID string) (*Task, automation.RunRecord, bool) {
@@ -97,19 +125,6 @@ func (a *App) ActiveAutomationTaskByRunID(runID string) (*Task, automation.RunRe
 	return a.automation().ActiveAutomationTaskByRunID(runID)
 }
 
-func (s *AutomationAppService) AbortAutomationRun(runID string) bool {
-	task, _, ok := s.ActiveAutomationTaskByRunID(runID)
-	if !ok {
-		return false
-	}
-	task.Abort()
-	return true
-}
-
-func (a *App) AbortAutomationRun(runID string) bool {
-	return a.automation().AbortAutomationRun(runID)
-}
-
 // reserveActiveAutomationRun performs the check-and-claim transition under
 // App.mu. Concurrent trigger checks wait for the owner to either publish its
 // Task or release the reservation; they can never start a duplicate run.
@@ -118,12 +133,25 @@ func (s *AutomationAppService) reserveActiveAutomationRun(ctx context.Context, s
 	taskKey := automationTaskRegistryKey(workspace, taskID)
 	for {
 		s.app.mu.Lock()
+		if s.app.closed {
+			s.app.mu.Unlock()
+			return nil, false, lifecycle.ErrClosed
+		}
 		if s.app.activeAutomationClaims == nil {
 			s.app.activeAutomationClaims = make(map[string]*automationRunClaim)
 		}
-		if existing := s.app.activeAutomationClaims[taskKey]; existing != nil {
+		existing := s.app.activeAutomationClaims[taskKey]
+		if existing == nil && strings.TrimSpace(run.ID) != "" {
+			for _, candidate := range s.app.activeAutomationClaims {
+				if candidate.workspace == workspace && candidate.runID == run.ID {
+					existing = candidate
+					break
+				}
+			}
+		}
+		if existing != nil {
 			if existing.task != nil && existing.task.Status() != TaskRunning {
-				s.removeAutomationClaimLocked(taskKey, existing)
+				s.removeAutomationClaimLocked(automationTaskRegistryKey(existing.workspace, existing.taskID), existing)
 				s.app.mu.Unlock()
 				continue
 			}
@@ -153,16 +181,22 @@ func (s *AutomationAppService) reserveActiveAutomationRun(ctx context.Context, s
 	}
 }
 
-func (s *AutomationAppService) activateAutomationClaim(claim *automationRunClaim, task *Task) bool {
+func (s *AutomationAppService) activateAutomationClaim(claim *automationRunClaim, task *Task) error {
 	if claim == nil || task == nil {
-		return false
+		return fmt.Errorf("automation run claim and Task are required")
 	}
 	taskKey := automationTaskRegistryKey(claim.workspace, claim.taskID)
 	runKey := automationRunRegistryKey(claim.workspace, claim.runID)
 	s.app.mu.Lock()
 	defer s.app.mu.Unlock()
+	if s.app.closed {
+		return lifecycle.ErrClosed
+	}
 	if s.app.activeAutomationClaims[taskKey] != claim {
-		return false
+		return fmt.Errorf("automation run claim was released before activation")
+	}
+	if err := s.registerAutomationTaskLocked(task, claim.workspace); err != nil {
+		return err
 	}
 	if s.app.activeAutomationTasks == nil {
 		s.app.activeAutomationTasks = make(map[string]*Task)
@@ -174,12 +208,26 @@ func (s *AutomationAppService) activateAutomationClaim(claim *automationRunClaim
 	s.app.activeAutomationTasks[taskKey] = task
 	s.app.activeAutomationRuns[runKey] = automationRunState{
 		Run:       claim.run,
-		TaskID:    claim.taskID,
+		TaskID:    claim.run.TaskID,
 		Workspace: claim.workspace,
 		TaskKey:   taskKey,
 	}
 	close(claim.ready)
-	return true
+	return nil
+}
+
+// registerAutomationTaskLocked admits the Task before its active-run identity
+// becomes observable. Workspace automations own that exact workspace scope;
+// user-wide automations own the App root. The caller holds App.mu, making
+// lifecycle admission and claim publication one atomic transition with Close.
+func (s *AutomationAppService) registerAutomationTaskLocked(task *Task, workspace string) error {
+	if strings.TrimSpace(workspace) != "" {
+		return s.app.registerWorkspaceTaskLocked(task, workspace, false)
+	}
+	if err := s.app.initializeLifecycleLocked(); err != nil {
+		return err
+	}
+	return s.app.registerOwnedTaskLocked(task, "", s.app.rootScope)
 }
 
 func (s *AutomationAppService) releaseAutomationClaim(claim *automationRunClaim) {
@@ -204,6 +252,30 @@ func (s *AutomationAppService) clearActiveAutomationTask(snap *automationWorkspa
 		return
 	}
 	s.removeAutomationClaimLocked(taskKey, claim)
+}
+
+// updateActiveAutomationRun publishes a newly accepted successor receipt
+// without changing the claim owner. The active API must expose the current
+// operation (for exact Abort) while the persisted RunRecord retains its root
+// StartTurn receipt separately.
+func (s *AutomationAppService) updateActiveAutomationRun(snap *automationWorkspaceSnapshot, taskID string, run automation.RunRecord) {
+	if snap == nil {
+		return
+	}
+	workspace := canonicalAutomationWorkspace(snap.workspace)
+	taskKey := automationTaskRegistryKey(workspace, taskID)
+	runKey := automationRunRegistryKey(workspace, run.ID)
+	s.app.mu.Lock()
+	defer s.app.mu.Unlock()
+	claim := s.app.activeAutomationClaims[taskKey]
+	if claim == nil || claim.runID != run.ID || claim.task == nil || claim.task.Status() != TaskRunning {
+		return
+	}
+	claim.run = run
+	if state, ok := s.app.activeAutomationRuns[runKey]; ok {
+		state.Run = run
+		s.app.activeAutomationRuns[runKey] = state
+	}
 }
 
 func (s *AutomationAppService) removeAutomationClaimLocked(taskKey string, claim *automationRunClaim) {

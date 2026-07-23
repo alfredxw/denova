@@ -1,0 +1,258 @@
+package agent
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+
+	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/schema"
+)
+
+type chatLoopAction uint8
+
+const (
+	chatLoopContinue chatLoopAction = iota
+	chatLoopStop
+	chatLoopTerminal
+)
+
+type chatLoopResult struct {
+	action  chatLoopAction
+	outcome RunOutcome
+}
+
+type chatAgentLoop struct {
+	run         *chatRun
+	ctx         context.Context
+	cancel      context.CancelFunc
+	events      *adk.AsyncIterator[*adk.AgentEvent]
+	watcherDone <-chan struct{}
+	planParser  *planProtocolParser
+}
+
+func newChatAgentLoop(run *chatRun, history []*schema.Message, agentMessage string) *chatAgentLoop {
+	runCtx, cancelRun := context.WithCancel(contextWithCompactionController(ContextWithRunObserver(run.traceCtx, run.observer), run.conversation))
+	cancelOption, cancelAgent := adk.WithCancel()
+	runOptions := []adk.AgentRunOption{cancelOption}
+	protocolCancel := run.control.wrapProtocolCancel(cancelAgent)
+	if run.options.AgentKind == AgentKindInteractiveStory {
+		runCtx = withInteractiveTurnCancel(runCtx, protocolCancel)
+	} else if isInteractiveDirectorPlanRun(run.options.AgentKind, run.options.MaintenanceTask) {
+		runCtx = withInteractiveDirectorPlanCancel(runCtx, protocolCancel)
+	}
+	if run.checkpointID != "" {
+		runOptions = append(runOptions, adk.WithCheckPointID(run.checkpointID))
+	}
+
+	loop := &chatAgentLoop{
+		run:         run,
+		ctx:         runCtx,
+		cancel:      cancelRun,
+		events:      run.runner.Run(runCtx, history, runOptions...),
+		watcherDone: startRunControlWatcher(runCtx, run.options.Controls, cancelAgent, run.control),
+	}
+	if run.req.PlanMode {
+		planMeta := agentEventMetadata{
+			AgentKind:     run.options.AgentKind,
+			RunID:         run.runID,
+			AgentName:     run.options.RootAgentName,
+			RootAgentName: run.options.RootAgentName,
+		}
+		if run.options.RootAgentName != "" {
+			planMeta.RunPath = []string{run.options.RootAgentName}
+		}
+		loop.planParser = newPlanProtocolParser(planMeta, run.emit)
+	}
+	run.logger.Info("run_started", slog.Int("history", len(history)), slog.Int("message_len", len(run.req.Message)), slog.Int("agent_message_len", len(agentMessage)), slog.Bool("plan_mode", run.req.PlanMode), slog.String("writing_skill", run.req.WritingSkill), slog.Int("style_scenes", len(run.req.StyleScenes)), slog.Int("style_rules", len(run.req.StyleRules)))
+	return loop
+}
+
+func (l *chatAgentLoop) execute() RunOutcome {
+	defer func() {
+		l.cancel()
+		<-l.watcherDone
+	}()
+
+	for {
+		result := l.next()
+		switch result.action {
+		case chatLoopContinue:
+			continue
+		case chatLoopStop:
+			return l.complete()
+		case chatLoopTerminal:
+			return result.outcome
+		default:
+			panic("unhandled chat loop action")
+		}
+	}
+}
+
+func (l *chatAgentLoop) next() chatLoopResult {
+	run := l.run
+	if err := run.ctx.Err(); err != nil {
+		return l.contextCanceled(err)
+	}
+	event, ok, waitErr := waitForRunnerEvent(l.ctx, l.events, run.options.IdleTimeout, l.cancel)
+	if waitErr != nil {
+		return l.waitFailed(waitErr)
+	}
+	if !ok {
+		return chatLoopResult{action: chatLoopStop}
+	}
+	if event.Err != nil {
+		return l.runnerFailed(event.Err)
+	}
+	if event.Output == nil || event.Output.MessageOutput == nil {
+		run.logger.Warn("invalid_output_skipped", slog.Bool("output_nil", event.Output == nil), slog.Bool("message_output_nil", event.Output != nil && event.Output.MessageOutput == nil))
+		return chatLoopResult{action: chatLoopContinue}
+	}
+	return l.handleOutput(event)
+}
+
+func (l *chatAgentLoop) contextCanceled(err error) chatLoopResult {
+	run := l.run
+	run.logger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", err), slog.Int("generated_bytes", run.fullContent.Len()))
+	l.flushPlanOutput()
+	generatedBytes := run.fullContent.Len()
+	terminalOutcome := run.outcomeFor(RunOutcomeAborted, err, err.Error())
+	run.finish("aborted", err.Error(), generatedBytes)
+	run.emit(Event{Type: "aborted", Data: map[string]string{}})
+	return chatLoopResult{action: chatLoopTerminal, outcome: terminalOutcome}
+}
+
+func (l *chatAgentLoop) waitFailed(waitErr error) chatLoopResult {
+	run := l.run
+	l.flushPlanOutput()
+	terminalContent, terminalThinking := run.snapshotOutput()
+	if run.ctx.Err() != nil {
+		err := run.ctx.Err()
+		run.logger.Warn("run_interrupted", slog.String("reason", "context"), slog.Any("error", err), slog.Int("generated_bytes", len(terminalContent)))
+		run.finish("aborted", err.Error(), len(terminalContent))
+		run.emit(Event{Type: "aborted", Data: map[string]string{}})
+		return chatLoopResult{action: chatLoopTerminal, outcome: outcomeFromOutput(RunOutcomeAborted, err, err.Error(), terminalContent, terminalThinking)}
+	}
+	l.cancel()
+	run.logger.Error("run_interrupted", slog.String("reason", "idle_timeout"), slog.Any("error", waitErr), slog.Int("generated_bytes", len(terminalContent)))
+	markInterruptionIfNeeded(run.conversation, run.resumeInterruption, run.originalMessage, terminalContent, waitErr.Error())
+	run.finish("error", waitErr.Error(), len(terminalContent))
+	run.emit(Event{Type: "error", Data: map[string]string{"message": waitErr.Error()}})
+	return chatLoopResult{action: chatLoopTerminal, outcome: outcomeFromOutput(RunOutcomeFailed, waitErr, waitErr.Error(), terminalContent, terminalThinking)}
+}
+
+func (l *chatAgentLoop) runnerFailed(runErr error) chatLoopResult {
+	run := l.run
+	if run.control.protocolTriggered() && interactiveTurnCompletedByCancel(runErr, run.options.AgentKind, run.conversation, run.fullContent.Len()) {
+		if err := removeCheckpoint(run.options.Workspace, run.options.AgentKind, run.checkpointID); err != nil {
+			run.logger.Warn("interactive_completion_checkpoint_cleanup_failed", slog.String("checkpoint_id", run.checkpointID), slog.Any("error", err))
+		}
+		run.logger.Info("interactive_turn_completed_after_submission", slog.Int("generated_bytes", run.fullContent.Len()))
+		return chatLoopResult{action: chatLoopStop}
+	}
+	if run.control.protocolTriggered() && interactiveDirectorPlanCompletedByCancel(runErr, run.options.AgentKind, run.options.MaintenanceTask) {
+		if err := removeCheckpoint(run.options.Workspace, run.options.AgentKind, run.checkpointID); err != nil {
+			run.logger.Warn("interactive_director_completion_checkpoint_cleanup_failed", slog.String("checkpoint_id", run.checkpointID), slog.Any("error", err))
+		}
+		run.logger.Info("interactive_director_plan_completed_after_submission")
+		return chatLoopResult{action: chatLoopStop}
+	}
+	if reason, retrying := interactiveCompletionRetryFromError(runErr); retrying {
+		run.logger.Info("interactive_completion_retry", slog.String("code", reason.Code), slog.Int("generated_bytes", run.fullContent.Len()))
+		return chatLoopResult{action: chatLoopContinue}
+	}
+	if control, controlled := run.control.controlForCancel(runErr); controlled {
+		return l.controlled(control)
+	}
+
+	run.logger.Error("run_interrupted", slog.String("reason", "runner_error"), slog.Any("error", runErr), slog.Int("generated_bytes", run.fullContent.Len()))
+	l.flushPlanOutput()
+	terminalContent, terminalThinking := run.snapshotOutput()
+	markInterruptionIfNeeded(run.conversation, run.resumeInterruption, run.originalMessage, terminalContent, runErr.Error())
+	run.finish("error", runErr.Error(), len(terminalContent))
+	run.emit(Event{Type: "error", Data: map[string]string{"message": runErr.Error()}})
+	return chatLoopResult{action: chatLoopTerminal, outcome: outcomeFromOutput(RunOutcomeFailed, runErr, runErr.Error(), terminalContent, terminalThinking)}
+}
+
+func (l *chatAgentLoop) controlled(control RunControl) chatLoopResult {
+	run := l.run
+	l.flushPlanOutput()
+	generatedBytes := run.fullContent.Len()
+	finalContent, finalThinking := run.snapshotOutput()
+	switch control.Kind {
+	case RunControlPreempt:
+		if _, persistErr := appendAssistantIfAny(run.conversation, &run.fullContent, &run.fullThinking, run.assistantMetadata); persistErr != nil {
+			run.logger.Error("persist_controlled_assistant_failed", slog.Any("error", persistErr), slog.String("control", string(control.Kind)))
+			run.finish("error", persistErr.Error(), generatedBytes)
+			run.emit(Event{Type: "error", Data: map[string]string{"message": fmt.Sprintf("生成结果持久化失败: %v", persistErr)}})
+			return chatLoopResult{action: chatLoopTerminal, outcome: outcomeFromOutput(RunOutcomeFailed, persistErr, persistErr.Error(), finalContent, finalThinking)}
+		}
+		run.finish("preempted", control.Reason, generatedBytes)
+		return chatLoopResult{action: chatLoopTerminal, outcome: outcomeFromOutput(RunOutcomePreempted, nil, control.Reason, finalContent, finalThinking)}
+	case RunControlAbort:
+		run.finish("aborted", control.Reason, generatedBytes)
+		run.emit(Event{Type: "aborted", Data: map[string]string{"reason": control.Reason}})
+		return chatLoopResult{action: chatLoopTerminal, outcome: outcomeFromOutput(RunOutcomeAborted, nil, control.Reason, finalContent, finalThinking)}
+	default:
+		return chatLoopResult{action: chatLoopContinue}
+	}
+}
+
+func (l *chatAgentLoop) complete() RunOutcome {
+	run := l.run
+	l.flushPlanOutput()
+	generatedBytes := run.fullContent.Len()
+	finalContent, finalThinking := run.snapshotOutput()
+	if _, persistErr := appendAssistantIfAny(run.conversation, &run.fullContent, &run.fullThinking, run.assistantMetadata); persistErr != nil {
+		run.logger.Error("persist_assistant_failed", slog.Any("error", persistErr), slog.Int("generated_bytes", generatedBytes))
+		run.finish("error", persistErr.Error(), generatedBytes)
+		run.emit(Event{Type: "run_state", Data: map[string]string{
+			"run_id":           run.runID,
+			"task_id":          run.options.TaskID,
+			"agent_kind":       run.options.AgentKind,
+			"session_id":       run.options.SessionID,
+			"review_thread_id": run.options.ReviewThreadID,
+			"root_agent_name":  run.options.RootAgentName,
+			"phase":            "finished",
+			"status":           "error",
+		}})
+		run.emit(Event{Type: "error", Data: map[string]string{"message": fmt.Sprintf("生成结果持久化失败: %v", persistErr)}})
+		return outcomeFromOutput(RunOutcomeFailed, persistErr, persistErr.Error(), finalContent, finalThinking)
+	}
+	if run.resumeInterruption != nil {
+		if err := run.conversation.ResolveInterruption(run.resumeInterruption.ID); err != nil {
+			run.logger.Error("resolve_interruption_failed", slog.String("interruption_id", run.resumeInterruption.ID), slog.Any("error", err))
+		}
+	}
+	observedMutations := run.mutations.Mutations()
+	run.observer.RecordMutations(observedMutations)
+	verification := VerifyPostRunMutations(run.bookService, observedMutations)
+	run.observer.RecordVerification(verification)
+	if run.options.OnMutationsVerified != nil && len(observedMutations) > 0 {
+		run.options.OnMutationsVerified(run.ctx, observedMutations, verification)
+	}
+	if verification.Mutations > 0 {
+		run.logger.Info("post_run_verification", slog.String("status", verification.Status), slog.Int("mutations", verification.Mutations), slog.Int("checks", len(verification.Checks)), slog.Any("warnings", verification.Warnings))
+		run.emit(Event{Type: "post_run_verification", Data: verification})
+		run.emit(Event{Type: "verification", Data: verification})
+	}
+	run.logger.Info("run_completed")
+	run.finish("success", "", generatedBytes)
+	run.emit(Event{Type: "run_state", Data: map[string]string{
+		"run_id":           run.runID,
+		"task_id":          run.options.TaskID,
+		"agent_kind":       run.options.AgentKind,
+		"session_id":       run.options.SessionID,
+		"review_thread_id": run.options.ReviewThreadID,
+		"root_agent_name":  run.options.RootAgentName,
+		"phase":            "finished",
+		"status":           "success",
+	}})
+	run.emit(Event{Type: "done", Data: map[string]string{}})
+	return outcomeFromOutput(RunOutcomeCompleted, nil, "", finalContent, finalThinking)
+}
+
+func (l *chatAgentLoop) flushPlanOutput() {
+	flushPlanProtocolParser(l.planParser, &l.run.fullContent, l.run.emit)
+	discardPlanAssistantContentIfNeeded(l.run.req.PlanMode, l.planParser, &l.run.fullContent, &l.run.fullThinking)
+}

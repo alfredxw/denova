@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -10,6 +11,17 @@ import (
 
 	"denova/config"
 )
+
+type deadlineProbeSearchEngine struct {
+	hadDeadline bool
+}
+
+func (e *deadlineProbeSearchEngine) Name() string { return "deadline-probe" }
+
+func (e *deadlineProbeSearchEngine) Search(ctx context.Context, _ webSearchRequest) ([]webSearchResult, error) {
+	_, e.hadDeadline = ctx.Deadline()
+	return nil, fmt.Errorf("probe complete")
+}
 
 func TestNewWebSearchToolsRegistersWebSearch(t *testing.T) {
 	tools, err := newWebSearchTools()
@@ -28,6 +40,15 @@ func TestNewWebSearchToolsRegistersWebSearch(t *testing.T) {
 	}
 	if info.Name != config.AgentToolWebSearch {
 		t.Fatalf("expected tool name %q, got %q", config.AgentToolWebSearch, info.Name)
+	}
+}
+
+func TestWebSearchAggregatorLeavesRuntimeDeadlineToCaller(t *testing.T) {
+	probe := &deadlineProbeSearchEngine{}
+	aggregator := &webSearchAggregator{engines: []webSearchEngine{probe}, maxTotal: 1}
+	aggregator.run(context.Background(), webSearchRequest{Query: "test"})
+	if probe.hadDeadline {
+		t.Fatal("web search injected a hard-coded deadline instead of inheriting the Agent run context")
 	}
 }
 

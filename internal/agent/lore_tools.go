@@ -25,7 +25,7 @@ type listLoreItemsInput struct {
 	Types     []string `json:"types,omitempty" jsonschema_description:"可选资料类型数组：character/world/location/faction/rule/item/other。"`
 	LoadModes []string `json:"load_modes,omitempty" jsonschema_description:"可选加载策略数组：resident/auto/manual；状态结构审查优先使用 resident。"`
 	Detail    string   `json:"detail,omitempty" jsonschema:"enum=index,enum=full" jsonschema_description:"返回粒度：index（默认）返回目录/简介；full 在提供筛选条件时直接返回完整正文，避免再调用 read_lore_items。"`
-	Limit     int      `json:"limit,omitempty" jsonschema_description:"筛选结果的本页数量，默认 10，最大 50；空筛选目录由 64 KiB 上限自动分页。"`
+	Limit     int      `json:"limit,omitempty" jsonschema_description:"筛选结果的本页数量，默认 10，最大 50；空筛选目录由 256 KiB 上限自动分页。"`
 	Offset    int      `json:"offset,omitempty" jsonschema_description:"分页起点，默认 0；根据返回的下一页 offset 继续读取。"`
 }
 
@@ -66,8 +66,8 @@ type loreReadPolicy struct {
 
 const (
 	defaultLoreReadMaxItems       = 16
-	defaultLoreReadMaxResultBytes = 64 * 1024
-	defaultLoreReadMaxTotalBytes  = 128 * 1024
+	defaultLoreReadMaxResultBytes = 256 * 1024
+	defaultLoreReadMaxTotalBytes  = 1024 * 1024
 )
 
 func defaultLoreReadPolicy() *loreReadPolicy {
@@ -169,7 +169,7 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 	if err != nil {
 		return nil, err
 	}
-	listTool, err := utils.InferTool("list_lore_items", "浏览或检索启用的资料库。空筛选返回最多 64 KiB 的名称目录；筛选时 detail=index 返回简介，detail=full 可在同一次调用中返回完整正文。已知唯一名称时可直接使用 read_lore_items。", func(ctx context.Context, input listLoreItemsInput) (string, error) {
+	listTool, err := utils.InferTool("list_lore_items", "浏览或检索启用的资料库。空筛选返回最多 256 KiB 的名称目录；筛选时 detail=index 返回简介，detail=full 可在同一次调用中返回完整正文。已知唯一名称时可直接使用 read_lore_items。", func(ctx context.Context, input listLoreItemsInput) (string, error) {
 		_ = ctx
 		if workspace == "" {
 			return "", fmt.Errorf("当前 workspace 不可用，无法列出资料库")

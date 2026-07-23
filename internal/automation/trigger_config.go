@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+const MaxInboxActionErrorChars = 4 * 1024
+
 func NormalizeInboxItem(item TriggerInboxItem) (TriggerInboxItem, error) {
 	item.ID = strings.TrimSpace(item.ID)
 	if item.ID == "" {
@@ -38,6 +40,7 @@ func NormalizeInboxItem(item TriggerInboxItem) (TriggerInboxItem, error) {
 		item.Title = "Automation trigger"
 	}
 	item.Summary = strings.TrimSpace(item.Summary)
+	item.ActionError = trimRunes(strings.TrimSpace(item.ActionError), MaxInboxActionErrorChars)
 	item.Fingerprint = strings.TrimSpace(item.Fingerprint)
 	if item.Fingerprint == "" {
 		item.Fingerprint = item.TaskID + ":" + item.TriggerID + ":" + item.Title

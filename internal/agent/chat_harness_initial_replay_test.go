@@ -1,0 +1,206 @@
+package agent
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"testing"
+
+	"github.com/cloudwego/eino/schema"
+
+	"denova/internal/agentruntime"
+)
+
+func TestInitialStartRejectsMissingCallerCommandID(t *testing.T) {
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), agentruntime.NewMemoryJournalStore())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close(context.Background())
+	accepted, err := service.StartWithOptions(
+		context.Background(), nil, nil, nil, ChatRequest{Message: "write"},
+		RunOptions{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "missing-command"}, nil,
+	)
+	if !errors.Is(err, agentruntime.ErrInvalidCommand) || accepted != nil {
+		t.Fatalf("missing command id = accepted=%v err=%v", accepted, err)
+	}
+}
+
+func TestInitialStartColdReplayReturnsDurableOutcomeWithoutEngine(t *testing.T) {
+	journalRoot := t.TempDir()
+	firstStore, err := agentruntime.NewFileJournalStore(journalRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstService, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), firstStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := CaptureChatRequestCallerInput(ChatRequest{CommandID: "initial-cold-replay", Message: "write"})
+	options := RunOptions{
+		AgentKind: AgentKindIDE, RootAgentName: "run-control-test", Workspace: "/book", SessionID: "cold-replay-session",
+		TaskID: "first-display-task", Mode: "ide",
+	}
+	firstOutcome := firstService.RunWithOptions(
+		context.Background(),
+		newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage("durable answer", nil)}, true),
+		&runControlConversation{}, nil, request, options, nil,
+	)
+	if firstOutcome.Status != RunOutcomeCompleted || firstOutcome.Content != "durable answer" {
+		t.Fatalf("first outcome = %#v", firstOutcome)
+	}
+	if err := firstService.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	secondStore, err := agentruntime.NewFileJournalStore(journalRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondService, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), secondStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer secondService.Close(context.Background())
+	var replayEvents []Event
+	replayOptions := options
+	replayOptions.TaskID = "new-display-task-after-restart"
+	accepted, err := secondService.StartWithOptions(
+		context.Background(), nil, nil, nil, request, replayOptions,
+		func(event Event) { replayEvents = append(replayEvents, event) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !accepted.Receipt().Replayed || accepted.Receipt().CommandID != "initial-cold-replay" {
+		t.Fatalf("cold receipt = %#v", accepted.Receipt())
+	}
+	outcome := accepted.Wait(context.Background())
+	if outcome.Status != RunOutcomeCompleted || outcome.Content != "durable answer" {
+		t.Fatalf("cold replay outcome = %#v", outcome)
+	}
+	if got := countEventType(replayEvents, "chunk"); got != 1 {
+		t.Fatalf("cold replay chunk count = %d, events=%#v", got, replayEvents)
+	}
+	if got := countEventType(replayEvents, "done"); got != 1 {
+		t.Fatalf("cold replay done count = %d, events=%#v", got, replayEvents)
+	}
+}
+
+func TestOlderSettledInitialStartColdReplayDoesNotWaitForFutureEvents(t *testing.T) {
+	journalRoot := t.TempDir()
+	store, err := agentruntime.NewFileJournalStore(journalRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := RunOptions{
+		AgentKind: AgentKindIDE, RootAgentName: "run-control-test",
+		Workspace: "/book", SessionID: "older-cold-replay", Mode: "ide",
+	}
+	requests := []ChatRequest{
+		CaptureChatRequestCallerInput(ChatRequest{CommandID: "older-start", Message: "first"}),
+		CaptureChatRequestCallerInput(ChatRequest{CommandID: "newer-start", Message: "second"}),
+	}
+	answers := []string{"first durable answer", "second durable answer"}
+	for index := range requests {
+		outcome := service.RunWithOptions(
+			context.Background(),
+			newRunControlTestRunner(t, &runControlFixedModel{message: schema.AssistantMessage(answers[index], nil)}, true),
+			&runControlConversation{}, nil, requests[index], options, nil,
+		)
+		if outcome.Status != RunOutcomeCompleted || outcome.Content != answers[index] {
+			t.Fatalf("run %d outcome = %#v", index, outcome)
+		}
+	}
+	if err := service.Close(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	reopenedStore, err := agentruntime.NewFileJournalStore(journalRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), reopenedStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close(context.Background())
+	accepted, err := reopened.StartWithOptions(context.Background(), nil, nil, nil, requests[0], options, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !accepted.Receipt().Replayed {
+		t.Fatalf("older receipt = %#v", accepted.Receipt())
+	}
+	outcome := accepted.Wait(context.Background())
+	if outcome.Status != RunOutcomeCompleted || outcome.Content != answers[0] {
+		t.Fatalf("older cold replay outcome = %#v", outcome)
+	}
+}
+
+func TestInterruptedInitialStartColdReplayRequiresExplicitRecoveryWithoutEngine(t *testing.T) {
+	store := agentruntime.NewMemoryJournalStore()
+	request := CaptureChatRequestCallerInput(ChatRequest{CommandID: "interrupted-start", Message: "write"})
+	options := RunOptions{
+		AgentKind: AgentKindIDE, RootAgentName: "run-control-test",
+		Workspace: "/book", SessionID: "interrupted-cold-replay", Mode: "ide",
+	}.normalized("")
+	binding, err := harnessBindingForOptions(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command, _, err := newHarnessStartTurn(binding, "interrupted-start", request, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := agentruntime.BindingReference(binding)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := json.Marshal(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal, err := store.OpenJournal(context.Background(), string(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	operationID := agentruntime.OperationID("interrupted-operation")
+	_, err = journal.Append(context.Background(), 0, []agentruntime.EventPayload{
+		agentruntime.CommandAcceptedEvent{CommandID: command.ID, CommandKind: "start_turn", OperationID: operationID, Fingerprint: harnessCommandSemanticFingerprint(command)},
+		agentruntime.OperationStartedEvent{OperationID: operationID},
+		agentruntime.UserMessageCommittedEvent{Message: agentruntime.Message{
+			ID: "interrupted-user", Role: agentruntime.RoleUser, Content: command.Input.Text,
+			Input: command.Input, Operation: operationID,
+		}},
+		agentruntime.CycleStartedEvent{OperationID: operationID, Cycle: 1, SnapshotID: "interrupted-snapshot"},
+	})
+	if err != nil {
+		_ = journal.Close()
+		t.Fatal(err)
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	service, err := newHarnessChatService(context.Background(), DefaultLoopPolicy(), store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer service.Close(context.Background())
+	accepted, err := service.StartWithOptions(context.Background(), nil, nil, nil, request, options, nil)
+	if !errors.Is(err, ErrRecoveryRequired) || accepted != nil {
+		t.Fatalf("interrupted cold replay = accepted=%v err=%v, want recovery required", accepted, err)
+	}
+	status, err := service.RuntimeRecoveryStatusProjection(context.Background(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Phase != agentruntime.PhaseRunning || !status.RecoveryPaused || status.ActiveOperation != operationID {
+		t.Fatalf("interrupted cold projection = %#v", status)
+	}
+}

@@ -78,6 +78,10 @@ type displayEventContentAppender interface {
 	AppendDisplayEventContent(id, role, delta string) error
 }
 
+type displayEventContentFlusher interface {
+	FlushDisplayEventContent(id, role string) error
+}
+
 type displayEventRecorder struct {
 	appender             displayEventAppender
 	thinking             strings.Builder
@@ -252,6 +256,7 @@ func (r *displayEventRecorder) Record(ev Event) {
 		}
 	case "error", "aborted":
 		r.flushThinking()
+		r.flushSubAgentAssistantContent()
 		for id, name := range r.pendingToolIDs {
 			if err := r.appender.UpdateDisplayToolStatus(id, name, "error"); err != nil {
 				log.Printf("[agent-run] persist display tool_error failed name=%s id=%s err=%v", name, id, err)
@@ -260,12 +265,25 @@ func (r *displayEventRecorder) Record(ev Event) {
 		r.pendingToolIDs = make(map[string]string)
 	case "done":
 		r.flushThinking()
+		r.flushSubAgentAssistantContent()
 		for id, name := range r.pendingToolIDs {
 			if err := r.appender.UpdateDisplayToolStatus(id, name, "success"); err != nil {
 				log.Printf("[agent-run] persist display tool_done failed name=%s id=%s err=%v", name, id, err)
 			}
 		}
 		r.pendingToolIDs = make(map[string]string)
+	}
+}
+
+func (r *displayEventRecorder) flushSubAgentAssistantContent() {
+	flusher, ok := r.appender.(displayEventContentFlusher)
+	if !ok {
+		return
+	}
+	for id := range r.subAgentAssistantIDs {
+		if err := flusher.FlushDisplayEventContent(id, "assistant"); err != nil {
+			log.Printf("[agent-run] flush subagent assistant display failed id=%s err=%v", id, err)
+		}
 	}
 }
 

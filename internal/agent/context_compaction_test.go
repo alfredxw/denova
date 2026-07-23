@@ -72,7 +72,7 @@ func TestBuildContextCompactionUsesExplicitSourceTranscript(t *testing.T) {
 	}
 	sourceMessages[1].ReasoningContent = "剧情 thinking 不应进入压缩源"
 
-	newMessages, result, err := BuildContextCompaction(context.Background(), &config.Config{}, config.AgentKindInteractiveStory, ContextCompactionInput{
+	newMessages, result, err := PrepareContextCompaction(context.Background(), &config.Config{}, config.AgentKindInteractiveStory, ContextCompactionInput{
 		Messages:         modelMessages,
 		SourceMessages:   sourceMessages,
 		ReferenceContext: "Lore: plot_summary",
@@ -117,7 +117,7 @@ func TestBuildContextCompactionUsesContextCompactionTargetRange(t *testing.T) {
 			CompactionTargetMax: &maxRatio,
 		},
 	}}
-	_, _, err := BuildContextCompaction(context.Background(), cfg, config.AgentKindIDE, ContextCompactionInput{
+	_, _, err := PrepareContextCompaction(context.Background(), cfg, config.AgentKindIDE, ContextCompactionInput{
 		Messages: []*schema.Message{
 			schema.UserMessage("用户说了很多重要要求"),
 			schema.AssistantMessage("助手完成了一些重要工作", nil),
@@ -146,7 +146,7 @@ func TestBuildContextCompactionTriggersOnProjectedNinetyPercentUsage(t *testing.
 		schema.AssistantMessage("上一轮剧情结果", nil),
 		schema.UserMessage("当前用户行动"),
 	}
-	_, result, err := BuildContextCompaction(context.Background(), cfg, config.AgentKindInteractiveStory, ContextCompactionInput{
+	_, result, err := PrepareContextCompaction(context.Background(), cfg, config.AgentKindInteractiveStory, ContextCompactionInput{
 		Messages:                 messages,
 		ReservedCompletionTokens: 850,
 		KeepLatestUser:           true,
@@ -173,7 +173,7 @@ func TestBuildContextCompactionEmitsStreamingSummaryDelta(t *testing.T) {
 	}
 
 	var events []Event
-	_, result, err := BuildContextCompaction(context.Background(), &config.Config{}, config.AgentKindIDE, ContextCompactionInput{
+	_, result, err := PrepareContextCompaction(context.Background(), &config.Config{}, config.AgentKindIDE, ContextCompactionInput{
 		Messages: []*schema.Message{
 			schema.UserMessage("用户提出了一个很长的需求"),
 			schema.AssistantMessage("助手完成了很多上下文相关工作", nil),
@@ -240,7 +240,7 @@ func TestBuildContextCompactionTranscriptKeepsAllIncrementalMessagesAndReference
 	existing := "既有压缩摘要：主角进入旧城。"
 	reference := "有界参考上下文：关系=信任；任务=寻找钥匙。"
 	inputChars := contextCompactionInputChars(existing, messages, reference)
-	transcript := buildContextCompactionTranscript(messages, existing, reference, 1234, inputChars, "", policy)
+	transcript := buildContextCompactionTranscript(messages, existing, reference, 1234, inputChars, policy)
 
 	if strings.Contains(transcript, "omitted") || strings.Contains(transcript, "已截断") {
 		t.Fatalf("compaction transcript should not report omitted content:\n%s", transcript[:200])
@@ -255,12 +255,5 @@ func TestBuildContextCompactionTranscriptKeepsAllIncrementalMessagesAndReference
 	wantRange := fmt.Sprintf("Target summary length: %d-%d characters", minChars, maxChars)
 	if !strings.Contains(transcript, wantRange) {
 		t.Fatalf("transcript missing character range %q:\n%s", wantRange, transcript[:300])
-	}
-}
-
-func TestContextCompactionRetryInstructionExpandsTooShortSummary(t *testing.T) {
-	got := contextCompactionRetryInstruction(80, 300, 900)
-	if !strings.Contains(got, "too short: 80 characters") || !strings.Contains(got, "300-900 characters") || !strings.Contains(got, "Expand") {
-		t.Fatalf("unexpected retry instruction: %s", got)
 	}
 }

@@ -12,6 +12,10 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     globals: true,
     css: true,
+    // The CSS-enabled jsdom suites are CPU and memory intensive. Unbounded
+    // file parallelism turns scheduler contention into >1s individual tests;
+    // a proportional cap stays adaptive across developer and CI machines.
+    maxWorkers: '25%',
   },
   resolve: {
     alias: {

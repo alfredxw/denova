@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,186 +13,6 @@ import (
 	"denova/internal/book"
 	"denova/internal/prompts"
 )
-
-// IDEStoryTeller 描述写作 Agent 本轮使用的默认导演规则。
-type IDEStoryTeller struct {
-	ID                      string
-	Name                    string
-	Description             string
-	Prompt                  string
-	StyleRules              []StyleRule
-	ImagePresetID           string
-	ImagePresetName         string
-	ImagePresetSystemPrompt string
-}
-
-// ConfigManagerResourceSkill is a bounded, already-resolved Skill body that
-// config_manager should treat as run-scoped schema/workflow guidance.
-type ConfigManagerResourceSkill struct {
-	Name        string
-	Description string
-	Content     string
-}
-
-// BuildInstruction 构建写作 Agent 的稳定系统指令；动态作品状态由会话运行时追加。
-// 实际的 Prompt 文本集中在 internal/prompts 包，这里只负责把 cfg/state 翻译成 prompts.SystemInstructionInput。
-func BuildInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) string {
-	return BuildInstructionComposition(cfg, state, teller).Instruction()
-}
-
-// BuildInstructionComposition returns the IDE system prompt and its auditable source summary.
-func BuildInstructionComposition(cfg *config.Config, state *book.State, teller IDEStoryTeller) SystemPromptCompositionLog {
-	teller.StyleRules = boundedStyleRules(teller.StyleRules, maxStyleRuleContextChars)
-	builtIn, workspace, creator, stateContext := buildIDEBuiltinInstruction(cfg, state, teller)
-	instruction := protectedSystemInstruction(cfg, config.AgentKindIDE, builtIn)
-	var stateParts []book.CompactContextPart
-	if state != nil {
-		stateParts = state.CompactContextParts()
-	}
-	extraSources := []promptSource{{
-		source:  "系统提示",
-		title:   "写作模式默认导演规则",
-		content: teller.Prompt,
-		note:    teller.ID,
-	}}
-	if strings.TrimSpace(teller.ImagePresetSystemPrompt) != "" {
-		title := "图像方案系统规则"
-		if strings.TrimSpace(teller.ImagePresetName) != "" {
-			title = "图像方案系统规则：" + strings.TrimSpace(teller.ImagePresetName)
-		}
-		extraSources = append(extraSources, promptSource{
-			source:  "系统提示",
-			title:   title,
-			content: teller.ImagePresetSystemPrompt,
-			note:    teller.ImagePresetID,
-		})
-	}
-	extraSources = append(extraSources, styleRulePromptSources(teller.StyleRules)...)
-	return SystemPromptCompositionLog{
-		mode:         "ide",
-		workspace:    workspace,
-		creator:      creator,
-		stateContext: stateContext,
-		stateParts:   stateParts,
-		instruction:  instruction,
-		extraSources: extraSources,
-	}
-}
-
-// SystemPromptCompositionLog records the source breakdown for one system prompt.
-type SystemPromptCompositionLog struct {
-	mode         string
-	workspace    string
-	creator      string
-	stateContext string
-	stateParts   []book.CompactContextPart
-	instruction  string
-	extraSources []promptSource
-}
-
-func (l SystemPromptCompositionLog) Instruction() string {
-	return l.instruction
-}
-
-func (l SystemPromptCompositionLog) isZero() bool {
-	return strings.TrimSpace(l.mode) == "" && strings.TrimSpace(l.instruction) == ""
-}
-
-func (l SystemPromptCompositionLog) logForRun(options RunOptions) {
-	if l.isZero() {
-		return
-	}
-	log.Printf(
-		"[agent-prompt] system composition mode=%s workspace=%s task_id=%s session_id=%s creator=%s state=%s instruction=%s",
-		l.mode,
-		l.workspace,
-		options.TaskID,
-		options.SessionID,
-		promptPartSummary(l.creator),
-		promptPartSummary(l.stateContext),
-		promptPartSummary(l.instruction),
-	)
-	log.Printf("[agent-prompt] system sources mode=%s workspace=%s task_id=%s session_id=%s sources=%s", l.mode, l.workspace, options.TaskID, options.SessionID, systemPromptSourceSummary(l.mode, l.creator, l.stateParts, l.extraSources...))
-}
-
-func newInteractiveStoryInstructionComposition(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) SystemPromptCompositionLog {
-	teller.StyleRules = boundedStyleRules(teller.StyleRules, maxStyleRuleContextChars)
-	builtIn, workspace, creator := buildInteractiveStoryBuiltinInstruction(cfg, state, teller)
-	instruction := protectedSystemInstruction(cfg, config.AgentKindInteractiveStory, builtIn)
-	extraSources := []promptSource{{
-		source:  "系统提示",
-		title:   "导演系统规则",
-		content: teller.StoryTellerSystemPrompt,
-		note:    teller.StoryTellerID,
-	}}
-	extraSources = append(extraSources, styleRulePromptSources(teller.StyleRules)...)
-	return SystemPromptCompositionLog{
-		mode:         "interactive",
-		workspace:    workspace,
-		creator:      creator,
-		instruction:  instruction,
-		extraSources: extraSources,
-	}
-}
-
-// BuildInteractiveStoryInstructionComposition returns the interactive story prompt and its source summary.
-func BuildInteractiveStoryInstructionComposition(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput) SystemPromptCompositionLog {
-	return newInteractiveStoryInstructionComposition(cfg, state, teller)
-}
-
-// BuildConfigManagerInstructionComposition returns the config manager prompt and its source summary.
-func BuildConfigManagerInstructionComposition(cfg *config.Config, state *book.State, resourceSkills ...ConfigManagerResourceSkill) SystemPromptCompositionLog {
-	builtIn, workspace, creator := buildConfigManagerBuiltinInstruction(cfg, state)
-	builtInWithSkills := appendConfigManagerResourceSkills(builtIn, resourceSkills)
-	instruction := protectedSystemInstruction(cfg, config.AgentKindConfigManager, builtInWithSkills)
-	extraSources := []promptSource{{
-		source:  "系统提示",
-		title:   "配置管理 Agent 内置规则",
-		content: builtIn,
-		note:    "tool-chain",
-	}}
-	for _, skill := range resourceSkills {
-		if strings.TrimSpace(skill.Name) == "" || strings.TrimSpace(skill.Content) == "" {
-			continue
-		}
-		extraSources = append(extraSources, promptSource{
-			source:  "配置 Skill",
-			title:   "/" + strings.TrimSpace(skill.Name),
-			content: skill.Content,
-			note:    strings.TrimSpace(skill.Description),
-		})
-	}
-	return SystemPromptCompositionLog{
-		mode:         "config_manager",
-		workspace:    workspace,
-		creator:      creator,
-		instruction:  instruction,
-		extraSources: extraSources,
-	}
-}
-
-// BuildImageInstructionComposition returns the generic image Agent prompt and its source summary.
-func BuildImageInstructionComposition(cfg *config.Config, state *book.State, systemPrompt string) SystemPromptCompositionLog {
-	builtIn, workspace, creator := buildImageBuiltinInstruction(cfg, state, systemPrompt)
-	instruction := protectedSystemInstruction(cfg, config.AgentKindImage, builtIn)
-	extraSources := []promptSource{{
-		source:  "系统提示",
-		title:   "图像 Agent 调用点规则",
-		content: systemPrompt,
-		note:    "runtime",
-	}}
-	return SystemPromptCompositionLog{
-		mode:         "image",
-		workspace:    workspace,
-		creator:      creator,
-		instruction:  instruction,
-		extraSources: extraSources,
-	}
-}
-
-func BuildImageInstruction(cfg *config.Config, state *book.State, systemPrompt string) string {
-	return BuildImageInstructionComposition(cfg, state, systemPrompt).Instruction()
-}
 
 func buildIDEBuiltinInstruction(cfg *config.Config, state *book.State, teller IDEStoryTeller) (string, string, string, string) {
 	if cfg == nil {
@@ -218,7 +37,7 @@ func buildIDEBuiltinInstruction(cfg *config.Config, state *book.State, teller ID
 		StoryTellerName:        teller.Name,
 		StoryTellerDescription: teller.Description,
 		StoryTellerPrompt:      teller.Prompt,
-		StyleRules:             boundedStyleRules(teller.StyleRules, maxStyleRuleContextChars),
+		StyleRules:             teller.StyleRules,
 		ChapterFilenameFormat:  cfg.ChapterFilenameFormat,
 		VolumeDirFormat:        cfg.VolumeDirFormat,
 		ChapterGroupMin:        cfg.ChapterGroupMin,
@@ -406,7 +225,7 @@ func buildInteractiveStoryBuiltinInstruction(cfg *config.Config, state *book.Sta
 		StoryTellerName:         teller.StoryTellerName,
 		StoryTellerDescription:  teller.StoryTellerDescription,
 		StoryTellerSystemPrompt: teller.StoryTellerSystemPrompt,
-		StyleRules:              boundedStyleRules(teller.StyleRules, maxStyleRuleContextChars),
+		StyleRules:              teller.StyleRules,
 	})
 	return builtIn, workspace, creator
 }
@@ -449,17 +268,33 @@ func BuiltinAgentPrompts(cfg *config.Config, state *book.State, ideTeller IDESto
 		copy.AgentPrompts = config.AgentPromptSettings{}
 		promptCfg = &copy
 	}
+	ide, ideErr := ComposeInstruction(promptCfg, state, ideTeller)
+	interactiveStory, interactiveErr := ComposeInteractiveStoryInstruction(promptCfg, state, prompts.InteractiveStorySystemInstructionInput{})
+	configManager, configErr := ComposeConfigManagerInstruction(promptCfg, state)
+	director, directorErr := composeBuiltinSystemInstruction(promptCfg, config.AgentKindInteractiveDirector, "interactive_director", workspaceForPrompt(promptCfg, state), "builtin_base", "后台导演系统规则", "define the interactive director planning workflow", prompts.BuildInteractiveDirectorSystemInstruction())
+	version, versionErr := composeBuiltinSystemInstruction(promptCfg, config.AgentKindVersionSummary, "version_summary", workspaceForPrompt(promptCfg, state), "builtin_base", "版本说明生成规则", "define the version summary task and output constraint", "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")
+	toolAgent, toolErr := composeBuiltinSystemInstruction(promptCfg, config.AgentKindToolAgent, "tool_agent", workspaceForPrompt(promptCfg, state), "builtin_base", "章节分割正则任务", "define the structured chapter-regex inference task", chapterSplitRegexSystemInstruction())
+	image, imageErr := ComposeImageInstruction(promptCfg, state, "")
+	automationPrompt, automationErr := ComposeAutomationInstruction(promptCfg, state, AutomationTaskInstruction{})
+	compaction, compactionErr := composeBuiltinSystemInstruction(promptCfg, config.AgentKindContextCompaction, "context_compaction", workspaceForPrompt(promptCfg, state), "builtin_base", "上下文压缩规则", "define the bounded context compaction task", contextCompactionSystemInstruction())
 	return config.AgentPromptSettings{
-		IDE:                 config.AgentPromptOverride{SystemPrompt: BuildInstruction(promptCfg, state, ideTeller)},
-		InteractiveStory:    config.AgentPromptOverride{SystemPrompt: BuildInteractiveStoryInstruction(promptCfg, state, prompts.InteractiveStorySystemInstructionInput{})},
-		ConfigManager:       config.AgentPromptOverride{SystemPrompt: BuildConfigManagerInstruction(promptCfg, state)},
-		InteractiveDirector: config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindInteractiveDirector, prompts.BuildInteractiveDirectorSystemInstruction())},
-		VersionSummary:      config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")},
-		ToolAgent:           config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction())},
-		Image:               config.AgentPromptOverride{SystemPrompt: BuildImageInstruction(promptCfg, state, "")},
-		Automation:          config.AgentPromptOverride{SystemPrompt: BuildAutomationInstruction(promptCfg, state, AutomationTaskInstruction{})},
-		ContextCompaction:   config.AgentPromptOverride{SystemPrompt: protectedSystemInstruction(promptCfg, config.AgentKindContextCompaction, contextCompactionSystemInstruction())},
+		IDE:                 config.AgentPromptOverride{SystemPrompt: systemPromptPreview(ide, ideErr)},
+		InteractiveStory:    config.AgentPromptOverride{SystemPrompt: systemPromptPreview(interactiveStory, interactiveErr)},
+		ConfigManager:       config.AgentPromptOverride{SystemPrompt: systemPromptPreview(configManager, configErr)},
+		InteractiveDirector: config.AgentPromptOverride{SystemPrompt: systemPromptPreview(director, directorErr)},
+		VersionSummary:      config.AgentPromptOverride{SystemPrompt: systemPromptPreview(version, versionErr)},
+		ToolAgent:           config.AgentPromptOverride{SystemPrompt: systemPromptPreview(toolAgent, toolErr)},
+		Image:               config.AgentPromptOverride{SystemPrompt: systemPromptPreview(image, imageErr)},
+		Automation:          config.AgentPromptOverride{SystemPrompt: systemPromptPreview(automationPrompt, automationErr)},
+		ContextCompaction:   config.AgentPromptOverride{SystemPrompt: systemPromptPreview(compaction, compactionErr)},
 	}
+}
+
+func systemPromptPreview(composition SystemPromptComposition, err error) string {
+	if err != nil {
+		return "System prompt admission failed / 系统提示准入失败: " + err.Error()
+	}
+	return composition.Instruction()
 }
 
 func BuiltinAgentPromptBlocks(cfg *config.Config, state *book.State, ideTeller IDEStoryTeller) config.AgentPromptBlockSettings {

@@ -12,9 +12,7 @@ import (
 
 func TestWaitForRunnerEventTimesOutWhenIteratorIsIdle(t *testing.T) {
 	iter, gen := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
-	defer gen.Close()
-
-	_, ok, err := waitForRunnerEvent(context.Background(), iter, 5*time.Millisecond)
+	_, ok, err := waitForRunnerEvent(context.Background(), iter, 5*time.Millisecond, gen.Close)
 	if err == nil {
 		t.Fatal("idle iterator should return timeout error")
 	}
@@ -39,6 +37,21 @@ func TestRecvMessageFrameTimesOutAndClosesStream(t *testing.T) {
 	}
 }
 
+func TestRecvMessageFrameRecoversProducerPanic(t *testing.T) {
+	_, err := recvMessageFrame(context.Background(), panickingMessageFrameStream{}, time.Second)
+	if err == nil {
+		t.Fatal("producer panic should be returned as an error")
+	}
+	if !strings.Contains(err.Error(), "panic") || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("unexpected panic error: %v", err)
+	}
+}
+
+type panickingMessageFrameStream struct{}
+
+func (panickingMessageFrameStream) Recv() (*schema.Message, error) { panic("boom") }
+func (panickingMessageFrameStream) Close()                         {}
+
 func TestWaitForAsyncResultRecoversPanic(t *testing.T) {
 	_, ok, err := waitForAsyncResult(context.Background(), time.Second, "测试", nil, func() (int, bool, error) {
 		panic("boom")
@@ -52,4 +65,56 @@ func TestWaitForAsyncResultRecoversPanic(t *testing.T) {
 	if !strings.Contains(err.Error(), "panic") || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("unexpected panic error: %v", err)
 	}
+}
+
+func TestBorrowedAsyncReceiveReturnsBeforeBlockedProducerAndExitsAfterProducerClose(t *testing.T) {
+	producerClosed := make(chan struct{})
+	receiverDone := make(chan struct{})
+	cancelCalled := make(chan struct{})
+	_, _, err := waitForAsyncResult(context.Background(), 5*time.Millisecond, "借用流", func() {
+		close(cancelCalled)
+	}, func() (int, bool, error) {
+		defer close(receiverDone)
+		<-producerClosed
+		return 1, true, nil
+	})
+	if err == nil {
+		t.Fatal("borrowed receive should time out")
+	}
+	select {
+	case <-cancelCalled:
+	default:
+		t.Fatal("borrowed receive cancellation seam was not invoked")
+	}
+	select {
+	case <-receiverDone:
+		t.Fatal("borrowed receive unexpectedly claimed cancellation could unblock Recv")
+	default:
+	}
+	close(producerClosed)
+	select {
+	case <-receiverDone:
+	case <-time.After(time.Second):
+		t.Fatal("borrowed receive goroutine did not exit after producer close")
+	}
+}
+
+func TestWaitForRunnerEventReturnsWhenCancellationDoesNotCloseProducer(t *testing.T) {
+	iterator, generator := adk.NewAsyncIteratorPair[*adk.AgentEvent]()
+	cancelCalled := make(chan struct{})
+	_, ok, err := waitForRunnerEvent(context.Background(), iterator, 5*time.Millisecond, func() {
+		close(cancelCalled)
+	})
+	if err == nil || ok {
+		t.Fatalf("idle iterator result = ok:%t err:%v, want timeout", ok, err)
+	}
+	select {
+	case <-cancelCalled:
+	default:
+		t.Fatal("iterator cancellation was not requested")
+	}
+	// ADK exposes only the iterator to the consumer; cancellation is not the
+	// same operation as closing this producer. Closing it after the timeout
+	// must remain safe and lets the tail receive finish naturally.
+	generator.Close()
 }

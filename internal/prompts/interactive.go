@@ -195,17 +195,10 @@ func writeInteractiveReplyTargetInstruction(sb *strings.Builder, value int, bull
 }
 
 func InteractiveStoryTurnInstruction(message, turnContext, runtimeContext string) string {
-	turnContext = strings.TrimSpace(turnContext)
 	runtimeContext = strings.TrimSpace(runtimeContext)
-	turnBlock := ""
-	if turnContext != "" {
-		var sb strings.Builder
-		sb.WriteString(`
-导演本轮上下文规则：
-`)
-		sb.WriteString(turnContext)
-		sb.WriteString("\n\n以上导演规则必须显著影响本轮剧情裁定、NPC 主动反应、代价、暗线推进和可选择；不要把规则文本作为正文输出。")
-		turnBlock = sb.String()
+	turnBlock := InteractiveStoryTurnContextRule(turnContext)
+	if turnBlock != "" {
+		turnBlock = "\n" + turnBlock
 	}
 	contextBlock := ""
 	if runtimeContext != "" {
@@ -227,6 +220,19 @@ func InteractiveStoryTurnInstruction(message, turnContext, runtimeContext string
 如果本轮行动明显依赖既往线索、旧承诺或分支内已发生事实，使用 search_story_history 检索 Turn，并以返回的 turn_id 为来源。
 本回合要让主角作为故事人物正常与环境、物品和其他角色互动，写出行动带来的反馈、代价、发现、阻碍或机会；不要每发生一个小动作就停下等待用户。
 其他角色应依据性格、目标、关系和当前局势主动反应。结尾请停在有意义的选择点、悬念点或决策点，让用户能决定下一步，但不要替用户做出重大选择。%s`, strings.TrimSpace(message), turnBlock, interactiveLoreCharacterGroundingInstruction, interactiveTrackableActorInstruction, contextBlock)
+}
+
+// InteractiveStoryTurnContextRule keeps the selected storyteller's turn rule
+// and its behavioral contract together. Callers that project the rule as an
+// independently budgeted context fragment must use this function so the model
+// never receives the rule body without the instruction to apply it implicitly.
+func InteractiveStoryTurnContextRule(turnContext string) string {
+	turnContext = strings.TrimSpace(turnContext)
+	if turnContext == "" {
+		return ""
+	}
+	return "导演本轮上下文规则：\n" + turnContext +
+		"\n\n以上导演规则必须显著影响本轮剧情裁定、NPC 主动反应、代价、暗线推进和可选择；不要把规则文本作为正文输出。"
 }
 
 func BuildInteractiveDirectorSystemInstruction() string {

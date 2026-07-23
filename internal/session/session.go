@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -14,23 +15,48 @@ func (s *Session) Append(msg *schema.Message) error {
 }
 
 func (s *Session) AppendWithMetadata(msg *schema.Message, metadata MessageMetadata) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.withCanonicalMutation(context.Background(), "append message", func() error {
+		return s.appendMessageLocked(msg, metadata, historyTypeMessage)
+	})
+}
 
+func (s *Session) appendMessageLocked(msg *schema.Message, metadata MessageMetadata, kind string) error {
+	if msg == nil {
+		return fmt.Errorf("会话消息不能为空")
+	}
+	if msg.Role == "" && strings.TrimSpace(msg.Content) == "" && len(msg.ToolCalls) == 0 {
+		return fmt.Errorf("会话消息缺少 role、content 和 tool_calls")
+	}
 	now := time.Now().UTC()
 	metadata = sanitizeMessageMetadata(metadata)
+	s.contextRevision++
+	metadata.ContextRevision = s.contextRevision
+	record := messageRecord{
+		Type:            kind,
+		CreatedAt:       now,
+		Message:         *msg,
+		MessageMetadata: metadata,
+	}
+	if err := s.appendJournalRecordLocked(record); err != nil {
+		s.contextRevision--
+		return err
+	}
 	s.messages = append(s.messages, msg)
-	s.records = append(s.records, historyRecord{kind: historyTypeMessage, message: msg, messageMetadata: metadata, createdAt: now})
-	s.UpdatedAt = now
+	s.records = append(s.records, historyRecord{kind: kind, message: msg, messageMetadata: metadata, createdAt: now})
+	advanceUpdatedAt(s, now)
 	if s.title == defaultSessionTitle && msg.Role == schema.User && strings.TrimSpace(msg.Content) != "" {
 		s.title = deriveTitle(msg.Content)
 	}
 
-	return s.persistLocked()
+	return nil
 }
 
 func sanitizeMessageMetadata(metadata MessageMetadata) MessageMetadata {
 	metadata.RunID = strings.TrimSpace(metadata.RunID)
+	metadata.MessageID = strings.TrimSpace(metadata.MessageID)
+	metadata.AgentCommandID = strings.TrimSpace(metadata.AgentCommandID)
+	metadata.AgentOperationID = strings.TrimSpace(metadata.AgentOperationID)
+	metadata.DomainCommitHash = strings.TrimSpace(metadata.DomainCommitHash)
 	metadata.AgentKind = strings.TrimSpace(metadata.AgentKind)
 	metadata.AgentName = strings.TrimSpace(metadata.AgentName)
 	metadata.RootAgentName = strings.TrimSpace(metadata.RootAgentName)
@@ -89,29 +115,30 @@ func sanitizeUserMessageReferences(values []UserMessageReference) []UserMessageR
 
 // AppendContextMessage appends a model-visible message that is hidden from UI history.
 func (s *Session) AppendContextMessage(msg *schema.Message) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if msg == nil || (msg.Role == "" && strings.TrimSpace(msg.Content) == "" && len(msg.ToolCalls) == 0) {
 		return nil
 	}
-	now := time.Now().UTC()
-	s.messages = append(s.messages, msg)
-	s.records = append(s.records, historyRecord{kind: historyTypeContextMessage, message: msg, createdAt: now})
-	s.UpdatedAt = now
-	return s.persistLocked()
+	return s.withCanonicalMutation(context.Background(), "append context message", func() error {
+		return s.appendMessageLocked(msg, MessageMetadata{}, historyTypeContextMessage)
+	})
 }
 
 // AppendClearMarker 追加上下文清理标记，不删除历史消息。
 func (s *Session) AppendClearMarker() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	return s.withCanonicalMutation(context.Background(), "append clear marker", s.appendClearMarkerLocked)
+}
 
+func (s *Session) appendClearMarkerLocked() error {
 	now := time.Now().UTC()
+	nextRevision := s.contextRevision + 1
+	if err := s.appendJournalRecordLocked(clearRecord{Type: historyTypeClear, CreatedAt: now, ContextRevision: nextRevision}); err != nil {
+		return err
+	}
+	s.contextRevision = nextRevision
 	s.clearAfterIndex = len(s.messages)
 	s.records = append(s.records, historyRecord{kind: historyTypeClear, createdAt: now})
-	s.UpdatedAt = now
-	return s.persistLocked()
+	advanceUpdatedAt(s, now)
+	return nil
 }
 
 // GetMessages 返回所有消息的快照。
@@ -165,6 +192,7 @@ func (s *Session) History() []HistoryEntry {
 			}
 			result = append(result, HistoryEntry{
 				Type:              historyTypeMessage,
+				ID:                record.messageMetadata.MessageID,
 				Role:              string(record.message.Role),
 				Content:           record.message.Content,
 				Message:           record.message,
@@ -178,6 +206,11 @@ func (s *Session) History() []HistoryEntry {
 				SubAgentSessionID: record.messageMetadata.SubAgentSessionID,
 				SubAgentType:      record.messageMetadata.SubAgentType,
 				UserReferences:    append([]UserMessageReference(nil), record.messageMetadata.UserReferences...),
+				AgentCommandID:    record.messageMetadata.AgentCommandID,
+				AgentOperationID:  record.messageMetadata.AgentOperationID,
+				AgentCycle:        record.messageMetadata.AgentCycle,
+				DomainCommitHash:  record.messageMetadata.DomainCommitHash,
+				ContextRevision:   record.messageMetadata.ContextRevision,
 			})
 		case historyTypeDisplay:
 			if record.display == nil {
@@ -271,16 +304,23 @@ func (s *Session) Clear() error {
 
 // Rename 更新会话标题并持久化。
 func (s *Session) Rename(title string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return fmt.Errorf("会话标题不能为空")
 	}
-	s.title = title
-	s.touchLocked()
-	return s.persistLocked()
+	return s.withCanonicalMutation(context.Background(), "rename session", func() error {
+		now := time.Now().UTC()
+		if err := s.appendJournalRecordLocked(sessionPatchRecord{
+			Type:      historyTypeSessionPatch,
+			Title:     &title,
+			UpdatedAt: now,
+		}); err != nil {
+			return err
+		}
+		s.title = title
+		advanceUpdatedAt(s, now)
+		return nil
+	})
 }
 
 // Title 返回持久化会话标题。
@@ -308,10 +348,6 @@ func (s *Session) titleLocked() string {
 		return s.title
 	}
 	return defaultSessionTitle
-}
-
-func (s *Session) touchLocked() {
-	s.UpdatedAt = time.Now().UTC()
 }
 
 func deriveTitle(content string) string {

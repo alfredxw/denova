@@ -74,6 +74,9 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 			}
 			snapshot.ContextCompaction = nil
 			snapshot.ContextCompactionRemoval = &removal
+		case StoryEventTypePlayerInput, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeTurnVersionSelected:
+			// These are side/audit events. They are projected separately or are
+			// intentionally absent from model-visible turn/state history.
 		}
 	}
 	initializeActors := true
@@ -96,7 +99,47 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 		}
 	}
 	snapshot.Graph = buildStoryGraph(meta, lines, eventsByID, pathSet)
+	pendingInputs, err := pendingPlayerInputsForBranch(lines, branchID, pathSet)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	snapshot.PendingPlayerInputs = pendingInputs
 	return snapshot, nil
+}
+
+func pendingPlayerInputsForBranch(lines []StoryEventRecord, branchID string, activeAncestry map[string]bool) ([]PlayerInputAcceptedEvent, error) {
+	consumed := make(map[string]bool)
+	for _, record := range lines {
+		if record.Envelope.Type != StoryEventTypeTurn {
+			continue
+		}
+		var turn TurnEvent
+		if err := mapToStruct(record.Raw, &turn); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(turn.PlayerInputID) != "" {
+			consumed[turn.PlayerInputID] = true
+		}
+	}
+	pending := make([]PlayerInputAcceptedEvent, 0)
+	for _, record := range lines {
+		if record.Envelope.Type != StoryEventTypePlayerInput || record.Envelope.BranchID != branchID || consumed[record.Envelope.ID] {
+			continue
+		}
+		var input PlayerInputAcceptedEvent
+		if err := mapToStruct(record.Raw, &input); err != nil {
+			return nil, err
+		}
+		// Accepted input is an audit side event and does not advance branch.Head.
+		// Only an input attached to the current ancestry can participate in a
+		// future model call; rewound or version-replaced futures remain durable
+		// but are deliberately absent from this model-facing projection.
+		if parentID := strings.TrimSpace(input.ParentID); parentID != "" && !activeAncestry[parentID] {
+			continue
+		}
+		pending = append(pending, input)
+	}
+	return pending, nil
 }
 
 func buildTurnVersionIndex(lines []StoryEventRecord) map[string][]TurnVersion {

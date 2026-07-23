@@ -310,6 +310,77 @@ func TestToolOrchestratorBlocksMalformedJSONArguments(t *testing.T) {
 	}
 }
 
+func TestToolOrchestratorBlocksValidArgumentsWhenModelHitOutputLimit(t *testing.T) {
+	for _, finishReason := range []string{"length", "max_tokens"} {
+		t.Run(finishReason, func(t *testing.T) {
+			observer := newRunObserver(nil, "root-span")
+			observer.RecordLLMOutcome(LLMOutcome{
+				FinishReason: finishReason, RequestedTools: []string{"write_file"},
+			})
+			ctx := ContextWithRunObserver(context.Background(), observer)
+			middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
+			called := false
+			endpoint, err := middleware.WrapInvokableToolCall(
+				context.Background(),
+				func(context.Context, string, ...tool.Option) (string, error) {
+					called = true
+					return "ok", nil
+				},
+				&adk.ToolContext{Name: "write_file", CallID: "call-output-limit"},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := endpoint(ctx, `{"path":"chapters/ch01.md","content":"valid but potentially truncated"}`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if called {
+				t.Fatal("output-limited tool call executed even though complete intent was unknowable")
+			}
+			for _, want := range []string{
+				"reason: model_output_token_limit", "retryable: true", "workspace_mutated: false",
+				"args_complete: false", "model_finish_reason: " + finishReason,
+				"即使 arguments 恰好是合法 JSON", "even though the remaining arguments may be valid JSON",
+			} {
+				if !strings.Contains(result, want) {
+					t.Fatalf("output-limit result missing %q:\n%s", want, result)
+				}
+			}
+		})
+	}
+}
+
+func TestStreamableToolBlocksValidArgumentsWhenModelHitOutputLimit(t *testing.T) {
+	observer := newRunObserver(nil, "root-span")
+	observer.RecordLLMOutcome(LLMOutcome{FinishReason: "max_output_tokens", RequestedTools: []string{"read_file"}})
+	ctx := ContextWithRunObserver(context.Background(), observer)
+	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
+	called := false
+	endpoint, err := middleware.WrapStreamableToolCall(
+		context.Background(),
+		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+			called = true
+			return singleChunkReader("unsafe"), nil
+		},
+		&adk.ToolContext{Name: "read_file", CallID: "call-stream-output-limit"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := endpoint(ctx, `{"path":"chapters/ch01.md"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := reader.Recv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called || !strings.Contains(result, "model_finish_reason: max_output_tokens") || !strings.Contains(result, "retryable: true") {
+		t.Fatalf("stream output-limit gate called=%t result=%q", called, result)
+	}
+}
+
 func TestToolOrchestratorReturnsContentFilterContextForIncompleteWriteArguments(t *testing.T) {
 	workspace := t.TempDir()
 	ledger, err := newRunLedger(workspace, RunLedgerPolicy{Enabled: true})
@@ -353,7 +424,7 @@ func TestToolOrchestratorReturnsContentFilterContextForIncompleteWriteArguments(
 		"model_finish_reason: content_filter",
 		"target: chapters/ch01.md",
 		"文件未写入",
-		"do not retry the same write tool",
+		"do not retry the same tool call",
 	} {
 		if !strings.Contains(result, want) {
 			t.Fatalf("content-filter context missing %q:\n%s", want, result)
@@ -385,6 +456,41 @@ func TestToolOrchestratorReturnsContentFilterContextForIncompleteWriteArguments(
 	}
 	if toolAttrs["model_finish_reason"] != "content_filter" || toolAttrs["args_complete"] != false {
 		t.Fatalf("tool span should record incomplete content-filter args: %#v", toolAttrs)
+	}
+}
+
+func TestToolOrchestratorBlocksValidArgumentsWhenModelWasContentFiltered(t *testing.T) {
+	observer := newRunObserver(nil, "root-span")
+	observer.RecordLLMOutcome(LLMOutcome{FinishReason: "content_filter", RequestedTools: []string{"read_file"}})
+	ctx := ContextWithRunObserver(context.Background(), observer)
+	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
+	called := false
+	endpoint, err := middleware.WrapInvokableToolCall(
+		context.Background(),
+		func(context.Context, string, ...tool.Option) (string, error) {
+			called = true
+			return "unsafe", nil
+		},
+		&adk.ToolContext{Name: "read_file", CallID: "call-valid-content-filter"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := endpoint(ctx, `{"path":"chapters/ch01.md"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("valid-looking tool arguments executed after content filtering")
+	}
+	for _, want := range []string{
+		"reason: model_output_interrupted_by_content_filter", "retryable: false",
+		"workspace_mutated: false", "args_complete: false", "model_finish_reason: content_filter",
+		"即使 arguments 恰好是合法 JSON", "even if the remaining arguments happen to be valid JSON",
+	} {
+		if !strings.Contains(result, want) {
+			t.Fatalf("content-filter result missing %q:\n%s", want, result)
+		}
 	}
 }
 
@@ -478,6 +584,21 @@ func TestToolOrchestratorBlocksDisabledCapability(t *testing.T) {
 	}
 	if !strings.Contains(result, "file_write") || !strings.Contains(result, "disabled for this Agent") {
 		t.Fatalf("unexpected disabled capability result: %s", result)
+	}
+}
+
+func TestToolOrchestratorBlocksUndeclaredDynamicTool(t *testing.T) {
+	middleware := &toolOrchestratorMiddleware{
+		agentKind: AgentKindIDE, enforceToolSettings: true,
+		toolSettings: config.ResolvedAgentToolSettings{FileRead: true, FileWrite: true},
+	}
+	decision := middleware.buildToolDecision(&adk.ToolContext{Name: "dynamic_unknown", CallID: "call-unknown"}, `{}`)
+	if decision.Action != "blocked" || !strings.Contains(decision.Reason, "ToolDescriptor") {
+		t.Fatalf("undeclared dynamic tool decision = %#v", decision)
+	}
+	knownWithoutCapability := middleware.buildToolDecision(&adk.ToolContext{Name: "search_story_history"}, `{}`)
+	if knownWithoutCapability.Action != "allowed" {
+		t.Fatalf("declared capability-free tool should remain allowed: %#v", knownWithoutCapability)
 	}
 }
 

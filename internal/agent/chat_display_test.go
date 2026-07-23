@@ -1,11 +1,10 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
-
-	"github.com/cloudwego/eino/schema"
 
 	"denova/internal/session"
 )
@@ -26,8 +25,8 @@ func TestAppendAssistantIfAnyReturnsPersistenceFailure(t *testing.T) {
 
 type failingAssistantConversation struct{ err error }
 
-func (c *failingAssistantConversation) PrepareMessages(string, string) ([]*schema.Message, error) {
-	return nil, nil
+func (c *failingAssistantConversation) AssembleModelContext(ctx context.Context, _ string, input ModelContextInput) (ModelContextResult, error) {
+	return AssembleSingleUserModelContext(ctx, input)
 }
 func (c *failingAssistantConversation) AppendAssistant(string) error { return c.err }
 func (c *failingAssistantConversation) MarkInterrupted(string, string, string) error {

@@ -27,14 +27,17 @@ type automationTriggerCoordinator struct {
 	// timing-dependent sleeps or production API surface.
 	afterRun        func(string)
 	afterIdleDetach func(string)
+	processOverride func(context.Context, *AutomationAppService, *automationWorkspaceSnapshot, string) error
 }
 
 type automationTriggerRequest struct {
-	service  *AutomationAppService
-	snapshot *automationWorkspaceSnapshot
-	sources  map[string]struct{}
-	targets  map[string]struct{}
-	dirty    bool
+	service   *AutomationAppService
+	snapshot  *automationWorkspaceSnapshot
+	operation *appOperation
+	sources   map[string]struct{}
+	targets   map[string]struct{}
+	dirty     bool
+	complete  []func(error)
 }
 
 func newAutomationTriggerCoordinator() *automationTriggerCoordinator {
@@ -47,25 +50,48 @@ func newAutomationTriggerCoordinator() *automationTriggerCoordinator {
 }
 
 func (c *automationTriggerCoordinator) Enqueue(service *AutomationAppService, snapshot *automationWorkspaceSnapshot, source string, targets []string) bool {
-	if c == nil || snapshot == nil {
+	return c.enqueue(service, snapshot, source, targets, nil)
+}
+
+// EnqueueWithCompletion keeps durable outbox owners pending until the trigger
+// pass itself has completed. The callback is process-local; a crash simply
+// leaves the persisted outbox pending for the next startup scan.
+func (c *automationTriggerCoordinator) EnqueueWithCompletion(
+	service *AutomationAppService,
+	snapshot *automationWorkspaceSnapshot,
+	source string,
+	targets []string,
+	complete func(error),
+) bool {
+	return c.enqueue(service, snapshot, source, targets, complete)
+}
+
+func (c *automationTriggerCoordinator) enqueue(service *AutomationAppService, snapshot *automationWorkspaceSnapshot, source string, targets []string, complete func(error)) bool {
+	if c == nil || service == nil || service.app == nil || snapshot == nil {
 		return false
 	}
 	workspace := canonicalAutomationWorkspace(snapshot.workspace)
 	if workspace == "" {
 		return false
 	}
+	operation, err := service.app.acquireWorkspaceOperation(c.ctx, workspace, false)
+	if err != nil {
+		return false
+	}
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
+		operation.Release()
 		return false
 	}
 	request := c.entries[workspace]
 	if request == nil {
 		request = &automationTriggerRequest{
-			service:  service,
-			snapshot: snapshot,
-			sources:  make(map[string]struct{}),
-			targets:  make(map[string]struct{}),
+			service:   service,
+			snapshot:  snapshot,
+			operation: operation,
+			sources:   make(map[string]struct{}),
+			targets:   make(map[string]struct{}),
 		}
 		c.entries[workspace] = request
 		c.wg.Add(1)
@@ -75,8 +101,12 @@ func (c *automationTriggerCoordinator) Enqueue(service *AutomationAppService, sn
 		// to prefer and avoids retaining superseded runtime references.
 		request.service = service
 		request.snapshot = snapshot
+		operation.Release()
 	}
 	mergeAutomationTriggerRequest(request, source, targets)
+	if complete != nil {
+		request.complete = append(request.complete, complete)
+	}
 	request.dirty = true
 	c.mu.Unlock()
 	return true
@@ -95,6 +125,7 @@ func mergeAutomationTriggerRequest(request *automationTriggerRequest, source str
 
 func (c *automationTriggerCoordinator) run(workspace string, request *automationTriggerRequest) {
 	defer c.wg.Done()
+	defer request.operation.Release()
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			log.Printf("[automation-trigger] coordinator panic recovered workspace=%q err=%v", workspace, recovered)
@@ -122,16 +153,28 @@ func (c *automationTriggerCoordinator) run(workspace string, request *automation
 		snapshot := request.snapshot
 		source := joinedAutomationTriggerValues(request.sources)
 		targets := sortedAutomationTriggerValues(request.targets)
+		completions := append([]func(error){}, request.complete...)
 		request.sources = make(map[string]struct{})
 		request.targets = make(map[string]struct{})
+		request.complete = nil
 		request.dirty = false
 		c.mu.Unlock()
 
-		items, runs, err := service.processContentTriggers(c.ctx, snapshot, time.Now().UTC(), source)
+		var itemsCount, runsCount int
+		var err error
+		if processOverride := c.processOverride; processOverride != nil {
+			err = processOverride(request.operation.Context(), service, snapshot, source)
+		} else {
+			items, runs, processErr := service.processContentTriggers(request.operation.Context(), snapshot, time.Now().UTC(), source)
+			itemsCount, runsCount, err = len(items), len(runs), processErr
+		}
 		if err != nil {
 			log.Printf("[automation-trigger] mutation check failed source=%s workspace=%q targets=%q err=%v", source, workspace, targets, err)
-		} else if len(items) > 0 || len(runs) > 0 {
-			log.Printf("[automation-trigger] mutation check completed source=%s workspace=%q targets=%q inbox=%d runs=%d", source, workspace, targets, len(items), len(runs))
+		} else if itemsCount > 0 || runsCount > 0 {
+			log.Printf("[automation-trigger] mutation check completed source=%s workspace=%q targets=%q inbox=%d runs=%d", source, workspace, targets, itemsCount, runsCount)
+		}
+		for _, complete := range completions {
+			runAutomationTriggerCompletion(workspace, complete, err)
 		}
 		if c.afterRun != nil {
 			c.afterRun(workspace)
@@ -140,6 +183,18 @@ func (c *automationTriggerCoordinator) run(workspace string, request *automation
 			return
 		}
 	}
+}
+
+func runAutomationTriggerCompletion(workspace string, complete func(error), processErr error) {
+	if complete == nil {
+		return
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("[automation-trigger] completion callback panic recovered workspace=%q err=%v", workspace, recovered)
+		}
+	}()
+	complete(processErr)
 }
 
 func joinedAutomationTriggerValues(values map[string]struct{}) string {

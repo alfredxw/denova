@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -14,6 +15,26 @@ import (
 	"denova/internal/interactive"
 	"denova/internal/session"
 )
+
+type interactiveDirectorCommandDescriptor struct {
+	Token           interactive.DirectorPlanRunToken `json:"token"`
+	SourceTurnID    string                           `json:"source_turn_id"`
+	MaintenanceTask string                           `json:"maintenance_task"`
+}
+
+// interactiveDirectorCommandID is fixed length but fully determined by the
+// durable plan token and the exact maintenance operation it authorizes.
+func interactiveDirectorCommandID(token interactive.DirectorPlanRunToken, sourceTurnID, maintenanceTask string) (string, error) {
+	descriptor := interactiveDirectorCommandDescriptor{
+		Token: token, SourceTurnID: strings.TrimSpace(sourceTurnID), MaintenanceTask: strings.TrimSpace(maintenanceTask),
+	}
+	data, err := json.Marshal(descriptor)
+	if err != nil {
+		return "", fmt.Errorf("serialize interactive Director command identity: %w", err)
+	}
+	digest := sha256.Sum256(data)
+	return fmt.Sprintf("interactive-director:%x", digest[:]), nil
+}
 
 const (
 	interactiveDirectorTaskDirectorPlanUpdate = "director_plan_update"
@@ -44,17 +65,31 @@ func startInteractiveDirectorMaintenanceTask(cfg *config.Config, state *book.Sta
 			return
 		}
 		if !runPlan {
+			acknowledgeInteractiveDirectorDerivedTurn(conversation, turn)
 			return
 		}
 		conversation.withDirectorTask(interactiveDirectorTaskDirectorPlanUpdate)
 		if _, err := runInteractiveDirectorMaintenance(ctx, cfg, state, conversation, turn, sessionStore, interactiveDirectorTaskDirectorPlanUpdate); err != nil {
 			log.Printf("[interactive-director-agent] plan maintenance failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
+			return
 		}
+		acknowledgeInteractiveDirectorDerivedTurn(conversation, turn)
 	})
 	if !started {
 		markInteractiveDirectorMaintenanceFailed(conversation, turn, context.Canceled)
 	}
 	return done
+}
+
+func acknowledgeInteractiveDirectorDerivedTurn(conversation *interactiveConversation, turn interactive.TurnEvent) {
+	if conversation == nil || conversation.store == nil || strings.TrimSpace(turn.ID) == "" {
+		return
+	}
+	if err := conversation.store.MarkDirectorTurnDerived(conversation.storyID, turn.BranchID, turn.ID); err != nil {
+		log.Printf("[interactive-director-agent] persist derived receipt failed story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
+		return
+	}
+	log.Printf("[interactive-director-agent] persisted derived receipt story_id=%s branch_id=%s turn_id=%s", conversation.storyID, turn.BranchID, turn.ID)
 }
 
 func prepareInteractiveDirectorBeforeOpening(ctx context.Context, cfg *config.Config, state *book.State, conversation *interactiveConversation, openingMessage string, sessionStore *session.Store) (bool, error) {
@@ -149,11 +184,10 @@ func directorTasksForConversation(conversation *interactiveConversation) *worksp
 	if conversation != nil && conversation.directorTasks != nil {
 		return conversation.directorTasks
 	}
-	tasks := newWorkspaceDirectorTaskGroup()
-	if conversation != nil {
-		conversation.directorTasks = tasks
-	}
-	return tasks
+	// Director work must always be owned by the App workspace generation that
+	// supplied its store/config. Creating a fallback group here would leave an
+	// untracked goroutine able to write after workspace switch or App.Close.
+	return nil
 }
 
 func runInteractiveDirectorPlan(ctx context.Context, cfg *config.Config, state *book.State, conversation *interactiveConversation, turn interactive.TurnEvent, sessionStore *session.Store, prestartedTokens ...interactive.DirectorPlanRunToken) (interactive.DirectorPlan, error) {
@@ -202,6 +236,10 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 			}
 		}
 	}
+	commandID, err := interactiveDirectorCommandID(token, turn.ID, task)
+	if err != nil {
+		return interactiveDirectorMaintenanceResult{}, fmt.Errorf("派生互动导演命令标识失败: %w", err)
+	}
 	baselinePlan, err := conversation.store.DirectorPlan(conversation.storyID, turn.BranchID)
 	if err != nil {
 		return interactiveDirectorMaintenanceResult{}, fmt.Errorf("读取导演规划 Patch 基线失败: %w", err)
@@ -217,23 +255,29 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 	loreSourceRevision := stableContext.Revision
 	result := interactiveDirectorMaintenanceResult{}
 	var planSubmissionMu sync.Mutex
-	var submittedPlanDecision interactive.PlanDecision
-	planFinalized := false
 	reviewedLoreIDs := map[string]bool{}
+	planCommit := newInteractiveDirectorPlanCommit(
+		conversation.store, conversation.storyID, turn.BranchID, turn.ID, token, planDraft, &planSubmissionMu,
+	)
 	generator := conversation.directorGenerator
 	if generator == nil {
-		generator = generateInteractiveDirector
+		err = fmt.Errorf("互动导演缺少 App-owned durable runtime")
+		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
+		markInteractiveDirectorFailed(conversation, turn, err)
+		return result, err
 	}
-	output, err := generator(ctx, cfg, state, agent.InteractiveStoryToolContext{
-		Store:                 conversation.store,
-		StoryID:               conversation.storyID,
-		BranchID:              turn.BranchID,
-		TurnID:                turn.ID,
-		MaintenanceTask:       effectiveTask,
-		StableContextTitle:    stableContext.Title,
-		StableContext:         stableContext.Content,
-		StableContextMaxBytes: stableContext.MaxBytes,
-		DisplayConversation:   conversation,
+	_, err = generator(ctx, cfg, state, agent.InteractiveStoryToolContext{
+		Store:                   conversation.store,
+		CommandID:               commandID,
+		StoryID:                 conversation.storyID,
+		BranchID:                turn.BranchID,
+		TurnID:                  turn.ID,
+		MaintenanceTask:         effectiveTask,
+		StableContextTitle:      stableContext.Title,
+		StableContext:           stableContext.Content,
+		StableContextMaxBytes:   stableContext.MaxBytes,
+		DisplayConversation:     conversation,
+		DomainCommitParticipant: planCommit,
 		OnLoreItemsRead: func(ids []string) {
 			planSubmissionMu.Lock()
 			defer planSubmissionMu.Unlock()
@@ -257,69 +301,80 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 			for id := range reviewedLoreIDs {
 				submission.ReviewedLoreIDs = append(submission.ReviewedLoreIDs, id)
 			}
-			receipt, err := conversation.store.StageDirectorPlanRunUpdate(conversation.storyID, turn.BranchID, token, turn.ID, planDraft, submission)
-			if err != nil {
-				return interactive.DirectorPlanUpdateReceipt{}, err
-			}
-			if receipt.Finalized {
-				planFinalized = true
-				submittedPlanDecision = receipt.Decision
-			}
-			return receipt, nil
+			return conversation.store.StageDirectorPlanRunUpdate(conversation.storyID, turn.BranchID, token, turn.ID, planDraft, submission)
 		},
 	}, instruction)
 	if err == nil {
 		err = ctx.Err()
 	}
 	if err != nil {
+		if committedPlan, persistedOutput, committed := planCommit.committedResult(); committed {
+			// The canonical output commit won before a late transport/runtime
+			// error. Never replace its durable receipt with a failed projection.
+			result.Plan = committedPlan
+			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, persistedOutput)
+			log.Printf("[interactive-director-agent] reconciled committed plan after late runtime error story_id=%s branch_id=%s turn_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, err)
+			return result, nil
+		}
+		if committedPlan, persistedOutput, committed, reconcileErr := interactiveDirectorCanonicalResult(
+			conversation.store, conversation.storyID, turn.BranchID, commandID,
+		); reconcileErr == nil && committed {
+			result.Plan = committedPlan
+			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, persistedOutput)
+			log.Printf("[interactive-director-agent] recovered canonical plan after replay error story_id=%s branch_id=%s turn_id=%s command_id=%s err=%v", conversation.storyID, turn.BranchID, turn.ID, commandID, err)
+			return result, nil
+		}
 		persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
 		if runPlan {
 			markInteractiveDirectorFailed(conversation, turn, err)
 		}
 		return result, fmt.Errorf("生成后台导演维护失败: %w", err)
 	}
-	persistedOutput := output
-	if runPlan {
-		planSubmissionMu.Lock()
-		decision := submittedPlanDecision
-		finalized := planFinalized
-		planSubmissionMu.Unlock()
-		if !finalized {
-			err = fmt.Errorf("导演规划未通过 submit_director_plan_update finalize Patch 草稿")
+	if conversation.customDirectorGenerator || conversation.directorChatService == nil {
+		if err = planCommit.commitCustomGenerator(ctx); err != nil {
 			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
 			markInteractiveDirectorFailed(conversation, turn, err)
 			return result, err
 		}
-		normalizedOutput, marshalErr := json.Marshal(decision)
-		if marshalErr != nil {
-			err = fmt.Errorf("序列化导演规划决策失败: %w", marshalErr)
-			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
-			markInteractiveDirectorFailed(conversation, turn, err)
-			return result, err
-		}
-		persistedOutput = string(normalizedOutput)
 	}
-	persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, persistedOutput)
-	if runPlan {
-		finalDocs, finalized := planDraft.FinalDocs()
-		if !finalized {
-			err = fmt.Errorf("导演规划 Patch 草稿尚未 finalize")
-			markInteractiveDirectorFailed(conversation, turn, err)
-			return result, err
-		}
-		plan, err := conversation.store.CompleteDirectorPlanRunWithDocs(conversation.storyID, turn.BranchID, token, turn.ID, persistedOutput, finalDocs)
+	committedPlan, persistedOutput, committed := planCommit.committedResult()
+	if !committed {
+		committedPlan, persistedOutput, committed, err = interactiveDirectorCanonicalResult(
+			conversation.store, conversation.storyID, turn.BranchID, commandID,
+		)
 		if err != nil {
-			markInteractiveDirectorFailed(conversation, turn, err)
-			return result, fmt.Errorf("完成导演规划运行失败: %w", err)
+			return result, fmt.Errorf("读取互动导演 canonical output commit 失败: %w", err)
 		}
-		result.Plan = plan
+		if !committed {
+			err = fmt.Errorf("互动导演 durable runtime 未返回 canonical output commit receipt")
+			persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, "执行失败："+err.Error())
+			markInteractiveDirectorFailed(conversation, turn, err)
+			return result, err
+		}
 	}
+	result.Plan = committedPlan
+	persistAgentCallWithStore(sessionStore, config.AgentKindInteractiveDirector, instruction, persistedOutput)
 	status := ""
 	if result.Plan.Metadata.LastRun != nil {
 		status = result.Plan.Metadata.LastRun.Status
 	}
 	log.Printf("[interactive-director-agent] maintenance done story_id=%s branch_id=%s turn_id=%s task=%s director_status=%s summary=%q", conversation.storyID, turn.BranchID, turn.ID, task, status, strings.TrimSpace(persistedOutput))
 	return result, nil
+}
+
+func interactiveDirectorCanonicalResult(store *interactive.Store, storyID, branchID, commandID string) (interactive.DirectorPlan, string, bool, error) {
+	if store == nil || strings.TrimSpace(commandID) == "" {
+		return interactive.DirectorPlan{}, "", false, nil
+	}
+	plan, err := store.DirectorPlan(storyID, branchID)
+	if err != nil {
+		return interactive.DirectorPlan{}, "", false, err
+	}
+	run := plan.Metadata.LastRun
+	if run == nil || run.DomainCommit == nil || strings.TrimSpace(run.DomainCommit.Identity.CommandID) != strings.TrimSpace(commandID) {
+		return interactive.DirectorPlan{}, "", false, nil
+	}
+	return plan, strings.TrimSpace(run.Summary), true, nil
 }
 
 func markInteractiveDirectorFailed(conversation *interactiveConversation, turn interactive.TurnEvent, err error) {

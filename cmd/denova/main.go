@@ -107,17 +107,38 @@ func main() {
 
 	// 开发模式：同时启动 Vite dev server
 	if dev {
-		go startViteDev(frontendPort, listenHost, port)
+		runBackground("vite-dev-server", func() {
+			startViteDev(frontendPort, listenHost, port)
+		})
 	}
 	if !noOpen {
 		if dev {
-			go openBrowser(frontendURL)
+			runBackground("open-frontend", func() {
+				openBrowser(frontendURL)
+			})
 		} else {
-			go openBrowser(url)
+			runBackground("open-backend", func() {
+				openBrowser(url)
+			})
 		}
 	}
 
 	srv.Run()
+}
+
+// runBackground is the process-entry goroutine boundary. A development helper
+// or browser launcher must never bring down the long-lived backend on panic.
+func runBackground(scope string, run func()) {
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				log.Printf("[startup] background task panic recovered scope=%s err=%v", scope, recovered)
+			}
+		}()
+		if run != nil {
+			run()
+		}
+	}()
 }
 
 func hasVersionArg(args []string) bool {

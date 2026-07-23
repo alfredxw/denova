@@ -945,7 +945,7 @@ describe('SettingPanel', () => {
     expect(branchTurnsInput).toHaveValue(5)
     fireEvent.change(branchTurnsInput, { target: { value: '7' } })
 
-    const modeField = screen.getByText('后台导演运行方式').closest('label') as HTMLElement
+    const modeField = screen.getByText('新故事默认运行方式').closest('label') as HTMLElement
     await user.click(within(modeField).getByRole('combobox'))
     await user.click(screen.getByRole('option', { name: /每回合/ }))
 
@@ -1124,7 +1124,7 @@ describe('SettingPanel', () => {
     await waitFor(() => expect(deleteEventPackage).toHaveBeenCalledWith('default'))
   })
 
-  it('edits TRPG checks through the focused DM-style visual workflow', async () => {
+  it('presents TRPG checks through the focused DM-style visual workflow', async () => {
     const user = userEvent.setup()
     render(<PresetModeHarness />)
 
@@ -1143,8 +1143,16 @@ describe('SettingPanel', () => {
     expect(screen.getByRole('textbox', { name: '不要检定例子' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '新增规则' })).not.toBeInTheDocument()
 
-    const ruleLabelInput = screen.getByRole('textbox', { name: '规则名称' })
-    fireEvent.change(ruleLabelInput, { target: { value: '自定义 DM 检定' } })
+  })
+
+  it('saves TRPG check guidance from the focused DM-style visual workflow', async () => {
+    const user = userEvent.setup()
+    render(<PresetModeHarness />)
+
+    expandSection('TRPG 检定')
+    await user.click(await screen.findByRole('button', { name: /均衡 DM 检定/ }))
+
+    fireEvent.change(screen.getByRole('textbox', { name: '规则名称' }), { target: { value: '自定义 DM 检定' } })
 
     const mustCheckExamples = '守卫逼近时强行撬锁\n攻击警戒守卫'
     const skipCheckExamples = '观察空房间\n和友善同伴闲聊'

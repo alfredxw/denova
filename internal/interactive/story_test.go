@@ -633,10 +633,14 @@ func TestAppendTurnWithStatePersistsTurnAndDeltaAtomically(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("jsonl line count = %d, want 2\n%s", len(lines), string(data))
 	}
-	var turnLine map[string]any
-	if err := json.Unmarshal([]byte(lines[1]), &turnLine); err != nil {
+	var transaction storyAppendTransaction
+	if err := json.Unmarshal([]byte(lines[1]), &transaction); err != nil {
 		t.Fatalf("parse turn line failed: %v", err)
 	}
+	if len(transaction.Events) != 1 {
+		t.Fatalf("append transaction events = %d, want 1", len(transaction.Events))
+	}
+	turnLine := transaction.Events[0]
 	if turnLine["type"] != "turn" {
 		t.Fatalf("unexpected event type: %#v", turnLine["type"])
 	}
@@ -1254,10 +1258,14 @@ func TestSwitchTurnVersionKeepsLaterCanonicalPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != secondAlt.ID {
-		t.Fatalf("switching an earlier version should keep the chosen later canon path: %#v", snapshot.Turns)
+	if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID == secondAlt.ID || snapshot.Turns[1].Narrative != secondAlt.Narrative {
+		t.Fatalf("switching an earlier version should immutably project the chosen later canon path: %#v", snapshot.Turns)
 	}
-	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != secondAlt.ID {
+	projectedSecondID := snapshot.Turns[1].ID
+	if parentIDString(snapshot.Turns[1].ParentID) != first.ID {
+		t.Fatalf("projected later turn parent = %q, want selected version %q", parentIDString(snapshot.Turns[1].ParentID), first.ID)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != projectedSecondID {
 		t.Fatalf("current turn should stay on later canon: %#v", snapshot.CurrentTurn)
 	}
 
@@ -1269,11 +1277,11 @@ func TestSwitchTurnVersionKeepsLaterCanonicalPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Turns) != 3 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != secondAlt.ID || snapshot.Turns[2].ID != third.ID {
+	if len(snapshot.Turns) != 3 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != projectedSecondID || snapshot.Turns[2].ID != third.ID {
 		t.Fatalf("new turn should continue from the selected canon path: %#v", snapshot.Turns)
 	}
-	if parentIDString(third.ParentID) != secondAlt.ID {
-		t.Fatalf("new turn parent = %q, want %q", parentIDString(third.ParentID), secondAlt.ID)
+	if parentIDString(third.ParentID) != projectedSecondID {
+		t.Fatalf("new turn parent = %q, want %q", parentIDString(third.ParentID), projectedSecondID)
 	}
 }
 

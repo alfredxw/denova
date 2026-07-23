@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"log"
@@ -11,12 +12,14 @@ import (
 
 	"denova/config"
 	"denova/internal/agent"
-	"denova/internal/book"
+	agentcontext "denova/internal/agent/context"
+	"denova/internal/agentruntime"
 	"denova/internal/interactiveimage"
 	"denova/internal/session"
 )
 
 type ImageAgentGenerateRequest struct {
+	CommandID     string
 	Purpose       string
 	SourceContext string
 	SystemPrompt  string
@@ -31,6 +34,16 @@ type ImageAgentGenerateRequest struct {
 type ImageAgentGenerateResult struct {
 	AssistantText    string
 	InteractiveImage *interactiveimage.Result
+	Replayed         bool
+}
+
+type imageAgentAdmission struct {
+	Replayed bool
+}
+
+type imageAgentRunHooks struct {
+	OnAccepted         func(imageAgentAdmission) error
+	OnInteractiveImage func(*interactiveimage.Result) error
 }
 
 func (a *App) GenerateImageWithAgent(ctx context.Context, req ImageAgentGenerateRequest) (ImageAgentGenerateResult, error) {
@@ -38,35 +51,77 @@ func (a *App) GenerateImageWithAgent(ctx context.Context, req ImageAgentGenerate
 }
 
 func (s *ImageAppService) GenerateWithAgent(ctx context.Context, req ImageAgentGenerateRequest) (ImageAgentGenerateResult, error) {
-	cfg, state, bookService, workspace, err := s.agentRuntimeSnapshot()
+	if err := validateImageAgentCommandID(req.CommandID); err != nil {
+		return ImageAgentGenerateResult{}, err
+	}
+	runtime, err := s.acquireWorkspaceRuntime(ctx)
 	if err != nil {
 		return ImageAgentGenerateResult{}, err
 	}
+	defer runtime.Release()
+	return s.generateWithAgent(runtime, req)
+}
+
+// generateWithAgent executes inside a caller-owned workspace operation. The
+// interactive-image flow deliberately reuses this core so its story reads,
+// display events, Agent run, asset writes, and journal append remain one
+// admitted composite even after the workspace scope starts draining.
+func (s *ImageAppService) generateWithAgent(runtime *imageWorkspaceRuntime, req ImageAgentGenerateRequest) (ImageAgentGenerateResult, error) {
+	return s.generateWithAgentUsingHooks(runtime, req, imageAgentRunHooks{})
+}
+
+func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRuntime, req ImageAgentGenerateRequest, hooks imageAgentRunHooks) (ImageAgentGenerateResult, error) {
+	req.CommandID = strings.TrimSpace(req.CommandID)
+	if err := validateImageAgentCommandID(req.CommandID); err != nil {
+		return ImageAgentGenerateResult{}, err
+	}
+	if err := runtime.requireAgentAdapters(); err != nil {
+		return ImageAgentGenerateResult{}, err
+	}
+	cfg := runtime.cfg
+	novaDir := cfg.DataDir()
+	if layered, loadErr := config.LoadLayeredWithStartupConfig(novaDir, runtime.workspace); loadErr == nil {
+		applyLayeredSettingsToConfig(&cfg, layered)
+	} else {
+		log.Printf("[image-agent] 加载分层配置失败 workspace=%s err=%v", runtime.workspace, loadErr)
+	}
 	cfg.ImagePresetToolPrompt = strings.TrimSpace(req.ToolPrompt)
-	runner, err := buildImageAgentRunner(ctx, &cfg, state, req.SystemPrompt)
+	runner, systemPrompt, err := buildImageAgentRunnerWithComposition(runtime.Context(), &cfg, runtime.bookState, req.SystemPrompt)
 	if err != nil {
 		return ImageAgentGenerateResult{}, err
 	}
 	conversation := &imageAgentConversation{
 		message:       imageAgentMessage(req),
+		sourceContext: strings.TrimSpace(req.SourceContext),
 		sourceSummary: imageAgentSourceSummary(req),
+		contextBudget: agent.ContextBudgetForAgent(&cfg, config.AgentKindImage),
 	}
 	var result ImageAgentGenerateResult
 	var runErr error
-	s.app.chatService.RunWithOptions(ctx, runner, conversation, bookService, agent.ChatRequest{
-		Message: conversation.message,
+	var hookErr error
+	runCtx, cancelRun := context.WithCancel(runtime.Context())
+	defer cancelRun()
+	accepted, err := runtime.chatService.StartWithOptions(runCtx, runner, conversation, runtime.bookService, agent.ChatRequest{
+		CommandID: req.CommandID,
+		Message:   conversation.message,
 	}, agent.RunOptions{
 		AgentKind:          config.AgentKindImage,
-		Workspace:          workspace,
+		Workspace:          runtime.workspace,
+		StoryID:            req.StoryID,
+		BranchID:           req.BranchID,
+		TurnID:             req.TurnID,
 		Mode:               "image",
 		IdleTimeout:        agentIdleTimeout(cfg),
 		ToolResultMaxBytes: agentToolResultMaxBytes(cfg),
-		SystemPromptLog:    agent.BuildImageInstructionComposition(&cfg, state, req.SystemPrompt),
+		SystemPromptLog:    systemPrompt,
 	}, func(ev agent.Event) {
 		switch ev.Type {
 		case "tool_result":
 			if image := eventInteractiveImage(ev.Data); image != nil {
 				result.InteractiveImage = image
+				if hooks.OnInteractiveImage != nil && hookErr == nil {
+					hookErr = hooks.OnInteractiveImage(image)
+				}
 			}
 		case "error":
 			if runErr == nil {
@@ -74,62 +129,102 @@ func (s *ImageAppService) GenerateWithAgent(ctx context.Context, req ImageAgentG
 			}
 		}
 	})
+	if err != nil {
+		if errors.Is(err, agentruntime.ErrInvalidCommand) {
+			return result, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, req.CommandID)
+		}
+		return result, err
+	}
+	result.Replayed = accepted.Receipt().Replayed
+	if hooks.OnAccepted != nil {
+		if err := hooks.OnAccepted(imageAgentAdmission{Replayed: result.Replayed}); err != nil {
+			cancelRun()
+			_ = accepted.Wait(runCtx)
+			return result, err
+		}
+	}
+	outcome := accepted.Wait(runCtx)
 	result.AssistantText = strings.TrimSpace(conversation.assistant)
+	if result.AssistantText == "" {
+		result.AssistantText = strings.TrimSpace(outcome.Content)
+	}
+	if hookErr != nil {
+		return result, hookErr
+	}
 	if runErr != nil {
 		return result, runErr
 	}
+	if outcome.Status != agent.RunOutcomeCompleted {
+		if outcome.Error != nil {
+			return result, outcome.Error
+		}
+		return result, fmt.Errorf("image Agent did not complete: status=%s reason=%s", outcome.Status, strings.TrimSpace(outcome.Reason))
+	}
+	if err := runtime.Context().Err(); err != nil {
+		return result, err
+	}
 	if strings.TrimSpace(req.Purpose) == "interactive_image" && result.InteractiveImage == nil {
+		if result.Replayed {
+			return result, ErrImageAgentReplayResultUnavailable
+		}
 		return result, fmt.Errorf("图像 Agent 未生成互动图像")
 	}
 	output := result.AssistantText
 	if result.InteractiveImage != nil {
 		output = firstNonEmpty(output, result.InteractiveImage.ImagePath)
-		log.Printf("[image-agent] generated interactive image workspace=%s story_id=%s branch_id=%s turn_id=%s path=%s", workspace, result.InteractiveImage.StoryID, result.InteractiveImage.BranchID, result.InteractiveImage.TurnID, result.InteractiveImage.ImagePath)
+		log.Printf("[image-agent] generated interactive image workspace=%s story_id=%s branch_id=%s turn_id=%s path=%s", runtime.workspace, result.InteractiveImage.StoryID, result.InteractiveImage.BranchID, result.InteractiveImage.TurnID, result.InteractiveImage.ImagePath)
 	} else {
-		log.Printf("[image-agent] completed image request workspace=%s purpose=%s", workspace, strings.TrimSpace(req.Purpose))
+		log.Printf("[image-agent] completed image request workspace=%s purpose=%s", runtime.workspace, strings.TrimSpace(req.Purpose))
 	}
-	s.app.persistAgentCall(config.AgentKindImage, conversation.message, output)
+	if !result.Replayed {
+		persistAgentCallWithStore(runtime.sessionStore, config.AgentKindImage, conversation.message, output)
+	}
 	return result, nil
 }
 
-func (s *ImageAppService) agentRuntimeSnapshot() (config.Config, *book.State, *book.Service, string, error) {
-	app := s.app
-	app.mu.RLock()
-	if app.workspace == "" || app.bookService == nil || app.bookState == nil {
-		app.mu.RUnlock()
-		return config.Config{}, nil, nil, "", ErrNoWorkspace
+func validateImageAgentCommandID(commandID string) error {
+	commandID = strings.TrimSpace(commandID)
+	if commandID == "" {
+		return ErrAgentCommandIDRequired
 	}
-	if app.cfg == nil {
-		app.mu.RUnlock()
-		return config.Config{}, nil, nil, "", fmt.Errorf("运行配置未初始化")
-	}
-	cfg := *app.cfg
-	state := app.bookState
-	bookService := app.bookService
-	workspace := app.workspace
-	novaDir := cfg.DataDir()
-	app.mu.RUnlock()
-
-	cfg.Workspace = workspace
-	if layered, err := config.LoadLayeredWithStartupConfig(novaDir, workspace); err == nil {
-		applyLayeredSettingsToConfig(&cfg, layered)
-	} else {
-		log.Printf("[image-agent] 加载分层配置失败 workspace=%s err=%v", workspace, err)
-	}
-	return cfg, state, bookService, workspace, nil
+	return agentruntime.ValidateCommandID(commandID, agentruntime.DefaultInputLimits())
 }
 
 type imageAgentConversation struct {
 	message       string
+	sourceContext string
 	sourceSummary string
 	assistant     string
+	contextBudget agentcontext.Budget
 }
 
-func (c *imageAgentConversation) PrepareMessages(_, _ string) ([]*schema.Message, error) {
-	if strings.TrimSpace(c.message) == "" {
-		return nil, fmt.Errorf("图像 Agent 输入不能为空")
+func (c *imageAgentConversation) ModelContextBudget() agentcontext.Budget {
+	if c == nil {
+		return agentcontext.DefaultBudget()
 	}
-	return []*schema.Message{schema.UserMessage(c.message)}, nil
+	return c.contextBudget
+}
+
+func (c *imageAgentConversation) AssembleModelContext(ctx context.Context, _ string, input agent.ModelContextInput) (agent.ModelContextResult, error) {
+	if strings.TrimSpace(c.message) == "" {
+		return agent.ModelContextResult{}, fmt.Errorf("图像 Agent 输入不能为空")
+	}
+	fragments := append([]agentcontext.Fragment(nil), input.Fragments...)
+	if c.sourceContext != "" {
+		fragments = append(fragments, agentcontext.Fragment{
+			ID: "image_request_source_context", Source: "image.request.source_context", Title: "图像生成来源上下文",
+			Purpose: "ground the generated image in the bounded source material selected for this request",
+			Content: c.sourceContext, Placement: agentcontext.PlacementFinalUserPrefix, Included: true,
+			Note: "source=image generation request; turn-scoped",
+		})
+	}
+	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{
+		Messages: []*schema.Message{schema.UserMessage(c.message)}, Fragments: fragments,
+	})
+	if err != nil {
+		return agent.ModelContextResult{}, err
+	}
+	return agent.ModelContextResult{Messages: assembled.Messages, Context: assembled}, nil
 }
 
 func (c *imageAgentConversation) AppendAssistant(content string) error {
@@ -155,13 +250,16 @@ func imageAgentMessage(req ImageAgentGenerateRequest) string {
 	writeImageAgentField(&sb, "branch_id", req.BranchID)
 	writeImageAgentField(&sb, "turn_id", req.TurnID)
 	writeImageAgentField(&sb, "alt_text", req.AltText)
-	if context := strings.TrimSpace(req.SourceContext); context != "" {
-		sb.WriteString("\n## source_context\n\n")
-		sb.WriteString(context)
-		sb.WriteString("\n")
-	}
+	writeImageAgentField(&sb, "source_context_sha256", imageAgentSemanticHash(req.SourceContext))
+	writeImageAgentField(&sb, "system_prompt_sha256", imageAgentSemanticHash(req.SystemPrompt))
+	writeImageAgentField(&sb, "tool_prompt_sha256", imageAgentSemanticHash(req.ToolPrompt))
 	sb.WriteString("\n请读取所需 Skill 后调用 generate_image 完成图像生成。")
 	return strings.TrimSpace(sb.String())
+}
+
+func imageAgentSemanticHash(value string) string {
+	digest := sha256.Sum256([]byte(strings.TrimSpace(value)))
+	return fmt.Sprintf("%x", digest[:])
 }
 
 func writeImageAgentField(sb *strings.Builder, key, value string) {

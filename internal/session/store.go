@@ -1,13 +1,17 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+
+	"denova/internal/filelease"
 )
 
 // Store 管理会话的 JSONL 文件持久化。
@@ -181,10 +185,10 @@ func (s *Store) Delete(id string) error {
 	if count <= 1 {
 		return fmt.Errorf("不能删除当前唯一会话")
 	}
-	delete(s.cache, id)
-	if err := os.Remove(s.sessionPath(id)); err != nil {
+	if err := removeSessionJournal(s.sessionPath(id)); err != nil {
 		return fmt.Errorf("删除会话失败: %w", err)
 	}
+	delete(s.cache, id)
 	return nil
 }
 
@@ -205,10 +209,28 @@ func (s *Store) DeleteByPrefix(prefix string) error {
 		if !strings.HasPrefix(id, prefix) {
 			continue
 		}
-		delete(s.cache, id)
-		if err := os.Remove(file); err != nil && !os.IsNotExist(err) {
+		if err := removeSessionJournal(file); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("删除会话失败: %w", err)
 		}
+		delete(s.cache, id)
+	}
+	return nil
+}
+
+// removeSessionJournal shares the exact append/domain-commit lease. Holding
+// Store.mu keeps this Store's cache transition atomic; independent stores and
+// processes rendezvous on the file lease before unlinking the canonical inode.
+func removeSessionJournal(path string) (resultErr error) {
+	release, err := filelease.Acquire(context.Background(), path+".domain.lock")
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, release()) }()
+	if err := os.Remove(path); err != nil {
+		return err
+	}
+	if err := syncParentDirectory(path); err != nil {
+		return fmt.Errorf("同步会话删除目录失败: %w", err)
 	}
 	return nil
 }

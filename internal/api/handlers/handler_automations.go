@@ -10,8 +10,10 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
+	"denova/internal/agentruntime"
 	"denova/internal/api/agentui"
 	"denova/internal/api/sse"
+	appsvc "denova/internal/app"
 	"denova/internal/automation"
 )
 
@@ -135,17 +137,9 @@ func (h *Handlers) HandleAutomationDelete(ctx context.Context, c *app.RequestCon
 	writeJSON(c, consts.StatusOK, map[string]string{"message": "deleted"})
 }
 
-func (h *Handlers) HandleAutomationRun(ctx context.Context, c *app.RequestContext) {
-	result, err := h.app.RunAutomation(ctx, c.Param("id"), automation.TriggerManual)
-	if err != nil {
-		writeError(c, consts.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(c, consts.StatusOK, result)
-}
-
 func (h *Handlers) HandleAutomationRunStream(ctx context.Context, c *app.RequestContext) {
 	var req struct {
+		CommandID       string                       `json:"command_id"`
 		TriggerEvidence []automation.TriggerEvidence `json:"trigger_evidence"`
 	}
 	if body := c.Request.Body(); len(body) > 0 {
@@ -154,8 +148,20 @@ func (h *Handlers) HandleAutomationRunStream(ctx context.Context, c *app.Request
 			return
 		}
 	}
-	task, run, err := h.app.StartAutomationTaskWithEvidence(ctx, c.Param("id"), automation.TriggerManual, req.TriggerEvidence)
+	if strings.TrimSpace(req.CommandID) == "" {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试自动化运行 / command_id is required for safe automation retries", nil)
+		return
+	}
+	task, run, err := h.app.StartAutomationTaskCommand(ctx, c.Param("id"), req.CommandID, req.TriggerEvidence)
 	if err != nil {
+		if errors.Is(err, agentruntime.ErrInvalidCommand) {
+			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", err.Error(), nil)
+			return
+		}
+		if errors.Is(err, automation.ErrRunIdentityConflict) || errors.Is(err, appsvc.ErrAgentCommandConflict) {
+			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.command_conflict", "command_id 已用于不同的自动化请求 / command_id was already used for a different automation request", nil)
+			return
+		}
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
@@ -179,7 +185,8 @@ func (h *Handlers) HandleAutomationRunStreamByID(ctx context.Context, c *app.Req
 
 func (h *Handlers) HandleAutomationRunChatStream(ctx context.Context, c *app.RequestContext) {
 	var req struct {
-		Message string `json:"message"`
+		CommandID string `json:"command_id"`
+		Message   string `json:"message"`
 	}
 	if err := c.BindJSON(&req); err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
@@ -189,8 +196,24 @@ func (h *Handlers) HandleAutomationRunChatStream(ctx context.Context, c *app.Req
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
 		return
 	}
-	task, run, err := h.app.ContinueAutomationRun(ctx, c.Param("run_id"), req.Message)
+	if strings.TrimSpace(req.CommandID) == "" {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试自动化追问 / command_id is required for safe automation follow-up retries", nil)
+		return
+	}
+	task, run, err := h.app.ContinueAutomationRun(ctx, c.Param("run_id"), req.CommandID, req.Message)
 	if err != nil {
+		if errors.Is(err, agentruntime.ErrInvalidCommand) {
+			writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", err.Error(), nil)
+			return
+		}
+		if errors.Is(err, appsvc.ErrAgentCommandConflict) {
+			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.command_conflict", "command_id 已用于不同的自动化追问 / command_id was already used for a different automation follow-up", nil)
+			return
+		}
+		if errors.Is(err, appsvc.ErrAgentOperationActive) {
+			writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.busy", "自动化运行已有活动操作 / The automation run already has an active operation", nil)
+			return
+		}
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
@@ -199,11 +222,30 @@ func (h *Handlers) HandleAutomationRunChatStream(ctx context.Context, c *app.Req
 }
 
 func (h *Handlers) HandleAutomationRunAbort(ctx context.Context, c *app.RequestContext) {
-	if !h.app.AbortAutomationRun(c.Param("run_id")) {
-		writeError(c, consts.StatusNotFound, "automation run is not active")
+	var req struct {
+		CommandID         string `json:"command_id"`
+		TargetOperationID string `json:"target_operation_id"`
+		Reason            string `json:"reason,omitempty"`
+	}
+	if err := c.BindJSON(&req); err != nil {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "命令格式无效 / Invalid agent command", nil)
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]string{"status": "ok"})
+	if strings.TrimSpace(req.CommandID) == "" || strings.TrimSpace(req.TargetOperationID) == "" {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "command_id 和 target_operation_id 为必填项 / command_id and target_operation_id are required", nil)
+		return
+	}
+	receipt, err := h.app.AbortAutomationRunCommand(
+		ctx, c.Param("run_id"), req.CommandID,
+		agentruntime.OperationID(strings.TrimSpace(req.TargetOperationID)), req.Reason,
+	)
+	if err != nil {
+		h.writeAgentCommandError(c, err, req.TargetOperationID)
+		return
+	}
+	c.JSON(consts.StatusAccepted, agentCommandReceiptResponse{
+		CommandID: string(receipt.CommandID), OperationID: string(receipt.OperationID), Cursor: uint64(receipt.Cursor),
+	})
 }
 
 func (h *Handlers) HandleAutomationRunMessages(ctx context.Context, c *app.RequestContext) {

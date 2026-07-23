@@ -61,18 +61,16 @@ func (g *toolExecutionGate) acquire(mode toolExecutionMode) func() {
 }
 
 func executionModeForTool(manifest ToolManifest) toolExecutionMode {
-	if manifest.Name == "task" {
+	switch manifest.Execution {
+	case ToolExecutionChild:
 		// task is an orchestration boundary. Holding the workspace lock while
 		// its subagent runs would deadlock when that subagent invokes a gated
 		// file tool; the nested tools acquire their own shared-workspace leases.
 		return toolExecutionUncoordinated
-	}
-	if manifest.MutatesWorkspace || manifest.Source == ToolSourceShell {
-		return toolExecutionExclusive
-	}
-	switch manifest.Source {
-	case ToolSourceRead, ToolSourceLore, ToolSourceHistory, ToolSourceWeb:
+	case ToolExecutionParallelRead:
 		return toolExecutionParallelRead
+	case ToolExecutionWorkspaceExclusive:
+		return toolExecutionExclusive
 	default:
 		// Only tools classified by a stable manifest are allowed to share the
 		// read side. Unknown tools remain exclusive because their side effects

@@ -2,14 +2,16 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"denova/config"
+	"denova/internal/agent"
 )
 
 func TestConfigManagerResourceSkillNames(t *testing.T) {
@@ -96,7 +98,10 @@ func TestLoadConfigManagerResourceSkillsUsesActiveSkillPrecedence(t *testing.T) 
 	writeConfigManagerSkill(t, filepath.Join(workspace, ".nova", "skills"), configManagerAutomationSkill, "workspace body", "config_manager")
 
 	cfg := &config.Config{SkillsDir: builtin, NovaDir: novaDir, Workspace: workspace}
-	got := loadConfigManagerResourceSkills(context.Background(), cfg, ConfigManagerRequest{Origin: "automation"})
+	got, err := loadConfigManagerResourceSkills(context.Background(), cfg, ConfigManagerRequest{Origin: "automation"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 1 {
 		t.Fatalf("loaded skills = %#v, want one", got)
 	}
@@ -117,27 +122,93 @@ func TestLoadConfigManagerResourceSkillsRespectsAgentOverride(t *testing.T) {
 		},
 	}
 
-	got := loadConfigManagerResourceSkills(context.Background(), cfg, ConfigManagerRequest{Origin: "automation"})
+	got, err := loadConfigManagerResourceSkills(context.Background(), cfg, ConfigManagerRequest{Origin: "automation"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 0 {
 		t.Fatalf("loaded skills with override disabled = %#v, want none", got)
 	}
 }
 
-func TestLoadConfigManagerResourceSkillsBoundsContent(t *testing.T) {
+func TestLoadConfigManagerResourceSkillsPreservesExactSourceForComposerProvenance(t *testing.T) {
 	root := t.TempDir()
 	builtin := filepath.Join(root, "builtin")
-	writeConfigManagerSkill(t, builtin, configManagerAutomationSkill, strings.Repeat("好", configManagerResourceSkillMaxBytes), "config_manager")
+	body := strings.Repeat("a", 256*1024+4096)
+	writeConfigManagerSkill(t, builtin, configManagerAutomationSkill, body, "config_manager")
 	cfg := &config.Config{SkillsDir: builtin}
 
-	got := loadConfigManagerResourceSkills(context.Background(), cfg, ConfigManagerRequest{Origin: "automation"})
+	got, err := loadConfigManagerResourceSkills(context.Background(), cfg, ConfigManagerRequest{Origin: "automation"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 1 {
 		t.Fatalf("loaded skills = %#v, want one", got)
 	}
-	if len([]byte(got[0].Content)) > configManagerResourceSkillMaxBytes {
-		t.Fatalf("content bytes = %d, want <= %d", len([]byte(got[0].Content)), configManagerResourceSkillMaxBytes)
+	if got[0].Content != body {
+		t.Fatalf("loader changed source before composition: got_bytes=%d want_bytes=%d", len(got[0].Content), len(body))
 	}
-	if !utf8.ValidString(got[0].Content) {
-		t.Fatalf("truncated content should remain valid utf8")
+
+	composition, err := agent.ComposeConfigManagerInstruction(cfg, nil, got...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var receipt *agent.SystemPromptManifestEntry
+	for _, entry := range composition.Manifest() {
+		if entry.Source == "配置 Skill" {
+			entry := entry
+			receipt = &entry
+			break
+		}
+	}
+	if receipt == nil {
+		t.Fatalf("composition manifest has no resource Skill receipt: %#v", composition.Manifest())
+	}
+	exactSource := "### /" + configManagerAutomationSkill + "\n\ndescription: test " + configManagerAutomationSkill + "\n\n" + body
+	wantOriginalSHA := fmt.Sprintf("%x", sha256.Sum256([]byte(exactSource)))
+	if receipt.OriginalBytes != len(exactSource) || receipt.OriginalSHA != wantOriginalSHA {
+		t.Fatalf("original provenance = bytes:%d sha:%s, want bytes:%d sha:%s", receipt.OriginalBytes, receipt.OriginalSHA, len(exactSource), wantOriginalSHA)
+	}
+	if !receipt.Truncated || !receipt.Included || receipt.IncludedBytes > config.DefaultAgentContextMaxFragmentBytes || receipt.IncludedSHA == receipt.OriginalSHA {
+		t.Fatalf("included provenance should describe composer truncation: %#v", *receipt)
+	}
+	if !strings.Contains(composition.Instruction(), "System source truncated by configured context budget") {
+		t.Fatalf("model-visible instruction must include the composer truncation marker")
+	}
+}
+
+func TestLoadConfigManagerResourceSkillsRejectsSourceAboveHardLimitWithoutPartialContent(t *testing.T) {
+	root := t.TempDir()
+	builtin := filepath.Join(root, "builtin")
+	writeConfigManagerSkill(t, builtin, configManagerAutomationSkill, strings.Repeat("a", configManagerResourceSkillMaxSourceBytes+1), "config_manager")
+
+	got, err := loadConfigManagerResourceSkills(context.Background(), &config.Config{SkillsDir: builtin}, ConfigManagerRequest{Origin: "automation"})
+	if err == nil || !strings.Contains(err.Error(), "resource Skill exceeds hard source limit") || !strings.Contains(err.Error(), "配置 Skill 超过加载硬上限") {
+		t.Fatalf("oversized source error = %v, want bilingual hard-limit error", err)
+	}
+	if got != nil {
+		t.Fatalf("oversized source must fail closed without partial Skills: %#v", got)
+	}
+}
+
+func TestLoadConfigManagerResourceSkillsRejectsTotalAboveHardLimitWithoutPartialSkills(t *testing.T) {
+	root := t.TempDir()
+	builtin := filepath.Join(root, "builtin")
+	body := strings.Repeat("a", 400*1024)
+	for _, name := range []string{configManagerTellerSkill, configManagerStoryDirectorSkill, configManagerImagePresetSkill, configManagerLoreSkill} {
+		writeConfigManagerSkill(t, builtin, name, body, "config_manager")
+	}
+	req := ConfigManagerRequest{
+		Origin:  "teller",
+		Context: map[string]string{"signals": "write_lore_items"},
+	}
+
+	got, err := loadConfigManagerResourceSkills(context.Background(), &config.Config{SkillsDir: builtin}, req)
+	if err == nil || !strings.Contains(err.Error(), "resource Skills exceed hard total source limit") || !strings.Contains(err.Error(), "配置 Skills 超过加载总硬上限") {
+		t.Fatalf("aggregate source error = %v, want bilingual hard-limit error", err)
+	}
+	if got != nil {
+		t.Fatalf("aggregate overflow must fail closed without partial Skills: %#v", got)
 	}
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import {
   abortAutomationRun,
   getAutomationRunMessages,
@@ -7,13 +7,16 @@ import {
   streamAutomationRunMessage,
   type AutomationRunRecord,
   type AutomationTriggerEvidence,
+  createAgentCommandID,
 } from '@/lib/api'
 import type { AgentMessageView } from '@/lib/agent-message-view'
 import { createAgentTextMessage, useAgentUIMessageStream } from '@/hooks/useAgentUIMessageStream'
+import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 
 export function useAutomationRunStream(options: { onFinished?: () => void | Promise<void> } = {}) {
   const { onFinished } = options
   const [activeRun, setActiveRun] = useState<AutomationRunRecord | null>(null)
+  const retryCommandIDsRef = useRef(new Map<string, string>())
 
   const handleStreamView = useCallback((view: AgentMessageView) => {
     if (view.kind !== 'activity' || view.data.event !== 'automation_run') return
@@ -46,8 +49,16 @@ export function useAutomationRunStream(options: { onFinished?: () => void | Prom
     setMessages(userMessage ? [createAgentTextMessage('user', userMessage)] : [])
     const abortController = new AbortController()
     setAbortController(abortController)
-    const stream = await streamAutomationRun(taskId, abortController.signal, triggerEvidence)
-    await consumeRunStream(stream)
+    const retryKey = agentCommandRetryKey(taskId, 'automation_run', triggerEvidence)
+    const commandId = rememberAgentCommandID(retryCommandIDsRef.current, retryKey, createAgentCommandID)
+    try {
+      const stream = await streamAutomationRun(taskId, commandId, abortController.signal, triggerEvidence)
+      retryCommandIDsRef.current.delete(retryKey)
+      await consumeRunStream(stream)
+    } catch (error) {
+      if (isKnownAgentCommandOutcome(error)) retryCommandIDsRef.current.delete(retryKey)
+      throw error
+    }
   }, [consumeRunStream, reset, setAbortController, setMessages])
 
   const resume = useCallback(async (run: AutomationRunRecord, intro?: string) => {
@@ -74,14 +85,30 @@ export function useAutomationRunStream(options: { onFinished?: () => void | Prom
     setMessages(prev => [...prev, createAgentTextMessage('user', trimmed)])
     const abortController = new AbortController()
     setAbortController(abortController)
-    const stream = await streamAutomationRunMessage(runId, trimmed, abortController.signal)
-    await consumeRunStream(stream)
+    const retryKey = agentCommandRetryKey(runId, 'automation_follow_up', trimmed)
+    const commandId = rememberAgentCommandID(retryCommandIDsRef.current, retryKey, createAgentCommandID)
+    try {
+      const stream = await streamAutomationRunMessage(runId, commandId, trimmed, abortController.signal)
+      retryCommandIDsRef.current.delete(retryKey)
+      await consumeRunStream(stream)
+    } catch (error) {
+      if (isKnownAgentCommandOutcome(error)) retryCommandIDsRef.current.delete(retryKey)
+      throw error
+    }
   }, [activeRun?.id, consumeRunStream, isStreaming, setAbortController, setMessages])
 
   const stop = useCallback(() => {
     const runId = activeRun?.id
-    if (runId) void abortAutomationRun(runId)
-  }, [activeRun?.id])
+    const operationId = activeRun?.runtime_operation_id?.trim()
+    if (!runId || !operationId) return
+    const retryKey = agentCommandRetryKey(operationId, 'abort', { reason: 'user_requested' })
+    const commandId = rememberAgentCommandID(retryCommandIDsRef.current, retryKey, createAgentCommandID)
+    void abortAutomationRun(runId, commandId, operationId).then(() => {
+      retryCommandIDsRef.current.delete(retryKey)
+    }).catch((error) => {
+      if (isKnownAgentCommandOutcome(error)) retryCommandIDsRef.current.delete(retryKey)
+    })
+  }, [activeRun?.id, activeRun?.runtime_operation_id])
 
   return {
     messages,

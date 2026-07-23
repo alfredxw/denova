@@ -88,7 +88,9 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 		}
 		return "已完成导演规划。", nil
 	}
-	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
+	directorTasks := newWorkspaceDirectorTaskGroup()
+	defer directorTasks.Close()
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{}).bindDirectorRuntime(directorTasks, nil)
 	conversation.directorGenerator = directorGenerator
 	done := startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
 
@@ -179,7 +181,7 @@ func TestPrepareInteractiveDirectorBeforeOpeningBuildsLoreWorksetForFirstGameTur
 	if len(snapshot.Turns) != 0 || snapshot.DirectorPlanStatus == nil || snapshot.DirectorPlanStatus.Status != interactive.DirectorPlanStatusReady || snapshot.DirectorPlanStatus.SourceTurnID != interactiveDirectorOpeningSourceID {
 		t.Fatalf("opening director should finish before the first turn: %#v", snapshot.DirectorPlanStatus)
 	}
-	messages, err := conversation.PrepareMessages("", "我报名公开比试")
+	messages, err := assembleAndCommitInteractiveContextForTest(conversation, "", "我报名公开比试")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +221,9 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 		return "", errors.New("director unavailable")
 	}
 
-	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{})
+	directorTasks := newWorkspaceDirectorTaskGroup()
+	defer directorTasks.Close()
+	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", turn.User, story.ReplyTargetChars, &config.Config{}).bindDirectorRuntime(directorTasks, nil)
 	conversation.directorGenerator = directorGenerator
 	done := startInteractiveDirectorTask(&config.Config{}, book.NewState(workspace), conversation, turn, nil)
 	<-done
@@ -331,6 +335,45 @@ func TestShouldRunInteractiveDirectorAgentAllowsManualRunForLegacyOffMode(t *tes
 	strategy.Enabled = false
 	if decision := shouldRunInteractiveDirectorAgent(strategy); decision.ShouldRun || decision.Reason != "disabled" {
 		t.Fatalf("disabled Director must reject manual runs: %#v", decision)
+	}
+}
+
+func TestInteractiveDirectorCommandIDIsStableBoundedAndSemantic(t *testing.T) {
+	token := interactive.DirectorPlanRunToken{
+		StoryID: strings.Repeat("story", 1000), BranchID: strings.Repeat("branch", 1000), Revision: "revision-1",
+		Hashes: map[string]string{"plan": "hash-plan", "agent_brief": "hash-brief"},
+	}
+	reordered := token
+	reordered.Hashes = map[string]string{"agent_brief": "hash-brief", "plan": "hash-plan"}
+	first, err := interactiveDirectorCommandID(token, "turn-1", interactiveDirectorTaskDirectorPlanUpdate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := interactiveDirectorCommandID(reordered, "turn-1", interactiveDirectorTaskDirectorPlanUpdate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != second {
+		t.Fatalf("map order changed Director command identity: %q != %q", first, second)
+	}
+	if len(first) > 128 {
+		t.Fatalf("Director command identity is not fixed length: %d", len(first))
+	}
+	changed := token
+	changed.Revision = "revision-2"
+	third, err := interactiveDirectorCommandID(changed, "turn-1", interactiveDirectorTaskDirectorPlanUpdate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == third {
+		t.Fatal("Director token revision change reused command identity")
+	}
+	fourth, err := interactiveDirectorCommandID(token, "turn-2", interactiveDirectorTaskDirectorPlanUpdate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == fourth {
+		t.Fatal("Director source turn change reused command identity")
 	}
 }
 

@@ -83,17 +83,33 @@ func (a *App) WithWorkspaceChangeMutation(
 	action func(*workspacechange.Service) (WorkspaceChangeMutationHooks, error),
 ) (string, error) {
 	a.ensureServices()
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	actualWorkspace := strings.TrimSpace(a.workspace)
 	expectedWorkspace = strings.TrimSpace(expectedWorkspace)
+	a.mu.RLock()
+	actualWorkspace := strings.TrimSpace(a.workspace)
+	a.mu.RUnlock()
 	if actualWorkspace == "" {
 		return "", ErrNoWorkspace
 	}
-	if expectedWorkspace == "" || filepath.Clean(expectedWorkspace) != filepath.Clean(actualWorkspace) {
+	if expectedWorkspace == "" || lifecycleWorkspaceKey(expectedWorkspace) != lifecycleWorkspaceKey(actualWorkspace) {
 		return "", fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, expectedWorkspace, actualWorkspace)
 	}
+	operation, err := a.acquireWorkspaceOperation(ctx, actualWorkspace, true)
+	if err != nil {
+		return "", err
+	}
+	defer operation.Release()
+
+	a.mu.RLock()
+	if lifecycleWorkspaceKey(a.workspace) != lifecycleWorkspaceKey(actualWorkspace) {
+		current := a.workspace
+		a.mu.RUnlock()
+		return "", fmt.Errorf("%w: expected=%q actual=%q", ErrWorkspaceChanged, actualWorkspace, current)
+	}
+	versionService := a.versionService
+	settings := versionAutoSettingsForConfig(a.cfg)
+	automationSnapshot := a.automationSnapshotLocked()
+	a.mu.RUnlock()
+
 	service, err := workspacechange.ForWorkspace(actualWorkspace)
 	if err != nil {
 		return "", err
@@ -102,12 +118,16 @@ func (a *App) WithWorkspaceChangeMutation(
 	if err != nil {
 		return "", err
 	}
+	if err := operation.Context().Err(); err != nil {
+		return "", err
+	}
 	if hooks.CreateTimedVersion {
-		maybeCreateTimedVersion(a.versionService, versionAutoSettingsForConfig(a.cfg))
+		maybeCreateTimedVersion(versionService, settings)
 	}
 	if strings.TrimSpace(hooks.AutomationSource) != "" && len(hooks.Paths) > 0 {
-		if automation := a.automationSnapshotLocked(); automation != nil {
-			a.automation().checkTriggersAfterWorkspaceMutation(ctx, automation, hooks.AutomationSource, hooks.Paths)
+		if automationSnapshot != nil {
+			applyAutomationLayeredConfig(&automationSnapshot.cfg, automationSnapshot.novaDir, automationSnapshot.workspace)
+			a.automation().checkTriggersAfterWorkspaceMutation(operation.Context(), automationSnapshot, hooks.AutomationSource, hooks.Paths)
 		}
 	}
 	return actualWorkspace, nil

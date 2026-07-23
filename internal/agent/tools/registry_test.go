@@ -39,16 +39,18 @@ func TestBuildAssemblesEnabledAdaptersInOrder(t *testing.T) {
 		Settings: Settings{FileRead: true, Skills: true, WebSearch: true},
 		Middlewares: []MiddlewareRegistration{
 			{
-				Name:    "filesystem",
-				Enabled: FilesystemAllowed,
+				Name:              "filesystem",
+				Enabled:           FilesystemAllowed,
+				ModelVisibleTools: []string{"ls", "read_file"},
 				Build: func(context.Context, Settings) (adk.ChatModelAgentMiddleware, error) {
 					calls = append(calls, "filesystem")
 					return mw, nil
 				},
 			},
 			{
-				Name:    "skills",
-				Enabled: CapabilityAllowed(AgentToolSkills),
+				Name:              "skills",
+				Enabled:           CapabilityAllowed(AgentToolSkills),
+				ModelVisibleTools: []string{"skill"},
 				Build: func(context.Context, Settings) (adk.ChatModelAgentMiddleware, error) {
 					calls = append(calls, "skills")
 					return mw, nil
@@ -107,6 +109,33 @@ func TestBuildAssemblesEnabledAdaptersInOrder(t *testing.T) {
 	}
 	if len(result.Handlers) != 5 {
 		t.Fatalf("handlers = %d, want 5", len(result.Handlers))
+	}
+	if want := []string{"ls", "read_file", "skill"}; !sameStrings(result.MiddlewareToolNames, want) {
+		t.Fatalf("middleware tool names = %#v, want %#v", result.MiddlewareToolNames, want)
+	}
+}
+
+func TestBuildOmitsToolDeclarationsForDisabledOrAbsentMiddleware(t *testing.T) {
+	result, err := Build(context.Background(), BuildRequest{
+		Settings: Settings{},
+		Middlewares: []MiddlewareRegistration{
+			{
+				Name: "absent", ModelVisibleTools: []string{"absent_tool"},
+				Build: func(context.Context, Settings) (adk.ChatModelAgentMiddleware, error) { return nil, nil },
+			},
+			{
+				Name: "disabled", Enabled: CapabilityAllowed(AgentToolSkills), ModelVisibleTools: []string{"skill"},
+				Build: func(context.Context, Settings) (adk.ChatModelAgentMiddleware, error) {
+					return &adk.BaseChatModelAgentMiddleware{}, nil
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.MiddlewareToolNames) != 0 {
+		t.Fatalf("inactive middleware declarations leaked into assembly: %#v", result.MiddlewareToolNames)
 	}
 }
 

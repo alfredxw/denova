@@ -67,9 +67,16 @@ func generateChapterSplitRegex(ctx context.Context, cfg *config.Config, modelCfg
 		log.Printf("[tool-agent] create chapter regex model failed attempt=%s err=%v", attempt, err)
 		return "", fmt.Errorf("创建工具 Agent 模型失败: %w", err)
 	}
+	composition, err := composeBuiltinSystemInstruction(cfg, config.AgentKindToolAgent, "tool_agent", cfg.Workspace, "builtin_base", "章节分割正则任务", "define the structured chapter-regex inference task", chapterSplitRegexSystemInstruction())
+	if err != nil {
+		return "", err
+	}
 	messages := []*schema.Message{
-		schema.SystemMessage(protectedSystemInstruction(cfg, config.AgentKindToolAgent, chapterSplitRegexSystemInstruction())),
+		schema.SystemMessage(composition.Instruction()),
 		schema.UserMessage(instruction),
+	}
+	if err := validateConfiguredProviderInput(cfg, config.AgentKindToolAgent, messages, nil); err != nil {
+		return "", err
 	}
 	mode := "generate_" + attempt
 	span, callID, traceCtx := beginLLMCallTrace(ctx, config.AgentKindToolAgent, "tool_agent_chapter_split_regex", mode, modelCfg, messages, nil, false)

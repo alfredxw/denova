@@ -29,10 +29,18 @@ func GenerateVersionSummary(ctx context.Context, cfg *config.Config, instruction
 		return "", fmt.Errorf("创建版本说明模型失败: %w", err)
 	}
 	log.Printf("[version-summary-agent] generate begin instruction=%s", promptPartSummary(instruction))
-	systemInstruction := protectedSystemInstruction(cfg, config.AgentKindVersionSummary, "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")
+	composition, err := composeBuiltinSystemInstruction(cfg, config.AgentKindVersionSummary, "version_summary", cfg.Workspace, "builtin_base", "版本说明生成规则", "define the version summary task and output constraint", "你是 Denova 小说工作台的版本说明生成器。根据文件变更推理这次保存的核心创作变化。只输出一句中文版本说明，10 到 30 个汉字，不要编号、引号、冒号、句号或解释。")
+	if err != nil {
+		runErr = err
+		return "", err
+	}
 	messages := []*schema.Message{
-		schema.SystemMessage(systemInstruction),
+		schema.SystemMessage(composition.Instruction()),
 		schema.UserMessage(instruction),
+	}
+	if err := validateConfiguredProviderInput(cfg, config.AgentKindVersionSummary, messages, nil); err != nil {
+		runErr = err
+		return "", err
 	}
 	span, callID, llmTraceCtx := beginLLMCallTrace(traceCtx, config.AgentKindVersionSummary, "version_summary", "generate", modelCfg, messages, nil, false)
 	msg, err := cm.Generate(llmTraceCtx, messages)

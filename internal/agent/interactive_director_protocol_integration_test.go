@@ -54,7 +54,7 @@ func TestInteractiveDirectorPlanSubmissionTerminatesAgentRun(t *testing.T) {
 	runner := adk.NewRunner(ctx, adk.RunnerConfig{Agent: builtAgent, EnableStreaming: true})
 	conversation := &singleInstructionConversation{instruction: "更新导演规划"}
 	var events []Event
-	NewRuntime(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "更新导演规划"}, RunOptions{
+	outcome := newTurnExecutor(DefaultLoopPolicy()).Run(ctx, runner, conversation, nil, ChatRequest{Message: "更新导演规划"}, RunOptions{
 		AgentKind:       config.AgentKindInteractiveDirector,
 		RootAgentName:   "interactive-director-terminal-submission-test",
 		MaintenanceTask: "director_plan_update",
@@ -69,5 +69,8 @@ func TestInteractiveDirectorPlanSubmissionTerminatesAgentRun(t *testing.T) {
 	}
 	if countEventType(events, "done") != 1 || countEventType(events, "error") != 0 {
 		t.Fatalf("director run did not finish successfully: %#v", events)
+	}
+	if outcome.Status != RunOutcomeCompleted {
+		t.Fatalf("interactive director protocol cancel outcome = %#v, want completed", outcome)
 	}
 }

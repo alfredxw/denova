@@ -1,5 +1,6 @@
-import { fetchAPI, jsonHeaders, parseSSEStream, requestJSON } from '@/lib/api-client'
-import type { ContextAnalysis, InteractiveImage } from '@/lib/api-client'
+import { APIError, createAgentCommandID, fetchAPI, jsonHeaders, parseSSEStream, requestJSON } from '@/lib/api-client'
+import type { AgentCommandDelivery, AgentCommandReceipt, AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeOperation, AgentRuntimeQueuedCommand, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt, ContextAnalysis, InteractiveImage } from '@/lib/api-client'
+import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
 import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSSEEvent, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunPolicy, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput, UpdateTurnNarrativeResult } from './types'
 
 function presetMutationBody<T extends object>(input: T, baseRevision?: string, workspace?: string) {
@@ -343,7 +344,7 @@ export function updateInteractiveTurnNarrative(storyId: string, turnId: string, 
   })
 }
 
-export function generateInteractiveImage(storyId: string, input: { branch_id?: string; turn_id: string; source: 'manual' | 'auto'; force?: boolean }): Promise<{ enabled?: boolean; skipped?: boolean; skipped_reason?: string; image?: InteractiveImage }> {
+export function generateInteractiveImage(storyId: string, input: { command_id: string; branch_id?: string; turn_id: string; source: 'manual' | 'auto'; force?: boolean }): Promise<{ enabled?: boolean; skipped?: boolean; skipped_reason?: string; image?: InteractiveImage }> {
   return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/images/generate`, {
     method: 'POST',
     headers: jsonHeaders,
@@ -351,43 +352,145 @@ export function generateInteractiveImage(storyId: string, input: { branch_id?: s
   })
 }
 
-export async function sendInteractiveMessage(input: { mode: 'story' | 'setting'; story_id: string; branch?: string; message: string; style_scenes?: string[]; regenerate_from_turn_id?: string; signal?: AbortSignal }): Promise<ReadableStream<InteractiveSSEEvent>> {
+export interface InteractiveStartInput {
+  command_id: string
+  mode: 'story' | 'setting'
+  story_id: string
+  branch?: string
+  message: string
+  style_scenes?: string[]
+  regenerate_from_turn_id?: string
+  signal?: AbortSignal
+}
+
+export async function sendInteractiveMessage(input: InteractiveStartInput): Promise<ReadableStream<InteractiveSSEEvent>> {
+  const { signal, ...body } = input
   const res = await fetchAPI('/api/interactive/chat', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify(input),
-    signal: input.signal,
+    body: JSON.stringify(body),
+    signal,
   })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  if (!res.ok) throw await interactiveStreamResponseError(res)
   if (!res.body) throw new Error('No response body')
   return parseSSEStream(res.body)
+}
+
+async function interactiveStreamResponseError(res: Response) {
+  const text = await res.text()
+  let payload: Record<string, unknown> = {}
+  if (text) {
+    try {
+      payload = JSON.parse(text) as Record<string, unknown>
+    } catch {
+      payload = { error: text }
+    }
+  }
+  const message = typeof payload.error === 'string' && payload.error ? payload.error : `HTTP ${res.status}`
+  const code = typeof payload.code === 'string' && payload.code ? payload.code : undefined
+  const details = payload.details && typeof payload.details === 'object' && !Array.isArray(payload.details)
+    ? payload.details as Record<string, unknown>
+    : undefined
+  return new APIError(message, { status: res.status, code, details, payload })
 }
 
 export interface ActiveInteractiveChat {
   active: boolean
   status?: 'running' | 'done' | 'aborted' | 'error'
   task_id?: string
+  command_id?: string
   story_id?: string
   branch_id?: string
   message?: string
   regenerate_from_turn_id?: string
+  /** Diagnostic-only latest raw SSE cursor; runtime `cursor` is durable state. */
+  stream_cursor?: number
+  cursor?: number
+  phase?: 'idle' | 'running' | string
+  recovery_paused?: boolean
+  runtime_recoverable?: boolean
+  stream_attached?: boolean
+  recovery_actions?: AgentRuntimeRecoveryAction[]
+  active_operation_id?: string
+  active_cycle?: number
+  active_output?: AgentRuntimeActiveOutput
+  queue?: AgentRuntimeQueuedCommand[]
+  open_tools?: AgentRuntimeOpenTool[]
+  last_operation?: AgentRuntimeOperation
+}
+
+export interface InteractiveAgentCommand {
+  type: AgentCommandDelivery | 'abort'
+  commandId: string
+  targetOperationId: string
+  storyId: string
+  branchId?: string
+  message?: string
+  styleScenes?: string[]
+  reason?: string
+}
+
+/** Submit a command to the exact game operation shown by the stage. */
+export function submitInteractiveAgentCommand(command: InteractiveAgentCommand): Promise<AgentCommandReceipt> {
+  const input = command.type === 'abort'
+    ? undefined
+    : {
+        mode: 'story',
+        story_id: command.storyId,
+        branch: command.branchId,
+        message: command.message || '',
+        style_scenes: command.styleScenes || [],
+      }
+  return requestJSON('/api/interactive/chat/commands', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      type: command.type,
+      command_id: command.commandId,
+      target_operation_id: command.targetOperationId,
+      story_id: command.storyId,
+      ...(command.branchId ? { branch_id: command.branchId } : {}),
+      ...(input ? { input } : {}),
+      ...(command.reason ? { reason: command.reason } : {}),
+    }),
+  })
 }
 
 export function getActiveInteractiveChat(storyId: string, branchId?: string): Promise<ActiveInteractiveChat> {
   return requestJSON(`/api/interactive/chat/active?${interactiveChatQuery(storyId, branchId)}`)
 }
 
-export async function streamActiveInteractiveChat(input: { storyId: string; branchId?: string; taskId?: string; signal?: AbortSignal }): Promise<ReadableStream<InteractiveSSEEvent>> {
-  const res = await fetchAPI(`/api/interactive/chat/stream?${interactiveChatQuery(input.storyId, input.branchId, input.taskId)}`, { signal: input.signal })
-  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+/** Recover accepted game work by server-projected identity, never by browser-cached input. */
+export function recoverInteractiveAgentRuntime(input: {
+  storyId: string
+  branchId?: string
+  action: AgentRuntimeRecoveryAction
+}): Promise<AgentRuntimeRecoveryReceipt> {
+  return requestJSON('/api/interactive/chat/recovery', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      action: input.action,
+      story_id: input.storyId,
+      ...(input.branchId ? { branch: input.branchId } : {}),
+    }),
+  })
+}
+
+export async function streamActiveInteractiveChat(input: { storyId: string; branchId?: string; taskId?: string; after?: string; signal?: AbortSignal }): Promise<ReadableStream<InteractiveSSEEvent>> {
+  const taskId = input.taskId?.trim()
+  if (!taskId) throw new Error('Cannot reconnect without an exact Agent stream task')
+  const res = await fetchAPI(`/api/interactive/chat/stream?${interactiveChatQuery(input.storyId, input.branchId, taskId, input.after)}`, { signal: input.signal })
+  if (!res.ok) throw await interactiveStreamResponseError(res)
   if (!res.body) throw new Error('No response body')
   return parseSSEStream(res.body)
 }
 
-function interactiveChatQuery(storyId: string, branchId?: string, taskId?: string) {
+function interactiveChatQuery(storyId: string, branchId?: string, taskId?: string, after?: string) {
   const params = new URLSearchParams({ story_id: storyId })
   if (branchId) params.set('branch', branchId)
   if (taskId) params.set('task_id', taskId)
+  if (after) params.set('after', after)
   return params.toString()
 }
 
@@ -399,22 +502,39 @@ export function analyzeInteractiveContext(input: { mode: 'story'; story_id: stri
   })
 }
 
-export function compactInteractiveContext(storyId: string, branchId?: string): Promise<void> {
-  return requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/context-compaction`, {
-    method: 'POST',
-    headers: jsonHeaders,
-    body: JSON.stringify({ branch_id: branchId }),
-  })
+const interactiveStructuralCommandIDs = new Map<string, string>()
+
+export async function compactInteractiveContext(storyId: string, branchId?: string): Promise<void> {
+  const key = `compact:${storyId}:${branchId ?? ''}`
+  const commandId = interactiveStructuralCommandIDs.get(key) ?? createAgentCommandID()
+  interactiveStructuralCommandIDs.set(key, commandId)
+  try {
+    await requestJSON(`/api/interactive/stories/${encodeURIComponent(storyId)}/context-compaction`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ command_id: commandId, branch_id: branchId }),
+    })
+    interactiveStructuralCommandIDs.delete(key)
+  } catch (error) {
+    if (isKnownAgentCommandOutcome(error)) interactiveStructuralCommandIDs.delete(key)
+    throw error
+  }
 }
 
 export async function removeInteractiveContextCompaction(storyId: string, branchId?: string): Promise<boolean> {
-  const query = branchId ? `?branch=${encodeURIComponent(branchId)}` : ''
-  const data = await requestJSON<{ removed?: boolean }>(`/api/interactive/stories/${encodeURIComponent(storyId)}/context-compaction/active${query}`, {
-    method: 'DELETE',
-  })
-  return Boolean(data.removed)
-}
-
-export async function abortInteractiveChat(): Promise<void> {
-  await requestJSON('/api/interactive/chat/abort', { method: 'POST' })
+  const key = `remove:${storyId}:${branchId ?? ''}`
+  const commandId = interactiveStructuralCommandIDs.get(key) ?? createAgentCommandID()
+  interactiveStructuralCommandIDs.set(key, commandId)
+  const query = new URLSearchParams({ command_id: commandId })
+  if (branchId) query.set('branch', branchId)
+  try {
+    const data = await requestJSON<{ removed?: boolean }>(`/api/interactive/stories/${encodeURIComponent(storyId)}/context-compaction/active?${query}`, {
+      method: 'DELETE',
+    })
+    interactiveStructuralCommandIDs.delete(key)
+    return Boolean(data.removed)
+  } catch (error) {
+    if (isKnownAgentCommandOutcome(error)) interactiveStructuralCommandIDs.delete(key)
+    throw error
+  }
 }

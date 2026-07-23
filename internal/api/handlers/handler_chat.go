@@ -10,6 +10,7 @@ import (
 	"github.com/cloudwego/hertz/pkg/protocol/consts"
 
 	"denova/internal/agent"
+	"denova/internal/agentruntime"
 	"denova/internal/api/sse"
 	novaApp "denova/internal/app"
 	"denova/internal/workspacechange"
@@ -27,6 +28,10 @@ func (h *Handlers) HandleChat(ctx context.Context, c *app.RequestContext) {
 	}
 	if strings.TrimSpace(req.Message) == "" {
 		writeErrorKey(c, consts.StatusBadRequest, "api.common.messageRequired")
+		return
+	}
+	if strings.TrimSpace(req.CommandID) == "" {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试请求 / command_id is required for safe request retries", nil)
 		return
 	}
 	req.Locale = requestLocale(c)
@@ -64,6 +69,30 @@ func (h *Handlers) HandleChatContextAnalysis(ctx context.Context, c *app.Request
 }
 
 func (h *Handlers) writeChatPreparationError(c *app.RequestContext, err error) {
+	if errors.Is(err, novaApp.ErrAgentCommandIDRequired) {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少 command_id，无法安全重试请求 / command_id is required for safe request retries", nil)
+		return
+	}
+	if errors.Is(err, agentruntime.ErrInvalidCommand) {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", err.Error(), nil)
+		return
+	}
+	if errors.Is(err, novaApp.ErrAgentCommandConflict) {
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.command_conflict", "command_id 已用于其他请求 / command_id was already used for a different request", nil)
+		return
+	}
+	if errors.Is(err, novaApp.ErrAgentOperationActive) {
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.busy", "已有 Agent 正在运行，请使用 Follow Up、Steer 或 Stop / An agent is already running; use Follow Up, Steer, or Stop", nil)
+		return
+	}
+	if errors.Is(err, agent.ErrRecoveryRequired) {
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.recovery_required", "存在需要恢复的 Agent 运行，请先重新挂接或提交恢复操作 / A durable agent run requires recovery before starting a new one", nil)
+		return
+	}
+	if errors.Is(err, novaApp.ErrWorkspaceTransition) || errors.Is(err, novaApp.ErrAgentContextChanged) {
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.context_changed", "运行上下文已变化，请重试 / The agent context changed; retry the request", nil)
+		return
+	}
 	if errors.Is(err, novaApp.ErrNoWorkspace) {
 		writeErrorKey(c, consts.StatusConflict, "api.workspace.noWorkspace")
 		return
@@ -84,7 +113,19 @@ func (h *Handlers) HandleChatContextCompaction(ctx context.Context, c *app.Reque
 	if !h.requireWorkspace(c) {
 		return
 	}
-	result, err := h.app.CompactContext(ctx)
+	var body struct {
+		CommandID string `json:"command_id"`
+	}
+	if err := c.BindJSON(&body); err != nil {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "命令格式无效 / Invalid compaction command", nil)
+		return
+	}
+	body.CommandID = strings.TrimSpace(body.CommandID)
+	if err := agentruntime.ValidateCommandID(body.CommandID, agentruntime.DefaultInputLimits()); err != nil {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少或无效的 command_id，无法安全重试 / command_id is required and must be valid for safe retries", nil)
+		return
+	}
+	result, err := h.app.CompactContextCommand(ctx, body.CommandID)
 	if err != nil {
 		writeError(c, consts.StatusConflict, err.Error())
 		return
@@ -96,7 +137,12 @@ func (h *Handlers) HandleChatContextCompactionRemove(ctx context.Context, c *app
 	if !h.requireWorkspace(c) {
 		return
 	}
-	removed, err := h.app.RemoveContextCompaction()
+	commandID := strings.TrimSpace(c.Query("command_id"))
+	if err := agentruntime.ValidateCommandID(commandID, agentruntime.DefaultInputLimits()); err != nil {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "缺少或无效的 command_id，无法安全重试 / command_id is required and must be valid for safe retries", nil)
+		return
+	}
+	removed, err := h.app.RemoveContextCompactionCommand(ctx, commandID)
 	if err != nil {
 		writeError(c, consts.StatusConflict, err.Error())
 		return
@@ -106,9 +152,14 @@ func (h *Handlers) HandleChatContextCompactionRemove(ctx context.Context, c *app
 
 // handleChatStream 重连到当前活跃任务的 UIMessage 事件流（回放已有事件 + 继续接收新事件）。
 func (h *Handlers) HandleChatStream(ctx context.Context, c *app.RequestContext) {
+	taskID := strings.TrimSpace(c.Query("task_id"))
+	if taskID == "" {
+		writeError(c, consts.StatusBadRequest, "缺少 task_id，无法精确恢复 Agent 流 / task_id is required for exact Agent stream recovery")
+		return
+	}
 	task := h.app.ActiveTask()
-	if task == nil {
-		writeErrorKey(c, consts.StatusNotFound, "api.chat.noActiveTask")
+	if task == nil || task.ID() != taskID {
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.rehydrate_required", "旧的任务流已失效，请从 active projection 重新挂接 / The old task stream is stale; rehydrate from the active projection", map[string]any{"task_id": taskID})
 		return
 	}
 	log.Printf("[agent-ui-sse] attach active chat task_id=%s status=%s", task.ID(), task.Status())
@@ -117,27 +168,27 @@ func (h *Handlers) HandleChatStream(ctx context.Context, c *app.RequestContext) 
 
 // handleChatActive 查询当前是否有活跃任务。
 func (h *Handlers) HandleChatActive(ctx context.Context, c *app.RequestContext) {
-	task := h.app.ActiveTask()
-	if task == nil {
-		c.JSON(consts.StatusOK, map[string]interface{}{
+	view := h.app.WritingAgentActiveView(ctx)
+	if view.Task == nil {
+		response := map[string]interface{}{
 			"active": false,
+		}
+		addAgentRuntimeProjection(response, view.Runtime, agentRuntimeProjectionOptions{
+			Available: view.RuntimeProjectionOK, RecoveryActions: view.RecoveryActions,
 		})
+		c.JSON(consts.StatusOK, response)
 		return
 	}
-	status := task.Status()
-	c.JSON(consts.StatusOK, map[string]interface{}{
-		"active": status == novaApp.TaskRunning,
-		"status": status,
-	})
-}
-
-// handleChatAbort 终止当前活跃任务。
-func (h *Handlers) HandleChatAbort(ctx context.Context, c *app.RequestContext) {
-	if task := h.app.ActiveTask(); task != nil {
-		log.Printf("[agent-sse] abort requested task_id=%s status=%s", task.ID(), task.Status())
+	response := map[string]interface{}{
+		"active":        !view.Task.Finished,
+		"status":        view.Task.Status,
+		"task_id":       view.Task.ID,
+		"stream_cursor": view.Task.Cursor,
 	}
-	h.app.AbortTask()
-	c.JSON(consts.StatusOK, map[string]string{"status": "ok"})
+	addAgentRuntimeProjection(response, view.Runtime, agentRuntimeProjectionOptions{
+		Available: view.RuntimeProjectionOK, StreamAttached: true, RecoveryActions: view.RecoveryActions,
+	})
+	c.JSON(consts.StatusOK, response)
 }
 
 func (h *Handlers) chatSSEStreamOptions() []sse.StreamOption {

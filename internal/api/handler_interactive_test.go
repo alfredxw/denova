@@ -180,12 +180,78 @@ func TestInteractiveStorySelectionAPIUpdatesWorkspaceCurrentStory(t *testing.T) 
 
 func TestInteractiveDirectorAPI(t *testing.T) {
 	application := newTestApplication(t)
+	directorFixture, err := application.CreateStoryDirector(interactive.StoryDirector{
+		ID:   "director-api-fixture",
+		Name: "导演 API 测试",
+		ModuleRefs: interactive.StoryDirectorModuleRefs{
+			NarrativeStyleDisabled: true,
+			EventPackagesDisabled:  true,
+			RuleSystemDisabled:     true,
+			ActorStateDisabled:     true,
+			ImagePresetDisabled:    true,
+		},
+		Strategy: interactive.StoryDirectorStrategy{
+			Enabled:             true,
+			BranchPlanningTurns: 1,
+			PlanningTemplates: interactive.StoryDirectorPlanningTemplates{
+				Plan: `# 导演私密规划
+
+## 阶段目标与隐藏钩子
+测试。
+## 资料库锚点
+测试。
+## 选角覆盖
+测试。
+## 核心角色与关系张力
+测试。
+## 重要势力与阶段阻力
+测试。
+## 当前场景幕后信息
+测试。
+## 信息揭示与线索密度
+测试。
+## 遭遇、检定与代价
+测试。
+## 爽点、危机与反转
+测试。
+## 状态连续性
+测试。
+## 最近分支安排
+测试。
+## 伏笔与回收
+测试。`,
+				AgentBrief: `# 正文 Agent 简报
+
+## 当前目标与可见钩子
+测试。
+## 当前场景与行动空间
+测试。
+## 当前角色与可见关系
+测试。
+## 已公开信息与可发现线索
+测试。
+## 遭遇、检定与可见代价
+测试。
+## 状态连续性
+测试。
+## 最近分支承接
+测试。`,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create Director API fixture: %v", err)
+	}
 	server := NewServer(application, "0")
 
-	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]string{
-		"title":           "导演接口",
-		"origin":          "主角准备参加学院大比",
-		"story_teller_id": "classic",
+	createResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories", map[string]any{
+		"title":             "导演接口",
+		"origin":            "主角准备参加学院大比",
+		"story_teller_id":   "classic",
+		"story_director_id": directorFixture.ID,
+		"state_schema_policy": map[string]string{
+			"mode": interactive.StoryStateSchemaModeFixedTemplate,
+		},
 	})
 	if createResp.Code != http.StatusOK {
 		t.Fatalf("create story status = %d body=%s", createResp.Code, createResp.Body.String())
@@ -254,9 +320,6 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 	}
 
 	if _, err := application.AppendInteractiveTurn(created.ID, "", "我报名学院大比", "报名弟子把他的名字写进木牌。"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := application.InteractiveDirectorPlanStatus(created.ID, "main"); err != nil {
 		t.Fatal(err)
 	}
 	runResp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/stories/"+created.ID+"/director/run", map[string]string{"branch_id": "main"})
@@ -648,6 +711,23 @@ func TestInteractiveChatRequiresStoryID(t *testing.T) {
 	}
 }
 
+func TestInteractiveChatRequiresCommandID(t *testing.T) {
+	application := newTestApplication(t)
+	server := NewServer(application, "0")
+
+	resp := performJSONRequest(t, server, http.MethodPost, "/api/interactive/chat", map[string]string{
+		"mode":     "story",
+		"story_id": "story-1",
+		"message":  "我推开酒馆的门",
+	})
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("chat status = %d body=%s", resp.Code, resp.Body.String())
+	}
+	if body := resp.Body.String(); !strings.Contains(body, "缺少 command_id") || !strings.Contains(body, "command_id is required") {
+		t.Fatalf("missing command id error must be bilingual: %s", body)
+	}
+}
+
 func TestInteractiveChatRecoveryRoutesRejectMissingActiveRun(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
@@ -665,7 +745,7 @@ func TestInteractiveChatRecoveryRoutesRejectMissingActiveRun(t *testing.T) {
 	}
 
 	streamResp := performJSONRequest(t, server, http.MethodGet, "/api/interactive/chat/stream?story_id=story-1&branch=main", nil)
-	if streamResp.Code != http.StatusNotFound {
+	if streamResp.Code != http.StatusBadRequest {
 		t.Fatalf("missing stream status = %d body=%s", streamResp.Code, streamResp.Body.String())
 	}
 }

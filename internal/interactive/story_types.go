@@ -33,11 +33,15 @@ type AppendTurnRequest struct {
 type AppendTurnWithStateRequest struct {
 	BranchID             string                    `json:"branch_id"`
 	ExpectedParentID     *string                   `json:"expected_parent_id,omitempty"`
+	ReplaceTurnID        string                    `json:"replace_turn_id,omitempty"`
 	User                 string                    `json:"user"`
 	Narrative            string                    `json:"narrative"`
 	Thinking             string                    `json:"thinking,omitempty"`
 	RunID                string                    `json:"run_id,omitempty"`
 	AgentKind            string                    `json:"agent_kind,omitempty"`
+	AgentCommandID       string                    `json:"agent_command_id,omitempty"`
+	AgentOperationID     string                    `json:"agent_operation_id,omitempty"`
+	AgentCycle           int                       `json:"agent_cycle,omitempty"`
 	DisplayEvents        []DisplayEvent            `json:"display_events,omitempty"`
 	ModelContextMessages []ModelContextMessage     `json:"model_context_messages,omitempty"`
 	Ops                  []StateOp                 `json:"ops,omitempty"`
@@ -82,10 +86,11 @@ type UpdateTurnNarrativeResult struct {
 }
 
 type InteractiveImageGenerateRequest struct {
-	BranchID string `json:"branch_id,omitempty"`
-	TurnID   string `json:"turn_id"`
-	Source   string `json:"source,omitempty"`
-	Force    bool   `json:"force,omitempty"`
+	CommandID string `json:"command_id"`
+	BranchID  string `json:"branch_id,omitempty"`
+	TurnID    string `json:"turn_id"`
+	Source    string `json:"source,omitempty"`
+	Force     bool   `json:"force,omitempty"`
 }
 
 type AppendStateDeltaRequest struct {
@@ -214,6 +219,12 @@ type TurnEvent struct {
 	Thinking             string                `json:"thinking,omitempty"`
 	RunID                string                `json:"run_id,omitempty"`
 	AgentKind            string                `json:"agent_kind,omitempty"`
+	AgentCommandID       string                `json:"agent_command_id,omitempty"`
+	AgentOperationID     string                `json:"agent_operation_id,omitempty"`
+	AgentCycle           int                   `json:"agent_cycle,omitempty"`
+	AgentCommitHash      string                `json:"agent_commit_hash,omitempty"`
+	PlayerInputID        string                `json:"player_input_id,omitempty"`
+	PlayerInputHash      string                `json:"player_input_hash,omitempty"`
 	DisplayEvents        []DisplayEvent        `json:"display_events,omitempty"`
 	ModelContextMessages []ModelContextMessage `json:"model_context_messages,omitempty"`
 	StateDelta           *StateDelta           `json:"state_delta,omitempty"`
@@ -388,6 +399,10 @@ type ContextCompactionEvent struct {
 	Threshold           float64 `json:"threshold"`
 	Reason              string  `json:"reason,omitempty"`
 	Phase               string  `json:"phase,omitempty"`
+	// ExpectedParentID is a write-only compare-and-swap guard. It is never
+	// serialized into the story journal; ParentID records the parent that
+	// actually won the commit.
+	ExpectedParentID *string `json:"-"`
 }
 
 type ContextCompactionRemovalEvent struct {
@@ -401,6 +416,36 @@ type ContextCompactionRemovalEvent struct {
 	CompactionID    string `json:"compaction_id,omitempty"`
 	SourceTurnCount int    `json:"source_turn_count"`
 	Reason          string `json:"reason,omitempty"`
+	// ExpectedParentID rejects removal requests prepared from an obsolete
+	// branch snapshot.
+	ExpectedParentID *string `json:"-"`
+}
+
+// TurnVersionProjection records one immutable event copied from the previous
+// canonical suffix. The source event remains byte-for-byte auditable while the
+// projected event receives a new ID and parent on the selected version path.
+type TurnVersionProjection struct {
+	SourceID    string `json:"source_id"`
+	ProjectedID string `json:"projected_id"`
+	EventType   string `json:"event_type"`
+}
+
+// TurnVersionSelectionEvent is an append-only audit record for a canonical
+// version choice. It deliberately stays off the active ancestry: ProjectedHeadID
+// is the branch head, while ParentID only links the audit record to that result.
+type TurnVersionSelectionEvent struct {
+	V                       int                     `json:"v"`
+	Type                    string                  `json:"type"`
+	ID                      string                  `json:"id"`
+	ParentID                string                  `json:"parent_id,omitempty"`
+	BranchID                string                  `json:"branch_id"`
+	Ts                      string                  `json:"ts"`
+	ReplacedTurnID          string                  `json:"replaced_turn_id"`
+	SelectedTurnID          string                  `json:"selected_turn_id"`
+	PreviousHeadID          string                  `json:"previous_head_id,omitempty"`
+	ProjectedHeadID         string                  `json:"projected_head_id,omitempty"`
+	ProjectedEvents         []TurnVersionProjection `json:"projected_events,omitempty"`
+	InvalidatedCompactionID string                  `json:"invalidated_compaction_id,omitempty"`
 }
 
 type BranchEvent struct {
@@ -428,6 +473,7 @@ type Snapshot struct {
 	StoryID                   string                           `json:"story_id"`
 	BranchID                  string                           `json:"branch_id"`
 	Turns                     []TurnEvent                      `json:"turns"`
+	PendingPlayerInputs       []PlayerInputAcceptedEvent       `json:"pending_player_inputs,omitempty"`
 	CurrentTurn               *TurnEvent                       `json:"current_turn,omitempty"`
 	TokenUsageEvents          []TokenUsageEvent                `json:"token_usage_events,omitempty"`
 	ContextCompaction         *ContextCompactionEvent          `json:"context_compaction,omitempty"`

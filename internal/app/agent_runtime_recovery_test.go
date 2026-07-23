@@ -1,0 +1,154 @@
+package app
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/cloudwego/eino/schema"
+
+	"denova/config"
+	"denova/internal/agent"
+	"denova/internal/agentruntime"
+)
+
+func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
+	if os.Getenv("DENOVA_WRITING_RECOVERY_SEED") == "1" {
+		runWritingRecoveryCrashSeed(t)
+		return
+	}
+	root := t.TempDir()
+	workspace, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := &config.Config{
+		OpenAIAPIKey: "unused", OpenAIModel: "test-model",
+		NovaDir: root, Workspace: workspace, ResumeLastWorkspace: false,
+	}
+	seed, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed.Close()
+
+	command := exec.Command(os.Args[0], "-test.run=^TestConcurrentColdWritingRecoveryCreatesOneDisplayTask$")
+	command.Env = append(os.Environ(),
+		"DENOVA_WRITING_RECOVERY_SEED=1",
+		"DENOVA_WRITING_RECOVERY_ROOT="+root,
+		"DENOVA_WRITING_RECOVERY_WORKSPACE="+workspace,
+	)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("crash seed failed: %v\n%s", err, output)
+	}
+
+	reopened, err := New(context.Background(), cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	status, ok := reopened.WritingAgentRuntimeProjection(context.Background())
+	if !ok {
+		t.Fatal("writing recovery projection unavailable")
+	}
+	actions := agent.RuntimeRecoveryActions(status)
+	if status.Phase != agentruntime.PhaseRunning || !status.RecoveryPaused || len(actions) != 2 || actions[0].Kind != agent.RuntimeRecoveryAttach || actions[0].CommandID != "writing-recovery-start" || actions[1].Kind != agent.RuntimeRecoveryAbort {
+		t.Fatalf("cold recovery actions = %#v status=%#v", actions, status)
+	}
+	abortAction := actions[1]
+
+	const callers = 16
+	results := make(chan AgentRuntimeRecoveryResult, callers)
+	errorsCh := make(chan error, callers)
+	var start sync.WaitGroup
+	start.Add(1)
+	for index := 0; index < callers; index++ {
+		runAppErrorTestGoroutine(errorsCh, "concurrent writing recovery", func() error {
+			start.Wait()
+			result, recoverErr := reopened.RecoverWritingAgent(context.Background(), AgentRuntimeRecoveryRequest{Action: abortAction})
+			if recoverErr != nil {
+				return recoverErr
+			}
+			results <- result
+			return nil
+		})
+	}
+	start.Done()
+	// The helper publishes its terminal error only after the closure (and its
+	// result send) returns. Receiving exactly one terminal value per caller is
+	// therefore the join barrier; closing the channels after a closure-owned
+	// WaitGroup can race with the helper's final send.
+	for range callers {
+		recoverErr := <-errorsCh
+		if recoverErr != nil {
+			t.Fatal(recoverErr)
+		}
+	}
+	close(results)
+	var task *Task
+	for result := range results {
+		if task == nil {
+			task = result.Task
+		}
+		if result.Task != task {
+			t.Fatalf("concurrent recovery created task %p, want %p", result.Task, task)
+		}
+	}
+	if task == nil {
+		t.Fatal("concurrent recovery returned no task")
+	}
+	replayed, err := reopened.RecoverWritingAgent(context.Background(), AgentRuntimeRecoveryRequest{Action: abortAction})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed.Task != task || replayed.Receipt.CommandID != abortAction.CommandID {
+		t.Fatalf("repeated abort recovery = %#v task=%p", replayed, task)
+	}
+	select {
+	case <-task.Done():
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("rehydrated interrupted Start did not settle after explicit abort")
+	}
+	status, ok = reopened.WritingAgentRuntimeProjection(context.Background())
+	if !ok || status.Phase != agentruntime.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agentruntime.OperationAborted {
+		t.Fatalf("aborted cold recovery status = %#v projected=%t", status, ok)
+	}
+}
+
+func runWritingRecoveryCrashSeed(t *testing.T) {
+	t.Helper()
+	application, err := New(context.Background(), &config.Config{
+		OpenAIAPIKey: "unused", OpenAIModel: "test-model",
+		NovaDir: os.Getenv("DENOVA_WRITING_RECOVERY_ROOT"), Workspace: os.Getenv("DENOVA_WRITING_RECOVERY_WORKSPACE"),
+		ResumeLastWorkspace: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	application.mu.RLock()
+	sessionID := application.session.ID
+	workspace := application.workspace
+	application.mu.RUnlock()
+	vanished := make(chan struct{})
+	if _, err := application.chatService.StartWithOptions(
+		context.Background(),
+		newInteractiveReplayRunner(t, &interactiveReplayModel{message: schema.AssistantMessage("must not run", nil)}),
+		&interactiveCrashConversation{vanished: vanished},
+		application.bookService,
+		agent.ChatRequest{CommandID: "writing-recovery-start", Message: "persist before crash"},
+		agent.RunOptions{AgentKind: agent.AgentKindIDE, Workspace: workspace, SessionID: sessionID, Mode: "ide"},
+		nil,
+	); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-vanished:
+		os.Exit(0)
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("writing recovery seed did not reach model context assembly")
+	}
+}
