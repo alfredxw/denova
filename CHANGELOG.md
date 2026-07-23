@@ -14,26 +14,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Agent context now uses an explicit fragment assembler and Tool Descriptor catalog: system, turn context, state memory, tool results, and user messages record source, purpose, placement, hash, and high bounded budgets. Tool effects durably record start before execution and finish after stream drain, while unknown tools recover conservatively without automatic retries.
 - 写作与游戏输入区在 Agent 运行时继续可用，默认把新指令作为 Follow Up 排队，也可显式选择 Steer；Stop 与 Send 独立，并通过 typed command 持续观察直到 operation 真正 settle。游戏每个 cycle 会独立提交回合、发出可重放的 cycle 边界，并在刷新后恢复已消费的追加指令。
 - Writing and Game composers remain usable while an Agent runs, queueing new instructions as Follow Up by default with explicit Steer support. Stop and Send are separate, typed commands keep observing until the operation actually settles, and every Game cycle commits its own turn with replayable boundaries that recover consumed follow-ups after refresh.
-- 写作与游戏模式共用的工作台通知槽新增一次性 GitHub Star 提示：仅在当前会话完成有效 Agent 回合后出现，新版本提醒始终优先；关闭或打开仓库后不再提示，并完整支持中英文、明暗主题、桌面与移动布局。
-- The shared Writing and Game workbench notice slot now includes a one-time GitHub Star prompt after a successful Agent turn in the current session. Update notices always take priority; dismissing the prompt or opening the repository keeps it quiet, with bilingual, light/dark, desktop, and mobile support.
-- 游戏模式 Actor 状态新增可回放的归档与恢复：敌人死亡或角色永久退场时保留完整历史状态，仅从活动上下文、检定与状态页签中退出；重新登场必须显式恢复。舞台状态面板与导演台提供中英文只读归档索引，并展示归档原因和来源回合。
-- Game Mode Actor state now supports replayable archive and restore transitions. Dead enemies and permanently departed characters retain their complete historical state while leaving active model context, rule checks, and state tabs; returning requires an explicit restore. The stage ledger and Director Console expose a bilingual read-only archive index with reason and source-turn provenance.
-- 游戏模式新故事开局新增故事级后台导演运行策略：支持“按需自动（推荐）”“仅手动”和“每 X 回合自动”；自动模式会在首回合落盘后先初始化规划，固定间隔从首回合起按配置节奏运行，手动模式仍可从导演台显式触发。
-- New Game Mode stories now have a story-scoped Background Director schedule with Automatic When Needed (recommended), Manual Only, and Automatic Every X Turns modes. Automatic modes initialize planning after the first persisted turn, interval mode follows its configured cadence from that opening turn, and manual mode remains explicitly runnable from the Director backstage.
-- 上下文分析器新增全上下文、SystemPrompt 区、消息组与来源片段的一键复制；游戏模式的“本轮互动指令与动态上下文”会在保留模型实际收到的完整原文同时，继续按本轮行动、导演本轮规则、`agent-brief.md`、`StoryDirector`、Actor 状态手册、动态策略等来源展开。
-- Context Analysis now supports one-click copying for the full context, the SystemPrompt section, message groups, and individual source parts. In Game Mode, the current-turn instruction and dynamic context retain the exact model-visible message while expanding into sources such as the current action, turn-specific director rules, `agent-brief.md`, `StoryDirector`, the Actor state guide, and dynamic strategy prompts.
-- 游戏模式的故事线选择器新增批量删除：可在同一面板中多选或全选故事线，查看受影响清单后统一确认删除；操作支持中英文、明暗主题和窄屏布局。
-- The Game Mode story picker now supports batch deletion: select multiple or all stories in one panel, review the affected list, and confirm once, with bilingual, light/dark, and narrow-screen support.
-- 游戏模式的新故事线配置新增故事级“状态结构”策略：可选择“按模板动态适配”“固定使用模板”或“为故事动态生成”，并在同一区域选择基础状态模板；配置支持中英文、明暗主题与自适应布局。
-- New Game Mode story setup adds a story-level State Schema policy with Adapt a Template, Use a Fixed Template, and Generate for This Story modes, plus an integrated base-template picker with bilingual, theme-aware, adaptive UI.
-- 状态模板字段新增可选的 `group` 与 `display` 展示提示，状态结构树按“模板 → 分组 → 字段”展示；状态面板新增“自定义布局”，可通过鼠标或键盘拖动分区和字段、跨分区移动字段、在窄屏使用方向按钮并恢复默认。布局按“故事 + 模板”保存在本地 UI 偏好中，同模板 Actor 共享且不会进入模型上下文；Schema 字段数组仅作为兜底顺序，旧 Beta `order` / `display_groups` 输入会被忽略。
-- Actor state fields now accept optional `group` and `display` presentation hints, and the state structure tree renders Template → Group → Field nesting. The stage ledger adds a custom layout editor for pointer/keyboard section and field sorting, cross-section moves, narrow-screen direction controls, and reset. Layouts persist locally by story + template, are shared by Actors using that template, and never enter model context; the schema field array is only the fallback order, and legacy Beta `order` / `display_groups` inputs are ignored.
-- TRPG 状态绑定的 modifier 与公式项支持可选 `value_path`，用于读取用户自定义 object 中的嵌套数值，并在校验、计算和审计结果中保留结构化来源；内置面板现已使用可直接绑定的普通 number 字段，不依赖该能力。
-- TRPG state-binding modifiers and formula terms support optional `value_path` reads from user-defined nested object values, retaining the structured source through validation, computation, and audit output. Built-in panels now use directly bindable number fields and do not depend on this capability.
-- 写作模式编辑器查找栏新增替换与正则匹配：可展开替换输入框，支持替换当前匹配或全部替换；开启正则后查找与替换均按正则表达式执行，替换文本支持 `$1` 等捕获组引用。
-- The Writing Mode editor search bar now supports replace and regex matching: expand a replace field to replace the current match or all matches; with regex enabled, both find and replace use regular expressions, and the replacement text supports capture group references like `$1`.
-- 写作模式全局搜索新增正则匹配与全局替换：搜索面板可切换正则模式（RE2 语法、大小写敏感，非法正则内联提示），并可展开替换行对整个工作区执行全部替换；替换文本支持 `$1`、`$&`、`$<name>` 捕获组引用（与编辑器内替换语义一致），执行前自动创建“全局替换前自动备份”可恢复版本，替换期间被并发修改的文件会安全跳过并提示。
-- Writing Mode global search now supports regex matching and global replace: the search panel can toggle regex mode (RE2 syntax, case-sensitive, with inline feedback for invalid patterns) and expand a replace row to replace all matches across the workspace. Replacement text supports `$1`, `$&`, and `$<name>` capture group references (consistent with in-editor replace); a restorable “before global replace” version is created automatically, and files changed concurrently during the replace are safely skipped and reported.
 
 ### Changed
 
@@ -71,6 +51,132 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The Agent path now follows the stable dependency direction `Profile → Engine → Journal → ContextProjector → ToolDescriptor`, with legacy Writing/Game SSE retained only as display adapters with independent resumable cursors. Sending during a run no longer implicitly aborts and replaces it; callers explicitly choose Follow Up, Steer, or Abort. Beta breaking: unscoped legacy abort routes are removed, and every abort command must carry the exact operation ID.
 - 会话持久化升级为 append-only JSONL v2，并将 codec、replay、repair、apply 与 write 职责拆分；读取仍兼容旧快照格式，尾部撕裂会安全修复并保留备份。高频流式展示按有界批次 append，并在工具/子 Agent 终态强制 flush，避免逐 token fsync。
 - Session persistence is upgraded to append-only JSONL v2 with separate codec, replay, repair, apply, and write responsibilities. Legacy snapshots remain readable, torn tails are safely repaired with backups, and high-frequency display deltas append in bounded batches with mandatory tool/sub-agent terminal flushes instead of per-token fsync.
+
+### Fixed
+
+- 修复 Harness 在 emit、提交或回调 panic/提前返回时未取消 cycle 子上下文，以及已完成/启动失败的展示 Task 关闭 `Done` 后仍保留活动上下文的问题；桥接控制、ADK 子任务和 `AfterFunc` 现在都会随精确生命周期边界释放。
+- Fixed cycle child contexts surviving Harness emit/commit/callback panics or early returns, plus completed or start-rejected display Tasks publishing `Done` while retaining a live context. Control bridges, ADK child work, and `AfterFunc` callbacks now release with the exact lifecycle boundary.
+- 修复 Agent 冷恢复在结构操作已落盘、但规范 Session / Story 刷新失败后丢失精确重试入口，以及旧完成 Task 被重复挂接、连续队首恢复动作跨 Task 交接、取消后继 NextTurn 时复用旧 Abort 身份等问题；恢复义务现在作为服务级准入栅栏保留到规范投影成功，写作与游戏始终沿用同一可观察 Task，并按当前 operation 生成控制身份。
+- Fixed Agent cold recovery losing its exact retry after a durable structural operation succeeded but canonical Session refresh failed, reattaching settled Tasks, replacing the display Task between consecutive head-of-line actions, and reusing a stale Abort identity for a successor NextTurn. Recovery obligations now remain service-owned admission fences until canonical projection succeeds; Writing and Game keep one observable Task and derive controls from the current operation.
+- 修复普通 Session 消息、展示卡片、中断与上下文记录和独立恢复实例的 canonical commit 未共享追加租约，可能让两次写入都成功却把本地 journal offset 留在另一条 JSON 中间的问题；所有持久 Session mutation 现在统一按“跨进程文件租约 → 实例锁 → 增量刷新 → CAS / 对账 → append”串行，后续恢复与下一轮不会被已成功的并发写毒坏。
+- Fixed ordinary Session messages, display cards, interruptions, and context records appending outside the canonical-commit lease used by independently loaded recovery Sessions. Every durable Session mutation now follows one file-lease → instance-lock → incremental-refresh → CAS/reconciliation → append path, preventing two successful concurrent writes from leaving a projection offset inside another JSON record and poisoning later recovery.
+- 修复 Agent 在读取历史后、提交用户输入前发生上下文结构变化时，可能把旧模型输入绑定到新 revision 的竞态；会话现会原子快照有效消息、压缩记录与 cursor，并以 CAS 拒绝过期提交。另新增不可关闭的完整供应商输入硬上限（默认 4 MB，按 Agent 可配置）与压缩器分层摘要，关闭语义压缩或遇到超长历史时也不会向模型发送无限上下文或在单次摘要请求中装入全部来源。
+- Fixed a race where structural context could change after history was read but before user-input publication, binding stale model input to a newer revision. Sessions now atomically snapshot effective messages, compaction, and cursor, then reject stale publication by CAS. A non-disableable complete provider-input hard limit (4 MB by default, configurable per Agent) and layered compactor summaries also prevent unbounded model inputs when semantic compaction is disabled or history is exceptionally large.
+- 修复持久化 Agent Runtime 在并发重试、关闭与日志模糊写入时可能丢失已接受 TurnSpec、悬挂队列输入或错误覆盖终态的问题；注册租约、单项 NextTurn、取消释放、append 失败重放与 abort 优先级现在都有明确状态机覆盖。
+- Fixed durable Agent Runtime edge cases where concurrent retries, shutdown, or ambiguous journal writes could lose an accepted TurnSpec, retain a cancelled queued input, or overwrite a terminal state. Registration leases, one pending NextTurn, cancellation release, append-failure replay, and abort precedence now have explicit state-machine coverage.
+- 修复工作区切换、Agent Task 注册与 SSE 恢复之间的竞态：任务先原子绑定资源再运行，切换会阻止新任务并等待旧任务退出，重连必须携带精确 task ID；写作 UI 流采用完整重放，游戏原始 SSE 使用独立显示游标。
+- Fixed races across workspace switching, Agent Task registration, and SSE recovery. Tasks bind resources atomically before execution, transitions fence new tasks and await old exits, reconnects require an exact task ID, Writing UI streams use full replay, and Game raw SSE uses a separate display cursor.
+- 修复游戏回合已原子替换但目录同步返回错误时被误报失败的问题，并为“规范回合 → 后台 Director”增加持久化回执与下一 cycle 执行屏障；崩溃恢复、Follow Up、Steer 与重生成都不会跳过或重复同一派生维护。
+- Fixed false failures when a Game turn's atomic replacement succeeded but directory sync reported an error, and added a durable receipt plus next-cycle execution barrier from canonical turns to the background Director. Crash recovery, Follow Up, Steer, and regeneration no longer skip or repeat the same derived maintenance.
+- 修复后台 Director 使用临时内存 Runtime、且 Agent 成功结算早于最终规划落盘的问题；Director 现在复用 App 持有的持久 Runtime，并以 command / operation / cycle、内容 hash 和规划 revision 原子记录 output commit 回执。取消不会发布草稿，精确重试会复用原回执，迟到的运行错误也不会覆盖已提交规划。
+- Fixed the background Director creating a temporary in-memory Runtime and settling successfully before its final plan was canonical. Director runs now reuse the App-owned durable Runtime and atomically record output-commit receipts with command/operation/cycle identity, content hash, and plan revision. Cancellation cannot publish a draft, exact retries reuse the original receipt, and late runtime errors cannot overwrite a committed plan.
+- 修复 Agent 上下文总预算遗漏包装文本、片段元数据或 UTF-8 边界，以及工具错误链可绕过大小限制的问题；所有模型可见片段和工具成功/失败结果现在都按实际字节统一有界。
+- Fixed Agent context totals that omitted wrappers, fragment metadata, or UTF-8 boundaries, plus tool error chains that could bypass result limits. Every model-visible fragment and successful or failed tool result is now bounded consistently by actual bytes.
+- 修复 Agent 兼容事件流在 `emit` 与 `finish` 并发时可能向已关闭 channel 发送而 panic 的问题；慢订阅者现在会被明确断开并通过完整快照重连，不再保持连接却静默丢失单个事件。
+- Fixed a possible send-on-closed-channel panic when legacy Agent stream emission raced with task settlement. Lagging subscribers are now explicitly disconnected and recover through the complete replay snapshot instead of silently losing individual events while staying connected.
+- 修复游戏 Follow Up 排队后仍绑定旧 branch head 导致的 CAS 冲突，以及 command 重试为同一逻辑输入生成不同 TurnSpecRef 的幂等失效；排队中、已消费重试和同 ID 异输入冲突均有覆盖测试。
+- Fixed queued Game follow-ups retaining a stale branch head and failing CAS, plus command retries generating different TurnSpecRefs for the same logical input. Tests cover queued retries, consumed retries, and conflicting payloads under one command ID.
+
+## [v0.3.1] - 2026-07-23
+
+### Changed
+
+- 书籍设定的缺失文件现在在快捷按钮和管理列表中都以虚线轮廓与低饱和状态图标呈现；文件仍可点击，以便按需请求创作 Agent 创建。
+- Missing Book Settings files now use a dashed outline and a muted status icon in both shortcuts and the management list; they remain selectable so users can ask the Creation Agent to create them when needed.
+- 示例配置的默认服务端口更新为后端 `8011`、前端 `5174`。
+- The sample configuration now defaults to backend port `8011` and frontend port `5174`.
+
+### Added
+
+- `./scripts/bootstrap.sh fe` 新增 `--backend-port <port>`，可在前后端独立启动时显式指定 Vite 代理的后端端口。
+- `./scripts/bootstrap.sh fe` now accepts `--backend-port <port>` to explicitly set the Vite proxy backend port when frontend and backend start independently.
+- Agent Trace 现可一键复制运行 ID，并直接导出该次运行完整的原始 JSONL trace 文件，便于用户向开发者提供可复现的诊断资料；写作与游戏模式共用此入口。
+- Agent Trace now supports one-click Run ID copying and download of the complete original JSONL trace for the selected run, making reproducible support diagnostics easy to share; Writing and Game modes use the same entry point.
+
+### Fixed
+
+- 未显式传入 `--port` 时，后端端口冲突会原子地切换到后续可用端口并输出最终地址；显式指定的端口冲突会提供中英文原因和操作提示，等待用户按键后再退出。
+- When `--port` is not explicitly supplied, backend port conflicts now atomically fall back to a later available port and print the final address; an explicitly selected port reports a bilingual explanation and waits for user input before exiting.
+- 写作 Agent 运行中的 thinking 现在会自动展开；回合结束后仍保持可折叠，避免历史消息持续占据对话区域。
+- Running Writing Agent thinking now expands automatically, while completed turns remain collapsible to keep history compact.
+- Windows 自动保存不再将已落盘的配置误报为失败：Windows 不支持对配置目录句柄执行同步时，会跳过该目录同步；新增但尚未填写模型名的语言模型草稿也会在自动保存后保留，不再中断编辑。
+- Windows autosave no longer reports a persisted configuration as failed when Windows rejects directory-handle synchronization. Newly added language-model drafts without a model name are now retained after autosave instead of interrupting editing.
+- 修复游戏模式 Agent 的互动正文候选在异步 TurnResult 提交完成时可能被后续重试正文重复追加的问题；流式与非流式输出现在都只保留按事件顺序消费到的首个正文候选。
+- Fixed a Game Agent race where a later retry could be appended to the locked interactive narrative after an asynchronous TurnResult submission; streaming and non-streaming output now retain only the first narrative candidate consumed in event order.
+
+## [v0.3.0] - 2026-07-22
+
+### Brief / 简要说明
+
+#### 中文
+
+- Beta 不兼容：Agent 文件编辑、审阅反馈、游戏回合与状态结构协议已更新；后台 Shell、旧状态结构复审与三项工具结果配置移除，原先依赖 `hidden` 的 Actor 状态会直接可见。
+- 写作模式新增持久化 Change Review、正文评论与跨重启 Undo/Redo，并支持编辑器正则替换及带自动备份的工作区全局替换；完整章节修订后会直接同步进度与角色状态。
+- 游戏模式新增后台导演运行策略、故事级状态结构策略、可回放的 Actor 归档与恢复、自定义状态布局、已保存回复修正和全屏导演台。
+- 统一自动保存、revision 感知的三方合并、工作区变更账本、崩溃恢复与活动任务重连，更可靠地保护长期项目和并发编辑。
+- 上下文检查与复制、完整 Trace 展示、更平滑的流式消息，以及 Unicode 规范化安全升级，共同提升跨平台稳定性与问题诊断效率。
+
+#### English
+
+- Beta breaking: Agent editing, review feedback, Game turn, and state-schema contracts changed; background Shell, legacy schema review, and three tool-result settings were removed, and formerly `hidden` Actor state is now visible.
+- Writing adds durable Change Review, document comments, restart-safe undo/redo, regex editor replacement, and recoverable workspace-wide replacement; complete chapter revisions now synchronize progress and character state.
+- Game adds Director schedules, story-specific schema policies, replayable Actor archive/restore, customizable state layouts, saved-response correction, and a full-screen Director Desk.
+- Unified autosave, revision-aware three-way merging, workspace journaling, crash recovery, and active-run reconnection better protect long projects and concurrent edits.
+- Context inspection and copying, complete trace display, smoother streaming, and a Unicode-normalization security upgrade improve reliability and diagnosis across platforms.
+
+### Added
+
+- 写作模式新增 Change Review：每轮 Agent 修改都会生成摘要卡，可查看累计或单轮的多文件 Unified / Split Diff、添加行内评论，并执行可跨重启保留的 Undo / Redo。
+- Writing Mode adds Change Review: every Agent edit run produces a summary card with cumulative or per-run multi-file Unified / Split diffs, inline comments, and restart-safe undo/redo.
+- 正文编辑器新增持久化评论，可从文本选区或行级入口创建、原位编辑和删除；待处理评论会随下一条用户消息作为可信引用交给创作 Agent，发送失败时自动恢复。
+- The manuscript editor adds durable comments from text selections or line actions, with in-place editing and deletion. Pending comments become trusted references for the next Agent message and are restored if sending fails.
+- 游戏模式新增已保存 AI 回复的手动修正，以及覆盖主舞台的全屏导演台；规划、事件、规则审计和执行过程集中展示，角色与世界变化保留在状态感知侧栏。
+- Game Mode adds manual correction of saved AI replies and a full-screen Director Desk over the story stage, centralizing plans, events, rule audits, and execution while actor and world changes remain visible in a state-aware sidebar.
+- 顶部书名升级为带封面的书籍快捷切换器，桌面和移动端都可在不离开当前页面、不切换写作/游戏模式的前提下换书；书籍管理与快捷切换共享最近打开或手动拖拽排序。
+- The top-bar title becomes a cover-aware book switcher on desktop and mobile. It changes books without leaving the page or changing Writing/Game mode, and shares recent or manual drag ordering with Book Management.
+- 新增持久化工作区变更账本，为 Agent 修改保存内容寻址快照和跨文件操作记录；原子写入、启动恢复和显式冲突共同保护 Review、Undo / Redo 与外部编辑。
+- A durable workspace-change ledger records content-addressed Agent edits and cross-file operations; atomic writes, startup recovery, and explicit conflicts protect Review, undo/redo, and external edits.
+
+- 写作与游戏模式共用的工作台通知槽新增一次性 GitHub Star 提示：仅在当前会话完成有效 Agent 回合后出现，新版本提醒始终优先；关闭或打开仓库后不再提示，并完整支持中英文、明暗主题、桌面与移动布局。
+- The shared Writing and Game workbench notice slot now includes a one-time GitHub Star prompt after a successful Agent turn in the current session. Update notices always take priority; dismissing the prompt or opening the repository keeps it quiet, with bilingual, light/dark, desktop, and mobile support.
+- 游戏模式 Actor 状态新增可回放的归档与恢复：敌人死亡或角色永久退场时保留完整历史状态，仅从活动上下文、检定与状态页签中退出；重新登场必须显式恢复。舞台状态面板与导演台提供中英文只读归档索引，并展示归档原因和来源回合。
+- Game Mode Actor state now supports replayable archive and restore transitions. Dead enemies and permanently departed characters retain their complete historical state while leaving active model context, rule checks, and state tabs; returning requires an explicit restore. The stage ledger and Director Console expose a bilingual read-only archive index with reason and source-turn provenance.
+- 游戏模式新故事开局新增故事级后台导演运行策略：支持“按需自动（推荐）”“仅手动”和“每 X 回合自动”；自动模式会在首回合落盘后先初始化规划，固定间隔从首回合起按配置节奏运行，手动模式仍可从导演台显式触发。
+- New Game Mode stories now have a story-scoped Background Director schedule with Automatic When Needed (recommended), Manual Only, and Automatic Every X Turns modes. Automatic modes initialize planning after the first persisted turn, interval mode follows its configured cadence from that opening turn, and manual mode remains explicitly runnable from the Director backstage.
+- 上下文分析器新增全上下文、SystemPrompt 区、消息组与来源片段的一键复制；游戏模式的“本轮互动指令与动态上下文”会在保留模型实际收到的完整原文同时，继续按本轮行动、导演本轮规则、`agent-brief.md`、`StoryDirector`、Actor 状态手册、动态策略等来源展开。
+- Context Analysis now supports one-click copying for the full context, the SystemPrompt section, message groups, and individual source parts. In Game Mode, the current-turn instruction and dynamic context retain the exact model-visible message while expanding into sources such as the current action, turn-specific director rules, `agent-brief.md`, `StoryDirector`, the Actor state guide, and dynamic strategy prompts.
+- 游戏模式的故事线选择器新增批量删除：可在同一面板中多选或全选故事线，查看受影响清单后统一确认删除；操作支持中英文、明暗主题和窄屏布局。
+- The Game Mode story picker now supports batch deletion: select multiple or all stories in one panel, review the affected list, and confirm once, with bilingual, light/dark, and narrow-screen support.
+- 游戏模式的新故事线配置新增故事级“状态结构”策略：可选择“按模板动态适配”“固定使用模板”或“为故事动态生成”，并在同一区域选择基础状态模板；配置支持中英文、明暗主题与自适应布局。
+- New Game Mode story setup adds a story-level State Schema policy with Adapt a Template, Use a Fixed Template, and Generate for This Story modes, plus an integrated base-template picker with bilingual, theme-aware, adaptive UI.
+- 状态模板字段新增可选的 `group` 与 `display` 展示提示，状态结构树按“模板 → 分组 → 字段”展示；状态面板新增“自定义布局”，可通过鼠标或键盘拖动分区和字段、跨分区移动字段、在窄屏使用方向按钮并恢复默认。布局按“故事 + 模板”保存在本地 UI 偏好中，同模板 Actor 共享且不会进入模型上下文；Schema 字段数组仅作为兜底顺序，旧 Beta `order` / `display_groups` 输入会被忽略。
+- Actor state fields now accept optional `group` and `display` presentation hints, and the state structure tree renders Template → Group → Field nesting. The stage ledger adds a custom layout editor for pointer/keyboard section and field sorting, cross-section moves, narrow-screen direction controls, and reset. Layouts persist locally by story + template, are shared by Actors using that template, and never enter model context; the schema field array is only the fallback order, and legacy Beta `order` / `display_groups` inputs are ignored.
+- TRPG 状态绑定的 modifier 与公式项支持可选 `value_path`，用于读取用户自定义 object 中的嵌套数值，并在校验、计算和审计结果中保留结构化来源；内置面板现已使用可直接绑定的普通 number 字段，不依赖该能力。
+- TRPG state-binding modifiers and formula terms support optional `value_path` reads from user-defined nested object values, retaining the structured source through validation, computation, and audit output. Built-in panels now use directly bindable number fields and do not depend on this capability.
+- 写作模式编辑器查找栏新增替换与正则匹配：可展开替换输入框，支持替换当前匹配或全部替换；开启正则后查找与替换均按正则表达式执行，替换文本支持 `$1` 等捕获组引用。
+- The Writing Mode editor search bar now supports replace and regex matching: expand a replace field to replace the current match or all matches; with regex enabled, both find and replace use regular expressions, and the replacement text supports capture group references like `$1`.
+- 写作模式全局搜索新增正则匹配与全局替换：搜索面板可切换正则模式（RE2 语法、大小写敏感，非法正则内联提示），并可展开替换行对整个工作区执行全部替换；替换文本支持 `$1`、`$&`、`$<name>` 捕获组引用（与编辑器内替换语义一致），执行前自动创建“全局替换前自动备份”可恢复版本，替换期间被并发修改的文件会安全跳过并提示。
+- Writing Mode global search now supports regex matching and global replace: the search panel can toggle regex mode (RE2 syntax, case-sensitive, with inline feedback for invalid patterns) and expand a replace row to replace all matches across the workspace. Replacement text supports `$1`, `$&`, and `$<name>` capture group references (consistent with in-editor replace); a restorable “before global replace” version is created automatically, and files changed concurrently during the replace are safely skipped and reported.
+
+### Changed
+
+- Beta 不兼容：`edit_file` 改为单文件批量协议 `{file_path, edits[]}`，文件 revision 不再暴露给 Agent；写入由服务端以精确内容 revision 原子校验。同轮只读工具仍可并行，写工具与前台 Shell 按工作区串行；后台 Shell 模式不再支持。
+- Beta breaking: `edit_file` now uses the single-file batch contract `{file_path, edits[]}`, and file revisions are no longer exposed to the Agent. The server atomically validates writes against exact content revisions. Read-only tools may still run in parallel, while write tools and foreground Shell are serialized per workspace; background Shell is no longer supported.
+- Beta 不兼容：聊天请求的 `review_feedback` 改为按可信账本来源分组的数组；Diff 与正文评论统一只保留编辑和删除，不再提供 Resolve / Reopen，旧 `resolved` 标记按普通未删除评论读取。
+- Beta breaking: chat request `review_feedback` is now an array grouped by trusted ledger source. Diff and document comments keep Edit and Delete only; Resolve/Reopen is removed, and legacy `resolved` markers are read as ordinary non-deleted comments.
+- Beta 不兼容：游戏正文 Agent 使用统一的 `submit_interactive_turn` 提交状态变化与选项，以结构化 Actor / 字段 ID 替代模型生成的 JSON Pointer；各模块独立验收并只重试失败部分，旧工具名仅用于历史展示。
+- Beta breaking: the Game Agent now submits state changes and choices through `submit_interactive_turn`, using structured actor and field IDs instead of model-authored JSON Pointers. Modules are accepted independently so only failed parts retry; legacy tool names remain for historical display only.
+- 游戏正文 Agent 改用从有效 schema 与当前分支状态生成的有界状态手册，明确当前值、类型约束和更新规则；正文后的 thinking、工具调用与重试统一折叠为可展开 Trace，写作、自动化和导演台保持一致。
+- The Game Agent now receives a bounded state handbook generated from the effective schema and current branch state, including current values, constraints, and update rules. Thinking, tool calls, and retries after prose collapse into one expandable trace consistently across Writing, Automations, and the Director Desk.
+- 资料库、方案预设和 Skills 统一资源目录的搜索、分组、计数、新建与空状态；资料库正文使用与章节一致的所见即所得 Markdown 编辑器，并可在渲染内容中直接搜索、高亮和继续编辑。
+- Lore, Presets, and Skills now share consistent resource-directory search, grouping, counts, creation, and empty states. Lore content uses the same WYSIWYG Markdown editor as chapters, with search and highlighting directly in editable rendered content.
+- 自动化不再为新工作区预置停用任务；“续写章节”和“自动 Review”改为新建时主动选择的双语模板。升级仅清理从未使用的旧种子，并保留所有已有使用痕迹的任务。
+- New workspaces no longer receive disabled automation tasks. Continue Writing and Automatic Review are now bilingual templates selected explicitly during creation; upgrades remove only untouched legacy seeds and preserve every task with usage history.
+- 设置页移除“用户配置 / 当前工作区”双层切换，通用、写作和游戏偏好统一保存为用户配置；工作区只保留 Agents 页明确提供的定制。写作与游戏输入区的模型菜单同时提供 reasoning effort 快捷选择。
+- Settings removes the User/Current Workspace split: common, Writing, and Game preferences are user-scoped, while workspace customization is limited to options explicitly exposed on the Agents page. The shared model menu also provides quick reasoning-effort selection.
+- 删除 Skill、恢复内置 Skill、放弃未保存修改和删除空剧情线等操作统一使用支持异步错误提示的应用内确认弹窗；从源码运行的依赖现在明确包含 `ripgrep`。
+- Destructive actions such as deleting or restoring Skills, discarding drafts, and deleting empty branches now use in-app confirmation with asynchronous error feedback. Source builds now explicitly require `ripgrep`.
+
 - 写作模式简化章节状态同步：新写完整章节或实质性改写章节时，Agent 在完成本轮修订后直接同步 `setting/progress.md` 与 `setting/character-states.md`；“初稿 / 成章”仅保留为 UI 编辑标记，不再作为下一章判断、上下文选择或状态同步的门槛，实际章节路径与非空正文优先于进度摘要。
 - Writing Mode simplifies chapter-state synchronization: after writing a complete chapter or making a substantive story rewrite, the Agent now updates `setting/progress.md` and `setting/character-states.md` after the run's final revision. Draft/Final remains a UI editing label only and no longer gates next-chapter selection, context, or state synchronization; actual chapter paths and non-empty chapter content take precedence over the progress summary.
 - Agent 工具上下文收敛为单一边界：工具结果仅在执行完成时按全局 `agent_tool_result_limit_kb` 有界化，后续轮次原样保留有效的 call/result 对，旧历史交给普通上下文压缩；`read_lore_items` 仍使用来源回执避免重复正文。Beta 不兼容：移除 `tool_result_keep_recent`、`tool_result_context_budget_kb` 与 `tool_result_preview_chars`，旧配置键读取时忽略。
@@ -124,28 +230,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- 修复 Harness 在 emit、提交或回调 panic/提前返回时未取消 cycle 子上下文，以及已完成/启动失败的展示 Task 关闭 `Done` 后仍保留活动上下文的问题；桥接控制、ADK 子任务和 `AfterFunc` 现在都会随精确生命周期边界释放。
-- Fixed cycle child contexts surviving Harness emit/commit/callback panics or early returns, plus completed or start-rejected display Tasks publishing `Done` while retaining a live context. Control bridges, ADK child work, and `AfterFunc` callbacks now release with the exact lifecycle boundary.
-- 修复 Agent 冷恢复在结构操作已落盘、但规范 Session / Story 刷新失败后丢失精确重试入口，以及旧完成 Task 被重复挂接、连续队首恢复动作跨 Task 交接、取消后继 NextTurn 时复用旧 Abort 身份等问题；恢复义务现在作为服务级准入栅栏保留到规范投影成功，写作与游戏始终沿用同一可观察 Task，并按当前 operation 生成控制身份。
-- Fixed Agent cold recovery losing its exact retry after a durable structural operation succeeded but canonical Session refresh failed, reattaching settled Tasks, replacing the display Task between consecutive head-of-line actions, and reusing a stale Abort identity for a successor NextTurn. Recovery obligations now remain service-owned admission fences until canonical projection succeeds; Writing and Game keep one observable Task and derive controls from the current operation.
-- 修复普通 Session 消息、展示卡片、中断与上下文记录和独立恢复实例的 canonical commit 未共享追加租约，可能让两次写入都成功却把本地 journal offset 留在另一条 JSON 中间的问题；所有持久 Session mutation 现在统一按“跨进程文件租约 → 实例锁 → 增量刷新 → CAS / 对账 → append”串行，后续恢复与下一轮不会被已成功的并发写毒坏。
-- Fixed ordinary Session messages, display cards, interruptions, and context records appending outside the canonical-commit lease used by independently loaded recovery Sessions. Every durable Session mutation now follows one file-lease → instance-lock → incremental-refresh → CAS/reconciliation → append path, preventing two successful concurrent writes from leaving a projection offset inside another JSON record and poisoning later recovery.
-- 修复 Agent 在读取历史后、提交用户输入前发生上下文结构变化时，可能把旧模型输入绑定到新 revision 的竞态；会话现会原子快照有效消息、压缩记录与 cursor，并以 CAS 拒绝过期提交。另新增不可关闭的完整供应商输入硬上限（默认 4 MB，按 Agent 可配置）与压缩器分层摘要，关闭语义压缩或遇到超长历史时也不会向模型发送无限上下文或在单次摘要请求中装入全部来源。
-- Fixed a race where structural context could change after history was read but before user-input publication, binding stale model input to a newer revision. Sessions now atomically snapshot effective messages, compaction, and cursor, then reject stale publication by CAS. A non-disableable complete provider-input hard limit (4 MB by default, configurable per Agent) and layered compactor summaries also prevent unbounded model inputs when semantic compaction is disabled or history is exceptionally large.
-- 修复持久化 Agent Runtime 在并发重试、关闭与日志模糊写入时可能丢失已接受 TurnSpec、悬挂队列输入或错误覆盖终态的问题；注册租约、单项 NextTurn、取消释放、append 失败重放与 abort 优先级现在都有明确状态机覆盖。
-- Fixed durable Agent Runtime edge cases where concurrent retries, shutdown, or ambiguous journal writes could lose an accepted TurnSpec, retain a cancelled queued input, or overwrite a terminal state. Registration leases, one pending NextTurn, cancellation release, append-failure replay, and abort precedence now have explicit state-machine coverage.
-- 修复工作区切换、Agent Task 注册与 SSE 恢复之间的竞态：任务先原子绑定资源再运行，切换会阻止新任务并等待旧任务退出，重连必须携带精确 task ID；写作 UI 流采用完整重放，游戏原始 SSE 使用独立显示游标。
-- Fixed races across workspace switching, Agent Task registration, and SSE recovery. Tasks bind resources atomically before execution, transitions fence new tasks and await old exits, reconnects require an exact task ID, Writing UI streams use full replay, and Game raw SSE uses a separate display cursor.
-- 修复游戏回合已原子替换但目录同步返回错误时被误报失败的问题，并为“规范回合 → 后台 Director”增加持久化回执与下一 cycle 执行屏障；崩溃恢复、Follow Up、Steer 与重生成都不会跳过或重复同一派生维护。
-- Fixed false failures when a Game turn's atomic replacement succeeded but directory sync reported an error, and added a durable receipt plus next-cycle execution barrier from canonical turns to the background Director. Crash recovery, Follow Up, Steer, and regeneration no longer skip or repeat the same derived maintenance.
-- 修复后台 Director 使用临时内存 Runtime、且 Agent 成功结算早于最终规划落盘的问题；Director 现在复用 App 持有的持久 Runtime，并以 command / operation / cycle、内容 hash 和规划 revision 原子记录 output commit 回执。取消不会发布草稿，精确重试会复用原回执，迟到的运行错误也不会覆盖已提交规划。
-- Fixed the background Director creating a temporary in-memory Runtime and settling successfully before its final plan was canonical. Director runs now reuse the App-owned durable Runtime and atomically record output-commit receipts with command/operation/cycle identity, content hash, and plan revision. Cancellation cannot publish a draft, exact retries reuse the original receipt, and late runtime errors cannot overwrite a committed plan.
-- 修复 Agent 上下文总预算遗漏包装文本、片段元数据或 UTF-8 边界，以及工具错误链可绕过大小限制的问题；所有模型可见片段和工具成功/失败结果现在都按实际字节统一有界。
-- Fixed Agent context totals that omitted wrappers, fragment metadata, or UTF-8 boundaries, plus tool error chains that could bypass result limits. Every model-visible fragment and successful or failed tool result is now bounded consistently by actual bytes.
-- 修复 Agent 兼容事件流在 `emit` 与 `finish` 并发时可能向已关闭 channel 发送而 panic 的问题；慢订阅者现在会被明确断开并通过完整快照重连，不再保持连接却静默丢失单个事件。
-- Fixed a possible send-on-closed-channel panic when legacy Agent stream emission raced with task settlement. Lagging subscribers are now explicitly disconnected and recover through the complete replay snapshot instead of silently losing individual events while staying connected.
-- 修复游戏 Follow Up 排队后仍绑定旧 branch head 导致的 CAS 冲突，以及 command 重试为同一逻辑输入生成不同 TurnSpecRef 的幂等失效；排队中、已消费重试和同 ID 异输入冲突均有覆盖测试。
-- Fixed queued Game follow-ups retaining a stale branch head and failing CAS, plus command retries generating different TurnSpecRefs for the same logical input. Tests cover queued retries, consumed retries, and conflicting payloads under one command ID.
+- 更新故事导演配置的发布回归测试，使其匹配“新故事默认运行方式”的当前双语字段命名，避免有效构建被旧文案断言阻断。
+- Updated the Story Director release regression test to match the current bilingual Default New-Story Schedule field, preventing valid builds from being blocked by a stale copy assertion.
+- Change Review 的多文件滚动、文件跳转、Diff 选区、评论草稿、面板尺寸和延迟加载更加稳定；后台刷新不再打断输入，窄屏导航和 Skills 工具栏也能自适应展示。
+- Change Review now keeps multi-file scrolling, file jumps, diff selection, comment drafts, panel sizing, and lazy loading stable. Background refreshes no longer interrupt input, and compact navigation and the Skills toolbar adapt to narrow screens.
+- 正文评论修复多行重叠选区卡死、等价 Markdown 被误判为外部修改、提交闪烁、键盘编辑失效和行级入口难以命中等问题；评论锚点仍会拒绝真正的正文或 revision 冲突。
+- Document comments no longer freeze on overlapping multi-line selections, misclassify equivalent Markdown as an external edit, flicker on submit, lose keyboard editing, or make line actions difficult to target; real content and revision conflicts are still rejected.
+- Agent 修改到达时不再静默覆盖未保存草稿；编辑器自动保存、Review、Undo / Redo、版本恢复和自动化触发均绑定正确工作区，避免切换作品、乱序事件或符号链接别名导致内容串写、死锁或错误刷新。
+- Agent changes no longer silently overwrite unsaved drafts. Editor autosave, Review, undo/redo, version restore, and automation triggers stay bound to the correct workspace, preventing cross-workspace writes, deadlocks, and stale refreshes during switches, out-of-order events, or symbolic-link aliases.
+- 旧故事或尚未冻结 schema 的运行时会在缺失时恢复内置初始 Actor；游戏回合提交明确显示 accepted / rejected / pending 与待重试模块，并按故事目标字数约束首段生成，降低正文过长挤占状态提交的概率。
+- Legacy stories and runtimes without a frozen schema restore built-in initial Actors when missing. Game turn traces distinguish accepted, rejected, and pending submissions with retry modules, while story target length bounds the opening generation so long prose is less likely to crowd out state submission.
+- 修复写作模式发送消息后输入框未清空，以及作品作者字段无法清空的问题；书架会用本地化文案展示空作者。
+- Fixed the Writing composer retaining sent content and book metadata refusing to clear the author field; bookshelf cards now show a localized empty-author label.
+- 文件、资料、风格、选区与审阅意见引用会随已发送消息原子持久化，失败时恢复；已成功提交给 Agent 的评论不会继续残留在 Diff 中。
+- File, lore, style, selection, and review references now persist atomically with sent messages and recover on failure; comments successfully submitted to the Agent no longer remain in the diff.
+
+- 将 `golang.org/x/text` 升级至 `v0.39.0`，修复无效 Unicode 输入可能在 Actor ID 规范化路径中触发无限循环的 `GO-2026-5970` 漏洞。
+- Upgraded `golang.org/x/text` to `v0.39.0`, fixing `GO-2026-5970`, where invalid Unicode input could trigger an infinite loop in the Actor ID normalization path.
 - 修复 Agent `prefill failed: unexpected control character ... char 2000`：上下文层不再按 JSON 外形猜测并截断或替换工具结果，OpenAI 请求始终把 tool content 作为不透明字符串发送。
 - Fixed Agent `prefill failed: unexpected control character ... char 2000`: the context layer no longer guesses from JSON shape or truncates/replaces tool results, and OpenAI requests always send tool content as an opaque string.
 - 游戏模式的 `submit_interactive_turn` 现在会在冻结 Schema 校验前，将可无歧义解释的数字、布尔、object 和 list 字符串编码规范为原生 JSON；冲突或模糊值仍会原子拒绝，Object 内部记录则保持原样。一次提交中的独立状态错误会合并到同一回执并精确定位 `initial_state` 字段，工具说明也改用原生 JSON 示例，避免弱模型逐字段重试。
@@ -206,73 +307,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Game Mode now reconnects to the active Agent task for the current story and branch after a page refresh, replaying the player action, reasoning, tool calls, and streamed prose before merging the same turn on persistence confirmation.
 - Windows 新建或切换书籍时不再因工作区变更存储对 `.denova` 目录执行不受支持的同步而失败；账本、内容 blob 和作品文件仍保留完整的文件级持久化同步。
 - Creating or switching books on Windows no longer fails when workspace-change storage encounters unsupported directory synchronization under `.denova`; ledger, content blob, and manuscript files retain full file-level durability synchronization.
-
-## [v0.3.0] - 2026-07-18
-
-### Brief / 简要说明
-
-#### 中文
-
-- Beta 不兼容提醒：审阅反馈、Agent 文件编辑和游戏回合提交协议均有调整；后台 Shell 暂不再支持，常规设置统一改为用户级。
-- 写作模式新增持久化 Change Review 与正文评论，可审阅累计 Diff、把可信意见交给 Agent，并跨重启 Undo/Redo。
-- 游戏模式支持修正已保存的 AI 回复，并以全屏导演台、状态感知侧栏和结构化回合提交提升创作与游玩体验。
-- 书籍切换、资料库、方案预设、Skills、模型选择和自动化创建流程统一简化，桌面与移动端导航更稳定。
-- 工作区变更账本、原子持久化、崩溃恢复和工作区租约共同保护 Agent 修改、编辑器保存、审阅与版本恢复。
-
-#### English
-
-- Beta breaking changes affect review feedback, Agent file editing, and Game turn submission; background Shell is no longer supported, and common settings are now user-scoped.
-- Writing Mode adds durable Change Review and document comments with cumulative diffs, trusted Agent feedback, and restart-safe undo/redo.
-- Game Mode can correct saved AI replies and combines a full-screen Director Desk, a state-aware sidebar, and structured turn submission.
-- Book switching, Lore, Presets, Skills, model selection, and automation creation now share simpler, more consistent desktop and mobile flows.
-- A workspace-change ledger, atomic persistence, crash recovery, and workspace leases protect Agent changes, editor saves, reviews, and version restores.
-
-### Added
-
-- 写作模式新增 Change Review：每轮 Agent 修改都会生成摘要卡，可查看累计或单轮的多文件 Unified / Split Diff、添加行内评论，并执行可跨重启保留的 Undo / Redo。
-- Writing Mode adds Change Review: every Agent edit run produces a summary card with cumulative or per-run multi-file Unified / Split diffs, inline comments, and restart-safe undo/redo.
-- 正文编辑器新增持久化评论，可从文本选区或行级入口创建、原位编辑和删除；待处理评论会随下一条用户消息作为可信引用交给创作 Agent，发送失败时自动恢复。
-- The manuscript editor adds durable comments from text selections or line actions, with in-place editing and deletion. Pending comments become trusted references for the next Agent message and are restored if sending fails.
-- 游戏模式新增已保存 AI 回复的手动修正，以及覆盖主舞台的全屏导演台；规划、事件、规则审计和执行过程集中展示，角色与世界变化保留在状态感知侧栏。
-- Game Mode adds manual correction of saved AI replies and a full-screen Director Desk over the story stage, centralizing plans, events, rule audits, and execution while actor and world changes remain visible in a state-aware sidebar.
-- 顶部书名升级为带封面的书籍快捷切换器，桌面和移动端都可在不离开当前页面、不切换写作/游戏模式的前提下换书；书籍管理与快捷切换共享最近打开或手动拖拽排序。
-- The top-bar title becomes a cover-aware book switcher on desktop and mobile. It changes books without leaving the page or changing Writing/Game mode, and shares recent or manual drag ordering with Book Management.
-- 新增持久化工作区变更账本，为 Agent 修改保存内容寻址快照和跨文件操作记录；原子写入、启动恢复和显式冲突共同保护 Review、Undo / Redo 与外部编辑。
-- A durable workspace-change ledger records content-addressed Agent edits and cross-file operations; atomic writes, startup recovery, and explicit conflicts protect Review, undo/redo, and external edits.
-
-### Changed
-
-- Beta 不兼容：`edit_file` 改为单文件批量协议 `{file_path, edits[]}`，文件 revision 不再暴露给 Agent；写入由服务端以精确内容 revision 原子校验。同轮只读工具仍可并行，写工具与前台 Shell 按工作区串行；后台 Shell 模式不再支持。
-- Beta breaking: `edit_file` now uses the single-file batch contract `{file_path, edits[]}`, and file revisions are no longer exposed to the Agent. The server atomically validates writes against exact content revisions. Read-only tools may still run in parallel, while write tools and foreground Shell are serialized per workspace; background Shell is no longer supported.
-- Beta 不兼容：聊天请求的 `review_feedback` 改为按可信账本来源分组的数组；Diff 与正文评论统一只保留编辑和删除，不再提供 Resolve / Reopen，旧 `resolved` 标记按普通未删除评论读取。
-- Beta breaking: chat request `review_feedback` is now an array grouped by trusted ledger source. Diff and document comments keep Edit and Delete only; Resolve/Reopen is removed, and legacy `resolved` markers are read as ordinary non-deleted comments.
-- Beta 不兼容：游戏正文 Agent 使用统一的 `submit_interactive_turn` 提交状态变化与选项，以结构化 Actor / 字段 ID 替代模型生成的 JSON Pointer；各模块独立验收并只重试失败部分，旧工具名仅用于历史展示。
-- Beta breaking: the Game Agent now submits state changes and choices through `submit_interactive_turn`, using structured actor and field IDs instead of model-authored JSON Pointers. Modules are accepted independently so only failed parts retry; legacy tool names remain for historical display only.
-- 游戏正文 Agent 改用从有效 schema 与当前分支状态生成的有界状态手册，明确当前值、类型约束和更新规则；正文后的 thinking、工具调用与重试统一折叠为可展开 Trace，写作、自动化和导演台保持一致。
-- The Game Agent now receives a bounded state handbook generated from the effective schema and current branch state, including current values, constraints, and update rules. Thinking, tool calls, and retries after prose collapse into one expandable trace consistently across Writing, Automations, and the Director Desk.
-- 资料库、方案预设和 Skills 统一资源目录的搜索、分组、计数、新建与空状态；资料库正文使用与章节一致的所见即所得 Markdown 编辑器，并可在渲染内容中直接搜索、高亮和继续编辑。
-- Lore, Presets, and Skills now share consistent resource-directory search, grouping, counts, creation, and empty states. Lore content uses the same WYSIWYG Markdown editor as chapters, with search and highlighting directly in editable rendered content.
-- 自动化不再为新工作区预置停用任务；“续写章节”和“自动 Review”改为新建时主动选择的双语模板。升级仅清理从未使用的旧种子，并保留所有已有使用痕迹的任务。
-- New workspaces no longer receive disabled automation tasks. Continue Writing and Automatic Review are now bilingual templates selected explicitly during creation; upgrades remove only untouched legacy seeds and preserve every task with usage history.
-- 设置页移除“用户配置 / 当前工作区”双层切换，通用、写作和游戏偏好统一保存为用户配置；工作区只保留 Agents 页明确提供的定制。写作与游戏输入区的模型菜单同时提供 reasoning effort 快捷选择。
-- Settings removes the User/Current Workspace split: common, Writing, and Game preferences are user-scoped, while workspace customization is limited to options explicitly exposed on the Agents page. The shared model menu also provides quick reasoning-effort selection.
-- 删除 Skill、恢复内置 Skill、放弃未保存修改和删除空剧情线等操作统一使用支持异步错误提示的应用内确认弹窗；从源码运行的依赖现在明确包含 `ripgrep`。
-- Destructive actions such as deleting or restoring Skills, discarding drafts, and deleting empty branches now use in-app confirmation with asynchronous error feedback. Source builds now explicitly require `ripgrep`.
-
-### Fixed
-
-- Change Review 的多文件滚动、文件跳转、Diff 选区、评论草稿、面板尺寸和延迟加载更加稳定；后台刷新不再打断输入，窄屏导航和 Skills 工具栏也能自适应展示。
-- Change Review now keeps multi-file scrolling, file jumps, diff selection, comment drafts, panel sizing, and lazy loading stable. Background refreshes no longer interrupt input, and compact navigation and the Skills toolbar adapt to narrow screens.
-- 正文评论修复多行重叠选区卡死、等价 Markdown 被误判为外部修改、提交闪烁、键盘编辑失效和行级入口难以命中等问题；评论锚点仍会拒绝真正的正文或 revision 冲突。
-- Document comments no longer freeze on overlapping multi-line selections, misclassify equivalent Markdown as an external edit, flicker on submit, lose keyboard editing, or make line actions difficult to target; real content and revision conflicts are still rejected.
-- Agent 修改到达时不再静默覆盖未保存草稿；编辑器自动保存、Review、Undo / Redo、版本恢复和自动化触发均绑定正确工作区，避免切换作品、乱序事件或符号链接别名导致内容串写、死锁或错误刷新。
-- Agent changes no longer silently overwrite unsaved drafts. Editor autosave, Review, undo/redo, version restore, and automation triggers stay bound to the correct workspace, preventing cross-workspace writes, deadlocks, and stale refreshes during switches, out-of-order events, or symbolic-link aliases.
-- 旧故事或尚未冻结 schema 的运行时会在缺失时恢复内置初始 Actor；游戏回合提交明确显示 accepted / rejected / pending 与待重试模块，并按故事目标字数约束首段生成，降低正文过长挤占状态提交的概率。
-- Legacy stories and runtimes without a frozen schema restore built-in initial Actors when missing. Game turn traces distinguish accepted, rejected, and pending submissions with retry modules, while story target length bounds the opening generation so long prose is less likely to crowd out state submission.
-- 修复写作模式发送消息后输入框未清空，以及作品作者字段无法清空的问题；书架会用本地化文案展示空作者。
-- Fixed the Writing composer retaining sent content and book metadata refusing to clear the author field; bookshelf cards now show a localized empty-author label.
-- 文件、资料、风格、选区与审阅意见引用会随已发送消息原子持久化，失败时恢复；已成功提交给 Agent 的评论不会继续残留在 Diff 中。
-- File, lore, style, selection, and review references now persist atomically with sent messages and recover on failure; comments successfully submitted to the Agent no longer remain in the diff.
 
 ## [v0.2.0] - 2026-07-15
 

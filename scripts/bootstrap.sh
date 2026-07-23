@@ -121,6 +121,8 @@ usage() {
     echo "  be   - 仅启动后端 (Go server)"
     echo ""
     echo "前端选项:"
+    echo "  --backend-port <port>  指定前端代理使用的后端端口（独立启动前端时使用）"
+    echo "                         Set Vite's backend proxy port when starting the frontend separately"
     echo "  --lan          允许同一局域网设备访问前端，等同于 --host 0.0.0.0"
     echo "  --host <host>  指定 Vite dev server 监听地址"
 }
@@ -157,6 +159,20 @@ detect_lan_address() {
 
 while [ $# -gt 0 ]; do
     case "$1" in
+      --backend-port)
+        if [ "${MODE}" != "fe" ] && [ "${MODE}" != "frontend" ]; then
+            echo "错误: --backend-port 仅支持 fe 模式"
+            echo "Error: --backend-port is only supported in fe mode"
+            exit 1
+        fi
+        if [ $# -lt 2 ] || ! is_valid_port "$2"; then
+            echo "错误: --backend-port 需要指定 1-65535 的端口号"
+            echo "Error: --backend-port requires a port from 1 to 65535"
+            exit 1
+        fi
+        BACKEND_PORT="$2"
+        shift 2
+        ;;
       --lan)
         FRONTEND_BIND_HOST="0.0.0.0"
         shift
@@ -181,10 +197,13 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+BACKEND_URL="http://localhost:${BACKEND_PORT}"
+
 case "$MODE" in
   fe|frontend)
     echo "==> Denova 前端开发服务启动"
     echo "  前端地址: ${FRONTEND_URL}"
+    echo "  后端代理 / Backend proxy: ${BACKEND_URL}"
     if [ "${FRONTEND_BIND_HOST}" = "0.0.0.0" ]; then
         LAN_ADDRESS="$(detect_lan_address)"
         if [ -n "${LAN_ADDRESS}" ]; then
@@ -218,20 +237,19 @@ case "$MODE" in
 
   be|backend)
     echo "==> Denova 后端开发服务启动"
-    echo "  后端地址: ${BACKEND_URL}"
+    echo "  服务成功启动后将显示最终地址"
     echo ""
 
     echo "==> 拉取 Go 依赖"
     go mod tidy
 
     echo "  按 Ctrl+C 停止服务"
-    exec go run ./cmd/denova --dev-mode --no-open --port "${BACKEND_PORT}" --frontend-port "${FRONTEND_PORT}"
+    exec go run ./cmd/denova --dev-mode --no-open
     ;;
 
   all)
     echo "==> Denova 开发服务启动"
-    echo "  前端地址: ${FRONTEND_URL}"
-    echo "  后端地址: ${BACKEND_URL}"
+    echo "  服务成功启动后将显示最终地址"
     echo ""
 
     if ! command -v pnpm >/dev/null 2>&1; then
@@ -251,7 +269,7 @@ case "$MODE" in
     echo "  按 Ctrl+C 停止服务"
     echo ""
 
-    exec go run ./cmd/denova --dev --dev-mode --no-open --port "${BACKEND_PORT}" --frontend-port "${FRONTEND_PORT}"
+    exec go run ./cmd/denova --dev --dev-mode --no-open
     ;;
 
   *)

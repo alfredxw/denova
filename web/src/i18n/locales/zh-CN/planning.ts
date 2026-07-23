@@ -10,6 +10,7 @@ const planning = {
   'planning.noPinnedBookSettings': '尚未 Pin 常用设定',
   'planning.bookSettingMissingTitle': '{{title}}还没有创建',
   'planning.bookSettingMissingDescription': '{{path}} 尚不存在。请在右侧与创作 Agent 对话，让 AI 根据当前作品进展创建它。',
+  'planning.bookSettingMissingTooltip': '{{title}}尚未创建（{{path}}）。点击后可与创作 Agent 对话创建它。',
   'planning.bookSettingAskAgent': '和创作 Agent 对话',
   'planning.bookSettingCreatePrompt': '请根据当前作品进展，和我讨论并创建{{title}}（{{path}}）。请先检查已有资料和上下文；信息不足时先向我提问，不要创建空白占位文件。',
   'planning.pinBookSetting': 'Pin {{title}}',

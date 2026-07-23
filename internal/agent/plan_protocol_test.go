@@ -169,7 +169,7 @@ func TestPlanProtocolToolCallEmitsPlanCardInsteadOfToolCall(t *testing.T) {
 	processNonStreamingEvent(&adk.MessageVariant{Message: msg}, &content, &thinking, 0, agentEventMetadata{
 		AgentKind: AgentKindIDE,
 		RunID:     "run-plan-tool",
-	}, true, parser, func(ev Event) {
+	}, parser, func(ev Event) {
 		events = append(events, ev)
 	})
 

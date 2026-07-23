@@ -109,7 +109,7 @@ func (l *chatAgentLoop) toolDrainFailed(drainErr error) chatLoopResult {
 func (l *chatAgentLoop) handleAssistantOutput(messageOutput *adk.MessageVariant, eventMeta agentEventMetadata) chatLoopResult {
 	run := l.run
 	if messageOutput.IsStreaming && messageOutput.MessageStream != nil {
-		msg, streamErr := processStreamingEvent(l.ctx, messageOutput, &run.fullContent, &run.fullThinking, run.options.IdleTimeout, run.options.ToolResultMaxBytes, eventMeta, interactiveNarrativeReady(run.conversation, eventMeta), l.planParser, run.emit)
+		msg, streamErr := processStreamingEvent(l.ctx, messageOutput, &run.fullContent, &run.fullThinking, run.options.IdleTimeout, run.options.ToolResultMaxBytes, eventMeta, l.planParser, run.emit)
 		if streamErr != nil {
 			// Completion-guard retries arrive after response frames. Preserve the
 			// rejected call's provider usage even though its prose is discarded.
@@ -134,7 +134,7 @@ func (l *chatAgentLoop) handleAssistantOutput(messageOutput *adk.MessageVariant,
 	if messageOutput.Message == nil {
 		return chatLoopResult{action: chatLoopContinue}
 	}
-	processNonStreamingEvent(messageOutput, &run.fullContent, &run.fullThinking, run.options.ToolResultMaxBytes, eventMeta, interactiveNarrativeReady(run.conversation, eventMeta), l.planParser, run.emit)
+	processNonStreamingEvent(messageOutput, &run.fullContent, &run.fullThinking, run.options.ToolResultMaxBytes, eventMeta, l.planParser, run.emit)
 	run.toolContext.RecordAssistantToolCalls(messageOutput.Message, eventMeta)
 	run.usage.AddMessage(messageOutput.Message)
 	if run.req.PlanMode && l.planParser != nil && l.planParser.HasSuccessfulBlock() {

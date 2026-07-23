@@ -30,8 +30,8 @@ describe('BookSettingsShortcuts', () => {
     expect(screen.getByRole('button', { name: '大纲' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '规则' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '进度' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '灵感' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '状态' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^灵感尚未创建/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^状态尚未创建/ })).toBeInTheDocument()
     expect(screen.getByTestId('book-setting-shortcuts')).toHaveClass('grid-cols-[repeat(auto-fill,minmax(4rem,1fr))]')
     expect(screen.queryByRole('button', { name: '人物关系' })).not.toBeInTheDocument()
 
@@ -64,8 +64,8 @@ describe('BookSettingsShortcuts', () => {
     window.localStorage.setItem('nova.outline.pinned-settings:/books/demo', JSON.stringify(['setting/outline.md', 'CREATOR.md', 'setting/progress.md']))
     render(<BookSettingsShortcuts workspace="/books/demo" tree={[]} chapterPlans={[]} selectedFile={null} onSelectFile={vi.fn()} />)
 
-    expect(screen.getByRole('button', { name: '灵感' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '状态' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^灵感尚未创建/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^状态尚未创建/ })).toBeInTheDocument()
   })
 
   it('缺失的设定文件不打开空 Tab，并提示通过创作 Agent 创建', async () => {
@@ -83,7 +83,12 @@ describe('BookSettingsShortcuts', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '大纲' }))
+    const missingOutlineShortcut = screen.getByRole('button', { name: /大纲尚未创建/ })
+    expect(missingOutlineShortcut).toHaveAttribute('data-book-setting-state', 'missing')
+    expect(missingOutlineShortcut).toHaveClass('border-dashed')
+    expect(missingOutlineShortcut.querySelector('svg')).toBeInTheDocument()
+
+    await user.click(missingOutlineShortcut)
     expect(onSelectFile).not.toHaveBeenCalled()
     expect(screen.getByRole('status')).toHaveTextContent('大纲还没有创建')
     expect(screen.getByRole('status')).toHaveTextContent('setting/outline.md')
@@ -94,5 +99,25 @@ describe('BookSettingsShortcuts', () => {
     await user.click(screen.getByRole('button', { name: '规则' }))
     expect(onSelectFile).toHaveBeenCalledWith('CREATOR.md')
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('在管理列表中以虚线与状态图标区分尚未创建的文件', async () => {
+    const user = userEvent.setup()
+    render(
+      <BookSettingsShortcuts
+        workspace="/books/demo"
+        tree={[{ name: 'CREATOR.md', type: 'file' }]}
+        chapterPlans={[]}
+        selectedFile={null}
+        onSelectFile={vi.fn()}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: '管理' }))
+    const missingOutlineRow = screen.getAllByRole('button', { name: /大纲尚未创建/ }).find((button) => button.classList.contains('min-w-0'))
+    if (!missingOutlineRow) throw new Error('missing outline row is not rendered')
+    expect(missingOutlineRow).toHaveAttribute('data-book-setting-state', 'missing')
+    expect(missingOutlineRow.closest('div.flex.items-center.gap-1.rounded-md.border')).toHaveClass('border-dashed')
+    expect(missingOutlineRow.querySelector('svg.lucide-circle-dashed')).toBeInTheDocument()
   })
 })

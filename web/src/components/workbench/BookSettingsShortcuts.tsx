@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, MessageCircle, Pin, PinOff, Search, Settings2 } from 'lucide-react'
+import { CircleDashed, GripVertical, MessageCircle, Pin, PinOff, Search, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { DocumentPreview } from '@/lib/api'
@@ -142,11 +142,14 @@ export function BookSettingsShortcuts({
             <button
               key={item.path}
               type="button"
-              className={`nova-nav-item max-w-full px-2.5 py-1 text-[11px] font-medium ${item.exists && selectedFile === item.path ? 'is-active' : 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]'}`}
-              title={item.title}
+              data-book-setting-state={item.exists ? 'ready' : 'missing'}
+              aria-label={item.exists ? undefined : t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })}
+              className={`nova-nav-item relative max-w-full px-2.5 py-1 text-[11px] font-medium ${item.exists && selectedFile === item.path ? 'is-active' : item.exists ? 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]' : 'border border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_42%,var(--nova-surface-2))] pr-5 text-[var(--nova-text-muted)] hover:border-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)]'}`}
+              title={item.exists ? item.title : t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })}
               onClick={() => selectItem(item)}
             >
               <span className="block truncate">{item.title}</span>
+              {!item.exists ? <CircleDashed aria-hidden="true" className="absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[color-mix(in_srgb,var(--nova-warning)_68%,var(--nova-text-faint))]" /> : null}
             </button>
           ))}
         </div>
@@ -180,14 +183,18 @@ function SortableSettingRow({ item, pinned, selected, onSelect, onTogglePinned }
 }) {
   const { t } = useTranslation()
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.path, disabled: !pinned })
+  const missingTooltip = t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`flex items-center gap-1 rounded-md border px-1 py-1 ${selected ? 'border-[var(--nova-border)] bg-[var(--nova-active)]' : 'border-transparent bg-[var(--nova-surface)]'} ${isDragging ? 'z-10 opacity-70 shadow-lg' : ''}`}>
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`flex items-center gap-1 rounded-md border px-1 py-1 ${selected ? 'border-[var(--nova-border)] bg-[var(--nova-active)]' : item.exists ? 'border-transparent bg-[var(--nova-surface)]' : 'border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_32%,var(--nova-surface))]'} ${isDragging ? 'z-10 opacity-70 shadow-lg' : ''}`}>
       <button type="button" disabled={!pinned} aria-label={t('planning.reorderBookSetting', { title: item.title })} className="cursor-grab p-1 text-[var(--nova-text-faint)] disabled:cursor-default disabled:opacity-20" {...attributes} {...listeners}>
         <GripVertical className="h-3.5 w-3.5" />
       </button>
-      <button type="button" className="min-w-0 flex-1 px-1 text-left" onClick={() => onSelect(item)}>
+      <button type="button" data-book-setting-state={item.exists ? 'ready' : 'missing'} aria-label={item.exists ? undefined : missingTooltip} title={item.exists ? undefined : missingTooltip} className="min-w-0 flex-1 px-1 text-left" onClick={() => onSelect(item)}>
         <span className="block truncate text-xs text-[var(--nova-text)]">{item.title}</span>
-        <span className="block truncate text-[10px] text-[var(--nova-text-faint)]">{item.path}</span>
+        <span className="flex min-w-0 items-center gap-1 truncate text-[10px] text-[var(--nova-text-faint)]">
+          {!item.exists ? <CircleDashed aria-hidden="true" className="h-3 w-3 shrink-0 text-[color-mix(in_srgb,var(--nova-warning)_68%,var(--nova-text-faint))]" /> : null}
+          <span className="truncate">{item.path}</span>
+        </span>
       </button>
       <button type="button" aria-label={pinned ? t('planning.unpinBookSetting', { title: item.title }) : t('planning.pinBookSetting', { title: item.title })} className="rounded p-1.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={() => onTogglePinned(item.path)}>
         {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}

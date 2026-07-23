@@ -34,3 +34,19 @@ func (h *Handlers) HandleAgentRunTrace(ctx context.Context, c *app.RequestContex
 	}
 	writeJSON(c, consts.StatusOK, trace)
 }
+
+// HandleAgentRunTraceExport GET /api/agent-runs/:id/export — 下载完整 JSONL trace 文件。
+func (h *Handlers) HandleAgentRunTraceExport(ctx context.Context, c *app.RequestContext) {
+	_ = ctx
+	if !h.requireWorkspace(c) {
+		return
+	}
+	trace, err := h.app.ExportAgentRunTrace(c.Param("id"))
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
+	c.Response.Header.Set("Content-Disposition", attachmentContentDisposition(trace.Filename))
+	c.Response.Header.Set("Cache-Control", "no-store")
+	c.Data(consts.StatusOK, "application/x-ndjson; charset=utf-8", trace.Data)
+}

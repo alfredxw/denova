@@ -62,6 +62,13 @@ type RunTrace struct {
 	Truncated bool             `json:"truncated"`
 }
 
+// RunTraceExport is the original JSONL trace file retained for support diagnosis.
+// It intentionally keeps every persisted record, unlike the bounded detail view.
+type RunTraceExport struct {
+	Filename string
+	Data     []byte
+}
+
 type RunTraceRecord struct {
 	Type      string         `json:"type"`
 	RunID     string         `json:"run_id"`
@@ -117,12 +124,40 @@ func ListRunTraces(workspace string, limit int) ([]RunTraceSummary, error) {
 }
 
 func ReadRunTrace(workspace, id string) (RunTrace, error) {
+	path, err := runTracePath(workspace, id)
+	if err != nil {
+		return RunTrace{}, err
+	}
+	return readRunTraceFile(path, defaultRunTraceRecordCap)
+}
+
+// ExportRunTrace returns the complete persisted JSONL file for one run.
+// The caller owns any HTTP download behavior and must not expose arbitrary files.
+func ExportRunTrace(workspace, id string) (RunTraceExport, error) {
+	path, err := runTracePath(workspace, id)
+	if err != nil {
+		return RunTraceExport{}, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return RunTraceExport{}, err
+	}
+	return RunTraceExport{
+		Filename: filepath.Base(path),
+		Data:     data,
+	}, nil
+}
+
+func runTracePath(workspace, id string) (string, error) {
 	id = strings.TrimSpace(id)
 	if id == "" || strings.ContainsAny(id, `/\`) {
-		return RunTrace{}, fmt.Errorf("invalid run id")
+		return "", fmt.Errorf("invalid run id")
 	}
-	path := filepath.Join(runTraceDir(workspace), id+".jsonl")
-	return readRunTraceFile(path, defaultRunTraceRecordCap)
+	dir := runTraceDir(workspace)
+	if dir == "" {
+		return "", fmt.Errorf("workspace trace directory unavailable")
+	}
+	return filepath.Join(dir, id+".jsonl"), nil
 }
 
 func readRunTraceFile(path string, recordCap int) (RunTrace, error) {

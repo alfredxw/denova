@@ -2,8 +2,10 @@ package api
 
 import (
 	"fmt"
+	"net"
 
 	hertzserver "github.com/cloudwego/hertz/pkg/app/server"
+	hertzconfig "github.com/cloudwego/hertz/pkg/common/config"
 
 	"denova/config"
 	"denova/internal/api/handlers"
@@ -20,6 +22,16 @@ type Server struct {
 
 // NewServer 构造 HTTP 服务。
 func NewServer(application *app.App, port string) *Server {
+	return newServer(application, port, nil)
+}
+
+// NewServerWithListener constructs an HTTP server using an already reserved
+// listener. Callers retain responsibility for choosing the listener address.
+func NewServerWithListener(application *app.App, port string, listener net.Listener) *Server {
+	return newServer(application, port, listener)
+}
+
+func newServer(application *app.App, port string, listener net.Listener) *Server {
 	remoteAccess := application.RemoteAccessConfig()
 	host := config.HTTPListenHost(remoteAccess.AllowLANAccess)
 	s := &Server{
@@ -28,10 +40,14 @@ func NewServer(application *app.App, port string) *Server {
 		host: host,
 	}
 
-	h := hertzserver.Default(
-		hertzserver.WithHostPorts(host+":"+port),
+	options := []hertzconfig.Option{
+		hertzserver.WithHostPorts(host + ":" + port),
 		hertzserver.WithMaxRequestBodySize(int(handlers.MaxCharacterCardUploadBytes)),
-	)
+	}
+	if listener != nil {
+		options = append(options, hertzserver.WithListener(listener))
+	}
+	h := hertzserver.Default(options...)
 	h.Use(corsMiddleware)
 	h.Use(remoteAccessMiddleware(application))
 	s.registerRoutes(h)

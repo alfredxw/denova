@@ -10,6 +10,7 @@ const planning = {
   'planning.noPinnedBookSettings': 'No frequently used settings pinned',
   'planning.bookSettingMissingTitle': '{{title}} has not been created yet',
   'planning.bookSettingMissingDescription': '{{path}} does not exist yet. Ask the Creation Agent on the right to create it from the current state of the book.',
+  'planning.bookSettingMissingTooltip': '{{title}} has not been created yet ({{path}}). Select it to ask the Creation Agent to create it.',
   'planning.bookSettingAskAgent': 'Ask the Creation Agent',
   'planning.bookSettingCreatePrompt': 'Help me discuss and create {{title}} ({{path}}) from the current state of the book. Inspect the existing material and context first; ask me when information is missing, and do not create an empty placeholder file.',
   'planning.pinBookSetting': 'Pin {{title}}',
