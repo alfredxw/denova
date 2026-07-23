@@ -142,10 +142,14 @@ func (s *WorkspaceRuntimeManager) SwitchWorkspace(ctx context.Context, path stri
 	if oldKey := lifecycleWorkspaceKey(currentWorkspace); oldKey != "" && oldKey != lifecycleWorkspaceKey(runtime.workspace) {
 		delete(a.workspaceScopes, oldKey)
 	}
+	previousVersionService := a.versionService
 	a.applyRuntime(runtime)
 	a.cfg.Workspace = runtime.workspace
 	chatApp.clearRecoveryRefreshObligations(runtime.workspace)
 	a.mu.Unlock()
+	if previousVersionService != nil && previousVersionService != runtime.versionService {
+		previousVersionService.Close()
+	}
 
 	_ = a.bookRegistry.Touch(runtime.workspace)
 	return runtime.workspace, nil
@@ -295,9 +299,13 @@ func (s *WorkspaceRuntimeManager) activateFallbackWorkspace(ctx context.Context)
 		return "", err
 	}
 	a.mu.Lock()
+	previousVersionService := a.versionService
 	delete(a.workspaceScopes, lifecycleWorkspaceKey(currentWorkspace))
 	a.clearRuntime()
 	a.mu.Unlock()
+	if previousVersionService != nil {
+		previousVersionService.Close()
+	}
 	return "", nil
 }
 
@@ -437,7 +445,12 @@ func (s *WorkspaceRuntimeManager) UpdateUserSettings(settings config.Settings, b
 	a.mu.Lock()
 	applyLayeredSettingsToConfig(a.cfg, layered)
 	syncRuntimeDiagnostics(a.cfg)
+	versionService := a.versionService
+	autoSettings := versionAutoSettingsForConfig(a.cfg)
 	a.mu.Unlock()
+	if versionService != nil {
+		versionService.ConfigureAutoVersion(autoSettings)
+	}
 	return layered, nil
 }
 
@@ -586,12 +599,6 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.VersionTimedIntervalMinutes != nil {
 		cfg.VersionTimedIntervalMinutes = appSettingsInt(effective.VersionTimedIntervalMinutes, 10)
 	}
-	if effective.VersionAgentEnabled != nil {
-		cfg.VersionAgentEnabled = *effective.VersionAgentEnabled
-	}
-	if effective.VersionAgentCharThreshold != nil {
-		cfg.VersionAgentCharThreshold = appSettingsInt(effective.VersionAgentCharThreshold, 3000)
-	}
 }
 
 func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
@@ -697,12 +704,6 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	}
 	if settings.VersionTimedIntervalMinutes != nil {
 		cfg.VersionTimedIntervalMinutes = appSettingsInt(settings.VersionTimedIntervalMinutes, 10)
-	}
-	if settings.VersionAgentEnabled != nil {
-		cfg.VersionAgentEnabled = *settings.VersionAgentEnabled
-	}
-	if settings.VersionAgentCharThreshold != nil {
-		cfg.VersionAgentCharThreshold = appSettingsInt(settings.VersionAgentCharThreshold, 3000)
 	}
 }
 

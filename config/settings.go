@@ -62,8 +62,6 @@ type Settings struct {
 	ChapterGroupMax             *int   `toml:"chapter_group_max,omitempty" json:"chapter_group_max,omitempty"`
 	VersionTimedEnabled         *bool  `toml:"version_timed_enabled,omitempty" json:"version_timed_enabled,omitempty"`
 	VersionTimedIntervalMinutes *int   `toml:"version_timed_interval_minutes,omitempty" json:"version_timed_interval_minutes,omitempty"`
-	VersionAgentEnabled         *bool  `toml:"version_agent_enabled,omitempty" json:"version_agent_enabled,omitempty"`
-	VersionAgentCharThreshold   *int   `toml:"version_agent_char_threshold,omitempty" json:"version_agent_char_threshold,omitempty"`
 
 	// 外观
 	UIFontFamily       string `toml:"ui_font_family,omitempty" json:"ui_font_family,omitempty"`
@@ -133,8 +131,6 @@ func DefaultSettings() Settings {
 		ChapterGroupMax:             intPtr(8),
 		VersionTimedEnabled:         boolPtr(true),
 		VersionTimedIntervalMinutes: intPtr(10),
-		VersionAgentEnabled:         boolPtr(true),
-		VersionAgentCharThreshold:   intPtr(3000),
 		UIFontFamily:                "apple-system",
 		UIFontSize:                  intPtr(14),
 		ReadingFontFamily:           "source-han-serif",
@@ -264,12 +260,6 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.VersionTimedIntervalMinutes != nil {
 		out.VersionTimedIntervalMinutes = child.VersionTimedIntervalMinutes
-	}
-	if child.VersionAgentEnabled != nil {
-		out.VersionAgentEnabled = child.VersionAgentEnabled
-	}
-	if child.VersionAgentCharThreshold != nil {
-		out.VersionAgentCharThreshold = child.VersionAgentCharThreshold
 	}
 	if child.UIFontFamily != "" {
 		out.UIFontFamily = child.UIFontFamily

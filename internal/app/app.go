@@ -329,6 +329,7 @@ func (a *App) Close() {
 		a.closed = true
 		rootScope := a.rootScope
 		schedulerCancel := a.schedulerCancel
+		versionService := a.versionService
 		a.mu.Unlock()
 
 		// Admission closes before cancellation so no task can slip between the
@@ -345,6 +346,9 @@ func (a *App) Close() {
 		a.schedulerWG.Wait()
 		if err := rootScope.Wait(context.Background()); err != nil {
 			log.Printf("[app] wait lifecycle scope failed: %v", err)
+		}
+		if versionService != nil {
+			versionService.Close()
 		}
 		if a.chatService != nil {
 			if err := a.chatService.Close(context.Background()); err != nil {

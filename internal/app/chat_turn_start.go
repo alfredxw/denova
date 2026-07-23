@@ -9,7 +9,6 @@ import (
 	"denova/config"
 	"denova/internal/agent"
 	"denova/internal/agentruntime"
-	"denova/internal/book"
 )
 
 func (a *App) StartTask(ctx context.Context, req agent.ChatRequest) *Task {
@@ -108,17 +107,6 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 		log.Printf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err)
 		return nil, err
 	}
-	var beforeVersionState book.VersionWorkspaceState
-	var hasBeforeVersionState bool
-	if runtime.versionService != nil {
-		state, err := runtime.versionService.CaptureState()
-		if err != nil {
-			log.Printf("[versions] 捕获 Agent 运行前状态失败 workspace=%s err=%v", runtime.workspace, err)
-		} else {
-			beforeVersionState = state
-			hasBeforeVersionState = true
-		}
-	}
 	runtimeContexts := agent.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
 	conversation := agent.NewSessionConversationForAgentWithRuntimeContexts(
 		runtime.sess,
@@ -131,12 +119,16 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 	)
 	var verifiedMutations []agent.ToolMutation
 	var postRunVerification agent.PostRunVerification
-	mutationCallback := a.automationMutationCallback("ide_agent_post_run")
+	mutationCallback := a.verifiedWorkspaceMutationCallback(
+		"ide_agent_post_run",
+		runtime.versionService,
+		versionAutoSettingsForConfig(&runtime.cfg),
+	)
 	var accepted *agent.AcceptedRun
 	runAccepted := func(ctx context.Context, task *Task, emit func(agent.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill)
-		outcome := accepted.Wait(ctx)
+		accepted.Wait(ctx)
 		_, inputCommitted := conversation.LastAgentCycleCommitReceipt(agent.HarnessDomainCommitInput)
 		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agent.HarnessDomainCommitOutput)
 		postSettlementCtx := ctx
@@ -164,23 +156,6 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 		cycleCommitted := outputCommitted
 		if cycleCommitted && len(verifiedMutations) > 0 {
 			mutationCallback(postSettlementCtx, verifiedMutations, postRunVerification)
-		}
-		if runtime.versionService != nil && hasBeforeVersionState && cycleCommitted {
-			settings := book.DefaultVersionAutoSettings()
-			settings.TimedEnabled = runtime.cfg.VersionTimedEnabled
-			settings.TimedIntervalMinutes = runtime.cfg.VersionTimedIntervalMinutes
-			settings.AgentEnabled = runtime.cfg.VersionAgentEnabled
-			settings.AgentCharThreshold = runtime.cfg.VersionAgentCharThreshold
-			result, err := runtime.versionService.MaybeCreateAgent(beforeVersionState, settings)
-			if err != nil {
-				log.Printf("[versions] Agent 自动保存失败 workspace=%s err=%v", runtime.workspace, err)
-			} else if result.Skipped {
-				log.Printf("[versions] Agent 自动保存跳过 workspace=%s reason=%q chars=%d", runtime.workspace, result.Reason, result.Chars)
-			} else if result.Version != nil {
-				log.Printf("[versions] Agent 自动保存完成 workspace=%s version=%s chars=%d", runtime.workspace, result.Version.ID, result.Chars)
-			}
-		} else if runtime.versionService != nil && hasBeforeVersionState {
-			log.Printf("[versions] Agent 自动保存跳过：cycle 未形成合法 output receipt workspace=%s task_id=%s outcome=%s input_committed=%t output_committed=%t", runtime.workspace, task.ID(), outcome.Status, inputCommitted, outputCommitted)
 		}
 		log.Printf("[agent-task] run end id=%s status=%s", task.ID(), task.Status())
 	}

@@ -53,7 +53,7 @@ const editor = {
   'editor.status.error': 'Save failed',
   'editor.status.errorAria': 'Save failed',
   'editor.externalConflict.title': 'Concurrent edits detected',
-  'editor.externalConflict.description': 'Non-overlapping edits were merged automatically. Overlaps kept your edit, and both versions were archived without pausing saves.',
+  'editor.externalConflict.description': 'Non-overlapping edits were merged automatically. Overlaps kept your edit, and both versions were archived. Auto Save is paused until you keep the merged result or load the workspace version.',
   'editor.externalConflict.keepLocal': 'Keep merged result',
   'editor.externalConflict.loadExternal': 'Load workspace version',
   'editor.externalConflict.saveBlocked': 'Resolve the external change before saving',

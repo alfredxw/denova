@@ -282,9 +282,9 @@ func (h *Handlers) HandleWorkspaceReplace(ctx context.Context, c *app.RequestCon
 				paths = append(paths, item.Path)
 			}
 			return denovaapp.WorkspaceChangeMutationHooks{
-				CreateTimedVersion: true,
-				AutomationSource:   "workspace_replace",
-				Paths:              paths,
+				ScheduleAutoVersion: true,
+				AutomationSource:    "workspace_replace",
+				Paths:               paths,
 			}, nil
 		},
 	)
@@ -371,9 +371,9 @@ func (h *Handlers) HandleWorkspaceFileWrite(ctx context.Context, c *app.RequestC
 				return denovaapp.WorkspaceChangeMutationHooks{}, saveErr
 			}
 			return denovaapp.WorkspaceChangeMutationHooks{
-				CreateTimedVersion: true,
-				AutomationSource:   "workspace_file_write",
-				Paths:              []string{req.Path},
+				ScheduleAutoVersion: true,
+				AutomationSource:    "workspace_file_write",
+				Paths:               []string{req.Path},
 			}, nil
 		},
 	)

@@ -24,13 +24,14 @@ type ConfigManagerAppService struct {
 }
 
 type configManagerTaskRuntime struct {
-	cfg          config.Config
-	workspace    string
-	state        *book.State
-	sessionStore *session.Store
-	bookService  *book.Service
-	chatService  *agent.ChatService
-	bookRegistry *BookRegistry
+	cfg            config.Config
+	workspace      string
+	state          *book.State
+	sessionStore   *session.Store
+	bookService    *book.Service
+	versionService *book.VersionService
+	chatService    *agent.ChatService
+	bookRegistry   *BookRegistry
 }
 
 const configManagerRequestContextValueMaxBytes = 2048
@@ -112,7 +113,7 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 	}
 	runtime := configManagerTaskRuntime{
 		cfg: capturedConfig, workspace: a.workspace, state: a.bookState, sessionStore: a.sessionStore,
-		bookService: a.bookService, chatService: a.chatService, bookRegistry: a.bookRegistry,
+		bookService: a.bookService, versionService: a.versionService, chatService: a.chatService, bookRegistry: a.bookRegistry,
 	}
 	available := a.cfg != nil && a.bookState != nil && a.sessionStore != nil && a.chatService != nil && strings.TrimSpace(a.workspace) != ""
 	a.mu.RUnlock()
@@ -177,8 +178,12 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 	accepted, err = runtime.chatService.StartWithOptions(acceptCtx, runner, conversation, runtime.bookService, chatReq, agent.RunOptions{
 		AgentKind: agent.AgentKindConfigManager, TaskID: task.ID(), SessionID: sess.ID, Workspace: runtime.workspace,
 		Mode: "config_manager", IdleTimeout: agentIdleTimeout(runtimeCfg), ToolResultMaxBytes: agentToolResultMaxBytes(runtimeCfg),
-		SystemPromptLog:     systemPrompt,
-		OnMutationsVerified: a.automationMutationCallback("config_manager_post_run"),
+		SystemPromptLog: systemPrompt,
+		OnMutationsVerified: a.verifiedWorkspaceMutationCallback(
+			"config_manager_post_run",
+			runtime.versionService,
+			versionAutoSettingsForConfig(&runtimeCfg),
+		),
 	}, task.emit)
 	releaseAcceptance()
 	if err != nil {

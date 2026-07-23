@@ -21,23 +21,24 @@ import (
 // cycle owns the fresh conversation required to persist exactly one player
 // turn against the branch head observed during preparation.
 type interactiveAgentCycle struct {
-	app          *App
-	store        *interactive.Store
-	state        *book.State
-	bookService  *book.Service
-	chatService  *agent.ChatService
-	sessionStore *session.Store
-	runtimeCfg   config.Config
-	workspace    string
-	novaDir      string
-	storyID      string
-	branchID     string
-	storyContext interactive.StoryContext
-	tellerInput  prompts.InteractiveStorySystemInstructionInput
-	runner       *adk.Runner
-	systemPrompt agent.SystemPromptComposition
-	conversation *interactiveConversation
-	request      agent.ChatRequest
+	app            *App
+	store          *interactive.Store
+	state          *book.State
+	bookService    *book.Service
+	versionService *book.VersionService
+	chatService    *agent.ChatService
+	sessionStore   *session.Store
+	runtimeCfg     config.Config
+	workspace      string
+	novaDir        string
+	storyID        string
+	branchID       string
+	storyContext   interactive.StoryContext
+	tellerInput    prompts.InteractiveStorySystemInstructionInput
+	runner         *adk.Runner
+	systemPrompt   agent.SystemPromptComposition
+	conversation   *interactiveConversation
+	request        agent.ChatRequest
 }
 
 type interactiveAgentCycleRequest struct {
@@ -61,7 +62,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	}
 	cycle := &interactiveAgentCycle{
 		app: a, store: a.interactive, state: a.bookState, bookService: a.bookService,
-		chatService: a.chatService, sessionStore: a.sessionStore,
+		versionService: a.versionService, chatService: a.chatService, sessionStore: a.sessionStore,
 		runtimeCfg: *a.cfg, workspace: strings.TrimSpace(a.workspace),
 		storyID: strings.TrimSpace(request.StoryID),
 	}
@@ -140,16 +141,20 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 
 func (c *interactiveAgentCycle) options(taskID string) agent.RunOptions {
 	return agent.RunOptions{
-		AgentKind:           agent.AgentKindInteractiveStory,
-		TaskID:              strings.TrimSpace(taskID),
-		StoryID:             c.storyID,
-		BranchID:            c.branchID,
-		Workspace:           c.workspace,
-		Mode:                "interactive",
-		IdleTimeout:         agentIdleTimeout(c.runtimeCfg),
-		ToolResultMaxBytes:  agentToolResultMaxBytes(c.runtimeCfg),
-		SystemPromptLog:     c.systemPrompt,
-		OnMutationsVerified: c.app.automationMutationCallback("interactive_agent_post_run"),
+		AgentKind:          agent.AgentKindInteractiveStory,
+		TaskID:             strings.TrimSpace(taskID),
+		StoryID:            c.storyID,
+		BranchID:           c.branchID,
+		Workspace:          c.workspace,
+		Mode:               "interactive",
+		IdleTimeout:        agentIdleTimeout(c.runtimeCfg),
+		ToolResultMaxBytes: agentToolResultMaxBytes(c.runtimeCfg),
+		SystemPromptLog:    c.systemPrompt,
+		OnMutationsVerified: c.app.verifiedWorkspaceMutationCallback(
+			"interactive_agent_post_run",
+			c.versionService,
+			versionAutoSettingsForConfig(&c.runtimeCfg),
+		),
 	}
 }
 

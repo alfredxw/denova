@@ -17,6 +17,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- 编辑器自动保存统一为修改后延迟保存：连续输入会重置延迟，停止输入后只保存最新草稿，不再依赖固定周期；目录与章节统计也不再每 3 秒扫描整本作品。
+- Writing-editor Auto Save now consistently uses after-delay semantics: continued typing resets the delay, and only the latest draft is saved after input stops. Workspace tree and chapter statistics also no longer scan the whole project every three seconds.
+- Git 自动版本改为修改后延迟创建：工作区修改会重置 30 秒空闲计时，停止修改且达到用户配置的最小间隔后才在后台创建版本。该功能默认开启、默认间隔 10 分钟，并可在设置中修改或关闭。
+- Automatic Git versions now use an after-change delay: workspace changes reset a 30-second idle timer, and a version is created in the background only after editing stops and the user-configured minimum interval has elapsed. The feature defaults to on with a 10-minute interval and can be changed or disabled in Settings.
+- 编辑器、写作 Agent、游戏 Agent 和配置 Agent 的文件修改统一使用同一套自动版本策略；独立的 Agent 字数阈值设置已移除，旧的 `version_agent_enabled` 与 `version_agent_char_threshold` 配置不再生效。
+- Editor, Writing Agent, Game Agent, and Configuration Agent file changes now share the same automatic-version policy. The separate Agent character threshold has been removed, and the legacy `version_agent_enabled` and `version_agent_char_threshold` settings no longer take effect.
 - 所有 Agent 的 system prompt 改为一次性、不可变的组合产物：实际运行、上下文分析、日志和预算校验复用同一份 instruction、来源 manifest、字节数与 SHA-256；动态风格、Skills、Teller、Automation、图像和 SubAgent 片段均使用显式高上限，超限会返回中英文错误而不是发送半份提示词。配置管理资源 Skill 单源上限为 512 KiB、总上限为 1.5 MiB。Beta 不兼容：旧的风格规则固定 32k 字符截断不再生效，改由统一可配置预算控制。
 - Every Agent system prompt is now one immutable composition artifact: production runs, Context Analysis, logs, and budget checks reuse the exact same instruction, provenance manifest, byte counts, and SHA-256 hashes. Dynamic style, Skill, Teller, Automation, image, and SubAgent fragments use explicit high limits and fail with bilingual errors instead of sending partial prompts. Config Manager resource Skills allow 512 KiB per source and 1.5 MiB total. Beta breaking: the former fixed 32k style-rule truncation is superseded by the unified configurable budget.
 - Config Manager 现在与写作、游戏共用持久化 Agent 控制面：活动查询只读投影精确 Runtime identity，刷新或随机 SSE 断线会按 task ID + cursor 恢复同一展示流，`/clear` 先 drain 对应 Task 与 binding 再写清理标记。Task display checkpoint 升级为 v2，结算状态、有限终态原因和游戏回合待持久化语义即使展示事件被逐出也能恢复；v1 checkpoint 仍可读取。
@@ -54,6 +60,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 写作编辑器不再把尚未结束的本地保存回灌误判为并发修改；保存期间继续输入并手动保存时，最新草稿会按新 revision 立即排队，且旧快照完成后仍准确显示未保存状态。
+- The Writing editor no longer mistakes an in-flight local save echo for a concurrent edit. Typing and manually saving during persistence now queues the latest draft against the new revision, while an older acknowledgement keeps the unsaved status accurate.
+- 文件成功落盘后会立即结束编辑器保存状态；章节字数统计改为后台合并刷新，不再让统计扫描阻塞手动保存或堆积并行请求。
+- The editor now finishes its saving state as soon as the file is durably written. Chapter statistics refresh in a coalesced background task instead of blocking manual saves or piling up parallel scans.
+- 普通文件保存不再同步检查或创建 Git 版本；保存期间触发的 Git 自动版本会串行后台执行，继续编辑只会重置下一轮空闲计时，不再阻塞保存响应。
+- Ordinary file saves no longer synchronously check or create Git versions. Automatic Git versions run serially in the background, and edits made during a version operation only reset the next idle cycle instead of blocking the save response.
+- 本地草稿与外部版本真实重叠时会保留双方版本并暂停自动保存；用户明确选择保留合并结果或载入工作区版本后才继续，非重叠修改仍自动合并。
+- When a local draft truly overlaps an external version, both versions are preserved and Auto Save pauses until the user keeps the merged result or loads the workspace version. Non-overlapping edits still merge automatically.
 - 修复 Harness 在 emit、提交或回调 panic/提前返回时未取消 cycle 子上下文，以及已完成/启动失败的展示 Task 关闭 `Done` 后仍保留活动上下文的问题；桥接控制、ADK 子任务和 `AfterFunc` 现在都会随精确生命周期边界释放。
 - Fixed cycle child contexts surviving Harness emit/commit/callback panics or early returns, plus completed or start-rejected display Tasks publishing `Done` while retaining a live context. Control bridges, ADK child work, and `AfterFunc` callbacks now release with the exact lifecycle boundary.
 - 修复 Agent 冷恢复在结构操作已落盘、但规范 Session / Story 刷新失败后丢失精确重试入口，以及旧完成 Task 被重复挂接、连续队首恢复动作跨 Task 交接、取消后继 NextTurn 时复用旧 Abort 身份等问题；恢复义务现在作为服务级准入栅栏保留到规范投影成功，写作与游戏始终沿用同一可观察 Task，并按当前 operation 生成控制身份。
