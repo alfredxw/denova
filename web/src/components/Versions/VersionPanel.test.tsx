@@ -30,8 +30,6 @@ describe('VersionPanel', () => {
       auto: {
         timed_enabled: false,
         timed_interval_minutes: 10,
-        agent_enabled: false,
-        agent_char_threshold: 3000,
         retention: 100,
       },
     })

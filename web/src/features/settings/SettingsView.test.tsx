@@ -141,12 +141,15 @@ describe('SettingsView user scope', () => {
     expect(screen.queryByRole('button', { name: '当前工作区' })).not.toBeInTheDocument()
     expect(screen.queryByText('工作区配置文件')).not.toBeInTheDocument()
     expect(screen.getByText('默认叙事')).toBeInTheDocument()
-    expect(screen.getByText('定时自动保存版本')).toBeInTheDocument()
+    expect(screen.getByText('自动创建 Git 版本')).toBeInTheDocument()
+    expect(screen.queryByText('Agent 大量输出自动保存')).not.toBeInTheDocument()
     expect(screen.getByText('故事舞台行间距')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
 
     vi.useFakeTimers()
-    fireEvent.change(screen.getByLabelText('定时保存间隔 (分钟)'), { target: { value: '20' } })
+    const intervalInput = screen.getByLabelText('自动版本最小间隔（分钟）')
+    expect(intervalInput).toHaveAttribute('min', '1')
+    fireEvent.change(intervalInput, { target: { value: '20' } })
     expect(screen.getByRole('status')).toHaveTextContent('等待自动保存')
     await act(async () => { await vi.advanceTimersByTimeAsync(1100) })
 

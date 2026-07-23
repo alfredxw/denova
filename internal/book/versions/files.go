@@ -75,14 +75,21 @@ func collectVersionFiles(root, base string) ([]versionFileData, error) {
 	return files, nil
 }
 
-func versionFileStateFromBytes(data []byte) VersionFileState {
+type versionFileState struct {
+	Hash  string
+	Size  int64
+	Chars int
+	Text  bool
+}
+
+func versionFileStateFromBytes(data []byte) versionFileState {
 	hashBytes := sha256.Sum256(data)
 	text := isTextBytes(data)
 	chars := 0
 	if text {
 		chars = utf8.RuneCount(data)
 	}
-	return VersionFileState{
+	return versionFileState{
 		Hash:  hex.EncodeToString(hashBytes[:]),
 		Size:  int64(len(data)),
 		Chars: chars,

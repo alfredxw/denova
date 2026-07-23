@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"denova/internal/agent"
+	"denova/internal/book"
 )
 
 // automationMutationCallback returns a callback that evaluates triggers after a
@@ -24,5 +25,22 @@ func (a *App) automationMutationCallback(source string) func(context.Context, []
 			}
 		}
 		svc.checkTriggersAfterWorkspaceMutation(ctx, snap, source, paths)
+	}
+}
+
+// verifiedWorkspaceMutationCallback keeps every post-run side effect behind
+// the same verified mutation event: automation reacts immediately, while Git
+// version creation is only scheduled after the workspace becomes idle.
+func (a *App) verifiedWorkspaceMutationCallback(
+	source string,
+	versionService *book.VersionService,
+	settings book.VersionAutoSettings,
+) func(context.Context, []agent.ToolMutation, agent.PostRunVerification) {
+	automationCallback := a.automationMutationCallback(source)
+	return func(ctx context.Context, mutations []agent.ToolMutation, verification agent.PostRunVerification) {
+		automationCallback(ctx, mutations, verification)
+		if len(mutations) > 0 {
+			scheduleAutoVersion(versionService, settings)
+		}
 	}
 }

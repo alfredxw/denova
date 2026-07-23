@@ -22,6 +22,12 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AutoSaveEnabled == nil || *s.AutoSaveEnabled != true {
 		t.Fatalf("AutoSaveEnabled default")
 	}
+	if s.VersionTimedEnabled == nil || !*s.VersionTimedEnabled {
+		t.Fatalf("VersionTimedEnabled should default on")
+	}
+	if s.VersionTimedIntervalMinutes == nil || *s.VersionTimedIntervalMinutes != 10 {
+		t.Fatalf("VersionTimedIntervalMinutes should default to 10")
+	}
 	if s.HideChapterBodyLiveOutput == nil || *s.HideChapterBodyLiveOutput {
 		t.Fatalf("HideChapterBodyLiveOutput should default off")
 	}

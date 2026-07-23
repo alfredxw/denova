@@ -8,8 +8,65 @@ import (
 	"testing"
 	"time"
 
+	"denova/config"
+	"denova/internal/book"
 	"denova/internal/workspacechange"
 )
+
+func TestWorkspaceFileMutationDefersAutomaticGitVersion(t *testing.T) {
+	workspace := t.TempDir()
+	path := "chapters/ch01.md"
+	absolutePath := filepath.Join(workspace, filepath.FromSlash(path))
+	if err := os.MkdirAll(filepath.Dir(absolutePath), 0o755); err != nil {
+		t.Fatalf("create chapter directory: %v", err)
+	}
+	if err := os.WriteFile(absolutePath, []byte("first"), 0o644); err != nil {
+		t.Fatalf("write chapter: %v", err)
+	}
+	changeService, err := workspacechange.ForWorkspace(workspace)
+	if err != nil {
+		t.Fatalf("create change service: %v", err)
+	}
+	_, baseRevision, err := changeService.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read base revision: %v", err)
+	}
+	application := &App{
+		cfg: &config.Config{
+			VersionTimedEnabled:         true,
+			VersionTimedIntervalMinutes: 10,
+		},
+		workspace:      workspace,
+		versionService: book.NewVersionService(workspace),
+	}
+	t.Cleanup(application.Close)
+
+	_, err = application.WithWorkspaceChangeMutation(
+		context.Background(),
+		workspace,
+		func(service *workspacechange.Service) (WorkspaceChangeMutationHooks, error) {
+			result, saveErr := service.SaveFile(context.Background(), path, "second", baseRevision)
+			if saveErr != nil {
+				return WorkspaceChangeMutationHooks{}, saveErr
+			}
+			if !result.Changed {
+				t.Fatal("save unexpectedly reported no change")
+			}
+			return WorkspaceChangeMutationHooks{ScheduleAutoVersion: true}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("save workspace file: %v", err)
+	}
+
+	history, err := application.VersionHistory(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("read version history: %v", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("file save must not synchronously create a Git version: %#v", history)
+	}
+}
 
 func TestWorkspaceFileSaveLeaseBlocksWorkspaceSwitchThroughHooks(t *testing.T) {
 	workspace := t.TempDir()
@@ -64,9 +121,9 @@ func TestWorkspaceFileSaveLeaseBlocksWorkspaceSwitchThroughHooks(t *testing.T) {
 					return WorkspaceChangeMutationHooks{}, fmt.Errorf("save unexpectedly reported no change")
 				}
 				return WorkspaceChangeMutationHooks{
-					CreateTimedVersion: true,
-					AutomationSource:   "test_workspace_change",
-					Paths:              []string{path},
+					ScheduleAutoVersion: true,
+					AutomationSource:    "test_workspace_change",
+					Paths:               []string{path},
 				}, nil
 			},
 		)

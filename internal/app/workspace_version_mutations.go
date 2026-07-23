@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"log"
 
 	"denova/config"
 	"denova/internal/book"
@@ -118,13 +117,7 @@ func (s *WorkspaceRuntimeManager) RestoreVersion(ctx context.Context, id string,
 		if restoreErr != nil {
 			return restoreErr
 		}
-		if result.Scope == book.VersionRestoreScopeWorkspace {
-			if timed, timedErr := runtime.versionService.MaybeCreateTimed(runtime.versionSettings); timedErr != nil {
-				log.Printf("[versions] 恢复版本后定时保存检查失败 err=%v", timedErr)
-			} else if !timed.Skipped && timed.Version != nil {
-				log.Printf("[versions] 恢复版本后创建定时版本 id=%s", timed.Version.ID)
-			}
-		}
+		scheduleAutoVersion(runtime.versionService, runtime.versionSettings)
 		return nil
 	})
 	return result, err
@@ -137,32 +130,21 @@ func restoreRequestPaths(paths [][]string) []string {
 	return paths[0]
 }
 
-// MaybeCreateTimedVersion 在写操作后按定时策略创建自动版本。
-func (a *App) MaybeCreateTimedVersion(ctx context.Context) {
-	a.runtime().MaybeCreateTimedVersion(ctx)
+// ScheduleAutoVersion marks the current workspace for an idle automatic version.
+func (a *App) ScheduleAutoVersion(ctx context.Context) {
+	a.runtime().ScheduleAutoVersion(ctx)
 }
 
-func (s *WorkspaceRuntimeManager) MaybeCreateTimedVersion(ctx context.Context) {
+func (s *WorkspaceRuntimeManager) ScheduleAutoVersion(ctx context.Context) {
 	_ = ctx
-	maybeCreateTimedVersion(s.versionService(), s.versionAutoSettings())
+	scheduleAutoVersion(s.versionService(), s.versionAutoSettings())
 }
 
-func maybeCreateTimedVersion(versionService *book.VersionService, settings book.VersionAutoSettings) {
+func scheduleAutoVersion(versionService *book.VersionService, settings book.VersionAutoSettings) {
 	if versionService == nil {
 		return
 	}
-	result, err := versionService.MaybeCreateTimed(settings)
-	if err != nil {
-		log.Printf("[versions] 定时自动保存失败 err=%v", err)
-		return
-	}
-	if result.Skipped {
-		log.Printf("[versions] 定时自动保存跳过 reason=%q", result.Reason)
-		return
-	}
-	if result.Version != nil {
-		log.Printf("[versions] 定时自动保存完成 id=%s", result.Version.ID)
-	}
+	versionService.ScheduleAutoVersion(settings)
 }
 
 func (s *WorkspaceRuntimeManager) versionService() *book.VersionService {
@@ -187,7 +169,5 @@ func versionAutoSettingsForConfig(cfg *config.Config) book.VersionAutoSettings {
 	}
 	settings.TimedEnabled = cfg.VersionTimedEnabled
 	settings.TimedIntervalMinutes = cfg.VersionTimedIntervalMinutes
-	settings.AgentEnabled = cfg.VersionAgentEnabled
-	settings.AgentCharThreshold = cfg.VersionAgentCharThreshold
 	return settings
 }

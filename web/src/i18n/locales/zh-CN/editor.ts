@@ -53,7 +53,7 @@ const editor = {
   'editor.status.error': '保存失败',
   'editor.status.errorAria': '保存失败',
   'editor.externalConflict.title': '检测到并发编辑',
-  'editor.externalConflict.description': '已自动合并非重叠修改；重叠部分保留了你的编辑，双方版本已写入冲突记录，保存不会暂停。',
+  'editor.externalConflict.description': '已自动合并非重叠修改；重叠部分保留了你的编辑，双方版本已写入冲突记录。自动保存已暂停，请选择保留合并结果或载入工作区版本。',
   'editor.externalConflict.keepLocal': '保留合并结果',
   'editor.externalConflict.loadExternal': '载入工作区版本',
   'editor.externalConflict.saveBlocked': '请先处理外部变更再保存',

@@ -63,8 +63,6 @@ type Config struct {
 	ChapterGroupMax             int                          `toml:"-"`
 	VersionTimedEnabled         bool                         `toml:"-"`
 	VersionTimedIntervalMinutes int                          `toml:"-"`
-	VersionAgentEnabled         bool                         `toml:"-"`
-	VersionAgentCharThreshold   int                          `toml:"-"`
 	InteractiveReplyTargetChars int                          `toml:"-"`
 	ResumeLastWorkspace         bool                         `toml:"-"`
 	UpdateCheckEnabled          bool                         `toml:"-"`
@@ -125,8 +123,6 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		ChapterGroupMax:             settingsInt(s.ChapterGroupMax, 8),
 		VersionTimedEnabled:         settingsBool(s.VersionTimedEnabled, true),
 		VersionTimedIntervalMinutes: settingsInt(s.VersionTimedIntervalMinutes, 10),
-		VersionAgentEnabled:         settingsBool(s.VersionAgentEnabled, true),
-		VersionAgentCharThreshold:   settingsInt(s.VersionAgentCharThreshold, 3000),
 		InteractiveReplyTargetChars: 2000,
 		ResumeLastWorkspace:         true,
 		UpdateCheckEnabled:          settingsBool(s.UpdateCheckEnabled, true),
@@ -322,8 +318,6 @@ func Load() *Config {
 			ChapterGroupMax:             settingsInt(d.ChapterGroupMax, 8),
 			VersionTimedEnabled:         settingsBool(d.VersionTimedEnabled, true),
 			VersionTimedIntervalMinutes: settingsInt(d.VersionTimedIntervalMinutes, 10),
-			VersionAgentEnabled:         settingsBool(d.VersionAgentEnabled, true),
-			VersionAgentCharThreshold:   settingsInt(d.VersionAgentCharThreshold, 3000),
 			InteractiveReplyTargetChars: 2000,
 			ResumeLastWorkspace:         true,
 			UpdateCheckEnabled:          settingsBool(d.UpdateCheckEnabled, true),
