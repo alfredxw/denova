@@ -144,6 +144,10 @@ describe('SettingsView user scope', () => {
     expect(screen.getByText('自动创建 Git 版本')).toBeInTheDocument()
     expect(screen.queryByText('Agent 大量输出自动保存')).not.toBeInTheDocument()
     expect(screen.getByText('故事舞台行间距')).toBeInTheDocument()
+    expect(screen.getAllByText('网页访问').length).toBeGreaterThan(0)
+    expect(screen.getByLabelText('SearXNG 实例地址')).toBeInTheDocument()
+    expect(screen.getByLabelText('单次搜索结果上限')).toHaveAttribute('max', '20')
+    expect(screen.getByLabelText('单次正文字符上限')).toHaveAttribute('max', '262144')
     expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
 
     vi.useFakeTimers()

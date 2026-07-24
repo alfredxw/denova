@@ -16,6 +16,7 @@ export interface Settings {
   agent_context?: AgentContextSettings
   general_sub_agents?: AgentGeneralSubAgentSettings
   sub_agents?: SubAgentConfig[]
+  web_access?: WebAccessSettings
   skills_dir?: string
   backend_port?: number | null
   frontend_port?: number | null
@@ -55,6 +56,13 @@ export interface Settings {
   writing_skill_default?: string
   interactive_stage_font_size?: number | null
   interactive_stage_line_height?: number | null
+}
+
+export interface WebAccessSettings {
+  searxng_base_url?: string
+  search_max_results?: number | null
+  fetch_max_response_kb?: number | null
+  fetch_max_content_chars?: number | null
 }
 
 export interface ModelProfileSettings {

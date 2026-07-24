@@ -2,7 +2,7 @@ import { cloneElement, isValidElement, useEffect, useId, useMemo, useRef, useSta
 import type { ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Download, ExternalLink, Loader2, Plus, RefreshCw, Settings as SettingsIcon, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { ImageAPIProfileSettings, ModelProfileSettings, Settings, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult } from './types'
+import type { ImageAPIProfileSettings, ModelProfileSettings, Settings, UpdateApplyResult, UpdateCheckResult, UpdateInstallProgress, UpdateInstallResult, WebAccessSettings } from './types'
 import { applyUpdate, checkForUpdate, installUpdateStream } from './api'
 import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
 import { useLayeredSettingsDraft } from './use-layered-settings-draft'
@@ -28,9 +28,9 @@ import { DEFAULT_MODEL_PROFILE_ID, modelProfileID, modelProfileLabel, modelProfi
 import { DEFAULT_IMAGE_API_BASE_URL, DEFAULT_IMAGE_API_MODEL, DEFAULT_IMAGE_API_PROFILE_ID, DEFAULT_IMAGE_API_PROVIDER, imageAPIProfileID, imageAPIProfileLabel, imageAPIProfilesWithDefault } from './image-profiles'
 import { ONBOARDING_OPEN_EVENT, SETTINGS_SECTION_EVENT, type SettingsSectionRequest } from '@/features/onboarding/events'
 
-type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
+type SettingsSectionId = 'model' | 'image' | 'paths' | 'access' | 'appearance' | 'updates' | 'agent' | 'web-access' | 'debug' | 'ide-editor' | 'ide-output' | 'versions' | 'interactive'
 
-const SETTINGS_SECTION_IDS: SettingsSectionId[] = ['model', 'image', 'paths', 'access', 'appearance', 'updates', 'agent', 'debug', 'ide-editor', 'ide-output', 'versions', 'interactive']
+const SETTINGS_SECTION_IDS: SettingsSectionId[] = ['model', 'image', 'paths', 'access', 'appearance', 'updates', 'agent', 'web-access', 'debug', 'ide-editor', 'ide-output', 'versions', 'interactive']
 
 type SettingsSection = {
   id: SettingsSectionId
@@ -81,6 +81,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     appearance: true,
     updates: true,
     agent: true,
+    'web-access': true,
     debug: true,
     'ide-editor': true,
     'ide-output': true,
@@ -169,6 +170,12 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   const setField = <K extends keyof Settings>(k: K, v: Settings[K]) =>
     setDraft((d) => ({ ...d, [k]: v }))
 
+  const setWebAccessField = <K extends keyof WebAccessSettings>(key: K, value: WebAccessSettings[K]) =>
+    setDraft((current) => ({
+      ...current,
+      web_access: { ...current.web_access, [key]: value },
+    }))
+
   const setModelProfiles = (profiles: ModelProfileSettings[]) => {
     setDraft((d) => ({
       ...d,
@@ -194,6 +201,12 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
     const v = effective[k]
     if (v === undefined || v === null || v === '') return t('common.notSet')
     return t('common.inherit', { value: String(v) })
+  }
+
+  const webAccessPlaceholderFor = (key: keyof WebAccessSettings): string => {
+    const value = effective.web_access?.[key]
+    if (value === undefined || value === null || value === '') return t('common.notSet')
+    return t('common.inherit', { value: String(value) })
   }
 
   const sections: SettingsSection[] = [
@@ -365,6 +378,36 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
           <Text label={t('settings.agent.writingSkillDefault')} value={draft.writing_skill_default}
                 placeholder={placeholderFor('writing_skill_default')}
                 onChange={(v) => setField('writing_skill_default', v)} />
+        </>
+      ),
+    },
+    {
+      id: 'web-access',
+      group: t('settings.group.common'),
+      title: t('settings.section.webAccess'),
+      children: (
+        <>
+          <Text label={t('settings.webAccess.searxngBaseUrl')} value={draft.web_access?.searxng_base_url}
+                placeholder={webAccessPlaceholderFor('searxng_base_url')}
+                onChange={(value) => setWebAccessField('searxng_base_url', value)} />
+          <Num label={t('settings.webAccess.searchMaxResults')} value={draft.web_access?.search_max_results ?? null}
+               placeholder={webAccessPlaceholderFor('search_max_results')}
+               min={1}
+               max={20}
+               onChange={(value) => setWebAccessField('search_max_results', value)} />
+          <Num label={t('settings.webAccess.fetchMaxResponseKB')} value={draft.web_access?.fetch_max_response_kb ?? null}
+               placeholder={webAccessPlaceholderFor('fetch_max_response_kb')}
+               min={1}
+               max={65536}
+               onChange={(value) => setWebAccessField('fetch_max_response_kb', value)} />
+          <Num label={t('settings.webAccess.fetchMaxContentChars')} value={draft.web_access?.fetch_max_content_chars ?? null}
+               placeholder={webAccessPlaceholderFor('fetch_max_content_chars')}
+               min={1}
+               max={262144}
+               onChange={(value) => setWebAccessField('fetch_max_content_chars', value)} />
+          <div className="rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-3 py-2 text-xs leading-5 text-[var(--nova-text-faint)]">
+            {t('settings.webAccess.hint')}
+          </div>
         </>
       ),
     },

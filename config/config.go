@@ -31,6 +31,7 @@ type Config struct {
 	AgentContexts               AgentContextSettings         `toml:"agent_context"`
 	GeneralSubAgents            AgentGeneralSubAgentSettings `toml:"general_sub_agents"`
 	SubAgents                   []SubAgentConfig             `toml:"sub_agents"`
+	WebAccess                   WebAccessConfig              `toml:"web_access"`
 	SkillsDir                   string                       `toml:"skills_dir"`
 	BackendPort                 int                          `toml:"backend_port"`
 	FrontendPort                int                          `toml:"frontend_port"`
@@ -95,6 +96,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		AgentContexts:               s.AgentContexts,
 		GeneralSubAgents:            s.GeneralSubAgents,
 		SubAgents:                   s.SubAgents,
+		WebAccess:                   ResolveWebAccessSettings(s.WebAccess),
 		SkillsDir:                   s.SkillsDir,
 		BackendPort:                 settingsInt(s.BackendPort, 8080),
 		FrontendPort:                settingsInt(s.FrontendPort, 5173),
@@ -208,6 +210,7 @@ func settingsFromConfig(cfg *Config) Settings {
 		AgentContexts:            cfg.AgentContexts,
 		GeneralSubAgents:         cfg.GeneralSubAgents,
 		SubAgents:                cfg.SubAgents,
+		WebAccess:                settingsFromWebAccessConfig(cfg.WebAccess),
 		SkillsDir:                cfg.SkillsDir,
 		DenovaDir:                firstNonEmpty(cfg.DenovaDir, cfg.NovaDir),
 		NovaDir:                  firstNonEmpty(cfg.DenovaDir, cfg.NovaDir),
@@ -291,6 +294,7 @@ func Load() *Config {
 			AgentContexts:               d.AgentContexts,
 			GeneralSubAgents:            d.GeneralSubAgents,
 			SubAgents:                   d.SubAgents,
+			WebAccess:                   ResolveWebAccessSettings(d.WebAccess),
 			SkillsDir:                   d.SkillsDir,
 			BackendPort:                 settingsInt(d.BackendPort, 8080),
 			FrontendPort:                settingsInt(d.FrontendPort, 5173),
@@ -415,6 +419,9 @@ func overrideFromEnv(cfg *Config) {
 		if seconds, err := strconv.Atoi(v); err == nil && seconds >= 0 {
 			cfg.AgentIdleTimeoutSeconds = seconds
 		}
+	}
+	if v := strings.TrimSpace(os.Getenv("DENOVA_SEARXNG_BASE_URL")); v != "" {
+		cfg.WebAccess.SearXNGBaseURL = strings.TrimRight(v, "/")
 	}
 }
 

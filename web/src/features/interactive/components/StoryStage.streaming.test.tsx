@@ -574,6 +574,39 @@ describe('StoryStage streaming rendering', () => {
     expect(screen.queryByText('正在加载')).not.toBeInTheDocument()
   })
 
+  it('keeps the rendered turn mounted when live output becomes persisted history', async () => {
+    const user = userEvent.setup()
+    const stream = controllableInteractiveStream()
+    const handleDone = vi.fn().mockResolvedValue(undefined)
+
+    try {
+      sendInteractiveMessageMock.mockResolvedValue(stream.readable)
+      render(<PersistedTurnHarness onDone={handleDone} />)
+
+      await user.type(screen.getByPlaceholderText('你要做什么？'), '推门')
+      await user.click(screen.getByRole('button', { name: '发送' }))
+      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalled())
+
+      act(() => {
+        stream.enqueue({ event: 'chunk', data: JSON.stringify({ content: '门外有灯。' }) })
+      })
+      const liveNarrative = await screen.findByText('门外有灯。')
+      const liveRow = liveNarrative.closest('[data-nova-chat-row-key]')
+      expect(liveRow).not.toBeNull()
+
+      act(() => {
+        stream.enqueue({ event: 'interactive_turn_persisted', data: JSON.stringify(persistedTurnEvent()) })
+        stream.enqueue({ event: 'done', data: '{}' })
+        stream.close()
+      })
+
+      await waitFor(() => expect(screen.getAllByText('门外有灯。')).toHaveLength(1))
+      expect(screen.getByText('门外有灯。').closest('[data-nova-chat-row-key]')).toBe(liveRow)
+    } finally {
+      stream.close()
+    }
+  })
+
   it('does not insert a transient done activity row after the persisted turn arrives', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()

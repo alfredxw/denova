@@ -63,11 +63,11 @@ func (catalog *Catalog) Filesystem(settings config.ResolvedAgentToolSettings) ([
 	return filesystemToolsFactory(workspace, metadata)(settings)
 }
 
-func (catalog *Catalog) WebSearch() ([]agent.BaseTool, error) {
-	return newWebSearchTools()
+func (catalog *Catalog) WebAccess() ([]agent.BaseTool, error) {
+	return newWebAccessTools(catalog.cfg)
 }
 
-func (catalog *Catalog) WebSearchEnabled(agentKind string, settings config.ResolvedAgentToolSettings) bool {
+func (catalog *Catalog) WebAccessEnabled(agentKind string, settings config.ResolvedAgentToolSettings) bool {
 	return stableWebSearchSchemaAllowed(agentKind)(settings)
 }
 

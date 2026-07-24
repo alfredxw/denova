@@ -360,6 +360,24 @@ func TestApplyLayeredSettingsToConfigMapsZeroToolResultLimitToHighDefault(t *tes
 	}
 }
 
+func TestApplyLayeredSettingsToConfigAppliesWebAccess(t *testing.T) {
+	searchLimit := 12
+	responseLimit := 4096
+	contentLimit := 200000
+	cfg := &config.Config{}
+	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
+		Effective: config.Settings{WebAccess: config.WebAccessSettings{
+			SearXNGBaseURL:       "https://search.example.com/",
+			SearchMaxResults:     &searchLimit,
+			FetchMaxResponseKB:   &responseLimit,
+			FetchMaxContentChars: &contentLimit,
+		}},
+	})
+	if cfg.WebAccess.SearXNGBaseURL != "https://search.example.com" || cfg.WebAccess.SearchMaxResults != searchLimit || cfg.WebAccess.FetchMaxResponseKB != responseLimit || cfg.WebAccess.FetchMaxContentChars != contentLimit {
+		t.Fatalf("unexpected runtime web access config: %+v", cfg.WebAccess)
+	}
+}
+
 func TestAgentIdleTimeoutAllowsUnlimited(t *testing.T) {
 	if got := agentIdleTimeout(config.Config{AgentIdleTimeoutSeconds: 0}); got != 0 {
 		t.Fatalf("agent idle timeout = %s, want no limit", got)

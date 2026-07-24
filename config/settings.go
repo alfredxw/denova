@@ -36,6 +36,7 @@ type Settings struct {
 	AgentContexts             AgentContextSettings         `toml:"agent_context,omitempty" json:"agent_context,omitempty"`
 	GeneralSubAgents          AgentGeneralSubAgentSettings `toml:"general_sub_agents,omitempty" json:"general_sub_agents,omitempty"`
 	SubAgents                 []SubAgentConfig             `toml:"sub_agents,omitempty" json:"sub_agents,omitempty"`
+	WebAccess                 WebAccessSettings            `toml:"web_access,omitempty" json:"web_access,omitempty"`
 
 	// 路径
 	SkillsDir    string `toml:"skills_dir,omitempty" json:"skills_dir,omitempty"`
@@ -154,6 +155,7 @@ func DefaultSettings() Settings {
 			ToolAgent:        AgentModelOverride{EnableThinking: boolPtr(false)},
 		},
 		AgentTools:                 DefaultAgentToolSettings(),
+		WebAccess:                  DefaultWebAccessSettings(),
 		AgentSkills:                AgentSkillSettings{},
 		AgentContexts:              DefaultAgentContextSettings(),
 		GeneralSubAgents:           DefaultAgentGeneralSubAgentSettings(),
@@ -204,6 +206,7 @@ func Merge(parent, child Settings) Settings {
 	out.AgentContexts = MergeAgentContextSettings(out.AgentContexts, child.AgentContexts)
 	out.GeneralSubAgents = MergeAgentGeneralSubAgentSettings(out.GeneralSubAgents, child.GeneralSubAgents)
 	out.SubAgents = MergeSubAgents(out.SubAgents, child.SubAgents)
+	out.WebAccess = MergeWebAccessSettings(out.WebAccess, child.WebAccess)
 	if child.SkillsDir != "" {
 		out.SkillsDir = child.SkillsDir
 	}
@@ -621,6 +624,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.DefaultImageAPIProfileID = strings.TrimSpace(s.DefaultImageAPIProfileID)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
+	s.WebAccess = sanitizeWebAccessSettings(s.WebAccess)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
 	if defaultProfile, ok := defaultModelProfile(s.ModelProfiles); ok {

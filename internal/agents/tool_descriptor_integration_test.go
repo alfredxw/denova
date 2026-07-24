@@ -138,7 +138,7 @@ func TestWritingAgentFinalRuntimeToolSurfacePassesDescriptorGuard(t *testing.T) 
 	for _, name := range []string{
 		"write_todos", "task", "skill",
 		"ls", "read_file", "glob", "grep", "write_file", "edit_file", "execute",
-		"list_lore_items", "read_lore_items", "write_lore_items", "generate_image", "web_search",
+		"list_lore_items", "read_lore_items", "write_lore_items", "generate_image", "web_search", "web_fetch",
 	} {
 		if !toolNames[name] {
 			t.Fatalf("writing Agent provider tool surface missing %q: %v", name, toolNames)
@@ -212,7 +212,7 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 				return newToolCatalog(cfg).Lore(false)(config.ResolveAgentTools(cfg, config.AgentKindAutomation))
 			},
 		},
-		{name: "web search", build: newToolCatalog(cfg).WebSearch},
+		{name: "web access", build: newToolCatalog(cfg).WebAccess},
 	}
 
 	for _, tt := range tests {

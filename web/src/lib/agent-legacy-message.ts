@@ -16,7 +16,9 @@ function cachedChatMessageToAgentUIMessage(message: ChatMessage, index: number) 
 }
 
 export function chatMessageToAgentUIMessage(message: ChatMessage, index = 0): AgentUIMessage | null {
-  const id = message.id || message.render_key || `legacy-${index}`
+  // A render key deliberately bridges an optimistic streaming message to its
+  // canonical persisted form, so it must win over the domain message ID.
+  const id = message.render_key || message.id || `legacy-${index}`
   const metadata = metadataFromChatMessage(message)
   if (message.type === 'clear') {
     return dataMessage(id, 'agent-clear', { created_at: message.created_at }, metadata)

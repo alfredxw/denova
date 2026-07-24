@@ -529,6 +529,7 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	cfg.AgentContexts = effective.AgentContexts
 	cfg.GeneralSubAgents = effective.GeneralSubAgents
 	cfg.SubAgents = effective.SubAgents
+	cfg.WebAccess = config.ResolveWebAccessSettings(effective.WebAccess)
 	if cfg.SkillsDir == "" && effective.SkillsDir != "" {
 		cfg.SkillsDir = effective.SkillsDir
 	}

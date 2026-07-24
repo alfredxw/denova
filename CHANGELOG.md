@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Agent 新增 `web_fetch`：仅抓取公开 HTTP(S) 页面，使用 Readability 识别正文并通过 `html-to-markdown` 输出有界 Markdown；支持 Unicode 字符分页、响应/正文配置上限、重定向逐跳校验、私网与云元数据地址阻断，并把外部正文明确标记为不可信来源。设置页新增用户级网页访问配置，可填写 SearXNG 实例及搜索、抓取上限。
+- Agents now include `web_fetch`, which retrieves only public HTTP(S) pages, extracts readable content with Readability, and converts it to bounded Markdown through `html-to-markdown`. It supports Unicode-character pagination, configurable response/content limits, redirect-by-redirect validation, private/cloud-metadata address blocking, and explicit untrusted-source labeling. Settings now has user-level Web Access configuration for a SearXNG instance and search/fetch limits.
 - 资料库正文编辑器新增紧凑的 富文本/Raw 切换：默认富文本（所见即所得），可切换为等宽 Markdown 源码编辑，切换资料条目时保留所选模式；Raw 模式下 Cmd/Ctrl+S 仍会触发保存，目录搜索高亮暂仅在富文本模式生效。
 - The lore content editor now has a compact Rich text/Raw toggle: rich text (WYSIWYG) stays the default, with an optional monospace Markdown source mode that persists across item selection. Cmd/Ctrl+S still flushes saving in Raw mode; directory search highlighting currently applies in rich mode only.
 - 新增可独立复用的 `github.com/alfredxw/denova/agent` Go module：root package 提供与供应商无关的 Message、Model、Tool、Registry、Middleware、Runner、取消/中断、原生 Agentic Loop 与完整外部 Agent Host；`runtime`、`context`、`session`、`tools` 子 package 分别提供持久运行、来源有界的上下文、append-only transcript 和基础工具实现。
@@ -23,6 +25,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `web_search` 重构为可替换 provider 的网页访问模块：配置 SearXNG 时优先使用并在失败/空结果后回退；默认并发请求 DuckDuckGo 与 Bing RSS，并采用首个有效结果，避免等待慢源。Beta 不兼容：移除原有 Baidu/Google 聚合，暂不支持 Brave；原 `web_search` 权限开关现在同时控制 `web_search` 与 `web_fetch`。
+- `web_search` is rebuilt on a replaceable-provider Web Access module. A configured SearXNG instance is tried first with fallback after failure or empty results; otherwise DuckDuckGo and Bing RSS race and the first usable response wins, avoiding waits on a slow source. Beta breaking: the former Baidu/Google aggregation is removed, Brave is not yet supported, and the existing `web_search` permission now controls both `web_search` and `web_fetch`.
 - Agent 依赖方向收敛为 `API → App → internal/agents → agent`；App 仅因持有进程级 durable lifecycle 可直接依赖 `agent/runtime`，不能绕过产品层调用公共 root、model、context、session 或 tools。产品内只保留具有真实 seam 的 `context`、`session`、`skills` 子 package，原浅 `tools` 与重复 Runtime package 已删除。
 - Agent dependencies now flow as `API → App → internal/agents → agent`. App may depend directly on `agent/runtime` only as the process-level durable-lifecycle owner and may not bypass the product layer for public root, model, context, session, or tools. The product layer keeps only the `context`, `session`, and `skills` subpackages with real seams; the former shallow `tools` and duplicate Runtime packages are removed.
 - CI 与 GitHub Release 构建现在把根 module、公共 `agent` 和 OpenAI adapter 作为三个独立 Go module 分别执行依赖一致性检查、测试与静态检查；CI 的可达漏洞扫描也覆盖全部 module，避免 nested module 回归被根目录命令漏过。
@@ -78,6 +82,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 游戏模式的临时流式回合切换为已落盘历史时，现在会优先沿用同一个稳定渲染标识；用户输入和 AI 正文不再在流结束的瞬间整行卸载、重新挂载并重播进场动效，避免看起来像页面 reload 的抖动。
+- Game Mode now preserves the same stable render identity when an optimistic streamed turn becomes canonical history. The player input and AI prose no longer unmount, remount, and replay their entrance animation at stream completion, removing the reload-like page jolt.
 - 修复全局 `button/input/textarea/select { font: inherit }` 以非分层规则压过 Tailwind `@layer utilities`，导致表单控件上的 `font-mono`、`font-medium` 等字体工具类整体失效的问题；该 reset 已移入 `@layer base`，Raw 源码编辑等场景现在能正确渲染等宽字体，技能页 Raw 编辑同步受益。
 - Fixed the global `button/input/textarea/select { font: inherit }` reset being unlayered and overriding Tailwind `@layer utilities`, which silently disabled font utilities like `font-mono` and `font-medium` on all form controls. The reset now lives in `@layer base`, so monospace rendering works for Raw source editing, including the Skills page Raw editor.
 - 修复 Agent 流式正文、thinking 与子 Agent 会话在新增一行时底边先向下闪动、随后再被锁底滚动抬回的问题；写作、游戏、配置、自动化及独立子 Agent 对话现在统一在浏览器绘制前补偿活动虚拟行的高度增量，同时保留用户上滚后不被抢回底部的行为。

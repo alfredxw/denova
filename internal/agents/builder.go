@@ -370,8 +370,8 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 		}
 		tools = append(tools, extraTools...)
 	}
-	if toolCatalog.WebSearchEnabled(firstNonEmpty(spec.ToolPolicyKind, spec.Kind), settings) {
-		webTools, err := toolCatalog.WebSearch()
+	if toolCatalog.WebAccessEnabled(firstNonEmpty(spec.ToolPolicyKind, spec.Kind), settings) {
+		webTools, err := toolCatalog.WebAccess()
 		if err != nil {
 			return chatModelAgentAssembly{}, err
 		}
