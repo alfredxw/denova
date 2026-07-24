@@ -61,6 +61,19 @@ func TestFetchPaginatesByUnicodeCharacter(t *testing.T) {
 	}
 }
 
+func TestFetchExplainsJavaScriptRenderedPage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = writer.Write([]byte(`<!doctype html><html><head><title>App</title></head><body><div id="root"></div><script src="/a.js"></script><script src="/b.js"></script><script src="/c.js"></script><script src="/d.js"></script></body></html>`))
+	}))
+	t.Cleanup(server.Close)
+
+	_, err := clientForFetchTest(t, server, testWebAccessConfig()).Fetch(context.Background(), FetchRequest{URL: server.URL})
+	if err == nil || !strings.Contains(err.Error(), "JavaScript-rendered") {
+		t.Fatalf("JavaScript-rendered page error = %v", err)
+	}
+}
+
 func TestFetchRejectsOversizedAndBinaryResponses(t *testing.T) {
 	t.Run("oversized", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {

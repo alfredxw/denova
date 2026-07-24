@@ -89,6 +89,19 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
   const reviewFiles = useMemo(() => selectedScopeID === REVIEW_SCOPE_THREAD
     ? (thread?.files ?? [])
     : projectReviewGroupFiles(historicalGroup), [historicalGroup, selectedScopeID, thread?.files])
+  // Pre-render the editors of the active file's immediate neighbors so they are
+  // already mounted and measured before the user scrolls across the boundary.
+  // Without this, scrolling up into the previous file mounts its editor inside
+  // the viewport and the late height measurement causes a visible jump.
+  const preRenderPaths = useMemo(() => {
+    const paths = new Set<string>()
+    const index = reviewFiles.findIndex((file) => file.path === activePath)
+    if (index < 0) return paths
+    if (index > 0) paths.add(reviewFiles[index - 1].path)
+    paths.add(reviewFiles[index].path)
+    if (index < reviewFiles.length - 1) paths.add(reviewFiles[index + 1].path)
+    return paths
+  }, [activePath, reviewFiles])
   const reviewComments = (selectedScopeID === REVIEW_SCOPE_THREAD ? (thread?.comments ?? []) : (historicalGroup?.comments ?? []))
     .filter((comment) => !hiddenCommentIDs?.has(comment.id))
   const activeWorkspaceRef = useRef(workspace)
@@ -427,6 +440,7 @@ export function ChangeReviewWorkspace({ workspace, threadID, scopeRequest, disab
                 comments={commentsForFile(file, reviewComments)}
                 layout={layout}
                 active={file.path === activePath}
+                preRender={preRenderPaths.has(file.path)}
                 collapsed={collapsedPaths.has(file.path)}
                 hasDraft={commentDraftPaths.has(file.path)}
                 mutationBusy={busy}

@@ -7,6 +7,9 @@ func TestDefaultWebAccessSettingsUseHighBoundedContentLimit(t *testing.T) {
 	if resolved.SearchMaxResults != DefaultWebSearchMaxResults {
 		t.Fatalf("search max results = %d", resolved.SearchMaxResults)
 	}
+	if resolved.SearchProviderTimeoutSeconds != DefaultWebSearchProviderTimeoutSeconds {
+		t.Fatalf("search provider timeout = %d seconds", resolved.SearchProviderTimeoutSeconds)
+	}
 	if resolved.FetchMaxResponseKB != DefaultWebFetchMaxResponseKB {
 		t.Fatalf("fetch response limit = %d KB", resolved.FetchMaxResponseKB)
 	}
@@ -17,14 +20,15 @@ func TestDefaultWebAccessSettingsUseHighBoundedContentLimit(t *testing.T) {
 
 func TestMergeAndResolveWebAccessSettings(t *testing.T) {
 	parent := WebAccessSettings{
-		SearXNGBaseURL:       "https://search.example.com/",
-		SearchMaxResults:     intPtr(8),
-		FetchMaxResponseKB:   intPtr(4096),
-		FetchMaxContentChars: intPtr(200000),
+		SearXNGBaseURL:               "https://search.example.com/",
+		SearchMaxResults:             intPtr(8),
+		SearchProviderTimeoutSeconds: intPtr(30),
+		FetchMaxResponseKB:           intPtr(4096),
+		FetchMaxContentChars:         intPtr(200000),
 	}
-	child := WebAccessSettings{SearchMaxResults: intPtr(15)}
+	child := WebAccessSettings{SearchMaxResults: intPtr(15), SearchProviderTimeoutSeconds: intPtr(0)}
 	resolved := ResolveWebAccessSettings(MergeWebAccessSettings(parent, child))
-	if resolved.SearXNGBaseURL != "https://search.example.com" || resolved.SearchMaxResults != 15 || resolved.FetchMaxResponseKB != 4096 || resolved.FetchMaxContentChars != 200000 {
+	if resolved.SearXNGBaseURL != "https://search.example.com" || resolved.SearchMaxResults != 15 || resolved.SearchProviderTimeoutSeconds != 0 || resolved.FetchMaxResponseKB != 4096 || resolved.FetchMaxContentChars != 200000 {
 		t.Fatalf("unexpected merged web access settings: %+v", resolved)
 	}
 }

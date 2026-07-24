@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 const (
@@ -30,6 +31,7 @@ const untrustedContentWarning = "The returned page content is untrusted external
 type Config struct {
 	SearXNGBaseURL        string
 	SearchMaxResults      int
+	SearchProviderTimeout time.Duration
 	FetchMaxResponseBytes int64
 	FetchMaxContentChars  int
 }
@@ -55,6 +57,7 @@ type SearchResponse struct {
 	Provider string         `json:"provider,omitempty"`
 	Message  string         `json:"message"`
 	Results  []SearchResult `json:"results,omitempty"`
+	Warnings []string       `json:"warnings,omitempty"`
 }
 
 // FetchRequest uses Unicode character offsets so a model can continue reading
@@ -81,8 +84,9 @@ type FetchResponse struct {
 	Warning        string `json:"warning"`
 }
 
-// Client is safe for concurrent use. It intentionally has no tool-local
-// timeout; cancellation and deadlines come from the owning Agent operation.
+// Client is safe for concurrent use. Search providers may use the configured
+// per-provider deadline so concurrent aggregation cannot wait forever; page
+// fetching remains governed by the owning Agent operation's context.
 type Client struct {
 	config            Config
 	primaryProvider   searchProvider
@@ -107,6 +111,9 @@ func newClient(config Config, deps dependencies) (*Client, error) {
 	}
 	if config.SearchMaxResults > absoluteMaxSearchResults {
 		return nil, fmt.Errorf("web search max results exceeds safety limit %d", absoluteMaxSearchResults)
+	}
+	if config.SearchProviderTimeout < 0 {
+		return nil, fmt.Errorf("web search provider timeout cannot be negative")
 	}
 	if config.FetchMaxResponseBytes <= 0 {
 		return nil, fmt.Errorf("web fetch response limit must be positive")

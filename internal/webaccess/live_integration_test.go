@@ -19,7 +19,7 @@ func TestLiveWebAccessIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	search, err := client.Search(ctx, SearchRequest{Query: "Go programming language official website", MaxResults: 5})
+	search, err := client.Search(ctx, SearchRequest{Query: "golang Go programming language official website", MaxResults: 5})
 	if err != nil {
 		t.Fatal(err)
 	}

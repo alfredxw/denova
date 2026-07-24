@@ -395,6 +395,10 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
                min={1}
                max={20}
                onChange={(value) => setWebAccessField('search_max_results', value)} />
+          <Num label={t('settings.webAccess.searchProviderTimeoutSeconds')} value={draft.web_access?.search_provider_timeout_seconds ?? null}
+               placeholder={webAccessPlaceholderFor('search_provider_timeout_seconds')}
+               min={0}
+               onChange={(value) => setWebAccessField('search_provider_timeout_seconds', value)} />
           <Num label={t('settings.webAccess.fetchMaxResponseKB')} value={draft.web_access?.fetch_max_response_kb ?? null}
                placeholder={webAccessPlaceholderFor('fetch_max_response_kb')}
                min={1}

@@ -147,6 +147,7 @@ describe('SettingsView user scope', () => {
     expect(screen.getAllByText('网页访问').length).toBeGreaterThan(0)
     expect(screen.getByLabelText('SearXNG 实例地址')).toBeInTheDocument()
     expect(screen.getByLabelText('单次搜索结果上限')).toHaveAttribute('max', '20')
+    expect(screen.getByLabelText('搜索服务超时（秒，0 为不限制）')).toHaveAttribute('min', '0')
     expect(screen.getByLabelText('单次正文字符上限')).toHaveAttribute('max', '262144')
     expect(screen.queryByRole('button', { name: '保存' })).not.toBeInTheDocument()
 

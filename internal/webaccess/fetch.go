@@ -76,6 +76,9 @@ func (client *Client) Fetch(ctx context.Context, request FetchRequest) (FetchRes
 		return FetchResponse{}, fmt.Errorf("extract readable web page: %w", err)
 	}
 	if strings.TrimSpace(content) == "" {
+		if (mediaType == "text/html" || mediaType == "application/xhtml+xml") && isLikelyJavaScriptRendered(decoded) {
+			return FetchResponse{}, fmt.Errorf("web page appears to be JavaScript-rendered; web_fetch does not execute JavaScript")
+		}
 		return FetchResponse{}, fmt.Errorf("web page contains no readable text")
 	}
 
@@ -111,6 +114,17 @@ func (client *Client) Fetch(ctx context.Context, request FetchRequest) (FetchRes
 		NextStartIndex: nextStartIndex,
 		Warning:        untrustedContentWarning,
 	}, nil
+}
+
+func isLikelyJavaScriptRendered(document string) bool {
+	parsed, err := goquery.NewDocumentFromReader(strings.NewReader(document))
+	if err != nil {
+		return false
+	}
+	scriptCount := parsed.Find("script").Length()
+	parsed.Find("script, style, noscript").Remove()
+	visibleText := strings.TrimSpace(parsed.Find("body").Text())
+	return scriptCount > 3 && len([]rune(visibleText)) < 500
 }
 
 func validateFetchURL(raw string) (*url.URL, error) {

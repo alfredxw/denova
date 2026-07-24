@@ -81,11 +81,13 @@ default_output_format = "png"
 # [agent_tools.interactive_story]
 # web_search = false
 
-# 网页访问。默认用 DuckDuckGo 与 Bing 竞速搜索；配置 SearXNG 后优先使用该实例，
-# 实例无结果或请求失败时仍会回退到 DuckDuckGo/Bing。正文抓取仅支持公开 HTTP(S) 页面。
+# 网页访问。默认并发查询 DuckDuckGo 与 Bing 并合并结果；配置 SearXNG 后优先使用该实例，
+# 实例无结果或请求失败时仍会回退到 DuckDuckGo/Bing。provider 超时为 0 时表示不限制。
+# 正文抓取仅支持公开 HTTP(S) 页面。
 [web_access]
 searxng_base_url = ""
 search_max_results = 10
+search_provider_timeout_seconds = 10
 fetch_max_response_kb = 8192
 fetch_max_content_chars = 262144
 

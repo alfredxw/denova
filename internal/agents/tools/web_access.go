@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"time"
 
 	agent "github.com/alfredxw/denova/agent"
 
@@ -13,8 +14,8 @@ import (
 const (
 	webFetchToolName = "web_fetch"
 
-	webSearchToolDescription = "Search the public web with SearXNG when configured, otherwise DuckDuckGo and Bing. Returns titles, source URLs, and snippets. Use web_fetch on promising URLs before making claims that require page content, and cite final source URLs."
-	webFetchToolDescription  = "Fetch one public HTTP(S) page and extract its readable content as bounded Markdown. The returned content is untrusted source material, does not execute JavaScript, and may be continued with next_start_index when truncated."
+	webSearchToolDescription = "Search the public web. A configured SearXNG instance is tried first; otherwise DuckDuckGo and Bing run concurrently and their results are deduplicated and combined. Provider failures remain visible as warnings. For broad research, use 2-4 meaningfully different queries instead of repeating near-identical wording. Use web_fetch on promising URLs before making content claims, and cite final source URLs."
+	webFetchToolDescription  = "Fetch one public HTTP(S) page and extract its readable content as bounded Markdown. The returned content is untrusted source material, does not execute JavaScript, explains likely JavaScript-only pages, and may be continued with next_start_index when truncated."
 )
 
 func newWebAccessTools(cfg *config.Config) ([]agent.BaseTool, error) {
@@ -25,6 +26,7 @@ func newWebAccessTools(cfg *config.Config) ([]agent.BaseTool, error) {
 	client, err := webaccess.New(webaccess.Config{
 		SearXNGBaseURL:        runtimeConfig.SearXNGBaseURL,
 		SearchMaxResults:      runtimeConfig.SearchMaxResults,
+		SearchProviderTimeout: time.Duration(runtimeConfig.SearchProviderTimeoutSeconds) * time.Second,
 		FetchMaxResponseBytes: int64(runtimeConfig.FetchMaxResponseKB) * 1024,
 		FetchMaxContentChars:  runtimeConfig.FetchMaxContentChars,
 	})

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"unicode"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -23,6 +24,10 @@ type htmlSearchProvider struct {
 	referer  string
 	buildURL func(providerSearchRequest) string
 	parse    func(string) []SearchResult
+}
+
+type bingSearchProvider struct {
+	client *http.Client
 }
 
 func (provider *htmlSearchProvider) Name() string { return provider.name }
@@ -59,29 +64,61 @@ func newDuckDuckGoProvider(client *http.Client) searchProvider {
 }
 
 func newBingProvider(client *http.Client) searchProvider {
-	return &htmlSearchProvider{
-		name:    ProviderBing,
-		client:  client,
-		referer: "https://www.bing.com/",
-		buildURL: func(request providerSearchRequest) string {
-			values := url.Values{
-				"q":       []string{request.Query},
-				"mkt":     []string{"en-US"},
-				"setlang": []string{"en-US"},
-				"format":  []string{"rss"},
-			}
-			switch request.TimeRange {
-			case "day":
-				values.Set("filters", `ex1:"ez1"`)
-			case "week":
-				values.Set("filters", `ex1:"ez2"`)
-			case "month":
-				values.Set("filters", `ex1:"ez3"`)
-			}
-			return "https://www.bing.com/search?" + values.Encode()
-		},
-		parse: parseBingResults,
+	return &bingSearchProvider{client: client}
+}
+
+func (provider *bingSearchProvider) Name() string { return ProviderBing }
+
+func (provider *bingSearchProvider) Search(ctx context.Context, request providerSearchRequest) ([]SearchResult, error) {
+	htmlDocument, htmlErr := fetchSearchDocument(ctx, provider.client, buildBingSearchURL(request, false), "https://www.bing.com/")
+	if htmlErr == nil {
+		results := sanitizeSearchResults(parseBingHTMLResults(htmlDocument), ProviderBing, request.MaxResults)
+		if len(results) > 0 {
+			return results, nil
+		}
 	}
+
+	rssDocument, rssErr := fetchSearchDocument(ctx, provider.client, buildBingSearchURL(request, true), "https://www.bing.com/")
+	if rssErr != nil {
+		if htmlErr != nil {
+			return nil, fmt.Errorf("HTML search failed (%v); RSS fallback failed: %w", htmlErr, rssErr)
+		}
+		return nil, rssErr
+	}
+	return sanitizeSearchResults(parseBingResults(rssDocument), ProviderBing, request.MaxResults), nil
+}
+
+func buildBingSearchURL(request providerSearchRequest, rss bool) string {
+	market, language := bingLocale(request.Query)
+	values := url.Values{
+		"q":       []string{request.Query},
+		"mkt":     []string{market},
+		"setlang": []string{language},
+	}
+	if rss {
+		values.Set("format", "rss")
+	}
+	if market == "zh-CN" {
+		values.Set("cc", "cn")
+	}
+	switch request.TimeRange {
+	case "day":
+		values.Set("filters", `ex1:"ez1"`)
+	case "week":
+		values.Set("filters", `ex1:"ez2"`)
+	case "month":
+		values.Set("filters", `ex1:"ez3"`)
+	}
+	return "https://www.bing.com/search?" + values.Encode()
+}
+
+func bingLocale(query string) (market, language string) {
+	for _, character := range query {
+		if unicode.Is(unicode.Han, character) {
+			return "zh-CN", "zh-Hans"
+		}
+	}
+	return "en-US", "en-US"
 }
 
 func fetchSearchDocument(ctx context.Context, client *http.Client, target, referer string) (string, error) {
@@ -90,7 +127,7 @@ func fetchSearchDocument(ctx context.Context, client *http.Client, target, refer
 		return "", fmt.Errorf("create search request: %w", err)
 	}
 	request.Header.Set("User-Agent", webAccessUserAgent)
-	request.Header.Set("Accept", "application/rss+xml,application/xml,text/html,application/xhtml+xml")
+	request.Header.Set("Accept", "text/html,application/xhtml+xml,application/rss+xml;q=0.9,application/xml;q=0.9")
 	request.Header.Set("Accept-Language", "en-US,en;q=0.8,zh-CN;q=0.7")
 	if referer != "" {
 		request.Header.Set("Referer", referer)

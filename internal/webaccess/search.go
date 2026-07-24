@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const (
@@ -28,6 +29,7 @@ type providerSearchRequest struct {
 }
 
 type searchOutcome struct {
+	index    int
 	provider string
 	results  []SearchResult
 	err      error
@@ -54,11 +56,11 @@ func (client *Client) Search(ctx context.Context, request SearchRequest) (Search
 	var failures []error
 	hadReachableProvider := false
 	if client.primaryProvider != nil {
-		outcome := runSearchProvider(ctx, client.primaryProvider, providerRequest)
+		outcome := runSearchProviderWithin(ctx, client.primaryProvider, providerRequest, client.config.SearchProviderTimeout)
 		if outcome.err == nil {
 			hadReachableProvider = true
 			if len(outcome.results) > 0 {
-				return successfulSearchResponse(query, outcome.provider, outcome.results, maxResults), nil
+				return successfulSearchResponse(query, outcome.provider, outcome.results, maxResults, nil), nil
 			}
 			log.Printf("[webaccess] search provider=%s returned no usable results; trying free fallbacks", outcome.provider)
 		} else {
@@ -67,17 +69,21 @@ func (client *Client) Search(ctx context.Context, request SearchRequest) (Search
 		}
 	}
 
-	outcome, fallbackReachable, fallbackFailures := firstUsefulSearch(ctx, client.fallbackProviders, providerRequest)
+	outcome, fallbackReachable, fallbackFailures := combineSearchProviders(ctx, client.fallbackProviders, providerRequest, client.config.SearchProviderTimeout)
 	hadReachableProvider = hadReachableProvider || fallbackReachable
 	failures = append(failures, fallbackFailures...)
 	if len(outcome.results) > 0 {
-		return successfulSearchResponse(query, outcome.provider, outcome.results, maxResults), nil
+		return successfulSearchResponse(query, outcome.provider, outcome.results, maxResults, failures), nil
 	}
 	if err := ctx.Err(); err != nil {
 		return SearchResponse{}, err
 	}
 	if hadReachableProvider {
-		return SearchResponse{Query: query, Message: "No usable web search results were found."}, nil
+		return SearchResponse{
+			Query:    query,
+			Message:  "No usable web search results were found.",
+			Warnings: searchWarningMessages(failures),
+		}, nil
 	}
 	if len(failures) == 0 {
 		return SearchResponse{}, fmt.Errorf("web search has no configured providers")
@@ -85,27 +91,40 @@ func (client *Client) Search(ctx context.Context, request SearchRequest) (Search
 	return SearchResponse{}, fmt.Errorf("all web search providers failed: %w", errors.Join(failures...))
 }
 
-func successfulSearchResponse(query, provider string, results []SearchResult, maximum int) SearchResponse {
+func successfulSearchResponse(query, provider string, results []SearchResult, maximum int, warnings []error) SearchResponse {
 	results = sanitizeSearchResults(results, provider, maximum)
 	return SearchResponse{
 		Query:    query,
 		Provider: provider,
 		Message:  fmt.Sprintf("Found %d result(s) via %s.", len(results), provider),
 		Results:  results,
+		Warnings: searchWarningMessages(warnings),
 	}
 }
 
-func firstUsefulSearch(ctx context.Context, providers []searchProvider, request providerSearchRequest) (searchOutcome, bool, []error) {
+func searchWarningMessages(warnings []error) []string {
+	messages := make([]string, 0, len(warnings))
+	for _, warning := range warnings {
+		if warning == nil {
+			continue
+		}
+		messages = append(messages, truncateRunes(warning.Error(), 500))
+	}
+	return messages
+}
+
+func combineSearchProviders(ctx context.Context, providers []searchProvider, request providerSearchRequest, providerTimeout time.Duration) (searchOutcome, bool, []error) {
 	if len(providers) == 0 {
 		return searchOutcome{}, false, nil
 	}
 	searchCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	outcomes := make(chan searchOutcome, len(providers))
-	for _, provider := range providers {
+	for index, provider := range providers {
+		index := index
 		provider := provider
 		go func() {
-			outcome := searchOutcome{provider: "unknown"}
+			outcome := searchOutcome{index: index, provider: "unknown"}
 			defer func() {
 				if recovered := recover(); recovered != nil {
 					outcome.results = nil
@@ -114,14 +133,21 @@ func firstUsefulSearch(ctx context.Context, providers []searchProvider, request 
 				}
 				outcomes <- outcome
 			}()
-			outcome = runSearchProvider(searchCtx, provider, request)
+			outcome = runSearchProviderWithin(searchCtx, provider, request, providerTimeout)
+			outcome.index = index
 		}()
 	}
 
 	hadReachable := false
 	failures := make([]error, 0, len(providers))
+	orderedOutcomes := make([]searchOutcome, len(providers))
 	for range providers {
-		outcome := <-outcomes
+		var outcome searchOutcome
+		select {
+		case outcome = <-outcomes:
+		case <-ctx.Done():
+			return searchOutcome{}, hadReachable, append(failures, ctx.Err())
+		}
 		if outcome.err != nil {
 			failures = append(failures, outcome.err)
 			log.Printf("[webaccess] fallback search provider=%s failed: %v", outcome.provider, outcome.err)
@@ -133,11 +159,58 @@ func firstUsefulSearch(ctx context.Context, providers []searchProvider, request 
 			log.Printf("[webaccess] fallback search provider=%s returned no usable results", outcome.provider)
 			continue
 		}
-		cancel()
 		log.Printf("[webaccess] fallback search provider=%s returned %d result(s)", outcome.provider, len(outcome.results))
-		return outcome, hadReachable, failures
+		orderedOutcomes[outcome.index] = outcome
 	}
-	return searchOutcome{}, hadReachable, failures
+	combined := searchOutcome{}
+	var providerNames []string
+	var resultSets [][]SearchResult
+	for _, outcome := range orderedOutcomes {
+		if len(outcome.results) == 0 {
+			continue
+		}
+		providerNames = append(providerNames, outcome.provider)
+		resultSets = append(resultSets, outcome.results)
+	}
+	combined.provider = strings.Join(providerNames, "+")
+	combined.results = interleaveSearchResults(resultSets, request.MaxResults)
+	return combined, hadReachable, failures
+}
+
+func runSearchProviderWithin(ctx context.Context, provider searchProvider, request providerSearchRequest, timeout time.Duration) searchOutcome {
+	if timeout <= 0 {
+		return runSearchProvider(ctx, provider, request)
+	}
+	providerContext, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return runSearchProvider(providerContext, provider, request)
+}
+
+func interleaveSearchResults(resultSets [][]SearchResult, maximum int) []SearchResult {
+	seen := make(map[string]struct{})
+	combined := make([]SearchResult, 0, maximum)
+	for rank := 0; ; rank++ {
+		addedAtRank := false
+		for _, results := range resultSets {
+			if rank >= len(results) {
+				continue
+			}
+			addedAtRank = true
+			result := results[rank]
+			key := normalizedSearchURL(result.URL)
+			if _, exists := seen[key]; exists {
+				continue
+			}
+			seen[key] = struct{}{}
+			combined = append(combined, result)
+			if maximum > 0 && len(combined) >= maximum {
+				return combined
+			}
+		}
+		if !addedAtRank {
+			return combined
+		}
+	}
 }
 
 func runSearchProvider(ctx context.Context, provider searchProvider, request providerSearchRequest) (outcome searchOutcome) {
@@ -159,6 +232,10 @@ func runSearchProvider(ctx context.Context, provider searchProvider, request pro
 		return outcome
 	}
 	outcome.results = sanitizeSearchResults(results, outcome.provider, request.MaxResults)
+	if outcome.provider == ProviderBing && len(outcome.results) > 0 && !searchResultsCoverQuery(request.Query, outcome.results) {
+		outcome.results = nil
+		outcome.err = fmt.Errorf("%s: returned results do not sufficiently match the complete query", outcome.provider)
+	}
 	return outcome
 }
 
@@ -178,7 +255,9 @@ func sanitizeSearchResults(results []SearchResult, provider string, maximum int)
 			continue
 		}
 		seen[key] = struct{}{}
-		result.Provider = provider
+		if strings.TrimSpace(result.Provider) == "" {
+			result.Provider = provider
+		}
 		sanitized = append(sanitized, result)
 		if maximum > 0 && len(sanitized) >= maximum {
 			break

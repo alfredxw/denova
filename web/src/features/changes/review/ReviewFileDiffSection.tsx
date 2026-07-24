@@ -20,6 +20,13 @@ interface ReviewFileDiffSectionProps {
   comments: WorkspaceChangeComment[]
   layout: ReviewDiffLayout
   active: boolean
+  /**
+   * Hints that this file sits next to the active file, so its editor should be
+   * mounted and measured ahead of time. This avoids a scroll-position jump when
+   * the user scrolls across a file boundary: the editor is already sized to its
+   * real (wrapped) height by the time the file becomes active.
+   */
+  preRender?: boolean
   collapsed: boolean
   hasDraft: boolean
   mutationBusy: boolean
@@ -40,6 +47,7 @@ export function ReviewFileDiffSection({
   comments,
   layout,
   active,
+  preRender = false,
   collapsed,
   hasDraft,
   mutationBusy,
@@ -60,7 +68,7 @@ export function ReviewFileDiffSection({
   const [measuredHeight, setMeasuredHeight] = useState(estimatedHeight)
   const measuredHeightRef = useRef(estimatedHeight)
   const conflicted = file.continuity !== 'continuous' || file.apply_state === 'conflicted'
-  const renderEditor = hasDraft || (!collapsed && (comments.length > 0 || nearViewport || active))
+  const renderEditor = hasDraft || (!collapsed && (comments.length > 0 || nearViewport || active || preRender))
 
   useEffect(() => {
     measuredHeightRef.current = estimatedHeight
@@ -68,8 +76,8 @@ export function ReviewFileDiffSection({
   }, [estimatedHeight, file.base_revision, file.path, file.revision, layout])
 
   useEffect(() => {
-    if (active) setNearViewport(true)
-  }, [active])
+    if (active || preRender) setNearViewport(true)
+  }, [active, preRender])
 
   useEffect(() => {
     if (collapsed) {

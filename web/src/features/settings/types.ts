@@ -61,6 +61,7 @@ export interface Settings {
 export interface WebAccessSettings {
   searxng_base_url?: string
   search_max_results?: number | null
+  search_provider_timeout_seconds?: number | null
   fetch_max_response_kb?: number | null
   fetch_max_content_chars?: number | null
 }
