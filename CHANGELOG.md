@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- 资料库角色图片在调用图像模型前，先通过图像 Agent 所配置的语言模型提炼角色设定，只保留外貌、性格、服装配饰和其他可视特点；最终图片 Prompt 不再包含原始角色正文或“角色资料卡”字样。
+- Lore character images now pass character lore through the Image Agent's configured language model before image generation, retaining only appearance, personality, attire/accessories, and other visual traits. The final image prompt no longer includes raw character lore or the “角色资料卡” label.
+
 ## [v0.3.3] - 2026-07-25
 
 ### Fixed
