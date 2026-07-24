@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"denova/internal/fsdurability"
 )
 
 const (
@@ -161,12 +163,7 @@ func (s *Store) AcknowledgeHostEffect(ctx context.Context, effect HostEffectObli
 		if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 			return struct{}{}, fmt.Errorf("remove host effect obligation %s: %w", effect.ID, removeErr)
 		}
-		directory, openErr := os.Open(filepath.Dir(path))
-		if openErr != nil {
-			return struct{}{}, fmt.Errorf("open host effect obligation directory for sync: %w", openErr)
-		}
-		defer directory.Close()
-		if syncErr := directory.Sync(); syncErr != nil {
+		if syncErr := fsdurability.SyncDirectory(filepath.Dir(path)); syncErr != nil {
 			return struct{}{}, fmt.Errorf("sync host effect obligation directory: %w", syncErr)
 		}
 		return struct{}{}, nil

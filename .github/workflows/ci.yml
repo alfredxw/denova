@@ -95,8 +95,8 @@ jobs:
       - name: Build distribution
         run: ./scripts/build.sh
 
-  windows-workspace-change:
-    name: Windows workspace change regression
+  windows-filesystem-durability:
+    name: Windows filesystem durability regressions
     runs-on: windows-latest
 
     steps:
@@ -109,5 +109,5 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Initialize a workspace change store
-        run: go test ./internal/workspacechange -run '^TestNewServiceInitializesWorkspaceChangeStoreOnWindows$' -count=1
+      - name: Verify shared directory durability consumers
+        run: go test ./internal/fsdurability ./internal/documentreview ./internal/workspacechange -count=1

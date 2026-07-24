@@ -83,6 +83,56 @@ type SearchResponse struct {
 	SuggestedAction string              `json:"suggested_action,omitempty"`
 }
 
+// FetchStatus is the caller-visible outcome of the complete page acquisition
+// chain, independent of which acquisition method produced the document.
+type FetchStatus string
+
+const (
+	FetchStatusSuccess              FetchStatus = "success"
+	FetchStatusBlocked              FetchStatus = "blocked"
+	FetchStatusProvidersUnavailable FetchStatus = "providers_unavailable"
+)
+
+// FetchMethod identifies the external acquisition boundary that produced or
+// attempted to produce a page.
+type FetchMethod string
+
+const (
+	FetchMethodDirectHTTP FetchMethod = "direct_http"
+	FetchMethodJinaReader FetchMethod = "jina_reader"
+	FetchMethodBrowser    FetchMethod = "browser"
+)
+
+// FetchAttemptOutcome is a stable, machine-readable result for one acquisition
+// method so Agents do not have to infer recovery from raw error prose.
+type FetchAttemptOutcome string
+
+const (
+	FetchAttemptSuccess             FetchAttemptOutcome = "success"
+	FetchAttemptJavaScriptRequired  FetchAttemptOutcome = "javascript_required"
+	FetchAttemptAccessDenied        FetchAttemptOutcome = "access_denied"
+	FetchAttemptNetworkError        FetchAttemptOutcome = "network_error"
+	FetchAttemptProviderUnavailable FetchAttemptOutcome = "provider_unavailable"
+)
+
+// FetchRetryStrategy tells the Agent whether another fetch action is useful.
+type FetchRetryStrategy string
+
+const (
+	FetchRetryNone                     FetchRetryStrategy = "none"
+	FetchRetryUseAlternateSource       FetchRetryStrategy = "use_alternate_source"
+	FetchRetryWaitOrUseAlternateSource FetchRetryStrategy = "wait_or_use_alternate_source"
+)
+
+// FetchAttempt is a bounded diagnostic for one acquisition method. Message is
+// reserved for actionable context and must never contain a response body.
+type FetchAttempt struct {
+	Method     FetchMethod         `json:"method"`
+	Outcome    FetchAttemptOutcome `json:"outcome"`
+	HTTPStatus int                 `json:"http_status,omitempty"`
+	Message    string              `json:"message,omitempty"`
+}
+
 // FetchRequest uses Unicode character offsets so a model can continue reading
 // a long page without depending on UTF-8 byte boundaries.
 type FetchRequest struct {
@@ -92,19 +142,24 @@ type FetchRequest struct {
 }
 
 type FetchResponse struct {
-	URL            string `json:"url"`
-	FinalURL       string `json:"final_url"`
-	Title          string `json:"title,omitempty"`
-	Byline         string `json:"byline,omitempty"`
-	Excerpt        string `json:"excerpt,omitempty"`
-	ContentType    string `json:"content_type"`
-	Content        string `json:"content"`
-	StartIndex     int    `json:"start_index"`
-	EndIndex       int    `json:"end_index"`
-	TotalChars     int    `json:"total_chars"`
-	Truncated      bool   `json:"truncated"`
-	NextStartIndex *int   `json:"next_start_index,omitempty"`
-	Warning        string `json:"warning"`
+	Status          FetchStatus        `json:"status"`
+	FetchMethod     FetchMethod        `json:"fetch_method,omitempty"`
+	Attempts        []FetchAttempt     `json:"attempts"`
+	RetryStrategy   FetchRetryStrategy `json:"retry_strategy"`
+	SuggestedAction string             `json:"suggested_action,omitempty"`
+	URL             string             `json:"url"`
+	FinalURL        string             `json:"final_url"`
+	Title           string             `json:"title,omitempty"`
+	Byline          string             `json:"byline,omitempty"`
+	Excerpt         string             `json:"excerpt,omitempty"`
+	ContentType     string             `json:"content_type,omitempty"`
+	Content         string             `json:"content,omitempty"`
+	StartIndex      int                `json:"start_index,omitempty"`
+	EndIndex        int                `json:"end_index,omitempty"`
+	TotalChars      int                `json:"total_chars,omitempty"`
+	Truncated       bool               `json:"truncated,omitempty"`
+	NextStartIndex  *int               `json:"next_start_index,omitempty"`
+	Warning         string             `json:"warning,omitempty"`
 }
 
 // Client is safe for concurrent use. Search providers may use the configured
@@ -116,6 +171,9 @@ type Client struct {
 	fallbackProviders     []searchProvider
 	configurationWarnings []error
 	fetchHTTPClient       *http.Client
+	jinaHTTPClient        *http.Client
+	jinaReaderBaseURL     string
+	browserRenderer       browserRenderer
 }
 
 type dependencies struct {
@@ -123,6 +181,9 @@ type dependencies struct {
 	primaryProvider   searchProvider
 	fallbackProviders []searchProvider
 	fetchHTTPClient   *http.Client
+	jinaHTTPClient    *http.Client
+	jinaReaderBaseURL string
+	browserRenderer   browserRenderer
 }
 
 func New(config Config) (*Client, error) {
@@ -181,6 +242,20 @@ func newClient(config Config, deps dependencies) (*Client, error) {
 	if fetchClient == nil {
 		fetchClient = newPublicHTTPClient()
 	}
+	jinaClient := deps.jinaHTTPClient
+	if jinaClient == nil {
+		// Jina is a fixed public service. Keep redirects and DNS resolution under
+		// the same public-address policy as the target fetch itself.
+		jinaClient = newPublicHTTPClient()
+	}
+	jinaBaseURL := strings.TrimSpace(deps.jinaReaderBaseURL)
+	if jinaBaseURL == "" {
+		jinaBaseURL = defaultJinaReaderBaseURL
+	}
+	renderer := deps.browserRenderer
+	if renderer == nil {
+		renderer = newRodBrowserRenderer(config.FetchMaxResponseBytes)
+	}
 
 	return &Client{
 		config:                config,
@@ -188,5 +263,8 @@ func newClient(config Config, deps dependencies) (*Client, error) {
 		fallbackProviders:     append([]searchProvider(nil), fallbacks...),
 		configurationWarnings: configurationWarnings,
 		fetchHTTPClient:       fetchClient,
+		jinaHTTPClient:        jinaClient,
+		jinaReaderBaseURL:     jinaBaseURL,
+		browserRenderer:       renderer,
 	}, nil
 }

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"denova/internal/fsdurability"
 )
 
 type mutationStage string
@@ -31,27 +33,15 @@ type durabilityOps struct {
 
 func defaultDurabilityOps() *durabilityOps {
 	return &durabilityOps{
-		syncRootDirFn: syncRootDirectory,
+		syncRootDirFn: fsdurability.SyncRootDirectory,
 	}
 }
 
 func (o *durabilityOps) syncRootDir(root *os.Root, rel string) error {
 	if o == nil || o.syncRootDirFn == nil {
-		return syncRootDirectory(root, rel)
+		return fsdurability.SyncRootDirectory(root, rel)
 	}
 	return o.syncRootDirFn(root, rel)
-}
-
-func syncRootDirectory(root *os.Root, rel string) error {
-	if rel == "" {
-		rel = "."
-	}
-	file, err := root.Open(filepath.FromSlash(rel))
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return syncDirectory(file)
 }
 
 // mkdirAllRootDurable creates a private directory chain beneath an opened

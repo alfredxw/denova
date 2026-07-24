@@ -1,6 +1,6 @@
 //go:build !windows
 
-package autosaveconflict
+package fsdurability
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-func syncDirectory(directory *os.File) error {
+func syncDirectoryHandle(directory *os.File) error {
 	if err := directory.Sync(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 		return err
 	}

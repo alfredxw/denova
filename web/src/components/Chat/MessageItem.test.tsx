@@ -276,6 +276,57 @@ describe('MessageItem', () => {
     expect(screen.getByText('写入完成')).toBeInTheDocument()
   })
 
+  it('失败的工具卡片在折叠态直接展示错误原因', () => {
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'web_fetch\n{"url":"https://example.com"}',
+          name: 'web_fetch',
+          args: '{"url":"https://example.com"}',
+          status: 'error',
+          result: 'web_fetch failed: target URL is invalid',
+        }}
+      />,
+    )
+
+    expect(screen.getByText('web_fetch failed: target URL is invalid')).toBeInTheDocument()
+  })
+
+  it('网页工具卡片把结构化恢复状态显示为可读摘要', async () => {
+    const user = userEvent.setup()
+    const resultBody = JSON.stringify({
+      status: 'blocked',
+      attempts: [
+        { method: 'direct_http', outcome: 'access_denied', http_status: 403 },
+        { method: 'jina_reader', outcome: 'access_denied', http_status: 403 },
+        { method: 'browser', outcome: 'access_denied', http_status: 403 },
+      ],
+      retry_strategy: 'use_alternate_source',
+      suggested_action: 'Use another public source. 改用其他公开来源。',
+      url: 'https://example.com/article',
+      final_url: 'https://example.com/article',
+    })
+    const result = `${resultBody}\n\n[Denova tool result metadata]\nschema: tool_result.v1\nsource: web`
+    render(
+      <MessageItem
+        message={{
+          role: 'tool_call',
+          content: 'web_fetch\n{"url":"https://example.com/article"}',
+          name: 'web_fetch',
+          args: '{"url":"https://example.com/article"}',
+          status: 'success',
+          result,
+        }}
+      />,
+    )
+
+    expect(screen.getByText('访问被阻止 · 改用其他公开来源')).toHaveClass('basis-full', 'whitespace-normal')
+    await user.click(screen.getByRole('button', { name: '详情' }))
+    expect(screen.getByText(/"status": "blocked"/)).toBeInTheDocument()
+    expect(screen.getAllByText(/改用其他公开来源/)).toHaveLength(2)
+  })
+
   it('显式 Skill 预加载复用现有工具卡展示名称和结果', () => {
     render(
       <MessageItem

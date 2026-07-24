@@ -10,7 +10,7 @@ const settings = {
   'settings.webAccess.searchProviderTimeoutSeconds': '搜索服务超时（秒，0 为不限制）',
   'settings.webAccess.fetchMaxResponseKB': '网页响应上限 (KB)',
   'settings.webAccess.fetchMaxContentChars': '单次正文字符上限',
-  'settings.webAccess.hint': '未配置 SearXNG 时会并发查询 DuckDuckGo 与 Bing，等待两边完成后去重合并；单个服务失败或超时仍会返回另一边的结果与诊断。配置后优先使用 SearXNG，失败或无结果再回退。web_fetch 仅访问公开 HTTP(S) 页面，不执行 JavaScript，并会阻止本机、局域网和云元数据地址。',
+  'settings.webAccess.hint': '未配置 SearXNG 时会并发查询 DuckDuckGo 与 Bing，等待两边完成后去重合并；单个服务失败或超时仍会返回另一边的结果与诊断。配置后优先使用 SearXNG，失败或无结果再回退。web_fetch 仅访问公开 HTTP(S) 页面，依次尝试普通请求、Jina Reader 与隔离的本机 Chrome 渲染，并会阻止本机、局域网和云元数据地址。',
   'settings.access.allowLan': '允许局域网访问',
   'settings.access.password': '远程访问密码',
   'settings.access.passwordPlaceholder': '开启局域网访问前必须设置',

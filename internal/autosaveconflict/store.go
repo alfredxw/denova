@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"denova/internal/fsdurability"
 )
 
 // Store appends immutable autosave conflict records under one Denova data dir.
@@ -157,16 +159,8 @@ func openConflictRoot(dataDir string) (*os.Root, *os.Root, error) {
 	if err := root.Chmod(DirectoryName, 0o700); err != nil {
 		return nil, nil, fmt.Errorf("secure autosave conflict directory: %w", err)
 	}
-	dataDirectory, err := root.Open(".")
-	if err != nil {
-		return nil, nil, fmt.Errorf("open Denova data directory for sync: %w", err)
-	}
-	if syncErr := syncDirectory(dataDirectory); syncErr != nil {
-		_ = dataDirectory.Close()
+	if syncErr := fsdurability.SyncRootDirectory(root, "."); syncErr != nil {
 		return nil, nil, fmt.Errorf("sync Denova data directory: %w", syncErr)
-	}
-	if err := dataDirectory.Close(); err != nil {
-		return nil, nil, fmt.Errorf("close Denova data directory after sync: %w", err)
 	}
 	conflictRoot, err := root.OpenRoot(DirectoryName)
 	if err != nil {
@@ -217,12 +211,7 @@ func writeAtomicRecord(ctx context.Context, root *os.Root, name string, data []b
 		return fmt.Errorf("commit autosave conflict record: %w", err)
 	}
 	removeTemp = false
-	directory, err := root.Open(".")
-	if err != nil {
-		return fmt.Errorf("open autosave conflict directory for sync: %w", err)
-	}
-	defer directory.Close()
-	if err := syncDirectory(directory); err != nil {
+	if err := fsdurability.SyncRootDirectory(root, "."); err != nil {
 		return fmt.Errorf("sync autosave conflict directory: %w", err)
 	}
 	return nil

@@ -10,7 +10,7 @@ const settings = {
   'settings.webAccess.searchProviderTimeoutSeconds': 'Search Provider Timeout (s, 0 = unlimited)',
   'settings.webAccess.fetchMaxResponseKB': 'Page Response Limit (KB)',
   'settings.webAccess.fetchMaxContentChars': 'Content Characters per Fetch',
-  'settings.webAccess.hint': 'Without SearXNG, Denova queries DuckDuckGo and Bing concurrently, waits for both, then deduplicates and combines their results. If one provider fails or times out, results from the other provider still include that diagnostic. A configured SearXNG instance is tried first, then falls back on failure or empty results. web_fetch accesses only public HTTP(S) pages, does not execute JavaScript, and blocks local, LAN, and cloud metadata addresses.',
+  'settings.webAccess.hint': 'Without SearXNG, Denova queries DuckDuckGo and Bing concurrently, waits for both, then deduplicates and combines their results. If one provider fails or times out, results from the other provider still include that diagnostic. A configured SearXNG instance is tried first, then falls back on failure or empty results. web_fetch accesses only public HTTP(S) pages, trying direct HTTP, Jina Reader, then an isolated installed Chrome renderer, while blocking local, LAN, and cloud metadata addresses.',
   'settings.access.allowLan': 'Allow LAN Access',
   'settings.access.password': 'Remote Access Password',
   'settings.access.passwordPlaceholder': 'Required before enabling LAN access',

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -18,6 +19,18 @@ import (
 	"golang.org/x/net/html/charset"
 )
 
+var errJavaScriptRequired = errors.New("web page requires JavaScript rendering")
+
+type fetchedDocument struct {
+	finalURL     *url.URL
+	title        string
+	byline       string
+	excerpt      string
+	contentType  string
+	content      string
+	responseSize int
+}
+
 func (client *Client) Fetch(ctx context.Context, request FetchRequest) (FetchResponse, error) {
 	target, err := validateFetchURL(request.URL)
 	if err != nil {
@@ -31,34 +44,107 @@ func (client *Client) Fetch(ctx context.Context, request FetchRequest) (FetchRes
 		maxChars = client.config.FetchMaxContentChars
 	}
 
+	document, attempt, err := client.fetchDirect(ctx, target)
+	attempts := []FetchAttempt{attempt}
+	method := FetchMethodDirectHTTP
+	if err != nil {
+		if !isFetchFallbackOutcome(attempt.Outcome) {
+			return FetchResponse{}, err
+		}
+		document, attempt, err = client.fetchWithJinaReader(ctx, target)
+		attempts = append(attempts, attempt)
+		if err != nil {
+			if !isFetchFallbackOutcome(attempt.Outcome) {
+				return FetchResponse{}, fmt.Errorf("Jina Reader fallback failed: %w", err)
+			}
+			document, attempt, err = client.fetchWithBrowser(ctx, target)
+			attempts = append(attempts, attempt)
+			if err != nil {
+				if attempt.Outcome == FetchAttemptAccessDenied {
+					return blockedFetchResponse(target, attempts), nil
+				}
+				if attempt.Outcome == FetchAttemptProviderUnavailable {
+					return providersUnavailableFetchResponse(target, attempts), nil
+				}
+				return FetchResponse{}, fmt.Errorf("browser fallback failed: %w", err)
+			}
+			method = FetchMethodBrowser
+		} else {
+			method = FetchMethodJinaReader
+		}
+	}
+
+	return buildFetchResponse(target, request, maxChars, method, attempts, document)
+}
+
+func blockedFetchResponse(target *url.URL, attempts []FetchAttempt) FetchResponse {
+	return FetchResponse{
+		Status:          FetchStatusBlocked,
+		Attempts:        append([]FetchAttempt(nil), attempts...),
+		RetryStrategy:   FetchRetryUseAlternateSource,
+		SuggestedAction: "Do not retry this URL through the same methods. Use another public source or a user-authorized authenticated source. 不要继续用相同方式重试该网址；请改用其他公开来源，或由用户授权的已登录来源。",
+		URL:             target.String(),
+		FinalURL:        target.String(),
+	}
+}
+
+func providersUnavailableFetchResponse(target *url.URL, attempts []FetchAttempt) FetchResponse {
+	return FetchResponse{
+		Status:          FetchStatusProvidersUnavailable,
+		Attempts:        append([]FetchAttempt(nil), attempts...),
+		RetryStrategy:   FetchRetryWaitOrUseAlternateSource,
+		SuggestedAction: "Do not immediately retry the same URL. Wait for a hosted/local renderer to become available, or use another public source. 不要立即重试相同网址；请等待托管或本地渲染器恢复，或改用其他公开来源。",
+		URL:             target.String(),
+		FinalURL:        target.String(),
+	}
+}
+
+func (client *Client) fetchDirect(ctx context.Context, target *url.URL) (fetchedDocument, FetchAttempt, error) {
 	log.Printf("[webaccess] fetching public page url=%s response_limit_bytes=%d", safeURLForLog(target), client.config.FetchMaxResponseBytes)
 	httpRequest, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
-		return FetchResponse{}, fmt.Errorf("create web fetch request: %w", err)
+		return fetchedDocument{}, FetchAttempt{Method: FetchMethodDirectHTTP}, fmt.Errorf("create web fetch request: %w", err)
 	}
 	httpRequest.Header.Set("User-Agent", webAccessUserAgent)
-	httpRequest.Header.Set("Accept", "text/html,application/xhtml+xml,text/markdown,text/plain,application/json,application/xml;q=0.9,*/*;q=0.1")
+	httpRequest.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
 	httpRequest.Header.Set("Accept-Language", "en-US,en;q=0.8,zh-CN;q=0.7")
+	httpRequest.Header.Set("Cache-Control", "no-cache")
+	httpRequest.Header.Set("Sec-Fetch-Dest", "document")
+	httpRequest.Header.Set("Sec-Fetch-Mode", "navigate")
+	httpRequest.Header.Set("Sec-Fetch-Site", "none")
+	httpRequest.Header.Set("Sec-Fetch-User", "?1")
+	httpRequest.Header.Set("Upgrade-Insecure-Requests", "1")
 	response, err := client.fetchHTTPClient.Do(httpRequest)
 	if err != nil {
-		return FetchResponse{}, fmt.Errorf("fetch public page: %w", err)
+		attempt := FetchAttempt{Method: FetchMethodDirectHTTP}
+		if ctx.Err() == nil && !isPublicFetchPolicyError(err) {
+			attempt.Outcome = FetchAttemptNetworkError
+		}
+		return fetchedDocument{}, attempt, fmt.Errorf("fetch public page: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return FetchResponse{}, fmt.Errorf("web page returned HTTP %d", response.StatusCode)
+		attempt := FetchAttempt{Method: FetchMethodDirectHTTP, HTTPStatus: response.StatusCode}
+		if response.StatusCode == http.StatusForbidden {
+			attempt.Outcome = FetchAttemptAccessDenied
+		}
+		return fetchedDocument{}, attempt, fmt.Errorf("web page returned HTTP %d", response.StatusCode)
 	}
 	raw, err := readBoundedResponse(response, client.config.FetchMaxResponseBytes)
 	if err != nil {
-		return FetchResponse{}, err
+		return fetchedDocument{}, FetchAttempt{Method: FetchMethodDirectHTTP, HTTPStatus: response.StatusCode}, err
 	}
 	finalURL := response.Request.URL
+	if finalURL == nil {
+		finalURL = target
+	}
 	if len([]rune(finalURL.String())) > maxWebURLChars {
-		return FetchResponse{}, fmt.Errorf("final web page URL exceeds %d-character safety limit", maxWebURLChars)
+		return fetchedDocument{}, FetchAttempt{Method: FetchMethodDirectHTTP, HTTPStatus: response.StatusCode}, fmt.Errorf("final web page URL exceeds %d-character safety limit", maxWebURLChars)
 	}
 	mediaType := responseMediaType(response.Header.Get("Content-Type"), raw)
 	decoded, err := decodeResponseText(raw, response.Header.Get("Content-Type"))
 	if err != nil {
-		return FetchResponse{}, fmt.Errorf("decode web page text: %w", err)
+		return fetchedDocument{}, FetchAttempt{Method: FetchMethodDirectHTTP, HTTPStatus: response.StatusCode}, fmt.Errorf("decode web page text: %w", err)
 	}
 
 	var title, byline, excerpt, content string
@@ -70,19 +156,33 @@ func (client *Client) Fetch(ctx context.Context, request FetchRequest) (FetchRes
 	case strings.HasPrefix(mediaType, "text/") || isStructuredTextMediaType(mediaType):
 		content = normalizeStructuredText(decoded, mediaType)
 	default:
-		return FetchResponse{}, fmt.Errorf("unsupported web page content type %q", mediaType)
+		return fetchedDocument{}, FetchAttempt{Method: FetchMethodDirectHTTP, HTTPStatus: response.StatusCode}, fmt.Errorf("unsupported web page content type %q", mediaType)
 	}
 	if err != nil {
-		return FetchResponse{}, fmt.Errorf("extract readable web page: %w", err)
+		return fetchedDocument{}, FetchAttempt{Method: FetchMethodDirectHTTP, HTTPStatus: response.StatusCode}, fmt.Errorf("extract readable web page: %w", err)
 	}
 	if strings.TrimSpace(content) == "" {
 		if (mediaType == "text/html" || mediaType == "application/xhtml+xml") && isLikelyJavaScriptRendered(decoded) {
-			return FetchResponse{}, fmt.Errorf("web page appears to be JavaScript-rendered; web_fetch does not execute JavaScript")
+			return fetchedDocument{}, FetchAttempt{
+				Method: FetchMethodDirectHTTP, Outcome: FetchAttemptJavaScriptRequired, HTTPStatus: response.StatusCode,
+			}, errJavaScriptRequired
 		}
-		return FetchResponse{}, fmt.Errorf("web page contains no readable text")
+		return fetchedDocument{}, FetchAttempt{Method: FetchMethodDirectHTTP, HTTPStatus: response.StatusCode}, fmt.Errorf("web page contains no readable text")
 	}
 
-	characters := []rune(content)
+	return fetchedDocument{
+		finalURL: finalURL, title: title, byline: byline, excerpt: excerpt,
+		contentType: mediaType, content: content, responseSize: len(raw),
+	}, FetchAttempt{Method: FetchMethodDirectHTTP, Outcome: FetchAttemptSuccess, HTTPStatus: response.StatusCode}, nil
+}
+
+func isFetchFallbackOutcome(outcome FetchAttemptOutcome) bool {
+	return outcome == FetchAttemptJavaScriptRequired || outcome == FetchAttemptAccessDenied ||
+		outcome == FetchAttemptNetworkError || outcome == FetchAttemptProviderUnavailable
+}
+
+func buildFetchResponse(target *url.URL, request FetchRequest, maxChars int, method FetchMethod, attempts []FetchAttempt, document fetchedDocument) (FetchResponse, error) {
+	characters := []rune(document.content)
 	if request.StartIndex > len(characters) {
 		return FetchResponse{}, fmt.Errorf("web fetch start_index %d exceeds content length %d", request.StartIndex, len(characters))
 	}
@@ -98,14 +198,18 @@ func (client *Client) Fetch(ctx context.Context, request FetchRequest) (FetchRes
 		nextStartIndex = &next
 	}
 
-	log.Printf("[webaccess] fetched public page final_url=%s response_bytes=%d content_chars=%d returned_chars=%d", safeURLForLog(finalURL), len(raw), len(characters), len([]rune(fragment)))
+	log.Printf("[webaccess] fetched public page method=%s final_url=%s response_bytes=%d content_chars=%d returned_chars=%d", method, safeURLForLog(document.finalURL), document.responseSize, len(characters), len([]rune(fragment)))
 	return FetchResponse{
+		Status:         FetchStatusSuccess,
+		FetchMethod:    method,
+		Attempts:       append([]FetchAttempt(nil), attempts...),
+		RetryStrategy:  FetchRetryNone,
 		URL:            target.String(),
-		FinalURL:       finalURL.String(),
-		Title:          truncateRunes(strings.TrimSpace(title), 1000),
-		Byline:         truncateRunes(strings.TrimSpace(byline), 500),
-		Excerpt:        truncateRunes(strings.TrimSpace(excerpt), 4000),
-		ContentType:    mediaType,
+		FinalURL:       document.finalURL.String(),
+		Title:          truncateRunes(strings.TrimSpace(document.title), 1000),
+		Byline:         truncateRunes(strings.TrimSpace(document.byline), 500),
+		Excerpt:        truncateRunes(strings.TrimSpace(document.excerpt), 4000),
+		ContentType:    document.contentType,
 		Content:        fragment,
 		StartIndex:     request.StartIndex,
 		EndIndex:       endIndex,

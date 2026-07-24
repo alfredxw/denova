@@ -31,6 +31,22 @@ type publicDialer struct {
 	dialer   *net.Dialer
 }
 
+// publicFetchPolicyError marks a destination rejected before any network
+// request is sent. Callers must not forward these URLs to hosted or browser
+// fallbacks because doing so would bypass Denova's public-network boundary.
+type publicFetchPolicyError struct {
+	message string
+}
+
+func (fetchError *publicFetchPolicyError) Error() string {
+	return fetchError.message
+}
+
+func isPublicFetchPolicyError(err error) bool {
+	var policyError *publicFetchPolicyError
+	return errors.As(err, &policyError)
+}
+
 func newUnboundedHTTPClient() *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.DialContext = (&net.Dialer{}).DialContext
@@ -97,7 +113,7 @@ func (dialer *publicDialer) resolve(ctx context.Context, network, host string) (
 	for _, address := range addresses {
 		address = address.Unmap()
 		if !isPublicAddress(address) {
-			return nil, fmt.Errorf("fetch destination %q resolves to blocked address %s", host, address)
+			return nil, &publicFetchPolicyError{message: fmt.Sprintf("fetch destination %q resolves to blocked address %s", host, address)}
 		}
 		if network == "tcp4" && !address.Is4() {
 			continue

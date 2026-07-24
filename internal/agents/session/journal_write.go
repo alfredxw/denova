@@ -9,6 +9,8 @@ import (
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	"denova/internal/fsdurability"
 )
 
 func createSession(id, filePath, title string) (*Session, error) {
@@ -145,10 +147,5 @@ func writeAndSync(f *os.File, data []byte) error {
 }
 
 func syncParentDirectory(filePath string) error {
-	dir, err := os.Open(filepath.Dir(filePath))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return fsdurability.SyncDirectory(filepath.Dir(filePath))
 }

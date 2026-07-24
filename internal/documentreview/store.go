@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/fsdurability"
 	"denova/internal/workspacepath"
 )
 
@@ -80,10 +81,10 @@ func ensurePrivateDirectory(root *os.Root, rel string) error {
 		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 			return newError(ErrorCodeConflict, "document review storage path is not a private directory", map[string]any{"path": next})
 		}
-		if err := syncRootDirectory(root, next); err != nil {
+		if err := fsdurability.SyncRootDirectory(root, next); err != nil {
 			return err
 		}
-		if err := syncRootDirectory(root, current); err != nil {
+		if err := fsdurability.SyncRootDirectory(root, current); err != nil {
 			return err
 		}
 		current = next
@@ -117,7 +118,7 @@ func (s *eventStore) ensureLedger() error {
 	if closeErr != nil {
 		return closeErr
 	}
-	return syncRootDirectory(s.root, ".")
+	return fsdurability.SyncRootDirectory(s.root, ".")
 }
 
 func (s *eventStore) append(event ledgerEvent) error {
@@ -223,16 +224,4 @@ func (s *eventStore) close() {
 	if s != nil && s.root != nil {
 		_ = s.root.Close()
 	}
-}
-
-func syncRootDirectory(root *os.Root, rel string) error {
-	if rel == "" {
-		rel = "."
-	}
-	dir, err := root.Open(filepath.FromSlash(rel))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
 }

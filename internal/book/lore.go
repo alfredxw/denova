@@ -18,6 +18,7 @@ import (
 
 	"github.com/lithammer/fuzzysearch/fuzzy"
 
+	"denova/internal/fsdurability"
 	"denova/internal/workspacepath"
 )
 
@@ -873,15 +874,8 @@ func (s *LoreStore) save(collection LoreCollection) error {
 	if err := os.Rename(tempPath, path); err != nil {
 		return fmt.Errorf("原子替换资料库文件失败 path=%s: %w", path, err)
 	}
-	if directory, err := os.Open(dir); err == nil {
-		if syncErr := directory.Sync(); syncErr != nil {
-			log.Printf("[lore-store] sync directory failed path=%s err=%v", dir, syncErr)
-		}
-		if closeErr := directory.Close(); closeErr != nil {
-			log.Printf("[lore-store] close directory failed path=%s err=%v", dir, closeErr)
-		}
-	} else {
-		log.Printf("[lore-store] open directory for sync failed path=%s err=%v", dir, err)
+	if err := fsdurability.SyncDirectory(dir); err != nil {
+		log.Printf("[lore-store] directory durability failed path=%s err=%v", dir, err)
 	}
 	return nil
 }

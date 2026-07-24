@@ -1,6 +1,6 @@
 import { Children, Fragment, cloneElement, isValidElement, memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { Activity, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, ClipboardCheck, ClipboardList, Copy, Dice5, FileText, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw, Send, X } from 'lucide-react'
+import { Activity, AlertTriangle, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot, ClipboardCheck, ClipboardList, Copy, Dice5, FileText, ImagePlus, ListTodo, Loader2, PanelRightOpen, Pencil, RefreshCw, Send, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
 import { MarkdownRenderer, type MarkdownRendererComponents } from '@/components/common/MarkdownRenderer'
@@ -957,13 +957,21 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   const summary = taskSubAgent
     ? t('chat.subagent.delegating', { name: taskSubAgent })
     : buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
-  const resultPreview = buildPreview(result, 80)
+  const resultBody = stripToolResultMetadata(result)
+  const webAccessResult = parseRecoverableWebAccessResult(name, resultBody)
+  const showReadableOutcome = Boolean(webAccessResult) || status === 'error'
+  const resultPreview = webAccessResult
+    ? buildWebAccessResultSummary(t, webAccessResult)
+    : buildPreview(resultBody, 80)
+  const detailResult = webAccessResult ? formatMaybeJSON(resultBody) : result
   const displaySummary = isChapterBodyHidden
     ? chapterGeneratedChars !== undefined
       ? t(isDirectorPlanHidden ? (hasResult ? 'chat.tool.fileWrittenWithCount' : 'chat.tool.fileWritingWithCount') : (hasResult ? 'chat.tool.chapterWrittenWithCount' : 'chat.tool.chapterWritingWithCount'), { count: chapterGeneratedChars })
       : (isDirectorPlanHidden ? (hasResult ? t('chat.tool.fileWritten') : t('chat.tool.fileWriting')) : (hasResult ? t('chat.tool.chapterWritten') : t('chat.tool.chapterWriting')))
     : batchEditSummary || (hasResult
       ? resultPreview || t('chat.tool.done')
+      : status === 'error'
+        ? buildPreview(resultBody, 160) || t('chat.tool.failed')
       : isContentToolLoading
         ? (contentToolChars !== undefined ? t('chat.tool.fileWritingWithCount', { count: contentToolChars }) : t('chat.tool.fileWriting'))
         : summary)
@@ -977,8 +985,8 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
   return (
     <div className="flex justify-start">
       <Tool open={expanded} onOpenChange={setExpanded} className="mb-0 w-full overflow-hidden rounded-lg border border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs shadow-[var(--nova-shadow)]">
-        <div className="flex min-h-10 min-w-0 items-center gap-2 px-3 py-2">
-          <ToolStatusIcon status={status} />
+        <div className={`flex min-h-10 min-w-0 items-center gap-2 px-3 py-2 ${showReadableOutcome ? 'flex-wrap' : ''}`}>
+          <ToolStatusIcon status={status} warning={Boolean(webAccessResult)} />
           <span className="shrink-0 font-medium text-[var(--nova-text)]">{t('chat.tool.calling')}</span>
           <code className="shrink-0 rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--nova-text-muted)]">
             {displayName}
@@ -989,7 +997,9 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
             </span>
           )}
           {message.subagent && <AgentSourceBadge message={message} compact />}
-          <span className="min-w-0 flex-1 truncate text-[var(--nova-text-faint)]">
+          <span className={showReadableOutcome
+            ? `order-last basis-full whitespace-normal pl-7 pt-1 leading-4 ${webAccessResult ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-danger)]'}`
+            : 'min-w-0 flex-1 truncate text-[var(--nova-text-faint)]'}>
             {displaySummary}
           </span>
           {hasDetail && !isStreamingContent && (
@@ -1035,7 +1045,7 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
             )}
             {detailArgs && <pre className="whitespace-pre-wrap">{detailArgs}</pre>}
             {taskSubAgent && result && <div className="text-[var(--nova-text-muted)]">{t('chat.subagent.result')}</div>}
-            {result && <pre className="whitespace-pre-wrap text-[var(--nova-accent-green)]">{result}</pre>}
+            {result && <pre className={`whitespace-pre-wrap ${webAccessResult ? 'text-[var(--nova-warning)]' : 'text-[var(--nova-accent-green)]'}`}>{detailResult}</pre>}
           </ToolContent>
         )}
       </Tool>
@@ -1369,16 +1379,23 @@ function parseTodosFromArgs(args: string): TodoItem[] {
   return items
 }
 
-function ToolStatusIcon({ status }: { status: ChatMessage['status'] }) {
+function ToolStatusIcon({ status, warning = false }: { status: ChatMessage['status']; warning?: boolean }) {
+  if (status === 'error') {
+    return <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[10px] text-[var(--nova-danger)]">!</span>
+  }
+  if (warning) {
+    return (
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--nova-warning)]/40 bg-[var(--nova-warning-bg)] text-[var(--nova-warning)]">
+        <AlertTriangle className="h-3.5 w-3.5" />
+      </span>
+    )
+  }
   if (status === 'success') {
     return (
       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--nova-accent-green)]/45 bg-[var(--nova-accent-green)]/10 text-[var(--nova-accent-green)]">
         <CheckCircle2 className="h-3.5 w-3.5" />
       </span>
     )
-  }
-  if (status === 'error') {
-    return <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] text-[10px] text-[var(--nova-danger)]">!</span>
   }
   return <span className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-[var(--nova-border)] border-t-[var(--nova-text)]" />
 }
@@ -1461,6 +1478,51 @@ function formatTaskDelegationArgs(args: string) {
   } catch {
     return formatMaybeJSON(args.replace(/"subagent_type"\s*:\s*"[^"]+"\s*,?\s*/g, '').replace(/,\s*}/g, '}'))
   }
+}
+
+interface RecoverableWebAccessResult {
+  status: string
+  retry_strategy?: string
+}
+
+function parseRecoverableWebAccessResult(toolName: string, result: string): RecoverableWebAccessResult | null {
+  if ((toolName !== 'web_fetch' && toolName !== 'web_search') || !result) return null
+  try {
+    const parsed = JSON.parse(result) as Record<string, unknown>
+    const status = typeof parsed.status === 'string' ? parsed.status : ''
+    if (!status || status === 'success') return null
+    return {
+      status,
+      retry_strategy: typeof parsed.retry_strategy === 'string' ? parsed.retry_strategy : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+function stripToolResultMetadata(result: string) {
+  for (const separator of ['\n\n[Denova tool result metadata]', '\n[Denova tool result metadata]']) {
+    const markerIndex = result.lastIndexOf(separator)
+    if (markerIndex >= 0) return result.slice(0, markerIndex).trimEnd()
+  }
+  return result
+}
+
+function buildWebAccessResultSummary(t: ReturnType<typeof useTranslation>['t'], result: RecoverableWebAccessResult) {
+  const statusKey = {
+    blocked: 'chat.tool.webAccess.blocked',
+    no_results: 'chat.tool.webAccess.noResults',
+    providers_unavailable: 'chat.tool.webAccess.providersUnavailable',
+  }[result.status]
+  const retryKey = result.retry_strategy ? {
+    change_query: 'chat.tool.webAccess.changeQuery',
+    use_alternate_source: 'chat.tool.webAccess.useAlternateSource',
+    wait_or_reconfigure: 'chat.tool.webAccess.waitOrReconfigure',
+    wait_or_use_alternate_source: 'chat.tool.webAccess.waitOrUseAlternateSource',
+  }[result.retry_strategy] : undefined
+  const status = statusKey ? t(statusKey) : result.status
+  const retry = retryKey ? t(retryKey) : ''
+  return [status, retry].filter(Boolean).join(' · ')
 }
 
 function formatMaybeJSON(value: string) {
