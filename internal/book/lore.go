@@ -874,7 +874,7 @@ func (s *LoreStore) save(collection LoreCollection) error {
 		return fmt.Errorf("原子替换资料库文件失败 path=%s: %w", path, err)
 	}
 	if directory, err := os.Open(dir); err == nil {
-		if syncErr := directory.Sync(); syncErr != nil {
+		if syncErr := syncDirectory(directory); syncErr != nil {
 			log.Printf("[lore-store] sync directory failed path=%s err=%v", dir, syncErr)
 		}
 		if closeErr := directory.Close(); closeErr != nil {
