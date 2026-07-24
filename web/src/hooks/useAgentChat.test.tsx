@@ -491,6 +491,37 @@ describe('useAgentChat', () => {
     expect(restoreSubmission).toHaveBeenCalledTimes(1)
   })
 
+  it('refreshes the exact operation when submission advances into a response stream', async () => {
+    chatMock.status = 'submitted'
+    vi.mocked(getActiveChatTask)
+      .mockResolvedValueOnce({ active: false })
+      .mockResolvedValue({
+        active: true,
+        task_id: 'task-streaming-9',
+        active_operation_id: 'operation-streaming-9',
+      })
+    vi.mocked(submitChatCommand).mockResolvedValue({
+      command_id: 'abort-streaming-9',
+      operation_id: 'operation-streaming-9',
+      cursor: 10,
+    })
+    const { result, rerender } = renderHook(() => useAgentChat())
+    await waitFor(() => expect(result.current.runtimeProjection).toEqual({ active: false }))
+
+    chatMock.status = 'streaming'
+    rerender()
+
+    await waitFor(() => expect(result.current.runtimeProjection?.active_operation_id).toBe('operation-streaming-9'))
+    await act(async () => result.current.stop())
+    expect(submitChatCommand).toHaveBeenCalledWith(
+      'abort',
+      expect.any(String),
+      'operation-streaming-9',
+      undefined,
+      'user_requested',
+    )
+  })
+
   it('aborts through the typed operation command and keeps observing its settlement', async () => {
     chatMock.status = 'streaming'
     vi.mocked(getActiveChatTask).mockResolvedValue({

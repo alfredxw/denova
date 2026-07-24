@@ -62,6 +62,7 @@ export function useWritingAgentRuntimeRecovery({
   const displayRehydrateInFlightRef = useRef(false)
   const displayOmissionActiveRef = useRef(false)
   const wasStreamingRef = useRef(false)
+  const transportResponseStreaming = transportStatus === 'streaming'
   const transportErrorRef = useRef<Error | undefined>(transportError)
   const transportStatusRef = useRef(transportStatus)
   const onSettledRef = useRef(onSettled)
@@ -274,6 +275,8 @@ export function useWritingAgentRuntimeRecovery({
     markRecoveryRetry(true)
   }, [markRecoveryRetry, transportError, transportStatus])
 
+  // `submitted` can precede server-side Task registration. Refresh again when
+  // the response starts streaming so operation-scoped controls get the exact ID.
   useEffect(() => {
     if (displayRehydrateRef.current) return
     if (transportStreaming) {
@@ -300,7 +303,7 @@ export function useWritingAgentRuntimeRecovery({
     }
     if (!wasStreamingRef.current) return
     void inspectAndAttach(true)
-  }, [inspectAndAttach, recoveryAttempt, transport, transportStreaming])
+  }, [inspectAndAttach, recoveryAttempt, transport, transportResponseStreaming, transportStreaming])
 
   useEffect(() => {
     if (runtimeRecoverySignal <= 0) return

@@ -90,6 +90,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复写作 Agent 请求从提交阶段进入流式响应时未重新读取运行投影，导致首次查询早于后端 Task 注册后，Stop 按钮可能整轮保持禁用的问题；响应流建立后现在会再次获取精确 operation ID，中断仍只通过有作用域的 Abort 执行。
+- Fixed Writing Agent Stop sometimes remaining disabled for an entire run when the first runtime-projection read raced server-side Task registration. The projection is now refreshed as the response begins streaming to obtain the exact operation ID, while cancellation continues to use only operation-scoped Abort.
 - Windows 目录持久化统一收敛到共享文件系统 module：普通文件仍在发布前完整同步，Windows 跳过不受支持的只读目录 `FlushFileBuffers`，其他平台继续同步目录元数据；正文评论、会话、Automation、自动保存冲突、资料库、版本恢复、游戏存储和工作区变更不再各自维护兼容分支，也不会因目录同步误报保存失败。
 - Windows directory durability now lives in one shared filesystem module: regular files remain fully synced before publication, Windows skips unsupported `FlushFileBuffers` calls on read-only directory handles, and other platforms still flush directory metadata. Document comments, sessions, Automations, autosave conflicts, lore, version restore, Game storage, and workspace changes no longer carry separate compatibility branches or falsely report successful writes as failures.
 - 修复用户级 SearXNG 地址省略协议时被静默忽略，以及公开实例禁用 JSON 后只能回退到 DuckDuckGo/Bing 的问题：裸域名默认补全 `https://`，JSON 被拒绝或直接返回 HTML 时会复用响应或改用 SearXNG HTML POST 表单；403、非 SearXNG 页面与反机器人挑战会作为有端点来源的诊断随降级结果返回。
