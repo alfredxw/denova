@@ -1278,8 +1278,9 @@ describe('SettingPanel', () => {
     expect(within(editor).getByRole('button', { name: 'Raw' })).toHaveAttribute('aria-pressed', 'false')
     expect(editor.querySelector('.overflow-y-auto')).toBeNull()
     const editorRoot = within(editor).getByTestId('lore-rich-editor-root')
-    expect(editorRoot).toHaveClass('flex', 'min-h-[420px]', 'flex-1')
-    expect(editorRoot.parentElement).toHaveClass('flex', 'min-h-full', 'min-w-0', 'flex-col')
+    // 切换按钮与正文区同处一个 bg 容器，切换条不做整宽分隔
+    expect(editorRoot.parentElement).toHaveClass('flex', 'min-h-[420px]', 'flex-1')
+    expect(editorRoot.parentElement?.parentElement).toHaveClass('flex', 'min-h-full', 'min-w-0', 'flex-col')
     expect(within(editor).getByRole('textbox', { name: '名称' }).closest('[data-slot="lore-primary-fields"]')).toHaveClass(
       'grid-cols-2',
       'md:grid-cols-3',

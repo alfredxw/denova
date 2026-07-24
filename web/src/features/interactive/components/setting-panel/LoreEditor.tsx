@@ -184,54 +184,57 @@ export function LoreEditor({
               </div>
             </div>
           </div>
-          <div className="flex h-8 shrink-0 items-center justify-end border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 sm:px-4">
-            <div role="group" aria-label={t('settingPanel.field.content')} className="inline-flex shrink-0 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
-              <button
-                type="button"
-                onClick={() => setContentMode('rich')}
-                aria-pressed={contentMode === 'rich'}
-                className={cn(
-                  'nova-nav-item inline-flex h-6 items-center gap-1 rounded px-2 text-[11px]',
-                  contentMode === 'rich' ? 'is-active' : 'text-[var(--nova-text-muted)]',
-                )}
-              >
-                <Type className="h-3.5 w-3.5" />
-                {t('settingPanel.editor.contentModeRich')}
-              </button>
-              <button
-                type="button"
-                onClick={() => setContentMode('raw')}
-                aria-pressed={contentMode === 'raw'}
-                className={cn(
-                  'nova-nav-item inline-flex h-6 items-center gap-1 rounded px-2 text-[11px]',
-                  contentMode === 'raw' ? 'is-active' : 'text-[var(--nova-text-muted)]',
-                )}
-              >
-                <FileCode2 className="h-3.5 w-3.5" />
-                {t('common.raw')}
-              </button>
+          {/* 切换按钮与正文编辑区同处一个背景容器：不做整宽分隔条，避免与正文产生割裂感。 */}
+          <div className="flex min-h-[420px] min-w-0 flex-1 flex-col bg-[var(--nova-bg)]">
+            <div className="flex shrink-0 items-center px-3 pt-2.5 sm:px-4">
+              <div role="group" aria-label={t('settingPanel.field.content')} className="inline-flex shrink-0 overflow-hidden rounded-[var(--nova-radius)] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setContentMode('rich')}
+                  aria-pressed={contentMode === 'rich'}
+                  className={cn(
+                    'nova-nav-item inline-flex h-6 items-center gap-1 rounded px-2 text-[11px]',
+                    contentMode === 'rich' ? 'is-active' : 'text-[var(--nova-text-muted)]',
+                  )}
+                >
+                  <Type className="h-3.5 w-3.5" />
+                  {t('settingPanel.editor.contentModeRich')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setContentMode('raw')}
+                  aria-pressed={contentMode === 'raw'}
+                  className={cn(
+                    'nova-nav-item inline-flex h-6 items-center gap-1 rounded px-2 text-[11px]',
+                    contentMode === 'raw' ? 'is-active' : 'text-[var(--nova-text-muted)]',
+                  )}
+                >
+                  <FileCode2 className="h-3.5 w-3.5" />
+                  {t('common.raw')}
+                </button>
+              </div>
             </div>
+            {contentMode === 'raw' ? (
+              <Textarea
+                autoResize={false}
+                spellCheck={false}
+                value={draft.content || ''}
+                onChange={(event) => setDraft({ ...draft, content: event.target.value })}
+                aria-label={t('settingPanel.field.content')}
+                className="min-h-0 min-w-0 flex-1 resize-none rounded-none border-0 bg-transparent px-5 pb-4 pt-2 font-mono text-xs leading-5 text-[var(--nova-text)] shadow-none focus-visible:ring-0 sm:px-6 md:text-xs"
+              />
+            ) : (
+              <MarkdownRichEditor
+                key={draft.id}
+                value={draft.content || ''}
+                onChange={(content) => setDraft({ ...draft, content })}
+                highlightQuery={searchQuery}
+                onSaveShortcut={onSave}
+                aria-label={t('settingPanel.field.content')}
+                className="flex min-h-0 min-w-0 flex-1 flex-col text-xs leading-5 [&_.tiptap]:min-h-0 [&_.tiptap]:min-w-0 [&_.tiptap]:flex-1 [&_.tiptap]:px-5 [&_.tiptap]:pb-4 [&_.tiptap]:pt-2 sm:[&_.tiptap]:px-6"
+              />
+            )}
           </div>
-          {contentMode === 'raw' ? (
-            <Textarea
-              autoResize={false}
-              spellCheck={false}
-              value={draft.content || ''}
-              onChange={(event) => setDraft({ ...draft, content: event.target.value })}
-              aria-label={t('settingPanel.field.content')}
-              className="min-h-[420px] min-w-0 flex-1 resize-none rounded-none border-0 bg-[var(--nova-bg)] px-5 py-4 font-mono text-xs leading-5 text-[var(--nova-text)] shadow-none focus-visible:ring-0 sm:px-6 md:text-xs"
-            />
-          ) : (
-            <MarkdownRichEditor
-              key={draft.id}
-              value={draft.content || ''}
-              onChange={(content) => setDraft({ ...draft, content })}
-              highlightQuery={searchQuery}
-              onSaveShortcut={onSave}
-              aria-label={t('settingPanel.field.content')}
-              className="flex min-h-[420px] min-w-0 flex-1 flex-col bg-[var(--nova-bg)] text-xs leading-5 [&_.tiptap]:min-h-[420px] [&_.tiptap]:min-w-0 [&_.tiptap]:flex-1 [&_.tiptap]:px-5 [&_.tiptap]:py-4 sm:[&_.tiptap]:px-6"
-            />
-          )}
         </div>
       </ScrollArea>
       <LoreImageGenerateDialog
