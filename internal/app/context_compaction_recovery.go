@@ -14,7 +14,6 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func (s *ChatAppService) resumeWritingContextStructuralOperation(
@@ -139,8 +138,8 @@ func (a *App) contextStructuralOperationForRestore(
 func (a *App) restoreSessionContextStructuralOperation(
 	request agents.HarnessStructuralRestoreRequest,
 ) (agents.ContextStructuralOperation, error) {
-	binding, err := agents.ParseRuntimeBinding(request.Binding)
-	if err != nil || binding.AgentKind != agents.AgentKindIDE ||
+	binding := request.Binding
+	if binding.AgentKind != agents.AgentKindIDE ||
 		strings.TrimSpace(binding.SessionID) == "" || request.Snapshot.Ref.Resource != binding.SessionID {
 		return nil, fmt.Errorf("structural Session restore binding does not match its resource")
 	}
@@ -223,8 +222,8 @@ func (a *App) restoreSessionContextStructuralOperation(
 func restoreStoryContextStructuralOperation(
 	request agents.HarnessStructuralRestoreRequest,
 ) (agents.ContextStructuralOperation, error) {
-	binding, err := agents.ParseRuntimeBinding(request.Binding)
-	if err != nil || binding.AgentKind != agents.AgentKindInteractiveStory ||
+	binding := request.Binding
+	if binding.AgentKind != agents.AgentKindInteractiveStory ||
 		strings.TrimSpace(binding.Workspace) == "" || strings.TrimSpace(binding.StoryID) == "" ||
 		strings.TrimSpace(binding.BranchID) == "" || request.Snapshot.Ref.Resource != binding.StoryID+"/"+binding.BranchID {
 		return nil, fmt.Errorf("structural Story restore binding does not match its resource")
@@ -337,8 +336,8 @@ func fixedContextStructuralOperation(
 func newContextStructuralRestorePlan(
 	domain agents.ContextStructuralDomain,
 	action agents.ContextStructuralAction,
-	binding runstate.BindingRef,
-	ref runstate.ContextCompactionRef,
+	binding agents.RuntimeBinding,
+	ref agents.ContextCompactionRef,
 	recordID string,
 	result agents.ContextStructuralResult,
 	mutation any,
@@ -357,12 +356,12 @@ func newContextStructuralRestorePlan(
 	}, nil
 }
 
-func writingContextStructuralBinding(workspace, sessionID string) (runstate.BindingRef, error) {
-	return (agents.RuntimeBinding{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sessionID}).Ref()
+func writingContextStructuralBinding(workspace, sessionID string) agents.RuntimeBinding {
+	return agents.RuntimeBinding{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sessionID}
 }
 
-func storyContextStructuralBinding(workspace, storyID, branchID string) (runstate.BindingRef, error) {
-	return (agents.RuntimeBinding{AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: storyID, BranchID: branchID}).Ref()
+func storyContextStructuralBinding(workspace, storyID, branchID string) agents.RuntimeBinding {
+	return agents.RuntimeBinding{AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: storyID, BranchID: branchID}
 }
 
 func parseSessionContextRevision(value string) (uint64, error) {

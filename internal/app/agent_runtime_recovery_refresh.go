@@ -7,13 +7,12 @@ import (
 
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func emitWritingRecoveryRefreshRequired(
 	emit func(agents.Event),
 	action agents.RuntimeRecoveryAction,
-	cursor runstate.Cursor,
+	cursor agents.Cursor,
 ) {
 	if emit == nil {
 		return

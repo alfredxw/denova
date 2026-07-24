@@ -32,9 +32,9 @@ type ToolMutationOrigin struct {
 // host reconciler. EffectID is the idempotency key; returning nil means the
 // host has durably admitted the obligation, not merely queued process work.
 type CommittedToolMutation struct {
-	EffectID         runstate.HostEffectID
-	Binding          runstate.BindingRef
-	RuntimeOperation runstate.OperationID
+	EffectID         HostEffectID
+	Binding          RuntimeBinding
+	RuntimeOperation OperationID
 	RuntimeCycle     int
 	ToolCallID       string
 	Origin           ToolMutationOrigin
@@ -125,10 +125,14 @@ func decodeCommittedToolMutationHostEffect(binding runstate.BindingRef, effect r
 	if err != nil || !ref.Equal(binding) {
 		return CommittedToolMutation{}, fmt.Errorf("committed tool mutation binding does not match runtime")
 	}
+	productBinding, err := ParseRuntimeBinding(binding)
+	if err != nil {
+		return CommittedToolMutation{}, fmt.Errorf("decode committed tool mutation binding: %w", err)
+	}
 	payload.Mutation.LoreItemIDs = append([]string(nil), payload.Mutation.LoreItemIDs...)
 	payload.Mutation.DeletedLoreItemIDs = append([]string(nil), payload.Mutation.DeletedLoreItemIDs...)
 	return CommittedToolMutation{
-		EffectID: effect.ID, Binding: binding, RuntimeOperation: effect.OperationID,
+		EffectID: HostEffectID(effect.ID), Binding: productBinding, RuntimeOperation: OperationID(effect.OperationID),
 		RuntimeCycle: effect.Cycle, ToolCallID: effect.CallID,
 		Origin: payload.Origin, Mutation: payload.Mutation,
 	}, nil

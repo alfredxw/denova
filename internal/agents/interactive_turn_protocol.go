@@ -9,10 +9,12 @@ import (
 	"sync/atomic"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	producttools "denova/internal/agents/tools"
 )
 
 const (
-	interactiveTurnSubmissionToolName = "submit_interactive_turn"
+	interactiveTurnSubmissionToolName = producttools.SubmitInteractiveTurnToolName
 	legacyActorStatePatchesToolName   = "submit_actor_state_patches"
 	legacyInteractiveChoicesToolName  = "submit_choices"
 	interactiveCompletionRetryCode    = "interactive_turn_result_missing"

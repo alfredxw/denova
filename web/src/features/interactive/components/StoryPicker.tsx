@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
+import { formatDateTime } from '@/i18n'
 import type { StorySummary } from '../types'
 import { CompactResourcePicker } from './CompactResourcePicker'
 
@@ -84,7 +85,32 @@ export function StoryPicker({ stories, currentStoryId, onSelect, onCreate, onDel
               <span className="min-w-0 flex-1 truncate">{label}</span>
             </button>
           )
-        } : undefined}
+        } : (story, { label, selected, select }) => {
+          const lastTurnTime = story.updated_at ? formatDateTime(story.updated_at) : ''
+          return (
+            <button
+              type="button"
+              aria-label={label}
+              aria-current={selected ? 'true' : undefined}
+              className={`flex w-full min-w-0 flex-col gap-0.5 rounded-[var(--nova-radius)] px-2 py-1.5 text-left text-xs leading-5 transition-colors ${selected ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}
+              onClick={select}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="min-w-0 flex-1 truncate">{label}</span>
+                {selected ? <Check className="size-3.5 shrink-0 text-[var(--nova-text-faint)]" /> : null}
+              </span>
+              <span className="flex min-w-0 items-center gap-2 text-[11px] leading-4 text-[var(--nova-text-faint)]">
+                <span className="shrink-0">{t('storyPicker.turnCount', { count: story.events })}</span>
+                {lastTurnTime ? (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="min-w-0 truncate">{t('storyPicker.lastTurn', { time: lastTurnTime })}</span>
+                  </>
+                ) : null}
+              </span>
+            </button>
+          )
+        }}
         renderFooter={stories.length > 0 ? (close) => selectingForDelete ? (
           <div className="sticky bottom-0 mt-1 space-y-1 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] pt-1">
             <div className="flex items-center justify-between gap-2 px-2 py-0.5 text-[11px] text-[var(--nova-text-faint)]">

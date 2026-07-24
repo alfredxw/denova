@@ -9,17 +9,18 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
+	producttools "denova/internal/agents/tools"
 	"denova/internal/interactive"
 )
 
 func TestNativeAgentBuiltInToolsPassDescriptorGuard(t *testing.T) {
 	ctx := context.Background()
 	chatModel := &descriptorGuardProbeModel{}
-	todoTool, err := newWriteTodosTool()
+	todoTool, err := newToolCatalog(nil).WriteTodos()
 	if err != nil {
 		t.Fatal(err)
 	}
-	taskTool, err := newTaskTool(ctx, []agent.Runnable{fakeAgent{name: generalSubAgentName, description: "test"}})
+	taskTool, err := newToolCatalog(nil).Task(ctx, []agent.Runnable{fakeAgent{name: producttools.GeneralSubAgentName, description: "test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +31,7 @@ func TestNativeAgentBuiltInToolsPassDescriptorGuard(t *testing.T) {
 		Model:         chatModel,
 		MaxIterations: 1,
 		Tools:         []agent.BaseTool{todoTool, taskTool},
-		Middlewares:   []agent.Middleware{newToolDescriptorGuardMiddleware()},
+		Middlewares:   []agent.Middleware{producttools.NewDescriptorGuardMiddleware()},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -87,17 +88,17 @@ func TestWritingAgentFinalRuntimeToolSurfacePassesDescriptorGuard(t *testing.T) 
 		Kind:              config.AgentKindIDE,
 		ToolSettings:      settings,
 		EnableSkills:      true,
-		ExtraToolsFactory: ideToolsFactory(cfg),
+		ExtraToolsFactory: newToolCatalog(cfg).IDE(),
 		IncludeCompaction: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	todoTool, err := newWriteTodosTool()
+	todoTool, err := newToolCatalog(cfg).WriteTodos()
 	if err != nil {
 		t.Fatal(err)
 	}
-	taskTool, err := newTaskTool(ctx, []agent.Runnable{fakeAgent{name: generalSubAgentName, description: "test"}})
+	taskTool, err := newToolCatalog(cfg).Task(ctx, []agent.Runnable{fakeAgent{name: producttools.GeneralSubAgentName, description: "test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,40 +179,40 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 		{
 			name: "writing",
 			build: func() ([]agent.BaseTool, error) {
-				return ideToolsFactory(cfg)(config.ResolveAgentTools(cfg, config.AgentKindIDE))
+				return newToolCatalog(cfg).IDE()(config.ResolveAgentTools(cfg, config.AgentKindIDE))
 			},
 		},
 		{
 			name: "game",
 			build: func() ([]agent.BaseTool, error) {
-				return interactiveStoryToolsFactory(cfg, storyContext)(config.ResolveAgentTools(cfg, config.AgentKindInteractiveStory))
+				return newToolCatalog(cfg).InteractiveStory(projectInteractiveToolContext(storyContext))(config.ResolveAgentTools(cfg, config.AgentKindInteractiveStory))
 			},
 		},
 		{
 			name: "game director",
 			build: func() ([]agent.BaseTool, error) {
-				return interactiveDirectorToolsFactory(cfg, directorContext)(config.ResolveAgentTools(cfg, config.AgentKindInteractiveDirector))
+				return newToolCatalog(cfg).InteractiveDirector(projectInteractiveToolContext(directorContext))(config.ResolveAgentTools(cfg, config.AgentKindInteractiveDirector))
 			},
 		},
 		{
 			name: "config manager",
 			build: func() ([]agent.BaseTool, error) {
-				return configManagerToolsFactory(cfg)(config.ResolveAgentTools(cfg, config.AgentKindConfigManager))
+				return newToolCatalog(cfg).ConfigManager()(config.ResolveAgentTools(cfg, config.AgentKindConfigManager))
 			},
 		},
 		{
 			name: "image",
 			build: func() ([]agent.BaseTool, error) {
-				return imageToolsFactory(cfg)(config.ResolveAgentTools(cfg, config.AgentKindImage))
+				return newToolCatalog(cfg).Image()(config.ResolveAgentTools(cfg, config.AgentKindImage))
 			},
 		},
 		{
 			name: "automation",
 			build: func() ([]agent.BaseTool, error) {
-				return loreToolsFactory(cfg, false)(config.ResolveAgentTools(cfg, config.AgentKindAutomation))
+				return newToolCatalog(cfg).Lore(false)(config.ResolveAgentTools(cfg, config.AgentKindAutomation))
 			},
 		},
-		{name: "web search", build: newWebSearchTools},
+		{name: "web search", build: newToolCatalog(cfg).WebSearch},
 	}
 
 	for _, tt := range tests {
@@ -223,7 +224,7 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 			if len(tools) == 0 {
 				t.Fatal("tool factory returned no tools")
 			}
-			if err := validateToolDescriptors(ctx, tools); err != nil {
+			if err := producttools.Validate(ctx, tools); err != nil {
 				t.Fatalf("tool factory exposed an undeclared tool: %v", err)
 			}
 		})

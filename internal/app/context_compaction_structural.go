@@ -12,7 +12,6 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 type contextStructuralOperationFuncs struct {
@@ -118,14 +117,11 @@ func (s *ChatAppService) executeWritingContextCompaction(ctx context.Context, re
 		return prepared, fmt.Errorf("没有可压缩的上下文")
 	}
 	record := sessionCompactionRecord(recordID, config.AgentKindIDE, sourceStart, sourceEnd, prepared)
-	ref := runstate.ContextCompactionRef{
+	ref := agents.ContextCompactionRef{
 		Source: "session.effective_messages", Purpose: "persist a bounded model-history checkpoint",
 		Resource: runtime.sess.ID, ExpectedRevision: fmt.Sprintf("session-context:%d", cursor.Revision), Force: true,
 	}
-	binding, err := writingContextStructuralBinding(runtime.workspace, runtime.sess.ID)
-	if err != nil {
-		return prepared, err
-	}
+	binding := writingContextStructuralBinding(runtime.workspace, runtime.sess.ID)
 	plan, err := newContextStructuralRestorePlan(
 		agents.ContextStructuralDomainSession, agents.ContextStructuralCompact, binding, ref, recordID,
 		agents.ContextStructuralResult{Compaction: prepared}, record,
@@ -230,14 +226,11 @@ func (s *ChatAppService) executeWritingContextCompactionRemoval(ctx context.Cont
 		ID: recordID, AgentKind: config.AgentKindIDE, CompactionID: compaction.ID,
 		SourceStartIndex: compaction.SourceStartIndex, SourceEndIndex: compaction.SourceEndIndex, Reason: "user_removed",
 	}
-	ref := runstate.ContextCompactionRef{
+	ref := agents.ContextCompactionRef{
 		Source: "session.context_compaction", Purpose: "restore raw canonical session history",
 		Resource: sess.ID, ExpectedRevision: fmt.Sprintf("session-context:%d", cursor.Revision), CompactionID: compaction.ID,
 	}
-	binding, err := writingContextStructuralBinding(fence.workspace, sess.ID)
-	if err != nil {
-		return false, err
-	}
+	binding := writingContextStructuralBinding(fence.workspace, sess.ID)
 	plan, err := newContextStructuralRestorePlan(
 		agents.ContextStructuralDomainSession, agents.ContextStructuralRemove, binding, ref, recordID,
 		agents.ContextStructuralResult{Removed: true}, record,
@@ -343,7 +336,7 @@ func resolveContextStructuralCommandID(requested, fallback string) (string, erro
 	if commandID == "" {
 		commandID = strings.TrimSpace(fallback)
 	}
-	if err := runstate.ValidateCommandID(commandID, runstate.DefaultInputLimits()); err != nil {
+	if err := agents.ValidateCommandID(commandID); err != nil {
 		return "", err
 	}
 	return commandID, nil

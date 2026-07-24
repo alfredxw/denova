@@ -13,7 +13,7 @@ import (
 )
 
 func TestContextStructuralRestorePlanStrictRoundTrip(t *testing.T) {
-	binding := mustRuntimeBinding(RuntimeBinding{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "restore-plan"})
+	binding := RuntimeBinding{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "restore-plan"}
 	mutation := json.RawMessage(` { "summary" : "bounded", "counter": 9007199254740993, "id" : "cc-1" } `)
 	hash, err := ContextStructuralIntentHash(ContextStructuralCompact, binding, "context:7", "cc-1", mutation)
 	if err != nil {
@@ -59,7 +59,7 @@ func TestContextStructuralRestorePlanStrictRoundTrip(t *testing.T) {
 }
 
 func TestContextStructuralRestorePlanRejectsInvalidDescriptors(t *testing.T) {
-	binding := mustRuntimeBinding(RuntimeBinding{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "invalid-plan"})
+	binding := RuntimeBinding{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "invalid-plan"}
 	mutation := json.RawMessage(`{"id":"cc-1"}`)
 	hash, err := ContextStructuralIntentHash(ContextStructuralCompact, binding, "context:7", "cc-1", mutation)
 	if err != nil {
@@ -127,7 +127,11 @@ func TestContextStructuralRestorePlanRejectsInvalidDescriptors(t *testing.T) {
 			}
 		})
 	}
-	if _, err := encodeContextStructuralRestorePlan(valid, binding, "context:7", 32); err == nil || !strings.Contains(err.Error(), "exceeds 32 bytes") {
+	bindingRef, err := binding.Ref()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := encodeContextStructuralRestorePlan(valid, bindingRef, "context:7", 32); err == nil || !strings.Contains(err.Error(), "exceeds 32 bytes") {
 		t.Fatalf("bounded encode error = %v", err)
 	}
 	duplicate := json.RawMessage(strings.TrimSuffix(string(encoded), "}") + `,"version":1}`)
@@ -194,7 +198,11 @@ func TestResumeRecoveredContextStructuralOperationColdRestoresExactPlanOnce(t *t
 		t.Fatal(err)
 	}
 	mutation := json.RawMessage(`{"id":"cc-cold","summary":"checkpoint"}`)
-	hash, err := ContextStructuralIntentHash(ContextStructuralCompact, bindingRef, "context:7", "cc-cold", mutation)
+	productBinding, err := ParseRuntimeBinding(bindingRef)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, err := ContextStructuralIntentHash(ContextStructuralCompact, productBinding, "context:7", "cc-cold", mutation)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +212,7 @@ func TestResumeRecoveredContextStructuralOperationColdRestoresExactPlanOnce(t *t
 		Result:   ContextStructuralResult{Compaction: ContextCompactionResult{Triggered: true, Epoch: 3, Summary: "checkpoint"}},
 		Mutation: mutation,
 	}
-	descriptor, err := EncodeContextStructuralRestorePlan(plan, bindingRef, "context:7")
+	descriptor, err := EncodeContextStructuralRestorePlan(plan, productBinding, "context:7")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,11 +253,15 @@ func TestResumeRecoveredContextStructuralOperationColdRestoresExactPlanOnce(t *t
 	}
 
 	operation := &recoveredFixedStructuralOperation{plan: plan, receipt: ContextStructuralReceipt{Revision: "session-context:8"}}
+	wantSnapshot, err := structuralOperationFromRuntime(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
 	restoreCalls := 0
 	service, err := newHarnessChatServiceWithOptions(context.Background(), DefaultLoopPolicy(), store, durableChatServiceOptions{
 		structuralRestorer: func(_ context.Context, request HarnessStructuralRestoreRequest) (ContextStructuralSpec, error) {
 			restoreCalls++
-			if !request.Binding.Equal(bindingRef) || !reflect.DeepEqual(request.Snapshot, snapshot) || !reflect.DeepEqual(request.Plan, plan) {
+			if request.Binding != productBinding || !reflect.DeepEqual(request.Snapshot, wantSnapshot) || !reflect.DeepEqual(request.Plan, plan) {
 				return ContextStructuralSpec{}, errors.New("cold structural restore request changed")
 			}
 			request.Snapshot.Ref.RestoreDescriptor[0] = '['
@@ -259,7 +271,7 @@ func TestResumeRecoveredContextStructuralOperationColdRestoresExactPlanOnce(t *t
 			// request mutations above must not alias its retained plan either.
 			return ContextStructuralSpec{
 				CommandID: "wrong", Action: ContextStructuralRemove,
-				Ref:       runstate.ContextCompactionRef{SpecRef: "wrong"},
+				Ref:       ContextCompactionRef{SpecRef: "wrong"},
 				Options:   RunOptions{AgentKind: AgentKindInteractiveStory, Workspace: "/wrong", StoryID: "wrong", BranchID: "wrong"},
 				Operation: operation,
 			}, nil
@@ -290,7 +302,7 @@ func TestResumeRecoveredContextStructuralOperationColdRestoresExactPlanOnce(t *t
 	operation.mu.Lock()
 	prepared, committed, identity := operation.prepared, operation.committed, operation.identity
 	operation.mu.Unlock()
-	if prepared != 1 || committed != 1 || identity.CommandID != command.ID || identity.OperationID != operationID || identity.Cycle != 1 {
+	if prepared != 1 || committed != 1 || identity.CommandID != CommandID(command.ID) || identity.OperationID != OperationID(operationID) || identity.Cycle != 1 {
 		t.Fatalf("restored execution = prepare/commit %d/%d identity %#v", prepared, committed, identity)
 	}
 	if _, resumedAgain, err := service.ResumeRecoveredContextStructuralOperation(context.Background(), options); err != nil || resumedAgain {

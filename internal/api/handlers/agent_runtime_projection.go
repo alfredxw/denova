@@ -114,13 +114,13 @@ func newAgentRuntimeProjectionDTO(snapshot appsvc.AgentRuntimeStatus) agentRunti
 	thinking, thinkingTruncated := boundedRuntimeProjectionText(snapshot.ActiveOutput.Thinking)
 	queue := make([]agentRuntimeQueueDTO, 0, len(snapshot.Queue))
 	for _, item := range snapshot.Queue {
-		message, truncated := boundedRuntimeProjectionText(item.Input.Text)
+		message, truncated := boundedRuntimeProjectionText(item.Message)
 		queue = append(queue, agentRuntimeQueueDTO{
 			CommandID:        string(item.CommandID),
 			OperationID:      string(item.OperationID),
 			Delivery:         string(item.Delivery),
 			Message:          message,
-			MessageTruncated: item.InputTextTruncated || truncated,
+			MessageTruncated: item.MessageTruncated || truncated,
 		})
 	}
 	openTools := make([]agentRuntimeOpenToolDTO, 0, len(snapshot.OpenToolCalls))

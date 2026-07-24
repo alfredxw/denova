@@ -215,7 +215,7 @@ func TestHarnessEngineBindsDurableCycleIdentityBeforeExecution(t *testing.T) {
 	engine := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
 	conversation := &identityBindingConversation{}
 	if err := registerAcceptedHarnessTurn(engine, "turn-identity", HarnessTurnSpec{
-		CommandID:    runstate.CommandID("command-1"),
+		CommandID:    CommandID("command-1"),
 		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: agent.AssistantMessage("done", nil)}, true),
 		Conversation: conversation,
 		Request:      ChatRequest{Message: "play"},
@@ -239,7 +239,7 @@ func TestHarnessEnginePreparesCycleAfterIdentityAndBeforeRuntime(t *testing.T) {
 	engine := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
 	conversation := &orderedCycleConversation{}
 	if err := registerAcceptedHarnessTurn(engine, "turn-prepare-order", HarnessTurnSpec{
-		CommandID:    runstate.CommandID("command-prepare"),
+		CommandID:    CommandID("command-prepare"),
 		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: agent.AssistantMessage("done", nil)}, true),
 		Conversation: conversation,
 		Request:      ChatRequest{Message: "play"},
@@ -265,7 +265,7 @@ func TestHarnessEnginePreparationFailureStopsCycleBeforeRuntime(t *testing.T) {
 	conversation := &orderedCycleConversation{prepareErr: wantErr}
 	outcomes := make(chan RunOutcome, 1)
 	if err := registerAcceptedHarnessTurn(engine, "turn-prepare-error", HarnessTurnSpec{
-		CommandID:    runstate.CommandID("command-prepare-error"),
+		CommandID:    CommandID("command-prepare-error"),
 		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: agent.AssistantMessage("must not run", nil)}, true),
 		Conversation: conversation,
 		Request:      ChatRequest{Message: "play"},
@@ -319,7 +319,7 @@ func TestHarnessEngineControlInterruptsBlockingPreparation(t *testing.T) {
 			outcomes := make(chan RunOutcome, 1)
 			ref := "turn-blocking-prepare-" + test.name
 			if err := registerAcceptedHarnessTurn(engine, ref, HarnessTurnSpec{
-				CommandID:    runstate.CommandID("command-" + test.name),
+				CommandID:    CommandID("command-" + test.name),
 				Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: agent.AssistantMessage("must not run", nil)}, true),
 				Conversation: conversation,
 				Request:      ChatRequest{Message: "play"},

@@ -8,7 +8,6 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
@@ -57,7 +56,7 @@ func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != runstate.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != runstate.OperationSucceeded ||
+	if status.Phase != agents.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agents.OperationSucceeded ||
 		status.LastDomainCommit == nil || status.LastDomainCommit.Revision == "" {
 		t.Fatalf("durable structural settlement missing: %#v", status)
 	}
@@ -106,7 +105,7 @@ func TestInteractiveCompactionRemovalUsesDurableStructuralCommand(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != runstate.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != runstate.OperationSucceeded ||
+	if status.Phase != agents.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agents.OperationSucceeded ||
 		status.LastDomainCommit == nil || status.LastDomainCommit.Revision == "" {
 		t.Fatalf("durable game structural settlement missing: %#v", status)
 	}

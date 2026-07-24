@@ -23,11 +23,11 @@ var ErrHarnessTurnRestoreUnavailable = errors.New("agent harness turn restore de
 // queued Steer, FollowUp, or NextTurn bounded durable descriptor. The host resolves fresh
 // Runner, Conversation, BookService, callbacks, and server-owned context.
 type HarnessTurnRestoreRequest struct {
-	Binding          runstate.BindingRef
+	Binding          RuntimeBinding
 	Kind             AgentCommandKind
-	CommandID        runstate.CommandID
-	OperationID      runstate.OperationID
-	AfterOperationID runstate.OperationID
+	CommandID        CommandID
+	OperationID      OperationID
+	AfterOperationID OperationID
 	Request          ChatRequest
 	Options          RunOptions
 	Deferred         bool
@@ -69,7 +69,7 @@ func encodeHarnessTurnRestoreDescriptor(spec AgentCommandSpec) (json.RawMessage,
 	descriptor := harnessTurnRestoreDescriptor{
 		Version:          harnessTurnRestoreDescriptorVersion,
 		Kind:             spec.Kind,
-		AfterOperationID: spec.AfterOperationID,
+		AfterOperationID: runstate.OperationID(spec.AfterOperationID),
 		Request:          describeHarnessTurnRequest(spec.Request),
 		Options:          describeHarnessDurableTurnOptions(spec.Options),
 		Deferred:         spec.Prepare != nil,
@@ -143,8 +143,8 @@ func decodeHarnessTurnRestoreRequest(
 	}
 	semanticSpec := AgentCommandSpec{
 		Kind: descriptor.Kind, CommandID: string(input.CommandID),
-		OperationID:      input.OperationID,
-		AfterOperationID: descriptor.AfterOperationID,
+		OperationID:      OperationID(input.OperationID),
+		AfterOperationID: OperationID(descriptor.AfterOperationID),
 		Request:          request,
 		Options:          options,
 	}
@@ -157,9 +157,13 @@ func decodeHarnessTurnRestoreRequest(
 	if strings.TrimSpace(input.Input.TurnSpecRef) != wantRef {
 		return HarnessTurnRestoreRequest{}, fmt.Errorf("%w: durable descriptor does not match turn reference", ErrHarnessTurnRestoreUnavailable)
 	}
+	productBinding, err := ParseRuntimeBinding(binding)
+	if err != nil {
+		return HarnessTurnRestoreRequest{}, fmt.Errorf("%w: decode product binding: %v", ErrHarnessTurnRestoreUnavailable, err)
+	}
 	return HarnessTurnRestoreRequest{
-		Binding: binding, Kind: descriptor.Kind, CommandID: input.CommandID, OperationID: input.OperationID,
-		AfterOperationID: descriptor.AfterOperationID,
+		Binding: productBinding, Kind: descriptor.Kind, CommandID: CommandID(input.CommandID), OperationID: OperationID(input.OperationID),
+		AfterOperationID: OperationID(descriptor.AfterOperationID),
 		Request:          request,
 		Options:          options,
 		Deferred:         descriptor.Deferred,

@@ -9,7 +9,6 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAppRestoresFrozenSessionCompactionForInactiveBinding(t *testing.T) {
@@ -31,18 +30,15 @@ func TestAppRestoresFrozenSessionCompactionForInactiveBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	cursor := sess.ContextCursor()
-	binding, err := writingContextStructuralBinding(workspace, sess.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	commandID := runstate.CommandID("inactive-session-compact")
+	binding := writingContextStructuralBinding(workspace, sess.ID)
+	commandID := agents.CommandID("inactive-session-compact")
 	recordID := contextStructuralRecordID("cc", string(commandID))
 	result := agents.ContextCompactionResult{
 		Triggered: true, Phase: "mid_run", Epoch: 1, Summary: "bounded checkpoint",
 		SourceMessageCount: 1, RetainedTurns: 2, TokensBefore: 120, TokensAfter: 24,
 	}
 	record := sessionCompactionRecord(recordID, agents.AgentKindIDE, 0, 1, result)
-	ref := runstate.ContextCompactionRef{
+	ref := agents.ContextCompactionRef{
 		Source: "session.effective_messages", Purpose: "recover exact checkpoint", Resource: sess.ID,
 		ExpectedRevision: fmt.Sprintf("session-context:%d", cursor.Revision),
 	}
@@ -56,9 +52,9 @@ func TestAppRestoresFrozenSessionCompactionForInactiveBinding(t *testing.T) {
 	application := &App{}
 	spec, err := application.restoreContextStructuralOperation(context.Background(), agents.HarnessStructuralRestoreRequest{
 		Binding: binding,
-		Snapshot: runstate.StructuralOperationSnapshot{
+		Snapshot: agents.StructuralOperation{
 			Binding: binding, CommandID: commandID, OperationID: "inactive-session-operation",
-			Cycle: 1, Kind: runstate.StructuralCompactContext, Ref: ref,
+			Cycle: 1, Kind: agents.StructuralCompactContext, Ref: ref,
 		},
 		Options: agents.RunOptions{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sess.ID, Mode: "ide"},
 		Plan:    plan,
@@ -100,18 +96,15 @@ func TestAppRestoresFrozenStoryCompactionForInactiveBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectedParent := storyContext.Meta.Branches["main"].Head
-	binding, err := storyContextStructuralBinding(workspace, story.ID, "main")
-	if err != nil {
-		t.Fatal(err)
-	}
-	commandID := runstate.CommandID("inactive-story-compact")
+	binding := storyContextStructuralBinding(workspace, story.ID, "main")
+	commandID := agents.CommandID("inactive-story-compact")
 	recordID := contextStructuralRecordID("cc", string(commandID))
 	result := agents.ContextCompactionResult{
 		Triggered: true, Phase: "mid_run", Epoch: 1, Summary: "bounded story checkpoint",
 		RetainedTurns: 2, TokensBefore: 160, TokensAfter: 30,
 	}
 	event := interactiveCompactionEvent(recordID, expectedParent, 0, result)
-	ref := runstate.ContextCompactionRef{
+	ref := agents.ContextCompactionRef{
 		Source: "story.turn_events", Purpose: "recover exact checkpoint",
 		Resource: story.ID + "/main", ExpectedRevision: contextStoryRevision(expectedParent),
 	}
@@ -124,9 +117,9 @@ func TestAppRestoresFrozenStoryCompactionForInactiveBinding(t *testing.T) {
 	}
 	spec, err := (&App{}).restoreContextStructuralOperation(context.Background(), agents.HarnessStructuralRestoreRequest{
 		Binding: binding,
-		Snapshot: runstate.StructuralOperationSnapshot{
+		Snapshot: agents.StructuralOperation{
 			Binding: binding, CommandID: commandID, OperationID: "inactive-story-operation",
-			Cycle: 1, Kind: runstate.StructuralCompactContext, Ref: ref,
+			Cycle: 1, Kind: agents.StructuralCompactContext, Ref: ref,
 		},
 		Options: agents.RunOptions{
 			AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace,

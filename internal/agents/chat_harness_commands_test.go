@@ -86,7 +86,7 @@ func TestChatServiceSubmitSteerTargetsActiveOperation(t *testing.T) {
 	}
 	receipt, err := service.SubmitCommand(context.Background(), AgentCommandSpec{
 		Kind: AgentCommandSteer, CommandID: "steer-1",
-		OperationID:  active.Snapshot.ActiveOperation,
+		OperationID:  OperationID(active.Snapshot.ActiveOperation),
 		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: agent.AssistantMessage("steered answer", nil)}, true),
 		Conversation: &runControlConversation{}, Request: ChatRequest{Message: "change direction"},
 		Options: RunOptions{AgentKind: AgentKindIDE, RootAgentName: "run-control-test", Workspace: "/book", SessionID: "commands"},
@@ -95,7 +95,7 @@ func TestChatServiceSubmitSteerTargetsActiveOperation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.OperationID != active.Snapshot.ActiveOperation {
+	if receipt.OperationID != OperationID(active.Snapshot.ActiveOperation) {
 		t.Fatalf("steer operation = %q, want %q", receipt.OperationID, active.Snapshot.ActiveOperation)
 	}
 	close(model.release)
@@ -164,7 +164,7 @@ func TestChatServiceAcceptedRunFollowsNextTurnAndRemainsControllable(t *testing.
 		t.Fatal(err)
 	}
 	nextReceipt, err := service.SubmitCommand(context.Background(), AgentCommandSpec{
-		Kind: AgentCommandNextTurn, CommandID: "accepted-next-turn", AfterOperationID: active.ActiveOperation,
+		Kind: AgentCommandNextTurn, CommandID: "accepted-next-turn", AfterOperationID: OperationID(active.ActiveOperation),
 		Runner: newRunControlTwoPhaseRunner(t, successorModel), Conversation: &runControlConversation{},
 		Request: ChatRequest{Message: "successor"}, Emit: emit,
 		Options: RunOptions{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "next-turn-control"},
@@ -268,7 +268,7 @@ func TestChatServiceCommitsInitialAndFollowUpCyclesExactlyOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	followUpSpec := AgentCommandSpec{
-		Kind: AgentCommandFollowUp, CommandID: "follow-up-1", OperationID: active.Snapshot.ActiveOperation,
+		Kind: AgentCommandFollowUp, CommandID: "follow-up-1", OperationID: OperationID(active.Snapshot.ActiveOperation),
 		Runner:       newRunControlTestRunner(t, &runControlFixedModel{message: agent.AssistantMessage("follow-up answer", nil)}, true),
 		Conversation: followUp, Request: ChatRequest{Message: "continue"},
 		Options: RunOptions{AgentKind: AgentKindInteractiveStory, Workspace: "/book", StoryID: "story", BranchID: "main"},
@@ -405,7 +405,7 @@ func TestChatServiceSteerPreemptsBlockingPreparationBeforeModelEffects(t *testin
 			if !ok {
 				t.Fatal("observation closed before steered operation settled")
 			}
-			if eventPayload, ok := event.Payload.(runstate.OperationSettledEvent); ok && eventPayload.OperationID == startReceipt.OperationID {
+			if eventPayload, ok := event.Payload.(runstate.OperationSettledEvent); ok && OperationID(eventPayload.OperationID) == startReceipt.OperationID {
 				settled = true
 			}
 		case observationErr := <-observation.Errors:

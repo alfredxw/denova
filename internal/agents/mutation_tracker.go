@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	producttools "denova/internal/agents/tools"
 )
 
 type ToolMutation struct {
@@ -39,7 +41,7 @@ type trackedToolCall struct {
 	target            string
 	itemIDs           []string
 	deleteID          []string
-	change            workspaceChangeToolReceipt
+	change            producttools.WorkspaceChangeReceipt
 	source            ToolSource
 	mutatesWorkspace  bool
 	requiresPostCheck bool
@@ -175,7 +177,7 @@ func (t *mutationTracker) observeToolResult(data any) {
 	}
 	call.itemIDs = append(call.itemIDs, eventDataStringSlice(data, "item_ids")...)
 	call.deleteID = append(call.deleteID, eventDataStringSlice(data, "deleted_ids")...)
-	if receipt, ok := parseWorkspaceChangeToolReceipt(call.name, eventDataString(data, "content")); ok {
+	if receipt, ok := producttools.ParseWorkspaceChangeReceipt(call.name, eventDataString(data, "content")); ok {
 		call.change = receipt
 		if strings.TrimSpace(receipt.Path) != "" {
 			call.target = receipt.Path

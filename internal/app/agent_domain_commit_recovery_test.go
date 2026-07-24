@@ -12,7 +12,6 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAppReconcilesExactSessionDomainReceiptsAcrossProfiles(t *testing.T) {
@@ -43,16 +42,16 @@ func TestAppReconcilesExactSessionDomainReceiptsAcrossProfiles(t *testing.T) {
 	}
 	application := &App{cfg: &config.Config{NovaDir: root}}
 
-	bindings := []runstate.BindingRef{
-		writingRuntimeBindingForTest(workspace, sess.ID),
-		configRuntimeBindingForTest(workspace, sess.ID),
-		imageRuntimeBindingForTest(workspace, sess.ID),
-		automationRuntimeBindingForTest(workspace, sess.ID, "task"),
+	bindings := []agents.RuntimeBinding{
+		{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sess.ID},
+		{AgentKind: agents.AgentKindConfigManager, Workspace: workspace, SessionID: sess.ID},
+		{AgentKind: agents.AgentKindImage, Workspace: workspace, SessionID: sess.ID},
+		{AgentKind: agents.AgentKindAutomation, Workspace: workspace, SessionID: sess.ID, TaskID: "task"},
 	}
 	for _, binding := range bindings {
 		binding := binding
-		t.Run(string(binding.Profile), func(t *testing.T) {
-			result, err := application.reconcileHarnessDomainCommit(context.Background(), domainRecoveryRequest(binding, identity.CommandID, identity.OperationID, identity.Cycle, runstate.DomainCommitOutput, intent.Hash))
+		t.Run(binding.AgentKind, func(t *testing.T) {
+			result, err := application.reconcileHarnessDomainCommit(context.Background(), domainRecoveryRequest(binding, identity.CommandID, identity.OperationID, identity.Cycle, agents.DomainCommitOutput, intent.Hash))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -62,11 +61,11 @@ func TestAppReconcilesExactSessionDomainReceiptsAcrossProfiles(t *testing.T) {
 		})
 	}
 
-	wrongIdentity := domainRecoveryRequest(bindings[0], identity.CommandID, "other-operation", identity.Cycle, runstate.DomainCommitOutput, intent.Hash)
+	wrongIdentity := domainRecoveryRequest(bindings[0], identity.CommandID, "other-operation", identity.Cycle, agents.DomainCommitOutput, intent.Hash)
 	if _, err := application.reconcileHarnessDomainCommit(context.Background(), wrongIdentity); !errors.Is(err, session.ErrDomainCommitIdentityConflict) {
 		t.Fatalf("identity mismatch error = %v, want Session conflict", err)
 	}
-	wrongHash := domainRecoveryRequest(bindings[0], identity.CommandID, identity.OperationID, identity.Cycle, runstate.DomainCommitOutput, "sha256:other")
+	wrongHash := domainRecoveryRequest(bindings[0], identity.CommandID, identity.OperationID, identity.Cycle, agents.DomainCommitOutput, "sha256:other")
 	if _, err := application.reconcileHarnessDomainCommit(context.Background(), wrongHash); !errors.Is(err, session.ErrDomainCommitIdentityConflict) {
 		t.Fatalf("hash mismatch error = %v, want Session conflict", err)
 	}
@@ -92,10 +91,10 @@ func TestAppReconcilesGlobalAutomationSessionReceipt(t *testing.T) {
 	if _, err := sess.CommitDomainMessage(intent); err != nil {
 		t.Fatal(err)
 	}
-	binding := automationRuntimeBindingForTest("", sess.ID, "task")
+	binding := agents.RuntimeBinding{AgentKind: agents.AgentKindAutomation, SessionID: sess.ID, TaskID: "task"}
 	result, err := (&App{cfg: &config.Config{NovaDir: root}}).reconcileHarnessDomainCommit(
 		context.Background(),
-		domainRecoveryRequest(binding, identity.CommandID, identity.OperationID, identity.Cycle, runstate.DomainCommitInput, intent.Hash),
+		domainRecoveryRequest(binding, identity.CommandID, identity.OperationID, identity.Cycle, agents.DomainCommitInput, intent.Hash),
 	)
 	if err != nil || !result.Found || result.Revision == "" {
 		t.Fatalf("global automation reconciliation = %#v err=%v", result, err)
@@ -130,15 +129,15 @@ func TestAppReconcilesExactGameAndDirectorReceipts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	gameBinding := gameRuntimeBindingForTest(workspace, story.ID, "main")
+	gameBinding := agents.RuntimeBinding{AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main"}
 	gameResult, err := (&App{}).reconcileHarnessDomainCommit(
 		context.Background(),
-		domainRecoveryRequest(gameBinding, gameRequest.AgentCommandID, gameRequest.AgentOperationID, gameRequest.AgentCycle, runstate.DomainCommitOutput, gameIntent.Hash),
+		domainRecoveryRequest(gameBinding, gameRequest.AgentCommandID, gameRequest.AgentOperationID, gameRequest.AgentCycle, agents.DomainCommitOutput, gameIntent.Hash),
 	)
 	if err != nil || !gameResult.Found || gameResult.Revision != gameReceipt.Revision {
 		t.Fatalf("game reconciliation = %#v err=%v", gameResult, err)
 	}
-	conflict := domainRecoveryRequest(gameBinding, gameRequest.AgentCommandID, gameRequest.AgentOperationID, gameRequest.AgentCycle, runstate.DomainCommitOutput, "sha256:other")
+	conflict := domainRecoveryRequest(gameBinding, gameRequest.AgentCommandID, gameRequest.AgentOperationID, gameRequest.AgentCycle, agents.DomainCommitOutput, "sha256:other")
 	if _, err := (&App{}).reconcileHarnessDomainCommit(context.Background(), conflict); !errors.Is(err, interactive.ErrAgentTurnIdentityConflict) {
 		t.Fatalf("game mismatch error = %v", err)
 	}
@@ -163,10 +162,10 @@ func TestAppReconcilesExactGameAndDirectorReceipts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	directorBinding := directorRuntimeBindingForTest(workspace, story.ID, "main")
+	directorBinding := agents.RuntimeBinding{AgentKind: config.AgentKindInteractiveDirector, Workspace: workspace, StoryID: story.ID, BranchID: "main"}
 	directorResult, err := (&App{}).reconcileHarnessDomainCommit(
 		context.Background(),
-		domainRecoveryRequest(directorBinding, directorIdentity.CommandID, directorIdentity.OperationID, directorIdentity.Cycle, runstate.DomainCommitOutput, directorIntent.Hash),
+		domainRecoveryRequest(directorBinding, directorIdentity.CommandID, directorIdentity.OperationID, directorIdentity.Cycle, agents.DomainCommitOutput, directorIntent.Hash),
 	)
 	if err != nil || !directorResult.Found || directorResult.Revision != directorReceipt.Revision {
 		t.Fatalf("Director reconciliation = %#v err=%v", directorResult, err)
@@ -193,7 +192,7 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	if err := sess.Append(agents.UserMessage("history")); err != nil {
 		t.Fatal(err)
 	}
-	sessionCommand := runstate.CommandID("session-compact-command")
+	sessionCommand := agents.CommandID("session-compact-command")
 	sessionRecord := session.ContextCompaction{
 		ID: contextStructuralRecordID("cc", string(sessionCommand)), AgentKind: "ide", Epoch: 1,
 		Summary: "summary", SourceEndIndex: 1, SourceMessageCount: 1, RetainedTurns: 1,
@@ -201,13 +200,13 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 		Reason: "manual", Phase: "manual",
 	}
 	sessionCursor := sess.ContextCursor()
-	sessionBinding := writingRuntimeBindingForTest(workspace, sess.ID)
-	sessionRef := runstate.ContextCompactionRef{
+	sessionBinding := agents.RuntimeBinding{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sess.ID}
+	sessionRef := agents.ContextCompactionRef{
 		Resource: sess.ID, ExpectedRevision: fmt.Sprintf("session-context:%d", sessionCursor.Revision),
 	}
 	sessionRequest := structuralRecoveryRequest(
 		t, sessionBinding, sessionCommand, "session-compact-operation", agents.ContextStructuralDomainSession,
-		agents.ContextStructuralCompact, runstate.StructuralCompactContext, sessionRef,
+		agents.ContextStructuralCompact, agents.StructuralCompactContext, sessionRef,
 		agents.ContextStructuralResult{Compaction: contextCompactionResultFromSession(sessionRecord)}, sessionRecord,
 	)
 	committedSession, err := sess.AppendContextCompactionAt(sessionCursor, sessionRecord)
@@ -218,7 +217,7 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	if err != nil || !sessionResult.Found || sessionResult.Revision != fmt.Sprintf("session-context:%d", committedSession.ContextRevision) {
 		t.Fatalf("Session structural reconciliation = %#v err=%v", sessionResult, err)
 	}
-	sessionRemoveCommand := runstate.CommandID("session-remove-command")
+	sessionRemoveCommand := agents.CommandID("session-remove-command")
 	sessionRemoval := session.ContextCompactionRemoval{
 		ID: contextStructuralRecordID("ccr", string(sessionRemoveCommand)), AgentKind: "ide",
 		CompactionID: committedSession.ID, SourceStartIndex: committedSession.SourceStartIndex,
@@ -227,8 +226,8 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	sessionRemovalCursor := sess.ContextCursor()
 	sessionRemoveRequest := structuralRecoveryRequest(
 		t, sessionBinding, sessionRemoveCommand, "session-remove-operation", agents.ContextStructuralDomainSession,
-		agents.ContextStructuralRemove, runstate.StructuralRemoveCompaction,
-		runstate.ContextCompactionRef{
+		agents.ContextStructuralRemove, agents.StructuralRemoveCompaction,
+		agents.ContextCompactionRef{
 			Resource: sess.ID, CompactionID: committedSession.ID,
 			ExpectedRevision: fmt.Sprintf("session-context:%d", sessionRemovalCursor.Revision),
 		},
@@ -253,18 +252,18 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectedParent := storyContext.Meta.Branches["main"].Head
-	storyCommand := runstate.CommandID("story-compact-command")
+	storyCommand := agents.CommandID("story-compact-command")
 	storyRecord := interactive.ContextCompactionEvent{
 		ID: contextStructuralRecordID("cc", string(storyCommand)), AgentKind: "interactive_story",
 		Epoch: 1, Summary: "story summary", SourceTurnCount: 1, RetainedTurns: 1,
 		TokensBefore: 100, TokensAfter: 30, ContextWindowTokens: 1000, Threshold: .8,
 		Reason: "manual", Phase: "manual", ExpectedParentID: &expectedParent,
 	}
-	storyBinding := gameRuntimeBindingForTest(workspace, story.ID, "main")
+	storyBinding := agents.RuntimeBinding{AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main"}
 	storyRequest := structuralRecoveryRequest(
 		t, storyBinding, storyCommand, "story-compact-operation", agents.ContextStructuralDomainStory,
-		agents.ContextStructuralCompact, runstate.StructuralCompactContext,
-		runstate.ContextCompactionRef{Resource: story.ID + "/main", ExpectedRevision: contextStoryRevision(expectedParent)},
+		agents.ContextStructuralCompact, agents.StructuralCompactContext,
+		agents.ContextCompactionRef{Resource: story.ID + "/main", ExpectedRevision: contextStoryRevision(expectedParent)},
 		agents.ContextStructuralResult{Compaction: contextCompactionResultFromInteractive(storyRecord)}, storyRecord,
 	)
 	committedStory, err := storyStore.AppendContextCompaction(story.ID, "main", storyRecord)
@@ -279,7 +278,7 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	if _, err := (&App{}).reconcileHarnessDomainCommit(context.Background(), storyRequest); err == nil {
 		t.Fatal("Story structural hash mismatch was accepted")
 	}
-	storyRemoveCommand := runstate.CommandID("story-remove-command")
+	storyRemoveCommand := agents.CommandID("story-remove-command")
 	storyExpectedParent := committedStory.ID
 	storyRemoval := interactive.ContextCompactionRemovalEvent{
 		ID: contextStructuralRecordID("ccr", string(storyRemoveCommand)), AgentKind: "interactive_story",
@@ -288,8 +287,8 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 	}
 	storyRemoveRequest := structuralRecoveryRequest(
 		t, storyBinding, storyRemoveCommand, "story-remove-operation", agents.ContextStructuralDomainStory,
-		agents.ContextStructuralRemove, runstate.StructuralRemoveCompaction,
-		runstate.ContextCompactionRef{
+		agents.ContextStructuralRemove, agents.StructuralRemoveCompaction,
+		agents.ContextCompactionRef{
 			Resource: story.ID + "/main", CompactionID: committedStory.ID,
 			ExpectedRevision: contextStoryRevision(storyExpectedParent),
 		},
@@ -306,18 +305,18 @@ func TestAppReconcilesStableSessionAndStoryCompactions(t *testing.T) {
 }
 
 func domainRecoveryRequest(
-	binding runstate.BindingRef,
+	binding agents.RuntimeBinding,
 	commandID string,
 	operationID string,
 	cycle int,
-	stage runstate.DomainCommitStage,
+	stage agents.DomainCommitStage,
 	hash string,
-) runstate.DomainCommitReconcileRequest {
-	return runstate.DomainCommitReconcileRequest{
+) agents.DomainCommitReconcileRequest {
+	return agents.DomainCommitReconcileRequest{
 		Binding: binding,
-		Commit: runstate.DomainCommitState{
-			Identity: runstate.DomainCommitIdentity{
-				CommandID: runstate.CommandID(commandID), OperationID: runstate.OperationID(operationID),
+		Commit: agents.DomainCommitState{
+			Identity: agents.DomainCommitIdentity{
+				CommandID: agents.CommandID(commandID), OperationID: agents.OperationID(operationID),
 				Cycle: cycle, Stage: stage,
 			},
 			Hash: hash,
@@ -327,16 +326,16 @@ func domainRecoveryRequest(
 
 func structuralRecoveryRequest(
 	t *testing.T,
-	binding runstate.BindingRef,
-	commandID runstate.CommandID,
-	operationID runstate.OperationID,
+	binding agents.RuntimeBinding,
+	commandID agents.CommandID,
+	operationID agents.OperationID,
 	domain agents.ContextStructuralDomain,
 	action agents.ContextStructuralAction,
-	kind runstate.StructuralOperationKind,
-	ref runstate.ContextCompactionRef,
+	kind agents.StructuralOperationKind,
+	ref agents.ContextCompactionRef,
 	result agents.ContextStructuralResult,
 	mutation any,
-) runstate.DomainCommitReconcileRequest {
+) agents.DomainCommitReconcileRequest {
 	t.Helper()
 	plan, err := newContextStructuralRestorePlan(domain, action, binding, ref, contextStructuralRecordID(structuralRecordPrefix(action), string(commandID)), result, mutation)
 	if err != nil {
@@ -347,8 +346,8 @@ func structuralRecoveryRequest(
 		t.Fatal(err)
 	}
 	ref.RestoreDescriptor = descriptor
-	request := domainRecoveryRequest(binding, string(commandID), string(operationID), 1, runstate.DomainCommitOutput, plan.IntentHash)
-	request.Structural = &runstate.StructuralOperationSnapshot{
+	request := domainRecoveryRequest(binding, string(commandID), string(operationID), 1, agents.DomainCommitOutput, plan.IntentHash)
+	request.Structural = &agents.StructuralOperation{
 		Binding: binding, CommandID: commandID, OperationID: operationID, Cycle: 1, Kind: kind, Ref: ref,
 	}
 	return request

@@ -12,7 +12,6 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // reconcileHarnessDomainCommit is the production host adapter for the
@@ -21,23 +20,20 @@ import (
 // corresponding canonical store.
 func (a *App) reconcileHarnessDomainCommit(
 	ctx context.Context,
-	request runstate.DomainCommitReconcileRequest,
-) (runstate.DomainCommitReconcileResult, error) {
+	request agents.DomainCommitReconcileRequest,
+) (agents.DomainCommitReconcileResult, error) {
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
-			return runstate.DomainCommitReconcileResult{}, err
+			return agents.DomainCommitReconcileResult{}, err
 		}
 	}
 	if err := validateDomainCommitReconcileRequest(request); err != nil {
-		return runstate.DomainCommitReconcileResult{}, err
+		return agents.DomainCommitReconcileResult{}, err
 	}
 	if request.Structural != nil {
 		return a.reconcileStructuralDomainCommit(ctx, request)
 	}
-	binding, err := agents.ParseRuntimeBinding(request.Binding)
-	if err != nil {
-		return runstate.DomainCommitReconcileResult{}, err
-	}
+	binding := request.Binding
 	switch binding.AgentKind {
 	case agents.AgentKindIDE, agents.AgentKindConfigManager, agents.AgentKindImage, agents.AgentKindAutomation:
 		return a.reconcileSessionDomainCommit(request)
@@ -46,16 +42,16 @@ func (a *App) reconcileHarnessDomainCommit(
 	case config.AgentKindInteractiveDirector:
 		return reconcileDirectorDomainCommit(request)
 	default:
-		return runstate.DomainCommitReconcileResult{}, fmt.Errorf("unsupported Agent kind %q for domain commit reconciliation", binding.AgentKind)
+		return agents.DomainCommitReconcileResult{}, fmt.Errorf("unsupported Agent kind %q for domain commit reconciliation", binding.AgentKind)
 	}
 }
 
-func validateDomainCommitReconcileRequest(request runstate.DomainCommitReconcileRequest) error {
+func validateDomainCommitReconcileRequest(request agents.DomainCommitReconcileRequest) error {
 	identity := request.Commit.Identity
 	if strings.TrimSpace(string(identity.CommandID)) == "" || strings.TrimSpace(string(identity.OperationID)) == "" || identity.Cycle <= 0 {
 		return fmt.Errorf("domain commit reconciliation requires a complete durable identity")
 	}
-	if identity.Stage != runstate.DomainCommitInput && identity.Stage != runstate.DomainCommitOutput {
+	if identity.Stage != agents.DomainCommitInput && identity.Stage != agents.DomainCommitOutput {
 		return fmt.Errorf("domain commit reconciliation has unsupported stage %q", identity.Stage)
 	}
 	if strings.TrimSpace(request.Commit.Hash) == "" {
@@ -65,26 +61,23 @@ func validateDomainCommitReconcileRequest(request runstate.DomainCommitReconcile
 		return nil
 	}
 	structural := request.Structural
-	if !structural.Binding.Equal(request.Binding) || structural.CommandID != identity.CommandID ||
+	if structural.Binding != request.Binding || structural.CommandID != identity.CommandID ||
 		structural.OperationID != identity.OperationID || structural.Cycle != identity.Cycle ||
-		identity.Stage != runstate.DomainCommitOutput {
+		identity.Stage != agents.DomainCommitOutput {
 		return fmt.Errorf("structural domain commit identity does not match its durable operation snapshot")
 	}
 	return nil
 }
 
-func (a *App) reconcileSessionDomainCommit(request runstate.DomainCommitReconcileRequest) (runstate.DomainCommitReconcileResult, error) {
-	binding, err := agents.ParseRuntimeBinding(request.Binding)
-	if err != nil {
-		return runstate.DomainCommitReconcileResult{}, err
-	}
+func (a *App) reconcileSessionDomainCommit(request agents.DomainCommitReconcileRequest) (agents.DomainCommitReconcileResult, error) {
+	binding := request.Binding
 	role, err := sessionRoleForDomainCommitStage(request.Commit.Identity.Stage)
 	if err != nil {
-		return runstate.DomainCommitReconcileResult{}, err
+		return agents.DomainCommitReconcileResult{}, err
 	}
 	dir, err := a.sessionDirectoryForBinding(request.Binding)
 	if err != nil {
-		return runstate.DomainCommitReconcileResult{}, err
+		return agents.DomainCommitReconcileResult{}, err
 	}
 	receipt, found, err := session.FindStoredDomainCommit(
 		dir,
@@ -98,33 +91,29 @@ func (a *App) reconcileSessionDomainCommit(request runstate.DomainCommitReconcil
 		request.Commit.Hash,
 	)
 	if err != nil || !found {
-		return runstate.DomainCommitReconcileResult{}, err
+		return agents.DomainCommitReconcileResult{}, err
 	}
-	return runstate.DomainCommitReconcileResult{
+	return agents.DomainCommitReconcileResult{
 		Found: true, Revision: strconv.FormatUint(receipt.ContextRevision, 10),
 	}, nil
 }
 
-func sessionRoleForDomainCommitStage(stage runstate.DomainCommitStage) (agents.Role, error) {
+func sessionRoleForDomainCommitStage(stage agents.DomainCommitStage) (agents.Role, error) {
 	switch stage {
-	case runstate.DomainCommitInput:
+	case agents.DomainCommitInput:
 		return agents.RoleUser, nil
-	case runstate.DomainCommitOutput:
+	case agents.DomainCommitOutput:
 		return agents.RoleAssistant, nil
 	default:
 		return "", fmt.Errorf("unsupported Session domain commit stage %q", stage)
 	}
 }
 
-func (a *App) sessionDirectoryForBinding(binding runstate.BindingRef) (string, error) {
-	productBinding, err := agents.ParseRuntimeBinding(binding)
-	if err != nil {
-		return "", err
-	}
-	if strings.TrimSpace(productBinding.SessionID) == "" {
+func (a *App) sessionDirectoryForBinding(binding agents.RuntimeBinding) (string, error) {
+	if strings.TrimSpace(binding.SessionID) == "" {
 		return "", fmt.Errorf("Session domain commit binding has no session id")
 	}
-	if productBinding.AgentKind == agents.AgentKindAutomation && strings.TrimSpace(productBinding.Workspace) == "" {
+	if binding.AgentKind == agents.AgentKindAutomation && strings.TrimSpace(binding.Workspace) == "" {
 		if a == nil {
 			return "", fmt.Errorf("App is unavailable for global automation reconciliation")
 		}
@@ -139,19 +128,16 @@ func (a *App) sessionDirectoryForBinding(binding runstate.BindingRef) (string, e
 		}
 		return filepath.Join(dataDir, "automations", "sessions"), nil
 	}
-	workspace := strings.TrimSpace(productBinding.Workspace)
+	workspace := strings.TrimSpace(binding.Workspace)
 	if workspace == "" {
 		return "", fmt.Errorf("Session domain commit binding has no workspace")
 	}
 	return book.NewState(workspace).SessionDir(), nil
 }
 
-func reconcileGameDomainCommit(request runstate.DomainCommitReconcileRequest) (runstate.DomainCommitReconcileResult, error) {
-	binding, err := agents.ParseRuntimeBinding(request.Binding)
-	if err != nil {
-		return runstate.DomainCommitReconcileResult{}, err
-	}
-	if request.Commit.Identity.Stage == runstate.DomainCommitInput {
+func reconcileGameDomainCommit(request agents.DomainCommitReconcileRequest) (agents.DomainCommitReconcileResult, error) {
+	binding := request.Binding
+	if request.Commit.Identity.Stage == agents.DomainCommitInput {
 		receipt, found, err := interactive.NewStore(binding.Workspace).FindPlayerInputCommit(
 			binding.StoryID,
 			binding.BranchID,
@@ -161,12 +147,12 @@ func reconcileGameDomainCommit(request runstate.DomainCommitReconcileRequest) (r
 			request.Commit.Hash,
 		)
 		if err != nil || !found {
-			return runstate.DomainCommitReconcileResult{}, err
+			return agents.DomainCommitReconcileResult{}, err
 		}
-		return runstate.DomainCommitReconcileResult{Found: true, Revision: receipt.Revision}, nil
+		return agents.DomainCommitReconcileResult{Found: true, Revision: receipt.Revision}, nil
 	}
-	if request.Commit.Identity.Stage != runstate.DomainCommitOutput {
-		return runstate.DomainCommitReconcileResult{}, fmt.Errorf("unsupported Game domain commit stage %q", request.Commit.Identity.Stage)
+	if request.Commit.Identity.Stage != agents.DomainCommitOutput {
+		return agents.DomainCommitReconcileResult{}, fmt.Errorf("unsupported Game domain commit stage %q", request.Commit.Identity.Stage)
 	}
 	receipt, found, err := interactive.NewStore(binding.Workspace).FindDomainTurnCommit(
 		binding.StoryID,
@@ -179,18 +165,15 @@ func reconcileGameDomainCommit(request runstate.DomainCommitReconcileRequest) (r
 		request.Commit.Hash,
 	)
 	if err != nil || !found {
-		return runstate.DomainCommitReconcileResult{}, err
+		return agents.DomainCommitReconcileResult{}, err
 	}
-	return runstate.DomainCommitReconcileResult{Found: true, Revision: receipt.Revision}, nil
+	return agents.DomainCommitReconcileResult{Found: true, Revision: receipt.Revision}, nil
 }
 
-func reconcileDirectorDomainCommit(request runstate.DomainCommitReconcileRequest) (runstate.DomainCommitReconcileResult, error) {
-	binding, err := agents.ParseRuntimeBinding(request.Binding)
-	if err != nil {
-		return runstate.DomainCommitReconcileResult{}, err
-	}
-	if request.Commit.Identity.Stage != runstate.DomainCommitOutput {
-		return runstate.DomainCommitReconcileResult{}, nil
+func reconcileDirectorDomainCommit(request agents.DomainCommitReconcileRequest) (agents.DomainCommitReconcileResult, error) {
+	binding := request.Binding
+	if request.Commit.Identity.Stage != agents.DomainCommitOutput {
+		return agents.DomainCommitReconcileResult{}, nil
 	}
 	receipt, found, err := interactive.NewStore(binding.Workspace).FindDirectorPlanDomainCommit(
 		binding.StoryID,
@@ -203,18 +186,18 @@ func reconcileDirectorDomainCommit(request runstate.DomainCommitReconcileRequest
 		request.Commit.Hash,
 	)
 	if err != nil || !found {
-		return runstate.DomainCommitReconcileResult{}, err
+		return agents.DomainCommitReconcileResult{}, err
 	}
-	return runstate.DomainCommitReconcileResult{Found: true, Revision: receipt.Revision}, nil
+	return agents.DomainCommitReconcileResult{Found: true, Revision: receipt.Revision}, nil
 }
 
 func (a *App) reconcileStructuralDomainCommit(
 	ctx context.Context,
-	request runstate.DomainCommitReconcileRequest,
-) (runstate.DomainCommitReconcileResult, error) {
+	request agents.DomainCommitReconcileRequest,
+) (agents.DomainCommitReconcileResult, error) {
 	snapshot := request.Structural
 	if snapshot == nil {
-		return runstate.DomainCommitReconcileResult{}, nil
+		return agents.DomainCommitReconcileResult{}, nil
 	}
 	plan, err := agents.DecodeContextStructuralRestorePlan(
 		snapshot.Ref.RestoreDescriptor,
@@ -222,20 +205,20 @@ func (a *App) reconcileStructuralDomainCommit(
 		snapshot.Ref.ExpectedRevision,
 	)
 	if err != nil {
-		return runstate.DomainCommitReconcileResult{}, fmt.Errorf("decode structural commit recovery plan: %w", err)
+		return agents.DomainCommitReconcileResult{}, fmt.Errorf("decode structural commit recovery plan: %w", err)
 	}
 	if request.Commit.Hash != plan.IntentHash {
-		return runstate.DomainCommitReconcileResult{}, fmt.Errorf("structural canonical commit hash does not match frozen recovery plan")
+		return agents.DomainCommitReconcileResult{}, fmt.Errorf("structural canonical commit hash does not match frozen recovery plan")
 	}
 	operation, err := a.contextStructuralOperationForRestore(agents.HarnessStructuralRestoreRequest{
 		Binding: request.Binding, Snapshot: *snapshot, Plan: plan,
 	})
 	if err != nil {
-		return runstate.DomainCommitReconcileResult{}, err
+		return agents.DomainCommitReconcileResult{}, err
 	}
 	_, receipt, found, err := operation.Reconcile(ctx)
 	if err != nil || !found {
-		return runstate.DomainCommitReconcileResult{}, err
+		return agents.DomainCommitReconcileResult{}, err
 	}
-	return runstate.DomainCommitReconcileResult{Found: true, Revision: receipt.Revision}, nil
+	return agents.DomainCommitReconcileResult{Found: true, Revision: receipt.Revision}, nil
 }

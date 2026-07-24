@@ -8,7 +8,6 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/agents/session"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestSessionConversationStructuralCursorRejectsStaleContextWrite(t *testing.T) {
@@ -61,7 +60,7 @@ func TestSessionConversationStagesAssistantUntilAuthorizedCycleCommit(t *testing
 		t.Fatal(err)
 	}
 	conversation := NewSessionConversation(sess)
-	identity := HarnessCycleIdentity{CommandID: runstate.CommandID("command-1"), OperationID: runstate.OperationID("operation-1"), Cycle: 1}
+	identity := HarnessCycleIdentity{CommandID: CommandID("command-1"), OperationID: OperationID("operation-1"), Cycle: 1}
 	conversation.BindAgentCycleIdentity(identity)
 	if _, err := assembleAndCommitModelContextForTest(conversation, "user input", "user input"); err != nil {
 		t.Fatal(err)

@@ -86,7 +86,7 @@ func (h *chatHarness) start(
 	}
 	outcomes := make(chan RunOutcome, 1)
 	registration, err := h.engine.register(turnRef, command, HarnessTurnSpec{
-		CommandID: commandID, CommandKind: AgentCommandStartTurn,
+		CommandID: CommandID(commandID), CommandKind: AgentCommandStartTurn,
 		Runner: runner, Conversation: conversation, BookService: bookService,
 		Request: req, Options: options, Emit: emit, Outcome: outcomes,
 		CycleCommit: harnessCycleCommitForConversation(conversation),

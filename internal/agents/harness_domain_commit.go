@@ -127,7 +127,7 @@ func runtimeDomainCommitIdentity(intent HarnessDomainCommitIntent) (runstate.Dom
 		return runstate.DomainCommitIdentity{}, fmt.Errorf("unsupported domain commit stage %q", intent.Stage)
 	}
 	return runstate.DomainCommitIdentity{
-		CommandID: intent.Identity.CommandID, OperationID: intent.Identity.OperationID,
+		CommandID: runstate.CommandID(intent.Identity.CommandID), OperationID: runstate.OperationID(intent.Identity.OperationID),
 		Cycle: intent.Identity.Cycle, Stage: stage,
 	}, nil
 }

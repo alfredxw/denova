@@ -67,9 +67,9 @@ func TestRecoveryWaitCancellationAbortsAcceptedSuccessorWithFreshCommandIdentity
 	}()
 	cancelWait()
 
-	parentAbortID := waitForRecoveryAbortCommand(t, audit, accepted.Receipt().OperationID)
+	parentAbortID := waitForRecoveryAbortCommand(t, audit, runstate.OperationID(accepted.Receipt().OperationID))
 	releaseRecoveryControlModel(parentModel)
-	successorAbortID := waitForRecoveryAbortCommand(t, audit, next.OperationID)
+	successorAbortID := waitForRecoveryAbortCommand(t, audit, runstate.OperationID(next.OperationID))
 	if successorAbortID == parentAbortID {
 		t.Fatalf("successor reused parent Abort command_id %q", successorAbortID)
 	}

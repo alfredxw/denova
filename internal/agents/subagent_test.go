@@ -10,6 +10,7 @@ import (
 
 	"denova/config"
 	"denova/internal/agents/session"
+	producttools "denova/internal/agents/tools"
 )
 
 func TestConfigMaxIterationDefaultsToNativeUnlimited(t *testing.T) {
@@ -65,7 +66,7 @@ func TestBuildAgentExposesGeneralAndConfiguredSubAgentsThroughTask(t *testing.T)
 	if len(captured) != 3 {
 		t.Fatalf("native Agent constructions = %d, want configured + general + root", len(captured))
 	}
-	if captured[0].Name != "researcher" || captured[1].Name != generalSubAgentName || captured[2].Name != "DenovaAgent" {
+	if captured[0].Name != "researcher" || captured[1].Name != producttools.GeneralSubAgentName || captured[2].Name != "DenovaAgent" {
 		t.Fatalf("unexpected native Agent construction order: %q %q %q", captured[0].Name, captured[1].Name, captured[2].Name)
 	}
 	rootTools := toolNamesForTest(t, captured[2].Tools)
@@ -293,7 +294,7 @@ func TestDisplayRecorderPersistsSubAgentAssistantChunks(t *testing.T) {
 
 func TestSubAgentWriteToolResultStillTracksMutation(t *testing.T) {
 	tracker := newMutationTracker()
-	filtered := filterToolResultForModelWithDescriptor("write_file", workspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable), `{"file_path":"chapters/ch01.md","content":"new"}`, "ok", 0)
+	filtered := filterToolResultForModelWithDescriptor("write_file", producttools.WorkspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable), `{"file_path":"chapters/ch01.md","content":"new"}`, "ok", 0)
 	tracker.Observe(Event{Type: "tool_call", Data: map[string]interface{}{
 		"id":       "call-write",
 		"name":     "write_file",
@@ -364,7 +365,11 @@ func TestRunSubAgentForwardsDrainedChildEvents(t *testing.T) {
 		forwarded = append(forwarded, event)
 	})
 
-	result, err := runSubAgent(ctx, child, "inspect the draft")
+	task, err := newToolCatalog(nil).Task(ctx, []agent.Runnable{child})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := task.(agent.InvokableTool).InvokableRun(ctx, `{"subagent_type":"reviewer","description":"inspect the draft"}`)
 	if err != nil {
 		t.Fatal(err)
 	}

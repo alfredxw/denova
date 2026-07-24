@@ -18,8 +18,7 @@ func TestDefaultChatServiceProvidesDurableRuntimeProjection(t *testing.T) {
 		chatService: service,
 	}
 	projection, ok := application.WritingAgentRuntimeProjection(context.Background())
-	productBinding, err := agents.ParseRuntimeBinding(projection.Binding)
-	if !ok || err != nil || productBinding.AgentKind != agents.AgentKindIDE {
+	if !ok || projection.Binding.AgentKind != agents.AgentKindIDE {
 		t.Fatalf("default durable projection = %#v available=%t", projection, ok)
 	}
 }
@@ -51,8 +50,7 @@ func TestAgentRuntimeProjectionUsesExplicitWritingAndGameIdentities(t *testing.T
 	if !ok {
 		t.Fatal("writing projection unavailable")
 	}
-	writingBinding, err := agents.ParseRuntimeBinding(writing.Binding)
-	if err != nil || writingBinding.AgentKind != agents.AgentKindIDE || writingBinding.Workspace != workspace || writingBinding.SessionID != "session-1" {
+	if writing.Binding.AgentKind != agents.AgentKindIDE || writing.Binding.Workspace != workspace || writing.Binding.SessionID != "session-1" {
 		t.Fatalf("writing binding = %#v", writing.Binding)
 	}
 
@@ -60,8 +58,7 @@ func TestAgentRuntimeProjectionUsesExplicitWritingAndGameIdentities(t *testing.T
 	if !ok {
 		t.Fatal("game projection unavailable")
 	}
-	gameBinding, err := agents.ParseRuntimeBinding(game.Binding)
-	if err != nil || gameBinding.AgentKind != agents.AgentKindInteractiveStory || gameBinding.Workspace != workspace || gameBinding.StoryID != story.ID || gameBinding.BranchID != "main" {
+	if game.Binding.AgentKind != agents.AgentKindInteractiveStory || game.Binding.Workspace != workspace || game.Binding.StoryID != story.ID || game.Binding.BranchID != "main" {
 		t.Fatalf("game binding = %#v", game.Binding)
 	}
 }

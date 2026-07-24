@@ -13,6 +13,7 @@ import (
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
+	producttools "denova/internal/agents/tools"
 )
 
 const maxToolErrorDiagnosticBytes = 4 * 1024
@@ -332,7 +333,7 @@ func (m *toolOrchestratorMiddleware) WrapStreamableToolCall(
 }
 
 func toolEndpointErrorMessage(toolName string, err error) string {
-	if msg, ok := formatWorkspaceChangeToolError(toolName, err); ok {
+	if msg, ok := producttools.FormatWorkspaceChangeError(toolName, err); ok {
 		return msg
 	}
 	return fmt.Sprintf("[tool error] %v", err)
@@ -502,7 +503,7 @@ func applyWorkspaceChangeReceiptToExecutionRecord(record *ToolExecutionRecord, c
 	if record == nil {
 		return
 	}
-	receipt, ok := parseWorkspaceChangeToolReceipt(record.ToolName, content)
+	receipt, ok := producttools.ParseWorkspaceChangeReceipt(record.ToolName, content)
 	if !ok {
 		return
 	}

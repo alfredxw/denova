@@ -15,7 +15,7 @@ import (
 // descriptor; process-local Runner, Conversation, and resolved prompt context
 // are intentionally absent.
 type HarnessInputMaterializationRequest struct {
-	Binding        runstate.BindingRef
+	Binding        RuntimeBinding
 	Identity       HarnessCycleIdentity
 	CommandKind    AgentCommandKind
 	AgentKind      string
@@ -30,8 +30,8 @@ type HarnessInputMaterializationRequest struct {
 // hash because the runtime invokes it again only after a lost receipt cannot be
 // proven by reconciliation.
 type HarnessInputMaterializer interface {
-	PlanHarnessInputMaterialization(context.Context, HarnessInputMaterializationRequest) (runstate.InputMaterializationPlan, error)
-	MaterializeHarnessInput(context.Context, HarnessInputMaterializationRequest, runstate.InputMaterializationPlan) (runstate.InputMaterializationReceipt, error)
+	PlanHarnessInputMaterialization(context.Context, HarnessInputMaterializationRequest) (InputMaterializationPlan, error)
+	MaterializeHarnessInput(context.Context, HarnessInputMaterializationRequest, InputMaterializationPlan) (InputMaterializationReceipt, error)
 }
 
 func (e *bindingHarnessEngine) PlanInputMaterialization(
@@ -45,7 +45,8 @@ func (e *bindingHarnessEngine) PlanInputMaterialization(
 	if e.owner.inputMaterializer == nil {
 		return runstate.InputMaterializationPlan{}, nil
 	}
-	return e.owner.inputMaterializer.PlanHarnessInputMaterialization(ctx, materialization)
+	plan, err := e.owner.inputMaterializer.PlanHarnessInputMaterialization(ctx, materialization)
+	return inputMaterializationPlanToRuntime(plan), err
 }
 
 func (e *bindingHarnessEngine) MaterializeInput(
@@ -60,7 +61,8 @@ func (e *bindingHarnessEngine) MaterializeInput(
 	if e.owner.inputMaterializer == nil {
 		return runstate.InputMaterializationReceipt{}, fmt.Errorf("agent harness input materializer is unavailable")
 	}
-	return e.owner.inputMaterializer.MaterializeHarnessInput(ctx, materialization, plan)
+	receipt, err := e.owner.inputMaterializer.MaterializeHarnessInput(ctx, materialization, inputMaterializationPlanFromRuntime(plan))
+	return inputMaterializationReceiptToRuntime(receipt), err
 }
 
 func (e *bindingHarnessEngine) acceptedInputMaterializationRequest(
@@ -117,10 +119,14 @@ func decodeHarnessInputMaterializationRequest(
 	if strings.TrimSpace(string(snapshot.CommandID)) == "" || strings.TrimSpace(string(snapshot.OperationID)) == "" || snapshot.Cycle <= 0 {
 		return HarnessInputMaterializationRequest{}, fmt.Errorf("accepted input snapshot has incomplete durable identity")
 	}
+	productBinding, err := ParseRuntimeBinding(binding)
+	if err != nil {
+		return HarnessInputMaterializationRequest{}, err
+	}
 	return HarnessInputMaterializationRequest{
-		Binding: binding,
+		Binding: productBinding,
 		Identity: HarnessCycleIdentity{
-			CommandID: snapshot.CommandID, OperationID: snapshot.OperationID, Cycle: snapshot.Cycle,
+			CommandID: CommandID(snapshot.CommandID), OperationID: OperationID(snapshot.OperationID), Cycle: snapshot.Cycle,
 		},
 		CommandKind:    descriptor.Kind,
 		AgentKind:      descriptor.Options.AgentKind,

@@ -115,6 +115,20 @@ func (descriptor contextStructuralResultDescriptor) result() ContextStructuralRe
 // JSON mutation. Invalid JSON is rejected; there is no formatting fallback.
 func ContextStructuralIntentHash(
 	action ContextStructuralAction,
+	binding RuntimeBinding,
+	expectedRevision string,
+	recordID string,
+	mutation json.RawMessage,
+) (string, error) {
+	ref, err := binding.Ref()
+	if err != nil {
+		return "", err
+	}
+	return contextStructuralIntentHash(action, ref, expectedRevision, recordID, mutation)
+}
+
+func contextStructuralIntentHash(
+	action ContextStructuralAction,
 	binding runstate.BindingRef,
 	expectedRevision string,
 	recordID string,
@@ -171,10 +185,14 @@ func ContextStructuralIntentHash(
 // command admission so custom smaller Runtime limits remain authoritative.
 func EncodeContextStructuralRestorePlan(
 	plan ContextStructuralRestorePlan,
-	binding runstate.BindingRef,
+	binding RuntimeBinding,
 	expectedRevision string,
 ) (json.RawMessage, error) {
-	return encodeContextStructuralRestorePlan(plan, binding, expectedRevision, runstate.DefaultInputLimits().MaxRestoreDescriptorBytes)
+	ref, err := binding.Ref()
+	if err != nil {
+		return nil, err
+	}
+	return encodeContextStructuralRestorePlan(plan, ref, expectedRevision, runstate.DefaultInputLimits().MaxRestoreDescriptorBytes)
 }
 
 func encodeContextStructuralRestorePlan(
@@ -219,6 +237,18 @@ func contextStructuralRestorePlanDeclaredBytes(plan ContextStructuralRestorePlan
 // DecodeContextStructuralRestorePlan rejects unknown fields and validates the
 // descriptor against the immutable binding/revision carried by its snapshot.
 func DecodeContextStructuralRestorePlan(
+	descriptor json.RawMessage,
+	binding RuntimeBinding,
+	expectedRevision string,
+) (ContextStructuralRestorePlan, error) {
+	ref, err := binding.Ref()
+	if err != nil {
+		return ContextStructuralRestorePlan{}, err
+	}
+	return decodeContextStructuralRestorePlan(descriptor, ref, expectedRevision)
+}
+
+func decodeContextStructuralRestorePlan(
 	descriptor json.RawMessage,
 	binding runstate.BindingRef,
 	expectedRevision string,
@@ -333,7 +363,7 @@ func validateContextStructuralRestorePlan(
 		return ContextStructuralRestorePlan{}, err
 	}
 	plan.Mutation = canonicalMutation
-	wantHash, err := ContextStructuralIntentHash(plan.Action, binding, expectedRevision, plan.RecordID, plan.Mutation)
+	wantHash, err := contextStructuralIntentHash(plan.Action, binding, expectedRevision, plan.RecordID, plan.Mutation)
 	if err != nil {
 		return ContextStructuralRestorePlan{}, err
 	}

@@ -9,7 +9,6 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // writingStructuralFence is the immutable admission snapshot used by session
@@ -61,11 +60,9 @@ func (s *ChatAppService) drainWritingBinding(ctx context.Context, sessionID stri
 	if err := s.retryPendingWritingRecoveryRefresh(ctx, fence.workspace, fence.selected); err != nil {
 		return writingStructuralFence{}, err
 	}
-	selector, err := agents.RuntimeSessionBindingSelector(agents.AgentKindIDE, fence.workspace, sessionID)
-	if err != nil {
-		return writingStructuralFence{}, err
-	}
-	if err := closeRuntimeBinding(ctx, fence.chat, selector); err != nil {
+	if err := closeAgentBindings(fence.chat, func(chat *agents.ChatService) error {
+		return chat.CloseSessionBindings(ctx, agents.AgentKindIDE, fence.workspace, sessionID)
+	}); err != nil {
 		return writingStructuralFence{}, err
 	}
 	return fence, nil
@@ -147,11 +144,10 @@ func (s *InteractiveAppService) drainInteractiveBinding(ctx context.Context, sto
 	if err := abortAndWaitTask(ctx, fence.task); err != nil {
 		return interactiveStructuralFence{}, err
 	}
-	selector, err := agents.RuntimeStoryBindingSelector(fence.workspace, storyID, branchID)
-	if err != nil {
-		return interactiveStructuralFence{}, err
+	closeStoryBindings := func(chat *agents.ChatService) error {
+		return chat.CloseStoryBindings(ctx, fence.workspace, storyID, branchID)
 	}
-	if err := closeRuntimeBinding(ctx, fence.chat, selector); err != nil {
+	if err := closeAgentBindings(fence.chat, closeStoryBindings); err != nil {
 		return interactiveStructuralFence{}, err
 	}
 	if err := fence.waitDirectorMaintenance(ctx); err != nil {
@@ -160,7 +156,7 @@ func (s *InteractiveAppService) drainInteractiveBinding(ctx context.Context, sto
 	// A maintenance item that was queued but had not opened its Director actor
 	// can do so after the first scope close releases. Evict once more after the
 	// queue drains so the returned fence has no late-open binding behind it.
-	if err := closeRuntimeBinding(ctx, fence.chat, selector); err != nil {
+	if err := closeAgentBindings(fence.chat, closeStoryBindings); err != nil {
 		return interactiveStructuralFence{}, err
 	}
 	return fence, nil
@@ -227,11 +223,11 @@ func abortAndWaitTask(ctx context.Context, task *Task) error {
 	}
 }
 
-func closeRuntimeBinding(ctx context.Context, chat *agents.ChatService, selector runstate.BindingSelector) error {
+func closeAgentBindings(chat *agents.ChatService, close func(*agents.ChatService) error) error {
 	if chat == nil {
 		return nil
 	}
-	err := chat.CloseRuntimeBindings(ctx, selector)
+	err := close(chat)
 	if err == nil || errors.Is(err, agents.ErrRuntimeProjectionUnavailable) {
 		return nil
 	}

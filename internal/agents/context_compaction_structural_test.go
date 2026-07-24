@@ -132,9 +132,13 @@ func TestExecuteContextStructuralOperationUsesDurableBindingAndReceipt(t *testin
 		t.Fatal(err)
 	}
 	mutation := json.RawMessage(`{"id":"cc-manual-compaction-context-7"}`)
+	productBinding, err := ParseRuntimeBinding(bindingRef)
+	if err != nil {
+		t.Fatal(err)
+	}
 	op.hash, err = ContextStructuralIntentHash(
 		ContextStructuralCompact,
-		bindingRef,
+		productBinding,
 		"context:7",
 		"cc-manual-compaction-context-7",
 		mutation,
@@ -155,7 +159,7 @@ func TestExecuteContextStructuralOperationUsesDurableBindingAndReceipt(t *testin
 	result, err := service.ExecuteContextStructuralOperation(context.Background(), ContextStructuralSpec{
 		CommandID: "manual-compaction-context-7",
 		Action:    ContextStructuralCompact,
-		Ref: runstate.ContextCompactionRef{
+		Ref: ContextCompactionRef{
 			Source: "session.effective_messages", Purpose: "bounded model history checkpoint",
 			Resource: "session-1", ExpectedRevision: "context:7", Force: true,
 		},
@@ -182,7 +186,7 @@ func TestExecuteContextStructuralOperationRejectsUnrecoverableSpec(t *testing.T)
 	_, err := service.ExecuteContextStructuralOperation(context.Background(), ContextStructuralSpec{
 		CommandID: "missing-restore-plan",
 		Action:    ContextStructuralCompact,
-		Ref: runstate.ContextCompactionRef{
+		Ref: ContextCompactionRef{
 			Source: "session.effective_messages", Purpose: "test invalid admission",
 			Resource: "session-1", ExpectedRevision: "context:7",
 		},
@@ -206,7 +210,7 @@ func TestStructuralRecoveryPinsExactReplayRegistrationUntilEngineTake(t *testing
 		Resource: "recovered-structural", ExpectedRevision: "context:7",
 	}}
 	lease, err := engine.register(ref, command, HarnessTurnSpec{
-		CommandID: command.ID, CommandKind: AgentCommandKind(ContextStructuralCompact),
+		CommandID: CommandID(command.ID), CommandKind: AgentCommandKind(ContextStructuralCompact),
 		Conversation: &contextStructuralConversation{
 			action: ContextStructuralCompact, operation: &recordingContextStructuralOperation{},
 		},

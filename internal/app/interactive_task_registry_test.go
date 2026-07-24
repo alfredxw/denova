@@ -17,7 +17,6 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestInteractiveStartRegistryRequiresIdentityAndReplaysExactSettledTask(t *testing.T) {
@@ -200,10 +199,10 @@ func TestInteractiveInitialStartColdReplayBuildsBoundedTaskWithoutGameCycle(t *t
 }
 
 func TestInteractiveStatusOwnsInterruptedCommand(t *testing.T) {
-	status := runstate.StatusSnapshot{
-		LastOperation: &runstate.OperationSummary{CommandID: "newer", Status: runstate.OperationSucceeded},
-		RecentOperations: []runstate.OperationSummary{{
-			CommandID: "game-cold-interrupted", Status: runstate.OperationInterrupted,
+	status := agents.RuntimeStatus{
+		LastOperation: &agents.OperationSummary{CommandID: "newer", Status: agents.OperationSucceeded},
+		RecentOperations: []agents.OperationSummary{{
+			CommandID: "game-cold-interrupted", Status: agents.OperationInterrupted,
 		}},
 	}
 	if !interactiveStatusOwnsCommand(status, "game-cold-interrupted") {
@@ -257,7 +256,7 @@ func TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle(t *test
 		t.Fatal("cold Game runtime projection unavailable")
 	}
 	actions := agents.RuntimeRecoveryActions(status)
-	if status.Phase != runstate.PhaseRunning || !status.RecoveryPaused || len(actions) != 2 ||
+	if status.Phase != agents.RunPhaseRunning || !status.RecoveryPaused || len(actions) != 2 ||
 		actions[0].Kind != agents.RuntimeRecoveryAttach || actions[0].CommandID != "game-cold-interrupted" ||
 		actions[1].Kind != agents.RuntimeRecoveryAbort {
 		t.Fatalf("cold Game recovery actions = %#v status=%#v", actions, status)
@@ -302,7 +301,7 @@ func TestInteractiveInitialStartColdInterruptedReplayDoesNotRunGameCycle(t *test
 		t.Fatalf("accepted player input was not independently durable: %#v", snapshot.PendingPlayerInputs)
 	}
 	status, projected = reopened.InteractiveAgentRuntimeProjection(context.Background(), story.ID, "main")
-	if !projected || status.Phase != runstate.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != runstate.OperationAborted || len(agents.RuntimeRecoveryActions(status)) != 0 {
+	if !projected || status.Phase != agents.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agents.OperationAborted || len(agents.RuntimeRecoveryActions(status)) != 0 {
 		t.Fatalf("cold Game abort terminal projection = %#v projected=%t", status, projected)
 	}
 }

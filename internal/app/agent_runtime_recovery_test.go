@@ -11,7 +11,6 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
@@ -54,7 +53,7 @@ func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
 		t.Fatal("writing recovery projection unavailable")
 	}
 	actions := agents.RuntimeRecoveryActions(status)
-	if status.Phase != runstate.PhaseRunning || !status.RecoveryPaused || len(actions) != 2 || actions[0].Kind != agents.RuntimeRecoveryAttach || actions[0].CommandID != "writing-recovery-start" || actions[1].Kind != agents.RuntimeRecoveryAbort {
+	if status.Phase != agents.RunPhaseRunning || !status.RecoveryPaused || len(actions) != 2 || actions[0].Kind != agents.RuntimeRecoveryAttach || actions[0].CommandID != "writing-recovery-start" || actions[1].Kind != agents.RuntimeRecoveryAbort {
 		t.Fatalf("cold recovery actions = %#v status=%#v", actions, status)
 	}
 	abortAction := actions[1]
@@ -112,7 +111,7 @@ func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
 		t.Fatal("rehydrated interrupted Start did not settle after explicit abort")
 	}
 	status, ok = reopened.WritingAgentRuntimeProjection(context.Background())
-	if !ok || status.Phase != runstate.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != runstate.OperationAborted {
+	if !ok || status.Phase != agents.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agents.OperationAborted {
 		t.Fatalf("aborted cold recovery status = %#v projected=%t", status, ok)
 	}
 }

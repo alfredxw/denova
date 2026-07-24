@@ -3,8 +3,6 @@ package app
 import (
 	"context"
 	"strings"
-
-	agents "denova/internal/agents"
 )
 
 // closeWorkspaceRuntimeBindings evicts durable harness actors only after the
@@ -24,11 +22,7 @@ func (a *App) closeWorkspaceRuntimeBindings(ctx context.Context, workspaces ...s
 			continue
 		}
 		seen[workspace] = struct{}{}
-		selector, err := agents.RuntimeWorkspaceBindingSelector(workspace)
-		if err != nil {
-			return err
-		}
-		if err := a.chatService.CloseRuntimeBindings(ctx, selector); err != nil {
+		if err := a.chatService.CloseWorkspaceBindings(ctx, workspace); err != nil {
 			return err
 		}
 	}

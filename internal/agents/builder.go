@@ -11,6 +11,7 @@ import (
 
 	"denova/config"
 	novaskills "denova/internal/agents/skills"
+	producttools "denova/internal/agents/tools"
 	"denova/internal/book"
 	"denova/internal/prompts"
 )
@@ -38,7 +39,7 @@ func BuildWithComposition(ctx context.Context, cfg *config.Config, state *book.S
 		Description:       "AI 小说创作助手",
 		Composition:       composition,
 		EnableSkills:      true,
-		ExtraToolsFactory: ideToolsFactory(cfg),
+		ExtraToolsFactory: newToolCatalog(cfg).IDE(),
 	})
 	return built, composition, err
 }
@@ -68,7 +69,7 @@ func BuildInteractiveStoryWithComposition(ctx context.Context, cfg *config.Confi
 		EnableSkills:      true,
 		DisableWriteTodos: true,
 		ExtraMiddlewares:  handlers,
-		ExtraToolsFactory: interactiveStoryToolsFactory(cfg, toolContexts...),
+		ExtraToolsFactory: newToolCatalog(cfg).InteractiveStory(projectInteractiveToolContext(toolContexts...)),
 		ModelOutputGuard:  outputGuard,
 	})
 	return built, composition, err
@@ -92,7 +93,7 @@ func BuildInteractiveDirectorWithComposition(ctx context.Context, cfg *config.Co
 		EnableSkills:      false,
 		DisableWriteTodos: true,
 		ExtraMiddlewares:  []agent.Middleware{newInteractiveDirectorPlanFileMiddleware()},
-		ExtraToolsFactory: interactiveDirectorToolsFactory(cfg, toolContexts...),
+		ExtraToolsFactory: newToolCatalog(cfg).InteractiveDirector(projectInteractiveToolContext(toolContexts...)),
 	})
 	return built, composition, err
 }
@@ -114,7 +115,7 @@ func BuildConfigManagerAgentWithComposition(ctx context.Context, cfg *config.Con
 		Description:       "AI 配置与资源管理助手",
 		Composition:       composition,
 		EnableSkills:      true,
-		ExtraToolsFactory: configManagerToolsFactory(cfg),
+		ExtraToolsFactory: newToolCatalog(cfg).ConfigManager(),
 	})
 	return built, composition, err
 }
@@ -136,7 +137,7 @@ func BuildAutomationAgentWithComposition(ctx context.Context, cfg *config.Config
 		Description:       "AI 自动化任务助手",
 		Composition:       composition,
 		EnableSkills:      true,
-		ExtraToolsFactory: loreToolsFactory(cfg, false),
+		ExtraToolsFactory: newToolCatalog(cfg).Lore(false),
 	})
 	return built, composition, err
 }
@@ -159,7 +160,7 @@ func BuildImageAgentWithComposition(ctx context.Context, cfg *config.Config, sta
 		Composition:       composition,
 		EnableSkills:      true,
 		DisableWriteTodos: true,
-		ExtraToolsFactory: imageToolsFactory(cfg),
+		ExtraToolsFactory: newToolCatalog(cfg).Image(),
 	})
 	return built, composition, err
 }
@@ -179,6 +180,7 @@ type agentBuildSpec struct {
 }
 
 func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (agent.Runnable, error) {
+	toolCatalog := newToolCatalog(cfg)
 	composition, err := resolveAgentSystemPrompt(cfg, spec)
 	if err != nil {
 		return nil, err
@@ -216,7 +218,7 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 	taskAgents := append([]agent.Runnable(nil), configuredSubAgents...)
 	if config.GeneralSubAgentEnabled(cfg, spec.Kind) {
 		general, err := newNativeAgent(ctx, agent.AgentConfig{
-			Name:          generalSubAgentName,
+			Name:          producttools.GeneralSubAgentName,
 			Description:   "通用子 Agent，用于研究复杂问题、搜索代码和执行独立的多步骤任务。",
 			Instruction:   composition.Instruction(),
 			Model:         chatModel,
@@ -233,18 +235,18 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 
 	tools := append([]agent.BaseTool(nil), assembly.Tools...)
 	if !spec.DisableWriteTodos && toolSettings.Todo {
-		todoTool, err := newWriteTodosTool()
+		todoTool, err := toolCatalog.WriteTodos()
 		if err != nil {
 			return nil, fmt.Errorf("创建 write_todos 工具失败: %w", err)
 		}
 		tools = append(tools, todoTool)
 	}
-	if taskTool, err := newTaskTool(ctx, taskAgents); err != nil {
+	if taskTool, err := toolCatalog.Task(ctx, taskAgents); err != nil {
 		return nil, fmt.Errorf("创建 task 工具失败: %w", err)
 	} else if taskTool != nil {
 		tools = append(tools, taskTool)
 	}
-	if err := validateToolDescriptors(ctx, tools); err != nil {
+	if err := producttools.Validate(ctx, tools); err != nil {
 		return nil, err
 	}
 
@@ -320,6 +322,7 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 		workspace = cfg.Workspace
 	}
 	executionGate := sharedToolExecutionGate(workspace)
+	toolCatalog := newToolCatalog(cfg)
 	settings := spec.ToolSettings
 	middlewares := append([]agent.Middleware(nil), spec.ExtraMiddlewares...)
 	if spec.IncludeCompaction {
@@ -347,7 +350,7 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	)
 	tools := append([]agent.BaseTool(nil), spec.ExtraTools...)
 	if settings.FileRead || settings.FileWrite || settings.ShellExecute {
-		filesystemTools, err := filesystemToolsFactory(workspace)(settings)
+		filesystemTools, err := toolCatalog.Filesystem(settings)
 		if err != nil {
 			return chatModelAgentAssembly{}, err
 		}
@@ -367,19 +370,19 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 		}
 		tools = append(tools, extraTools...)
 	}
-	if stableWebSearchSchemaAllowed(firstNonEmpty(spec.ToolPolicyKind, spec.Kind))(settings) {
-		webTools, err := newWebSearchTools()
+	if toolCatalog.WebSearchEnabled(firstNonEmpty(spec.ToolPolicyKind, spec.Kind), settings) {
+		webTools, err := toolCatalog.WebSearch()
 		if err != nil {
 			return chatModelAgentAssembly{}, err
 		}
 		tools = append(tools, webTools...)
 	}
-	if err := validateToolSurface(ctx, tools); err != nil {
+	if err := producttools.Validate(ctx, tools); err != nil {
 		return chatModelAgentAssembly{}, err
 	}
 	// Keep this last: it validates the final concrete tool set immediately
 	// before every model run.
-	middlewares = append(middlewares, newToolDescriptorGuardMiddleware())
+	middlewares = append(middlewares, producttools.NewDescriptorGuardMiddleware())
 	return chatModelAgentAssembly{Tools: tools, Middlewares: middlewares}, nil
 }
 
@@ -392,7 +395,7 @@ func buildSkillTools(ctx context.Context, cfg *config.Config, agentKind string, 
 		agentKind,
 		config.ResolveAgentSkillOverrides(cfg, agentKind),
 	)
-	skillTool, err := newSkillTool(ctx, skillBackend, config.ResolveAgentContext(cfg, agentKind).MaxFragmentBytes)
+	skillTool, err := newToolCatalog(cfg).Skill(ctx, skillBackend, config.ResolveAgentContext(cfg, agentKind).MaxFragmentBytes)
 	if err != nil {
 		return nil, fmt.Errorf("创建 Skill 工具失败 agent=%s: %w", agentKind, err)
 	}

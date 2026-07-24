@@ -8,7 +8,6 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.Context, storyID, branchID, requestedCommandID string) (agents.ContextCompactionResult, error) {
@@ -77,14 +76,11 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 		return prepared, fmt.Errorf("没有可压缩的互动上下文")
 	}
 	event := interactiveCompactionEvent(recordID, expectedParent, len(storyCtx.Snapshot.Turns), prepared)
-	ref := runstate.ContextCompactionRef{
+	ref := agents.ContextCompactionRef{
 		Source: "story.turn_events", Purpose: "persist a bounded model-history checkpoint",
 		Resource: storyID + "/" + branchID, ExpectedRevision: contextStoryRevision(expectedParent), Force: true,
 	}
-	binding, err := storyContextStructuralBinding(workspace, storyID, branchID)
-	if err != nil {
-		return prepared, err
-	}
+	binding := storyContextStructuralBinding(workspace, storyID, branchID)
 	plan, err := newContextStructuralRestorePlan(
 		agents.ContextStructuralDomainStory, agents.ContextStructuralCompact, binding, ref, recordID,
 		agents.ContextStructuralResult{Compaction: prepared}, event,
@@ -214,14 +210,11 @@ func (s *InteractiveAppService) executeInteractiveContextCompactionRemoval(ctx c
 		ID: recordID, AgentKind: config.AgentKindInteractiveStory, CompactionID: compactionID,
 		SourceTurnCount: sourceTurns, Reason: "user_removed", ExpectedParentID: &expectedParent,
 	}
-	ref := runstate.ContextCompactionRef{
+	ref := agents.ContextCompactionRef{
 		Source: "story.context_compaction", Purpose: "restore canonical story turn history",
 		Resource: storyID + "/" + branchID, ExpectedRevision: contextStoryRevision(expectedParent), CompactionID: compactionID,
 	}
-	binding, err := storyContextStructuralBinding(fence.workspace, storyID, branchID)
-	if err != nil {
-		return false, err
-	}
+	binding := storyContextStructuralBinding(fence.workspace, storyID, branchID)
 	plan, err := newContextStructuralRestorePlan(
 		agents.ContextStructuralDomainStory, agents.ContextStructuralRemove, binding, ref, recordID,
 		agents.ContextStructuralResult{Removed: true}, event,

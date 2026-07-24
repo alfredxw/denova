@@ -10,7 +10,6 @@ import (
 
 	agents "denova/internal/agents"
 	"denova/internal/automation"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 const admittedToolMutationVersion = 1
@@ -20,8 +19,8 @@ const admittedToolMutationVersion = 1
 // payload is durable; the application store then owns all slower reconciliation.
 type admittedToolMutationPayload struct {
 	Version          int                       `json:"version"`
-	Binding          runstate.BindingRef       `json:"binding"`
-	RuntimeOperation runstate.OperationID      `json:"runtime_operation"`
+	Binding          agents.RuntimeBinding     `json:"binding"`
+	RuntimeOperation agents.OperationID        `json:"runtime_operation"`
 	RuntimeCycle     int                       `json:"runtime_cycle"`
 	ToolCallID       string                    `json:"tool_call_id"`
 	Origin           agents.ToolMutationOrigin `json:"origin"`
@@ -49,7 +48,7 @@ func (a *App) reconcileHarnessHostEffect(ctx context.Context, committed agents.C
 	}
 	store := automation.NewStore(a.cfg.DataDir(), "")
 	admitted, err := store.AdmitHostEffect(ctx, automation.HostEffectObligation{
-		ID: string(committed.EffectID), Kind: string(runstate.HostEffectToolMutationCommitted),
+		ID: string(committed.EffectID), Kind: agents.HostEffectToolMutationCommitted,
 		Workspace: workspace, Payload: payload,
 	})
 	if err != nil {
@@ -196,7 +195,7 @@ func (s *AutomationAppService) drainAutomationRunHostEffects(ctx context.Context
 }
 
 func automationHostEffectOwnedByRun(effect automation.HostEffectObligation, runID string) (bool, error) {
-	if effect.Kind != string(runstate.HostEffectToolMutationCommitted) {
+	if effect.Kind != agents.HostEffectToolMutationCommitted {
 		return false, nil
 	}
 	var owner struct {
@@ -253,7 +252,7 @@ func (s *AutomationAppService) transferAutomationHostEffect(
 }
 
 func decodeAdmittedToolMutation(effect automation.HostEffectObligation) (admittedToolMutationPayload, error) {
-	if effect.Kind != string(runstate.HostEffectToolMutationCommitted) {
+	if effect.Kind != agents.HostEffectToolMutationCommitted {
 		return admittedToolMutationPayload{}, fmt.Errorf("unsupported admitted host effect kind %q", effect.Kind)
 	}
 	var payload admittedToolMutationPayload

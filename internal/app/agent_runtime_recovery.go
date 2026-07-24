@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	agents "denova/internal/agents"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 type AgentRuntimeRecoveryRequest struct {
@@ -19,14 +18,14 @@ type AgentRuntimeRecoveryRequest struct {
 type AgentRuntimeRecoveryResult struct {
 	Task    *Task
 	Action  agents.RuntimeRecoveryAction
-	Receipt runstate.Receipt
+	Receipt agents.CommandReceipt
 }
 
 func recoveryActionKey(action agents.RuntimeRecoveryAction) string {
 	return strings.Join([]string{string(action.Kind), string(action.CommandID), string(action.OperationID)}, "\x00")
 }
 
-func validateSelectedRecoveryAction(status runstate.StatusSnapshot, selected agents.RuntimeRecoveryAction) error {
+func validateSelectedRecoveryAction(status agents.RuntimeStatus, selected agents.RuntimeRecoveryAction) error {
 	for _, action := range agents.RuntimeRecoveryActions(status) {
 		if action == selected {
 			return nil
@@ -133,7 +132,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 		}
 		run = &writingTaskRun{
 			task: task, runtime: runtime, recovery: recovery,
-			recoveryActions:      make(map[string]runstate.Receipt),
+			recoveryActions:      make(map[string]agents.CommandReceipt),
 			recoveryStructural:   isStructural,
 			recoveryRefreshReady: make(chan struct{}),
 		}
@@ -145,7 +144,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 		recovery.Close()
 		return AgentRuntimeRecoveryResult{}, err
 	}
-	var receipt runstate.Receipt
+	var receipt agents.CommandReceipt
 	if !isStructural {
 		receipt, err = recovery.Resume(operation.Context(), request.Action, task.ID(), task.emit)
 		if err != nil {
@@ -155,7 +154,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 		}
 		run.recoveryActions[key] = receipt
 	} else {
-		run.recoveryActions[key] = runstate.Receipt{
+		run.recoveryActions[key] = agents.CommandReceipt{
 			CommandID: request.Action.CommandID, OperationID: request.Action.OperationID,
 			Cursor: recovery.InitialStatus().Cursor, Replayed: true,
 		}
@@ -298,7 +297,7 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 		info.TaskID = task.ID()
 		run = &interactiveTaskRun{
 			task: task, info: info, recovery: recovery,
-			recoveryActions: make(map[string]runstate.Receipt),
+			recoveryActions: make(map[string]agents.CommandReceipt),
 		}
 		a.activeInteractiveRun = run
 		return nil
@@ -309,7 +308,7 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 	}
 	key := recoveryActionKey(request.Action)
 	structural, isStructural := recoveryStructuralAction(request.Action.Kind)
-	var receipt runstate.Receipt
+	var receipt agents.CommandReceipt
 	if !isStructural {
 		receipt, err = recovery.Resume(operation.Context(), request.Action, task.ID(), task.emit)
 		if err != nil {
@@ -319,7 +318,7 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 		}
 		run.recoveryActions[key] = receipt
 	} else {
-		receipt = runstate.Receipt{
+		receipt = agents.CommandReceipt{
 			CommandID: request.Action.CommandID, OperationID: request.Action.OperationID,
 			Cursor: recovery.InitialStatus().Cursor, Replayed: true,
 		}

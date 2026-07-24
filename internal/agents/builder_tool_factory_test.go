@@ -1,13 +1,16 @@
 package agents
 
 import (
+	"context"
 	"testing"
+
+	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
 )
 
 func TestLoreToolsFactoryOmitsDisabledLoreSchemas(t *testing.T) {
-	factory := loreToolsFactory(&config.Config{Workspace: t.TempDir()}, false)
+	factory := newToolCatalog(&config.Config{Workspace: t.TempDir()}).Lore(false)
 
 	tools, err := factory(config.ResolvedAgentToolSettings{})
 	if err != nil {
@@ -19,13 +22,13 @@ func TestLoreToolsFactoryOmitsDisabledLoreSchemas(t *testing.T) {
 }
 
 func TestLoreToolsFactoryHonorsResolvedWriteCapability(t *testing.T) {
-	factory := loreToolsFactory(&config.Config{Workspace: t.TempDir()}, false)
+	factory := newToolCatalog(&config.Config{Workspace: t.TempDir()}).Lore(false)
 
 	readOnlyTools, err := factory(config.ResolvedAgentToolSettings{LoreRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	readOnlyNames := configManagerToolNameSet(t, readOnlyTools)
+	readOnlyNames := toolNameSet(t, readOnlyTools)
 	if readOnlyNames["write_lore_items"] {
 		t.Fatalf("read-only lore capability should not expose write schemas: %v", readOnlyNames)
 	}
@@ -34,8 +37,21 @@ func TestLoreToolsFactoryHonorsResolvedWriteCapability(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writableNames := configManagerToolNameSet(t, writableTools)
+	writableNames := toolNameSet(t, writableTools)
 	if !writableNames["write_lore_items"] {
 		t.Fatalf("lore write capability should expose write schemas: %v", writableNames)
 	}
+}
+
+func toolNameSet(t *testing.T, concrete []agent.BaseTool) map[string]bool {
+	t.Helper()
+	names := make(map[string]bool, len(concrete))
+	for _, item := range concrete {
+		info, err := item.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		names[info.Name] = true
+	}
+	return names
 }

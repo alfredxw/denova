@@ -135,36 +135,3 @@ func readReferencedFile(bookService *book.Service, relPath string, fileLimit, re
 	}
 	return result, len(data), nil
 }
-
-func formatLoreReference(item book.LoreItem) string {
-	var sb strings.Builder
-	sb.WriteString("## ")
-	sb.WriteString(item.Name)
-	sb.WriteString("（")
-	sb.WriteString(item.Type)
-	sb.WriteString(" / ")
-	sb.WriteString(item.Importance)
-	sb.WriteString(" / ")
-	sb.WriteString(item.LoadMode)
-	sb.WriteString("）\n")
-	sb.WriteString("ID：")
-	sb.WriteString(item.ID)
-	sb.WriteString("\n")
-	if len(item.Tags) > 0 {
-		sb.WriteString("标签：")
-		sb.WriteString(strings.Join(item.Tags, "、"))
-		sb.WriteString("\n")
-	}
-	if item.BriefDescription != "" {
-		sb.WriteString("简介：")
-		sb.WriteString(item.BriefDescription)
-		sb.WriteString("\n")
-	}
-	content := strings.TrimSpace(item.Content)
-	if content != "" {
-		sb.WriteString("\n```markdown\n")
-		sb.WriteString(content)
-		sb.WriteString("\n```\n")
-	}
-	return strings.TrimSpace(sb.String())
-}

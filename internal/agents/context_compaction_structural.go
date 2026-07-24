@@ -21,8 +21,8 @@ const (
 )
 
 type ContextStructuralIdentity struct {
-	CommandID   runstate.CommandID
-	OperationID runstate.OperationID
+	CommandID   CommandID
+	OperationID OperationID
 	Cycle       int
 }
 
@@ -56,7 +56,7 @@ type ContextStructuralOperation interface {
 type ContextStructuralSpec struct {
 	CommandID string
 	Action    ContextStructuralAction
-	Ref       runstate.ContextCompactionRef
+	Ref       ContextCompactionRef
 	Options   RunOptions
 	Emit      func(Event)
 	Operation ContextStructuralOperation
@@ -162,11 +162,11 @@ func (e *harnessEngine) runStructural(
 	if !ok || conversation == nil || conversation.operation == nil {
 		return runstate.EngineResult{}, fmt.Errorf("%w: structural context operation is required", ErrHarnessTurnSpecInvalid)
 	}
-	if spec.CommandID != request.Snapshot.CommandID || structuralKindForAction(conversation.action) != request.Snapshot.Kind {
+	if runstate.CommandID(spec.CommandID) != request.Snapshot.CommandID || structuralKindForAction(conversation.action) != request.Snapshot.Kind {
 		return runstate.EngineResult{}, fmt.Errorf("%w: structural command identity changed before execution", ErrHarnessTurnSpecConflict)
 	}
 	identity := ContextStructuralIdentity{
-		CommandID: request.Snapshot.CommandID, OperationID: request.Snapshot.OperationID, Cycle: request.Snapshot.Cycle,
+		CommandID: CommandID(request.Snapshot.CommandID), OperationID: OperationID(request.Snapshot.OperationID), Cycle: request.Snapshot.Cycle,
 	}
 	intent, err := conversation.operation.Prepare(ctx, identity, conversation.emit)
 	if err != nil {
@@ -186,7 +186,7 @@ func (e *harnessEngine) runStructural(
 		return runstate.EngineResult{}, err
 	}
 	domainIdentity := runstate.DomainCommitIdentity{
-		CommandID: identity.CommandID, OperationID: identity.OperationID,
+		CommandID: runstate.CommandID(identity.CommandID), OperationID: runstate.OperationID(identity.OperationID),
 		Cycle: identity.Cycle, Stage: runstate.DomainCommitOutput,
 	}
 	if err := emit(runstate.EngineDomainCommitIntent{Identity: domainIdentity, Hash: intent.Hash}); err != nil {
@@ -283,13 +283,21 @@ func (h *chatHarness) executeContextStructuralOperation(ctx context.Context, spe
 		if spec.RestorePlan.Action != spec.Action {
 			return ContextStructuralResult{}, fmt.Errorf("%w: structural restore plan action does not match spec", runstate.ErrInvalidCommand)
 		}
-		descriptor, encodeErr := EncodeContextStructuralRestorePlan(*spec.RestorePlan, bindingRef, spec.Ref.ExpectedRevision)
+		productBinding, projectErr := ParseRuntimeBinding(bindingRef)
+		if projectErr != nil {
+			return ContextStructuralResult{}, projectErr
+		}
+		descriptor, encodeErr := EncodeContextStructuralRestorePlan(*spec.RestorePlan, productBinding, spec.Ref.ExpectedRevision)
 		if encodeErr != nil {
 			return ContextStructuralResult{}, fmt.Errorf("%w: %v", runstate.ErrInvalidCommand, encodeErr)
 		}
 		spec.Ref.RestoreDescriptor = descriptor
 	} else if len(spec.Ref.RestoreDescriptor) > 0 {
-		plan, decodeErr := DecodeContextStructuralRestorePlan(spec.Ref.RestoreDescriptor, bindingRef, spec.Ref.ExpectedRevision)
+		productBinding, projectErr := ParseRuntimeBinding(bindingRef)
+		if projectErr != nil {
+			return ContextStructuralResult{}, projectErr
+		}
+		plan, decodeErr := DecodeContextStructuralRestorePlan(spec.Ref.RestoreDescriptor, productBinding, spec.Ref.ExpectedRevision)
 		if decodeErr != nil {
 			return ContextStructuralResult{}, fmt.Errorf("%w: %v", runstate.ErrInvalidCommand, decodeErr)
 		}
@@ -302,20 +310,21 @@ func (h *chatHarness) executeContextStructuralOperation(ctx context.Context, spe
 		return ContextStructuralResult{}, err
 	}
 	refSemantics := semanticJSONFingerprint("agent-structural-reference.v1", struct {
-		Action ContextStructuralAction       `json:"action"`
-		Ref    runstate.ContextCompactionRef `json:"ref"`
+		Action ContextStructuralAction `json:"action"`
+		Ref    ContextCompactionRef    `json:"ref"`
 	}{Action: spec.Action, Ref: spec.Ref})
 	spec.Ref.SpecRef = harnessCommandTurnRef(binding, spec.CommandID, refSemantics)
+	runtimeRef := contextCompactionRefToRuntime(spec.Ref)
 	var command runstate.Command
 	switch spec.Action {
 	case ContextStructuralCompact:
-		command = runstate.CompactIfNeeded{ID: runstate.CommandID(spec.CommandID), Ref: spec.Ref}
+		command = runstate.CompactIfNeeded{ID: runstate.CommandID(spec.CommandID), Ref: runtimeRef}
 	case ContextStructuralRemove:
-		command = runstate.RemoveCompaction{ID: runstate.CommandID(spec.CommandID), Ref: spec.Ref}
+		command = runstate.RemoveCompaction{ID: runstate.CommandID(spec.CommandID), Ref: runtimeRef}
 	}
 	conversation := &contextStructuralConversation{action: spec.Action, operation: spec.Operation, emit: spec.Emit}
 	registration, err := h.engine.register(spec.Ref.SpecRef, command, HarnessTurnSpec{
-		CommandID: runstate.CommandID(spec.CommandID), CommandKind: AgentCommandKind(spec.Action),
+		CommandID: CommandID(spec.CommandID), CommandKind: AgentCommandKind(spec.Action),
 		Conversation: conversation, Options: spec.Options, Emit: spec.Emit,
 	})
 	if err != nil {

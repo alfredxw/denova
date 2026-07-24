@@ -11,7 +11,8 @@ import (
 func TestBindingHarnessEngineDelegatesExactDomainCommitQuery(t *testing.T) {
 	t.Parallel()
 
-	binding := mustRuntimeBinding(RuntimeBinding{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "session"})
+	productBinding := RuntimeBinding{AgentKind: AgentKindIDE, Workspace: "/book", SessionID: "session"}
+	binding := mustRuntimeBinding(productBinding)
 	want := runstate.DomainCommitReconcileRequest{
 		Binding: binding,
 		Commit: runstate.DomainCommitState{
@@ -22,11 +23,14 @@ func TestBindingHarnessEngineDelegatesExactDomainCommitQuery(t *testing.T) {
 		},
 	}
 	owner := newHarnessEngine(newTurnExecutor(DefaultLoopPolicy()))
-	owner.domainCommitReconciler = func(_ context.Context, got runstate.DomainCommitReconcileRequest) (runstate.DomainCommitReconcileResult, error) {
-		if !got.Binding.Equal(want.Binding) || got.Commit != want.Commit {
-			return runstate.DomainCommitReconcileResult{}, errors.New("query changed across adapter")
+	owner.domainCommitReconciler = func(_ context.Context, got DomainCommitReconcileRequest) (DomainCommitReconcileResult, error) {
+		if got.Binding != productBinding || got.Commit != (DomainCommitState{
+			Identity: DomainCommitIdentity{CommandID: "command", OperationID: "operation", Cycle: 1, Stage: DomainCommitOutput},
+			Hash:     "sha256:exact",
+		}) {
+			return DomainCommitReconcileResult{}, errors.New("query changed across adapter")
 		}
-		return runstate.DomainCommitReconcileResult{Found: true, Revision: "canonical:1"}, nil
+		return DomainCommitReconcileResult{Found: true, Revision: "canonical:1"}, nil
 	}
 	engine, err := owner.NewEngine(context.Background(), binding)
 	if err != nil {

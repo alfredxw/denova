@@ -34,16 +34,20 @@ func (r *RecoveryObservation) Resume(
 	action RuntimeRecoveryAction,
 	taskID string,
 	emit func(Event),
-) (runstate.Receipt, error) {
+) (CommandReceipt, error) {
 	if r == nil || r.harness == nil {
-		return runstate.Receipt{}, ErrRuntimeProjectionUnavailable
+		return CommandReceipt{}, ErrRuntimeProjectionUnavailable
 	}
 	status, err := r.harness.Status(ctx)
 	if err != nil {
-		return runstate.Receipt{}, err
+		return CommandReceipt{}, err
 	}
-	if !containsRuntimeRecoveryAction(RuntimeRecoveryActions(status), action) {
-		return runstate.Receipt{}, fmt.Errorf("%w: kind=%q command_id=%q operation_id=%q", ErrRecoveryActionChanged, action.Kind, action.CommandID, action.OperationID)
+	projected, projectionErr := runtimeStatusFromSnapshot(status)
+	if projectionErr != nil {
+		return CommandReceipt{}, projectionErr
+	}
+	if !containsRuntimeRecoveryAction(RuntimeRecoveryActions(projected), action) {
+		return CommandReceipt{}, fmt.Errorf("%w: kind=%q command_id=%q operation_id=%q", ErrRecoveryActionChanged, action.Kind, action.CommandID, action.OperationID)
 	}
 	recoveryCtx := withRecoveryDisplayRoute(ctx, recoveryDisplayRoute{TaskID: taskID, Emit: emit})
 	r.harness.BindRecoveryContext(recoveryCtx)
@@ -51,17 +55,17 @@ func (r *RecoveryObservation) Resume(
 	r.boundRoute = recoveryDisplayRoute{TaskID: strings.TrimSpace(taskID), Emit: emit}
 	r.mu.Unlock()
 	if action.Kind == RuntimeRecoveryAttach {
-		return runstate.Receipt{
+		return CommandReceipt{
 			CommandID: action.CommandID, OperationID: action.OperationID,
-			Cursor: status.Cursor, Replayed: true,
+			Cursor: Cursor(status.Cursor), Replayed: true,
 		}, nil
 	}
 	if action.Kind == RuntimeRecoveryAbort {
 		receipt, err := r.harness.Submit(recoveryCtx, runstate.Abort{
-			ID: action.CommandID, OperationID: action.OperationID,
+			ID: runstate.CommandID(action.CommandID), OperationID: runstate.OperationID(action.OperationID),
 			Reason: "user explicitly aborted a recovery-paused operation",
 		})
-		return receipt, err
+		return commandReceiptFromRuntime(receipt), err
 	}
 	var delivery runstate.DeliveryKind
 	switch action.Kind {
@@ -72,15 +76,15 @@ func (r *RecoveryObservation) Resume(
 	case RuntimeRecoveryNextTurn:
 		delivery = runstate.DeliveryNextTurn
 	default:
-		return runstate.Receipt{}, fmt.Errorf("%w: structural action requires the structural recovery seam", ErrRecoveryActionChanged)
+		return CommandReceipt{}, fmt.Errorf("%w: structural action requires the structural recovery seam", ErrRecoveryActionChanged)
 	}
 	receipt, err := r.harness.RecoverAcceptedInput(recoveryCtx, runstate.RecoveryAction{
-		Kind: delivery, CommandID: action.CommandID, OperationID: action.OperationID,
+		Kind: delivery, CommandID: runstate.CommandID(action.CommandID), OperationID: runstate.OperationID(action.OperationID),
 	})
 	if errors.Is(err, runstate.ErrRecoveryActionChanged) {
-		return receipt, fmt.Errorf("%w: %v", ErrRecoveryActionChanged, err)
+		return commandReceiptFromRuntime(receipt), fmt.Errorf("%w: %v", ErrRecoveryActionChanged, err)
 	}
-	return receipt, err
+	return commandReceiptFromRuntime(receipt), err
 }
 
 func containsRuntimeRecoveryAction(actions []RuntimeRecoveryAction, selected RuntimeRecoveryAction) bool {
@@ -104,7 +108,7 @@ func (r *RecoveryObservation) Wait(ctx context.Context, emit func(Event)) RunOut
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	initial := r.InitialStatus()
+	initial := r.initial
 	if initial.Phase == runstate.PhaseIdle && len(initial.Queue) == 0 && initial.LastOperation != nil {
 		outcome := replayedOutcomeForSettlement(ctx, r.harness, initial.LastOperation.OperationID, runstate.OperationSettledEvent{
 			OperationID: initial.LastOperation.OperationID, Status: initial.LastOperation.Status, Reason: initial.LastOperation.Reason,

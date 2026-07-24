@@ -124,22 +124,27 @@ func (s *ChatService) openRecoveryHarness(
 	return harness, ref, nil
 }
 
-func (r *RecoveryObservation) InitialStatus() runstate.StatusSnapshot {
+func (r *RecoveryObservation) InitialStatus() RuntimeStatus {
 	if r == nil {
-		return runstate.StatusSnapshot{}
+		return RuntimeStatus{}
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.initial
+	projected, _ := runtimeStatusFromSnapshot(r.initial)
+	return projected
 }
 
 // CurrentStatus re-reads the actor-owned projection. It remains available after
 // Close because closing a display observer does not close the durable binding.
-func (r *RecoveryObservation) CurrentStatus(ctx context.Context) (runstate.StatusSnapshot, error) {
+func (r *RecoveryObservation) CurrentStatus(ctx context.Context) (RuntimeStatus, error) {
 	if r == nil || r.harness == nil {
-		return runstate.StatusSnapshot{}, ErrRuntimeProjectionUnavailable
+		return RuntimeStatus{}, ErrRuntimeProjectionUnavailable
 	}
-	return r.harness.Status(ctx)
+	status, err := r.harness.Status(ctx)
+	if err != nil {
+		return RuntimeStatus{}, err
+	}
+	return runtimeStatusFromSnapshot(status)
 }
 
 // DisplayMetadata resolves bounded display identity from the exact accepted
@@ -162,14 +167,14 @@ func (r *RecoveryObservation) DisplayMetadata(
 		if statusErr != nil {
 			return RuntimeRecoveryDisplayMetadata{}, statusErr
 		}
-		commandID = status.ActiveCommandID
-		operationID = status.ActiveOperation
+		commandID = CommandID(status.ActiveCommandID)
+		operationID = OperationID(status.ActiveOperation)
 		if status.InputRecovery != nil {
-			commandID = status.InputRecovery.CommandID
-			operationID = status.InputRecovery.OperationID
+			commandID = CommandID(status.InputRecovery.CommandID)
+			operationID = OperationID(status.InputRecovery.OperationID)
 		}
 	}
-	input, found, err := r.harness.RecoveryInput(ctx, commandID, operationID)
+	input, found, err := r.harness.RecoveryInput(ctx, runstate.CommandID(commandID), runstate.OperationID(operationID))
 	if err != nil {
 		return RuntimeRecoveryDisplayMetadata{}, err
 	}

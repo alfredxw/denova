@@ -135,7 +135,7 @@ func ParseRuntimeBinding(ref runstate.BindingRef) (RuntimeBinding, error) {
 
 // RuntimeBindingSelector returns a bounded selector for one Denova agent kind.
 // Empty fields remain unconstrained; at least one constraint is required.
-func RuntimeBindingSelector(agentKind, workspace string) (runstate.BindingSelector, error) {
+func runtimeBindingSelector(agentKind, workspace string) (runstate.BindingSelector, error) {
 	selector := runstate.BindingSelector{}
 	if workspace = strings.TrimSpace(workspace); workspace != "" {
 		selector.Labels = map[string]string{runtimeBindingLabelWorkspace: workspace}
@@ -165,7 +165,7 @@ func RuntimeBindingSelector(agentKind, workspace string) (runstate.BindingSelect
 
 // RuntimeWorkspaceBindingSelector selects every Denova binding rooted in one
 // workspace, regardless of product mode or profile.
-func RuntimeWorkspaceBindingSelector(workspace string) (runstate.BindingSelector, error) {
+func runtimeWorkspaceBindingSelector(workspace string) (runstate.BindingSelector, error) {
 	workspace = strings.TrimSpace(workspace)
 	if workspace == "" {
 		return runstate.BindingSelector{}, runstate.ErrInvalidBinding
@@ -174,8 +174,8 @@ func RuntimeWorkspaceBindingSelector(workspace string) (runstate.BindingSelector
 }
 
 // RuntimeSessionBindingSelector selects one session-backed Denova actor.
-func RuntimeSessionBindingSelector(agentKind, workspace, sessionID string) (runstate.BindingSelector, error) {
-	selector, err := RuntimeBindingSelector(agentKind, workspace)
+func runtimeSessionBindingSelector(agentKind, workspace, sessionID string) (runstate.BindingSelector, error) {
+	selector, err := runtimeBindingSelector(agentKind, workspace)
 	if err != nil {
 		return runstate.BindingSelector{}, err
 	}
@@ -193,7 +193,7 @@ func RuntimeSessionBindingSelector(agentKind, workspace, sessionID string) (runs
 
 // RuntimeStoryBindingSelector selects all story actors (including the
 // interactive Director profile) for an exact story or branch scope.
-func RuntimeStoryBindingSelector(workspace, storyID, branchID string) (runstate.BindingSelector, error) {
+func runtimeStoryBindingSelector(workspace, storyID, branchID string) (runstate.BindingSelector, error) {
 	workspace, storyID, branchID = strings.TrimSpace(workspace), strings.TrimSpace(storyID), strings.TrimSpace(branchID)
 	if workspace == "" || storyID == "" {
 		return runstate.BindingSelector{}, runstate.ErrInvalidBinding

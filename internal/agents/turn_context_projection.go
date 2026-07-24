@@ -157,7 +157,7 @@ func projectLoreReferenceFragments(bookService *book.Service, references []strin
 			content = "资料库读取失败：" + loadError.Error()
 			note += "; read_failed"
 		} else if item, ok := itemsByID[ref]; ok {
-			content = formatLoreReference(item)
+			content = book.LoreReferenceMarkdown(item)
 			title = "@资料:" + item.Name
 			note += "; id=" + item.ID
 		} else {

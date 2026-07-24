@@ -9,7 +9,6 @@ import (
 
 	agents "denova/internal/agents"
 	"denova/internal/automation"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func (s *AutomationAppService) reconcilePersistedAutomationRuns(ctx context.Context) {
@@ -144,7 +143,7 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 	}
 	if attach.CommandID == "" || attach.OperationID == "" {
 		recovery.Close()
-		if status.Phase == runstate.PhaseIdle {
+		if status.Phase == agents.RunPhaseIdle {
 			reconciled, ok, reconcileErr := s.reconcileAutomationRunReceipt(ctx, snap, taskDef, run)
 			if reconcileErr != nil {
 				return nil, run, reconcileErr

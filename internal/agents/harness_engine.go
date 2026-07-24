@@ -25,8 +25,8 @@ type HarnessCycleCommitter interface {
 // commit so retries and crash reconciliation never infer identity from display
 // events or process-local task IDs.
 type HarnessCycleIdentity struct {
-	CommandID   runstate.CommandID
-	OperationID runstate.OperationID
+	CommandID   CommandID
+	OperationID OperationID
 	Cycle       int
 }
 
@@ -73,7 +73,7 @@ type HarnessTurnSpec struct {
 	// CommandID correlates the cycle with the user command that selected its
 	// TurnSpec. It is display metadata only; durable command identity remains in
 	// the coordinator journal.
-	CommandID    runstate.CommandID
+	CommandID    CommandID
 	CommandKind  AgentCommandKind
 	Runner       *agent.Runner
 	Conversation Conversation
@@ -246,7 +246,12 @@ func (e *bindingHarnessEngine) ReconcileDomainCommit(
 	if e.owner.domainCommitReconciler == nil {
 		return runstate.DomainCommitReconcileResult{}, nil
 	}
-	return e.owner.domainCommitReconciler(ctx, request)
+	projected, err := domainCommitReconcileRequestFromRuntime(request)
+	if err != nil {
+		return runstate.DomainCommitReconcileResult{}, err
+	}
+	result, err := e.owner.domainCommitReconciler(ctx, projected)
+	return domainCommitReconcileResultToRuntime(result), err
 }
 
 func (e *bindingHarnessEngine) ReconcileHostEffect(ctx context.Context, effect runstate.HostEffect) error {
@@ -348,7 +353,7 @@ func (e *harnessEngine) run(
 	runCtx = ContextWithToolLifecycleObserver(runCtx, toolObserver)
 	if binder, ok := spec.Conversation.(HarnessCycleIdentityBinder); ok && binder != nil {
 		binder.BindAgentCycleIdentity(HarnessCycleIdentity{
-			CommandID: spec.CommandID, OperationID: request.Snapshot.OperationID, Cycle: request.Snapshot.Cycle,
+			CommandID: spec.CommandID, OperationID: OperationID(request.Snapshot.OperationID), Cycle: request.Snapshot.Cycle,
 		})
 	}
 	if binder, ok := spec.Conversation.(HarnessAgentKindBinder); ok && binder != nil {

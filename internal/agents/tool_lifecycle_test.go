@@ -12,6 +12,7 @@ import (
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
+	producttools "denova/internal/agents/tools"
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
@@ -136,7 +137,7 @@ func TestCommittedToolMutationRemainsRuntimeOwnedUntilOutputCommit(t *testing.T)
 
 func TestToolExecutionRecordBuildsCompleteMutationReceiptFromRawResult(t *testing.T) {
 	workspaceReceipt := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","review_thread_id":"review-1","change_set_id":"change-1","path":"chapters/ch01.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied"}`
-	record := ToolExecutionRecord{ToolName: "write_file", ToolCallID: "write-call", Status: "success", Descriptor: workspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable)}
+	record := ToolExecutionRecord{ToolName: "write_file", ToolCallID: "write-call", Status: "success", Descriptor: producttools.WorkspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable)}
 	applyToolMutationReceiptToExecutionRecord(&record, workspaceReceipt)
 	mutation, ok := toolMutationFromExecutionRecord(record)
 	if !ok {
@@ -149,7 +150,7 @@ func TestToolExecutionRecordBuildsCompleteMutationReceiptFromRawResult(t *testin
 		t.Fatalf("workspace mutation receipt = %#v", mutation)
 	}
 
-	loreRecord := ToolExecutionRecord{ToolName: "write_lore_items", ToolCallID: "lore-call", Status: "success", Descriptor: workspaceWriteDescriptor(ToolSourceLore, config.AgentToolLoreWrite, agenttools.RecoveryReconcilable)}
+	loreRecord := ToolExecutionRecord{ToolName: "write_lore_items", ToolCallID: "lore-call", Status: "success", Descriptor: producttools.WorkspaceWriteDescriptor(ToolSourceLore, config.AgentToolLoreWrite, agenttools.RecoveryReconcilable)}
 	applyToolMutationReceiptToExecutionRecord(&loreRecord, "updated\nitem_ids: [\"hero\",\"hero\",\"world\"]\ndeleted_ids: [\"old\"]")
 	loreMutation, ok := toolMutationFromExecutionRecord(loreRecord)
 	if !ok {

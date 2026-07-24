@@ -29,7 +29,7 @@ func TestAppMaterializesAcceptedWritingInputExactlyOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := agents.HarnessInputMaterializationRequest{
-		Binding: writingRuntimeBindingForTest(workspace, "accepted-writing"),
+		Binding: agents.RuntimeBinding{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: "accepted-writing"},
 		Identity: agents.HarnessCycleIdentity{
 			CommandID: "writing-command", OperationID: "writing-operation", Cycle: 1,
 		},
@@ -83,7 +83,7 @@ func TestAppMaterializesAcceptedGameInputAsPendingWithoutNarrative(t *testing.T)
 		t.Fatal(err)
 	}
 	request := agents.HarnessInputMaterializationRequest{
-		Binding: gameRuntimeBindingForTest(workspace, story.ID, "main"),
+		Binding: agents.RuntimeBinding{AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main"},
 		Identity: agents.HarnessCycleIdentity{
 			CommandID: "game-command", OperationID: "game-operation", Cycle: 1,
 		},

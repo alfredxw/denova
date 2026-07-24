@@ -13,7 +13,6 @@ import (
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/session"
 	"denova/internal/interactiveimage"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 type ImageAgentGenerateRequest struct {
@@ -128,7 +127,7 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 		}
 	})
 	if err != nil {
-		if errors.Is(err, runstate.ErrInvalidCommand) {
+		if errors.Is(err, agents.ErrInvalidCommand) {
 			return result, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, req.CommandID)
 		}
 		return result, err
@@ -185,7 +184,7 @@ func validateImageAgentCommandID(commandID string) error {
 	if commandID == "" {
 		return ErrAgentCommandIDRequired
 	}
-	return runstate.ValidateCommandID(commandID, runstate.DefaultInputLimits())
+	return agents.ValidateCommandID(commandID)
 }
 
 type imageAgentConversation struct {

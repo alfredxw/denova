@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
+	agents "denova/internal/agents"
 	"denova/internal/automation"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 const maxRememberedAutomationFollowUps = 128
@@ -28,7 +28,7 @@ func newAutomationFollowUpIdentity(runID, commandID, message string) (automation
 	if commandID == "" {
 		return automationFollowUpIdentity{}, ErrAgentCommandIDRequired
 	}
-	if err := runstate.ValidateCommandID(commandID, runstate.DefaultInputLimits()); err != nil {
+	if err := agents.ValidateCommandID(commandID); err != nil {
 		return automationFollowUpIdentity{}, err
 	}
 	if runID == "" || message == "" {

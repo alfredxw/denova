@@ -109,7 +109,7 @@ func TestAutomationColdAcceptedRunStaysRecoveryRequiredUntilExplicitAbort(t *tes
 		t.Fatalf("uncertain runtime completed trigger evaluation: %#v", got)
 	}
 
-	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-cold-accepted", operationID, "user_requested"); err != nil {
+	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-cold-accepted", agents.OperationID(operationID), "user_requested"); err != nil {
 		t.Fatal(err)
 	}
 	settled := waitForAutomationRunStatus(t, store, runID, automation.RunStatusAborted)
@@ -264,14 +264,14 @@ func TestAutomationColdFollowUpPublishesAndAbortsCurrentOperation(t *testing.T) 
 	if active.Run.RootRuntimeCommandID != rootCommandID || active.Run.RootRuntimeOperationID != string(rootOperationID) {
 		t.Fatalf("follow-up changed immutable root receipt: %#v", active.Run)
 	}
-	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-stale-root", rootOperationID, "stale"); !errors.Is(err, runstate.ErrStaleOperation) {
+	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-stale-root", agents.OperationID(rootOperationID), "stale"); !errors.Is(err, agents.ErrStaleOperation) {
 		t.Fatalf("root-operation abort error = %v, want stale operation", err)
 	}
-	receipt, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-current-follow-up", currentOperationID, "user_requested")
+	receipt, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-current-follow-up", agents.OperationID(currentOperationID), "user_requested")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.CommandID != "abort-current-follow-up" || receipt.OperationID != currentOperationID || receipt.Cursor == 0 {
+	if receipt.CommandID != "abort-current-follow-up" || receipt.OperationID != agents.OperationID(currentOperationID) || receipt.Cursor == 0 {
 		t.Fatalf("follow-up abort receipt = %#v", receipt)
 	}
 	settled := waitForAutomationRunStatus(t, store, runID, automation.RunStatusAborted)
@@ -348,7 +348,7 @@ func TestAutomationPendingFollowUpIntentRecoversActiveSuccessorAfterCrash(t *tes
 	if active.Run.RootRuntimeCommandID != rootCommandID || active.Run.RootRuntimeOperationID != string(rootOperationID) || active.Run.RootRuntimeReceiptCursor != 1 {
 		t.Fatalf("successor recovery changed root receipt: %#v", active.Run)
 	}
-	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-pending-successor", successorOperationID, "user_requested"); err != nil {
+	if _, err := application.AbortAutomationRunCommand(context.Background(), runID, "abort-pending-successor", agents.OperationID(successorOperationID), "user_requested"); err != nil {
 		t.Fatal(err)
 	}
 	settled := waitForAutomationRunStatus(t, store, runID, automation.RunStatusAborted)
@@ -380,10 +380,10 @@ func TestAutomationRecoveryFailureCannotFinalizeAnActiveProjection(t *testing.T)
 	application.ensureServices()
 	t.Cleanup(application.Close)
 	service := application.automation()
-	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (runstate.StatusSnapshot, error) {
-		return runstate.StatusSnapshot{
-			Cursor: 9, Phase: runstate.PhaseRunning,
-			ActiveCommandID: runstate.CommandID(run.RuntimeCommandID), ActiveOperation: runstate.OperationID(run.RuntimeOperationID),
+	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (agents.RuntimeStatus, error) {
+		return agents.RuntimeStatus{
+			Cursor: 9, Phase: agents.RunPhaseRunning,
+			ActiveCommandID: agents.CommandID(run.RuntimeCommandID), ActiveOperation: agents.OperationID(run.RuntimeOperationID),
 		}, nil
 	}
 	snapshot := &automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir}

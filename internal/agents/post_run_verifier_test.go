@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	producttools "denova/internal/agents/tools"
 	"denova/internal/book"
 )
 
@@ -15,7 +16,7 @@ func TestVerifyPostRunMutationsAcceptsIllustrationMetaWrite(t *testing.T) {
 		t.Fatalf("write meta: %v", err)
 	}
 	result := VerifyPostRunMutations(bookService, []ToolMutation{{
-		ToolName:          generateImageToolName,
+		ToolName:          producttools.GenerateImageToolName,
 		Target:            "assets/illustrations/ch01/run/meta.json",
 		Source:            ToolSourceImage,
 		RequiresPostCheck: true,

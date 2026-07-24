@@ -12,7 +12,6 @@ import (
 	"sync"
 
 	agents "denova/internal/agents"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 const maxRememberedInteractiveStarts = 128
@@ -172,7 +171,7 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 	if request.CommandID == "" {
 		return interactiveStartIdentity{}, ErrAgentCommandIDRequired
 	}
-	if err := runstate.ValidateCommandID(request.CommandID, runstate.DefaultInputLimits()); err != nil {
+	if err := agents.ValidateCommandID(request.CommandID); err != nil {
 		return interactiveStartIdentity{}, err
 	}
 	if request.StoryID == "" || request.Message == "" {
@@ -302,7 +301,7 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 	releaseAcceptance()
 	if err != nil {
 		rollbackInteractiveReplayTask(a, task, err)
-		if errors.Is(err, runstate.ErrInvalidCommand) {
+		if errors.Is(err, agents.ErrInvalidCommand) {
 			return nil, true, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, identity.request.CommandID)
 		}
 		return nil, true, err
@@ -330,7 +329,7 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 	return task, true, nil
 }
 
-func interactiveStatusOwnsCommand(status runstate.StatusSnapshot, commandID string) bool {
+func interactiveStatusOwnsCommand(status agents.RuntimeStatus, commandID string) bool {
 	commandID = strings.TrimSpace(commandID)
 	if commandID == "" {
 		return false
@@ -376,7 +375,7 @@ type interactiveTaskRun struct {
 	task            *Task
 	info            InteractiveTaskInfo
 	recovery        *agents.RecoveryObservation
-	recoveryActions map[string]runstate.Receipt
+	recoveryActions map[string]agents.CommandReceipt
 }
 
 func (s *InteractiveAppService) bindActiveInteractiveTask(task *Task, info InteractiveTaskInfo) bool {

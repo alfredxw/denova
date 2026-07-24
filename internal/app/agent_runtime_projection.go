@@ -8,12 +8,11 @@ import (
 
 	agents "denova/internal/agents"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 type WritingAgentActiveView struct {
 	Task                *TaskStateSnapshot
-	Runtime             runstate.StatusSnapshot
+	Runtime             agents.RuntimeStatus
 	RuntimeProjectionOK bool
 	// RecoveryActions can contain a process-local projection refresh action
 	// after the durable runtime has already settled to Idle.
@@ -23,7 +22,7 @@ type WritingAgentActiveView struct {
 type InteractiveAgentActiveView struct {
 	Task                *TaskStateSnapshot
 	Info                InteractiveTaskInfo
-	Runtime             runstate.StatusSnapshot
+	Runtime             agents.RuntimeStatus
 	RuntimeProjectionOK bool
 }
 
@@ -55,7 +54,7 @@ func (a *App) WritingAgentActiveView(ctx context.Context) WritingAgentActiveView
 	if selectedSession != nil {
 		sessionID = strings.TrimSpace(selectedSession.ID)
 	}
-	var runtimeSnapshot runstate.StatusSnapshot
+	var runtimeSnapshot agents.RuntimeStatus
 	projected := false
 	if sessionID != "" && chatService != nil {
 		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), chatService, agents.RunOptions{
@@ -125,7 +124,7 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 		log.Printf("[agent-runtime-projection] resolve game binding failed workspace=%s story_id=%s branch_id=%s err=%v", workspace, storyID, projectionBranch, err)
 		resolved = ""
 	}
-	var runtimeSnapshot runstate.StatusSnapshot
+	var runtimeSnapshot agents.RuntimeStatus
 	projected := false
 	if resolved != "" && chatService != nil {
 		runtimeSnapshot, projected = projectAgentRuntime(operation.Context(), chatService, agents.RunOptions{
@@ -153,12 +152,12 @@ func (a *App) InteractiveAgentActiveView(ctx context.Context, storyID, branchID 
 
 // Projection-only methods remain useful to non-active callers while sharing
 // the same immutable view construction as the HTTP active endpoints.
-func (a *App) WritingAgentRuntimeProjection(ctx context.Context) (runstate.StatusSnapshot, bool) {
+func (a *App) WritingAgentRuntimeProjection(ctx context.Context) (agents.RuntimeStatus, bool) {
 	view := a.WritingAgentActiveView(ctx)
 	return view.Runtime, view.RuntimeProjectionOK
 }
 
-func (a *App) InteractiveAgentRuntimeProjection(ctx context.Context, storyID, branchID string) (runstate.StatusSnapshot, bool) {
+func (a *App) InteractiveAgentRuntimeProjection(ctx context.Context, storyID, branchID string) (agents.RuntimeStatus, bool) {
 	view := a.InteractiveAgentActiveView(ctx, storyID, branchID)
 	return view.Runtime, view.RuntimeProjectionOK
 }
@@ -203,7 +202,7 @@ func resolveInteractiveProjectionBranch(store *interactive.Store, storyID, reque
 	return "", errors.New("interactive story has no current branch")
 }
 
-func projectAgentRuntime(ctx context.Context, chatService *agents.ChatService, options agents.RunOptions) (runstate.StatusSnapshot, bool) {
+func projectAgentRuntime(ctx context.Context, chatService *agents.ChatService, options agents.RunOptions) (agents.RuntimeStatus, bool) {
 	snapshot, err := chatService.RuntimeRecoveryStatusProjection(ctx, options)
 	if err == nil {
 		return snapshot, true
@@ -211,5 +210,5 @@ func projectAgentRuntime(ctx context.Context, chatService *agents.ChatService, o
 	if !errors.Is(err, agents.ErrRuntimeProjectionUnavailable) {
 		log.Printf("[agent-runtime-projection] projection unavailable kind=%s workspace=%s session_id=%s story_id=%s branch_id=%s err=%v", options.AgentKind, options.Workspace, options.SessionID, options.StoryID, options.BranchID, err)
 	}
-	return runstate.StatusSnapshot{}, false
+	return agents.RuntimeStatus{}, false
 }

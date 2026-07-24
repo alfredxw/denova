@@ -127,7 +127,7 @@ func TestChatHarnessStartReturnsDurableAcceptanceBeforeWait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if projection.ActiveOperation != accepted.Receipt().OperationID || projection.Phase != runstate.PhaseRunning {
+	if projection.ActiveOperation != accepted.Receipt().OperationID || projection.Phase != RunPhaseRunning {
 		t.Fatalf("runtime projection was not active after acceptance: %#v receipt=%#v", projection, accepted.Receipt())
 	}
 
@@ -155,7 +155,7 @@ type postSettlementHarnessConversation struct {
 
 func (c *postSettlementHarnessConversation) PostSettlementContextStructuralSpec(
 	_ context.Context,
-	settledOperationID runstate.OperationID,
+	settledOperationID OperationID,
 	options RunOptions,
 ) (*ContextStructuralSpec, error) {
 	c.calls++
@@ -177,9 +177,13 @@ func (c *postSettlementHarnessConversation) PostSettlementContextStructuralSpec(
 	if err != nil {
 		return nil, err
 	}
+	productBinding, err := ParseRuntimeBinding(bindingRef)
+	if err != nil {
+		return nil, err
+	}
 	hash, err := ContextStructuralIntentHash(
 		ContextStructuralCompact,
-		bindingRef,
+		productBinding,
 		"test-revision:1",
 		recordID,
 		mutation,
@@ -204,7 +208,7 @@ func (c *postSettlementHarnessConversation) PostSettlementContextStructuralSpec(
 	return &ContextStructuralSpec{
 		CommandID: "post-settlement-" + string(settledOperationID),
 		Action:    ContextStructuralCompact,
-		Ref: runstate.ContextCompactionRef{
+		Ref: ContextCompactionRef{
 			Source: "test.history", Purpose: "verify post-settlement ordering", Resource: options.SessionID,
 			ExpectedRevision: "test-revision:1",
 		},

@@ -18,8 +18,7 @@ func TestDefaultChatServiceUsesDurableMemoryHarness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	productBinding, parseErr := ParseRuntimeBinding(snapshot.Binding)
-	if parseErr != nil || productBinding.AgentKind != AgentKindIDE || snapshot.Phase != runstate.PhaseIdle {
+	if snapshot.Binding.AgentKind != AgentKindIDE || snapshot.Phase != RunPhaseIdle {
 		t.Fatalf("default durable projection = %#v", snapshot)
 	}
 }
@@ -57,11 +56,10 @@ func TestRuntimeStatusProjectionDerivesProfileBindings(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := mustRuntimeBinding(test.want)
-			if !snapshot.Binding.Equal(want) {
-				t.Fatalf("binding = %#v, want %#v", snapshot.Binding, want)
+			if snapshot.Binding != test.want {
+				t.Fatalf("binding = %#v, want %#v", snapshot.Binding, test.want)
 			}
-			if snapshot.Cursor != 0 || snapshot.Phase != runstate.PhaseIdle {
+			if snapshot.Cursor != 0 || snapshot.Phase != RunPhaseIdle {
 				t.Fatalf("new projection = %#v, want cursor=0 phase=idle", snapshot)
 			}
 		})

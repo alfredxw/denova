@@ -614,7 +614,8 @@ func TestToolOrchestratorTruncatesStreamResultWhenLimitConfigured(t *testing.T) 
 }
 
 func TestFilesystemToolsKeepStableSchemaAcrossSettings(t *testing.T) {
-	tools, err := filesystemToolsFactory(t.TempDir())(config.ResolvedAgentToolSettings{
+	workspace := t.TempDir()
+	tools, err := newToolCatalog(&config.Config{Workspace: workspace}).Filesystem(config.ResolvedAgentToolSettings{
 		FileRead:     true,
 		FileWrite:    false,
 		ShellExecute: false,

@@ -19,7 +19,7 @@ import (
 type PostSettlementContextStructuralProvider interface {
 	PostSettlementContextStructuralSpec(
 		context.Context,
-		runstate.OperationID,
+		OperationID,
 		RunOptions,
 	) (*ContextStructuralSpec, error)
 }
@@ -42,7 +42,7 @@ func (c *SessionConversation) stagePreparedSessionCompaction(prepared preparedSe
 
 func (c *SessionConversation) PostSettlementContextStructuralSpec(
 	ctx context.Context,
-	settledOperationID runstate.OperationID,
+	settledOperationID OperationID,
 	options RunOptions,
 ) (*ContextStructuralSpec, error) {
 	if c == nil || c.session == nil {
@@ -91,7 +91,11 @@ func (c *SessionConversation) PostSettlementContextStructuralSpec(
 	if err != nil {
 		return nil, fmt.Errorf("encode post-settlement Session compaction mutation: %w", err)
 	}
-	intentHash, err := ContextStructuralIntentHash(ContextStructuralCompact, bindingRef, ref.ExpectedRevision, recordID, mutation)
+	productBinding, err := ParseRuntimeBinding(bindingRef)
+	if err != nil {
+		return nil, err
+	}
+	intentHash, err := ContextStructuralIntentHash(ContextStructuralCompact, productBinding, ref.ExpectedRevision, recordID, mutation)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +111,7 @@ func (c *SessionConversation) PostSettlementContextStructuralSpec(
 	}
 	return &ContextStructuralSpec{
 		CommandID: commandID, Action: ContextStructuralCompact,
-		Ref: ref, Options: options, Operation: operation, RestorePlan: &plan,
+		Ref: contextCompactionRefFromRuntime(ref), Options: options, Operation: operation, RestorePlan: &plan,
 	}, nil
 }
 

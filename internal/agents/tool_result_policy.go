@@ -12,6 +12,7 @@ import (
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
+	producttools "denova/internal/agents/tools"
 )
 
 type ToolSource = agenttools.Source
@@ -101,7 +102,7 @@ func filterToolResultForModelWithDescriptor(toolName string, descriptor agenttoo
 
 func filterToolResultForModelWithManifest(manifest ToolManifest, args, content string, maxBytes int) FilteredToolResult {
 	manifest.MaxResultBytes = normalizeToolResultLimitBytes(maxBytes)
-	content = workspaceChangeToolResultForModel(manifest.Name, content)
+	content = producttools.WorkspaceChangeResultForModel(manifest.Name, content)
 	body, truncated := truncateUTF8Bytes(content, normalizedToolResultLimit(manifest))
 	return filteredToolResultFromBody(manifest, args, body, len(content), truncated)
 }

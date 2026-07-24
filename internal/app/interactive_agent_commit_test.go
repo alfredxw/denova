@@ -8,7 +8,6 @@ import (
 
 	agents "denova/internal/agents"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 var interactiveAgentTestCycle atomic.Uint64
@@ -21,8 +20,8 @@ func commitInteractiveAssistantForTest(t testing.TB, conversation *interactiveCo
 	cycle := interactiveAgentTestCycle.Add(1)
 	identity := fmt.Sprintf("test-cycle:%d", cycle)
 	conversation.BindAgentCycleIdentity(agents.HarnessCycleIdentity{
-		CommandID:   runstate.CommandID(identity),
-		OperationID: runstate.OperationID(identity),
+		CommandID:   agents.CommandID(identity),
+		OperationID: agents.OperationID(identity),
 		Cycle:       1,
 	})
 	materializeInteractiveInputForTest(t, conversation, conversation.agentCycleIdentitySnapshot())

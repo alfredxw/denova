@@ -14,7 +14,7 @@ import (
 
 func TestFilesystemToolsFactoryBuildsStableNativeSurfaceWithoutReadOnlyMutationStore(t *testing.T) {
 	workspace := t.TempDir()
-	tools, err := filesystemToolsFactory(workspace)(config.ResolvedAgentToolSettings{FileRead: true})
+	tools, err := newToolCatalog(&config.Config{Workspace: workspace}).Filesystem(config.ResolvedAgentToolSettings{FileRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}

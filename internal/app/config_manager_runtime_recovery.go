@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	agents "denova/internal/agents"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // ConfigManagerAgentActiveView binds a reconnectable display Task and the
@@ -17,7 +16,7 @@ type ConfigManagerAgentActiveView struct {
 	Task                *TaskStateSnapshot
 	CommandID           string
 	StreamAttached      bool
-	Runtime             runstate.StatusSnapshot
+	Runtime             agents.RuntimeStatus
 	RuntimeProjectionOK bool
 }
 
@@ -142,22 +141,22 @@ func (s *ConfigManagerAppService) displayTask(ctx context.Context, req ConfigMan
 // state that needs canonical reconciliation before it can expose recovery
 // identities.
 type configManagerRuntimeProjector interface {
-	RuntimeStatusProjection(context.Context, agents.RunOptions) (runstate.StatusSnapshot, error)
-	RuntimeRecoveryStatusProjection(context.Context, agents.RunOptions) (runstate.StatusSnapshot, error)
+	RuntimeStatusProjection(context.Context, agents.RunOptions) (agents.RuntimeStatus, error)
+	RuntimeRecoveryStatusProjection(context.Context, agents.RunOptions) (agents.RuntimeStatus, error)
 }
 
 func projectConfigManagerRuntime(
 	ctx context.Context,
 	projector configManagerRuntimeProjector,
 	options agents.RunOptions,
-) (runstate.StatusSnapshot, bool) {
+) (agents.RuntimeStatus, bool) {
 	if projector == nil {
-		return runstate.StatusSnapshot{}, false
+		return agents.RuntimeStatus{}, false
 	}
 	snapshot, err := projector.RuntimeStatusProjection(ctx, options)
 	if err != nil {
 		logConfigManagerProjectionError(options, err)
-		return runstate.StatusSnapshot{}, false
+		return agents.RuntimeStatus{}, false
 	}
 	if !snapshot.RecoveryPending {
 		return snapshot, true
@@ -165,7 +164,7 @@ func projectConfigManagerRuntime(
 	snapshot, err = projector.RuntimeRecoveryStatusProjection(ctx, options)
 	if err != nil {
 		logConfigManagerProjectionError(options, err)
-		return runstate.StatusSnapshot{}, false
+		return agents.RuntimeStatus{}, false
 	}
 	return snapshot, true
 }
@@ -204,7 +203,7 @@ func selectConfigManagerDisplayRecord(
 	return configManagerTaskRecord{Task: recovery.task}, true
 }
 
-func configManagerDisplayOwnsRuntime(record configManagerTaskRecord, runtime runstate.StatusSnapshot) bool {
+func configManagerDisplayOwnsRuntime(record configManagerTaskRecord, runtime agents.RuntimeStatus) bool {
 	if record.Task == nil || record.Task.Finished() {
 		return false
 	}
@@ -221,13 +220,13 @@ func configManagerDisplayOwnsRuntime(record configManagerTaskRecord, runtime run
 	if runtime.InputRecovery != nil && string(runtime.InputRecovery.CommandID) == commandID {
 		return true
 	}
-	if runtime.Phase == runstate.PhaseIdle && runtime.LastOperation != nil && string(runtime.LastOperation.CommandID) == commandID {
+	if runtime.Phase == agents.RunPhaseIdle && runtime.LastOperation != nil && string(runtime.LastOperation.CommandID) == commandID {
 		return true
 	}
 	return false
 }
 
-func configManagerRuntimeCommandID(runtime runstate.StatusSnapshot) string {
+func configManagerRuntimeCommandID(runtime agents.RuntimeStatus) string {
 	if runtime.ActiveCommandID != "" {
 		return string(runtime.ActiveCommandID)
 	}
@@ -291,11 +290,9 @@ func (s *ConfigManagerAppService) ClearContext(ctx context.Context, req ConfigMa
 			return err
 		}
 	}
-	selector, err := agents.RuntimeSessionBindingSelector(agents.AgentKindConfigManager, workspace, sessionID)
-	if err != nil {
-		return err
-	}
-	if err := closeRuntimeBinding(operation.Context(), chatService, selector); err != nil {
+	if err := closeAgentBindings(chatService, func(chat *agents.ChatService) error {
+		return chat.CloseSessionBindings(operation.Context(), agents.AgentKindConfigManager, workspace, sessionID)
+	}); err != nil {
 		return err
 	}
 	sess, err := store.GetOrCreate(sessionID)
@@ -374,7 +371,7 @@ func (s *ConfigManagerAppService) RecoverAgentRuntime(
 	structural, isStructural := recoveryStructuralAction(request.Action.Kind)
 	run := &configManagerRecoveryRun{
 		workspace: workspace, sessionID: sessionID, recovery: recovery,
-		recoveryActions: make(map[string]runstate.Receipt),
+		recoveryActions: make(map[string]agents.CommandReceipt),
 	}
 	task, err := NewDeferredRegisteredTask(func(task *Task) error {
 		a.mu.Lock()
@@ -396,7 +393,7 @@ func (s *ConfigManagerAppService) RecoverAgentRuntime(
 	}
 
 	key := recoveryActionKey(request.Action)
-	var receipt runstate.Receipt
+	var receipt agents.CommandReceipt
 	if !isStructural {
 		receipt, err = recovery.Resume(operation.Context(), request.Action, task.ID(), task.emit)
 		if err != nil {
@@ -405,7 +402,7 @@ func (s *ConfigManagerAppService) RecoverAgentRuntime(
 			return AgentRuntimeRecoveryResult{}, err
 		}
 	} else {
-		receipt = runstate.Receipt{
+		receipt = agents.CommandReceipt{
 			CommandID: request.Action.CommandID, OperationID: request.Action.OperationID,
 			Cursor: recovery.InitialStatus().Cursor, Replayed: true,
 		}

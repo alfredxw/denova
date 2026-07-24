@@ -12,7 +12,6 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/book"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestRecoveredStructuralSessionRefreshRemainsRetryableAfterTerminal(t *testing.T) {
@@ -69,7 +68,7 @@ func TestRecoveredStructuralSessionRefreshRemainsRetryableAfterTerminal(t *testi
 
 	// The production path returns the exact durable structural receipt after
 	// the retry rather than resubmitting a terminal runtime command.
-	run := &writingTaskRun{recoveryActions: map[string]runstate.Receipt{
+	run := &writingTaskRun{recoveryActions: map[string]agents.CommandReceipt{
 		recoveryActionKey(action): {CommandID: action.CommandID, OperationID: action.OperationID, Replayed: true},
 	}}
 	receipt := run.recoveryActions[recoveryActionKey(action)]
@@ -121,7 +120,7 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 		t.Fatal(err)
 	}
 	initial := recovery.InitialStatus()
-	if initial.Phase != runstate.PhaseIdle || initial.LastOperation == nil {
+	if initial.Phase != agents.RunPhaseIdle || initial.LastOperation == nil {
 		recovery.Close()
 		t.Fatalf("seeded runtime status = %#v", initial)
 	}
@@ -164,7 +163,7 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 				chatService: chat, workspace: selectedWorkspace,
 			},
 			recovery:             recovery,
-			recoveryActions:      map[string]runstate.Receipt{recoveryActionKey(action): {CommandID: action.CommandID, OperationID: action.OperationID, Cursor: initial.Cursor, Replayed: true}},
+			recoveryActions:      map[string]agents.CommandReceipt{recoveryActionKey(action): {CommandID: action.CommandID, OperationID: action.OperationID, Cursor: initial.Cursor, Replayed: true}},
 			recoveryRefreshReady: make(chan struct{}),
 		}
 		application.activeTask = task

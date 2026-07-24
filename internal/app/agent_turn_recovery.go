@@ -17,10 +17,7 @@ func (a *App) restoreHarnessTurn(_ context.Context, request agents.HarnessTurnRe
 	if a == nil {
 		return agents.HarnessTurnSpec{}, agents.ErrHarnessTurnRestoreUnavailable
 	}
-	binding, err := agents.ParseRuntimeBinding(request.Binding)
-	if err != nil {
-		return agents.HarnessTurnSpec{}, fmt.Errorf("%w: %v", agents.ErrHarnessTurnRestoreUnavailable, err)
-	}
+	binding := request.Binding
 	switch binding.AgentKind {
 	case agents.AgentKindIDE:
 		return a.restoreWritingHarnessTurn(request, binding), nil

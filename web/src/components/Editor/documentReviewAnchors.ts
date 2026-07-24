@@ -199,7 +199,15 @@ function canonicalRangeMatchesEditor(
   const markedDocument = editor.schema.nodeFromJSON(markdown.parse(markedCanonical))
   const startPosition = textPosition(markedDocument, startMarker)
   const endPosition = textPosition(markedDocument, endMarker)
-  return startPosition === range.from && endPosition === range.to + startMarker.length
+  if (startPosition === range.from && endPosition === range.to + startMarker.length) return true
+  // 选区落在文档边界（例如全选正文）时，标记会被 Markdown 序列化成独立段落，
+  // 导致重解析后的位置整体偏移。此时退化为校验标记之间的正文是否与选区一致：
+  // 剥离 Markdown 块级标记并归一空白后，两侧正文吻合即可认为锚点映射安全。
+  if (startPosition < 0 || endPosition < 0) return false
+  const contentStart = startPosition + startMarker.length
+  if (endPosition <= contentStart) return false
+  const markerSpan = markedDocument.textBetween(contentStart, endPosition, '\n')
+  return normalizeReviewText(markerSpan) === normalizeReviewText(range.displayQuote)
 }
 
 function textPosition(document: ProseMirrorNode, text: string): number {
@@ -210,6 +218,16 @@ function textPosition(document: ProseMirrorNode, text: string): number {
     if (offset >= 0) result = position + offset
   })
   return result
+}
+
+/** Strips Markdown block markers and normalizes whitespace for text-content comparison. */
+function normalizeReviewText(value: string): string {
+  return value
+    .split('\n')
+    .map((line) => line.replace(/^\s{0,3}(#{1,6}\s+|[*+\-]\s+|\d+[.)]\s+|>\s?)/, ''))
+    .join('\n')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 /** Places a comment after its text block while keeping block widgets out of inline DOM. */

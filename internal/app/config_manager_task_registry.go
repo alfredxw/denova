@@ -8,7 +8,6 @@ import (
 
 	agents "denova/internal/agents"
 	"denova/internal/book"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // replayDurableStart rebuilds only the reconnectable display Task. The
@@ -68,7 +67,7 @@ func (s *ConfigManagerAppService) replayDurableStart(
 	if err != nil {
 		startReservation.rollback()
 		rollbackConfigManagerReplayTask(a, task, err)
-		if errors.Is(err, runstate.ErrInvalidCommand) {
+		if errors.Is(err, agents.ErrInvalidCommand) {
 			return nil, true, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, chatReq.CommandID)
 		}
 		return nil, true, err

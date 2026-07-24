@@ -1,7 +1,6 @@
 package agents
 
 import (
-	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -9,17 +8,17 @@ import (
 )
 
 func TestRuntimeRecoveryActionsExposeOnlySafeOrderedIdentity(t *testing.T) {
-	snapshot := runstate.StatusSnapshot{
-		Phase:           runstate.PhaseRunning,
+	snapshot := RuntimeStatus{
+		Phase:           RunPhaseRunning,
 		RecoveryPaused:  true,
 		ActiveCommandID: "start",
 		ActiveOperation: "operation-parent",
-		Queue: []runstate.QueuedInput{
+		Queue: []QueuedCommand{
 			{
-				CommandID: "follow", OperationID: "operation-parent", Delivery: runstate.DeliveryFollowUp,
-				Input: runstate.UserInput{Text: "secret", RestoreDescriptor: json.RawMessage(`{"secret":true}`)},
+				CommandID: "follow", OperationID: "operation-parent", Delivery: DeliveryFollowUp,
+				Message: "secret",
 			},
-			{CommandID: "next", OperationID: "operation-next", Delivery: runstate.DeliveryNextTurn},
+			{CommandID: "next", OperationID: "operation-next", Delivery: DeliveryNextTurn},
 		},
 	}
 	actions := RuntimeRecoveryActions(snapshot)
@@ -39,20 +38,20 @@ func TestRuntimeRecoveryActionsExposeOnlySafeOrderedIdentity(t *testing.T) {
 func TestRuntimeRecoveryActionsStrictMatrix(t *testing.T) {
 	tests := []struct {
 		name     string
-		snapshot runstate.StatusSnapshot
+		snapshot RuntimeStatus
 		want     []RuntimeRecoveryAction
 	}{
 		{
 			name: "paused running chooses steer over earlier queue entries",
-			snapshot: runstate.StatusSnapshot{
-				Phase:           runstate.PhaseRunning,
+			snapshot: RuntimeStatus{
+				Phase:           RunPhaseRunning,
 				RecoveryPaused:  true,
 				ActiveCommandID: "start",
 				ActiveOperation: "parent",
-				Queue: []runstate.QueuedInput{
-					{CommandID: "next", OperationID: "next-operation", Delivery: runstate.DeliveryNextTurn},
-					{CommandID: "follow", OperationID: "parent", Delivery: runstate.DeliveryFollowUp},
-					{CommandID: "steer", OperationID: "parent", Delivery: runstate.DeliverySteer},
+				Queue: []QueuedCommand{
+					{CommandID: "next", OperationID: "next-operation", Delivery: DeliveryNextTurn},
+					{CommandID: "follow", OperationID: "parent", Delivery: DeliveryFollowUp},
+					{CommandID: "steer", OperationID: "parent", Delivery: DeliverySteer},
 				},
 			},
 			want: []RuntimeRecoveryAction{
@@ -63,17 +62,17 @@ func TestRuntimeRecoveryActionsStrictMatrix(t *testing.T) {
 		},
 		{
 			name: "input materialization recovery hides later queue",
-			snapshot: runstate.StatusSnapshot{
-				Phase:           runstate.PhaseRunning,
+			snapshot: RuntimeStatus{
+				Phase:           RunPhaseRunning,
 				RecoveryPaused:  true,
 				ActiveCommandID: "start",
 				ActiveOperation: "parent",
-				InputRecovery: &runstate.InputMaterializationRecovery{
-					CommandID: "recover-follow", OperationID: "parent", Delivery: runstate.DeliveryFollowUp,
+				InputRecovery: &InputRecovery{
+					CommandID: "recover-follow", OperationID: "parent", Delivery: DeliveryFollowUp,
 				},
-				Queue: []runstate.QueuedInput{
-					{CommandID: "later-steer", OperationID: "parent", Delivery: runstate.DeliverySteer},
-					{CommandID: "later-next", OperationID: "next-operation", Delivery: runstate.DeliveryNextTurn},
+				Queue: []QueuedCommand{
+					{CommandID: "later-steer", OperationID: "parent", Delivery: DeliverySteer},
+					{CommandID: "later-next", OperationID: "next-operation", Delivery: DeliveryNextTurn},
 				},
 			},
 			want: []RuntimeRecoveryAction{
@@ -84,15 +83,15 @@ func TestRuntimeRecoveryActionsStrictMatrix(t *testing.T) {
 		},
 		{
 			name: "paused compacting exposes structural and abort only",
-			snapshot: runstate.StatusSnapshot{
-				Phase:           runstate.PhaseCompacting,
+			snapshot: RuntimeStatus{
+				Phase:           RunPhaseCompacting,
 				RecoveryPaused:  true,
 				ActiveOperation: "compact-operation",
-				ActiveStructural: &runstate.StructuralOperationSnapshot{
-					CommandID: "compact", OperationID: "compact-operation", Kind: runstate.StructuralCompactContext,
+				ActiveStructural: &StructuralOperation{
+					CommandID: "compact", OperationID: "compact-operation", Kind: StructuralCompactContext,
 				},
-				Queue: []runstate.QueuedInput{
-					{CommandID: "queued-next", OperationID: "next-operation", Delivery: runstate.DeliveryNextTurn},
+				Queue: []QueuedCommand{
+					{CommandID: "queued-next", OperationID: "next-operation", Delivery: DeliveryNextTurn},
 				},
 			},
 			want: []RuntimeRecoveryAction{
@@ -102,12 +101,12 @@ func TestRuntimeRecoveryActionsStrictMatrix(t *testing.T) {
 		},
 		{
 			name: "idle exposes only first queued next turn",
-			snapshot: runstate.StatusSnapshot{
-				Phase: runstate.PhaseIdle,
-				Queue: []runstate.QueuedInput{
-					{CommandID: "orphan-follow", OperationID: "old-operation", Delivery: runstate.DeliveryFollowUp},
-					{CommandID: "next-first", OperationID: "next-operation-1", Delivery: runstate.DeliveryNextTurn},
-					{CommandID: "next-second", OperationID: "next-operation-2", Delivery: runstate.DeliveryNextTurn},
+			snapshot: RuntimeStatus{
+				Phase: RunPhaseIdle,
+				Queue: []QueuedCommand{
+					{CommandID: "orphan-follow", OperationID: "old-operation", Delivery: DeliveryFollowUp},
+					{CommandID: "next-first", OperationID: "next-operation-1", Delivery: DeliveryNextTurn},
+					{CommandID: "next-second", OperationID: "next-operation-2", Delivery: DeliveryNextTurn},
 				},
 			},
 			want: []RuntimeRecoveryAction{
@@ -116,22 +115,22 @@ func TestRuntimeRecoveryActionsStrictMatrix(t *testing.T) {
 		},
 		{
 			name: "idle terminal has no recovery action",
-			snapshot: runstate.StatusSnapshot{
-				Phase: runstate.PhaseIdle,
-				LastOperation: &runstate.OperationSummary{
-					CommandID: "done", OperationID: "done-operation", Status: runstate.OperationSucceeded,
+			snapshot: RuntimeStatus{
+				Phase: RunPhaseIdle,
+				LastOperation: &OperationSummary{
+					CommandID: "done", OperationID: "done-operation", Status: OperationSucceeded,
 				},
 			},
 			want: []RuntimeRecoveryAction{},
 		},
 		{
 			name: "ordinary live running has no recovery action",
-			snapshot: runstate.StatusSnapshot{
-				Phase:           runstate.PhaseRunning,
+			snapshot: RuntimeStatus{
+				Phase:           RunPhaseRunning,
 				ActiveCommandID: "start",
 				ActiveOperation: "live-operation",
-				Queue: []runstate.QueuedInput{
-					{CommandID: "queued-next", OperationID: "next-operation", Delivery: runstate.DeliveryNextTurn},
+				Queue: []QueuedCommand{
+					{CommandID: "queued-next", OperationID: "next-operation", Delivery: DeliveryNextTurn},
 				},
 			},
 			want: []RuntimeRecoveryAction{},

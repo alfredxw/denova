@@ -12,7 +12,6 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/automation"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func (a *App) ContinueAutomationRun(ctx context.Context, runID, commandID, message string) (*Task, automation.RunRecord, error) {
@@ -149,7 +148,7 @@ func (s *AutomationAppService) continueRunWithSnapshot(ctx context.Context, snap
 		task.failBeforeStart(err)
 		s.app.unregisterWorkspaceTask(task)
 		s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
-		if errors.Is(err, runstate.ErrInvalidCommand) {
+		if errors.Is(err, agents.ErrInvalidCommand) {
 			return nil, automation.RunRecord{}, fmt.Errorf("%w: command_id=%q", ErrAgentCommandConflict, identity.commandID)
 		}
 		return nil, automation.RunRecord{}, err
@@ -623,7 +622,7 @@ func (s *AutomationAppService) startAutomationFollowUp(ctx context.Context, snap
 	}
 	accepted, err := chatService.StartWithOptions(ctx, runner, conversation, bookService, request, options, emit)
 	if err != nil {
-		if errors.Is(err, runstate.ErrInvalidCommand) {
+		if errors.Is(err, agents.ErrInvalidCommand) {
 			// A semantic command conflict proves this successor was not accepted.
 			// Clear its write-ahead intent so startup recovery cannot mistake an
 			// older command with the same ID for this follow-up.

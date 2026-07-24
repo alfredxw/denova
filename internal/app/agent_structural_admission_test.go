@@ -9,7 +9,6 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestWritingDrainRetriesPendingRecoveryRefreshBeforeSessionSwitch(t *testing.T) {
@@ -45,7 +44,7 @@ func TestWritingDrainRetriesPendingRecoveryRefreshBeforeSessionSwitch(t *testing
 	run := &writingTaskRun{task: task, runtime: ideChatRuntime{workspace: "/book", sess: selected}}
 	action := agents.RuntimeRecoveryAction{
 		Kind: agents.RuntimeRecoveryCompactContext, CommandID: "refresh-before-switch",
-		OperationID: runstate.OperationID("operation-refresh-before-switch"),
+		OperationID: agents.OperationID("operation-refresh-before-switch"),
 	}
 	application := &App{
 		workspace: "/book", workspaceGeneration: 1, sessionStore: store,

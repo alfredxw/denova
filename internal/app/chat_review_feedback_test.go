@@ -343,7 +343,7 @@ func TestCommittedReviewFeedbackPersistsWithUserMessageAndDisappearsAfterReload(
 	}
 	identity := agents.HarnessCycleIdentity{CommandID: "review-feedback-commit", OperationID: "review-feedback-operation", Cycle: 1}
 	plan, err := application.PlanHarnessInputMaterialization(context.Background(), agents.HarnessInputMaterializationRequest{
-		Binding:  writingRuntimeBindingForTest(workspace, sess.ID),
+		Binding:  agents.RuntimeBinding{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sess.ID},
 		Identity: identity, AgentKind: agents.AgentKindIDE,
 		Message: req.Message, Request: acceptedRequest,
 	})

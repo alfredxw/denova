@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	agents "denova/internal/agents"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 var ErrNoActiveAgentOperation = errors.New("no active agent operation")
@@ -14,7 +13,7 @@ var ErrNoActiveAgentOperation = errors.New("no active agent operation")
 type ChatAgentCommand struct {
 	Kind        agents.AgentCommandKind
 	CommandID   string
-	OperationID runstate.OperationID
+	OperationID agents.OperationID
 	Reason      string
 	Input       agents.ChatRequest
 }
@@ -22,15 +21,15 @@ type ChatAgentCommand struct {
 // SubmitChatAgentCommand adapts a transport command to the active writing
 // binding. Workspace/session identity is captured from App state and never
 // accepted from the client.
-func (a *App) SubmitChatAgentCommand(ctx context.Context, command ChatAgentCommand) (runstate.Receipt, error) {
+func (a *App) SubmitChatAgentCommand(ctx context.Context, command ChatAgentCommand) (agents.CommandReceipt, error) {
 	return a.chat().SubmitAgentCommand(ctx, command)
 }
 
-func (s *ChatAppService) SubmitAgentCommand(ctx context.Context, command ChatAgentCommand) (runstate.Receipt, error) {
+func (s *ChatAppService) SubmitAgentCommand(ctx context.Context, command ChatAgentCommand) (agents.CommandReceipt, error) {
 	if command.Kind == agents.AgentCommandAbort {
 		runtime, task, err := s.activeCommandRuntime()
 		if err != nil {
-			return runstate.Receipt{}, err
+			return agents.CommandReceipt{}, err
 		}
 		return runtime.chatService.SubmitCommand(ctx, agents.AgentCommandSpec{
 			Kind: command.Kind, CommandID: command.CommandID,
@@ -42,11 +41,11 @@ func (s *ChatAppService) SubmitAgentCommand(ctx context.Context, command ChatAge
 		})
 	}
 	if command.Kind != agents.AgentCommandSteer && command.Kind != agents.AgentCommandFollowUp && command.Kind != agents.AgentCommandNextTurn {
-		return runstate.Receipt{}, fmt.Errorf("%w: unsupported writing command %q", runstate.ErrInvalidCommand, command.Kind)
+		return agents.CommandReceipt{}, fmt.Errorf("%w: unsupported writing command %q", agents.ErrInvalidCommand, command.Kind)
 	}
 	activeRuntime, task, err := s.activeCommandRuntime()
 	if err != nil {
-		return runstate.Receipt{}, err
+		return agents.CommandReceipt{}, err
 	}
 	prepare := func(prepareCtx context.Context) (agents.HarnessTurnExecution, error) {
 		if err := s.confirmActiveCommandRuntime(activeRuntime, task); err != nil {

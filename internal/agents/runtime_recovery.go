@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
-
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 const maxRuntimeRecoveryActions = 16
@@ -38,8 +36,8 @@ const (
 // accepted work without carrying its private durable descriptor or user input.
 type RuntimeRecoveryAction struct {
 	Kind        RuntimeRecoveryActionKind
-	CommandID   runstate.CommandID
-	OperationID runstate.OperationID
+	CommandID   CommandID
+	OperationID OperationID
 }
 
 // RuntimeRecoveryDisplayMetadata is the small server-owned subset needed to
@@ -50,7 +48,7 @@ type RuntimeRecoveryDisplayMetadata struct {
 	RegenerateFromTurnID string
 }
 
-func RuntimeRecoveryActions(snapshot runstate.StatusSnapshot) []RuntimeRecoveryAction {
+func RuntimeRecoveryActions(snapshot RuntimeStatus) []RuntimeRecoveryAction {
 	actions := make([]RuntimeRecoveryAction, 0, 1+len(snapshot.Queue))
 	appendAction := func(action RuntimeRecoveryAction) {
 		if len(actions) >= maxRuntimeRecoveryActions || strings.TrimSpace(string(action.CommandID)) == "" || strings.TrimSpace(string(action.OperationID)) == "" {
@@ -61,10 +59,10 @@ func RuntimeRecoveryActions(snapshot runstate.StatusSnapshot) []RuntimeRecoveryA
 
 	if snapshot.RecoveryPaused {
 		switch snapshot.Phase {
-		case runstate.PhaseCompacting:
+		case RunPhaseCompacting:
 			if snapshot.ActiveStructural != nil {
 				kind := RuntimeRecoveryCompactContext
-				if snapshot.ActiveStructural.Kind == runstate.StructuralRemoveCompaction {
+				if snapshot.ActiveStructural.Kind == StructuralRemoveCompaction {
 					kind = RuntimeRecoveryRemoveCompaction
 				}
 				appendAction(RuntimeRecoveryAction{
@@ -72,7 +70,7 @@ func RuntimeRecoveryActions(snapshot runstate.StatusSnapshot) []RuntimeRecoveryA
 					OperationID: snapshot.ActiveStructural.OperationID,
 				})
 			}
-		case runstate.PhaseRunning:
+		case RunPhaseRunning:
 			appendAction(RuntimeRecoveryAction{
 				Kind: RuntimeRecoveryAttach, CommandID: snapshot.ActiveCommandID,
 				OperationID: snapshot.ActiveOperation,
@@ -85,11 +83,11 @@ func RuntimeRecoveryActions(snapshot runstate.StatusSnapshot) []RuntimeRecoveryA
 		if pending := snapshot.InputRecovery; pending != nil {
 			var kind RuntimeRecoveryActionKind
 			switch pending.Delivery {
-			case runstate.DeliverySteer:
+			case DeliverySteer:
 				kind = RuntimeRecoverySteer
-			case runstate.DeliveryFollowUp:
+			case DeliveryFollowUp:
 				kind = RuntimeRecoveryFollowUp
-			case runstate.DeliveryNextTurn:
+			case DeliveryNextTurn:
 				kind = RuntimeRecoveryNextTurn
 			}
 			appendAction(RuntimeRecoveryAction{
@@ -97,7 +95,7 @@ func RuntimeRecoveryActions(snapshot runstate.StatusSnapshot) []RuntimeRecoveryA
 			})
 			return actions
 		}
-		if snapshot.Phase == runstate.PhaseCompacting {
+		if snapshot.Phase == RunPhaseCompacting {
 			return actions
 		}
 	}
@@ -107,9 +105,9 @@ func RuntimeRecoveryActions(snapshot runstate.StatusSnapshot) []RuntimeRecoveryA
 	// Advertising ordinary live queue records would mark healthy work
 	// recoverable even though RecoverAcceptedInput must reject it.
 	if !snapshot.RecoveryPaused {
-		if snapshot.Phase == runstate.PhaseIdle {
+		if snapshot.Phase == RunPhaseIdle {
 			for _, item := range snapshot.Queue {
-				if item.Delivery == runstate.DeliveryNextTurn {
+				if item.Delivery == DeliveryNextTurn {
 					appendAction(RuntimeRecoveryAction{
 						Kind: RuntimeRecoveryNextTurn, CommandID: item.CommandID, OperationID: item.OperationID,
 					})
@@ -120,12 +118,12 @@ func RuntimeRecoveryActions(snapshot runstate.StatusSnapshot) []RuntimeRecoveryA
 		return actions
 	}
 	for _, candidate := range []struct {
-		delivery runstate.DeliveryKind
+		delivery DeliveryKind
 		kind     RuntimeRecoveryActionKind
 	}{
-		{delivery: runstate.DeliverySteer, kind: RuntimeRecoverySteer},
-		{delivery: runstate.DeliveryFollowUp, kind: RuntimeRecoveryFollowUp},
-		{delivery: runstate.DeliveryNextTurn, kind: RuntimeRecoveryNextTurn},
+		{delivery: DeliverySteer, kind: RuntimeRecoverySteer},
+		{delivery: DeliveryFollowUp, kind: RuntimeRecoveryFollowUp},
+		{delivery: DeliveryNextTurn, kind: RuntimeRecoveryNextTurn},
 	} {
 		for _, item := range snapshot.Queue {
 			if item.Delivery != candidate.delivery {
@@ -138,20 +136,24 @@ func RuntimeRecoveryActions(snapshot runstate.StatusSnapshot) []RuntimeRecoveryA
 	return actions
 }
 
-func runtimeRecoveryAbortCommandID(snapshot runstate.StatusSnapshot) runstate.CommandID {
+func runtimeRecoveryAbortCommandID(snapshot RuntimeStatus) CommandID {
 	binding, _ := json.Marshal(snapshot.Binding)
 	material := string(binding) + "\x00" + string(snapshot.ActiveOperation)
 	sum := sha256.Sum256([]byte(material))
-	return runstate.CommandID("recovery-abort-" + hex.EncodeToString(sum[:16]))
+	return CommandID("recovery-abort-" + hex.EncodeToString(sum[:16]))
 }
 
 // RuntimeRecoveryStatusProjection opens the exact binding to run canonical
 // reconciliation and expose a recovery-paused status. Opening never reruns a
 // model/tool effect; accepted work still requires the explicit recovery seam.
-func (s *ChatService) RuntimeRecoveryStatusProjection(ctx context.Context, options RunOptions) (runstate.StatusSnapshot, error) {
+func (s *ChatService) RuntimeRecoveryStatusProjection(ctx context.Context, options RunOptions) (RuntimeStatus, error) {
 	harness, _, err := s.openRecoveryHarness(ctx, options)
 	if err != nil {
-		return runstate.StatusSnapshot{}, err
+		return RuntimeStatus{}, err
 	}
-	return harness.Status(ctx)
+	status, err := harness.Status(ctx)
+	if err != nil {
+		return RuntimeStatus{}, err
+	}
+	return runtimeStatusFromSnapshot(status)
 }

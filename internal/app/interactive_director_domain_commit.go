@@ -9,7 +9,6 @@ import (
 
 	agents "denova/internal/agents"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // interactiveDirectorPlanCommit is the game-domain adapter at the durable
@@ -192,6 +191,6 @@ func interactiveDirectorCustomCycleIdentity(token interactive.DirectorPlanRunTok
 	}
 	operationID = strings.Replace(operationID, "interactive-director:", "interactive-director-operation:", 1)
 	return agents.HarnessCycleIdentity{
-		CommandID: runstate.CommandID(commandID), OperationID: runstate.OperationID(operationID), Cycle: 1,
+		CommandID: agents.CommandID(commandID), OperationID: agents.OperationID(operationID), Cycle: 1,
 	}, nil
 }

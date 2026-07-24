@@ -1327,6 +1327,42 @@ func formatLoreItemMarkdown(item LoreItem, includeContent bool) string {
 	return strings.TrimSpace(sb.String())
 }
 
+// LoreReferenceMarkdown renders one complete lore item for Agent context and
+// tool results. Keeping one renderer prevents context injection and explicit
+// lore reads from presenting different source contracts to the model.
+func LoreReferenceMarkdown(item LoreItem) string {
+	var sb strings.Builder
+	sb.WriteString("## ")
+	sb.WriteString(item.Name)
+	sb.WriteString("（")
+	sb.WriteString(item.Type)
+	sb.WriteString(" / ")
+	sb.WriteString(item.Importance)
+	sb.WriteString(" / ")
+	sb.WriteString(item.LoadMode)
+	sb.WriteString("）\n")
+	sb.WriteString("ID：")
+	sb.WriteString(item.ID)
+	sb.WriteString("\n")
+	if len(item.Tags) > 0 {
+		sb.WriteString("标签：")
+		sb.WriteString(strings.Join(item.Tags, "、"))
+		sb.WriteString("\n")
+	}
+	if item.BriefDescription != "" {
+		sb.WriteString("简介：")
+		sb.WriteString(item.BriefDescription)
+		sb.WriteString("\n")
+	}
+	content := strings.TrimSpace(item.Content)
+	if content != "" {
+		sb.WriteString("\n```markdown\n")
+		sb.WriteString(content)
+		sb.WriteString("\n```\n")
+	}
+	return strings.TrimSpace(sb.String())
+}
+
 type loreIndexEntry struct {
 	Item         LoreItem
 	MatchedTerms []string

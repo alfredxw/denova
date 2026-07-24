@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	agents "denova/internal/agents"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // AbortAutomationRunCommand durably targets one exact Automation operation.
@@ -16,43 +15,43 @@ import (
 func (a *App) AbortAutomationRunCommand(
 	ctx context.Context,
 	runID, commandID string,
-	targetOperationID runstate.OperationID,
+	targetOperationID agents.OperationID,
 	reason string,
-) (runstate.Receipt, error) {
+) (agents.CommandReceipt, error) {
 	return a.automation().AbortRunCommand(ctx, runID, commandID, targetOperationID, reason)
 }
 
 func (s *AutomationAppService) AbortRunCommand(
 	ctx context.Context,
 	runID, commandID string,
-	targetOperationID runstate.OperationID,
+	targetOperationID agents.OperationID,
 	reason string,
-) (runstate.Receipt, error) {
+) (agents.CommandReceipt, error) {
 	commandID = strings.TrimSpace(commandID)
 	runID = strings.TrimSpace(runID)
-	targetOperationID = runstate.OperationID(strings.TrimSpace(string(targetOperationID)))
+	targetOperationID = agents.OperationID(strings.TrimSpace(string(targetOperationID)))
 	if runID == "" || commandID == "" || targetOperationID == "" {
-		return runstate.Receipt{}, fmt.Errorf("%w: run_id, command_id, and target_operation_id are required", runstate.ErrInvalidCommand)
+		return agents.CommandReceipt{}, fmt.Errorf("%w: run_id, command_id, and target_operation_id are required", agents.ErrInvalidCommand)
 	}
-	if err := runstate.ValidateCommandID(commandID, runstate.DefaultInputLimits()); err != nil {
-		return runstate.Receipt{}, err
+	if err := agents.ValidateCommandID(commandID); err != nil {
+		return agents.CommandReceipt{}, err
 	}
 
 	store := s.storeAllWorkspaces()
 	taskDef, run, err := store.GetRunByID(runID)
 	if err != nil {
-		return runstate.Receipt{}, err
+		return agents.CommandReceipt{}, err
 	}
 	if persisted := strings.TrimSpace(run.RuntimeOperationID); persisted != "" && persisted != string(targetOperationID) {
-		return runstate.Receipt{}, fmt.Errorf("%w: target=%s run=%s", runstate.ErrStaleOperation, targetOperationID, persisted)
+		return agents.CommandReceipt{}, fmt.Errorf("%w: target=%s run=%s", agents.ErrStaleOperation, targetOperationID, persisted)
 	}
 	snap, operation, err := s.acquireTargetRuntime(ctx, automationTargetForRun(taskDef, run))
 	if err != nil {
-		return runstate.Receipt{}, err
+		return agents.CommandReceipt{}, err
 	}
 	defer operation.Release()
 	if snap.chatService == nil {
-		return runstate.Receipt{}, ErrNoWorkspace
+		return agents.CommandReceipt{}, ErrNoWorkspace
 	}
 	return snap.chatService.SubmitCommand(operation.Context(), agents.AgentCommandSpec{
 		Kind:        agents.AgentCommandAbort,

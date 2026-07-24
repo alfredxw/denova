@@ -18,8 +18,8 @@ var ErrHarnessStructuralRestoreUnavailable = errors.New("agent harness structura
 // strictly decoded deterministic mutation. The host may resolve canonical
 // stores and callbacks, but must not perform model, tool, or canonical writes.
 type HarnessStructuralRestoreRequest struct {
-	Binding  runstate.BindingRef
-	Snapshot runstate.StructuralOperationSnapshot
+	Binding  RuntimeBinding
+	Snapshot StructuralOperation
 	Options  RunOptions
 	Plan     ContextStructuralRestorePlan
 }
@@ -62,7 +62,7 @@ func (e *harnessEngine) restoreStructuralOperation(
 		snapshot.Kind,
 		ref,
 	)
-	plan, err := DecodeContextStructuralRestorePlan(
+	plan, err := decodeContextStructuralRestorePlan(
 		cloneJSONRawMessage(snapshot.Ref.RestoreDescriptor),
 		snapshot.Binding,
 		snapshot.Ref.ExpectedRevision,
@@ -78,8 +78,12 @@ func (e *harnessEngine) restoreStructuralOperation(
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrHarnessStructuralRestoreUnavailable, err)
 	}
+	productSnapshot, err := structuralOperationFromRuntime(cloneContextStructuralSnapshot(snapshot))
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrHarnessStructuralRestoreUnavailable, err)
+	}
 	request := HarnessStructuralRestoreRequest{
-		Binding: snapshot.Binding, Snapshot: cloneContextStructuralSnapshot(snapshot),
+		Binding: productSnapshot.Binding, Snapshot: productSnapshot,
 		Options: options, Plan: cloneContextStructuralRestorePlan(plan),
 	}
 	restored, err := restorer(ctx, request)
@@ -93,19 +97,19 @@ func (e *harnessEngine) restoreStructuralOperation(
 	// operation code and event delivery are accepted from the callback.
 	restored.CommandID = string(snapshot.CommandID)
 	restored.Action = action
-	restored.Ref = cloneContextCompactionRef(snapshot.Ref)
+	restored.Ref = contextCompactionRefFromRuntime(cloneContextCompactionRef(snapshot.Ref))
 	restored.Options, err = contextStructuralBindingOptions(snapshot.Binding, restored.Options)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrHarnessStructuralRestoreUnavailable, err)
 	}
 	restored.RestorePlan = &plan
-	command := contextStructuralCommand(snapshot.CommandID, action, restored.Ref)
+	command := contextStructuralCommand(snapshot.CommandID, action, contextCompactionRefToRuntime(restored.Ref))
 	if command == nil {
 		return fmt.Errorf("%w: unsupported structural snapshot kind %q", ErrHarnessStructuralRestoreUnavailable, snapshot.Kind)
 	}
 	conversation := &contextStructuralConversation{action: action, operation: restored.Operation, emit: restored.Emit}
 	registration, err := e.register(ref, command, HarnessTurnSpec{
-		CommandID: snapshot.CommandID, CommandKind: AgentCommandKind(action),
+		CommandID: CommandID(snapshot.CommandID), CommandKind: AgentCommandKind(action),
 		Conversation: conversation, Options: restored.Options, Emit: restored.Emit,
 	})
 	if err != nil {
@@ -276,7 +280,7 @@ func (h *chatHarness) resumeRecoveredContextStructuralOperation(
 			expectedAction,
 		)
 	}
-	plan, err := DecodeContextStructuralRestorePlan(snapshot.Ref.RestoreDescriptor, snapshot.Binding, snapshot.Ref.ExpectedRevision)
+	plan, err := decodeContextStructuralRestorePlan(snapshot.Ref.RestoreDescriptor, snapshot.Binding, snapshot.Ref.ExpectedRevision)
 	if err != nil {
 		return ContextStructuralResult{}, false, fmt.Errorf("decode recovered structural operation: %w", err)
 	}

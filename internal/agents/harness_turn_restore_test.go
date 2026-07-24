@@ -100,12 +100,12 @@ func TestDurableChatServiceRestoresAcceptedNextTurnAcrossReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	replayed, err := harness.Submit(context.Background(), runstate.NextTurn{
-		ID: "restore-next", AfterOperationID: started.OperationID, Input: replayInput,
+		ID: "restore-next", AfterOperationID: runstate.OperationID(started.OperationID), Input: replayInput,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !replayed.Replayed || replayed.OperationID != next.OperationID {
+	if !replayed.Replayed || OperationID(replayed.OperationID) != next.OperationID {
 		t.Fatalf("exact replay receipt = %#v", replayed)
 	}
 	select {
@@ -121,12 +121,12 @@ func TestDurableChatServiceRestoresAcceptedNextTurnAcrossReopen(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	observation, err := harness.Observe(ctx, next.Cursor)
+	observation, err := harness.Observe(ctx, runstate.Cursor(next.Cursor))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for {
-		if observation.Snapshot.LastOperation != nil && observation.Snapshot.LastOperation.OperationID == next.OperationID {
+		if observation.Snapshot.LastOperation != nil && OperationID(observation.Snapshot.LastOperation.OperationID) == next.OperationID {
 			if observation.Snapshot.LastOperation.Status != runstate.OperationSucceeded {
 				t.Fatalf("restored NextTurn status = %q", observation.Snapshot.LastOperation.Status)
 			}
@@ -135,7 +135,7 @@ func TestDurableChatServiceRestoresAcceptedNextTurnAcrossReopen(t *testing.T) {
 		select {
 		case event := <-observation.Events:
 			settled, ok := event.Payload.(runstate.OperationSettledEvent)
-			if ok && settled.OperationID == next.OperationID {
+			if ok && OperationID(settled.OperationID) == next.OperationID {
 				if settled.Status != runstate.OperationSucceeded {
 					t.Fatalf("restored NextTurn status = %q", settled.Status)
 				}
@@ -191,14 +191,14 @@ func TestDecodeHarnessTurnRestoreRequestSupportsTransientQueueCommands(t *testin
 				t.Fatal(err)
 			}
 			queued := runstate.QueuedInput{
-				CommandID: runstate.CommandID(spec.CommandID), OperationID: spec.OperationID,
+				CommandID: runstate.CommandID(spec.CommandID), OperationID: runstate.OperationID(spec.OperationID),
 				Delivery: test.delivery, Input: input,
 			}
 			request, err := decodeHarnessTurnRestoreRequest(bindingRef, queued)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if request.Kind != test.kind || request.CommandID != queued.CommandID || request.OperationID != queued.OperationID || !request.Deferred {
+			if request.Kind != test.kind || request.CommandID != CommandID(queued.CommandID) || request.OperationID != OperationID(queued.OperationID) || !request.Deferred {
 				t.Fatalf("restore request = %#v", request)
 			}
 			command, err := restoredQueuedCommand(request, input)

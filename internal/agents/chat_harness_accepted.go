@@ -27,11 +27,11 @@ type AcceptedRun struct {
 }
 
 // Receipt returns the durable StartTurn acceptance receipt.
-func (r *AcceptedRun) Receipt() runstate.Receipt {
+func (r *AcceptedRun) Receipt() CommandReceipt {
 	if r == nil {
-		return runstate.Receipt{}
+		return CommandReceipt{}
 	}
-	return r.receipt
+	return commandReceiptFromRuntime(r.receipt)
 }
 
 // Wait blocks until both the adapter outcome and durable operation settlement
@@ -116,7 +116,7 @@ func (r *AcceptedRun) persistPreparedContextCompaction() {
 	if !ok || provider == nil || r.owner == nil {
 		return
 	}
-	spec, err := provider.PostSettlementContextStructuralSpec(r.owner.lifecycle, r.receipt.OperationID, r.options)
+	spec, err := provider.PostSettlementContextStructuralSpec(r.owner.lifecycle, OperationID(r.receipt.OperationID), r.options)
 	if err == nil && spec != nil {
 		spec.Emit = r.emit
 		_, err = r.owner.executeContextStructuralOperation(r.owner.lifecycle, *spec)

@@ -8,7 +8,6 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func (a *App) StartTask(ctx context.Context, req agents.ChatRequest) *Task {
@@ -37,7 +36,7 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.Chat
 	if req.CommandID == "" {
 		return nil, ErrAgentCommandIDRequired
 	}
-	if err := runstate.ValidateCommandID(req.CommandID, runstate.DefaultInputLimits()); err != nil {
+	if err := agents.ValidateCommandID(req.CommandID); err != nil {
 		return nil, err
 	}
 	req = agents.CaptureChatRequestCallerInput(req)

@@ -6,7 +6,6 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/agents/skills"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // These aliases are the deliberately shared contract values exposed by App.
@@ -19,10 +18,10 @@ type (
 	AgentChatRequest = agents.ChatRequest
 
 	AgentCommandKind = agents.AgentCommandKind
-	AgentOperationID = runstate.OperationID
-	AgentCommandID   = runstate.CommandID
+	AgentOperationID = agents.OperationID
+	AgentCommandID   = agents.CommandID
 
-	AgentRuntimeStatus             = runstate.StatusSnapshot
+	AgentRuntimeStatus             = agents.RuntimeStatus
 	AgentRuntimeRecoveryActionKind = agents.RuntimeRecoveryActionKind
 	AgentRuntimeRecoveryAction     = agents.RuntimeRecoveryAction
 
@@ -44,7 +43,7 @@ const (
 	AgentCommandNextTurn = agents.AgentCommandNextTurn
 	AgentCommandAbort    = agents.AgentCommandAbort
 
-	AgentRuntimePhaseIdle = runstate.PhaseIdle
+	AgentRuntimePhaseIdle = agents.RunPhaseIdle
 
 	AgentRuntimeRecoveryAttach           = agents.RuntimeRecoveryAttach
 	AgentRuntimeRecoveryAbort            = agents.RuntimeRecoveryAbort
@@ -61,35 +60,27 @@ const (
 var (
 	ErrAgentRecoveryRequired             = agents.ErrRecoveryRequired
 	ErrAgentRecoveryActionChanged        = agents.ErrRecoveryActionChanged
-	ErrAgentRuntimeRecoveryActionChanged = runstate.ErrRecoveryActionChanged
-	ErrInvalidAgentCommand               = runstate.ErrInvalidCommand
-	ErrInvalidAgentBinding               = runstate.ErrInvalidBinding
-	ErrStaleAgentOperation               = runstate.ErrStaleOperation
-	ErrAgentQueueConflict                = runstate.ErrQueueConflict
-	ErrAgentBusy                         = runstate.ErrBusy
-	ErrAgentDomainCommitRejected         = runstate.ErrDomainCommitRejected
+	ErrAgentRuntimeRecoveryActionChanged = agents.ErrRecoveryActionChanged
+	ErrInvalidAgentCommand               = agents.ErrInvalidCommand
+	ErrInvalidAgentBinding               = agents.ErrInvalidBinding
+	ErrStaleAgentOperation               = agents.ErrStaleOperation
+	ErrAgentQueueConflict                = agents.ErrQueueConflict
+	ErrAgentBusy                         = agents.ErrBusy
+	ErrAgentDomainCommitRejected         = agents.ErrDomainCommitRejected
 	ErrSkillRevisionConflict             = skills.ErrRevisionConflict
 )
 
 // ValidateAgentCommandID applies the exact durable command envelope used by
 // the Agent runtime without exposing runtime configuration to HTTP handlers.
 func ValidateAgentCommandID(commandID string) error {
-	return runstate.ValidateCommandID(commandID, runstate.DefaultInputLimits())
+	return agents.ValidateCommandID(commandID)
 }
 
 // ValidateAgentRecoveryIdentity validates the caller-owned identity for one
 // explicit recovery action. Kind validation remains at the transport seam so
 // unsupported wire values can be rejected before constructing the request.
 func ValidateAgentRecoveryIdentity(commandID, operationID string) error {
-	limits := runstate.DefaultInputLimits()
-	if err := runstate.ValidateCommandID(commandID, limits); err != nil {
-		return err
-	}
-	operationID = strings.TrimSpace(operationID)
-	if operationID == "" || len(operationID) > limits.MaxOperationIDBytes {
-		return runstate.ErrInvalidCommand
-	}
-	return nil
+	return agents.ValidateRecoveryIdentity(commandID, strings.TrimSpace(operationID))
 }
 
 // AgentRuntimeRecoveryActions projects only the recovery operations that are

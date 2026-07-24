@@ -113,7 +113,7 @@ func TestConfigManagerReplayCapacityRejectsBeforeRuntimeAdmission(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != runstate.PhaseIdle || status.ActiveOperation != "" || status.LastOperation != nil || len(status.Queue) != 0 {
+	if status.Phase != agents.RunPhaseIdle || status.ActiveOperation != "" || status.LastOperation != nil || len(status.Queue) != 0 {
 		t.Fatalf("Runtime was mutated before capacity admission: %#v", status)
 	}
 }

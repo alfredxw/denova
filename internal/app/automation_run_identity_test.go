@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	agents "denova/internal/agents"
 	"denova/internal/automation"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAutomationDeterministicRunIDReplaysExactPersistedRun(t *testing.T) {
@@ -228,11 +228,11 @@ func TestAutomationDeterministicRunRecoversAcceptedRuntimeBeforeRunRecord(t *tes
 		t.Fatal(err)
 	}
 	snap := &automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir}
-	service.runtimeProjector = func(_ context.Context, _ *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord) (runstate.StatusSnapshot, error) {
-		return runstate.StatusSnapshot{
-			Binding: automationRuntimeBindingForTest(workspace, run.SessionID, task.ID),
-			Cursor:  7, Phase: runstate.PhaseRunning,
-			ActiveCommandID: runstate.CommandID(automationRunAgentCommandID(run.ID)), ActiveOperation: "operation-accepted", ActiveCycle: 1,
+	service.runtimeProjector = func(_ context.Context, _ *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord) (agents.RuntimeStatus, error) {
+		return agents.RuntimeStatus{
+			Binding: agents.RuntimeBinding{AgentKind: agents.AgentKindAutomation, Workspace: workspace, SessionID: run.SessionID, TaskID: task.ID},
+			Cursor:  7, Phase: agents.RunPhaseRunning,
+			ActiveCommandID: agents.CommandID(automationRunAgentCommandID(run.ID)), ActiveOperation: "operation-accepted", ActiveCycle: 1,
 		}, nil
 	}
 	defer func() { service.runtimeProjector = nil }()
@@ -278,10 +278,10 @@ func TestAutomationAdmissionIntentRecoversAcceptedRuntimeAfterReceiptWriteGap(t 
 		t.Fatal(err)
 	}
 	service := (&App{}).automation()
-	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (runstate.StatusSnapshot, error) {
-		return runstate.StatusSnapshot{
-			Phase: runstate.PhaseRunning, Cursor: 7,
-			ActiveCommandID:          runstate.CommandID(automationRunAgentCommandID(run.ID)),
+	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (agents.RuntimeStatus, error) {
+		return agents.RuntimeStatus{
+			Phase: agents.RunPhaseRunning, Cursor: 7,
+			ActiveCommandID:          agents.CommandID(automationRunAgentCommandID(run.ID)),
 			ActiveCommandFingerprint: "accepted-fingerprint", ActiveReceiptCursor: 3,
 			ActiveOperation: "accepted-operation", ActiveCycle: 1,
 		}, nil
@@ -322,8 +322,8 @@ func TestAutomationAdmissionIntentSettlesWhenRuntimeProvesNoAcceptance(t *testin
 		t.Fatal(err)
 	}
 	service := (&App{}).automation()
-	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (runstate.StatusSnapshot, error) {
-		return runstate.StatusSnapshot{Phase: runstate.PhaseIdle}, nil
+	service.runtimeProjector = func(context.Context, *automationWorkspaceSnapshot, automation.Task, automation.RunRecord) (agents.RuntimeStatus, error) {
+		return agents.RuntimeStatus{Phase: agents.RunPhaseIdle}, nil
 	}
 	snap := &automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir}
 	reconciled, ok, err := service.reconcileAutomationRunReceipt(context.Background(), snap, taskDef, run)
@@ -368,10 +368,10 @@ func TestAutomationDeterministicRunReconcilesPersistedRunningFromJournal(t *test
 		t.Fatal(err)
 	}
 	snap := &automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir}
-	service.runtimeProjector = func(_ context.Context, _ *automationWorkspaceSnapshot, _ automation.Task, _ automation.RunRecord) (runstate.StatusSnapshot, error) {
-		return runstate.StatusSnapshot{
-			Cursor: 9, Phase: runstate.PhaseIdle,
-			LastOperation: &runstate.OperationSummary{CommandID: runstate.CommandID(automationRunAgentCommandID(running.ID)), OperationID: "operation-terminal", Status: runstate.OperationSucceeded},
+	service.runtimeProjector = func(_ context.Context, _ *automationWorkspaceSnapshot, _ automation.Task, _ automation.RunRecord) (agents.RuntimeStatus, error) {
+		return agents.RuntimeStatus{
+			Cursor: 9, Phase: agents.RunPhaseIdle,
+			LastOperation: &agents.OperationSummary{CommandID: agents.CommandID(automationRunAgentCommandID(running.ID)), OperationID: "operation-terminal", Status: agents.OperationSucceeded},
 		}, nil
 	}
 	defer func() { service.runtimeProjector = nil }()

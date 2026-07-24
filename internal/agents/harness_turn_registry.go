@@ -223,11 +223,11 @@ func (e *harnessEngine) restorePendingInput(
 func restoredQueuedCommand(request HarnessTurnRestoreRequest, input runstate.UserInput) (runstate.Command, error) {
 	switch request.Kind {
 	case AgentCommandSteer:
-		return runstate.Steer{ID: request.CommandID, OperationID: request.OperationID, Input: input}, nil
+		return runstate.Steer{ID: runstate.CommandID(request.CommandID), OperationID: runstate.OperationID(request.OperationID), Input: input}, nil
 	case AgentCommandFollowUp:
-		return runstate.FollowUp{ID: request.CommandID, OperationID: request.OperationID, Input: input}, nil
+		return runstate.FollowUp{ID: runstate.CommandID(request.CommandID), OperationID: runstate.OperationID(request.OperationID), Input: input}, nil
 	case AgentCommandNextTurn:
-		return runstate.NextTurn{ID: request.CommandID, AfterOperationID: request.AfterOperationID, Input: input}, nil
+		return runstate.NextTurn{ID: runstate.CommandID(request.CommandID), AfterOperationID: runstate.OperationID(request.AfterOperationID), Input: input}, nil
 	default:
 		return nil, fmt.Errorf("%w: queued command kind %q is not restorable", ErrHarnessTurnRestoreUnavailable, request.Kind)
 	}

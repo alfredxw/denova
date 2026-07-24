@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"denova/config"
+	agents "denova/internal/agents"
 	"denova/internal/automation"
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
@@ -86,11 +87,11 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(reopened.Close)
-	receipt, err := reopened.AbortAutomationRunCommand(context.Background(), runID, commandID, operationID, abort.Reason)
+	receipt, err := reopened.AbortAutomationRunCommand(context.Background(), runID, commandID, agents.OperationID(operationID), abort.Reason)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !receipt.Replayed || receipt.CommandID != commandID || receipt.OperationID != operationID || receipt.Cursor != 3 {
+	if !receipt.Replayed || receipt.CommandID != agents.CommandID(commandID) || receipt.OperationID != agents.OperationID(operationID) || receipt.Cursor != 3 {
 		t.Fatalf("replayed abort receipt = %#v", receipt)
 	}
 }

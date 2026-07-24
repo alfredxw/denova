@@ -200,7 +200,7 @@ func TestInterruptedInitialStartColdReplayRequiresExplicitRecoveryWithoutEngine(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != runstate.PhaseRunning || !status.RecoveryPaused || status.ActiveOperation != operationID {
+	if status.Phase != RunPhaseRunning || !status.RecoveryPaused || status.ActiveOperation != OperationID(operationID) {
 		t.Fatalf("interrupted cold projection = %#v", status)
 	}
 }

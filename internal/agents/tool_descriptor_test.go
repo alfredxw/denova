@@ -9,10 +9,11 @@ import (
 	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
+	producttools "denova/internal/agents/tools"
 )
 
 func TestToolDescriptorDeclaresExecutionAndRecoveryPolicy(t *testing.T) {
-	tool, err := newWriteTodosTool()
+	tool, err := newToolCatalog(nil).WriteTodos()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +49,7 @@ func TestUnknownToolDescriptorIsConservativeWithoutNameInference(t *testing.T) {
 }
 
 func TestToolResultMetadataIncludesRecoveryContract(t *testing.T) {
-	descriptor := workspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable)
+	descriptor := producttools.WorkspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable)
 	result := filterToolResultForModelWithDescriptor("write_file", descriptor, `{"path":"chapters/ch01.md"}`, "ok", 0)
 	for _, want := range []string{
 		"execution: workspace_exclusive",
@@ -62,23 +63,23 @@ func TestToolResultMetadataIncludesRecoveryContract(t *testing.T) {
 }
 
 func TestValidateToolDescriptorsRejectsUndeclaredTools(t *testing.T) {
-	err := validateToolDescriptors(context.Background(), []agent.BaseTool{descriptorTestTool{name: "write_custom_plugin_state"}})
+	err := producttools.Validate(context.Background(), []agent.BaseTool{descriptorTestTool{name: "write_custom_plugin_state"}})
 	if err == nil || !strings.Contains(err.Error(), "write_custom_plugin_state") {
 		t.Fatalf("expected undeclared descriptor error, got %v", err)
 	}
-	declared, bindErr := defineTool(descriptorTestTool{name: "write_file"}, workspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable))
+	declared, bindErr := producttools.Define(descriptorTestTool{name: "write_file"}, producttools.WorkspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable))
 	if bindErr != nil {
 		t.Fatal(bindErr)
 	}
-	if err := validateToolDescriptors(context.Background(), []agent.BaseTool{declared}); err != nil {
+	if err := producttools.Validate(context.Background(), []agent.BaseTool{declared}); err != nil {
 		t.Fatalf("declared tool rejected: %v", err)
 	}
 }
 
 func TestValidateToolSurfaceRejectsDuplicateNames(t *testing.T) {
-	first, _ := defineTool(descriptorTestTool{name: "read_file"}, boundedReadDescriptor(agenttools.SourceRead, config.AgentToolFileRead))
-	second, _ := defineTool(descriptorTestTool{name: "read_file"}, boundedReadDescriptor(agenttools.SourceRead, config.AgentToolFileRead))
-	if err := validateToolDescriptors(context.Background(), []agent.BaseTool{
+	first, _ := producttools.Define(descriptorTestTool{name: "read_file"}, producttools.BoundedReadDescriptor(agenttools.SourceRead, config.AgentToolFileRead))
+	second, _ := producttools.Define(descriptorTestTool{name: "read_file"}, producttools.BoundedReadDescriptor(agenttools.SourceRead, config.AgentToolFileRead))
+	if err := producttools.Validate(context.Background(), []agent.BaseTool{
 		first,
 		second,
 	}); err == nil || !strings.Contains(err.Error(), "duplicate model-visible tool") {
@@ -87,9 +88,9 @@ func TestValidateToolSurfaceRejectsDuplicateNames(t *testing.T) {
 }
 
 func TestToolDescriptorGuardValidatesDynamicallyInjectedTools(t *testing.T) {
-	guard := newToolDescriptorGuardMiddleware()
-	read, _ := defineTool(descriptorTestTool{name: "read_file"}, boundedReadDescriptor(agenttools.SourceRead, config.AgentToolFileRead))
-	skill, _ := defineTool(descriptorTestTool{name: "skill"}, boundedReadDescriptor(agenttools.SourceOther, config.AgentToolSkills))
+	guard := producttools.NewDescriptorGuardMiddleware()
+	read, _ := producttools.Define(descriptorTestTool{name: "read_file"}, producttools.BoundedReadDescriptor(agenttools.SourceRead, config.AgentToolFileRead))
+	skill, _ := producttools.Define(descriptorTestTool{name: "skill"}, producttools.BoundedReadDescriptor(agenttools.SourceOther, config.AgentToolSkills))
 	runCtx := &agent.RunContext{Tools: []agent.BaseTool{read, skill}}
 	_, guarded, err := guard.BeforeAgent(context.Background(), runCtx)
 	if err != nil || guarded != runCtx {
@@ -112,14 +113,14 @@ func testToolContext(name, callID string) *agent.ToolContext {
 	var descriptor agenttools.Descriptor
 	switch name {
 	case "read_file", "grep", "search_story_history":
-		descriptor = boundedReadDescriptor(agenttools.SourceRead, config.AgentToolFileRead)
+		descriptor = producttools.BoundedReadDescriptor(agenttools.SourceRead, config.AgentToolFileRead)
 		if name == "search_story_history" {
-			descriptor = boundedReadDescriptor(ToolSourceHistory, "")
+			descriptor = producttools.BoundedReadDescriptor(ToolSourceHistory, "")
 		}
 	case "write_file", "edit_file":
-		descriptor = workspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable)
+		descriptor = producttools.WorkspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable)
 	case "execute", "execute_shell":
-		descriptor = workspaceWriteDescriptor(agenttools.SourceShell, config.AgentToolShellExecute, agenttools.RecoveryNonIdempotent)
+		descriptor = producttools.WorkspaceWriteDescriptor(agenttools.SourceShell, config.AgentToolShellExecute, agenttools.RecoveryNonIdempotent)
 	default:
 		return &agent.ToolContext{Name: name, CallID: callID}
 	}

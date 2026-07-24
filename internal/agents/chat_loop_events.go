@@ -5,6 +5,8 @@ import (
 	"log/slog"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	producttools "denova/internal/agents/tools"
 )
 
 func (l *chatAgentLoop) handleOutput(event *agent.AgentEvent) chatLoopResult {
@@ -50,20 +52,20 @@ func (l *chatAgentLoop) handleToolOutput(messageOutput *agent.MessageVariant, ev
 		data["item_ids"] = itemIDs
 		data["deleted_ids"] = deletedIDs
 	}
-	if illustrationResult, parseErr := parseChapterIllustrationToolResult(message.ToolName, fullToolContent); parseErr != nil {
+	if illustrationResult, parseErr := producttools.ParseChapterIllustrationResult(message.ToolName, fullToolContent); parseErr != nil {
 		run.logger.Warn("parse_chapter_illustration_result_failed", slog.String("tool", message.ToolName), slog.Any("error", parseErr))
 	} else if illustrationResult != nil {
 		data["illustration"] = illustrationResult
 		data["target"] = illustrationResult.MetaPath
-	} else if interactiveImageResult, parseErr := parseInteractiveImageToolResult(message.ToolName, fullToolContent); parseErr != nil {
+	} else if interactiveImageResult, parseErr := producttools.ParseInteractiveImageResult(message.ToolName, fullToolContent); parseErr != nil {
 		run.logger.Warn("parse_interactive_image_result_failed", slog.String("tool", message.ToolName), slog.Any("error", parseErr))
 	} else if interactiveImageResult != nil {
 		data["interactive_image"] = interactiveImageResult
 		data["target"] = interactiveImageResult.MetaPath
-	} else if target := parseGeneratedImageToolTarget(message.ToolName, fullToolContent); target != "" {
+	} else if target := producttools.ParseGeneratedImageTarget(message.ToolName, fullToolContent); target != "" {
 		data["target"] = target
 	}
-	if receipt, ok := parseWorkspaceChangeToolReceipt(message.ToolName, fullToolContent); ok {
+	if receipt, ok := producttools.ParseWorkspaceChangeReceipt(message.ToolName, fullToolContent); ok {
 		data["workspace_change"] = receipt
 		workspaceChangeData := eventMeta.appendTo(map[string]interface{}{
 			"id":               receipt.ChangeSetID,

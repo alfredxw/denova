@@ -13,6 +13,7 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/internal/agents/session"
+	producttools "denova/internal/agents/tools"
 	"denova/internal/interactive"
 )
 
@@ -70,9 +71,9 @@ func TestInteractiveProtocolRetryRevalidatesCompleteProviderInput(t *testing.T) 
 func TestInteractiveTurnProtocolRecoversMissingSubmissionInsideAgentLoop(t *testing.T) {
 	ctx := context.Background()
 	var ready atomic.Bool
-	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
+	tools, err := producttools.NewInteractiveTurn(projectInteractiveToolContext(InteractiveStoryToolContext{
 		SubmitTurnResult: newProtocolSubmissionCollector(&ready),
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,9 +146,9 @@ func TestInteractiveTurnProtocolRecoversMissingSubmissionInsideAgentLoop(t *test
 func TestInteractiveTurnProtocolAccountsRejectedModelCallUsage(t *testing.T) {
 	ctx := context.Background()
 	var ready atomic.Bool
-	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
+	tools, err := producttools.NewInteractiveTurn(projectInteractiveToolContext(InteractiveStoryToolContext{
 		SubmitTurnResult: newProtocolSubmissionCollector(&ready),
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +208,7 @@ func TestInteractiveTurnProtocolRetriesRejectedModulesBeforeReusingCandidate(t *
 	var submissionMu sync.Mutex
 	patchAttempts := 0
 	choicesAccepted := false
-	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
+	tools, err := producttools.NewInteractiveTurn(projectInteractiveToolContext(InteractiveStoryToolContext{
 		SubmitTurnResult: func(_ context.Context, input interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error) {
 			submissions.Add(1)
 			submissionMu.Lock()
@@ -240,7 +241,7 @@ func TestInteractiveTurnProtocolRetriesRejectedModulesBeforeReusingCandidate(t *
 			}
 			return interactive.TurnSubmissionReceipt{Ready: settled, ModuleStatus: interactive.TurnSubmissionModuleStatus{StateChanges: patchStatus, Choices: choiceStatus}, RetryModules: retry}, nil
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +302,7 @@ func TestInteractiveTurnProtocolLocksFirstCandidateAcrossMalformedModuleAndLater
 	var mu sync.Mutex
 	patchesAccepted := false
 	choicesAccepted := false
-	tools, err := newInteractiveTurnTools(InteractiveStoryToolContext{
+	tools, err := producttools.NewInteractiveTurn(projectInteractiveToolContext(InteractiveStoryToolContext{
 		SubmitTurnResult: func(_ context.Context, input interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -336,7 +337,7 @@ func TestInteractiveTurnProtocolLocksFirstCandidateAcrossMalformedModuleAndLater
 				StateChanges: patchStatus, Choices: choiceStatus,
 			}}, nil
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}

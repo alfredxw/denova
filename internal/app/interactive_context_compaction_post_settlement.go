@@ -7,7 +7,6 @@ import (
 	"denova/config"
 	agents "denova/internal/agents"
 	"denova/internal/interactive"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 type preparedInteractiveContextCompaction struct {
@@ -27,7 +26,7 @@ func (c *interactiveConversation) stagePreparedInteractiveCompaction(prepared pr
 
 func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 	ctx context.Context,
-	settledOperationID runstate.OperationID,
+	settledOperationID agents.OperationID,
 	options agents.RunOptions,
 ) (*agents.ContextStructuralSpec, error) {
 	if c == nil || c.store == nil {
@@ -77,14 +76,11 @@ func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 	}
 	options.StoryID = c.storyID
 	options.BranchID = branchID
-	ref := runstate.ContextCompactionRef{
+	ref := agents.ContextCompactionRef{
 		Source: "story.turn_events", Purpose: "persist an automatic bounded model-history checkpoint after turn settlement",
 		Resource: c.storyID + "/" + branchID, ExpectedRevision: contextStoryRevision(expectedParent),
 	}
-	binding, err := storyContextStructuralBinding(options.Workspace, c.storyID, branchID)
-	if err != nil {
-		return nil, err
-	}
+	binding := storyContextStructuralBinding(options.Workspace, c.storyID, branchID)
 	plan, err := newContextStructuralRestorePlan(
 		agents.ContextStructuralDomainStory, agents.ContextStructuralCompact, binding, ref, recordID,
 		agents.ContextStructuralResult{Compaction: prepared.Result}, event,

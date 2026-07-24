@@ -16,7 +16,6 @@ import (
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/session"
 	"denova/internal/book"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 var modelContextTestCycle atomic.Uint64
@@ -64,8 +63,8 @@ func assembleAndCommitModelContextForTest(conversation Conversation, originalMes
 		if !validHarnessCycleIdentity(identity) || alreadyCommitted {
 			cycle := modelContextTestCycle.Add(1)
 			sessionConversation.BindAgentCycleIdentity(HarnessCycleIdentity{
-				CommandID:   runstate.CommandID(fmt.Sprintf("test-command-%d", cycle)),
-				OperationID: runstate.OperationID(fmt.Sprintf("test-operation-%d", cycle)),
+				CommandID:   CommandID(fmt.Sprintf("test-command-%d", cycle)),
+				OperationID: OperationID(fmt.Sprintf("test-operation-%d", cycle)),
 				Cycle:       1,
 			})
 		}

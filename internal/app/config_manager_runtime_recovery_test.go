@@ -12,35 +12,34 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
-	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 type configManagerProjectionProbe struct {
-	stored        runstate.StatusSnapshot
-	recovered     runstate.StatusSnapshot
+	stored        agents.RuntimeStatus
+	recovered     agents.RuntimeStatus
 	storedCalls   int
 	recoveryCalls int
 }
 
-func (p *configManagerProjectionProbe) RuntimeStatusProjection(context.Context, agents.RunOptions) (runstate.StatusSnapshot, error) {
+func (p *configManagerProjectionProbe) RuntimeStatusProjection(context.Context, agents.RunOptions) (agents.RuntimeStatus, error) {
 	p.storedCalls++
 	return p.stored, nil
 }
 
-func (p *configManagerProjectionProbe) RuntimeRecoveryStatusProjection(context.Context, agents.RunOptions) (runstate.StatusSnapshot, error) {
+func (p *configManagerProjectionProbe) RuntimeRecoveryStatusProjection(context.Context, agents.RunOptions) (agents.RuntimeStatus, error) {
 	p.recoveryCalls++
 	return p.recovered, nil
 }
 
 func TestConfigManagerIdleActiveProjectionNeverOpensRecoveryActor(t *testing.T) {
-	probe := &configManagerProjectionProbe{stored: runstate.StatusSnapshot{Phase: runstate.PhaseIdle}}
+	probe := &configManagerProjectionProbe{stored: agents.RuntimeStatus{Phase: agents.RunPhaseIdle}}
 	for index := 0; index < 256; index++ {
 		status, ok := projectConfigManagerRuntime(context.Background(), probe, agents.RunOptions{
 			AgentKind: agents.AgentKindConfigManager,
 			Workspace: "/book",
 			SessionID: fmt.Sprintf("config-scope-%d", index),
 		})
-		if !ok || status.Phase != runstate.PhaseIdle {
+		if !ok || status.Phase != agents.RunPhaseIdle {
 			t.Fatalf("idle projection %d = %#v projected=%t", index, status, ok)
 		}
 	}
@@ -51,12 +50,12 @@ func TestConfigManagerIdleActiveProjectionNeverOpensRecoveryActor(t *testing.T) 
 
 func TestConfigManagerColdUnfinishedProjectionOpensCanonicalRecovery(t *testing.T) {
 	probe := &configManagerProjectionProbe{
-		stored: runstate.StatusSnapshot{
-			Phase: runstate.PhaseIdle, RecoveryPending: true,
-			LastOperation: &runstate.OperationSummary{Status: runstate.OperationInterrupted},
+		stored: agents.RuntimeStatus{
+			Phase: agents.RunPhaseIdle, RecoveryPending: true,
+			LastOperation: &agents.OperationSummary{Status: agents.OperationInterrupted},
 		},
-		recovered: runstate.StatusSnapshot{
-			Phase: runstate.PhaseRunning, RecoveryPaused: true,
+		recovered: agents.RuntimeStatus{
+			Phase: agents.RunPhaseRunning, RecoveryPaused: true,
 			ActiveCommandID: "accepted-start", ActiveOperation: "operation-1",
 		},
 	}
@@ -100,8 +99,8 @@ func TestConfigManagerSettledOrMismatchedDisplayIsNotStreamAttached(t *testing.T
 		t.Fatal(err)
 	}
 	settled.failBeforeStart(errors.New("settled display"))
-	runtime := runstate.StatusSnapshot{
-		Phase: runstate.PhaseRunning, RecoveryPaused: true,
+	runtime := agents.RuntimeStatus{
+		Phase: agents.RunPhaseRunning, RecoveryPaused: true,
 		ActiveCommandID: "accepted-start", ActiveOperation: "operation-1",
 	}
 	if configManagerDisplayOwnsRuntime(configManagerTaskRecord{CommandID: "accepted-start", Task: settled}, runtime) {
@@ -238,7 +237,7 @@ func TestConfigManagerColdRecoveryAttachesAndAbortsSameDisplayTask(t *testing.T)
 		t.Fatal("Config Manager recovery display did not settle after abort")
 	}
 	status := application.ConfigManagerAgentActiveView(context.Background(), scope).Runtime
-	if status.Phase != runstate.PhaseIdle || status.LastOperation == nil || status.LastOperation.Status != runstate.OperationAborted {
+	if status.Phase != agents.RunPhaseIdle || status.LastOperation == nil || status.LastOperation.Status != agents.OperationAborted {
 		t.Fatalf("aborted Config Manager recovery status = %#v", status)
 	}
 
@@ -261,11 +260,11 @@ func TestConfigManagerColdRecoveryAttachesAndAbortsSameDisplayTask(t *testing.T)
 		t.Fatal("Config Manager /clear did not drain the exact display task")
 	}
 	cleared := application.ConfigManagerAgentActiveView(context.Background(), clearScope)
-	if cleared.Task != nil || cleared.StreamAttached || cleared.Runtime.Phase != runstate.PhaseIdle || cleared.Runtime.RecoveryPaused || cleared.Runtime.RecoveryPending {
+	if cleared.Task != nil || cleared.StreamAttached || cleared.Runtime.Phase != agents.RunPhaseIdle || cleared.Runtime.RecoveryPaused || cleared.Runtime.RecoveryPending {
 		t.Fatalf("Config Manager /clear left active state: %#v", cleared)
 	}
 	unchanged := application.ConfigManagerAgentActiveView(context.Background(), scope).Runtime
-	if unchanged.LastOperation == nil || unchanged.LastOperation.Status != runstate.OperationAborted {
+	if unchanged.LastOperation == nil || unchanged.LastOperation.Status != agents.OperationAborted {
 		t.Fatalf("clearing another Config Manager scope changed the recovered scope: %#v", unchanged)
 	}
 }

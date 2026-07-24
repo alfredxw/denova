@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"denova/config"
+	producttools "denova/internal/agents/tools"
 	"denova/internal/book"
 )
 
@@ -40,7 +41,7 @@ func TestFilterToolResultKeepsContentBelowHighDefaultLimit(t *testing.T) {
 	content := strings.Repeat("章节正文", 4096)
 	filtered := filterToolResultForModelWithDescriptor(
 		"write_file",
-		workspaceWriteDescriptor(ToolSourceWrite, config.AgentToolFileWrite, ToolRecoveryReconcilable),
+		producttools.WorkspaceWriteDescriptor(ToolSourceWrite, config.AgentToolFileWrite, ToolRecoveryReconcilable),
 		`{"path":"chapters/ch00001.md"}`,
 		content,
 		0,

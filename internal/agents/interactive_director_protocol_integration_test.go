@@ -8,13 +8,14 @@ import (
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
+	producttools "denova/internal/agents/tools"
 	"denova/internal/interactive"
 )
 
 func TestInteractiveDirectorPlanSubmissionTerminatesAgentRun(t *testing.T) {
 	ctx := context.Background()
 	var submissions atomic.Int32
-	tools, err := newInteractiveDirectorPlanTools(InteractiveStoryToolContext{
+	tools, err := producttools.NewInteractiveDirectorPlan(projectInteractiveToolContext(InteractiveStoryToolContext{
 		SubmitDirectorPlanUpdate: func(_ context.Context, submission interactive.DirectorPlanUpdateSubmission) (interactive.DirectorPlanUpdateReceipt, error) {
 			submissions.Add(1)
 			return interactive.DirectorPlanUpdateReceipt{
@@ -22,7 +23,7 @@ func TestInteractiveDirectorPlanSubmissionTerminatesAgentRun(t *testing.T) {
 				Decision:  submission.Decision,
 			}, nil
 		},
-	})
+	}))
 	if err != nil {
 		t.Fatal(err)
 	}
