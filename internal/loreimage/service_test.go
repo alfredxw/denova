@@ -24,7 +24,8 @@ func TestGenerateSavesLoreImageAndMetadata(t *testing.T) {
 		OutputFormat: "png",
 		Images:       []imagegen.Image{{Data: []byte("image"), Extension: "png", MIMEType: "image/png", RevisedPrompt: "revised"}},
 	}}
-	service := NewServiceWithGenerator(generator)
+	refiner := &fakeCharacterTraitsRefiner{traits: "- 外貌：黑发灰眼，身形修长\n- 性格：谨慎沉静"}
+	service := newServiceWithDependencies(generator, refiner)
 	service.now = func() time.Time { return time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC) }
 	service.suffix = func() string { return "abcd1234" }
 
@@ -35,7 +36,7 @@ func TestGenerateSavesLoreImageAndMetadata(t *testing.T) {
 			Name:             "林川",
 			Tags:             []string{"主角"},
 			BriefDescription: "角色 林川。谨慎。",
-			Content:          "## 林川\n\n谨慎而疲惫。",
+			Content:          "# 角色资料卡\n\n曾在旧城追查失踪案件。",
 		},
 		Instruction:       "夜色氛围",
 		ImagePresetID:     "game-cg",
@@ -62,6 +63,14 @@ func TestGenerateSavesLoreImageAndMetadata(t *testing.T) {
 	}
 	if !strings.Contains(generator.request.Prompt, "电影感光影") || !strings.Contains(generator.request.Prompt, "夜色氛围") || !strings.Contains(generator.request.Prompt, "林川") {
 		t.Fatalf("prompt missing expected context:\n%s", generator.request.Prompt)
+	}
+	if refiner.item.ID != "hero" || !strings.Contains(generator.request.Prompt, "黑发灰眼") || !strings.Contains(generator.request.Prompt, "谨慎沉静") {
+		t.Fatalf("character traits were not refined into image prompt:\n%s", generator.request.Prompt)
+	}
+	for _, forbidden := range []string{"角色资料卡", "旧城", "失踪案件", "主角"} {
+		if strings.Contains(generator.request.Prompt, forbidden) {
+			t.Fatalf("character prompt leaked raw lore %q:\n%s", forbidden, generator.request.Prompt)
+		}
 	}
 }
 
@@ -99,7 +108,7 @@ func TestGenerateStopsBeforeWritingWhenContextCanceledAfterModel(t *testing.T) {
 			Images:       []imagegen.Image{{Data: []byte("image"), Extension: "png", MIMEType: "image/png"}},
 		},
 	}
-	service := NewServiceWithGenerator(generator)
+	service := newServiceWithDependencies(generator, &fakeCharacterTraitsRefiner{traits: "- 外貌：黑发"})
 
 	_, err := service.Generate(ctx, &config.Config{}, book.NewService(workspace), GenerateRequest{
 		Item: book.LoreItem{
@@ -117,11 +126,89 @@ func TestGenerateStopsBeforeWritingWhenContextCanceledAfterModel(t *testing.T) {
 	}
 }
 
+func TestGenerateStopsBeforeImageModelWhenCharacterRefinementFails(t *testing.T) {
+	generator := &fakeImageGenerator{}
+	service := newServiceWithDependencies(generator, &fakeCharacterTraitsRefiner{err: errors.New("model unavailable")})
+
+	_, err := service.Generate(context.Background(), &config.Config{}, book.NewService(t.TempDir()), GenerateRequest{
+		Item: book.LoreItem{
+			ID:      "hero",
+			Type:    "character",
+			Name:    "林川",
+			Content: "角色资料卡：主角经历。",
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "提炼角色图片特点失败") {
+		t.Fatalf("Generate error = %v", err)
+	}
+	if generator.request.Prompt != "" {
+		t.Fatalf("image model should not run after refinement failure: %#v", generator.request)
+	}
+}
+
+func TestBuildPromptUsesOnlyRefinedTraitsForCharacterLore(t *testing.T) {
+	prompt := BuildPrompt(GenerateRequest{
+		Item: book.LoreItem{
+			Type:             "character",
+			Name:             "沈凝",
+			Tags:             []string{"反派"},
+			Keywords:         []string{"秘密组织"},
+			BriefDescription: "角色资料卡：组织首领。",
+			Content:          "她计划夺取王位，并与主角存在宿怨。",
+		},
+		characterTraits: "- 外貌：银色长发，蓝灰色眼睛\n- 性格：冷静克制\n角色资料卡",
+	})
+	for _, want := range []string{"资料名称：沈凝", "银色长发", "冷静克制"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("prompt missing %q:\n%s", want, prompt)
+		}
+	}
+	for _, forbidden := range []string{"角色资料卡", "组织首领", "秘密组织", "夺取王位", "主角", "反派"} {
+		if strings.Contains(prompt, forbidden) {
+			t.Fatalf("prompt contains unfiltered character lore %q:\n%s", forbidden, prompt)
+		}
+	}
+}
+
+func TestParseCharacterTraitsKeepsVisualFieldsAndRemovesCardLabel(t *testing.T) {
+	traits, err := parseCharacterTraits(`{
+		"appearance":"角色资料卡：二十岁，黑色短发，琥珀色眼睛",
+		"personality":"外冷内热，神情克制",
+		"attire_accessories":"深色风衣，银色耳钉",
+		"other_visual_traits":"站姿挺拔"
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"外貌：", "黑色短发", "性格：", "外冷内热", "服装与配饰：", "银色耳钉", "其他可视特点：", "站姿挺拔"} {
+		if !strings.Contains(traits, want) {
+			t.Fatalf("traits missing %q:\n%s", want, traits)
+		}
+	}
+	if strings.Contains(traits, "角色资料卡") {
+		t.Fatalf("traits retained forbidden label:\n%s", traits)
+	}
+}
+
 type fakeImageGenerator struct {
 	request imagegen.GenerateRequest
 	result  imagegen.Result
 	err     error
 	cancel  context.CancelFunc
+}
+
+type fakeCharacterTraitsRefiner struct {
+	item   book.LoreItem
+	traits string
+	err    error
+}
+
+func (f *fakeCharacterTraitsRefiner) Refine(_ context.Context, _ *config.Config, item book.LoreItem) (string, error) {
+	f.item = item
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.traits, nil
 }
 
 func (f *fakeImageGenerator) Generate(ctx context.Context, cfg *config.Config, request imagegen.GenerateRequest) (imagegen.Result, error) {

@@ -25,14 +25,20 @@ const (
 	maxBriefChars       = 1000
 	maxContentChars     = 4000
 	maxInstructionChars = 1000
+	maxCharacterTraits  = 2000
 )
 
 type ImageGenerator interface {
 	Generate(ctx context.Context, cfg *config.Config, request imagegen.GenerateRequest) (imagegen.Result, error)
 }
 
+type characterTraitsRefiner interface {
+	Refine(ctx context.Context, cfg *config.Config, item book.LoreItem) (string, error)
+}
+
 type Service struct {
 	generator ImageGenerator
+	refiner   characterTraitsRefiner
 	now       func() time.Time
 	suffix    func() string
 }
@@ -46,6 +52,7 @@ type GenerateRequest struct {
 	Size              string
 	Quality           string
 	OutputFormat      string
+	characterTraits   string
 }
 
 type Meta struct {
@@ -73,12 +80,17 @@ type Meta struct {
 }
 
 func NewService() *Service {
-	return NewServiceWithGenerator(imagegen.NewService())
+	return newServiceWithDependencies(imagegen.NewService(), newModelCharacterTraitsRefiner())
 }
 
 func NewServiceWithGenerator(generator ImageGenerator) *Service {
+	return newServiceWithDependencies(generator, newModelCharacterTraitsRefiner())
+}
+
+func newServiceWithDependencies(generator ImageGenerator, refiner characterTraitsRefiner) *Service {
 	return &Service{
 		generator: generator,
+		refiner:   refiner,
 		now:       time.Now,
 		suffix:    randomSuffix,
 	}
@@ -103,6 +115,16 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, bookService 
 	}
 	if strings.TrimSpace(item.Name) == "" {
 		return book.LoreItemImage{}, fmt.Errorf("资料名称不能为空")
+	}
+	if isCharacterItem(item) {
+		if s.refiner == nil {
+			return book.LoreItemImage{}, fmt.Errorf("角色图片提示词提炼器不可用")
+		}
+		traits, err := s.refiner.Refine(ctx, cfg, item)
+		if err != nil {
+			return book.LoreItemImage{}, fmt.Errorf("提炼角色图片特点失败: %w", err)
+		}
+		request.characterTraits = traits
 	}
 	prompt := BuildPrompt(request)
 	if prompt == "" {
@@ -201,10 +223,11 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, bookService 
 
 func BuildPrompt(request GenerateRequest) string {
 	item := request.Item
-	preset := trimRunes(request.ImagePresetPrompt, maxPresetChars)
+	preset := sanitizePromptText(trimRunes(request.ImagePresetPrompt, maxPresetChars))
 	brief := trimRunes(item.BriefDescription, maxBriefChars)
 	content := trimRunes(item.Content, maxContentChars)
-	instruction := trimRunes(request.Instruction, maxInstructionChars)
+	instruction := sanitizePromptText(trimRunes(request.Instruction, maxInstructionChars))
+	characterTraits := sanitizePromptText(trimRunes(request.characterTraits, maxCharacterTraits))
 	var sb strings.Builder
 	if preset != "" {
 		sb.WriteString("# 图像风格要求\n\n")
@@ -212,31 +235,47 @@ func BuildPrompt(request GenerateRequest) string {
 		sb.WriteString("\n\n")
 	}
 	sb.WriteString("# 本次资料项图片请求\n\n")
-	sb.WriteString("为资料库条目生成一张可作为设定卡片预览和创作参考的视觉图。画面应突出主体、身份或规则意象，适合在资料库列表中识别；不要生成任何文字、标题、作者名、水印、logo、UI 面板或二维码。\n\n")
+	sb.WriteString("为资料库条目生成一张可作为设定预览和创作参考的视觉图。画面应突出主体、身份或规则意象，适合在资料库列表中识别；不要生成任何文字、标题、作者名、水印、logo、UI 面板或二维码。\n\n")
 	writePromptLine(&sb, "资料类型", loreTypeLabel(item.Type))
 	writePromptLine(&sb, "资料名称", item.Name)
-	if len(item.Tags) > 0 {
-		writePromptLine(&sb, "标签", strings.Join(item.Tags, "、"))
-	}
-	if len(item.Keywords) > 0 {
-		writePromptLine(&sb, "关键词", strings.Join(item.Keywords, "、"))
-	}
-	if brief != "" {
-		sb.WriteString("\n## 简介\n\n")
-		sb.WriteString(brief)
-		sb.WriteString("\n")
-	}
-	if content != "" {
-		sb.WriteString("\n## 资料正文节选\n\n")
-		sb.WriteString(content)
-		sb.WriteString("\n")
+	if isCharacterItem(item) {
+		if characterTraits != "" {
+			sb.WriteString("\n## 角色特点\n\n")
+			sb.WriteString(characterTraits)
+			sb.WriteString("\n")
+		}
+	} else {
+		if len(item.Tags) > 0 {
+			writePromptLine(&sb, "标签", strings.Join(item.Tags, "、"))
+		}
+		if len(item.Keywords) > 0 {
+			writePromptLine(&sb, "关键词", strings.Join(item.Keywords, "、"))
+		}
+		if brief != "" {
+			sb.WriteString("\n## 简介\n\n")
+			sb.WriteString(brief)
+			sb.WriteString("\n")
+		}
+		if content != "" {
+			sb.WriteString("\n## 资料正文节选\n\n")
+			sb.WriteString(content)
+			sb.WriteString("\n")
+		}
 	}
 	if instruction != "" {
 		sb.WriteString("\n## 用户补充要求\n\n")
 		sb.WriteString(instruction)
 		sb.WriteString("\n")
 	}
-	return strings.TrimSpace(sb.String())
+	return sanitizePromptText(strings.TrimSpace(sb.String()))
+}
+
+func isCharacterItem(item book.LoreItem) bool {
+	return strings.EqualFold(strings.TrimSpace(item.Type), "character")
+}
+
+func sanitizePromptText(value string) string {
+	return strings.TrimSpace(strings.ReplaceAll(value, "角色资料卡", ""))
 }
 
 func writePromptLine(sb *strings.Builder, key, value string) {

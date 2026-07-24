@@ -97,27 +97,63 @@ func TestLoreImagesGenerateStreamSkipsExistingByDefault(t *testing.T) {
 
 func newLoreImageTestApplication(t *testing.T) (*runtimeapp.App, *httptest.Server) {
 	t.Helper()
-	var calls int
+	var imageCalls int
 	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		if r.URL.Path != "/images/generations" {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/chat/completions":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":      "chatcmpl-character-traits",
+				"object":  "chat.completion",
+				"created": 123,
+				"model":   "test-model",
+				"choices": []map[string]any{{
+					"index": 0,
+					"message": map[string]any{
+						"role":    "assistant",
+						"content": `{"appearance":"黑色短发，灰色眼睛","personality":"谨慎沉静","attire_accessories":"深色风衣","other_visual_traits":""}`,
+					},
+					"finish_reason": "stop",
+				}},
+			})
+		case "/images/generations":
+			imageCalls++
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			prompt, _ := body["prompt"].(string)
+			if strings.Contains(prompt, "资料类型：角色") {
+				for _, want := range []string{"黑色短发", "谨慎沉静", "深色风衣"} {
+					if !strings.Contains(prompt, want) {
+						t.Fatalf("character image prompt missing refined trait %q: %s", want, prompt)
+					}
+				}
+				for _, forbidden := range []string{"角色资料卡", "谨慎。"} {
+					if strings.Contains(prompt, forbidden) {
+						t.Fatalf("character image prompt leaked raw lore %q: %s", forbidden, prompt)
+					}
+				}
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"created":       123,
+				"output_format": "png",
+				"quality":       "high",
+				"size":          "2048x2048",
+				"data": []map[string]any{{
+					"b64_json":       base64.StdEncoding.EncodeToString(loreImageTestPNGBytes()),
+					"revised_prompt": "revised prompt",
+				}},
+			})
+		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"created":       123,
-			"output_format": "png",
-			"quality":       "high",
-			"size":          "2048x2048",
-			"data": []map[string]any{{
-				"b64_json":       base64.StdEncoding.EncodeToString(loreImageTestPNGBytes()),
-				"revised_prompt": "revised prompt",
-			}},
-		})
 	}))
 	root := t.TempDir()
 	application, err := runtimeapp.New(context.Background(), &config.Config{
 		OpenAIModel:         "test-model",
+		OpenAIAPIKey:        "test-key",
+		OpenAIBaseURL:       imageServer.URL,
 		NovaDir:             root,
 		Workspace:           root,
 		ResumeLastWorkspace: false,
@@ -130,7 +166,7 @@ func newLoreImageTestApplication(t *testing.T) (*runtimeapp.App, *httptest.Serve
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if calls == 0 {
+		if imageCalls == 0 {
 			t.Fatalf("image server was not called")
 		}
 	})
