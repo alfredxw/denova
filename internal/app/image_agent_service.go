@@ -9,11 +9,11 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
-	agentcontext "denova/internal/agent/context"
-	runstate "denova/internal/agent/runtime"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/session"
 	"denova/internal/interactiveimage"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 type ImageAgentGenerateRequest struct {
@@ -92,17 +92,17 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 		message:       imageAgentMessage(req),
 		sourceContext: strings.TrimSpace(req.SourceContext),
 		sourceSummary: imageAgentSourceSummary(req),
-		contextBudget: agent.ContextBudgetForAgent(&cfg, config.AgentKindImage),
+		contextBudget: agents.ContextBudgetForAgent(&cfg, config.AgentKindImage),
 	}
 	var result ImageAgentGenerateResult
 	var runErr error
 	var hookErr error
 	runCtx, cancelRun := context.WithCancel(runtime.Context())
 	defer cancelRun()
-	accepted, err := runtime.chatService.StartWithOptions(runCtx, runner, conversation, runtime.bookService, agent.ChatRequest{
+	accepted, err := runtime.chatService.StartWithOptions(runCtx, runner, conversation, runtime.bookService, agents.ChatRequest{
 		CommandID: req.CommandID,
 		Message:   conversation.message,
-	}, agent.RunOptions{
+	}, agents.RunOptions{
 		AgentKind:          config.AgentKindImage,
 		Workspace:          runtime.workspace,
 		StoryID:            req.StoryID,
@@ -112,7 +112,7 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 		IdleTimeout:        agentIdleTimeout(cfg),
 		ToolResultMaxBytes: agentToolResultMaxBytes(cfg),
 		SystemPromptLog:    systemPrompt,
-	}, func(ev agent.Event) {
+	}, func(ev agents.Event) {
 		switch ev.Type {
 		case "tool_result":
 			if image := eventInteractiveImage(ev.Data); image != nil {
@@ -152,7 +152,7 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 	if runErr != nil {
 		return result, runErr
 	}
-	if outcome.Status != agent.RunOutcomeCompleted {
+	if outcome.Status != agents.RunOutcomeCompleted {
 		if outcome.Error != nil {
 			return result, outcome.Error
 		}
@@ -203,9 +203,9 @@ func (c *imageAgentConversation) ModelContextBudget() agentcontext.Budget {
 	return c.contextBudget
 }
 
-func (c *imageAgentConversation) AssembleModelContext(ctx context.Context, _ string, input agent.ModelContextInput) (agent.ModelContextResult, error) {
+func (c *imageAgentConversation) AssembleModelContext(ctx context.Context, _ string, input agents.ModelContextInput) (agents.ModelContextResult, error) {
 	if strings.TrimSpace(c.message) == "" {
-		return agent.ModelContextResult{}, fmt.Errorf("图像 Agent 输入不能为空")
+		return agents.ModelContextResult{}, fmt.Errorf("图像 Agent 输入不能为空")
 	}
 	fragments := append([]agentcontext.Fragment(nil), input.Fragments...)
 	if c.sourceContext != "" {
@@ -217,12 +217,12 @@ func (c *imageAgentConversation) AssembleModelContext(ctx context.Context, _ str
 		})
 	}
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{
-		Messages: []*agent.Message{agent.UserMessage(c.message)}, Fragments: fragments,
+		Messages: []*agents.Message{agents.UserMessage(c.message)}, Fragments: fragments,
 	})
 	if err != nil {
-		return agent.ModelContextResult{}, err
+		return agents.ModelContextResult{}, err
 	}
-	return agent.ModelContextResult{Messages: assembled.Messages, Context: assembled}, nil
+	return agents.ModelContextResult{Messages: assembled.Messages, Context: assembled}, nil
 }
 
 func (c *imageAgentConversation) AppendAssistant(content string) error {

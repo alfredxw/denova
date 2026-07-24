@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
 	"denova/internal/automation"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAutomationColdAcceptedRunStaysRecoveryRequiredUntilExplicitAbort(t *testing.T) {
@@ -389,7 +389,7 @@ func TestAutomationRecoveryFailureCannotFinalizeAnActiveProjection(t *testing.T)
 	snapshot := &automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir}
 	finalized, err := service.finalizeRecoveredAutomationRun(
 		context.Background(), snapshot, taskDef, run,
-		agent.RunOutcome{Status: agent.RunOutcomeFailed, Error: errors.New("observer failed")},
+		agents.RunOutcome{Status: agents.RunOutcomeFailed, Error: errors.New("observer failed")},
 	)
 	if err == nil {
 		t.Fatal("failed observer finalized a still-active runtime projection")
@@ -408,10 +408,7 @@ func TestAutomationRecoveryFailureCannotFinalizeAnActiveProjection(t *testing.T)
 
 func seedAutomationRuntimeJournal(t *testing.T, dataDir string, taskDef automation.Task, run automation.RunRecord, events []runstate.EventPayload) {
 	t.Helper()
-	ref := runstate.BindingRef{
-		Kind: runstate.BindingAutomation, Profile: runstate.ProfileAutomation,
-		Workspace: run.Workspace, SessionID: run.SessionID, TaskID: taskDef.ID,
-	}
+	ref := automationRuntimeBindingForTest(run.Workspace, run.SessionID, taskDef.ID)
 	key, err := json.Marshal(ref)
 	if err != nil {
 		t.Fatal(err)

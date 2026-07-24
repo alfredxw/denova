@@ -10,8 +10,8 @@ import (
 	"sync"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -266,7 +266,7 @@ func runInteractiveDirectorMaintenance(ctx context.Context, cfg *config.Config, 
 		markInteractiveDirectorFailed(conversation, turn, err)
 		return result, err
 	}
-	_, err = generator(ctx, cfg, state, agent.InteractiveStoryToolContext{
+	_, err = generator(ctx, cfg, state, agents.InteractiveStoryToolContext{
 		Store:                   conversation.store,
 		CommandID:               commandID,
 		StoryID:                 conversation.storyID,

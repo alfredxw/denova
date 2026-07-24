@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -23,7 +23,7 @@ type imageWorkspaceRuntime struct {
 	bookService  *book.Service
 	interactive  *interactive.Store
 	sessionStore *session.Store
-	chatService  *agent.ChatService
+	chatService  *agents.ChatService
 }
 
 func (r *imageWorkspaceRuntime) Context() context.Context {

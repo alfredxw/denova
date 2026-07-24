@@ -3,13 +3,13 @@ package app
 import (
 	"encoding/json"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 )
 
 const taskDisplayCheckpointVersion = 2
 
 func (t *Task) displayCheckpointLocked() TaskDisplayCheckpoint {
-	events := make([]agent.Event, len(t.checkpointEvents))
+	events := make([]agents.Event, len(t.checkpointEvents))
 	copy(events, t.checkpointEvents)
 	return TaskDisplayCheckpoint{
 		Version:                 taskDisplayCheckpointVersion,
@@ -112,7 +112,7 @@ func (t *Task) projectDisplayCheckpointLocked(item TaskEvent) {
 	t.boundDisplayCheckpointLocked()
 }
 
-func (t *Task) mergeDisplayCheckpointEventLocked(event agent.Event) bool {
+func (t *Task) mergeDisplayCheckpointEventLocked(event agents.Event) bool {
 	switch event.Type {
 	case "chunk", "thinking":
 		return t.mergeDisplayCheckpointTextLocked(event, "content")
@@ -139,7 +139,7 @@ func (t *Task) mergeDisplayCheckpointEventLocked(event agent.Event) bool {
 	return false
 }
 
-func (t *Task) mergeDisplayCheckpointTextLocked(event agent.Event, field string) bool {
+func (t *Task) mergeDisplayCheckpointTextLocked(event agents.Event, field string) bool {
 	if len(t.checkpointEvents) == 0 {
 		return false
 	}
@@ -170,7 +170,7 @@ func (t *Task) mergeDisplayCheckpointTextLocked(event agent.Event, field string)
 	return true
 }
 
-func (t *Task) mergeDisplayCheckpointToolArgsLocked(event agent.Event) bool {
+func (t *Task) mergeDisplayCheckpointToolArgsLocked(event agents.Event) bool {
 	deltaData, ok := taskDisplayDataMap(event.Data)
 	if !ok {
 		return false
@@ -201,7 +201,7 @@ func (t *Task) mergeDisplayCheckpointToolArgsLocked(event agent.Event) bool {
 	return false
 }
 
-func (t *Task) replaceDisplayCheckpointEventLocked(index int, event agent.Event) {
+func (t *Task) replaceDisplayCheckpointEventLocked(index int, event agents.Event) {
 	oldSize := t.checkpointBytes[index]
 	newSize := taskEventSize(TaskEvent{Event: event})
 	t.checkpointEvents[index] = event
@@ -229,7 +229,7 @@ func (t *Task) boundDisplayCheckpointLocked() {
 		t.checkpointSize -= t.checkpointBytes[drop]
 		copy(t.checkpointEvents[drop:], t.checkpointEvents[drop+1:])
 		copy(t.checkpointBytes[drop:], t.checkpointBytes[drop+1:])
-		t.checkpointEvents[len(t.checkpointEvents)-1] = agent.Event{}
+		t.checkpointEvents[len(t.checkpointEvents)-1] = agents.Event{}
 		t.checkpointBytes[len(t.checkpointBytes)-1] = 0
 		t.checkpointEvents = t.checkpointEvents[:len(t.checkpointEvents)-1]
 		t.checkpointBytes = t.checkpointBytes[:len(t.checkpointBytes)-1]
@@ -237,7 +237,7 @@ func (t *Task) boundDisplayCheckpointLocked() {
 	}
 }
 
-func cloneTaskDisplayEvent(event agent.Event) agent.Event {
+func cloneTaskDisplayEvent(event agents.Event) agents.Event {
 	if data, ok := taskDisplayDataMap(event.Data); ok {
 		event.Data = data
 	}
@@ -297,7 +297,7 @@ func taskDisplayToolKey(data map[string]any) string {
 	return ""
 }
 
-func taskDisplayReplacementKey(event agent.Event) string {
+func taskDisplayReplacementKey(event agents.Event) string {
 	data, ok := taskDisplayDataMap(event.Data)
 	if !ok {
 		return ""

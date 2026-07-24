@@ -5,21 +5,21 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // InteractiveAgentCommand contains only the selected game resource and typed
 // command payload. Workspace and durable binding identity are always derived
 // from the active App runtime.
 type InteractiveAgentCommand struct {
-	Kind        agent.AgentCommandKind
+	Kind        agents.AgentCommandKind
 	CommandID   string
 	OperationID runstate.OperationID
 	StoryID     string
 	BranchID    string
 	Reason      string
-	Input       agent.ChatRequest
+	Input       agents.ChatRequest
 }
 
 func (a *App) SubmitInteractiveAgentCommand(ctx context.Context, command InteractiveAgentCommand) (runstate.Receipt, error) {
@@ -31,24 +31,24 @@ func (s *InteractiveAppService) SubmitAgentCommand(ctx context.Context, command 
 	if err != nil {
 		return runstate.Receipt{}, err
 	}
-	if command.Kind == agent.AgentCommandAbort {
-		return target.chatService.SubmitCommand(ctx, agent.AgentCommandSpec{
+	if command.Kind == agents.AgentCommandAbort {
+		return target.chatService.SubmitCommand(ctx, agents.AgentCommandSpec{
 			Kind: command.Kind, CommandID: command.CommandID,
 			OperationID: command.OperationID, Reason: command.Reason,
-			Options: agent.RunOptions{
-				AgentKind: agent.AgentKindInteractiveStory, TaskID: target.task.ID(),
+			Options: agents.RunOptions{
+				AgentKind: agents.AgentKindInteractiveStory, TaskID: target.task.ID(),
 				StoryID: target.info.StoryID, BranchID: target.info.BranchID,
 				Workspace: target.info.Workspace, Mode: "interactive",
 			},
 		})
 	}
-	if command.Kind != agent.AgentCommandSteer && command.Kind != agent.AgentCommandFollowUp && command.Kind != agent.AgentCommandNextTurn {
+	if command.Kind != agents.AgentCommandSteer && command.Kind != agents.AgentCommandFollowUp && command.Kind != agents.AgentCommandNextTurn {
 		return runstate.Receipt{}, fmt.Errorf("%w: unsupported game command %q", runstate.ErrInvalidCommand, command.Kind)
 	}
 
-	prepare := func(prepareCtx context.Context) (agent.HarnessTurnExecution, error) {
+	prepare := func(prepareCtx context.Context) (agents.HarnessTurnExecution, error) {
 		if err := s.confirmActiveAgentCommandTarget(target); err != nil {
-			return agent.HarnessTurnExecution{}, err
+			return agents.HarnessTurnExecution{}, err
 		}
 		cycle, err := s.prepareInteractiveAgentCycle(prepareCtx, interactiveAgentCycleRequest{
 			StoryID: target.info.StoryID, BranchID: target.info.BranchID,
@@ -56,24 +56,24 @@ func (s *InteractiveAppService) SubmitAgentCommand(ctx context.Context, command 
 			Locale: command.Input.Locale,
 		})
 		if err != nil {
-			return agent.HarnessTurnExecution{}, err
+			return agents.HarnessTurnExecution{}, err
 		}
 		if err := s.confirmActiveAgentCommandTarget(target); err != nil {
-			return agent.HarnessTurnExecution{}, err
+			return agents.HarnessTurnExecution{}, err
 		}
 		cycle.bindCommit(target.task.emit)
-		return agent.HarnessTurnExecution{
+		return agents.HarnessTurnExecution{
 			Runner: cycle.runner, Conversation: cycle.conversation,
 			BookService: cycle.bookService, Request: cycle.request,
 			Options: cycle.options(target.task.ID()),
 		}, nil
 	}
-	return target.chatService.SubmitCommand(ctx, agent.AgentCommandSpec{
+	return target.chatService.SubmitCommand(ctx, agents.AgentCommandSpec{
 		Kind: command.Kind, CommandID: command.CommandID,
 		OperationID: command.OperationID, AfterOperationID: command.OperationID,
 		Request: command.Input, Emit: target.task.emit, Prepare: prepare,
-		Options: agent.RunOptions{
-			AgentKind: agent.AgentKindInteractiveStory, TaskID: target.task.ID(),
+		Options: agents.RunOptions{
+			AgentKind: agents.AgentKindInteractiveStory, TaskID: target.task.ID(),
 			StoryID: target.info.StoryID, BranchID: target.info.BranchID,
 			Workspace: target.info.Workspace, Mode: "interactive",
 		},
@@ -83,7 +83,7 @@ func (s *InteractiveAppService) SubmitAgentCommand(ctx context.Context, command 
 type interactiveAgentCommandTarget struct {
 	task        *Task
 	info        InteractiveTaskInfo
-	chatService *agent.ChatService
+	chatService *agents.ChatService
 }
 
 func (s *InteractiveAppService) activeAgentCommandTarget(storyID, branchID string) (interactiveAgentCommandTarget, error) {

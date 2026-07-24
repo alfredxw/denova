@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAutomationDeterministicRunIDReplaysExactPersistedRun(t *testing.T) {
@@ -230,7 +230,7 @@ func TestAutomationDeterministicRunRecoversAcceptedRuntimeBeforeRunRecord(t *tes
 	snap := &automationWorkspaceSnapshot{workspace: workspace, novaDir: novaDir}
 	service.runtimeProjector = func(_ context.Context, _ *automationWorkspaceSnapshot, task automation.Task, run automation.RunRecord) (runstate.StatusSnapshot, error) {
 		return runstate.StatusSnapshot{
-			Binding: runstate.BindingRef{Kind: runstate.BindingAutomation, Profile: runstate.ProfileAutomation, Workspace: workspace, SessionID: run.SessionID, TaskID: task.ID},
+			Binding: automationRuntimeBindingForTest(workspace, run.SessionID, task.ID),
 			Cursor:  7, Phase: runstate.PhaseRunning,
 			ActiveCommandID: runstate.CommandID(automationRunAgentCommandID(run.ID)), ActiveOperation: "operation-accepted", ActiveCycle: 1,
 		}, nil

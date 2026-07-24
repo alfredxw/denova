@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"log"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
 	"denova/internal/book"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // replayDurableStart rebuilds only the reconnectable display Task. The
@@ -16,9 +16,9 @@ import (
 // conversation, or mutable request preparation is needed on this path.
 func (s *ConfigManagerAppService) replayDurableStart(
 	ctx context.Context,
-	chatService *agent.ChatService,
+	chatService *agents.ChatService,
 	bookService *book.Service,
-	chatReq agent.ChatRequest,
+	chatReq agents.ChatRequest,
 	workspace string,
 	sessionID string,
 	fingerprint string,
@@ -26,8 +26,8 @@ func (s *ConfigManagerAppService) replayDurableStart(
 	if chatService == nil {
 		return nil, false, nil
 	}
-	options := agent.RunOptions{
-		AgentKind: agent.AgentKindConfigManager, SessionID: sessionID,
+	options := agents.RunOptions{
+		AgentKind: agents.AgentKindConfigManager, SessionID: sessionID,
 		Workspace: workspace, Mode: "config_manager",
 	}
 	status, err := chatService.RuntimeStatusProjection(ctx, options)
@@ -39,7 +39,7 @@ func (s *ConfigManagerAppService) replayDurableStart(
 	}
 
 	a := s.app
-	var accepted *agent.AcceptedRun
+	var accepted *agents.AcceptedRun
 	task, err := NewDeferredRegisteredTask(func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
@@ -81,7 +81,7 @@ func (s *ConfigManagerAppService) replayDurableStart(
 		rollbackConfigManagerReplayTask(a, task, err)
 		return nil, true, err
 	}
-	if err := task.Start(func(ctx context.Context, task *Task, _ func(agent.Event)) {
+	if err := task.Start(func(ctx context.Context, task *Task, _ func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		outcome := accepted.Wait(ctx)
 		log.Printf("[config-manager] replay end id=%s command_id=%s status=%s", task.ID(), chatReq.CommandID, outcome.Status)

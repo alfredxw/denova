@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
 	"denova/internal/book"
 	"denova/internal/interactive"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestInteractiveConversationPublishesOnlyAuthorizedOutputStage(t *testing.T) {
@@ -20,7 +20,7 @@ func TestInteractiveConversationPublishesOnlyAuthorizedOutputStage(t *testing.T)
 		t.Fatal(err)
 	}
 	aborted := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "先观察", 800, nil)
-	aborted.BindAgentCycleIdentity(agent.HarnessCycleIdentity{CommandID: runstate.CommandID("command-abort"), OperationID: runstate.OperationID("operation-abort"), Cycle: 1})
+	aborted.BindAgentCycleIdentity(agents.HarnessCycleIdentity{CommandID: runstate.CommandID("command-abort"), OperationID: runstate.OperationID("operation-abort"), Cycle: 1})
 	materializeInteractiveInputForTest(t, aborted, aborted.agentCycleIdentitySnapshot())
 	submitTestTurnResult(t, aborted, "观察", "确认环境")
 	if err := aborted.AppendAssistant("尚未授权的叙事"); err != nil {
@@ -29,21 +29,21 @@ func TestInteractiveConversationPublishesOnlyAuthorizedOutputStage(t *testing.T)
 	if snapshot, err := store.Snapshot(story.ID, "main"); err != nil || len(snapshot.Turns) != 0 {
 		t.Fatalf("staged output advanced story before authorization: turns=%+v err=%v", snapshot.Turns, err)
 	}
-	if _, ok, err := aborted.PendingAgentCycleCommit(agent.HarnessDomainCommitOutput); err != nil || !ok {
+	if _, ok, err := aborted.PendingAgentCycleCommit(agents.HarnessDomainCommitOutput); err != nil || !ok {
 		t.Fatalf("pending game intent missing: ok=%t err=%v", ok, err)
 	}
-	if err := aborted.CommitAgentCycleStage(context.Background(), agent.HarnessDomainCommitOutput, agent.RunOutcome{Status: agent.RunOutcomeAborted}); err != nil {
+	if err := aborted.CommitAgentCycleStage(context.Background(), agents.HarnessDomainCommitOutput, agents.RunOutcome{Status: agents.RunOutcomeAborted}); err != nil {
 		t.Fatal(err)
 	}
 
 	completed := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "再观察", 800, nil)
-	completed.BindAgentCycleIdentity(agent.HarnessCycleIdentity{CommandID: runstate.CommandID("command-complete"), OperationID: runstate.OperationID("operation-complete"), Cycle: 1})
+	completed.BindAgentCycleIdentity(agents.HarnessCycleIdentity{CommandID: runstate.CommandID("command-complete"), OperationID: runstate.OperationID("operation-complete"), Cycle: 1})
 	materializeInteractiveInputForTest(t, completed, completed.agentCycleIdentitySnapshot())
 	submitTestTurnResult(t, completed, "观察", "发现线索")
 	if err := completed.AppendAssistant("授权后写入的叙事"); err != nil {
 		t.Fatal(err)
 	}
-	if err := completed.CommitAgentCycleStage(context.Background(), agent.HarnessDomainCommitOutput, agent.RunOutcome{Status: agent.RunOutcomeCompleted}); err != nil {
+	if err := completed.CommitAgentCycleStage(context.Background(), agents.HarnessDomainCommitOutput, agents.RunOutcome{Status: agents.RunOutcomeCompleted}); err != nil {
 		t.Fatal(err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -53,7 +53,7 @@ func TestInteractiveConversationPublishesOnlyAuthorizedOutputStage(t *testing.T)
 	if len(snapshot.Turns) != 1 || snapshot.Turns[0].Narrative != "授权后写入的叙事" {
 		t.Fatalf("authorized game output was not canonical: %+v", snapshot.Turns)
 	}
-	if receipt, ok := completed.LastAgentCycleCommitReceipt(agent.HarnessDomainCommitOutput); !ok || receipt.Revision != snapshot.Turns[0].ID {
+	if receipt, ok := completed.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput); !ok || receipt.Revision != snapshot.Turns[0].ID {
 		t.Fatalf("game commit receipt = %+v ok=%t", receipt, ok)
 	}
 }
@@ -144,7 +144,7 @@ func TestInteractiveAgentCycleKeepsFailedDirectorProjectionPending(t *testing.T)
 		t.Fatal(err)
 	}
 	generated := 0
-	generator := func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+	generator := func(context.Context, *config.Config, *book.State, agents.InteractiveStoryToolContext, string) (string, error) {
 		generated++
 		return "", errors.New("simulated Director failure")
 	}

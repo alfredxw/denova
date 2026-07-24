@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 )
 
 func TestConfigManagerResourceSkillNames(t *testing.T) {
@@ -149,11 +149,11 @@ func TestLoadConfigManagerResourceSkillsPreservesExactSourceForComposerProvenanc
 		t.Fatalf("loader changed source before composition: got_bytes=%d want_bytes=%d", len(got[0].Content), len(body))
 	}
 
-	composition, err := agent.ComposeConfigManagerInstruction(cfg, nil, got...)
+	composition, err := agents.ComposeConfigManagerInstruction(cfg, nil, got...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var receipt *agent.SystemPromptManifestEntry
+	var receipt *agents.SystemPromptManifestEntry
 	for _, entry := range composition.Manifest() {
 		if entry.Source == "配置 Skill" {
 			entry := entry

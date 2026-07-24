@@ -6,9 +6,8 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -29,17 +28,14 @@ func TestAppMaterializesAcceptedWritingInputExactlyOnce(t *testing.T) {
 	if _, err := store.GetOrCreate("accepted-writing"); err != nil {
 		t.Fatal(err)
 	}
-	request := agent.HarnessInputMaterializationRequest{
-		Binding: runstate.BindingRef{
-			Kind: runstate.BindingWriting, Profile: runstate.ProfileWriting,
-			Workspace: workspace, SessionID: "accepted-writing",
-		},
-		Identity: agent.HarnessCycleIdentity{
+	request := agents.HarnessInputMaterializationRequest{
+		Binding: writingRuntimeBindingForTest(workspace, "accepted-writing"),
+		Identity: agents.HarnessCycleIdentity{
 			CommandID: "writing-command", OperationID: "writing-operation", Cycle: 1,
 		},
 		AgentKind: config.AgentKindIDE,
 		Message:   "write this chapter",
-		Request: agent.ChatRequest{
+		Request: agents.ChatRequest{
 			Message: "write this chapter", References: []string{"chapters/one.md"},
 		},
 	}
@@ -86,17 +82,14 @@ func TestAppMaterializesAcceptedGameInputAsPendingWithoutNarrative(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := agent.HarnessInputMaterializationRequest{
-		Binding: runstate.BindingRef{
-			Kind: runstate.BindingGame, Profile: runstate.ProfileGame,
-			Workspace: workspace, StoryID: story.ID, BranchID: "main",
-		},
-		Identity: agent.HarnessCycleIdentity{
+	request := agents.HarnessInputMaterializationRequest{
+		Binding: gameRuntimeBindingForTest(workspace, story.ID, "main"),
+		Identity: agents.HarnessCycleIdentity{
 			CommandID: "game-command", OperationID: "game-operation", Cycle: 1,
 		},
 		AgentKind: config.AgentKindInteractiveStory,
 		Message:   "open the sealed door",
-		Request:   agent.ChatRequest{Message: "open the sealed door"},
+		Request:   agents.ChatRequest{Message: "open the sealed door"},
 	}
 	application := &App{}
 	plan, err := application.PlanHarnessInputMaterialization(context.Background(), request)

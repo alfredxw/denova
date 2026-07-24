@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/observability"
 )
 
@@ -77,7 +77,7 @@ type Task struct {
 	nextCursor         uint64
 	retainedEventLimit int
 	retainedByteLimit  int
-	checkpointEvents   []agent.Event
+	checkpointEvents   []agents.Event
 	checkpointBytes    []int
 	checkpointSize     int
 	checkpointCursor   uint64
@@ -92,7 +92,7 @@ type Task struct {
 }
 
 // NewTask 创建并启动后台任务。run 函数在独立 goroutine 中执行。
-func NewTask(run func(ctx context.Context, task *Task, emit func(agent.Event))) *Task {
+func NewTask(run func(ctx context.Context, task *Task, emit func(agents.Event))) *Task {
 	task, err := NewRegisteredTask(nil, run)
 	if err != nil {
 		panic(err)
@@ -104,7 +104,7 @@ func NewTask(run func(ctx context.Context, task *Task, emit func(agent.Event))) 
 // register before its goroutine may run. This closes the historical window in
 // which a fast task could emit, finish, or receive a command before App had
 // bound it to the matching workspace/session/story.
-func NewRegisteredTask(register func(*Task) error, run func(ctx context.Context, task *Task, emit func(agent.Event))) (*Task, error) {
+func NewRegisteredTask(register func(*Task) error, run func(ctx context.Context, task *Task, emit func(agents.Event))) (*Task, error) {
 	t, err := NewDeferredRegisteredTask(register)
 	if err != nil {
 		return nil, err
@@ -148,7 +148,7 @@ func NewDeferredRegisteredTask(register func(*Task) error) (*Task, error) {
 }
 
 // Start launches the Task worker exactly once.
-func (t *Task) Start(run func(ctx context.Context, task *Task, emit func(agent.Event))) error {
+func (t *Task) Start(run func(ctx context.Context, task *Task, emit func(agents.Event))) error {
 	if t == nil {
 		return fmt.Errorf("task is nil")
 	}
@@ -165,7 +165,7 @@ func (t *Task) Start(run func(ctx context.Context, task *Task, emit func(agent.E
 		defer func() {
 			if recovered := recover(); recovered != nil {
 				observability.Error("agent-task", "task_panic_recovered", slog.String("task_id", t.id), slog.Any("error", recovered))
-				t.emit(agent.Event{Type: "error", Data: map[string]string{"message": "Agent 后台任务异常中断 / Agent background task stopped unexpectedly"}})
+				t.emit(agents.Event{Type: "error", Data: map[string]string{"message": "Agent 后台任务异常中断 / Agent background task stopped unexpectedly"}})
 			}
 			t.finish()
 		}()
@@ -248,7 +248,7 @@ func newTaskProcessNonce() string {
 // channel，导致后台 goroutine 因 send-on-closed-channel 再次 panic。慢订阅者
 // 会被断开，使客户端通过重连和事件快照恢复；继续静默丢单个事件会让客户端
 // 保持连接却得到不可恢复的残缺事件流。
-func (t *Task) emit(ev agent.Event) {
+func (t *Task) emit(ev agents.Event) {
 	t.mu.Lock()
 	if t.finished {
 		t.mu.Unlock()
@@ -412,7 +412,7 @@ func shouldLogEvent(eventType string, eventCount int) bool {
 // allocation. The durable runtime uses the same terminal-reason ceiling.
 const maxTaskTerminalReasonBytes = 16 << 10
 
-func taskTerminalReason(event agent.Event) (string, bool) {
+func taskTerminalReason(event agents.Event) (string, bool) {
 	data, ok := taskDisplayDataMap(event.Data)
 	if !ok {
 		return "", false

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 )
 
 func TestTaskDisconnectsSlowSubscriberInsteadOfDroppingEvents(t *testing.T) {
@@ -16,11 +16,11 @@ func TestTaskDisconnectsSlowSubscriberInsteadOfDroppingEvents(t *testing.T) {
 	emitted := make(chan struct{})
 	finish := make(chan struct{})
 
-	task := NewTask(func(_ context.Context, _ *Task, emit func(agent.Event)) {
+	task := NewTask(func(_ context.Context, _ *Task, emit func(agents.Event)) {
 		close(started)
 		<-emitAll
 		for i := 0; i < 257; i++ {
-			emit(agent.Event{Type: "chunk"})
+			emit(agents.Event{Type: "chunk"})
 		}
 		close(emitted)
 		<-finish
@@ -55,15 +55,15 @@ func TestTaskDisconnectsSlowSubscriberInsteadOfDroppingEvents(t *testing.T) {
 }
 
 func TestTaskIgnoresEventsAfterFinish(t *testing.T) {
-	task := NewTask(func(_ context.Context, _ *Task, emit func(agent.Event)) {
-		emit(agent.Event{Type: "done"})
+	task := NewTask(func(_ context.Context, _ *Task, emit func(agents.Event)) {
+		emit(agents.Event{Type: "done"})
 	})
 
 	_, live := task.Subscribe()
 	for range live.Events() {
 	}
 
-	task.emit(agent.Event{Type: "error"})
+	task.emit(agents.Event{Type: "error"})
 	task.Abort()
 	replay, closed := task.Subscribe()
 	if len(replay) != 1 || replay[0].Cursor != 1 || replay[0].Event.Type != "done" {
@@ -82,7 +82,7 @@ func TestTaskIgnoresEventsAfterFinish(t *testing.T) {
 
 func TestTaskDonePublishesCanceledLifecycle(t *testing.T) {
 	started := make(chan context.Context, 1)
-	task := NewTask(func(ctx context.Context, _ *Task, _ func(agent.Event)) {
+	task := NewTask(func(ctx context.Context, _ *Task, _ func(agents.Event)) {
 		started <- ctx
 	})
 	ctx := <-started
@@ -111,10 +111,10 @@ func TestTaskStartFailurePublishesCanceledLifecycle(t *testing.T) {
 
 func TestTaskAbortRequestDoesNotOverrideLaterDurableCompletion(t *testing.T) {
 	settle := make(chan struct{})
-	task := NewTask(func(ctx context.Context, _ *Task, emit func(agent.Event)) {
+	task := NewTask(func(ctx context.Context, _ *Task, emit func(agents.Event)) {
 		<-ctx.Done()
 		<-settle
-		emit(agent.Event{Type: "done"})
+		emit(agents.Event{Type: "done"})
 	})
 
 	task.Abort()
@@ -131,9 +131,9 @@ func TestTaskAbortRequestDoesNotOverrideLaterDurableCompletion(t *testing.T) {
 }
 
 func TestTaskAcceptedAbortSettlesFromAbortedEvent(t *testing.T) {
-	task := NewTask(func(ctx context.Context, _ *Task, emit func(agent.Event)) {
+	task := NewTask(func(ctx context.Context, _ *Task, emit func(agents.Event)) {
 		<-ctx.Done()
-		emit(agent.Event{Type: "aborted"})
+		emit(agents.Event{Type: "aborted"})
 	})
 
 	task.Abort()
@@ -145,7 +145,7 @@ func TestTaskAcceptedAbortSettlesFromAbortedEvent(t *testing.T) {
 }
 
 func TestTaskPanicEmitsErrorAndSettlesAsTaskError(t *testing.T) {
-	task := NewTask(func(context.Context, *Task, func(agent.Event)) {
+	task := NewTask(func(context.Context, *Task, func(agents.Event)) {
 		panic("worker exploded")
 	})
 	<-task.Done()
@@ -192,9 +192,9 @@ func TestTaskIDsAreRestartScopedAndOpaque(t *testing.T) {
 func TestTaskSubscribeAfterResumesAtExactDisplayCursor(t *testing.T) {
 	release := make(chan struct{})
 	emitted := make(chan struct{})
-	task := NewTask(func(_ context.Context, _ *Task, emit func(agent.Event)) {
-		emit(agent.Event{Type: "chunk", Data: "one"})
-		emit(agent.Event{Type: "chunk", Data: "two"})
+	task := NewTask(func(_ context.Context, _ *Task, emit func(agents.Event)) {
+		emit(agents.Event{Type: "chunk", Data: "one"})
+		emit(agents.Event{Type: "chunk", Data: "two"})
 		close(emitted)
 		<-release
 	})
@@ -223,7 +223,7 @@ func TestTaskRetentionBoundsMemoryAndRejectsExpiredDisplayCursor(t *testing.T) {
 	task.retainedEventLimit = 3
 	task.retainedByteLimit = 1 << 20
 	for index := 1; index <= 5; index++ {
-		task.emit(agent.Event{Type: "chunk", Data: fmt.Sprintf("chunk-%d", index)})
+		task.emit(agents.Event{Type: "chunk", Data: fmt.Sprintf("chunk-%d", index)})
 	}
 
 	if got := task.Cursor(); got != 5 {
@@ -254,7 +254,7 @@ func TestTaskRetentionDoesNotKeepOneEventLargerThanByteBudget(t *testing.T) {
 	}
 	task.retainedEventLimit = 3
 	task.retainedByteLimit = 32
-	task.emit(agent.Event{Type: "chunk", Data: strings.Repeat("x", 128)})
+	task.emit(agents.Event{Type: "chunk", Data: strings.Repeat("x", 128)})
 
 	if got := len(task.events); got != 0 {
 		t.Fatalf("oversized replay event retained = %d, want 0", got)
@@ -281,11 +281,11 @@ func TestTaskDisplayCheckpointRecoversActiveTaskAfterRawRetentionOverflow(t *tes
 	}
 	task.retainedEventLimit = 3
 	task.retainedByteLimit = 1 << 20
-	task.emit(agent.Event{Type: "agent_cycle_started", Data: map[string]any{
+	task.emit(agents.Event{Type: "agent_cycle_started", Data: map[string]any{
 		"command_id": "command-1", "delivery": "start_turn", "message": "继续写", "operation_id": "operation-1", "cycle": 1,
 	}})
 	for _, fragment := range []string{"一", "段", "完整", "思考", "。"} {
-		task.emit(agent.Event{Type: "thinking", Data: map[string]any{"content": fragment, "run_id": "run-1"}})
+		task.emit(agents.Event{Type: "thinking", Data: map[string]any{"content": fragment, "run_id": "run-1"}})
 	}
 
 	replay, subscription, err := task.SubscribeDisplayAfter(0)
@@ -304,7 +304,7 @@ func TestTaskDisplayCheckpointRecoversActiveTaskAfterRawRetentionOverflow(t *tes
 		t.Fatalf("checkpoint thinking = %#v, want complete semantic content", checkpoint.Events[1].Data)
 	}
 
-	task.emit(agent.Event{Type: "chunk", Data: map[string]any{"content": "正文", "run_id": "run-1"}})
+	task.emit(agents.Event{Type: "chunk", Data: map[string]any{"content": "正文", "run_id": "run-1"}})
 	live := <-subscription.Events()
 	if live.Cursor != 7 || live.Event.Type != "chunk" {
 		t.Fatalf("live event after checkpoint = %#v", live)
@@ -321,16 +321,16 @@ func TestTaskDisplayCheckpointReplaysFinishedTaskAndAssemblesToolArguments(t *te
 	}
 	task.retainedEventLimit = 4
 	task.retainedByteLimit = 1 << 20
-	if err := task.Start(func(_ context.Context, _ *Task, emit func(agent.Event)) {
-		emit(agent.Event{Type: "agent_cycle_started", Data: map[string]any{
+	if err := task.Start(func(_ context.Context, _ *Task, emit func(agents.Event)) {
+		emit(agents.Event{Type: "agent_cycle_started", Data: map[string]any{
 			"command_id": "command-1", "delivery": "start_turn", "message": "读取", "operation_id": "operation-1", "cycle": 1,
 		}})
-		emit(agent.Event{Type: "tool_call", Data: map[string]any{"id": "call-1", "name": "read_file", "args": "", "run_id": "run-1"}})
+		emit(agents.Event{Type: "tool_call", Data: map[string]any{"id": "call-1", "name": "read_file", "args": "", "run_id": "run-1"}})
 		for _, delta := range []string{`{"path"`, `:"chapter.md"`, `}`} {
 			// Some providers omit the repeated tool name on delta frames.
-			emit(agent.Event{Type: "tool_args_delta", Data: map[string]any{"id": "call-1", "delta": delta, "run_id": "run-1"}})
+			emit(agents.Event{Type: "tool_args_delta", Data: map[string]any{"id": "call-1", "delta": delta, "run_id": "run-1"}})
 		}
-		emit(agent.Event{Type: "done", Data: map[string]any{}})
+		emit(agents.Event{Type: "done", Data: map[string]any{}})
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -365,10 +365,10 @@ func TestTaskDisplayCheckpointMarksWholeEventOmissionIncomplete(t *testing.T) {
 	}
 	task.retainedEventLimit = 1
 	task.retainedByteLimit = 1 << 20
-	task.emit(agent.Event{Type: "agent_cycle_started", Data: map[string]any{
+	task.emit(agents.Event{Type: "agent_cycle_started", Data: map[string]any{
 		"command_id": "command-1", "delivery": "start_turn", "message": "继续", "operation_id": "operation-1", "cycle": 1,
 	}})
-	task.emit(agent.Event{Type: "thinking", Data: map[string]any{"content": "这段思考只能完整保留或完整省略"}})
+	task.emit(agents.Event{Type: "thinking", Data: map[string]any{"content": "这段思考只能完整保留或完整省略"}})
 
 	replay, subscription, err := task.SubscribeDisplayAfter(0)
 	if err != nil {
@@ -392,7 +392,7 @@ func TestTaskDisplayCheckpointKeepsPersistenceBarrierAfterCycleAnchorEviction(t 
 	}
 	task.retainedEventLimit = 1
 	task.retainedByteLimit = 64
-	task.emit(agent.Event{Type: "agent_cycle_started", Data: map[string]any{
+	task.emit(agents.Event{Type: "agent_cycle_started", Data: map[string]any{
 		"command_id": "command-1", "delivery": "start_turn", "message": strings.Repeat("x", 256), "operation_id": "operation-1", "cycle": 1,
 	}})
 
@@ -405,7 +405,7 @@ func TestTaskDisplayCheckpointKeepsPersistenceBarrierAfterCycleAnchorEviction(t 
 	}
 	task.Unsubscribe(subscription)
 
-	task.emit(agent.Event{Type: "interactive_turn_persisted", Data: map[string]any{"turn_id": "turn-1"}})
+	task.emit(agents.Event{Type: "interactive_turn_persisted", Data: map[string]any{"turn_id": "turn-1"}})
 	replay, subscription, err = task.SubscribeDisplayAfter(0)
 	if err != nil {
 		t.Fatal(err)
@@ -421,26 +421,26 @@ func TestTaskDisplayCheckpointKeepsPersistenceBarrierAfterCycleAnchorEviction(t 
 func TestTaskDisplayCheckpointKeepsTerminalOutcomeAfterSettledReplayEviction(t *testing.T) {
 	tests := []struct {
 		name       string
-		event      agent.Event
+		event      agents.Event
 		wantStatus TaskStatus
 		wantReason string
 	}{
 		{
 			name:       "error",
-			event:      agent.Event{Type: "error", Data: map[string]string{"message": "provider failed after acceptance"}},
+			event:      agents.Event{Type: "error", Data: map[string]string{"message": "provider failed after acceptance"}},
 			wantStatus: TaskError,
 			wantReason: "provider failed after acceptance",
 		},
 		{
 			name:       "aborted",
-			event:      agent.Event{Type: "aborted", Data: map[string]string{"reason": "user_requested"}},
+			event:      agents.Event{Type: "aborted", Data: map[string]string{"reason": "user_requested"}},
 			wantStatus: TaskAborted,
 			wantReason: "user_requested",
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			task := NewTask(func(_ context.Context, _ *Task, emit func(agent.Event)) {
+			task := NewTask(func(_ context.Context, _ *Task, emit func(agents.Event)) {
 				emit(test.event)
 			})
 			<-task.Done()
@@ -471,7 +471,7 @@ func TestNewRegisteredTaskPublishesBeforeRun(t *testing.T) {
 	task, err := NewRegisteredTask(func(task *Task) error {
 		registered = task
 		return nil
-	}, func(_ context.Context, task *Task, _ func(agent.Event)) {
+	}, func(_ context.Context, task *Task, _ func(agents.Event)) {
 		if registered != task {
 			t.Errorf("task ran before registration")
 		}

@@ -10,8 +10,8 @@ import (
 	"unicode/utf8"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -113,7 +113,7 @@ func formatInteractiveTurnHistoryWithCheckpoint(turnHistory interactiveTurnHisto
 	var sb strings.Builder
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
 		sb.WriteString("[历史上下文检查点]\n")
-		sb.WriteString(agent.NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary).Content)
+		sb.WriteString(agents.NewContextCompactionSummaryMessage(compaction.Epoch, compaction.Summary).Content)
 		sb.WriteString("\n\n")
 	}
 	if len(turnHistory.Turns) > 0 {
@@ -126,7 +126,7 @@ func formatInteractiveTurnHistoryWithCheckpoint(turnHistory interactiveTurnHisto
 	return result
 }
 
-func interactiveMessageListSummary(messages []*agent.Message) string {
+func interactiveMessageListSummary(messages []*agents.Message) string {
 	if len(messages) == 0 {
 		return "count=0"
 	}
@@ -137,7 +137,7 @@ func interactiveMessageListSummary(messages []*agent.Message) string {
 	return fmt.Sprintf("count=%d parts=[%s]", len(messages), strings.Join(parts, "; "))
 }
 
-func interactiveMessageSummary(index, total int, msg *agent.Message) string {
+func interactiveMessageSummary(index, total int, msg *agents.Message) string {
 	if msg == nil {
 		return fmt.Sprintf("%d:<nil>", index)
 	}

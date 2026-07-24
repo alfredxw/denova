@@ -3,11 +3,11 @@ package app
 import (
 	"context"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 )
 
-func assembleAndCommitInteractiveContextForTest(conversation *interactiveConversation, originalMessage, userMessage string) ([]*agent.Message, error) {
-	result, err := conversation.AssembleModelContext(context.Background(), originalMessage, agent.ModelContextInput{
+func assembleAndCommitInteractiveContextForTest(conversation *interactiveConversation, originalMessage, userMessage string) ([]*agents.Message, error) {
+	result, err := conversation.AssembleModelContext(context.Background(), originalMessage, agents.ModelContextInput{
 		UserMessage: userMessage,
 		Budget:      conversation.ModelContextBudget(),
 	})

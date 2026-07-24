@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/automation"
 )
 
@@ -198,10 +198,10 @@ func (s *AutomationAppService) StartTaskCommand(ctx context.Context, id, command
 // replayAutomationRunTask adapts a terminal persisted run to the same bounded
 // SSE Task contract as a live execution. It never opens an Agent runner.
 func replayAutomationRunTask(run automation.RunRecord) *Task {
-	return NewTask(func(_ context.Context, _ *Task, emit func(agent.Event)) {
-		emit(agent.Event{Type: "automation_run", Data: run})
+	return NewTask(func(_ context.Context, _ *Task, emit func(agents.Event)) {
+		emit(agents.Event{Type: "automation_run", Data: run})
 		if run.Status == automation.RunStatusFailed && strings.TrimSpace(run.Error) != "" {
-			emit(agent.Event{Type: "error", Data: map[string]string{"message": run.Error}})
+			emit(agents.Event{Type: "error", Data: map[string]string{"message": run.Error}})
 		}
 	})
 }
@@ -369,7 +369,7 @@ func (s *AutomationAppService) startTaskWithSourceRunID(ctx context.Context, sna
 		// leaves no failed run ledger entry for an operation that never existed.
 		return nil, automation.RunRecord{}, err
 	}
-	task.emit(agent.Event{Type: "automation_run", Data: run})
+	task.emit(agents.Event{Type: "automation_run", Data: run})
 	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
 	execution, err = s.startAutomationRun(acceptCtx, snap, taskDef, run, conversation, task.emit)
 	releaseAcceptance()
@@ -379,7 +379,7 @@ func (s *AutomationAppService) startTaskWithSourceRunID(ctx context.Context, sna
 		}
 		result, _ := s.failAutomationRun(snap, taskDef, run, task.emit, false, err)
 		if result.Run.ID != "" {
-			task.emit(agent.Event{Type: "automation_run", Data: result.Run})
+			task.emit(agents.Event{Type: "automation_run", Data: result.Run})
 		}
 		task.failBeforeStart(err)
 		s.app.unregisterWorkspaceTask(task)
@@ -387,13 +387,13 @@ func (s *AutomationAppService) startTaskWithSourceRunID(ctx context.Context, sna
 		return nil, result.Run, err
 	}
 	run = execution.run
-	task.emit(agent.Event{Type: "automation_run", Data: run})
-	if err := task.Start(func(taskCtx context.Context, task *Task, _ func(agent.Event)) {
+	task.emit(agents.Event{Type: "automation_run", Data: run})
+	if err := task.Start(func(taskCtx context.Context, task *Task, _ func(agents.Event)) {
 		defer s.app.unregisterWorkspaceTask(task)
 		defer s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		result, _ := s.waitAutomationRun(taskCtx, execution)
 		if result.Run.ID != "" {
-			task.emit(agent.Event{Type: "automation_run", Data: result.Run})
+			task.emit(agents.Event{Type: "automation_run", Data: result.Run})
 		}
 	}); err != nil {
 		task.Abort()

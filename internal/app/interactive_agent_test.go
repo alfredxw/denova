@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -53,19 +53,19 @@ func TestInteractiveConversationBuildsHistoryAndPersistsAssistantToStory(t *test
 	if len(history) != 4 {
 		t.Fatalf("history length = %d, want 4", len(history))
 	}
-	if history[0].Role != agent.RoleUser || !strings.Contains(history[0].Content, "常驻资料库") || !strings.Contains(history[0].Content, "林川：谨慎的幸存者") || !strings.Contains(history[0].Content, "世界已进入黄昏末日") {
+	if history[0].Role != agents.RoleUser || !strings.Contains(history[0].Content, "常驻资料库") || !strings.Contains(history[0].Content, "林川：谨慎的幸存者") || !strings.Contains(history[0].Content, "世界已进入黄昏末日") {
 		t.Fatalf("history[0] should be stable resident lore: %#v", history[0])
 	}
-	if history[1].Role != agent.RoleUser || history[1].Content != "我推开酒馆的门" {
+	if history[1].Role != agents.RoleUser || history[1].Content != "我推开酒馆的门" {
 		t.Fatalf("history[0] mismatch: %#v", history[0])
 	}
 	if strings.Contains(history[1].Content, "历史 checkpoint") || strings.Contains(history[1].Content, "最高篇幅约束") {
 		t.Fatalf("history[1] should remain plain story history, got: %#v", history[1])
 	}
-	if history[2].Role != agent.RoleAssistant || history[2].Content != "门后传来低沉的风声。" {
+	if history[2].Role != agents.RoleAssistant || history[2].Content != "门后传来低沉的风声。" {
 		t.Fatalf("history[2] mismatch: %#v", history[2])
 	}
-	if history[3].Role != agent.RoleUser || !strings.Contains(history[3].Content, "我在黄泉酒馆点燃火把") {
+	if history[3].Role != agents.RoleUser || !strings.Contains(history[3].Content, "我在黄泉酒馆点燃火把") {
 		t.Fatalf("history[3] mismatch: %#v", history[3])
 	}
 	for _, want := range []string{

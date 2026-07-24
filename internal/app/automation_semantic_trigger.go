@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/automation"
 )
 
@@ -204,7 +204,7 @@ func (s *AutomationAppService) evaluateClaimedSemanticTrigger(
 	runtimeCfg := runtimeConfigForTask(snap, task)
 	evaluator := s.semanticEvaluator
 	if evaluator == nil {
-		evaluator = agent.GenerateAutomationTriggerEvaluation
+		evaluator = agents.GenerateAutomationTriggerEvaluation
 	}
 	raw, err := evaluator(ctx, &runtimeCfg, record.Instruction)
 	if err != nil {

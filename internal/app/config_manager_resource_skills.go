@@ -8,8 +8,8 @@ import (
 	"unicode/utf8"
 
 	"denova/config"
-	"denova/internal/agent"
-	novaskills "denova/internal/agent/skills"
+	agents "denova/internal/agents"
+	novaskills "denova/internal/agents/skills"
 )
 
 const (
@@ -29,7 +29,7 @@ const (
 	configManagerLoreSkill          = "lore"
 )
 
-func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, req ConfigManagerRequest) ([]agent.ConfigManagerResourceSkill, error) {
+func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, req ConfigManagerRequest) ([]agents.ConfigManagerResourceSkill, error) {
 	names := configManagerResourceSkillNames(req)
 	if len(names) == 0 || cfg == nil {
 		return nil, nil
@@ -39,7 +39,7 @@ func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, re
 		config.AgentKindConfigManager,
 		config.ResolveAgentSkillOverrides(cfg, config.AgentKindConfigManager),
 	)
-	loaded := make([]agent.ConfigManagerResourceSkill, 0, len(names))
+	loaded := make([]agents.ConfigManagerResourceSkill, 0, len(names))
 	totalSourceBytes := 0
 	for _, name := range names {
 		skill, err := backend.Get(ctx, name)
@@ -68,7 +68,7 @@ func loadConfigManagerResourceSkills(ctx context.Context, cfg *config.Config, re
 			)
 		}
 		totalSourceBytes += sourceBytes
-		loaded = append(loaded, agent.ConfigManagerResourceSkill{
+		loaded = append(loaded, agents.ConfigManagerResourceSkill{
 			Name:        skill.Name,
 			Description: skill.Description,
 			Content:     content,

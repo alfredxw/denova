@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
-	agentcontext "denova/internal/agent/context"
+	agents "denova/internal/agents"
+	agentcontext "denova/internal/agents/context"
 	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/prompts"
@@ -194,7 +194,7 @@ func newDirectorContextBudget(cfg *config.Config, task string, stableContext int
 		threshold = 0.90
 	}
 	thresholdTokens := int(float64(window) * threshold)
-	composition, err := agent.ComposeInteractiveDirectorInstruction(cfg, nil)
+	composition, err := agents.ComposeInteractiveDirectorInstruction(cfg, nil)
 	if err != nil {
 		return nil, fmt.Errorf("compose interactive director system prompt / 组装互动导演系统提示失败: %w", err)
 	}
@@ -202,19 +202,19 @@ func newDirectorContextBudget(cfg *config.Config, task string, stableContext int
 	if task == interactiveDirectorTaskOpeningPlan {
 		emptyPrompt = prompts.InteractiveDirectorInstruction(prompts.InteractiveDirectorPromptInput{OpeningInitialization: true})
 	}
-	overheadMessages := []*agent.Message{
-		agent.SystemMessage(composition.Instruction()),
-		agent.UserMessage(emptyPrompt),
+	overheadMessages := []*agents.Message{
+		agents.SystemMessage(composition.Instruction()),
+		agents.UserMessage(emptyPrompt),
 	}
 	if stable := strings.TrimSpace(stableContext.Content); stable != "" {
 		title := strings.TrimSpace(stableContext.Title)
 		if title == "" {
 			title = "稳定模型上下文"
 		}
-		overheadMessages = append(overheadMessages, agent.UserMessage(agentcontext.StandaloneMessage(title, stable, "")))
+		overheadMessages = append(overheadMessages, agents.UserMessage(agentcontext.StandaloneMessage(title, stable, "")))
 	}
-	overheadTokens := agent.EstimateContextTokens(overheadMessages, nil)
-	completionReserve, toolReserve := agent.EstimateContextProjectionReserves(cfg, config.AgentKindInteractiveDirector, 1024)
+	overheadTokens := agents.EstimateContextTokens(overheadMessages, nil)
+	completionReserve, toolReserve := agents.EstimateContextProjectionReserves(cfg, config.AgentKindInteractiveDirector, 1024)
 	toolSchemaAndRuntimeHeadroom := max(2048, window/100)
 	available := max(0, thresholdTokens-overheadTokens-completionReserve-toolReserve-toolSchemaAndRuntimeHeadroom)
 	return &directorContextBudget{
@@ -232,7 +232,7 @@ func (b *directorContextBudget) take(source, value string, fragmentLimit int) st
 	}
 	kept := boundedText(value, fragmentLimit)
 	kept = fitTextToTokenBudget(kept, b.remainingTokens)
-	usedTokens := agent.EstimateContextTokens([]*agent.Message{agent.UserMessage(kept)}, nil)
+	usedTokens := agents.EstimateContextTokens([]*agents.Message{agents.UserMessage(kept)}, nil)
 	if strings.TrimSpace(kept) == "" {
 		usedTokens = 0
 	}
@@ -249,14 +249,14 @@ func fitTextToTokenBudget(value string, tokenBudget int) string {
 	if tokenBudget <= 0 || strings.TrimSpace(value) == "" {
 		return ""
 	}
-	if agent.EstimateContextTokens([]*agent.Message{agent.UserMessage(value)}, nil) <= tokenBudget {
+	if agents.EstimateContextTokens([]*agents.Message{agents.UserMessage(value)}, nil) <= tokenBudget {
 		return value
 	}
 	low, high := 0, len(value)
 	for low < high {
 		mid := low + (high-low+1)/2
 		candidate, _ := trimStringToUTF8Bytes(value, mid)
-		if agent.EstimateContextTokens([]*agent.Message{agent.UserMessage(candidate)}, nil) <= tokenBudget {
+		if agents.EstimateContextTokens([]*agents.Message{agents.UserMessage(candidate)}, nil) <= tokenBudget {
 			low = mid
 		} else {
 			high = mid - 1
@@ -333,8 +333,8 @@ func loadStoryDirector(novaDir, directorID string) interactive.StoryDirector {
 	return fallback
 }
 
-func interactiveStoryTellerSystemInput(teller interactive.Teller, styleRules ...[]agent.StyleRule) prompts.InteractiveStorySystemInstructionInput {
-	var rules []agent.StyleRule
+func interactiveStoryTellerSystemInput(teller interactive.Teller, styleRules ...[]agents.StyleRule) prompts.InteractiveStorySystemInstructionInput {
+	var rules []agents.StyleRule
 	if len(styleRules) > 0 {
 		rules = styleRules[0]
 	}

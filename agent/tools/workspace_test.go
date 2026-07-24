@@ -1,0 +1,286 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	agent "github.com/alfredxw/denova/agent"
+)
+
+func TestLocalWorkspaceStandardTools(t *testing.T) {
+	root := t.TempDir()
+	workspace, err := OpenWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := workspace.Write(ctx, "chapters/one.md", "alpha\nbeta\n"); err != nil {
+		t.Fatal(err)
+	}
+	read, err := workspace.Read(ctx, ReadRequest{Path: "chapters/one.md", Offset: 2, Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Content != "beta\n" || read.Path != "chapters/one.md" {
+		t.Fatalf("read = %#v", read)
+	}
+	if _, err := workspace.Edit(ctx, "chapters/one.md", []TextEdit{{OldString: "beta", NewString: "gamma"}}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, "chapters", "one.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "alpha\ngamma\n" {
+		t.Fatalf("content = %q", data)
+	}
+	entries, err := workspace.List(ctx, "chapters")
+	if err != nil || len(entries) != 1 || entries[0] != "chapters/one.md" {
+		t.Fatalf("list = %v, %v", entries, err)
+	}
+	matches, err := workspace.Glob(ctx, ".", "**/*.md")
+	if err != nil || len(matches) != 1 || matches[0] != "chapters/one.md" {
+		t.Fatalf("glob = %v, %v", matches, err)
+	}
+}
+
+func TestLocalWorkspaceRejectsTraversalAndEscapingSymlink(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	workspace, err := OpenWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Write(context.Background(), "../escape.txt", "no"); err == nil {
+		t.Fatal("expected parent traversal rejection")
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "outside")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Write(context.Background(), "outside/escape.txt", "no"); err == nil {
+		t.Fatal("expected os.Root symlink escape rejection")
+	}
+}
+
+func TestOpenWorkspaceCanonicalizesAndRejectsInvalidRoots(t *testing.T) {
+	root := t.TempDir()
+	workspace, err := OpenWorkspace(filepath.Join(root, "."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workspace.Root() != filepath.Clean(canonical) {
+		t.Fatalf("root = %q, want %q", workspace.Root(), canonical)
+	}
+	if _, err := OpenWorkspace(filepath.Join(root, "missing")); err == nil {
+		t.Fatal("missing workspace should be rejected")
+	}
+	file := filepath.Join(t.TempDir(), "file.txt")
+	if err := os.WriteFile(file, []byte("text"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenWorkspace(file); err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("file workspace should be rejected, got %v", err)
+	}
+}
+
+func TestReadFileDefinitionReturnsBoundedNumberedWindow(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "story.txt"), []byte("first\nsecond\nthird\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := OpenWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, err := ReadFile(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := definition.Tool.(agent.InvokableTool).InvokableRun(context.Background(), `{"file_path":"story.txt","offset":2,"limit":1}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result, `"schema":"workspace_file.read.v2"`) ||
+		!strings.Contains(result, `"file_path":"story.txt"`) ||
+		!strings.Contains(result, "     2\tsecond") ||
+		strings.Contains(result, "first") || strings.Contains(result, "third") {
+		t.Fatalf("unexpected read_file result: %q", result)
+	}
+}
+
+func TestLocalWorkspaceReadRejectsOversizedAndNonUTF8Windows(t *testing.T) {
+	root := t.TempDir()
+	workspace, err := OpenWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "long.txt"), []byte(strings.Repeat("x", defaultResultBytes+1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Read(context.Background(), ReadRequest{Path: "long.txt"}); err == nil || !strings.Contains(err.Error(), "selected read_file window exceeds") {
+		t.Fatalf("oversized read should fail, got %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "binary.txt"), []byte{0xff, 0xfe}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Read(context.Background(), ReadRequest{Path: "binary.txt"}); err == nil || !strings.Contains(err.Error(), "UTF-8") {
+		t.Fatalf("non-UTF-8 read should fail, got %v", err)
+	}
+}
+
+func TestLocalWorkspaceGrepModesAndHeadLimit(t *testing.T) {
+	if _, err := exec.LookPath("rg"); err != nil {
+		t.Skip("ripgrep is not installed")
+	}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "chapters"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "chapters", "one.md"), []byte("opening\n-dragon wakes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "many.txt"), []byte(strings.Repeat("match\n", 10)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := OpenWorkspace(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := workspace.Grep(context.Background(), GrepRequest{Pattern: "-dragon", Path: "chapters", OutputMode: "content"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(content, "\n") != "chapters/one.md:2:-dragon wakes" {
+		t.Fatalf("content mode = %#v", content)
+	}
+	files, err := workspace.Grep(context.Background(), GrepRequest{Pattern: "-dragon", OutputMode: "files_with_matches"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(files, "\n") != "chapters/one.md" {
+		t.Fatalf("files mode = %#v", files)
+	}
+	counts, err := workspace.Grep(context.Background(), GrepRequest{Pattern: "-dragon", OutputMode: "count"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(counts, "\n") != "chapters/one.md:1" {
+		t.Fatalf("count mode = %#v", counts)
+	}
+	limited, err := workspace.Grep(context.Background(), GrepRequest{Pattern: "match", OutputMode: "content", HeadLimit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(limited) != 3 || limited[2] != resultTruncatedMarker {
+		t.Fatalf("head-limited content = %#v", limited)
+	}
+}
+
+func TestExecuteKeepsStreamingCapabilityAndWorkspace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell assertion is Unix-specific")
+	}
+	workspace, err := OpenWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner, err := NewLocalCommandRunner(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition, err := Execute(runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry, err := Build(context.Background(), definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tool, ok := registry.Tools()[0].(agent.StreamableTool)
+	if !ok {
+		t.Fatal("execute lost streamable capability")
+	}
+	stream, err := tool.StreamableRun(context.Background(), `{"command":"printf reusable"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result strings.Builder
+	for {
+		fragment, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		result.WriteString(fragment)
+	}
+	if result.String() != "reusable" {
+		t.Fatalf("result = %q", result.String())
+	}
+}
+
+func TestExecutePublishesStableSchemaAndFailsClosedWithoutRunner(t *testing.T) {
+	definition, err := Execute(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := definition.Tool.Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name != "execute" || !strings.Contains(string(raw), `"command"`) {
+		t.Fatalf("execute schema = %s", raw)
+	}
+	tool, ok := definition.Tool.(agent.StreamableTool)
+	if !ok {
+		t.Fatal("execute lost streamable capability")
+	}
+	if _, err := tool.StreamableRun(context.Background(), `{"command":"echo ok","background":true}`); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("unknown execute argument should fail, got %v", err)
+	}
+	if _, err := tool.StreamableRun(context.Background(), `{"command":"echo unsafe"}`); err == nil || !strings.Contains(err.Error(), "capability is disabled") {
+		t.Fatalf("disabled execute should fail closed, got %v", err)
+	}
+}
+
+func TestReadBoundedAndDrainConsumesRemainder(t *testing.T) {
+	source := &countingReader{reader: strings.NewReader(strings.Repeat("x", 64))}
+	result, err := readBoundedAndDrain(source, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(result) != "xxxxxxxx" || source.read != 64 {
+		t.Fatalf("result=%q read=%d", result, source.read)
+	}
+}
+
+type countingReader struct {
+	reader *strings.Reader
+	read   int
+}
+
+func (reader *countingReader) Read(buffer []byte) (int, error) {
+	count, err := reader.reader.Read(buffer)
+	reader.read += count
+	return count, err
+}

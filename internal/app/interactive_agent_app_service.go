@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/interactive"
 )
 
@@ -30,24 +30,24 @@ func (s *InteractiveAppService) StartInteractiveTaskWithError(ctx context.Contex
 	return s.startInteractiveTask(ctx, request)
 }
 
-func (a *App) AnalyzeInteractiveContext(storyID, branchID, message string, styleScenes []string, locale string) (agent.ContextAnalysis, error) {
+func (a *App) AnalyzeInteractiveContext(storyID, branchID, message string, styleScenes []string, locale string) (agents.ContextAnalysis, error) {
 	return a.interactiveService().AnalyzeInteractiveContext(storyID, branchID, message, styleScenes, locale)
 }
 
-func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, message string, styleScenes []string, locale string) (agent.ContextAnalysis, error) {
+func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, message string, styleScenes []string, locale string) (agents.ContextAnalysis, error) {
 	a := s.app
 	a.mu.RLock()
 	workspace := a.workspace
 	a.mu.RUnlock()
 	operation, err := a.acquireWorkspaceOperation(context.Background(), workspace, true)
 	if err != nil {
-		return agent.ContextAnalysis{}, err
+		return agents.ContextAnalysis{}, err
 	}
 	defer operation.Release()
 	a.mu.RLock()
 	if a.interactive == nil || a.bookState == nil || a.cfg == nil {
 		a.mu.RUnlock()
-		return agent.ContextAnalysis{}, ErrNoWorkspace
+		return agents.ContextAnalysis{}, ErrNoWorkspace
 	}
 	store := a.interactive
 	state := a.bookState
@@ -66,39 +66,39 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 
 	storyCtx, err := store.StoryContext(storyID, branchID)
 	if err != nil {
-		return agent.ContextAnalysis{}, err
+		return agents.ContextAnalysis{}, err
 	}
 	teller := loadInteractiveTeller(novaDir, storyCtx.Meta.StoryTellerID)
 	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
 	styleRules := convertTellerStyleRules(novaDir, teller.StyleRefs, teller.StyleRules, styleScenes)
-	req := agent.ChatRequest{
+	req := agents.ChatRequest{
 		Message:     message,
 		StyleScenes: styleScenes,
 		StyleRules:  styleRules,
 		Locale:      locale,
 	}
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, branchID, message, runtimeCfg.InteractiveReplyTargetChars, &runtimeCfg)
-	return agent.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveStoryTellerSystemInput(teller, styleRules), bookService, req, storyCtx.Snapshot.ContextCompaction, conversation)
+	return agents.BuildInteractiveStoryContextAnalysis(&runtimeCfg, state, interactiveStoryTellerSystemInput(teller, styleRules), bookService, req, storyCtx.Snapshot.ContextCompaction, conversation)
 }
 
-func (a *App) AnalyzeInteractiveDirectorContext(storyID, branchID, turnID string, locale string) (agent.ContextAnalysis, error) {
+func (a *App) AnalyzeInteractiveDirectorContext(storyID, branchID, turnID string, locale string) (agents.ContextAnalysis, error) {
 	return a.interactiveService().AnalyzeInteractiveDirectorContext(storyID, branchID, turnID, locale)
 }
 
-func (s *InteractiveAppService) AnalyzeInteractiveDirectorContext(storyID, branchID, turnID string, locale string) (agent.ContextAnalysis, error) {
+func (s *InteractiveAppService) AnalyzeInteractiveDirectorContext(storyID, branchID, turnID string, locale string) (agents.ContextAnalysis, error) {
 	a := s.app
 	a.mu.RLock()
 	workspace := a.workspace
 	a.mu.RUnlock()
 	operation, err := a.acquireWorkspaceOperation(context.Background(), workspace, true)
 	if err != nil {
-		return agent.ContextAnalysis{}, err
+		return agents.ContextAnalysis{}, err
 	}
 	defer operation.Release()
 	a.mu.RLock()
 	if a.interactive == nil || a.bookState == nil || a.cfg == nil {
 		a.mu.RUnlock()
-		return agent.ContextAnalysis{}, ErrNoWorkspace
+		return agents.ContextAnalysis{}, ErrNoWorkspace
 	}
 	store := a.interactive
 	runtimeCfg := *a.cfg
@@ -115,19 +115,19 @@ func (s *InteractiveAppService) AnalyzeInteractiveDirectorContext(storyID, branc
 
 	storyCtx, err := store.StoryContext(storyID, branchID)
 	if err != nil {
-		return agent.ContextAnalysis{}, err
+		return agents.ContextAnalysis{}, err
 	}
 	turn, err := interactiveDirectorAnalysisTurn(storyCtx.Snapshot, turnID)
 	if err != nil {
-		return agent.ContextAnalysis{}, err
+		return agents.ContextAnalysis{}, err
 	}
 	conversation := newInteractiveConversation(store, novaDir, workspace, storyID, storyCtx.Snapshot.BranchID, turn.User, storyCtx.Meta.ReplyTargetChars, &runtimeCfg)
 	stableContext, instruction, err := conversation.buildDirectorModelInput(turn)
 	if err != nil {
-		return agent.ContextAnalysis{}, err
+		return agents.ContextAnalysis{}, err
 	}
 	log.Printf("[interactive-director-analysis] built context story_id=%s branch_id=%s turn_id=%s instruction=%s", storyID, storyCtx.Snapshot.BranchID, turn.ID, interactivePartSummary(instruction))
-	return agent.BuildInteractiveDirectorContextAnalysisWithStableContext(&runtimeCfg, stableContext.Title, stableContext.Content, stableContext.MaxBytes, instruction)
+	return agents.BuildInteractiveDirectorContextAnalysisWithStableContext(&runtimeCfg, stableContext.Title, stableContext.Content, stableContext.MaxBytes, instruction)
 }
 
 func interactiveDirectorAnalysisTurn(snapshot interactive.Snapshot, turnID string) (interactive.TurnEvent, error) {
@@ -146,15 +146,15 @@ func interactiveDirectorAnalysisTurn(snapshot interactive.Snapshot, turnID strin
 	return interactive.TurnEvent{}, fmt.Errorf("回合不存在: %s", turnID)
 }
 
-func (a *App) CompactInteractiveContext(ctx context.Context, storyID, branchID string) (agent.ContextCompactionResult, error) {
+func (a *App) CompactInteractiveContext(ctx context.Context, storyID, branchID string) (agents.ContextCompactionResult, error) {
 	return a.interactiveService().CompactInteractiveContext(ctx, storyID, branchID)
 }
 
-func (s *InteractiveAppService) CompactInteractiveContext(ctx context.Context, storyID, branchID string) (agent.ContextCompactionResult, error) {
+func (s *InteractiveAppService) CompactInteractiveContext(ctx context.Context, storyID, branchID string) (agents.ContextCompactionResult, error) {
 	return s.executeInteractiveContextCompaction(ctx, storyID, branchID, "")
 }
 
-func (a *App) CompactInteractiveContextCommand(ctx context.Context, storyID, branchID, commandID string) (agent.ContextCompactionResult, error) {
+func (a *App) CompactInteractiveContextCommand(ctx context.Context, storyID, branchID, commandID string) (agents.ContextCompactionResult, error) {
 	return a.interactiveService().executeInteractiveContextCompaction(ctx, storyID, branchID, commandID)
 }
 
@@ -242,8 +242,8 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	resolvedRequest := cycle.request
 	cycle.request = identity.chatRequest
 	cycle.request.StyleRules = resolvedRequest.StyleRules
-	var accepted *agent.AcceptedRun
-	runAccepted := func(ctx context.Context, task *Task, _ func(agent.Event)) {
+	var accepted *agents.AcceptedRun
+	runAccepted := func(ctx context.Context, task *Task, _ func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		log.Printf("[interactive-agent-task] run begin id=%s command_id=%s story_id=%s branch_id=%s rewind_turn_id=%s message_len=%d style_scenes=%d", task.ID(), identity.request.CommandID, cycle.storyID, cycle.branchID, identity.request.RegenerateFromTurnID, len(identity.request.Message), len(identity.request.StyleScenes))
 		outcome := accepted.Wait(ctx)
@@ -307,7 +307,7 @@ func (s *InteractiveAppService) startInteractiveTask(ctx context.Context, reques
 	return task, nil
 }
 
-func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conversation *interactiveConversation, emit func(agent.Event)) *interactive.Snapshot {
+func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conversation *interactiveConversation, emit func(agents.Event)) *interactive.Snapshot {
 	snapshot, err := emitInteractiveTurnPersistedResult(store, storyID, conversation, emit)
 	if err != nil {
 		log.Printf("[interactive-agent-task] emit persisted turn failed story_id=%s err=%v", storyID, err)
@@ -315,7 +315,7 @@ func emitInteractiveTurnPersisted(store *interactive.Store, storyID string, conv
 	return snapshot
 }
 
-func emitInteractiveTurnPersistedResult(store *interactive.Store, storyID string, conversation *interactiveConversation, emit func(agent.Event)) (*interactive.Snapshot, error) {
+func emitInteractiveTurnPersistedResult(store *interactive.Store, storyID string, conversation *interactiveConversation, emit func(agents.Event)) (*interactive.Snapshot, error) {
 	if store == nil || conversation == nil || emit == nil {
 		return nil, fmt.Errorf("interactive turn persistence projection is unavailable")
 	}
@@ -345,7 +345,7 @@ func emitInteractiveTurnPersistedResult(store *interactive.Store, storyID string
 		ContextCompaction:        snapshot.ContextCompaction,
 		ContextCompactionRemoval: snapshot.ContextCompactionRemoval,
 	}
-	emit(agent.Event{Type: "interactive_turn_persisted", Data: event})
+	emit(agents.Event{Type: "interactive_turn_persisted", Data: event})
 	log.Printf("[interactive-agent-task] emitted persisted turn story_id=%s branch_id=%s turn_id=%s", storyID, snapshot.BranchID, persistedTurn.ID)
 	return &snapshot, nil
 }

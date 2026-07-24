@@ -5,13 +5,13 @@ import (
 	"fmt"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
 	"denova/internal/interactive"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 type preparedInteractiveContextCompaction struct {
-	Result          agent.ContextCompactionResult
+	Result          agents.ContextCompactionResult
 	SourceTurnCount int
 }
 
@@ -28,8 +28,8 @@ func (c *interactiveConversation) stagePreparedInteractiveCompaction(prepared pr
 func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 	ctx context.Context,
 	settledOperationID runstate.OperationID,
-	options agent.RunOptions,
-) (*agent.ContextStructuralSpec, error) {
+	options agents.RunOptions,
+) (*agents.ContextStructuralSpec, error) {
 	if c == nil || c.store == nil {
 		return nil, nil
 	}
@@ -54,7 +54,7 @@ func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 	}
 	expectedParent := branch.Head
 	preparedHash, err := contextStructuralValueHash(struct {
-		Result          agent.ContextCompactionResult
+		Result          agents.ContextCompactionResult
 		SourceTurnCount int
 	}{prepared.Result, prepared.SourceTurnCount})
 	if err != nil {
@@ -86,39 +86,39 @@ func (c *interactiveConversation) PostSettlementContextStructuralSpec(
 		return nil, err
 	}
 	plan, err := newContextStructuralRestorePlan(
-		agent.ContextStructuralDomainStory, agent.ContextStructuralCompact, binding, ref, recordID,
-		agent.ContextStructuralResult{Compaction: prepared.Result}, event,
+		agents.ContextStructuralDomainStory, agents.ContextStructuralCompact, binding, ref, recordID,
+		agents.ContextStructuralResult{Compaction: prepared.Result}, event,
 	)
 	if err != nil {
 		return nil, err
 	}
 	operation := fixedContextStructuralOperation(plan,
-		func(context.Context) (agent.ContextStructuralReceipt, error) {
+		func(context.Context) (agents.ContextStructuralReceipt, error) {
 			committed, err := c.store.AppendContextCompaction(c.storyID, branchID, event)
 			if err != nil {
-				return agent.ContextStructuralReceipt{}, err
+				return agents.ContextStructuralReceipt{}, err
 			}
 			if !sameStoryContextCompactionMutation(committed, event) {
-				return agent.ContextStructuralReceipt{}, fmt.Errorf("canonical post-settlement Story compaction differs from frozen mutation")
+				return agents.ContextStructuralReceipt{}, fmt.Errorf("canonical post-settlement Story compaction differs from frozen mutation")
 			}
-			return agent.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, nil
+			return agents.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, nil
 		},
-		func(context.Context) (agent.ContextStructuralReceipt, bool, error) {
+		func(context.Context) (agents.ContextStructuralReceipt, bool, error) {
 			current, err := c.store.StoryContext(c.storyID, branchID)
 			if err != nil {
-				return agent.ContextStructuralReceipt{}, false, err
+				return agents.ContextStructuralReceipt{}, false, err
 			}
 			if current.Snapshot.ContextCompaction == nil || current.Snapshot.ContextCompaction.ID != recordID {
-				return agent.ContextStructuralReceipt{}, false, nil
+				return agents.ContextStructuralReceipt{}, false, nil
 			}
 			committed := *current.Snapshot.ContextCompaction
 			if !sameStoryContextCompactionMutation(committed, event) {
-				return agent.ContextStructuralReceipt{}, false, fmt.Errorf("canonical post-settlement Story compaction conflicts with frozen mutation")
+				return agents.ContextStructuralReceipt{}, false, fmt.Errorf("canonical post-settlement Story compaction conflicts with frozen mutation")
 			}
-			return agent.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, true, nil
+			return agents.ContextStructuralReceipt{Revision: "story-head:" + committed.ID}, true, nil
 		})
-	return &agent.ContextStructuralSpec{
-		CommandID: commandID, Action: agent.ContextStructuralCompact,
+	return &agents.ContextStructuralSpec{
+		CommandID: commandID, Action: agents.ContextStructuralCompact,
 		Ref: ref, Options: options, Operation: operation, RestorePlan: &plan,
 	}, nil
 }

@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 )
 
 func TestAppSwitchSessionUsesCurrentSessionHistoryOnly(t *testing.T) {
@@ -19,7 +19,7 @@ func TestAppSwitchSessionUsesCurrentSessionHistoryOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.Append(agent.UserMessage("会话 A 消息")); err != nil {
+	if err := first.Append(agents.UserMessage("会话 A 消息")); err != nil {
 		t.Fatal(err)
 	}
 	app.session = first
@@ -31,7 +31,7 @@ func TestAppSwitchSessionUsesCurrentSessionHistoryOnly(t *testing.T) {
 	if second.ID == first.ID {
 		t.Fatal("新会话 ID 不应复用 default")
 	}
-	if err := second.Append(agent.UserMessage("会话 B 消息")); err != nil {
+	if err := second.Append(agents.UserMessage("会话 B 消息")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -95,7 +95,7 @@ func TestAppUserSessionsIgnoreFixedAgentSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.Append(agent.UserMessage("创作会话")); err != nil {
+	if err := first.Append(agents.UserMessage("创作会话")); err != nil {
 		t.Fatal(err)
 	}
 	app := &App{sessionStore: store, session: first}
@@ -110,7 +110,7 @@ func TestAppUserSessionsIgnoreFixedAgentSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := scoped.Append(agent.UserMessage("自动化配置会话")); err != nil {
+	if err := scoped.Append(agents.UserMessage("自动化配置会话")); err != nil {
 		t.Fatal(err)
 	}
 

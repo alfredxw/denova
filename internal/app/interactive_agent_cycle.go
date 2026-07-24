@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/prompts"
@@ -24,7 +24,7 @@ type interactiveAgentCycle struct {
 	state          *book.State
 	bookService    *book.Service
 	versionService *book.VersionService
-	chatService    *agent.ChatService
+	chatService    *agents.ChatService
 	sessionStore   *session.Store
 	runtimeCfg     config.Config
 	workspace      string
@@ -33,10 +33,10 @@ type interactiveAgentCycle struct {
 	branchID       string
 	storyContext   interactive.StoryContext
 	tellerInput    prompts.InteractiveStorySystemInstructionInput
-	runner         *agent.Runner
-	systemPrompt   agent.SystemPromptComposition
+	runner         *agents.Runner
+	systemPrompt   agents.SystemPromptComposition
 	conversation   *interactiveConversation
-	request        agent.ChatRequest
+	request        agents.ChatRequest
 }
 
 type interactiveAgentCycleRequest struct {
@@ -104,7 +104,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	styleRules := convertTellerStyleRules(cycle.novaDir, teller.StyleRefs, teller.StyleRules, request.StyleScenes)
 	cycle.tellerInput = interactiveStoryTellerSystemInput(teller, styleRules)
 	cycle.tellerInput.ChoiceCount = storyContext.Meta.ChoiceCount
-	cycle.request = agent.ChatRequest{
+	cycle.request = agents.ChatRequest{
 		Message: strings.TrimSpace(request.Message), StyleScenes: append([]string(nil), request.StyleScenes...),
 		StyleRules: styleRules, Locale: strings.TrimSpace(request.Locale),
 	}
@@ -121,7 +121,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 		len(storyContext.Snapshot.Turns) == 0 {
 		submitOpeningStateSchema = cycle.conversation.SubmitOpeningStateSchemaBatch
 	}
-	cycle.runner, cycle.systemPrompt, err = buildInteractiveStoryRunnerWithComposition(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agent.InteractiveStoryToolContext{
+	cycle.runner, cycle.systemPrompt, err = buildInteractiveStoryRunnerWithComposition(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agents.InteractiveStoryToolContext{
 		Store:                  cycle.store,
 		StoryID:                cycle.storyID,
 		BranchID:               cycle.branchID,
@@ -137,9 +137,9 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	return cycle, nil
 }
 
-func (c *interactiveAgentCycle) options(taskID string) agent.RunOptions {
-	return agent.RunOptions{
-		AgentKind:          agent.AgentKindInteractiveStory,
+func (c *interactiveAgentCycle) options(taskID string) agents.RunOptions {
+	return agents.RunOptions{
+		AgentKind:          agents.AgentKindInteractiveStory,
 		TaskID:             strings.TrimSpace(taskID),
 		StoryID:            c.storyID,
 		BranchID:           c.branchID,
@@ -159,14 +159,14 @@ func (c *interactiveAgentCycle) options(taskID string) agent.RunOptions {
 // bindCommit installs the game projection commit before the HarnessTurnSpec is
 // registered. A fresh cycle/conversation therefore emits exactly its own turn
 // for Start, Steer, and FollowUp commands.
-func (c *interactiveAgentCycle) bindCommit(emit func(agent.Event)) {
+func (c *interactiveAgentCycle) bindCommit(emit func(agents.Event)) {
 	if c == nil || c.conversation == nil {
 		return
 	}
-	c.conversation.withAgentCycleCommit(func(_ context.Context, outcome agent.RunOutcome) error {
+	c.conversation.withAgentCycleCommit(func(_ context.Context, outcome agents.RunOutcome) error {
 		turn, _, persisted := c.conversation.LastTurnForState()
 		if !persisted {
-			if outcome.Status == agent.RunOutcomeCompleted {
+			if outcome.Status == agents.RunOutcomeCompleted {
 				return fmt.Errorf("interactive agent cycle completed without a persisted turn")
 			}
 			return nil

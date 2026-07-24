@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 type configManagerProjectionProbe struct {
@@ -22,12 +22,12 @@ type configManagerProjectionProbe struct {
 	recoveryCalls int
 }
 
-func (p *configManagerProjectionProbe) RuntimeStatusProjection(context.Context, agent.RunOptions) (runstate.StatusSnapshot, error) {
+func (p *configManagerProjectionProbe) RuntimeStatusProjection(context.Context, agents.RunOptions) (runstate.StatusSnapshot, error) {
 	p.storedCalls++
 	return p.stored, nil
 }
 
-func (p *configManagerProjectionProbe) RuntimeRecoveryStatusProjection(context.Context, agent.RunOptions) (runstate.StatusSnapshot, error) {
+func (p *configManagerProjectionProbe) RuntimeRecoveryStatusProjection(context.Context, agents.RunOptions) (runstate.StatusSnapshot, error) {
 	p.recoveryCalls++
 	return p.recovered, nil
 }
@@ -35,8 +35,8 @@ func (p *configManagerProjectionProbe) RuntimeRecoveryStatusProjection(context.C
 func TestConfigManagerIdleActiveProjectionNeverOpensRecoveryActor(t *testing.T) {
 	probe := &configManagerProjectionProbe{stored: runstate.StatusSnapshot{Phase: runstate.PhaseIdle}}
 	for index := 0; index < 256; index++ {
-		status, ok := projectConfigManagerRuntime(context.Background(), probe, agent.RunOptions{
-			AgentKind: agent.AgentKindConfigManager,
+		status, ok := projectConfigManagerRuntime(context.Background(), probe, agents.RunOptions{
+			AgentKind: agents.AgentKindConfigManager,
 			Workspace: "/book",
 			SessionID: fmt.Sprintf("config-scope-%d", index),
 		})
@@ -60,8 +60,8 @@ func TestConfigManagerColdUnfinishedProjectionOpensCanonicalRecovery(t *testing.
 			ActiveCommandID: "accepted-start", ActiveOperation: "operation-1",
 		},
 	}
-	status, ok := projectConfigManagerRuntime(context.Background(), probe, agent.RunOptions{
-		AgentKind: agent.AgentKindConfigManager, Workspace: "/book", SessionID: "config-scope",
+	status, ok := projectConfigManagerRuntime(context.Background(), probe, agents.RunOptions{
+		AgentKind: agents.AgentKindConfigManager, Workspace: "/book", SessionID: "config-scope",
 	})
 	if !ok || !status.RecoveryPaused || status.ActiveCommandID != "accepted-start" {
 		t.Fatalf("canonical recovery projection = %#v projected=%t", status, ok)
@@ -201,10 +201,10 @@ func TestConfigManagerColdRecoveryAttachesAndAbortsSameDisplayTask(t *testing.T)
 	}
 
 	view := application.ConfigManagerAgentActiveView(context.Background(), scope)
-	actions := agent.RuntimeRecoveryActions(view.Runtime)
+	actions := agents.RuntimeRecoveryActions(view.Runtime)
 	if !view.RuntimeProjectionOK || !view.Runtime.RecoveryPaused || view.StreamAttached || len(actions) != 2 ||
-		actions[0].Kind != agent.RuntimeRecoveryAttach || actions[0].CommandID != "config-manager-recovery-start" ||
-		actions[1].Kind != agent.RuntimeRecoveryAbort {
+		actions[0].Kind != agents.RuntimeRecoveryAttach || actions[0].CommandID != "config-manager-recovery-start" ||
+		actions[1].Kind != agents.RuntimeRecoveryAbort {
 		t.Fatalf("cold Config Manager projection view=%#v actions=%#v", view, actions)
 	}
 	if view.Task == nil || application.ConfigManagerDisplayTask(context.Background(), scope, view.Task.ID) != nil {
@@ -244,8 +244,8 @@ func TestConfigManagerColdRecoveryAttachesAndAbortsSameDisplayTask(t *testing.T)
 
 	clearScope := ConfigManagerRequest{Origin: "settings", ResourceID: "resource-cold-clear"}
 	clearView := application.ConfigManagerAgentActiveView(context.Background(), clearScope)
-	clearActions := agent.RuntimeRecoveryActions(clearView.Runtime)
-	if !clearView.Runtime.RecoveryPaused || clearView.StreamAttached || len(clearActions) < 1 || clearActions[0].Kind != agent.RuntimeRecoveryAttach {
+	clearActions := agents.RuntimeRecoveryActions(clearView.Runtime)
+	if !clearView.Runtime.RecoveryPaused || clearView.StreamAttached || len(clearActions) < 1 || clearActions[0].Kind != agents.RuntimeRecoveryAttach {
 		t.Fatalf("cold clear projection view=%#v actions=%#v", clearView, clearActions)
 	}
 	clearRecovery, err := application.RecoverConfigManagerAgent(context.Background(), clearScope, AgentRuntimeRecoveryRequest{Action: clearActions[0]})
@@ -304,9 +304,9 @@ func runConfigManagerRecoveryCrashSeed(t *testing.T) {
 		vanished = append(vanished, reachedContext)
 		if _, err := application.chatService.StartWithOptions(
 			context.Background(),
-			newInteractiveReplayRunner(t, &interactiveReplayModel{message: agent.AssistantMessage("must not run", nil)}),
+			newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("must not run", nil)}),
 			&interactiveCrashConversation{vanished: reachedContext}, application.bookService,
-			agent.ChatRequest{CommandID: seed.commandID, Message: "persist Config Manager work before crash"},
+			agents.ChatRequest{CommandID: seed.commandID, Message: "persist Config Manager work before crash"},
 			configManagerRunOptions(workspace, sessionID), nil,
 		); err != nil {
 			t.Fatal(err)

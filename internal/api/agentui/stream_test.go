@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 )
 
 func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	var out bytes.Buffer
 	encoder := NewStreamEncoder(&out)
 
-	events := []agent.Event{
+	events := []agents.Event{
 		{Type: "thinking", Data: map[string]any{
 			"content":            "分析",
 			"run_id":             "run-1",

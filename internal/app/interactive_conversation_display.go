@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
 
@@ -320,7 +320,7 @@ func withInteractiveNarrativeAnchor(events []interactive.DisplayEvent) []interac
 	}
 	anchor := interactive.DisplayEvent{ID: interactiveNarrativeAnchorEventID, Role: interactive.DisplayEventRoleNarrative}
 	for index, event := range events {
-		if event.Role == "tool_call" && agent.IsInteractiveTurnSubmissionTool(event.Name) {
+		if event.Role == "tool_call" && agents.IsInteractiveTurnSubmissionTool(event.Name) {
 			result := make([]interactive.DisplayEvent, 0, len(events)+1)
 			result = append(result, events[:index]...)
 			result = append(result, anchor)

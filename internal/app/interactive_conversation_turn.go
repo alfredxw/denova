@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
 
@@ -96,19 +96,19 @@ func (c *interactiveConversation) InteractiveNarrativeReady() bool {
 	return c.turnProtocol.narrativeReady()
 }
 
-func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, input agent.ContextCompactionInput) ([]*agent.Message, agent.ContextCompactionResult, error) {
+func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, input agents.ContextCompactionInput) ([]*agents.Message, agents.ContextCompactionResult, error) {
 	if c == nil || c.store == nil {
-		return input.Messages, agent.ContextCompactionResult{}, fmt.Errorf("互动故事不存在")
+		return input.Messages, agents.ContextCompactionResult{}, fmt.Errorf("互动故事不存在")
 	}
 	storyCtx, err := c.storyContextForCycle()
 	if err != nil {
-		return input.Messages, agent.ContextCompactionResult{}, err
+		return input.Messages, agents.ContextCompactionResult{}, err
 	}
 	if !input.Force && storyCtx.Snapshot.ContextCompactionRemoval != nil && storyCtx.Snapshot.ContextCompactionRemoval.SourceTurnCount >= len(storyCtx.Snapshot.Turns) {
-		return input.Messages, agent.ContextCompactionResult{SkippedReason: "removed_same_source"}, nil
+		return input.Messages, agents.ContextCompactionResult{SkippedReason: "removed_same_source"}, nil
 	}
 	source, existingCheckpoint := interactiveCompactionSource(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
-	source = agent.ApplyToolResultContextPolicyForConversation(source, c.ToolResultContextPolicy())
+	source = agents.ApplyToolResultContextPolicyForConversation(source, c.ToolResultContextPolicy())
 	epoch := 1
 	if storyCtx.Snapshot.ContextCompaction != nil {
 		epoch = storyCtx.Snapshot.ContextCompaction.Epoch + 1
@@ -119,14 +119,14 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	}
 	input.KeepLatestUser = true
 	stableLeadingMessage := c.stableLeadingMessageSnapshot()
-	completionReserve, toolReserve := agent.EstimateContextProjectionReserves(c.cfg, config.AgentKindInteractiveStory, c.replyTargetChars)
+	completionReserve, toolReserve := agents.EstimateContextProjectionReserves(c.cfg, config.AgentKindInteractiveStory, c.replyTargetChars)
 	if input.ReservedCompletionTokens <= 0 {
 		input.ReservedCompletionTokens = completionReserve
 	}
 	if input.ReservedToolResultTokens <= 0 {
 		input.ReservedToolResultTokens = toolReserve
 	}
-	newMessages, result, err := agent.PrepareContextCompaction(ctx, c.cfg, config.AgentKindInteractiveStory, input, epoch)
+	newMessages, result, err := agents.PrepareContextCompaction(ctx, c.cfg, config.AgentKindInteractiveStory, input, epoch)
 	if err != nil || !result.Triggered {
 		return newMessages, result, err
 	}
@@ -144,37 +144,37 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	return newMessages, result, nil
 }
 
-func interactiveTurnMessages(turns []interactive.TurnEvent) []*agent.Message {
-	messages := make([]*agent.Message, 0, len(turns)*2)
+func interactiveTurnMessages(turns []interactive.TurnEvent) []*agents.Message {
+	messages := make([]*agents.Message, 0, len(turns)*2)
 	for _, turn := range turns {
 		if strings.TrimSpace(turn.User) != "" {
-			messages = append(messages, agent.UserMessage(turn.User))
+			messages = append(messages, agents.UserMessage(turn.User))
 		}
 		messages = append(messages, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
 		if strings.TrimSpace(turn.Narrative) != "" {
-			messages = append(messages, agent.AssistantMessage(turn.Narrative, nil))
+			messages = append(messages, agents.AssistantMessage(turn.Narrative, nil))
 		}
 	}
 	return messages
 }
 
-func interactiveContextMessageFromSchema(msg *agent.Message) (interactive.ModelContextMessage, bool) {
+func interactiveContextMessageFromSchema(msg *agents.Message) (interactive.ModelContextMessage, bool) {
 	if msg == nil {
 		return interactive.ModelContextMessage{}, false
 	}
 	switch msg.Role {
-	case agent.RoleAssistant:
+	case agents.RoleAssistant:
 		calls := interactiveToolCallsFromSchema(msg.ToolCalls)
 		if len(calls) == 0 {
 			return interactive.ModelContextMessage{}, false
 		}
-		return interactive.ModelContextMessage{Role: string(agent.RoleAssistant), ToolCalls: calls}, true
-	case agent.RoleTool:
+		return interactive.ModelContextMessage{Role: string(agents.RoleAssistant), ToolCalls: calls}, true
+	case agents.RoleTool:
 		if strings.TrimSpace(msg.ToolCallID) == "" && strings.TrimSpace(msg.ToolName) == "" {
 			return interactive.ModelContextMessage{}, false
 		}
 		return interactive.ModelContextMessage{
-			Role:       string(agent.RoleTool),
+			Role:       string(agents.RoleTool),
 			Content:    msg.Content,
 			Name:       msg.Name,
 			ToolCallID: msg.ToolCallID,
@@ -185,7 +185,7 @@ func interactiveContextMessageFromSchema(msg *agent.Message) (interactive.ModelC
 	}
 }
 
-func interactiveToolCallsFromSchema(calls []agent.ToolCall) []interactive.ModelContextToolCall {
+func interactiveToolCallsFromSchema(calls []agents.ToolCall) []interactive.ModelContextToolCall {
 	if len(calls) == 0 {
 		return nil
 	}
@@ -208,41 +208,41 @@ func interactiveToolCallsFromSchema(calls []agent.ToolCall) []interactive.ModelC
 	return result
 }
 
-func schemaMessagesFromInteractiveContext(messages []interactive.ModelContextMessage) []*agent.Message {
+func schemaMessagesFromInteractiveContext(messages []interactive.ModelContextMessage) []*agents.Message {
 	if len(messages) == 0 {
 		return nil
 	}
-	result := make([]*agent.Message, 0, len(messages))
+	result := make([]*agents.Message, 0, len(messages))
 	for _, msg := range messages {
 		switch strings.TrimSpace(msg.Role) {
-		case string(agent.RoleAssistant):
+		case string(agents.RoleAssistant):
 			calls := schemaToolCallsFromInteractive(msg.ToolCalls)
 			if len(calls) > 0 {
-				result = append(result, agent.AssistantMessage("", calls))
+				result = append(result, agents.AssistantMessage("", calls))
 			}
-		case string(agent.RoleTool):
+		case string(agents.RoleTool):
 			if strings.TrimSpace(msg.ToolCallID) != "" || strings.TrimSpace(msg.ToolName) != "" {
-				result = append(result, agent.ToolMessage(msg.Content, msg.ToolCallID, agent.WithToolName(msg.ToolName)))
+				result = append(result, agents.ToolMessage(msg.Content, msg.ToolCallID, agents.WithToolName(msg.ToolName)))
 			}
 		}
 	}
 	return result
 }
 
-func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []agent.ToolCall {
+func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []agents.ToolCall {
 	if len(calls) == 0 {
 		return nil
 	}
-	result := make([]agent.ToolCall, 0, len(calls))
+	result := make([]agents.ToolCall, 0, len(calls))
 	for _, call := range calls {
 		if strings.TrimSpace(call.Function.Name) == "" {
 			continue
 		}
-		result = append(result, agent.ToolCall{
+		result = append(result, agents.ToolCall{
 			Index: call.Index,
 			ID:    call.ID,
 			Type:  call.Type,
-			Function: agent.FunctionCall{
+			Function: agents.FunctionCall{
 				Name:      call.Function.Name,
 				Arguments: call.Function.Arguments,
 			},
@@ -252,7 +252,7 @@ func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []
 	return result
 }
 
-func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent) ([]*agent.Message, string) {
+func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent) ([]*agents.Message, string) {
 	sourceStart := 0
 	existingCheckpoint := ""
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
@@ -268,16 +268,16 @@ func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *inte
 	return interactiveCompactionTurnMessages(turns[sourceStart:]), existingCheckpoint
 }
 
-func interactiveCompactionTurnMessages(turns []interactive.TurnEvent) []*agent.Message {
-	messages := make([]*agent.Message, 0, len(turns)*2)
+func interactiveCompactionTurnMessages(turns []interactive.TurnEvent) []*agents.Message {
+	messages := make([]*agents.Message, 0, len(turns)*2)
 	for _, turn := range turns {
 		source := fmt.Sprintf("[source turn_id=%s branch_id=%s]", turn.ID, turn.BranchID)
 		if strings.TrimSpace(turn.User) != "" {
-			messages = append(messages, agent.UserMessage(source+"\n"+turn.User))
+			messages = append(messages, agents.UserMessage(source+"\n"+turn.User))
 		}
 		messages = append(messages, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
 		if strings.TrimSpace(turn.Narrative) != "" {
-			messages = append(messages, agent.AssistantMessage(source+"\n"+turn.Narrative, nil))
+			messages = append(messages, agents.AssistantMessage(source+"\n"+turn.Narrative, nil))
 		}
 	}
 	return messages
@@ -287,7 +287,7 @@ func (c *interactiveConversation) AppendAssistant(content string) error {
 	return c.AppendAssistantWithThinking(content, "")
 }
 
-func (c *interactiveConversation) AppendContextMessage(msg *agent.Message) error {
+func (c *interactiveConversation) AppendContextMessage(msg *agents.Message) error {
 	if c == nil || msg == nil {
 		return nil
 	}
@@ -301,8 +301,8 @@ func (c *interactiveConversation) AppendContextMessage(msg *agent.Message) error
 	return nil
 }
 
-func (c *interactiveConversation) ToolResultContextPolicy() agent.ToolResultContextPolicy {
-	return agent.ResolveToolResultContextPolicyForConversation(c.cfg, config.AgentKindInteractiveStory)
+func (c *interactiveConversation) ToolResultContextPolicy() agents.ToolResultContextPolicy {
+	return agents.ResolveToolResultContextPolicyForConversation(c.cfg, config.AgentKindInteractiveStory)
 }
 
 func (c *interactiveConversation) AppendAssistantWithThinking(content, thinking string) error {

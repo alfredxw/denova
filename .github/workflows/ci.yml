@@ -14,7 +14,7 @@ jobs:
     name: Test and build
     runs-on: ubuntu-latest
     env:
-      GO_MODULES: ". adk adk/model/openai"
+      GO_MODULES: ". agent agent/model/openai"
 
     steps:
       - name: Checkout
@@ -27,8 +27,8 @@ jobs:
           cache: true
           cache-dependency-path: |
             go.sum
-            adk/go.sum
-            adk/model/openai/go.sum
+            agent/go.sum
+            agent/model/openai/go.sum
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

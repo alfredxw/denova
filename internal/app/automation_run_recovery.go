@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
 	"denova/internal/automation"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func (s *AutomationAppService) reconcilePersistedAutomationRuns(ctx context.Context) {
@@ -90,9 +90,9 @@ func (s *AutomationAppService) reconcilePersistedAutomationRuns(ctx context.Cont
 	}
 }
 
-func automationRecoveryOptions(task automation.Task, run automation.RunRecord) agent.RunOptions {
-	return agent.RunOptions{
-		AgentKind: agent.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: task.ID,
+func automationRecoveryOptions(task automation.Task, run automation.RunRecord) agents.RunOptions {
+	return agents.RunOptions{
+		AgentKind: agents.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: task.ID,
 		SessionID: run.SessionID, Workspace: run.Workspace, Mode: "automation",
 	}
 }
@@ -110,7 +110,7 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 		return nil, run, nil
 	}
 	if snap == nil || snap.chatService == nil {
-		return nil, automation.RunRecord{}, agent.ErrRuntimeProjectionUnavailable
+		return nil, automation.RunRecord{}, agents.ErrRuntimeProjectionUnavailable
 	}
 	if activeTask, activeRun, ok := s.activeAutomationTaskByRunID(snap, run.ID); ok {
 		return activeTask, activeRun, nil
@@ -135,9 +135,9 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 		return nil, automation.RunRecord{}, err
 	}
 	status := recovery.InitialStatus()
-	var attach agent.RuntimeRecoveryAction
-	for _, action := range agent.RuntimeRecoveryActions(status) {
-		if action.Kind == agent.RuntimeRecoveryAttach {
+	var attach agents.RuntimeRecoveryAction
+	for _, action := range agents.RuntimeRecoveryActions(status) {
+		if action.Kind == agents.RuntimeRecoveryAttach {
 			attach = action
 			break
 		}
@@ -177,7 +177,7 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 		recovery.Close()
 		return nil, automation.RunRecord{}, err
 	}
-	displayTask.emit(agent.Event{Type: "automation_run", Data: run})
+	displayTask.emit(agents.Event{Type: "automation_run", Data: run})
 	receipt, err := recovery.Resume(ctx, attach, displayTask.ID(), displayTask.emit)
 	if err != nil {
 		recovery.Close()
@@ -201,12 +201,12 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 		return nil, automation.RunRecord{}, err
 	}
 	s.updateActiveAutomationRun(snap, taskStoreID, run)
-	displayTask.emit(agent.Event{Type: agent.RuntimeRecoveryRequiredEventType, Data: map[string]any{
-		"code":       agent.RuntimeRecoveryRequiredEventCode,
+	displayTask.emit(agents.Event{Type: agents.RuntimeRecoveryRequiredEventType, Data: map[string]any{
+		"code":       agents.RuntimeRecoveryRequiredEventCode,
 		"message":    "自动化运行需要显式终止或等待持久化终态 / Automation run requires explicit control or durable terminal reconciliation",
 		"command_id": attach.CommandID, "operation_id": attach.OperationID,
 	}})
-	if err := displayTask.Start(func(taskCtx context.Context, displayTask *Task, emit func(agent.Event)) {
+	if err := displayTask.Start(func(taskCtx context.Context, displayTask *Task, emit func(agents.Event)) {
 		defer s.app.unregisterWorkspaceTask(displayTask)
 		defer s.clearActiveAutomationTask(snap, taskStoreID, run.ID)
 		defer recovery.Close()
@@ -214,10 +214,10 @@ func (s *AutomationAppService) ensureAutomationRecoveryTask(
 		finalRun, reconcileErr := s.finalizeRecoveredAutomationRun(taskCtx, snap, taskDef, run, outcome)
 		if reconcileErr != nil {
 			log.Printf("[automation-recovery] terminal reconciliation failed task_id=%s run_id=%s operation_id=%s err=%v", taskDef.ID, run.ID, run.RuntimeOperationID, reconcileErr)
-			emit(agent.Event{Type: "error", Data: map[string]string{"message": reconcileErr.Error()}})
+			emit(agents.Event{Type: "error", Data: map[string]string{"message": reconcileErr.Error()}})
 			return
 		}
-		emit(agent.Event{Type: "automation_run", Data: finalRun})
+		emit(agents.Event{Type: "automation_run", Data: finalRun})
 		log.Printf("[automation-recovery] observation settled task_id=%s run_id=%s operation_id=%s status=%s outcome=%s", taskDef.ID, run.ID, finalRun.RuntimeOperationID, finalRun.Status, outcome.Status)
 	}); err != nil {
 		recovery.Close()
@@ -234,7 +234,7 @@ func (s *AutomationAppService) finalizeRecoveredAutomationRun(
 	snap *automationWorkspaceSnapshot,
 	taskDef automation.Task,
 	run automation.RunRecord,
-	outcome agent.RunOutcome,
+	outcome agents.RunOutcome,
 ) (automation.RunRecord, error) {
 	if reconciled, ok, err := s.reconcileAutomationRunReceipt(context.WithoutCancel(ctx), snap, taskDef, run); err != nil {
 		return automation.RunRecord{}, err
@@ -251,7 +251,7 @@ func (s *AutomationAppService) finalizeRecoveredAutomationRun(
 	// The observer's durable terminal is authoritative even if a bounded status
 	// projection was concurrently evicted. This fallback never executes an
 	// Engine and preserves the already-validated root/current receipts.
-	if outcome.Status == agent.RunOutcomeFailed {
+	if outcome.Status == agents.RunOutcomeFailed {
 		run.RuntimeRecoveryRequired = true
 		if _, err := storeForSnapshot(snap).AppendRun(automationTaskStoreID(taskDef), run); err != nil {
 			return automation.RunRecord{}, err
@@ -265,7 +265,7 @@ func (s *AutomationAppService) finalizeRecoveredAutomationRun(
 	run.RuntimeRecoveryRequired = false
 	run.FinishedAt = time.Now().UTC()
 	switch outcome.Status {
-	case agent.RunOutcomeCompleted:
+	case agents.RunOutcomeCompleted:
 		run.Status = automation.RunStatusSuccess
 		run.Error = ""
 		if summary := recoveredAutomationRunSummary(snap, run); summary != "" {
@@ -280,7 +280,7 @@ func (s *AutomationAppService) finalizeRecoveredAutomationRun(
 			run.WriteConfirmationRequired = false
 		}
 		run.WriteConfirmationPolicyCaptured = true
-	case agent.RunOutcomeAborted, agent.RunOutcomePreempted:
+	case agents.RunOutcomeAborted, agents.RunOutcomePreempted:
 		run.Status = automation.RunStatusAborted
 		run.Error = automationRunOutcomeError(outcome).Error()
 		stageAutomationTerminalEffects(&run, run.CompletionMutationPaths)

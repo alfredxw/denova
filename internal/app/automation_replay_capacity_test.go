@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
 	"denova/internal/automation"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAutomationRootReplayCapacityRejectsBeforeRunOrRuntimeAdmission(t *testing.T) {
@@ -61,8 +61,8 @@ func TestAutomationRootReplayCapacityRejectsBeforeRunOrRuntimeAdmission(t *testi
 		t.Fatalf("capacity rejection persisted a run ledger entry: %v", err)
 	}
 
-	status, err := application.chatService.RuntimeStatusProjection(context.Background(), agent.RunOptions{
-		AgentKind: agent.AgentKindAutomation, TaskID: runID, AutomationTaskID: taskDef.ID,
+	status, err := application.chatService.RuntimeStatusProjection(context.Background(), agents.RunOptions{
+		AgentKind: agents.AgentKindAutomation, TaskID: runID, AutomationTaskID: taskDef.ID,
 		SessionID: automationRunSessionID(runID), Workspace: taskDef.Target.Workspace, Mode: "automation",
 	})
 	if err != nil {

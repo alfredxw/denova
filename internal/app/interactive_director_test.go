@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -59,7 +59,7 @@ func TestInteractiveDirectorTaskCompletesPlanMetadataAfterFileUpdate(t *testing.
 	release := make(chan struct{})
 	var releaseOnce sync.Once
 	defer releaseOnce.Do(func() { close(release) })
-	directorGenerator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
+	directorGenerator := func(_ context.Context, _ *config.Config, _ *book.State, toolContext agents.InteractiveStoryToolContext, instruction string) (string, error) {
 		close(started)
 		<-release
 		if !strings.Contains(toolContext.StableContextTitle, "complete=true") || !strings.Contains(toolContext.StableContext, "公开比试禁止场外偷袭") || toolContext.StableContextMaxBytes < len([]byte(toolContext.StableContext)) {
@@ -140,7 +140,7 @@ func TestPrepareInteractiveDirectorBeforeOpeningBuildsLoreWorksetForFirstGameTur
 	cfg := &config.Config{Workspace: workspace}
 	conversation := newInteractiveConversation(store, "", workspace, story.ID, "main", "我报名公开比试", story.ReplyTargetChars, cfg)
 	generated := 0
-	conversation.directorGenerator = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
+	conversation.directorGenerator = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agents.InteractiveStoryToolContext, instruction string) (string, error) {
 		generated++
 		if toolContext.MaintenanceTask != interactiveDirectorTaskOpeningPlan || toolContext.TurnID != interactiveDirectorOpeningSourceID {
 			t.Fatalf("unexpected opening tool context: %#v", toolContext)
@@ -217,7 +217,7 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	directorGenerator := func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+	directorGenerator := func(context.Context, *config.Config, *book.State, agents.InteractiveStoryToolContext, string) (string, error) {
 		return "", errors.New("director unavailable")
 	}
 
@@ -242,7 +242,7 @@ func TestInteractiveDirectorTaskMarksFailureWithoutBlockingTurn(t *testing.T) {
 		t.Fatalf("initial director failure should be recorded without blocking retry: %#v", snapshot.DirectorPlanStatus)
 	}
 
-	conversation.directorGenerator = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
+	conversation.directorGenerator = func(_ context.Context, _ *config.Config, _ *book.State, toolContext agents.InteractiveStoryToolContext, _ string) (string, error) {
 		plan, err := toolContext.Store.DirectorPlan(toolContext.StoryID, toolContext.BranchID)
 		if err != nil {
 			return "", err
@@ -377,7 +377,7 @@ func TestInteractiveDirectorCommandIDIsStableBoundedAndSemantic(t *testing.T) {
 	}
 }
 
-func submitDirectorPlanForTest(toolContext agent.InteractiveStoryToolContext, decision interactive.PlanDecision, docs *interactive.DirectorPlanDocs) error {
+func submitDirectorPlanForTest(toolContext agents.InteractiveStoryToolContext, decision interactive.PlanDecision, docs *interactive.DirectorPlanDocs) error {
 	if toolContext.SubmitDirectorPlanUpdate == nil {
 		return errors.New("submit director plan callback missing")
 	}

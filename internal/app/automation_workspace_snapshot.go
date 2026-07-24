@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 )
 
@@ -27,7 +27,7 @@ type automationWorkspaceSnapshot struct {
 	bookState    *book.State
 	bookService  *book.Service
 	sessionStore *session.Store
-	chatService  *agent.ChatService
+	chatService  *agents.ChatService
 }
 
 // runtimeSnapshot builds a snapshot from the currently-active App runtime. It

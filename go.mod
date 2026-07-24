@@ -4,9 +4,8 @@ go 1.26.5
 
 require (
 	github.com/PuerkitoBio/goquery v1.12.0
-	github.com/alfredxw/denova/adk v0.0.0
-	github.com/alfredxw/denova/adk/model/openai v0.0.0
-	github.com/bmatcuk/doublestar/v4 v4.10.0
+	github.com/alfredxw/denova/agent v0.0.0
+	github.com/alfredxw/denova/agent/model/openai v0.0.0
 	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/cloudwego/hertz v0.10.5
 	github.com/go-git/go-git/v5 v5.19.1
@@ -21,9 +20,9 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 )
 
-replace github.com/alfredxw/denova/adk => ./adk
+replace github.com/alfredxw/denova/agent => ./agent
 
-replace github.com/alfredxw/denova/adk/model/openai => ./adk/model/openai
+replace github.com/alfredxw/denova/agent/model/openai => ./agent/model/openai
 
 require (
 	dario.cat/mergo v1.0.2 // indirect
@@ -31,6 +30,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.4.1 // indirect
 	github.com/andybalholm/cascadia v1.3.4 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
+	github.com/bmatcuk/doublestar/v4 v4.10.0 // indirect
 	github.com/buger/jsonparser v1.2.0 // indirect
 	github.com/bytedance/gopkg v0.1.4 // indirect
 	github.com/bytedance/sonic v1.15.2 // indirect

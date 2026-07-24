@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -70,11 +70,11 @@ func (s *WorkspaceRuntimeManager) Session() *session.Session {
 }
 
 // ChatService 返回聊天服务。
-func (a *App) ChatService() *agent.ChatService {
+func (a *App) ChatService() *agents.ChatService {
 	return a.runtime().ChatService()
 }
 
-func (s *WorkspaceRuntimeManager) ChatService() *agent.ChatService {
+func (s *WorkspaceRuntimeManager) ChatService() *agents.ChatService {
 	return s.app.chatService
 }
 
@@ -412,9 +412,9 @@ func (s *WorkspaceRuntimeManager) Settings() (config.LayeredSettings, error) {
 	applySettingsLayerToConfig(&cfg, layered.Workspace)
 	cfg.AgentPrompts = config.AgentPromptSettings{}
 	ideTeller := ideStoryTellerForConfig(&cfg)
-	layered.BuiltinAgentPrompts = agent.BuiltinAgentPrompts(&cfg, state, ideTeller)
-	layered.BuiltinAgentPromptBlocks = agent.BuiltinAgentPromptBlocks(&cfg, state, ideTeller)
-	layered.BuiltinAgentPromptSources = agent.BuiltinAgentPromptSources(&cfg, state, ideTeller)
+	layered.BuiltinAgentPrompts = agents.BuiltinAgentPrompts(&cfg, state, ideTeller)
+	layered.BuiltinAgentPromptBlocks = agents.BuiltinAgentPromptBlocks(&cfg, state, ideTeller)
+	layered.BuiltinAgentPromptSources = agents.BuiltinAgentPromptSources(&cfg, state, ideTeller)
 	return layered, nil
 }
 
@@ -709,11 +709,11 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 
 func syncRuntimeDiagnostics(cfg *config.Config) {
 	if cfg == nil {
-		agent.SetModelInputLoggingEnabled(false)
+		agents.SetModelInputLoggingEnabled(false)
 		return
 	}
-	agent.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
-	agent.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
+	agents.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
+	agents.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
 }
 
 func appSettingsInt(v *int, fallback int) int {

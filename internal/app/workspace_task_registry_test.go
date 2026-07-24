@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 )
 
 func TestAppTaskReplayAdmissionIsSharedAcrossProducts(t *testing.T) {
@@ -178,9 +178,9 @@ func TestFailedTaskSettlementReleasesReplayRegistration(t *testing.T) {
 		application.mu.Lock()
 		defer application.mu.Unlock()
 		return application.registerWorkspaceTaskLocked(task, application.workspace, true)
-	}, func(_ context.Context, task *Task, emit func(agent.Event)) {
+	}, func(_ context.Context, task *Task, emit func(agents.Event)) {
 		defer application.unregisterWorkspaceTask(task)
-		emit(agent.Event{Type: "error", Data: map[string]string{"message": "settlement failed"}})
+		emit(agents.Event{Type: "error", Data: map[string]string{"message": "settlement failed"}})
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -236,7 +236,7 @@ func TestWorkspaceTransitionFencesStartsAndWaitsForAdmittedTaskExit(t *testing.T
 		}
 		application.activeTask = task
 		return nil
-	}, func(ctx context.Context, task *Task, _ func(agent.Event)) {
+	}, func(ctx context.Context, task *Task, _ func(agents.Event)) {
 		defer application.unregisterWorkspaceTask(task)
 		<-ctx.Done()
 		close(cancelSeen)
@@ -264,7 +264,7 @@ func TestWorkspaceTransitionFencesStartsAndWaitsForAdmittedTaskExit(t *testing.T
 		application.mu.Lock()
 		defer application.mu.Unlock()
 		return application.registerWorkspaceTaskLocked(candidate, workspace, true)
-	}, func(context.Context, *Task, func(agent.Event)) { close(ran) })
+	}, func(context.Context, *Task, func(agents.Event)) { close(ran) })
 	if !errors.Is(err, ErrWorkspaceTransition) {
 		t.Fatalf("start during transition error = %v, want ErrWorkspaceTransition", err)
 	}

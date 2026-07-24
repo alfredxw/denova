@@ -10,10 +10,10 @@ import (
 	"sync"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 type ConfigManagerAppService struct {
@@ -30,7 +30,7 @@ type configManagerTaskRuntime struct {
 	sessionStore   *session.Store
 	bookService    *book.Service
 	versionService *book.VersionService
-	chatService    *agent.ChatService
+	chatService    *agents.ChatService
 	bookRegistry   *BookRegistry
 }
 
@@ -90,10 +90,10 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 		return nil, err
 	}
 	message := buildConfigManagerMessage(req)
-	chatReq := agent.CaptureChatRequestCallerInput(agent.ChatRequest{
+	chatReq := agents.CaptureChatRequestCallerInput(agents.ChatRequest{
 		CommandID: req.CommandID, Message: message, LoreReferences: append([]string(nil), req.References...), Locale: req.Locale,
 	})
-	fingerprint := agent.ChatRequestSemanticFingerprint(chatReq)
+	fingerprint := agents.ChatRequestSemanticFingerprint(chatReq)
 	if replay, ok, err := s.starts.replay(req.CommandID, workspace, sessionID, fingerprint); err != nil {
 		return nil, err
 	} else if ok {
@@ -152,8 +152,8 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 	if err != nil {
 		return nil, err
 	}
-	conversation := agent.NewSessionConversationForAgent(sess, &runtimeCfg, config.AgentKindConfigManager)
-	var accepted *agent.AcceptedRun
+	conversation := agents.NewSessionConversationForAgent(sess, &runtimeCfg, config.AgentKindConfigManager)
+	var accepted *agents.AcceptedRun
 	task, err := NewDeferredRegisteredTask(func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
@@ -175,8 +175,8 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 		return nil, err
 	}
 	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
-	accepted, err = runtime.chatService.StartWithOptions(acceptCtx, runner, conversation, runtime.bookService, chatReq, agent.RunOptions{
-		AgentKind: agent.AgentKindConfigManager, TaskID: task.ID(), SessionID: sess.ID, Workspace: runtime.workspace,
+	accepted, err = runtime.chatService.StartWithOptions(acceptCtx, runner, conversation, runtime.bookService, chatReq, agents.RunOptions{
+		AgentKind: agents.AgentKindConfigManager, TaskID: task.ID(), SessionID: sess.ID, Workspace: runtime.workspace,
 		Mode: "config_manager", IdleTimeout: agentIdleTimeout(runtimeCfg), ToolResultMaxBytes: agentToolResultMaxBytes(runtimeCfg),
 		SystemPromptLog: systemPrompt,
 		OnMutationsVerified: a.verifiedWorkspaceMutationCallback(
@@ -192,7 +192,7 @@ func (s *ConfigManagerAppService) StartTaskWithError(ctx context.Context, req Co
 		a.unregisterWorkspaceTask(task)
 		return nil, err
 	}
-	if err := task.Start(func(ctx context.Context, task *Task, _ func(agent.Event)) {
+	if err := task.Start(func(ctx context.Context, task *Task, _ func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		log.Printf("[config-manager] run begin id=%s session_id=%s origin=%s resource_id=%s story_id=%s branch_id=%s message_len=%d", task.ID(), sess.ID, req.Origin, req.ResourceID, req.StoryID, req.BranchID, len(message))
 		accepted.Wait(ctx)

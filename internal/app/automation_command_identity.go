@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	runstate "denova/internal/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // automationManualRunID turns the caller-owned HTTP command identity into the

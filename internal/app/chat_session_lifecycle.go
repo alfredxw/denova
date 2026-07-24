@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"denova/internal/agent/session"
+	"denova/internal/agents/session"
 )
 
 func (a *App) ClearSession() error {

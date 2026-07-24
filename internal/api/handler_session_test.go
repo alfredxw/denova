@@ -10,8 +10,8 @@ import (
 	"github.com/cloudwego/hertz/pkg/common/ut"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/api/agentui"
 	runtimeapp "denova/internal/app"
 	"denova/internal/book"
@@ -32,7 +32,7 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 	server := NewServer(application, "0")
 	defaultID := application.Session().ID
 
-	if err := application.Session().Append(agent.UserMessage("默认会话消息")); err != nil {
+	if err := application.Session().Append(agents.UserMessage("默认会话消息")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -57,7 +57,7 @@ func TestSessionAPICRUDSwitchAndMessages(t *testing.T) {
 	if created.ID == "" || created.ID == defaultID || !created.Active || created.Title != "会话 B" {
 		t.Fatalf("创建会话返回不符合预期: %#v", created)
 	}
-	if err := application.Session().Append(agent.UserMessage("会话 B 消息")); err != nil {
+	if err := application.Session().Append(agents.UserMessage("会话 B 消息")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -112,7 +112,7 @@ func TestSessionMessagesAPIPaginatesNewestHistoryWithoutChangingLegacyResponse(t
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
 	for _, content := range []string{"消息 1", "消息 2", "消息 3", "消息 4", "消息 5"} {
-		if err := application.Session().Append(agent.UserMessage(content)); err != nil {
+		if err := application.Session().Append(agents.UserMessage(content)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -381,7 +381,7 @@ func newTestApplication(t *testing.T) *runtimeapp.App {
 		t.Fatal(err)
 	}
 	t.Cleanup(application.Close)
-	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(callCtx context.Context, _ *config.Config, _ *book.State, toolContext agent.InteractiveStoryToolContext, _ string) (string, error) {
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(callCtx context.Context, _ *config.Config, _ *book.State, toolContext agents.InteractiveStoryToolContext, _ string) (string, error) {
 		if toolContext.MaintenanceTask == "director_plan_update" || toolContext.MaintenanceTask == "opening_plan" {
 			_, err := toolContext.SubmitDirectorPlanUpdate(callCtx, interactive.DirectorPlanUpdateSubmission{
 				Decision: interactive.PlanDecision{Mode: interactive.PlanDecisionKeep, Reason: "测试初始化导演规划完成。"},

@@ -7,7 +7,7 @@ import (
 	"log"
 	"strings"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/documentreview"
 	"denova/internal/workspacechange"
 )
@@ -17,7 +17,7 @@ const maxReviewFeedbackCommentIDs = 256
 // resolveReviewFeedback replaces client-supplied IDs with trusted comments
 // from the canonical service for the captured workspace. Comment bodies never
 // cross the HTTP boundary into ChatRequest.
-func (s *ChatAppService) resolveReviewFeedback(ctx context.Context, runtime ideChatRuntime, req *agent.ChatRequest) error {
+func (s *ChatAppService) resolveReviewFeedback(ctx context.Context, runtime ideChatRuntime, req *agents.ChatRequest) error {
 	if req == nil {
 		return nil
 	}
@@ -35,12 +35,12 @@ func (s *ChatAppService) resolveReviewFeedback(ctx context.Context, runtime ideC
 	for _, ref := range refs {
 		totalComments += len(ref.CommentIDs)
 		switch ref.Source {
-		case agent.ReviewFeedbackSourceWorkspaceChange:
+		case agents.ReviewFeedbackSourceWorkspaceChange:
 			scope.workspaceChanges = true
 			if runtime.sess == nil || strings.TrimSpace(runtime.sess.ID) == "" {
 				return invalidReviewFeedbackError("the active session identity is unavailable", nil)
 			}
-		case agent.ReviewFeedbackSourceDocument:
+		case agents.ReviewFeedbackSourceDocument:
 			scope.documents = true
 		}
 	}
@@ -51,7 +51,7 @@ func (s *ChatAppService) resolveReviewFeedback(ctx context.Context, runtime ideC
 		})
 	}
 
-	resolved := make(agent.ReviewFeedbackContexts, 0, len(refs))
+	resolved := make(agents.ReviewFeedbackContexts, 0, len(refs))
 	err = s.app.withReviewFeedbackServices(runtime.workspace, scope, func(changes *workspacechange.Service, documents *documentreview.Service) error {
 		resolvers := newReviewFeedbackResolvers(changes, documents, s.app.bookService)
 		for _, ref := range refs {
@@ -59,10 +59,10 @@ func (s *ChatAppService) resolveReviewFeedback(ctx context.Context, runtime ideC
 			if resolver == nil {
 				return invalidReviewFeedbackError("review feedback source is invalid", map[string]any{"source": ref.Source})
 			}
-			feedback := agent.ReviewFeedbackContext{
+			feedback := agents.ReviewFeedbackContext{
 				Source:         ref.Source,
 				ReviewThreadID: ref.ReviewThreadID,
-				Comments:       make([]agent.ReviewFeedbackComment, 0, len(ref.CommentIDs)),
+				Comments:       make([]agents.ReviewFeedbackComment, 0, len(ref.CommentIDs)),
 			}
 			if err := resolver.Resolve(ctx, runtime, ref.ReviewThreadID, ref.CommentIDs, &feedback); err != nil {
 				return err
@@ -74,9 +74,9 @@ func (s *ChatAppService) resolveReviewFeedback(ctx context.Context, runtime ideC
 	if err != nil {
 		return err
 	}
-	if resolved.EncodedSize() > agent.MaxReviewFeedbackContextBytes {
+	if resolved.EncodedSize() > agents.MaxReviewFeedbackContextBytes {
 		return invalidReviewFeedbackError("review feedback context exceeds the allowed size", map[string]any{
-			"maximum_bytes": agent.MaxReviewFeedbackContextBytes,
+			"maximum_bytes": agents.MaxReviewFeedbackContextBytes,
 		})
 	}
 	req.ReviewFeedback = refs
@@ -84,7 +84,7 @@ func (s *ChatAppService) resolveReviewFeedback(ctx context.Context, runtime ideC
 	return nil
 }
 
-func (s *ChatAppService) consumeResolvedReviewFeedback(ctx context.Context, runtime ideChatRuntime, req agent.ChatRequest) error {
+func (s *ChatAppService) consumeResolvedReviewFeedback(ctx context.Context, runtime ideChatRuntime, req agents.ChatRequest) error {
 	if req.ResolvedReviewFeedback.Empty() {
 		return nil
 	}
@@ -96,11 +96,11 @@ func (s *ChatAppService) consumeResolvedReviewFeedback(ctx context.Context, runt
 		if len(commentIDs) == 0 {
 			return invalidReviewFeedbackError("resolved review feedback lost its comment references", map[string]any{"review_thread_id": feedback.ReviewThreadID})
 		}
-		source, _ := agent.NormalizeReviewFeedbackSource(feedback.Source)
+		source, _ := agents.NormalizeReviewFeedbackSource(feedback.Source)
 		switch source {
-		case agent.ReviewFeedbackSourceDocument:
+		case agents.ReviewFeedbackSourceDocument:
 			scope.documents = true
-		case agent.ReviewFeedbackSourceWorkspaceChange:
+		case agents.ReviewFeedbackSourceWorkspaceChange:
 			scope.workspaceChanges = true
 		}
 		consumptions = append(consumptions, reviewFeedbackConsumption{
@@ -149,8 +149,8 @@ func (s *ChatAppService) consumeResolvedReviewFeedback(ctx context.Context, runt
 	})
 }
 
-func normalizeReviewFeedbackRefs(values agent.ReviewFeedbackRefs) (agent.ReviewFeedbackRefs, error) {
-	result := make(agent.ReviewFeedbackRefs, 0, len(values))
+func normalizeReviewFeedbackRefs(values agents.ReviewFeedbackRefs) (agents.ReviewFeedbackRefs, error) {
+	result := make(agents.ReviewFeedbackRefs, 0, len(values))
 	indexByKey := make(map[string]int, len(values))
 	for _, value := range values {
 		threadID := strings.TrimSpace(value.ReviewThreadID)
@@ -158,7 +158,7 @@ func normalizeReviewFeedbackRefs(values agent.ReviewFeedbackRefs) (agent.ReviewF
 		if threadID == "" && len(commentIDs) == 0 {
 			continue
 		}
-		source, validSource := agent.NormalizeReviewFeedbackSource(value.Source)
+		source, validSource := agents.NormalizeReviewFeedbackSource(value.Source)
 		if !validSource {
 			return nil, invalidReviewFeedbackError("review feedback source is invalid", map[string]any{"source": value.Source})
 		}
@@ -171,7 +171,7 @@ func normalizeReviewFeedbackRefs(values agent.ReviewFeedbackRefs) (agent.ReviewF
 			continue
 		}
 		indexByKey[key] = len(result)
-		result = append(result, agent.ReviewFeedbackRef{Source: source, ReviewThreadID: threadID, CommentIDs: commentIDs})
+		result = append(result, agents.ReviewFeedbackRef{Source: source, ReviewThreadID: threadID, CommentIDs: commentIDs})
 	}
 	return result, nil
 }

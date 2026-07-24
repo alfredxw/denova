@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	novaskills "denova/internal/agent/skills"
+	novaskills "denova/internal/agents/skills"
 )
 
 func TestSkillDocumentUpdateRejectsStaleRevisionAPI(t *testing.T) {

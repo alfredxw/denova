@@ -4,8 +4,8 @@ import (
 	"sync"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 )
 
@@ -19,7 +19,7 @@ type ChatAppService struct {
 	// a fresh canonical Session projection. Within one process it must outlive
 	// the display Task that discovered the durable structural recovery commit.
 	recoveryRefreshMu      sync.Mutex
-	recoveryRefreshPending map[string]agent.RuntimeRecoveryAction
+	recoveryRefreshPending map[string]agents.RuntimeRecoveryAction
 }
 
 type ideChatRuntime struct {
@@ -27,9 +27,9 @@ type ideChatRuntime struct {
 	sess           *session.Session
 	state          *book.State
 	bookService    *book.Service
-	chatService    *agent.ChatService
+	chatService    *agents.ChatService
 	workspace      string
 	versionService *book.VersionService
 	cfg            config.Config
-	ideTeller      agent.IDEStoryTeller
+	ideTeller      agents.IDEStoryTeller
 }

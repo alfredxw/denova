@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/automation"
 	"denova/internal/book"
 )
@@ -330,10 +330,10 @@ func TestAutomationMutationCallbackDoesNotEvaluateBeforeDurableHostEffect(t *tes
 	}
 
 	callback := app.automationMutationCallback("agent_test")
-	callback(context.Background(), []agent.ToolMutation{{
+	callback(context.Background(), []agents.ToolMutation{{
 		ToolName: "write_file",
 		Target:   filepath.Join(workspace, "chapters", "ch01.md"),
-	}}, agent.PostRunVerification{Status: "ok", Mutations: 1})
+	}}, agents.PostRunVerification{Status: "ok", Mutations: 1})
 
 	select {
 	case <-started:

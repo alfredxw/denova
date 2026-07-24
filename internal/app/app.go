@@ -9,8 +9,8 @@ import (
 	"sync"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/lifecycle"
@@ -26,9 +26,9 @@ type App struct {
 	interactive                     *interactive.Store
 	sessionStore                    *session.Store
 	session                         *session.Session
-	agentRunner                     *agent.Runner
-	interactiveStoryRunner          *agent.Runner
-	chatService                     *agent.ChatService
+	agentRunner                     *agents.Runner
+	interactiveStoryRunner          *agents.Runner
+	chatService                     *agents.ChatService
 	bookRegistry                    *BookRegistry
 	bookMetaStore                   *BookMetaStore
 	versionService                  *book.VersionService
@@ -118,14 +118,14 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		bookMetaStore:        bookMetaStore,
 		automationEffectWake: make(chan struct{}, 1),
 	}
-	chatService, err := agent.NewDurableChatService(
+	chatService, err := agents.NewDurableChatService(
 		ctx,
 		dataDir,
-		agent.WithHarnessDomainCommitReconciler(app.reconcileHarnessDomainCommit),
-		agent.WithHarnessInputMaterializer(app),
-		agent.WithHarnessTurnRestorer(app.restoreHarnessTurn),
-		agent.WithHarnessStructuralRestorer(app.restoreContextStructuralOperation),
-		agent.WithHarnessHostEffectReconciler(app.reconcileHarnessHostEffect),
+		agents.WithHarnessDomainCommitReconciler(app.reconcileHarnessDomainCommit),
+		agents.WithHarnessInputMaterializer(app),
+		agents.WithHarnessTurnRestorer(app.restoreHarnessTurn),
+		agents.WithHarnessStructuralRestorer(app.restoreContextStructuralOperation),
+		agents.WithHarnessHostEffectReconciler(app.reconcileHarnessHostEffect),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("initialize durable agent runtime: %w", err)

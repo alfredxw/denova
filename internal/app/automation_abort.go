@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // AbortAutomationRunCommand durably targets one exact Automation operation.
@@ -54,13 +54,13 @@ func (s *AutomationAppService) AbortRunCommand(
 	if snap.chatService == nil {
 		return runstate.Receipt{}, ErrNoWorkspace
 	}
-	return snap.chatService.SubmitCommand(operation.Context(), agent.AgentCommandSpec{
-		Kind:        agent.AgentCommandAbort,
+	return snap.chatService.SubmitCommand(operation.Context(), agents.AgentCommandSpec{
+		Kind:        agents.AgentCommandAbort,
 		CommandID:   commandID,
 		OperationID: targetOperationID,
 		Reason:      strings.TrimSpace(reason),
-		Options: agent.RunOptions{
-			AgentKind: agent.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: taskDef.ID,
+		Options: agents.RunOptions{
+			AgentKind: agents.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: taskDef.ID,
 			SessionID: run.SessionID, Workspace: run.Workspace, Mode: "automation",
 		},
 	})

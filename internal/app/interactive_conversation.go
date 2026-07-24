@@ -8,9 +8,9 @@ import (
 	"sync"
 
 	"denova/config"
-	"denova/internal/agent"
-	agentcontext "denova/internal/agent/context"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/prompts"
@@ -31,7 +31,7 @@ type interactiveConversation struct {
 	lastStateReady          bool
 	lastSources             string
 	lastContextSources      []interactiveContextSource
-	lastContextLedgerParts  []agent.ContextLedgerPart
+	lastContextLedgerParts  []agents.ContextLedgerPart
 	stableLeadingMessage    string
 	assistantMetadata       session.MessageMetadata
 	displayEvents           []interactive.DisplayEvent
@@ -43,11 +43,11 @@ type interactiveConversation struct {
 	pinParentAtExecution    bool
 	directorTasks           *workspaceDirectorTaskGroup
 	directorGenerator       interactiveDirectorGenerator
-	directorChatService     *agent.ChatService
+	directorChatService     *agents.ChatService
 	customDirectorGenerator bool
-	agentCycleCommit        func(context.Context, agent.RunOutcome) error
+	agentCycleCommit        func(context.Context, agents.RunOutcome) error
 	agentCyclePrepare       func(context.Context) error
-	agentCycleIdentity      agent.HarnessCycleIdentity
+	agentCycleIdentity      agents.HarnessCycleIdentity
 	pendingDomainCommit     *interactive.DomainCommitIntent
 	lastDomainReceipt       *interactive.DomainCommitReceipt
 	pendingCompaction       *preparedInteractiveContextCompaction
@@ -59,13 +59,13 @@ func (c *interactiveConversation) ModelContextBudget() agentcontext.Budget {
 	if c == nil {
 		return agentcontext.DefaultBudget()
 	}
-	return agent.ContextBudgetForAgent(c.cfg, config.AgentKindInteractiveStory)
+	return agents.ContextBudgetForAgent(c.cfg, config.AgentKindInteractiveStory)
 }
 
 // BindAgentCycleIdentity receives the coordinator-selected identity before
 // the model cycle starts. The turn store persists it with the canonical game
 // event, providing an idempotency key across the domain/runtime commit seam.
-func (c *interactiveConversation) BindAgentCycleIdentity(identity agent.HarnessCycleIdentity) {
+func (c *interactiveConversation) BindAgentCycleIdentity(identity agents.HarnessCycleIdentity) {
 	if c == nil {
 		return
 	}
@@ -76,16 +76,16 @@ func (c *interactiveConversation) BindAgentCycleIdentity(identity agent.HarnessC
 	c.mu.Unlock()
 }
 
-func (c *interactiveConversation) agentCycleIdentitySnapshot() agent.HarnessCycleIdentity {
+func (c *interactiveConversation) agentCycleIdentitySnapshot() agents.HarnessCycleIdentity {
 	if c == nil {
-		return agent.HarnessCycleIdentity{}
+		return agents.HarnessCycleIdentity{}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.agentCycleIdentity
 }
 
-func (c *interactiveConversation) withAgentCycleCommit(commit func(context.Context, agent.RunOutcome) error) *interactiveConversation {
+func (c *interactiveConversation) withAgentCycleCommit(commit func(context.Context, agents.RunOutcome) error) *interactiveConversation {
 	if c != nil {
 		c.mu.Lock()
 		c.agentCycleCommit = commit
@@ -103,7 +103,7 @@ func (c *interactiveConversation) withAgentCyclePrepare(prepare func(context.Con
 	return c
 }
 
-// PrepareAgentCycle implements agent.HarnessCyclePreparer. The durable
+// PrepareAgentCycle implements agents.HarnessCyclePreparer. The durable
 // coordinator calls it after binding command/operation/cycle identity and
 // before any model or tool effect, so queued follow-ups cannot observe a stale
 // cross-domain projection.
@@ -120,35 +120,35 @@ func (c *interactiveConversation) PrepareAgentCycle(ctx context.Context) error {
 	return prepare(ctx)
 }
 
-// CommitAgentCycle implements agent.HarnessCycleCommitter. The callback is
+// CommitAgentCycle implements agents.HarnessCycleCommitter. The callback is
 // immutable once execution begins and bridges the generic durable cycle
 // boundary to the game domain's persisted-turn projection.
-func (c *interactiveConversation) CommitAgentCycle(ctx context.Context, outcome agent.RunOutcome) error {
-	return c.CommitAgentCycleStage(ctx, agent.HarnessDomainCommitOutput, outcome)
+func (c *interactiveConversation) CommitAgentCycle(ctx context.Context, outcome agents.RunOutcome) error {
+	return c.CommitAgentCycleStage(ctx, agents.HarnessDomainCommitOutput, outcome)
 }
 
-func (c *interactiveConversation) PendingAgentCycleCommit(stage agent.HarnessDomainCommitStage) (agent.HarnessDomainCommitIntent, bool, error) {
+func (c *interactiveConversation) PendingAgentCycleCommit(stage agents.HarnessDomainCommitStage) (agents.HarnessDomainCommitIntent, bool, error) {
 	if c == nil {
-		return agent.HarnessDomainCommitIntent{}, false, nil
+		return agents.HarnessDomainCommitIntent{}, false, nil
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if stage != agent.HarnessDomainCommitOutput || c.pendingDomainCommit == nil {
-		return agent.HarnessDomainCommitIntent{}, false, nil
+	if stage != agents.HarnessDomainCommitOutput || c.pendingDomainCommit == nil {
+		return agents.HarnessDomainCommitIntent{}, false, nil
 	}
-	return agent.HarnessDomainCommitIntent{
+	return agents.HarnessDomainCommitIntent{
 		Identity: c.agentCycleIdentity, Stage: stage, Hash: c.pendingDomainCommit.Hash,
 	}, true, nil
 }
 
-func (c *interactiveConversation) CommitAgentCycleStage(ctx context.Context, stage agent.HarnessDomainCommitStage, outcome agent.RunOutcome) error {
-	if c == nil || stage != agent.HarnessDomainCommitOutput {
+func (c *interactiveConversation) CommitAgentCycleStage(ctx context.Context, stage agents.HarnessDomainCommitStage, outcome agents.RunOutcome) error {
+	if c == nil || stage != agents.HarnessDomainCommitOutput {
 		return nil
 	}
 	c.mu.Lock()
 	pending := c.pendingDomainCommit
 	commit := c.agentCycleCommit
-	if outcome.Status != agent.RunOutcomeCompleted && outcome.Status != agent.RunOutcomePreempted {
+	if outcome.Status != agents.RunOutcomeCompleted && outcome.Status != agents.RunOutcomePreempted {
 		c.pendingDomainCommit = nil
 		c.lastDomainReceipt = nil
 		c.mu.Unlock()
@@ -182,28 +182,28 @@ func (c *interactiveConversation) CommitAgentCycleStage(ctx context.Context, sta
 	return nil
 }
 
-func (c *interactiveConversation) LastAgentCycleCommitReceipt(stage agent.HarnessDomainCommitStage) (agent.HarnessDomainCommitReceipt, bool) {
-	if c == nil || stage != agent.HarnessDomainCommitOutput {
-		return agent.HarnessDomainCommitReceipt{}, false
+func (c *interactiveConversation) LastAgentCycleCommitReceipt(stage agents.HarnessDomainCommitStage) (agents.HarnessDomainCommitReceipt, bool) {
+	if c == nil || stage != agents.HarnessDomainCommitOutput {
+		return agents.HarnessDomainCommitReceipt{}, false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.lastDomainReceipt == nil {
-		return agent.HarnessDomainCommitReceipt{}, false
+		return agents.HarnessDomainCommitReceipt{}, false
 	}
-	return agent.HarnessDomainCommitReceipt{
+	return agents.HarnessDomainCommitReceipt{
 		Identity: c.agentCycleIdentity, Stage: stage,
 		Hash: c.lastDomainReceipt.Hash, Revision: c.lastDomainReceipt.Revision,
 	}, true
 }
 
-type interactiveDirectorGenerator func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error)
+type interactiveDirectorGenerator func(context.Context, *config.Config, *book.State, agents.InteractiveStoryToolContext, string) (string, error)
 
 func newInteractiveConversation(store *interactive.Store, novaDir, workspace, storyID, branchID, user string, replyTargetChars int, cfg *config.Config) *interactiveConversation {
 	return &interactiveConversation{store: store, novaDir: novaDir, workspace: workspace, cfg: cfg, storyID: storyID, branchID: branchID, user: user, replyTargetChars: replyTargetChars}
 }
 
-func (c *interactiveConversation) bindDirectorRuntime(tasks *workspaceDirectorTaskGroup, generator interactiveDirectorGenerator, chatServices ...*agent.ChatService) *interactiveConversation {
+func (c *interactiveConversation) bindDirectorRuntime(tasks *workspaceDirectorTaskGroup, generator interactiveDirectorGenerator, chatServices ...*agents.ChatService) *interactiveConversation {
 	if c != nil {
 		c.directorTasks = tasks
 		if len(chatServices) > 0 {
@@ -214,8 +214,8 @@ func (c *interactiveConversation) bindDirectorRuntime(tasks *workspaceDirectorTa
 			c.customDirectorGenerator = true
 		} else if c.directorChatService != nil {
 			service := c.directorChatService
-			c.directorGenerator = func(ctx context.Context, cfg *config.Config, state *book.State, toolContext agent.InteractiveStoryToolContext, instruction string) (string, error) {
-				return agent.GenerateInteractiveDirectorWithTools(ctx, service, cfg, state, toolContext, instruction)
+			c.directorGenerator = func(ctx context.Context, cfg *config.Config, state *book.State, toolContext agents.InteractiveStoryToolContext, instruction string) (string, error) {
+				return agents.GenerateInteractiveDirectorWithTools(ctx, service, cfg, state, toolContext, instruction)
 			}
 			c.customDirectorGenerator = false
 		}
@@ -420,25 +420,25 @@ type interactiveModelContextCommitState struct {
 	baseParentID         *string
 	sourceSummary        string
 	contextSources       []interactiveContextSource
-	contextLedgerParts   []agent.ContextLedgerPart
+	contextLedgerParts   []agents.ContextLedgerPart
 	stableLeadingMessage string
 }
 
-func (c *interactiveConversation) AssembleModelContext(ctx context.Context, originalMessage string, input agent.ModelContextInput) (agent.ModelContextResult, error) {
+func (c *interactiveConversation) AssembleModelContext(ctx context.Context, originalMessage string, input agents.ModelContextInput) (agents.ModelContextResult, error) {
 	_ = originalMessage
 	if c == nil || c.store == nil {
-		return agent.ModelContextResult{}, fmt.Errorf("互动故事不存在")
+		return agents.ModelContextResult{}, fmt.Errorf("互动故事不存在")
 	}
 	if err := ctx.Err(); err != nil {
-		return agent.ModelContextResult{}, err
+		return agents.ModelContextResult{}, err
 	}
 	storyCtx, err := c.storyContextForCycle()
 	if err != nil {
-		return agent.ModelContextResult{}, err
+		return agents.ModelContextResult{}, err
 	}
 	branch, ok := storyCtx.Meta.Branches[storyCtx.Snapshot.BranchID]
 	if !ok {
-		return agent.ModelContextResult{}, fmt.Errorf("互动故事分支元数据不存在: %s", storyCtx.Snapshot.BranchID)
+		return agents.ModelContextResult{}, fmt.Errorf("互动故事分支元数据不存在: %s", storyCtx.Snapshot.BranchID)
 	}
 	// Commands may wait behind an active cycle. Pin the compare-and-swap parent
 	// at actual model-context assembly time, not HTTP acceptance time, so a
@@ -468,26 +468,26 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 	}
 	loreRuntime, err := buildInteractiveStoryLoreContext(c.workspace, directorPlan, input.UserMessage)
 	if err != nil {
-		return agent.ModelContextResult{}, err
+		return agents.ModelContextResult{}, err
 	}
 	loreStore := book.NewLoreStore(c.workspace)
 	residentLore, err := loreStore.ResidentContextMarkdown()
 	if err != nil {
-		return agent.ModelContextResult{}, fmt.Errorf("读取常驻资料失败: %w", err)
+		return agents.ModelContextResult{}, fmt.Errorf("读取常驻资料失败: %w", err)
 	}
 	residentContentBytes, err := loreStore.ResidentContentBytes()
 	if err != nil {
-		return agent.ModelContextResult{}, fmt.Errorf("读取常驻资料预算失败: %w", err)
+		return agents.ModelContextResult{}, fmt.Errorf("读取常驻资料预算失败: %w", err)
 	}
 	if residentContentBytes > book.ResidentLoreSafetyMaxBytes {
-		return agent.ModelContextResult{}, fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentContentBytes+1023)/1024)
+		return agents.ModelContextResult{}, fmt.Errorf("常驻资料正文异常过大（%d KB）；请检查是否误将大型文件设为常驻资料", (residentContentBytes+1023)/1024)
 	}
 	if len([]byte(residentLore)) > interactiveResidentLoreMessageMaxBytes {
-		return agent.ModelContextResult{}, fmt.Errorf("常驻资料模型上下文过大: %d > %d bytes", len([]byte(residentLore)), interactiveResidentLoreMessageMaxBytes)
+		return agents.ModelContextResult{}, fmt.Errorf("常驻资料模型上下文过大: %d > %d bytes", len([]byte(residentLore)), interactiveResidentLoreMessageMaxBytes)
 	}
 	loreRevision, err := loreStore.Revision()
 	if err != nil {
-		return agent.ModelContextResult{}, fmt.Errorf("读取资料库 revision 失败: %w", err)
+		return agents.ModelContextResult{}, fmt.Errorf("读取资料库 revision 失败: %w", err)
 	}
 	ruleSummary := interactive.StoryDirectorRuleSummary(storyDirector, interactiveStoryRuntimeContextBytes)
 	actorStateRuntime := interactive.ActorStateRuntimeContext(storyDirector.ActorState, storyCtx.Snapshot.State, interactiveStoryRuntimeContextBytes, storyCtx.Meta.ChoiceCount)
@@ -509,14 +509,14 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		PreviousTurnsSummary:        turnHistory.PreviousSummary,
 		LoreContext:                 loreRuntime,
 	})
-	history := make([]*agent.Message, 0, len(turnHistory.Turns)*2+4)
+	history := make([]*agents.Message, 0, len(turnHistory.Turns)*2+4)
 	if storyCtx.Snapshot.ContextCompaction != nil && strings.TrimSpace(storyCtx.Snapshot.ContextCompaction.Summary) != "" {
-		history = append(history, agent.NewContextCompactionSummaryMessage(storyCtx.Snapshot.ContextCompaction.Epoch, storyCtx.Snapshot.ContextCompaction.Summary))
+		history = append(history, agents.NewContextCompactionSummaryMessage(storyCtx.Snapshot.ContextCompaction.Epoch, storyCtx.Snapshot.ContextCompaction.Summary))
 	}
 	for _, turn := range turnHistory.Turns {
-		history = append(history, agent.UserMessage(turn.User))
+		history = append(history, agents.UserMessage(turn.User))
 		history = append(history, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
-		history = append(history, agent.AssistantMessage(turn.Narrative, nil))
+		history = append(history, agents.AssistantMessage(turn.Narrative, nil))
 	}
 	cycleIdentity := c.agentCycleIdentitySnapshot()
 	pendingInputMessages := make([]string, 0, len(storyCtx.Snapshot.PendingPlayerInputs))
@@ -530,9 +530,9 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		}
 		message := interruptedPlayerInputModelMessage(pending)
 		pendingInputMessages = append(pendingInputMessages, message)
-		history = append(history, agent.UserMessage(message))
+		history = append(history, agents.UserMessage(message))
 	}
-	history = agent.ApplyToolResultContextPolicyForConversation(history, c.ToolResultContextPolicy())
+	history = agents.ApplyToolResultContextPolicyForConversation(history, c.ToolResultContextPolicy())
 	fragments := append([]agentcontext.Fragment(nil), input.Fragments...)
 	if strings.TrimSpace(residentLore) != "" {
 		fragments = append(fragments, agentcontext.Fragment{
@@ -557,10 +557,10 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		})
 	}
 	baseInstruction := prompts.InteractiveStoryTurnInstruction(input.UserMessage, "", "")
-	history = append(history, agent.UserMessage(baseInstruction))
+	history = append(history, agents.UserMessage(baseInstruction))
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{Messages: history, Fragments: fragments})
 	if err != nil {
-		return agent.ModelContextResult{}, err
+		return agents.ModelContextResult{}, err
 	}
 	history = assembled.Messages
 	stableLeadingMessage := ""
@@ -603,7 +603,7 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		interactivePartSummary(history[len(history)-1].Content),
 		sourceSummary,
 	)
-	return agent.ModelContextResult{
+	return agents.ModelContextResult{
 		Messages: history,
 		Context:  assembled,
 		CommitState: interactiveModelContextCommitState{
@@ -620,7 +620,7 @@ func interruptedPlayerInputModelMessage(input interactive.PlayerInputAcceptedEve
 		strings.TrimSpace(input.Text)
 }
 
-func (c *interactiveConversation) CommitModelInput(ctx context.Context, _ string, assembled agent.ModelContextResult) error {
+func (c *interactiveConversation) CommitModelInput(ctx context.Context, _ string, assembled agents.ModelContextResult) error {
 	if c == nil {
 		return fmt.Errorf("互动故事不存在")
 	}
@@ -638,7 +638,7 @@ func (c *interactiveConversation) CommitModelInput(ctx context.Context, _ string
 	c.mu.Lock()
 	c.lastSources = state.sourceSummary
 	c.lastContextSources = cloneInteractiveContextSources(state.contextSources)
-	c.lastContextLedgerParts = append([]agent.ContextLedgerPart(nil), state.contextLedgerParts...)
+	c.lastContextLedgerParts = append([]agents.ContextLedgerPart(nil), state.contextLedgerParts...)
 	c.stableLeadingMessage = state.stableLeadingMessage
 	c.mu.Unlock()
 	return nil
@@ -653,16 +653,16 @@ func (c *interactiveConversation) ContextSourceSummary() string {
 	return c.lastSources
 }
 
-func (c *interactiveConversation) ContextLedgerParts() []agent.ContextLedgerPart {
+func (c *interactiveConversation) ContextLedgerParts() []agents.ContextLedgerPart {
 	if c == nil {
 		return nil
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return append([]agent.ContextLedgerPart(nil), c.lastContextLedgerParts...)
+	return append([]agents.ContextLedgerPart(nil), c.lastContextLedgerParts...)
 }
 
-func (c *interactiveConversation) ContextLedgerPartsForMessages(messages []*agent.Message) []agent.ContextLedgerPart {
+func (c *interactiveConversation) ContextLedgerPartsForMessages(messages []*agents.Message) []agents.ContextLedgerPart {
 	if c == nil {
 		return nil
 	}
@@ -671,18 +671,18 @@ func (c *interactiveConversation) ContextLedgerPartsForMessages(messages []*agen
 	c.mu.Unlock()
 	parts := interactiveContextLedgerParts(sources, messages, c.ToolResultContextPolicy())
 	c.mu.Lock()
-	c.lastContextLedgerParts = append([]agent.ContextLedgerPart(nil), parts...)
+	c.lastContextLedgerParts = append([]agents.ContextLedgerPart(nil), parts...)
 	c.mu.Unlock()
 	return parts
 }
 
-func (c *interactiveConversation) RunTraceMetadata() agent.RunTraceMetadata {
+func (c *interactiveConversation) RunTraceMetadata() agents.RunTraceMetadata {
 	if c == nil {
-		return agent.RunTraceMetadata{}
+		return agents.RunTraceMetadata{}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	metadata := agent.RunTraceMetadata{
+	metadata := agents.RunTraceMetadata{
 		StoryID:         c.storyID,
 		BranchID:        c.branchID,
 		MaintenanceTask: c.directorTask,

@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/update"
 )
 
@@ -20,14 +20,14 @@ func (a *App) ApplyUpdate(ctx context.Context) (update.ApplyResult, error) {
 }
 
 func (a *App) StartInstallUpdateTask() *Task {
-	return NewTask(func(ctx context.Context, task *Task, emit func(agent.Event)) {
+	return NewTask(func(ctx context.Context, task *Task, emit func(agents.Event)) {
 		result, err := update.NewService().InstallWithProgress(ctx, func(progress update.InstallProgress) {
-			emit(agent.Event{Type: "update_progress", Data: progress})
+			emit(agents.Event{Type: "update_progress", Data: progress})
 		})
 		if err != nil {
-			emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
+			emit(agents.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 			return
 		}
-		emit(agent.Event{Type: "update_result", Data: result})
+		emit(agents.Event{Type: "update_result", Data: result})
 	})
 }

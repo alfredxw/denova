@@ -24,8 +24,8 @@ TARGETS=(
 
 GO_MODULES=(
   "."
-  "adk"
-  "adk/model/openai"
+  "agent"
+  "agent/model/openai"
 )
 
 require_command() {

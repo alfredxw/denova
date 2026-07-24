@@ -4,6 +4,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -20,19 +21,61 @@ func TestAgentPackageDependencyDirection(t *testing.T) {
 	repository := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
 
 	assertNoProductionImports(t, filepath.Join(repository, "internal", "api"), nil,
-		"denova/internal/agent", "github.com/alfredxw/denova/adk")
+		importSubtree("denova/internal/agents"),
+		importSubtree("github.com/alfredxw/denova/agent"),
+	)
 	assertNoProductionImports(t, filepath.Join(repository, "internal", "app"), nil,
-		"denova/internal/api", "github.com/alfredxw/denova/adk",
-		"github.com/cloudwego/eino", "github.com/cloudwego/eino-ext")
-	assertNoProductionImports(t, filepath.Join(repository, "internal", "agent"), nil,
-		"denova/internal/app", "denova/internal/api",
-		"github.com/cloudwego/eino", "github.com/cloudwego/eino-ext")
-	assertNoProductionImports(t, filepath.Join(repository, "adk"), map[string]bool{"model": true},
-		"denova/", "github.com/openai/openai-go",
-		"github.com/cloudwego/eino", "github.com/cloudwego/eino-ext")
+		importSubtree("denova/internal/api"),
+		importExact("github.com/alfredxw/denova/agent"),
+		importSubtree("github.com/alfredxw/denova/agent/context"),
+		importSubtree("github.com/alfredxw/denova/agent/model"),
+		importSubtree("github.com/alfredxw/denova/agent/session"),
+		importSubtree("github.com/alfredxw/denova/agent/tools"),
+	)
+	assertNoProductionImports(t, filepath.Join(repository, "internal", "agents"), nil,
+		importSubtree("denova/internal/app"),
+		importSubtree("denova/internal/api"),
+	)
+	assertNoProductionImports(t, filepath.Join(repository, "agent"), map[string]bool{"model": true},
+		importSubtree("denova"),
+		importSubtree("github.com/openai/openai-go"),
+	)
+	assertNoProductionImports(t, filepath.Join(repository, "agent", "model", "openai"), nil,
+		importSubtree("denova"),
+	)
+
+	// Eino is not an adapter in the new architecture. Scan every production Go
+	// package and every module manifest so it cannot return through an unrelated
+	// layer or an indirect nested-module declaration.
+	eino := []importRule{
+		importSubtree("github.com/cloudwego/eino"),
+		importSubtree("github.com/cloudwego/eino-ext"),
+	}
+	assertNoProductionImports(t, repository, map[string]bool{".git": true}, eino...)
+	assertNoModuleDependency(t, repository, "github.com/cloudwego/eino")
 }
 
-func assertNoProductionImports(t *testing.T, root string, skippedTopLevel map[string]bool, forbidden ...string) {
+type importRule struct {
+	path    string
+	subtree bool
+}
+
+func importExact(path string) importRule {
+	return importRule{path: strings.TrimSuffix(path, "/")}
+}
+
+func importSubtree(path string) importRule {
+	return importRule{path: strings.TrimSuffix(path, "/"), subtree: true}
+}
+
+func (rule importRule) rejects(path string) bool {
+	if path == rule.path {
+		return true
+	}
+	return rule.subtree && strings.HasPrefix(path, rule.path+"/")
+}
+
+func assertNoProductionImports(t *testing.T, root string, skippedTopLevel map[string]bool, forbidden ...importRule) {
 	t.Helper()
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -43,6 +86,9 @@ func assertNoProductionImports(t *testing.T, root string, skippedTopLevel map[st
 			return err
 		}
 		if entry.IsDir() {
+			if entry.Name() == ".git" || entry.Name() == "node_modules" {
+				return filepath.SkipDir
+			}
 			first, _, _ := strings.Cut(filepath.ToSlash(relative), "/")
 			if relative != "." && skippedTopLevel[first] {
 				return filepath.SkipDir
@@ -61,8 +107,8 @@ func assertNoProductionImports(t *testing.T, root string, skippedTopLevel map[st
 			if err != nil {
 				return err
 			}
-			for _, prefix := range forbidden {
-				if name == strings.TrimSuffix(prefix, "/") || strings.HasPrefix(name, prefix) {
+			for _, rule := range forbidden {
+				if rule.rejects(name) {
 					t.Errorf("%s imports forbidden dependency %q", filepath.ToSlash(relative), name)
 				}
 			}
@@ -71,5 +117,35 @@ func assertNoProductionImports(t *testing.T, root string, skippedTopLevel map[st
 	})
 	if err != nil {
 		t.Fatalf("inspect production imports under %s: %v", root, err)
+	}
+}
+
+func assertNoModuleDependency(t *testing.T, repository, dependency string) {
+	t.Helper()
+	err := filepath.WalkDir(repository, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			if entry.Name() == ".git" || entry.Name() == "node_modules" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Name() != "go.mod" && entry.Name() != "go.sum" {
+			return nil
+		}
+		content, err := fs.ReadFile(os.DirFS(filepath.Dir(path)), entry.Name())
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(content), dependency) {
+			relative, _ := filepath.Rel(repository, path)
+			t.Errorf("%s declares removed dependency %q", filepath.ToSlash(relative), dependency)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("inspect module dependencies: %v", err)
 	}
 }

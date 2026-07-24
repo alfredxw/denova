@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"denova/config"
-	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
@@ -46,10 +46,7 @@ func TestAutomationAbortReplaysPersistedReceiptAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ref := runstate.BindingRef{
-		Kind: runstate.BindingAutomation, Profile: runstate.ProfileAutomation,
-		Workspace: run.Workspace, SessionID: run.SessionID, TaskID: taskDef.ID,
-	}
+	ref := automationRuntimeBindingForTest(run.Workspace, run.SessionID, taskDef.ID)
 	key, err := json.Marshal(ref)
 	if err != nil {
 		application.Close()

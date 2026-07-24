@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"denova/config"
-	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAutomationManualRunIDIsStableAndScoped(t *testing.T) {
@@ -120,10 +120,7 @@ func TestAutomationManualCommandCanonicalizesTaskAliasBeforeAdmission(t *testing
 	<-secondTask.Done()
 	application.Close()
 
-	ref := runstate.BindingRef{
-		Kind: runstate.BindingAutomation, Profile: runstate.ProfileAutomation,
-		Workspace: workspace, SessionID: run.SessionID, TaskID: taskDef.ID,
-	}
+	ref := automationRuntimeBindingForTest(workspace, run.SessionID, taskDef.ID)
 	key, err := json.Marshal(ref)
 	if err != nil {
 		t.Fatal(err)

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/automation"
 	"denova/internal/book"
 )
@@ -144,7 +144,7 @@ func (s *AutomationAppService) newRunConversation(snap *automationWorkspaceSnaps
 	if err := sess.Rename(title); err != nil {
 		return nil, err
 	}
-	return &automationRunConversation{base: agent.NewSessionConversationForAgent(sess, &cfg, config.AgentKindAutomation)}, nil
+	return &automationRunConversation{base: agents.NewSessionConversationForAgent(sess, &cfg, config.AgentKindAutomation)}, nil
 }
 
 func automationRunSessionID(runID string) string {

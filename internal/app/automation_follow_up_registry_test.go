@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/automation"
 )
 
@@ -166,9 +166,9 @@ func TestAutomationFollowUpRegistryBoundsUnfinishedIdentities(t *testing.T) {
 }
 
 func TestAutomationEvictedDisplayCheckpointRequiresCanonicalRehydrate(t *testing.T) {
-	task := NewTask(func(_ context.Context, _ *Task, emit func(agent.Event)) {
-		emit(agent.Event{Type: "agent_cycle_started", Data: map[string]any{"command_id": "follow-up"}})
-		emit(agent.Event{Type: "chunk", Data: map[string]any{"content": strings.Repeat("bounded", 64)}})
+	task := NewTask(func(_ context.Context, _ *Task, emit func(agents.Event)) {
+		emit(agents.Event{Type: "agent_cycle_started", Data: map[string]any{"command_id": "follow-up"}})
+		emit(agents.Event{Type: "chunk", Data: map[string]any{"content": strings.Repeat("bounded", 64)}})
 	})
 	<-task.Done()
 	if task.releaseDisplayReplay() == 0 {

@@ -3,10 +3,10 @@ package app
 import (
 	"strings"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
-	"denova/internal/agent/session"
-	"denova/internal/agent/skills"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
+	"denova/internal/agents/skills"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // These aliases are the deliberately shared contract values exposed by App.
@@ -15,16 +15,16 @@ import (
 // runtime engines, registries, and persistence stores out of this surface.
 
 type (
-	AgentEvent       = agent.Event
-	AgentChatRequest = agent.ChatRequest
+	AgentEvent       = agents.Event
+	AgentChatRequest = agents.ChatRequest
 
-	AgentCommandKind = agent.AgentCommandKind
+	AgentCommandKind = agents.AgentCommandKind
 	AgentOperationID = runstate.OperationID
 	AgentCommandID   = runstate.CommandID
 
 	AgentRuntimeStatus             = runstate.StatusSnapshot
-	AgentRuntimeRecoveryActionKind = agent.RuntimeRecoveryActionKind
-	AgentRuntimeRecoveryAction     = agent.RuntimeRecoveryAction
+	AgentRuntimeRecoveryActionKind = agents.RuntimeRecoveryActionKind
+	AgentRuntimeRecoveryAction     = agents.RuntimeRecoveryAction
 
 	AgentSessionHistoryEntry         = session.HistoryEntry
 	AgentSessionUserMessageReference = session.UserMessageReference
@@ -37,30 +37,30 @@ type (
 )
 
 const (
-	AgentKindIDE = agent.AgentKindIDE
+	AgentKindIDE = agents.AgentKindIDE
 
-	AgentCommandSteer    = agent.AgentCommandSteer
-	AgentCommandFollowUp = agent.AgentCommandFollowUp
-	AgentCommandNextTurn = agent.AgentCommandNextTurn
-	AgentCommandAbort    = agent.AgentCommandAbort
+	AgentCommandSteer    = agents.AgentCommandSteer
+	AgentCommandFollowUp = agents.AgentCommandFollowUp
+	AgentCommandNextTurn = agents.AgentCommandNextTurn
+	AgentCommandAbort    = agents.AgentCommandAbort
 
 	AgentRuntimePhaseIdle = runstate.PhaseIdle
 
-	AgentRuntimeRecoveryAttach           = agent.RuntimeRecoveryAttach
-	AgentRuntimeRecoveryAbort            = agent.RuntimeRecoveryAbort
-	AgentRuntimeRecoverySteer            = agent.RuntimeRecoverySteer
-	AgentRuntimeRecoveryFollowUp         = agent.RuntimeRecoveryFollowUp
-	AgentRuntimeRecoveryNextTurn         = agent.RuntimeRecoveryNextTurn
-	AgentRuntimeRecoveryCompactContext   = agent.RuntimeRecoveryCompactContext
-	AgentRuntimeRecoveryRemoveCompaction = agent.RuntimeRecoveryRemoveCompaction
+	AgentRuntimeRecoveryAttach           = agents.RuntimeRecoveryAttach
+	AgentRuntimeRecoveryAbort            = agents.RuntimeRecoveryAbort
+	AgentRuntimeRecoverySteer            = agents.RuntimeRecoverySteer
+	AgentRuntimeRecoveryFollowUp         = agents.RuntimeRecoveryFollowUp
+	AgentRuntimeRecoveryNextTurn         = agents.RuntimeRecoveryNextTurn
+	AgentRuntimeRecoveryCompactContext   = agents.RuntimeRecoveryCompactContext
+	AgentRuntimeRecoveryRemoveCompaction = agents.RuntimeRecoveryRemoveCompaction
 
 	SkillScopeUser              = skills.ScopeUser
 	MaxSkillInstallArchiveBytes = skills.MaxInstallArchiveBytes
 )
 
 var (
-	ErrAgentRecoveryRequired             = agent.ErrRecoveryRequired
-	ErrAgentRecoveryActionChanged        = agent.ErrRecoveryActionChanged
+	ErrAgentRecoveryRequired             = agents.ErrRecoveryRequired
+	ErrAgentRecoveryActionChanged        = agents.ErrRecoveryActionChanged
 	ErrAgentRuntimeRecoveryActionChanged = runstate.ErrRecoveryActionChanged
 	ErrInvalidAgentCommand               = runstate.ErrInvalidCommand
 	ErrInvalidAgentBinding               = runstate.ErrInvalidBinding
@@ -95,5 +95,5 @@ func ValidateAgentRecoveryIdentity(commandID, operationID string) error {
 // AgentRuntimeRecoveryActions projects only the recovery operations that are
 // safe for an external caller to retry against the current durable status.
 func AgentRuntimeRecoveryActions(status AgentRuntimeStatus) []AgentRuntimeRecoveryAction {
-	return agent.RuntimeRecoveryActions(status)
+	return agents.RuntimeRecoveryActions(status)
 }

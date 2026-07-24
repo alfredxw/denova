@@ -7,7 +7,7 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 
-	runstate "denova/internal/agent/runtime"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestInteractiveAgentCommandKindIsClosed(t *testing.T) {

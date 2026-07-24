@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/interactive"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestWritingDrainRetriesPendingRecoveryRefreshBeforeSessionSwitch(t *testing.T) {
@@ -34,17 +34,17 @@ func TestWritingDrainRetriesPendingRecoveryRefreshBeforeSessionSwitch(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := external.Append(agent.UserMessage("canonical message appended by recovered structural commit")); err != nil {
+	if err := external.Append(agents.UserMessage("canonical message appended by recovered structural commit")); err != nil {
 		t.Fatal(err)
 	}
 
-	chat := agent.NewEphemeralChatService()
+	chat := agents.NewEphemeralChatService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
-	task := NewTask(func(context.Context, *Task, func(agent.Event)) {})
+	task := NewTask(func(context.Context, *Task, func(agents.Event)) {})
 	<-task.Done()
 	run := &writingTaskRun{task: task, runtime: ideChatRuntime{workspace: "/book", sess: selected}}
-	action := agent.RuntimeRecoveryAction{
-		Kind: agent.RuntimeRecoveryCompactContext, CommandID: "refresh-before-switch",
+	action := agents.RuntimeRecoveryAction{
+		Kind: agents.RuntimeRecoveryCompactContext, CommandID: "refresh-before-switch",
 		OperationID: runstate.OperationID("operation-refresh-before-switch"),
 	}
 	application := &App{
@@ -99,13 +99,13 @@ func TestClearSessionDrainsExactWritingTaskBeforeMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(agent.UserMessage("keep in display history")); err != nil {
+	if err := sess.Append(agents.UserMessage("keep in display history")); err != nil {
 		t.Fatal(err)
 	}
-	chat := agent.NewEphemeralChatService()
+	chat := agents.NewEphemeralChatService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	started := make(chan struct{})
-	task := NewTask(func(ctx context.Context, _ *Task, _ func(agent.Event)) {
+	task := NewTask(func(ctx context.Context, _ *Task, _ func(agents.Event)) {
 		close(started)
 		<-ctx.Done()
 	})
@@ -138,12 +138,12 @@ func TestAppendInteractiveTurnDrainsExactBranchTaskBeforeMutation(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	chat := agent.NewEphemeralChatService()
+	chat := agents.NewEphemeralChatService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	directorTasks := newWorkspaceDirectorTaskGroup()
 	t.Cleanup(directorTasks.Close)
 	started := make(chan struct{})
-	task := NewTask(func(ctx context.Context, _ *Task, _ func(agent.Event)) {
+	task := NewTask(func(ctx context.Context, _ *Task, _ func(agents.Event)) {
 		close(started)
 		<-ctx.Done()
 	})

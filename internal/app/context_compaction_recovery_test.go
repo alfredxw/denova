@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAppRestoresFrozenSessionCompactionForInactiveBinding(t *testing.T) {
@@ -27,7 +27,7 @@ func TestAppRestoresFrozenSessionCompactionForInactiveBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(agent.UserMessage("canonical source that must not enter the descriptor")); err != nil {
+	if err := sess.Append(agents.UserMessage("canonical source that must not enter the descriptor")); err != nil {
 		t.Fatal(err)
 	}
 	cursor := sess.ContextCursor()
@@ -37,36 +37,36 @@ func TestAppRestoresFrozenSessionCompactionForInactiveBinding(t *testing.T) {
 	}
 	commandID := runstate.CommandID("inactive-session-compact")
 	recordID := contextStructuralRecordID("cc", string(commandID))
-	result := agent.ContextCompactionResult{
+	result := agents.ContextCompactionResult{
 		Triggered: true, Phase: "mid_run", Epoch: 1, Summary: "bounded checkpoint",
 		SourceMessageCount: 1, RetainedTurns: 2, TokensBefore: 120, TokensAfter: 24,
 	}
-	record := sessionCompactionRecord(recordID, agent.AgentKindIDE, 0, 1, result)
+	record := sessionCompactionRecord(recordID, agents.AgentKindIDE, 0, 1, result)
 	ref := runstate.ContextCompactionRef{
 		Source: "session.effective_messages", Purpose: "recover exact checkpoint", Resource: sess.ID,
 		ExpectedRevision: fmt.Sprintf("session-context:%d", cursor.Revision),
 	}
 	plan, err := newContextStructuralRestorePlan(
-		agent.ContextStructuralDomainSession, agent.ContextStructuralCompact, binding, ref, recordID,
-		agent.ContextStructuralResult{Compaction: result}, record,
+		agents.ContextStructuralDomainSession, agents.ContextStructuralCompact, binding, ref, recordID,
+		agents.ContextStructuralResult{Compaction: result}, record,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	application := &App{}
-	spec, err := application.restoreContextStructuralOperation(context.Background(), agent.HarnessStructuralRestoreRequest{
+	spec, err := application.restoreContextStructuralOperation(context.Background(), agents.HarnessStructuralRestoreRequest{
 		Binding: binding,
 		Snapshot: runstate.StructuralOperationSnapshot{
 			Binding: binding, CommandID: commandID, OperationID: "inactive-session-operation",
 			Cycle: 1, Kind: runstate.StructuralCompactContext, Ref: ref,
 		},
-		Options: agent.RunOptions{AgentKind: agent.AgentKindIDE, Workspace: workspace, SessionID: sess.ID, Mode: "ide"},
+		Options: agents.RunOptions{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sess.ID, Mode: "ide"},
 		Plan:    plan,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	identity := agent.ContextStructuralIdentity{CommandID: commandID, OperationID: "inactive-session-operation", Cycle: 1}
+	identity := agents.ContextStructuralIdentity{CommandID: commandID, OperationID: "inactive-session-operation", Cycle: 1}
 	intent, err := spec.Operation.Prepare(context.Background(), identity, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestAppRestoresFrozenStoryCompactionForInactiveBinding(t *testing.T) {
 	}
 	commandID := runstate.CommandID("inactive-story-compact")
 	recordID := contextStructuralRecordID("cc", string(commandID))
-	result := agent.ContextCompactionResult{
+	result := agents.ContextCompactionResult{
 		Triggered: true, Phase: "mid_run", Epoch: 1, Summary: "bounded story checkpoint",
 		RetainedTurns: 2, TokensBefore: 160, TokensAfter: 30,
 	}
@@ -116,20 +116,20 @@ func TestAppRestoresFrozenStoryCompactionForInactiveBinding(t *testing.T) {
 		Resource: story.ID + "/main", ExpectedRevision: contextStoryRevision(expectedParent),
 	}
 	plan, err := newContextStructuralRestorePlan(
-		agent.ContextStructuralDomainStory, agent.ContextStructuralCompact, binding, ref, recordID,
-		agent.ContextStructuralResult{Compaction: result}, event,
+		agents.ContextStructuralDomainStory, agents.ContextStructuralCompact, binding, ref, recordID,
+		agents.ContextStructuralResult{Compaction: result}, event,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec, err := (&App{}).restoreContextStructuralOperation(context.Background(), agent.HarnessStructuralRestoreRequest{
+	spec, err := (&App{}).restoreContextStructuralOperation(context.Background(), agents.HarnessStructuralRestoreRequest{
 		Binding: binding,
 		Snapshot: runstate.StructuralOperationSnapshot{
 			Binding: binding, CommandID: commandID, OperationID: "inactive-story-operation",
 			Cycle: 1, Kind: runstate.StructuralCompactContext, Ref: ref,
 		},
-		Options: agent.RunOptions{
-			AgentKind: agent.AgentKindInteractiveStory, Workspace: workspace,
+		Options: agents.RunOptions{
+			AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace,
 			StoryID: story.ID, BranchID: "main", Mode: "interactive",
 		},
 		Plan: plan,
@@ -137,7 +137,7 @@ func TestAppRestoresFrozenStoryCompactionForInactiveBinding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	identity := agent.ContextStructuralIdentity{CommandID: commandID, OperationID: "inactive-story-operation", Cycle: 1}
+	identity := agents.ContextStructuralIdentity{CommandID: commandID, OperationID: "inactive-story-operation", Cycle: 1}
 	intent, err := spec.Operation.Prepare(context.Background(), identity, nil)
 	if err != nil {
 		t.Fatal(err)

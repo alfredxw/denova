@@ -4,18 +4,18 @@ import (
 	"context"
 	"strings"
 
-	"denova/internal/agent"
-	agentcontext "denova/internal/agent/context"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/session"
 )
 
 type automationOutputConversation interface {
-	agent.Conversation
+	agents.Conversation
 	Output() string
 }
 
 type automationRunConversation struct {
-	base   *agent.SessionConversation
+	base   *agents.SessionConversation
 	output string
 }
 
@@ -23,11 +23,11 @@ func (c *automationRunConversation) ModelContextBudget() agentcontext.Budget {
 	return c.base.ModelContextBudget()
 }
 
-func (c *automationRunConversation) AssembleModelContext(ctx context.Context, originalMessage string, input agent.ModelContextInput) (agent.ModelContextResult, error) {
+func (c *automationRunConversation) AssembleModelContext(ctx context.Context, originalMessage string, input agents.ModelContextInput) (agents.ModelContextResult, error) {
 	return c.base.AssembleModelContext(ctx, originalMessage, input)
 }
 
-func (c *automationRunConversation) CommitModelInput(ctx context.Context, originalMessage string, assembled agent.ModelContextResult) error {
+func (c *automationRunConversation) CommitModelInput(ctx context.Context, originalMessage string, assembled agents.ModelContextResult) error {
 	return c.base.CommitModelInput(ctx, originalMessage, assembled)
 }
 

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAgentRuntimeProjectionDTOIsExplicitAndBounded(t *testing.T) {
@@ -71,8 +71,8 @@ func TestAddAgentRuntimeProjectionKeepsLegacyResponseWhenUnavailable(t *testing.
 
 func TestAddAgentRuntimeProjectionExposesServiceRefreshActionAfterActorIdle(t *testing.T) {
 	response := map[string]interface{}{"active": true, "task_id": "task-refresh"}
-	action := agent.RuntimeRecoveryAction{
-		Kind: agent.RuntimeRecoveryCompactContext, CommandID: "compact-refresh",
+	action := agents.RuntimeRecoveryAction{
+		Kind: agents.RuntimeRecoveryCompactContext, CommandID: "compact-refresh",
 		OperationID: "operation-refresh",
 	}
 	addAgentRuntimeProjection(response, runstate.StatusSnapshot{
@@ -82,7 +82,7 @@ func TestAddAgentRuntimeProjectionExposesServiceRefreshActionAfterActorIdle(t *t
 			Status: runstate.OperationSucceeded,
 		},
 	}, agentRuntimeProjectionOptions{
-		Available: true, StreamAttached: true, RecoveryActions: []agent.RuntimeRecoveryAction{action},
+		Available: true, StreamAttached: true, RecoveryActions: []agents.RuntimeRecoveryAction{action},
 	})
 	if response["phase"] != string(runstate.PhaseIdle) || response["recovery_paused"] != true ||
 		response["runtime_recoverable"] != true || response["stream_attached"] != true {
@@ -98,12 +98,12 @@ func TestAddAgentRuntimeProjectionExposesServiceRefreshActionAfterActorIdle(t *t
 
 func TestAddAgentRuntimeProjectionNormalizesServiceRefreshWithoutActorProjection(t *testing.T) {
 	response := map[string]interface{}{}
-	action := agent.RuntimeRecoveryAction{
-		Kind: agent.RuntimeRecoveryCompactContext, CommandID: "compact-refresh",
+	action := agents.RuntimeRecoveryAction{
+		Kind: agents.RuntimeRecoveryCompactContext, CommandID: "compact-refresh",
 		OperationID: "operation-refresh",
 	}
 	addAgentRuntimeProjection(response, runstate.StatusSnapshot{}, agentRuntimeProjectionOptions{
-		Available: true, RecoveryActions: []agent.RuntimeRecoveryAction{action},
+		Available: true, RecoveryActions: []agents.RuntimeRecoveryAction{action},
 	})
 	if response["phase"] != string(runstate.PhaseIdle) || response["recovery_paused"] != true ||
 		response["runtime_recoverable"] != true {

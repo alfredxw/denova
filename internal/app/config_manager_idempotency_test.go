@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alfredxw/denova/adk"
+	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestConfigManagerInitialStartReusesExactTaskAndRejectsConflict(t *testing.T) {
@@ -106,8 +106,8 @@ func TestConfigManagerReplayCapacityRejectsBeforeRuntimeAdmission(t *testing.T) 
 	workspace := application.workspace
 	chatService := application.chatService
 	application.mu.RUnlock()
-	status, err := chatService.RuntimeStatusProjection(context.Background(), agent.RunOptions{
-		AgentKind: agent.AgentKindConfigManager, SessionID: sessionID,
+	status, err := chatService.RuntimeStatusProjection(context.Background(), agents.RunOptions{
+		AgentKind: agents.AgentKindConfigManager, SessionID: sessionID,
 		Workspace: workspace, Mode: "config_manager",
 	})
 	if err != nil {
@@ -124,7 +124,7 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := agent.NewDurableChatService(context.Background(), root)
+	service, err := agents.NewDurableChatService(context.Background(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,12 +137,12 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	options := agent.RunOptions{
-		AgentKind: agent.AgentKindConfigManager, Workspace: workspace,
+	options := agents.RunOptions{
+		AgentKind: agents.AgentKindConfigManager, Workspace: workspace,
 		SessionID: sessionID, Mode: "config_manager",
 	}
 	for index := range requests {
-		chatRequest := agent.ChatRequest{
+		chatRequest := agents.ChatRequest{
 			CommandID: requests[index].CommandID,
 			Message:   buildConfigManagerMessage(requests[index]),
 		}
@@ -150,7 +150,7 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 			context.Background(), newConfigManagerColdReplayRunner(t, answers[index]),
 			configManagerColdReplayConversation{}, nil, chatRequest, options, nil,
 		)
-		if outcome.Status != agent.RunOutcomeCompleted || outcome.Content != answers[index] {
+		if outcome.Status != agents.RunOutcomeCompleted || outcome.Content != answers[index] {
 			_ = service.Close(context.Background())
 			t.Fatalf("seed run %d outcome = %#v", index, outcome)
 		}
@@ -196,32 +196,32 @@ func TestConfigManagerOlderSettledStartColdReplayWithoutModel(t *testing.T) {
 	}
 }
 
-func newConfigManagerColdReplayRunner(t *testing.T, answer string) *adk.Runner {
+func newConfigManagerColdReplayRunner(t *testing.T, answer string) *agent.Runner {
 	t.Helper()
-	built, err := adk.NewAgent(context.Background(), adk.AgentConfig{
+	built, err := agent.NewAgent(context.Background(), agent.AgentConfig{
 		Name: "DenovaConfigManagerAgent", Description: "Config replay test",
 		Instruction: "Return the fixed answer.", Model: configManagerColdReplayModel{answer: answer},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return adk.NewRunner(adk.RunnerConfig{Agent: built, EnableStreaming: true})
+	return agent.NewRunner(agent.RunnerConfig{Agent: built, EnableStreaming: true})
 }
 
 type configManagerColdReplayModel struct{ answer string }
 
-func (m configManagerColdReplayModel) Generate(context.Context, []*agent.Message, ...adk.ModelOption) (*agent.Message, error) {
-	return agent.AssistantMessage(m.answer, nil), nil
+func (m configManagerColdReplayModel) Generate(context.Context, []*agents.Message, ...agent.ModelOption) (*agents.Message, error) {
+	return agents.AssistantMessage(m.answer, nil), nil
 }
 
-func (m configManagerColdReplayModel) Stream(context.Context, []*agent.Message, ...adk.ModelOption) (*agent.StreamReader[*agent.Message], error) {
-	return agent.StreamReaderFromArray([]*agent.Message{agent.AssistantMessage(m.answer, nil)}), nil
+func (m configManagerColdReplayModel) Stream(context.Context, []*agents.Message, ...agent.ModelOption) (*agents.StreamReader[*agents.Message], error) {
+	return agents.StreamReaderFromArray([]*agents.Message{agents.AssistantMessage(m.answer, nil)}), nil
 }
 
 type configManagerColdReplayConversation struct{}
 
-func (configManagerColdReplayConversation) AssembleModelContext(ctx context.Context, _ string, input agent.ModelContextInput) (agent.ModelContextResult, error) {
-	return agent.AssembleSingleUserModelContext(ctx, input)
+func (configManagerColdReplayConversation) AssembleModelContext(ctx context.Context, _ string, input agents.ModelContextInput) (agents.ModelContextResult, error) {
+	return agents.AssembleSingleUserModelContext(ctx, input)
 }
 func (configManagerColdReplayConversation) AppendAssistant(string) error { return nil }
 func (configManagerColdReplayConversation) MarkInterrupted(string, string, string) error {

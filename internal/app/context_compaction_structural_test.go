@@ -5,10 +5,10 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/interactive"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
@@ -20,7 +20,7 @@ func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.Append(agent.UserMessage("raw history remains canonical")); err != nil {
+	if err := sess.Append(agents.UserMessage("raw history remains canonical")); err != nil {
 		t.Fatal(err)
 	}
 	compaction, err := sess.AppendContextCompaction(session.ContextCompaction{
@@ -29,7 +29,7 @@ func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chat := agent.NewEphemeralChatService()
+	chat := agents.NewEphemeralChatService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	application := &App{
 		workspace: "/book", workspaceGeneration: 1, sessionStore: store,
@@ -51,8 +51,8 @@ func TestWritingCompactionRemovalUsesDurableStructuralCommand(t *testing.T) {
 	if !ok || marker.CompactionID != compaction.ID {
 		t.Fatalf("missing canonical removal marker: %#v", marker)
 	}
-	status, err := chat.RuntimeStatusProjection(context.Background(), agent.RunOptions{
-		AgentKind: agent.AgentKindIDE, Workspace: "/book", SessionID: sess.ID,
+	status, err := chat.RuntimeStatusProjection(context.Background(), agents.RunOptions{
+		AgentKind: agents.AgentKindIDE, Workspace: "/book", SessionID: sess.ID,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +81,7 @@ func TestInteractiveCompactionRemovalUsesDurableStructuralCommand(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	chat := agent.NewEphemeralChatService()
+	chat := agents.NewEphemeralChatService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	application := &App{workspace: workspace, workspaceGeneration: 1, interactive: store, chatService: chat}
 	service := &InteractiveAppService{app: application}
@@ -100,8 +100,8 @@ func TestInteractiveCompactionRemovalUsesDurableStructuralCommand(t *testing.T) 
 	if snapshot.ContextCompaction != nil || snapshot.ContextCompactionRemoval == nil || snapshot.ContextCompactionRemoval.CompactionID != compaction.ID {
 		t.Fatalf("canonical interactive removal missing: %#v", snapshot)
 	}
-	status, err := chat.RuntimeStatusProjection(context.Background(), agent.RunOptions{
-		AgentKind: agent.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main",
+	status, err := chat.RuntimeStatusProjection(context.Background(), agents.RunOptions{
+		AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +126,7 @@ func TestInteractivePostSettlementCompactionPublishesAtSettledTurnHead(t *testin
 	}
 	conversation := newInteractiveConversation(store, "", workspace, story.ID, "main", "", 0, &config.Config{})
 	conversation.stagePreparedInteractiveCompaction(preparedInteractiveContextCompaction{
-		Result: agent.ContextCompactionResult{
+		Result: agents.ContextCompactionResult{
 			Triggered: true, Phase: "mid_run", Epoch: 1, Summary: "大厅中央有一盏旧灯。",
 			SourceMessageCount: 2, RetainedTurns: 2,
 		},
@@ -138,8 +138,8 @@ func TestInteractivePostSettlementCompactionPublishesAtSettledTurnHead(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	spec, err := conversation.PostSettlementContextStructuralSpec(context.Background(), "settled-game-operation", agent.RunOptions{
-		AgentKind: agent.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main",
+	spec, err := conversation.PostSettlementContextStructuralSpec(context.Background(), "settled-game-operation", agents.RunOptions{
+		AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace, StoryID: story.ID, BranchID: "main",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -147,11 +147,11 @@ func TestInteractivePostSettlementCompactionPublishesAtSettledTurnHead(t *testin
 	if spec == nil {
 		t.Fatal("expected staged post-settlement structural spec")
 	}
-	if spec.RestorePlan == nil || spec.RestorePlan.Domain != agent.ContextStructuralDomainStory ||
+	if spec.RestorePlan == nil || spec.RestorePlan.Domain != agents.ContextStructuralDomainStory ||
 		spec.RestorePlan.RecordID == "" || spec.RestorePlan.IntentHash == "" || len(spec.RestorePlan.Mutation) == 0 {
 		t.Fatalf("post-settlement Story compaction has no exact restore plan: %#v", spec.RestorePlan)
 	}
-	chat := agent.NewEphemeralChatService()
+	chat := agents.NewEphemeralChatService()
 	t.Cleanup(func() { _ = chat.Close(context.Background()) })
 	result, err := chat.ExecuteContextStructuralOperation(context.Background(), *spec)
 	if err != nil {

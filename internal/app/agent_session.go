@@ -3,7 +3,7 @@ package app
 import (
 	"log"
 
-	"denova/internal/agent/session"
+	"denova/internal/agents/session"
 )
 
 func (a *App) persistAgentCall(agentKind, instruction, response string) {

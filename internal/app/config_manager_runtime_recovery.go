@@ -7,8 +7,8 @@ import (
 	"log"
 	"strings"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // ConfigManagerAgentActiveView binds a reconnectable display Task and the
@@ -21,9 +21,9 @@ type ConfigManagerAgentActiveView struct {
 	RuntimeProjectionOK bool
 }
 
-func configManagerRunOptions(workspace, sessionID string) agent.RunOptions {
-	return agent.RunOptions{
-		AgentKind: agent.AgentKindConfigManager,
+func configManagerRunOptions(workspace, sessionID string) agents.RunOptions {
+	return agents.RunOptions{
+		AgentKind: agents.AgentKindConfigManager,
 		Workspace: workspace,
 		SessionID: sessionID,
 		Mode:      "config_manager",
@@ -142,14 +142,14 @@ func (s *ConfigManagerAppService) displayTask(ctx context.Context, req ConfigMan
 // state that needs canonical reconciliation before it can expose recovery
 // identities.
 type configManagerRuntimeProjector interface {
-	RuntimeStatusProjection(context.Context, agent.RunOptions) (runstate.StatusSnapshot, error)
-	RuntimeRecoveryStatusProjection(context.Context, agent.RunOptions) (runstate.StatusSnapshot, error)
+	RuntimeStatusProjection(context.Context, agents.RunOptions) (runstate.StatusSnapshot, error)
+	RuntimeRecoveryStatusProjection(context.Context, agents.RunOptions) (runstate.StatusSnapshot, error)
 }
 
 func projectConfigManagerRuntime(
 	ctx context.Context,
 	projector configManagerRuntimeProjector,
-	options agent.RunOptions,
+	options agents.RunOptions,
 ) (runstate.StatusSnapshot, bool) {
 	if projector == nil {
 		return runstate.StatusSnapshot{}, false
@@ -170,8 +170,8 @@ func projectConfigManagerRuntime(
 	return snapshot, true
 }
 
-func logConfigManagerProjectionError(options agent.RunOptions, err error) {
-	if errors.Is(err, agent.ErrRuntimeProjectionUnavailable) {
+func logConfigManagerProjectionError(options agents.RunOptions, err error) {
+	if errors.Is(err, agents.ErrRuntimeProjectionUnavailable) {
 		return
 	}
 	log.Printf("[config-manager-runtime] projection unavailable workspace=%s session_id=%s err=%v", options.Workspace, options.SessionID, err)
@@ -291,10 +291,11 @@ func (s *ConfigManagerAppService) ClearContext(ctx context.Context, req ConfigMa
 			return err
 		}
 	}
-	if err := closeRuntimeBinding(operation.Context(), chatService, runstate.BindingSelector{
-		Kind: runstate.BindingWriting, Profile: runstate.ProfileConfigManager,
-		Workspace: workspace, SessionID: sessionID,
-	}); err != nil {
+	selector, err := agents.RuntimeSessionBindingSelector(agents.AgentKindConfigManager, workspace, sessionID)
+	if err != nil {
+		return err
+	}
+	if err := closeRuntimeBinding(operation.Context(), chatService, selector); err != nil {
 		return err
 	}
 	sess, err := store.GetOrCreate(sessionID)
@@ -410,19 +411,19 @@ func (s *ConfigManagerAppService) RecoverAgentRuntime(
 		}
 	}
 	run.recoveryActions[key] = receipt
-	if err := task.Start(func(taskCtx context.Context, task *Task, emit func(agent.Event)) {
+	if err := task.Start(func(taskCtx context.Context, task *Task, emit func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		defer recovery.Close()
 		if isStructural {
 			if _, resumed, resumeErr := chatService.ResumeRecoveredContextStructuralOperation(taskCtx, options, structural); resumeErr != nil {
-				emit(agent.Event{Type: "error", Data: map[string]string{"message": resumeErr.Error()}})
+				emit(agents.Event{Type: "error", Data: map[string]string{"message": resumeErr.Error()}})
 				return
 			} else if !resumed {
-				emit(agent.Event{Type: "error", Data: map[string]string{"message": "Agent 恢复操作已变化 / Agent recovery action changed"}})
+				emit(agents.Event{Type: "error", Data: map[string]string{"message": "Agent 恢复操作已变化 / Agent recovery action changed"}})
 				return
 			}
 			if refreshErr := sess.RefreshCanonical(taskCtx); refreshErr != nil {
-				emit(agent.Event{Type: "error", Data: map[string]string{"message": fmt.Sprintf("配置会话刷新失败 / Failed to refresh Config Manager session: %v", refreshErr)}})
+				emit(agents.Event{Type: "error", Data: map[string]string{"message": fmt.Sprintf("配置会话刷新失败 / Failed to refresh Config Manager session: %v", refreshErr)}})
 				return
 			}
 		}
@@ -439,17 +440,17 @@ func (s *ConfigManagerAppService) RecoverAgentRuntime(
 func resumeExistingConfigManagerRecovery(
 	ctx context.Context,
 	run *configManagerRecoveryRun,
-	action agent.RuntimeRecoveryAction,
+	action agents.RuntimeRecoveryAction,
 ) (AgentRuntimeRecoveryResult, error) {
 	key := recoveryActionKey(action)
 	if receipt, ok := run.recoveryActions[key]; ok {
 		return AgentRuntimeRecoveryResult{Task: run.task, Action: action, Receipt: receipt}, nil
 	}
 	if run.task.Finished() {
-		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: recovery display task is already settled", agent.ErrRecoveryActionChanged)
+		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: recovery display task is already settled", agents.ErrRecoveryActionChanged)
 	}
 	if _, structural := recoveryStructuralAction(action.Kind); structural {
-		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: a structural recovery action cannot join an existing display task", agent.ErrRecoveryActionChanged)
+		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: a structural recovery action cannot join an existing display task", agents.ErrRecoveryActionChanged)
 	}
 	receipt, err := run.recovery.Resume(ctx, action, run.task.ID(), run.task.emit)
 	if err != nil {

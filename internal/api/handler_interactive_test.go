@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -335,7 +335,7 @@ func TestInteractiveDirectorAPI(t *testing.T) {
 func TestInteractiveStoryStateSchemaRunRouteIsRemoved(t *testing.T) {
 	application := newTestApplication(t)
 	calls := 0
-	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agents.InteractiveStoryToolContext, string) (string, error) {
 		calls++
 		return "", errors.New("director unavailable")
 	})
@@ -374,7 +374,7 @@ func TestInteractiveStoryStateSchemaRunRouteIsRemoved(t *testing.T) {
 func TestInteractiveStoryStateSchemaReviewRoutesAreRemoved(t *testing.T) {
 	application := newTestApplication(t)
 	directorCalls := 0
-	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agents.InteractiveStoryToolContext, string) (string, error) {
 		directorCalls++
 		return "测试后台导演完成。", nil
 	})
@@ -430,7 +430,7 @@ func TestInteractiveStoryCreateCanUseFixedStateSchemaPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := 0
-	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agent.InteractiveStoryToolContext, string) (string, error) {
+	restoreDirector := application.SetInteractiveDirectorGeneratorForTest(func(context.Context, *config.Config, *book.State, agents.InteractiveStoryToolContext, string) (string, error) {
 		calls++
 		return "", errors.New("state schema initializer must stay disabled")
 	})

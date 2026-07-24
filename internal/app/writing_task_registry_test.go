@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alfredxw/denova/adk"
+	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 )
 
 func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
@@ -19,18 +19,18 @@ func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chatService, err := agent.NewDurableChatService(context.Background(), root)
+	chatService, err := agents.NewDurableChatService(context.Background(), root)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	requests := []agent.ChatRequest{
+	requests := []agents.ChatRequest{
 		{CommandID: "writing-older-settled", Message: "write the first answer"},
 		{CommandID: "writing-newer-settled", Message: "write the second answer"},
 	}
 	answers := []string{"first durable answer", "second durable answer"}
-	options := agent.RunOptions{
-		AgentKind: agent.AgentKindIDE,
+	options := agents.RunOptions{
+		AgentKind: agents.AgentKindIDE,
 		Workspace: workspace,
 		SessionID: "default",
 		Mode:      "ide",
@@ -45,7 +45,7 @@ func TestWritingOlderSettledStartColdReplayThroughApp(t *testing.T) {
 			options,
 			nil,
 		)
-		if outcome.Status != agent.RunOutcomeCompleted || outcome.Content != answers[index] {
+		if outcome.Status != agents.RunOutcomeCompleted || outcome.Content != answers[index] {
 			_ = chatService.Close(context.Background())
 			t.Fatalf("seed run %d outcome = %#v", index, outcome)
 		}
@@ -108,9 +108,9 @@ func writingColdReplayConfig(root string) *config.Config {
 	}
 }
 
-func newWritingColdReplayRunner(t *testing.T, answer string) *adk.Runner {
+func newWritingColdReplayRunner(t *testing.T, answer string) *agent.Runner {
 	t.Helper()
-	built, err := adk.NewAgent(context.Background(), adk.AgentConfig{
+	built, err := agent.NewAgent(context.Background(), agent.AgentConfig{
 		Name:        "DenovaAgent",
 		Description: "Writing cold replay test",
 		Instruction: "Return the fixed test answer.",
@@ -119,7 +119,7 @@ func newWritingColdReplayRunner(t *testing.T, answer string) *adk.Runner {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return adk.NewRunner(adk.RunnerConfig{Agent: built, EnableStreaming: true})
+	return agent.NewRunner(agent.RunnerConfig{Agent: built, EnableStreaming: true})
 }
 
 type writingColdReplayModel struct {
@@ -133,9 +133,9 @@ type writingColdReplayConversation struct{}
 func (writingColdReplayConversation) AssembleModelContext(
 	ctx context.Context,
 	_ string,
-	input agent.ModelContextInput,
-) (agent.ModelContextResult, error) {
-	return agent.AssembleSingleUserModelContext(ctx, input)
+	input agents.ModelContextInput,
+) (agents.ModelContextResult, error) {
+	return agents.AssembleSingleUserModelContext(ctx, input)
 }
 
 func (writingColdReplayConversation) AppendAssistant(string) error { return nil }
@@ -146,10 +146,10 @@ func (writingColdReplayConversation) PendingInterruption() *session.Interruption
 
 func (writingColdReplayConversation) ResolveInterruption(string) error { return nil }
 
-func (m writingColdReplayModel) Generate(context.Context, []*agent.Message, ...adk.ModelOption) (*agent.Message, error) {
-	return agent.AssistantMessage(m.answer, nil), nil
+func (m writingColdReplayModel) Generate(context.Context, []*agents.Message, ...agent.ModelOption) (*agents.Message, error) {
+	return agents.AssistantMessage(m.answer, nil), nil
 }
 
-func (m writingColdReplayModel) Stream(context.Context, []*agent.Message, ...adk.ModelOption) (*agent.StreamReader[*agent.Message], error) {
-	return agent.StreamReaderFromArray([]*agent.Message{agent.AssistantMessage(m.answer, nil)}), nil
+func (m writingColdReplayModel) Stream(context.Context, []*agents.Message, ...agent.ModelOption) (*agents.StreamReader[*agents.Message], error) {
+	return agents.StreamReaderFromArray([]*agents.Message{agents.AssistantMessage(m.answer, nil)}), nil
 }

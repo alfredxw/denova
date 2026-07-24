@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
 	"denova/internal/automation"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 const maxRecoveredAutomationSummaryChars = 8 * 1024
@@ -21,10 +21,10 @@ func (s *AutomationAppService) automationRuntimeProjection(ctx context.Context, 
 		return s.runtimeProjector(ctx, snap, task, run)
 	}
 	if snap == nil || snap.chatService == nil {
-		return runstate.StatusSnapshot{}, agent.ErrRuntimeProjectionUnavailable
+		return runstate.StatusSnapshot{}, agents.ErrRuntimeProjectionUnavailable
 	}
-	return snap.chatService.RuntimeRecoveryStatusProjection(ctx, agent.RunOptions{
-		AgentKind: agent.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: task.ID,
+	return snap.chatService.RuntimeRecoveryStatusProjection(ctx, agents.RunOptions{
+		AgentKind: agents.AgentKindAutomation, TaskID: run.ID, AutomationTaskID: task.ID,
 		SessionID: run.SessionID, Workspace: run.Workspace, Mode: "automation",
 	})
 }
@@ -83,7 +83,7 @@ func runHasRuntimeReceiptForAdmission(run automation.RunRecord) bool {
 func (s *AutomationAppService) reconcileAutomationRunReceipt(ctx context.Context, snap *automationWorkspaceSnapshot, task automation.Task, candidate automation.RunRecord) (automation.RunRecord, bool, error) {
 	status, err := s.automationRuntimeProjection(ctx, snap, task, candidate)
 	if err != nil {
-		if errors.Is(err, agent.ErrRuntimeProjectionUnavailable) {
+		if errors.Is(err, agents.ErrRuntimeProjectionUnavailable) {
 			return automation.RunRecord{}, false, nil
 		}
 		return automation.RunRecord{}, false, err

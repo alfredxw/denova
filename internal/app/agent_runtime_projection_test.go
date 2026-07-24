@@ -4,14 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/interactive"
 )
 
 func TestDefaultChatServiceProvidesDurableRuntimeProjection(t *testing.T) {
-	service := agent.NewEphemeralChatService()
+	service := agents.NewEphemeralChatService()
 	t.Cleanup(func() { _ = service.Close(context.Background()) })
 	application := &App{
 		workspace:   "/book",
@@ -19,14 +18,15 @@ func TestDefaultChatServiceProvidesDurableRuntimeProjection(t *testing.T) {
 		chatService: service,
 	}
 	projection, ok := application.WritingAgentRuntimeProjection(context.Background())
-	if !ok || projection.Binding.Profile != runstate.ProfileWriting {
+	productBinding, err := agents.ParseRuntimeBinding(projection.Binding)
+	if !ok || err != nil || productBinding.AgentKind != agents.AgentKindIDE {
 		t.Fatalf("default durable projection = %#v available=%t", projection, ok)
 	}
 }
 
 func TestAgentRuntimeProjectionUsesExplicitWritingAndGameIdentities(t *testing.T) {
 	workspace := t.TempDir()
-	service, err := agent.NewDurableChatService(context.Background(), t.TempDir())
+	service, err := agents.NewDurableChatService(context.Background(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,8 @@ func TestAgentRuntimeProjectionUsesExplicitWritingAndGameIdentities(t *testing.T
 	if !ok {
 		t.Fatal("writing projection unavailable")
 	}
-	if writing.Binding.Kind != runstate.BindingWriting || writing.Binding.Workspace != workspace || writing.Binding.SessionID != "session-1" {
+	writingBinding, err := agents.ParseRuntimeBinding(writing.Binding)
+	if err != nil || writingBinding.AgentKind != agents.AgentKindIDE || writingBinding.Workspace != workspace || writingBinding.SessionID != "session-1" {
 		t.Fatalf("writing binding = %#v", writing.Binding)
 	}
 
@@ -59,7 +60,8 @@ func TestAgentRuntimeProjectionUsesExplicitWritingAndGameIdentities(t *testing.T
 	if !ok {
 		t.Fatal("game projection unavailable")
 	}
-	if game.Binding.Kind != runstate.BindingGame || game.Binding.Workspace != workspace || game.Binding.StoryID != story.ID || game.Binding.BranchID != "main" {
+	gameBinding, err := agents.ParseRuntimeBinding(game.Binding)
+	if err != nil || gameBinding.AgentKind != agents.AgentKindInteractiveStory || gameBinding.Workspace != workspace || gameBinding.StoryID != story.ID || gameBinding.BranchID != "main" {
 		t.Fatalf("game binding = %#v", game.Binding)
 	}
 }

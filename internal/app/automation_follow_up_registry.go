@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 const maxRememberedAutomationFollowUps = 128

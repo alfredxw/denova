@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agent"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 )
 
 func TestAgentSessionIDCoversBuiltInModelAgents(t *testing.T) {
@@ -110,14 +110,14 @@ func TestConfigManagerScopedSessionsAreIsolated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := automationSession.Append(agent.UserMessage("自动化配置")); err != nil {
+	if err := automationSession.Append(agents.UserMessage("自动化配置")); err != nil {
 		t.Fatal(err)
 	}
 	loreSession, err := store.GetOrCreate(loreID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := loreSession.Append(agent.UserMessage("资料库配置")); err != nil {
+	if err := loreSession.Append(agents.UserMessage("资料库配置")); err != nil {
 		t.Fatal(err)
 	}
 

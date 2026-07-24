@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 )
 
 const (
@@ -21,7 +21,7 @@ const (
 // runtime projection instead of silently accepting a partial event stream.
 var ErrTaskCursorExpired = errors.New("task event cursor is older than the retained display window")
 
-func (t *Task) appendRetainedEventLocked(ev agent.Event) TaskEvent {
+func (t *Task) appendRetainedEventLocked(ev agents.Event) TaskEvent {
 	t.nextCursor++
 	item := TaskEvent{Cursor: t.nextCursor, Event: ev}
 	size := taskEventSize(item)

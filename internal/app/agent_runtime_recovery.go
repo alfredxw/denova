@@ -6,47 +6,47 @@ import (
 	"log"
 	"strings"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 type AgentRuntimeRecoveryRequest struct {
-	Action   agent.RuntimeRecoveryAction
+	Action   agents.RuntimeRecoveryAction
 	StoryID  string
 	BranchID string
 }
 
 type AgentRuntimeRecoveryResult struct {
 	Task    *Task
-	Action  agent.RuntimeRecoveryAction
+	Action  agents.RuntimeRecoveryAction
 	Receipt runstate.Receipt
 }
 
-func recoveryActionKey(action agent.RuntimeRecoveryAction) string {
+func recoveryActionKey(action agents.RuntimeRecoveryAction) string {
 	return strings.Join([]string{string(action.Kind), string(action.CommandID), string(action.OperationID)}, "\x00")
 }
 
-func validateSelectedRecoveryAction(status runstate.StatusSnapshot, selected agent.RuntimeRecoveryAction) error {
-	for _, action := range agent.RuntimeRecoveryActions(status) {
+func validateSelectedRecoveryAction(status runstate.StatusSnapshot, selected agents.RuntimeRecoveryAction) error {
+	for _, action := range agents.RuntimeRecoveryActions(status) {
 		if action == selected {
 			return nil
 		}
 	}
 	return fmt.Errorf(
 		"%w: kind=%q command_id=%q operation_id=%q",
-		agent.ErrRecoveryActionChanged,
+		agents.ErrRecoveryActionChanged,
 		selected.Kind,
 		selected.CommandID,
 		selected.OperationID,
 	)
 }
 
-func recoveryStructuralAction(kind agent.RuntimeRecoveryActionKind) (agent.ContextStructuralAction, bool) {
+func recoveryStructuralAction(kind agents.RuntimeRecoveryActionKind) (agents.ContextStructuralAction, bool) {
 	switch kind {
-	case agent.RuntimeRecoveryCompactContext:
-		return agent.ContextStructuralCompact, true
-	case agent.RuntimeRecoveryRemoveCompaction:
-		return agent.ContextStructuralRemove, true
+	case agents.RuntimeRecoveryCompactContext:
+		return agents.ContextStructuralCompact, true
+	case agents.RuntimeRecoveryRemoveCompaction:
+		return agents.ContextStructuralRemove, true
 	default:
 		return "", false
 	}
@@ -86,7 +86,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 			key := recoveryActionKey(request.Action)
 			receipt, ok := existing.recoveryActions[key]
 			if !ok {
-				return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: recovered structural receipt is unavailable", agent.ErrRecoveryActionChanged)
+				return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: recovered structural receipt is unavailable", agents.ErrRecoveryActionChanged)
 			}
 			existing.resolveRecoveryRefresh()
 			return AgentRuntimeRecoveryResult{Task: existing.task, Action: request.Action, Receipt: receipt}, nil
@@ -103,7 +103,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 		return AgentRuntimeRecoveryResult{}, ErrAgentOperationActive
 	}
 
-	options := agent.RunOptions{AgentKind: agent.AgentKindIDE, Workspace: workspace, SessionID: sess.ID, Mode: "ide"}
+	options := agents.RunOptions{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sess.ID, Mode: "ide"}
 	recovery, err := chatService.OpenRecoveryObservation(operation.Context(), options)
 	if err != nil {
 		return AgentRuntimeRecoveryResult{}, err
@@ -161,7 +161,7 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 		}
 		receipt = run.recoveryActions[key]
 	}
-	if err := task.Start(func(taskCtx context.Context, task *Task, emit func(agent.Event)) {
+	if err := task.Start(func(taskCtx context.Context, task *Task, emit func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		defer recovery.Close()
 		if isStructural {
@@ -170,10 +170,10 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 				s.markRecoveryRefreshPending(workspace, sess.ID, request.Action)
 			}
 			if resumeErr != nil {
-				emit(agent.Event{Type: "error", Data: map[string]string{"message": resumeErr.Error()}})
+				emit(agents.Event{Type: "error", Data: map[string]string{"message": resumeErr.Error()}})
 				return
 			} else if !resumed {
-				emit(agent.Event{Type: "error", Data: map[string]string{"message": "Agent recovery action changed"}})
+				emit(agents.Event{Type: "error", Data: map[string]string{"message": "Agent recovery action changed"}})
 				return
 			}
 			if _, refreshErr := s.retryRecoveryRefresh(taskCtx, workspace, sess.ID, request.Action, sess.RefreshCanonical); refreshErr != nil {
@@ -195,16 +195,16 @@ func (s *ChatAppService) RecoverAgentRuntime(ctx context.Context, request AgentR
 	return AgentRuntimeRecoveryResult{Task: task, Action: request.Action, Receipt: receipt}, nil
 }
 
-func resumeExistingWritingRecovery(ctx context.Context, run *writingTaskRun, action agent.RuntimeRecoveryAction) (AgentRuntimeRecoveryResult, error) {
+func resumeExistingWritingRecovery(ctx context.Context, run *writingTaskRun, action agents.RuntimeRecoveryAction) (AgentRuntimeRecoveryResult, error) {
 	key := recoveryActionKey(action)
 	if receipt, ok := run.recoveryActions[key]; ok {
 		return AgentRuntimeRecoveryResult{Task: run.task, Action: action, Receipt: receipt}, nil
 	}
 	if run.task.Finished() {
-		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: recovery display task is already settled", agent.ErrRecoveryActionChanged)
+		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: recovery display task is already settled", agents.ErrRecoveryActionChanged)
 	}
 	if _, structural := recoveryStructuralAction(action.Kind); structural {
-		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: a structural recovery action cannot join an existing display task", agent.ErrRecoveryActionChanged)
+		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: a structural recovery action cannot join an existing display task", agents.ErrRecoveryActionChanged)
 	}
 	receipt, err := run.recovery.Resume(ctx, action, run.task.ID(), run.task.emit)
 	if err != nil {
@@ -260,8 +260,8 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 	if existing != nil && existing.task != nil && !existing.task.Finished() {
 		return AgentRuntimeRecoveryResult{}, ErrAgentOperationActive
 	}
-	options := agent.RunOptions{
-		AgentKind: agent.AgentKindInteractiveStory, Workspace: workspace,
+	options := agents.RunOptions{
+		AgentKind: agents.AgentKindInteractiveStory, Workspace: workspace,
 		StoryID: request.StoryID, BranchID: branchID, Mode: "interactive",
 	}
 	recovery, err := chatService.OpenRecoveryObservation(operation.Context(), options)
@@ -325,15 +325,15 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 		}
 		run.recoveryActions[key] = receipt
 	}
-	if err := task.Start(func(taskCtx context.Context, task *Task, emit func(agent.Event)) {
+	if err := task.Start(func(taskCtx context.Context, task *Task, emit func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		defer recovery.Close()
 		if isStructural {
 			if _, resumed, resumeErr := chatService.ResumeRecoveredContextStructuralOperation(taskCtx, options, structural); resumeErr != nil {
-				emit(agent.Event{Type: "error", Data: map[string]string{"message": resumeErr.Error()}})
+				emit(agents.Event{Type: "error", Data: map[string]string{"message": resumeErr.Error()}})
 				return
 			} else if !resumed {
-				emit(agent.Event{Type: "error", Data: map[string]string{"message": "Agent recovery action changed"}})
+				emit(agents.Event{Type: "error", Data: map[string]string{"message": "Agent recovery action changed"}})
 				return
 			}
 		}
@@ -347,16 +347,16 @@ func (s *InteractiveAppService) RecoverAgentRuntime(ctx context.Context, request
 	return AgentRuntimeRecoveryResult{Task: task, Action: request.Action, Receipt: receipt}, nil
 }
 
-func resumeExistingInteractiveRecovery(ctx context.Context, run *interactiveTaskRun, action agent.RuntimeRecoveryAction) (AgentRuntimeRecoveryResult, error) {
+func resumeExistingInteractiveRecovery(ctx context.Context, run *interactiveTaskRun, action agents.RuntimeRecoveryAction) (AgentRuntimeRecoveryResult, error) {
 	key := recoveryActionKey(action)
 	if receipt, ok := run.recoveryActions[key]; ok {
 		return AgentRuntimeRecoveryResult{Task: run.task, Action: action, Receipt: receipt}, nil
 	}
 	if run.task.Finished() {
-		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: recovery display task is already settled", agent.ErrRecoveryActionChanged)
+		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: recovery display task is already settled", agents.ErrRecoveryActionChanged)
 	}
 	if _, structural := recoveryStructuralAction(action.Kind); structural {
-		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: a structural recovery action cannot join an existing display task", agent.ErrRecoveryActionChanged)
+		return AgentRuntimeRecoveryResult{}, fmt.Errorf("%w: a structural recovery action cannot join an existing display task", agents.ErrRecoveryActionChanged)
 	}
 	receipt, err := run.recovery.Resume(ctx, action, run.task.ID(), run.task.emit)
 	if err != nil {
@@ -372,8 +372,8 @@ func resumeExistingInteractiveRecovery(ctx context.Context, run *interactiveTask
 func finishedRecoveryActionStillCurrent(
 	ctx context.Context,
 	task *Task,
-	recovery *agent.RecoveryObservation,
-	action agent.RuntimeRecoveryAction,
+	recovery *agents.RecoveryObservation,
+	action agents.RuntimeRecoveryAction,
 ) (bool, error) {
 	if task == nil || recovery == nil || !task.Finished() {
 		return false, nil
@@ -382,7 +382,7 @@ func finishedRecoveryActionStillCurrent(
 	if err != nil {
 		return false, err
 	}
-	for _, current := range agent.RuntimeRecoveryActions(status) {
+	for _, current := range agents.RuntimeRecoveryActions(status) {
 		if current == action {
 			return true, nil
 		}

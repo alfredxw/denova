@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestAutomationRuntimeReceiptFindsOlderInitialOperationByStableCommand(t *testing.T) {

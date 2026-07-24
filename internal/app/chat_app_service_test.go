@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/automation"
 	"denova/internal/interactive"
 )
@@ -20,7 +20,7 @@ func TestApplyWritingSkillRuntimePolicyResolvesDefaultNameOnly(t *testing.T) {
 			SystemPrompt: "Return notes.",
 		}},
 	}}
-	req := &agent.ChatRequest{Message: "帮我分析一下 progress.md 有没有问题"}
+	req := &agents.ChatRequest{Message: "帮我分析一下 progress.md 有没有问题"}
 
 	if err := applyWritingSkillRuntimePolicy(runtime, req); err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestApplyWritingSkillRuntimePolicyResolvesDefaultNameOnly(t *testing.T) {
 
 func TestApplyWritingSkillRuntimePolicyKeepsCustomSkillAsDynamicHintOnly(t *testing.T) {
 	runtime := &ideChatRuntime{cfg: config.Config{WritingSkillDefault: "novel-standard"}}
-	req := &agent.ChatRequest{Message: "写一个雨夜重逢的场景", WritingSkill: "slow-burn"}
+	req := &agents.ChatRequest{Message: "写一个雨夜重逢的场景", WritingSkill: "slow-burn"}
 
 	if err := applyWritingSkillRuntimePolicy(runtime, req); err != nil {
 		t.Fatal(err)
@@ -56,7 +56,7 @@ func TestRootAgentStartFailureRollsBackDisplayTaskRegistration(t *testing.T) {
 		{
 			name: "writing",
 			start: func(application *App) (*Task, error) {
-				return application.StartTaskWithError(context.Background(), agent.ChatRequest{CommandID: "closed-writing-start", Message: "write"})
+				return application.StartTaskWithError(context.Background(), agents.ChatRequest{CommandID: "closed-writing-start", Message: "write"})
 			},
 		},
 		{
@@ -113,7 +113,7 @@ func TestWritingInitialStartDeduplicatesBeforeAllocatingAnotherTask(t *testing.T
 	}
 	t.Cleanup(application.Close)
 
-	request := agent.ChatRequest{CommandID: "writing-initial-same", Message: "write the opening"}
+	request := agents.ChatRequest{CommandID: "writing-initial-same", Message: "write the opening"}
 	first, err := application.StartTaskWithError(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)

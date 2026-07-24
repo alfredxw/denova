@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	novaApp "denova/internal/app"
 )
 
@@ -52,7 +52,7 @@ func TestSSEWriteHandlerAppliesMiddlewareChainBeforeWriteWhenEnabled(t *testing.
 func TestUIWriteHandlerUsesFullReplayProtocolWithoutMisleadingEventCursor(t *testing.T) {
 	var buf bytes.Buffer
 	handler := newUIWriteHandler(&buf)
-	if err := handler.Handle(novaApp.TaskEvent{Cursor: 9, Event: agent.Event{
+	if err := handler.Handle(novaApp.TaskEvent{Cursor: 9, Event: agents.Event{
 		Type: "chunk", Data: map[string]any{"content": "继续"},
 	}}); err != nil {
 		t.Fatal(err)
@@ -65,7 +65,7 @@ func TestUIWriteHandlerUsesFullReplayProtocolWithoutMisleadingEventCursor(t *tes
 func TestTaskCheckpointCommitsCursorOnlyAfterCompleteLegacyReplay(t *testing.T) {
 	checkpoint := novaApp.TaskDisplayCheckpoint{
 		Version: 1, Cursor: 19, Complete: true,
-		Events: []agent.Event{
+		Events: []agents.Event{
 			{Type: "thinking", Data: map[string]any{"content": "完整思考"}},
 			{Type: "chunk", Data: map[string]any{"content": "完整正文"}},
 		},
@@ -94,7 +94,7 @@ func TestTaskCheckpointCommitsCursorOnlyAfterCompleteLegacyReplay(t *testing.T) 
 func TestIncompleteTaskCheckpointRequiresRehydrateWithoutCursorCommitOrReplay(t *testing.T) {
 	checkpoint := novaApp.TaskDisplayCheckpoint{
 		Version: 1, Cursor: 41, Complete: false, PersistenceRequired: true,
-		Events: []agent.Event{
+		Events: []agents.Event{
 			{Type: "agent_cycle_started", Data: map[string]any{"operation_id": "operation-1"}},
 			{Type: "thinking", Data: map[string]any{"content": "must-not-look-complete"}},
 		},
@@ -124,7 +124,7 @@ func TestWritingUICheckpointUsesCompleteProjectionOrExplicitRehydrateError(t *te
 		var buf bytes.Buffer
 		committed, err := writeUITaskCheckpoint(newUIWriteHandler(&buf), novaApp.TaskDisplayCheckpoint{
 			Version: 1, Cursor: 7, Complete: true,
-			Events: []agent.Event{
+			Events: []agents.Event{
 				{Type: "thinking", Data: map[string]any{"content": "完整思考"}},
 				{Type: "chunk", Data: map[string]any{"content": "完整正文"}},
 			},
@@ -142,7 +142,7 @@ func TestWritingUICheckpointUsesCompleteProjectionOrExplicitRehydrateError(t *te
 		var buf bytes.Buffer
 		committed, err := writeUITaskCheckpoint(newUIWriteHandler(&buf), novaApp.TaskDisplayCheckpoint{
 			Version: 1, TaskID: "writing-task-8", Cursor: 8, Complete: false,
-			Events: []agent.Event{{Type: "thinking", Data: map[string]any{"content": "partial-thinking"}}},
+			Events: []agents.Event{{Type: "thinking", Data: map[string]any{"content": "partial-thinking"}}},
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -178,34 +178,34 @@ func TestCheckpointRehydratePayloadUsesIndependentPersistenceBarrier(t *testing.
 
 func writeChapterBodySSEEvents(t *testing.T, writeSSE func(novaApp.TaskEvent) error) {
 	t.Helper()
-	write := func(cursor uint64, event agent.Event) error {
+	write := func(cursor uint64, event agents.Event) error {
 		return writeSSE(novaApp.TaskEvent{Cursor: cursor, Event: event})
 	}
-	if err := write(1, agent.Event{Type: "tool_call", Data: map[string]interface{}{
-		"agent_kind": agent.AgentKindIDE,
+	if err := write(1, agents.Event{Type: "tool_call", Data: map[string]interface{}{
+		"agent_kind": agents.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write_file",
 		"args":       "",
 	}}); err != nil {
 		t.Fatalf("write tool_call failed: %v", err)
 	}
-	if err := write(2, agent.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agent.AgentKindIDE,
+	if err := write(2, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agents.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write_file",
 		"delta":      `{"file_path":"chapters/ch02.md","content":"第一行`,
 	}}); err != nil {
 		t.Fatalf("write first delta failed: %v", err)
 	}
-	if err := write(3, agent.Event{Type: "tool_args_delta", Data: map[string]interface{}{
-		"agent_kind": agent.AgentKindIDE,
+	if err := write(3, agents.Event{Type: "tool_args_delta", Data: map[string]interface{}{
+		"agent_kind": agents.AgentKindIDE,
 		"id":         "call-1",
 		"name":       "write_file",
 		"delta":      `\n第二行"}`,
 	}}); err != nil {
 		t.Fatalf("write suppressed delta failed: %v", err)
 	}
-	if err := write(4, agent.Event{Type: "tool_result", Data: map[string]interface{}{
+	if err := write(4, agents.Event{Type: "tool_result", Data: map[string]interface{}{
 		"id":      "call-1",
 		"name":    "write_file",
 		"content": "Updated file chapters/ch02.md",

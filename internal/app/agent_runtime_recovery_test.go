@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
@@ -53,8 +53,8 @@ func TestConcurrentColdWritingRecoveryCreatesOneDisplayTask(t *testing.T) {
 	if !ok {
 		t.Fatal("writing recovery projection unavailable")
 	}
-	actions := agent.RuntimeRecoveryActions(status)
-	if status.Phase != runstate.PhaseRunning || !status.RecoveryPaused || len(actions) != 2 || actions[0].Kind != agent.RuntimeRecoveryAttach || actions[0].CommandID != "writing-recovery-start" || actions[1].Kind != agent.RuntimeRecoveryAbort {
+	actions := agents.RuntimeRecoveryActions(status)
+	if status.Phase != runstate.PhaseRunning || !status.RecoveryPaused || len(actions) != 2 || actions[0].Kind != agents.RuntimeRecoveryAttach || actions[0].CommandID != "writing-recovery-start" || actions[1].Kind != agents.RuntimeRecoveryAbort {
 		t.Fatalf("cold recovery actions = %#v status=%#v", actions, status)
 	}
 	abortAction := actions[1]
@@ -134,11 +134,11 @@ func runWritingRecoveryCrashSeed(t *testing.T) {
 	vanished := make(chan struct{})
 	if _, err := application.chatService.StartWithOptions(
 		context.Background(),
-		newInteractiveReplayRunner(t, &interactiveReplayModel{message: agent.AssistantMessage("must not run", nil)}),
+		newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("must not run", nil)}),
 		&interactiveCrashConversation{vanished: vanished},
 		application.bookService,
-		agent.ChatRequest{CommandID: "writing-recovery-start", Message: "persist before crash"},
-		agent.RunOptions{AgentKind: agent.AgentKindIDE, Workspace: workspace, SessionID: sessionID, Mode: "ide"},
+		agents.ChatRequest{CommandID: "writing-recovery-start", Message: "persist before crash"},
+		agents.RunOptions{AgentKind: agents.AgentKindIDE, Workspace: workspace, SessionID: sessionID, Mode: "ide"},
 		nil,
 	); err != nil {
 		t.Fatal(err)

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/book"
 	"denova/internal/documentreview"
 	"denova/internal/workspacechange"
@@ -21,7 +21,7 @@ import (
 // this interface and registering it in newReviewFeedbackResolvers, instead of
 // editing N switch statements.
 type reviewFeedbackResolver interface {
-	Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agent.ReviewFeedbackContext) error
+	Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agents.ReviewFeedbackContext) error
 	Validate(ctx context.Context, sessionID, threadID string, commentIDs []string) error
 	Consume(ctx context.Context, sessionID, threadID string, commentIDs []string) (reviewFeedbackConsumption, error)
 	Restore(ctx context.Context, sessionID, threadID string, consumption reviewFeedbackConsumption) error
@@ -33,8 +33,8 @@ type reviewFeedbackResolvers map[string]reviewFeedbackResolver
 
 func newReviewFeedbackResolvers(changes *workspacechange.Service, documents *documentreview.Service, files *book.Service) reviewFeedbackResolvers {
 	return reviewFeedbackResolvers{
-		agent.ReviewFeedbackSourceWorkspaceChange: workspaceChangeReviewFeedbackResolver{changes: changes},
-		agent.ReviewFeedbackSourceDocument:        documentReviewFeedbackResolver{documents: documents, files: files},
+		agents.ReviewFeedbackSourceWorkspaceChange: workspaceChangeReviewFeedbackResolver{changes: changes},
+		agents.ReviewFeedbackSourceDocument:        documentReviewFeedbackResolver{documents: documents, files: files},
 	}
 }
 
@@ -54,17 +54,17 @@ type workspaceChangeReviewFeedbackResolver struct {
 	changes *workspacechange.Service
 }
 
-func (r workspaceChangeReviewFeedbackResolver) Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agent.ReviewFeedbackContext) error {
+func (r workspaceChangeReviewFeedbackResolver) Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agents.ReviewFeedbackContext) error {
 	resolved, err := r.changes.GetReviewComments(ctx, threadID, runtime.sess.ID, commentIDs)
 	if err != nil {
 		return err
 	}
 	for _, item := range resolved {
 		comment := item.Comment
-		feedback.Comments = append(feedback.Comments, agent.ReviewFeedbackComment{
+		feedback.Comments = append(feedback.Comments, agents.ReviewFeedbackComment{
 			ID: comment.ID, GroupID: comment.GroupID, ChangeSetID: comment.ChangeSetID, EditID: comment.EditID,
 			HunkID: comment.HunkID, Path: item.Path, Body: comment.Body,
-			Anchor: agent.ReviewFeedbackAnchor{
+			Anchor: agents.ReviewFeedbackAnchor{
 				Side: comment.Anchor.Side, Encoding: comment.Anchor.Encoding, Kind: comment.Anchor.Kind,
 				Revision: comment.Anchor.Revision, Start: comment.Anchor.Start, End: comment.Anchor.End,
 				Quote: comment.Anchor.Quote, Prefix: comment.Anchor.Prefix, Suffix: comment.Anchor.Suffix,
@@ -82,7 +82,7 @@ func (r workspaceChangeReviewFeedbackResolver) Validate(ctx context.Context, ses
 func (r workspaceChangeReviewFeedbackResolver) Consume(ctx context.Context, sessionID, threadID string, commentIDs []string) (reviewFeedbackConsumption, error) {
 	comments, err := r.changes.ConsumeReviewComments(ctx, threadID, sessionID, commentIDs)
 	return reviewFeedbackConsumption{
-		source: agent.ReviewFeedbackSourceWorkspaceChange, threadID: threadID, commentIDs: commentIDs,
+		source: agents.ReviewFeedbackSourceWorkspaceChange, threadID: threadID, commentIDs: commentIDs,
 		workspaceComments: comments,
 	}, err
 }
@@ -99,7 +99,7 @@ type documentReviewFeedbackResolver struct {
 	files     *book.Service
 }
 
-func (r documentReviewFeedbackResolver) Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agent.ReviewFeedbackContext) error {
+func (r documentReviewFeedbackResolver) Resolve(ctx context.Context, runtime ideChatRuntime, threadID string, commentIDs []string, feedback *agents.ReviewFeedbackContext) error {
 	comments, err := r.documents.GetReviewComments(ctx, threadID, commentIDs)
 	if err != nil {
 		return translateDocumentReviewError(err)
@@ -115,9 +115,9 @@ func (r documentReviewFeedbackResolver) Resolve(ctx context.Context, runtime ide
 				"comment_id": comment.ID, "path": comment.Path,
 			})
 		}
-		feedback.Comments = append(feedback.Comments, agent.ReviewFeedbackComment{
+		feedback.Comments = append(feedback.Comments, agents.ReviewFeedbackComment{
 			ID: comment.ID, Path: comment.Path, Body: comment.Body,
-			Anchor: agent.ReviewFeedbackAnchor{
+			Anchor: agents.ReviewFeedbackAnchor{
 				Encoding: anchor.Encoding, Kind: anchor.Kind, Revision: anchor.Revision,
 				Start: anchor.Start, End: anchor.End, Quote: anchor.Quote, Prefix: anchor.Prefix,
 				Suffix: anchor.Suffix, DisplayQuote: anchor.DisplayQuote,
@@ -135,7 +135,7 @@ func (r documentReviewFeedbackResolver) Validate(ctx context.Context, sessionID,
 func (r documentReviewFeedbackResolver) Consume(ctx context.Context, sessionID, threadID string, commentIDs []string) (reviewFeedbackConsumption, error) {
 	comments, err := r.documents.ConsumeReviewComments(ctx, threadID, commentIDs)
 	return reviewFeedbackConsumption{
-		source: agent.ReviewFeedbackSourceDocument, threadID: threadID, commentIDs: commentIDs,
+		source: agents.ReviewFeedbackSourceDocument, threadID: threadID, commentIDs: commentIDs,
 		documentComments: comments,
 	}, err
 }
@@ -192,10 +192,10 @@ func rollbackReviewFeedbackConsumptions(
 
 // reviewFeedbackCommentIDs extracts the original client comment IDs for a
 // resolved feedback context from the request refs.
-func reviewFeedbackCommentIDs(refs agent.ReviewFeedbackRefs, feedback agent.ReviewFeedbackContext) []string {
-	wantedSource, _ := agent.NormalizeReviewFeedbackSource(feedback.Source)
+func reviewFeedbackCommentIDs(refs agents.ReviewFeedbackRefs, feedback agents.ReviewFeedbackContext) []string {
+	wantedSource, _ := agents.NormalizeReviewFeedbackSource(feedback.Source)
 	for _, ref := range refs {
-		source, _ := agent.NormalizeReviewFeedbackSource(ref.Source)
+		source, _ := agents.NormalizeReviewFeedbackSource(ref.Source)
 		if source == wantedSource && ref.ReviewThreadID == feedback.ReviewThreadID {
 			return ref.CommentIDs
 		}

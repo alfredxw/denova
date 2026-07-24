@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/automation"
 )
 
@@ -234,7 +234,7 @@ func TestGlobalAutomationClaimOwnsRootLeaseUntilTaskExit(t *testing.T) {
 	if err != nil || !owner {
 		t.Fatalf("reserve global claim owner=%v err=%v", owner, err)
 	}
-	task := NewTask(func(ctx context.Context, task *Task, _ func(agent.Event)) {
+	task := NewTask(func(ctx context.Context, task *Task, _ func(agents.Event)) {
 		defer application.unregisterWorkspaceTask(task)
 		defer service.clearActiveAutomationTask(snap, run.TaskID, run.ID)
 		<-ctx.Done()
@@ -275,7 +275,7 @@ func automationRegistryTestSnapshot(workspace string) *automationWorkspaceSnapsh
 }
 
 func blockingAutomationRegistryTask(release <-chan struct{}) *Task {
-	return NewTask(func(ctx context.Context, _ *Task, _ func(agent.Event)) {
+	return NewTask(func(ctx context.Context, _ *Task, _ func(agents.Event)) {
 		select {
 		case <-release:
 		case <-ctx.Done():

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	runstate "denova/internal/agent/runtime"
 	"denova/internal/automation"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 // validateAutomationReceipt is the single admission-receipt validator. A

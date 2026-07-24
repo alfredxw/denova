@@ -3,25 +3,25 @@ package transform
 import (
 	"testing"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 )
 
 type sseEventCollector struct {
-	events []agent.Event
+	events []agents.Event
 }
 
-func (c *sseEventCollector) Handle(ev agent.Event) error {
+func (c *sseEventCollector) Handle(ev agents.Event) error {
 	c.events = append(c.events, ev)
 	return nil
 }
 
-func mustForwardSSEEvent(t *testing.T, collector *sseEventCollector, handler SSEEventHandler, ev agent.Event) agent.Event {
+func mustForwardSSEEvent(t *testing.T, collector *sseEventCollector, handler SSEEventHandler, ev agents.Event) agents.Event {
 	t.Helper()
 	events := mustForwardSSEEvents(t, collector, handler, ev, 1)
 	return events[0]
 }
 
-func mustForwardSSEEvents(t *testing.T, collector *sseEventCollector, handler SSEEventHandler, ev agent.Event, want int) []agent.Event {
+func mustForwardSSEEvents(t *testing.T, collector *sseEventCollector, handler SSEEventHandler, ev agents.Event, want int) []agents.Event {
 	t.Helper()
 	before := len(collector.events)
 	if err := handler(ev); err != nil {
@@ -33,7 +33,7 @@ func mustForwardSSEEvents(t *testing.T, collector *sseEventCollector, handler SS
 	return collector.events[before:]
 }
 
-func mustSuppressSSEEvent(t *testing.T, collector *sseEventCollector, handler SSEEventHandler, ev agent.Event) {
+func mustSuppressSSEEvent(t *testing.T, collector *sseEventCollector, handler SSEEventHandler, ev agents.Event) {
 	t.Helper()
 	before := len(collector.events)
 	if err := handler(ev); err != nil {

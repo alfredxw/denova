@@ -1,24 +1,24 @@
 package app
 
-import "denova/internal/agent"
+import agents "denova/internal/agents"
 
-func (a *App) AgentRunTraces(limit int) ([]agent.RunTraceSummary, error) {
+func (a *App) AgentRunTraces(limit int) ([]agents.RunTraceSummary, error) {
 	if !a.HasWorkspace() {
-		return []agent.RunTraceSummary{}, nil
+		return []agents.RunTraceSummary{}, nil
 	}
-	return agent.ListRunTraces(a.Workspace(), limit)
+	return agents.ListRunTraces(a.Workspace(), limit)
 }
 
-func (a *App) AgentRunTrace(id string) (agent.RunTrace, error) {
+func (a *App) AgentRunTrace(id string) (agents.RunTrace, error) {
 	if !a.HasWorkspace() {
-		return agent.RunTrace{}, ErrNoWorkspace
+		return agents.RunTrace{}, ErrNoWorkspace
 	}
-	return agent.ReadRunTrace(a.Workspace(), id)
+	return agents.ReadRunTrace(a.Workspace(), id)
 }
 
-func (a *App) ExportAgentRunTrace(id string) (agent.RunTraceExport, error) {
+func (a *App) ExportAgentRunTrace(id string) (agents.RunTraceExport, error) {
 	if !a.HasWorkspace() {
-		return agent.RunTraceExport{}, ErrNoWorkspace
+		return agents.RunTraceExport{}, ErrNoWorkspace
 	}
-	return agent.ExportRunTrace(a.Workspace(), id)
+	return agents.ExportRunTrace(a.Workspace(), id)
 }

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 const maxRememberedWritingStarts = 128
@@ -20,7 +20,7 @@ const maxRememberedWritingStarts = 128
 type writingTaskRun struct {
 	task               *Task
 	runtime            ideChatRuntime
-	recovery           *agent.RecoveryObservation
+	recovery           *agents.RecoveryObservation
 	recoveryActions    map[string]runstate.Receipt
 	recoveryStructural bool
 
@@ -289,7 +289,7 @@ func (r *writingStartRegistry) removeOldestSettledIdentityLocked() bool {
 
 func (s *ChatAppService) replayDurableWritingStart(
 	ctx context.Context,
-	req agent.ChatRequest,
+	req agents.ChatRequest,
 	workspace string,
 	sessionID string,
 	fingerprint string,
@@ -303,8 +303,8 @@ func (s *ChatAppService) replayDurableWritingStart(
 	if chatService == nil || sess == nil || sess.ID != sessionID {
 		return nil, false, nil
 	}
-	options := agent.RunOptions{
-		AgentKind: agent.AgentKindIDE, SessionID: sessionID,
+	options := agents.RunOptions{
+		AgentKind: agents.AgentKindIDE, SessionID: sessionID,
 		Workspace: workspace, Mode: "ide",
 	}
 	status, err := chatService.RuntimeStatusProjection(ctx, options)
@@ -319,7 +319,7 @@ func (s *ChatAppService) replayDurableWritingStart(
 		app: a, sess: sess, bookService: bookService,
 		chatService: chatService, workspace: workspace,
 	}
-	var accepted *agent.AcceptedRun
+	var accepted *agents.AcceptedRun
 	task, err := NewDeferredRegisteredTask(func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
@@ -359,7 +359,7 @@ func (s *ChatAppService) replayDurableWritingStart(
 		rollbackWritingReplayTask(a, task, err)
 		return nil, true, err
 	}
-	if err := task.Start(func(ctx context.Context, task *Task, _ func(agent.Event)) {
+	if err := task.Start(func(ctx context.Context, task *Task, _ func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		outcome := accepted.Wait(ctx)
 		log.Printf("[agent-task] replay end id=%s command_id=%s status=%s", task.ID(), req.CommandID, outcome.Status)

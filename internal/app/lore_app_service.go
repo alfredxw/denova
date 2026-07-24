@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/book"
 	"denova/internal/imagepreset"
 	"denova/internal/loreimage"
@@ -148,16 +148,16 @@ func (s *LoreAppService) StartLoreImagesGenerateTask(request LoreImagesGenerateR
 		}
 		a.activeLoreImageTask = task
 		return nil
-	}, func(ctx context.Context, task *Task, emit func(agent.Event)) {
+	}, func(ctx context.Context, task *Task, emit func(agents.Event)) {
 		defer s.clearLoreImageTask(task)
 		log.Printf("[lore-image] batch begin task_id=%s items=%d overwrite=%v", task.ID(), len(request.ItemIDs), request.OverwriteExisting)
-		emit(agent.Event{Type: "thinking", Data: map[string]string{"content": "正在准备批量生成资料项图片。"}})
+		emit(agents.Event{Type: "thinking", Data: map[string]string{"content": "正在准备批量生成资料项图片。"}})
 		generated, skipped, failed := s.runLoreImagesGenerateBatch(ctx, request, emit)
 		if ctx.Err() != nil {
-			emit(agent.Event{Type: "aborted", Data: map[string]string{"message": "资料项图片生成已中止"}})
+			emit(agents.Event{Type: "aborted", Data: map[string]string{"message": "资料项图片生成已中止"}})
 			return
 		}
-		emit(agent.Event{Type: "done", Data: map[string]any{
+		emit(agents.Event{Type: "done", Data: map[string]any{
 			"status":    "ok",
 			"total":     len(request.ItemIDs),
 			"generated": generated,
@@ -191,16 +191,16 @@ func (a *App) AbortLoreImagesGenerateTask() {
 	}
 }
 
-func (s *LoreAppService) runLoreImagesGenerateBatch(ctx context.Context, request LoreImagesGenerateRequest, emit func(agent.Event)) (generated, skipped, failed int) {
+func (s *LoreAppService) runLoreImagesGenerateBatch(ctx context.Context, request LoreImagesGenerateRequest, emit func(agents.Event)) (generated, skipped, failed int) {
 	ids := request.ItemIDs
 	total := len(ids)
 	if total == 0 {
-		emit(agent.Event{Type: "error", Data: map[string]string{"message": "请选择需要生成图片的资料项"}})
+		emit(agents.Event{Type: "error", Data: map[string]string{"message": "请选择需要生成图片的资料项"}})
 		return 0, 0, 1
 	}
 	store, _, _, err := s.loreImageRuntimeSnapshot()
 	if err != nil {
-		emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
+		emit(agents.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return 0, 0, total
 	}
 	for index, id := range ids {
@@ -232,7 +232,7 @@ func (s *LoreAppService) runLoreImagesGenerateBatch(ctx context.Context, request
 		}
 		generated++
 		emitLoreImageProgress(emit, updated.ID, position, total, "success", "图片已生成", &updated)
-		emit(agent.Event{Type: "lore_image_result", Data: map[string]any{"item_id": updated.ID, "item": updated}})
+		emit(agents.Event{Type: "lore_image_result", Data: map[string]any{"item_id": updated.ID, "item": updated}})
 	}
 	return generated, skipped, failed
 }
@@ -333,8 +333,8 @@ func dedupeLoreImageItemIDs(ids []string) []string {
 	return out
 }
 
-func emitLoreImageProgress(emit func(agent.Event), itemID string, index, total int, status, message string, item *book.LoreItem) {
-	emit(agent.Event{Type: "lore_image_progress", Data: LoreImageProgressEvent{
+func emitLoreImageProgress(emit func(agents.Event), itemID string, index, total int, status, message string, item *book.LoreItem) {
+	emit(agents.Event{Type: "lore_image_progress", Data: LoreImageProgressEvent{
 		ItemID:  itemID,
 		Index:   index,
 		Total:   total,

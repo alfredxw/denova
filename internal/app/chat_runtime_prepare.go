@@ -7,14 +7,14 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/book"
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
 	"denova/internal/styleref"
 )
 
-func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agent.ChatRequest) (ideChatRuntime, agent.ChatRequest, error) {
+func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agents.ChatRequest) (ideChatRuntime, agents.ChatRequest, error) {
 	a := s.app
 	a.mu.Lock()
 	if a.session == nil || a.bookState == nil || a.cfg == nil {
@@ -78,7 +78,7 @@ func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agent.Ch
 	return runtime, req, nil
 }
 
-func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agent.ChatRequest) {
+func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agents.ChatRequest) {
 	if runtime == nil || req == nil {
 		return
 	}
@@ -101,7 +101,7 @@ func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agent.ChatReque
 	}
 	agentSystemPrompt := preset.PromptForTargets(imagepreset.TargetAgentSystem)
 	toolRequestPrompt := preset.PromptForTargets(imagepreset.TargetToolRequest)
-	req.ImagePreset = agent.ImagePresetContext{
+	req.ImagePreset = agents.ImagePresetContext{
 		ID:                preset.ID,
 		Name:              preset.Name,
 		AgentSystemPrompt: agentSystemPrompt,
@@ -114,11 +114,11 @@ func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agent.ChatReque
 	log.Printf("[agent-task] selected image preset id=%s name=%q workspace=%s agent_system_chars=%d tool_request_chars=%d", req.ImagePreset.ID, req.ImagePreset.Name, runtime.workspace, len([]rune(agentSystemPrompt)), len([]rune(toolRequestPrompt)))
 }
 
-func applyWritingSkillRuntimePolicy(runtime *ideChatRuntime, req *agent.ChatRequest) error {
+func applyWritingSkillRuntimePolicy(runtime *ideChatRuntime, req *agents.ChatRequest) error {
 	if runtime == nil || req == nil {
 		return nil
 	}
-	req.WritingSkill = agent.ResolveWritingSkillName(&runtime.cfg, req.WritingSkill)
+	req.WritingSkill = agents.ResolveWritingSkillName(&runtime.cfg, req.WritingSkill)
 	log.Printf("[agent-task] selected writing skill name=%s workspace=%s", req.WritingSkill, runtime.workspace)
 	return nil
 }
@@ -138,7 +138,7 @@ func (s *ChatAppService) ActiveTask() *Task {
 	return a.activeTask
 }
 
-func appStyleRuleNames(rules []agent.StyleRule) []string {
+func appStyleRuleNames(rules []agents.StyleRule) []string {
 	names := make([]string, 0, len(rules))
 	for _, rule := range rules {
 		scene := strings.TrimSpace(rule.Scene)
@@ -150,12 +150,12 @@ func appStyleRuleNames(rules []agent.StyleRule) []string {
 	return names
 }
 
-func convertTellerStyleRules(novaDir string, globalRefs []string, rules []interactive.StyleRule, scenes []string) []agent.StyleRule {
-	converted := make([]agent.StyleRule, 0, len(rules)+1)
+func convertTellerStyleRules(novaDir string, globalRefs []string, rules []interactive.StyleRule, scenes []string) []agents.StyleRule {
+	converted := make([]agents.StyleRule, 0, len(rules)+1)
 	allowed := styleSceneSet(scenes)
 	styleRefs := styleref.NewLibrary(novaDir)
 	if len(globalRefs) > 0 {
-		converted = append(converted, agent.StyleRule{
+		converted = append(converted, agents.StyleRule{
 			Global:          true,
 			StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(globalRefs)),
 		})
@@ -166,7 +166,7 @@ func convertTellerStyleRules(novaDir string, globalRefs []string, rules []intera
 			continue
 		}
 		if isGlobalStyleScene(scene) {
-			converted = append(converted, agent.StyleRule{
+			converted = append(converted, agents.StyleRule{
 				Global:          true,
 				StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(r.StyleRefs)),
 				StyleContents:   r.StyleContents,
@@ -176,7 +176,7 @@ func convertTellerStyleRules(novaDir string, globalRefs []string, rules []intera
 		if len(allowed) > 0 && !allowed[scene] {
 			continue
 		}
-		converted = append(converted, agent.StyleRule{
+		converted = append(converted, agents.StyleRule{
 			Scene:           scene,
 			StyleReferences: styleReferencesForPrompt(styleRefs.Resolve(r.StyleRefs)),
 			StyleContents:   r.StyleContents,
@@ -190,10 +190,10 @@ func isGlobalStyleScene(scene string) bool {
 	return normalized == "全局" || normalized == "global"
 }
 
-func styleReferencesForPrompt(refs []styleref.Reference) []agent.StyleReference {
-	result := make([]agent.StyleReference, 0, len(refs))
+func styleReferencesForPrompt(refs []styleref.Reference) []agents.StyleReference {
+	result := make([]agents.StyleReference, 0, len(refs))
 	for _, ref := range refs {
-		result = append(result, agent.StyleReference{
+		result = append(result, agents.StyleReference{
 			Name:        ref.Name,
 			Description: ref.Description,
 			Path:        ref.Path,

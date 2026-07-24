@@ -16,7 +16,7 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/api"
 	"denova/internal/app"
 	"denova/internal/buildinfo"
@@ -46,8 +46,8 @@ func main() {
 	flag.Parse()
 
 	cfg.DevMode = dev || devMode
-	agent.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
-	agent.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
+	agents.SetModelInputLoggingEnabled(cfg.DevMode && cfg.LLMInputLogEnabled)
+	agents.SetTraceRuntimeConfig(cfg.TraceCaptureLevel, cfg.TraceExporter, cfg.TraceRetentionRuns)
 
 	logPath, closeLog := setupLogging("./log")
 	defer closeLog()

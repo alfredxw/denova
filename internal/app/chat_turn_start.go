@@ -7,15 +7,15 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
-func (a *App) StartTask(ctx context.Context, req agent.ChatRequest) *Task {
+func (a *App) StartTask(ctx context.Context, req agents.ChatRequest) *Task {
 	return a.chat().StartTask(ctx, req)
 }
 
-func (s *ChatAppService) StartTask(ctx context.Context, req agent.ChatRequest) *Task {
+func (s *ChatAppService) StartTask(ctx context.Context, req agents.ChatRequest) *Task {
 	task, err := s.StartTaskWithError(ctx, req)
 	if err != nil {
 		log.Printf("[agent-task] 准备 IDE Agent 运行时失败 err=%v", err)
@@ -26,11 +26,11 @@ func (s *ChatAppService) StartTask(ctx context.Context, req agent.ChatRequest) *
 
 // StartTaskWithError preserves preparation failures so HTTP callers can
 // distinguish invalid review references from a missing workspace.
-func (a *App) StartTaskWithError(ctx context.Context, req agent.ChatRequest) (*Task, error) {
+func (a *App) StartTaskWithError(ctx context.Context, req agents.ChatRequest) (*Task, error) {
 	return a.chat().StartTaskWithError(ctx, req)
 }
 
-func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatRequest) (*Task, error) {
+func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agents.ChatRequest) (*Task, error) {
 	s.admission.Lock()
 	defer s.admission.Unlock()
 	req.CommandID = strings.TrimSpace(req.CommandID)
@@ -40,8 +40,8 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 	if err := runstate.ValidateCommandID(req.CommandID, runstate.DefaultInputLimits()); err != nil {
 		return nil, err
 	}
-	req = agent.CaptureChatRequestCallerInput(req)
-	requestFingerprint := agent.ChatRequestSemanticFingerprint(req)
+	req = agents.CaptureChatRequestCallerInput(req)
+	requestFingerprint := agents.ChatRequestSemanticFingerprint(req)
 	a := s.app
 	a.mu.RLock()
 	workspace := a.workspace
@@ -107,8 +107,8 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 		log.Printf("[agent-task] 刷新 Agent Runner 失败 workspace=%s err=%v", runtime.workspace, err)
 		return nil, err
 	}
-	runtimeContexts := agent.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
-	conversation := agent.NewSessionConversationForAgentWithRuntimeContexts(
+	runtimeContexts := agents.IDEWorkspaceRuntimeContextsForRequest(runtime.state, req)
+	conversation := agents.NewSessionConversationForAgentWithRuntimeContexts(
 		runtime.sess,
 		&runtime.cfg,
 		config.AgentKindIDE,
@@ -117,20 +117,20 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 		runtimeContexts.DynamicTitle,
 		runtimeContexts.Dynamic,
 	)
-	var verifiedMutations []agent.ToolMutation
-	var postRunVerification agent.PostRunVerification
+	var verifiedMutations []agents.ToolMutation
+	var postRunVerification agents.PostRunVerification
 	mutationCallback := a.verifiedWorkspaceMutationCallback(
 		"ide_agent_post_run",
 		runtime.versionService,
 		versionAutoSettingsForConfig(&runtime.cfg),
 	)
-	var accepted *agent.AcceptedRun
-	runAccepted := func(ctx context.Context, task *Task, emit func(agent.Event)) {
+	var accepted *agents.AcceptedRun
+	runAccepted := func(ctx context.Context, task *Task, emit func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		log.Printf("[agent-task] run begin id=%s message_len=%d references=%d lore_references=%d style_scenes=%d style_rules=%d selections=%d plan_mode=%v teller_id=%s writing_skill=%s", task.ID(), len(req.Message), len(req.References), len(req.LoreReferences), len(req.StyleScenes), len(req.StyleRules), len(req.Selections), req.PlanMode, req.TellerID, req.WritingSkill)
 		accepted.Wait(ctx)
-		_, inputCommitted := conversation.LastAgentCycleCommitReceipt(agent.HarnessDomainCommitInput)
-		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agent.HarnessDomainCommitOutput)
+		_, inputCommitted := conversation.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitInput)
+		_, outputCommitted := conversation.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput)
 		postSettlementCtx := ctx
 		if inputCommitted || outputCommitted {
 			// A durable domain receipt outlives a late caller cancellation. Keep
@@ -141,9 +141,9 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 		if inputCommitted && !req.ResolvedReviewFeedback.Empty() {
 			if err := s.consumeResolvedReviewFeedback(postSettlementCtx, runtime, req); err != nil {
 				log.Printf("[reviews] Agent input 已提交但消费评审反馈失败 workspace=%s task_id=%s err=%v", runtime.workspace, task.ID(), err)
-				emit(agent.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
+				emit(agents.Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 			} else {
-				emit(agent.Event{Type: "workspace_change", Data: map[string]interface{}{
+				emit(agents.Event{Type: "workspace_change", Data: map[string]interface{}{
 					"workspace": runtime.workspace, "review_thread_id": req.ResolvedReviewFeedback.PrimaryReviewThreadID(),
 					"action": "review_feedback_consumed",
 				}})
@@ -184,8 +184,8 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 		return nil, err
 	}
 	acceptCtx, releaseAcceptance := taskAcceptanceContext(ctx, task)
-	accepted, err = runtime.chatService.StartWithOptions(acceptCtx, runner, conversation, runtime.bookService, req, agent.RunOptions{
-		AgentKind:          agent.AgentKindIDE,
+	accepted, err = runtime.chatService.StartWithOptions(acceptCtx, runner, conversation, runtime.bookService, req, agents.RunOptions{
+		AgentKind:          agents.AgentKindIDE,
 		TaskID:             task.ID(),
 		SessionID:          runtime.sess.ID,
 		ReviewThreadID:     req.ResolvedReviewFeedback.PrimaryReviewThreadID(),
@@ -194,8 +194,8 @@ func (s *ChatAppService) StartTaskWithError(ctx context.Context, req agent.ChatR
 		IdleTimeout:        agentIdleTimeout(runtime.cfg),
 		ToolResultMaxBytes: agentToolResultMaxBytes(runtime.cfg),
 		SystemPromptLog:    systemPrompt,
-		OnMutationsVerified: func(_ context.Context, mutations []agent.ToolMutation, verification agent.PostRunVerification) {
-			verifiedMutations = append([]agent.ToolMutation(nil), mutations...)
+		OnMutationsVerified: func(_ context.Context, mutations []agents.ToolMutation, verification agents.PostRunVerification) {
+			verifiedMutations = append([]agents.ToolMutation(nil), mutations...)
 			postRunVerification = verification
 		},
 	}, task.emit)

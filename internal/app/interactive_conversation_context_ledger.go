@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"denova/internal/agent"
-	agentcontext "denova/internal/agent/context"
+	agents "denova/internal/agents"
+	agentcontext "denova/internal/agents/context"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -42,15 +42,15 @@ func (c *interactiveConversation) stableLeadingMessageSnapshot() string {
 // preserveInteractiveStableLeadingMessage keeps complete resident Lore outside
 // the compactable history tail, mirroring the stable-prefix behavior used by
 // writing-mode sessions.
-func preserveInteractiveStableLeadingMessage(messages []*agent.Message, content string) []*agent.Message {
+func preserveInteractiveStableLeadingMessage(messages []*agents.Message, content string) []*agents.Message {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return messages
 	}
-	result := make([]*agent.Message, 0, len(messages)+1)
-	result = append(result, agent.UserMessage(content))
+	result := make([]*agents.Message, 0, len(messages)+1)
+	result = append(result, agents.UserMessage(content))
 	for _, msg := range messages {
-		if msg != nil && msg.Role == agent.RoleUser && strings.TrimSpace(msg.Content) == content {
+		if msg != nil && msg.Role == agents.RoleUser && strings.TrimSpace(msg.Content) == content {
 			continue
 		}
 		result = append(result, msg)
@@ -58,9 +58,9 @@ func preserveInteractiveStableLeadingMessage(messages []*agent.Message, content 
 	return result
 }
 
-func interactiveCompactionResultForMessages(result agent.ContextCompactionResult, messages []*agent.Message, tools []*agent.ToolInfo) agent.ContextCompactionResult {
+func interactiveCompactionResultForMessages(result agents.ContextCompactionResult, messages []*agents.Message, tools []*agents.ToolInfo) agents.ContextCompactionResult {
 	previousTokens := result.TokensAfter
-	result.TokensAfter = agent.EstimateContextTokens(messages, tools)
+	result.TokensAfter = agents.EstimateContextTokens(messages, tools)
 	result.ProjectedTokensAfter += result.TokensAfter - previousTokens
 	if result.ProjectedTokensAfter < result.TokensAfter {
 		result.ProjectedTokensAfter = result.TokensAfter
@@ -147,8 +147,8 @@ func interactiveStoryContextSources(title, origin string, teller interactive.Tel
 	return parts
 }
 
-func interactiveContextLedgerParts(parts []interactiveContextSource, messages []*agent.Message, policy agent.ToolResultContextPolicy) []agent.ContextLedgerPart {
-	ledger := agent.NewContextLedger(agent.DefaultLoopPolicy().ContextLedger)
+func interactiveContextLedgerParts(parts []interactiveContextSource, messages []*agents.Message, policy agents.ToolResultContextPolicy) []agents.ContextLedgerPart {
+	ledger := agents.NewContextLedger(agents.DefaultLoopPolicy().ContextLedger)
 	for _, part := range parts {
 		matchedMessage, visible := interactiveContextSourceMessage(part, messages)
 		included := !part.MetadataOnly && visible
@@ -182,7 +182,7 @@ func interactiveContextLedgerParts(parts []interactiveContextSource, messages []
 // projection of the final assembled messages. A source that did not survive
 // the hard assembly budget is retained as bounded metadata only; its original
 // unbounded body is never reported as model-visible content.
-func resolveInteractiveContextSources(parts []interactiveContextSource, messages []*agent.Message) []interactiveContextSource {
+func resolveInteractiveContextSources(parts []interactiveContextSource, messages []*agents.Message) []interactiveContextSource {
 	resolved := cloneInteractiveContextSources(parts)
 	for i := range resolved {
 		part := &resolved[i]
@@ -208,7 +208,7 @@ func cloneInteractiveContextSources(parts []interactiveContextSource) []interact
 	return result
 }
 
-func interactiveContextSourceMessage(part interactiveContextSource, messages []*agent.Message) (string, bool) {
+func interactiveContextSourceMessage(part interactiveContextSource, messages []*agents.Message) (string, bool) {
 	content := strings.TrimSpace(part.Content)
 	if content == "" {
 		return "", false
@@ -243,19 +243,19 @@ func joinInteractiveContextNote(existing, extra string) string {
 	return existing + "; " + extra
 }
 
-func addFinalInteractiveMessageContextParts(ledger *agent.ContextLedger, messages []*agent.Message, policy agent.ToolResultContextPolicy) {
+func addFinalInteractiveMessageContextParts(ledger *agents.ContextLedger, messages []*agents.Message, policy agents.ToolResultContextPolicy) {
 	resultLimit := policy.MaxResultBytes
 	for index, msg := range messages {
 		if msg == nil {
 			continue
 		}
-		if agent.IsContextCompactionSummaryMessage(msg) {
+		if agents.IsContextCompactionSummaryMessage(msg) {
 			ledger.AddPart(
 				"ContextCompaction", fmt.Sprintf("模型可见历史检查点 %d", index+1), "model-visible history checkpoint",
 				msg.Content, "source=committed context compaction; final_message=true", true, false, interactiveStoryRuntimeContextBytes,
 			)
 		}
-		if msg.Role == agent.RoleAssistant && len(msg.ToolCalls) > 0 {
+		if msg.Role == agents.RoleAssistant && len(msg.ToolCalls) > 0 {
 			for _, call := range msg.ToolCalls {
 				data, _ := json.Marshal(call)
 				toolName := strings.TrimSpace(call.Function.Name)
@@ -267,7 +267,7 @@ func addFinalInteractiveMessageContextParts(ledger *agent.ContextLedger, message
 				)
 			}
 		}
-		if msg.Role == agent.RoleTool {
+		if msg.Role == agents.RoleTool {
 			toolName := strings.TrimSpace(msg.ToolName)
 			toolID := strings.TrimSpace(msg.ToolCallID)
 			note := fmt.Sprintf("tool_name=%s; tool_call_id=%s; semantic_filtered=true; single_result_limit_bytes=%d; final_message=true", toolName, toolID, resultLimit)

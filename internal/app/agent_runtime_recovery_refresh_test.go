@@ -9,15 +9,15 @@ import (
 	"time"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
-	"denova/internal/agent/session"
+	agents "denova/internal/agents"
+	"denova/internal/agents/session"
 	"denova/internal/book"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestRecoveredStructuralSessionRefreshRemainsRetryableAfterTerminal(t *testing.T) {
-	action := agent.RuntimeRecoveryAction{
-		Kind: agent.RuntimeRecoveryCompactContext, CommandID: "compact-refresh",
+	action := agents.RuntimeRecoveryAction{
+		Kind: agents.RuntimeRecoveryCompactContext, CommandID: "compact-refresh",
 		OperationID: "operation-compact-refresh",
 	}
 	service := &ChatAppService{}
@@ -42,8 +42,8 @@ func TestRecoveredStructuralSessionRefreshRemainsRetryableAfterTerminal(t *testi
 	if matched, err := service.retryRecoveryRefresh(canceled, "/book", "session-1", action, refresh); !matched || err == nil {
 		t.Fatalf("first refresh = matched=%t err=%v", matched, err)
 	}
-	if matched, err := service.retryRecoveryRefresh(context.Background(), "/book", "session-1", agent.RuntimeRecoveryAction{
-		Kind: agent.RuntimeRecoveryRemoveCompaction, CommandID: action.CommandID, OperationID: action.OperationID,
+	if matched, err := service.retryRecoveryRefresh(context.Background(), "/book", "session-1", agents.RuntimeRecoveryAction{
+		Kind: agents.RuntimeRecoveryRemoveCompaction, CommandID: action.CommandID, OperationID: action.OperationID,
 	}, refresh); matched || err != nil {
 		t.Fatalf("different recovery action consumed obligation: matched=%t err=%v", matched, err)
 	}
@@ -96,8 +96,8 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 	bookService := application.bookService
 	selectedWorkspace := application.workspace
 	application.mu.RUnlock()
-	options := agent.RunOptions{
-		AgentKind: agent.AgentKindIDE, Workspace: selectedWorkspace,
+	options := agents.RunOptions{
+		AgentKind: agents.AgentKindIDE, Workspace: selectedWorkspace,
 		SessionID: selected.ID, Mode: "ide",
 	}
 
@@ -105,15 +105,15 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 	// application-level projection refresh latch is resolved.
 	seeded, err := chat.StartWithOptions(
 		context.Background(),
-		newInteractiveReplayRunner(t, &interactiveReplayModel{message: agent.AssistantMessage("seeded terminal", nil)}),
+		newInteractiveReplayRunner(t, &interactiveReplayModel{message: agents.AssistantMessage("seeded terminal", nil)}),
 		&interactiveReplayConversation{}, bookService,
-		agent.ChatRequest{CommandID: "refresh-protocol-seed", Message: "seed runtime terminal"},
+		agents.ChatRequest{CommandID: "refresh-protocol-seed", Message: "seed runtime terminal"},
 		options, nil,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if outcome := seeded.Wait(context.Background()); outcome.Status != agent.RunOutcomeCompleted {
+	if outcome := seeded.Wait(context.Background()); outcome.Status != agents.RunOutcomeCompleted {
 		t.Fatalf("seeded outcome = %#v", outcome)
 	}
 	recovery, err := chat.OpenRecoveryObservation(context.Background(), options)
@@ -125,8 +125,8 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 		recovery.Close()
 		t.Fatalf("seeded runtime status = %#v", initial)
 	}
-	action := agent.RuntimeRecoveryAction{
-		Kind: agent.RuntimeRecoveryCompactContext, CommandID: initial.LastOperation.CommandID,
+	action := agents.RuntimeRecoveryAction{
+		Kind: agents.RuntimeRecoveryCompactContext, CommandID: initial.LastOperation.CommandID,
 		OperationID: initial.LastOperation.OperationID,
 	}
 
@@ -143,7 +143,7 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 		t.Fatal(err)
 	}
 	const canonicalMessage = "canonical state committed by recovered structural operation"
-	if err := external.Append(agent.UserMessage(canonicalMessage)); err != nil {
+	if err := external.Append(agents.UserMessage(canonicalMessage)); err != nil {
 		recovery.Close()
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 		t.Fatal(err)
 	}
 	service.markRecoveryRefreshPending(selectedWorkspace, selected.ID, action)
-	if err := task.Start(func(taskCtx context.Context, _ *Task, emit func(agent.Event)) {
+	if err := task.Start(func(taskCtx context.Context, _ *Task, emit func(agents.Event)) {
 		defer recovery.Close()
 		emitWritingRecoveryRefreshRequired(emit, action, initial.Cursor)
 		close(controlEmitted)
@@ -198,7 +198,7 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 		!view.RuntimeProjectionOK || !view.Runtime.RecoveryPaused || len(view.RecoveryActions) != 1 || view.RecoveryActions[0] != action {
 		t.Fatalf("pending refresh active projection = %#v", view)
 	}
-	if _, startErr := service.StartTaskWithError(context.Background(), agent.ChatRequest{
+	if _, startErr := service.StartTaskWithError(context.Background(), agents.ChatRequest{
 		CommandID: "start-must-not-cross-refresh", Message: "must remain fenced",
 	}); !errors.Is(startErr, ErrAgentOperationActive) {
 		t.Fatalf("Start crossed live refresh obligation: %v", startErr)
@@ -224,7 +224,7 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 	}
 	events, subscription := task.Subscribe()
 	task.Unsubscribe(subscription)
-	if countInteractiveTaskEvents(events, agent.RuntimeRecoveryRequiredEventType) != 1 || countInteractiveTaskEvents(events, "done") != 1 {
+	if countInteractiveTaskEvents(events, agents.RuntimeRecoveryRequiredEventType) != 1 || countInteractiveTaskEvents(events, "done") != 1 {
 		t.Fatalf("refresh retry Task events = %#v", events)
 	}
 	if !historyContainsContent(selected.History(), canonicalMessage) {
@@ -241,10 +241,10 @@ func TestRecoveredStructuralRefreshKeepsOneObservableTaskUntilExactRetry(t *test
 	// A fresh Start is admitted only after canonical rehydrate. It may later
 	// fail against the deliberately fake model, but it cannot remain blocked by
 	// the resolved refresh fence.
-	newTask, startErr := service.StartTaskWithError(context.Background(), agent.ChatRequest{
+	newTask, startErr := service.StartTaskWithError(context.Background(), agents.ChatRequest{
 		CommandID: "start-after-refresh", Message: "canonical session is now safe",
 	})
-	if errors.Is(startErr, ErrAgentOperationActive) || errors.Is(startErr, agent.ErrRecoveryRequired) {
+	if errors.Is(startErr, ErrAgentOperationActive) || errors.Is(startErr, agents.ErrRecoveryRequired) {
 		t.Fatalf("resolved refresh still blocked Start: %v", startErr)
 	}
 	if startErr == nil && newTask != nil {
@@ -280,7 +280,7 @@ func TestWritingStartRejectsRecoveryTaskBeforeRefreshObligationIsMarked(t *testi
 	service := &ChatAppService{app: application}
 	application.chatApp = service
 	started := make(chan struct{})
-	task := NewTask(func(ctx context.Context, _ *Task, _ func(agent.Event)) {
+	task := NewTask(func(ctx context.Context, _ *Task, _ func(agents.Event)) {
 		close(started)
 		<-ctx.Done()
 	})
@@ -290,13 +290,13 @@ func TestWritingStartRejectsRecoveryTaskBeforeRefreshObligationIsMarked(t *testi
 		task: task, runtime: ideChatRuntime{app: application, sess: selected, workspace: application.workspace},
 	}
 
-	if _, startErr := service.StartTaskWithError(context.Background(), agent.ChatRequest{
+	if _, startErr := service.StartTaskWithError(context.Background(), agents.ChatRequest{
 		CommandID: "start-racing-refresh-mark", Message: "must not cross",
 	}); !errors.Is(startErr, ErrAgentOperationActive) {
 		t.Fatalf("Start entered refresh-before-mark window: %v", startErr)
 	}
-	service.markRecoveryRefreshPending(application.workspace, selected.ID, agent.RuntimeRecoveryAction{
-		Kind: agent.RuntimeRecoveryCompactContext, CommandID: "compact-racing-start", OperationID: "operation-racing-start",
+	service.markRecoveryRefreshPending(application.workspace, selected.ID, agents.RuntimeRecoveryAction{
+		Kind: agents.RuntimeRecoveryCompactContext, CommandID: "compact-racing-start", OperationID: "operation-racing-start",
 	})
 	task.Abort()
 	<-task.Done()
@@ -319,7 +319,7 @@ func TestManualStructuralCommandsCannotRaceActiveStructuralRecoveryTask(t *testi
 	service := &ChatAppService{app: application}
 	application.chatApp = service
 	started := make(chan struct{})
-	task := NewTask(func(ctx context.Context, _ *Task, _ func(agent.Event)) {
+	task := NewTask(func(ctx context.Context, _ *Task, _ func(agents.Event)) {
 		close(started)
 		<-ctx.Done()
 	})
@@ -332,8 +332,8 @@ func TestManualStructuralCommandsCannotRaceActiveStructuralRecoveryTask(t *testi
 		},
 		recoveryStructural: true,
 	}
-	exact := agent.RuntimeRecoveryAction{
-		Kind: agent.RuntimeRecoveryCompactContext, CommandID: "compact-exact-owner",
+	exact := agents.RuntimeRecoveryAction{
+		Kind: agents.RuntimeRecoveryCompactContext, CommandID: "compact-exact-owner",
 		OperationID: "operation-exact-owner",
 	}
 	service.markRecoveryRefreshPending(workspace, selected.ID, exact)
@@ -346,7 +346,7 @@ func TestManualStructuralCommandsCannotRaceActiveStructuralRecoveryTask(t *testi
 	}
 	// Even a defensive generic mark from a direct path cannot erase the exact
 	// identity that keeps the recovery Task and projection retryable.
-	service.markRecoveryRefreshPending(workspace, selected.ID, agent.RuntimeRecoveryAction{Kind: agent.RuntimeRecoveryCompactContext})
+	service.markRecoveryRefreshPending(workspace, selected.ID, agents.RuntimeRecoveryAction{Kind: agents.RuntimeRecoveryCompactContext})
 	if projected, ok := service.pendingRecoveryRefreshAction(workspace, selected.ID); !ok || projected != exact {
 		t.Fatalf("manual structural path replaced exact refresh action: %#v ok=%t", projected, ok)
 	}
@@ -378,8 +378,8 @@ func TestFreshWorkspaceGenerationClearsPriorRefreshObligation(t *testing.T) {
 	canonicalA := application.workspace
 	sessionA := application.session.ID
 	application.mu.RUnlock()
-	action := agent.RuntimeRecoveryAction{
-		Kind: agent.RuntimeRecoveryCompactContext, CommandID: "stale-generation-compact",
+	action := agents.RuntimeRecoveryAction{
+		Kind: agents.RuntimeRecoveryCompactContext, CommandID: "stale-generation-compact",
 		OperationID: "stale-generation-operation",
 	}
 	service.markRecoveryRefreshPending(canonicalA, sessionA, action)
@@ -426,7 +426,7 @@ func TestFinishedRecoveryTaskCannotBypassPendingSessionRefresh(t *testing.T) {
 	selected := application.session
 	application.mu.RUnlock()
 	started := make(chan struct{})
-	task := NewTask(func(ctx context.Context, _ *Task, _ func(agent.Event)) {
+	task := NewTask(func(ctx context.Context, _ *Task, _ func(agents.Event)) {
 		close(started)
 		<-ctx.Done()
 	})
@@ -439,8 +439,8 @@ func TestFinishedRecoveryTaskCannotBypassPendingSessionRefresh(t *testing.T) {
 		task: task, runtime: ideChatRuntime{app: application, sess: selected, workspace: selectedWorkspace},
 	}
 	application.mu.Unlock()
-	service.markRecoveryRefreshPending(selectedWorkspace, selected.ID, agent.RuntimeRecoveryAction{
-		Kind: agent.RuntimeRecoveryCompactContext, CommandID: "finished-task-refresh",
+	service.markRecoveryRefreshPending(selectedWorkspace, selected.ID, agents.RuntimeRecoveryAction{
+		Kind: agents.RuntimeRecoveryCompactContext, CommandID: "finished-task-refresh",
 		OperationID: "finished-task-operation",
 	})
 
@@ -449,7 +449,7 @@ func TestFinishedRecoveryTaskCannotBypassPendingSessionRefresh(t *testing.T) {
 	if err := os.Rename(selectedPath, unavailablePath); err != nil {
 		t.Fatal(err)
 	}
-	if _, startErr := service.StartTaskWithError(context.Background(), agent.ChatRequest{
+	if _, startErr := service.StartTaskWithError(context.Background(), agents.ChatRequest{
 		CommandID: "start-after-canceled-refresh", Message: "must remain fenced",
 	}); startErr == nil || errors.Is(startErr, ErrAgentOperationActive) {
 		t.Fatalf("finished recovery Task bypassed pending refresh: %v", startErr)
@@ -460,10 +460,10 @@ func TestFinishedRecoveryTaskCannotBypassPendingSessionRefresh(t *testing.T) {
 	if err := os.Rename(unavailablePath, selectedPath); err != nil {
 		t.Fatal(err)
 	}
-	newTask, startErr := service.StartTaskWithError(context.Background(), agent.ChatRequest{
+	newTask, startErr := service.StartTaskWithError(context.Background(), agents.ChatRequest{
 		CommandID: "start-after-canceled-refresh-retry", Message: "refresh is available",
 	})
-	if errors.Is(startErr, ErrAgentOperationActive) || errors.Is(startErr, agent.ErrRecoveryRequired) {
+	if errors.Is(startErr, ErrAgentOperationActive) || errors.Is(startErr, agents.ErrRecoveryRequired) {
 		t.Fatalf("successful admission refresh remained fenced: %v", startErr)
 	}
 	if _, pending := service.pendingRecoveryRefreshAction(selectedWorkspace, selected.ID); pending {

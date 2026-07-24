@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	runstate "denova/internal/agent/runtime"
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 func TestInteractiveImageRequiresBoundedCallerCommandIDBeforeWorkspaceAccess(t *testing.T) {

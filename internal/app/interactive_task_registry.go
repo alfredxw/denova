@@ -11,8 +11,8 @@ import (
 	"strings"
 	"sync"
 
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
+	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
 const maxRememberedInteractiveStarts = 128
@@ -33,7 +33,7 @@ type interactiveStartIdentity struct {
 	request     InteractiveAgentStartRequest
 	workspace   string
 	fingerprint string
-	chatRequest agent.ChatRequest
+	chatRequest agents.ChatRequest
 }
 
 type interactiveStartRecord struct {
@@ -194,7 +194,7 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 		return interactiveStartIdentity{}, err
 	}
 	request.BranchID = branchID
-	chatRequest := agent.CaptureChatRequestCallerInput(agent.ChatRequest{
+	chatRequest := agents.CaptureChatRequestCallerInput(agents.ChatRequest{
 		CommandID: request.CommandID, Message: request.Message,
 		StyleScenes: append([]string(nil), request.StyleScenes...), Locale: request.Locale,
 	})
@@ -207,7 +207,7 @@ func (s *InteractiveAppService) resolveInteractiveStart(request InteractiveAgent
 	}{
 		Workspace: workspace, StoryID: request.StoryID, BranchID: request.BranchID,
 		RegenerateFromTurnID: request.RegenerateFromTurnID,
-		Request:              agent.ChatRequestSemanticFingerprint(chatRequest),
+		Request:              agents.ChatRequestSemanticFingerprint(chatRequest),
 	}
 	encoded, _ := json.Marshal(descriptor)
 	sum := sha256.Sum256(encoded)
@@ -234,9 +234,9 @@ func normalizeInteractiveStartStyleScenes(values []string) []string {
 	return result
 }
 
-func (identity interactiveStartIdentity) options(taskID string) agent.RunOptions {
-	return agent.RunOptions{
-		AgentKind: agent.AgentKindInteractiveStory, TaskID: strings.TrimSpace(taskID),
+func (identity interactiveStartIdentity) options(taskID string) agents.RunOptions {
+	return agents.RunOptions{
+		AgentKind: agents.AgentKindInteractiveStory, TaskID: strings.TrimSpace(taskID),
 		StoryID: identity.request.StoryID, BranchID: identity.request.BranchID,
 		TurnID:    identity.request.RegenerateFromTurnID,
 		Workspace: identity.workspace, Mode: "interactive",
@@ -273,7 +273,7 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 		return nil, false, nil
 	}
 
-	var accepted *agent.AcceptedRun
+	var accepted *agents.AcceptedRun
 	task, err := NewDeferredRegisteredTask(func(task *Task) error {
 		a.mu.Lock()
 		defer a.mu.Unlock()
@@ -314,7 +314,7 @@ func (s *InteractiveAppService) replayDurableInteractiveStart(
 		rollbackInteractiveReplayTask(a, task, err)
 		return nil, true, err
 	}
-	if err := task.Start(func(ctx context.Context, task *Task, _ func(agent.Event)) {
+	if err := task.Start(func(ctx context.Context, task *Task, _ func(agents.Event)) {
 		defer a.unregisterWorkspaceTask(task)
 		outcome := accepted.Wait(ctx)
 		log.Printf("[interactive-agent-task] replay end id=%s command_id=%s status=%s", task.ID(), identity.request.CommandID, outcome.Status)
@@ -375,7 +375,7 @@ type InteractiveTaskInfo struct {
 type interactiveTaskRun struct {
 	task            *Task
 	info            InteractiveTaskInfo
-	recovery        *agent.RecoveryObservation
+	recovery        *agents.RecoveryObservation
 	recoveryActions map[string]runstate.Receipt
 }
 

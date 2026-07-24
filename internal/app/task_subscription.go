@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/observability"
 )
 
@@ -14,7 +14,7 @@ import (
 // this cursor deliberately remains separate and only resumes the display SSE.
 type TaskEvent struct {
 	Cursor uint64
-	Event  agent.Event
+	Event  agents.Event
 }
 
 // TaskDisplayCheckpoint is a bounded, display-only projection of a Task at
@@ -32,7 +32,7 @@ type TaskDisplayCheckpoint struct {
 	TerminalReason          string
 	TerminalReasonTruncated bool
 	PersistenceRequired     bool
-	Events                  []agent.Event
+	Events                  []agents.Event
 }
 
 // TaskDisplayReplay contains either the exact retained suffix or a checkpoint

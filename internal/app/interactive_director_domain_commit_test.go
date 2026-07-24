@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/book"
 	"denova/internal/interactive"
 )
@@ -65,9 +65,9 @@ func TestInteractiveDirectorPlanCommitPublishesOnlyAfterOutputAuthorization(t *t
 
 	var draftMu sync.Mutex
 	participant := newInteractiveDirectorPlanCommit(store, story.ID, "main", turn.ID, token, draft, &draftMu)
-	identity := agent.HarnessCycleIdentity{CommandID: "command-1", OperationID: "operation-1", Cycle: 1}
+	identity := agents.HarnessCycleIdentity{CommandID: "command-1", OperationID: "operation-1", Cycle: 1}
 	participant.BindAgentCycleIdentity(identity)
-	intent, pending, err := participant.PendingAgentCycleCommit(agent.HarnessDomainCommitOutput)
+	intent, pending, err := participant.PendingAgentCycleCommit(agents.HarnessDomainCommitOutput)
 	if err != nil || !pending || intent.Identity != identity || intent.Hash == "" {
 		t.Fatalf("pending output intent = %#v pending=%v err=%v", intent, pending, err)
 	}
@@ -79,10 +79,10 @@ func TestInteractiveDirectorPlanCommitPublishesOnlyAfterOutputAuthorization(t *t
 		t.Fatalf("plan escaped before output commit authorization: %#v", before)
 	}
 
-	if err := participant.CommitAgentCycleStage(context.Background(), agent.HarnessDomainCommitOutput, agent.RunOutcome{Status: agent.RunOutcomeCompleted}); err != nil {
+	if err := participant.CommitAgentCycleStage(context.Background(), agents.HarnessDomainCommitOutput, agents.RunOutcome{Status: agents.RunOutcomeCompleted}); err != nil {
 		t.Fatal(err)
 	}
-	receipt, ok := participant.LastAgentCycleCommitReceipt(agent.HarnessDomainCommitOutput)
+	receipt, ok := participant.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput)
 	if !ok || receipt.Identity != identity || receipt.Hash != intent.Hash || receipt.Revision == "" {
 		t.Fatalf("canonical output receipt = %#v ok=%v", receipt, ok)
 	}
@@ -134,14 +134,14 @@ func TestInteractiveDirectorPlanCommitCancellationDiscardsStagedOutput(t *testin
 	}
 
 	participant := newInteractiveDirectorPlanCommit(store, story.ID, "main", turn.ID, token, draft, &sync.Mutex{})
-	participant.BindAgentCycleIdentity(agent.HarnessCycleIdentity{CommandID: "command-cancel", OperationID: "operation-cancel", Cycle: 1})
-	if _, pending, err := participant.PendingAgentCycleCommit(agent.HarnessDomainCommitOutput); err != nil || !pending {
+	participant.BindAgentCycleIdentity(agents.HarnessCycleIdentity{CommandID: "command-cancel", OperationID: "operation-cancel", Cycle: 1})
+	if _, pending, err := participant.PendingAgentCycleCommit(agents.HarnessDomainCommitOutput); err != nil || !pending {
 		t.Fatalf("prepare canceled output: pending=%v err=%v", pending, err)
 	}
-	if err := participant.CommitAgentCycleStage(context.Background(), agent.HarnessDomainCommitOutput, agent.RunOutcome{Status: agent.RunOutcomeAborted}); err != nil {
+	if err := participant.CommitAgentCycleStage(context.Background(), agents.HarnessDomainCommitOutput, agents.RunOutcome{Status: agents.RunOutcomeAborted}); err != nil {
 		t.Fatal(err)
 	}
-	if receipt, ok := participant.LastAgentCycleCommitReceipt(agent.HarnessDomainCommitOutput); ok {
+	if receipt, ok := participant.LastAgentCycleCommitReceipt(agents.HarnessDomainCommitOutput); ok {
 		t.Fatalf("canceled output produced canonical receipt: %#v", receipt)
 	}
 	after, err := store.DirectorPlan(story.ID, "main")

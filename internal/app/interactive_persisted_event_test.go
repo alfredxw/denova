@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/interactive"
 )
 
@@ -37,8 +37,8 @@ func TestEmitInteractiveTurnPersistedUsesCurrentSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var events []agent.Event
-	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agent.Event) {
+	var events []agents.Event
+	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agents.Event) {
 		events = append(events, event)
 	})
 
@@ -99,8 +99,8 @@ func TestEmitInteractiveTurnPersistedSkipsWhenNoTurnWasPersisted(t *testing.T) {
 	}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "继续前进", 800, nil)
 
-	var events []agent.Event
-	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agent.Event) {
+	var events []agents.Event
+	emitInteractiveTurnPersisted(store, story.ID, conversation, func(event agents.Event) {
 		events = append(events, event)
 	})
 

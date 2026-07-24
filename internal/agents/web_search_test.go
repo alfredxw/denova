@@ -1,0 +1,105 @@
+package agents
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"strings"
+	"testing"
+
+	agent "github.com/alfredxw/denova/agent"
+
+	"denova/config"
+)
+
+type deadlineProbeSearchEngine struct {
+	hadDeadline bool
+}
+
+func (e *deadlineProbeSearchEngine) Name() string { return "deadline-probe" }
+
+func (e *deadlineProbeSearchEngine) Search(ctx context.Context, _ webSearchRequest) ([]webSearchResult, error) {
+	_, e.hadDeadline = ctx.Deadline()
+	return nil, fmt.Errorf("probe complete")
+}
+
+func TestNewWebSearchToolsRegistersWebSearch(t *testing.T) {
+	tools, err := newWebSearchTools()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tools) != 1 {
+		t.Fatalf("expected one web search tool, got %d", len(tools))
+	}
+	if _, ok := tools[0].(agent.InvokableTool); !ok {
+		t.Fatalf("web search tool should be invokable: %T", tools[0])
+	}
+	info, err := tools[0].Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name != config.AgentToolWebSearch {
+		t.Fatalf("expected tool name %q, got %q", config.AgentToolWebSearch, info.Name)
+	}
+}
+
+func TestWebSearchAggregatorLeavesRuntimeDeadlineToCaller(t *testing.T) {
+	probe := &deadlineProbeSearchEngine{}
+	aggregator := &webSearchAggregator{engines: []webSearchEngine{probe}, maxTotal: 1}
+	aggregator.run(context.Background(), webSearchRequest{Query: "test"})
+	if probe.hadDeadline {
+		t.Fatal("web search injected a hard-coded deadline instead of inheriting the Agent run context")
+	}
+}
+
+func TestFetchSearchHTMLRejectsOversizedResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", webSearchMaxHTMLBytes+1)))
+	}))
+	t.Cleanup(server.Close)
+
+	if _, err := fetchSearchHTML(context.Background(), server.Client(), server.URL, ""); err == nil || !strings.Contains(err.Error(), "字节上限") {
+		t.Fatalf("oversized response error = %v", err)
+	}
+}
+
+func truncateForLog(s string, n int) string {
+	s = strings.TrimSpace(s)
+	s = strings.ReplaceAll(s, "\n", " ")
+	if n > 0 && len(s) > n {
+		return s[:n] + "..."
+	}
+	return s
+}
+
+// 集成测试，用于人工检查四引擎聚合效果。默认测试套件不访问公网；显式设置
+// DENOVA_LIVE_WEB_SEARCH_TEST=1 后单独运行本测试。
+func TestLiveWebSearch_HelloWorld(t *testing.T) {
+	if os.Getenv("DENOVA_LIVE_WEB_SEARCH_TEST") != "1" {
+		t.Skip("skipping live web search; set DENOVA_LIVE_WEB_SEARCH_TEST=1 to execute")
+	}
+
+	const query = "Hello World"
+	agg := newDefaultWebSearchAggregator()
+	t.Logf("查询: %q（共 %d 个引擎，逐引擎并发探测）", query, len(agg.engines))
+
+	for _, o := range agg.fanOut(context.Background(), webSearchRequest{Query: query}) {
+		if o.err != nil {
+			t.Logf("[%s] 失败: %v", o.name, o.err)
+			continue
+		}
+		t.Logf("[%s] 返回 %d 条", o.name, len(o.results))
+		for i, r := range o.results {
+			t.Logf("  %d. %s\n     %s\n     %s", i+1, r.Title, r.URL, truncateForLog(r.Summary, 120))
+		}
+	}
+
+	resp := agg.run(context.Background(), webSearchRequest{Query: query})
+	t.Logf("聚合 message: %s", resp.Message)
+	t.Logf("聚合结果共 %d 条:", len(resp.Results))
+	for i, r := range resp.Results {
+		t.Logf("  #%d [%s] %s\n       %s\n       %s", i+1, r.Engine, r.Title, r.URL, truncateForLog(r.Summary, 120))
+	}
+}

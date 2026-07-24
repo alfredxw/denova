@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 	"denova/internal/book"
 )
 
@@ -11,8 +11,8 @@ import (
 // trigger authority exclusively through Runtime's durable HostEffect outbox,
 // after the exact operation/cycle output-domain receipt. OnMutationsVerified
 // runs before that receipt and must never evaluate Automation directly.
-func (a *App) automationMutationCallback(_ string) func(context.Context, []agent.ToolMutation, agent.PostRunVerification) {
-	return func(context.Context, []agent.ToolMutation, agent.PostRunVerification) {
+func (a *App) automationMutationCallback(_ string) func(context.Context, []agents.ToolMutation, agents.PostRunVerification) {
+	return func(context.Context, []agents.ToolMutation, agents.PostRunVerification) {
 		a.signalAutomationEffectReconciliation()
 	}
 }
@@ -24,9 +24,9 @@ func (a *App) verifiedWorkspaceMutationCallback(
 	source string,
 	versionService *book.VersionService,
 	settings book.VersionAutoSettings,
-) func(context.Context, []agent.ToolMutation, agent.PostRunVerification) {
+) func(context.Context, []agents.ToolMutation, agents.PostRunVerification) {
 	automationCallback := a.automationMutationCallback(source)
-	return func(ctx context.Context, mutations []agent.ToolMutation, verification agent.PostRunVerification) {
+	return func(ctx context.Context, mutations []agents.ToolMutation, verification agents.PostRunVerification) {
 		automationCallback(ctx, mutations, verification)
 		if len(mutations) > 0 {
 			scheduleAutoVersion(versionService, settings)

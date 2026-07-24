@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"denova/config"
-	"denova/internal/agent"
-	agentcontext "denova/internal/agent/context"
+	agents "denova/internal/agents"
+	agentcontext "denova/internal/agents/context"
 	"denova/internal/book"
 	"denova/internal/interactive"
 	"denova/internal/prompts"
@@ -31,19 +31,19 @@ func TestInteractiveContextAnalysisMatchesRuntimeAssemblyWithoutSideEffects(t *t
 		t.Fatal(err)
 	}
 
-	analysis, err := agent.BuildInteractiveStoryContextAnalysis(
+	analysis, err := agents.BuildInteractiveStoryContextAnalysis(
 		cfg,
 		book.NewState(workspace),
 		prompts.InteractiveStorySystemInstructionInput{ReplyTargetChars: 800},
 		nil,
-		agent.ChatRequest{Message: "询问店主"},
+		agents.ChatRequest{Message: "询问店主"},
 		beforeStory.Snapshot.ContextCompaction,
 		conversation,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assembled, err := conversation.AssembleModelContext(context.Background(), "询问店主", agent.ModelContextInput{
+	assembled, err := conversation.AssembleModelContext(context.Background(), "询问店主", agents.ModelContextInput{
 		UserMessage: "询问店主",
 		Budget:      conversation.ModelContextBudget(),
 		Fragments: []agentcontext.Fragment{{
@@ -75,7 +75,7 @@ func TestInteractiveContextAnalysisMatchesRuntimeAssemblyWithoutSideEffects(t *t
 	baseParentID := conversation.baseParentID
 	lastSources := conversation.lastSources
 	contextSources := append([]interactiveContextSource(nil), conversation.lastContextSources...)
-	contextLedger := append([]agent.ContextLedgerPart(nil), conversation.lastContextLedgerParts...)
+	contextLedger := append([]agents.ContextLedgerPart(nil), conversation.lastContextLedgerParts...)
 	stableLeadingMessage := conversation.stableLeadingMessage
 	conversation.mu.Unlock()
 	if !reflect.DeepEqual(beforeStory, afterStory) {
@@ -105,9 +105,9 @@ func TestInteractiveConversationSharesOneBudgetAcrossTurnRuntimeAndResidentLore(
 		MaxFragmentBytes: &maxFragmentBytes, MaxTotalInjectedBytes: &maxTotalBytes,
 	}}}
 	conversation := newInteractiveConversation(store, t.TempDir(), workspace, story.ID, "main", "推门", 800, cfg)
-	result, err := conversation.AssembleModelContext(context.Background(), "推门", agent.ModelContextInput{
+	result, err := conversation.AssembleModelContext(context.Background(), "推门", agents.ModelContextInput{
 		UserMessage: "推门",
-		Budget:      agent.ContextBudgetForAgent(cfg, config.AgentKindInteractiveStory),
+		Budget:      agents.ContextBudgetForAgent(cfg, config.AgentKindInteractiveStory),
 		Fragments: []agentcontext.Fragment{{
 			ID: "turn-reference", Source: "workspace.file.reference", Title: "@turn.md",
 			Purpose: "provide an explicit turn reference", Content: strings.Repeat("本轮参考。", 900),
@@ -153,7 +153,7 @@ func TestResolvedInteractiveContextSourcesNeverAuditUnassembledBodiesAsVisible(t
 		Source: "DirectorPlan", Title: "正文 Agent 简报", Purpose: "turn runtime",
 		Content: "只有未裁剪原文才包含的秘密尾段", Limit: 128,
 	}}
-	resolved := resolveInteractiveContextSources(parts, []*agent.Message{agent.UserMessage("只有未裁剪原文")})
+	resolved := resolveInteractiveContextSources(parts, []*agents.Message{agents.UserMessage("只有未裁剪原文")})
 	if len(resolved) != 1 || resolved[0].Content != "" || !resolved[0].Truncated || !strings.Contains(resolved[0].Note, "not_present_after_context_assembly") {
 		t.Fatalf("unassembled domain source must become bounded omission metadata: %#v", resolved)
 	}
@@ -161,7 +161,7 @@ func TestResolvedInteractiveContextSourcesNeverAuditUnassembledBodiesAsVisible(t
 	if strings.Contains(summary, "秘密尾段") {
 		t.Fatalf("source summary leaked the unassembled source body: %s", summary)
 	}
-	ledger := interactiveContextLedgerParts(resolved, []*agent.Message{agent.UserMessage("只有未裁剪原文")}, agent.ToolResultContextPolicy{})
+	ledger := interactiveContextLedgerParts(resolved, []*agents.Message{agents.UserMessage("只有未裁剪原文")}, agents.ToolResultContextPolicy{})
 	if len(ledger) != 1 || ledger[0].Included || ledger[0].Bytes != 0 || !ledger[0].Truncated {
 		t.Fatalf("ledger must describe the final omission, not the original body: %#v", ledger)
 	}
@@ -213,7 +213,7 @@ func TestInteractiveContextLedgerUsesFinalCompactedMessages(t *testing.T) {
 		t.Fatal(err)
 	}
 	stable := conversation.stableLeadingMessageSnapshot()
-	finalMessages := agent.BuildCompactedModelMessages(history, "旧行动和剧情已压缩为有界摘要。", 2, 2)
+	finalMessages := agents.BuildCompactedModelMessages(history, "旧行动和剧情已压缩为有界摘要。", 2, 2)
 	finalMessages = preserveInteractiveStableLeadingMessage(finalMessages, stable)
 	parts := conversation.ContextLedgerPartsForMessages(finalMessages)
 

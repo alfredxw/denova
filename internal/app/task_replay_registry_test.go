@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"denova/internal/agent"
+	agents "denova/internal/agents"
 )
 
 func TestWritingStartRegistryEvictsSettledTaskBuffersByLRUBytesButKeepsIdentity(t *testing.T) {
@@ -124,9 +124,9 @@ func TestWritingStartRegistryReservesActiveTaskReplayCapacityBeforeItGrows(t *te
 
 func settledTaskWithReplay(t *testing.T, content string) *Task {
 	t.Helper()
-	task := NewTask(func(_ context.Context, _ *Task, emit func(agent.Event)) {
-		emit(agent.Event{Type: "chunk", Data: map[string]any{"content": strings.Repeat(content, 32)}})
-		emit(agent.Event{Type: "done", Data: map[string]any{}})
+	task := NewTask(func(_ context.Context, _ *Task, emit func(agents.Event)) {
+		emit(agents.Event{Type: "chunk", Data: map[string]any{"content": strings.Repeat(content, 32)}})
+		emit(agents.Event{Type: "done", Data: map[string]any{}})
 	})
 	<-task.Done()
 	return task

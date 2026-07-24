@@ -6,45 +6,48 @@ import (
 	"strings"
 
 	"denova/config"
-	"denova/internal/agent"
-	runstate "denova/internal/agent/runtime"
+	agents "denova/internal/agents"
 )
 
 // restoreHarnessTurn reconstructs only process-local execution dependencies.
 // The durable descriptor remains authoritative for caller input and binding;
 // actual model/tool work starts later, after the runtime accepts the exact
 // queued command replay and invokes HarnessTurnSpec.Prepare.
-func (a *App) restoreHarnessTurn(_ context.Context, request agent.HarnessTurnRestoreRequest) (agent.HarnessTurnSpec, error) {
+func (a *App) restoreHarnessTurn(_ context.Context, request agents.HarnessTurnRestoreRequest) (agents.HarnessTurnSpec, error) {
 	if a == nil {
-		return agent.HarnessTurnSpec{}, agent.ErrHarnessTurnRestoreUnavailable
+		return agents.HarnessTurnSpec{}, agents.ErrHarnessTurnRestoreUnavailable
 	}
-	switch request.Binding.Profile {
-	case runstate.ProfileWriting:
-		return a.restoreWritingHarnessTurn(request), nil
-	case runstate.ProfileGame:
-		return a.restoreInteractiveHarnessTurn(request), nil
+	binding, err := agents.ParseRuntimeBinding(request.Binding)
+	if err != nil {
+		return agents.HarnessTurnSpec{}, fmt.Errorf("%w: %v", agents.ErrHarnessTurnRestoreUnavailable, err)
+	}
+	switch binding.AgentKind {
+	case agents.AgentKindIDE:
+		return a.restoreWritingHarnessTurn(request, binding), nil
+	case agents.AgentKindInteractiveStory:
+		return a.restoreInteractiveHarnessTurn(request, binding), nil
 	default:
-		return agent.HarnessTurnSpec{}, fmt.Errorf(
+		return agents.HarnessTurnSpec{}, fmt.Errorf(
 			"%w: profile %q has no queued-turn restorer",
-			agent.ErrHarnessTurnRestoreUnavailable,
-			request.Binding.Profile,
+			agents.ErrHarnessTurnRestoreUnavailable,
+			binding.AgentKind,
 		)
 	}
 }
 
-func (a *App) restoreWritingHarnessTurn(request agent.HarnessTurnRestoreRequest) agent.HarnessTurnSpec {
-	return agent.HarnessTurnSpec{
+func (a *App) restoreWritingHarnessTurn(request agents.HarnessTurnRestoreRequest, binding agents.RuntimeBinding) agents.HarnessTurnSpec {
+	return agents.HarnessTurnSpec{
 		Request: request.Request,
 		Options: request.Options,
-		Prepare: func(ctx context.Context) (agent.HarnessTurnExecution, error) {
+		Prepare: func(ctx context.Context) (agents.HarnessTurnExecution, error) {
 			execution, runtime, err := a.chat().prepareWritingHarnessTurn(ctx, request.Request, request.Options.TaskID)
 			if err != nil {
-				return agent.HarnessTurnExecution{}, err
+				return agents.HarnessTurnExecution{}, err
 			}
-			if strings.TrimSpace(runtime.workspace) != request.Binding.Workspace || runtime.sess == nil || runtime.sess.ID != request.Binding.SessionID {
-				return agent.HarnessTurnExecution{}, fmt.Errorf(
+			if strings.TrimSpace(runtime.workspace) != binding.Workspace || runtime.sess == nil || runtime.sess.ID != binding.SessionID {
+				return agents.HarnessTurnExecution{}, fmt.Errorf(
 					"%w: restored writing runtime does not match durable binding",
-					agent.ErrHarnessTurnRestoreUnavailable,
+					agents.ErrHarnessTurnRestoreUnavailable,
 				)
 			}
 			return execution, nil
@@ -52,27 +55,27 @@ func (a *App) restoreWritingHarnessTurn(request agent.HarnessTurnRestoreRequest)
 	}
 }
 
-func (a *App) restoreInteractiveHarnessTurn(request agent.HarnessTurnRestoreRequest) agent.HarnessTurnSpec {
-	return agent.HarnessTurnSpec{
+func (a *App) restoreInteractiveHarnessTurn(request agents.HarnessTurnRestoreRequest, binding agents.RuntimeBinding) agents.HarnessTurnSpec {
+	return agents.HarnessTurnSpec{
 		Request: request.Request,
 		Options: request.Options,
-		Prepare: func(ctx context.Context) (agent.HarnessTurnExecution, error) {
+		Prepare: func(ctx context.Context) (agents.HarnessTurnExecution, error) {
 			cycle, err := a.interactiveService().prepareInteractiveAgentCycle(ctx, interactiveAgentCycleRequest{
-				StoryID: request.Binding.StoryID, BranchID: request.Binding.BranchID,
+				StoryID: binding.StoryID, BranchID: binding.BranchID,
 				Message: request.Request.Message, StyleScenes: request.Request.StyleScenes,
 				Locale: request.Request.Locale,
 			})
 			if err != nil {
-				return agent.HarnessTurnExecution{}, err
+				return agents.HarnessTurnExecution{}, err
 			}
-			if cycle.workspace != request.Binding.Workspace || cycle.storyID != request.Binding.StoryID || cycle.branchID != request.Binding.BranchID {
-				return agent.HarnessTurnExecution{}, fmt.Errorf(
+			if cycle.workspace != binding.Workspace || cycle.storyID != binding.StoryID || cycle.branchID != binding.BranchID {
+				return agents.HarnessTurnExecution{}, fmt.Errorf(
 					"%w: restored game runtime does not match durable binding",
-					agent.ErrHarnessTurnRestoreUnavailable,
+					agents.ErrHarnessTurnRestoreUnavailable,
 				)
 			}
 			cycle.bindCommit(request.Emit)
-			return agent.HarnessTurnExecution{
+			return agents.HarnessTurnExecution{
 				Runner: cycle.runner, Conversation: cycle.conversation,
 				BookService: cycle.bookService, Request: cycle.request,
 				Options: cycle.options(request.Options.TaskID),
@@ -83,19 +86,19 @@ func (a *App) restoreInteractiveHarnessTurn(request agent.HarnessTurnRestoreRequ
 
 func (s *ChatAppService) prepareWritingHarnessTurn(
 	ctx context.Context,
-	request agent.ChatRequest,
+	request agents.ChatRequest,
 	taskID string,
-) (agent.HarnessTurnExecution, ideChatRuntime, error) {
+) (agents.HarnessTurnExecution, ideChatRuntime, error) {
 	runtime, resolved, err := s.prepareIDEChatRuntime(ctx, request)
 	if err != nil {
-		return agent.HarnessTurnExecution{}, ideChatRuntime{}, err
+		return agents.HarnessTurnExecution{}, ideChatRuntime{}, err
 	}
 	runner, systemPrompt, err := buildAgentRunnerWithComposition(ctx, &runtime.cfg, runtime.state, runtime.ideTeller)
 	if err != nil {
-		return agent.HarnessTurnExecution{}, ideChatRuntime{}, err
+		return agents.HarnessTurnExecution{}, ideChatRuntime{}, err
 	}
-	runtimeContexts := agent.IDEWorkspaceRuntimeContextsForRequest(runtime.state, resolved)
-	conversation := agent.NewSessionConversationForAgentWithRuntimeContexts(
+	runtimeContexts := agents.IDEWorkspaceRuntimeContextsForRequest(runtime.state, resolved)
+	conversation := agents.NewSessionConversationForAgentWithRuntimeContexts(
 		runtime.sess, &runtime.cfg, config.AgentKindIDE,
 		runtimeContexts.StableTitle, runtimeContexts.Stable,
 		runtimeContexts.DynamicTitle, runtimeContexts.Dynamic,
@@ -106,10 +109,10 @@ func (s *ChatAppService) prepareWritingHarnessTurn(
 			return s.consumeResolvedReviewFeedback(commitCtx, runtime, resolved)
 		}
 	}
-	return agent.HarnessTurnExecution{
+	return agents.HarnessTurnExecution{
 		Runner: runner, Conversation: conversation, BookService: runtime.bookService, Request: resolved,
-		Options: agent.RunOptions{
-			AgentKind:              agent.AgentKindIDE,
+		Options: agents.RunOptions{
+			AgentKind:              agents.AgentKindIDE,
 			TaskID:                 strings.TrimSpace(taskID),
 			SessionID:              runtime.sess.ID,
 			ReviewThreadID:         resolved.ResolvedReviewFeedback.PrimaryReviewThreadID(),
