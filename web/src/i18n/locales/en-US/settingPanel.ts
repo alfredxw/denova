@@ -266,6 +266,7 @@ const settingPanel = {
   'settingPanel.editor.eventPackageEventsDesc': 'An event package is a set of event cards; a story director can load multiple packages.',
   'settingPanel.editor.ruleSystemSubtitle': 'One DM style with fixed d20 and optional state binding',
   'settingPanel.editor.loreSubtitle': 'Characters, locations, factions, rules, and assets',
+  'settingPanel.editor.contentModeRich': 'Rich text',
   'settingPanel.editor.noTags': 'No tags',
   'settingPanel.editor.noLoreSelected': 'No lore selected',
   'settingPanel.editor.noLoreSelectedDesc': 'Choose or create an item from the lore directory on the left.',

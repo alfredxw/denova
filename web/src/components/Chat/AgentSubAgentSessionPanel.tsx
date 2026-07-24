@@ -41,7 +41,11 @@ export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highl
     const resolvedView = view || sessionViews[index]
     if (!resolvedView) return null
     return (
-      <div data-nova-chat-item="subagent-message" className="min-w-0 px-4 pb-3 last:pb-0">
+      <div
+        ref={running && index === sessionViews.length - 1 ? scrollLock.streamingRowRef : undefined}
+        data-nova-chat-item="subagent-message"
+        className="min-w-0 px-4 pb-3 last:pb-0"
+      >
         <AgentMessageItem
           view={resolvedView}
           highlightDialogue={highlightDialogue}
@@ -50,7 +54,7 @@ export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highl
         />
       </div>
     )
-  }, [highlightDialogue, messageStyle, sessionViews])
+  }, [highlightDialogue, messageStyle, running, scrollLock.streamingRowRef, sessionViews])
 
   return (
     <section className="flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface-2)] shadow-[-12px_0_26px_-24px_rgba(15,23,42,0.82)]">

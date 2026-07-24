@@ -678,11 +678,14 @@ body,
   -moz-osx-font-smoothing: grayscale;
 }
 
-button,
-input,
-textarea,
-select {
-  font: inherit;
+/* 作为 base 层 reset：让表单控件继承页面字体，同时允许 Tailwind 字体工具类（如 font-mono、text-xs）覆盖。 */
+@layer base {
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
 }
 
 button {

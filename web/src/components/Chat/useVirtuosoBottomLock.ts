@@ -21,6 +21,9 @@ export function useVirtuosoBottomLock({ resetKey, firstItemIndex = 0, itemCount,
   const previousAutoFollowEnabledRef = useRef(autoFollowEnabled)
   const lastScrollTopRef = useRef(0)
   const lastLockedBottomScrollTopRef = useRef(0)
+  const streamingRowElementRef = useRef<HTMLElement | null>(null)
+  const streamingRowHeightRef = useRef<number | null>(null)
+  const streamingRowObserverRef = useRef<ResizeObserver | null>(null)
   const schedulerRef = useRef(createDeferredBottomScrollScheduler())
   const scheduleScrollRef = useRef<() => void>(() => {})
   const [isAwayFromBottom, setIsAwayFromBottom] = useState(false)
@@ -36,6 +39,39 @@ export function useVirtuosoBottomLock({ resetKey, firstItemIndex = 0, itemCount,
     }
     return element
   }, [resolveScroller])
+
+  const disconnectStreamingRowObserver = useCallback(() => {
+    streamingRowObserverRef.current?.disconnect()
+    streamingRowObserverRef.current = null
+  }, [])
+
+  const compensateStreamingRowResize = useCallback((entries: ResizeObserverEntry[]) => {
+    const row = streamingRowElementRef.current
+    if (!row || !entries.some(entry => entry.target === row)) return
+    const nextHeight = row.getBoundingClientRect().height
+    const previousHeight = streamingRowHeightRef.current
+    streamingRowHeightRef.current = nextHeight
+    if (previousHeight === null || !autoFollowEnabled || !lockedRef.current || afterContentInteractionRef.current) return
+    const heightDelta = nextHeight - previousHeight
+    if (Math.abs(heightDelta) < 0.5) return
+    const scroller = currentScrollerElement()
+    if (!scroller) return
+    scroller.scrollTop += heightDelta
+    lastScrollTopRef.current = scroller.scrollTop
+    lastLockedBottomScrollTopRef.current = scroller.scrollTop
+  }, [autoFollowEnabled, currentScrollerElement])
+
+  /** Keeps the active row's visible bottom stable until Virtuoso commits its deferred size measurement. */
+  const streamingRowRef = useCallback((row: HTMLElement | null) => {
+    if (streamingRowElementRef.current === row) return
+    disconnectStreamingRowObserver()
+    streamingRowElementRef.current = row
+    streamingRowHeightRef.current = row?.getBoundingClientRect().height ?? null
+    if (!row || !autoFollowEnabled || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(compensateStreamingRowResize)
+    streamingRowObserverRef.current = observer
+    observer.observe(row)
+  }, [autoFollowEnabled, compensateStreamingRowResize, disconnectStreamingRowObserver])
 
   const updateAwayFromBottom = useCallback((element = currentScrollerElement()) => {
     const away = Boolean(element && itemCount > 0 && element.scrollHeight > element.clientHeight && element.scrollHeight - element.scrollTop - element.clientHeight > awayFromBottomThreshold)
@@ -264,6 +300,7 @@ export function useVirtuosoBottomLock({ resetKey, firstItemIndex = 0, itemCount,
   }, [itemCount, updateAwayFromBottom])
 
   useEffect(() => cancelScheduledScroll, [cancelScheduledScroll])
+  useEffect(() => disconnectStreamingRowObserver, [disconnectStreamingRowObserver])
 
   return {
     virtuosoRef,
@@ -274,6 +311,7 @@ export function useVirtuosoBottomLock({ resetKey, firstItemIndex = 0, itemCount,
     onPointerDown,
     onAtBottomStateChange,
     followOutput,
+    streamingRowRef,
     isAwayFromBottom,
     scrollToBottom,
     releaseBottomLock,

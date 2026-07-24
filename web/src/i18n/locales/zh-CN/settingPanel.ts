@@ -266,6 +266,7 @@ const settingPanel = {
   'settingPanel.editor.eventPackageEventsDesc': '一个事件包就是一组事件卡；故事导演可以同时加载多个事件包。',
   'settingPanel.editor.ruleSystemSubtitle': '单个 DM 检定风格，固定 d20，可配置状态联动',
   'settingPanel.editor.loreSubtitle': '角色、地点、组织、规则与素材',
+  'settingPanel.editor.contentModeRich': '富文本',
   'settingPanel.editor.noTags': '无标签',
   'settingPanel.editor.noLoreSelected': '未选择资料',
   'settingPanel.editor.noLoreSelectedDesc': '从左侧资料库目录选择或新建一个条目。',

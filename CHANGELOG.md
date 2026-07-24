@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 资料库正文编辑器新增紧凑的 富文本/Raw 切换：默认富文本（所见即所得），可切换为等宽 Markdown 源码编辑，切换资料条目时保留所选模式；Raw 模式下 Cmd/Ctrl+S 仍会触发保存，目录搜索高亮暂仅在富文本模式生效。
+- The lore content editor now has a compact Rich text/Raw toggle: rich text (WYSIWYG) stays the default, with an optional monospace Markdown source mode that persists across item selection. Cmd/Ctrl+S still flushes saving in Raw mode; directory search highlighting currently applies in rich mode only.
 - 新增可独立复用的 `github.com/alfredxw/denova/agent` Go module：root package 提供与供应商无关的 Message、Model、Tool、Registry、Middleware、Runner、取消/中断、原生 Agentic Loop 与完整外部 Agent Host；`runtime`、`context`、`session`、`tools` 子 package 分别提供持久运行、来源有界的上下文、append-only transcript 和基础工具实现。
 - Added the independently reusable `github.com/alfredxw/denova/agent` Go module. Its root package provides provider-neutral messages, models, tools, registries, middleware, runners, cancellation/interruption, a native agentic loop, and a complete external Agent Host; the `runtime`, `context`, `session`, and `tools` subpackages provide durable execution, provenance-bounded context, append-only transcripts, and standard tool implementations.
 - 新增独立的 `github.com/alfredxw/denova/agent/model/openai` adapter module，OpenAI 协议、兼容行为和 SDK 类型全部限制在供应商 seam 内；公共 `agent` 的模块依赖图不包含任何模型供应商 SDK，产品 Agent 也不再依赖 Eino 的消息、工具、流或运行时抽象。
@@ -76,6 +78,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复全局 `button/input/textarea/select { font: inherit }` 以非分层规则压过 Tailwind `@layer utilities`，导致表单控件上的 `font-mono`、`font-medium` 等字体工具类整体失效的问题；该 reset 已移入 `@layer base`，Raw 源码编辑等场景现在能正确渲染等宽字体，技能页 Raw 编辑同步受益。
+- Fixed the global `button/input/textarea/select { font: inherit }` reset being unlayered and overriding Tailwind `@layer utilities`, which silently disabled font utilities like `font-mono` and `font-medium` on all form controls. The reset now lives in `@layer base`, so monospace rendering works for Raw source editing, including the Skills page Raw editor.
+- 修复 Agent 流式正文、thinking 与子 Agent 会话在新增一行时底边先向下闪动、随后再被锁底滚动抬回的问题；写作、游戏、配置、自动化及独立子 Agent 对话现在统一在浏览器绘制前补偿活动虚拟行的高度增量，同时保留用户上滚后不被抢回底部的行为。
+- Fixed a one-frame bottom-edge jump when streamed prose, reasoning, or sub-agent output gained a line. Writing, Game, Config, Automation, and standalone sub-agent conversations now compensate active virtual-row growth before browser paint while preserving manual scroll-away behavior.
 - 修复原生 Agentic Loop 在运行 goroutine panic 时可能先关闭事件迭代器、首帧前流错误无法重试、零帧流被当作成功、流错误已经暴露后仍浪费供应商重试、并行工具中断丢失已完成兄弟结果、工具中断被当成普通 JSON 继续运行，以及排队等待 workspace 独占权的工具在取消后仍可能启动的问题；panic、stream error、interrupt 和 cancel 现在都有唯一且可审计的终态。
 - Fixed native agentic-loop cases where a recovered run panic could close the iterator before publishing its error, pre-first-frame stream failures could not retry, empty streams looked successful, retries continued after exposed stream failures, parallel interruption discarded completed sibling results, tool interruption became ordinary JSON, or a queued workspace tool started after cancellation. Panics, stream failures, interruptions, and cancellations now each have one auditable terminal outcome.
 - 修复外部 Agent Host 可通过自报更大上限绕过调用方上下文预算、取消请求接受未知模式位，以及非标准 OpenAI 兼容端点的文本工具调用在多轮中重复合成 ID 的问题；公共 `agent` 现在在自有 seam 执行响应预算与取消模式校验，adapter 生成跨响应和进程唯一的工具调用 ID。

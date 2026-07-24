@@ -258,6 +258,33 @@ func TestStoreDurableRunLedgerOutlivesRecentRunsProjection(t *testing.T) {
 	}
 }
 
+func TestStoreObligationScanIgnoresLegacySettledSuccess(t *testing.T) {
+	root := t.TempDir()
+	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))
+	task, err := store.Create(Task{Scope: ScopeWorkspace, Name: "Legacy review", Template: TemplateReview})
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyRun := RunRecord{
+		ID: "legacy-success", TaskID: task.ID, Scope: task.Scope, Workspace: task.Target.Workspace,
+		Trigger: TriggerManual, Status: RunStatusSuccess, StartedAt: time.Now().UTC().Add(-time.Minute),
+		FinishedAt: time.Now().UTC(),
+	}
+	task.LastRun = &legacyRun
+	task.RecentRuns = []RunRecord{legacyRun}
+	if _, err := store.Update(task.CatalogID, task); err != nil {
+		t.Fatal(err)
+	}
+
+	obligations, err := store.ListDurableObligations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(obligations) != 0 {
+		t.Fatalf("legacy settled success entered recovery scan: %#v", obligations)
+	}
+}
+
 func TestStoreObligationScanDoesNotResurrectStaleTaskProjection(t *testing.T) {
 	root := t.TempDir()
 	store := NewStore(filepath.Join(root, "user"), filepath.Join(root, "workspace"))

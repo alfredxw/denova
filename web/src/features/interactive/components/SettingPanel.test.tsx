@@ -1270,11 +1270,12 @@ describe('SettingPanel', () => {
     const editor = screen.getByRole('region', { name: '资料编辑区' })
     const content = within(editor).getByRole('textbox', { name: '正文' }) as HTMLTextAreaElement
 
-    // 渲染视图本身即可编辑：不再有 预览/Raw 切换，也不引入嵌套滚动容器
+    // 默认富文本编辑：渲染视图本身即可编辑，也不引入嵌套滚动容器
     expect(content).toHaveAttribute('data-testid', 'lore-rich-editor')
     expect(within(editor).queryByText('正文')).not.toBeInTheDocument()
-    expect(within(editor).queryByRole('button', { name: '预览' })).not.toBeInTheDocument()
-    expect(within(editor).queryByRole('button', { name: 'Raw' })).not.toBeInTheDocument()
+    // 工具条提供紧凑的 富文本/Raw 切换，默认富文本
+    expect(within(editor).getByRole('button', { name: '富文本' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(editor).getByRole('button', { name: 'Raw' })).toHaveAttribute('aria-pressed', 'false')
     expect(editor.querySelector('.overflow-y-auto')).toBeNull()
     const editorRoot = within(editor).getByTestId('lore-rich-editor-root')
     expect(editorRoot).toHaveClass('flex', 'min-h-[420px]', 'flex-1')
@@ -1292,6 +1293,37 @@ describe('SettingPanel', () => {
     fireEvent.change(screen.getByRole('textbox', { name: '搜索资料' }), { target: { value: '正文段落' } })
     expect(content).toHaveAttribute('data-highlight-query', '正文段落')
     expect(content).not.toBeDisabled()
+  })
+
+  it('switches the lore body between rich text and raw markdown editing', async () => {
+    const item = {
+      ...loreItem('raw-lore', '源码资料'),
+      content: '## 标题\n\n正文内容',
+    }
+    vi.mocked(getLoreItems).mockResolvedValue([item])
+
+    render(<SettingPanel mode="lore" workspace="/workspace" imagePresets={[]} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /源码资料/ }))
+    const editor = screen.getByRole('region', { name: '资料编辑区' })
+
+    // 默认富文本编辑
+    expect(within(editor).getByTestId('lore-rich-editor')).toBeInTheDocument()
+
+    // 切换为 Raw 源码编辑：同一草稿内容（草稿加载时已归一化补结尾换行），等宽 textarea
+    fireEvent.click(within(editor).getByRole('button', { name: 'Raw' }))
+    expect(within(editor).queryByTestId('lore-rich-editor')).not.toBeInTheDocument()
+    const raw = within(editor).getByRole('textbox', { name: '正文' }) as HTMLTextAreaElement
+    expect(raw.value).toBe('## 标题\n\n正文内容\n')
+    expect(raw).toHaveClass('font-mono')
+    expect(within(editor).getByRole('button', { name: 'Raw' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.change(raw, { target: { value: '## 标题\n\n正文内容\n\n新增一行' } })
+
+    // 切回富文本，修改后的内容回灌
+    fireEvent.click(within(editor).getByRole('button', { name: '富文本' }))
+    const rich = within(editor).getByTestId('lore-rich-editor') as HTMLTextAreaElement
+    expect(rich.value).toBe('## 标题\n\n正文内容\n\n新增一行')
   })
 
   it('loads an external Lore update without writing when the editor is clean', async () => {

@@ -239,7 +239,9 @@ func RunHasRuntimeObligation(run RunRecord) bool {
 // RunHasDurableObligation is the exact startup-recovery predicate. Settled
 // history remains queryable in the full ledger but is removed from the hot
 // obligation directory as soon as every terminal effect is acknowledged.
+// Legacy successes without a durable runtime receipt predate completion
+// effects and must not be reinterpreted as unfinished work.
 func RunHasDurableObligation(run RunRecord) bool {
 	return RunHasRuntimeObligation(run) || run.CompletionEffectsPending ||
-		(run.Status == RunStatusSuccess && !run.CompletionEffectsCompleted)
+		(run.Status == RunStatusSuccess && !run.CompletionEffectsCompleted && runHasRuntimeReceipt(run))
 }

@@ -1559,7 +1559,7 @@ function StreamingPlaceholder() {
   )
 }
 
-/** 流式 Markdown 与纯文本共用“预留目标高度后再揭示”的帧序。 */
+/** 流式 Markdown 只保留最新快照的一棵渲染树；外层虚拟列表负责在绘制前完成动态行高补偿与锁底。 */
 function StreamingMarkdown({ content, targetContent, highlightDialogue }: { content: string; targetContent?: string; highlightDialogue: boolean }) {
   return (
     <StreamingContentStage content={content} targetContent={targetContent} streaming>

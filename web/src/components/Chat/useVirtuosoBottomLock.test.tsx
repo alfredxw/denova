@@ -98,6 +98,49 @@ describe('useVirtuosoBottomLock', () => {
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 'LAST', align: 'end', behavior: 'auto' })
   })
 
+  it('compensates a locked streaming row height change before virtualizer measurement', () => {
+    let observerCallback: ResizeObserverCallback | undefined
+    const observe = vi.fn()
+    vi.stubGlobal('ResizeObserver', class ResizeObserverMock {
+      constructor(callback: ResizeObserverCallback) {
+        observerCallback = callback
+      }
+
+      observe = observe
+      unobserve = vi.fn()
+      disconnect = vi.fn()
+    })
+    const scroller = document.createElement('div')
+    let scrollHeight = 500
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+    scroller.scrollTop = 400
+    const streamingRow = document.createElement('div')
+    let rowHeight = 40
+    streamingRow.getBoundingClientRect = () => ({ height: rowHeight }) as DOMRect
+    const { result } = renderHook(() => useVirtuosoBottomLock({
+      itemCount: 1,
+      autoFollowEnabled: true,
+      resolveScroller: () => scroller,
+    }))
+
+    act(() => result.current.streamingRowRef(streamingRow))
+    expect(observe).toHaveBeenCalledWith(streamingRow)
+
+    rowHeight = 70
+    scrollHeight = 530
+    act(() => observerCallback?.([{ target: streamingRow } as unknown as ResizeObserverEntry], {} as ResizeObserver))
+
+    expect(scroller.scrollTop).toBe(430)
+
+    act(() => result.current.releaseBottomLock())
+    rowHeight = 100
+    scrollHeight = 560
+    act(() => observerCallback?.([{ target: streamingRow } as unknown as ResizeObserverEntry], {} as ResizeObserver))
+
+    expect(scroller.scrollTop).toBe(430)
+  })
+
   it('translates relative navigation targets into the virtualizer absolute index window', () => {
     const scrollToIndex = vi.fn()
     const { result } = renderHook(() => useVirtuosoBottomLock({

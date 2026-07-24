@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, ReactNode, RefCallback } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
@@ -247,9 +247,10 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         onExitPlanMode={onExitPlanMode}
         onOpenTrace={onOpenTrace}
         onPlanCardLayoutChange={anchorLatestPlanCardBottom}
+        streamingRowRef={isStreaming ? scrollLock.streamingRowRef : undefined}
       />
     )
-  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestPlanCardBottom, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onSubmitPlanQuestion, onSwitchMessageVersion])
+  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestPlanCardBottom, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onSubmitPlanQuestion, onSwitchMessageVersion, scrollLock.streamingRowRef])
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
@@ -359,7 +360,7 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange }: {
+function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange, streamingRowRef }: {
   item: AgentChatListItem
   isLast: boolean
   isStreaming: boolean
@@ -381,12 +382,14 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
   onExitPlanMode?: () => void
   onOpenTrace?: (runID: string) => void
   onPlanCardLayoutChange?: () => void
+  streamingRowRef?: RefCallback<HTMLDivElement>
 }) {
   const { t } = useTranslation()
   const turnAnchor = chatListItemNavigationAnchor(item)
 
   return (
     <motion.div
+      ref={isLast ? streamingRowRef : undefined}
       data-nova-chat-item={item.kind}
       data-nova-chat-row-key={item.key}
       data-nova-chat-turn-anchor={turnAnchor}
