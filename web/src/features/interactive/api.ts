@@ -1,5 +1,5 @@
 import { APIError, createAgentCommandID, fetchAPI, jsonHeaders, parseSSEStream, requestJSON } from '@/lib/api-client'
-import type { AgentCommandDelivery, AgentCommandReceipt, AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeOperation, AgentRuntimeQueuedCommand, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt, ContextAnalysis, InteractiveImage } from '@/lib/api-client'
+import type { AgentCommandReceipt, AgentRuntimeActiveOutput, AgentRuntimeOpenTool, AgentRuntimeOperation, AgentRuntimeQueuedCommand, AgentRuntimeRecoveryAction, AgentRuntimeRecoveryReceipt, ContextAnalysis, InteractiveImage } from '@/lib/api-client'
 import { isKnownAgentCommandOutcome } from '@/lib/agent-command'
 import type { ActorStateModule, ActorTraitRollRequest, ActorTraitRollResult, BranchSummary, DirectorPlan, DirectorPlanStatus, EventPackageModule, ImagePreset, InitialActorTraitRoll, InteractiveSSEEvent, RuleResolution, RuleResolutionRerollInput, RuleSystemModule, Snapshot, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunPolicy, StoryStateSchemaPolicy, StyleReference, StyleReferenceFileDocument, StoryImageSettings, StoryIndex, StoryOpeningConfig, StorySummary, Teller, UpdateDirectorPlanInput, UpdateTurnNarrativeResult } from './types'
 
@@ -420,27 +420,16 @@ export interface ActiveInteractiveChat {
 }
 
 export interface InteractiveAgentCommand {
-  type: AgentCommandDelivery | 'abort'
+  type: 'abort'
   commandId: string
   targetOperationId: string
   storyId: string
   branchId?: string
-  message?: string
-  styleScenes?: string[]
   reason?: string
 }
 
-/** Submit a command to the exact game operation shown by the stage. */
+/** Abort the exact game operation shown by the stage. */
 export function submitInteractiveAgentCommand(command: InteractiveAgentCommand): Promise<AgentCommandReceipt> {
-  const input = command.type === 'abort'
-    ? undefined
-    : {
-        mode: 'story',
-        story_id: command.storyId,
-        branch: command.branchId,
-        message: command.message || '',
-        style_scenes: command.styleScenes || [],
-      }
   return requestJSON('/api/interactive/chat/commands', {
     method: 'POST',
     headers: jsonHeaders,
@@ -450,7 +439,6 @@ export function submitInteractiveAgentCommand(command: InteractiveAgentCommand):
       target_operation_id: command.targetOperationId,
       story_id: command.storyId,
       ...(command.branchId ? { branch_id: command.branchId } : {}),
-      ...(input ? { input } : {}),
       ...(command.reason ? { reason: command.reason } : {}),
     }),
   })

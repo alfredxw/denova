@@ -75,6 +75,15 @@ func (s *harnessState) firstQueued(deliveries ...DeliveryKind) (QueuedInput, boo
 	return QueuedInput{}, false
 }
 
+func (s *harnessState) queued(commandID CommandID) (QueuedInput, bool) {
+	for _, item := range s.queue {
+		if item.CommandID == commandID {
+			return cloneQueuedInput(item), true
+		}
+	}
+	return QueuedInput{}, false
+}
+
 func (s *harnessState) removeQueued(commandID CommandID) bool {
 	for index, item := range s.queue {
 		if item.CommandID == commandID {

@@ -11,11 +11,12 @@ import (
 var ErrNoActiveAgentOperation = errors.New("no active agent operation")
 
 type ChatAgentCommand struct {
-	Kind        agents.AgentCommandKind
-	CommandID   string
-	OperationID agents.OperationID
-	Reason      string
-	Input       agents.ChatRequest
+	Kind            agents.AgentCommandKind
+	CommandID       string
+	OperationID     agents.OperationID
+	TargetCommandID agents.CommandID
+	Reason          string
+	Input           agents.ChatRequest
 }
 
 // SubmitChatAgentCommand adapts a transport command to the active writing
@@ -26,14 +27,14 @@ func (a *App) SubmitChatAgentCommand(ctx context.Context, command ChatAgentComma
 }
 
 func (s *ChatAppService) SubmitAgentCommand(ctx context.Context, command ChatAgentCommand) (agents.CommandReceipt, error) {
-	if command.Kind == agents.AgentCommandAbort {
+	if command.Kind == agents.AgentCommandAbort || command.Kind == agents.AgentCommandSteerQueued || command.Kind == agents.AgentCommandCancelQueued {
 		runtime, task, err := s.activeCommandRuntime()
 		if err != nil {
 			return agents.CommandReceipt{}, err
 		}
 		return runtime.chatService.SubmitCommand(ctx, agents.AgentCommandSpec{
 			Kind: command.Kind, CommandID: command.CommandID,
-			OperationID: command.OperationID, Reason: command.Reason,
+			OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason,
 			Options: agents.RunOptions{
 				AgentKind: agents.AgentKindIDE, TaskID: task.ID(),
 				SessionID: runtime.sess.ID, Workspace: runtime.workspace, Mode: "ide",

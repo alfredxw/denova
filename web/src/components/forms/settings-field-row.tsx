@@ -42,7 +42,7 @@ export function SettingsFieldRow({
         </div>
         {description ? <FieldDescription className="text-[11px]">{description}</FieldDescription> : null}
       </FieldContent>
-      <div className={cn('w-full min-w-0 sm:w-auto', controlClassName)}>{children}</div>
+      <div className={cn('flex w-full min-w-0 sm:w-auto', controlClassName)}>{children}</div>
     </Field>
   )
 }

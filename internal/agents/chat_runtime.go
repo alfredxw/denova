@@ -214,23 +214,12 @@ func (r *chatRun) recordStarted() {
 }
 
 func (r *chatRun) prepareContext() ([]*agent.Message, string, RunOutcome, bool) {
-	var pendingInterruption *session.Interruption
-	if shouldResumeInterruptedRequest(r.req.Message) {
-		pendingInterruption = r.conversation.PendingInterruption()
-	}
 	contextBuildStarted := time.Now()
-	budget := modelContextBudgetForConversation(r.conversation)
-	projection := projectTurnInput(r.req, pendingInterruption, r.bookService, budget)
-	r.originalMessage = projection.OriginalMessage
-	r.resumeInterruption = projection.ResumeInterruption
-	if setter, ok := r.conversation.(UserMessageReferencesSetter); ok {
-		setter.SetUserMessageReferences(userMessageReferencesForRequest(r.req))
-	}
-
-	prepared, err := AssembleModelContext(r.traceCtx, r.conversation, r.originalMessage, ModelContextInput{
-		UserMessage: r.req.Message,
-		Fragments:   projection.Fragments,
-		Budget:      budget,
+	turn, err := prepareTurnContext(r.traceCtx, turnContextPreparationInput{
+		Conversation: r.conversation,
+		Request:      r.req,
+		BookService:  r.bookService,
+		Environment:  newTurnRuntimeEnvironment(r.options.Workspace),
 	})
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
@@ -243,15 +232,21 @@ func (r *chatRun) prepareContext() ([]*agent.Message, string, RunOutcome, bool) 
 		r.emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return nil, "", r.outcomeFor(RunOutcomeFailed, err, err.Error()), true
 	}
-	if err := CommitModelInput(r.traceCtx, r.conversation, r.originalMessage, prepared); err != nil {
+	r.originalMessage = turn.OriginalMessage
+	r.resumeInterruption = turn.ResumeInterruption
+	if err := CommitModelInput(r.traceCtx, r.conversation, r.originalMessage, turn.ModelContext); err != nil {
 		r.logger.Error("commit_model_input_failed", slog.Any("error", err))
 		r.finish("error", err.Error(), 0)
 		r.emit(Event{Type: "error", Data: map[string]string{"message": err.Error()}})
 		return nil, "", r.outcomeFor(RunOutcomeFailed, err, err.Error()), true
 	}
-	history := prepared.Messages
+	history := turn.ModelContext.Messages
 	agentMessage := finalModelUserMessage(history, r.req.Message)
-	contextLog := contextBuildLogFromAssembly(r.policy.ContextLedger, r.originalMessage, prepared.Context)
+	contextLog := contextBuildLogFromAssembly(r.policy.ContextLedger, r.originalMessage, turn.ModelContext.Context)
+	// Emit only after the durable user input is committed, so restored display
+	// history keeps the user message before its deterministic Skill cards. This
+	// still happens before compaction and the first Agent model call.
+	r.emitExplicitSkillLoads(turn.ExplicitSkills)
 	if r.options.OnUserMessageCommitted != nil {
 		if err := r.options.OnUserMessageCommitted(r.traceCtx); err != nil {
 			r.logger.Error("commit_user_message_side_effect_failed", slog.Any("error", err))

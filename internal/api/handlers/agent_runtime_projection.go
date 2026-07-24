@@ -41,6 +41,7 @@ type agentRuntimeQueueDTO struct {
 	Delivery         string `json:"delivery"`
 	Message          string `json:"message"`
 	MessageTruncated bool   `json:"message_truncated,omitempty"`
+	SteerRequested   bool   `json:"steer_requested,omitempty"`
 }
 
 type agentRuntimeOpenToolDTO struct {
@@ -121,6 +122,7 @@ func newAgentRuntimeProjectionDTO(snapshot appsvc.AgentRuntimeStatus) agentRunti
 			Delivery:         string(item.Delivery),
 			Message:          message,
 			MessageTruncated: item.MessageTruncated || truncated,
+			SteerRequested:   item.SteerRequested,
 		})
 	}
 	openTools := make([]agentRuntimeOpenToolDTO, 0, len(snapshot.OpenToolCalls))

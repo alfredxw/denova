@@ -98,7 +98,7 @@ describe('useVirtuosoBottomLock', () => {
     expect(scrollToIndex).toHaveBeenCalledWith({ index: 'LAST', align: 'end', behavior: 'auto' })
   })
 
-  it('compensates a locked streaming row height change before virtualizer measurement', () => {
+  it('synchronously compensates a committed streaming row height change before browser measurement', () => {
     let observerCallback: ResizeObserverCallback | undefined
     const observe = vi.fn()
     vi.stubGlobal('ResizeObserver', class ResizeObserverMock {
@@ -129,7 +129,7 @@ describe('useVirtuosoBottomLock', () => {
 
     rowHeight = 70
     scrollHeight = 530
-    act(() => observerCallback?.([{ target: streamingRow } as unknown as ResizeObserverEntry], {} as ResizeObserver))
+    act(() => result.current.syncStreamingRowHeight())
 
     expect(scroller.scrollTop).toBe(430)
 
@@ -137,6 +137,33 @@ describe('useVirtuosoBottomLock', () => {
     rowHeight = 100
     scrollHeight = 560
     act(() => observerCallback?.([{ target: streamingRow } as unknown as ResizeObserverEntry], {} as ResizeObserver))
+
+    expect(scroller.scrollTop).toBe(430)
+  })
+
+  it('keeps the height baseline across a transient callback-ref release of the same row', () => {
+    const scroller = document.createElement('div')
+    let scrollHeight = 500
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+    scroller.scrollTop = 400
+    const streamingRow = document.createElement('div')
+    let rowHeight = 40
+    streamingRow.getBoundingClientRect = () => ({ height: rowHeight }) as DOMRect
+    const { result } = renderHook(() => useVirtuosoBottomLock({
+      itemCount: 1,
+      autoFollowEnabled: true,
+      resolveScroller: () => scroller,
+    }))
+
+    act(() => result.current.streamingRowRef(streamingRow))
+    act(() => result.current.streamingRowRef(null))
+    rowHeight = 70
+    scrollHeight = 530
+    act(() => {
+      result.current.streamingRowRef(streamingRow)
+      result.current.syncStreamingRowHeight()
+    })
 
     expect(scroller.scrollTop).toBe(430)
   })

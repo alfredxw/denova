@@ -624,7 +624,7 @@ describe('StoryStage runtime recovery', () => {
     },
   )
 
-  it('lets a fresh command resume an attach-only game operation without starting a new root turn', async () => {
+  it('keeps an attach-only recovered game operation stop-only until it settles', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
     const attachAction = {
@@ -654,30 +654,15 @@ describe('StoryStage runtime recovery', () => {
       replayed: false,
       recovery_action: attachAction,
     })
-    submitInteractiveAgentCommandMock.mockResolvedValue({
-      command_id: 'fresh-follow-up',
-      operation_id: 'operation-recovery',
-      cursor: 14,
-    })
     streamActiveInteractiveChatMock.mockResolvedValue(stream.readable)
     const { unmount } = render(<StoryStageHarness />)
 
     try {
-      await waitFor(() => expect(screen.getByRole('button', { name: '发送方式：追加' })).toBeEnabled())
+      await waitFor(() => expect(screen.getByRole('button', { name: '中断 AI 执行' })).toBeEnabled())
+      expect(screen.queryByRole('button', { name: /发送方式/ })).not.toBeInTheDocument()
       await user.type(getStageInput(), '采用新的恢复方向')
-      await user.click(screen.getByRole('button', { name: '发送' }))
-
-      await waitFor(() =>
-        expect(submitInteractiveAgentCommandMock).toHaveBeenCalledWith({
-          type: 'follow_up',
-          commandId: expect.any(String),
-          targetOperationId: 'operation-recovery',
-          storyId: 'story-1',
-          branchId: 'main',
-          message: '采用新的恢复方向',
-          styleScenes: [],
-        }),
-      )
+      expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
+      expect(submitInteractiveAgentCommandMock).not.toHaveBeenCalled()
       expect(recoverInteractiveAgentRuntimeMock).toHaveBeenCalledTimes(1)
       expect(recoverInteractiveAgentRuntimeMock).toHaveBeenCalledWith({
         storyId: 'story-1',
@@ -686,8 +671,8 @@ describe('StoryStage runtime recovery', () => {
       })
       expect(sendInteractiveMessageMock).not.toHaveBeenCalled()
       expect(useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.runtime).toMatchObject({
-        recoveryPaused: false,
-        recoveryAbortAvailable: false,
+        recoveryPaused: true,
+        recoveryAbortAvailable: true,
       })
     } finally {
       stream.close()

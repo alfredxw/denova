@@ -37,6 +37,8 @@ func decodeDurableEvent(encoded encodedEvent) (Event, error) {
 		payload = &QueueEnqueuedEvent{}
 	case "queue.consumed":
 		payload = &QueueConsumedEvent{}
+	case "queue.steer_requested":
+		payload = &QueueSteerRequestedEvent{}
 	case "queue.cancelled":
 		payload = &QueueCancelledEvent{}
 	case "message.user_committed":
@@ -92,6 +94,8 @@ func durableEventType(payload EventPayload) (string, error) {
 		return "queue.enqueued", nil
 	case QueueConsumedEvent:
 		return "queue.consumed", nil
+	case QueueSteerRequestedEvent:
+		return "queue.steer_requested", nil
 	case QueueCancelledEvent:
 		return "queue.cancelled", nil
 	case UserMessageCommittedEvent:
@@ -142,6 +146,8 @@ func dereferencePayload(payload EventPayload) EventPayload {
 	case *QueueEnqueuedEvent:
 		return *payload
 	case *QueueConsumedEvent:
+		return *payload
+	case *QueueSteerRequestedEvent:
 		return *payload
 	case *QueueCancelledEvent:
 		return *payload

@@ -7,6 +7,7 @@ import {
   getSessions,
   recoverChatAgentRuntime,
   submitChatCommand,
+  submitQueuedChatCommand,
   switchSession,
   type SessionSummary,
 } from '@/lib/api'
@@ -15,6 +16,7 @@ import { useAgentChat } from './useAgentChat'
 
 const chatMock = vi.hoisted(() => ({
   options: null as Record<string, any> | null,
+  messages: [] as Array<Record<string, unknown>>,
   sendMessage: vi.fn(),
   setMessages: vi.fn(),
   resumeStream: vi.fn(),
@@ -23,11 +25,16 @@ const chatMock = vi.hoisted(() => ({
   error: undefined as Error | undefined,
 }))
 
+const toastMock = vi.hoisted(() => ({
+  error: vi.fn(),
+  info: vi.fn(),
+}))
+
 vi.mock('@ai-sdk/react', () => ({
   useChat: (options: Record<string, any>) => {
     chatMock.options = options
     return {
-      messages: [],
+      messages: chatMock.messages,
       setMessages: chatMock.setMessages,
       sendMessage: chatMock.sendMessage,
       resumeStream: chatMock.resumeStream,
@@ -37,6 +44,8 @@ vi.mock('@ai-sdk/react', () => ({
     }
   },
 }))
+
+vi.mock('sonner', () => ({ toast: toastMock }))
 
 vi.mock('@/lib/api', () => ({
   analyzeChatContext: vi.fn(),
@@ -55,6 +64,7 @@ vi.mock('@/lib/api', () => ({
   renameSession: vi.fn(),
   recoverChatAgentRuntime: vi.fn(),
   submitChatCommand: vi.fn(),
+  submitQueuedChatCommand: vi.fn(),
   switchSession: vi.fn(),
 }))
 
@@ -75,11 +85,15 @@ describe('useAgentChat', () => {
     })
     vi.mocked(recoverChatAgentRuntime).mockReset()
     vi.mocked(submitChatCommand).mockReset()
+    vi.mocked(submitQueuedChatCommand).mockReset()
     chatMock.sendMessage.mockReset()
     chatMock.resumeStream.mockReset().mockResolvedValue(undefined)
     chatMock.options = null
+    chatMock.messages = []
     chatMock.status = 'ready'
     chatMock.error = undefined
+    toastMock.error.mockReset()
+    toastMock.info.mockReset()
   })
 
   it('stops the old stream and selects the target immediately when switching sessions', async () => {
@@ -246,10 +260,7 @@ describe('useAgentChat', () => {
 
     await act(async () => {
       expect(
-        await result.current.send('再补一个反转', {
-          delivery: 'follow_up',
-          onSubmissionStart,
-        }),
+        await result.current.send('再补一个反转', { onSubmissionStart }),
       ).toBe(true)
     })
 
@@ -265,6 +276,94 @@ describe('useAgentChat', () => {
     expect(chatMock.sendMessage).not.toHaveBeenCalled()
     expect(onSubmissionStart).toHaveBeenCalledTimes(1)
     expect(result.current.references).toEqual([])
+  })
+
+  it('queues another follow-up when earlier instructions are already waiting', async () => {
+    chatMock.status = 'streaming'
+    const queued = [
+      {
+        command_id: 'queued-1',
+        operation_id: 'operation-queue',
+        delivery: 'follow_up' as const,
+        message: 'First queued instruction',
+      },
+      {
+        command_id: 'queued-2',
+        operation_id: 'operation-queue',
+        delivery: 'follow_up' as const,
+        message: 'Second queued instruction',
+      },
+    ]
+    vi.mocked(getActiveChatTask).mockResolvedValue({
+      active: true,
+      phase: 'running',
+      active_operation_id: 'operation-queue',
+      queue: queued,
+    })
+    vi.mocked(createAgentCommandID).mockReturnValue('queued-3')
+    vi.mocked(submitChatCommand).mockResolvedValue({
+      command_id: 'queued-3',
+      operation_id: 'operation-queue',
+      cursor: 12,
+    })
+    const { result } = renderHook(() => useAgentChat())
+    await waitFor(() => expect(result.current.runtimeProjection?.queue).toEqual(queued))
+
+    await act(async () => {
+      expect(await result.current.send('Third queued instruction')).toBe(true)
+    })
+
+    expect(submitChatCommand).toHaveBeenCalledWith(
+      'follow_up',
+      'queued-3',
+      'operation-queue',
+      expect.objectContaining({ message: 'Third queued instruction' }),
+    )
+    expect(result.current.runtimeProjection?.queue?.map((item) => item.command_id)).toEqual([
+      'queued-1',
+      'queued-2',
+      'queued-3',
+    ])
+  })
+
+  it('shows a rejected queued instruction as a toast without appending an error message', async () => {
+    chatMock.status = 'streaming'
+    vi.mocked(getActiveChatTask).mockResolvedValue({
+      active: true,
+      phase: 'running',
+      active_operation_id: 'operation-toast',
+      queue: [],
+    })
+    vi.mocked(submitChatCommand).mockRejectedValue(new Error('queue unavailable'))
+    const { result } = renderHook(() => useAgentChat())
+    await waitFor(() => expect(result.current.runtimeProjection?.active_operation_id).toBe('operation-toast'))
+    chatMock.setMessages.mockClear()
+
+    await act(async () => {
+      expect(await result.current.send('Queue this instruction')).toBe(false)
+    })
+
+    expect(toastMock.error).toHaveBeenCalledWith('请求失败: queue unavailable')
+    expect(chatMock.setMessages).not.toHaveBeenCalled()
+  })
+
+  it('routes streamed Agent errors to a toast and omits them from visible messages', () => {
+    const errorPart = {
+      type: 'data-agent-error',
+      id: 'error-part-1',
+      data: { content: 'provider exploded' },
+    }
+    chatMock.messages = [{
+      id: 'error-message-1',
+      role: 'assistant',
+      parts: [errorPart],
+    }]
+    const { result } = renderHook(() => useAgentChat())
+
+    act(() => chatMock.options?.onData?.(errorPart))
+
+    expect(toastMock.error).toHaveBeenCalledWith('provider exploded')
+    expect(result.current.messages).toEqual([])
   })
 
   it('targets the operation already projected to the user instead of resolving a newer operation at click time', async () => {
@@ -292,7 +391,7 @@ describe('useAgentChat', () => {
     vi.mocked(getActiveChatTask).mockClear()
 
     await act(async () => {
-      expect(await result.current.send('继续当前画面', { delivery: 'follow_up' })).toBe(true)
+      expect(await result.current.send('继续当前画面')).toBe(true)
     })
 
     expect(getActiveChatTask).not.toHaveBeenCalled()
@@ -302,6 +401,94 @@ describe('useAgentChat', () => {
       'operation-visible',
       expect.objectContaining({ message: '继续当前画面' }),
     )
+  })
+
+  it('steers an already accepted follow-up without resubmitting its input', async () => {
+    chatMock.status = 'streaming'
+    const queued = {
+      command_id: 'queued-7',
+      operation_id: 'operation-7',
+      delivery: 'follow_up' as const,
+      message: 'Use the new ending',
+    }
+    vi.mocked(getActiveChatTask).mockResolvedValue({
+      active: true,
+      phase: 'running',
+      active_operation_id: 'operation-7',
+      queue: [queued],
+    })
+    vi.mocked(submitQueuedChatCommand).mockResolvedValue({
+      command_id: 'steer-queued-7',
+      operation_id: 'operation-7',
+      cursor: 9,
+    })
+    const { result } = renderHook(() => useAgentChat())
+    await waitFor(() => expect(result.current.runtimeProjection?.queue).toEqual([queued]))
+
+    await act(async () => {
+      expect(await result.current.steerQueuedCommand(queued)).toBe(true)
+    })
+
+    expect(submitQueuedChatCommand).toHaveBeenCalledWith(
+      'steer_queued',
+      expect.any(String),
+      'operation-7',
+      'queued-7',
+      undefined,
+    )
+    expect(result.current.runtimeProjection?.queue).toEqual([{ ...queued, steer_requested: true }])
+    expect(submitChatCommand).not.toHaveBeenCalled()
+  })
+
+  it('cancels a queued follow-up, restores its live composer context, and returns its text for editing', async () => {
+    chatMock.status = 'streaming'
+    vi.mocked(getActiveChatTask).mockResolvedValue({
+      active: true,
+      phase: 'running',
+      active_operation_id: 'operation-8',
+      queue: [],
+    })
+    vi.mocked(submitChatCommand).mockResolvedValue({
+      command_id: 'queued-8',
+      operation_id: 'operation-8',
+      cursor: 8,
+    })
+    vi.mocked(submitQueuedChatCommand).mockResolvedValue({
+      command_id: 'edit-queued-8',
+      operation_id: 'operation-8',
+      cursor: 9,
+    })
+    vi.mocked(createAgentCommandID)
+      .mockReturnValueOnce('queued-command-8')
+      .mockReturnValueOnce('edit-command-8')
+    const restoreSubmission = vi.fn()
+    const { result } = renderHook(() => useAgentChat())
+    await waitFor(() => expect(result.current.runtimeProjection?.active_operation_id).toBe('operation-8'))
+    act(() => result.current.addReference('chapters/ch01.md'))
+
+    await act(async () => {
+      expect(await result.current.send('Rewrite the last paragraph', { onSubmissionError: restoreSubmission })).toBe(true)
+    })
+    const queued = result.current.runtimeProjection?.queue?.[0]
+    expect(queued).toMatchObject({ command_id: 'queued-command-8', message: 'Rewrite the last paragraph' })
+    expect(result.current.references).toEqual([])
+
+    let prompt: string | null = null
+    await act(async () => {
+      prompt = queued ? await result.current.editQueuedCommand(queued) : null
+    })
+
+    expect(prompt).toBe('Rewrite the last paragraph')
+    expect(submitQueuedChatCommand).toHaveBeenCalledWith(
+      'cancel_queued',
+      expect.any(String),
+      'operation-8',
+      'queued-command-8',
+      'returned_to_editor',
+    )
+    expect(result.current.runtimeProjection?.queue).toEqual([])
+    expect(result.current.references).toEqual(['chapters/ch01.md'])
+    expect(restoreSubmission).toHaveBeenCalledTimes(1)
   })
 
   it('aborts through the typed operation command and keeps observing its settlement', async () => {
@@ -362,9 +549,7 @@ describe('useAgentChat', () => {
 
     await act(async () => {
       expect(
-        await result.current.send('不应进入已中断的运行', {
-          delivery: 'follow_up',
-        }),
+        await result.current.send('不应进入已中断的运行'),
       ).toBe(false)
       await result.current.stop()
     })
@@ -390,8 +575,8 @@ describe('useAgentChat', () => {
     await waitFor(() => expect(result.current.runtimeProjection?.active_operation_id).toBe('operation-9'))
 
     await act(async () => {
-      expect(await result.current.send('同一条追加', { delivery: 'follow_up' })).toBe(false)
-      expect(await result.current.send('同一条追加', { delivery: 'follow_up' })).toBe(true)
+      expect(await result.current.send('同一条追加')).toBe(false)
+      expect(await result.current.send('同一条追加')).toBe(true)
     })
 
     expect(vi.mocked(submitChatCommand).mock.calls.map((call) => call[1])).toEqual(['stable-command-id', 'stable-command-id'])
@@ -639,7 +824,7 @@ describe('useAgentChat', () => {
       expectedContent: '已中断 AI 执行',
     },
   ])(
-    'restores an evicted Writing $name terminal after canonical rehydrate',
+    'reports an evicted Writing $name terminal as a transient toast after canonical rehydrate',
     async ({ status, terminalReason, expectedContent }) => {
       chatMock.status = 'streaming'
       const canonicalMessages = [
@@ -676,20 +861,10 @@ describe('useAgentChat', () => {
         rerender()
       })
 
-      await waitFor(() => expect(chatMock.setMessages).toHaveBeenCalledTimes(2))
-      expect(chatMock.setMessages).toHaveBeenNthCalledWith(1, canonicalMessages)
-      const restoreTerminal = chatMock.setMessages.mock.calls[1]?.[0] as (messages: typeof canonicalMessages) => Array<{
-        parts?: Array<{ type?: string; data?: Record<string, unknown> }>
-      }>
-      const restored = restoreTerminal(canonicalMessages)
-      expect(restored.at(-1)?.parts?.[0]).toMatchObject({
-        type: 'data-agent-error',
-        data: {
-          content: expectedContent,
-          status,
-          terminal_reason: terminalReason,
-        },
-      })
+      const terminalToast = status === 'error' ? toastMock.error : toastMock.info
+      await waitFor(() => expect(terminalToast).toHaveBeenCalledWith(expectedContent))
+      expect(chatMock.setMessages).toHaveBeenCalledTimes(1)
+      expect(chatMock.setMessages).toHaveBeenCalledWith(canonicalMessages)
       expect(chatMock.resumeStream).not.toHaveBeenCalled()
     },
   )
@@ -1188,9 +1363,7 @@ describe('useAgentChat', () => {
     await waitFor(() => expect(result.current.runtimeProjection?.stream_attached).toBe(true))
     await act(async () => {
       expect(
-        await result.current.send('采用新的恢复方向', {
-          delivery: 'follow_up',
-        }),
+        await result.current.send('采用新的恢复方向'),
       ).toBe(true)
     })
 

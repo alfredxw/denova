@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { VirtuosoMockContext } from 'react-virtuoso'
@@ -428,7 +428,7 @@ describe('AgentPanel', () => {
     })
 
     expect(screen.getByText('正在从持久化状态恢复已接受的 Agent 运行…')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '发送方式：追加' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /发送方式/ })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
     const stopButton = screen.getByRole('button', { name: '中断 AI 执行' })
     expect(stopButton).toBeEnabled()
@@ -437,7 +437,7 @@ describe('AgentPanel', () => {
     expect(handleStop).toHaveBeenCalledTimes(1)
   })
 
-  it('冷恢复展示流接回后允许用户选择追加或引导来恢复运行', () => {
+  it('冷恢复展示流接回后保持输入区可编辑，发送时默认进入队列', () => {
     renderAgentPanel({
       isStreaming: true,
       runtimeProjection: {
@@ -456,8 +456,54 @@ describe('AgentPanel', () => {
       },
     })
 
-    expect(screen.getByRole('button', { name: '发送方式：追加' })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: /发送方式/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox')).toHaveAttribute('contenteditable', 'true')
     expect(screen.getByRole('button', { name: '中断 AI 执行' })).toBeEnabled()
+  })
+
+  it('已有多条指令排队时仍可继续发送下一条指令', async () => {
+    const user = userEvent.setup()
+    const handleSend = vi.fn().mockResolvedValue(true)
+    renderAgentPanel({
+      isStreaming: true,
+      onSend: handleSend,
+      runtimeProjection: {
+        active: true,
+        phase: 'running',
+        stream_attached: true,
+        active_operation_id: 'operation-queue',
+        queue: [
+          {
+            command_id: 'queued-1',
+            operation_id: 'operation-queue',
+            delivery: 'follow_up',
+            message: '第一条排队指令',
+          },
+          {
+            command_id: 'queued-2',
+            operation_id: 'operation-queue',
+            delivery: 'follow_up',
+            message: '第二条排队指令',
+          },
+        ],
+      },
+    })
+
+    expect(screen.getByText('第一条排队指令')).toBeInTheDocument()
+    expect(screen.getByText('第二条排队指令')).toBeInTheDocument()
+    act(() => {
+      window.dispatchEvent(new CustomEvent('nova:writing-agent-init', {
+        detail: { prompt: 'Third queued instruction' },
+      }))
+    })
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveTextContent('Third queued instruction'))
+    expect(screen.getByRole('button', { name: '发送' })).toBeEnabled()
+
+    await user.click(screen.getByRole('button', { name: '发送' }))
+    expect(handleSend).toHaveBeenCalledWith(
+      'Third queued instruction',
+      expect.objectContaining({ writingSkill: 'novel-lite', tellerId: 'classic' }),
+    )
   })
 })
 

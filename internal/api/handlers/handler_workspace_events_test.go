@@ -1,0 +1,34 @@
+package handlers
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+
+	"denova/internal/filewatch"
+)
+
+func TestWriteWorkspaceFileEvent(t *testing.T) {
+	var output bytes.Buffer
+	event := filewatch.Event{
+		Workspace: "/books/demo",
+		Source:    "watcher",
+		Changes: []filewatch.Change{
+			{Path: "chapters/ch01.md", Type: filewatch.ChangeUpdated},
+		},
+		Paths: []string{"chapters/ch01.md"},
+	}
+	if err := writeWorkspaceFileEvent(&output, event); err != nil {
+		t.Fatal(err)
+	}
+	got := output.String()
+	if !strings.HasPrefix(got, "event: workspace-change\ndata: {") {
+		t.Fatalf("unexpected SSE envelope: %q", got)
+	}
+	if !strings.Contains(got, `"workspace":"/books/demo"`) || !strings.Contains(got, `"type":"updated"`) {
+		t.Fatalf("event payload missing fields: %q", got)
+	}
+	if !strings.HasSuffix(got, "\n\n") {
+		t.Fatalf("SSE event missing boundary: %q", got)
+	}
+}

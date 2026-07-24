@@ -23,6 +23,10 @@ func (c *automationRunConversation) ModelContextBudget() agentcontext.Budget {
 	return c.base.ModelContextBudget()
 }
 
+func (c *automationRunConversation) ResolveExplicitSkills(ctx context.Context, message string) ([]agents.ExplicitSkillInvocation, error) {
+	return c.base.ResolveExplicitSkills(ctx, message)
+}
+
 func (c *automationRunConversation) AssembleModelContext(ctx context.Context, originalMessage string, input agents.ModelContextInput) (agents.ModelContextResult, error) {
 	return c.base.AssembleModelContext(ctx, originalMessage, input)
 }

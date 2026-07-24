@@ -45,6 +45,14 @@ type QueueConsumedEvent struct {
 
 func (QueueConsumedEvent) eventPayload() {}
 
+// QueueSteerRequestedEvent durably binds an engine preemption to one already
+// accepted FollowUp without mutating that command's input or restore identity.
+type QueueSteerRequestedEvent struct {
+	CommandID CommandID
+}
+
+func (QueueSteerRequestedEvent) eventPayload() {}
+
 type QueueCancelledEvent struct {
 	CommandID CommandID
 	Reason    string

@@ -165,6 +165,11 @@ export interface ReviewThread {
 export interface WorkspaceChangeEvent {
   /** Canonical workspace identity emitted by the backend. */
   workspace?: string
+  /** Ephemeral filesystem invalidations use watcher; durable Agent events omit it. */
+  source?: string
+  /** Re-read canonical workspace state because an event suffix was unavailable. */
+  resync?: boolean
+  changes?: WorkspaceFileChange[]
   change_group_id?: string
   group_id?: string
   change_set_id?: string
@@ -172,6 +177,13 @@ export interface WorkspaceChangeEvent {
   paths?: string[]
   affected_paths?: string[]
   action?: string
+}
+
+export type WorkspaceFileChangeType = 'added' | 'updated' | 'deleted'
+
+export interface WorkspaceFileChange {
+  path: string
+  type: WorkspaceFileChangeType
 }
 
 export function isWorkspaceChangeForWorkspace(event: Pick<WorkspaceChangeEvent, 'workspace'> | null | undefined, workspace: string): boolean {

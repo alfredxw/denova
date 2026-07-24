@@ -38,10 +38,12 @@ type (
 const (
 	AgentKindIDE = agents.AgentKindIDE
 
-	AgentCommandSteer    = agents.AgentCommandSteer
-	AgentCommandFollowUp = agents.AgentCommandFollowUp
-	AgentCommandNextTurn = agents.AgentCommandNextTurn
-	AgentCommandAbort    = agents.AgentCommandAbort
+	AgentCommandSteer        = agents.AgentCommandSteer
+	AgentCommandFollowUp     = agents.AgentCommandFollowUp
+	AgentCommandNextTurn     = agents.AgentCommandNextTurn
+	AgentCommandSteerQueued  = agents.AgentCommandSteerQueued
+	AgentCommandCancelQueued = agents.AgentCommandCancelQueued
+	AgentCommandAbort        = agents.AgentCommandAbort
 
 	AgentRuntimePhaseIdle = agents.RunPhaseIdle
 

@@ -69,6 +69,17 @@ func (h *Harness) resumeRecoveryPausedCommand(state *harnessState, command Comma
 		return h.resumeRecoveryPausedInput(h.lifecycle, state, command.ID, DeliverySteer)
 	case FollowUp:
 		return h.resumeRecoveryPausedInput(h.lifecycle, state, command.ID, DeliveryFollowUp)
+	case SteerQueued:
+		if command.OperationID != state.activeOperation || state.preemptQueuedCommandID != command.TargetCommandID {
+			return nil
+		}
+		item, ok := state.queued(command.TargetCommandID)
+		if !ok || item.Delivery != DeliveryFollowUp {
+			return nil
+		}
+		return h.resumeRecoveryPausedInput(h.lifecycle, state, item.CommandID, item.Delivery)
+	case CancelQueued:
+		return nil
 	case NextTurn:
 		item, ok := pendingRecoveryInput(state, RecoveryAction{
 			Kind: DeliveryNextTurn, CommandID: command.ID, OperationID: command.AfterOperationID,

@@ -102,8 +102,6 @@ function App() {
   const setCommandOpen = useWorkspaceStore((state) => state.setCommandOpen)
   const setMode = useWorkspaceStore((state) => state.setMode)
   const setSelectedChapterId = useWorkspaceStore((state) => state.setSelectedChapterId)
-  const workspaceAutoRefreshEnabled = mode === 'ide' && !settingsOpen && (rightPanel === 'ai' || rightPanel === null)
-
   useEffect(() => {
     if (mode === 'books' || mode === 'skills' || mode === 'agents' || mode === 'automations') return
     const contentMode = mode === 'interactive' ? 'interactive' : 'ide'
@@ -115,7 +113,7 @@ function App() {
     tree, loading, selectedFile, fileContent, fileRevision, workspace, workspaceLoaded, summary, books, bookSortMode,
     selectFile, clearSelectedFile, saveFileDraft, createItem, deleteItem, renameItem, copyItem, moveItem,
     refresh, refreshSummary, refreshAfterAgentFileChange, refreshAll, refreshBooks, setWorkspace,
-  } = useWorkspace({ autoRefreshEnabled: workspaceAutoRefreshEnabled })
+  } = useWorkspace()
 
   const notifyVersionChange = useCallback(() => {
     setVersionRefreshSignal(value => value + 1)
@@ -162,6 +160,7 @@ function App() {
     runtimeProjection,
     abortPending,
     commandSubmitting,
+    queueActionPendingCommandID,
     activityContent,
     references,
     styleScenes,
@@ -185,6 +184,9 @@ function App() {
     switchChatSession,
     renameChatSession,
     deleteChatSession,
+    steerQueuedCommand,
+    deleteQueuedCommand,
+    editQueuedCommand,
     addReference,
     removeReference,
     loreReferences,
@@ -751,6 +753,7 @@ function App() {
         runtimeProjection={runtimeProjection}
         abortPending={abortPending}
         commandSubmitting={commandSubmitting}
+        queueActionPendingCommandID={queueActionPendingCommandID}
         projectVisible={projectVisible}
         activityBarExpanded={activityBarExpanded}
         rightPanel={rightPanel}
@@ -822,6 +825,9 @@ function App() {
         onSend={send}
         onAnalyzeContext={analyzeContext}
         onStop={stop}
+        onSteerQueuedCommand={steerQueuedCommand}
+        onDeleteQueuedCommand={deleteQueuedCommand}
+        onEditQueuedCommand={editQueuedCommand}
         onReferenceRemove={removeReference}
         onLoreReferenceAdd={addLoreReference}
         onLoreReferenceRemove={removeLoreReference}

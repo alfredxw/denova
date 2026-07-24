@@ -119,6 +119,7 @@ type QueuedCommand struct {
 	Delivery         DeliveryKind
 	Message          string
 	MessageTruncated bool
+	SteerRequested   bool
 }
 
 // OpenToolCall is display-only evidence for a tool that has not settled yet.
@@ -296,6 +297,7 @@ func runtimeStatusFromSnapshot(snapshot runstate.StatusSnapshot) (RuntimeStatus,
 			CommandID: CommandID(item.CommandID), OperationID: OperationID(item.OperationID),
 			Delivery: DeliveryKind(item.Delivery), Message: item.Input.Text,
 			MessageTruncated: item.InputTextTruncated,
+			SteerRequested:   item.CommandID == snapshot.PreemptQueuedCommandID,
 		})
 	}
 	status.OpenToolCalls = make([]OpenToolCall, 0, len(snapshot.OpenToolCalls))

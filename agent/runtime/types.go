@@ -126,6 +126,32 @@ func (FollowUp) command() {}
 
 func (c FollowUp) commandID() CommandID { return c.ID }
 
+// SteerQueued asks the active engine to yield to an already accepted FollowUp.
+// It carries only durable queue identity; the original bounded UserInput remains
+// owned by the queued command and is neither copied nor reconstructed.
+type SteerQueued struct {
+	ID              CommandID
+	OperationID     OperationID
+	TargetCommandID CommandID
+}
+
+func (SteerQueued) command() {}
+
+func (c SteerQueued) commandID() CommandID { return c.ID }
+
+// CancelQueued removes one accepted successor before it becomes the active
+// cycle. Callers must target both the active operation and exact queue command.
+type CancelQueued struct {
+	ID              CommandID
+	OperationID     OperationID
+	TargetCommandID CommandID
+	Reason          string
+}
+
+func (CancelQueued) command() {}
+
+func (c CancelQueued) commandID() CommandID { return c.ID }
+
 type NextTurn struct {
 	ID               CommandID
 	AfterOperationID OperationID
@@ -328,11 +354,12 @@ type StateSnapshot struct {
 	ActiveOutput     ActiveOutputSnapshot
 	// Messages reconstructs the durable display timeline. It is deliberately
 	// absent from TurnSnapshot so UI recovery never becomes implicit model input.
-	Messages           []Message
-	Queue              []QueuedInput
-	OpenToolCalls      []ToolCallState
-	PendingHostEffects []HostEffectSnapshot
-	LastOperation      *OperationSummary
+	Messages               []Message
+	Queue                  []QueuedInput
+	PreemptQueuedCommandID CommandID
+	OpenToolCalls          []ToolCallState
+	PendingHostEffects     []HostEffectSnapshot
+	LastOperation          *OperationSummary
 	// RecentOperations is a bounded terminal index used to answer an exact
 	// command replay even after a newer operation has settled. It is display and
 	// recovery state only; it never enters TurnSnapshot/model context.
@@ -362,18 +389,19 @@ type StatusSnapshot struct {
 	// projection when durable state still needs canonical reconciliation. It
 	// lets callers decide whether opening a recovery actor is necessary without
 	// parsing the human-readable LastOperation reason.
-	RecoveryPending    bool
-	InputRecovery      *InputMaterializationRecovery
-	ActiveStructural   *StructuralOperationSnapshot
-	ActiveOutput       ActiveOutputSnapshot
-	Queue              []QueuedInput
-	OpenToolCalls      []ToolCallState
-	PendingHostEffects []HostEffectSnapshot
-	LastOperation      *OperationSummary
-	RecentOperations   []OperationSummary
-	LastDomainCommit   *DomainCommitState
-	DomainCommits      []DomainCommitState
-	Memory             BindingMemorySnapshot
+	RecoveryPending        bool
+	InputRecovery          *InputMaterializationRecovery
+	ActiveStructural       *StructuralOperationSnapshot
+	ActiveOutput           ActiveOutputSnapshot
+	Queue                  []QueuedInput
+	PreemptQueuedCommandID CommandID
+	OpenToolCalls          []ToolCallState
+	PendingHostEffects     []HostEffectSnapshot
+	LastOperation          *OperationSummary
+	RecentOperations       []OperationSummary
+	LastDomainCommit       *DomainCommitState
+	DomainCommits          []DomainCommitState
+	Memory                 BindingMemorySnapshot
 }
 
 // BindingMemorySnapshot exposes bounded actor-owned payload usage without

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
+import type { SSEEvent } from '@/lib/api'
 import { useWorkspace } from './useWorkspace'
 
 const apiMock = vi.hoisted(() => {
@@ -28,6 +29,7 @@ const apiMock = vi.hoisted(() => {
     readFile: vi.fn(),
     renameWorkspaceItem: vi.fn(),
     saveFile: vi.fn(),
+    streamWorkspaceEvents: vi.fn(),
   }
 })
 
@@ -40,6 +42,7 @@ describe('useWorkspace', () => {
     apiMock.getBookshelf.mockResolvedValue({ books: [], sort_mode: 'recent' })
     apiMock.getWorkspaceTree.mockResolvedValue([])
     apiMock.getWorkspaceSummary.mockResolvedValue({ title: '', author: '', chapter_count: 0, total_words: 0, chapters: [] })
+    apiMock.streamWorkspaceEvents.mockImplementation(() => new Promise(() => {}))
   })
 
   afterEach(() => {
@@ -118,6 +121,90 @@ describe('useWorkspace', () => {
     render(<WorkspaceHarness autoRefreshEnabled={false} onChange={() => {}} />)
 
     await waitFor(() => expect(screen.getByTestId('workspace-meta')).toHaveTextContent('|manual'))
+  })
+
+  it('watcher 更新只重读命中的普通文件，不扫描目录树和章节统计', async () => {
+    const events = controlledStream<SSEEvent>()
+    apiMock.streamWorkspaceEvents.mockResolvedValue(events.stream)
+    apiMock.readFile
+      .mockResolvedValueOnce({ workspace: '/books/demo', path: 'notes/reference.md', content: '初始', revision: 'rev-1' })
+      .mockResolvedValueOnce({ workspace: '/books/demo', path: 'notes/reference.md', content: '外部更新', revision: 'rev-2' })
+
+    let workspace: ReturnType<typeof useWorkspace> | null = null
+    render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
+    await waitFor(() => expect(apiMock.streamWorkspaceEvents).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      await workspace?.selectFile('notes/reference.md')
+    })
+    apiMock.getWorkspaceTree.mockClear()
+    apiMock.getWorkspaceSummary.mockClear()
+    apiMock.readFile.mockClear()
+    apiMock.readFile.mockResolvedValue({ workspace: '/books/demo', path: 'notes/reference.md', content: '外部更新', revision: 'rev-2' })
+
+    act(() => {
+      events.enqueue(workspaceChangeSSE([{ path: 'notes/reference.md', type: 'updated' }]))
+    })
+
+    await waitFor(() => expect(screen.getByTestId('workspace-state')).toHaveTextContent('notes/reference.md|外部更新|rev-2'))
+    expect(apiMock.readFile).toHaveBeenCalledWith('notes/reference.md')
+    expect(apiMock.getWorkspaceTree).not.toHaveBeenCalled()
+    expect(apiMock.getWorkspaceSummary).not.toHaveBeenCalled()
+  })
+
+  it('watcher 删除保留打开文件内容并把 missing revision 交给显式保存', async () => {
+    const events = controlledStream<SSEEvent>()
+    apiMock.streamWorkspaceEvents.mockResolvedValue(events.stream)
+    apiMock.readFile.mockResolvedValue({ workspace: '/books/demo', path: 'chapters/ch01.md', content: '保留内容', revision: 'rev-1' })
+    apiMock.saveFile.mockResolvedValue({ path: 'chapters/ch01.md', message: 'ok', revision: 'rev-recreated' })
+
+    let workspace: ReturnType<typeof useWorkspace> | null = null
+    render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
+    await waitFor(() => expect(apiMock.streamWorkspaceEvents).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      await workspace?.selectFile('chapters/ch01.md')
+    })
+    apiMock.getWorkspaceTree.mockClear()
+    apiMock.getWorkspaceSummary.mockClear()
+    apiMock.readFile.mockClear()
+
+    act(() => {
+      events.enqueue(workspaceChangeSSE([{ path: 'chapters/ch01.md', type: 'deleted' }]))
+    })
+
+    await waitFor(() => expect(screen.getByTestId('workspace-state')).toHaveTextContent('chapters/ch01.md|保留内容|missing'))
+    expect(apiMock.readFile).not.toHaveBeenCalled()
+    expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(1)
+    expect(apiMock.getWorkspaceSummary).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      await workspace?.saveFileDraft('chapters/ch01.md', '重新创建', 'missing')
+    })
+    expect(apiMock.saveFile).toHaveBeenCalledWith('chapters/ch01.md', '重新创建', 'missing', '/books/demo')
+  })
+
+  it('watcher 重连 resync 会重新读取当前文件、目录树和统计', async () => {
+    const events = controlledStream<SSEEvent>()
+    apiMock.streamWorkspaceEvents.mockResolvedValue(events.stream)
+    apiMock.readFile
+      .mockResolvedValueOnce({ workspace: '/books/demo', path: 'chapters/ch01.md', content: '初始', revision: 'rev-1' })
+      .mockResolvedValueOnce({ workspace: '/books/demo', path: 'chapters/ch01.md', content: '重连后', revision: 'rev-2' })
+
+    let workspace: ReturnType<typeof useWorkspace> | null = null
+    render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
+    await waitFor(() => expect(apiMock.streamWorkspaceEvents).toHaveBeenCalledTimes(1))
+    await act(async () => {
+      await workspace?.selectFile('chapters/ch01.md')
+    })
+    apiMock.getWorkspaceTree.mockClear()
+    apiMock.getWorkspaceSummary.mockClear()
+
+    act(() => {
+      events.enqueue(workspaceChangeSSE([], true))
+    })
+
+    await waitFor(() => expect(screen.getByTestId('workspace-state')).toHaveTextContent('chapters/ch01.md|重连后|rev-2'))
+    expect(apiMock.getWorkspaceTree).toHaveBeenCalledTimes(1)
+    expect(apiMock.getWorkspaceSummary).toHaveBeenCalledTimes(1)
   })
 
   it('只应用最后一次选中文件的读取结果，避免旧请求晚返回覆盖当前内容', async () => {
@@ -539,4 +626,32 @@ function deferred<T>() {
     reject = rej
   })
   return { promise, resolve, reject }
+}
+
+function controlledStream<T>() {
+  let controller!: ReadableStreamDefaultController<T>
+  const stream = new ReadableStream<T>({
+    start(nextController) {
+      controller = nextController
+    },
+  })
+  return {
+    stream,
+    enqueue(value: T) {
+      controller.enqueue(value)
+    },
+  }
+}
+
+function workspaceChangeSSE(changes: Array<{ path: string; type: 'added' | 'updated' | 'deleted' }>, resync = false): SSEEvent {
+  return {
+    event: 'workspace-change',
+    data: JSON.stringify({
+      workspace: '/books/demo',
+      source: 'watcher',
+      changes,
+      paths: changes.map(change => change.path),
+      ...(resync ? { resync: true } : {}),
+    }),
+  }
 }

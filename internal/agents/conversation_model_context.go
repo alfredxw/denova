@@ -31,7 +31,7 @@ func (c *SessionConversation) AssembleModelContext(ctx context.Context, _ string
 	if err := c.session.RefreshCanonical(ctx); err != nil {
 		return ModelContextResult{}, err
 	}
-	intent, err := c.acceptedInputDomainCommitIntent(input.UserMessage)
+	intent, err := c.acceptedInputDomainCommitIntent(input.UserMessage, input.UserReferences)
 	durableInput := err == nil
 	if err != nil && !errors.Is(err, ErrMissingAgentCycleIdentity) {
 		return ModelContextResult{}, err
@@ -113,10 +113,7 @@ func (c *SessionConversation) CommitModelInput(ctx context.Context, _ string, as
 	return nil
 }
 
-func (c *SessionConversation) acceptedInputDomainCommitIntent(message string) (session.DomainCommitIntent, error) {
-	c.cycleMu.Lock()
-	references := append([]session.UserMessageReference(nil), c.userMessageReferences...)
-	c.cycleMu.Unlock()
+func (c *SessionConversation) acceptedInputDomainCommitIntent(message string, references []session.UserMessageReference) (session.DomainCommitIntent, error) {
 	identity := c.agentCycleIdentitySnapshot()
 	if !validHarnessCycleIdentity(identity) {
 		return session.DomainCommitIntent{}, ErrMissingAgentCycleIdentity

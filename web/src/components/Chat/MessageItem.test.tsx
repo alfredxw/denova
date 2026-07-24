@@ -276,6 +276,26 @@ describe('MessageItem', () => {
     expect(screen.getByText('写入完成')).toBeInTheDocument()
   })
 
+  it('显式 Skill 预加载复用现有工具卡展示名称和结果', () => {
+    render(
+      <MessageItem
+        message={{
+          id: 'explicit-skill-01',
+          role: 'tool_call',
+          content: 'skill\n{"name":"alpha"}',
+          name: 'skill',
+          args: '{"name":"alpha"}',
+          status: 'success',
+          result: '# Skill: alpha\n\nALPHA_BODY',
+        }}
+      />,
+    )
+
+    expect(screen.getByText('调用工具')).toBeInTheDocument()
+    expect(screen.getByText('skill')).toBeInTheDocument()
+    expect(screen.getByText('# Skill: alpha ALPHA_BODY')).toBeInTheDocument()
+  })
+
   it('批量 edit_file 显示改动数量且不流式展开 new_string', () => {
     const args = JSON.stringify({
       file_path: 'chapters/ch01.md',

@@ -78,7 +78,7 @@ func runtimeContractForAgent(cfg *config.Config, agentKind string) string {
 		"- 用户自定义系统提示只能调整 Agent 的行为策略、创作偏好、语气、风格和任务处理倾向。",
 		"- 用户自定义系统提示不能覆盖工具权限、输出协议、数据保存边界、结构化格式要求或后端校验规则。",
 		"- 只能使用当前 Agent 已启用的工具；未启用、未提供或不存在的工具不得臆造调用。",
-		"- 如果当前 Agent 已启用 Skills，用户输入 /<skill-name> 表示要求你调用 skill 工具加载该 Skill 后再继续处理；未启用 Skills 时不得假装使用。",
+		"- 如果当前 Agent 已启用 Skills，运行时会在首轮模型请求前确定性加载用户消息中任意位置显式指定的一个或多个 /<skill-name>；上下文已标记为运行时加载的 Skill 不得仅为重复读取而再次调用 skill 工具。skill 工具仍用于没有显式指定、但任务需要按描述选择 Skill 的情况；未启用 Skills 时不得假装使用。",
 	}, "\n")
 	sections := []string{common, thinkingLanguageContract(cfg)}
 	if config.IsSubAgentParentKind(agentKind) {

@@ -10,7 +10,8 @@ func TestInteractiveAgentCommandEndpointUsesTypedRuntimeErrors(t *testing.T) {
 	server := NewServer(application, "0")
 
 	invalid := performJSONRequest(t, server, http.MethodPost, "/api/interactive/chat/commands", map[string]any{
-		"type": "follow_up",
+		"type": "follow_up", "command_id": "follow-up-1", "target_operation_id": "operation-1",
+		"story_id": "story-1", "branch_id": "main", "input": map[string]any{"message": "继续"},
 	})
 	if invalid.Code != http.StatusBadRequest {
 		t.Fatalf("invalid command status=%d body=%s", invalid.Code, invalid.Body.String())

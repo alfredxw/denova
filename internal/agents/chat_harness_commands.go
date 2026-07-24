@@ -20,11 +20,13 @@ import (
 type AgentCommandKind string
 
 const (
-	AgentCommandStartTurn AgentCommandKind = "start_turn"
-	AgentCommandSteer     AgentCommandKind = "steer"
-	AgentCommandFollowUp  AgentCommandKind = "follow_up"
-	AgentCommandNextTurn  AgentCommandKind = "next_turn"
-	AgentCommandAbort     AgentCommandKind = "abort"
+	AgentCommandStartTurn    AgentCommandKind = "start_turn"
+	AgentCommandSteer        AgentCommandKind = "steer"
+	AgentCommandFollowUp     AgentCommandKind = "follow_up"
+	AgentCommandNextTurn     AgentCommandKind = "next_turn"
+	AgentCommandSteerQueued  AgentCommandKind = "steer_queued"
+	AgentCommandCancelQueued AgentCommandKind = "cancel_queued"
+	AgentCommandAbort        AgentCommandKind = "abort"
 )
 
 type AgentCommandSpec struct {
@@ -32,6 +34,7 @@ type AgentCommandSpec struct {
 	CommandID        string
 	OperationID      OperationID
 	AfterOperationID OperationID
+	TargetCommandID  CommandID
 	Reason           string
 	Runner           *agent.Runner
 	Conversation     Conversation
@@ -79,12 +82,26 @@ func (s *ChatService) SubmitCommand(ctx context.Context, spec AgentCommandSpec) 
 		return CommandReceipt{}, err
 	}
 
-	if spec.Kind == AgentCommandAbort {
-		receipt, submitErr := harness.Submit(ctx, runstate.Abort{
-			ID:          runstate.CommandID(commandID),
-			OperationID: runstate.OperationID(spec.OperationID),
-			Reason:      strings.TrimSpace(spec.Reason),
-		})
+	if spec.Kind == AgentCommandAbort || spec.Kind == AgentCommandSteerQueued || spec.Kind == AgentCommandCancelQueued {
+		var command runstate.Command
+		switch spec.Kind {
+		case AgentCommandAbort:
+			command = runstate.Abort{
+				ID: runstate.CommandID(commandID), OperationID: runstate.OperationID(spec.OperationID),
+				Reason: strings.TrimSpace(spec.Reason),
+			}
+		case AgentCommandSteerQueued:
+			command = runstate.SteerQueued{
+				ID: runstate.CommandID(commandID), OperationID: runstate.OperationID(spec.OperationID),
+				TargetCommandID: runstate.CommandID(spec.TargetCommandID),
+			}
+		case AgentCommandCancelQueued:
+			command = runstate.CancelQueued{
+				ID: runstate.CommandID(commandID), OperationID: runstate.OperationID(spec.OperationID),
+				TargetCommandID: runstate.CommandID(spec.TargetCommandID), Reason: strings.TrimSpace(spec.Reason),
+			}
+		}
+		receipt, submitErr := harness.Submit(ctx, command)
 		return commandReceiptFromRuntime(receipt), submitErr
 	}
 

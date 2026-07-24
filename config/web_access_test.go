@@ -33,6 +33,25 @@ func TestMergeAndResolveWebAccessSettings(t *testing.T) {
 	}
 }
 
+func TestResolveWebAccessSettingsNormalizesSchemelessSearXNGURL(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{name: "public host", url: " searx.be/ ", want: "https://searx.be"},
+		{name: "explicit local HTTP", url: "http://localhost:8080/", want: "http://localhost:8080"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolved := ResolveWebAccessSettings(WebAccessSettings{SearXNGBaseURL: test.url})
+			if resolved.SearXNGBaseURL != test.want {
+				t.Fatalf("SearXNG base URL = %q, want %q", resolved.SearXNGBaseURL, test.want)
+			}
+		})
+	}
+}
+
 func TestResolveWebAccessSettingsBoundsUnsafeLimits(t *testing.T) {
 	settings := WebAccessSettings{
 		SearchMaxResults:     intPtr(999),

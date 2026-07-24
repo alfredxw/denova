@@ -12,6 +12,7 @@ import (
 	agents "denova/internal/agents"
 	"denova/internal/agents/session"
 	"denova/internal/book"
+	"denova/internal/filewatch"
 	"denova/internal/interactive"
 	"denova/internal/lifecycle"
 )
@@ -49,6 +50,7 @@ type App struct {
 	workspaceTransitionTargets      map[string]struct{}
 	directorGenerator               interactiveDirectorGenerator
 	versionSummaryGenerator         versionSummaryGeneratorFunc
+	workspaceFiles                  *filewatch.Service
 	rootScope                       *lifecycle.Scope
 	workspaceScopes                 map[string]*lifecycle.Scope
 	workspaceScopeSequence          uint64
@@ -116,6 +118,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 		cfg:                  cfg,
 		bookRegistry:         registry,
 		bookMetaStore:        bookMetaStore,
+		workspaceFiles:       filewatch.NewService(),
 		automationEffectWake: make(chan struct{}, 1),
 	}
 	chatService, err := agents.NewDurableChatService(
@@ -170,6 +173,7 @@ func New(ctx context.Context, cfg *config.Config) (*App, error) {
 	}
 	app.applyRuntime(runtime)
 	app.mu.Unlock()
+	app.syncWorkspaceFileWatcher(runtime.workspace)
 	app.StartAutomationScheduler(ctx)
 	return app, nil
 }
@@ -328,8 +332,12 @@ func (a *App) Close() {
 		rootScope := a.rootScope
 		schedulerCancel := a.schedulerCancel
 		versionService := a.versionService
+		workspaceFiles := a.workspaceFiles
 		a.mu.Unlock()
 
+		if workspaceFiles != nil {
+			workspaceFiles.Close()
+		}
 		// Admission closes before cancellation so no task can slip between the
 		// final registry snapshot and the resource barrier.
 		rootScope.BeginClose()

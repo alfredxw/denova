@@ -8,15 +8,18 @@ import (
 
 	"denova/config"
 	agentcontext "denova/internal/agents/context"
+	"denova/internal/agents/session"
 )
 
-// ModelContextInput is the complete turn-scoped injection request. The raw
-// transcript is supplied separately by the Conversation; Fragments contains
-// only intentionally projected model context with explicit provenance.
+// ModelContextInput is the complete turn-scoped assembly request. The raw
+// transcript is supplied separately by the Conversation; UserReferences is
+// display-only commit metadata, while Fragments contains only intentionally
+// projected model context with explicit provenance.
 type ModelContextInput struct {
-	UserMessage string
-	Fragments   []agentcontext.Fragment
-	Budget      agentcontext.Budget
+	UserMessage    string
+	UserReferences []session.UserMessageReference
+	Fragments      []agentcontext.Fragment
+	Budget         agentcontext.Budget
 }
 
 // ModelContextResult returns both exact model messages and the assembly audit.

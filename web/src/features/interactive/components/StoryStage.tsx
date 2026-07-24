@@ -185,10 +185,6 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     readRuntime: readStageRuntime,
     onRuntimeChange: setStageRuntime,
   })
-  const activeDeliveryQueued = streaming && stageRun.runtime.queue.some(
-    (item) => item.delivery === interactiveAgentCommands.delivery,
-  )
-
   const setStageStreaming = useCallback(
     (value: boolean) => {
       updateStageRun({ streaming: value })
@@ -761,7 +757,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         layout={{ creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, skillCommandRefs, t }}
         editor={{ input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex }}
         story={{ storyId, story, imagePresets, onImageSettingsChange, branchTerminal, directorBlocking, directorPlanStatus, directorStatusVisible, directorRetrying, directorRetryError, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded }}
-        runtime={{ streaming, delivery: interactiveAgentCommands.delivery, setDelivery: interactiveAgentCommands.setDelivery, activeDeliveryQueued, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting }}
+        runtime={{ streaming, abortPending: stageRun.runtime.abortPending, recoveryPaused: stageRun.runtime.recoveryPaused, recoveryAbortAvailable: stageRun.runtime.recoveryAbortAvailable, operationId: stageRun.runtime.operationId, connection: stageRun.runtime.connection, commandSubmitting }}
         dialogs={{ contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor: () => setReplyEditTarget(null), saveReply: saveEditedReply }}
         actions={{ cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, stop }}
       />

@@ -26,17 +26,18 @@ func (s *harnessState) snapshot() StateSnapshot {
 			Thinking:          s.activeThinking.String(),
 			RehydrateRequired: s.activeOutputRehydrated,
 		},
-		Messages:            displayMessages(s.messages),
-		Queue:               displayQueue(s.queue),
-		OpenToolCalls:       tools,
-		PendingHostEffects:  s.pendingHostEffectSnapshots(),
-		LastOperation:       cloneOperationSummary(s.lastOperation),
-		RecentOperations:    cloneOperationSummaries(s.recentOperations),
-		LastDomainCommit:    cloneDomainCommitState(s.lastDomainCommit),
-		DomainCommits:       cloneDomainCommitStates(s.lastDomainCommits),
-		TimelineStartCursor: s.timelineStartCursor(),
-		MessagesTruncated:   s.messagesTruncated,
-		Memory:              s.memorySnapshot(),
+		Messages:               displayMessages(s.messages),
+		Queue:                  displayQueue(s.queue),
+		PreemptQueuedCommandID: s.preemptQueuedCommandID,
+		OpenToolCalls:          tools,
+		PendingHostEffects:     s.pendingHostEffectSnapshots(),
+		LastOperation:          cloneOperationSummary(s.lastOperation),
+		RecentOperations:       cloneOperationSummaries(s.recentOperations),
+		LastDomainCommit:       cloneDomainCommitState(s.lastDomainCommit),
+		DomainCommits:          cloneDomainCommitStates(s.lastDomainCommits),
+		TimelineStartCursor:    s.timelineStartCursor(),
+		MessagesTruncated:      s.messagesTruncated,
+		Memory:                 s.memorySnapshot(),
 	}
 }
 
@@ -117,7 +118,7 @@ func (s *harnessState) statusSnapshot(maxTextBytes int) StatusSnapshot {
 			ContentTruncated: contentTruncated, ThinkingTruncated: thinkingTruncated,
 			RehydrateRequired: s.activeOutputRehydrated || contentTruncated || thinkingTruncated,
 		},
-		Queue: queue, OpenToolCalls: tools,
+		Queue: queue, PreemptQueuedCommandID: s.preemptQueuedCommandID, OpenToolCalls: tools,
 		PendingHostEffects: s.pendingHostEffectSnapshots(),
 		LastOperation:      cloneOperationSummary(s.lastOperation),
 		RecentOperations:   cloneOperationSummaries(s.recentOperations),
@@ -175,6 +176,7 @@ func (s *harnessState) conservativeStoredStatus(maxTextBytes int) StatusSnapshot
 		}
 	}
 	status.Queue = queue
+	status.PreemptQueuedCommandID = ""
 	if len(queue) > 0 {
 		status.LastOperation.Reason += "; accepted NextTurn remains durable and retryable after recovery"
 	}

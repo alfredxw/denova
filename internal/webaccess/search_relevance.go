@@ -20,43 +20,53 @@ var genericCJKSearchPhrases = []string{
 type searchQueryTerm struct {
 	value      string
 	exactToken bool
+	numeric    bool
 }
 
-// searchResultsCoverQuery rejects structurally valid but clearly unrelated
-// Bing RSS feeds. Bing occasionally collapses a multi-term request to only its
-// first generic word; treating that response as success poisons model context
-// and prevents the other free provider from contributing useful evidence.
-func searchResultsCoverQuery(query string, results []SearchResult) bool {
+func filterSearchResultsByQuery(query string, results []SearchResult) []SearchResult {
+	filtered := make([]SearchResult, 0, len(results))
+	for _, result := range results {
+		if searchResultMatchesQuery(query, result) {
+			filtered = append(filtered, result)
+		}
+	}
+	return filtered
+}
+
+// searchResultMatchesQuery is deliberately a coarse noise filter, not a search
+// ranker. Bing occasionally collapses a multi-term request to one generic word;
+// filtering each result independently prevents one good match from admitting an
+// otherwise unrelated batch while still allowing omitted date-like qualifiers.
+func searchResultMatchesQuery(query string, result SearchResult) bool {
 	terms := searchQueryTerms(query)
 	if len(terms) == 0 {
 		return true
 	}
-	var corpus strings.Builder
-	for _, result := range results {
-		corpus.WriteString(" ")
-		corpus.WriteString(result.Title)
-		corpus.WriteString(" ")
-		corpus.WriteString(result.Summary)
-		corpus.WriteString(" ")
-		corpus.WriteString(result.URL)
-	}
-	text := strings.ToLower(corpus.String())
+	text := strings.ToLower(result.Title + " " + result.Summary + " " + result.URL)
 	asciiTokens := searchASCIITokenSet(text)
 	matched := 0
+	hasTopicTerm := false
+	matchedTopicTerm := false
 	for _, term := range terms {
+		if !term.numeric {
+			hasTopicTerm = true
+		}
 		_, exactMatch := asciiTokens[term.value]
 		if (term.exactToken && exactMatch) || (!term.exactToken && strings.Contains(text, term.value)) {
 			matched++
+			if !term.numeric {
+				matchedTopicTerm = true
+			}
 		}
 	}
 	required := (len(terms) + 3) / 4
-	if len(terms) > 1 && required < 2 {
+	if len(terms) >= 4 && required < 2 {
 		required = 2
 	}
 	if required > 3 {
 		required = 3
 	}
-	return matched >= required
+	return matched >= required && (!hasTopicTerm || matchedTopicTerm)
 }
 
 func searchQueryTerms(query string) []searchQueryTerm {
@@ -84,7 +94,14 @@ func searchQueryTerms(query string) []searchQueryTerm {
 			return
 		}
 		seen[key] = struct{}{}
-		terms = append(terms, searchQueryTerm{value: term, exactToken: exactToken})
+		numeric := true
+		for _, character := range term {
+			if !unicode.IsDigit(character) {
+				numeric = false
+				break
+			}
+		}
+		terms = append(terms, searchQueryTerm{value: term, exactToken: exactToken, numeric: numeric})
 	}
 
 	var ascii []rune

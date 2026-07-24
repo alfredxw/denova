@@ -42,7 +42,7 @@ import {
 } from './editorDecorations'
 import type { SearchMatch, SearchState } from './editorDecorations'
 import { useEditorDraftPersistence, type EditorFlushHandler } from './useEditorDraftPersistence'
-import { readFile } from '@/lib/api-client/workspace'
+import { MISSING_WORKSPACE_REVISION, readFile } from '@/lib/api-client/workspace'
 import type { CreateDocumentCommentRequest, DocumentReviewComment } from '@/features/document-review/types'
 import { DocumentReviewAnnotations, type DocumentReviewAnnotationsHandle } from './DocumentReviewAnnotations'
 import type { DocumentReviewSnapshot } from './documentReviewAnchors'
@@ -495,6 +495,15 @@ export function MarkdownEditor({
         onGenerateIllustration={onGenerateIllustration}
         generateIllustrationDisabled={generateIllustrationDisabled}
       />
+      {revision === MISSING_WORKSPACE_REVISION && (
+        <div role="alert" className="flex shrink-0 items-start gap-2 border-b border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] text-[var(--nova-text-muted)]">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[var(--nova-warning)]" />
+          <div className="min-w-0">
+            <div className="font-medium text-[var(--nova-text)]">{t('editor.orphaned.title')}</div>
+            <div className="mt-0.5 text-[var(--nova-text-faint)]">{t('editor.orphaned.description')}</div>
+          </div>
+        </div>
+      )}
       {externalConflict?.workspace === workspace && externalConflict.fileName === fileName && (
         <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] text-[var(--nova-text-muted)]">
           <TriangleAlert className="h-4 w-4 shrink-0 text-[var(--nova-warning)]" />

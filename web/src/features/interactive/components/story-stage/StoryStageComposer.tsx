@@ -14,7 +14,7 @@ import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import type { AgentCommandDelivery, ChatMessage, ContextAnalysis } from '@/lib/api'
+import type { ChatMessage, ContextAnalysis } from '@/lib/api'
 import type { DirectorPlanStatus, ImagePreset, StoryImageSettings, StorySummary } from '../../types'
 import { EditInteractiveReplyDialog } from '../EditInteractiveReplyDialog'
 import { InteractiveImageSettingsMenu, StoryImagePresetMenu } from './ImageSettingsMenus'
@@ -71,9 +71,6 @@ interface StoryStageComposerProps {
   }
   runtime: {
     streaming: boolean
-    delivery: AgentCommandDelivery
-    setDelivery: (delivery: AgentCommandDelivery) => void
-    activeDeliveryQueued: boolean
     abortPending: boolean
     recoveryPaused: boolean
     recoveryAbortAvailable: boolean
@@ -125,7 +122,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
   const { creatingStory, isMobile, keyboardInset, inputTextStyle, workspace, inputFloatRef, inputRef, skillCommandRefs, t } = layout
   const { input, editingTurn, styleScenes, styleSceneQuery, styleSceneSuggestions, showSkillCommands, activeSkillCommandIndex, skillCommands, filteredSkillCommands, filteredBuiltInCommandItems, filteredSkillCommandItems, setStyleSceneQuery, setShowSkillCommands, setSkillCommandQuery, setActiveSkillCommandIndex } = editor
   const { storyId, story: currentStory, imagePresets, onImageSettingsChange, branchTerminal, directorBlocking, directorPlanStatus, directorStatusVisible, directorRetrying, directorRetryError, hotChoices, hotChoicesExpanded, showHotChoices, canUseHotChoices, setHotChoicesExpanded } = story
-  const { streaming, delivery, setDelivery, activeDeliveryQueued, abortPending, recoveryPaused, recoveryAbortAvailable, operationId, connection, commandSubmitting } = runtime
+  const { streaming, abortPending, recoveryPaused, recoveryAbortAvailable, operationId, connection, commandSubmitting } = runtime
   const { contextAnalysisOpen, contextAnalysisLoading, contextAnalysisError, contextAnalysis, tokenUsageOpen, tokenUsageMessages, traceOpen, selectedTraceRunId, replyEditTarget, setContextAnalysisOpen, setTokenUsageOpen, setTraceOpen, closeReplyEditor, saveReply } = dialogs
   const { cancelEditing, retryDirectorPlanning, selectHotChoice, selectStyleScene, selectSkillCommand, handleInputChange, handleInputTriggerChange, handleTokenRemove, toggleHotChoices, openMobileNavigation, openContextAnalysis, removeContextCompaction, openTraceRun, send, stop } = actions
 
@@ -266,7 +263,7 @@ export function StoryStageComposer({ layout, editor, story, runtime, dialogs, ac
               <Button type="button" variant="outline" className={`nova-agent-composer-pill h-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 text-[11px] text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] ${hotChoicesExpanded ? 'text-[var(--nova-text)]' : ''}`} disabled={!canUseHotChoices} onMouseDown={(event) => event.preventDefault()} onClick={toggleHotChoices} aria-label={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')} title={hotChoicesExpanded ? t('storyStage.hotChoices.collapse') : t('storyStage.hotChoices.get')}><Compass className="h-3.5 w-3.5" />{!isMobile ? t('storyStage.hotChoices.button') : null}</Button>
               {isMobile ? <Button type="button" variant="outline" className="nova-agent-composer-icon h-8 w-8 shrink-0 rounded-[10px] border-[var(--nova-border)] bg-[var(--nova-surface)] px-0 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onMouseDown={(event) => event.preventDefault()} onClick={openMobileNavigation} aria-label={t('workbench.mobile.navigationMenu')} title={t('workbench.mobile.navigationMenu')}><Plus className="h-3.5 w-3.5" /></Button> : null}
             </>}
-            submitControl={<AgentComposerControls generationActive={streaming} delivery={delivery} onDeliveryChange={setDelivery} onStop={() => { void stop() }} onSend={() => { void send() }} sendDisabled={!storyId || !input.trim() || activeDeliveryQueued} disabled={branchTerminal || directorBlocking} abortPending={abortPending} actionPending={commandSubmitting} activeControlsDisabled={streaming && (!operationId || connection !== 'connected')} stopDisabled={streaming && !recoveryAbortAvailable && (recoveryPaused || !operationId || connection !== 'connected')} sendLabel={editingTurn ? t('storyStage.sendRegenerate') : undefined} sendIcon={editingTurn ? <RefreshCw /> : undefined} />}
+            submitControl={<AgentComposerControls generationActive={streaming} onStop={() => { void stop() }} onSend={() => { void send() }} sendDisabled={streaming || !storyId || !input.trim()} disabled={branchTerminal || directorBlocking} abortPending={abortPending} actionPending={commandSubmitting} activeControlsDisabled={streaming && (!operationId || connection !== 'connected')} stopDisabled={streaming && !recoveryAbortAvailable && (recoveryPaused || !operationId || connection !== 'connected')} sendLabel={editingTurn ? t('storyStage.sendRegenerate') : undefined} sendIcon={editingTurn ? <RefreshCw /> : undefined} />}
           />
         </div>
         <ContextAnalysisDialog open={contextAnalysisOpen} loading={contextAnalysisLoading} error={contextAnalysisError} analysis={contextAnalysis} onOpenChange={setContextAnalysisOpen} onRemoveCompaction={removeContextCompaction} />

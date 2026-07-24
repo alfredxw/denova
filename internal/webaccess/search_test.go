@@ -67,6 +67,26 @@ func TestSearchUsesConfiguredPrimaryBeforeFallbacks(t *testing.T) {
 	}
 }
 
+func TestSearchReportsInvalidConfiguredSearXNGEndpoint(t *testing.T) {
+	config := testWebAccessConfig()
+	config.SearXNGBaseURL = "://invalid"
+	client, err := newClient(config, dependencies{fallbackProviders: []searchProvider{
+		fakeSearchProvider{name: ProviderBing, search: func(context.Context, providerSearchRequest) ([]SearchResult, error) {
+			return []SearchResult{{Title: "Denova query result", URL: "https://example.com/denova"}}, nil
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Search(context.Background(), SearchRequest{Query: "denova query"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Provider != ProviderBing || len(response.Warnings) != 1 || !strings.Contains(response.Warnings[0], "SearXNG configuration") {
+		t.Fatalf("fallback response should expose the ignored SearXNG configuration: %+v", response)
+	}
+}
+
 func TestSearchCombinesConcurrentFreeProviders(t *testing.T) {
 	duck := fakeSearchProvider{name: ProviderDuckDuckGo, search: func(ctx context.Context, _ providerSearchRequest) ([]SearchResult, error) {
 		select {
@@ -120,6 +140,93 @@ func TestSearchRejectsBingResultsUnrelatedToTheWholeQuery(t *testing.T) {
 	}
 	if response.Provider != ProviderDuckDuckGo || len(response.Results) != 1 {
 		t.Fatalf("unrelated Bing results must not enter model context: %+v", response)
+	}
+}
+
+func TestSearchFiltersIndividualUnrelatedBingResults(t *testing.T) {
+	client, err := newClient(testWebAccessConfig(), dependencies{fallbackProviders: []searchProvider{
+		fakeSearchProvider{name: ProviderBing, search: func(context.Context, providerSearchRequest) ([]SearchResult, error) {
+			return []SearchResult{
+				{Title: "穿越火线官方网站", URL: "https://cf.qq.com/", Summary: "腾讯游戏射击竞技专区"},
+				{Title: "穿越修仙：后宫经营小说", URL: "https://books.example/novel", Summary: "一部穿越修仙题材的后宫小说"},
+			}, nil
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Search(context.Background(), SearchRequest{Query: "穿越 修仙 后宫 小说"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Provider != ProviderBing || len(response.Results) != 1 || response.Results[0].URL != "https://books.example/novel" {
+		t.Fatalf("Bing relevance filtering should keep only the matching result: %+v", response)
+	}
+}
+
+func TestSearchAcceptsBingResultWithoutEveryQueryQualifier(t *testing.T) {
+	client, err := newClient(testWebAccessConfig(), dependencies{fallbackProviders: []searchProvider{
+		fakeSearchProvider{name: ProviderBing, search: func(context.Context, providerSearchRequest) ([]SearchResult, error) {
+			return []SearchResult{{
+				Title:   "读者票选网络小说排行榜",
+				URL:     "https://books.example/readers-choice",
+				Summary: "近期热门网络小说榜单与读者评价",
+			}}, nil
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Search(context.Background(), SearchRequest{Query: "当前最热小说 2025 排行榜"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Provider != ProviderBing || len(response.Results) != 1 {
+		t.Fatalf("a matching topic should not be rejected for omitting a year qualifier: %+v", response)
+	}
+}
+
+func TestSearchRejectsBingResultMatchingOnlyYearQualifier(t *testing.T) {
+	client, err := newClient(testWebAccessConfig(), dependencies{fallbackProviders: []searchProvider{
+		fakeSearchProvider{name: ProviderBing, search: func(context.Context, providerSearchRequest) ([]SearchResult, error) {
+			return []SearchResult{{
+				Title:   "Is Gout Hereditary? A 2025 Study",
+				URL:     "https://health.example.com/gout-study-2025",
+				Summary: "Research into genetic risk factors.",
+			}}, nil
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Search(context.Background(), SearchRequest{Query: "当前最热小说 2025 排行榜"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Status != SearchStatusNoResults || len(response.Results) != 0 {
+		t.Fatalf("a year-only match must not validate an unrelated topic: %+v", response)
+	}
+}
+
+func TestSearchTreatsFilteredBingResultsAsEmptyInsteadOfProviderFailure(t *testing.T) {
+	client, err := newClient(testWebAccessConfig(), dependencies{fallbackProviders: []searchProvider{
+		fakeSearchProvider{name: ProviderBing, search: func(context.Context, providerSearchRequest) ([]SearchResult, error) {
+			return []SearchResult{{
+				Title:   "穿越火线官方网站",
+				URL:     "https://cf.qq.com/",
+				Summary: "腾讯游戏射击竞技专区",
+			}}, nil
+		}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Search(context.Background(), SearchRequest{Query: "穿越 修仙 后宫 小说"})
+	if err != nil {
+		t.Fatalf("reachable Bing with irrelevant results should be an empty search, not a provider failure: %v", err)
+	}
+	if len(response.Results) != 0 || len(response.Warnings) != 1 || !strings.Contains(response.Warnings[0], "filtered 1") {
+		t.Fatalf("empty response should explain the relevance filter: %+v", response)
 	}
 }
 
@@ -250,6 +357,113 @@ func TestSearXNGProviderUsesJSONSearchEndpoint(t *testing.T) {
 	}
 }
 
+func TestSearchFallsBackToSearXNGHTMLWhenJSONIsForbidden(t *testing.T) {
+	var fallbackCalled bool
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/search" {
+			t.Errorf("path = %q", request.URL.Path)
+		}
+		if err := request.ParseForm(); err != nil {
+			t.Errorf("parse SearXNG form: %v", err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		requests = append(requests, request.Method+":"+request.Form.Get("format"))
+		if request.Form.Get("q") != "denova" {
+			t.Errorf("query = %q", request.Form.Get("q"))
+		}
+		if request.Form.Get("format") == "json" {
+			writer.WriteHeader(http.StatusForbidden)
+			return
+		}
+		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = writer.Write([]byte(`<div id="urls"><article class="result result-default category-general"><a class="url_header" href="https://example.com/denova">example.com</a><h3><a href="https://example.com/denova">Denova</a></h3><p class="content">Creator workspace</p></article></div>`))
+	}))
+	t.Cleanup(server.Close)
+
+	config := testWebAccessConfig()
+	config.SearXNGBaseURL = server.URL
+	client, err := newClient(config, dependencies{
+		searchHTTPClient: server.Client(),
+		fallbackProviders: []searchProvider{fakeSearchProvider{name: ProviderDuckDuckGo, search: func(context.Context, providerSearchRequest) ([]SearchResult, error) {
+			fallbackCalled = true
+			return nil, nil
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Search(context.Background(), SearchRequest{Query: "denova"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fallbackCalled {
+		t.Fatal("free fallback ran even though SearXNG HTML returned a result")
+	}
+	if len(requests) != 2 || requests[0] != "GET:json" || requests[1] != "POST:" {
+		t.Fatalf("SearXNG requests = %v, want JSON GET followed by HTML POST", requests)
+	}
+	if response.Provider != ProviderSearXNG || len(response.Results) != 1 || response.Results[0].Summary != "Creator workspace" {
+		t.Fatalf("unexpected SearXNG HTML response: %+v", response)
+	}
+}
+
+func TestSearchAcceptsSearXNGHTMLReturnedByJSONEndpoint(t *testing.T) {
+	var requestCount int
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requestCount++
+		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = writer.Write([]byte(`<html><head><meta name="generator" content="searxng/2026.7.22"></head><body><div id="urls"><article class="result result-default"><h3><a href="https://go.dev/">The Go Programming Language</a></h3><p class="content">Build simple, secure, scalable systems with Go.</p></article></div></body></html>`))
+	}))
+	t.Cleanup(server.Close)
+
+	config := testWebAccessConfig()
+	config.SearXNGBaseURL = server.URL
+	client, err := newClient(config, dependencies{searchHTTPClient: server.Client(), fallbackProviders: []searchProvider{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Search(context.Background(), SearchRequest{Query: "Go programming language"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requestCount != 1 {
+		t.Fatalf("SearXNG HTML returned to the JSON request should be reused, requests = %d", requestCount)
+	}
+	if response.Provider != ProviderSearXNG || len(response.Results) != 1 || response.Results[0].URL != "https://go.dev/" {
+		t.Fatalf("unexpected SearXNG HTML response: %+v", response)
+	}
+}
+
+func TestSearchExplainsSearXNGHTMLAccessChallengeBeforeUsingFallback(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = writer.Write([]byte(`<!doctype html><html><head><title>Making sure you're not a bot!</title></head><body><script src="/.within.website/x/cmd/anubis/static/js/main.mjs"></script></body></html>`))
+	}))
+	t.Cleanup(server.Close)
+
+	config := testWebAccessConfig()
+	config.SearXNGBaseURL = server.URL
+	client, err := newClient(config, dependencies{
+		searchHTTPClient: server.Client(),
+		fallbackProviders: []searchProvider{fakeSearchProvider{name: ProviderBing, search: func(context.Context, providerSearchRequest) ([]SearchResult, error) {
+			return []SearchResult{{Title: "Denova query result", URL: "https://example.com/denova"}}, nil
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Search(context.Background(), SearchRequest{Query: "denova query"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	warnings := strings.Join(response.Warnings, "\n")
+	if response.Provider != ProviderBing || !strings.Contains(warnings, ProviderSearXNG) || !strings.Contains(warnings, "access challenge") {
+		t.Fatalf("fallback response should explain why configured SearXNG was unusable: %+v", response)
+	}
+}
+
 func TestSearchUsesChineseBingMarketForChineseQuery(t *testing.T) {
 	var market string
 	var language string
@@ -346,9 +560,35 @@ func TestSearchReportsAllProviderFailures(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = client.Search(context.Background(), SearchRequest{Query: "query"})
-	if err == nil || !strings.Contains(err.Error(), ProviderDuckDuckGo) || !strings.Contains(err.Error(), ProviderBing) {
-		t.Fatalf("unexpected all-provider error: %v", err)
+	response, err := client.Search(context.Background(), SearchRequest{Query: "query"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	warnings := strings.Join(response.Warnings, "\n")
+	if response.Status != SearchStatusProvidersUnavailable || !strings.Contains(warnings, ProviderDuckDuckGo) || !strings.Contains(warnings, ProviderBing) {
+		t.Fatalf("unexpected all-provider diagnostics: %+v", response)
+	}
+}
+
+func TestSearchReturnsActionableResponseWhenAllProvidersFail(t *testing.T) {
+	failed := func(name string) searchProvider {
+		return fakeSearchProvider{name: name, search: func(context.Context, providerSearchRequest) ([]SearchResult, error) {
+			return nil, fmt.Errorf("%s unavailable", name)
+		}}
+	}
+	client, err := newClient(testWebAccessConfig(), dependencies{fallbackProviders: []searchProvider{failed(ProviderDuckDuckGo), failed(ProviderBing)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Search(context.Background(), SearchRequest{Query: "query"})
+	if err != nil {
+		t.Fatalf("provider availability should be a structured search response: %v", err)
+	}
+	if response.Status != SearchStatusProvidersUnavailable || response.RetryStrategy != SearchRetryWaitOrReconfigure {
+		t.Fatalf("unexpected recovery metadata: %+v", response)
+	}
+	if len(response.Warnings) != 2 || !strings.Contains(response.SuggestedAction, "Do not immediately repeat") || !strings.Contains(response.SuggestedAction, "不要立即重复") {
+		t.Fatalf("provider failure should tell the Agent how to recover: %+v", response)
 	}
 }
 

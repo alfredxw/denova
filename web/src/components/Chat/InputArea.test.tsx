@@ -209,8 +209,6 @@ describe('InputArea active generation controls', () => {
         onStop={handleStop}
         disabled={false}
         generationActive
-        activeDelivery="follow_up"
-        onActiveDeliveryChange={vi.fn()}
         inputPrefill={{ prompt: 'Add more atmosphere', nonce: 1 }}
       />,
     )
@@ -232,9 +230,17 @@ describe('InputArea active generation controls', () => {
     expect(handleStop).toHaveBeenCalledTimes(1)
   })
 
-  it('lets the user explicitly switch an active instruction from Follow Up to Steer', async () => {
+  it('shows an accepted instruction above the composer with steer, delete, and return-to-edit actions', async () => {
     const user = userEvent.setup()
-    const handleDeliveryChange = vi.fn()
+    const queued = {
+      command_id: 'queued-1',
+      operation_id: 'operation-1',
+      delivery: 'follow_up' as const,
+      message: 'Change the ending to a cliffhanger',
+    }
+    const handleSteer = vi.fn()
+    const handleDelete = vi.fn()
+    const handleEdit = vi.fn()
 
     render(
       <InputArea
@@ -242,17 +248,25 @@ describe('InputArea active generation controls', () => {
         onStop={vi.fn()}
         disabled={false}
         generationActive
-        activeDelivery="follow_up"
-        onActiveDeliveryChange={handleDeliveryChange}
+        queuedCommands={[queued]}
+        onQueuedCommandSteer={handleSteer}
+        onQueuedCommandDelete={handleDelete}
+        onQueuedCommandEdit={handleEdit}
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '发送方式：追加' }))
-    const steerOption = screen.getByRole('menuitemradio', { name: /转向/ })
-    expect(steerOption).toHaveAttribute('aria-checked', 'false')
-    await user.click(steerOption)
+    expect(screen.queryByRole('button', { name: /发送方式/ })).not.toBeInTheDocument()
+    expect(screen.getByText('Change the ending to a cliffhanger')).toBeInTheDocument()
 
-    expect(handleDeliveryChange).toHaveBeenCalledWith('steer')
+    await user.click(screen.getByRole('button', { name: '立即转向' }))
+    expect(handleSteer).toHaveBeenCalledWith(queued)
+
+    await user.click(screen.getByRole('button', { name: '删除排队指令' }))
+    expect(handleDelete).toHaveBeenCalledWith(queued)
+
+    await user.click(screen.getByRole('button', { name: '更多排队指令操作' }))
+    await user.click(screen.getByRole('menuitem', { name: '返回编辑' }))
+    expect(handleEdit).toHaveBeenCalledWith(queued)
   })
 })
 

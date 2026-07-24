@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { createAgentCommandID } from '@/lib/api'
-import type { AgentCommandDelivery, AgentRuntimeRecoveryAction } from '@/lib/api'
+import type { AgentRuntimeRecoveryAction } from '@/lib/api'
 import { agentCommandErrorMessage, agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 import {
   recoverInteractiveAgentRuntime,
@@ -19,10 +19,9 @@ interface InteractiveAgentCommandOptions {
   onRuntimeChange: (runtime: StoryStageRuntimeUpdater) => void
 }
 
-/** Owns operation-targeted game commands; the stage remains a display adapter. */
+/** Owns game abort and server-authorized recovery; the stage remains a display adapter. */
 export function useInteractiveAgentCommands({ storyId, branchId, readRuntime, onRuntimeChange }: InteractiveAgentCommandOptions) {
   const { t } = useTranslation()
-  const [delivery, setDelivery] = useState<AgentCommandDelivery>('follow_up')
   const retryCommandIDsRef = useRef(new Map<string, string>())
   const recoveryAbortActionRef = useRef<AgentRuntimeRecoveryAction | null>(null)
 
@@ -83,49 +82,6 @@ export function useInteractiveAgentCommands({ storyId, branchId, readRuntime, on
     }
   }, [branchId, onRuntimeChange, storyId, t])
 
-  const enqueue = useCallback(async (message: string, styleScenes: string[]) => {
-    const runtime = requireProjectedOperation()
-    if (runtime.abortPending) throw new Error(t('chat.runtime.abortPending'))
-    if (runtime.queue.some((item) => item.delivery === delivery)) throw new Error(t('chat.runtime.queueConflict'))
-    const retryKey = agentCommandRetryKey(runtime.operationId, delivery, { message, styleScenes })
-    const commandId = rememberAgentCommandID(retryCommandIDsRef.current, retryKey, createAgentCommandID)
-    try {
-      const receipt = await submitInteractiveAgentCommand({
-        type: delivery,
-        commandId,
-        targetOperationId: runtime.operationId,
-        storyId,
-        branchId,
-        message,
-        styleScenes,
-      })
-      retryCommandIDsRef.current.delete(retryKey)
-      recoveryAbortActionRef.current = null
-      onRuntimeChange((current) => current.operationId !== runtime.operationId
-        ? current
-        : {
-            ...current,
-            cursor: Math.max(current.cursor, receipt.cursor),
-            operationId: receipt.operation_id,
-            recoveryPaused: false,
-            recoveryAbortAvailable: false,
-            queue: [
-              ...current.queue.filter((item) => item.command_id !== commandId),
-              {
-                command_id: commandId,
-                operation_id: receipt.operation_id,
-                delivery,
-                message,
-              },
-            ],
-          })
-      return receipt
-    } catch (error) {
-      if (isKnownAgentCommandOutcome(error)) retryCommandIDsRef.current.delete(retryKey)
-      throw new Error(agentCommandErrorMessage(error, t))
-    }
-  }, [branchId, delivery, onRuntimeChange, requireProjectedOperation, storyId, t])
-
   const abort = useCallback(async () => {
     const recoveryAction = recoveryAbortActionRef.current
     if (recoveryAction) {
@@ -182,7 +138,7 @@ export function useInteractiveAgentCommands({ storyId, branchId, readRuntime, on
     }
   }, [branchId, onRuntimeChange, requireProjectedOperation, storyId, t])
 
-  return { abort, delivery, enqueue, project, recover, setDelivery }
+  return { abort, project, recover }
 }
 
 function interactiveRecoveryActionsToSubmit(active: ActiveInteractiveChat) {

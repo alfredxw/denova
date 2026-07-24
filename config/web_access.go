@@ -77,7 +77,7 @@ func ResolveWebAccessSettings(settings WebAccessSettings) WebAccessConfig {
 	settings = sanitizeWebAccessSettings(settings)
 	defaults := DefaultWebAccessConfig()
 	return WebAccessConfig{
-		SearXNGBaseURL:               strings.TrimRight(strings.TrimSpace(settings.SearXNGBaseURL), "/"),
+		SearXNGBaseURL:               settings.SearXNGBaseURL,
 		SearchMaxResults:             boundedSettingsInt(settings.SearchMaxResults, defaults.SearchMaxResults, 1, MaxWebSearchMaxResults),
 		SearchProviderTimeoutSeconds: settingsNonNegativeInt(settings.SearchProviderTimeoutSeconds, defaults.SearchProviderTimeoutSeconds),
 		FetchMaxResponseKB:           boundedSettingsInt(settings.FetchMaxResponseKB, defaults.FetchMaxResponseKB, 1, MaxWebFetchMaxResponseKB),
@@ -109,12 +109,23 @@ func settingsFromWebAccessConfig(runtime WebAccessConfig) WebAccessSettings {
 }
 
 func sanitizeWebAccessSettings(settings WebAccessSettings) WebAccessSettings {
-	settings.SearXNGBaseURL = strings.TrimRight(strings.TrimSpace(settings.SearXNGBaseURL), "/")
+	settings.SearXNGBaseURL = normalizeSearXNGBaseURL(settings.SearXNGBaseURL)
 	settings.SearchMaxResults = normalizeBoundedPositiveInt(settings.SearchMaxResults, MaxWebSearchMaxResults)
 	settings.SearchProviderTimeoutSeconds = normalizeNonNegativeInt(settings.SearchProviderTimeoutSeconds)
 	settings.FetchMaxResponseKB = normalizeBoundedPositiveInt(settings.FetchMaxResponseKB, MaxWebFetchMaxResponseKB)
 	settings.FetchMaxContentChars = normalizeBoundedPositiveInt(settings.FetchMaxContentChars, MaxWebFetchMaxContentChars)
 	return settings
+}
+
+func normalizeSearXNGBaseURL(value string) string {
+	value = strings.TrimRight(strings.TrimSpace(value), "/")
+	if value == "" || strings.Contains(value, "://") {
+		return value
+	}
+	if strings.HasPrefix(value, "//") {
+		return "https:" + value
+	}
+	return "https://" + value
 }
 
 func normalizeNonNegativeInt(value *int) *int {

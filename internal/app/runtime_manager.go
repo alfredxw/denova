@@ -147,6 +147,7 @@ func (s *WorkspaceRuntimeManager) SwitchWorkspace(ctx context.Context, path stri
 	a.cfg.Workspace = runtime.workspace
 	chatApp.clearRecoveryRefreshObligations(runtime.workspace)
 	a.mu.Unlock()
+	a.syncWorkspaceFileWatcher(runtime.workspace)
 	if previousVersionService != nil && previousVersionService != runtime.versionService {
 		previousVersionService.Close()
 	}
@@ -303,6 +304,7 @@ func (s *WorkspaceRuntimeManager) activateFallbackWorkspace(ctx context.Context)
 	delete(a.workspaceScopes, lifecycleWorkspaceKey(currentWorkspace))
 	a.clearRuntime()
 	a.mu.Unlock()
+	a.syncWorkspaceFileWatcher("")
 	if previousVersionService != nil {
 		previousVersionService.Close()
 	}

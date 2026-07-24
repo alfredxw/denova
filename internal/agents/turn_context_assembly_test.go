@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	agent "github.com/alfredxw/denova/agent"
 
@@ -20,7 +21,20 @@ import (
 
 var modelContextTestCycle atomic.Uint64
 
-type pureTurnTestConversation struct{}
+func fixedTurnRuntimeEnvironment(service *book.Service) turnRuntimeEnvironment {
+	workspace := ""
+	if service != nil {
+		workspace = service.Workspace()
+	}
+	return turnRuntimeEnvironment{
+		CapturedAt: time.Date(2026, 7, 24, 7, 30, 20, 0, time.UTC),
+		Workspace:  workspace,
+	}
+}
+
+type pureTurnTestConversation struct {
+	budget agentcontext.Budget
+}
 
 func (pureTurnTestConversation) AssembleModelContext(ctx context.Context, _ string, input ModelContextInput) (ModelContextResult, error) {
 	assembled, err := agentcontext.NewAssembler(input.Budget).Assemble(ctx, agentcontext.AssembleRequest{
@@ -32,17 +46,25 @@ func (pureTurnTestConversation) AppendAssistant(string) error                 { 
 func (pureTurnTestConversation) MarkInterrupted(string, string, string) error { return nil }
 func (pureTurnTestConversation) PendingInterruption() *session.Interruption   { return nil }
 func (pureTurnTestConversation) ResolveInterruption(string) error             { return nil }
+func (c pureTurnTestConversation) ModelContextBudget() agentcontext.Budget    { return c.budget }
 
 func assembleTurnForTest(t *testing.T, req ChatRequest, pending *session.Interruption, service *book.Service, budget agentcontext.Budget) (turnInputProjection, ModelContextResult) {
 	t.Helper()
-	projection := projectTurnInput(req, pending, service, budget)
-	assembled, err := AssembleModelContext(context.Background(), pureTurnTestConversation{}, projection.OriginalMessage, ModelContextInput{
-		UserMessage: req.Message, Fragments: projection.Fragments, Budget: budget,
+	turn, err := prepareTurnContext(context.Background(), turnContextPreparationInput{
+		Conversation:        pureTurnTestConversation{budget: budget},
+		Request:             req,
+		PendingInterruption: pending,
+		BookService:         service,
+		Environment:         fixedTurnRuntimeEnvironment(service),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return projection, assembled
+	return turnInputProjection{
+		OriginalMessage:    turn.OriginalMessage,
+		Fragments:          turn.ModelContext.Context.Fragments,
+		ResumeInterruption: turn.ResumeInterruption,
+	}, turn.ModelContext
 }
 
 func finalAssembledUserMessage(t *testing.T, assembled ModelContextResult) string {
@@ -56,7 +78,7 @@ func finalAssembledUserMessage(t *testing.T, assembled ModelContextResult) strin
 	return ""
 }
 
-func assembleAndCommitModelContextForTest(conversation Conversation, originalMessage, userMessage string) ([]*agent.Message, error) {
+func assembleAndCommitModelContextForTest(conversation Conversation, originalMessage, userMessage string, references ...session.UserMessageReference) ([]*agent.Message, error) {
 	if sessionConversation, ok := conversation.(*SessionConversation); ok {
 		identity := sessionConversation.agentCycleIdentitySnapshot()
 		_, alreadyCommitted := sessionConversation.LastAgentCycleCommitReceipt(HarnessDomainCommitInput)
@@ -70,8 +92,9 @@ func assembleAndCommitModelContextForTest(conversation Conversation, originalMes
 		}
 	}
 	result, err := AssembleModelContext(context.Background(), conversation, originalMessage, ModelContextInput{
-		UserMessage: userMessage,
-		Budget:      modelContextBudgetForConversation(conversation),
+		UserMessage:    userMessage,
+		UserReferences: references,
+		Budget:         modelContextBudgetForConversation(conversation),
 	})
 	if err == nil {
 		err = CommitModelInput(context.Background(), conversation, originalMessage, result)
@@ -104,6 +127,7 @@ func TestTurnInputProjectionProjectsEverySourceAsAuditableFragment(t *testing.T)
 	}, nil, book.NewService(workspace), agentcontext.DefaultBudget())
 
 	wantSources := []string{
+		"runtime.environment",
 		"turn.rule.plan_mode",
 		"turn.skill.selection",
 		"workspace.file.reference",
@@ -126,6 +150,44 @@ func TestTurnInputProjectionProjectsEverySourceAsAuditableFragment(t *testing.T)
 		if !strings.Contains(modelMessage, content) {
 			t.Fatalf("assembled model input missing %q: %s", content, modelMessage)
 		}
+	}
+}
+
+func TestTurnInputProjectionProvidesCurrentRuntimeEnvironment(t *testing.T) {
+	location := time.FixedZone("Asia/Shanghai", 8*60*60)
+	environment := turnRuntimeEnvironment{
+		CapturedAt: time.Date(2026, 7, 24, 15, 30, 20, 0, location),
+		Workspace:  "/Users/creator/novel",
+	}
+	turn, err := prepareTurnContext(context.Background(), turnContextPreparationInput{
+		Conversation: pureTurnTestConversation{budget: agentcontext.DefaultBudget()},
+		Request:      ChatRequest{Message: "现在几点？"},
+		Environment:  environment,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assembled := turn.ModelContext
+
+	wantContent := "- 上下文快照时间 / Captured at: 2026-07-24T15:30:20+08:00\n" +
+		"- 时区 / Time zone: Asia/Shanghai (UTC+08:00)\n" +
+		"- 当前工作区 / Workspace: /Users/creator/novel\n" +
+		"- 说明 / Note: 这是现实运行环境的本轮快照，不是作品或互动故事中的世界时间；作品时间线仍以作品状态为准。 / This is a turn-scoped real-world runtime snapshot, not in-story time; story chronology remains governed by workspace state."
+	if len(assembled.Context.Fragments) == 0 {
+		t.Fatal("assembled context has no runtime environment fragment")
+	}
+	fragment := assembled.Context.Fragments[0]
+	if fragment.ID != "runtime_environment" || fragment.Source != "runtime.environment" ||
+		fragment.Title != "当前运行环境 / Current runtime environment" ||
+		fragment.Placement != agentcontext.PlacementFinalUserPrefix || !fragment.Included ||
+		fragment.Purpose == "" || fragment.Hash == "" || fragment.Content != wantContent {
+		t.Fatalf("runtime environment fragment = %#v", fragment)
+	}
+	final := finalAssembledUserMessage(t, assembled)
+	environmentIndex := strings.Index(final, "# 当前运行环境 / Current runtime environment")
+	requestIndex := strings.Index(final, "# 本轮用户请求（最高优先级）")
+	if environmentIndex < 0 || requestIndex < 0 || environmentIndex >= requestIndex || !strings.HasSuffix(strings.TrimSpace(final), "现在几点？") {
+		t.Fatalf("runtime environment must precede the authoritative user request:\n%s", final)
 	}
 }
 
@@ -215,10 +277,10 @@ func TestSessionConversationReusesMaterializedInputExactlyOnceInRealModelAssembl
 	}
 	conversation := NewSessionConversationForAgent(sess, &config.Config{}, config.AgentKindIDE)
 	conversation.BindAgentCycleIdentity(identity)
-	conversation.SetUserMessageReferences(references)
 	assembled, err := conversation.AssembleModelContext(context.Background(), "继续写", ModelContextInput{
-		UserMessage: "继续写",
-		Budget:      conversation.ModelContextBudget(),
+		UserMessage:    "继续写",
+		UserReferences: references,
+		Budget:         conversation.ModelContextBudget(),
 		Fragments: []agentcontext.Fragment{{
 			ID: "selection", Source: "editor.selection", Title: "选区", Purpose: "edit selection",
 			Content: "第一段", Placement: agentcontext.PlacementFinalUserPrefix, Included: true,

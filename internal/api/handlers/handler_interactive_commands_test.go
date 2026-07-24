@@ -5,16 +5,20 @@ import (
 	"net/http"
 	"testing"
 
+	runstate "github.com/alfredxw/denova/agent/runtime"
 	"github.com/cloudwego/hertz/pkg/app"
 
-	runstate "github.com/alfredxw/denova/agent/runtime"
+	appsvc "denova/internal/app"
 )
 
 func TestInteractiveAgentCommandKindIsClosed(t *testing.T) {
-	for _, value := range []string{"steer", "follow_up", "next_turn", "abort"} {
-		kind, err := interactiveAgentCommandKind(value)
-		if err != nil || string(kind) != value {
-			t.Fatalf("kind(%q) = %q, %v", value, kind, err)
+	kind, err := interactiveAgentCommandKind("abort")
+	if err != nil || kind != appsvc.AgentCommandAbort {
+		t.Fatalf("abort kind = %q, %v", kind, err)
+	}
+	for _, value := range []string{"steer", "follow_up", "next_turn", "steer_queued", "cancel_queued"} {
+		if kind, err := interactiveAgentCommandKind(value); err == nil {
+			t.Fatalf("kind(%q) = %q, want error", value, kind)
 		}
 	}
 }

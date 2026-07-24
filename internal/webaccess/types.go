@@ -17,6 +17,26 @@ const (
 	ProviderSearXNG    = "searxng"
 )
 
+// SearchStatus separates a successful query, a reachable-but-empty query, and
+// provider availability failures so Agents do not infer recovery from prose.
+type SearchStatus string
+
+const (
+	SearchStatusSuccess              SearchStatus = "success"
+	SearchStatusNoResults            SearchStatus = "no_results"
+	SearchStatusProvidersUnavailable SearchStatus = "providers_unavailable"
+)
+
+// SearchRetryStrategy tells the Agent whether changing the query can help or
+// whether it should wait for/configure a provider instead.
+type SearchRetryStrategy string
+
+const (
+	SearchRetryNone              SearchRetryStrategy = "none"
+	SearchRetryChangeQuery       SearchRetryStrategy = "change_query"
+	SearchRetryWaitOrReconfigure SearchRetryStrategy = "wait_or_reconfigure"
+)
+
 const (
 	absoluteMaxSearchResults      = 20
 	absoluteMaxFetchResponseBytes = 64 * 1024 * 1024
@@ -53,11 +73,14 @@ type SearchResult struct {
 }
 
 type SearchResponse struct {
-	Query    string         `json:"query"`
-	Provider string         `json:"provider,omitempty"`
-	Message  string         `json:"message"`
-	Results  []SearchResult `json:"results,omitempty"`
-	Warnings []string       `json:"warnings,omitempty"`
+	Query           string              `json:"query"`
+	Status          SearchStatus        `json:"status"`
+	Provider        string              `json:"provider,omitempty"`
+	Message         string              `json:"message"`
+	Results         []SearchResult      `json:"results,omitempty"`
+	Warnings        []string            `json:"warnings,omitempty"`
+	RetryStrategy   SearchRetryStrategy `json:"retry_strategy"`
+	SuggestedAction string              `json:"suggested_action,omitempty"`
 }
 
 // FetchRequest uses Unicode character offsets so a model can continue reading
@@ -88,10 +111,11 @@ type FetchResponse struct {
 // per-provider deadline so concurrent aggregation cannot wait forever; page
 // fetching remains governed by the owning Agent operation's context.
 type Client struct {
-	config            Config
-	primaryProvider   searchProvider
-	fallbackProviders []searchProvider
-	fetchHTTPClient   *http.Client
+	config                Config
+	primaryProvider       searchProvider
+	fallbackProviders     []searchProvider
+	configurationWarnings []error
+	fetchHTTPClient       *http.Client
 }
 
 type dependencies struct {
@@ -140,10 +164,15 @@ func newClient(config Config, deps dependencies) (*Client, error) {
 		}
 	}
 	primary := deps.primaryProvider
+	var configurationWarnings []error
 	if primary == nil && strings.TrimSpace(config.SearXNGBaseURL) != "" {
 		provider, err := newSearXNGProvider(config.SearXNGBaseURL, searchClient)
 		if err != nil {
 			log.Printf("[webaccess] ignoring invalid SearXNG endpoint: %v", err)
+			configurationWarnings = append(configurationWarnings, fmt.Errorf(
+				"SearXNG configuration is invalid and was not used / SearXNG 配置无效且未被使用: %w",
+				err,
+			))
 		} else {
 			primary = provider
 		}
@@ -154,9 +183,10 @@ func newClient(config Config, deps dependencies) (*Client, error) {
 	}
 
 	return &Client{
-		config:            config,
-		primaryProvider:   primary,
-		fallbackProviders: append([]searchProvider(nil), fallbacks...),
-		fetchHTTPClient:   fetchClient,
+		config:                config,
+		primaryProvider:       primary,
+		fallbackProviders:     append([]searchProvider(nil), fallbacks...),
+		configurationWarnings: configurationWarnings,
+		fetchHTTPClient:       fetchClient,
 	}, nil
 }

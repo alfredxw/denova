@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	agent "github.com/alfredxw/denova/agent"
 	agenttools "github.com/alfredxw/denova/agent/tools"
@@ -157,14 +156,4 @@ func (m *toolDescriptorGuardMiddleware) BeforeAgent(
 
 func normalizeToolName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
-}
-
-func truncateUTF8StringBytes(content string, limit int) string {
-	if limit <= 0 || len(content) <= limit {
-		return content
-	}
-	for limit > 0 && !utf8.RuneStart(content[limit]) {
-		limit--
-	}
-	return content[:limit]
 }

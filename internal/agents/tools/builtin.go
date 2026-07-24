@@ -55,12 +55,7 @@ func newSkillTool(ctx context.Context, backend *novaskills.Backend, maxBytes int
 		if err != nil {
 			return "", err
 		}
-		content := strings.TrimSpace(skill.Content)
-		if maxBytes > 0 && len(content) > maxBytes {
-			content = truncateUTF8StringBytes(content, maxBytes)
-			content += "\n\n[Skill instructions truncated at configured context fragment limit]"
-		}
-		return fmt.Sprintf("# Skill: %s\n\nDescription: %s\nContext mode: %s\n\n%s", skill.Name, skill.Description, skill.Context, content), nil
+		return novaskills.FormatForModel(skill, maxBytes), nil
 	})
 	if err != nil {
 		return nil, err

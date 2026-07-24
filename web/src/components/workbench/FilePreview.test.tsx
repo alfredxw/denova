@@ -66,4 +66,25 @@ describe('FilePreview', () => {
     expect(preview).toHaveTextContent('not-json')
     expect(preview).toHaveTextContent('"turn": 2')
   })
+
+  it('cache-busts an image when its watcher revision changes', () => {
+    const { rerender } = render(<FilePreview path="covers/cover.png" content="" revision="watch:1" />)
+    expect(screen.getByRole('img', { name: 'cover.png 预览' })).toHaveAttribute(
+      'src',
+      '/api/workspace/asset?path=covers%2Fcover.png&revision=watch%3A1',
+    )
+
+    rerender(<FilePreview path="covers/cover.png" content="" revision="watch:2" />)
+    expect(screen.getByRole('img', { name: 'cover.png 预览' })).toHaveAttribute(
+      'src',
+      '/api/workspace/asset?path=covers%2Fcover.png&revision=watch%3A2',
+    )
+  })
+
+  it('shows the retained snapshot when a previewed file was deleted', () => {
+    render(<FilePreview path="setting/book.json" content='{"title":"retained"}' revision="missing" />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('文件已从磁盘删除')
+    expect(screen.getByText((_, element) => element?.tagName === 'PRE')).toHaveTextContent('"title": "retained"')
+  })
 })

@@ -55,11 +55,23 @@ type interactiveConversation struct {
 	openingStateSchemaAudit interactive.ActorStateSchemaBatchAudit
 }
 
+var _ agents.ExplicitSkillResolver = (*interactiveConversation)(nil)
+
 func (c *interactiveConversation) ModelContextBudget() agentcontext.Budget {
 	if c == nil {
 		return agentcontext.DefaultBudget()
 	}
 	return agents.ContextBudgetForAgent(c.cfg, config.AgentKindInteractiveStory)
+}
+
+func (c *interactiveConversation) ResolveExplicitSkills(ctx context.Context, message string) ([]agents.ExplicitSkillInvocation, error) {
+	if c == nil {
+		return nil, nil
+	}
+	c.mu.Lock()
+	cfg := c.cfg
+	c.mu.Unlock()
+	return agents.ResolveExplicitSkillInvocations(ctx, cfg, config.AgentKindInteractiveStory, message)
 }
 
 // BindAgentCycleIdentity receives the coordinator-selected identity before

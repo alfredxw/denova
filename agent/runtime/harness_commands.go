@@ -73,6 +73,10 @@ func (h *Harness) handleSubmit(state *harnessState, ctx context.Context, command
 		return h.enqueueCurrent(ctx, state, commandID, fingerprint, command.OperationID, DeliverySteer, command.Input)
 	case FollowUp:
 		return h.enqueueCurrent(ctx, state, commandID, fingerprint, command.OperationID, DeliveryFollowUp, command.Input)
+	case SteerQueued:
+		return h.steerQueued(ctx, state, command, fingerprint)
+	case CancelQueued:
+		return h.cancelQueued(ctx, state, command, fingerprint)
 	case NextTurn:
 		if err := validateUserInput(command.Input, h.inputLimits); err != nil {
 			return Receipt{}, err
@@ -151,6 +155,74 @@ func (h *Harness) handleSubmit(state *harnessState, ctx context.Context, command
 	default:
 		return Receipt{}, ErrInvalidCommand
 	}
+}
+
+func (h *Harness) steerQueued(ctx context.Context, state *harnessState, command SteerQueued, fingerprint string) (Receipt, error) {
+	if state.phase != PhaseRunning {
+		return Receipt{}, ErrInvalidCommand
+	}
+	if command.OperationID == "" || command.OperationID != state.activeOperation {
+		return Receipt{}, ErrStaleOperation
+	}
+	if state.outputCommitFinalizing() {
+		return Receipt{}, fmt.Errorf("%w: domain commit is already authorized", ErrDomainCommitRejected)
+	}
+	item, ok := state.queued(command.TargetCommandID)
+	if !ok || item.Delivery != DeliveryFollowUp {
+		return Receipt{}, ErrInvalidCommand
+	}
+	if state.preemptQueuedCommandID != "" || state.hasQueued(DeliverySteer) {
+		return Receipt{}, ErrQueueConflict
+	}
+	committed, err := h.commit(ctx, state, []EventPayload{
+		CommandAcceptedEvent{
+			CommandID: command.ID, CommandKind: "steer_queued",
+			OperationID: state.activeOperation, Fingerprint: fingerprint,
+		},
+		QueueSteerRequestedEvent{CommandID: item.CommandID},
+	})
+	if err != nil {
+		return Receipt{}, err
+	}
+	receipt := receiptFromEvents(committed)
+	if state.recoveryPaused {
+		if err := h.resumeRecoveryPausedInput(ctx, state, item.CommandID, item.Delivery); err != nil {
+			return receipt, err
+		}
+		return receipt, nil
+	}
+	state.sendControl(EngineControl{Kind: EngineControlPreempt})
+	return receipt, nil
+}
+
+func (h *Harness) cancelQueued(ctx context.Context, state *harnessState, command CancelQueued, fingerprint string) (Receipt, error) {
+	if state.phase != PhaseRunning {
+		return Receipt{}, ErrInvalidCommand
+	}
+	if command.OperationID == "" || command.OperationID != state.activeOperation {
+		return Receipt{}, ErrStaleOperation
+	}
+	item, ok := state.queued(command.TargetCommandID)
+	if !ok {
+		return Receipt{}, ErrInvalidCommand
+	}
+	// Once a live preemption has been requested, removing its target could leave
+	// the engine preempted without a successor. A recovered paused Steer is safe
+	// because no process control has been delivered in that state.
+	if state.preemptQueuedCommandID == item.CommandID || (item.Delivery == DeliverySteer && !state.recoveryPaused) {
+		return Receipt{}, ErrQueueConflict
+	}
+	committed, err := h.commit(ctx, state, []EventPayload{
+		CommandAcceptedEvent{
+			CommandID: command.ID, CommandKind: "cancel_queued",
+			OperationID: state.activeOperation, Fingerprint: fingerprint,
+		},
+		QueueCancelledEvent{CommandID: item.CommandID, Reason: command.Reason},
+	})
+	if err != nil {
+		return Receipt{}, err
+	}
+	return receiptFromEvents(committed), nil
 }
 
 func (h *Harness) beginStructuralOperation(
@@ -236,7 +308,7 @@ func (h *Harness) enqueueCurrent(
 	if delivery == DeliverySteer && state.outputCommitFinalizing() {
 		return Receipt{}, fmt.Errorf("%w: domain commit is already authorized", ErrDomainCommitRejected)
 	}
-	if state.hasQueued(delivery) {
+	if delivery == DeliverySteer && state.hasQueued(DeliverySteer) {
 		return Receipt{}, ErrQueueConflict
 	}
 	if err := state.admitPendingInput(input); err != nil {

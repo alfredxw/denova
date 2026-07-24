@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -469,6 +470,64 @@ func TestFollowUpWaitsForTheCurrentCycleToComplete(t *testing.T) {
 	}
 	if got := messageTexts(observation.Snapshot.Messages); len(got) != 4 || got[0] != "先写正文" || got[1] != "第一版" || got[2] != "再补一句" || got[3] != "补充完成" {
 		t.Fatalf("messages after follow-up = %#v", got)
+	}
+}
+
+func TestMultipleFollowUpsRunInAcceptedOrder(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	engine := runstate.NewScriptedEngine(
+		runstate.EngineScript{
+			Events:   []runstate.EngineEvent{runstate.EngineAssistantFinal{Content: "初稿完成"}},
+			Continue: release,
+		},
+		runstate.EngineScript{Events: []runstate.EngineEvent{runstate.EngineAssistantFinal{Content: "第一条完成"}}},
+		runstate.EngineScript{Events: []runstate.EngineEvent{runstate.EngineAssistantFinal{Content: "第二条完成"}}},
+		runstate.EngineScript{Events: []runstate.EngineEvent{runstate.EngineAssistantFinal{Content: "第三条完成"}}},
+	)
+	runtime, err := runstate.NewRuntime(engine, runstate.NewMemoryJournalStore(), runstate.RuntimeConfig{})
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+	harness, err := runtime.Open(context.Background(), testBindingAt("/book", "multiple-follow-ups"))
+	if err != nil {
+		t.Fatalf("open harness: %v", err)
+	}
+	started, err := harness.Submit(context.Background(), runstate.StartTurn{
+		ID: "start", Input: runstate.UserInput{Text: "先写正文"},
+	})
+	if err != nil {
+		t.Fatalf("start turn: %v", err)
+	}
+
+	inputs := []string{"补充第一条", "补充第二条", "补充第三条"}
+	var last runstate.Receipt
+	for index, input := range inputs {
+		last, err = harness.Submit(context.Background(), runstate.FollowUp{
+			ID:          runstate.CommandID(fmt.Sprintf("follow-%d", index+1)),
+			OperationID: started.OperationID,
+			Input:       runstate.UserInput{Text: input},
+		})
+		if err != nil {
+			t.Fatalf("queue follow-up %d: %v", index+1, err)
+		}
+	}
+	close(release)
+
+	waitForSettled(t, harness, last.Cursor)
+	observation, err := harness.Observe(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	want := []string{
+		"先写正文", "初稿完成",
+		"补充第一条", "第一条完成",
+		"补充第二条", "第二条完成",
+		"补充第三条", "第三条完成",
+	}
+	if got := messageTexts(observation.Snapshot.Messages); !reflect.DeepEqual(got, want) {
+		t.Fatalf("messages after queued follow-ups = %#v, want %#v", got, want)
 	}
 }
 

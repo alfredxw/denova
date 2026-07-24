@@ -62,6 +62,8 @@ func durableEventPayloadBytes(event Event) int64 {
 		bytes += queuedInputPayloadBytes(payload.Item)
 	case QueueConsumedEvent:
 		bytes += int64(len(payload.CommandID) + len(payload.Delivery))
+	case QueueSteerRequestedEvent:
+		bytes += int64(len(payload.CommandID))
 	case QueueCancelledEvent:
 		bytes += int64(len(payload.CommandID) + len(payload.Reason))
 	case UserMessageCommittedEvent:

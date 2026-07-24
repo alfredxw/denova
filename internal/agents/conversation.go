@@ -23,12 +23,6 @@ type Conversation interface {
 	ResolveInterruption(id string) error
 }
 
-// UserMessageReferencesSetter lets a durable conversation attach bounded,
-// display-only references to the next persisted user message.
-type UserMessageReferencesSetter interface {
-	SetUserMessageReferences([]session.UserMessageReference)
-}
-
 // ContextSourceReporter 可由 Conversation 提供本轮已拼装的业务上下文来源。
 // ChatService 会在 CommitModelInput 后追加打印，便于排查非通用注入内容。
 type ContextSourceReporter interface {
@@ -71,15 +65,14 @@ type InteractiveNarrativeReadinessReporter interface {
 }
 
 type SessionConversation struct {
-	session               *session.Session
-	cfg                   *config.Config
-	agentKind             string
-	stableContextTitle    string
-	stableContext         string
-	dynamicContextTitle   string
-	dynamicContext        string
-	userMessageReferences []session.UserMessageReference
-	lastContextSummary    string
+	session             *session.Session
+	cfg                 *config.Config
+	agentKind           string
+	stableContextTitle  string
+	stableContext       string
+	dynamicContextTitle string
+	dynamicContext      string
+	lastContextSummary  string
 
 	cycleMu            sync.Mutex
 	cycleIdentity      HarnessCycleIdentity
@@ -92,15 +85,6 @@ type SessionConversation struct {
 	pendingCompaction  *preparedSessionContextCompaction
 }
 
-func (c *SessionConversation) SetUserMessageReferences(references []session.UserMessageReference) {
-	if c == nil {
-		return
-	}
-	c.cycleMu.Lock()
-	c.userMessageReferences = append([]session.UserMessageReference(nil), references...)
-	c.cycleMu.Unlock()
-}
-
 func (c *SessionConversation) BindHarnessAgentKind(agentKind string) {
 	if c == nil {
 		return
@@ -108,6 +92,16 @@ func (c *SessionConversation) BindHarnessAgentKind(agentKind string) {
 	c.cycleMu.Lock()
 	c.agentKind = strings.TrimSpace(agentKind)
 	c.cycleMu.Unlock()
+}
+
+func (c *SessionConversation) ResolveExplicitSkills(ctx context.Context, message string) ([]ExplicitSkillInvocation, error) {
+	if c == nil {
+		return nil, nil
+	}
+	c.cycleMu.Lock()
+	cfg, agentKind := c.cfg, c.agentKind
+	c.cycleMu.Unlock()
+	return ResolveExplicitSkillInvocations(ctx, cfg, agentKind, message)
 }
 
 func NewSessionConversation(sess *session.Session, options ...SessionConversationOption) *SessionConversation {

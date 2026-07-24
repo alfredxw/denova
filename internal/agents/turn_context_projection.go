@@ -3,6 +3,7 @@ package agents
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/agents/session"
@@ -17,30 +18,55 @@ type turnInputProjection struct {
 	ResumeInterruption *session.Interruption
 }
 
-func projectTurnInput(req ChatRequest, pending *session.Interruption, bookService *book.Service, budget agentcontext.Budget) turnInputProjection {
-	resumeInterruption := pending
-	if !shouldResumeInterruptedRequest(req.Message) {
+// turnRuntimeEnvironment is one immutable real-world snapshot captured for a
+// model turn. It must never be interpreted as fictional or in-story time.
+type turnRuntimeEnvironment struct {
+	CapturedAt time.Time
+	Workspace  string
+}
+
+// turnContextProjectionInput keeps every turn-scoped source explicit inside
+// the shared preparation module. Callers use prepareTurnContext instead.
+type turnContextProjectionInput struct {
+	Request             ChatRequest
+	PendingInterruption *session.Interruption
+	BookService         *book.Service
+	Budget              agentcontext.Budget
+	Environment         turnRuntimeEnvironment
+	ExplicitSkills      []ExplicitSkillInvocation
+}
+
+func newTurnRuntimeEnvironment(workspace string) turnRuntimeEnvironment {
+	return turnRuntimeEnvironment{CapturedAt: time.Now(), Workspace: strings.TrimSpace(workspace)}
+}
+
+func projectTurnInput(input turnContextProjectionInput) turnInputProjection {
+	resumeInterruption := input.PendingInterruption
+	if !shouldResumeInterruptedRequest(input.Request.Message) {
 		resumeInterruption = nil
 	}
+	input.PendingInterruption = resumeInterruption
 	return turnInputProjection{
-		OriginalMessage:    req.Message,
-		Fragments:          projectTurnContextFragments(req, resumeInterruption, bookService, budget),
+		OriginalMessage:    input.Request.Message,
+		Fragments:          projectTurnContextFragments(input),
 		ResumeInterruption: resumeInterruption,
 	}
 }
 
-func projectTurnContextFragments(req ChatRequest, pending *session.Interruption, bookService *book.Service, budget agentcontext.Budget) []agentcontext.Fragment {
-	fragments := make([]agentcontext.Fragment, 0, 4+len(req.References)+len(req.LoreReferences)+len(req.Selections))
+func projectTurnContextFragments(input turnContextProjectionInput) []agentcontext.Fragment {
+	req := input.Request
+	fragments := make([]agentcontext.Fragment, 0, 5+len(req.References)+len(req.LoreReferences)+len(req.Selections))
 	appendFragment := func(fragment agentcontext.Fragment) {
 		if strings.TrimSpace(fragment.Content) != "" {
 			fragments = append(fragments, fragment)
 		}
 	}
-	if pending != nil {
+	appendFragment(runtimeEnvironmentFragment(input.Environment))
+	if input.PendingInterruption != nil {
 		appendFragment(turnFragment(
 			"runtime_interruption_resume", "runtime.interruption", "异常中断恢复上下文",
 			"resume an interrupted request without replaying completed work",
-			buildInterruptedResumeMessage("", pending), 0,
+			buildInterruptedResumeMessage("", input.PendingInterruption), 0,
 		))
 	}
 	if req.PlanMode {
@@ -57,8 +83,11 @@ func projectTurnContextFragments(req ChatRequest, pending *session.Interruption,
 			writingSkillLoadHintContent(skillName), 0,
 		))
 	}
-	fragments = append(fragments, projectReferenceFragments(bookService, req.References, budget)...)
-	fragments = append(fragments, projectLoreReferenceFragments(bookService, req.LoreReferences)...)
+	for _, fragment := range explicitSkillFragments(input.ExplicitSkills) {
+		appendFragment(fragment)
+	}
+	fragments = append(fragments, projectReferenceFragments(input.BookService, req.References, input.Budget)...)
+	fragments = append(fragments, projectLoreReferenceFragments(input.BookService, req.LoreReferences)...)
 	fragments = append(fragments, projectSelectionFragments(req.Selections)...)
 	if block, ok := reviewFeedbackContextBlockFromNormalized(req.ResolvedReviewFeedback.normalized()); ok {
 		appendFragment(turnFragment(
@@ -73,6 +102,46 @@ func projectTurnContextFragments(req ChatRequest, pending *session.Interruption,
 		prompts.ContextBoundary(""), 0,
 	))
 	return fragments
+}
+
+func runtimeEnvironmentFragment(environment turnRuntimeEnvironment) agentcontext.Fragment {
+	capturedAt := environment.CapturedAt
+	if capturedAt.IsZero() {
+		return agentcontext.Fragment{}
+	}
+	workspace := strings.ReplaceAll(strings.TrimSpace(environment.Workspace), "\\", "/")
+	location := strings.TrimSpace(capturedAt.Location().String())
+	zoneName, _ := capturedAt.Zone()
+	if location == "" || location == "Local" {
+		location = strings.TrimSpace(zoneName)
+	}
+	if location == "" {
+		location = "UTC"
+	}
+
+	var content strings.Builder
+	content.WriteString("- 上下文快照时间 / Captured at: ")
+	content.WriteString(capturedAt.Format(time.RFC3339))
+	content.WriteString("\n- 时区 / Time zone: ")
+	content.WriteString(location)
+	content.WriteString(" (UTC")
+	content.WriteString(capturedAt.Format("-07:00"))
+	content.WriteString(")")
+	if workspace != "" {
+		content.WriteString("\n- 当前工作区 / Workspace: ")
+		content.WriteString(workspace)
+	}
+	content.WriteString("\n- 说明 / Note: 这是现实运行环境的本轮快照，不是作品或互动故事中的世界时间；作品时间线仍以作品状态为准。 / This is a turn-scoped real-world runtime snapshot, not in-story time; story chronology remains governed by workspace state.")
+	fragment := turnFragment(
+		"runtime_environment",
+		"runtime.environment",
+		"当前运行环境 / Current runtime environment",
+		"provide turn-scoped real-world time and active workspace without changing the stable system prompt",
+		content.String(),
+		0,
+	)
+	fragment.Note = "source=server runtime; captured during turn context assembly; transient"
+	return fragment
 }
 
 func turnFragment(id, source, title, purpose, content string, limit int) agentcontext.Fragment {
@@ -208,7 +277,7 @@ func writingSkillLoadHintContent(skillName string) string {
 		return ""
 	}
 	return "当前创作 Agent 选中的 Writing Skill 是 `" + skillName + "`。\n\n" +
-		"- 若本轮请求涉及小说正文续写、章节正文创作、正文重写或润色，且当前 Agent 已启用 `skill` 工具，请先调用 `skill` 工具加载 `" + skillName + "`，读取完整 SKILL.md 后再执行。\n" +
+		"- 若本轮请求涉及小说正文续写、章节正文创作、正文重写或润色，且当前 Agent 已启用 `skill` 工具，同时上下文没有标记该 Skill 已由运行时加载，请先调用 `skill` 工具加载 `" + skillName + "`，读取完整 SKILL.md 后再执行。\n" +
 		"- 若本轮请求是问答、分析、整理、大纲/设定讨论、配置或规划，不要加载 Writing Skill，直接按本轮请求处理。\n" +
 		"- 在调用 `skill` 工具前，不要假装已经读取了该 Skill 的完整说明；写作范围仍只由用户本轮自然语言指令决定，不存在单独的 `writing_scope` 字段。"
 }

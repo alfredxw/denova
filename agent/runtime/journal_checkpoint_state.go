@@ -18,31 +18,32 @@ type harnessCheckpoint struct {
 	Cycle       int         `json:"cycle,omitempty"`
 	SnapshotID  SnapshotID  `json:"snapshot_id,omitempty"`
 
-	ActiveStructural      *StructuralOperationSnapshot  `json:"active_structural,omitempty"`
-	RecoveryPaused        bool                          `json:"recovery_paused,omitempty"`
-	InputRecovery         *InputMaterializationRecovery `json:"input_recovery,omitempty"`
-	ActiveInput           UserInput                     `json:"active_input,omitempty"`
-	ActiveContent         string                        `json:"active_content,omitempty"`
-	ActiveThinking        string                        `json:"active_thinking,omitempty"`
-	Messages              []Message                     `json:"messages,omitempty"`
-	Queue                 []QueuedInput                 `json:"queue,omitempty"`
-	OpenToolCalls         []ToolCallState               `json:"open_tool_calls,omitempty"`
-	PendingEffects        []HostEffect                  `json:"pending_host_effects,omitempty"`
-	RetainedEvents        []encodedEvent                `json:"retained_events,omitempty"`
-	Commands              []checkpointCommand           `json:"hot_commands,omitempty"`
-	OperationCommands     map[OperationID]CommandID     `json:"operation_commands,omitempty"`
-	OperationAcceptances  map[OperationID]CommandRecord `json:"operation_acceptances,omitempty"`
-	ActiveCommandID       CommandID                     `json:"active_command_id,omitempty"`
-	ActiveCycleCommandID  CommandID                     `json:"active_cycle_command_id,omitempty"`
-	PendingCycleCommandID CommandID                     `json:"pending_cycle_command_id,omitempty"`
-	LastOperation         *OperationSummary             `json:"last_operation,omitempty"`
-	RecentOperations      []OperationSummary            `json:"recent_operations,omitempty"`
-	AbortReason           string                        `json:"abort_reason,omitempty"`
-	AbortRequested        bool                          `json:"abort_requested,omitempty"`
-	DomainCommits         []DomainCommitState           `json:"domain_commits,omitempty"`
-	LastDomainCommits     []DomainCommitState           `json:"last_domain_commits,omitempty"`
-	LastDomainCommit      *DomainCommitState            `json:"last_domain_commit,omitempty"`
-	MessagesTruncated     bool                          `json:"messages_truncated,omitempty"`
+	ActiveStructural       *StructuralOperationSnapshot  `json:"active_structural,omitempty"`
+	RecoveryPaused         bool                          `json:"recovery_paused,omitempty"`
+	InputRecovery          *InputMaterializationRecovery `json:"input_recovery,omitempty"`
+	ActiveInput            UserInput                     `json:"active_input,omitempty"`
+	ActiveContent          string                        `json:"active_content,omitempty"`
+	ActiveThinking         string                        `json:"active_thinking,omitempty"`
+	Messages               []Message                     `json:"messages,omitempty"`
+	Queue                  []QueuedInput                 `json:"queue,omitempty"`
+	PreemptQueuedCommandID CommandID                     `json:"preempt_queued_command_id,omitempty"`
+	OpenToolCalls          []ToolCallState               `json:"open_tool_calls,omitempty"`
+	PendingEffects         []HostEffect                  `json:"pending_host_effects,omitempty"`
+	RetainedEvents         []encodedEvent                `json:"retained_events,omitempty"`
+	Commands               []checkpointCommand           `json:"hot_commands,omitempty"`
+	OperationCommands      map[OperationID]CommandID     `json:"operation_commands,omitempty"`
+	OperationAcceptances   map[OperationID]CommandRecord `json:"operation_acceptances,omitempty"`
+	ActiveCommandID        CommandID                     `json:"active_command_id,omitempty"`
+	ActiveCycleCommandID   CommandID                     `json:"active_cycle_command_id,omitempty"`
+	PendingCycleCommandID  CommandID                     `json:"pending_cycle_command_id,omitempty"`
+	LastOperation          *OperationSummary             `json:"last_operation,omitempty"`
+	RecentOperations       []OperationSummary            `json:"recent_operations,omitempty"`
+	AbortReason            string                        `json:"abort_reason,omitempty"`
+	AbortRequested         bool                          `json:"abort_requested,omitempty"`
+	DomainCommits          []DomainCommitState           `json:"domain_commits,omitempty"`
+	LastDomainCommits      []DomainCommitState           `json:"last_domain_commits,omitempty"`
+	LastDomainCommit       *DomainCommitState            `json:"last_domain_commit,omitempty"`
+	MessagesTruncated      bool                          `json:"messages_truncated,omitempty"`
 }
 
 type checkpointCommand struct {
@@ -67,7 +68,8 @@ func (s *harnessState) checkpoint() (harnessCheckpoint, error) {
 		RecoveryPaused:   s.recoveryPaused, InputRecovery: cloneInputMaterializationRecovery(s.inputRecovery),
 		ActiveInput: cloneUserInput(s.activeInput), ActiveContent: s.activeContent.String(), ActiveThinking: s.activeThinking.String(),
 		Messages: cloneMessages(s.messages), Queue: cloneQueue(s.queue),
-		ActiveCommandID: s.activeCommandID, ActiveCycleCommandID: s.activeCycleCommandID,
+		PreemptQueuedCommandID: s.preemptQueuedCommandID,
+		ActiveCommandID:        s.activeCommandID, ActiveCycleCommandID: s.activeCycleCommandID,
 		PendingCycleCommandID: s.pendingCycleCommandID,
 		LastOperation:         cloneOperationSummary(s.lastOperation), RecentOperations: cloneOperationSummaries(s.recentOperations),
 		AbortReason: s.abortReason, AbortRequested: s.abortRequested,
@@ -141,6 +143,13 @@ func restoreHarnessCheckpoint(target *harnessState, checkpoint harnessCheckpoint
 	restored.activeThinking.WriteString(checkpoint.ActiveThinking)
 	restored.activeOutputRehydrated = checkpoint.ActiveContent != "" || checkpoint.ActiveThinking != ""
 	restored.queue = cloneQueue(checkpoint.Queue)
+	restored.preemptQueuedCommandID = checkpoint.PreemptQueuedCommandID
+	if restored.preemptQueuedCommandID != "" {
+		item, ok := restored.queued(restored.preemptQueuedCommandID)
+		if !ok || item.Delivery != DeliveryFollowUp {
+			return fmt.Errorf("checkpoint preempt target is not an accepted follow-up")
+		}
+	}
 	restored.activeCommandID = checkpoint.ActiveCommandID
 	restored.activeCycleCommandID = checkpoint.ActiveCycleCommandID
 	restored.pendingCycleCommandID = checkpoint.PendingCycleCommandID

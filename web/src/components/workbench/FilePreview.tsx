@@ -2,7 +2,7 @@ import { AlertCircle, FileJson2, FileText, ImageIcon, Maximize2 } from 'lucide-r
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ImagePreviewDialog } from '@/components/common/ImagePreviewDialog'
-import { workspaceAssetURL } from '@/lib/api'
+import { MISSING_WORKSPACE_REVISION, versionedWorkspaceAssetURL } from '@/lib/api-client/workspace'
 import { workspaceFileKind, type WorkspaceFileKind } from '@/lib/workspace-file-kind'
 
 const JSON_FORMAT_INPUT_LIMIT = 1_000_000
@@ -11,6 +11,7 @@ const TEXT_PREVIEW_LIMIT = 400_000
 interface FilePreviewProps {
   path: string
   content: string
+  revision?: string
 }
 
 interface TextPreview {
@@ -19,7 +20,7 @@ interface TextPreview {
   issueOptions?: Record<string, string | number>
 }
 
-export function FilePreview({ path, content }: FilePreviewProps) {
+export function FilePreview({ path, content, revision = '' }: FilePreviewProps) {
   const { t } = useTranslation()
   const kind = workspaceFileKind(path)
   const title = fileName(path)
@@ -36,8 +37,17 @@ export function FilePreview({ path, content }: FilePreviewProps) {
           {t('editor.preview.readOnly')}
         </span>
       </div>
+      {revision === MISSING_WORKSPACE_REVISION && (
+        <div role="alert" className="flex shrink-0 items-start gap-2 border-b border-[var(--nova-warning)]/30 bg-[var(--nova-warning-bg)] px-3 py-2 text-[11px] text-[var(--nova-text-muted)]">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--nova-warning)]" />
+          <div className="min-w-0">
+            <div className="font-medium text-[var(--nova-text)]">{t('editor.orphaned.title')}</div>
+            <div className="mt-0.5 text-[var(--nova-text-faint)]">{t('editor.orphaned.readOnlyDescription')}</div>
+          </div>
+        </div>
+      )}
       {kind === 'image' ? (
-        <ImageFilePreview path={path} />
+        <ImageFilePreview path={path} revision={revision} />
       ) : (
         <StructuredTextPreview path={path} content={content} kind={kind} />
       )}
@@ -45,9 +55,9 @@ export function FilePreview({ path, content }: FilePreviewProps) {
   )
 }
 
-function ImageFilePreview({ path }: { path: string }) {
+function ImageFilePreview({ path, revision }: { path: string; revision: string }) {
   const { t } = useTranslation()
-  const src = workspaceAssetURL(path)
+  const src = versionedWorkspaceAssetURL(path, revision)
   const title = t('editor.preview.imageTitle', { file: fileName(path) })
 
   return (

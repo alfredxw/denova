@@ -2,7 +2,6 @@ package webaccess
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -32,6 +31,7 @@ type searchOutcome struct {
 	index    int
 	provider string
 	results  []SearchResult
+	warnings []error
 	err      error
 }
 
@@ -53,10 +53,11 @@ func (client *Client) Search(ctx context.Context, request SearchRequest) (Search
 	}
 	providerRequest := providerSearchRequest{Query: query, TimeRange: timeRange, MaxResults: maxResults}
 
-	var failures []error
+	failures := append([]error(nil), client.configurationWarnings...)
 	hadReachableProvider := false
 	if client.primaryProvider != nil {
 		outcome := runSearchProviderWithin(ctx, client.primaryProvider, providerRequest, client.config.SearchProviderTimeout)
+		failures = append(failures, outcome.warnings...)
 		if outcome.err == nil {
 			hadReachableProvider = true
 			if len(outcome.results) > 0 {
@@ -80,25 +81,37 @@ func (client *Client) Search(ctx context.Context, request SearchRequest) (Search
 	}
 	if hadReachableProvider {
 		return SearchResponse{
-			Query:    query,
-			Message:  "No usable web search results were found.",
-			Warnings: searchWarningMessages(failures),
+			Query:           query,
+			Status:          SearchStatusNoResults,
+			Message:         "No usable web search results were found. 未找到可用的网页搜索结果。",
+			Warnings:        searchWarningMessages(failures),
+			RetryStrategy:   SearchRetryChangeQuery,
+			SuggestedAction: "Do not immediately repeat the same query. Change the keywords, remove overly narrow qualifiers, or use a known URL with web_fetch. 不要立即重复相同查询；请调整关键词、移除过窄限定，或用 web_fetch 打开已知网址。",
 		}, nil
 	}
 	if len(failures) == 0 {
-		return SearchResponse{}, fmt.Errorf("web search has no configured providers")
+		failures = append(failures, fmt.Errorf("web search has no configured providers"))
 	}
-	return SearchResponse{}, fmt.Errorf("all web search providers failed: %w", errors.Join(failures...))
+	return SearchResponse{
+		Query:           query,
+		Status:          SearchStatusProvidersUnavailable,
+		Message:         "All web search providers are unavailable. 所有网页搜索提供方当前均不可用。",
+		Warnings:        searchWarningMessages(failures),
+		RetryStrategy:   SearchRetryWaitOrReconfigure,
+		SuggestedAction: "Do not immediately repeat the same query. Wait before retrying, verify the configured SearXNG endpoint, or continue from a known URL with web_fetch. 不要立即重复相同查询；请稍后重试、检查 SearXNG 配置，或用 web_fetch 打开已知网址。",
+	}, nil
 }
 
 func successfulSearchResponse(query, provider string, results []SearchResult, maximum int, warnings []error) SearchResponse {
 	results = sanitizeSearchResults(results, provider, maximum)
 	return SearchResponse{
-		Query:    query,
-		Provider: provider,
-		Message:  fmt.Sprintf("Found %d result(s) via %s.", len(results), provider),
-		Results:  results,
-		Warnings: searchWarningMessages(warnings),
+		Query:         query,
+		Status:        SearchStatusSuccess,
+		Provider:      provider,
+		Message:       fmt.Sprintf("Found %d result(s) via %s. 通过 %s 找到 %d 条结果。", len(results), provider, provider, len(results)),
+		Results:       results,
+		Warnings:      searchWarningMessages(warnings),
+		RetryStrategy: SearchRetryNone,
 	}
 }
 
@@ -148,6 +161,7 @@ func combineSearchProviders(ctx context.Context, providers []searchProvider, req
 		case <-ctx.Done():
 			return searchOutcome{}, hadReachable, append(failures, ctx.Err())
 		}
+		failures = append(failures, outcome.warnings...)
 		if outcome.err != nil {
 			failures = append(failures, outcome.err)
 			log.Printf("[webaccess] fallback search provider=%s failed: %v", outcome.provider, outcome.err)
@@ -232,9 +246,17 @@ func runSearchProvider(ctx context.Context, provider searchProvider, request pro
 		return outcome
 	}
 	outcome.results = sanitizeSearchResults(results, outcome.provider, request.MaxResults)
-	if outcome.provider == ProviderBing && len(outcome.results) > 0 && !searchResultsCoverQuery(request.Query, outcome.results) {
-		outcome.results = nil
-		outcome.err = fmt.Errorf("%s: returned results do not sufficiently match the complete query", outcome.provider)
+	if outcome.provider == ProviderBing && len(outcome.results) > 0 {
+		originalCount := len(outcome.results)
+		outcome.results = filterSearchResultsByQuery(request.Query, outcome.results)
+		if removed := originalCount - len(outcome.results); removed > 0 {
+			outcome.warnings = append(outcome.warnings, fmt.Errorf(
+				"%s: filtered %d of %d result(s) that did not sufficiently match the query",
+				outcome.provider,
+				removed,
+				originalCount,
+			))
+		}
 	}
 	return outcome
 }

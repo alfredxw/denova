@@ -1,5 +1,5 @@
-import { useCallback, useMemo } from 'react'
-import type { CSSProperties } from 'react'
+import { useCallback, useLayoutEffect, useMemo } from 'react'
+import type { CSSProperties, RefCallback } from 'react'
 import { Bot, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Virtuoso } from 'react-virtuoso'
@@ -41,20 +41,16 @@ export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highl
     const resolvedView = view || sessionViews[index]
     if (!resolvedView) return null
     return (
-      <div
-        ref={running && index === sessionViews.length - 1 ? scrollLock.streamingRowRef : undefined}
-        data-nova-chat-item="subagent-message"
-        className="min-w-0 px-4 pb-3 last:pb-0"
-      >
-        <AgentMessageItem
-          view={resolvedView}
-          highlightDialogue={highlightDialogue}
-          messageStyle={messageStyle}
-          subAgentPresentation="content"
-        />
-      </div>
+      <SubAgentSessionRow
+        view={resolvedView}
+        streamingTail={running && index === sessionViews.length - 1}
+        streamingRowRef={scrollLock.streamingRowRef}
+        syncStreamingRowHeight={scrollLock.syncStreamingRowHeight}
+        highlightDialogue={highlightDialogue}
+        messageStyle={messageStyle}
+      />
     )
-  }, [highlightDialogue, messageStyle, running, scrollLock.streamingRowRef, sessionViews])
+  }, [highlightDialogue, messageStyle, running, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight, sessionViews])
 
   return (
     <section className="flex h-full min-h-0 flex-col border-l border-[var(--nova-border)] bg-[var(--nova-surface-2)] shadow-[-12px_0_26px_-24px_rgba(15,23,42,0.82)]">
@@ -112,6 +108,34 @@ export function AgentSubAgentSessionPanel({ messages, sessionKey, onClose, highl
         </div>
       )}
     </section>
+  )
+}
+
+function SubAgentSessionRow({ view, streamingTail, streamingRowRef, syncStreamingRowHeight, highlightDialogue, messageStyle }: {
+  view: AgentMessageView
+  streamingTail: boolean
+  streamingRowRef: RefCallback<HTMLElement>
+  syncStreamingRowHeight: () => void
+  highlightDialogue: boolean
+  messageStyle?: CSSProperties
+}) {
+  useLayoutEffect(() => {
+    if (streamingTail) syncStreamingRowHeight()
+  }, [streamingTail, syncStreamingRowHeight, view])
+
+  return (
+    <div
+      ref={streamingTail ? streamingRowRef : undefined}
+      data-nova-chat-item="subagent-message"
+      className="min-w-0 px-4 pb-3 last:pb-0"
+    >
+      <AgentMessageItem
+        view={view}
+        highlightDialogue={highlightDialogue}
+        messageStyle={messageStyle}
+        subAgentPresentation="content"
+      />
+    </div>
   )
 }
 

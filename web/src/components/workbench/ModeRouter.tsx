@@ -13,7 +13,7 @@ import { getImagePresets, getInteractiveTellers } from '@/features/interactive/a
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { ActiveChatTask, BookRecord, BookSortMode, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
+import type { ActiveChatTask, AgentRuntimeQueuedCommand, BookRecord, BookSortMode, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
@@ -55,6 +55,7 @@ interface ModeRouterProps {
   runtimeProjection?: ActiveChatTask | null
   abortPending?: boolean
   commandSubmitting?: boolean
+  queueActionPendingCommandID?: string
   projectVisible: boolean
   activityBarExpanded: boolean
   rightPanel: RightPanel
@@ -125,6 +126,9 @@ interface ModeRouterProps {
   onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
+  onSteerQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
+  onDeleteQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
+  onEditQueuedCommand?: (item: AgentRuntimeQueuedCommand) => string | null | Promise<string | null>
   onReferenceRemove: (path: string) => void
   onLoreReferenceAdd: (id: string) => void
   onLoreReferenceRemove: (id: string) => void
@@ -154,6 +158,7 @@ export function ModeRouter(props: ModeRouterProps) {
     runtimeProjection,
     abortPending,
     commandSubmitting,
+    queueActionPendingCommandID,
     projectVisible,
     activityBarExpanded,
     rightPanel,
@@ -224,6 +229,9 @@ export function ModeRouter(props: ModeRouterProps) {
     onSend,
     onAnalyzeContext,
     onStop,
+    onSteerQueuedCommand,
+    onDeleteQueuedCommand,
+    onEditQueuedCommand,
     onReferenceRemove,
     onLoreReferenceAdd,
     onLoreReferenceRemove,
@@ -624,7 +632,7 @@ export function ModeRouter(props: ModeRouterProps) {
             <div className="flex min-h-0 flex-1 flex-col">
               {activeTab ? (
                 activeFileKind === 'image' || activeFileKind === 'json' || activeFileKind === 'jsonl' ? (
-                  <FilePreview path={selectedFile || activeTab.path} content={fileContent} />
+                  <FilePreview path={selectedFile || activeTab.path} content={fileContent} revision={fileRevision} />
                 ) : (
                   <MarkdownEditor
                     workspace={workspace}
@@ -757,6 +765,7 @@ export function ModeRouter(props: ModeRouterProps) {
       runtimeProjection={runtimeProjection}
       abortPending={abortPending}
       commandSubmitting={commandSubmitting}
+      queueActionPendingCommandID={queueActionPendingCommandID}
       activityContent={activityContent}
       references={references}
       loreReferences={loreReferences}
@@ -777,6 +786,9 @@ export function ModeRouter(props: ModeRouterProps) {
       onAnalyzeContext={onAnalyzeContext}
       ideContext={ideContext}
       onStop={onStop}
+      onSteerQueuedCommand={onSteerQueuedCommand}
+      onDeleteQueuedCommand={onDeleteQueuedCommand}
+      onEditQueuedCommand={onEditQueuedCommand}
       onReferenceRemove={onReferenceRemove}
       onLoreReferenceAdd={onLoreReferenceAdd}
       onLoreReferenceRemove={onLoreReferenceRemove}

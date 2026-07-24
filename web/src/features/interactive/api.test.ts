@@ -52,37 +52,6 @@ describe('interactive agent command API', () => {
     })).rejects.toMatchObject({ status: 503, message: 'temporary failure' })
   })
 
-  it('maps the game resource and bounded turn input to the typed command DTO', async () => {
-    await submitInteractiveAgentCommand({
-      type: 'follow_up',
-      commandId: 'command-1',
-      targetOperationId: 'operation-1',
-      storyId: 'story-1',
-      branchId: 'main',
-      message: '检查足迹',
-      styleScenes: ['雨夜'],
-    })
-
-    expect(requestJSON).toHaveBeenCalledWith('/api/interactive/chat/commands', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'follow_up',
-        command_id: 'command-1',
-        target_operation_id: 'operation-1',
-        story_id: 'story-1',
-        branch_id: 'main',
-        input: {
-          mode: 'story',
-          story_id: 'story-1',
-          branch: 'main',
-          message: '检查足迹',
-          style_scenes: ['雨夜'],
-        },
-      }),
-    })
-  })
-
   it('does not attach an input object to abort', async () => {
     await submitInteractiveAgentCommand({
       type: 'abort',

@@ -194,21 +194,21 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 		return ContextAnalysis{}, err
 	}
 	policy := DefaultLoopPolicy().normalized()
-	budget := contextBudgetForAgent(cfg, config.AgentKindIDE)
-	projection := projectTurnInput(req, pending, bookService, budget)
-	prepared, err := AssembleModelContext(context.Background(), conversation, projection.OriginalMessage, ModelContextInput{
-		UserMessage: req.Message,
-		Fragments:   projection.Fragments,
-		Budget:      budget,
+	turn, err := prepareTurnContext(context.Background(), turnContextPreparationInput{
+		Conversation:        conversation,
+		Request:             req,
+		PendingInterruption: pending,
+		BookService:         bookService,
+		Environment:         newTurnRuntimeEnvironment(contextAnalysisWorkspace(cfg, bookService)),
 	})
 	if err != nil {
 		return ContextAnalysis{}, err
 	}
-	messages := prepared.Messages
+	messages := turn.ModelContext.Messages
 	runtimeContexts := IDEWorkspaceRuntimeContextsForRequest(state, req)
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
 	stableMessageCount := 0
-	for _, fragment := range prepared.Context.Fragments {
+	for _, fragment := range turn.ModelContext.Context.Fragments {
 		if fragment.Included && fragment.Placement == agentcontext.PlacementLeadingMessage {
 			stableMessageCount++
 		}
@@ -241,7 +241,7 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 		Mode:                     "ide",
 		SystemPrompt:             systemPrompt,
 		SystemPromptParts:        systemParts,
-		ContextParts:             contextBuildLogFromAssembly(policy.ContextLedger, projection.OriginalMessage, prepared.Context).FullParts(),
+		ContextParts:             contextBuildLogFromAssembly(policy.ContextLedger, turn.OriginalMessage, turn.ModelContext.Context).FullParts(),
 		ContextMessages:          contextMessages,
 		MessageCount:             len(contextMessages),
 		TokenEstimate:            usage.tokens,
@@ -257,6 +257,16 @@ func BuildIDEContextAnalysis(cfg *config.Config, state *book.State, teller IDESt
 	}, nil
 }
 
+func contextAnalysisWorkspace(cfg *config.Config, bookService *book.Service) string {
+	if cfg != nil && strings.TrimSpace(cfg.Workspace) != "" {
+		return cfg.Workspace
+	}
+	if bookService != nil {
+		return bookService.Workspace()
+	}
+	return ""
+}
+
 func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State, teller prompts.InteractiveStorySystemInstructionInput, bookService *book.Service, req ChatRequest, compaction *interactive.ContextCompactionEvent, conversation Conversation) (ContextAnalysis, error) {
 	if len(teller.StyleRules) == 0 && len(req.StyleRules) > 0 {
 		teller.StyleRules = req.StyleRules
@@ -266,17 +276,16 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		return ContextAnalysis{}, err
 	}
 	policy := DefaultLoopPolicy().normalized()
-	budget := modelContextBudgetForConversation(conversation)
-	projection := projectTurnInput(req, nil, bookService, budget)
-	prepared, err := AssembleModelContext(context.Background(), conversation, projection.OriginalMessage, ModelContextInput{
-		UserMessage: req.Message,
-		Fragments:   projection.Fragments,
-		Budget:      budget,
+	turn, err := prepareTurnContext(context.Background(), turnContextPreparationInput{
+		Conversation: conversation,
+		Request:      req,
+		BookService:  bookService,
+		Environment:  newTurnRuntimeEnvironment(contextAnalysisWorkspace(cfg, bookService)),
 	})
 	if err != nil {
 		return ContextAnalysis{}, err
 	}
-	messages := prepared.Messages
+	messages := turn.ModelContext.Messages
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages))
 	compactionEpoch := 0
 	for i, msg := range messages {
@@ -306,7 +315,7 @@ func BuildInteractiveStoryContextAnalysis(cfg *config.Config, state *book.State,
 		Mode:                     "interactive",
 		SystemPrompt:             systemPrompt,
 		SystemPromptParts:        systemParts,
-		ContextParts:             contextBuildLogFromAssembly(policy.ContextLedger, projection.OriginalMessage, prepared.Context).FullParts(),
+		ContextParts:             contextBuildLogFromAssembly(policy.ContextLedger, turn.OriginalMessage, turn.ModelContext.Context).FullParts(),
 		ContextMessages:          contextMessages,
 		MessageCount:             len(contextMessages),
 		TokenEstimate:            usage.tokens,
@@ -341,14 +350,15 @@ func BuildInteractiveDirectorContextAnalysisWithStableContext(cfg *config.Config
 		stableContextMaxBytes: stableMaxBytes,
 		contextBudget:         contextBudgetForAgent(cfg, config.AgentKindInteractiveDirector),
 	}
-	prepared, err := AssembleModelContext(context.Background(), conversation, "", ModelContextInput{
-		UserMessage: instruction,
-		Budget:      conversation.ModelContextBudget(),
+	turn, err := prepareTurnContext(context.Background(), turnContextPreparationInput{
+		Conversation: conversation,
+		Request:      ChatRequest{Message: instruction},
+		Environment:  newTurnRuntimeEnvironment(contextAnalysisWorkspace(cfg, nil)),
 	})
 	if err != nil {
 		return ContextAnalysis{}, err
 	}
-	messages := prepared.Messages
+	messages := turn.ModelContext.Messages
 	contextMessages := make([]ContextAnalysisPart, 0, len(messages)+8)
 	if len(messages) > 1 {
 		part := contextAnalysisPartFromMessage("resident_lore", "enabled resident lore", strings.TrimSpace(stableTitle), messages[0])
@@ -366,7 +376,7 @@ func BuildInteractiveDirectorContextAnalysisWithStableContext(cfg *config.Config
 		Mode:                     "interactive_director",
 		SystemPrompt:             systemPrompt,
 		SystemPromptParts:        systemParts,
-		ContextParts:             contextBuildLogFromAssembly(DefaultLoopPolicy().ContextLedger, instruction, prepared.Context).FullParts(),
+		ContextParts:             contextBuildLogFromAssembly(DefaultLoopPolicy().ContextLedger, turn.OriginalMessage, turn.ModelContext.Context).FullParts(),
 		ContextMessages:          contextMessages,
 		MessageCount:             len(messages),
 		TokenEstimate:            usage.tokens,

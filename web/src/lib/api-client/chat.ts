@@ -116,6 +116,8 @@ export async function removeChatContextCompaction(): Promise<boolean> {
 }
 
 export type AgentCommandDelivery = 'follow_up' | 'steer'
+export type AgentRuntimeQueueDelivery = AgentCommandDelivery | 'next_turn'
+export type AgentQueuedCommandAction = 'steer_queued' | 'cancel_queued'
 
 export type AgentRuntimeRecoveryActionKind =
   'start_turn' | 'steer' | 'follow_up' | 'next_turn' | 'compact_context' | 'remove_compaction' | 'abort'
@@ -139,9 +141,10 @@ export interface AgentRuntimeActiveOutput {
 export interface AgentRuntimeQueuedCommand {
   command_id: string
   operation_id: string
-  delivery: AgentCommandDelivery
+  delivery: AgentRuntimeQueueDelivery
   message: string
   message_truncated?: boolean
+  steer_requested?: boolean
 }
 
 export interface AgentRuntimeOpenTool {
@@ -231,6 +234,27 @@ export async function submitChatCommand(
       command_id: commandId,
       target_operation_id: targetOperationId,
       ...(input ? { input } : {}),
+      ...(reason ? { reason } : {}),
+    }),
+  })
+}
+
+/** Manage one already accepted queued command without resubmitting its input. */
+export async function submitQueuedChatCommand(
+  action: AgentQueuedCommandAction,
+  commandId: string,
+  targetOperationId: string,
+  targetCommandId: string,
+  reason?: string,
+): Promise<AgentCommandReceipt> {
+  return requestJSON('/api/chat/commands', {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({
+      type: action,
+      command_id: commandId,
+      target_operation_id: targetOperationId,
+      target_command_id: targetCommandId,
       ...(reason ? { reason } : {}),
     }),
   })

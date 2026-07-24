@@ -4,7 +4,7 @@ import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, E
 import { useTranslation } from 'react-i18next'
 import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
 import { TokenUsageDialog, type TokenUsageRecord } from './TokenUsagePanel'
-import type { TextSelection } from '@/lib/api'
+import type { AgentRuntimeQueuedCommand, TextSelection } from '@/lib/api'
 import type { VisibleAgentKey } from '@/features/agents/agent-registry'
 import { Button } from '@/components/ui/button'
 import { AgentComposerShell } from './AgentComposerShell'
@@ -23,7 +23,7 @@ import { useKeyboardInset } from '@/hooks/useKeyboardInset'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { ReviewFeedbackTray, reviewFeedbackCommentCount, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { AgentComposerControls } from './AgentComposerControls'
-import type { AgentCommandDelivery } from '@/lib/api'
+import { AgentQueuedCommandList } from './AgentQueuedCommandList'
 
 /** 可用命令列表 */
 const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: LucideIcon }> = [
@@ -53,7 +53,6 @@ type CommandOption = {
 
 type CommandScope = 'all' | 'skills' | 'none'
 type BuiltinCommand = typeof COMMANDS[number]['cmd']
-export type ActiveDelivery = AgentCommandDelivery
 const MAX_TOKEN_USAGE_MENU_COUNT = 10
 const inputDrafts = new Map<string, string>()
 
@@ -63,8 +62,11 @@ interface InputAreaProps {
   disabled: boolean
   /** Agent execution and editor availability are independent: active runs can still accept instructions. */
   generationActive?: boolean
-  activeDelivery?: ActiveDelivery
-  onActiveDeliveryChange?: (delivery: ActiveDelivery) => void
+  queuedCommands?: AgentRuntimeQueuedCommand[]
+  queueActionPendingCommandID?: string
+  onQueuedCommandSteer?: (item: AgentRuntimeQueuedCommand) => boolean | void | Promise<boolean | void>
+  onQueuedCommandDelete?: (item: AgentRuntimeQueuedCommand) => boolean | void | Promise<boolean | void>
+  onQueuedCommandEdit?: (item: AgentRuntimeQueuedCommand) => boolean | void | Promise<boolean | void>
   abortPending?: boolean
   commandSubmitting?: boolean
   activeControlsDisabled?: boolean
@@ -115,8 +117,11 @@ export function InputArea({
   onStop,
   disabled,
   generationActive,
-  activeDelivery = 'follow_up',
-  onActiveDeliveryChange,
+  queuedCommands = [],
+  queueActionPendingCommandID = '',
+  onQueuedCommandSteer,
+  onQueuedCommandDelete,
+  onQueuedCommandEdit,
   abortPending = false,
   commandSubmitting = false,
   activeControlsDisabled = false,
@@ -571,6 +576,15 @@ export function InputArea({
         heading={t('chat.styleReference.heading')}
       />
 
+      <AgentQueuedCommandList
+        items={queuedCommands}
+        pendingCommandID={queueActionPendingCommandID}
+        disabled={activeControlsDisabled || abortPending || commandSubmitting}
+        onSteer={onQueuedCommandSteer}
+        onDelete={onQueuedCommandDelete}
+        onEdit={onQueuedCommandEdit}
+      />
+
       <AgentComposerShell
         references={hasReferences ? (
           <>
@@ -701,8 +715,6 @@ export function InputArea({
         submitControl={(
           <AgentComposerControls
             generationActive={isGenerationActive}
-            delivery={activeDelivery}
-            onDeliveryChange={onActiveDeliveryChange}
             onStop={onStop}
             onSend={handleSend}
             sendDisabled={sendBlocked || submitting || (!value.trim() && !hasReviewFeedback)}

@@ -78,8 +78,8 @@ func TestReviewFeedbackContextEnforcesWholeBlockByteLimit(t *testing.T) {
 	if got := feedback.EncodedSize(); got <= MaxReviewFeedbackContextBytes {
 		t.Fatalf("oversized feedback reported %d bytes", got)
 	}
-	fragments := projectTurnContextFragments(ChatRequest{ResolvedReviewFeedback: feedback}, nil, nil, agentcontext.DefaultBudget())
-	for _, fragment := range fragments {
+	composition, _ := assembleTurnForTest(t, ChatRequest{ResolvedReviewFeedback: feedback}, nil, nil, agentcontext.DefaultBudget())
+	for _, fragment := range composition.Fragments {
 		if fragment.Source == "workspace.review.feedback" {
 			t.Fatal("oversized feedback should not be partially projected")
 		}
@@ -99,8 +99,8 @@ func TestEmptyReviewFeedbackDoesNotProduceModelContext(t *testing.T) {
 	if block, ok := reviewFeedbackContextBlockFromNormalized(nil); ok || block != "" {
 		t.Fatalf("empty review feedback produced model context: ok=%v block=%q", ok, block)
 	}
-	projection := projectTurnInput(ChatRequest{Message: "continue"}, nil, nil, agentcontext.DefaultBudget())
-	for _, fragment := range projection.Fragments {
+	composition, _ := assembleTurnForTest(t, ChatRequest{Message: "continue"}, nil, nil, agentcontext.DefaultBudget())
+	for _, fragment := range composition.Fragments {
 		if fragment.Source == "workspace.review.feedback" {
 			t.Fatalf("empty review feedback produced an injected fragment: %#v", fragment)
 		}

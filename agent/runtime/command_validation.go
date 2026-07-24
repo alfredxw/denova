@@ -26,11 +26,21 @@ func validateCommandEnvelope(command Command, limits InputLimits) error {
 		return err
 	}
 	var operationID OperationID
+	var targetCommandID CommandID
 	switch typed := command.(type) {
 	case Steer:
 		operationID = typed.OperationID
 	case FollowUp:
 		operationID = typed.OperationID
+	case SteerQueued:
+		operationID = typed.OperationID
+		targetCommandID = typed.TargetCommandID
+	case CancelQueued:
+		operationID = typed.OperationID
+		targetCommandID = typed.TargetCommandID
+		if len(typed.Reason) > limits.MaxAbortReasonBytes {
+			return fmt.Errorf("%w: cancellation reason exceeds %d bytes", ErrInvalidCommand, limits.MaxAbortReasonBytes)
+		}
 	case NextTurn:
 		operationID = typed.AfterOperationID
 	case Abort:
@@ -41,6 +51,11 @@ func validateCommandEnvelope(command Command, limits InputLimits) error {
 	}
 	if len(operationID) > limits.MaxOperationIDBytes {
 		return fmt.Errorf("%w: operation id exceeds %d bytes", ErrInvalidCommand, limits.MaxOperationIDBytes)
+	}
+	if targetCommandID != "" {
+		if err := ValidateCommandID(string(targetCommandID), limits); err != nil {
+			return fmt.Errorf("%w: target command id is invalid", err)
+		}
 	}
 	return nil
 }
@@ -175,6 +190,21 @@ func CommandFingerprint(command Command) (string, error) {
 			OperationID OperationID `json:"operation_id"`
 			Input       UserInput   `json:"input"`
 		}{Kind: "follow_up", ID: command.ID, OperationID: command.OperationID, Input: command.Input}
+	case SteerQueued:
+		envelope = struct {
+			Kind            string      `json:"kind"`
+			ID              CommandID   `json:"id"`
+			OperationID     OperationID `json:"operation_id"`
+			TargetCommandID CommandID   `json:"target_command_id"`
+		}{Kind: "steer_queued", ID: command.ID, OperationID: command.OperationID, TargetCommandID: command.TargetCommandID}
+	case CancelQueued:
+		envelope = struct {
+			Kind            string      `json:"kind"`
+			ID              CommandID   `json:"id"`
+			OperationID     OperationID `json:"operation_id"`
+			TargetCommandID CommandID   `json:"target_command_id"`
+			Reason          string      `json:"reason"`
+		}{Kind: "cancel_queued", ID: command.ID, OperationID: command.OperationID, TargetCommandID: command.TargetCommandID, Reason: command.Reason}
 	case NextTurn:
 		envelope = struct {
 			Kind             string      `json:"kind"`

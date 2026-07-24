@@ -15,6 +15,7 @@ type chatAgentCommandRequest struct {
 	Type              string                   `json:"type"`
 	CommandID         string                   `json:"command_id"`
 	TargetOperationID string                   `json:"target_operation_id"`
+	TargetCommandID   string                   `json:"target_command_id,omitempty"`
 	Input             novaApp.AgentChatRequest `json:"input"`
 	Reason            string                   `json:"reason,omitempty"`
 }
@@ -45,15 +46,21 @@ func (h *Handlers) HandleChatCommand(ctx context.Context, c *app.RequestContext)
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "命令类型、command_id 和 target_operation_id 为必填项 / Command type, command_id, and target_operation_id are required", nil)
 		return
 	}
-	if kind != novaApp.AgentCommandAbort && strings.TrimSpace(body.Input.Message) == "" {
+	queueControl := kind == novaApp.AgentCommandSteerQueued || kind == novaApp.AgentCommandCancelQueued
+	if queueControl && strings.TrimSpace(body.TargetCommandID) == "" {
+		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "target_command_id 为必填项 / target_command_id is required", nil)
+		return
+	}
+	if kind != novaApp.AgentCommandAbort && !queueControl && strings.TrimSpace(body.Input.Message) == "" {
 		writeAgentRuntimeError(c, consts.StatusBadRequest, "agent_runtime.invalid_command", "消息不能为空 / Message is required", nil)
 		return
 	}
 	body.Input.Locale = requestLocale(c)
 	receipt, err := h.app.SubmitChatAgentCommand(ctx, novaApp.ChatAgentCommand{
 		Kind: kind, CommandID: strings.TrimSpace(body.CommandID),
-		OperationID: novaApp.AgentOperationID(strings.TrimSpace(body.TargetOperationID)),
-		Reason:      body.Reason, Input: body.Input,
+		OperationID:     novaApp.AgentOperationID(strings.TrimSpace(body.TargetOperationID)),
+		TargetCommandID: novaApp.AgentCommandID(strings.TrimSpace(body.TargetCommandID)),
+		Reason:          body.Reason, Input: body.Input,
 	})
 	if err != nil {
 		h.writeAgentCommandError(c, err, body.TargetOperationID)
@@ -74,6 +81,10 @@ func writingAgentCommandKind(value string) (novaApp.AgentCommandKind, error) {
 		return novaApp.AgentCommandNextTurn, nil
 	case string(novaApp.AgentCommandAbort):
 		return novaApp.AgentCommandAbort, nil
+	case string(novaApp.AgentCommandSteerQueued):
+		return novaApp.AgentCommandSteerQueued, nil
+	case string(novaApp.AgentCommandCancelQueued):
+		return novaApp.AgentCommandCancelQueued, nil
 	default:
 		return "", novaApp.ErrInvalidAgentCommand
 	}
@@ -87,7 +98,7 @@ func (h *Handlers) writeAgentCommandError(c *app.RequestContext, err error, targ
 	case errors.Is(err, novaApp.ErrStaleAgentOperation):
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.target_operation_mismatch", "目标 Agent 运行已变化 / The target agent operation has changed", details)
 	case errors.Is(err, novaApp.ErrAgentQueueConflict):
-		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.queue_conflict", "同类指令已在队列中 / A command of this kind is already queued", details)
+		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.queue_conflict", "队列操作与当前状态冲突 / Queue action conflicts with the current state", details)
 	case errors.Is(err, novaApp.ErrAgentBusy):
 		writeAgentRuntimeError(c, consts.StatusConflict, "agent_runtime.busy", "Agent 正忙 / Agent is busy", details)
 	case errors.Is(err, novaApp.ErrAgentOperationActive):

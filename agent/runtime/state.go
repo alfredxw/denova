@@ -25,6 +25,7 @@ type harnessState struct {
 	activeOutputRehydrated bool
 	messages               []Message
 	queue                  []QueuedInput
+	preemptQueuedCommandID CommandID
 	openToolCalls          map[string]ToolCallState
 	pendingHostEffects     map[HostEffectID]HostEffect
 	pendingHostEffectOrder []HostEffectID

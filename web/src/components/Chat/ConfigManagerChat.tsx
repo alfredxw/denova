@@ -81,6 +81,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     setMessages,
     isStreaming: running,
     consumeAgentUIStream,
+    abortLocalStream,
   } = useAgentUIMessageStream({ onView: handleStreamView })
   const tokenUsageMessages = useMemo(
     () => selectAgentTokenUsageRecords(messages),
@@ -373,7 +374,7 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
       />
       <InputArea
         onSend={(value) => void send(value)}
-        onStop={canAbortRecovery ? () => void abortRecovery() : undefined}
+        onStop={canAbortRecovery ? () => void abortRecovery() : (running ? () => abortLocalStream() : undefined)}
         disabled={false}
         generationActive={runtimeBusy}
         abortPending={abortPending}

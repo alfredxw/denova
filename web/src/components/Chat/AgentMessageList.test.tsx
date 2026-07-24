@@ -64,6 +64,50 @@ describe('Agent MessageList', () => {
     expect(state.closest('[data-nova-chat-after-content]')?.nextElementSibling).toHaveAttribute('data-nova-chat-bottom-spacer')
   })
 
+  it('keeps the streamed prose bottom fixed during the layout commit with a composer spacer', () => {
+    let rowHeight = 40
+    let scrollHeight = 500
+    const originalRect = HTMLElement.prototype.getBoundingClientRect
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+      if (this.hasAttribute('data-nova-chat-row-key')) {
+        return { height: rowHeight } as DOMRect
+      }
+      return originalRect.call(this)
+    })
+    const renderList = (content: string) => (
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>
+        <MessageList
+          isStreaming
+          activityContent=""
+          bottomPaddingPx={146}
+          messages={[{
+            id: 'streaming-assistant',
+            role: 'assistant',
+            parts: [{ type: 'text', text: content, state: 'streaming' }],
+          }] as AgentUIMessage[]}
+        />
+      </VirtuosoMockContext.Provider>
+    )
+
+    try {
+      const { container, rerender } = render(renderList('第一行'))
+      const scroller = container.querySelector<HTMLElement>('.nova-chat-canvas')
+      if (!scroller) throw new Error('Expected message scroller')
+      Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => scrollHeight })
+      Object.defineProperty(scroller, 'clientHeight', { configurable: true, value: 100 })
+      scroller.scrollTop = 400
+      fireEvent.scroll(scroller)
+
+      rowHeight = 70
+      scrollHeight = 530
+      rerender(renderList('第一行\n第二行'))
+
+      expect(scroller.scrollTop).toBe(430)
+    } finally {
+      rectSpy.mockRestore()
+    }
+  })
+
   it('does not apply a compensating scroll after an idle stage interaction', () => {
     const renderList = (afterContentKey: string) => (
       <VirtuosoMockContext.Provider value={{ viewportHeight: 180, itemHeight: 52 }}>

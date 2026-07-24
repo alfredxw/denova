@@ -951,6 +951,9 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
     : ''
   const isStreamingContent = !isChapterBodyHidden && batchEditCount === 0 && status === 'running' && isContentTool(name) && rawArgs.length > 50
   const streamPreview = isStreamingContent ? extractStreamingContent(rawArgs) : ''
+  // 内容工具运行中但不展示流式预览时（流式为 off / 参数较短），展示"正在写入文件"的 Loading 文案
+  const isContentToolLoading = !isChapterBodyHidden && !isStreamingContent && status === 'running' && isContentTool(name) && batchEditCount === 0
+  const contentToolChars = isContentToolLoading && typeof message.sse_generated_chars === 'number' ? message.sse_generated_chars : undefined
   const summary = taskSubAgent
     ? t('chat.subagent.delegating', { name: taskSubAgent })
     : buildToolArgSummary(args) || (isStreamingContent ? t('chat.tool.writing') : t('chat.tool.preparing'))
@@ -959,7 +962,11 @@ function ToolExecutionBlock({ message }: { message: ChatMessage }) {
     ? chapterGeneratedChars !== undefined
       ? t(isDirectorPlanHidden ? (hasResult ? 'chat.tool.fileWrittenWithCount' : 'chat.tool.fileWritingWithCount') : (hasResult ? 'chat.tool.chapterWrittenWithCount' : 'chat.tool.chapterWritingWithCount'), { count: chapterGeneratedChars })
       : (isDirectorPlanHidden ? (hasResult ? t('chat.tool.fileWritten') : t('chat.tool.fileWriting')) : (hasResult ? t('chat.tool.chapterWritten') : t('chat.tool.chapterWriting')))
-    : batchEditSummary || (hasResult ? resultPreview || t('chat.tool.done') : summary)
+    : batchEditSummary || (hasResult
+      ? resultPreview || t('chat.tool.done')
+      : isContentToolLoading
+        ? (contentToolChars !== undefined ? t('chat.tool.fileWritingWithCount', { count: contentToolChars }) : t('chat.tool.fileWriting'))
+        : summary)
   const hasDetail = Boolean(detailArgs || result || isChapterBodyHidden)
   const streamPreviewScrollLock = useBottomScrollLock<HTMLDivElement>({
     enabled: isStreamingContent,

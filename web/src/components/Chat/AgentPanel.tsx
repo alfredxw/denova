@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import { removeChatContextCompaction } from '@/lib/api'
-import type { AgentCommandDelivery, ActiveChatTask, ChapterIllustration, ChapterSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
+import type { ActiveChatTask, AgentRuntimeQueuedCommand, ChapterIllustration, ChapterSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { agentSubAgentSessionKey, agentViewContent, buildAgentMessageViews, selectAgentTokenUsageRecords, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
@@ -52,6 +52,7 @@ interface AgentPanelProps {
   runtimeProjection?: ActiveChatTask | null
   abortPending?: boolean
   commandSubmitting?: boolean
+  queueActionPendingCommandID?: string
   activityContent: string
   references: string[]
   loreReferences: string[]
@@ -72,6 +73,9 @@ interface AgentPanelProps {
   onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
+  onSteerQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
+  onDeleteQueuedCommand?: (item: AgentRuntimeQueuedCommand) => boolean | Promise<boolean>
+  onEditQueuedCommand?: (item: AgentRuntimeQueuedCommand) => string | null | Promise<string | null>
   onReferenceRemove: (path: string) => void
   onLoreReferenceAdd: (id: string) => void
   onLoreReferenceRemove: (id: string) => void
@@ -110,6 +114,7 @@ export function AgentPanel({
   runtimeProjection = null,
   abortPending = false,
   commandSubmitting = false,
+  queueActionPendingCommandID = '',
   activityContent,
   references,
   loreReferences,
@@ -130,6 +135,9 @@ export function AgentPanel({
   onSend,
   onAnalyzeContext,
   onStop,
+  onSteerQueuedCommand,
+  onDeleteQueuedCommand,
+  onEditQueuedCommand,
   onReferenceRemove,
   onLoreReferenceAdd,
   onLoreReferenceRemove,
@@ -162,14 +170,12 @@ export function AgentPanel({
   const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
   const [selectedTraceRunId, setSelectedTraceRunId] = useState('')
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
-  const [activeDelivery, setActiveDelivery] = useState<AgentCommandDelivery>('follow_up')
-  const activeDeliveryQueued = isStreaming && Boolean(runtimeProjection?.queue?.some((item) => item.delivery === activeDelivery))
   const recoveryPaused = Boolean(runtimeProjection?.recovery_paused)
   const runtimeRecovering = Boolean(runtimeProjection?.runtime_recoverable && (!runtimeProjection.stream_attached || recoveryPaused))
   const recoveryAbortAvailable = Boolean(runtimeProjection?.recovery_actions?.some((action) => action.kind === 'abort'))
   const activeControlsDisabled = isStreaming && (
     !runtimeProjection?.active_operation_id?.trim() ||
-    Boolean(runtimeProjection.runtime_recoverable && !runtimeProjection.stream_attached)
+    Boolean(runtimeProjection?.runtime_recoverable && !runtimeProjection.stream_attached)
   )
   const [chatPaneHost] = useState(() => createStablePortalHost('relative flex h-full min-h-0 w-full min-w-0 flex-col'))
   const ideTellerId = persistedSettings.values.ide_story_teller_id
@@ -316,7 +322,6 @@ export function AgentPanel({
       onReviewFeedbackSubmissionFailed?.(feedbackSelection)
     }
     const accepted = await onSend(effectiveMessage, {
-      delivery: isStreaming ? activeDelivery : undefined,
       writingSkill,
       ideContext,
       imagePresetId,
@@ -330,6 +335,12 @@ export function AgentPanel({
     if (feedbackSelection.length && accepted && !submissionStarted) handleSubmissionStart()
     if (!accepted) handleSubmissionError()
     return accepted
+  }
+
+  const returnQueuedCommandToEditor = async (item: AgentRuntimeQueuedCommand) => {
+    const prompt = await onEditQueuedCommand?.(item)
+    if (typeof prompt !== 'string') return
+    setInputPrefill((current) => ({ prompt, nonce: (current?.nonce || 0) + 1 }))
   }
 
   const emptyChatContent = messages.length === 0 && !isStreaming ? (
@@ -364,13 +375,15 @@ export function AgentPanel({
     onStop,
     disabled: false,
     generationActive: isStreaming,
-    activeDelivery,
-    onActiveDeliveryChange: setActiveDelivery,
+    queuedCommands: runtimeProjection?.queue || [],
+    queueActionPendingCommandID,
+    onQueuedCommandSteer: onSteerQueuedCommand,
+    onQueuedCommandDelete: onDeleteQueuedCommand,
+    onQueuedCommandEdit: returnQueuedCommandToEditor,
     abortPending,
     commandSubmitting,
     activeControlsDisabled,
     activeStopDisabled: activeControlsDisabled && !recoveryAbortAvailable,
-    sendBlocked: activeDeliveryQueued,
     planMode,
     onTogglePlanMode: onPlanModeToggle,
     draftKey: `ide-agent:${workspace || 'global'}`,

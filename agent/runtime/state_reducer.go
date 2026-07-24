@@ -67,14 +67,29 @@ func (s *harnessState) reduce(event Event) error {
 		s.domainCommits = make(map[DomainCommitStage]*DomainCommitState)
 	case QueueEnqueuedEvent:
 		s.queue = append(s.queue, cloneQueuedInput(payload.Item))
+	case QueueSteerRequestedEvent:
+		if s.preemptQueuedCommandID != "" {
+			return fmt.Errorf("queued command %q is already awaiting preemption", s.preemptQueuedCommandID)
+		}
+		item, ok := s.queued(payload.CommandID)
+		if !ok || item.Delivery != DeliveryFollowUp {
+			return fmt.Errorf("steer unknown or unsupported queued command %q", payload.CommandID)
+		}
+		s.preemptQueuedCommandID = payload.CommandID
 	case QueueConsumedEvent:
 		if !s.removeQueued(payload.CommandID) {
 			return fmt.Errorf("consume unknown queued command %q", payload.CommandID)
+		}
+		if s.preemptQueuedCommandID == payload.CommandID {
+			s.preemptQueuedCommandID = ""
 		}
 		s.pendingCycleCommandID = payload.CommandID
 	case QueueCancelledEvent:
 		if !s.removeQueued(payload.CommandID) {
 			return fmt.Errorf("cancel unknown queued command %q", payload.CommandID)
+		}
+		if s.preemptQueuedCommandID == payload.CommandID {
+			s.preemptQueuedCommandID = ""
 		}
 	case UserMessageCommittedEvent:
 		message := payload.Message

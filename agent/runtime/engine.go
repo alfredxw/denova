@@ -364,7 +364,11 @@ func (h *Harness) handleEngineDone(state *harnessState, request engineDoneReques
 	var hasNext bool
 	switch request.result.Status {
 	case EnginePreempted:
-		next, hasNext = state.firstQueued(DeliverySteer)
+		if state.preemptQueuedCommandID != "" {
+			next, hasNext = state.queued(state.preemptQueuedCommandID)
+		} else {
+			next, hasNext = state.firstQueued(DeliverySteer)
+		}
 		if !hasNext {
 			h.failActiveOperation(state, engineDoneRequest{
 				operation: request.operation, cycle: request.cycle,

@@ -246,7 +246,7 @@ func cloneEventPayload(payload EventPayload) EventPayload {
 	case ToolCallStartedEvent:
 		payload.Call = normalizeToolCallState(payload.Call)
 		return payload
-	case CommandAcceptedEvent, QueueConsumedEvent,
+	case CommandAcceptedEvent, QueueConsumedEvent, QueueSteerRequestedEvent,
 		QueueCancelledEvent, CycleStartedEvent, OperationRecoveryPausedEvent,
 		InputMaterializationRecoveryPendingEvent, InputMaterializationRecoveryResumedEvent, ToolCallFinishedEvent,
 		HostEffectAcknowledgedEvent, HostEffectAbandonedEvent,

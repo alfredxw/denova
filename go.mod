@@ -10,6 +10,7 @@ require (
 	github.com/alfredxw/denova/agent/model/openai v0.0.0
 	github.com/cavaliergopher/grab/v3 v3.0.1
 	github.com/cloudwego/hertz v0.10.5
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/invopop/jsonschema v0.14.0
 	github.com/lithammer/fuzzysearch v1.1.8
@@ -44,7 +45,6 @@ require (
 	github.com/cloudwego/netpoll v0.7.3 // indirect
 	github.com/cyphar/filepath-securejoin v0.7.0 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
-	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.0 // indirect
 	github.com/go-shiori/dom v0.0.0-20230515143342-73569d674e1c // indirect

@@ -14,7 +14,7 @@ import (
 	"denova/internal/prompts"
 )
 
-func TestInteractiveContextAnalysisMatchesRuntimeAssemblyWithoutSideEffects(t *testing.T) {
+func TestInteractiveContextAnalysisUsesPreparedTurnWithoutSideEffects(t *testing.T) {
 	workspace := t.TempDir()
 	store := interactive.NewStore(workspace)
 	story, err := store.CreateStory(interactive.CreateStoryRequest{Title: "纯分析", Origin: "雨夜启程"})
@@ -43,29 +43,18 @@ func TestInteractiveContextAnalysisMatchesRuntimeAssemblyWithoutSideEffects(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	assembled, err := conversation.AssembleModelContext(context.Background(), "询问店主", agents.ModelContextInput{
-		UserMessage: "询问店主",
-		Budget:      conversation.ModelContextBudget(),
-		Fragments: []agentcontext.Fragment{{
-			ID:        "turn_rule_context_boundary",
-			Source:    "turn.rule.context_boundary",
-			Title:     "上下文边界",
-			Purpose:   "keep the current user request authoritative over historical intent",
-			Content:   prompts.ContextBoundary(""),
-			Placement: agentcontext.PlacementFinalUserPrefix,
-			Included:  true,
-		}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(analysis.ContextMessages) != len(assembled.Messages) {
-		t.Fatalf("analysis messages = %d, runtime assembly = %d", len(analysis.ContextMessages), len(assembled.Messages))
-	}
-	for i, message := range assembled.Messages {
-		if analysis.ContextMessages[i].Role != string(message.Role) || analysis.ContextMessages[i].Content != message.Content {
-			t.Fatalf("analysis message %d differs from runtime assembly: analysis=%#v runtime=%#v", i, analysis.ContextMessages[i], message)
+	runtimePart := agents.ContextAnalysisPart{}
+	for _, part := range analysis.ContextParts {
+		if part.Source == "runtime.environment" {
+			runtimePart = part
+			break
 		}
+	}
+	if runtimePart.Content == "" {
+		t.Fatalf("context analysis is missing runtime.environment: %#v", analysis.ContextParts)
+	}
+	if len(analysis.ContextMessages) == 0 || !strings.Contains(analysis.ContextMessages[len(analysis.ContextMessages)-1].Content, "询问店主") {
+		t.Fatalf("context analysis is missing the prepared user turn: %#v", analysis.ContextMessages)
 	}
 	afterStory, err := store.StoryContext(story.ID, "main")
 	if err != nil {

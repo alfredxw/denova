@@ -6,9 +6,7 @@ import {
   PersistedTurnHarness,
   StoryStageHarness,
   controllableInteractiveStream,
-  deferred,
   getStageInput,
-  persistedTurnEvent,
   resetStoryStageTestHarness,
 } from './story-stage/story-stage-test-harness'
 
@@ -60,7 +58,7 @@ beforeEach(() => {
 })
 
 describe('StoryStage active runtime commands', () => {
-  it('keeps the composer active and queues a replayable follow-up on the current operation', async () => {
+  it('keeps a draft editable while the current turn runs without exposing queued delivery', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
     sendInteractiveMessageMock.mockResolvedValue(stream.readable)
@@ -86,49 +84,18 @@ describe('StoryStage active runtime commands', () => {
         expect(useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.runtime.operationId).toBe('operation-1'),
       )
       expect(screen.getByRole('button', { name: '中断 AI 执行' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: '发送方式：追加' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /发送方式/ })).not.toBeInTheDocument()
 
       const input = screen.getByPlaceholderText('你要做什么？')
       expect(input).toHaveAttribute('contenteditable', 'true')
       await user.type(input, '再检查门后的脚印')
-      await user.click(screen.getByRole('button', { name: '发送' }))
+      const sendButton = screen.getByRole('button', { name: '发送' })
+      expect(sendButton).toBeDisabled()
+      fireEvent.keyDown(input, { key: 'Enter', shiftKey: false })
 
-      await waitFor(() =>
-        expect(submitInteractiveAgentCommandMock).toHaveBeenCalledWith({
-          type: 'follow_up',
-          commandId: expect.any(String),
-          targetOperationId: 'operation-1',
-          storyId: 'story-1',
-          branchId: 'main',
-          message: '再检查门后的脚印',
-          styleScenes: [],
-        }),
-      )
+      expect(submitInteractiveAgentCommandMock).not.toHaveBeenCalled()
       expect(sendInteractiveMessageMock).toHaveBeenCalledTimes(1)
-      expect(input).toHaveTextContent('')
-
-      act(() => {
-        stream.enqueue({
-          event: 'interactive_turn_persisted',
-          data: JSON.stringify(persistedTurnEvent()),
-        })
-        stream.enqueue({
-          event: 'agent_cycle_started',
-          data: JSON.stringify({
-            command_id: 'command-1',
-            delivery: 'follow_up',
-            message: '再检查门后的脚印',
-            operation_id: 'operation-1',
-            cycle: 2,
-          }),
-        })
-        stream.enqueue({
-          event: 'chunk',
-          data: JSON.stringify({ content: '泥地上留下了新鲜足迹。' }),
-        })
-      })
-      expect(await screen.findByText('再检查门后的脚印')).toBeInTheDocument()
-      expect(await screen.findByText('泥地上留下了新鲜足迹。')).toBeInTheDocument()
+      expect(input).toHaveTextContent('再检查门后的脚印')
     } finally {
       stream.close()
     }
@@ -183,60 +150,6 @@ describe('StoryStage active runtime commands', () => {
     }
   })
 
-  it('targets the operation projected by the stream instead of a newer operation returned at click time', async () => {
-    const user = userEvent.setup()
-    const stream = controllableInteractiveStream()
-    sendInteractiveMessageMock.mockResolvedValue(stream.readable)
-    submitInteractiveAgentCommandMock.mockResolvedValue({
-      command_id: 'follow-visible',
-      operation_id: 'operation-visible',
-      cursor: 9,
-    })
-
-    try {
-      render(<StoryStageHarness />)
-      await user.type(getStageInput(), '推开石门')
-      await user.click(screen.getByRole('button', { name: '发送' }))
-      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalledTimes(1))
-      act(() =>
-        stream.enqueue({
-          event: 'agent_cycle_started',
-          data: JSON.stringify({
-            command_id: 'start-visible',
-            delivery: 'start_turn',
-            message: '推开石门',
-            operation_id: 'operation-visible',
-            cycle: 1,
-          }),
-        }),
-      )
-      await waitFor(() =>
-        expect(useInteractiveStore.getState().storyStageRuns['/tmp/book:story-1:main']?.runtime.operationId).toBe('operation-visible'),
-      )
-      getActiveInteractiveChatMock.mockClear()
-      getActiveInteractiveChatMock.mockResolvedValue({
-        active: true,
-        active_operation_id: 'operation-newer',
-        queue: [],
-      })
-
-      await user.type(getStageInput(), '继续当前画面')
-      await user.click(screen.getByRole('button', { name: '发送' }))
-
-      await waitFor(() =>
-        expect(submitInteractiveAgentCommandMock).toHaveBeenCalledWith(
-          expect.objectContaining({
-            targetOperationId: 'operation-visible',
-            message: '继续当前画面',
-          }),
-        ),
-      )
-      expect(getActiveInteractiveChatMock).not.toHaveBeenCalled()
-    } finally {
-      stream.close()
-    }
-  })
-
   it('disables abort and send controls after an abort receipt until settlement', async () => {
     const user = userEvent.setup()
     const stream = controllableInteractiveStream()
@@ -277,100 +190,6 @@ describe('StoryStage active runtime commands', () => {
 
       expect(stopButton).toBeDisabled()
       expect(screen.getByRole('button', { name: '发送' })).toBeDisabled()
-    } finally {
-      stream.close()
-    }
-  })
-
-  it('submits only one active command while its receipt is pending', async () => {
-    const user = userEvent.setup()
-    const stream = controllableInteractiveStream()
-    const receipt = deferred<{
-      command_id: string
-      operation_id: string
-      cursor: number
-    }>()
-    sendInteractiveMessageMock.mockResolvedValue(stream.readable)
-    getActiveInteractiveChatMock.mockResolvedValue({
-      active: true,
-      active_operation_id: 'operation-1',
-      queue: [],
-    })
-    submitInteractiveAgentCommandMock.mockReturnValue(receipt.promise)
-
-    try {
-      render(<StoryStageHarness />)
-      await user.type(getStageInput(), '推开石门')
-      await user.click(screen.getByRole('button', { name: '发送' }))
-      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalledTimes(1))
-      act(() =>
-        stream.enqueue({
-          event: 'agent_cycle_started',
-          data: JSON.stringify({
-            command_id: 'start-1',
-            delivery: 'start_turn',
-            message: '推开石门',
-            operation_id: 'operation-1',
-            cycle: 1,
-          }),
-        }),
-      )
-      await user.type(getStageInput(), '只追加一次')
-      const sendButton = screen.getByRole('button', { name: '发送' })
-
-      fireEvent.click(sendButton)
-      fireEvent.click(sendButton)
-
-      expect(submitInteractiveAgentCommandMock).toHaveBeenCalledTimes(1)
-      expect(sendButton).toBeDisabled()
-      receipt.resolve({
-        command_id: 'follow-1',
-        operation_id: 'operation-1',
-        cursor: 9,
-      })
-      await waitFor(() => expect(getStageInput()).toHaveTextContent(''))
-    } finally {
-      stream.close()
-    }
-  })
-
-  it('reuses the command id when retrying the same game command after an uncertain response', async () => {
-    const user = userEvent.setup()
-    const stream = controllableInteractiveStream()
-    sendInteractiveMessageMock.mockResolvedValue(stream.readable)
-    submitInteractiveAgentCommandMock.mockRejectedValueOnce(new TypeError('connection reset')).mockResolvedValueOnce({
-      command_id: 'accepted',
-      operation_id: 'operation-1',
-      cursor: 9,
-    })
-
-    try {
-      render(<StoryStageHarness />)
-      await user.type(getStageInput(), '推开石门')
-      await user.click(screen.getByRole('button', { name: '发送' }))
-      await waitFor(() => expect(sendInteractiveMessageMock).toHaveBeenCalledTimes(1))
-      act(() =>
-        stream.enqueue({
-          event: 'agent_cycle_started',
-          data: JSON.stringify({
-            command_id: 'start-1',
-            delivery: 'start_turn',
-            message: '推开石门',
-            operation_id: 'operation-1',
-            cycle: 1,
-          }),
-        }),
-      )
-      await user.type(getStageInput(), '同一条追加')
-
-      await user.click(screen.getByRole('button', { name: '发送' }))
-      await waitFor(() => expect(submitInteractiveAgentCommandMock).toHaveBeenCalledTimes(1))
-      await user.click(screen.getByRole('button', { name: '发送' }))
-      await waitFor(() => expect(submitInteractiveAgentCommandMock).toHaveBeenCalledTimes(2))
-
-      const firstCommandID = submitInteractiveAgentCommandMock.mock.calls[0][0].commandId
-      const retryCommandID = submitInteractiveAgentCommandMock.mock.calls[1][0].commandId
-      expect(retryCommandID).toBe(firstCommandID)
     } finally {
       stream.close()
     }

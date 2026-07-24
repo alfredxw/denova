@@ -7,6 +7,7 @@ import type { PreservedAutosaveConflict } from '@/lib/api-client/autosave-confli
 import { rebaseTextWithConflicts } from '@/lib/three-way-rebase'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 import { useSaveLane } from '@/hooks/use-save-lane'
+import { MISSING_WORKSPACE_REVISION } from '@/lib/api-client/workspace'
 import type { SaveStatus } from './EditorToolbar'
 import { preserveEditorConflict } from './editorConflictRecovery'
 import { readEditorText } from './editorDocument'
@@ -558,6 +559,9 @@ export function useEditorDraftPersistence({
     }
 
     const currentKey = fileName ? documentSaveKey(workspace, fileName) : ''
+    if (!fileChanged && currentKey && revision === MISSING_WORKSPACE_REVISION) {
+      cancelDocumentSave(workspace, fileName || '', true)
+    }
     const echo = currentKey ? localSaveEchoesRef.current.get(currentKey) : undefined
     if (!fileChanged && echo && echo.content === content && (
       echo.revision === null || !revision || echo.revision === revision
@@ -607,7 +611,7 @@ export function useEditorDraftPersistence({
       } else {
         recoveryRef.current = null
         updateExternalConflict(null)
-        if (dirtyRef.current && autoSaveEnabledRef.current && targetFile) {
+        if (dirtyRef.current && autoSaveEnabledRef.current && targetFile && revision !== MISSING_WORKSPACE_REVISION) {
           const next = pendingSave(workspace, targetFile, merged.value, 'auto')
           queueSave(next, true)
         }
@@ -716,6 +720,7 @@ export function useEditorDraftPersistence({
       clearSaveStatusTimer()
       setSaveStatus('dirty')
       if (!autoSaveEnabledRef.current) return
+      if (lastSyncedRevisionRef.current === MISSING_WORKSPACE_REVISION) return
       const conflict = externalConflictRef.current
       if (conflict?.workspace === workspaceRef.current && conflict.fileName === targetFile) return
       queueSave(pendingSave(

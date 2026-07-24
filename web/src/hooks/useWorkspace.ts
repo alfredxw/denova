@@ -15,8 +15,11 @@ import {
 } from '@/lib/api'
 import type { BookRecord, BookSortMode } from '@/lib/api'
 import type { WorkspaceSummary } from '@/lib/api'
+import type { WorkspaceChangeEvent, WorkspaceFileChange } from '@/features/changes/types'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
+import { MISSING_WORKSPACE_REVISION } from '@/lib/api-client/workspace'
+import { useWorkspaceFileEvents } from './useWorkspaceFileEvents'
 
 export interface FileNode {
   name: string
@@ -67,6 +70,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
   const fileVersionsRef = useRef<Map<string, { revision: string; workspace: string; generation: number }>>(new Map())
   const fileReadGenerationsRef = useRef<Map<string, number>>(new Map())
   const selectFileRequestRef = useRef(0)
+  const filePreviewVersionRef = useRef(0)
   selectedFileRef.current = selectedFile
   fileDocumentRef.current = fileDocument
   workspaceRef.current = workspace
@@ -87,6 +91,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     selectFileRequestRef.current += 1
     fileVersionsRef.current.clear()
     fileReadGenerationsRef.current.clear()
+    filePreviewVersionRef.current = 0
     setTree([])
     setSelectedFile(null)
     setFileDocument({ content: '', revision: '' })
@@ -126,6 +131,7 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     selectFileRequestRef.current += 1
     fileVersionsRef.current.clear()
     fileReadGenerationsRef.current.clear()
+    filePreviewVersionRef.current = 0
     setSummary(null)
   }, [setFileDocument])
 
@@ -319,36 +325,108 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     return data.content || ''
   }, [])
 
-  /** Agent 写入或创建文件后，刷新目录树并同步当前打开文件内容。 */
-  const refreshAfterAgentFileChange = useCallback(async (changedPath?: string) => {
-    const targetWorkspace = workspace
-    if (!targetWorkspace) return
-    const currentFile = selectedFileRef.current
-    let readRequest: { key: string; generation: number } | null = null
-    if (currentFile) {
-      // changedPath 可能是绝对路径，selectedFile 是相对路径。
-      const isMatch = !changedPath || changedPath === currentFile || changedPath.endsWith('/' + currentFile)
-      if (isMatch) readRequest = beginFileRead(targetWorkspace, currentFile)
+  /** Re-read one selected file, or retain its last snapshot as an orphan after deletion. */
+  const refreshSelectedFile = useCallback(async (targetWorkspace: string, currentFile: string, deleted = false) => {
+    const readRequest = beginFileRead(targetWorkspace, currentFile)
+    const isCurrentTarget = () => (
+      isLatestFileRead(readRequest.key, readRequest.generation) &&
+      workspaceRef.current === targetWorkspace &&
+      selectedFileRef.current === currentFile
+    )
+
+    if (deleted) {
+      if (!isCurrentTarget()) return
+      setFileDocument({
+        content: fileDocumentRef.current.content,
+        revision: MISSING_WORKSPACE_REVISION,
+      })
+      recordFileVersion(targetWorkspace, currentFile, MISSING_WORKSPACE_REVISION)
+      console.info('[useWorkspace.ts] selected workspace file became orphaned', {
+        workspace: targetWorkspace,
+        path: currentFile,
+      })
+      return
     }
-    await Promise.all([fetchTree(), fetchSummary()])
-    if (!currentFile || !readRequest) return
-    if (workspaceRef.current !== targetWorkspace || selectedFileRef.current !== currentFile) return
+
     if (workspaceFileKind(currentFile) === 'image') {
-      setFileDocument({ content: '', revision: '' })
+      if (!isCurrentTarget()) return
+      filePreviewVersionRef.current += 1
+      setFileDocument({ content: '', revision: `watch:${filePreviewVersionRef.current}` })
       return
     }
 
     try {
       const data = await readWorkspaceFile(currentFile)
-      // 只有同一 workspace + path 的最后一次读取可以更新界面，避免 SSE 连续刷新时旧响应回滚新内容。
-      if (!isLatestFileRead(readRequest.key, readRequest.generation)) return
-      if (workspaceRef.current !== targetWorkspace || data.workspace !== targetWorkspace || selectedFileRef.current !== currentFile) return
+      if (!isCurrentTarget() || data.workspace !== targetWorkspace) return
       setFileDocument({ content: data.content || '', revision: data.revision || '' })
       recordFileVersion(data.workspace, currentFile, data.revision || '')
-    } catch (e) {
-      console.error('刷新当前文件失败', e)
+    } catch (error) {
+      if (error instanceof APIError && error.status === 404 && isCurrentTarget()) {
+        setFileDocument({
+          content: fileDocumentRef.current.content,
+          revision: MISSING_WORKSPACE_REVISION,
+        })
+        recordFileVersion(targetWorkspace, currentFile, MISSING_WORKSPACE_REVISION)
+        console.info('[useWorkspace.ts] selected workspace file was missing during refresh', {
+          workspace: targetWorkspace,
+          path: currentFile,
+        })
+        return
+      }
+      console.error('[useWorkspace.ts] failed to refresh selected workspace file', {
+        workspace: targetWorkspace,
+        path: currentFile,
+        error,
+      })
     }
-  }, [beginFileRead, fetchTree, fetchSummary, isLatestFileRead, recordFileVersion, setFileDocument, workspace])
+  }, [beginFileRead, isLatestFileRead, recordFileVersion, setFileDocument])
+
+  /** Agent 写入或创建文件后，刷新目录树并同步当前打开文件内容。 */
+  const refreshAfterAgentFileChange = useCallback(async (changedPath?: string) => {
+    const targetWorkspace = workspace
+    if (!targetWorkspace) return
+    const currentFile = selectedFileRef.current
+    const selectedRefresh = currentFile && (
+      !changedPath || changedPath === currentFile || changedPath.endsWith('/' + currentFile)
+    ) ? refreshSelectedFile(targetWorkspace, currentFile) : Promise.resolve()
+    await Promise.all([
+      fetchTree(),
+      fetchSummary(),
+      selectedRefresh,
+    ])
+  }, [fetchTree, fetchSummary, refreshSelectedFile, workspace])
+
+  const refreshAfterWorkspaceFileEvent = useCallback(async (event: WorkspaceChangeEvent) => {
+    const targetWorkspace = workspaceRef.current
+    if (!targetWorkspace || event.workspace !== targetWorkspace) return
+    const changes = event.changes ?? []
+    const backgroundOptions = { showLoading: false, clearOnError: false }
+    const refreshes: Promise<void>[] = []
+
+    if (event.resync || changes.some(change => change.type === 'added' || change.type === 'deleted')) {
+      refreshes.push(fetchTree(backgroundOptions))
+    }
+    if (event.resync || changes.some(workspaceChangeAffectsSummary)) {
+      refreshes.push(fetchSummary(backgroundOptions))
+    }
+
+    const currentFile = selectedFileRef.current
+    if (currentFile) {
+      const presentChange = changes.some(change => change.path === currentFile && change.type !== 'deleted')
+      const deletedChange = changes.some(change => (
+        change.type === 'deleted' && pathContainsFile(change.path, currentFile)
+      ))
+      if (event.resync || presentChange) {
+        refreshes.push(refreshSelectedFile(targetWorkspace, currentFile))
+      } else if (deletedChange) {
+        refreshes.push(refreshSelectedFile(targetWorkspace, currentFile, true))
+      }
+    }
+
+    await Promise.all(refreshes)
+  }, [fetchSummary, fetchTree, refreshSelectedFile])
+
+  useWorkspaceFileEvents(workspace, refreshAfterWorkspaceFileEvent)
 
   /** Saves an editor draft against the revision captured with that draft. Typed API errors propagate to the editor adapter. */
   const saveFileDraft = useCallback(async (path: string, content: string, draftBaseRevision: string) => {
@@ -522,4 +600,20 @@ export function useWorkspace(options: UseWorkspaceOptions = {}) {
     refreshBooks: fetchBooks,
     setWorkspace,
   }
+}
+
+export function workspaceChangeAffectsSummary(change: WorkspaceFileChange): boolean {
+  const path = change.path.replace(/^\.\//, '').replace(/\/+$/, '')
+  return path === 'book.json' ||
+    path === 'ideas.md' ||
+    path === 'chapters' ||
+    path.startsWith('chapters/') ||
+    path === 'setting' ||
+    path === 'setting/outline.md' ||
+    path === 'setting/chapter-groups' ||
+    path.startsWith('setting/chapter-groups/')
+}
+
+function pathContainsFile(path: string, file: string): boolean {
+  return path === file || file.startsWith(`${path}/`)
 }

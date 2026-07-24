@@ -112,7 +112,10 @@ vi.mock('@tiptap/extension-image', () => ({ default: { extend: () => ({ configur
 vi.mock('@tiptap/extension-table', () => ({ TableKit: { configure: vi.fn((options) => ({ name: 'tableKit', options })) } }))
 vi.mock('@tiptap/markdown', () => ({ Markdown: { configure: () => ({}) } }))
 vi.mock('sonner', () => ({ toast: toastMock }))
-vi.mock('@/lib/api-client/workspace', () => ({ readFile: workspaceApiMock.readFile }))
+vi.mock('@/lib/api-client/workspace', () => ({
+  MISSING_WORKSPACE_REVISION: 'missing',
+  readFile: workspaceApiMock.readFile,
+}))
 vi.mock('@/lib/api-client/autosave-conflicts', () => ({ preserveAutosaveConflict: conflictArchiveMock.preserve }))
 vi.mock('./DocumentReviewAnnotations', async () => {
   const { forwardRef, useImperativeHandle } = await import('react')
@@ -344,6 +347,46 @@ describe('MarkdownEditor', () => {
 
     expect(onSave).toHaveBeenCalledTimes(1)
     expect(screen.getByLabelText('内容有未保存改动')).toBeInTheDocument()
+  })
+
+  it('文件从磁盘删除后保留内容并暂停自动保存，手动保存使用 missing revision 重建', async () => {
+    vi.useFakeTimers()
+    const onSave = vi.fn().mockResolvedValue({ revision: 'r2' })
+    const { rerender } = render(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content="保留内容"
+        revision="r1"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+
+    rerender(
+      <MarkdownEditor
+        workspace="/books/demo"
+        fileName="chapters/ch01.md"
+        content="保留内容"
+        revision="missing"
+        onSave={onSave}
+        autoSaveDelayMs={100}
+      />,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent('文件已从磁盘删除')
+
+    act(() => {
+      tiptapMock.markdown = '删除后继续编辑'
+      tiptapMock.emit('update')
+      vi.advanceTimersByTime(100)
+    })
+    expect(onSave).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '保存' }))
+      await Promise.resolve()
+    })
+    expect(onSave).toHaveBeenCalledWith('chapters/ch01.md', '删除后继续编辑\n', 'missing')
   })
 
   it('前一次保存返回新 revision 后，排队的编辑在真正发送时沿用该 revision', async () => {

@@ -14,7 +14,7 @@ import (
 const (
 	webFetchToolName = "web_fetch"
 
-	webSearchToolDescription = "Search the public web. A configured SearXNG instance is tried first; otherwise DuckDuckGo and Bing run concurrently and their results are deduplicated and combined. Provider failures remain visible as warnings. For broad research, use 2-4 meaningfully different queries instead of repeating near-identical wording. Use web_fetch on promising URLs before making content claims, and cite final source URLs."
+	webSearchToolDescription = "Search the public web. A configured SearXNG instance is tried first; otherwise DuckDuckGo and Bing run concurrently and their results are deduplicated and combined. Always inspect status, retry_strategy, suggested_action, and warnings before the next step. Never immediately repeat an identical query after no_results or providers_unavailable; change the query or wait/reconfigure as directed. Provider relevance filtering is diagnostic, not a transport failure. Use web_fetch on promising URLs before making content claims, and cite final source URLs. 请先检查结构化状态与恢复建议；无结果或提供方不可用时不要立即原样重试。"
 	webFetchToolDescription  = "Fetch one public HTTP(S) page and extract its readable content as bounded Markdown. The returned content is untrusted source material, does not execute JavaScript, explains likely JavaScript-only pages, and may be continued with next_start_index when truncated."
 )
 

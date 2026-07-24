@@ -241,6 +241,16 @@ func TestInteractiveDirectorContextAnalysisSplitsInstructionSources(t *testing.T
 	if analysis.MessageCount != 1 {
 		t.Fatalf("director analysis should estimate the single user instruction message, got %d", analysis.MessageCount)
 	}
+	sawRuntimeEnvironment := false
+	for _, part := range analysis.ContextParts {
+		if part.Source == "runtime.environment" && strings.Contains(part.Content, "Captured at:") {
+			sawRuntimeEnvironment = true
+			break
+		}
+	}
+	if !sawRuntimeEnvironment {
+		t.Fatalf("director analysis is missing runtime.environment: %#v", analysis.ContextParts)
+	}
 	var sawOutputProtocol, sawLore, sawTurnAudit, sawPlanDocs bool
 	for _, part := range analysis.SystemPromptParts {
 		if part.ID == "output_protocol" && strings.Contains(part.Content, submitDirectorPlanUpdateToolName) {
@@ -396,7 +406,7 @@ func TestInteractiveContextAnalysisShowsStyleRulesAsSystemPromptParts(t *testing
 	}
 }
 
-func TestIDEContextAnalysisMatchesPureRuntimeAssemblyWithoutSideEffects(t *testing.T) {
+func TestIDEContextAnalysisUsesPreparedTurnWithoutSideEffects(t *testing.T) {
 	messages := []*agent.Message{
 		agent.UserMessage("user 1"),
 		agent.AssistantMessage("assistant 1", nil),
@@ -414,28 +424,24 @@ func TestIDEContextAnalysisMatchesPureRuntimeAssemblyWithoutSideEffects(t *testi
 	cfg := &config.Config{}
 	req := ChatRequest{Message: "continue after compaction"}
 	analysis, conversation := buildIDEContextAnalysisForTest(t, cfg, nil, IDEStoryTeller{}, nil, messages, compaction, nil, req)
-	before := conversation.session.MessageCountTotal()
-	projection := projectTurnInput(req, nil, nil, conversation.ModelContextBudget())
-	assembled, err := AssembleModelContext(context.Background(), conversation, projection.OriginalMessage, ModelContextInput{
-		UserMessage: req.Message, Fragments: projection.Fragments, Budget: conversation.ModelContextBudget(),
-	})
-	if err != nil {
-		t.Fatal(err)
+	if after := conversation.session.MessageCountTotal(); after != len(messages) {
+		t.Fatalf("context analysis changed session history: before=%d after=%d", len(messages), after)
 	}
-	if after := conversation.session.MessageCountTotal(); after != before {
-		t.Fatalf("analysis or pure assembly changed session history: before=%d after=%d", before, after)
+	sawRuntimeEnvironment := false
+	for _, part := range analysis.ContextParts {
+		if part.Source == "runtime.environment" {
+			sawRuntimeEnvironment = true
+			break
+		}
+	}
+	if !sawRuntimeEnvironment {
+		t.Fatalf("context analysis is missing runtime.environment: %#v", analysis.ContextParts)
 	}
 	if _, pending, err := conversation.PendingAgentCycleCommit(HarnessDomainCommitInput); err != nil || pending {
 		t.Fatalf("analysis staged an input intent pending=%t err=%v", pending, err)
 	}
-	if len(analysis.ContextMessages) != len(assembled.Messages) {
-		t.Fatalf("analysis messages=%d runtime assembly=%d", len(analysis.ContextMessages), len(assembled.Messages))
-	}
-	for index, message := range assembled.Messages {
-		part := analysis.ContextMessages[index]
-		if message == nil || part.Role != string(message.Role) || part.Content != message.Content {
-			t.Fatalf("message %d differs: analysis=%+v runtime=%+v", index, part, message)
-		}
+	if len(analysis.ContextMessages) == 0 || !strings.Contains(analysis.ContextMessages[len(analysis.ContextMessages)-1].Content, req.Message) {
+		t.Fatalf("analysis is missing the prepared user turn: %#v", analysis.ContextMessages)
 	}
 }
 

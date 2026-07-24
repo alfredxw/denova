@@ -60,12 +60,12 @@ func TestSessionConversationPersistsUserMessageReferencesOutsideModelContent(t *
 		t.Fatal(err)
 	}
 	conversation := NewSessionConversation(sess)
-	conversation.SetUserMessageReferences([]session.UserMessageReference{
+	references := []session.UserMessageReference{
 		{Kind: "file", Label: "chapters/ch01.md"},
 		{Kind: "review_comment", ID: "comment-1", Label: "setting/progress.md", Detail: "需要增加爽点"},
-	})
+	}
 
-	history, err := assembleAndCommitModelContextForTest(conversation, "请统一修改", "请统一修改")
+	history, err := assembleAndCommitModelContextForTest(conversation, "请统一修改", "请统一修改", references...)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -62,8 +62,8 @@ interface UseStoryStageRuntimeOptions {
 }
 
 // Coordinates one durable agent operation with its resumable SSE display stream.
-// Command admission remains in useInteractiveAgentCommands; this hook only owns
-// transport recovery, event projection and terminal settlement in the stage UI.
+// New game turns are admitted only while idle. During a run, this hook owns
+// transport recovery, abort, event projection and terminal settlement.
 export function useStoryStageRuntime({
   storyId,
   branchId,
@@ -123,29 +123,14 @@ export function useStoryStageRuntime({
 
   async function send(override?: { message?: string; rewindTurnId?: string }) {
     const message = (override?.message ?? input).trim()
-    if (!message || !storyId || branchTerminal || blocked || commandSubmittingRef.current) return
+    if (!message || !storyId || streaming || branchTerminal || blocked || commandSubmittingRef.current) return
     if (message === '/compact') {
-      if (!streaming) await compactCurrentContext()
+      await compactCurrentContext()
       return
     }
     const rewindTurnId = override?.rewindTurnId ?? editingTurnId
     const inlineStyleScenes = parseInlineStyleScenes(message)
     const mergedStyleScenes = Array.from(new Set([...styleScenes, ...inlineStyleScenes]))
-    if (streaming) {
-      if (stageRun.runtime.abortPending) return
-      commandSubmittingRef.current = true
-      setCommandSubmitting(true)
-      try {
-        await interactiveAgentCommands.enqueue(message, mergedStyleScenes)
-        clearComposer()
-      } catch (error) {
-        appendError(error)
-      } finally {
-        commandSubmittingRef.current = false
-        setCommandSubmitting(false)
-      }
-      return
-    }
     clearComposer()
     commandSubmittingRef.current = true
     setCommandSubmitting(true)

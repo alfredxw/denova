@@ -26,7 +26,7 @@ func TestAgentRuntimeProjectionDTOIsExplicitAndBounded(t *testing.T) {
 		},
 		Queue: []agents.QueuedCommand{{
 			CommandID: "command-2", OperationID: "operation-1", Delivery: agents.DeliveryFollowUp,
-			Message: "继续",
+			Message: "继续", SteerRequested: true,
 		}},
 		OpenToolCalls: []agents.OpenToolCall{{
 			CallID: "call-1", Name: "read_file",
@@ -45,7 +45,7 @@ func TestAgentRuntimeProjectionDTOIsExplicitAndBounded(t *testing.T) {
 	if !dto.ActiveOutput.ContentTruncated || len(dto.ActiveOutput.Content) > agentRuntimeProjectionTextMaxBytes || !utf8.ValidString(dto.ActiveOutput.Content) {
 		t.Fatalf("bounded content bytes=%d truncated=%t valid_utf8=%t", len(dto.ActiveOutput.Content), dto.ActiveOutput.ContentTruncated, utf8.ValidString(dto.ActiveOutput.Content))
 	}
-	if len(dto.Queue) != 1 || dto.Queue[0].Message != "继续" || len(dto.OpenTools) != 1 || dto.OpenTools[0].Name != "read_file" {
+	if len(dto.Queue) != 1 || dto.Queue[0].Message != "继续" || !dto.Queue[0].SteerRequested || len(dto.OpenTools) != 1 || dto.OpenTools[0].Name != "read_file" {
 		t.Fatalf("queue/tools projection = %#v / %#v", dto.Queue, dto.OpenTools)
 	}
 	if dto.LastOperation == nil || dto.LastOperation.Status != "interrupted" || !dto.LastOperation.ReasonTruncated || !utf8.ValidString(dto.LastOperation.Reason) {
