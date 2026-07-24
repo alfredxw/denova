@@ -149,6 +149,30 @@ func TestInteractiveStoryPromptReadsFullLoreBeforeIntroducingLoreCharacter(t *te
 	}
 }
 
+func TestInteractiveStoryPromptUsesLoreAsDefaultCandidatePoolForPersistentCharacters(t *testing.T) {
+	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{})
+	turn := InteractiveStoryTurnInstruction("我继续向山下走", "", "")
+	for name, output := range map[string]string{"system": system, "turn": turn} {
+		for _, want := range []string{
+			"既有角色是剧情规划和推进时的默认候选池",
+			"用户要求、导演计划还是随剧情自然产生",
+			"创建新的具名角色",
+			"承担重要事件、持续关系或后续剧情功能",
+			"当前上下文没有足够候选",
+			"list_lore_items 做一次有界检索",
+			"复用能增强故事连续性",
+			"不得为了复用而改写角色核心设定",
+			"没有明显合适的候选",
+			"新角色更符合世界规模与叙事需要",
+			"一次性角色无需检索",
+		} {
+			if !strings.Contains(output, want) {
+				t.Fatalf("%s prompt should treat Lore as the bounded default casting pool for persistent characters; missing %q:\n%s", name, want, output)
+			}
+		}
+	}
+}
+
 func TestInteractiveStoryPromptRequiresStoryContextUpdateEveryTurn(t *testing.T) {
 	system := BuildInteractiveStorySystemInstruction(InteractiveStorySystemInstructionInput{})
 	turn := InteractiveStoryTurnInstruction("我推开门", "", "")
