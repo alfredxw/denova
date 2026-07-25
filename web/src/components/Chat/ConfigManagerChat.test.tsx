@@ -16,7 +16,7 @@ vi.mock('@/lib/api', () => ({
   clearConfigManagerSession: vi.fn(),
   createAgentCommandID: vi.fn(),
   getActiveConfigManagerTask: vi.fn(),
-  getConfigManagerMessages: vi.fn().mockResolvedValue([]),
+  getConfigManagerMessagesPage: vi.fn().mockResolvedValue({ messages: [], nextBefore: '0', hasMore: false, total: 0 }),
   reconnectConfigManagerStream: vi.fn(),
   recoverConfigManagerRuntime: vi.fn(),
   runConfigManagerStream: vi.fn(),

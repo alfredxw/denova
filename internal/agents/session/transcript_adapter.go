@@ -50,6 +50,22 @@ func (s *Session) transcriptSnapshotLocked() (agentsession.Snapshot, error) {
 }
 
 func (s *Session) effectiveTranscriptMessagesLocked() []*agent.Message {
+	start := s.clearAfterIndex - s.messageBaseIndex
+	if start < 0 {
+		start = 0
+	}
+	if start > len(s.messages) {
+		start = len(s.messages)
+	}
+	// Large journals intentionally materialize only the bounded effective
+	// window. Context compaction supplies the durable prefix summary.
+	if s.messageBaseIndex > 0 {
+		result := make([]*agent.Message, len(s.messages)-start)
+		for index, message := range s.messages[start:] {
+			result[index] = agent.CloneMessage(message)
+		}
+		return result
+	}
 	snapshot, err := s.transcriptSnapshotLocked()
 	if err == nil {
 		return snapshot.EffectiveMessages()
@@ -57,8 +73,8 @@ func (s *Session) effectiveTranscriptMessagesLocked() []*agent.Message {
 	// The mixed journal predates the public contract, so corrupt legacy data
 	// must remain readable. New writes are validated before reaching this path.
 	log.Printf("internal/agents/session/transcript_adapter.go: projected transcript fallback session=%q error=%v", s.ID, err)
-	result := make([]*agent.Message, len(s.messages)-s.clearAfterIndex)
-	for index, message := range s.messages[s.clearAfterIndex:] {
+	result := make([]*agent.Message, len(s.messages)-start)
+	for index, message := range s.messages[start:] {
 		result[index] = agent.CloneMessage(message)
 	}
 	return result

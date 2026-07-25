@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/conversationjournal"
 	"denova/internal/fsdurability"
 )
 
@@ -54,6 +56,55 @@ type storyAppendTransaction struct {
 	Checksum string `json:"checksum"`
 }
 
+// UnmarshalJSON keeps focused storage tests and maintenance tooling able to
+// inspect a shared v2 physical transaction through the legacy v1 view. Runtime
+// validation still happens in conversationjournal before domain decoding.
+func (transaction *storyAppendTransaction) UnmarshalJSON(data []byte) error {
+	type alias storyAppendTransaction
+	var discriminator struct {
+		Journal string `json:"journal"`
+	}
+	if err := json.Unmarshal(data, &discriminator); err != nil {
+		return err
+	}
+	if discriminator.Journal != "denova.conversation.append" {
+		var decoded alias
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			return err
+		}
+		*transaction = storyAppendTransaction(decoded)
+		return nil
+	}
+	var outer struct {
+		Records  []json.RawMessage `json:"records"`
+		Checksum string            `json:"checksum"`
+	}
+	if err := json.Unmarshal(data, &outer); err != nil {
+		return err
+	}
+	meta := StoryMeta{}
+	events := make([]map[string]any, 0, len(outer.Records))
+	for _, payload := range outer.Records {
+		decodedMeta, decodedEvents, _, err := decodeStoryProjectionPayload(payload)
+		if err != nil {
+			return err
+		}
+		if decodedMeta.StoryID != "" {
+			meta = decodedMeta
+		}
+		for _, event := range decodedEvents {
+			events = append(events, event.Raw)
+		}
+	}
+	*transaction = storyAppendTransaction{
+		storyAppendTransactionBody: storyAppendTransactionBody{
+			Journal: storyAppendTransactionKind, Version: storyAppendTransactionVersion, Meta: meta, Events: events,
+		},
+		Checksum: outer.Checksum,
+	}
+	return nil
+}
+
 type storyAppendRecordError struct {
 	writeErr     error
 	syncErr      error
@@ -77,10 +128,9 @@ func (e *storyAppendRecordError) canReconcileByReadback() bool {
 	return e != nil && e.syncErr == nil
 }
 
-// appendStoryTransactionLocked publishes one metadata revision and all new
-// events through one checksummed JSON record. Existing history is not copied;
-// low-frequency edits continue to use rewriteStoryLocked as an explicit
-// compaction/rewrite boundary.
+// appendStoryTransactionLocked publishes domain events plus the resulting
+// metadata through the shared checksummed conversation journal. The old v1
+// encoder remains only behind the injected writer used by compatibility tests.
 func (s *Store) appendStoryTransactionLocked(storyID string, meta StoryMeta, newEvents ...any) error {
 	storyID = strings.TrimSpace(storyID)
 	if s.heldStoryLeases == nil || s.heldStoryLeases[storyID] <= 0 {
@@ -97,12 +147,50 @@ func (s *Store) appendStoryTransactionLocked(storyID string, meta StoryMeta, new
 		return fmt.Errorf("story append metadata identity mismatch: have %q want %q", meta.StoryID, storyID)
 	}
 	events := make([]map[string]any, 0, len(newEvents))
+	eventRecords := make([]StoryEventRecord, 0, len(newEvents))
+	payloads := make([]json.RawMessage, 0, len(newEvents)+1)
 	for _, event := range newEvents {
 		record, err := storyEventRecordForWrite(event)
 		if err != nil {
 			return err
 		}
 		events = append(events, record.Raw)
+		eventRecords = append(eventRecords, record)
+		payload, err := json.Marshal(record.Raw)
+		if err != nil {
+			return err
+		}
+		payloads = append(payloads, payload)
+	}
+	metaPayload, err := json.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	payloads = append(payloads, metaPayload)
+	if s.appendStoryRecord == nil {
+		handle, openErr := s.openStoryJournalLocked(storyID)
+		if openErr != nil {
+			return openErr
+		}
+		if _, refreshErr := handle.journal.ReadRange(context.Background(), conversationjournal.Range{After: handle.journal.Head().Cursor}); refreshErr != nil {
+			return refreshErr
+		}
+		head := handle.journal.Head()
+		commit, appendErr := handle.journal.Append(context.Background(), conversationjournal.Guard{Cursor: head.Cursor, RecordSHA256: head.RecordSHA256}, payloads...)
+		if appendErr == nil {
+			advanceStoryRecentCaches(handle, commit.Head.Cursor, meta, eventRecords)
+			return nil
+		}
+		committed, reconcileErr := s.reconcileStoryAppendLocked(storyID, meta, events)
+		if reconcileErr != nil {
+			return errors.Join(appendErr, fmt.Errorf("reconcile ambiguous story append: %w", reconcileErr))
+		}
+		if committed {
+			handle.recent = make(map[string]storyRecentCache)
+			log.Printf("[interactive-story] reconciled shared journal append story_id=%s events=%d original_error=%v", storyID, len(events), appendErr)
+			return nil
+		}
+		return appendErr
 	}
 	body := storyAppendTransactionBody{
 		Journal: storyAppendTransactionKind, Version: storyAppendTransactionVersion,
@@ -120,12 +208,12 @@ func (s *Store) appendStoryTransactionLocked(storyID string, meta StoryMeta, new
 	if err != nil {
 		return fmt.Errorf("encode story append transaction: %w", err)
 	}
-	appendRecord := appendStoryRecord
-	if s.appendStoryRecord != nil {
-		appendRecord = s.appendStoryRecord
-	}
+	appendRecord := s.appendStoryRecord
 	appendErr := appendRecord(s.storyPath(storyID), line)
 	if appendErr == nil {
+		if handle := s.storyJournals[storyID]; handle != nil {
+			handle.recent = make(map[string]storyRecentCache)
+		}
 		return nil
 	}
 	var durabilityErr *storyAppendRecordError
@@ -138,6 +226,9 @@ func (s *Store) appendStoryTransactionLocked(storyID string, meta StoryMeta, new
 	}
 	if !committed {
 		return appendErr
+	}
+	if handle := s.storyJournals[storyID]; handle != nil {
+		handle.recent = make(map[string]storyRecentCache)
 	}
 	log.Printf("[interactive-story] reconciled ambiguous append transaction story_id=%s events=%d original_error=%v", storyID, len(events), appendErr)
 	return nil
@@ -180,6 +271,33 @@ func decodeStoryAppendTransaction(line []byte) (StoryMeta, []StoryEventRecord, b
 	}
 	if err := json.Unmarshal(line, &discriminator); err != nil {
 		return StoryMeta{}, nil, false, err
+	}
+	if discriminator.Journal == "denova.conversation.append" {
+		var outer struct {
+			Records []json.RawMessage `json:"records"`
+		}
+		if err := json.Unmarshal(line, &outer); err != nil {
+			return StoryMeta{}, nil, true, err
+		}
+		if len(outer.Records) == 0 {
+			return StoryMeta{}, nil, true, fmt.Errorf("shared story transaction has no records")
+		}
+		var meta StoryMeta
+		events := make([]StoryEventRecord, 0, len(outer.Records))
+		for index, payload := range outer.Records {
+			decodedMeta, decodedEvents, _, err := decodeStoryProjectionPayload(payload)
+			if err != nil {
+				return StoryMeta{}, nil, true, fmt.Errorf("decode shared story record %d: %w", index+1, err)
+			}
+			if decodedMeta.StoryID != "" {
+				meta = decodedMeta
+			}
+			events = append(events, decodedEvents...)
+		}
+		if meta.StoryID == "" {
+			return StoryMeta{}, nil, true, fmt.Errorf("shared story transaction has no metadata")
+		}
+		return meta, events, true, nil
 	}
 	if discriminator.Journal != storyAppendTransactionKind {
 		return StoryMeta{}, nil, false, nil

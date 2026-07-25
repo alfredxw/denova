@@ -81,7 +81,7 @@ func (s *Store) CommitPlayerInput(storyID string, intent PlayerInputIntent) (Pla
 		return PlayerInputReceipt{}, err
 	}
 	defer releaseStory()
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, lines, err := s.readStoryRecentLocked(storyID, canonical.BranchID)
 	if err != nil {
 		return PlayerInputReceipt{}, err
 	}

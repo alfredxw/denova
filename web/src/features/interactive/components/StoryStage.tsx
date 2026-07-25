@@ -11,13 +11,13 @@ import { MOBILE_NAVIGATION_OPEN_EVENT } from '@/components/layout/workspace-mobi
 import type { ChatMessage, ContextAnalysis } from '@/lib/api'
 import { agentSubAgentSessionKey, agentViewToRenderMessage, type AgentMessageView } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { analyzeInteractiveContext, removeInteractiveContextCompaction, runInteractiveDirector, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
+import { analyzeInteractiveContext, getInteractiveHistoryPage, removeInteractiveContextCompaction, runInteractiveDirector, switchInteractiveTurnVersion, updateInteractiveTurnNarrative } from '../api'
 import { sanitizeStoredNarrative } from '../stream-parser'
 import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-store'
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { useInteractiveAgentCommands, type StoryStageRuntimeUpdater } from '../use-interactive-agent-commands'
 import { buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller } from '../types'
+import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TurnEvent } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { NewStorySetupPanel } from './NewStorySetupPanel'
 import { StoryOpeningPanel } from './StoryOpeningPanel'
@@ -98,6 +98,40 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   })
   const snapshotKey = storyStageSnapshotKey(storyId, branchId, snapshot)
   const stageKey = `${workspace || 'current'}:${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
+  const [historyWindow, setHistoryWindow] = useState<{
+    stageKey: string
+    turns: TurnEvent[]
+    beforeCursor: string
+    hasMore: boolean
+    expanded: boolean
+  }>({ stageKey, turns: snapshot?.turns || [], beforeCursor: snapshot?.history_before_cursor || '', hasMore: snapshot?.has_earlier_turns === true, expanded: false })
+  const [historyLoading, setHistoryLoading] = useState(false)
+  useEffect(() => {
+    if (!snapshot) {
+      setHistoryWindow({ stageKey, turns: [], beforeCursor: '', hasMore: false, expanded: false })
+      return
+    }
+    setHistoryWindow((current) => {
+      if (current.stageKey !== stageKey) {
+        return { stageKey, turns: snapshot.turns || [], beforeCursor: snapshot.history_before_cursor || '', hasMore: snapshot.has_earlier_turns === true, expanded: false }
+      }
+      return {
+        ...current,
+        turns: mergeStoryHistoryWindows(current.turns, snapshot.turns || []),
+        beforeCursor: current.expanded ? current.beforeCursor : snapshot.history_before_cursor || '',
+        hasMore: current.expanded ? current.hasMore : snapshot.has_earlier_turns === true,
+      }
+    })
+  }, [snapshot, stageKey])
+  const displaySnapshot = useMemo<Snapshot | null>(() => {
+    if (!snapshot) return null
+    if (historyWindow.stageKey !== stageKey) return snapshot
+    // Merge the new canonical tail during render as well as in the effect
+    // below. This keeps the persisted row present in the exact commit where
+    // the matching optimistic live row is removed, preserving its render key
+    // and preventing a one-frame disappearance at settlement.
+    return { ...snapshot, turns: mergeStoryHistoryWindows(historyWindow.turns, snapshot.turns || []) }
+  }, [historyWindow.stageKey, historyWindow.turns, snapshot, stageKey])
   const stageRun = useInteractiveStore((state) => state.storyStageRuns[stageKey] || EMPTY_STAGE_RUN)
   const setStoryStageRun = useInteractiveStore((state) => state.setStoryStageRun)
   const clearStoryStageRun = useInteractiveStore((state) => state.clearStoryStageRun)
@@ -238,7 +272,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     turnNavigationItems,
     turnsById,
   } = useStoryStageMessages({
-    snapshot,
+    snapshot: displaySnapshot,
     rewindTurnId,
     liveMessages,
     streaming,
@@ -315,6 +349,33 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   const canUseHotChoices = hotChoices.length > 0 && !branchTerminal && !streaming && !editingTurn && !directorBlocking && Boolean(storyId)
   const showHotChoices = canUseHotChoices && hotChoicesExpanded
   const messageListBottomPadding = inputFloatHeight > 0 ? inputFloatHeight + keyboardInset + 20 : undefined
+  const loadEarlierMessages = useCallback(async () => {
+    if (!storyId || !historyWindow.beforeCursor || historyLoading) return
+    setHistoryLoading(true)
+    try {
+      const page = await getInteractiveHistoryPage(storyId, branchId || snapshot?.branch_id || 'main', historyWindow.beforeCursor)
+      setHistoryWindow((current) => {
+        if (current.stageKey !== stageKey) return current
+        return {
+          stageKey,
+          turns: prependStoryHistoryPage(current.turns, page.turns || []),
+          beforeCursor: page.before_cursor || '',
+          hasMore: page.has_more,
+          expanded: true,
+        }
+      })
+    } catch (error) {
+      console.error('[interactive-stage] load earlier story history failed', error)
+      setStageLiveMessages((current) => [...current, { role: 'error', content: error instanceof Error ? error.message : t('chat.history.loadEarlierFailed') }])
+    } finally {
+      setHistoryLoading(false)
+    }
+  }, [branchId, historyLoading, historyWindow.beforeCursor, setStageLiveMessages, snapshot?.branch_id, stageKey, storyId, t])
+  const latestTurnID = snapshot?.current_turn?.id || snapshot?.turns.at(-1)?.id || ''
+  const canMutateStoryView = useCallback((view: AgentMessageView) => {
+    const turnID = agentViewToRenderMessage(view)?.turn_id
+    return !turnID || !latestTurnID || turnID === latestTurnID
+  }, [latestTurnID])
   const availableBookOpeningPresets = useMemo(() => bookOpeningPresets.filter((preset) => preset.content.trim()), [bookOpeningPresets])
   const selectedBookOpeningPreset = useMemo(
     () => availableBookOpeningPresets.find((preset) => preset.id === selectedBookOpeningPresetId) || availableBookOpeningPresets[0] || null,
@@ -715,6 +776,9 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 scrollResetKey={scrollResetKey}
                 bottomPaddingClassName="pb-36"
                 bottomPaddingPx={messageListBottomPadding}
+                hasEarlierMessages={historyWindow.stageKey === stageKey && historyWindow.hasMore}
+                isLoadingEarlierMessages={historyLoading}
+                onLoadEarlierMessages={loadEarlierMessages}
                 afterContent={!streaming && storyStateModel.hasState && stateDisplayPreference !== 'director-only' ? (
                   <StoryStateLedger
                     snapshot={snapshot}
@@ -728,6 +792,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 collapseTraceGroups
                 turnScrollRequest={turnScrollRequest}
                 onVisibleTurnAnchorChange={handleVisibleTurnAnchorChange}
+                canMutateMessage={canMutateStoryView}
                 onEditMessage={startEditingView}
                 onEditAssistantReply={storyImages.generatingTurnId || switchingVersionTurnId ? undefined : startEditingAssistantReply}
                 onRegenerateMessage={regenerateView}
@@ -770,4 +835,18 @@ function noopStateDisplayPreferenceChange(_value: StoryStateDisplayPreference) {
 
 function noopTurnPersisted() {
   return undefined
+}
+
+function mergeStoryHistoryWindows(current: TurnEvent[], latest: TurnEvent[]): TurnEvent[] {
+  if (current.length === 0) return latest
+  if (latest.length === 0) return current
+  const firstOverlap = latest.findIndex((turn) => current.some((candidate) => candidate.id === turn.id))
+  if (firstOverlap < 0) return latest
+  const currentOverlap = current.findIndex((turn) => turn.id === latest[firstOverlap].id)
+  return [...current.slice(0, currentOverlap), ...latest.slice(firstOverlap)]
+}
+
+function prependStoryHistoryPage(current: TurnEvent[], earlier: TurnEvent[]): TurnEvent[] {
+  const currentIDs = new Set(current.map((turn) => turn.id))
+  return [...earlier.filter((turn) => !currentIDs.has(turn.id)), ...current]
 }

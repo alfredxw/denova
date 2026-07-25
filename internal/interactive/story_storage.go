@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"denova/internal/conversationjournal"
 	"denova/internal/fsdurability"
 )
 
@@ -128,6 +129,13 @@ func (s *Store) readStoryJournalLocked(storyID string) (StoryMeta, []StoryEventR
 }
 
 func (s *Store) readStoryJournalWithRepairLocked(storyID string, repairTornTail bool) (StoryMeta, []StoryEventRecord, error) {
+	return s.readStoryConversationJournalLocked(storyID, repairTornTail)
+}
+
+// readStoryJournalLegacyWithRepairLocked is retained as a compatibility
+// oracle for focused migration tests. Production reads use the shared
+// conversation journal above.
+func (s *Store) readStoryJournalLegacyWithRepairLocked(storyID string, repairTornTail bool) (StoryMeta, []StoryEventRecord, error) {
 	file, err := os.Open(s.storyPath(storyID))
 	if err != nil {
 		return StoryMeta{}, nil, err
@@ -259,6 +267,10 @@ func (s *Store) rememberStoryReplayStats(storyID string, stats StoryJournalRepla
 }
 
 func (s *Store) freezeLegacyActorStateSchemaLocked(storyID string, meta *StoryMeta, events []StoryEventRecord) error {
+	return s.freezeLegacyActorStateSchemaFromStateLocked(storyID, meta, stateFromPath(events))
+}
+
+func (s *Store) freezeLegacyActorStateSchemaFromStateLocked(storyID string, meta *StoryMeta, state map[string]any) error {
 	if meta == nil || meta.ActorStateSchema != nil {
 		return nil
 	}
@@ -268,7 +280,7 @@ func (s *Store) freezeLegacyActorStateSchemaLocked(storyID string, meta *StoryMe
 			return fmt.Errorf("解析旧故事冻结状态 schema 失败: %w", err)
 		}
 		before, _ := json.Marshal(snapshot)
-		enrichLegacyActorStateSchema(&snapshot, stateFromPath(events))
+		enrichLegacyActorStateSchema(&snapshot, state)
 		meta.ActorStateSchema = normalizeActorStateSchemaSnapshot(&snapshot)
 		after, _ := json.Marshal(meta.ActorStateSchema)
 		if string(before) == string(after) {
@@ -297,7 +309,7 @@ func (s *Store) freezeLegacyActorStateSchemaLocked(storyID string, meta *StoryMe
 		return fmt.Errorf("写入旧故事状态迁移备份失败: %w", err)
 	}
 	meta.ActorStateSchema = FreezeActorStateSchemaWithRules(director.ActorState, director.TRPGSystem, true)
-	enrichLegacyActorStateSchema(meta.ActorStateSchema, stateFromPath(events))
+	enrichLegacyActorStateSchema(meta.ActorStateSchema, state)
 	return s.writeActorStateSchemaSnapshot(storyID, meta.ActorStateSchema)
 }
 
@@ -345,7 +357,18 @@ func (s *Store) rewriteStoryLocked(storyID string, meta StoryMeta, events []Stor
 	if s.rewriteJSONL != nil {
 		writer = s.rewriteJSONL
 	}
-	return writer(s.storyPath(storyID), lines)
+	// Close before replacing the inode. A handle bound to the previous
+	// incarnation must never refresh against the replacement file.
+	if err := s.evictStoryJournalLocked(storyID); err != nil {
+		return fmt.Errorf("关闭待维护故事 journal 失败: %w", err)
+	}
+	if err := writer(s.storyPath(storyID), lines); err != nil {
+		return err
+	}
+	if err := os.Remove(conversationjournal.SidecarPath(s.storyPath(storyID))); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("删除失效故事索引失败: %w", err)
+	}
+	return nil
 }
 
 func writeJSONL(path string, lines []any) error {

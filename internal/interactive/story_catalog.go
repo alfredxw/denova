@@ -2,10 +2,13 @@ package interactive
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"denova/internal/conversationjournal"
 )
 
 func (s *Store) Index() (Index, error) {
@@ -31,6 +34,11 @@ func (s *Store) SelectStory(storyID string) error {
 		}
 		if index.CurrentStoryID == storyID {
 			return nil
+		}
+		if previousID := strings.TrimSpace(index.CurrentStoryID); previousID != "" {
+			if closeErr := s.evictStoryJournalLocked(previousID); closeErr != nil {
+				log.Printf("[interactive-story] flush index on story switch failed story_id=%s error=%v", previousID, closeErr)
+			}
 		}
 		index.CurrentStoryID = storyID
 		return s.writeIndexLocked(index)
@@ -231,11 +239,12 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	}
 	defer releaseStory()
 
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, snapshot, err := s.boundedStorySnapshotWithLimitLocked(storyID, "", 1)
 	if err != nil {
 		return StorySummary{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	updatedFields := storyConfigUpdatedFields(req)
 	if title := strings.TrimSpace(req.Title); title != "" {
 		meta.Title = title
 	}
@@ -276,10 +285,9 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 	if req.ImageSettings != nil {
 		meta.ImageSettings = normalizeStoryImageSettings(*req.ImageSettings)
 	}
-	rebuiltEvents := []any(nil)
-	rebuiltEventCount := -1
+	appendedEvents := []any(nil)
 	if req.StateSchemaPolicy != nil {
-		if storyContainsTurn(lines) {
+		if snapshot.TurnCount > 0 {
 			return StorySummary{}, fmt.Errorf("首回合提交后不能修改状态结构初始化策略")
 		}
 		if len(meta.Branches) != 1 {
@@ -314,11 +322,16 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 		} else {
 			meta.StateSchemaInitialization = &StateSchemaInitializationStatus{Mode: policy.Mode, Status: StateSchemaInitializationReady, Outcome: "fixed", BaseRevision: 1, TargetRevision: 1, CompletedAt: now, UpdatedAt: now}
 		}
-		lines = nil
 		branch := meta.Branches[meta.CurrentBranch]
+		previousHead := branch.Head
 		branch.Head = ""
 		meta.Branches[meta.CurrentBranch] = branch
-		rebuiltEventCount = 0
+		headMoved := BranchHeadMovedEvent{
+			V: schemaVersion, Type: StoryEventTypeBranchHeadMoved, ID: newID("bhm"),
+			BranchID: meta.CurrentBranch, Ts: now, PreviousHead: previousHead,
+			StateCheckpoint: initialStoryState(), Reason: "state_schema_reinitialized",
+		}
+		appendedEvents = append(appendedEvents, headMoved)
 		if meta.ActorStateSchema != nil && !storyStateSchemaPolicyRequiresOpeningDraft(&policy) {
 			initialOps, initialActorOps, err := BuildActorStateInitialChanges(meta.ActorStateSchema.System, meta.InitialTraitRolls)
 			if err != nil {
@@ -330,13 +343,18 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 				deltaID := newID("sd")
 				branch.Head = deltaID
 				meta.Branches[meta.CurrentBranch] = branch
-				rebuiltEvents = append(rebuiltEvents, newStateDeltaEventWithActorOps(deltaID, "", meta.CurrentBranch, now, initialOps, initialActorOps))
-				rebuiltEventCount = 1
+				appendedEvents = append(appendedEvents, newStateDeltaEventWithActorOps(deltaID, "", meta.CurrentBranch, now, initialOps, initialActorOps))
 			}
 		}
 	}
 	meta.UpdatedAt = now
-	if err := s.rewriteStoryLocked(storyID, meta, lines, rebuiltEvents...); err != nil {
+	configEvent := StoryConfigUpdatedEvent{
+		V: schemaVersion, Type: StoryEventTypeStoryConfigUpdated, ID: newID("scu"),
+		ParentID: meta.Branches[meta.CurrentBranch].Head, BranchID: meta.CurrentBranch, Ts: now,
+		Fields: updatedFields,
+	}
+	appendedEvents = append([]any{configEvent}, appendedEvents...)
+	if err := s.appendStoryTransactionLocked(storyID, meta, appendedEvents...); err != nil {
 		return StorySummary{}, err
 	}
 	index, err := s.readIndexLocked()
@@ -356,9 +374,7 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 			index.Stories[i].Opening = meta.Opening
 			index.Stories[i].ImageSettings = meta.ImageSettings
 			index.Stories[i].StateSchemaPolicy = cloneStoryStateSchemaPolicy(meta.StateSchemaPolicy)
-			if rebuiltEventCount >= 0 {
-				index.Stories[i].Events = rebuiltEventCount
-			}
+			index.Stories[i].Events += len(appendedEvents)
 			index.Stories[i].UpdatedAt = now
 			if err := s.writeIndexLocked(index); err != nil {
 				return StorySummary{}, err
@@ -367,6 +383,44 @@ func (s *Store) UpdateStory(storyID string, req UpdateStoryRequest) (StorySummar
 		}
 	}
 	return StorySummary{}, fmt.Errorf("故事不存在: %s", storyID)
+}
+
+func storyConfigUpdatedFields(req UpdateStoryRequest) []string {
+	fields := make([]string, 0, 12)
+	if strings.TrimSpace(req.Title) != "" {
+		fields = append(fields, "title")
+	}
+	if req.Origin != nil {
+		fields = append(fields, "origin")
+	}
+	if strings.TrimSpace(req.StoryTellerID) != "" {
+		fields = append(fields, "story_teller_id")
+	}
+	if NormalizeStoryDirectorID(req.StoryDirectorID) != "" {
+		fields = append(fields, "story_director_id")
+	}
+	if req.DirectorRunPolicy != nil {
+		fields = append(fields, "director_run_policy")
+	}
+	if req.ModuleRefs != nil {
+		fields = append(fields, "module_refs")
+	}
+	if req.ReplyTargetChars != nil {
+		fields = append(fields, "reply_target_chars")
+	}
+	if req.ChoiceCount != nil {
+		fields = append(fields, "choice_count")
+	}
+	if req.Opening != nil {
+		fields = append(fields, "opening")
+	}
+	if req.ImageSettings != nil {
+		fields = append(fields, "image_settings")
+	}
+	if req.StateSchemaPolicy != nil {
+		fields = append(fields, "state_schema_policy", "actor_state_schema", "state_schema_initialization")
+	}
+	return fields
 }
 
 func (s *Store) DeleteStory(storyID string) error {
@@ -401,7 +455,13 @@ func (s *Store) DeleteStory(storyID string) error {
 			index.CurrentStoryID = index.Stories[0].ID
 		}
 	}
+	if closeErr := s.evictStoryJournalLocked(storyID); closeErr != nil {
+		log.Printf("[interactive-story] flush index before story delete failed story_id=%s error=%v", storyID, closeErr)
+	}
 	if err := os.Remove(s.storyPath(storyID)); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Remove(conversationjournal.SidecarPath(s.storyPath(storyID))); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	if err := os.Remove(s.actorStateSchemaPath(storyID)); err != nil && !os.IsNotExist(err) {

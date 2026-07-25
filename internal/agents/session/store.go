@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"denova/internal/conversationjournal"
 	"denova/internal/filelease"
 )
 
@@ -185,10 +186,12 @@ func (s *Store) Delete(id string) error {
 	if count <= 1 {
 		return fmt.Errorf("不能删除当前唯一会话")
 	}
+	if err := s.closeCachedLocked(id); err != nil {
+		return fmt.Errorf("关闭待删除会话失败: %w", err)
+	}
 	if err := removeSessionJournal(s.sessionPath(id)); err != nil {
 		return fmt.Errorf("删除会话失败: %w", err)
 	}
-	delete(s.cache, id)
 	return nil
 }
 
@@ -209,12 +212,38 @@ func (s *Store) DeleteByPrefix(prefix string) error {
 		if !strings.HasPrefix(id, prefix) {
 			continue
 		}
+		if err := s.closeCachedLocked(id); err != nil {
+			return fmt.Errorf("关闭待删除会话失败: %w", err)
+		}
 		if err := removeSessionJournal(file); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("删除会话失败: %w", err)
 		}
-		delete(s.cache, id)
 	}
 	return nil
+}
+
+// Close flushes every cached derived index. Stores remain reopenable because
+// workspace-transition failure recovery may keep the same Store value alive.
+func (s *Store) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var result error
+	for id := range s.cache {
+		result = errors.Join(result, s.closeCachedLocked(id))
+	}
+	return result
+}
+
+func (s *Store) closeCachedLocked(id string) error {
+	sess := s.cache[strings.TrimSpace(id)]
+	delete(s.cache, strings.TrimSpace(id))
+	if sess == nil {
+		return nil
+	}
+	return sess.Close()
 }
 
 // removeSessionJournal shares the exact append/domain-commit lease. Holding
@@ -228,6 +257,9 @@ func removeSessionJournal(path string) (resultErr error) {
 	defer func() { resultErr = errors.Join(resultErr, release()) }()
 	if err := os.Remove(path); err != nil {
 		return err
+	}
+	if err := os.Remove(conversationjournal.SidecarPath(path)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("删除会话索引失败: %w", err)
 	}
 	if err := syncParentDirectory(path); err != nil {
 		return fmt.Errorf("同步会话删除目录失败: %w", err)
@@ -253,11 +285,32 @@ func (s *Store) SetActiveID(id string) error {
 	if err := validateSessionID(id); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	previousID, _ := s.activeIDUnlocked()
 	data, err := json.MarshalIndent(activeSessionState{ActiveID: id}, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.activePath(), data, 0o644)
+	if err := os.WriteFile(s.activePath(), data, 0o644); err != nil {
+		return err
+	}
+	if previousID != "" && previousID != id {
+		return s.closeCachedLocked(previousID)
+	}
+	return nil
+}
+
+func (s *Store) activeIDUnlocked() (string, error) {
+	data, err := os.ReadFile(s.activePath())
+	if err != nil {
+		return "", err
+	}
+	var state activeSessionState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return "", err
+	}
+	return state.ActiveID, nil
 }
 
 func (s *Store) getOrCreateLocked(id string) (*Session, error) {

@@ -106,9 +106,6 @@ func TestStoryContextAtTurnParentOmitsFutureDirectorSidecar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "继续走", Narrative: "后续才发现了秘密。"}); err != nil {
-		t.Fatal(err)
-	}
 	plan, err := store.DirectorPlan(story.ID, "main")
 	if err != nil {
 		t.Fatal(err)

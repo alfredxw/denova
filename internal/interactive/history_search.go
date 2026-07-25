@@ -64,82 +64,117 @@ func (s *Store) SearchStoryHistory(storyID, branchID string, req StoryHistorySea
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	meta, lines, err := s.readStoryLocked(storyID)
-	if err != nil {
-		return StoryHistorySearchResult{}, err
-	}
-	branchID, branch, err := resolveBranch(meta, strings.TrimSpace(branchID))
-	if err != nil {
-		return StoryHistorySearchResult{}, err
-	}
 	keywords := normalizeStoryHistoryKeywords(req.Keywords)
 	match := normalizeStoryHistoryMatch(req.Match)
 	limit := normalizeStoryHistoryLimit(req.Limit)
-	path, _ := eventPath(branch.Head, eventsByID(lines))
 	beforeTurnID := strings.TrimSpace(req.BeforeTurnID)
-	beforeIndex := len(path)
-	if beforeTurnID != "" {
-		for i, record := range path {
-			if record.Envelope.Type == StoryEventTypeTurn && record.Envelope.ID == beforeTurnID {
-				beforeIndex = i
-				break
-			}
-		}
-	}
-
-	scored := make([]scoredStoryHistoryHit, 0, limit)
-	scannedTurns := 0
-	for i, record := range path {
-		if i >= beforeIndex || record.Envelope.Type != StoryEventTypeTurn {
-			continue
-		}
-		var turn TurnEvent
-		if err := mapToStruct(record.Raw, &turn); err != nil {
+	var (
+		cursor         string
+		resolvedBranch string
+		allTop         = make([]scoredStoryHistoryHit, 0, limit)
+		beforeTop      = make([]scoredStoryHistoryHit, 0, limit)
+		allScanned     int
+		beforeScanned  int
+		allMatches     int
+		beforeMatches  int
+		newestIndex    int
+		foundBefore    = beforeTurnID == ""
+	)
+	for {
+		loaded, err := s.readStoryHistoryPageLocked(storyID, branchID, cursor, maxStoryHistoryPageTurns, true)
+		if err != nil {
 			return StoryHistorySearchResult{}, err
 		}
-		scannedTurns++
-		score, matched := storyHistoryMatchScore(turn, keywords, match)
-		if !matched {
-			continue
+		if resolvedBranch == "" {
+			resolvedBranch = loaded.page.BranchID
 		}
-		scored = append(scored, scoredStoryHistoryHit{
-			index: i,
-			hit: StoryHistoryHit{
-				TurnID:       turn.ID,
-				BranchID:     turn.BranchID,
-				Timestamp:    turn.Ts,
-				UserAction:   boundedStoryHistoryText(turn.User, storyHistoryUserExcerptRunes),
-				Narrative:    boundedStoryHistoryText(turn.Narrative, storyHistoryNarrativeRunes),
-				StateChanges: storyHistoryStateChanges(turn.StateDelta),
-				Score:        score,
-			},
-		})
+		// Pages are chronological; walk each one backwards so tie-breaking and
+		// before_turn_id can be evaluated while streaming newest to oldest.
+		for index := len(loaded.page.Turns) - 1; index >= 0; index-- {
+			turn := loaded.page.Turns[index]
+			position := -newestIndex
+			newestIndex++
+			allScanned++
+			allTop, allMatches = retainStoryHistorySearchHit(allTop, allMatches, turn, keywords, match, position, limit)
+			if beforeTurnID != "" && turn.ID == beforeTurnID {
+				foundBefore = true
+				continue
+			}
+			if !foundBefore {
+				continue
+			}
+			beforeScanned++
+			beforeTop, beforeMatches = retainStoryHistorySearchHit(beforeTop, beforeMatches, turn, keywords, match, position, limit)
+		}
+		if !loaded.page.HasMore || strings.TrimSpace(loaded.page.BeforeCursor) == "" {
+			break
+		}
+		cursor = loaded.page.BeforeCursor
 	}
 
-	sort.SliceStable(scored, func(i, j int) bool {
-		if scored[i].hit.Score != scored[j].hit.Score {
-			return scored[i].hit.Score > scored[j].hit.Score
-		}
-		return scored[i].index > scored[j].index
-	})
-	truncated := len(scored) > limit
-	if truncated {
-		scored = scored[:limit]
+	scored, scannedTurns, matchedTurns := beforeTop, beforeScanned, beforeMatches
+	if beforeTurnID != "" && !foundBefore {
+		// Preserve legacy behavior for an unknown boundary: search the complete
+		// branch instead of silently returning an empty result.
+		scored, scannedTurns, matchedTurns = allTop, allScanned, allMatches
 	}
+	sortStoryHistoryHits(scored)
 	hits := make([]StoryHistoryHit, 0, len(scored))
 	for _, item := range scored {
 		hits = append(hits, item.hit)
 	}
 	return StoryHistorySearchResult{
 		StoryID:      storyID,
-		BranchID:     branchID,
+		BranchID:     resolvedBranch,
 		Keywords:     keywords,
 		Match:        match,
 		Limit:        limit,
 		ScannedTurns: scannedTurns,
-		Truncated:    truncated,
+		Truncated:    matchedTurns > limit,
 		Hits:         hits,
 	}, nil
+}
+
+func retainStoryHistorySearchHit(
+	top []scoredStoryHistoryHit,
+	matchedCount int,
+	turn TurnEvent,
+	keywords []string,
+	match string,
+	position int,
+	limit int,
+) ([]scoredStoryHistoryHit, int) {
+	score, matched := storyHistoryMatchScore(turn, keywords, match)
+	if !matched {
+		return top, matchedCount
+	}
+	matchedCount++
+	top = append(top, scoredStoryHistoryHit{
+		index: position,
+		hit: StoryHistoryHit{
+			TurnID:       turn.ID,
+			BranchID:     turn.BranchID,
+			Timestamp:    turn.Ts,
+			UserAction:   boundedStoryHistoryText(turn.User, storyHistoryUserExcerptRunes),
+			Narrative:    boundedStoryHistoryText(turn.Narrative, storyHistoryNarrativeRunes),
+			StateChanges: storyHistoryStateChanges(turn.StateDelta),
+			Score:        score,
+		},
+	})
+	sortStoryHistoryHits(top)
+	if len(top) > limit {
+		top = top[:limit]
+	}
+	return top, matchedCount
+}
+
+func sortStoryHistoryHits(values []scoredStoryHistoryHit) {
+	sort.SliceStable(values, func(i, j int) bool {
+		if values[i].hit.Score != values[j].hit.Score {
+			return values[i].hit.Score > values[j].hit.Score
+		}
+		return values[i].index > values[j].index
+	})
 }
 
 func normalizeStoryHistoryKeywords(values []string) []string {

@@ -7,15 +7,22 @@ import (
 )
 
 const (
-	StoryEventTypeMeta                = "meta"
-	StoryEventTypePlayerInput         = "player_input_accepted"
-	StoryEventTypeTurn                = "turn"
-	StoryEventTypeStateDelta          = "state_delta"
-	StoryEventTypeBranch              = "branch"
-	StoryEventTypeHotChoices          = "hot_choices"
-	StoryEventTypeCompaction          = "context_compaction"
-	StoryEventTypeCompactionRemoved   = "context_compaction_removed"
-	StoryEventTypeTurnVersionSelected = "turn_version_selected"
+	StoryEventTypeMeta                 = "meta"
+	StoryEventTypePlayerInput          = "player_input_accepted"
+	StoryEventTypeTurn                 = "turn"
+	StoryEventTypeStateDelta           = "state_delta"
+	StoryEventTypeBranch               = "branch"
+	StoryEventTypeHotChoices           = "hot_choices"
+	StoryEventTypeCompaction           = "context_compaction"
+	StoryEventTypeCompactionRemoved    = "context_compaction_removed"
+	StoryEventTypeTurnVersionSelected  = "turn_version_selected"
+	StoryEventTypeTurnNarrativeRevised = "turn_narrative_revised"
+	StoryEventTypeTurnDisplayAppended  = "turn_display_appended"
+	StoryEventTypeTurnStateRevised     = "turn_state_revised"
+	StoryEventTypeStoryConfigUpdated   = "story_config_updated"
+	StoryEventTypeBranchSwitched       = "branch_switched"
+	StoryEventTypeBranchArchived       = "branch_archived"
+	StoryEventTypeBranchHeadMoved      = "branch_head_moved"
 
 	stateOpSchemaVersion = 2
 )
@@ -85,6 +92,17 @@ func mapToStoryEventRecord(raw map[string]any) (StoryEventRecord, error) {
 			return StoryEventRecord{}, err
 		}
 	}
+	if envelope.Type == StoryEventTypeTurnStateRevised {
+		var revision TurnStateRevisedEvent
+		if err := mapToStruct(raw, &revision); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if revision.StateDelta != nil {
+			if err := validateStateDelta(*revision.StateDelta); err != nil {
+				return StoryEventRecord{}, fmt.Errorf("校验回合状态修订失败: %w", err)
+			}
+		}
+	}
 	return StoryEventRecord{Envelope: envelope, Raw: raw}, nil
 }
 
@@ -115,6 +133,16 @@ func storyEventRecordForWrite(event any) (StoryEventRecord, error) {
 		}
 		if err := validateStateDeltaForWrite(StateDelta{SchemaVersion: delta.SchemaVersion, Ops: delta.Ops, ActorOps: delta.ActorOps}); err != nil {
 			return StoryEventRecord{}, fmt.Errorf("校验待写入状态变化事件失败: %w", err)
+		}
+	case StoryEventTypeTurnStateRevised:
+		var revision TurnStateRevisedEvent
+		if err := mapToStruct(record.Raw, &revision); err != nil {
+			return StoryEventRecord{}, err
+		}
+		if revision.StateDelta != nil {
+			if err := validateStateDeltaForWrite(*revision.StateDelta); err != nil {
+				return StoryEventRecord{}, fmt.Errorf("校验待写入回合状态修订失败: %w", err)
+			}
 		}
 	}
 	return record, nil
@@ -180,7 +208,9 @@ func validateStoryEventEnvelope(envelope StoryEventEnvelope) error {
 		return fmt.Errorf("故事事件 schema 版本不支持: %d", envelope.V)
 	}
 	switch envelope.Type {
-	case StoryEventTypePlayerInput, StoryEventTypeTurn, StoryEventTypeStateDelta, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeCompaction, StoryEventTypeCompactionRemoved, StoryEventTypeTurnVersionSelected:
+	case StoryEventTypePlayerInput, StoryEventTypeTurn, StoryEventTypeStateDelta, StoryEventTypeBranch, StoryEventTypeHotChoices, StoryEventTypeCompaction, StoryEventTypeCompactionRemoved, StoryEventTypeTurnVersionSelected,
+		StoryEventTypeTurnNarrativeRevised, StoryEventTypeTurnDisplayAppended, StoryEventTypeTurnStateRevised,
+		StoryEventTypeStoryConfigUpdated, StoryEventTypeBranchSwitched, StoryEventTypeBranchArchived, StoryEventTypeBranchHeadMoved:
 	default:
 		return fmt.Errorf("未知故事事件类型: %q", envelope.Type)
 	}

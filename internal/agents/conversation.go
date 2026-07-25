@@ -306,8 +306,7 @@ func (c *SessionConversation) compactionIncrementalSource(keepLatestUser bool) (
 	if c == nil || c.session == nil {
 		return nil, "", 0, 0
 	}
-	messages := c.session.GetMessages()
-	total := len(messages)
+	messages, messageBase, total := c.session.MessageWindow()
 	sourceStart := total - c.session.MessageCountSinceClear()
 	if sourceStart < 0 {
 		sourceStart = 0
@@ -329,7 +328,11 @@ func (c *SessionConversation) compactionIncrementalSource(keepLatestUser bool) (
 	if sourceEnd < sourceStart {
 		sourceEnd = sourceStart
 	}
-	source := compactionSourceMessages(applyToolResultContextPolicy(messages[sourceStart:sourceEnd], c.ToolResultContextPolicy()), true)
+	windowStart := max(sourceStart-messageBase, 0)
+	windowEnd := max(sourceEnd-messageBase, 0)
+	windowStart = min(windowStart, len(messages))
+	windowEnd = min(max(windowEnd, windowStart), len(messages))
+	source := compactionSourceMessages(applyToolResultContextPolicy(messages[windowStart:windowEnd], c.ToolResultContextPolicy()), true)
 	return source, existingCheckpoint, sourceStart, sourceEnd
 }
 

@@ -53,6 +53,13 @@ func buildInteractiveModelVisibleTurnHistory(turns []interactive.TurnEvent, comp
 	return buildInteractiveTurnHistoryWithCompaction(turns, compaction, retainedTurnsForInteractiveCompaction(compaction))
 }
 
+func buildInteractiveModelVisibleSnapshotHistory(snapshot interactive.Snapshot) interactiveTurnHistory {
+	return buildInteractiveTurnHistoryWindowWithCompaction(
+		snapshot.Turns, interactiveSnapshotTurnStart(snapshot), snapshot.ContextCompaction,
+		retainedTurnsForInteractiveCompaction(snapshot.ContextCompaction),
+	)
+}
+
 func retainedTurnsForInteractiveCompaction(compaction *interactive.ContextCompactionEvent) int {
 	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
 		return 0
@@ -64,6 +71,10 @@ func retainedTurnsForInteractiveCompaction(compaction *interactive.ContextCompac
 }
 
 func buildInteractiveTurnHistoryWithCompaction(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent, retainedTurns int) interactiveTurnHistory {
+	return buildInteractiveTurnHistoryWindowWithCompaction(turns, 0, compaction, retainedTurns)
+}
+
+func buildInteractiveTurnHistoryWindowWithCompaction(turns []interactive.TurnEvent, turnStart int, compaction *interactive.ContextCompactionEvent, retainedTurns int) interactiveTurnHistory {
 	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
 		return buildInteractiveTurnHistory(turns)
 	}
@@ -73,7 +84,7 @@ func buildInteractiveTurnHistoryWithCompaction(turns []interactive.TurnEvent, co
 	if retainedTurns > config.MaxContextCompactionRetainedTurns {
 		retainedTurns = config.MaxContextCompactionRetainedTurns
 	}
-	sourceCount := compaction.SourceTurnCount
+	sourceCount := compaction.SourceTurnCount - turnStart
 	if sourceCount < 0 {
 		sourceCount = 0
 	}
@@ -91,9 +102,23 @@ func buildInteractiveTurnHistoryWithCompaction(turns []interactive.TurnEvent, co
 	return interactiveTurnHistory{
 		PreviousSummary: "",
 		Turns:           retained,
-		PreviousCount:   sourceCount,
-		OmittedCount:    sourceCount,
+		PreviousCount:   compaction.SourceTurnCount,
+		OmittedCount:    compaction.SourceTurnCount,
 	}
+}
+
+func interactiveSnapshotTurnCount(snapshot interactive.Snapshot) int {
+	if snapshot.TurnCount >= len(snapshot.Turns) {
+		return snapshot.TurnCount
+	}
+	return len(snapshot.Turns)
+}
+
+func interactiveSnapshotTurnStart(snapshot interactive.Snapshot) int {
+	if snapshot.TurnStart > 0 {
+		return snapshot.TurnStart
+	}
+	return max(0, interactiveSnapshotTurnCount(snapshot)-len(snapshot.Turns))
 }
 
 func formatInteractiveTurnHistory(turns []interactive.TurnEvent, emptyMessage string) string {

@@ -1,6 +1,8 @@
 package interactive
 
 import (
+	"bytes"
+	"os"
 	"reflect"
 	"testing"
 )
@@ -262,6 +264,10 @@ func TestUpdateStoryRebuildsSchemaPolicyOnlyBeforeFirstTurn(t *testing.T) {
 	if story.Events != 1 {
 		t.Fatalf("fixed template should materialize its initial Actors: events=%d", story.Events)
 	}
+	beforeUpdate, err := os.ReadFile(store.storyPath(story.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
 	generated := StoryStateSchemaPolicy{Mode: StoryStateSchemaModeGenerate}
 	updated, err := store.UpdateStory(story.ID, UpdateStoryRequest{
 		Title:             story.Title,
@@ -275,8 +281,15 @@ func TestUpdateStoryRebuildsSchemaPolicyOnlyBeforeFirstTurn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Events != 0 || updated.StateSchemaPolicy == nil || updated.StateSchemaPolicy.Mode != StoryStateSchemaModeGenerate {
-		t.Fatalf("pre-opening rebuild did not reset story index: %#v", updated)
+	if updated.Events <= story.Events || updated.StateSchemaPolicy == nil || updated.StateSchemaPolicy.Mode != StoryStateSchemaModeGenerate {
+		t.Fatalf("pre-opening append-only reconfiguration did not advance the story projection: %#v", updated)
+	}
+	afterUpdate, err := os.ReadFile(store.storyPath(story.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(afterUpdate, beforeUpdate) {
+		t.Fatal("pre-opening reconfiguration rewrote canonical story history")
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
 	if err != nil {

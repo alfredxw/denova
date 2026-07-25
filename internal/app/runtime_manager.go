@@ -143,11 +143,23 @@ func (s *WorkspaceRuntimeManager) SwitchWorkspace(ctx context.Context, path stri
 		delete(a.workspaceScopes, oldKey)
 	}
 	previousVersionService := a.versionService
+	previousInteractiveStore := a.interactive
+	previousSessionStore := a.sessionStore
 	a.applyRuntime(runtime)
 	a.cfg.Workspace = runtime.workspace
 	chatApp.clearRecoveryRefreshObligations(runtime.workspace)
 	a.mu.Unlock()
 	a.syncWorkspaceFileWatcher(runtime.workspace)
+	if previousInteractiveStore != nil && previousInteractiveStore != runtime.interactive {
+		if closeErr := previousInteractiveStore.Close(); closeErr != nil {
+			log.Printf("[app] flush previous interactive journals failed workspace=%s err=%v", currentWorkspace, closeErr)
+		}
+	}
+	if previousSessionStore != nil && previousSessionStore != runtime.sessionStore {
+		if closeErr := previousSessionStore.Close(); closeErr != nil {
+			log.Printf("[app] flush previous session journals failed workspace=%s err=%v", currentWorkspace, closeErr)
+		}
+	}
 	if previousVersionService != nil && previousVersionService != runtime.versionService {
 		previousVersionService.Close()
 	}
@@ -301,10 +313,22 @@ func (s *WorkspaceRuntimeManager) activateFallbackWorkspace(ctx context.Context)
 	}
 	a.mu.Lock()
 	previousVersionService := a.versionService
+	previousInteractiveStore := a.interactive
+	previousSessionStore := a.sessionStore
 	delete(a.workspaceScopes, lifecycleWorkspaceKey(currentWorkspace))
 	a.clearRuntime()
 	a.mu.Unlock()
 	a.syncWorkspaceFileWatcher("")
+	if previousInteractiveStore != nil {
+		if closeErr := previousInteractiveStore.Close(); closeErr != nil {
+			log.Printf("[app] flush interactive journals while clearing workspace failed workspace=%s err=%v", currentWorkspace, closeErr)
+		}
+	}
+	if previousSessionStore != nil {
+		if closeErr := previousSessionStore.Close(); closeErr != nil {
+			log.Printf("[app] flush session journals while clearing workspace failed workspace=%s err=%v", currentWorkspace, closeErr)
+		}
+	}
 	if previousVersionService != nil {
 		previousVersionService.Close()
 	}

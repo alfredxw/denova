@@ -63,12 +63,12 @@ func (h *Handlers) HandleSessionMessages(ctx context.Context, c *app.RequestCont
 		return
 	}
 	id := strings.TrimSpace(c.Query("session_id"))
-	entries, err := h.app.SessionMessages(id)
-	if err != nil {
-		writeError(c, consts.StatusNotFound, err.Error())
-		return
-	}
 	if limitRaw == "" {
+		entries, err := h.app.SessionMessages(id)
+		if err != nil {
+			writeError(c, consts.StatusNotFound, err.Error())
+			return
+		}
 		writeJSON(c, consts.StatusOK, agentui.MessagesFromHistory(entries))
 		return
 	}
@@ -80,22 +80,26 @@ func (h *Handlers) HandleSessionMessages(ctx context.Context, c *app.RequestCont
 	if limit > maxSessionMessagePageSize {
 		limit = maxSessionMessagePageSize
 	}
-	end := len(entries)
+	before := -1
 	if beforeRaw := strings.TrimSpace(c.Query("before")); beforeRaw != "" {
-		before, beforeErr := strconv.Atoi(beforeRaw)
-		if beforeErr != nil || before < 0 {
+		parsedBefore, beforeErr := strconv.Atoi(beforeRaw)
+		if beforeErr != nil || parsedBefore < 0 {
 			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidQuery")
 			return
 		}
-		end = min(before, len(entries))
+		before = parsedBefore
 	}
-	start := max(0, end-limit)
+	page, err := h.app.SessionMessagesPage(ctx, id, before, limit)
+	if err != nil {
+		writeError(c, consts.StatusNotFound, err.Error())
+		return
+	}
 	writeJSON(c, consts.StatusOK, sessionMessagesPageDTO{
-		Messages: agentui.MessagesFromHistoryAtOffset(entries[start:end], start),
+		Messages: agentui.MessagesFromHistoryAtOffset(page.Entries, page.NextBefore),
 		Page: sessionMessagePageMeta{
-			NextBefore: strconv.Itoa(start),
-			HasMore:    start > 0,
-			Total:      len(entries),
+			NextBefore: strconv.Itoa(page.NextBefore),
+			HasMore:    page.HasMore,
+			Total:      page.Total,
 		},
 	})
 }

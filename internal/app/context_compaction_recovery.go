@@ -413,6 +413,15 @@ func sameSessionContextCompactionMutation(actual, expected session.ContextCompac
 	actual.Type, expected.Type = "", ""
 	actual.CreatedAt, expected.CreatedAt = time.Time{}, time.Time{}
 	actual.ContextRevision, expected.ContextRevision = 0, 0
+	// Cursor fields are a derived migration of legacy index bounds. A frozen
+	// pre-commit mutation may contain only indices while the canonical record
+	// read through the projection has stable cursors filled in.
+	if expected.SourceStartCursor == 0 {
+		actual.SourceStartCursor = 0
+	}
+	if expected.SourceEndCursor == 0 {
+		actual.SourceEndCursor = 0
+	}
 	return reflect.DeepEqual(actual, expected)
 }
 
@@ -420,6 +429,12 @@ func sameSessionContextCompactionRemovalMutation(actual, expected session.Contex
 	actual.Type, expected.Type = "", ""
 	actual.CreatedAt, expected.CreatedAt = time.Time{}, time.Time{}
 	actual.ContextRevision, expected.ContextRevision = 0, 0
+	if expected.SourceStartCursor == 0 {
+		actual.SourceStartCursor = 0
+	}
+	if expected.SourceEndCursor == 0 {
+		actual.SourceEndCursor = 0
+	}
 	return reflect.DeepEqual(actual, expected)
 }
 

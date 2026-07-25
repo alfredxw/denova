@@ -1,26 +1,21 @@
 package session
 
 import (
-	"bufio"
-	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	"denova/internal/conversationjournal"
 )
 
 func loadSession(filePath string) (*Session, error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	stat, err := f.Stat()
+	stat, err := os.Stat(filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -29,94 +24,111 @@ func loadSession(filePath string) (*Session, error) {
 	}
 
 	id := strings.TrimSuffix(filepath.Base(filePath), ".jsonl")
-	now := time.Now().UTC()
-	sess := &Session{
-		ID:              id,
-		CreatedAt:       now,
-		UpdatedAt:       now,
-		filePath:        filePath,
-		title:           defaultSessionTitle,
-		clearAfterIndex: 0,
-		journalSize:     stat.Size(),
-		messages:        make([]*agent.Message, 0),
-		records:         make([]historyRecord, 0),
-	}
-
-	reader := bufio.NewReader(f)
-	var readOffset int64
-	lineNumber := 0
-	validLineCount := 0
-	sawRecord := false
-	for {
-		lineStart := readOffset
-		line, readErr := reader.ReadBytes('\n')
-		if len(line) == 0 && readErr == io.EOF {
-			break
-		}
-		lineNumber++
-		readOffset += int64(len(line))
-		newlineTerminated := len(line) > 0 && line[len(line)-1] == '\n'
-		trimmed := bytes.TrimSpace(line)
-
-		if len(trimmed) == 0 {
-			sess.journalOffset = readOffset
-			sess.journalNeedsLF = false
-			validLineCount = lineNumber
-		} else {
-			var parseErr error
-			if !sawRecord {
-				parseErr = appendFirstRecordLine(sess, trimmed)
-			} else {
-				parseErr = appendRecordLine(sess, trimmed, lineNumber)
-			}
-			if parseErr != nil {
-				if readErr == io.EOF && !newlineTerminated && sawRecord && !json.Valid(trimmed) {
-					// Only an unterminated malformed final line is recoverable.
-					sess.journalOffset = lineStart
-					break
-				}
-				return nil, fmt.Errorf("会话 journal 损坏 %s line %d: %w", filePath, lineNumber, parseErr)
-			}
-			sawRecord = true
-			sess.journalOffset = readOffset
-			sess.journalNeedsLF = !newlineTerminated
-			validLineCount = lineNumber
-		}
-
-		if readErr != nil {
-			if readErr == io.EOF {
-				break
-			}
-			return nil, fmt.Errorf("读取会话 journal 失败 %s line %d: %w", filePath, lineNumber, readErr)
-		}
-	}
-	if !sawRecord {
-		return nil, fmt.Errorf("会话文件为空或没有有效记录: %s", filePath)
-	}
-	finalStat, err := f.Stat()
+	generation, err := readSessionJournalIncarnation(filePath)
 	if err != nil {
 		return nil, err
 	}
-	if finalStat.Size() != stat.Size() || readOffset != stat.Size() {
-		return nil, fmt.Errorf("会话 journal 在加载期间被修改: %s", filePath)
+	projection := newSessionJournalProjection(id, generation)
+	journal, err := conversationjournal.Open(
+		context.Background(),
+		filePath,
+		conversationjournal.Identity{ID: id, Generation: generation},
+		projection,
+		conversationjournal.Options{},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("打开会话 journal 失败 %s: %w", filePath, err)
 	}
-	sess.journalLineCount = validLineCount
-	sess.lastReplayBytes = sess.journalOffset
-	sess.lastReplayRecords = validLineCount
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = journal.Close()
+		}
+	}()
 
-	if sess.title == defaultSessionTitle {
-		for _, msg := range sess.messages {
-			if msg.Role == agent.User && strings.TrimSpace(msg.Content) != "" {
-				sess.title = deriveTitle(msg.Content)
-				break
+	now := time.Now().UTC()
+	createdAt := projection.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = now
+	}
+	updatedAt := projection.UpdatedAt
+	if updatedAt.IsZero() {
+		updatedAt = createdAt
+	}
+	startCursor := projection.recentStartCursor()
+	messageBase := projection.messageBaseForCursor(startCursor)
+	sess := &Session{
+		ID: id, CreatedAt: createdAt, UpdatedAt: updatedAt,
+		filePath: filePath, title: projection.Title,
+		clearAfterIndex: projection.ClearAfter, contextRevision: projection.ContextRevision,
+		journalSize: stat.Size(), journalOffset: journal.Head().VerifiedBytes,
+		journalIncarnation: generation, journalLineCount: int(journal.Head().Cursor),
+		journal: journal, projection: projection,
+		messageBaseIndex: messageBase, messageCount: messageBase,
+		messages: make([]*agent.Message, 0), records: make([]historyRecord, 0),
+		partialMaterialization: true,
+	}
+	if err := sess.migrateProjectionCompactionCursorsLocked(context.Background()); err != nil {
+		return nil, fmt.Errorf("迁移会话压缩游标 %s: %w", filePath, err)
+	}
+	for _, structural := range projection.Structural {
+		if structural.Cursor >= startCursor {
+			continue
+		}
+		if structural.Compaction != nil {
+			value := *structural.Compaction
+			sess.records = append(sess.records, historyRecord{kind: historyTypeCompaction, compaction: &value, createdAt: value.CreatedAt})
+		}
+		if structural.Removal != nil {
+			value := *structural.Removal
+			sess.records = append(sess.records, historyRecord{kind: historyTypeCompactionRemoved, compactionRemoval: &value, createdAt: value.CreatedAt})
+		}
+	}
+	if projection.PendingInterrupt != nil && projection.PendingInterruptCursor < startCursor {
+		pendingRecords, readErr := journal.ReadRange(context.Background(), conversationjournal.Range{
+			After: projection.PendingInterruptCursor - 1, Through: projection.PendingInterruptCursor,
+		})
+		if readErr != nil {
+			return nil, fmt.Errorf("读取待恢复中断失败 %s: %w", filePath, readErr)
+		}
+		for _, record := range pendingRecords {
+			if err := appendConversationRecord(sess, record); err != nil {
+				return nil, fmt.Errorf("恢复待处理中断 %s: %w", filePath, err)
 			}
 		}
 	}
-	if sess.UpdatedAt.IsZero() {
-		sess.UpdatedAt = sess.CreatedAt
+	records, err := journal.ReadRange(context.Background(), conversationjournal.Range{After: startCursor - 1})
+	if err != nil {
+		return nil, fmt.Errorf("读取会话最近窗口失败 %s: %w", filePath, err)
 	}
+	for _, record := range records {
+		if err := appendConversationRecord(sess, record); err != nil {
+			return nil, fmt.Errorf("恢复会话最近窗口 %s cursor %d: %w", filePath, record.Location.Cursor, err)
+		}
+		sess.materializedCursor = record.Location.Cursor
+	}
+	sess.partialMaterialization = false
+	sess.messageCount = projection.MessageCount
+	sess.clearAfterIndex = projection.ClearAfter
+	sess.contextRevision = projection.ContextRevision
+	sess.title = projection.Title
+	sess.CreatedAt = createdAt
+	sess.UpdatedAt = updatedAt
+	sess.journalOffset = journal.Head().VerifiedBytes
+	sess.journalLineCount = int(journal.Head().Cursor)
+	stats := journal.ReplayStats()
+	sess.lastReplayBytes = stats.BytesRead
+	sess.lastReplayRecords = int(stats.TransactionsRead)
 	sess.trimTokenUsageDisplayEventsLocked("")
+	cleanup = false
 	return sess, nil
+}
+
+func appendConversationRecord(sess *Session, record conversationjournal.Record) error {
+	if record.Location.Cursor == 1 {
+		return appendFirstRecordLine(sess, record.Payload)
+	}
+	return appendRecordLine(sess, record.Payload, int(record.Location.Cursor))
 }
 
 func appendFirstRecordLine(sess *Session, line []byte) error {

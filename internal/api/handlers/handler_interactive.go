@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -89,6 +90,26 @@ func (h *Handlers) HandleInteractiveSnapshot(ctx context.Context, c *app.Request
 	}
 	writeJSON(c, consts.StatusOK, snapshot)
 }
+
+func (h *Handlers) HandleInteractiveHistory(ctx context.Context, c *app.RequestContext) {
+	limit := defaultInteractiveHistoryPageSize
+	if raw := strings.TrimSpace(c.Query("limit")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed <= 0 {
+			writeErrorKey(c, consts.StatusBadRequest, "api.common.invalidQuery")
+			return
+		}
+		limit = parsed
+	}
+	page, err := h.app.InteractiveHistoryPage(c.Param("id"), c.Query("branch"), c.Query("before"), limit)
+	if err != nil {
+		writeError(c, consts.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(c, consts.StatusOK, page)
+}
+
+const defaultInteractiveHistoryPageSize = 100
 
 func (h *Handlers) HandleInteractiveRuleResolutionReroll(ctx context.Context, c *app.RequestContext) {
 	var body interactive.RuleResolutionRerollRequest

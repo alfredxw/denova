@@ -45,6 +45,7 @@ const chat = {
   'chat.empty': 'Send a message to start, or type /help for commands',
   'chat.history.loadEarlier': 'Load earlier messages',
   'chat.history.loadingEarlier': 'Loading earlier messages…',
+	'chat.history.loadEarlierFailed': 'Failed to load earlier messages',
   'chat.input.placeholder': 'Type a message. Enter to send, Shift+Enter for newline',
   'chat.input.placeholderWithSkills': 'Message, / for commands or Skills',
   'chat.input.disabledPlaceholder': 'AI is responding...',

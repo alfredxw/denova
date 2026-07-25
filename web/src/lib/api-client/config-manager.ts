@@ -33,6 +33,35 @@ export function getConfigManagerMessages(scope: ConfigManagerScope = {}): Promis
   return requestJSON(`/api/config-manager/messages${configManagerScopeQuery(scope)}`)
 }
 
+export interface ConfigManagerMessagesPage {
+  messages: AgentUIMessage[]
+  nextBefore: string
+  hasMore: boolean
+  total: number
+}
+
+export async function getConfigManagerMessagesPage(
+  scope: ConfigManagerScope = {},
+  options: { before?: string; limit?: number } = {},
+): Promise<ConfigManagerMessagesPage> {
+  const params = configManagerScopeParams(scope)
+  params.set('limit', String(options.limit || 100))
+  if (options.before) params.set('before', options.before)
+  const data = await requestJSON<
+    | AgentUIMessage[]
+    | { messages?: AgentUIMessage[]; page?: { next_before?: string; has_more?: boolean; total?: number } }
+  >(`/api/config-manager/messages?${params.toString()}`)
+  if (Array.isArray(data)) {
+    return { messages: data, nextBefore: '0', hasMore: false, total: data.length }
+  }
+  return {
+    messages: data.messages || [],
+    nextBefore: data.page?.next_before || '0',
+    hasMore: data.page?.has_more === true,
+    total: data.page?.total || 0,
+  }
+}
+
 /** Inspect one exact Config Manager scope without exposing durable input. */
 export function getActiveConfigManagerTask(scope: ConfigManagerScope = {}): Promise<ActiveChatTask> {
   return requestJSON(`/api/config-manager/active${configManagerScopeQuery(scope)}`)

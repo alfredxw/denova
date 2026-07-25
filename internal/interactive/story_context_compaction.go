@@ -55,7 +55,7 @@ func (s *Store) AppendContextCompaction(storyID, branchID string, event ContextC
 	}
 	defer releaseStory()
 
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, lines, err := s.readStoryRecentLocked(storyID, branchID)
 	if err != nil {
 		return ContextCompactionEvent{}, err
 	}
@@ -115,7 +115,7 @@ func (s *Store) AppendContextCompactionRemoval(storyID, branchID string, event C
 	}
 	defer releaseStory()
 
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, lines, err := s.readStoryRecentLocked(storyID, branchID)
 	if err != nil {
 		return ContextCompactionRemovalEvent{}, err
 	}

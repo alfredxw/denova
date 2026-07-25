@@ -1,6 +1,8 @@
 package session
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -8,8 +10,7 @@ import (
 	"strings"
 	"time"
 
-	agent "github.com/alfredxw/denova/agent"
-
+	"denova/internal/conversationjournal"
 	"denova/internal/fsdurability"
 )
 
@@ -54,84 +55,30 @@ func createSession(id, filePath, title string) (*Session, error) {
 	}
 	created = false
 
-	journalBytes := int64(len(data))
-	return &Session{
-		ID:                 id,
-		CreatedAt:          now,
-		UpdatedAt:          now,
-		filePath:           filePath,
-		title:              title,
-		clearAfterIndex:    0,
-		journalSize:        journalBytes,
-		journalOffset:      journalBytes,
-		journalIncarnation: incarnationID,
-		journalLineCount:   1,
-		lastReplayBytes:    journalBytes,
-		lastReplayRecords:  1,
-		messages:           make([]*agent.Message, 0),
-		records:            make([]historyRecord, 0),
-	}, nil
+	return loadSession(filePath)
 }
 
-// appendJournalRecordLocked durably appends one record. Callers must already be
-// inside withCanonicalMutation, which holds the file lease and session lock,
-// and must not mutate materialized state until this returns nil.
+// appendJournalRecordLocked durably appends one domain record through the
+// shared conversation journal. Callers hold s.mu and update their in-memory
+// materialization only after this returns successfully.
 func (s *Session) appendJournalRecordLocked(record any) error {
-	data, err := marshalJSONLine(record)
+	if s.journal == nil {
+		return fmt.Errorf("会话 journal 未打开")
+	}
+	data, err := json.Marshal(record)
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(s.filePath, os.O_RDWR|os.O_APPEND, 0)
+	head := s.journal.Head()
+	commit, err := s.journal.Append(context.Background(), conversationjournal.Guard{Cursor: s.materializedCursor, RecordSHA256: head.RecordSHA256}, data)
 	if err != nil {
-		return fmt.Errorf("打开会话 journal 失败: %w", err)
+		return err
 	}
-	defer f.Close()
-
-	stat, err := f.Stat()
-	if err != nil {
-		return fmt.Errorf("读取会话 journal 状态失败: %w", err)
-	}
-	if !stat.Mode().IsRegular() {
-		return fmt.Errorf("会话 journal 不是普通文件: %s", s.filePath)
-	}
-	if stat.Size() != s.journalSize {
-		return fmt.Errorf("会话 journal 已被外部修改: expected_size=%d actual_size=%d", s.journalSize, stat.Size())
-	}
-	if s.journalOffset < 0 || s.journalOffset > s.journalSize {
-		return fmt.Errorf("会话 journal 恢复偏移非法: offset=%d size=%d", s.journalOffset, s.journalSize)
-	}
-
-	validOffset := s.journalOffset
-	var incompleteTail []byte
-	if validOffset < s.journalSize {
-		incompleteTail = make([]byte, s.journalSize-validOffset)
-		if _, err := f.ReadAt(incompleteTail, validOffset); err != nil && err != io.EOF {
-			return fmt.Errorf("读取会话 journal 不完整尾行失败: %w", err)
-		}
-		if err := preserveIncompleteTail(s.filePath, incompleteTail); err != nil {
-			return err
-		}
-		if err := f.Truncate(validOffset); err != nil {
-			return fmt.Errorf("截断会话 journal 不完整尾行失败: %w", err)
-		}
-	}
-
-	payload := data
-	if s.journalNeedsLF {
-		payload = make([]byte, 0, len(data)+1)
-		payload = append(payload, '\n')
-		payload = append(payload, data...)
-	}
-	if err := writeAndSync(f, payload); err != nil {
-		rollbackJournalTail(f, validOffset, incompleteTail)
-		return fmt.Errorf("追加会话 journal 失败: %w", err)
-	}
-
-	newSize := validOffset + int64(len(payload))
-	s.journalSize = newSize
-	s.journalOffset = newSize
+	s.materializedCursor = commit.Head.Cursor
+	s.journalSize = commit.Head.VerifiedBytes
+	s.journalOffset = commit.Head.VerifiedBytes
 	s.journalNeedsLF = false
-	s.journalLineCount++
+	s.journalLineCount = int(commit.Head.Cursor)
 	return nil
 }
 

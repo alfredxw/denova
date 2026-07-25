@@ -9,8 +9,6 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-
-	"denova/internal/filelease"
 )
 
 var ErrStoredSessionNotFound = errors.New("stored session not found")
@@ -29,6 +27,7 @@ func FindStoredDomainCommit(
 	if err != nil || !found {
 		return DomainCommitReceipt{}, false, err
 	}
+	defer sess.Close()
 	return sess.FindDomainCommit(identity, role, hash)
 }
 
@@ -49,6 +48,7 @@ func CommitStoredDomainMessage(
 	if !found {
 		return DomainCommitReceipt{}, fmt.Errorf("%w: %s", ErrStoredSessionNotFound, sessionID)
 	}
+	defer sess.Close()
 	return sess.CommitDomainMessageContext(ctx, intent)
 }
 
@@ -58,6 +58,7 @@ func FindStoredContextCompaction(dir, sessionID, id string) (ContextCompaction, 
 	if err != nil || !found {
 		return ContextCompaction{}, false, err
 	}
+	defer sess.Close()
 	record, found := sess.ContextCompactionByID(id)
 	return record, found, nil
 }
@@ -68,6 +69,7 @@ func FindStoredContextCompactionRemoval(dir, sessionID, id string) (ContextCompa
 	if err != nil || !found {
 		return ContextCompactionRemoval{}, false, err
 	}
+	defer sess.Close()
 	record, found := sess.ContextCompactionRemovalByID(id)
 	return record, found, nil
 }
@@ -88,6 +90,7 @@ func CommitStoredContextCompaction(
 	if !found {
 		return ContextCompaction{}, fmt.Errorf("%w: %s", ErrStoredSessionNotFound, sessionID)
 	}
+	defer sess.Close()
 	return sess.AppendContextCompactionAtContext(ctx, ContextCursor{Revision: expectedRevision}, record)
 }
 
@@ -107,10 +110,11 @@ func CommitStoredContextCompactionRemoval(
 	if !found {
 		return ContextCompactionRemoval{}, false, fmt.Errorf("%w: %s", ErrStoredSessionNotFound, sessionID)
 	}
+	defer sess.Close()
 	return sess.CommitContextCompactionRemovalAtContext(ctx, ContextCursor{Revision: expectedRevision}, record)
 }
 
-func openStoredSession(ctx context.Context, dir, sessionID string) (_ *Session, found bool, resultErr error) {
+func openStoredSession(_ context.Context, dir, sessionID string) (*Session, bool, error) {
 	dir = strings.TrimSpace(dir)
 	if dir == "" {
 		return nil, false, fmt.Errorf("session store directory is required")
@@ -119,11 +123,9 @@ func openStoredSession(ctx context.Context, dir, sessionID string) (_ *Session, 
 		return nil, false, err
 	}
 	path := filepath.Join(dir, sessionID+".jsonl")
-	release, err := filelease.Acquire(ctx, path+".domain.lock")
-	if err != nil {
-		return nil, false, fmt.Errorf("acquire stored session read lease: %w", err)
-	}
-	defer func() { resultErr = errors.Join(resultErr, release()) }()
+	// loadSession opens the shared Conversation Journal, which owns the exact
+	// cross-process lease. Taking the same non-reentrant lease here would
+	// deadlock cold recovery before the journal can validate its incarnation.
 	sess, err := loadSession(path)
 	if os.IsNotExist(err) {
 		return nil, false, nil

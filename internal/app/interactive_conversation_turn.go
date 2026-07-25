@@ -73,7 +73,7 @@ func (c *interactiveConversation) SubmitTurnResult(ctx context.Context, input in
 		ChoiceCount:                 storyCtx.Meta.ChoiceCount,
 		RuleResolution:              c.ruleResolution,
 		RuleStateConsumptionMode:    director.Strategy.RuleStateConsumptionMode,
-		RequireCompleteInitialState: c.openingStateSchemaDraft != nil && len(storyCtx.Snapshot.Turns) == 0,
+		RequireCompleteInitialState: c.openingStateSchemaDraft != nil && interactiveSnapshotTurnCount(storyCtx.Snapshot) == 0,
 	}, current, input)
 	staged := c.turnProtocol.update(prepared)
 	c.mu.Unlock()
@@ -104,10 +104,10 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	if err != nil {
 		return input.Messages, agents.ContextCompactionResult{}, err
 	}
-	if !input.Force && storyCtx.Snapshot.ContextCompactionRemoval != nil && storyCtx.Snapshot.ContextCompactionRemoval.SourceTurnCount >= len(storyCtx.Snapshot.Turns) {
+	if !input.Force && storyCtx.Snapshot.ContextCompactionRemoval != nil && storyCtx.Snapshot.ContextCompactionRemoval.SourceTurnCount >= interactiveSnapshotTurnCount(storyCtx.Snapshot) {
 		return input.Messages, agents.ContextCompactionResult{SkippedReason: "removed_same_source"}, nil
 	}
-	source, existingCheckpoint := interactiveCompactionSource(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
+	source, existingCheckpoint := interactiveCompactionSnapshotSource(storyCtx.Snapshot)
 	source = agents.ApplyToolResultContextPolicyForConversation(source, c.ToolResultContextPolicy())
 	epoch := 1
 	if storyCtx.Snapshot.ContextCompaction != nil {
@@ -134,7 +134,7 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	result = interactiveCompactionResultForMessages(result, newMessages, input.Tools)
 	if !input.Force && (result.Phase == "pre_run" || result.Phase == "mid_run") {
 		c.stagePreparedInteractiveCompaction(preparedInteractiveContextCompaction{
-			Result: result, SourceTurnCount: len(storyCtx.Snapshot.Turns),
+			Result: result, SourceTurnCount: interactiveSnapshotTurnCount(storyCtx.Snapshot),
 		})
 	}
 	// Model-cycle compaction remains a transient projection. Canonical story
@@ -253,11 +253,19 @@ func schemaToolCallsFromInteractive(calls []interactive.ModelContextToolCall) []
 }
 
 func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent) ([]*agents.Message, string) {
+	return interactiveCompactionWindowSource(turns, 0, compaction)
+}
+
+func interactiveCompactionSnapshotSource(snapshot interactive.Snapshot) ([]*agents.Message, string) {
+	return interactiveCompactionWindowSource(snapshot.Turns, interactiveSnapshotTurnStart(snapshot), snapshot.ContextCompaction)
+}
+
+func interactiveCompactionWindowSource(turns []interactive.TurnEvent, turnStart int, compaction *interactive.ContextCompactionEvent) ([]*agents.Message, string) {
 	sourceStart := 0
 	existingCheckpoint := ""
 	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
 		existingCheckpoint = compaction.Summary
-		sourceStart = compaction.SourceTurnCount
+		sourceStart = compaction.SourceTurnCount - turnStart
 		if sourceStart < 0 {
 			sourceStart = 0
 		}

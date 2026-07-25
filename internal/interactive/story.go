@@ -3,6 +3,8 @@ package interactive
 import (
 	"strings"
 	"sync"
+
+	"denova/internal/conversationjournal"
 )
 
 const schemaVersion = 1
@@ -40,6 +42,19 @@ type Store struct {
 	appendStoryRecord      func(string, []byte) error
 	lastStoryReplayByStory map[string]StoryJournalReplayStats
 	heldStoryLeases        map[string]int
+	storyJournals          map[string]*storyJournalHandle
+}
+
+type storyJournalHandle struct {
+	journal    *conversationjournal.Journal
+	projection *storyJournalProjection
+	recent     map[string]storyRecentCache
+}
+
+type storyRecentCache struct {
+	cursor  conversationjournal.Cursor
+	meta    StoryMeta
+	records []StoryEventRecord
 }
 
 // NewStore creates an interactive store rooted at the workspace directory.

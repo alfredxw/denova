@@ -14,7 +14,7 @@ import (
 func (s *Store) DirectorPlan(storyID, branchID string) (DirectorPlan, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, snapshot, err := s.boundedStorySnapshotWithLimitLocked(storyID, branchID, maxStoryHistoryPageTurns)
 	if err != nil {
 		return DirectorPlan{}, err
 	}
@@ -23,10 +23,6 @@ func (s *Store) DirectorPlan(storyID, branchID string) (DirectorPlan, error) {
 		return DirectorPlan{}, err
 	}
 	plan, err := s.readDirectorPlanLocked(storyID, branchID)
-	if err != nil {
-		return DirectorPlan{}, err
-	}
-	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
 	if err != nil {
 		return DirectorPlan{}, err
 	}
@@ -37,7 +33,7 @@ func (s *Store) DirectorPlan(storyID, branchID string) (DirectorPlan, error) {
 func (s *Store) DirectorPlanStatus(storyID, branchID string) (DirectorPlanStatus, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, snapshot, err := s.boundedStorySnapshotWithLimitLocked(storyID, branchID, maxStoryHistoryPageTurns)
 	if err != nil {
 		return DirectorPlanStatus{}, err
 	}
@@ -49,18 +45,14 @@ func (s *Store) DirectorPlanStatus(storyID, branchID string) (DirectorPlanStatus
 	if err != nil {
 		return DirectorPlanStatus{}, err
 	}
-	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
-	if err != nil {
-		return DirectorPlanStatus{}, err
-	}
 	plan.Metadata.EventRuntime = reconcileDirectorEventRuntime(plan.Metadata.EventRuntime, snapshot.Turns)
-	return DirectorPlanStatusFromPlan(plan, len(snapshot.Turns) > 0), nil
+	return DirectorPlanStatusFromPlan(plan, snapshot.TurnCount > 0), nil
 }
 
 func (s *Store) UpdateDirectorPlan(storyID string, req UpdateDirectorPlanRequest) (DirectorPlan, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, snapshot, err := s.boundedStorySnapshotWithLimitLocked(storyID, req.BranchID, maxStoryHistoryPageTurns)
 	if err != nil {
 		return DirectorPlan{}, err
 	}
@@ -69,10 +61,6 @@ func (s *Store) UpdateDirectorPlan(storyID string, req UpdateDirectorPlanRequest
 		return DirectorPlan{}, err
 	}
 	current, err := s.readDirectorPlanLocked(storyID, branchID)
-	if err != nil {
-		return DirectorPlan{}, err
-	}
-	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
 	if err != nil {
 		return DirectorPlan{}, err
 	}
@@ -112,7 +100,7 @@ func (s *Store) UpdateDirectorPlan(storyID string, req UpdateDirectorPlanRequest
 func (s *Store) RebuildDirectorPlan(storyID string, req RebuildDirectorPlanRequest, seed DirectorPlanSeed) (DirectorPlan, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, snapshot, err := s.boundedStorySnapshotWithLimitLocked(storyID, req.BranchID, maxStoryHistoryPageTurns)
 	if err != nil {
 		return DirectorPlan{}, err
 	}
@@ -121,10 +109,6 @@ func (s *Store) RebuildDirectorPlan(storyID string, req RebuildDirectorPlanReque
 		return DirectorPlan{}, err
 	}
 	previous, _ := s.readDirectorPlanMetadataLocked(storyID, branchID)
-	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
-	if err != nil {
-		return DirectorPlan{}, err
-	}
 	if err := s.seedDirectorPlanLocked(storyID, branchID, meta, seed); err != nil {
 		return DirectorPlan{}, err
 	}
@@ -153,7 +137,7 @@ func (s *Store) RebuildDirectorPlan(storyID string, req RebuildDirectorPlanReque
 func (s *Store) DirectorPlanRunToken(storyID, branchID string) (DirectorPlanRunToken, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	meta, _, err := s.readStoryLocked(storyID)
+	meta, _, err := s.boundedStorySnapshotWithLimitLocked(storyID, branchID, 1)
 	if err != nil {
 		return DirectorPlanRunToken{}, err
 	}
@@ -171,7 +155,7 @@ func (s *Store) DirectorPlanRunToken(storyID, branchID string) (DirectorPlanRunT
 func (s *Store) MarkDirectorPlanRunStarted(storyID, branchID string, token DirectorPlanRunToken, sourceTurnID string, forceEventEvaluation ...bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, snapshot, err := s.boundedStorySnapshotWithLimitLocked(storyID, branchID, maxStoryHistoryPageTurns)
 	if err != nil {
 		return err
 	}
@@ -186,10 +170,6 @@ func (s *Store) MarkDirectorPlanRunStarted(storyID, branchID string, token Direc
 	metadata.Revision = token.Revision
 	previous := metadata.LastRun
 	startReady := directorPlanRunStartReady(previous)
-	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
-	if err != nil {
-		return err
-	}
 	director := s.storyDirectorForMeta(meta)
 	catalog := DirectorEventCatalogFromStoryDirector(director)
 	turns := directorEventTurnsThrough(snapshot.Turns, sourceTurnID)
@@ -320,11 +300,7 @@ func (s *Store) completeDirectorPlanRun(storyID, branchID string, token Director
 		}
 		return DirectorPlan{}, err
 	}
-	meta, lines, err := s.readStoryLocked(storyID)
-	if err != nil {
-		return DirectorPlan{}, err
-	}
-	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
+	meta, snapshot, err := s.boundedStorySnapshotWithLimitLocked(storyID, branchID, maxStoryHistoryPageTurns)
 	if err != nil {
 		return DirectorPlan{}, err
 	}

@@ -15,7 +15,7 @@ func (s *Store) AppendTurn(storyID string, req AppendTurnRequest) (TurnEvent, er
 	}
 	defer releaseStory()
 
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, lines, err := s.readStoryRecentLocked(storyID, req.BranchID)
 	if err != nil {
 		return TurnEvent{}, err
 	}
@@ -76,48 +76,33 @@ func (s *Store) AppendTurnDisplayEvent(storyID, branchID, turnID string, event D
 	if len(events) == 0 {
 		return nil
 	}
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, lines, err := s.readStoryRecentLocked(storyID, branchID)
 	if err != nil {
 		return err
 	}
 	if branchID == "" {
 		branchID = meta.CurrentBranch
 	}
-	branch, ok := meta.Branches[branchID]
-	if !ok {
+	if _, ok := meta.Branches[branchID]; !ok {
 		return fmt.Errorf("分支不存在: %s", branchID)
 	}
 	turnID = strings.TrimSpace(turnID)
 	if turnID == "" {
 		return fmt.Errorf("展示事件缺少所属回合")
 	}
-	_, pathSet := eventPath(branch.Head, eventsByID(lines))
-	if !pathSet[turnID] {
-		return fmt.Errorf("展示事件回合不属于当前分支路径: %s", turnID)
-	}
-	updated := false
-	for i := range lines {
-		raw := lines[i].Raw
-		if lines[i].Envelope.ID != turnID || lines[i].Envelope.Type != StoryEventTypeTurn {
-			continue
-		}
-		var turn TurnEvent
-		if err := mapToStruct(raw, &turn); err != nil {
-			return err
-		}
-		raw["display_events"] = appendDisplayEvent(turn.DisplayEvents, events[0])
-		updated = true
-		break
-	}
-	if !updated {
-		return fmt.Errorf("展示事件所属回合不存在: %s", turnID)
+	if err := requireLatestLogicalTurn(meta, lines, branchID, turnID); err != nil {
+		return err
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	meta.UpdatedAt = now
-	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
+	revision := TurnDisplayAppendedEvent{
+		V: schemaVersion, Type: StoryEventTypeTurnDisplayAppended, ID: newID("tda"),
+		ParentID: turnID, BranchID: branchID, Ts: now, TurnID: turnID, Display: events[0],
+	}
+	if err := s.appendStoryTransactionLocked(storyID, meta, revision); err != nil {
 		return err
 	}
-	return s.touchIndexLocked(storyID, now, 0)
+	return s.touchIndexLocked(storyID, now, 1)
 }
 
 func (s *Store) RewindToTurnParent(storyID string, req RewindTurnRequest) error {
@@ -133,7 +118,7 @@ func (s *Store) RewindToTurnParent(storyID string, req RewindTurnRequest) error 
 	if turnID == "" {
 		return fmt.Errorf("回合 ID 不能为空")
 	}
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, lines, err := s.readStoryRecentLocked(storyID, req.BranchID)
 	if err != nil {
 		return err
 	}
@@ -160,12 +145,37 @@ func (s *Store) RewindToTurnParent(storyID string, req RewindTurnRequest) error 
 	if target == nil {
 		return fmt.Errorf("回合不存在: %s", turnID)
 	}
+	previousHead := branch.Head
 	branch.Head = parentIDFromRaw(target.Raw)
+	projected, err := projectStoryEventOverlays(lines)
+	if err != nil {
+		return err
+	}
+	pathToParent, _ := eventPath(branch.Head, eventsByID(projected))
+	nextLatestTurnID := nearestTurnAncestor(branch.Head, eventsByID(projected))
+	nextDepth := 0
+	for _, record := range pathToParent {
+		if record.Envelope.Type == StoryEventTypeTurn {
+			nextDepth++
+		}
+	}
 	meta.Branches[branchID] = branch
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	meta.UpdatedAt = now
-	if err := s.rewriteStoryLocked(storyID, meta, lines); err != nil {
+	stateCheckpoint := stateFromPath(pathToParent)
+	if turnID == latestLogicalTurnID(meta, lines, branchID) {
+		if projection, projectionErr := s.storyBranchProjectionLocked(storyID, branchID); projectionErr == nil {
+			stateCheckpoint = cloneStoryState(projection.StateBeforeLatest)
+		}
+	}
+	event := BranchHeadMovedEvent{
+		V: schemaVersion, Type: StoryEventTypeBranchHeadMoved, ID: newID("bhm"),
+		ParentID: branch.Head, BranchID: branchID, Ts: now,
+		PreviousHead: previousHead, NextHead: branch.Head, NextLatestTurnID: nextLatestTurnID,
+		NextDepth: nextDepth, StateCheckpoint: stateCheckpoint, Reason: "rewind_to_turn_parent",
+	}
+	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return err
 	}
-	return s.touchIndexLocked(storyID, now, 0)
+	return s.touchIndexLocked(storyID, now, 1)
 }

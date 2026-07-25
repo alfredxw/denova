@@ -334,6 +334,18 @@ func (s *InteractiveAppService) InteractiveSnapshot(storyID, branchID string) (i
 	return store.Snapshot(storyID, branchID)
 }
 
+func (a *App) InteractiveHistoryPage(storyID, branchID, beforeCursor string, limit int) (interactive.StoryHistoryPage, error) {
+	return a.interactiveService().InteractiveHistoryPage(storyID, branchID, beforeCursor, limit)
+}
+
+func (s *InteractiveAppService) InteractiveHistoryPage(storyID, branchID, beforeCursor string, limit int) (interactive.StoryHistoryPage, error) {
+	store := s.store()
+	if store == nil {
+		return interactive.StoryHistoryPage{}, ErrNoWorkspace
+	}
+	return store.ReadHistoryPage(storyID, branchID, beforeCursor, limit)
+}
+
 func (a *App) RerollInteractiveRuleResolution(storyID, resolutionID string, req interactive.RuleResolutionRerollRequest) (interactive.RuleResolution, error) {
 	return a.interactiveService().RerollInteractiveRuleResolution(storyID, resolutionID, req)
 }

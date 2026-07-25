@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { DocumentPreview } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { flattenFileTree } from './workbench-utils'
@@ -29,7 +30,9 @@ interface BookSettingsShortcutsProps {
   ideas?: DocumentPreview
   chapterPlans: DocumentPreview[]
   selectedFile: string | null
+  headerPinned: boolean
   onSelectFile: (path: string) => void | Promise<void>
+  onToggleHeaderPinned: () => void
   onRequestCreate?: (item: { path: string; title: string }) => void
 }
 
@@ -41,7 +44,9 @@ export function BookSettingsShortcuts({
   ideas,
   chapterPlans,
   selectedFile,
+  headerPinned,
   onSelectFile,
+  onToggleHeaderPinned,
   onRequestCreate,
 }: BookSettingsShortcutsProps) {
   const { t } = useTranslation()
@@ -96,45 +101,57 @@ export function BookSettingsShortcuts({
     <section className="space-y-1.5">
       <div className="flex items-center justify-between gap-2 px-1">
         <span className="text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.bookSettings')}</span>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="xs" className="h-6 gap-1 px-1.5 text-[10px] text-[var(--nova-text-faint)]">
-              <Settings2 className="h-3 w-3" />
-              {t('planning.manageBookSettings')}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-80 border-[var(--nova-border)] bg-[var(--nova-menu-bg)]">
-            <div className="space-y-2">
-              <div>
-                <div className="text-xs font-medium text-[var(--nova-text)]">{t('planning.manageBookSettingsTitle')}</div>
-                <p className="mt-0.5 text-[10px] text-[var(--nova-text-faint)]">{t('planning.manageBookSettingsDescription')}</p>
+        <div className="flex items-center gap-0.5">
+          <TooltipIconButton
+            label={t(headerPinned ? 'planning.unpinBookSettingsHeader' : 'planning.pinBookSettingsHeader')}
+            size="icon-sm"
+            tooltipSide="bottom"
+            aria-pressed={headerPinned}
+            className={headerPinned ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)]'}
+            onClick={onToggleHeaderPinned}
+          >
+            <Pin className="h-3.5 w-3.5" />
+          </TooltipIconButton>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[10px] text-[var(--nova-text-faint)]">
+                <Settings2 className="h-3 w-3" />
+                {t('planning.manageBookSettings')}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80 border-[var(--nova-border)] bg-[var(--nova-menu-bg)]">
+              <div className="space-y-2">
+                <div>
+                  <div className="text-xs font-medium text-[var(--nova-text)]">{t('planning.manageBookSettingsTitle')}</div>
+                  <p className="mt-0.5 text-[10px] text-[var(--nova-text-faint)]">{t('planning.manageBookSettingsDescription')}</p>
+                </div>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--nova-text-faint)]" />
+                  <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('planning.searchBookSettings')} className="h-8 pl-7 text-xs" />
+                </div>
+                <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={pinnedPaths} strategy={verticalListSortingStrategy}>
+                      {filteredCandidates.map((item) => (
+                        <SortableSettingRow
+                          key={item.path}
+                          item={item}
+                          pinned={pinnedPaths.includes(item.path)}
+                          selected={item.exists && selectedFile === item.path}
+                          onSelect={selectItem}
+                          onTogglePinned={togglePinned}
+                        />
+                      ))}
+                    </SortableContext>
+                  </DndContext>
+                  {filteredCandidates.length === 0 && (
+                    <div className="py-4 text-center text-xs text-[var(--nova-text-faint)]">{t('planning.noMatchingBookSettings')}</div>
+                  )}
+                </div>
               </div>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--nova-text-faint)]" />
-                <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('planning.searchBookSettings')} className="h-8 pl-7 text-xs" />
-              </div>
-              <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={pinnedPaths} strategy={verticalListSortingStrategy}>
-                    {filteredCandidates.map((item) => (
-                      <SortableSettingRow
-                        key={item.path}
-                        item={item}
-                        pinned={pinnedPaths.includes(item.path)}
-                        selected={item.exists && selectedFile === item.path}
-                        onSelect={selectItem}
-                        onTogglePinned={togglePinned}
-                      />
-                    ))}
-                  </SortableContext>
-                </DndContext>
-                {filteredCandidates.length === 0 && (
-                  <div className="py-4 text-center text-xs text-[var(--nova-text-faint)]">{t('planning.noMatchingBookSettings')}</div>
-                )}
-              </div>
-            </div>
-          </PopoverContent>
-        </Popover>
+            </PopoverContent>
+          </Popover>
+        </div>
       </div>
       {pinnedItems.length > 0 ? (
         <div data-testid="book-setting-shortcuts" className="grid grid-cols-[repeat(auto-fill,minmax(4rem,1fr))] gap-1">

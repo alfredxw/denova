@@ -96,6 +96,9 @@ func appendDirectorEventIfMissing(events []DirectorEvent, next DirectorEvent) []
 }
 
 func latestTurnForBranchHead(lines []StoryEventRecord, head string) *TurnEvent {
+	if projected, err := projectStoryEventOverlays(lines); err == nil {
+		lines = projected
+	}
 	path, _ := eventPath(head, eventsByID(lines))
 	for i := len(path) - 1; i >= 0; i-- {
 		if path[i].Envelope.Type != StoryEventTypeTurn {

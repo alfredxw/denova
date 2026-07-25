@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1150,7 +1151,7 @@ func TestBranchSnapshotFollowsParentChain(t *testing.T) {
 	}
 }
 
-func TestAppendTurnDisplayEventAllowsAncestorTurnOnCurrentBranchPath(t *testing.T) {
+func TestAppendTurnDisplayEventRequiresLatestTurn(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "祖先回合展示事件", StoryTellerID: "classic"})
 	if err != nil {
@@ -1179,16 +1180,25 @@ func TestAppendTurnDisplayEventAllowsAncestorTurnOnCurrentBranchPath(t *testing.
 		Name:   "generate_interactive_image",
 		Status: "success",
 		Result: `{"schema":"interactive_image.v1","image_path":"assets/interactive/images/ancestor.png"}`,
-	}); err != nil {
-		t.Fatalf("display event should append to current branch ancestor turn: %v", err)
+	}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
+		t.Fatalf("display event should reject an ancestor turn, got %v", err)
 	}
 	if err := store.AppendTurnDisplayEvent(story.ID, branch.ID, second.ID, DisplayEvent{
 		ID:     "interactive-image-sibling",
 		Role:   "tool_call",
 		Name:   "generate_interactive_image",
 		Status: "success",
-	}); err == nil || !strings.Contains(err.Error(), "不属于当前分支路径") {
+	}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
 		t.Fatalf("display event should reject sibling branch turn, got err=%v", err)
+	}
+	if err := store.AppendTurnDisplayEvent(story.ID, branch.ID, branchTurn.ID, DisplayEvent{
+		ID:     "interactive-image-latest",
+		Role:   "tool_call",
+		Name:   "generate_interactive_image",
+		Status: "success",
+		Result: `{"schema":"interactive_image.v1","image_path":"assets/interactive/images/latest.png"}`,
+	}); err != nil {
+		t.Fatalf("display event should append to the latest turn: %v", err)
 	}
 
 	snapshot, err := store.Snapshot(story.ID, branch.ID)
@@ -1201,9 +1211,9 @@ func TestAppendTurnDisplayEventAllowsAncestorTurnOnCurrentBranchPath(t *testing.
 	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != branchTurn.ID {
 		t.Fatalf("display event append should not move branch head: %#v", snapshot.CurrentTurn)
 	}
-	events := snapshot.Turns[0].DisplayEvents
-	if len(events) != 1 || events[0].ID != "interactive-image-ancestor" || events[0].Status != "success" {
-		t.Fatalf("ancestor display event was not persisted: %#v", events)
+	events := snapshot.Turns[1].DisplayEvents
+	if len(events) != 1 || events[0].ID != "interactive-image-latest" || events[0].Status != "success" {
+		t.Fatalf("latest display event was not persisted: %#v", events)
 	}
 }
 
@@ -1251,22 +1261,32 @@ func TestSwitchTurnVersionKeepsLaterCanonicalPath(t *testing.T) {
 		BranchID:      "main",
 		TurnID:        firstAlt.ID,
 		VersionTurnID: first.ID,
-	}); err != nil {
-		t.Fatalf("SwitchTurnVersion failed: %v", err)
+	}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
+		t.Fatalf("historical version switch should require a branch: %v", err)
 	}
 	snapshot, err = store.Snapshot(story.ID, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID == secondAlt.ID || snapshot.Turns[1].Narrative != secondAlt.Narrative {
-		t.Fatalf("switching an earlier version should immutably project the chosen later canon path: %#v", snapshot.Turns)
+	if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != firstAlt.ID || snapshot.Turns[1].ID != secondAlt.ID {
+		t.Fatalf("rejected historical switch changed the canonical path: %#v", snapshot.Turns)
 	}
-	projectedSecondID := snapshot.Turns[1].ID
-	if parentIDString(snapshot.Turns[1].ParentID) != first.ID {
-		t.Fatalf("projected later turn parent = %q, want selected version %q", parentIDString(snapshot.Turns[1].ParentID), first.ID)
+	if err := store.SwitchTurnVersion(story.ID, SwitchTurnVersionRequest{
+		BranchID:      "main",
+		TurnID:        secondAlt.ID,
+		VersionTurnID: second.ID,
+	}); err != nil {
+		t.Fatalf("latest version switch failed: %v", err)
 	}
-	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != projectedSecondID {
-		t.Fatalf("current turn should stay on later canon: %#v", snapshot.CurrentTurn)
+	snapshot, err = store.Snapshot(story.ID, "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != firstAlt.ID || snapshot.Turns[1].ID != second.ID {
+		t.Fatalf("latest version switch selected the wrong path: %#v", snapshot.Turns)
+	}
+	if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != second.ID {
+		t.Fatalf("current turn should be the selected latest version: %#v", snapshot.CurrentTurn)
 	}
 
 	third, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "再继续", Narrative: "你沿着脚步声走向走廊深处。"})
@@ -1277,11 +1297,11 @@ func TestSwitchTurnVersionKeepsLaterCanonicalPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Turns) != 3 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != projectedSecondID || snapshot.Turns[2].ID != third.ID {
+	if len(snapshot.Turns) != 3 || snapshot.Turns[0].ID != firstAlt.ID || snapshot.Turns[1].ID != second.ID || snapshot.Turns[2].ID != third.ID {
 		t.Fatalf("new turn should continue from the selected canon path: %#v", snapshot.Turns)
 	}
-	if parentIDString(third.ParentID) != projectedSecondID {
-		t.Fatalf("new turn parent = %q, want %q", parentIDString(third.ParentID), projectedSecondID)
+	if parentIDString(third.ParentID) != second.ID {
+		t.Fatalf("new turn parent = %q, want %q", parentIDString(third.ParentID), second.ID)
 	}
 }
 
@@ -1304,7 +1324,7 @@ func TestBackgroundTurnUpdatesDoNotRewindBranchHead(t *testing.T) {
 			ParentID: first.ID,
 			BranchID: "main",
 			Ops:      []StateOp{{Op: "set", Path: "scene.phase", Value: "late-state"}},
-		}); err == nil || !strings.Contains(err.Error(), "不是当前分支头") {
+		}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
 			t.Fatalf("late state update should be rejected, got %v", err)
 		}
 

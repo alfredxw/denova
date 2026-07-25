@@ -856,6 +856,18 @@ export interface Snapshot {
   actor_state_schema?: ActorStateSchemaSnapshot
 	state_schema_initialization?: StateSchemaInitializationStatus
   graph?: StoryGraph
+  turn_count?: number
+  turn_start?: number
+  history_before_cursor?: string
+  has_earlier_turns?: boolean
+}
+
+export interface StoryHistoryPage {
+  story_id: string
+  branch_id: string
+  turns: TurnEvent[]
+  before_cursor?: string
+  has_more: boolean
 }
 
 export interface ActorStateSchemaSnapshot {

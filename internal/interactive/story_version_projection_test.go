@@ -1,10 +1,11 @@
 package interactive
 
 import (
+	"errors"
 	"testing"
 )
 
-func TestSwitchTurnVersionClonesSuffixWithoutMutatingHistoricalParents(t *testing.T) {
+func TestSwitchTurnVersionRejectsHistoricalTurnWithoutMutatingParents(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "不可变版本切换", StoryTellerID: "classic"})
 	if err != nil {
@@ -32,8 +33,8 @@ func TestSwitchTurnVersionClonesSuffixWithoutMutatingHistoricalParents(t *testin
 
 	if err := store.SwitchTurnVersion(story.ID, SwitchTurnVersionRequest{
 		BranchID: "main", TurnID: firstAlt.ID, VersionTurnID: first.ID,
-	}); err != nil {
-		t.Fatal(err)
+	}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
+		t.Fatalf("historical version switch error = %v", err)
 	}
 
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -43,20 +44,9 @@ func TestSwitchTurnVersionClonesSuffixWithoutMutatingHistoricalParents(t *testin
 	if len(snapshot.Turns) != 3 {
 		t.Fatalf("active turn count = %d, want 3: %#v", len(snapshot.Turns), snapshot.Turns)
 	}
-	if snapshot.Turns[0].ID != first.ID {
-		t.Fatalf("selected first version = %q, want %q", snapshot.Turns[0].ID, first.ID)
+	if snapshot.Turns[0].ID != firstAlt.ID || snapshot.Turns[1].ID != second.ID || snapshot.Turns[2].ID != third.ID {
+		t.Fatalf("rejected historical switch changed the active path: %#v", snapshot.Turns)
 	}
-	projectedSecond, projectedThird := snapshot.Turns[1], snapshot.Turns[2]
-	if projectedSecond.ID == second.ID || projectedThird.ID == third.ID {
-		t.Fatalf("suffix reused mutable historical IDs: second=%#v third=%#v", projectedSecond, projectedThird)
-	}
-	if projectedSecond.Narrative != second.Narrative || projectedThird.Narrative != third.Narrative {
-		t.Fatalf("projected suffix changed content: second=%#v third=%#v", projectedSecond, projectedThird)
-	}
-	if parentIDString(projectedSecond.ParentID) != first.ID || parentIDString(projectedThird.ParentID) != projectedSecond.ID {
-		t.Fatalf("projected suffix is not a continuous immutable path: %#v", snapshot.Turns)
-	}
-
 	_, lines, err := store.readStoryJournalLocked(story.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -67,16 +57,14 @@ func TestSwitchTurnVersionClonesSuffixWithoutMutatingHistoricalParents(t *testin
 	if got := eventParentForTest(t, lines, third.ID); got != second.ID {
 		t.Fatalf("historical third-turn parent was mutated to %q, want %q", got, second.ID)
 	}
-	selection := latestTurnVersionSelectionForTest(t, lines)
-	if selection.ReplacedTurnID != firstAlt.ID || selection.SelectedTurnID != first.ID || selection.PreviousHeadID != third.ID {
-		t.Fatalf("version selection audit event = %#v", selection)
-	}
-	if len(selection.ProjectedEvents) != 2 || selection.ProjectedEvents[0].SourceID != second.ID || selection.ProjectedEvents[1].SourceID != third.ID {
-		t.Fatalf("version selection projection audit = %#v", selection.ProjectedEvents)
+	for _, record := range lines {
+		if record.Envelope.Type == StoryEventTypeTurnVersionSelected {
+			t.Fatalf("rejected historical switch appended a selection event: %#v", record.Raw)
+		}
 	}
 }
 
-func TestSwitchTurnVersionInvalidatesDescendantCompaction(t *testing.T) {
+func TestRejectedHistoricalVersionSwitchKeepsCompactionActive(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "版本切换压缩失效", StoryTellerID: "classic"})
 	if err != nil {
@@ -111,28 +99,28 @@ func TestSwitchTurnVersionInvalidatesDescendantCompaction(t *testing.T) {
 
 	if err := store.SwitchTurnVersion(story.ID, SwitchTurnVersionRequest{
 		BranchID: "main", TurnID: firstAlt.ID, VersionTurnID: first.ID,
-	}); err != nil {
-		t.Fatal(err)
+	}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
+		t.Fatalf("historical version switch error = %v", err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.ContextCompaction != nil {
-		t.Fatalf("descendant compaction remained model-visible: %#v", snapshot.ContextCompaction)
+	if snapshot.ContextCompaction == nil || snapshot.ContextCompaction.ID != compaction.ID {
+		t.Fatalf("rejected switch changed the active compaction: %#v", snapshot.ContextCompaction)
 	}
-	if snapshot.ContextCompactionRemoval == nil || snapshot.ContextCompactionRemoval.CompactionID != compaction.ID || snapshot.ContextCompactionRemoval.Reason != "turn_version_switched" {
-		t.Fatalf("missing explicit compaction invalidation: %#v", snapshot.ContextCompactionRemoval)
+	if snapshot.ContextCompactionRemoval != nil {
+		t.Fatalf("rejected switch appended a compaction removal: %#v", snapshot.ContextCompactionRemoval)
 	}
-	if len(snapshot.Turns) != 3 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID == second.ID || snapshot.Turns[2].ID == third.ID {
-		t.Fatalf("unexpected projected path after compaction invalidation: %#v", snapshot.Turns)
+	if len(snapshot.Turns) != 3 || snapshot.Turns[0].ID != firstAlt.ID || snapshot.Turns[1].ID != second.ID || snapshot.Turns[2].ID != third.ID {
+		t.Fatalf("rejected switch changed the active path: %#v", snapshot.Turns)
 	}
 	if historical, ok, err := store.ContextCompactionByID(story.ID, compaction.ID); err != nil || !ok || historical.ID != compaction.ID {
 		t.Fatalf("historical compaction must remain auditable: event=%#v ok=%t err=%v", historical, ok, err)
 	}
 }
 
-func TestSwitchTurnVersionPreservesRemovalOfPrefixCompaction(t *testing.T) {
+func TestRejectedHistoricalVersionSwitchPreservesPrefixCompactionRemoval(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "前缀压缩撤销投影", StoryTellerID: "classic"})
 	if err != nil {
@@ -173,8 +161,8 @@ func TestSwitchTurnVersionPreservesRemovalOfPrefixCompaction(t *testing.T) {
 
 	if err := store.SwitchTurnVersion(story.ID, SwitchTurnVersionRequest{
 		BranchID: "main", TurnID: secondAlt.ID, VersionTurnID: second.ID,
-	}); err != nil {
-		t.Fatal(err)
+	}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
+		t.Fatalf("historical version switch error = %v", err)
 	}
 	snapshot, err := store.Snapshot(story.ID, "main")
 	if err != nil {
@@ -183,8 +171,8 @@ func TestSwitchTurnVersionPreservesRemovalOfPrefixCompaction(t *testing.T) {
 	if snapshot.ContextCompaction != nil {
 		t.Fatalf("projecting the suffix resurrected a removed prefix compaction: %#v", snapshot.ContextCompaction)
 	}
-	if snapshot.ContextCompactionRemoval == nil || snapshot.ContextCompactionRemoval.ID == removal.ID || snapshot.ContextCompactionRemoval.CompactionID != compaction.ID {
-		t.Fatalf("prefix compaction removal was not immutably projected: %#v", snapshot.ContextCompactionRemoval)
+	if snapshot.ContextCompactionRemoval == nil || snapshot.ContextCompactionRemoval.ID != removal.ID || snapshot.ContextCompactionRemoval.CompactionID != compaction.ID {
+		t.Fatalf("rejected switch changed the prefix compaction removal: %#v", snapshot.ContextCompactionRemoval)
 	}
 	_, lines, err := store.readStoryJournalLocked(story.ID)
 	if err != nil {
@@ -241,10 +229,19 @@ func TestPendingPlayerInputsRequireReachableActiveAncestry(t *testing.T) {
 		accepted := commitPendingPlayerInputForProjectionTest(t, store, story.ID, "main", "switch-input", "点亮火把")
 		if err := store.SwitchTurnVersion(story.ID, SwitchTurnVersionRequest{
 			BranchID: "main", TurnID: firstAlt.ID, VersionTurnID: first.ID,
-		}); err != nil {
+		}); !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
+			t.Fatalf("historical version switch error = %v", err)
+		}
+		snapshot, err := store.Snapshot(story.ID, "main")
+		if err != nil {
 			t.Fatal(err)
 		}
-		assertPendingInputIsAuditOnly(t, store, story.ID, second.ID, accepted)
+		if len(snapshot.PendingPlayerInputs) != 1 || snapshot.PendingPlayerInputs[0].ID != accepted.Event.ID {
+			t.Fatalf("rejected switch changed the active pending input: %#v", snapshot.PendingPlayerInputs)
+		}
+		if snapshot.CurrentTurn == nil || snapshot.CurrentTurn.ID != second.ID {
+			t.Fatalf("rejected switch changed the current turn: %#v", snapshot.CurrentTurn)
+		}
 	})
 }
 
@@ -303,20 +300,4 @@ func branchHeadForTest(t *testing.T, store *Store, storyID, branchID string) str
 		t.Fatalf("branch %q not found", branchID)
 	}
 	return branch.Head
-}
-
-func latestTurnVersionSelectionForTest(t *testing.T, lines []StoryEventRecord) TurnVersionSelectionEvent {
-	t.Helper()
-	for index := len(lines) - 1; index >= 0; index-- {
-		if lines[index].Envelope.Type != StoryEventTypeTurnVersionSelected {
-			continue
-		}
-		var event TurnVersionSelectionEvent
-		if err := mapToStruct(lines[index].Raw, &event); err != nil {
-			t.Fatal(err)
-		}
-		return event
-	}
-	t.Fatal("turn version selection audit event not found")
-	return TurnVersionSelectionEvent{}
 }

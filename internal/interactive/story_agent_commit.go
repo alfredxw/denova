@@ -87,7 +87,11 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	}
 	defer releaseStory()
 
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, lines, err := s.readStoryRecentLocked(storyID, req.BranchID)
+	if err != nil {
+		return TurnEvent{}, nil, err
+	}
+	lines, err = projectStoryEventOverlays(lines)
 	if err != nil {
 		return TurnEvent{}, nil, err
 	}
@@ -117,6 +121,9 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	}
 	commitParentID := branch.Head
 	if replaceTurnID := strings.TrimSpace(req.ReplaceTurnID); replaceTurnID != "" {
+		if err := requireLatestLogicalTurn(meta, lines, branchID, replaceTurnID); err != nil {
+			return TurnEvent{}, nil, err
+		}
 		commitParentID, err = regenerationParentOnCurrentPath(lines, branch.Head, replaceTurnID)
 		if err != nil {
 			return TurnEvent{}, nil, err
@@ -129,8 +136,14 @@ func (s *Store) AppendTurnWithState(storyID string, req AppendTurnWithStateReque
 	if commitParentID != "" {
 		parentID = commitParentID
 	}
-	path, _ := eventPath(commitParentID, eventsByID(lines))
-	state := stateFromPath(path)
+	branchProjection, err := s.storyBranchProjectionLocked(storyID, branchID)
+	if err != nil {
+		return TurnEvent{}, nil, err
+	}
+	state := cloneStoryState(branchProjection.State)
+	if strings.TrimSpace(req.ReplaceTurnID) != "" {
+		state = cloneStoryState(branchProjection.StateBeforeLatest)
+	}
 	director := s.storyDirectorForMeta(meta)
 	actorState := actorStateSystemFromSnapshot(meta.ActorStateSchema, director.ActorState)
 	applyLegacyActorStateAliases(state, meta.ActorStateSchema)

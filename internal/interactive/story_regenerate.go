@@ -14,7 +14,7 @@ func (s *Store) StoryContextAtTurnParent(storyID, branchID, turnID string) (Stor
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, lines, err := s.readStoryRecentLocked(storyID, branchID)
 	if err != nil {
 		return StoryContext{}, err
 	}
@@ -25,6 +25,9 @@ func (s *Store) StoryContextAtTurnParent(storyID, branchID, turnID string) (Stor
 	if !ok {
 		return StoryContext{}, fmt.Errorf("分支不存在: %s", branchID)
 	}
+	if err := requireLatestLogicalTurn(meta, lines, branchID, strings.TrimSpace(turnID)); err != nil {
+		return StoryContext{}, err
+	}
 	parentID, err := regenerationParentOnCurrentPath(lines, branch.Head, strings.TrimSpace(turnID))
 	if err != nil {
 		return StoryContext{}, err
@@ -34,6 +37,12 @@ func (s *Store) StoryContextAtTurnParent(storyID, branchID, turnID string) (Stor
 	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
 	if err != nil {
 		return StoryContext{}, err
+	}
+	if projection, projectionErr := s.storyBranchProjectionLocked(storyID, branchID); projectionErr == nil {
+		snapshot.State = cloneStoryState(projection.StateBeforeLatest)
+		if projection.Depth > 0 {
+			snapshot.TurnCount = projection.Depth - 1
+		}
 	}
 	// Director plan documents and token-usage telemetry are mutable branch
 	// sidecars, not events on the parent path. Attaching the latest sidecar here

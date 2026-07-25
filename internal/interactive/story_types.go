@@ -446,17 +446,23 @@ type TurnVersionSelectionEvent struct {
 	ProjectedHeadID         string                  `json:"projected_head_id,omitempty"`
 	ProjectedEvents         []TurnVersionProjection `json:"projected_events,omitempty"`
 	InvalidatedCompactionID string                  `json:"invalidated_compaction_id,omitempty"`
+	CurrentState            map[string]any          `json:"current_state,omitempty"`
+	CurrentTurnID           string                  `json:"current_turn_id,omitempty"`
+	CurrentDepth            int                     `json:"current_depth,omitempty"`
 }
 
 type BranchEvent struct {
-	V        int    `json:"v"`
-	Type     string `json:"type"`
-	ID       string `json:"id"`
-	ParentID string `json:"parent_id"`
-	BranchID string `json:"branch_id"`
-	From     string `json:"from"`
-	Ts       string `json:"ts"`
-	Title    string `json:"title"`
+	V               int            `json:"v"`
+	Type            string         `json:"type"`
+	ID              string         `json:"id"`
+	ParentID        string         `json:"parent_id"`
+	BranchID        string         `json:"branch_id"`
+	From            string         `json:"from"`
+	Ts              string         `json:"ts"`
+	Title           string         `json:"title"`
+	StateCheckpoint map[string]any `json:"state_checkpoint,omitempty"`
+	LatestTurnID    string         `json:"latest_turn_id,omitempty"`
+	Depth           int            `json:"depth,omitempty"`
 }
 
 type StateOp struct {
@@ -484,6 +490,20 @@ type Snapshot struct {
 	ActorStateSchema          *ActorStateSchemaSnapshot        `json:"actor_state_schema,omitempty"`
 	StateSchemaInitialization *StateSchemaInitializationStatus `json:"state_schema_initialization,omitempty"`
 	Graph                     StoryGraph                       `json:"graph"`
+	TurnCount                 int                              `json:"turn_count"`
+	TurnStart                 int                              `json:"turn_start"`
+	HistoryBeforeCursor       string                           `json:"history_before_cursor,omitempty"`
+	HasEarlierTurns           bool                             `json:"has_earlier_turns"`
+}
+
+// StoryHistoryPage is the bounded UI history projection. BeforeCursor is
+// opaque to callers and remains tied to one story generation and branch.
+type StoryHistoryPage struct {
+	StoryID      string      `json:"story_id"`
+	BranchID     string      `json:"branch_id"`
+	Turns        []TurnEvent `json:"turns"`
+	BeforeCursor string      `json:"before_cursor,omitempty"`
+	HasMore      bool        `json:"has_more"`
 }
 
 type StoryGraph struct {

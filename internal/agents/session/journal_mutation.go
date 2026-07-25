@@ -5,31 +5,36 @@ import (
 	"errors"
 	"fmt"
 
-	"denova/internal/filelease"
+	"denova/internal/conversationjournal"
 )
 
-// withCanonicalMutation is the only lock-ordering seam for an existing
-// session journal mutation. It serializes independent Session instances on the
-// canonical file identity, then refreshes the caller before any lookup, CAS,
-// or append. Callbacks run with s.mu held and must use the *Locked helpers;
-// appendJournalRecordLocked intentionally does not reacquire the file lease.
-func (s *Session) withCanonicalMutation(ctx context.Context, operation string, mutate func() error) (resultErr error) {
+// withCanonicalMutation refreshes the bounded materialization and then runs a
+// domain mutation. Append performs the authoritative file lease + CAS; if an
+// independent handle wins the race, the new tail is materialized and the pure
+// prepare/append callback is retried against current state.
+func (s *Session) withCanonicalMutation(ctx context.Context, operation string, mutate func() error) error {
 	if s == nil {
 		return fmt.Errorf("session is nil")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	release, err := filelease.Acquire(ctx, s.filePath+".domain.lock")
-	if err != nil {
-		return fmt.Errorf("acquire session journal lease for %s: %w", operation, err)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		if err := s.refreshCanonicalTailLocked(); err != nil {
+			s.mu.Unlock()
+			return fmt.Errorf("refresh session before %s: %w", operation, err)
+		}
+		err := mutate()
+		if err == nil {
+			s.trimMaterializedWindowLocked()
+		}
+		s.mu.Unlock()
+		if !errors.Is(err, conversationjournal.ErrConflict) {
+			return err
+		}
 	}
-	defer func() { resultErr = errors.Join(resultErr, release()) }()
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.refreshCanonicalTailLocked(); err != nil {
-		return fmt.Errorf("refresh session before %s: %w", operation, err)
-	}
-	return mutate()
 }

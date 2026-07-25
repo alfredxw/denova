@@ -24,7 +24,7 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 	if turnID == "" || versionTurnID == "" {
 		return fmt.Errorf("回合版本参数不能为空")
 	}
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, lines, err := s.readStoryRecentLocked(storyID, req.BranchID)
 	if err != nil {
 		return err
 	}
@@ -35,6 +35,13 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 	branch, ok := meta.Branches[branchID]
 	if !ok {
 		return fmt.Errorf("分支不存在: %s", branchID)
+	}
+	if err := requireLatestLogicalTurn(meta, lines, branchID, turnID); err != nil {
+		return err
+	}
+	lines, err = projectStoryEventOverlays(lines)
+	if err != nil {
+		return err
 	}
 	events := eventsByID(lines)
 	path, pathSet := eventPath(branch.Head, events)
@@ -99,6 +106,23 @@ func (s *Store) SwitchTurnVersion(storyID string, req SwitchTurnVersionRequest) 
 		PreviousHeadID:  branch.Head,
 		ProjectedHeadID: projectedHead,
 		ProjectedEvents: projections,
+	}
+	projectedRecords := make([]StoryEventRecord, 0, len(projectedEvents))
+	for _, projectedEvent := range projectedEvents {
+		record, recordErr := storyEventRecordForWrite(projectedEvent)
+		if recordErr != nil {
+			return recordErr
+		}
+		projectedRecords = append(projectedRecords, record)
+	}
+	selectionEvents := eventsByID(append(append([]StoryEventRecord(nil), lines...), projectedRecords...))
+	selectionPath, _ := eventPath(projectedHead, selectionEvents)
+	selection.CurrentState = stateFromPath(selectionPath)
+	selection.CurrentTurnID = nearestTurnAncestor(projectedHead, selectionEvents)
+	for _, record := range selectionPath {
+		if record.Envelope.Type == StoryEventTypeTurn {
+			selection.CurrentDepth++
+		}
 	}
 	if invalidated != nil {
 		selection.InvalidatedCompactionID = invalidated.ID

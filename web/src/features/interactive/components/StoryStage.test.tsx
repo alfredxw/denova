@@ -24,6 +24,7 @@ import {
 const testMocks = vi.hoisted(() => ({
   generateInteractiveImageMock: vi.fn(),
   getActiveInteractiveChatMock: vi.fn(),
+  getInteractiveHistoryPageMock: vi.fn(),
   runInteractiveDirectorMock: vi.fn(),
   sendInteractiveMessageMock: vi.fn(),
   streamActiveInteractiveChatMock: vi.fn(),
@@ -35,6 +36,7 @@ const testMocks = vi.hoisted(() => ({
 const {
   generateInteractiveImageMock,
   getActiveInteractiveChatMock,
+  getInteractiveHistoryPageMock,
   sendInteractiveMessageMock,
   updateInteractiveTurnNarrativeMock,
   useSkillCommandsMock,
@@ -53,6 +55,7 @@ vi.mock('../api', () => ({
   compactInteractiveContext: vi.fn(),
   generateInteractiveImage: testMocks.generateInteractiveImageMock,
   getActiveInteractiveChat: testMocks.getActiveInteractiveChatMock,
+  getInteractiveHistoryPage: testMocks.getInteractiveHistoryPageMock,
   removeInteractiveContextCompaction: vi.fn(),
   runInteractiveDirector: testMocks.runInteractiveDirectorMock,
   sendInteractiveMessage: testMocks.sendInteractiveMessageMock,
@@ -62,7 +65,10 @@ vi.mock('../api', () => ({
   updateInteractiveTurnNarrative: testMocks.updateInteractiveTurnNarrativeMock,
 }))
 
-beforeEach(() => resetStoryStageTestHarness(testMocks))
+beforeEach(() => {
+  resetStoryStageTestHarness(testMocks)
+  getInteractiveHistoryPageMock.mockReset()
+})
 
 describe('StoryStage store subscriptions', () => {
   it('does not rerender when unrelated interactive store state changes', async () => {
@@ -210,6 +216,62 @@ describe('StoryStage AI reply editing', () => {
     expect(await screen.findByText('朋友住在 4 楼 403 室。')).toBeInTheDocument()
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(sendInteractiveMessageMock).not.toHaveBeenCalled()
+  })
+
+  it('pages older turns without exposing mutation actions outside the latest turn', async () => {
+    const user = userEvent.setup()
+    const older: TurnEvent = {
+      id: 'turn-old',
+      parent_id: null,
+      branch_id: 'main',
+      ts: '2026-06-28T00:00:00Z',
+      user: '走进门厅',
+      narrative: '门厅里只有一盏旧灯。',
+    }
+    const latest: TurnEvent = {
+      id: 'turn-latest',
+      parent_id: older.id,
+      branch_id: 'main',
+      ts: '2026-06-28T00:01:00Z',
+      user: '点亮旧灯',
+      narrative: '灯芯映出墙上的地图。',
+    }
+    getInteractiveHistoryPageMock.mockResolvedValue({
+      story_id: 'story-1',
+      branch_id: 'main',
+      turns: [older],
+      before_cursor: '',
+      has_more: false,
+    })
+
+    render(
+      <VirtuosoMockContext.Provider value={{ viewportHeight: 1200, itemHeight: 120 }}>
+        <StoryStage
+          workspace="/tmp/book"
+          stories={[story()]}
+          story={story()}
+          tellers={[]}
+          storyId="story-1"
+          branchId="main"
+          snapshot={{
+            story_id: 'story-1',
+            branch_id: 'main',
+            turns: [latest],
+            current_turn: latest,
+            state: {},
+            history_before_cursor: 'older-cursor',
+            has_earlier_turns: true,
+          }}
+          onDone={() => undefined}
+        />
+      </VirtuosoMockContext.Provider>,
+    )
+
+    await user.click(screen.getByRole('button', { name: '加载更早消息' }))
+    expect(await screen.findByText('门厅里只有一盏旧灯。')).toBeInTheDocument()
+    expect(getInteractiveHistoryPageMock).toHaveBeenCalledWith('story-1', 'main', 'older-cursor')
+    expect(screen.getAllByRole('button', { name: '编辑 AI 回复' })).toHaveLength(1)
+    expect(screen.getAllByRole('button', { name: '生成互动图像' })).toHaveLength(1)
   })
 })
 

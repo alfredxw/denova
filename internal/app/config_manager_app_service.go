@@ -212,6 +212,10 @@ func (a *App) ConfigManagerMessages(req ConfigManagerRequest) ([]session.History
 	return a.configManager().Messages(req)
 }
 
+func (a *App) ConfigManagerMessagesPage(ctx context.Context, req ConfigManagerRequest, before, limit int) (session.HistoryPage, error) {
+	return a.configManager().MessagesPage(ctx, req, before, limit)
+}
+
 func (s *ConfigManagerAppService) Messages(req ConfigManagerRequest) ([]session.HistoryEntry, error) {
 	store := s.sessionStore()
 	if store == nil {
@@ -226,6 +230,22 @@ func (s *ConfigManagerAppService) Messages(req ConfigManagerRequest) ([]session.
 		return nil, err
 	}
 	return sess.History(), nil
+}
+
+func (s *ConfigManagerAppService) MessagesPage(ctx context.Context, req ConfigManagerRequest, before, limit int) (session.HistoryPage, error) {
+	store := s.sessionStore()
+	if store == nil {
+		return session.HistoryPage{}, ErrNoWorkspace
+	}
+	sessionID, err := configManagerSessionID(req)
+	if err != nil {
+		return session.HistoryPage{}, err
+	}
+	sess, err := store.GetOrCreate(sessionID)
+	if err != nil {
+		return session.HistoryPage{}, err
+	}
+	return sess.ReadHistoryPage(ctx, before, limit)
 }
 
 func (a *App) ClearConfigManagerSession(req ConfigManagerRequest) error {

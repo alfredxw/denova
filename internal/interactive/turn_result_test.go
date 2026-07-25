@@ -1,6 +1,7 @@
 package interactive
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -313,7 +314,7 @@ func TestAppendStateDeltaRejectsNonHeadTurn(t *testing.T) {
 		BranchID: "main",
 		Ops:      []StateOp{{Op: "set", Path: "scene.late", Value: true}},
 	})
-	if err == nil || !strings.Contains(err.Error(), "不是当前分支头") {
+	if !errors.Is(err, ErrHistoricalTurnRequiresBranch) {
 		t.Fatalf("expected non-head state rejection, got %v", err)
 	}
 }

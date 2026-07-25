@@ -1,6 +1,6 @@
-import { BookMarked, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Circle, FileText, Loader2, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SlidersHorizontal, Sparkles } from 'lucide-react'
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Sparkles } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { FileTree } from '@/components/Sidebar/FileTree'
@@ -8,12 +8,12 @@ import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS } from '@/components/Chat/AgentPanel'
 import { FilePreview } from '@/components/workbench/FilePreview'
 import { MarkdownEditor, type DocumentReviewNavigationIntent, type EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
-import { BookSettingsShortcuts } from '@/components/workbench/BookSettingsShortcuts'
+import { ChapterOutline } from '@/components/workbench/outline/ChapterOutline'
 import { getImagePresets, getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
 import type { FileNode } from '@/hooks/useWorkspace'
-import type { ActiveChatTask, AgentRuntimeQueuedCommand, BookRecord, BookSortMode, ChapterIllustration, ChapterSummary, ContextAnalysis, DocumentPreview, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
+import type { ActiveChatTask, AgentRuntimeQueuedCommand, BookRecord, BookSortMode, ChapterIllustration, ChapterSummary, ContextAnalysis, LoreItem, SessionSummary, TextSelection, WorkspaceSearchResult, WorkspaceSummary } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
@@ -28,7 +28,7 @@ import type { WorkbenchNotice } from '@/features/notices/use-workbench-notice'
 import type { Tab } from './TabController'
 import { TabController, tabKey } from './TabController'
 import { WorkbenchShell } from './WorkbenchShell'
-import { flattenFileTree, formatNumber } from './workbench-utils'
+import { flattenFileTree } from './workbench-utils'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 const InteractiveLayout = lazy(() => import('@/features/interactive/components/InteractiveLayout').then((module) => ({ default: module.InteractiveLayout })))
@@ -40,7 +40,6 @@ const AutomationsView = lazy(() => import('@/features/automations/AutomationsVie
 const SkillsView = lazy(() => import('@/features/skills/SkillsView').then((module) => ({ default: module.SkillsView })))
 const SettingsView = lazy(() => import('@/features/settings/SettingsView').then((module) => ({ default: module.SettingsView })))
 type MainRouteId = 'settings' | 'skills' | 'agents' | 'automations' | 'books' | 'interactive' | 'versions' | 'ide-lore' | 'ide-teller' | 'ide-writing'
-type PlanningDocumentIcon = 'ideas' | 'outline' | 'plan' | 'creator' | 'progress' | 'characterState'
 
 interface ModeRouterProps {
   mode: WorkspaceMode
@@ -548,9 +547,9 @@ export function ModeRouter(props: ModeRouterProps) {
           </button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-2 text-xs">
+      <div className="min-h-0 flex-1 text-xs">
         {showSidebarLoading ? (
-          <div className="py-4 text-center text-[var(--nova-text-muted)]">{t('router.loading')}</div>
+          <div className="h-full overflow-y-auto px-2 py-4 text-center text-[var(--nova-text-muted)]">{t('router.loading')}</div>
         ) : sidebarView === 'outline' ? (
           <ChapterOutline
             workspace={workspace}
@@ -564,27 +563,31 @@ export function ModeRouter(props: ModeRouterProps) {
             onRequestBookSettingCreate={(item) => requestSkillsAgent(t('planning.bookSettingCreatePrompt', item))}
             onSetChapterConfirmed={onSetChapterConfirmed}
           />
-        ) : sidebarView === 'search' ? (
-          <SearchPanel
-            workspace={workspace}
-            onSelectResult={onSelectSearchResult}
-            onWorkspaceChanged={onWorkspaceChanged}
-          />
-        ) : tree.length === 0 ? (
-          <div className="py-4 text-center text-[var(--nova-text-muted)]">{t('router.noFiles')}</div>
         ) : (
-          <FileTree
-            nodes={tree}
-            selectedFile={selectedFile}
-            onSelectFile={onSelectFile}
-            onReferenceFile={onReferenceFile}
-            chapterStats={chapterStats}
-            onCreateItem={onCreateItem}
-            onDeleteItem={onDeleteItem}
-            onRenameItem={onRenameItem}
-            onCopyItem={onCopyItem}
-            onMoveItem={onMoveItem}
-          />
+          <div className="h-full overflow-y-auto p-2">
+            {sidebarView === 'search' ? (
+              <SearchPanel
+                workspace={workspace}
+                onSelectResult={onSelectSearchResult}
+                onWorkspaceChanged={onWorkspaceChanged}
+              />
+            ) : tree.length === 0 ? (
+              <div className="py-4 text-center text-[var(--nova-text-muted)]">{t('router.noFiles')}</div>
+            ) : (
+              <FileTree
+                nodes={tree}
+                selectedFile={selectedFile}
+                onSelectFile={onSelectFile}
+                onReferenceFile={onReferenceFile}
+                chapterStats={chapterStats}
+                onCreateItem={onCreateItem}
+                onDeleteItem={onDeleteItem}
+                onRenameItem={onRenameItem}
+                onCopyItem={onCopyItem}
+                onMoveItem={onMoveItem}
+              />
+            )}
+          </div>
         )}
       </div>
     </section>
@@ -899,216 +902,6 @@ function IdeWritingInfoActions({
   )
 }
 
-function ChapterOutline({
-  workspace,
-  tree,
-  chapters,
-  ideas,
-  outline,
-  chapterPlans,
-  selectedFile,
-  onSelectFile,
-  onRequestBookSettingCreate,
-  onSetChapterConfirmed,
-}: {
-  workspace: string
-  tree: FileNode[]
-  chapters: ChapterSummary[]
-  ideas?: DocumentPreview
-  outline?: DocumentPreview
-  chapterPlans: DocumentPreview[]
-  selectedFile: string | null
-  onSelectFile: (path: string) => void | Promise<void>
-  onRequestBookSettingCreate: (item: { path: string; title: string }) => void
-  onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
-}) {
-  const { t } = useTranslation()
-  const [collapsedVolumes, setCollapsedVolumes] = useState<Set<string>>(() => new Set())
-  const [chapterPlansExpanded, setChapterPlansExpanded] = useState(() => chapterPlans.length > 0)
-  const [chapterPlanHistoryExpanded, setChapterPlanHistoryExpanded] = useState(false)
-  const previousChapterPlanCountRef = useRef(chapterPlans.length)
-  const volumes = useMemo(() => groupChaptersByVolume(chapters, t), [chapters, t])
-  const latestChapterPlan = chapterPlans[chapterPlans.length - 1]
-  const historicalChapterPlans = useMemo(() => chapterPlans.slice(0, -1), [chapterPlans])
-  useEffect(() => {
-    if (selectedFile && historicalChapterPlans.some((plan) => plan.path === selectedFile)) {
-      setChapterPlansExpanded(true)
-      setChapterPlanHistoryExpanded(true)
-    }
-  }, [historicalChapterPlans, selectedFile])
-  useEffect(() => {
-    if (previousChapterPlanCountRef.current === 0 && chapterPlans.length > 0) {
-      setChapterPlansExpanded(true)
-    }
-    previousChapterPlanCountRef.current = chapterPlans.length
-  }, [chapterPlans.length])
-
-  const toggleVolume = (key: string) => {
-    setCollapsedVolumes(prev => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
-
-  return (
-    <div className="space-y-3">
-      <BookSettingsShortcuts workspace={workspace} tree={tree} outline={outline} ideas={ideas} chapterPlans={chapterPlans} selectedFile={selectedFile} onSelectFile={onSelectFile} onRequestCreate={onRequestBookSettingCreate} />
-
-      <section className="space-y-1.5">
-        {chapterPlans.length > 0 ? (
-          <button
-            type="button"
-            className="nova-nav-item flex w-full items-center gap-1.5 rounded-[var(--nova-radius)] px-1 py-1 text-left text-[11px] font-medium text-[var(--nova-text-faint)]"
-            aria-expanded={chapterPlansExpanded}
-            onClick={() => setChapterPlansExpanded((expanded) => !expanded)}
-          >
-            {chapterPlansExpanded ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
-            <span className="min-w-0 flex-1 truncate">{t('planning.chapterPlans')}</span>
-            <span className="shrink-0">{t('planning.chapterPlanCount', { count: chapterPlans.length })}</span>
-          </button>
-        ) : (
-          <div className="flex items-center justify-between gap-2 px-1 py-1 text-[11px] font-medium text-[var(--nova-text-faint)]">
-            <span>{t('planning.chapterPlans')}</span>
-            <span>{t('planning.chapterPlansEmpty')}</span>
-          </div>
-        )}
-        {chapterPlans.length > 0 && chapterPlansExpanded && (
-          <div className="space-y-1">
-            {latestChapterPlan && (
-              <PlanningListItem document={latestChapterPlan} icon="plan" selected={selectedFile === latestChapterPlan.path} onSelectFile={onSelectFile} />
-            )}
-            {historicalChapterPlans.length > 0 && (
-              <div className="space-y-1">
-                <button
-                  type="button"
-                  className="nova-nav-item flex w-full items-center gap-2 rounded-[var(--nova-radius)] px-2 py-1.5 text-left text-[11px] text-[var(--nova-text-muted)]"
-                  onClick={() => setChapterPlanHistoryExpanded((expanded) => !expanded)}
-                >
-                  {chapterPlanHistoryExpanded ? (
-                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                  ) : (
-                    <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                  )}
-                  <span className="min-w-0 flex-1 truncate">{t('planning.chapterPlanHistory')}</span>
-                  <span className="shrink-0 text-[var(--nova-text-faint)]">{t('planning.chapterPlanCount', { count: historicalChapterPlans.length })}</span>
-                </button>
-                {chapterPlanHistoryExpanded && (
-                  <div className="space-y-1 pl-4">
-                    {historicalChapterPlans.map((plan) => (
-                      <PlanningListItem key={plan.path} document={plan} icon="plan" selected={selectedFile === plan.path} onSelectFile={onSelectFile} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-1.5">
-        <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.volumeChapters')}</div>
-        {volumes.length === 0 ? (
-          <PlanningEmptyState text={t('planning.noChapters')} />
-        ) : (
-          <div className="space-y-1.5">
-            {volumes.map((volume) => {
-              const expanded = !collapsedVolumes.has(volume.key)
-              return (
-                <div key={volume.key} className="space-y-1">
-                  <button
-                    type="button"
-                    className="nova-nav-item flex w-full items-center gap-2 border border-transparent bg-[var(--nova-surface)] px-2 py-1.5 text-left"
-                    onClick={() => toggleVolume(volume.key)}
-                  >
-                    {expanded ? (
-                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-                    ) : (
-                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-                    )}
-                    <BookOpen className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-muted)]" />
-                    <span className="min-w-0 flex-1 truncate text-xs font-medium text-[var(--nova-text)]">{volume.label}</span>
-                    <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{t('common.chapters', { count: volume.chapters.length })}</span>
-                  </button>
-                  {expanded && (
-                    <div className="space-y-1 pl-4">
-                      {volume.chapters.map((chapter) => (
-                        <ChapterOutlineItem
-                          key={chapter.path}
-                          chapter={chapter}
-                          active={selectedFile === chapter.path}
-                          onSelectFile={onSelectFile}
-                          onSetChapterConfirmed={onSetChapterConfirmed}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
-    </div>
-  )
-}
-
-function PlanningListItem({
-  document,
-  icon,
-  selected,
-  onSelectFile,
-  compact = false,
-}: {
-  document: DocumentPreview
-  icon: PlanningDocumentIcon
-  selected: boolean
-  onSelectFile: (path: string) => void | Promise<void>
-  compact?: boolean
-}) {
-  const Icon = planningIcon(icon)
-  return (
-    <button
-      type="button"
-      className={`nova-nav-item w-full border text-left ${compact ? 'px-2 py-1' : 'px-3 py-2'} ${
-        selected
-          ? 'is-active border-[var(--nova-border)]'
-          : 'border-transparent bg-[var(--nova-surface)]'
-      }`}
-      onClick={() => onSelectFile(document.path)}
-    >
-      <div className={`flex min-w-0 items-center ${compact ? 'gap-1.5' : 'gap-2'}`}>
-        <Icon className={`${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} shrink-0 ${selected ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-        <span className={`min-w-0 flex-1 truncate font-medium ${compact ? 'text-[11px]' : 'text-xs'}`}>{document.title}</span>
-      </div>
-    </button>
-  )
-}
-
-function planningIcon(icon: PlanningDocumentIcon) {
-  switch (icon) {
-    case 'outline':
-      return BookMarked
-    case 'creator':
-      return SlidersHorizontal
-    case 'progress':
-      return CheckCircle2
-    case 'ideas':
-    case 'plan':
-    case 'characterState':
-      return FileText
-  }
-}
-
-function PlanningEmptyState({ text }: { text: string }) {
-  return (
-    <div className="rounded border border-dashed border-[var(--nova-border)] bg-[var(--nova-surface)] px-2.5 py-2 text-[11px] text-[var(--nova-text-faint)]">
-      {text}
-    </div>
-  )
-}
-
 function EmptyLoreGuide({
   emptyText,
   title,
@@ -1141,96 +934,6 @@ function EmptyLoreGuide({
       </div>
     </div>
   )
-}
-
-function ChapterOutlineItem({
-  chapter,
-  active,
-  onSelectFile,
-  onSetChapterConfirmed,
-}: {
-  chapter: ChapterSummary
-  active: boolean
-  onSelectFile: (path: string) => void | Promise<void>
-  onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
-}) {
-  const { t } = useTranslation()
-  const [saving, setSaving] = useState(false)
-  const handleSelect = () => {
-    void onSelectFile(chapter.path)
-  }
-  const handleSelectKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return
-    event.preventDefault()
-    handleSelect()
-  }
-  const handleToggleConfirmed = async () => {
-    if (saving || chapter.words === 0) return
-    setSaving(true)
-    try {
-      await onSetChapterConfirmed(chapter.path, !chapter.confirmed)
-    } catch (error) {
-      console.error('更新章节确认状态失败', error)
-    } finally {
-      setSaving(false)
-    }
-  }
-  const ConfirmIcon = saving ? Loader2 : chapter.confirmed ? CheckCircle2 : Circle
-  const toggleTitle = saving ? t('common.loading') : chapter.confirmed ? t('planning.markDraft') : t('planning.confirmChapter')
-  return (
-    <div
-      className={`nova-nav-item w-full border px-3 py-2 text-left ${
-        active
-          ? 'is-active border-[var(--nova-border)]'
-          : 'border-transparent bg-[var(--nova-surface)]'
-      }`}
-      role="button"
-      tabIndex={0}
-      onClick={handleSelect}
-      onKeyDown={handleSelectKeyDown}
-    >
-      <div className="flex w-full min-w-0 items-center gap-2 text-left">
-        <BookOpen className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">{chapter.display_title}</span>
-      </div>
-      <div className="mt-1 flex items-center justify-between text-[11px] text-[var(--nova-text-faint)]">
-        <span>{t('common.words', { count: formatNumber(chapter.words) })}</span>
-        <div className="flex items-center gap-1.5">
-          <span className="rounded border border-[var(--nova-border)] bg-[var(--nova-surface-2)] px-1.5 text-[var(--nova-text-muted)]">{chapter.status}</span>
-          <button
-            type="button"
-            className={`inline-flex h-5 w-5 items-center justify-center rounded-[var(--nova-radius)] text-[var(--nova-text-faint)] hover:bg-[var(--nova-surface-2)] hover:text-[var(--nova-text)] disabled:cursor-not-allowed disabled:opacity-40 ${saving ? 'opacity-70' : ''}`}
-            disabled={chapter.words === 0}
-            title={toggleTitle}
-            aria-label={toggleTitle}
-            aria-busy={saving}
-            aria-disabled={saving || chapter.words === 0}
-            onClick={(event) => {
-              event.stopPropagation()
-              void handleToggleConfirmed()
-            }}
-          >
-            <ConfirmIcon className={`h-3.5 w-3.5 ${saving ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function groupChaptersByVolume(chapters: ChapterSummary[], t: (key: string) => string) {
-  const map = new Map<string, { key: string; label: string; chapters: ChapterSummary[] }>()
-  for (const chapter of chapters) {
-    const key = chapter.volume_path || chapter.volume || 'chapters'
-    const label = chapter.volume || t('planning.unvolumed')
-    const existing = map.get(key)
-    if (existing) {
-      existing.chapters.push(chapter)
-    } else {
-      map.set(key, { key, label, chapters: [chapter] })
-    }
-  }
-  return Array.from(map.values())
 }
 
 function loreTypeLabel(type: LoreItem['type'], t: (key: string) => string) {

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -30,8 +31,8 @@ func (s *Session) appendContextCompactionLocked(record ContextCompaction) (Conte
 	if record.Epoch <= 0 {
 		record.Epoch = s.nextCompactionEpochLocked(record.AgentKind)
 	}
-	if record.SourceEndIndex <= 0 || record.SourceEndIndex > len(s.messages) {
-		record.SourceEndIndex = len(s.messages)
+	if record.SourceEndIndex <= 0 || record.SourceEndIndex > s.messageCount {
+		record.SourceEndIndex = s.messageCount
 	}
 	if record.SourceStartIndex < s.clearAfterIndex {
 		record.SourceStartIndex = s.clearAfterIndex
@@ -41,6 +42,9 @@ func (s *Session) appendContextCompactionLocked(record ContextCompaction) (Conte
 	}
 	if record.SourceMessageCount <= 0 {
 		record.SourceMessageCount = record.SourceEndIndex - record.SourceStartIndex
+	}
+	if err := s.fillCompactionCursorsLocked(context.Background(), &record); err != nil {
+		return record, fmt.Errorf("resolve compaction cursor: %w", err)
 	}
 	record.ContextRevision = s.contextRevision + 1
 	if err := s.appendJournalRecordLocked(record); err != nil {
@@ -72,15 +76,17 @@ func (s *Session) removeLatestContextCompactionLocked(agentKind, reason string) 
 	}
 	now := time.Now().UTC()
 	record := ContextCompactionRemoval{
-		Type:             historyTypeCompactionRemoved,
-		ID:               newContextCompactionRemovalID(),
-		AgentKind:        compaction.AgentKind,
-		CompactionID:     compaction.ID,
-		SourceStartIndex: compaction.SourceStartIndex,
-		SourceEndIndex:   compaction.SourceEndIndex,
-		Reason:           strings.TrimSpace(reason),
-		CreatedAt:        now,
-		ContextRevision:  s.contextRevision + 1,
+		Type:              historyTypeCompactionRemoved,
+		ID:                newContextCompactionRemovalID(),
+		AgentKind:         compaction.AgentKind,
+		CompactionID:      compaction.ID,
+		SourceStartIndex:  compaction.SourceStartIndex,
+		SourceEndIndex:    compaction.SourceEndIndex,
+		SourceStartCursor: compaction.SourceStartCursor,
+		SourceEndCursor:   compaction.SourceEndCursor,
+		Reason:            strings.TrimSpace(reason),
+		CreatedAt:         now,
+		ContextRevision:   s.contextRevision + 1,
 	}
 	if strings.TrimSpace(record.AgentKind) == "" {
 		record.AgentKind = strings.TrimSpace(agentKind)
@@ -108,6 +114,20 @@ func (s *Session) LatestContextCompaction(agentKind string) (ContextCompaction, 
 func (s *Session) LatestContextCompactionRemoval(agentKind string) (ContextCompactionRemoval, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.projection != nil {
+		for i := len(s.projection.Structural) - 1; i >= 0; i-- {
+			record := s.projection.Structural[i]
+			if record.Removal == nil {
+				continue
+			}
+			removal := *record.Removal
+			if strings.TrimSpace(agentKind) != "" && strings.TrimSpace(removal.AgentKind) != "" && removal.AgentKind != agentKind {
+				continue
+			}
+			return removal, true
+		}
+		return ContextCompactionRemoval{}, false
+	}
 
 	for i := len(s.records) - 1; i >= 0; i-- {
 		record := s.records[i]
@@ -133,6 +153,27 @@ func (s *Session) NextContextCompactionEpoch(agentKind string) int {
 }
 
 func (s *Session) latestActiveContextCompactionLocked(agentKind string) (ContextCompaction, bool) {
+	if s.projection != nil {
+		for i := len(s.projection.Structural) - 1; i >= 0; i-- {
+			record := s.projection.Structural[i]
+			if record.Removal != nil {
+				removal := *record.Removal
+				if strings.TrimSpace(agentKind) == "" || strings.TrimSpace(removal.AgentKind) == "" || removal.AgentKind == agentKind {
+					return ContextCompaction{}, false
+				}
+				continue
+			}
+			if record.Compaction == nil {
+				continue
+			}
+			compaction := *record.Compaction
+			if strings.TrimSpace(agentKind) != "" && strings.TrimSpace(compaction.AgentKind) != "" && compaction.AgentKind != agentKind {
+				continue
+			}
+			return compaction, true
+		}
+		return ContextCompaction{}, false
+	}
 	for i := len(s.records) - 1; i >= 0; i-- {
 		record := s.records[i]
 		if record.kind == historyTypeCompactionRemoved && record.compactionRemoval != nil {
@@ -162,6 +203,20 @@ func (s *Session) latestActiveContextCompactionLocked(agentKind string) (Context
 
 func (s *Session) nextCompactionEpochLocked(agentKind string) int {
 	epoch := 0
+	if s.projection != nil {
+		for _, record := range s.projection.Structural {
+			if record.Compaction == nil {
+				continue
+			}
+			if strings.TrimSpace(agentKind) != "" && strings.TrimSpace(record.Compaction.AgentKind) != "" && record.Compaction.AgentKind != agentKind {
+				continue
+			}
+			if record.Compaction.Epoch > epoch {
+				epoch = record.Compaction.Epoch
+			}
+		}
+		return epoch + 1
+	}
 	for _, record := range s.records {
 		if record.kind != historyTypeCompaction || record.compaction == nil {
 			continue

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"log"
 
 	"denova/internal/agents/session"
@@ -32,6 +33,17 @@ func (a *App) AgentSessionMessages(agentKind string) ([]session.HistoryEntry, er
 		return nil, err
 	}
 	return sess.History(), nil
+}
+
+func (a *App) AgentSessionMessagesPage(ctx context.Context, agentKind string, before, limit int) (session.HistoryPage, error) {
+	a.mu.RLock()
+	store := a.sessionStore
+	a.mu.RUnlock()
+	sess, err := agentSessionFromStore(store, agentKind)
+	if err != nil {
+		return session.HistoryPage{}, err
+	}
+	return sess.ReadHistoryPage(ctx, before, limit)
 }
 
 func (a *App) ClearAgentSession(agentKind string) error {

@@ -35,6 +35,13 @@ func (s *Session) MarkInterrupted(userMessage, assistantContent, reason string) 
 func (s *Session) PendingInterruption() *Interruption {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.projection != nil {
+		if s.projection.PendingInterrupt == nil {
+			return nil
+		}
+		copied := *s.projection.PendingInterrupt
+		return &copied
+	}
 
 	for i := len(s.records) - 1; i >= 0; i-- {
 		record := s.records[i]
@@ -72,6 +79,16 @@ func (s *Session) ResolveInterruption(id string) error {
 				advanceUpdatedAt(s, now)
 				return nil
 			}
+		}
+		if s.projection != nil && s.projection.PendingInterrupt != nil && s.projection.PendingInterrupt.ID == id {
+			if err := s.appendJournalRecordLocked(interruptionPatchRecord{
+				Type: historyTypeInterruptionPatch, TargetID: id, Status: InterruptionResolved,
+				ResolvedAt: &now, UpdatedAt: now,
+			}); err != nil {
+				return err
+			}
+			advanceUpdatedAt(s, now)
+			return nil
 		}
 		return fmt.Errorf("异常中断记录不存在: %s", id)
 	})

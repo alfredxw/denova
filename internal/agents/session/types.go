@@ -5,6 +5,8 @@ import (
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	"denova/internal/conversationjournal"
 )
 
 const (
@@ -207,39 +209,45 @@ type Interruption struct {
 // ContextCompaction records a model-visible summary epoch without modifying the
 // raw user-facing transcript.
 type ContextCompaction struct {
-	Type                string    `json:"type"`
-	ID                  string    `json:"id"`
-	AgentKind           string    `json:"agent_kind,omitempty"`
-	Epoch               int       `json:"epoch"`
-	Summary             string    `json:"summary"`
-	SourceStartIndex    int       `json:"source_start_index"`
-	SourceEndIndex      int       `json:"source_end_index"`
-	SourceMessageCount  int       `json:"source_message_count"`
-	RetainedTurns       int       `json:"retained_turns"`
-	TokensBefore        int       `json:"tokens_before"`
-	TokensAfter         int       `json:"tokens_after"`
-	TargetRatio         float64   `json:"target_ratio,omitempty"`
-	ContextWindowTokens int       `json:"context_window_tokens"`
-	Strategy            string    `json:"strategy,omitempty"`
-	Threshold           float64   `json:"threshold"`
-	Reason              string    `json:"reason,omitempty"`
-	Phase               string    `json:"phase,omitempty"`
-	CreatedAt           time.Time `json:"created_at"`
-	ContextRevision     uint64    `json:"context_revision,omitempty"`
+	Type             string `json:"type"`
+	ID               string `json:"id"`
+	AgentKind        string `json:"agent_kind,omitempty"`
+	Epoch            int    `json:"epoch"`
+	Summary          string `json:"summary"`
+	SourceStartIndex int    `json:"source_start_index"`
+	SourceEndIndex   int    `json:"source_end_index"`
+	// Cursor fields are the stable v2 boundary. Index fields remain readable
+	// for legacy journals and are populated during the transition.
+	SourceStartCursor   conversationjournal.Cursor `json:"source_start_cursor,omitempty"`
+	SourceEndCursor     conversationjournal.Cursor `json:"source_end_cursor,omitempty"`
+	SourceMessageCount  int                        `json:"source_message_count"`
+	RetainedTurns       int                        `json:"retained_turns"`
+	TokensBefore        int                        `json:"tokens_before"`
+	TokensAfter         int                        `json:"tokens_after"`
+	TargetRatio         float64                    `json:"target_ratio,omitempty"`
+	ContextWindowTokens int                        `json:"context_window_tokens"`
+	Strategy            string                     `json:"strategy,omitempty"`
+	Threshold           float64                    `json:"threshold"`
+	Reason              string                     `json:"reason,omitempty"`
+	Phase               string                     `json:"phase,omitempty"`
+	CreatedAt           time.Time                  `json:"created_at"`
+	ContextRevision     uint64                     `json:"context_revision,omitempty"`
 }
 
 // ContextCompactionRemoval soft-disables the active model-visible compaction
 // without deleting raw transcript or historical compaction records.
 type ContextCompactionRemoval struct {
-	Type             string    `json:"type"`
-	ID               string    `json:"id"`
-	AgentKind        string    `json:"agent_kind,omitempty"`
-	CompactionID     string    `json:"compaction_id,omitempty"`
-	SourceStartIndex int       `json:"source_start_index"`
-	SourceEndIndex   int       `json:"source_end_index"`
-	Reason           string    `json:"reason,omitempty"`
-	CreatedAt        time.Time `json:"created_at"`
-	ContextRevision  uint64    `json:"context_revision,omitempty"`
+	Type              string                     `json:"type"`
+	ID                string                     `json:"id"`
+	AgentKind         string                     `json:"agent_kind,omitempty"`
+	CompactionID      string                     `json:"compaction_id,omitempty"`
+	SourceStartIndex  int                        `json:"source_start_index"`
+	SourceEndIndex    int                        `json:"source_end_index"`
+	SourceStartCursor conversationjournal.Cursor `json:"source_start_cursor,omitempty"`
+	SourceEndCursor   conversationjournal.Cursor `json:"source_end_cursor,omitempty"`
+	Reason            string                     `json:"reason,omitempty"`
+	CreatedAt         time.Time                  `json:"created_at"`
+	ContextRevision   uint64                     `json:"context_revision,omitempty"`
 }
 
 // Session 保存单个会话的内存状态。
@@ -248,20 +256,27 @@ type Session struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
-	filePath           string
-	title              string
-	clearAfterIndex    int
-	contextRevision    uint64
-	journalSize        int64
-	journalOffset      int64
-	journalIncarnation string
-	journalNeedsLF     bool
-	journalLineCount   int
-	lastReplayBytes    int64
-	lastReplayRecords  int
-	mu                 sync.Mutex
-	messages           []*agent.Message
-	records            []historyRecord
+	filePath               string
+	title                  string
+	clearAfterIndex        int
+	contextRevision        uint64
+	journalSize            int64
+	journalOffset          int64
+	journalIncarnation     string
+	journalNeedsLF         bool
+	journalLineCount       int
+	lastReplayBytes        int64
+	lastReplayRecords      int
+	journal                *conversationjournal.Journal
+	projection             *sessionJournalProjection
+	materializedCursor     conversationjournal.Cursor
+	messageBaseIndex       int
+	messageCount           int
+	historyBaseIndex       int
+	partialMaterialization bool
+	mu                     sync.Mutex
+	messages               []*agent.Message
+	records                []historyRecord
 }
 
 // SessionMeta 是会话列表摘要。

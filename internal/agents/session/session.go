@@ -29,8 +29,7 @@ func (s *Session) appendMessageLocked(msg *agent.Message, metadata MessageMetada
 	}
 	now := time.Now().UTC()
 	metadata = sanitizeMessageMetadata(metadata)
-	s.contextRevision++
-	metadata.ContextRevision = s.contextRevision
+	metadata.ContextRevision = s.contextRevision + 1
 	record := messageRecord{
 		Type:            kind,
 		CreatedAt:       now,
@@ -38,10 +37,11 @@ func (s *Session) appendMessageLocked(msg *agent.Message, metadata MessageMetada
 		MessageMetadata: metadata,
 	}
 	if err := s.appendJournalRecordLocked(record); err != nil {
-		s.contextRevision--
 		return err
 	}
+	s.contextRevision = metadata.ContextRevision
 	s.messages = append(s.messages, msg)
+	s.messageCount++
 	s.records = append(s.records, historyRecord{kind: kind, message: msg, messageMetadata: metadata, createdAt: now})
 	advanceUpdatedAt(s, now)
 	if s.title == defaultSessionTitle && msg.Role == agent.User && strings.TrimSpace(msg.Content) != "" {
@@ -135,7 +135,7 @@ func (s *Session) appendClearMarkerLocked() error {
 		return err
 	}
 	s.contextRevision = nextRevision
-	s.clearAfterIndex = len(s.messages)
+	s.clearAfterIndex = s.messageCount
 	s.records = append(s.records, historyRecord{kind: historyTypeClear, createdAt: now})
 	advanceUpdatedAt(s, now)
 	return nil
@@ -151,6 +151,19 @@ func (s *Session) GetMessages() []*agent.Message {
 	return result
 }
 
+// MessageWindow returns the bounded resident raw transcript together with its
+// absolute starting index and total durable message count.
+func (s *Session) MessageWindow() ([]*agent.Message, int, int) {
+	if s == nil {
+		return nil, 0, 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make([]*agent.Message, len(s.messages))
+	copy(result, s.messages)
+	return result, s.messageBaseIndex, s.messageCount
+}
+
 // GetEffectiveMessages 返回最后一个清理标记之后的 Agent 有效上下文。
 func (s *Session) GetEffectiveMessages() []*agent.Message {
 	s.mu.Lock()
@@ -163,17 +176,18 @@ func (s *Session) GetEffectiveMessages() []*agent.Message {
 func (s *Session) MessageCountSinceClear() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.messages) - s.clearAfterIndex
+	return s.messageCount - s.clearAfterIndex
 }
 
 // MessageCountTotal returns the raw persisted message count.
 func (s *Session) MessageCountTotal() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.messages)
+	return s.messageCount
 }
 
-// History 返回包含 clear 标记的完整会话历史。
+// History returns the bounded resident UI window, including clear markers.
+// Use ReadHistoryPage for UI pagination or ExportHistoryJSONL for a full scan.
 func (s *Session) History() []HistoryEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -355,6 +369,9 @@ func (s *Session) Title() string {
 func (s *Session) MessageCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.projection != nil {
+		return s.projection.VisibleMessageCount
+	}
 	count := 0
 	for _, record := range s.records {
 		if record.kind == historyTypeMessage {

@@ -1,120 +1,68 @@
 package session
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
 	"os"
 
 	agent "github.com/alfredxw/denova/agent"
+
+	"denova/internal/conversationjournal"
 )
 
-// refreshCanonicalTailLocked applies only records appended since this Session
-// last observed the journal. Callers hold both the cross-instance file lease
-// and s.mu, so a stable size check provides the same canonical boundary as a
-// full reload without making every domain commit O(total history).
+// refreshCanonicalTailLocked materializes only physical transactions appended
+// since this Session last observed the file. The shared journal validates the
+// checksum chain and incarnation while holding the cross-process file lease.
 func (s *Session) refreshCanonicalTailLocked() error {
-	stat, err := os.Stat(s.filePath)
+	if s.journal == nil {
+		return fmt.Errorf("会话 journal 未打开: %s", s.filePath)
+	}
+	before := s.materializedCursor
+	beforeBytes := s.journalOffset
+	records, err := s.journal.ReadRange(context.Background(), conversationjournal.Range{After: before})
 	if err != nil {
 		return err
 	}
-	if !stat.Mode().IsRegular() {
-		return fmt.Errorf("会话 journal 不是普通文件: %s", s.filePath)
-	}
-	incarnation, err := readSessionJournalIncarnation(s.filePath)
-	if err != nil {
-		return err
-	}
-	if incarnation != s.journalIncarnation {
-		return fmt.Errorf("session journal incarnation changed: expected=%q actual=%q path=%s", s.journalIncarnation, incarnation, s.filePath)
-	}
-	if stat.Size() == s.journalSize && s.journalOffset == s.journalSize {
+	if len(records) == 0 {
+		head := s.journal.Head()
+		s.journalOffset = head.VerifiedBytes
+		if stat, statErr := os.Stat(s.filePath); statErr == nil {
+			s.journalSize = stat.Size()
+		}
 		s.lastReplayBytes = 0
 		s.lastReplayRecords = 0
 		return nil
 	}
-	if s.journalOffset <= 0 || stat.Size() < s.journalOffset {
-		return s.reloadCanonicalLocked()
-	}
-
-	file, err := os.Open(s.filePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	if _, err := file.Seek(s.journalOffset, io.SeekStart); err != nil {
-		return fmt.Errorf("定位会话 journal 增量失败: %w", err)
-	}
 	candidate := cloneSessionForTailReplay(s)
-	reader := bufio.NewReader(file)
-	startOffset := s.journalOffset
-	readOffset := startOffset
-	lineNumber := s.journalLineCount
-	validLineCount := lineNumber
-	replayedRecords := 0
-	firstSegment := true
-	for {
-		lineStart := readOffset
-		line, readErr := reader.ReadBytes('\n')
-		if len(line) == 0 && readErr == io.EOF {
-			break
+	candidate.partialMaterialization = s.messageBaseIndex > 0
+	lastCursor := before
+	for _, record := range records {
+		if err := appendConversationRecord(candidate, record); err != nil {
+			return fmt.Errorf("解析会话 journal 增量 cursor %d: %w", record.Location.Cursor, err)
 		}
-		readOffset += int64(len(line))
-		newlineTerminated := len(line) > 0 && line[len(line)-1] == '\n'
-		trimmed := bytes.TrimSpace(line)
-
-		// A prior valid record may have ended exactly at EOF without a newline.
-		// The append path inserts that separator before the next JSON record; it
-		// completes the previous physical line and is not a new journal record.
-		if firstSegment && s.journalNeedsLF && len(trimmed) == 0 && newlineTerminated {
-			candidate.journalOffset = readOffset
-			candidate.journalNeedsLF = false
-			firstSegment = false
-			if readErr == io.EOF {
-				break
-			}
-			continue
-		}
-		firstSegment = false
-		lineNumber++
-		if len(trimmed) == 0 {
-			candidate.journalOffset = readOffset
-			candidate.journalNeedsLF = false
-			validLineCount = lineNumber
-		} else {
-			parseErr := appendRecordLine(candidate, trimmed, lineNumber)
-			if parseErr != nil {
-				if readErr == io.EOF && !newlineTerminated && !json.Valid(trimmed) {
-					candidate.journalOffset = lineStart
-					break
-				}
-				return fmt.Errorf("解析会话 journal 增量 line %d: %w", lineNumber, parseErr)
-			}
-			candidate.journalOffset = readOffset
-			candidate.journalNeedsLF = !newlineTerminated
-			validLineCount = lineNumber
-			replayedRecords++
-		}
-		if readErr != nil {
-			if readErr == io.EOF {
-				break
-			}
-			return fmt.Errorf("读取会话 journal 增量失败: %w", readErr)
-		}
+		lastCursor = record.Location.Cursor
 	}
-	finalStat, err := file.Stat()
-	if err != nil {
-		return err
+	candidate.partialMaterialization = false
+	candidate.materializedCursor = lastCursor
+	head := s.journal.Head()
+	candidate.journalOffset = head.VerifiedBytes
+	candidate.journalLineCount = int(head.Cursor)
+	if stat, statErr := os.Stat(s.filePath); statErr == nil {
+		candidate.journalSize = stat.Size()
+	} else {
+		return statErr
 	}
-	if finalStat.Size() != stat.Size() || readOffset != stat.Size() {
-		return fmt.Errorf("会话 journal 在增量加载期间被修改: %s", s.filePath)
+	candidate.lastReplayBytes = max(0, candidate.journalOffset-beforeBytes)
+	candidate.lastReplayRecords = int(lastCursor - before)
+	if candidate.projection != nil {
+		candidate.messageCount = candidate.projection.MessageCount
+		candidate.clearAfterIndex = candidate.projection.ClearAfter
+		candidate.contextRevision = candidate.projection.ContextRevision
+		candidate.title = candidate.projection.Title
+		candidate.CreatedAt = candidate.projection.CreatedAt
+		candidate.UpdatedAt = candidate.projection.UpdatedAt
 	}
-	candidate.journalSize = stat.Size()
-	candidate.journalLineCount = validLineCount
-	candidate.lastReplayBytes = readOffset - startOffset
-	candidate.lastReplayRecords = replayedRecords
+	candidate.trimMaterializedWindowLocked()
 	s.replaceCanonicalStateLocked(candidate)
 	return nil
 }
@@ -139,8 +87,14 @@ func cloneSessionForTailReplay(source *Session) *Session {
 		journalSize: source.journalSize, journalOffset: source.journalOffset,
 		journalIncarnation: source.journalIncarnation,
 		journalNeedsLF:     source.journalNeedsLF, journalLineCount: source.journalLineCount,
-		messages: append([]*agent.Message(nil), source.messages...),
-		records:  make([]historyRecord, len(source.records)),
+		lastReplayBytes: source.lastReplayBytes, lastReplayRecords: source.lastReplayRecords,
+		journal: source.journal, projection: source.projection,
+		materializedCursor: source.materializedCursor,
+		messageBaseIndex:   source.messageBaseIndex, messageCount: source.messageCount,
+		historyBaseIndex:       source.historyBaseIndex,
+		partialMaterialization: source.partialMaterialization,
+		messages:               append([]*agent.Message(nil), source.messages...),
+		records:                make([]historyRecord, len(source.records)),
 	}
 	for index, record := range source.records {
 		result.records[index] = cloneHistoryRecordForTailReplay(record)
@@ -181,4 +135,23 @@ func cloneHistoryRecordForTailReplay(record historyRecord) historyRecord {
 		clone.compactionRemoval = &removal
 	}
 	return clone
+}
+
+// trimMaterializedWindowLocked bounds resident transcript and display data.
+// It only drops a physical prefix already represented by the rebuildable
+// projection; raw JSONL remains available to paged readers and exporters.
+func (s *Session) trimMaterializedWindowLocked() {
+	if len(s.messages) <= sessionRecentTransactionLimit || s.projection == nil {
+		return
+	}
+	drop := len(s.messages) - sessionRecentTransactionLimit
+	s.messages = append([]*agent.Message(nil), s.messages[drop:]...)
+	s.messageBaseIndex += drop
+	// Keep record mutations addressable for active streams while avoiding a
+	// second unbounded resident copy. This is deliberately a larger mixed-event
+	// window than the 200-row UI page cache.
+	if len(s.records) > sessionRecentTransactionLimit*2 {
+		overflow := len(s.records) - sessionRecentTransactionLimit*2
+		s.records = append([]historyRecord(nil), s.records[overflow:]...)
+	}
 }

@@ -11,8 +11,6 @@ import (
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
-
-	"denova/internal/filelease"
 )
 
 var (
@@ -166,18 +164,13 @@ func (s *Session) CommitDomainMessageContext(ctx context.Context, intent DomainC
 // lease used by every journal mutation. It lets a long-lived Conversation
 // observe input materialized through another Session instance before building
 // model context.
-func (s *Session) RefreshCanonical(ctx context.Context) (resultErr error) {
+func (s *Session) RefreshCanonical(ctx context.Context) error {
 	if s == nil {
 		return fmt.Errorf("session is nil")
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	release, err := filelease.Acquire(ctx, s.filePath+".domain.lock")
-	if err != nil {
-		return fmt.Errorf("acquire session refresh lease: %w", err)
-	}
-	defer func() { resultErr = errors.Join(resultErr, release()) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.refreshCanonicalTailLocked(); err != nil {
@@ -189,7 +182,7 @@ func (s *Session) RefreshCanonical(ctx context.Context) (resultErr error) {
 // FindDomainCommit performs a read-only exact receipt lookup for crash
 // recovery. A command reused with a different operation, cycle, role, or hash
 // is a conflict rather than evidence that the requested write committed.
-func (s *Session) FindDomainCommit(identity DomainCommitIdentity, role agent.RoleType, hash string) (_ DomainCommitReceipt, _ bool, resultErr error) {
+func (s *Session) FindDomainCommit(identity DomainCommitIdentity, role agent.RoleType, hash string) (DomainCommitReceipt, bool, error) {
 	if s == nil {
 		return DomainCommitReceipt{}, false, fmt.Errorf("session is nil")
 	}
@@ -204,11 +197,6 @@ func (s *Session) FindDomainCommit(identity DomainCommitIdentity, role agent.Rol
 	if hash == "" {
 		return DomainCommitReceipt{}, false, fmt.Errorf("%w: commit hash is required", ErrDomainCommitIdentityConflict)
 	}
-	release, err := filelease.Acquire(context.Background(), s.filePath+".domain.lock")
-	if err != nil {
-		return DomainCommitReceipt{}, false, fmt.Errorf("acquire session domain commit lookup lease: %w", err)
-	}
-	defer func() { resultErr = errors.Join(resultErr, release()) }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.refreshCanonicalTailLocked(); err != nil {
@@ -275,7 +263,8 @@ func (s *Session) SnapshotContextForDomainCommit(
 	if receipt.Hash != strings.TrimSpace(hash) || messageIndex < s.clearAfterIndex {
 		return snapshot, 0, false, nil
 	}
-	effectiveIndex := messageIndex - s.clearAfterIndex
+	effectiveStart := max(s.clearAfterIndex, s.messageBaseIndex)
+	effectiveIndex := messageIndex - effectiveStart
 	if effectiveIndex < 0 || effectiveIndex >= len(snapshot.EffectiveMessages) {
 		return ContextSnapshot{}, 0, false, fmt.Errorf("domain commit context index is inconsistent with session history")
 	}
@@ -303,7 +292,7 @@ func (s *Session) AppendContextMessageAt(expected ContextCursor, msg *agent.Mess
 }
 
 func (s *Session) contextCursorLocked() ContextCursor {
-	return ContextCursor{Revision: s.contextRevision, MessageCount: len(s.messages), ClearAfterIndex: s.clearAfterIndex}
+	return ContextCursor{Revision: s.contextRevision, MessageCount: s.messageCount, ClearAfterIndex: s.clearAfterIndex}
 }
 
 // AppendClearMarkerAt atomically rejects a clear based on stale model-visible
@@ -396,6 +385,8 @@ func (s *Session) CommitContextCompactionRemovalAtContext(
 		result.CompactionID = compaction.ID
 		result.SourceStartIndex = compaction.SourceStartIndex
 		result.SourceEndIndex = compaction.SourceEndIndex
+		result.SourceStartCursor = compaction.SourceStartCursor
+		result.SourceEndCursor = compaction.SourceEndCursor
 		if result.CreatedAt.IsZero() {
 			result.CreatedAt = now
 		}
@@ -449,6 +440,14 @@ func (s *Session) contextCompactionByIDLocked(id string) (ContextCompaction, boo
 	if id == "" {
 		return ContextCompaction{}, false
 	}
+	if s.projection != nil {
+		for _, record := range s.projection.Structural {
+			if record.Compaction != nil && record.Compaction.ID == id {
+				return *record.Compaction, true
+			}
+		}
+		return ContextCompaction{}, false
+	}
 	for _, record := range s.records {
 		if record.kind == historyTypeCompaction && record.compaction != nil && record.compaction.ID == id {
 			return *record.compaction, true
@@ -460,6 +459,14 @@ func (s *Session) contextCompactionByIDLocked(id string) (ContextCompaction, boo
 func (s *Session) contextCompactionRemovalByIDLocked(id string) (ContextCompactionRemoval, bool) {
 	id = strings.TrimSpace(id)
 	if id == "" {
+		return ContextCompactionRemoval{}, false
+	}
+	if s.projection != nil {
+		for _, record := range s.projection.Structural {
+			if record.Removal != nil && record.Removal.ID == id {
+				return *record.Removal, true
+			}
+		}
 		return ContextCompactionRemoval{}, false
 	}
 	for _, record := range s.records {
@@ -555,7 +562,7 @@ func (s *Session) findDomainCommitMessageIndexLocked(
 	hash string,
 ) (int, DomainCommitReceipt, bool, error) {
 	wantedMessageID := deterministicDomainMessageID(identity, role)
-	messageIndex := 0
+	messageIndex := s.messageBaseIndex
 	for _, record := range s.records {
 		if record.message == nil {
 			continue
@@ -577,6 +584,26 @@ func (s *Session) findDomainCommitMessageIndexLocked(
 		}
 		return messageIndex, domainCommitReceipt(identity, metadata), true, nil
 	}
+	if s.projection != nil {
+		wantedMessageID := deterministicDomainMessageID(identity, role)
+		for index := len(s.projection.RecentCommits) - 1; index >= 0; index-- {
+			commit := s.projection.RecentCommits[index]
+			metadata := commit.Metadata
+			if metadata.AgentCommandID != identity.CommandID {
+				continue
+			}
+			if metadata.AgentOperationID != identity.OperationID || metadata.AgentCycle != identity.Cycle {
+				return 0, DomainCommitReceipt{}, false, fmt.Errorf("%w: command_id=%q operation_id=%q cycle=%d", ErrDomainCommitIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
+			}
+			if commit.Role != role || metadata.MessageID != wantedMessageID {
+				continue
+			}
+			if metadata.DomainCommitHash != hash {
+				return 0, DomainCommitReceipt{}, false, fmt.Errorf("%w: command_id=%q operation_id=%q cycle=%d", ErrDomainCommitIdentityConflict, identity.CommandID, identity.OperationID, identity.Cycle)
+			}
+			return commit.MessageIndex, domainCommitReceipt(identity, metadata), true, nil
+		}
+	}
 	return 0, DomainCommitReceipt{}, false, nil
 }
 
@@ -597,6 +624,13 @@ func (s *Session) replaceCanonicalStateLocked(recovered *Session) {
 	s.journalLineCount = recovered.journalLineCount
 	s.lastReplayBytes = recovered.lastReplayBytes
 	s.lastReplayRecords = recovered.lastReplayRecords
+	s.journal = recovered.journal
+	s.projection = recovered.projection
+	s.materializedCursor = recovered.materializedCursor
+	s.messageBaseIndex = recovered.messageBaseIndex
+	s.messageCount = recovered.messageCount
+	s.historyBaseIndex = recovered.historyBaseIndex
+	s.partialMaterialization = recovered.partialMaterialization
 	s.messages = recovered.messages
 	s.records = recovered.records
 }

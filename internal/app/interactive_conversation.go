@@ -301,7 +301,7 @@ func (c *interactiveConversation) withExecutionParentPinning() *interactiveConve
 }
 
 func (c *interactiveConversation) withOpeningStateSchema(storyCtx interactive.StoryContext) *interactiveConversation {
-	if c == nil || !interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(storyCtx.Meta.StateSchemaPolicy) || storyCtx.Meta.StateSchemaInitialization == nil || storyCtx.Meta.StateSchemaInitialization.Status != interactive.StateSchemaInitializationWaitingOpening || storyCtx.Meta.ActorStateSchema == nil || len(storyCtx.Snapshot.Turns) > 0 {
+	if c == nil || !interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(storyCtx.Meta.StateSchemaPolicy) || storyCtx.Meta.StateSchemaInitialization == nil || storyCtx.Meta.StateSchemaInitialization.Status != interactive.StateSchemaInitializationWaitingOpening || storyCtx.Meta.ActorStateSchema == nil || interactiveSnapshotTurnCount(storyCtx.Snapshot) > 0 {
 		return c
 	}
 	trpgSourceIDs := make([]string, 0, len(storyCtx.Meta.ActorStateSchema.TRPGSystem.RuleTemplates))
@@ -326,7 +326,7 @@ func (c *interactiveConversation) refreshOpeningStateSchema(storyCtx interactive
 	if c == nil || (interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(storyCtx.Meta.StateSchemaPolicy) &&
 		storyCtx.Meta.StateSchemaInitialization != nil &&
 		storyCtx.Meta.StateSchemaInitialization.Status == interactive.StateSchemaInitializationWaitingOpening &&
-		len(storyCtx.Snapshot.Turns) == 0) {
+		interactiveSnapshotTurnCount(storyCtx.Snapshot) == 0) {
 		return
 	}
 	c.mu.Lock()
@@ -467,7 +467,7 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
 	storyDirector := storyDirectorForSnapshot(c.storyDirectorForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
 	tellerTurnContextPrompt := teller.PromptForTargets("turn_context")
-	turnHistory := buildInteractiveModelVisibleTurnHistory(storyCtx.Snapshot.Turns, storyCtx.Snapshot.ContextCompaction)
+	turnHistory := buildInteractiveModelVisibleSnapshotHistory(storyCtx.Snapshot)
 	checkpointSummary := ""
 	if storyCtx.Snapshot.ContextCompaction != nil {
 		checkpointSummary = strings.TrimSpace(storyCtx.Snapshot.ContextCompaction.Summary)

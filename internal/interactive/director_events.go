@@ -275,7 +275,7 @@ func directorEventCardIndex(catalog []DirectorEvent) []DirectorEventCardIndex {
 func (s *Store) DirectorEventContext(storyID, branchID, sourceTurnID string) (EventOpportunity, DirectorEventRuntime, []DirectorEventCardIndex, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, snapshot, err := s.boundedStorySnapshotWithLimitLocked(storyID, branchID, maxStoryHistoryPageTurns)
 	if err != nil {
 		return EventOpportunity{}, DirectorEventRuntime{}, nil, err
 	}
@@ -284,10 +284,6 @@ func (s *Store) DirectorEventContext(storyID, branchID, sourceTurnID string) (Ev
 		return EventOpportunity{}, DirectorEventRuntime{}, nil, err
 	}
 	plan, err := s.readDirectorPlanLocked(storyID, branchID)
-	if err != nil {
-		return EventOpportunity{}, DirectorEventRuntime{}, nil, err
-	}
-	snapshot, err := snapshotFromLines(storyID, branchID, meta, lines)
 	if err != nil {
 		return EventOpportunity{}, DirectorEventRuntime{}, nil, err
 	}
@@ -312,7 +308,7 @@ func (s *Store) ReadDirectorEventCards(storyID string, eventRefs []string) ([]Di
 	if len(eventRefs) > 8 {
 		return nil, fmt.Errorf("一次最多读取 8 张事件卡")
 	}
-	meta, _, err := s.readStoryLocked(storyID)
+	meta, _, err := s.boundedStorySnapshotWithLimitLocked(storyID, "", 1)
 	if err != nil {
 		return nil, err
 	}

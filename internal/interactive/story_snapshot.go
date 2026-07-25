@@ -7,6 +7,11 @@ import (
 )
 
 func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEventRecord) (Snapshot, error) {
+	projectedLines, err := projectStoryEventOverlays(lines)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	lines = projectedLines
 	if branchID == "" {
 		branchID = meta.CurrentBranch
 	}
@@ -104,6 +109,7 @@ func snapshotFromLines(storyID, branchID string, meta StoryMeta, lines []StoryEv
 		return Snapshot{}, err
 	}
 	snapshot.PendingPlayerInputs = pendingInputs
+	snapshot.TurnCount = len(snapshot.Turns)
 	return snapshot, nil
 }
 

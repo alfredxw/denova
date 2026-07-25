@@ -100,7 +100,7 @@ func prepareInteractiveDirectorBeforeOpening(ctx context.Context, cfg *config.Co
 	if err != nil {
 		return false, err
 	}
-	if len(storyCtx.Snapshot.Turns) > 0 {
+	if interactiveSnapshotTurnCount(storyCtx.Snapshot) > 0 {
 		return false, nil
 	}
 	status, err := conversation.store.DirectorPlanStatus(conversation.storyID, storyCtx.Snapshot.BranchID)

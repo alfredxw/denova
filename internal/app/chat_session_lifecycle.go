@@ -214,6 +214,12 @@ func (a *App) SessionMessages(id string) ([]session.HistoryEntry, error) {
 	return a.chat().SessionMessages(id)
 }
 
+// SessionMessagesPage reads one bounded UI-history page directly from the
+// append-only store instead of slicing a fully materialized transcript.
+func (a *App) SessionMessagesPage(ctx context.Context, id string, before, limit int) (session.HistoryPage, error) {
+	return a.chat().SessionMessagesPage(ctx, id, before, limit)
+}
+
 func (s *ChatAppService) SessionMessages(id string) ([]session.HistoryEntry, error) {
 	a := s.app
 	a.mu.RLock()
@@ -237,6 +243,34 @@ func (s *ChatAppService) SessionMessages(id string) ([]session.HistoryEntry, err
 		return nil, err
 	}
 	return sess.History(), nil
+}
+
+func (s *ChatAppService) SessionMessagesPage(ctx context.Context, id string, before, limit int) (session.HistoryPage, error) {
+	a := s.app
+	a.mu.RLock()
+	store := a.sessionStore
+	current := a.session
+	a.mu.RUnlock()
+	if store == nil {
+		return session.HistoryPage{}, ErrNoWorkspace
+	}
+	var sess *session.Session
+	var err error
+	if id == "" {
+		sess = current
+		if sess == nil {
+			return session.HistoryPage{}, ErrNoWorkspace
+		}
+	} else {
+		if isAgentSessionID(id) {
+			return session.HistoryPage{}, fmt.Errorf("不能通过创作会话读取固定 Agent 会话: %s", id)
+		}
+		sess, err = store.Get(id)
+		if err != nil {
+			return session.HistoryPage{}, err
+		}
+	}
+	return sess.ReadHistoryPage(ctx, before, limit)
 }
 
 // StartTask starts a root Writing Agent task. A running operation is never

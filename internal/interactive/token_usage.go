@@ -18,7 +18,7 @@ func (s *Store) AppendTokenUsageEvent(storyID string, event TokenUsageEvent) err
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	meta, _, err := s.readStoryLocked(storyID)
+	meta, _, err := s.readStoryRecentLocked(storyID, event.BranchID)
 	if err != nil {
 		return err
 	}

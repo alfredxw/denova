@@ -23,7 +23,9 @@ describe('BookSettingsShortcuts', () => {
         ]}
         chapterPlans={[]}
         selectedFile={null}
+        headerPinned
         onSelectFile={vi.fn()}
+        onToggleHeaderPinned={vi.fn()}
       />,
     )
 
@@ -53,7 +55,9 @@ describe('BookSettingsShortcuts', () => {
         tree={[]}
         chapterPlans={[]}
         selectedFile={null}
+        headerPinned
         onSelectFile={vi.fn()}
+        onToggleHeaderPinned={vi.fn()}
       />,
     )
 
@@ -62,7 +66,7 @@ describe('BookSettingsShortcuts', () => {
 
   it('把旧版未自定义的默认三项迁移为新的默认五项', () => {
     window.localStorage.setItem('nova.outline.pinned-settings:/books/demo', JSON.stringify(['setting/outline.md', 'CREATOR.md', 'setting/progress.md']))
-    render(<BookSettingsShortcuts workspace="/books/demo" tree={[]} chapterPlans={[]} selectedFile={null} onSelectFile={vi.fn()} />)
+    render(<BookSettingsShortcuts workspace="/books/demo" tree={[]} chapterPlans={[]} selectedFile={null} headerPinned onSelectFile={vi.fn()} onToggleHeaderPinned={vi.fn()} />)
 
     expect(screen.getByRole('button', { name: /^灵感尚未创建/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^状态尚未创建/ })).toBeInTheDocument()
@@ -78,7 +82,9 @@ describe('BookSettingsShortcuts', () => {
         tree={[{ name: 'CREATOR.md', type: 'file' }]}
         chapterPlans={[]}
         selectedFile={null}
+        headerPinned
         onSelectFile={onSelectFile}
+        onToggleHeaderPinned={vi.fn()}
         onRequestCreate={onRequestCreate}
       />,
     )
@@ -109,7 +115,9 @@ describe('BookSettingsShortcuts', () => {
         tree={[{ name: 'CREATOR.md', type: 'file' }]}
         chapterPlans={[]}
         selectedFile={null}
+        headerPinned
         onSelectFile={vi.fn()}
+        onToggleHeaderPinned={vi.fn()}
       />,
     )
 

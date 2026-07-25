@@ -17,7 +17,7 @@ func appendClearRecordLine(sess *Session, line []byte) error {
 	if marker.CreatedAt.IsZero() {
 		marker.CreatedAt = sess.UpdatedAt
 	}
-	sess.clearAfterIndex = len(sess.messages)
+	sess.clearAfterIndex = sess.messageBaseIndex + len(sess.messages)
 	sess.records = append(sess.records, historyRecord{kind: historyTypeClear, createdAt: marker.CreatedAt})
 	advanceContextRevision(sess, marker.ContextRevision)
 	advanceUpdatedAt(sess, marker.CreatedAt)
@@ -127,6 +127,10 @@ func applyDisplayPatchLine(sess *Session, line []byte) error {
 	}
 	index := findJournalRecordIndex(sess.records, strings.TrimSpace(patch.TargetRecordID))
 	if index < 0 || sess.records[index].display == nil {
+		if sess.partialMaterialization {
+			advanceUpdatedAt(sess, patch.CreatedAt)
+			return nil
+		}
 		return fmt.Errorf("display patch target 不存在: %s", patch.TargetRecordID)
 	}
 	record := &sess.records[index]
@@ -171,6 +175,10 @@ func applyInterruptionPatchLine(sess *Session, line []byte) error {
 		advanceUpdatedAt(sess, patch.UpdatedAt)
 		return nil
 	}
+	if sess.partialMaterialization {
+		advanceUpdatedAt(sess, patch.UpdatedAt)
+		return nil
+	}
 	return fmt.Errorf("interruption patch target 不存在: %s", patch.TargetID)
 }
 
@@ -189,6 +197,7 @@ func appendMessageRecordLine(sess *Session, line []byte, kind string) error {
 	msg := record.Message
 	metadata := sanitizeMessageMetadata(record.MessageMetadata)
 	sess.messages = append(sess.messages, &msg)
+	sess.messageCount++
 	sess.records = append(sess.records, historyRecord{kind: kind, message: &msg, messageMetadata: metadata, createdAt: createdAt})
 	advanceContextRevision(sess, metadata.ContextRevision)
 	advanceUpdatedAt(sess, createdAt)
@@ -205,6 +214,7 @@ func appendLegacyMessageLine(sess *Session, line []byte) error {
 	}
 	createdAt := nextLegacyMessageCreatedAt(sess)
 	sess.messages = append(sess.messages, &msg)
+	sess.messageCount++
 	sess.records = append(sess.records, historyRecord{kind: historyTypeMessage, message: &msg, createdAt: createdAt})
 	advanceContextRevision(sess, 0)
 	advanceUpdatedAt(sess, createdAt)

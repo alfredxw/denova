@@ -7,7 +7,7 @@ import {
   clearConfigManagerSession,
   createAgentCommandID,
   getActiveConfigManagerTask,
-  getConfigManagerMessages,
+  getConfigManagerMessagesPage,
   reconnectConfigManagerStream,
   recoverConfigManagerRuntime,
   runConfigManagerStream,
@@ -17,6 +17,7 @@ import { useSkillCommands } from '@/hooks/useSkillCommands'
 import { selectAgentTokenUsageRecords, type AgentMessageView } from '@/lib/agent-message-view'
 import { createAgentDataMessage, createAgentTextMessage, useAgentUIMessageStream } from '@/hooks/useAgentUIMessageStream'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
+import { normalizeAgentUIMessages } from '@/lib/agent-ui'
 
 interface ConfigManagerChatProps {
   workspace?: string
@@ -44,6 +45,9 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
   const [runtimeProjection, setRuntimeProjectionState] = useState<ActiveChatTask | null>(null)
   const [recoveryPending, setRecoveryPending] = useState(false)
   const [abortPending, setAbortPending] = useState(false)
+  const [historyBefore, setHistoryBefore] = useState('0')
+  const [hasEarlierMessages, setHasEarlierMessages] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
   const skills = useSkillCommands({ agentKey: 'config_manager', workspace, fallbackEnabled: true })
   const scope = useMemo(() => ({
@@ -96,14 +100,38 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     }
     const key = chatKey
     try {
-      const history = await getConfigManagerMessages(scope)
-      if (activeKeyRef.current === key) setMessages(history)
+      const page = await getConfigManagerMessagesPage(scope)
+      if (activeKeyRef.current === key) {
+        setMessages(page.messages)
+        setHistoryBefore(page.nextBefore)
+        setHasEarlierMessages(page.hasMore)
+      }
     } catch (err) {
       if (activeKeyRef.current === key) {
         setError(`${t('configManager.historyLoadFailed')}: ${errorMessage(err)}`)
       }
     }
   }, [chatKey, scope, setMessages, t, workspace])
+
+  const loadEarlierMessages = useCallback(async () => {
+    if (!hasEarlierMessages || historyLoading) return
+    const key = chatKey
+    const before = historyBefore
+    setHistoryLoading(true)
+    try {
+      const page = await getConfigManagerMessagesPage(scope, { before })
+      if (activeKeyRef.current !== key) return
+      setMessages((current) => normalizeAgentUIMessages([...page.messages, ...current]))
+      setHistoryBefore(page.nextBefore)
+      setHasEarlierMessages(page.hasMore)
+    } catch (err) {
+      if (activeKeyRef.current === key) {
+        setError(`${t('configManager.historyLoadFailed')}: ${errorMessage(err)}`)
+      }
+    } finally {
+      if (activeKeyRef.current === key) setHistoryLoading(false)
+    }
+  }, [chatKey, hasEarlierMessages, historyBefore, historyLoading, scope, setMessages, t])
 
   const setRuntimeProjection = useCallback((projection: ActiveChatTask | null) => {
     runtimeProjectionRef.current = projection
@@ -237,6 +265,9 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
     // stream beside a newly accepted POST stream.
     setRecoveryPending(Boolean(workspace))
     setAbortPending(false)
+    setHistoryBefore('0')
+    setHasEarlierMessages(false)
+    setHistoryLoading(false)
     handledToolViewsRef.current = new Set()
     void loadMessages().then(() => inspectRuntime(true))
     return () => {
@@ -273,6 +304,8 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
       try {
         await clearConfigManagerSession(scope)
         setRuntimeProjection(null)
+        setHistoryBefore('0')
+        setHasEarlierMessages(false)
         setMessages([createAgentDataMessage('agent-clear', { created_at: new Date().toISOString() })])
       } catch (err) {
         appendErrorMessage(`${t('configManager.clearFailed')}: ${errorMessage(err)}`)
@@ -370,6 +403,9 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
         scrollResetKey={chatKey}
         bottomPaddingClassName="pb-36"
         bottomPaddingPx={messageListBottomPadding}
+        hasEarlierMessages={hasEarlierMessages}
+        isLoadingEarlierMessages={historyLoading}
+        onLoadEarlierMessages={loadEarlierMessages}
         collapseTraceGroups
       />
       <InputArea

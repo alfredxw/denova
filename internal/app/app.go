@@ -333,6 +333,8 @@ func (a *App) Close() {
 		schedulerCancel := a.schedulerCancel
 		versionService := a.versionService
 		workspaceFiles := a.workspaceFiles
+		interactiveStore := a.interactive
+		sessionStore := a.sessionStore
 		a.mu.Unlock()
 
 		if workspaceFiles != nil {
@@ -352,6 +354,16 @@ func (a *App) Close() {
 		a.schedulerWG.Wait()
 		if err := rootScope.Wait(context.Background()); err != nil {
 			log.Printf("[app] wait lifecycle scope failed: %v", err)
+		}
+		if interactiveStore != nil {
+			if err := interactiveStore.Close(); err != nil {
+				log.Printf("[app] flush interactive conversation indexes failed: %v", err)
+			}
+		}
+		if sessionStore != nil {
+			if err := sessionStore.Close(); err != nil {
+				log.Printf("[app] flush Agent conversation indexes failed: %v", err)
+			}
 		}
 		if versionService != nil {
 			versionService.Close()

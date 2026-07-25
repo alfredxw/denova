@@ -47,6 +47,8 @@ interface MessageListProps {
   collapseTraceGroups?: boolean
   /** 运行中的 trace 初始展示方式；用户手动切换后保留其选择。 */
   activeTraceDisplay?: 'expanded' | 'collapsed'
+  /** 领域级变更策略；不影响展示、导航或 trace 操作。 */
+  canMutateMessage?: (view: AgentMessageView) => boolean
   onEditMessage?: (view: AgentMessageView) => void
   onEditAssistantReply?: (view: AgentMessageView) => void
   onRegenerateMessage?: (view: AgentMessageView) => void
@@ -104,7 +106,7 @@ interface MessageListVirtuosoContext {
   onLoadEarlierMessages?: () => void | Promise<void>
 }
 
-export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
+export function MessageList({ messages, isStreaming, activityContent, highlightDialogue = false, scrollResetKey, bottomPaddingClassName = '', bottomPaddingPx, afterContent, hasEarlierMessages = false, isLoadingEarlierMessages = false, onLoadEarlierMessages, timelineAttachments = [], messageStyle, collapseTraceGroups = false, activeTraceDisplay = 'expanded', canMutateMessage, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, turnScrollRequest, onVisibleTurnAnchorChange }: MessageListProps) {
   const { t } = useTranslation()
   const containerRef = useRef<HTMLDivElement | null>(null)
   const lastVisibleTurnAnchorRef = useRef('')
@@ -232,6 +234,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         activeTraceDisplay={activeTraceDisplay}
         highlightDialogue={highlightDialogue}
         messageStyle={messageStyle}
+        canMutateMessage={canMutateMessage}
         onEditMessage={onEditMessage}
         onEditAssistantReply={onEditAssistantReply}
         onRegenerateMessage={onRegenerateMessage}
@@ -251,7 +254,7 @@ export function MessageList({ messages, isStreaming, activityContent, highlightD
         syncStreamingRowHeight={isStreaming ? scrollLock.syncStreamingRowHeight : undefined}
       />
     )
-  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestPlanCardBottom, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onSubmitPlanQuestion, onSwitchMessageVersion, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight])
+  }, [activeSubAgentSessionKey, activeTraceDisplay, anchorLatestPlanCardBottom, canMutateMessage, firstItemIndex, generatingInteractiveImageTurnId, highlightDialogue, isStreaming, listItems, messageStyle, onApprovePlan, onContinuePlan, onEditAssistantReply, onEditMessage, onExitPlanMode, onGenerateInteractiveImage, onInsertIllustration, onOpenSubAgentSession, onOpenTrace, onRegenerateMessage, onSubmitPlanQuestion, onSwitchMessageVersion, scrollLock.streamingRowRef, scrollLock.syncStreamingRowHeight])
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1 flex-col">
@@ -361,13 +364,14 @@ function MessageListFooter({ context }: ContextProp<MessageListVirtuosoContext>)
   )
 }
 
-function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange, streamingRowRef, syncStreamingRowHeight }: {
+function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highlightDialogue, messageStyle, canMutateMessage, onEditMessage, onEditAssistantReply, onRegenerateMessage, onSwitchMessageVersion, onOpenSubAgentSession, onInsertIllustration, onGenerateInteractiveImage, generatingInteractiveImageTurnId, activeSubAgentSessionKey, onSubmitPlanQuestion, onApprovePlan, onContinuePlan, onExitPlanMode, onOpenTrace, onPlanCardLayoutChange, streamingRowRef, syncStreamingRowHeight }: {
   item: AgentChatListItem
   isLast: boolean
   isStreaming: boolean
   activeTraceDisplay: 'expanded' | 'collapsed'
   highlightDialogue: boolean
   messageStyle?: CSSProperties
+  canMutateMessage?: (view: AgentMessageView) => boolean
   onEditMessage?: (view: AgentMessageView) => void
   onEditAssistantReply?: (view: AgentMessageView) => void
   onRegenerateMessage?: (view: AgentMessageView) => void
@@ -388,6 +392,7 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
 }) {
   const { t } = useTranslation()
   const turnAnchor = chatListItemNavigationAnchor(item)
+  const mutationsAllowed = item.kind !== 'message' || canMutateMessage?.(item.view) !== false
   useLayoutEffect(() => {
     if (isLast && isStreaming) syncStreamingRowHeight?.()
   }, [isLast, isStreaming, item, syncStreamingRowHeight])
@@ -447,13 +452,13 @@ function AgentChatListRow({ item, isLast, isStreaming, activeTraceDisplay, highl
           view={item.view}
           highlightDialogue={highlightDialogue}
           messageStyle={messageStyle}
-          onEditMessage={isStreaming ? undefined : onEditMessage}
-          onEditAssistantReply={isStreaming ? undefined : onEditAssistantReply}
-          onRegenerateMessage={isStreaming ? undefined : onRegenerateMessage}
-          onSwitchMessageVersion={isStreaming ? undefined : onSwitchMessageVersion}
+          onEditMessage={isStreaming || !mutationsAllowed ? undefined : onEditMessage}
+          onEditAssistantReply={isStreaming || !mutationsAllowed ? undefined : onEditAssistantReply}
+          onRegenerateMessage={isStreaming || !mutationsAllowed ? undefined : onRegenerateMessage}
+          onSwitchMessageVersion={isStreaming || !mutationsAllowed ? undefined : onSwitchMessageVersion}
           onOpenSubAgentSession={onOpenSubAgentSession}
           onInsertIllustration={onInsertIllustration}
-          onGenerateInteractiveImage={isStreaming ? undefined : onGenerateInteractiveImage}
+          onGenerateInteractiveImage={isStreaming || !mutationsAllowed ? undefined : onGenerateInteractiveImage}
           generatingInteractiveImageTurnId={generatingInteractiveImageTurnId}
           activeSubAgentSessionKey={activeSubAgentSessionKey}
           onSubmitPlanQuestion={isStreaming ? undefined : onSubmitPlanQuestion}

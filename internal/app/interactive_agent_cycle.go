@@ -118,7 +118,7 @@ func (s *InteractiveAppService) prepareInteractiveAgentCycle(ctx context.Context
 	if interactive.StoryStateSchemaPolicyUsesOpeningGameAgent(storyContext.Meta.StateSchemaPolicy) &&
 		storyContext.Meta.StateSchemaInitialization != nil &&
 		storyContext.Meta.StateSchemaInitialization.Status == interactive.StateSchemaInitializationWaitingOpening &&
-		len(storyContext.Snapshot.Turns) == 0 {
+		interactiveSnapshotTurnCount(storyContext.Snapshot) == 0 {
 		submitOpeningStateSchema = cycle.conversation.SubmitOpeningStateSchemaBatch
 	}
 	cycle.runner, cycle.systemPrompt, err = buildInteractiveStoryRunnerWithComposition(ctx, &cycle.runtimeCfg, cycle.state, cycle.tellerInput, agents.InteractiveStoryToolContext{
@@ -191,13 +191,13 @@ func (c *interactiveAgentCycle) scheduleDirectorMaintenance(turn interactive.Tur
 			persistedSnapshot = &loaded
 		}
 	}
-	committedTurns := len(c.storyContext.Snapshot.Turns) + 1
+	committedTurns := interactiveSnapshotTurnCount(c.storyContext.Snapshot) + 1
 	planStatus := ""
 	if c.storyContext.Snapshot.DirectorPlanStatus != nil {
 		planStatus = c.storyContext.Snapshot.DirectorPlanStatus.Status
 	}
 	if persistedSnapshot != nil {
-		committedTurns = len(persistedSnapshot.Turns)
+		committedTurns = interactiveSnapshotTurnCount(*persistedSnapshot)
 		if persistedSnapshot.DirectorPlanStatus != nil {
 			planStatus = persistedSnapshot.DirectorPlanStatus.Status
 		}

@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -16,7 +17,7 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 	}
 	defer releaseStory()
 
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, _, err := s.boundedStorySnapshotWithLimitLocked(storyID, "", 1)
 	if err != nil {
 		return BranchSummary{}, err
 	}
@@ -24,16 +25,18 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 	if parentID == "" {
 		return BranchSummary{}, fmt.Errorf("父事件不能为空")
 	}
-	fromBranch, ok := findEventBranch(lines, parentID)
-	if !ok {
-		return BranchSummary{}, fmt.Errorf("父事件不存在: %s", parentID)
+	checkpoint, err := s.checkpointAtTurnLocked(storyID, parentID)
+	if err != nil {
+		return BranchSummary{}, err
 	}
+	fromBranch := checkpoint.SourceBranchID
 	branchID := "br_" + strings.TrimPrefix(newID(""), "_")
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	title := strings.TrimSpace(req.Title)
 	if title == "" {
 		title = "新分支"
 	}
+	previousBranch := meta.CurrentBranch
 	meta.CurrentBranch = branchID
 	meta.Branches[branchID] = BranchMeta{
 		Head:      parentID,
@@ -44,24 +47,27 @@ func (s *Store) CreateBranch(storyID string, req CreateBranchRequest) (BranchSum
 	}
 	meta.UpdatedAt = now
 	event := BranchEvent{
-		V:        schemaVersion,
-		Type:     StoryEventTypeBranch,
-		ID:       newID("ev"),
-		ParentID: parentID,
-		BranchID: branchID,
-		From:     fromBranch,
-		Ts:       now,
-		Title:    title,
+		V: schemaVersion, Type: StoryEventTypeBranch, ID: newID("ev"), ParentID: parentID,
+		BranchID: branchID, From: fromBranch, Ts: now, Title: title,
+		StateCheckpoint: cloneStoryState(checkpoint.State), LatestTurnID: checkpoint.LatestTurnID, Depth: checkpoint.Depth,
+	}
+	switched := BranchSwitchedEvent{
+		V: schemaVersion, Type: StoryEventTypeBranchSwitched, ID: newID("bsw"),
+		ParentID: parentID, BranchID: branchID, Ts: now,
+		FromBranch: previousBranch, ToBranch: branchID,
 	}
 	if err := s.cloneDirectorPlanForBranchLocked(storyID, fromBranch, branchID, title); err != nil {
 		return BranchSummary{}, err
 	}
-	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
+	if err := s.appendStoryTransactionLocked(storyID, meta, event, switched); err != nil {
 		_ = os.RemoveAll(s.directorPlanBranchDir(storyID, branchID))
 		return BranchSummary{}, err
 	}
-	if err := s.updateIndexBranchesLocked(storyID, len(meta.Branches), now, 1); err != nil {
+	if err := s.updateIndexBranchesLocked(storyID, len(meta.Branches), now, 2); err != nil {
 		return BranchSummary{}, err
+	}
+	if closeErr := s.evictStoryJournalLocked(storyID); closeErr != nil {
+		log.Printf("[interactive-story] flush index on branch creation failed story_id=%s branch_id=%s error=%v", storyID, branchID, closeErr)
 	}
 	return BranchSummary{ID: branchID, Head: parentID, From: fromBranch, FromEvent: parentID, Title: title, CreatedAt: now, Current: true}, nil
 }
@@ -75,16 +81,32 @@ func (s *Store) SwitchBranch(storyID, branchID string) error {
 	}
 	defer releaseStory()
 
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, _, err := s.boundedStorySnapshotWithLimitLocked(storyID, branchID, 1)
 	if err != nil {
 		return err
 	}
 	if _, ok := meta.Branches[branchID]; !ok {
 		return fmt.Errorf("分支不存在: %s", branchID)
 	}
+	fromBranch := meta.CurrentBranch
 	meta.CurrentBranch = branchID
-	meta.UpdatedAt = time.Now().UTC().Format(time.RFC3339Nano)
-	return s.rewriteStoryLocked(storyID, meta, lines)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	meta.UpdatedAt = now
+	event := BranchSwitchedEvent{
+		V: schemaVersion, Type: StoryEventTypeBranchSwitched, ID: newID("bsw"),
+		ParentID: meta.Branches[branchID].Head, BranchID: branchID, Ts: now,
+		FromBranch: fromBranch, ToBranch: branchID,
+	}
+	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
+		return err
+	}
+	if err := s.touchIndexLocked(storyID, now, 1); err != nil {
+		return err
+	}
+	if closeErr := s.evictStoryJournalLocked(storyID); closeErr != nil {
+		log.Printf("[interactive-story] flush index on branch switch failed story_id=%s branch_id=%s error=%v", storyID, branchID, closeErr)
+	}
+	return nil
 }
 
 func (s *Store) DeleteBranch(storyID, branchID string) error {
@@ -103,7 +125,7 @@ func (s *Store) DeleteBranch(storyID, branchID string) error {
 	if branchID == "main" {
 		return fmt.Errorf("主线不能删除")
 	}
-	meta, lines, err := s.readStoryLocked(storyID)
+	meta, _, err := s.boundedStorySnapshotWithLimitLocked(storyID, branchID, 1)
 	if err != nil {
 		return err
 	}
@@ -119,18 +141,7 @@ func (s *Store) DeleteBranch(storyID, branchID string) error {
 			return fmt.Errorf("该分支已有子分支，不能删除")
 		}
 	}
-	nextLines := make([]StoryEventRecord, 0, len(lines))
-	removedEvents := 0
-	for _, record := range lines {
-		if record.Envelope.Type == StoryEventTypeBranch && record.Envelope.BranchID == branchID {
-			removedEvents++
-			continue
-		}
-		nextLines = append(nextLines, record)
-	}
-	if removedEvents == 0 {
-		return fmt.Errorf("分支记录不存在: %s", branchID)
-	}
+	previousCurrent := meta.CurrentBranch
 	delete(meta.Branches, branchID)
 	if meta.CurrentBranch == branchID {
 		if branch.From != "" {
@@ -141,18 +152,22 @@ func (s *Store) DeleteBranch(storyID, branchID string) error {
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	meta.UpdatedAt = now
-	if err := s.rewriteStoryLocked(storyID, meta, nextLines); err != nil {
+	event := BranchArchivedEvent{
+		V: schemaVersion, Type: StoryEventTypeBranchArchived, ID: newID("bar"),
+		ParentID: branch.Head, BranchID: branchID, Ts: now,
+		PreviousCurrentBranch: previousCurrent, NextCurrentBranch: meta.CurrentBranch,
+	}
+	if err := s.appendStoryTransactionLocked(storyID, meta, event); err != nil {
 		return err
 	}
-	_ = os.RemoveAll(s.directorPlanBranchDir(storyID, branchID))
-	return s.updateIndexBranchesLocked(storyID, len(meta.Branches), now, -removedEvents)
+	return s.updateIndexBranchesLocked(storyID, len(meta.Branches), now, 1)
 }
 
 func (s *Store) Branches(storyID string) ([]BranchSummary, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	meta, _, err := s.readStoryLocked(storyID)
+	meta, _, err := s.boundedStorySnapshotWithLimitLocked(storyID, "", 1)
 	if err != nil {
 		return nil, err
 	}

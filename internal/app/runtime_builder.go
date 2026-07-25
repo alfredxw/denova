@@ -68,6 +68,12 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 	if err != nil {
 		return nil, fmt.Errorf("创建会话存储失败: %w", err)
 	}
+	keepStore := false
+	defer func() {
+		if !keepStore {
+			_ = store.Close()
+		}
+	}()
 	sess, err := activeUserSessionOrCreate(store)
 	if err != nil {
 		return nil, fmt.Errorf("创建会话失败: %w", err)
@@ -85,7 +91,7 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 	}
 	interactiveStore := interactive.NewStoreWithNovaDir(absWorkspace, runtimeCfg.DataDir())
 
-	return &runtimeState{
+	runtime := &runtimeState{
 		workspace:              absWorkspace,
 		bookState:              state,
 		bookService:            book.NewService(absWorkspace),
@@ -95,7 +101,9 @@ func buildRuntime(ctx context.Context, cfg *config.Config, workspace string) (*r
 		agentRunner:            agentRunner,
 		interactiveStoryRunner: interactiveStoryRunner,
 		versionService:         book.NewVersionService(absWorkspace),
-	}, nil
+	}
+	keepStore = true
+	return runtime, nil
 }
 
 func buildAgentRunner(ctx context.Context, cfg *config.Config, state *book.State, tellers ...agents.IDEStoryTeller) (*agents.Runner, error) {

@@ -1,27 +1,33 @@
 package interactive
 
 import (
+	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
 
-func TestUpdateTurnNarrativePreservesStoryPathAndInvalidatesCoveredCompaction(t *testing.T) {
+func TestUpdateLatestTurnNarrativePreservesStoryPathAndInvalidatesCoveredCompaction(t *testing.T) {
 	store := NewStore(t.TempDir())
 	story, err := store.CreateStory(CreateStoryRequest{Title: "正文修正", StoryTellerID: "classic"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	first, err := store.AppendTurn(story.ID, AppendTurnRequest{
-		BranchID:      "main",
-		User:          "去找朋友",
-		Narrative:     "朋友住在 3 楼 403 室。",
-		Thinking:      "保留的思考记录",
-		DisplayEvents: []DisplayEvent{{ID: "image-1", Role: "tool_result", Content: "保留的图像记录"}},
+		BranchID:  "main",
+		User:      "去找朋友",
+		Narrative: "朋友住在 3 楼 403 室。",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := store.AppendTurn(story.ID, AppendTurnRequest{BranchID: "main", User: "敲门", Narrative: "门内传来脚步声。"})
+	second, err := store.AppendTurn(story.ID, AppendTurnRequest{
+		BranchID:      "main",
+		User:          "敲门",
+		Narrative:     "门内传来脚步声。",
+		Thinking:      "保留的思考记录",
+		DisplayEvents: []DisplayEvent{{ID: "image-1", Role: "tool_result", Content: "保留的图像记录"}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,10 +43,14 @@ func TestUpdateTurnNarrativePreservesStoryPathAndInvalidatesCoveredCompaction(t 
 		t.Fatal(err)
 	}
 
-	expected := first.Narrative
+	beforeEdit, err := os.ReadFile(store.storyPath(story.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := second.Narrative
 	result, err := store.UpdateTurnNarrative(story.ID, UpdateTurnNarrativeRequest{
 		BranchID:          "main",
-		TurnID:            first.ID,
+		TurnID:            second.ID,
 		Narrative:         "  朋友住在 4 楼 403 室。\r\n  门牌上贴着姓名。  ",
 		ExpectedNarrative: &expected,
 	})
@@ -50,11 +60,18 @@ func TestUpdateTurnNarrativePreservesStoryPathAndInvalidatesCoveredCompaction(t 
 	if !result.ContextCompactionInvalidated {
 		t.Fatal("editing compacted prose must invalidate the stale checkpoint")
 	}
-	if result.Turn.ID != first.ID || result.Turn.Narrative != "朋友住在 4 楼 403 室。\n  门牌上贴着姓名。" {
+	if result.Turn.ID != second.ID || result.Turn.Narrative != "朋友住在 4 楼 403 室。\n  门牌上贴着姓名。" {
 		t.Fatalf("unexpected updated turn: %#v", result.Turn)
 	}
-	if result.Turn.Thinking != first.Thinking || len(result.Turn.DisplayEvents) != 1 || result.Turn.DisplayEvents[0].ID != "image-1" {
+	if result.Turn.Thinking != second.Thinking || len(result.Turn.DisplayEvents) != 1 || result.Turn.DisplayEvents[0].ID != "image-1" {
 		t.Fatalf("non-narrative turn data changed: %#v", result.Turn)
+	}
+	afterEdit, err := os.ReadFile(store.storyPath(story.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(afterEdit, beforeEdit) {
+		t.Fatal("narrative revision rewrote canonical story history")
 	}
 
 	snapshot, err := store.Snapshot(story.ID, "main")
@@ -64,7 +81,7 @@ func TestUpdateTurnNarrativePreservesStoryPathAndInvalidatesCoveredCompaction(t 
 	if len(snapshot.Turns) != 2 || snapshot.Turns[0].ID != first.ID || snapshot.Turns[1].ID != second.ID {
 		t.Fatalf("story path changed after prose-only edit: %#v", snapshot.Turns)
 	}
-	if snapshot.Turns[0].Narrative != result.Turn.Narrative || snapshot.Turns[1].Narrative != second.Narrative {
+	if snapshot.Turns[0].Narrative != first.Narrative || snapshot.Turns[1].Narrative != result.Turn.Narrative {
 		t.Fatalf("unexpected persisted narratives: %#v", snapshot.Turns)
 	}
 	if snapshot.ContextCompaction != nil {
