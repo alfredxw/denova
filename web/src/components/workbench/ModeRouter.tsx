@@ -621,6 +621,7 @@ export function ModeRouter(props: ModeRouterProps) {
                   <FilePreview path={selectedFile || activeTab.path} content={fileContent} />
                 ) : (
                   <MarkdownEditor
+                    key={selectedFile ?? 'empty'}
                     workspace={workspace}
                     fileName={selectedFile}
                     content={fileContent}
