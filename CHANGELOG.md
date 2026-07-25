@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- 修复从资料库或方案预设返回写作界面并同时恢复创作 Agent 时，作品目录实际折叠但控制按钮仍显示为展开的问题；目录现在会恢复最后一个有效宽度，且瞬时零宽度不会覆盖已保存布局。
+- Fixed the project outline collapsing to zero width while its toggle still appeared active when returning from Lore or Presets and restoring the Writing Agent at the same time. The outline now restores its last valid width without persisting transient zero-width layouts.
+
 ### Changed
 
 - 资料库角色图片在调用图像模型前，先通过图像 Agent 所配置的语言模型提炼角色设定，只保留外貌、性格、服装配饰和其他可视特点；最终图片 Prompt 不再包含原始角色正文或“角色资料卡”字样。
