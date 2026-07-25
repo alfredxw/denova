@@ -50,12 +50,12 @@ func (e *StreamEncoder) WriteEvent(ev appsvc.AgentEvent) error {
 		if err := e.closeReasoning(); err != nil {
 			return err
 		}
-		return e.writeTextDelta(readString(data, "content"), meta)
+		return e.writeTextDelta(readString(data, "content"), meta, readString(data, "display_segment_id"))
 	case "thinking":
 		if err := e.closeText(); err != nil {
 			return err
 		}
-		return e.writeReasoningDelta(readString(data, "content"), meta)
+		return e.writeReasoningDelta(readString(data, "content"), meta, readString(data, "display_segment_id"))
 	case "tool_call":
 		if err := e.closeOpenContent(); err != nil {
 			return err
@@ -165,13 +165,22 @@ func (e *StreamEncoder) ensureStarted(ev appsvc.AgentEvent) error {
 	return e.writeChunk(start)
 }
 
-func (e *StreamEncoder) writeTextDelta(delta string, providerMetadata map[string]any) error {
+func (e *StreamEncoder) writeTextDelta(delta string, providerMetadata map[string]any, segmentID string) error {
 	if delta == "" {
 		return nil
 	}
+	if e.textID != "" && segmentID != "" && e.textID != segmentID {
+		if err := e.closeText(); err != nil {
+			return err
+		}
+	}
 	if e.textID == "" {
-		e.textSeq++
-		e.textID = fmt.Sprintf("text-%d", e.textSeq)
+		if segmentID != "" {
+			e.textID = segmentID
+		} else {
+			e.textSeq++
+			e.textID = fmt.Sprintf("text-%d", e.textSeq)
+		}
 		start := map[string]any{"type": "text-start", "id": e.textID}
 		if len(providerMetadata) > 0 {
 			start["providerMetadata"] = providerMetadata
@@ -187,13 +196,22 @@ func (e *StreamEncoder) writeTextDelta(delta string, providerMetadata map[string
 	return e.writeChunk(chunk)
 }
 
-func (e *StreamEncoder) writeReasoningDelta(delta string, providerMetadata map[string]any) error {
+func (e *StreamEncoder) writeReasoningDelta(delta string, providerMetadata map[string]any, segmentID string) error {
 	if delta == "" {
 		return nil
 	}
+	if e.reasonID != "" && segmentID != "" && e.reasonID != segmentID {
+		if err := e.closeReasoning(); err != nil {
+			return err
+		}
+	}
 	if e.reasonID == "" {
-		e.reasonSeq++
-		e.reasonID = fmt.Sprintf("reasoning-%d", e.reasonSeq)
+		if segmentID != "" {
+			e.reasonID = segmentID
+		} else {
+			e.reasonSeq++
+			e.reasonID = fmt.Sprintf("reasoning-%d", e.reasonSeq)
+		}
 		start := map[string]any{"type": "reasoning-start", "id": e.reasonID}
 		if len(providerMetadata) > 0 {
 			start["providerMetadata"] = providerMetadata
@@ -381,6 +399,12 @@ func eventDataMap(data any) map[string]any {
 
 func providerMetadataFromData(data map[string]any) map[string]any {
 	meta := messageMetadataFromData(data)
+	if segmentID := readString(data, "display_segment_id"); segmentID != "" {
+		if meta == nil {
+			meta = map[string]any{}
+		}
+		meta["display_segment_id"] = segmentID
+	}
 	if len(meta) == 0 {
 		return nil
 	}

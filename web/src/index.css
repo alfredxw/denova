@@ -1907,6 +1907,25 @@ html[data-nova-motion="off"] *::after {
   padding: 0;
 }
 
+.chat-agent-message a {
+  color: var(--nova-accent-blue);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-decoration-thickness: from-font;
+  text-underline-offset: 0.16em;
+  transition: color 140ms ease;
+}
+
+.chat-agent-message a:hover {
+  color: var(--nova-text);
+}
+
+.chat-agent-message a:focus-visible {
+  border-radius: 2px;
+  outline: 1px solid var(--nova-accent-blue);
+  outline-offset: 2px;
+}
+
 .chat-agent-message .nova-chat-image-button {
   display: block;
   max-width: 100%;

@@ -8,6 +8,7 @@ export interface AgentMessageMetadata {
   display_role?: ChatMessage['role']
   history_type?: string
   run_id?: string
+  display_segment_id?: string
   agent_kind?: string
   agent_name?: string
   root_agent_name?: string
@@ -225,30 +226,60 @@ function normalizeRepeatedAgentUIMessageIDs(messages: AgentUIMessage[]) {
   return normalized
 }
 
-const messagePartDedupeKeysCache = new WeakMap<
+interface AgentUIPartDedupeIdentity {
+  primaryKey: string
+  legacyContentKey?: string
+  stableContentKey?: string
+}
+
+interface AgentUIPartLocation {
+  messageIndex: number
+  partIndex: number
+}
+
+interface AgentUIContentFallbackLocation {
+  location: AgentUIPartLocation
+  stableContentKey: string
+}
+
+const messagePartDedupeIdentitiesCache = new WeakMap<
   AgentUIMessage,
   {
     metadata: AgentUIMessage['metadata']
     parts: AgentUIMessage['parts']
-    keys: string[]
+    identities: AgentUIPartDedupeIdentity[]
   }
 >()
 
 function normalizeRepeatedAgentUIParts(messages: AgentUIMessage[]) {
   const normalized = [...messages]
-  const locationByKey = new Map<string, { messageIndex: number; partIndex: number }>()
+  const locationByKey = new Map<string, AgentUIPartLocation>()
+  const contentFallbackByKey = new Map<string, AgentUIContentFallbackLocation | null>()
   const removedByMessage = new Map<number, Set<number>>()
 
   messages.forEach((message, messageIndex) => {
-    const dedupeKeys = agentUIPartDedupeKeys(message)
+    const identities = agentUIPartDedupeIdentities(message)
     message.parts.forEach((part, partIndex) => {
-      const key = dedupeKeys[partIndex]
-      if (!key) return
-      const existing = locationByKey.get(key)
+      const identity = identities[partIndex]
+      if (!identity.primaryKey) return
+      let existing = locationByKey.get(identity.primaryKey)
+      if (!existing && identity.legacyContentKey) {
+        const fallback = contentFallbackByKey.get(identity.legacyContentKey)
+        if (
+          fallback &&
+          (!identity.stableContentKey || !fallback.stableContentKey || identity.stableContentKey === fallback.stableContentKey)
+        ) {
+          existing = fallback.location
+        }
+      }
       if (!existing) {
-        locationByKey.set(key, { messageIndex, partIndex })
+        const location = { messageIndex, partIndex }
+        locationByKey.set(identity.primaryKey, location)
+        rememberContentFallback(contentFallbackByKey, identity, location)
         return
       }
+      locationByKey.set(identity.primaryKey, existing)
+      rememberContentFallback(contentFallbackByKey, identity, existing)
       const existingMessage = normalized[existing.messageIndex]
       const existingPart = existingMessage.parts[existing.partIndex]
       const mergedPart = mergeDuplicateAgentUIPart(existingPart, part)
@@ -280,49 +311,83 @@ function normalizeRepeatedAgentUIParts(messages: AgentUIMessage[]) {
     .filter((message) => message.parts.length > 0)
 }
 
-function agentUIPartDedupeKeys(message: AgentUIMessage) {
-  const cached = messagePartDedupeKeysCache.get(message)
-  if (cached && cached.metadata === message.metadata && cached.parts === message.parts) return cached.keys
-  const keys = message.parts.map((part) => agentUIPartDedupeKey(message, part))
-  messagePartDedupeKeysCache.set(message, {
-    metadata: message.metadata,
-    parts: message.parts,
-    keys,
-  })
-  return keys
+function rememberContentFallback(
+  fallbacks: Map<string, AgentUIContentFallbackLocation | null>,
+  identity: AgentUIPartDedupeIdentity,
+  location: AgentUIPartLocation,
+) {
+  if (!identity.legacyContentKey) return
+  const current = fallbacks.get(identity.legacyContentKey)
+  if (current === null) return
+  if (!current) {
+    fallbacks.set(identity.legacyContentKey, {
+      location,
+      stableContentKey: identity.stableContentKey || '',
+    })
+    return
+  }
+  if (current.location.messageIndex !== location.messageIndex || current.location.partIndex !== location.partIndex) {
+    fallbacks.set(identity.legacyContentKey, null)
+    return
+  }
+  if (!current.stableContentKey && identity.stableContentKey) {
+    fallbacks.set(identity.legacyContentKey, { location, stableContentKey: identity.stableContentKey })
+  }
 }
 
-function agentUIPartDedupeKey(message: AgentUIMessage, part: AgentUIMessage['parts'][number]) {
+function agentUIPartDedupeIdentities(message: AgentUIMessage) {
+  const cached = messagePartDedupeIdentitiesCache.get(message)
+  if (cached && cached.metadata === message.metadata && cached.parts === message.parts) return cached.identities
+  const identities = message.parts.map((part) => agentUIPartDedupeIdentity(message, part))
+  messagePartDedupeIdentitiesCache.set(message, {
+    metadata: message.metadata,
+    parts: message.parts,
+    identities,
+  })
+  return identities
+}
+
+function agentUIPartDedupeIdentity(
+  message: AgentUIMessage,
+  part: AgentUIMessage['parts'][number],
+): AgentUIPartDedupeIdentity {
   const raw = part as Record<string, unknown>
   const type = readString(raw.type)
-  if (!type) return ''
+  if (!type) return { primaryKey: '' }
   const metadata = agentPartMetadata(message, raw)
   const runID = firstNonEmpty(metadata.run_id || '', readString(objectData(raw.data).run_id))
 
   if (type === 'dynamic-tool' || type.startsWith('tool-')) {
     const toolCallID = readString(raw.toolCallId)
-    if (!toolCallID) return ''
-    return scopedAgentPartKey(runID, `tool:${toolCallID}`)
+    if (!toolCallID) return { primaryKey: '' }
+    return { primaryKey: scopedAgentPartKey(runID, `tool:${toolCallID}`) }
   }
 
   if (isAgentDataPartType(type)) {
     const data = objectData(raw.data)
     const id = firstNonEmpty(readString(raw.id), readString(data.id))
-    if (id) return scopedAgentPartKey(runID, `data:${type}:${id}`)
+    if (id) return { primaryKey: scopedAgentPartKey(runID, `data:${type}:${id}`) }
     if (runID && (type === 'data-agent-token-usage' || type === 'data-agent-context-compaction')) {
-      return `run:${runID}:data:${type}`
+      return { primaryKey: `run:${runID}:data:${type}` }
     }
-    return ''
+    return { primaryKey: '' }
   }
 
   if ((type === 'text' || type === 'reasoning') && runID) {
     const text = readString(raw.text).trim()
-    if (!text) return ''
+    if (!text) return { primaryKey: '' }
     const fingerprint = type === 'reasoning' ? contentPrefixFingerprint(text) : textFingerprint(text)
-    return `run:${runID}:content:${type}:${fingerprint}`
+    const legacyContentKey = `run:${runID}:content:${type}:${fingerprint}`
+    const segmentID = firstNonEmpty(metadata.display_segment_id || '', readString(raw.id))
+    const stableContentKey = segmentID ? `run:${runID}:content:${type}:id:${segmentID}` : ''
+    return {
+      primaryKey: stableContentKey || legacyContentKey,
+      legacyContentKey,
+      stableContentKey,
+    }
   }
 
-  return ''
+  return { primaryKey: '' }
 }
 
 function agentPartMetadata(message: AgentUIMessage, raw: Record<string, unknown>): AgentMessageMetadata {
@@ -340,6 +405,7 @@ function agentMetadataFromProvider(metadata: unknown): AgentMessageMetadata {
     agent && typeof agent === 'object' && !Array.isArray(agent) ? (agent as Record<string, unknown>) : (metadata as Record<string, unknown>)
   return {
     run_id: readString(raw.run_id) || undefined,
+    display_segment_id: readString(raw.display_segment_id) || undefined,
     agent_kind: readString(raw.agent_kind) || undefined,
     agent_name: readString(raw.agent_name) || undefined,
     root_agent_name: readString(raw.root_agent_name) || undefined,
@@ -364,6 +430,10 @@ function mergeDuplicateAgentUIPart(existing: AgentUIMessage['parts'][number], in
     const incomingStatus = readString(objectData(incomingRaw.data).status)
     const existingStatus = readString(objectData(existingRaw.data).status)
     return dataPartStatusRank(incomingStatus) >= dataPartStatusRank(existingStatus) ? incoming : existing
+  }
+  if ((type === 'text' || type === 'reasoning') && !readString(incomingRaw.id)) {
+    const existingID = readString(existingRaw.id)
+    if (existingID) return { ...incomingRaw, id: existingID } as AgentUIMessage['parts'][number]
   }
   return incoming
 }

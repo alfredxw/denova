@@ -282,8 +282,8 @@ func (s *Session) AppendDisplayEventContent(id, role, delta string) error {
 	})
 }
 
-// FlushDisplayEventContent commits the final sub-agent display tail at a run
-// boundary without forcing one fsync per streamed token.
+// FlushDisplayEventContent commits the final streamed display tail at a part
+// boundary without forcing one fsync per token.
 func (s *Session) FlushDisplayEventContent(id, role string) error {
 	id = strings.TrimSpace(id)
 	role = strings.TrimSpace(role)

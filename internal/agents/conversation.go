@@ -615,6 +615,13 @@ func (c *SessionConversation) AppendDisplayToolArgs(id, name, delta string) erro
 	return c.session.AppendDisplayToolArgs(id, name, delta)
 }
 
+func (c *SessionConversation) AppendDisplayEventContent(id, role, delta string) error {
+	if c == nil || c.session == nil {
+		return fmt.Errorf("会话不存在")
+	}
+	return c.session.AppendDisplayEventContent(id, role, delta)
+}
+
 func (c *SessionConversation) FlushDisplayEventContent(id, role string) error {
 	if c == nil || c.session == nil {
 		return fmt.Errorf("会话不存在")

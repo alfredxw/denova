@@ -37,6 +37,26 @@ func (c *singleInstructionConversation) AppendDisplayToolArgs(id, name, delta st
 	return nil
 }
 
+func (c *singleInstructionConversation) AppendDisplayEventContent(id, role, delta string) error {
+	if c == nil || delta == "" {
+		return nil
+	}
+	if appender, ok := c.display.(displayEventContentAppender); ok {
+		return appender.AppendDisplayEventContent(id, role, delta)
+	}
+	return nil
+}
+
+func (c *singleInstructionConversation) FlushDisplayEventContent(id, role string) error {
+	if c == nil {
+		return nil
+	}
+	if flusher, ok := c.display.(displayEventContentFlusher); ok {
+		return flusher.FlushDisplayEventContent(id, role)
+	}
+	return nil
+}
+
 func (c *singleInstructionConversation) UpdateDisplayToolStatus(id, name, status string) error {
 	if c == nil {
 		return nil

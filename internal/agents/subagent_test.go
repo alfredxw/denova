@@ -266,7 +266,7 @@ func TestSubAgentStreamingDoesNotAppendParentAssistantContent(t *testing.T) {
 
 func TestDisplayRecorderPersistsSubAgentAssistantChunks(t *testing.T) {
 	appender := &fakeDisplayAppender{}
-	recorder := newDisplayEventRecorder(fakeDisplayConversation{appender: appender})
+	recorder := newDisplayEventRecorder(fakeDisplayConversation{appender: appender}, displayEventRecorderOptions{})
 	meta := agentEventMetadata{
 		RunID:             "run-1",
 		AgentName:         "researcher",

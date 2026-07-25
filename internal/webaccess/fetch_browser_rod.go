@@ -15,6 +15,7 @@ import (
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
+	rodstealth "github.com/go-rod/stealth"
 )
 
 const (
@@ -54,7 +55,30 @@ func (renderer *rodBrowserRenderer) Render(ctx context.Context, target *url.URL)
 	if err != nil {
 		return renderedPage{}, err
 	}
+	standardPage, standardErr := renderer.renderAttempt(ctx, browser, target, browserRenderModeStandard)
+	if standardErr == nil && !browserPageNeedsStealth(standardPage) {
+		return standardPage, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return renderedPage{}, err
+	}
+	if standardErr != nil {
+		log.Printf("[webaccess] standard Rod render failed; trying stealth url=%s error=%v", safeURLForLog(target), standardErr)
+	} else {
+		log.Printf("[webaccess] standard Rod render encountered an access challenge; trying stealth url=%s status=%d", safeURLForLog(target), standardPage.HTTPStatus)
+	}
+	stealthPage, stealthErr := renderer.renderAttempt(ctx, browser, target, browserRenderModeStealth)
+	if stealthErr == nil {
+		return stealthPage, nil
+	}
+	if standardErr != nil {
+		return renderedPage{}, fmt.Errorf("standard Rod render failed: %v; go-rod/stealth fallback failed: %w", standardErr, stealthErr)
+	}
+	standardPage.StealthFallbackError = stealthErr
+	return standardPage, nil
+}
 
+func (renderer *rodBrowserRenderer) renderAttempt(ctx context.Context, browser *rod.Browser, target *url.URL, mode browserRenderMode) (renderedPage, error) {
 	incognito, err := browser.Incognito()
 	if err != nil {
 		return renderedPage{}, fmt.Errorf("create isolated browser context: %w", err)
@@ -65,9 +89,14 @@ func (renderer *rodBrowserRenderer) Render(ctx context.Context, target *url.URL)
 		}
 	}()
 
-	basePage, err := incognito.Page(proto.TargetCreateTarget{})
+	var basePage *rod.Page
+	if mode == browserRenderModeStealth {
+		basePage, err = rodstealth.Page(incognito)
+	} else {
+		basePage, err = incognito.Page(proto.TargetCreateTarget{})
+	}
 	if err != nil {
-		return renderedPage{}, fmt.Errorf("create browser page: %w", err)
+		return renderedPage{}, fmt.Errorf("create %s browser page: %w", mode, err)
 	}
 	defer func() {
 		if closeErr := basePage.Close(); closeErr != nil {
@@ -107,7 +136,7 @@ func (renderer *rodBrowserRenderer) Render(ctx context.Context, target *url.URL)
 		<-routerDone
 	}()
 
-	log.Printf("[webaccess] rendering public page with Rod url=%s", safeURLForLog(target))
+	log.Printf("[webaccess] rendering public page with Rod mode=%s url=%s", mode, safeURLForLog(target))
 	waitForNavigation := page.WaitNavigation(proto.PageLifecycleEventNameDOMContentLoaded)
 	if err := page.Navigate(target.String()); err != nil {
 		return renderedPage{}, fmt.Errorf("navigate browser page: %w", err)
@@ -142,7 +171,11 @@ func (renderer *rodBrowserRenderer) Render(ctx context.Context, target *url.URL)
 	if statusCode == 0 {
 		statusCode = http.StatusOK
 	}
-	return renderedPage{FinalURL: finalURL, HTML: html, HTTPStatus: statusCode}, nil
+	return renderedPage{FinalURL: finalURL, HTML: html, HTTPStatus: statusCode, RenderMode: mode}, nil
+}
+
+func browserPageNeedsStealth(page renderedPage) bool {
+	return browserStatusIndicatesAccessChallenge(page.HTTPStatus) || isLikelyBrowserChallengeDocument(page.HTML)
 }
 
 func (renderer *rodBrowserRenderer) ensureBrowser(ctx context.Context) (*rod.Browser, error) {

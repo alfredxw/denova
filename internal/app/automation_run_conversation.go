@@ -62,6 +62,14 @@ func (c *automationRunConversation) UpdateDisplayToolArgs(id, name, delta string
 	return c.base.AppendDisplayToolArgs(id, name, delta)
 }
 
+func (c *automationRunConversation) AppendDisplayEventContent(id, role, delta string) error {
+	return c.base.AppendDisplayEventContent(id, role, delta)
+}
+
+func (c *automationRunConversation) FlushDisplayEventContent(id, role string) error {
+	return c.base.FlushDisplayEventContent(id, role)
+}
+
 func (c *automationRunConversation) UpdateDisplayToolResult(id, name, status, result string) error {
 	return c.base.UpdateDisplayToolResult(id, name, status, result)
 }

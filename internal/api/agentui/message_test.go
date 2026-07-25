@@ -58,6 +58,35 @@ func TestMessagesFromHistoryConvertsLegacyEntries(t *testing.T) {
 	}
 }
 
+func TestMessagesFromHistoryPreservesDisplaySegmentIDsInTextMetadata(t *testing.T) {
+	messages := MessagesFromHistory([]session.HistoryEntry{
+		{ID: "run-1-display-001-thinking", DisplaySegmentID: "run-1-display-001-thinking", Role: "thinking", Content: "分析", RunID: "run-1"},
+		{ID: "run-1-display-002-assistant", DisplaySegmentID: "run-1-display-002-assistant", Role: "assistant", Content: "正文", RunID: "run-1"},
+	})
+
+	want := []string{"run-1-display-001-thinking", "run-1-display-002-assistant"}
+	if len(messages) != len(want) {
+		t.Fatalf("messages = %#v", messages)
+	}
+	for index, id := range want {
+		if messages[index].Metadata["display_segment_id"] != id {
+			t.Fatalf("message %d metadata = %#v, want segment id %q", index, messages[index].Metadata, id)
+		}
+	}
+}
+
+func TestMessagesFromHistoryDoesNotTreatCanonicalMessageIDAsDisplaySegmentID(t *testing.T) {
+	messages := MessagesFromHistory([]session.HistoryEntry{
+		{Type: "message", ID: "canonical-message-1", Role: "assistant", Content: "完整回复", RunID: "run-1"},
+	})
+	if len(messages) != 1 {
+		t.Fatalf("messages = %#v", messages)
+	}
+	if segmentID := messages[0].Metadata["display_segment_id"]; segmentID != nil {
+		t.Fatalf("canonical message ID leaked into display segment identity: %#v", messages[0].Metadata)
+	}
+}
+
 func assertMessagePartType(t *testing.T, message Message, role, partType string) {
 	t.Helper()
 	if message.Role != role {

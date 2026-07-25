@@ -78,15 +78,16 @@ func messageFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry, index int) (
 			Parts:    []map[string]any{textPart(entry.Content, "done", nil)},
 		}, true
 	case "thinking":
+		part := map[string]any{
+			"type":  "reasoning",
+			"text":  entry.Content,
+			"state": "done",
+		}
 		return Message{
 			ID:       historyMessageID(entry, index),
 			Role:     "assistant",
 			Metadata: metadataFromHistoryEntry(entry),
-			Parts: []map[string]any{{
-				"type":  "reasoning",
-				"text":  entry.Content,
-				"state": "done",
-			}},
+			Parts:    []map[string]any{part},
 		}, true
 	case "tool_call":
 		return Message{
@@ -187,6 +188,9 @@ func metadataFromHistoryEntry(entry appsvc.AgentSessionHistoryEntry) map[string]
 	}
 	if entry.Role != "" {
 		metadata["display_role"] = entry.Role
+	}
+	if entry.DisplaySegmentID != "" && (entry.Role == "assistant" || entry.Role == "thinking") {
+		metadata["display_segment_id"] = entry.DisplaySegmentID
 	}
 	if len(metadata) == 0 {
 		return nil

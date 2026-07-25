@@ -43,7 +43,8 @@ Do not use this workflow for a stable fact already known with high confidence or
 ## Response
 
 - Answer the user's actual question first and use the user's language.
-- Put Markdown citations using each actual source URL next to the claims they support. Never cite a search-result page, provider label, invented URL, or a source that does not support the claim.
+- When the answer relies on facts from a successful `web_fetch` and the output protocol permits Markdown, put a claim-adjacent `[source title](final_url)` link at the end of the same paragraph or list item. Use the fetched title and `final_url`; if the title is empty, use the publisher or hostname as the label. Follow an explicit user request for a different citation format or no links.
+- Only cite an actual source URL that supports the claim. Never cite a failed fetch as evidence, a search-result page, provider label, invented or rewritten URL, or a source that does not support the claim.
 - For recommendations or comparisons, state the criteria and tradeoffs. For time-sensitive answers, state the as-of date or source dates.
 - Mention material uncertainty, conflicting evidence, inaccessible sources, and provider warnings concisely. Say what could not be verified rather than filling gaps with plausible text.
 - Quote sparingly, paraphrase faithfully, and do not reproduce substantial copyrighted text.

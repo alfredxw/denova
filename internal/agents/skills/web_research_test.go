@@ -28,6 +28,9 @@ func TestBuiltinWebResearchSkillDefinesVerifiedResearchWorkflow(t *testing.T) {
 		"primary sources",
 		"independent sources",
 		"actual source URL",
+		"successful `web_fetch`",
+		"same paragraph or list item",
+		"[source title](final_url)",
 	} {
 		if !strings.Contains(skill.Content, required) {
 			t.Fatalf("web-research missing required instruction %q", required)

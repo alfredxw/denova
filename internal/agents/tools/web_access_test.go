@@ -57,6 +57,31 @@ func TestNewWebAccessToolsFillsOmittedRuntimeLimits(t *testing.T) {
 	}
 }
 
+func TestWebAccessToolsExposeEvidenceCitationContract(t *testing.T) {
+	registered, err := buildWebAccessTools(stubWebAccessClient{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range registered {
+		info, err := tool.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, contract := range []string{
+			"discovery only",
+			"successful web_fetch",
+			"same paragraph or list item",
+			"[source title](final_url)",
+			"Never invent",
+			"输出协议允许 Markdown",
+		} {
+			if !strings.Contains(info.Desc, contract) {
+				t.Fatalf("%s description is missing citation contract %q: %s", info.Name, contract, info.Desc)
+			}
+		}
+	}
+}
+
 func TestWebFetchToolReturnsStructuredRecoveryResult(t *testing.T) {
 	want := webaccess.FetchResponse{
 		Status:          webaccess.FetchStatusBlocked,

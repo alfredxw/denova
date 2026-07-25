@@ -103,6 +103,27 @@ func TestStreamEncoderMapsAgentEventsToUIStream(t *testing.T) {
 	assertStartMetadata(t, chunks[0])
 }
 
+func TestStreamEncoderUsesPersistedDisplaySegmentIDs(t *testing.T) {
+	var out bytes.Buffer
+	encoder := NewStreamEncoder(&out)
+	for _, event := range []agents.Event{
+		{Type: "chunk", Data: map[string]any{"content": "第一", "run_id": "run-order", "display_segment_id": "run-order-display-001-assistant"}},
+		{Type: "chunk", Data: map[string]any{"content": "段", "run_id": "run-order", "display_segment_id": "run-order-display-001-assistant"}},
+		{Type: "thinking", Data: map[string]any{"content": "检查", "run_id": "run-order", "display_segment_id": "run-order-display-002-thinking"}},
+		{Type: "done", Data: map[string]any{}},
+	} {
+		if err := encoder.WriteEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	chunks, _ := parseUIStreamChunks(t, out.String())
+	assertChunk(t, chunks, "text-start", "id", "run-order-display-001-assistant")
+	assertChunk(t, chunks, "reasoning-start", "id", "run-order-display-002-thinking")
+	assertChunkAgentMetadata(t, chunks, "text-start", "display_segment_id", "run-order-display-001-assistant")
+	assertChunkAgentMetadata(t, chunks, "reasoning-start", "display_segment_id", "run-order-display-002-thinking")
+}
+
 func parseUIStreamChunks(t *testing.T, raw string) ([]map[string]any, bool) {
 	t.Helper()
 	chunks := []map[string]any{}
@@ -145,6 +166,21 @@ func assertChunk(t *testing.T, chunks []map[string]any, chunkType, key, value st
 		}
 	}
 	t.Fatalf("missing chunk type=%s %s=%s in %#v", chunkType, key, value, chunks)
+}
+
+func assertChunkAgentMetadata(t *testing.T, chunks []map[string]any, chunkType, key, value string) {
+	t.Helper()
+	for _, chunk := range chunks {
+		if chunk["type"] != chunkType {
+			continue
+		}
+		provider, _ := chunk["providerMetadata"].(map[string]any)
+		agentMeta, _ := provider["agent"].(map[string]any)
+		if agentMeta[key] == value {
+			return
+		}
+	}
+	t.Fatalf("missing chunk type=%s providerMetadata.agent.%s=%s in %#v", chunkType, key, value, chunks)
 }
 
 func assertStartMetadata(t *testing.T, chunk map[string]any) {

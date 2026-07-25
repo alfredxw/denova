@@ -457,9 +457,8 @@ describe('agent-ui', () => {
         parts: [
           {
             type: 'reasoning',
-            id: 'reasoning-1',
             text: '先分析',
-            providerMetadata: { agent: { run_id: 'run-1' } },
+            providerMetadata: { agent: { run_id: 'run-1', display_segment_id: 'reasoning-1' } },
           },
           {
             type: 'dynamic-tool',
@@ -475,9 +474,8 @@ describe('agent-ui', () => {
           },
           {
             type: 'text',
-            id: 'text-1',
             text: '继续生成',
-            providerMetadata: { agent: { run_id: 'run-1' } },
+            providerMetadata: { agent: { run_id: 'run-1', display_segment_id: 'text-1' } },
           },
         ],
       },
@@ -559,12 +557,54 @@ describe('agent-ui', () => {
         id: 'replay-thinking',
         role: 'assistant',
         metadata: { run_id: 'run-1' },
-        parts: [{ type: 'reasoning', id: 'reasoning-1', text: `${base}继续补充。` }],
+        parts: [
+          {
+            type: 'reasoning',
+            text: `${base}继续补充。`,
+            providerMetadata: { agent: { run_id: 'run-1', display_segment_id: 'reasoning-1' } },
+          },
+        ],
       },
     ] as AgentUIMessage[])
 
     expect(messages).toHaveLength(1)
     expect(messages[0].parts).toEqual([expect.objectContaining({ type: 'reasoning', text: `${base}继续补充。` })])
+  })
+
+  it('同一 run 中内容相同但稳定 ID 不同的正文和 reasoning 保持为独立分段', () => {
+    const messages = normalizeAgentUIMessages([
+      {
+        id: 'thinking-1',
+        role: 'assistant',
+        metadata: { run_id: 'run-1', display_segment_id: 'segment-thinking-1' },
+        parts: [{ type: 'reasoning', text: '再次检查。' }],
+      },
+      {
+        id: 'text-1',
+        role: 'assistant',
+        metadata: { run_id: 'run-1', display_segment_id: 'segment-text-1' },
+        parts: [{ type: 'text', text: '继续。' }],
+      },
+      {
+        id: 'thinking-2',
+        role: 'assistant',
+        metadata: { run_id: 'run-1', display_segment_id: 'segment-thinking-2' },
+        parts: [{ type: 'reasoning', text: '再次检查。' }],
+      },
+      {
+        id: 'text-2',
+        role: 'assistant',
+        metadata: { run_id: 'run-1', display_segment_id: 'segment-text-2' },
+        parts: [{ type: 'text', text: '继续。' }],
+      },
+    ] as AgentUIMessage[])
+
+    expect(messages.map((message) => message.metadata?.display_segment_id)).toEqual([
+      'segment-thinking-1',
+      'segment-text-1',
+      'segment-thinking-2',
+      'segment-text-2',
+    ])
   })
 })
 

@@ -178,6 +178,24 @@ func (s *Session) History() []HistoryEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Root assistant display segments preserve the exact interleaving of prose,
+	// reasoning, and tools. Suppress the canonical display copy only when those
+	// segments reconstruct it completely; otherwise retain the canonical fallback.
+	segmentedAssistantContentByRun := make(map[string]*strings.Builder)
+	for _, record := range s.records {
+		if record.kind != historyTypeDisplay || record.display == nil || record.display.Role != "assistant" || record.display.SubAgent {
+			continue
+		}
+		if runID := strings.TrimSpace(record.display.RunID); runID != "" {
+			content := segmentedAssistantContentByRun[runID]
+			if content == nil {
+				content = &strings.Builder{}
+				segmentedAssistantContentByRun[runID] = content
+			}
+			content.WriteString(record.display.Content)
+		}
+	}
+
 	result := make([]HistoryEntry, 0, len(s.records))
 	for _, record := range s.records {
 		switch record.kind {
@@ -186,6 +204,11 @@ func (s *Session) History() []HistoryEntry {
 		case historyTypeMessage:
 			if record.message == nil {
 				continue
+			}
+			if record.message.Role == agent.Assistant {
+				if segmented := segmentedAssistantContentByRun[strings.TrimSpace(record.messageMetadata.RunID)]; segmented != nil && segmented.String() == record.message.Content {
+					continue
+				}
 			}
 			result = append(result, HistoryEntry{
 				Type:              historyTypeMessage,
@@ -216,6 +239,7 @@ func (s *Session) History() []HistoryEntry {
 			result = append(result, HistoryEntry{
 				Type:                 historyTypeMessage,
 				ID:                   record.display.ID,
+				DisplaySegmentID:     record.display.ID,
 				Role:                 record.display.Role,
 				Content:              record.display.Content,
 				Name:                 record.display.Name,

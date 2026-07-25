@@ -269,6 +269,85 @@ func TestDisplayEventsPersistOutsideEffectiveContext(t *testing.T) {
 	}
 }
 
+func TestOrderedAssistantDisplaySegmentsReplaceAggregatedAssistantInHistory(t *testing.T) {
+	dir := t.TempDir()
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("ordered-display")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.Append(agent.UserMessage("继续创作")); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range []DisplayEvent{
+		{ID: "run-order-thinking-1", Role: "thinking", Content: "先分析。", RunID: "run-order"},
+		{ID: "run-order-assistant-1", Role: "assistant", Content: "第一段正文。", RunID: "run-order"},
+		{ID: "run-order-thinking-2", Role: "thinking", Content: "再检查。", RunID: "run-order"},
+		{ID: "run-order-assistant-2", Role: "assistant", Content: "第二段正文。", RunID: "run-order"},
+	} {
+		if err := sess.AppendDisplayEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := sess.AppendWithMetadata(agent.AssistantMessage("第一段正文。第二段正文。", nil), MessageMetadata{RunID: "run-order"}); err != nil {
+		t.Fatal(err)
+	}
+
+	reloadedStore, err := NewStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := reloadedStore.Get("ordered-display")
+	if err != nil {
+		t.Fatal(err)
+	}
+	history := reloaded.History()
+	wantRoles := []string{"user", "thinking", "assistant", "thinking", "assistant"}
+	if len(history) != len(wantRoles) {
+		t.Fatalf("history = %#v, want roles %v", history, wantRoles)
+	}
+	for index, role := range wantRoles {
+		if history[index].Role != role {
+			t.Fatalf("history[%d] = %#v, want role %q", index, history[index], role)
+		}
+	}
+	for _, index := range []int{1, 2, 3, 4} {
+		if history[index].DisplaySegmentID == "" || history[index].DisplaySegmentID != history[index].ID {
+			t.Fatalf("history[%d] lost display segment identity: %#v", index, history[index])
+		}
+	}
+	if effective := reloaded.GetEffectiveMessages(); len(effective) != 2 || effective[1].Content != "第一段正文。第二段正文。" {
+		t.Fatalf("ordered display segments must not change model context: %#v", effective)
+	}
+}
+
+func TestIncompleteAssistantDisplaySegmentsDoNotHideCanonicalHistory(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := store.GetOrCreate("incomplete-display")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendDisplayEvent(DisplayEvent{
+		ID: "run-incomplete-display-001-assistant", Role: "assistant", Content: "第一段。", RunID: "run-incomplete",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := sess.AppendWithMetadata(agent.AssistantMessage("第一段。第二段。", nil), MessageMetadata{RunID: "run-incomplete"}); err != nil {
+		t.Fatal(err)
+	}
+
+	history := sess.History()
+	if len(history) != 2 || history[0].Content != "第一段。" || history[1].Content != "第一段。第二段。" {
+		t.Fatalf("incomplete display projection must retain canonical fallback: %#v", history)
+	}
+}
+
 func TestContextMessagesPersistInEffectiveContextButNotHistory(t *testing.T) {
 	dir := t.TempDir()
 	store, err := NewStore(dir)

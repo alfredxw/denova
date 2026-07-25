@@ -84,6 +84,166 @@ func TestDisplayRecorderPersistsReclassifiedInteractiveContentAsThinking(t *test
 	}
 }
 
+func TestDisplayRecorderPreservesAlternatingThinkingAndAssistantSegments(t *testing.T) {
+	appender := &displayRecorderTestAppender{}
+	recorder := &displayEventRecorder{
+		appender:       appender,
+		pendingToolIDs: map[string]string{},
+	}
+
+	for _, event := range []Event{
+		{Type: "thinking", Data: map[string]interface{}{"run_id": "run-order", "content": "先分析。"}},
+		{Type: "chunk", Data: map[string]interface{}{"run_id": "run-order", "content": "第一段"}},
+		{Type: "chunk", Data: map[string]interface{}{"run_id": "run-order", "content": "正文。"}},
+		{Type: "tool_call", Data: map[string]interface{}{"run_id": "run-order", "id": "call-1", "name": "read_file", "args": `{"path":"outline.md"}`}},
+		{Type: "tool_result", Data: map[string]interface{}{"run_id": "run-order", "id": "call-1", "name": "read_file", "content": "读取完成"}},
+		{Type: "thinking", Data: map[string]interface{}{"run_id": "run-order", "content": "再检查。"}},
+		{Type: "chunk", Data: map[string]interface{}{"run_id": "run-order", "content": "第二段正文。"}},
+		{Type: "done", Data: map[string]string{}},
+	} {
+		recorder.Record(event)
+	}
+
+	want := []session.DisplayEvent{
+		{Role: "thinking", Content: "先分析。"},
+		{Role: "assistant", Content: "第一段正文。"},
+		{Role: "tool_call", Content: "read_file"},
+		{Role: "thinking", Content: "再检查。"},
+		{Role: "assistant", Content: "第二段正文。"},
+	}
+	if len(appender.events) != len(want) {
+		t.Fatalf("display events = %#v, want %#v", appender.events, want)
+	}
+	for index := range want {
+		if appender.events[index].Role != want[index].Role || appender.events[index].Content != want[index].Content {
+			t.Fatalf("display event %d = %#v, want %#v", index, appender.events[index], want[index])
+		}
+	}
+	if appender.events[2].Status != "success" {
+		t.Fatalf("tool result should update the in-order tool card: %#v", appender.events[2])
+	}
+}
+
+func TestDisplayRecorderPreservesSubAgentSegmentsAroundThinking(t *testing.T) {
+	appender := &displayRecorderTestAppender{}
+	recorder := &displayEventRecorder{
+		appender:       appender,
+		pendingToolIDs: map[string]string{},
+	}
+	meta := map[string]interface{}{
+		"run_id":              "run-subagent-order",
+		"agent_name":          "researcher",
+		"root_agent_name":     "DenovaAgent",
+		"subagent":            true,
+		"subagent_session_id": "run-subagent-order-subagent-01-researcher",
+	}
+	event := func(eventType, content string) Event {
+		data := make(map[string]interface{}, len(meta)+1)
+		for key, value := range meta {
+			data[key] = value
+		}
+		data["content"] = content
+		return Event{Type: eventType, Data: data}
+	}
+
+	for _, item := range []Event{
+		event("chunk", "调研结论一。"),
+		event("thinking", "继续核对来源。"),
+		event("chunk", "调研结论二。"),
+		{Type: "done", Data: map[string]string{}},
+	} {
+		recorder.Record(item)
+	}
+
+	wantRoles := []string{"assistant", "thinking", "assistant"}
+	wantContent := []string{"调研结论一。", "继续核对来源。", "调研结论二。"}
+	if len(appender.events) != len(wantRoles) {
+		t.Fatalf("display events = %#v, want roles %v", appender.events, wantRoles)
+	}
+	for index := range wantRoles {
+		got := appender.events[index]
+		if got.Role != wantRoles[index] || got.Content != wantContent[index] || !got.SubAgent || got.SubAgentSessionID != meta["subagent_session_id"] {
+			t.Fatalf("display event %d = %#v", index, got)
+		}
+	}
+}
+
+func TestDisplayRecorderCanSuppressOnlyRootAssistantSegments(t *testing.T) {
+	appender := &displayRecorderTestAppender{}
+	recorder := &displayEventRecorder{
+		appender:                      appender,
+		pendingToolIDs:                map[string]string{},
+		suppressRootAssistantSegments: true,
+	}
+	rootChunk := map[string]interface{}{
+		"run_id":  "run-plan",
+		"content": "这段是计划协议前的说明，不应作为最终正文恢复。",
+	}
+	subAgentChunk := map[string]interface{}{
+		"run_id":              "run-plan",
+		"content":             "子 Agent 的可见结果仍需保留。",
+		"subagent":            true,
+		"subagent_session_id": "run-plan-subagent-01",
+	}
+
+	recorder.Record(Event{Type: "chunk", Data: rootChunk})
+	recorder.Record(Event{Type: "chunk", Data: subAgentChunk})
+	recorder.Record(Event{Type: "done", Data: map[string]string{}})
+
+	if eventDataString(rootChunk, displaySegmentIDEventKey) == "" {
+		t.Fatal("suppressed root chunks still need a stable live-stream segment ID")
+	}
+	if len(appender.events) != 1 || !appender.events[0].SubAgent || appender.events[0].Content != subAgentChunk["content"] {
+		t.Fatalf("display events = %#v, want only the sub-agent assistant segment", appender.events)
+	}
+}
+
+func TestDisplayRecorderAssignsUniqueStableIDsToTextSegments(t *testing.T) {
+	appender := &displayRecorderTestAppender{}
+	recorder := &displayEventRecorder{appender: appender, pendingToolIDs: map[string]string{}}
+
+	for _, event := range []Event{
+		{Type: "thinking", Data: map[string]interface{}{"run_id": "run-segments", "content": "同样的开头"}},
+		{Type: "chunk", Data: map[string]interface{}{"run_id": "run-segments", "content": "正文一"}},
+		{Type: "thinking", Data: map[string]interface{}{"run_id": "run-segments", "content": "同样的开头"}},
+		{Type: "chunk", Data: map[string]interface{}{"run_id": "run-segments", "content": "正文二"}},
+		{Type: "done", Data: map[string]string{}},
+	} {
+		recorder.Record(event)
+	}
+
+	seen := make(map[string]struct{}, len(appender.events))
+	for _, event := range appender.events {
+		if event.ID == "" {
+			t.Fatalf("display segment is missing a stable ID: %#v", event)
+		}
+		if _, duplicate := seen[event.ID]; duplicate {
+			t.Fatalf("display segment ID %q was reused: %#v", event.ID, appender.events)
+		}
+		seen[event.ID] = struct{}{}
+	}
+}
+
+func TestDisplayRecorderAnnotatesStreamingDeltasWithTheirSegmentID(t *testing.T) {
+	appender := &displayRecorderTestAppender{}
+	recorder := &displayEventRecorder{appender: appender, pendingToolIDs: map[string]string{}}
+	first := map[string]interface{}{"run_id": "run-stream-segments", "content": "第一"}
+	second := map[string]interface{}{"run_id": "run-stream-segments", "content": "段"}
+	reasoning := map[string]interface{}{"run_id": "run-stream-segments", "content": "检查"}
+
+	recorder.Record(Event{Type: "chunk", Data: first})
+	recorder.Record(Event{Type: "chunk", Data: second})
+	recorder.Record(Event{Type: "thinking", Data: reasoning})
+
+	firstID := eventDataString(first, displaySegmentIDEventKey)
+	if firstID == "" || eventDataString(second, displaySegmentIDEventKey) != firstID {
+		t.Fatalf("adjacent text deltas must share one segment ID: first=%#v second=%#v", first, second)
+	}
+	if reasoningID := eventDataString(reasoning, displaySegmentIDEventKey); reasoningID == "" || reasoningID == firstID {
+		t.Fatalf("reasoning must start a different segment: text=%q reasoning=%#v", firstID, reasoning)
+	}
+}
+
 func TestDisplayRecorderAppendsStreamingWriteFileContent(t *testing.T) {
 	appender := &displayRecorderTestAppender{}
 	recorder := &displayEventRecorder{

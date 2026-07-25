@@ -133,7 +133,9 @@ func newChatRun(
 	if options.RootAgentName != "" {
 		run.assistantMetadata.RunPath = []string{options.RootAgentName}
 	}
-	recorder := newDisplayEventRecorder(conversation)
+	recorder := newDisplayEventRecorder(conversation, displayEventRecorderOptions{
+		SuppressRootAssistantSegments: req.PlanMode,
+	})
 	run.emit = func(event Event) {
 		if run.control.suppressesStreamCanceledError(event) {
 			return

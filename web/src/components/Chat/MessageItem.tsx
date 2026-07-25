@@ -1661,6 +1661,7 @@ const MarkdownContent = memo(function MarkdownContent({ content, highlightDialog
 })
 
 const markdownComponents: MarkdownRendererComponents = {
+  a: ChatMarkdownLink,
   img: ChatMarkdownImage,
 }
 
@@ -1675,6 +1676,19 @@ const dialogueMarkdownComponents: MarkdownRendererComponents = {
   h5: ({ children }: { children?: ReactNode }) => <h5>{highlightDialogueNodes(children)}</h5>,
   h6: ({ children }: { children?: ReactNode }) => <h6>{highlightDialogueNodes(children)}</h6>,
   blockquote: ({ children }: { children?: ReactNode }) => <blockquote>{highlightDialogueNodes(children)}</blockquote>,
+}
+
+function ChatMarkdownLink({ href, title, children }: { href?: string; title?: string; children?: ReactNode }) {
+  const external = /^https?:\/\//i.test(href?.trim() || '')
+  return (
+    <a
+      href={href}
+      title={title}
+      {...(external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+    >
+      {children}
+    </a>
+  )
 }
 
 function ChatMarkdownImage({ src = '', alt = '', title = '' }: { src?: string; alt?: string; title?: string }) {

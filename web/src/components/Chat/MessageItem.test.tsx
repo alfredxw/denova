@@ -83,6 +83,23 @@ describe('MessageItem', () => {
     expect(persistedTags).toEqual(streamedTags)
   })
 
+  it('流式和持久化 assistant 消息安全打开外部 Markdown 引用且保留站内链接行为', () => {
+    const content = '结论。[SearXNG Search API](https://docs.searxng.org/dev/search_api.html)\n\n[站内文档](/docs/web-access)'
+    const { rerender } = render(<MessageItem message={{ role: 'assistant', content, streaming: true }} />)
+
+    const assertLinks = () => {
+      expect(screen.getByRole('link', { name: 'SearXNG Search API' })).toHaveAttribute('href', 'https://docs.searxng.org/dev/search_api.html')
+      expect(screen.getByRole('link', { name: 'SearXNG Search API' })).toHaveAttribute('target', '_blank')
+      expect(screen.getByRole('link', { name: 'SearXNG Search API' })).toHaveAttribute('rel', 'noopener noreferrer')
+      expect(screen.getByRole('link', { name: '站内文档' })).not.toHaveAttribute('target')
+      expect(screen.getByRole('link', { name: '站内文档' })).not.toHaveAttribute('rel')
+    }
+
+    assertLinks()
+    rerender(<MessageItem message={{ role: 'assistant', content, streaming: false }} />)
+    assertLinks()
+  })
+
   it('流式 assistant 不展示操作按钮但预留底部操作区，完成后再展示复制', () => {
     const { container, rerender } = render(
       <MessageItem

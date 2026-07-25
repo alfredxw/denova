@@ -216,6 +216,81 @@ func TestFetchUsesBrowserWhenDirectAndJinaAreBlocked(t *testing.T) {
 	}
 }
 
+func TestFetchAcceptsSubstantiveBrowserDocumentAfterChallengeStatus(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusForbidden)
+	}))
+	t.Cleanup(target.Close)
+	jina := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"data":{"warning":"Target URL returned error 403: Forbidden","httpStatus":403}}`))
+	}))
+	t.Cleanup(jina.Close)
+	articleText := strings.Repeat("The browser completed the access challenge and rendered the article. ", 12)
+	client, err := newClient(testWebAccessConfig(), dependencies{
+		fetchHTTPClient: target.Client(), jinaHTTPClient: jina.Client(), jinaReaderBaseURL: jina.URL + "/",
+		browserRenderer: browserRendererFunc(func(_ context.Context, targetURL *url.URL) (renderedPage, error) {
+			return renderedPage{
+				FinalURL: targetURL, HTTPStatus: http.StatusForbidden, RenderMode: browserRenderModeStealth,
+				HTML: `<html><head><title>Rendered article</title></head><body><main><h1>Rendered article</h1><p>` + articleText + `</p></main></body></html>`,
+			}, nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response, err := client.Fetch(context.Background(), FetchRequest{URL: target.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Status != FetchStatusSuccess || response.FetchMethod != FetchMethodBrowser ||
+		!strings.Contains(response.Content, "completed the access challenge") {
+		t.Fatalf("readable challenge response = %+v", response)
+	}
+	browserAttempt := response.Attempts[len(response.Attempts)-1]
+	if browserAttempt.Outcome != FetchAttemptSuccess || browserAttempt.HTTPStatus != http.StatusForbidden ||
+		!strings.Contains(browserAttempt.Message, "go-rod/stealth") {
+		t.Fatalf("browser challenge attempt = %+v", browserAttempt)
+	}
+}
+
+func TestFetchRejectsBrowserChallengeShellAfterStealthFallback(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusForbidden)
+	}))
+	t.Cleanup(target.Close)
+	jina := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"data":{"warning":"Target URL returned error 403: Forbidden","httpStatus":403}}`))
+	}))
+	t.Cleanup(jina.Close)
+	client, err := newClient(testWebAccessConfig(), dependencies{
+		fetchHTTPClient: target.Client(), jinaHTTPClient: jina.Client(), jinaReaderBaseURL: jina.URL + "/",
+		browserRenderer: browserRendererFunc(func(_ context.Context, targetURL *url.URL) (renderedPage, error) {
+			return renderedPage{
+				FinalURL: targetURL, HTTPStatus: http.StatusForbidden, RenderMode: browserRenderModeStealth,
+				HTML: `<!doctype html><html><head><meta id="zh-zse-ck" content="challenge"></head><body><p>知乎，让每一次点击都充满意义。</p><script src="https://static.zhihu.com/zse-ck/v4/challenge.js"></script></body></html>`,
+			}, nil
+		}),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	response, err := client.Fetch(context.Background(), FetchRequest{URL: target.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Status != FetchStatusBlocked || response.RetryStrategy != FetchRetryUseAlternateSource {
+		t.Fatalf("challenge shell response = %+v", response)
+	}
+	browserAttempt := response.Attempts[len(response.Attempts)-1]
+	if browserAttempt.Outcome != FetchAttemptAccessDenied || !strings.Contains(browserAttempt.Message, "go-rod/stealth") {
+		t.Fatalf("challenge shell attempt = %+v", browserAttempt)
+	}
+}
+
 func TestFetchReturnsActionableBlockedResponseWhenEveryLayerIsDenied(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusForbidden)
@@ -243,7 +318,7 @@ func TestFetchReturnsActionableBlockedResponseWhenEveryLayerIsDenied(t *testing.
 	wantAttempts := []FetchAttempt{
 		{Method: FetchMethodDirectHTTP, Outcome: FetchAttemptAccessDenied, HTTPStatus: http.StatusForbidden},
 		{Method: FetchMethodJinaReader, Outcome: FetchAttemptAccessDenied, HTTPStatus: http.StatusForbidden},
-		{Method: FetchMethodBrowser, Outcome: FetchAttemptAccessDenied, HTTPStatus: http.StatusForbidden},
+		{Method: FetchMethodBrowser, Outcome: FetchAttemptAccessDenied, HTTPStatus: http.StatusForbidden, Message: browserChallengeMessage},
 	}
 	if response.Status != FetchStatusBlocked || response.RetryStrategy != FetchRetryUseAlternateSource ||
 		response.URL != target.URL || !reflect.DeepEqual(response.Attempts, wantAttempts) || response.SuggestedAction == "" {
@@ -388,7 +463,7 @@ func TestFetchTreatsJinaAccessWarningAsBlocked(t *testing.T) {
 	wantAttempts := []FetchAttempt{
 		{Method: FetchMethodDirectHTTP, Outcome: FetchAttemptAccessDenied, HTTPStatus: http.StatusForbidden},
 		{Method: FetchMethodJinaReader, Outcome: FetchAttemptAccessDenied, HTTPStatus: http.StatusOK},
-		{Method: FetchMethodBrowser, Outcome: FetchAttemptAccessDenied, HTTPStatus: http.StatusForbidden},
+		{Method: FetchMethodBrowser, Outcome: FetchAttemptAccessDenied, HTTPStatus: http.StatusForbidden, Message: browserChallengeMessage},
 	}
 	if response.Status != FetchStatusBlocked || !reflect.DeepEqual(response.Attempts, wantAttempts) {
 		t.Fatalf("Jina warning response = %+v, want attempts %+v", response, wantAttempts)
