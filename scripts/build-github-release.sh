@@ -183,6 +183,10 @@ for target in "${TARGETS[@]}"; do
   CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
     go build -trimpath -ldflags "-s -w -X denova/internal/buildinfo.Version=${binary_version}" -o "${package_dir}/${updater_exe}" ./cmd/denova-updater
 
+  go run ./scripts/ripgrep-assets \
+    -target "${key}" \
+    -destination "${package_dir}"
+
   if [[ "${goos}" != "windows" ]]; then
     chmod 0755 "${package_dir}/${exe}"
     chmod 0755 "${package_dir}/${updater_exe}"

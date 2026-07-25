@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -14,6 +15,20 @@ import (
 
 	agent "github.com/alfredxw/denova/agent"
 )
+
+func TestMain(m *testing.M) {
+	if os.Getenv("DENOVA_TEST_RIPGREP_HELPER") == "1" {
+		for _, arg := range os.Args[1:] {
+			if arg == "--no-config" {
+				fmt.Fprint(os.Stdout, os.Getenv("DENOVA_TEST_RIPGREP_OUTPUT"))
+				os.Exit(0)
+			}
+		}
+		fmt.Fprintln(os.Stderr, "missing --no-config")
+		os.Exit(2)
+	}
+	os.Exit(m.Run())
+}
 
 func TestLocalWorkspaceStandardTools(t *testing.T) {
 	root := t.TempDir()
@@ -95,6 +110,23 @@ func TestOpenWorkspaceCanonicalizesAndRejectsInvalidRoots(t *testing.T) {
 	}
 	if _, err := OpenWorkspace(file); err == nil || !strings.Contains(err.Error(), "not a directory") {
 		t.Fatalf("file workspace should be rejected, got %v", err)
+	}
+}
+
+func TestOpenWorkspaceWithOptionsRejectsNonExecutableRipgrep(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not use Unix executable permission bits")
+	}
+	ripgrepPath := filepath.Join(t.TempDir(), "rg")
+	if err := os.WriteFile(ripgrepPath, []byte("not executable"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := OpenWorkspaceWithOptions(WorkspaceOptions{
+		Root:              t.TempDir(),
+		RipgrepExecutable: ripgrepPath,
+	})
+	if err == nil || !strings.Contains(err.Error(), "not executable") {
+		t.Fatalf("non-executable ripgrep error = %v", err)
 	}
 }
 
@@ -188,6 +220,30 @@ func TestLocalWorkspaceGrepModesAndHeadLimit(t *testing.T) {
 	}
 	if len(limited) != 3 || limited[2] != resultTruncatedMarker {
 		t.Fatalf("head-limited content = %#v", limited)
+	}
+}
+
+func TestLocalWorkspaceGrepUsesConfiguredRipgrepWithoutPATH(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("DENOVA_TEST_RIPGREP_HELPER", "1")
+	t.Setenv("DENOVA_TEST_RIPGREP_OUTPUT", "chapters/one.md\n")
+
+	workspace, err := OpenWorkspaceWithOptions(WorkspaceOptions{
+		Root:              t.TempDir(),
+		RipgrepExecutable: os.Args[0],
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches, err := workspace.Grep(context.Background(), GrepRequest{
+		Pattern:    "dragon",
+		OutputMode: "files_with_matches",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(matches, "\n") != "chapters/one.md" {
+		t.Fatalf("matches = %#v", matches)
 	}
 }
 

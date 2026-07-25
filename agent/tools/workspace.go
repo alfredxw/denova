@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -94,12 +95,27 @@ type WriteReceipt struct {
 // LocalWorkspace is a reusable, symlink-safe filesystem adapter rooted at one
 // directory. All model-provided paths cross os.Root before I/O.
 type LocalWorkspace struct {
-	root string
+	root              string
+	ripgrepExecutable string
 }
 
 // OpenWorkspace validates and canonicalizes a local workspace root.
 func OpenWorkspace(root string) (*LocalWorkspace, error) {
-	root = strings.TrimSpace(root)
+	return OpenWorkspaceWithOptions(WorkspaceOptions{Root: root})
+}
+
+// WorkspaceOptions configures host-owned local executables without coupling
+// the reusable Agent module to one application's release layout.
+type WorkspaceOptions struct {
+	Root              string
+	RipgrepExecutable string
+}
+
+// OpenWorkspaceWithOptions validates the workspace and any explicitly
+// supplied ripgrep executable. An empty executable keeps the PATH fallback
+// used by source builds and standalone Agent module consumers.
+func OpenWorkspaceWithOptions(options WorkspaceOptions) (*LocalWorkspace, error) {
+	root := strings.TrimSpace(options.Root)
 	if root == "" {
 		return nil, errors.New("workspace path is required")
 	}
@@ -118,7 +134,27 @@ func OpenWorkspace(root string) (*LocalWorkspace, error) {
 	if !info.IsDir() {
 		return nil, fmt.Errorf("workspace path is not a directory: %s", canonical)
 	}
-	return &LocalWorkspace{root: filepath.Clean(canonical)}, nil
+	ripgrepExecutable := "rg"
+	if configured := strings.TrimSpace(options.RipgrepExecutable); configured != "" {
+		ripgrepExecutable, err = filepath.Abs(configured)
+		if err != nil {
+			return nil, fmt.Errorf("resolve ripgrep executable: %w", err)
+		}
+		ripgrepInfo, statErr := os.Stat(ripgrepExecutable)
+		if statErr != nil {
+			return nil, fmt.Errorf("stat ripgrep executable: %w", statErr)
+		}
+		if !ripgrepInfo.Mode().IsRegular() {
+			return nil, fmt.Errorf("ripgrep executable is not a regular file: %s", ripgrepExecutable)
+		}
+		if runtime.GOOS != "windows" && ripgrepInfo.Mode().Perm()&0o111 == 0 {
+			return nil, fmt.Errorf("ripgrep file is not executable: %s", ripgrepExecutable)
+		}
+	}
+	return &LocalWorkspace{
+		root:              filepath.Clean(canonical),
+		ripgrepExecutable: ripgrepExecutable,
+	}, nil
 }
 
 // Root returns the canonical command working directory.
@@ -314,7 +350,7 @@ func (workspace *LocalWorkspace) Grep(ctx context.Context, request GrepRequest) 
 		return nil, err
 	}
 	args := grepArguments(request, mode, relative)
-	command := exec.CommandContext(ctx, "rg", args...)
+	command := exec.CommandContext(ctx, workspace.ripgrepExecutable, args...)
 	command.Dir = workspace.root
 	stdout, err := command.StdoutPipe()
 	if err != nil {
@@ -505,7 +541,7 @@ func selectReadWindow(ctx context.Context, source io.Reader, offset, limit int) 
 }
 
 func grepArguments(request GrepRequest, mode, relative string) []string {
-	args := []string{"--color=never", "--no-messages"}
+	args := []string{"--no-config", "--color=never", "--no-messages"}
 	switch mode {
 	case "files_with_matches":
 		args = append(args, "--files-with-matches")

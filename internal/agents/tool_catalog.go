@@ -2,12 +2,14 @@ package agents
 
 import (
 	"context"
+	"os"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
 	producttools "denova/internal/agents/tools"
+	"denova/internal/runtimetools"
 	"denova/internal/workspacechange"
 )
 
@@ -19,7 +21,11 @@ type submitDirectorPlanUpdateInput = producttools.SubmitDirectorPlanUpdateInput
 // tool construction. Runtime metadata is projected into a narrow callback so
 // the tools package never imports the agents package.
 func newToolCatalog(cfg *config.Config) *producttools.Catalog {
-	return producttools.NewCatalog(cfg, agentWorkspaceChangeMetadata)
+	executablePath, _ := os.Executable()
+	discovered := runtimetools.DiscoverForExecutable(executablePath)
+	return producttools.NewCatalog(cfg, agentWorkspaceChangeMetadata, producttools.RuntimeExecutables{
+		Ripgrep: discovered.Ripgrep,
+	})
 }
 
 func projectInteractiveToolContext(contexts ...InteractiveStoryToolContext) producttools.InteractiveContext {

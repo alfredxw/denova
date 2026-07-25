@@ -28,6 +28,8 @@
 | `agent/tools` | 完整的工具定义与 descriptor、去重 registry、基础 `read_file` / `grep` / `ls` / `glob` / `write_file` / `edit_file` / `execute` |
 | `agent/runtime` | durable command journal、binding、恢复、input materialization、domain commit barrier 和 host-effect reconciliation |
 
+`agent/tools.OpenWorkspace` 默认从 PATH 查找 ripgrep。需要可重复分发的宿主可使用 `OpenWorkspaceWithOptions` 注入固定的 `RipgrepExecutable`；Denova Release 使用这一 seam 指向安装目录中的内置版本，公共 `agent` module 不感知产品发行布局。
+
 `Agent` 和 `Runner` 本身不隐式启用 `runtime`。普通嵌入只需要核心 loop；需要崩溃恢复、幂等命令或跨领域提交时，再由宿主在应用 Agent 边界接入 `runtime`。
 
 ## 最小组合

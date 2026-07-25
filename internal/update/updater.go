@@ -172,6 +172,8 @@ func updateEntries(manifest ApplyManifest) []replaceEntry {
 		fileEntry(manifest.SourceDir, installUpdaterTarget(installDir, manifest.UpdaterExecutable), manifest.BackupDir, filepath.Base(manifest.UpdaterExecutable), false),
 		dirEntry(manifest.SourceDir, installDir, manifest.BackupDir, "web", false),
 		dirEntry(manifest.SourceDir, installDir, manifest.BackupDir, "skills", false),
+		dirEntry(manifest.SourceDir, installDir, manifest.BackupDir, "tools", false),
+		dirEntry(manifest.SourceDir, installDir, manifest.BackupDir, "licenses", false),
 		fileEntry(manifest.SourceDir, filepath.Join(installDir, "README.md"), manifest.BackupDir, "README.md", true),
 		fileEntry(manifest.SourceDir, filepath.Join(installDir, "CHANGELOG.md"), manifest.BackupDir, "CHANGELOG.md", true),
 		fileEntry(manifest.SourceDir, filepath.Join(installDir, "LICENSE"), manifest.BackupDir, "LICENSE", true),

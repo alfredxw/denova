@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/cavaliergopher/grab/v3"
+
+	"denova/internal/runtimetools"
 )
 
 func (s *Service) Install(ctx context.Context) (InstallResult, error) {
@@ -255,6 +257,17 @@ func validateReleasePackage(packageRoot, exeName, updaterName string) error {
 			return fmt.Errorf("更新包缺少目录 %s: %w", name, err)
 		} else if !fi.IsDir() {
 			return fmt.Errorf("更新包中的 %s 不是目录", name)
+		}
+	}
+	if runtimeExecutables := runtimetools.DiscoverForExecutable(filepath.Join(packageRoot, exeName)); runtimeExecutables.Ripgrep == "" {
+		return fmt.Errorf("更新包缺少可执行的内置 ripgrep / update package is missing executable bundled ripgrep")
+	}
+	for _, name := range []string{"LICENSE-MIT", "UNLICENSE"} {
+		licensePath := filepath.Join(packageRoot, "licenses", "ripgrep", name)
+		if info, err := os.Stat(licensePath); err != nil {
+			return fmt.Errorf("更新包缺少 ripgrep 许可文件 / update package is missing ripgrep license %s: %w", name, err)
+		} else if !info.Mode().IsRegular() {
+			return fmt.Errorf("更新包中的 ripgrep 许可文件无效 / invalid ripgrep license in update package: %s", name)
 		}
 	}
 	return nil

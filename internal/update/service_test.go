@@ -13,8 +13,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
+
+	"denova/internal/runtimetools"
 )
 
 func TestSelectAssetForPlatform(t *testing.T) {
@@ -65,6 +68,43 @@ func TestValidateReleasePackageRequiresUpdater(t *testing.T) {
 	}
 }
 
+func TestValidateReleasePackageRequiresBundledRipgrep(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"denova", updaterExecutableName()} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"web", "skills"} {
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := validateReleasePackage(dir, "denova", updaterExecutableName()); err == nil || !strings.Contains(err.Error(), "ripgrep") {
+		t.Fatalf("release package without bundled ripgrep should fail, got %v", err)
+	}
+}
+
+func TestValidateReleasePackageRequiresRipgrepLicenses(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"denova", updaterExecutableName()} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"web", "skills", "tools"} {
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tools", runtimetools.RipgrepExecutableName()), []byte("ripgrep"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateReleasePackage(dir, "denova", updaterExecutableName()); err == nil || !strings.Contains(err.Error(), "许可") {
+		t.Fatalf("release package without ripgrep licenses should fail, got %v", err)
+	}
+}
+
 func TestInstallStagesUpdateAndIgnoresRequestCancel(t *testing.T) {
 	platform := platformKey(runtime.GOOS, runtime.GOARCH)
 	assetName := "denova-v0.2.0-" + platform + ".tar.gz"
@@ -74,7 +114,10 @@ func TestInstallStagesUpdateAndIgnoresRequestCancel(t *testing.T) {
 		updaterName:            "new updater",
 		"web/index.html":       "<html>new</html>",
 		"skills/demo/SKILL.md": "skill",
-		"README.md":            "readme",
+		filepath.ToSlash(filepath.Join("tools", runtimetools.RipgrepExecutableName())): "ripgrep",
+		"licenses/ripgrep/LICENSE-MIT": "MIT license",
+		"licenses/ripgrep/UNLICENSE":   "Unlicense",
+		"README.md":                    "readme",
 	})
 	sum := sha256.Sum256(archive)
 	checksums := hex.EncodeToString(sum[:]) + "  " + assetName + "\n"
@@ -168,6 +211,9 @@ func TestInstallStagesUpdateAndIgnoresRequestCancel(t *testing.T) {
 	if got, err := os.ReadFile(filepath.Join(result.StagedPath, updaterName)); err != nil || string(got) != "new updater" {
 		t.Fatalf("staged updater missing: %q err=%v", got, err)
 	}
+	if got, err := os.ReadFile(filepath.Join(result.StagedPath, "tools", runtimetools.RipgrepExecutableName())); err != nil || string(got) != "ripgrep" {
+		t.Fatalf("staged ripgrep missing: %q err=%v", got, err)
+	}
 	archivePath := filepath.Join(installDir, ".denova-updates", "downloads", assetName)
 	if _, err := os.Stat(archivePath); err != nil {
 		t.Fatalf("downloaded archive should be kept in install dir: %v", err)
@@ -201,7 +247,7 @@ func testReleaseArchive(t *testing.T, exeName string, files map[string]string) [
 	tw := tar.NewWriter(gz)
 	for name, content := range files {
 		mode := int64(0o644)
-		if name == exeName {
+		if name == exeName || filepath.Base(name) == runtimetools.RipgrepExecutableName() {
 			mode = 0o755
 		}
 		path := filepath.ToSlash(filepath.Join("denova", name))

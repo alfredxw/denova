@@ -37,6 +37,27 @@ go build ${EMBED_TAG} -ldflags "-X denova/internal/buildinfo.Version=${VERSION}"
 echo "==> 编译 denova-updater"
 go build -ldflags "-X denova/internal/buildinfo.Version=${VERSION}" -o "${OUTPUT_DIR}/denova-updater" ./cmd/denova-updater/
 
+echo "==> 打包内置 ripgrep"
+RIPGREP_GOOS="$(go env GOOS)"
+RIPGREP_GOARCH="$(go env GOARCH)"
+RIPGREP_HOST_GOOS="$(go env GOHOSTOS)"
+RIPGREP_HOST_GOARCH="$(go env GOHOSTARCH)"
+case "${RIPGREP_GOOS}-${RIPGREP_GOARCH}" in
+    darwin-arm64) RIPGREP_TARGET="darwin-arm64" ;;
+    darwin-amd64) RIPGREP_TARGET="darwin-x64" ;;
+    linux-arm64) RIPGREP_TARGET="linux-arm64" ;;
+    linux-amd64) RIPGREP_TARGET="linux-x64" ;;
+    windows-amd64) RIPGREP_TARGET="windows-x64" ;;
+    *)
+        echo "错误: 当前平台没有 Denova 内置 ripgrep 产物: ${RIPGREP_GOOS}-${RIPGREP_GOARCH}" >&2
+        echo "Error: no bundled Denova ripgrep asset is available for ${RIPGREP_GOOS}-${RIPGREP_GOARCH}" >&2
+        exit 1
+        ;;
+esac
+GOOS="${RIPGREP_HOST_GOOS}" GOARCH="${RIPGREP_HOST_GOARCH}" go run ./scripts/ripgrep-assets \
+    -target "${RIPGREP_TARGET}" \
+    -destination "${OUTPUT_DIR}"
+
 echo "==> 复制 skills 目录"
 cp -r skills "${OUTPUT_DIR}/skills"
 

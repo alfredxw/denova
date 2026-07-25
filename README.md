@@ -99,9 +99,11 @@ Windows 用户运行 `denova.exe`。macOS 如果提示安全限制，可以执�
 xattr -dr com.apple.quarantine denova
 ```
 
+Release 包已内置经过 SHA-256 校验的 ripgrep，无需单独安装；Denova 的 `grep` 工具会优先使用包内版本。
+
 ### 从源码运行
 
-需要 Go 1.26.5+、Node.js 20+、pnpm 和 ripgrep。
+开发启动需要 Go 1.26.5+、Node.js 20+、pnpm 和 PATH 中可用的 ripgrep；`scripts/build.sh` 生成的可分发目录会自动下载并内置固定版本。
 
 ```bash
 git clone https://github.com/alfredxw/denova.git

@@ -17,12 +17,19 @@ import (
 // The agents package chooses a surface and owns execution policy; this package
 // owns tool schemas, implementations, descriptors, and filesystem adapters.
 type Catalog struct {
-	cfg               *config.Config
-	workspaceMetadata WorkspaceMetadataProvider
+	cfg                *config.Config
+	workspaceMetadata  WorkspaceMetadataProvider
+	runtimeExecutables RuntimeExecutables
 }
 
-func NewCatalog(cfg *config.Config, workspaceMetadata WorkspaceMetadataProvider) *Catalog {
-	return &Catalog{cfg: cfg, workspaceMetadata: workspaceMetadata}
+// RuntimeExecutables are host-owned dependencies used by native tools. The
+// application resolves release paths; this catalog only injects them.
+type RuntimeExecutables struct {
+	Ripgrep string
+}
+
+func NewCatalog(cfg *config.Config, workspaceMetadata WorkspaceMetadataProvider, runtimeExecutables RuntimeExecutables) *Catalog {
+	return &Catalog{cfg: cfg, workspaceMetadata: workspaceMetadata, runtimeExecutables: runtimeExecutables}
 }
 
 type Factory func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error)
@@ -57,10 +64,12 @@ func (catalog *Catalog) Filesystem(settings config.ResolvedAgentToolSettings) ([
 		workspace = catalog.cfg.Workspace
 	}
 	var metadata WorkspaceMetadataProvider
+	var runtimeExecutables RuntimeExecutables
 	if catalog != nil {
 		metadata = catalog.workspaceMetadata
+		runtimeExecutables = catalog.runtimeExecutables
 	}
-	return filesystemToolsFactory(workspace, metadata)(settings)
+	return filesystemToolsFactory(workspace, metadata, runtimeExecutables)(settings)
 }
 
 func (catalog *Catalog) WebAccess() ([]agent.BaseTool, error) {
@@ -219,12 +228,15 @@ func configManagerFactoryAllowed(settings config.ResolvedAgentToolSettings) bool
 
 // filesystemToolsFactory assembles native workspace tools as ordinary Agent
 // tools, keeping the concrete surface visible to construction-time validation.
-func filesystemToolsFactory(workspace string, metadata WorkspaceMetadataProvider) func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
+func filesystemToolsFactory(workspace string, metadata WorkspaceMetadataProvider, runtimeExecutables RuntimeExecutables) func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
 	return func(settings config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
 		if !settings.FileRead && !settings.FileWrite && !settings.ShellExecute {
 			return nil, nil
 		}
-		backend, err := agenttools.OpenWorkspace(workspace)
+		backend, err := agenttools.OpenWorkspaceWithOptions(agenttools.WorkspaceOptions{
+			Root:              workspace,
+			RipgrepExecutable: runtimeExecutables.Ripgrep,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("create workspace filesystem backend: %w", err)
 		}

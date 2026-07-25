@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- GitHub Release 与 `scripts/build.sh` 产物现在内置固定版本、SHA-256 校验的 ripgrep 15.2.0，覆盖 macOS/Linux 的 ARM64、x64 与 Windows x64；`grep` 优先使用安装目录中的受控二进制并禁用外部 ripgrep 配置，源码开发仍可回退 PATH。更新安装会校验、替换并回滚内置工具及其 MIT/Unlicense 许可文件，用户不再需要为 Release 单独安装 ripgrep。
+- GitHub Release archives and `scripts/build.sh` output now bundle pinned, SHA-256-verified ripgrep 15.2.0 binaries for macOS/Linux ARM64 and x64 plus Windows x64. `grep` prefers the controlled executable in the install directory with external ripgrep configuration disabled, while source development retains the PATH fallback. Update installation validates, replaces, and rolls back the runtime tool together with its MIT/Unlicense files, so Release users no longer install ripgrep separately.
 - 工作区新增基于 `fsnotify` 的实时文件同步，写作与游戏模式共用同一条全局事件流：递归监听可见目录并按 VS Code 语义合并创建、更新、删除与原子替换，断线或事件溢出时通过 resync 重读权威状态。打开的文件会自动载入外部更新，脏草稿沿用三方合并；磁盘删除后保留编辑器内容、暂停自动保存，手动保存可重新创建文件，图像预览也会自动刷新缓存。
 - Workspaces now synchronize filesystem changes in real time through `fsnotify` and one global event stream shared by Writing and Game modes. Visible directories are watched recursively, with VS Code-style coalescing for creates, updates, deletes, and atomic replacements; reconnects and overflow fall back to authoritative resync. Open files reload external updates, dirty drafts keep three-way merge protection, deleted files retain editor content with Auto Save paused until an explicit recreate, and image previews refresh their cache automatically.
 - 写作与游戏 Agent 现在会在首轮模型请求前确定性加载用户消息任意位置显式指定的一个或多个 `/<skill-name>`：只解析当前 Agent 已启用的 Skill，按首次出现顺序去重，将完整有界说明注入本轮上下文，并在模型开始思考前复用现有 `skill` 工具卡逐项展示加载结果；未显式指定时仍保留由 Agent 按描述调用 `skill` 的渐进加载方式。

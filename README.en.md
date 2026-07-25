@@ -99,9 +99,11 @@ Windows users should run `denova.exe`. On macOS, if the system blocks the app fo
 xattr -dr com.apple.quarantine denova
 ```
 
+Release archives include a SHA-256-verified ripgrep binary, so no separate installation is needed. Denova's `grep` tool prefers this bundled version.
+
 ### Run from Source
 
-Requires Go 1.26.5+, Node.js 20+, pnpm and ripgrep.
+Development startup requires Go 1.26.5+, Node.js 20+, pnpm, and ripgrep available on PATH. The distributable directory produced by `scripts/build.sh` downloads and bundles the pinned version automatically.
 
 ```bash
 git clone https://github.com/alfredxw/denova.git
