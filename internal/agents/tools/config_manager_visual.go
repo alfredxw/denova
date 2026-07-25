@@ -34,7 +34,7 @@ type imagePresetWriteOperation struct {
 	Preset imagepreset.Preset `json:"preset,omitempty" jsonschema:"description=create/update 使用的完整图像方案配置；slots 只支持 target=agent_system 或 tool_request"`
 }
 
-func newListImagePresetsTool(novaDir string) (agent.BaseTool, error) {
+func newListImagePresetsTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("list_image_presets", "列出图像方案索引，返回 ID、名称、简介、类型和注入规则概览；图像方案是共享模块，可用于写作模式和游戏模式；需要完整 slots 内容时再调用 read_image_presets。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
@@ -70,7 +70,7 @@ func newListImagePresetsTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newReadImagePresetsTool(novaDir string) (agent.BaseTool, error) {
+func newReadImagePresetsTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("read_image_presets", "按图像方案 ID 批量读取完整图像方案配置。图像方案是共享模块，使用 slots：agent_system 注入图像提示构造 Agent 的 system prompt，tool_request 原样前置注入最终图像请求 prompt。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
@@ -93,7 +93,7 @@ func newReadImagePresetsTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newWriteImagePresetsTool(novaDir string) (agent.BaseTool, error) {
+func newWriteImagePresetsTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("write_image_presets", "批量创建、更新或删除图像方案配置。图像方案是共享模块，不存在每个方案可配置的模式字段。create/update 必须写完整 slots；target 仅支持 agent_system 和 tool_request。旧 prompt 字段只作为兼容输入，会被后端转换为 tool_request slot。删除内置图像方案会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input imagePresetWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
@@ -130,7 +130,7 @@ func newWriteImagePresetsTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newListStyleReferencesTool(novaDir string) (agent.BaseTool, error) {
+func newListStyleReferencesTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("list_style_references", "列出共享文风参考索引。文风参考统一位于 .denova/styles/，返回 name、description、path；叙事风格的 style_rules 只能引用这些 path，不应内联长文风内容。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
@@ -157,7 +157,7 @@ func newListStyleReferencesTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newWriteStyleReferencesTool(novaDir string) (agent.BaseTool, error) {
+func newWriteStyleReferencesTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("write_style_references", "批量创建、更新或删除共享文风参考 Markdown。用于把用户源文件提炼为 .denova/styles/*.md；content 必须是最终可复用的 md 文风参考，以提炼出的典型参考段落为主，辅以风格总结，不要写现实作者名、作品名、来源说明或大段原文。", func(ctx context.Context, input styleReferenceWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {

@@ -151,6 +151,8 @@ Built-in defaults < global config.toml < user-level config < environment variabl
 
 Common, Writing Mode, and Game Mode preferences from Settings are now stored uniformly at the user level. A workspace `.denova/config.toml` only carries workspace customizations explicitly exposed by the Agents page; other legacy fields remain on disk but no longer override user settings. Legacy environment variables are still read for compatibility; new configuration should use `.denova` / `DENOVA_*`.
 
+Parallel read-tool execution is configurable from Settings or Agents, defaults to 8, and accepts 1–64; a workspace value overrides the user value. It applies only to consecutive read-only tools—workspace writes and child tools remain strictly ordered.
+
 ## Remote Access and Phone Usage
 
 Denova can run locally, on your LAN, or on a self-hosted server. Release archives already include frontend assets; when deploying from source, build the frontend first:

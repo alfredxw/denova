@@ -57,6 +57,7 @@ type Config struct {
 	ModelMaxRetries             int                          `toml:"model_max_retries"`
 	AgentIdleTimeoutSeconds     int                          `toml:"agent_idle_timeout_seconds"`
 	AgentToolResultLimitKB      int                          `toml:"agent_tool_result_limit_kb"`
+	AgentToolParallelism        int                          `toml:"agent_tool_parallelism"`
 	ChapterFilenameFormat       string                       `toml:"-"`
 	VolumeDirFormat             string                       `toml:"-"`
 	HideChapterBodyLiveOutput   bool                         `toml:"-"`
@@ -114,6 +115,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		ModelMaxRetries:             settingsInt(s.ModelMaxRetries, 5),
 		AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(s.AgentToolResultLimitKB),
+		AgentToolParallelism:        settingsAgentToolParallelism(s.AgentToolParallelism),
 		LLMInputLogEnabled:          settingsBool(s.LLMInputLogEnabled, false),
 		TraceCaptureLevel:           settingsString(s.TraceCaptureLevel, DefaultTraceCaptureLevel),
 		TraceExporter:               settingsString(s.TraceExporter, DefaultTraceExporter),
@@ -175,7 +177,7 @@ func startupNovaDir() string {
 }
 
 func loadGlobalConfig() *Config {
-	cfg := &Config{AgentIdleTimeoutSeconds: -1, AgentToolResultLimitKB: -1}
+	cfg := &Config{AgentIdleTimeoutSeconds: -1, AgentToolResultLimitKB: -1, AgentToolParallelism: -1}
 	for _, path := range globalConfigCandidates() {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -244,6 +246,9 @@ func settingsFromConfig(cfg *Config) Settings {
 	if cfg.AgentToolResultLimitKB >= 0 {
 		settings.AgentToolResultLimitKB = &cfg.AgentToolResultLimitKB
 	}
+	if cfg.AgentToolParallelism >= 0 {
+		settings.AgentToolParallelism = &cfg.AgentToolParallelism
+	}
 	if cfg.LLMInputLogEnabled {
 		settings.LLMInputLogEnabled = &cfg.LLMInputLogEnabled
 	}
@@ -311,6 +316,7 @@ func Load() *Config {
 			ModelMaxRetries:             settingsInt(d.ModelMaxRetries, 5),
 			AgentIdleTimeoutSeconds:     settingsAgentIdleTimeoutSeconds(d.AgentIdleTimeoutSeconds),
 			AgentToolResultLimitKB:      settingsAgentToolResultLimitKB(d.AgentToolResultLimitKB),
+			AgentToolParallelism:        settingsAgentToolParallelism(d.AgentToolParallelism),
 			LLMInputLogEnabled:          settingsBool(d.LLMInputLogEnabled, false),
 			TraceCaptureLevel:           settingsString(d.TraceCaptureLevel, DefaultTraceCaptureLevel),
 			TraceExporter:               settingsString(d.TraceExporter, DefaultTraceExporter),
@@ -359,6 +365,16 @@ func settingsAgentToolResultLimitKB(v *int) int {
 		return DefaultAgentToolResultLimitKB
 	}
 	return *v
+}
+
+func settingsAgentToolParallelism(value *int) int {
+	if value == nil || *value <= 0 {
+		return DefaultAgentToolParallelism
+	}
+	if *value > MaxAgentToolParallelism {
+		return MaxAgentToolParallelism
+	}
+	return *value
 }
 
 func settingsBool(v *bool, fallback bool) bool {

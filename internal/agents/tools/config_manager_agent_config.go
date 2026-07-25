@@ -98,7 +98,7 @@ type agentConfigSubAgentIndexRow struct {
 	Layer       string   `json:"layer"`
 }
 
-func newListAgentConfigsTool(cfg *config.Config) (agent.BaseTool, error) {
+func newListAgentConfigsTool(cfg *config.Config) (agent.Tool, error) {
 	return agent.InferTool("list_agent_configs", "一次性读取 Agent 页相关配置：Agent kind、工具能力、user/workspace/effective 三层配置、自定义 SubAgent 索引和配置文件路径；不会返回 API key。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
@@ -129,7 +129,7 @@ func newListAgentConfigsTool(cfg *config.Config) (agent.BaseTool, error) {
 	})
 }
 
-func newWriteAgentConfigsTool(cfg *config.Config) (agent.BaseTool, error) {
+func newWriteAgentConfigsTool(cfg *config.Config) (agent.Tool, error) {
 	return agent.InferTool("write_agent_configs", "批量写入 Agent 页配置。必须显式指定 scope=user 或 scope=workspace；Agent 模型选择只能写入 user，workspace 只支持提示词、工具、Skill、上下文和 SubAgent 定制。", func(ctx context.Context, input agentConfigWriteInput) (string, error) {
 		_ = ctx
 		scope := strings.TrimSpace(input.Scope)

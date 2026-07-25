@@ -5,12 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
-
 	"denova/config"
 	"denova/internal/agents/session"
 	producttools "denova/internal/agents/tools"
+	agent "github.com/alfredxw/denova/agent"
 )
 
 func TestConfigMaxIterationDefaultsToNativeUnlimited(t *testing.T) {
@@ -294,7 +292,7 @@ func TestDisplayRecorderPersistsSubAgentAssistantChunks(t *testing.T) {
 
 func TestSubAgentWriteToolResultStillTracksMutation(t *testing.T) {
 	tracker := newMutationTracker()
-	filtered := filterToolResultForModelWithDescriptor("write_file", producttools.WorkspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable), `{"file_path":"chapters/ch01.md","content":"new"}`, "ok", 0)
+	filtered := filterToolResultForModelWithDescriptor("write_file", producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolFileWrite, agent.ToolRecoveryReconcilable), `{"file_path":"chapters/ch01.md","content":"new"}`, "ok", 0)
 	tracker.Observe(Event{Type: "tool_call", Data: map[string]interface{}{
 		"id":       "call-write",
 		"name":     "write_file",
@@ -302,10 +300,14 @@ func TestSubAgentWriteToolResultStillTracksMutation(t *testing.T) {
 		"subagent": true,
 	}})
 	tracker.Observe(Event{Type: "tool_result", Data: map[string]interface{}{
-		"id":       "call-write",
-		"name":     "write_file",
-		"content":  filtered.Content,
-		"subagent": true,
+		"id":                  "call-write",
+		"name":                "write_file",
+		"content":             filtered.Content,
+		"source":              string(filtered.Manifest.Source),
+		"mutates_workspace":   filtered.Manifest.MutatesWorkspace,
+		"requires_post_check": filtered.Manifest.RequiresPostCheck,
+		"target":              filtered.Result.Metadata.Target,
+		"subagent":            true,
 	}})
 	mutations := tracker.Mutations()
 	if len(mutations) != 1 {
@@ -369,10 +371,11 @@ func TestRunSubAgentForwardsDrainedChildEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := task.(agent.InvokableTool).InvokableRun(ctx, `{"subagent_type":"reviewer","description":"inspect the draft"}`)
+	toolResult, err := task.Tool.Run(ctx, `{"subagent_type":"reviewer","description":"inspect the draft"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
+	result := toolResult.ModelContent
 	if result != "child result" || child.request != "inspect the draft" {
 		t.Fatalf("subagent result=%q request=%q", result, child.request)
 	}
@@ -423,11 +426,11 @@ func (f fakeAgent) Run(context.Context, *agent.AgentInput, ...agent.AgentRunOpti
 	return iter
 }
 
-func toolNamesForTest(t *testing.T, tools []agent.BaseTool) map[string]bool {
+func toolNamesForTest(t *testing.T, tools []agent.ToolDefinition) map[string]bool {
 	t.Helper()
 	names := make(map[string]bool, len(tools))
 	for _, current := range tools {
-		info, err := current.Info(context.Background())
+		info, err := current.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}

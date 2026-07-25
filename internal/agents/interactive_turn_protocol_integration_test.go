@@ -296,24 +296,25 @@ func TestInteractiveTurnProtocolRetriesRejectedModulesBeforeReusingCandidate(t *
 	}
 }
 
-func TestInteractiveTurnProtocolLocksFirstCandidateAcrossMalformedModuleAndLaterProse(t *testing.T) {
+func TestInteractiveTurnProtocolLocksFirstCandidateAcrossRejectedModuleAndLaterProse(t *testing.T) {
 	ctx := context.Background()
 	var ready atomic.Bool
 	var mu sync.Mutex
 	patchesAccepted := false
 	choicesAccepted := false
+	stateAttempts := 0
 	tools, err := producttools.NewInteractiveTurn(projectInteractiveToolContext(InteractiveStoryToolContext{
 		SubmitTurnResult: func(_ context.Context, input interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			patchRejected := false
-			for _, diagnostic := range input.Diagnostics {
-				if diagnostic.Module == interactive.TurnSubmissionModuleStateChanges {
-					patchRejected = true
-				}
-			}
 			if input.StateUpdates != nil {
-				patchesAccepted = true
+				stateAttempts++
+				if stateAttempts == 1 {
+					patchRejected = true
+				} else {
+					patchesAccepted = true
+				}
 			}
 			if input.Choices != nil {
 				choicesAccepted = true
@@ -346,7 +347,7 @@ func TestInteractiveTurnProtocolLocksFirstCandidateAcrossMalformedModuleAndLater
 	chatModel := &interactiveTurnProtocolChatModel{responses: []*agent.Message{
 		agent.AssistantMessage(candidateA, nil),
 		agent.AssistantMessage("", []agent.ToolCall{{
-			ID: "bad-state-good-choices", Function: agent.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":"not-an-array","choices":["继续观察","绕到侧面","悄然后退","制造声响","询问同伴"]}`},
+			ID: "rejected-state-good-choices", Function: agent.FunctionCall{Name: interactiveTurnSubmissionToolName, Arguments: `{"state_changes":[{"op":"replace","actor_id":"story","field_id":"当前事件","value":"首次领域校验拒绝"}],"choices":["继续观察","绕到侧面","悄然后退","制造声响","询问同伴"]}`},
 		}}),
 		agent.AssistantMessage(laterProseB, nil),
 		agent.AssistantMessage("", []agent.ToolCall{{

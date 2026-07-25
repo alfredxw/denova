@@ -46,6 +46,7 @@ export interface Settings {
   model_max_retries?: number | null
   agent_idle_timeout_seconds?: number | null
   agent_tool_result_limit_kb?: number | null
+  agent_tool_parallelism?: number | null
   llm_input_log_enabled?: boolean | null
   trace_capture_level?: string
   trace_exporter?: string

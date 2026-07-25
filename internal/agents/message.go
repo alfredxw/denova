@@ -22,7 +22,7 @@ const (
 	RoleSystem    = agent.System
 	RoleUser      = agent.User
 	RoleAssistant = agent.Assistant
-	RoleTool      = agent.Tool
+	RoleTool      = agent.ToolRole
 )
 
 var (
@@ -30,6 +30,7 @@ var (
 	UserMessage      = agent.UserMessage
 	AssistantMessage = agent.AssistantMessage
 	ToolMessage      = agent.ToolMessage
+	TextToolResult   = agent.TextToolResult
 	WithToolName     = agent.WithToolName
 )
 

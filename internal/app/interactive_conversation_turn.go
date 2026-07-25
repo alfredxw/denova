@@ -212,7 +212,7 @@ func schemaMessagesFromInteractiveContext(messages []interactive.ModelContextMes
 			}
 		case string(agents.RoleTool):
 			if strings.TrimSpace(msg.ToolCallID) != "" || strings.TrimSpace(msg.ToolName) != "" {
-				result = append(result, agents.ToolMessage(msg.Content, msg.ToolCallID, agents.WithToolName(msg.ToolName)))
+				result = append(result, agents.ToolMessage(agents.TextToolResult(msg.Content), msg.ToolCallID, agents.WithToolName(msg.ToolName)))
 			}
 		}
 	}

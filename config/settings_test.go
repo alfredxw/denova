@@ -40,6 +40,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.AgentToolResultLimitKB == nil || *s.AgentToolResultLimitKB != DefaultAgentToolResultLimitKB {
 		t.Fatalf("AgentToolResultLimitKB default")
 	}
+	if s.AgentToolParallelism == nil || *s.AgentToolParallelism != DefaultAgentToolParallelism {
+		t.Fatalf("AgentToolParallelism default")
+	}
 	if s.TraceCaptureLevel != DefaultTraceCaptureLevel || s.TraceExporter != DefaultTraceExporter {
 		t.Fatalf("trace defaults: capture=%q exporter=%q", s.TraceCaptureLevel, s.TraceExporter)
 	}
@@ -134,6 +137,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		MaxIteration:               intPtr(10),
 		AgentIdleTimeoutSeconds:    intPtr(120),
 		AgentToolResultLimitKB:     intPtr(0),
+		AgentToolParallelism:       intPtr(4),
 		UIFontFamily:               "apple-system",
 		UIFontSize:                 intPtr(14),
 		ReadingFontFamily:          "source-han-serif",
@@ -159,6 +163,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		MaxIteration:               nil, // 继承 parent
 		AgentIdleTimeoutSeconds:    intPtr(240),
 		AgentToolResultLimitKB:     intPtr(64),
+		AgentToolParallelism:       intPtr(12),
 		UIFontFamily:               "humanist-sans",
 		UIFontSize:                 intPtr(13),
 		ReadingFontFamily:          "system-serif",
@@ -198,6 +203,9 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	}
 	if out.AgentToolResultLimitKB == nil || *out.AgentToolResultLimitKB != 64 {
 		t.Fatalf("AgentToolResultLimitKB should override parent")
+	}
+	if out.AgentToolParallelism == nil || *out.AgentToolParallelism != 12 {
+		t.Fatalf("AgentToolParallelism should override parent")
 	}
 	if out.UIFontFamily != "humanist-sans" {
 		t.Fatalf("UIFontFamily should override parent: %s", out.UIFontFamily)

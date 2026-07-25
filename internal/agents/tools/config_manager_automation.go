@@ -149,7 +149,7 @@ func (input automationTriggerWriteInput) toTrigger() automation.TriggerDefinitio
 	return trigger
 }
 
-func newListAutomationsTool(novaDir, workspace string, workspaces []string) (agent.BaseTool, error) {
+func newListAutomationsTool(novaDir, workspace string, workspaces []string) (agent.Tool, error) {
 	return agent.InferTool("list_automations", "列出用户的全局自动化任务索引，按显式执行目标返回 catalog_id、名称、启用状态、模板、触发器和写入策略；需要完整配置时再调用 read_automations。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
@@ -169,7 +169,7 @@ func newListAutomationsTool(novaDir, workspace string, workspaces []string) (age
 	})
 }
 
-func newReadAutomationsTool(novaDir, workspace string, workspaces []string) (agent.BaseTool, error) {
+func newReadAutomationsTool(novaDir, workspace string, workspaces []string) (agent.Tool, error) {
 	return agent.InferTool("read_automations", "按自动化任务 catalog_id 批量读取完整任务配置。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		store := configManagerAutomationStore(novaDir, workspace, workspaces)
@@ -185,7 +185,7 @@ func newReadAutomationsTool(novaDir, workspace string, workspaces []string) (age
 	})
 }
 
-func newWriteAutomationsTool(novaDir, workspace string, workspaces []string) (agent.BaseTool, error) {
+func newWriteAutomationsTool(novaDir, workspace string, workspaces []string) (agent.Tool, error) {
 	return agent.InferTool("write_automations", "批量创建、更新或删除用户自动化任务；create 必须显式指定 target，update 必须携带 read_automations 返回的 revision，update/delete 使用 catalog_id。删除必须来自用户明确指令。", func(ctx context.Context, input automationWriteInput) (string, error) {
 		_ = ctx
 		store := configManagerAutomationStore(novaDir, workspace, workspaces)

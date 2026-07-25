@@ -5,25 +5,15 @@ import (
 	"time"
 )
 
-// InvokableToolCallEndpoint is the middleware seam for complete tool calls.
-type InvokableToolCallEndpoint func(context.Context, string, ...ToolOption) (string, error)
-
-// StreamableToolCallEndpoint is the middleware seam for streaming tool calls.
-type StreamableToolCallEndpoint func(context.Context, string, ...ToolOption) (*StreamReader[string], error)
+// ToolCallEndpoint is the single middleware seam for structured tool calls.
+type ToolCallEndpoint func(context.Context, string, ...ToolOption) (ToolResult, error)
 
 // ToolContext identifies one concrete tool call.
 type ToolContext struct {
-	Name   string
-	CallID string
-	// Info is the validated registry snapshot for this invocation. Tool
-	// metadata travels with the tool instead of being re-declared in a runtime
-	// catalog keyed by its name.
-	Info *ToolInfo
-}
-
-// ToolCallsContext identifies a completed source-ordered batch.
-type ToolCallsContext struct {
-	ToolCalls []ToolContext
+	Index      int
+	Name       string
+	CallID     string
+	Definition ToolDefinitionSnapshot
 }
 
 // ModelContext contains read-only metadata for a model invocation.
@@ -35,7 +25,7 @@ type ModelContext struct {
 // RunContext is mutable once at the beginning of a run.
 type RunContext struct {
 	Instruction string
-	Tools       []BaseTool
+	Tools       []ToolDefinition
 }
 
 // RunState is the in-memory transcript for one run.
@@ -79,8 +69,7 @@ type Middleware interface {
 	BeforeModelRewriteState(context.Context, *RunState, *ModelContext) (context.Context, *RunState, error)
 	AfterModelRewriteState(context.Context, *RunState, *ModelContext) (context.Context, *RunState, error)
 	WrapModel(context.Context, BaseChatModel, *ModelContext) (BaseChatModel, error)
-	WrapInvokableToolCall(context.Context, InvokableToolCallEndpoint, *ToolContext) (InvokableToolCallEndpoint, error)
-	WrapStreamableToolCall(context.Context, StreamableToolCallEndpoint, *ToolContext) (StreamableToolCallEndpoint, error)
+	WrapToolCall(context.Context, ToolCallEndpoint, *ToolContext) (ToolCallEndpoint, error)
 }
 
 // BaseMiddleware provides no-op implementations for selective embedding.
@@ -106,10 +95,6 @@ func (*BaseMiddleware) WrapModel(_ context.Context, model BaseChatModel, _ *Mode
 	return model, nil
 }
 
-func (*BaseMiddleware) WrapInvokableToolCall(_ context.Context, endpoint InvokableToolCallEndpoint, _ *ToolContext) (InvokableToolCallEndpoint, error) {
-	return endpoint, nil
-}
-
-func (*BaseMiddleware) WrapStreamableToolCall(_ context.Context, endpoint StreamableToolCallEndpoint, _ *ToolContext) (StreamableToolCallEndpoint, error) {
+func (*BaseMiddleware) WrapToolCall(_ context.Context, endpoint ToolCallEndpoint, _ *ToolContext) (ToolCallEndpoint, error) {
 	return endpoint, nil
 }

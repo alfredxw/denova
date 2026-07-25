@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	"denova/internal/interactive"
 )
 
@@ -25,7 +23,7 @@ func TestInteractiveTurnToolsExposeOneStructuredSubmissionTool(t *testing.T) {
 	if len(tools) != 1 {
 		t.Fatalf("game Agent should receive one turn submission tool, got %d", len(tools))
 	}
-	info, err := tools[0].Info(context.Background())
+	info, err := tools[0].Tool.Info(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,11 +124,7 @@ func TestInteractiveTurnToolsExposeOneStructuredSubmissionTool(t *testing.T) {
 		t.Fatalf("submission tool must not ask for ASCII Actor IDs: %s", parameterText)
 	}
 
-	turnTool, ok := tools[0].(agent.InvokableTool)
-	if !ok {
-		t.Fatalf("unexpected submission tool implementation: %T", tools[0])
-	}
-	_, err = turnTool.InvokableRun(context.Background(), `{"state_changes":[{"op":"replace","actor_id":"protagonist","field_id":"状态","value":"警惕"}],"choices":["前进","观察","交谈","等待","后退"]}`)
+	_, err = runToolForTest(context.Background(), tools[0], `{"state_changes":[{"op":"replace","actor_id":"protagonist","field_id":"状态","value":"警惕"}],"choices":["前进","观察","交谈","等待","后退"]}`)
 	if err != nil {
 		t.Fatal(err)
 	}

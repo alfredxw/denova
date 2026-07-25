@@ -9,7 +9,6 @@ import (
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
 )
 
 // interactiveContentReclassifiedEvent tells the Game UI to retract provisional
@@ -113,7 +112,7 @@ func processStreamingEvent(ctx context.Context, mv *agent.MessageVariant, fullCo
 						"name": tc.Function.Name,
 						"args": "",
 					})
-					appendToolDescriptorEventData(data, mv.ToolInfos, tc.Function.Name, toolResultMaxBytes)
+					appendToolDescriptorEventData(data, mv.ToolDefinitions, tc.Function.Name, toolResultMaxBytes)
 					if tc.Index != nil {
 						data["index"] = *tc.Index
 					}
@@ -266,7 +265,7 @@ func processNonStreamingEvent(mv *agent.MessageVariant, fullContent, fullThinkin
 			"name": name,
 			"args": args,
 		})
-		appendToolDescriptorEventData(data, mv.ToolInfos, tc.Function.Name, toolResultMaxBytes)
+		appendToolDescriptorEventData(data, mv.ToolDefinitions, tc.Function.Name, toolResultMaxBytes)
 		if target != "" {
 			data["target"] = target
 		}
@@ -277,15 +276,11 @@ func processNonStreamingEvent(mv *agent.MessageVariant, fullContent, fullThinkin
 	}
 }
 
-func appendToolDescriptorEventData(data map[string]interface{}, infos []*agent.ToolInfo, name string, maxResultBytes int) {
-	var descriptor agenttools.Descriptor
-	for _, info := range infos {
-		if info != nil && info.Name == name {
-			var ok bool
-			descriptor, ok = agenttools.DescriptorFromInfo(info)
-			if !ok {
-				return
-			}
+func appendToolDescriptorEventData(data map[string]interface{}, definitions []agent.ToolDefinitionSnapshot, name string, maxResultBytes int) {
+	var descriptor agent.ToolDescriptor
+	for _, definition := range definitions {
+		if definition.Info != nil && definition.Info.Name == name {
+			descriptor = definition.Descriptor
 			break
 		}
 	}

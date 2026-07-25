@@ -30,8 +30,12 @@ func TestIncompleteToolExchangeGetsStableUnknownEffectResult(t *testing.T) {
 		t.Fatalf("recovered tool call = %#v", first[1])
 	}
 	result := first[2]
-	if result.Role != agent.Tool || result.ToolCallID != "call-write" || result.ToolName != "write_file" {
+	if result.Role != agent.ToolRole || result.ToolCallID != "call-write" || result.ToolName != "write_file" {
 		t.Fatalf("synthetic tool result identity = %#v", result)
+	}
+	if result.ToolResult == nil || result.ToolResult.Status != agent.ToolResultError ||
+		result.ToolResult.SyntheticReason != agent.ToolSyntheticEffectUnknown {
+		t.Fatalf("synthetic tool result summary = %#v", result.ToolResult)
 	}
 	var payload struct {
 		Schema         string `json:"schema"`
@@ -57,7 +61,7 @@ func TestIncompleteParallelToolCallsCompleteOnlyMissingResults(t *testing.T) {
 			{ID: "call-read", Function: agent.FunctionCall{Name: "read_file", Arguments: `{"path":"a.md"}`}},
 			{ID: "call-write", Function: agent.FunctionCall{Name: "write_file", Arguments: `{"path":"b.md"}`}},
 		}),
-		agent.ToolMessage("read result", "call-read", agent.WithToolName("read_file")),
+		agent.ToolMessage(agent.TextToolResult("read result"), "call-read", agent.WithToolName("read_file")),
 	}
 	got := applyToolResultContextPolicy(messages, ToolResultContextPolicy{Enabled: true})
 	if len(got) != 3 {
@@ -65,7 +69,7 @@ func TestIncompleteParallelToolCallsCompleteOnlyMissingResults(t *testing.T) {
 	}
 	counts := map[string]int{}
 	for _, message := range got {
-		if message.Role == agent.Tool {
+		if message.Role == agent.ToolRole {
 			counts[message.ToolCallID]++
 		}
 	}
@@ -96,7 +100,7 @@ func TestCanonicalSessionHistoryProjectsUnknownToolEffectIntoNextModelContext(t 
 	conversation := NewSessionConversationForAgent(sess, &config.Config{}, AgentKindIDE)
 	messages := conversation.modelHistory(sess.SnapshotContext(AgentKindIDE))
 	if len(messages) != 3 || messages[1].Role != agent.Assistant || len(messages[1].ToolCalls) != 1 ||
-		messages[2].Role != agent.Tool || messages[2].ToolCallID != "canonical-call" ||
+		messages[2].Role != agent.ToolRole || messages[2].ToolCallID != "canonical-call" ||
 		!isUnknownToolEffectResult(messages[2].Content) {
 		t.Fatalf("canonical next model context did not contain a complete unknown-effect exchange: %#v", messages)
 	}

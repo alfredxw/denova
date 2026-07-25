@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
 	novaskills "denova/internal/agents/skills"
@@ -25,16 +24,16 @@ type skillToolInput struct {
 // newSkillTool exposes progressive Skill disclosure without coupling the Skill
 // catalog to the Agent. The catalog summary is part of the stable tool
 // description; full instructions are loaded only after an explicit call.
-func newSkillTool(ctx context.Context, backend *novaskills.Backend, maxBytes int) (agent.BaseTool, error) {
+func newSkillTool(ctx context.Context, backend *novaskills.Backend, maxBytes int) (agent.ToolDefinition, error) {
 	if backend == nil {
-		return nil, nil
+		return agent.ToolDefinition{}, nil
 	}
 	available, err := backend.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list skills: %w", err)
+		return agent.ToolDefinition{}, fmt.Errorf("list skills: %w", err)
 	}
 	if len(available) == 0 {
-		return nil, nil
+		return agent.ToolDefinition{}, nil
 	}
 	sort.Slice(available, func(i, j int) bool { return available[i].Name < available[j].Name })
 	var description strings.Builder
@@ -58,13 +57,13 @@ func newSkillTool(ctx context.Context, backend *novaskills.Backend, maxBytes int
 		return novaskills.FormatForModel(skill, maxBytes), nil
 	})
 	if err != nil {
-		return nil, err
+		return agent.ToolDefinition{}, err
 	}
-	return defineTool(tool, boundedReadDescriptor(agenttools.SourceOther, config.AgentToolSkills))
+	return defineTool(tool, boundedReadDescriptor(agent.ToolSourceOther, config.AgentToolSkills))
 }
 
 // NewSkill builds the progressive-disclosure Skill tool.
-func NewSkill(ctx context.Context, backend *novaskills.Backend, maxBytes int) (agent.BaseTool, error) {
+func NewSkill(ctx context.Context, backend *novaskills.Backend, maxBytes int) (agent.ToolDefinition, error) {
 	return newSkillTool(ctx, backend, maxBytes)
 }
 
@@ -78,7 +77,7 @@ type writeTodosInput struct {
 	Todos []todoItem `json:"todos"`
 }
 
-func newWriteTodosTool() (agent.BaseTool, error) {
+func newWriteTodosTool() (agent.ToolDefinition, error) {
 	tool, err := agent.InferTool("write_todos", "Replace the current run's complete todo list. Send every item on each update; status must be pending, in_progress, or completed.", func(_ context.Context, input writeTodosInput) (string, error) {
 		payload, err := json.Marshal(input.Todos)
 		if err != nil {
@@ -87,17 +86,18 @@ func newWriteTodosTool() (agent.BaseTool, error) {
 		return "Updated todo list to " + string(payload), nil
 	})
 	if err != nil {
-		return nil, err
+		return agent.ToolDefinition{}, err
 	}
-	return defineTool(tool, agenttools.Descriptor{
-		Source: agenttools.SourceOther, Capability: config.AgentToolTodo,
-		Execution: agenttools.ExecutionWorkspaceExclusive, Recovery: agenttools.RecoveryIdempotent,
-		ResultProjection: agenttools.ResultBoundedModelContext, MaxResultBytes: defaultToolResultMaxBytes,
+	return defineTool(tool, agent.ToolDescriptor{
+		Source: agent.ToolSourceOther, Capability: config.AgentToolTodo,
+		Execution: agent.ToolExecutionWorkspaceExclusive, Recovery: agent.ToolRecoveryIdempotent,
+		Steering:         agent.SteeringFinishCurrent,
+		ResultProjection: agent.ToolResultBoundedModelContext, MaxResultBytes: defaultToolResultMaxBytes,
 	})
 }
 
 // NewWriteTodos builds the run-local todo tool.
-func NewWriteTodos() (agent.BaseTool, error) {
+func NewWriteTodos() (agent.ToolDefinition, error) {
 	return newWriteTodosTool()
 }
 
@@ -106,7 +106,7 @@ type taskToolInput struct {
 	Description  string `json:"description" jsonschema:"description=Complete self-contained task including goal context constraints and expected output"`
 }
 
-func newTaskTool(ctx context.Context, subAgents []agent.Runnable) (agent.BaseTool, error) {
+func newTaskTool(ctx context.Context, subAgents []agent.Runnable) (agent.ToolDefinition, error) {
 	byName := make(map[string]agent.Runnable, len(subAgents))
 	var description strings.Builder
 	description.WriteString("Delegate a self-contained task to one Agent and return its final response. Available Agents:\n")
@@ -116,10 +116,10 @@ func newTaskTool(ctx context.Context, subAgents []agent.Runnable) (agent.BaseToo
 		}
 		name := strings.TrimSpace(candidate.Name(ctx))
 		if name == "" {
-			return nil, errors.New("task tool: subagent has no stable name")
+			return agent.ToolDefinition{}, errors.New("task tool: subagent has no stable name")
 		}
 		if _, exists := byName[name]; exists {
-			return nil, fmt.Errorf("task tool: duplicate subagent %q", name)
+			return agent.ToolDefinition{}, fmt.Errorf("task tool: duplicate subagent %q", name)
 		}
 		byName[name] = candidate
 		description.WriteString("- ")
@@ -129,7 +129,7 @@ func newTaskTool(ctx context.Context, subAgents []agent.Runnable) (agent.BaseToo
 		description.WriteByte('\n')
 	}
 	if len(byName) == 0 {
-		return nil, nil
+		return agent.ToolDefinition{}, nil
 	}
 	tool, err := agent.InferTool("task", strings.TrimSpace(description.String()), func(callCtx context.Context, input taskToolInput) (string, error) {
 		selected := byName[strings.TrimSpace(input.SubagentType)]
@@ -143,18 +143,19 @@ func newTaskTool(ctx context.Context, subAgents []agent.Runnable) (agent.BaseToo
 		return runSubAgent(callCtx, selected, request)
 	})
 	if err != nil {
-		return nil, err
+		return agent.ToolDefinition{}, err
 	}
-	return defineTool(tool, agenttools.Descriptor{
-		Source: agenttools.SourceOther, Execution: agenttools.ExecutionChild,
-		Recovery: agenttools.RecoveryNonIdempotent, ResultProjection: agenttools.ResultBoundedModelContext,
+	return defineTool(tool, agent.ToolDescriptor{
+		Source: agent.ToolSourceOther, Execution: agent.ToolExecutionChild,
+		Recovery: agent.ToolRecoveryNonIdempotent, ResultProjection: agent.ToolResultBoundedModelContext,
+		Steering:       agent.SteeringFinishCurrent,
 		MaxResultBytes: defaultToolResultMaxBytes,
 	})
 }
 
 // NewTask builds the child-Agent delegation tool. It returns nil when no
 // delegated Agent is available.
-func NewTask(ctx context.Context, subAgents []agent.Runnable) (agent.BaseTool, error) {
+func NewTask(ctx context.Context, subAgents []agent.Runnable) (agent.ToolDefinition, error) {
 	return newTaskTool(ctx, subAgents)
 }
 

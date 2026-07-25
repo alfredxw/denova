@@ -328,6 +328,33 @@ describe('AgentsView', () => {
     })
   })
 
+  it('inherits and saves tool parallelism in user and workspace layers', async () => {
+    const user = userEvent.setup()
+    vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({
+      default: { agent_tool_parallelism: 8 },
+      user: { agent_tool_parallelism: 4 },
+      workspace: {},
+      effective: { agent_tool_parallelism: 4 },
+    }))
+
+    render(<AgentsView />)
+
+    const userInput = await screen.findByRole('spinbutton', { name: '只读工具并发数（1–64）' })
+    expect(userInput).toHaveValue(4)
+    await user.click(screen.getByRole('button', { name: '当前工作区' }))
+    const workspaceInput = screen.getByRole('spinbutton', { name: '只读工具并发数（1–64）' })
+    expect(workspaceInput).toHaveValue(null)
+    expect(workspaceInput).toHaveAttribute('placeholder', '4')
+    fireEvent.change(workspaceInput, { target: { value: '12' } })
+    flushAgentsAutosave()
+
+    await waitFor(() => {
+      expect(vi.mocked(updateWorkspaceSettings)).toHaveBeenCalledWith(expect.objectContaining({
+        agent_tool_parallelism: 12,
+      }))
+    })
+  })
+
   it('keeps SubAgent dialog edits local until Done', async () => {
     vi.mocked(fetchSettings).mockResolvedValue(settingsSnapshot({}))
     vi.mocked(updateUserSettings).mockImplementation(async (settings) => settingsSnapshot({ user: settings, effective: settings }))

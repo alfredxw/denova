@@ -32,7 +32,7 @@ func NewCatalog(cfg *config.Config, workspaceMetadata WorkspaceMetadataProvider,
 	return &Catalog{cfg: cfg, workspaceMetadata: workspaceMetadata, runtimeExecutables: runtimeExecutables}
 }
 
-type Factory func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error)
+type Factory func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error)
 
 func (catalog *Catalog) Lore(forceReadOnly bool) Factory {
 	return loreToolsFactory(catalog.cfg, forceReadOnly)
@@ -58,7 +58,7 @@ func (catalog *Catalog) ConfigManager() Factory {
 	return configManagerToolsFactory(catalog.cfg)
 }
 
-func (catalog *Catalog) Filesystem(settings config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
+func (catalog *Catalog) Filesystem(settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
 	workspace := ""
 	if catalog != nil && catalog.cfg != nil {
 		workspace = catalog.cfg.Workspace
@@ -72,7 +72,7 @@ func (catalog *Catalog) Filesystem(settings config.ResolvedAgentToolSettings) ([
 	return filesystemToolsFactory(workspace, metadata, runtimeExecutables)(settings)
 }
 
-func (catalog *Catalog) WebAccess() ([]agent.BaseTool, error) {
+func (catalog *Catalog) WebAccess() ([]agent.ToolDefinition, error) {
 	return newWebAccessTools(catalog.cfg)
 }
 
@@ -80,22 +80,22 @@ func (catalog *Catalog) WebAccessEnabled(agentKind string, settings config.Resol
 	return stableWebSearchSchemaAllowed(agentKind)(settings)
 }
 
-func (catalog *Catalog) Skill(ctx context.Context, backend *novaskills.Backend, maxBytes int) (agent.BaseTool, error) {
+func (catalog *Catalog) Skill(ctx context.Context, backend *novaskills.Backend, maxBytes int) (agent.ToolDefinition, error) {
 	return newSkillTool(ctx, backend, maxBytes)
 }
 
-func (catalog *Catalog) WriteTodos() (agent.BaseTool, error) {
+func (catalog *Catalog) WriteTodos() (agent.ToolDefinition, error) {
 	return newWriteTodosTool()
 }
 
-func (catalog *Catalog) Task(ctx context.Context, subAgents []agent.Runnable) (agent.BaseTool, error) {
+func (catalog *Catalog) Task(ctx context.Context, subAgents []agent.Runnable) (agent.ToolDefinition, error) {
 	return newTaskTool(ctx, subAgents)
 }
 
 // Tool factories are kept apart from Agent construction so adding a product
 // tool surface does not make the model/middleware assembly module a catch-all.
-func loreToolsFactory(cfg *config.Config, forceReadOnly bool) func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
-	return func(settings config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
+func loreToolsFactory(cfg *config.Config, forceReadOnly bool) func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
 		if cfg == nil || (!settings.LoreRead && !settings.LoreWrite) {
 			return nil, nil
 		}
@@ -104,8 +104,8 @@ func loreToolsFactory(cfg *config.Config, forceReadOnly bool) func(config.Resolv
 	}
 }
 
-func ideToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
-	return func(_ config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
+func ideToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
+	return func(_ config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
 		if cfg == nil {
 			return nil, nil
 		}
@@ -117,14 +117,14 @@ func ideToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) 
 		if err != nil {
 			return nil, err
 		}
-		tools := append([]agent.BaseTool{}, loreTools...)
+		tools := append([]agent.ToolDefinition{}, loreTools...)
 		tools = append(tools, imageTools...)
 		return tools, nil
 	}
 }
 
-func imageToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
-	return func(_ config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
+func imageToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
+	return func(_ config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
 		if cfg == nil {
 			return nil, nil
 		}
@@ -132,9 +132,9 @@ func imageToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings
 	}
 }
 
-func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...InteractiveContext) func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
-	return func(_ config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
-		var tools []agent.BaseTool
+func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...InteractiveContext) func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
+	return func(_ config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
+		var tools []agent.ToolDefinition
 		if cfg != nil {
 			loreTools, err := newLoreTools(cfg.Workspace, false)
 			if err != nil {
@@ -163,9 +163,9 @@ func interactiveStoryToolsFactory(cfg *config.Config, toolContexts ...Interactiv
 	}
 }
 
-func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...InteractiveContext) func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
-	return func(settings config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
-		var tools []agent.BaseTool
+func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...InteractiveContext) func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
+		var tools []agent.ToolDefinition
 		var storyToolContext InteractiveContext
 		if len(toolContexts) > 0 {
 			storyToolContext = toolContexts[0]
@@ -208,8 +208,8 @@ func interactiveDirectorToolsFactory(cfg *config.Config, toolContexts ...Interac
 	}
 }
 
-func configManagerToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
-	return func(settings config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
+func configManagerToolsFactory(cfg *config.Config) func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
 		if cfg == nil || !configManagerFactoryAllowed(settings) {
 			return nil, nil
 		}
@@ -228,8 +228,8 @@ func configManagerFactoryAllowed(settings config.ResolvedAgentToolSettings) bool
 
 // filesystemToolsFactory assembles native workspace tools as ordinary Agent
 // tools, keeping the concrete surface visible to construction-time validation.
-func filesystemToolsFactory(workspace string, metadata WorkspaceMetadataProvider, runtimeExecutables RuntimeExecutables) func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
-	return func(settings config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
+func filesystemToolsFactory(workspace string, metadata WorkspaceMetadataProvider, runtimeExecutables RuntimeExecutables) func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
+	return func(settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
 		if !settings.FileRead && !settings.FileWrite && !settings.ShellExecute {
 			return nil, nil
 		}
@@ -286,28 +286,16 @@ func filesystemToolsFactory(workspace string, metadata WorkspaceMetadataProvider
 		if err != nil {
 			return nil, fmt.Errorf("create execute tool: %w", err)
 		}
-		writeTool, err = defineTool(writeTool, workspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable))
+		definedWriteTool, err := defineTool(writeTool, workspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolFileWrite, agent.ToolRecoveryReconcilable))
 		if err != nil {
 			return nil, err
 		}
-		editTool, err = defineTool(editTool, workspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable))
+		definedEditTool, err := defineTool(editTool, workspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolFileWrite, agent.ToolRecoveryReconcilable))
 		if err != nil {
 			return nil, err
 		}
-		definitions := []agenttools.Definition{listDefinition, readDefinition, globDefinition, grepDefinition}
-		tools := make([]agent.BaseTool, 0, len(definitions)+3)
-		for _, definition := range definitions {
-			tool, bindErr := bindToolDefinition(definition)
-			if bindErr != nil {
-				return nil, bindErr
-			}
-			tools = append(tools, tool)
-		}
-		executeTool, err := bindToolDefinition(executeDefinition)
-		if err != nil {
-			return nil, err
-		}
-		return append(tools, writeTool, editTool, executeTool), nil
+		definitions := []agent.ToolDefinition{listDefinition, readDefinition, globDefinition, grepDefinition}
+		return append(definitions, definedWriteTool, definedEditTool, executeDefinition), nil
 	}
 }
 

@@ -122,7 +122,7 @@ func contextAnalysisPartFromMessage(id, source, title string, msg *agent.Message
 				input.Content = strings.TrimRight(msg.Content, "\n") + "\n\n" + contextAnalysisToolCallsContent(msg.ToolCalls)
 			}
 		}
-	case agent.Tool:
+	case agent.ToolRole:
 		input.Kind = "tool_result"
 		input.ToolName = msg.ToolName
 		input.ToolCallID = msg.ToolCallID

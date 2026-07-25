@@ -335,7 +335,14 @@ func newRunControlTwoPhaseRunner(t *testing.T, chatModel agent.BaseChatModel) *a
 		Description: "run control test",
 		Instruction: "test",
 		Model:       chatModel,
-		Tools:       []agent.BaseTool{runControlTestTool{}},
+		Tools: []agent.ToolDefinition{{
+			Tool: runControlTestTool{},
+			Descriptor: agent.ToolDescriptor{
+				Source: agent.ToolSourceOther, Execution: agent.ToolExecutionWorkspaceExclusive,
+				Recovery: agent.ToolRecoveryIdempotent, ResultProjection: agent.ToolResultBoundedModelContext,
+				Steering: agent.SteeringFinishCurrent, MaxResultBytes: 64 * 1024,
+			},
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -490,10 +497,10 @@ func (runControlTestTool) Info(context.Context) (*agent.ToolInfo, error) {
 	}, nil
 }
 
-func (runControlTestTool) InvokableRun(context.Context, string, ...agent.ToolOption) (string, error) {
-	return "first phase complete", nil
+func (runControlTestTool) Run(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
+	return agent.TextToolResult("first phase complete"), nil
 }
 
 var _ agent.BaseChatModel = (*runControlFixedModel)(nil)
 var _ agent.BaseChatModel = (*runControlTwoPhaseModel)(nil)
-var _ agent.InvokableTool = runControlTestTool{}
+var _ agent.Tool = runControlTestTool{}

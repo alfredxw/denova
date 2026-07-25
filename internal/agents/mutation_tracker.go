@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -167,6 +168,11 @@ func (t *mutationTracker) observeToolResult(data any) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	call := t.ensureCallLocked(id, name)
+	if source := eventDataString(data, "source"); source != "" {
+		call.source = ToolSource(source)
+		call.mutatesWorkspace = eventDataBool(data, "mutates_workspace")
+		call.requiresPostCheck = eventDataBool(data, "requires_post_check")
+	}
 	if manifest, ok := parseToolResultManifest(call.name, eventDataString(data, "content")); ok {
 		call.source = manifest.Source
 		call.mutatesWorkspace = manifest.MutatesWorkspace
@@ -177,12 +183,40 @@ func (t *mutationTracker) observeToolResult(data any) {
 	}
 	call.itemIDs = append(call.itemIDs, eventDataStringSlice(data, "item_ids")...)
 	call.deleteID = append(call.deleteID, eventDataStringSlice(data, "deleted_ids")...)
-	if receipt, ok := producttools.ParseWorkspaceChangeReceipt(call.name, eventDataString(data, "content")); ok {
+	if receipt, ok := workspaceChangeReceiptFromEventData(data); ok {
+		call.change = receipt
+		if strings.TrimSpace(receipt.Path) != "" {
+			call.target = receipt.Path
+		}
+	} else if receipt, ok := producttools.ParseWorkspaceChangeReceipt(call.name, eventDataString(data, "content")); ok {
 		call.change = receipt
 		if strings.TrimSpace(receipt.Path) != "" {
 			call.target = receipt.Path
 		}
 	}
+}
+
+func workspaceChangeReceiptFromEventData(data any) (producttools.WorkspaceChangeReceipt, bool) {
+	values, ok := data.(map[string]interface{})
+	if !ok {
+		return producttools.WorkspaceChangeReceipt{}, false
+	}
+	value, ok := values["workspace_change"]
+	if !ok || value == nil {
+		return producttools.WorkspaceChangeReceipt{}, false
+	}
+	if receipt, typed := value.(producttools.WorkspaceChangeReceipt); typed {
+		return receipt, strings.TrimSpace(receipt.Workspace) != "" && strings.TrimSpace(receipt.Path) != ""
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return producttools.WorkspaceChangeReceipt{}, false
+	}
+	var receipt producttools.WorkspaceChangeReceipt
+	if json.Unmarshal(encoded, &receipt) != nil || strings.TrimSpace(receipt.Workspace) == "" || strings.TrimSpace(receipt.Path) == "" {
+		return producttools.WorkspaceChangeReceipt{}, false
+	}
+	return receipt, true
 }
 
 func toolMutationFromExecutionRecord(record ToolExecutionRecord) (ToolMutation, bool) {

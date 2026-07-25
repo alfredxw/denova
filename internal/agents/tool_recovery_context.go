@@ -30,7 +30,7 @@ func completeUnknownToolResults(messages []*agent.Message) []*agent.Message {
 				}
 			}
 		}
-		if message.Role == agent.Tool {
+		if message.Role == agent.ToolRole {
 			if callID := strings.TrimSpace(message.ToolCallID); callID != "" {
 				resultCounts[callID]++
 			}
@@ -56,7 +56,7 @@ func completeUnknownToolResults(messages []*agent.Message) []*agent.Message {
 				continue
 			}
 			completed = append(completed, agent.ToolMessage(
-				runstate.UnknownToolEffectResult,
+				agent.SyntheticToolResult(agent.ToolResultError, agent.ToolSyntheticEffectUnknown, runstate.UnknownToolEffectResult),
 				callID,
 				agent.WithToolName(toolName),
 			))

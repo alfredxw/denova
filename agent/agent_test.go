@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -85,8 +84,20 @@ func (tool *functionTool) Info(context.Context) (*ToolInfo, error) {
 	return &ToolInfo{Name: tool.name, Desc: tool.name}, nil
 }
 
-func (tool *functionTool) InvokableRun(ctx context.Context, arguments string, _ ...ToolOption) (string, error) {
-	return tool.run(ctx, arguments)
+func (tool *functionTool) Run(ctx context.Context, arguments string, _ ...ToolOption) (ToolResult, error) {
+	content, err := tool.run(ctx, arguments)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	return TextToolResult(content), nil
+}
+
+func testToolDefinition(tool Tool) ToolDefinition {
+	return ToolDefinition{Tool: tool, Descriptor: ToolDescriptor{
+		Source: ToolSourceRead, Execution: ToolExecutionParallelRead,
+		Recovery: ToolRecoveryReadOnly, ResultProjection: ToolResultBoundedModelContext,
+		Steering: SteeringFinishCurrent, MaxResultBytes: 1 << 20,
+	}}
 }
 
 type panicBeforeAgentMiddleware struct {
@@ -164,17 +175,17 @@ func TestNativeLoopConcurrentToolsKeepResultAndTranscriptSourceOrder(t *testing.
 	}}
 	started := make(chan string, 2)
 	release := make(chan struct{})
-	makeTool := func(name string) BaseTool {
-		return &functionTool{name: name, run: func(ctx context.Context, _ string) (string, error) {
+	makeTool := func(name string) ToolDefinition {
+		return testToolDefinition(&functionTool{name: name, run: func(ctx context.Context, _ string) (string, error) {
 			if ToolCallID(ctx) != name+"-id" || ToolName(ctx) != name {
 				return "", fmt.Errorf("missing tool context for %s: id=%q name=%q", name, ToolCallID(ctx), ToolName(ctx))
 			}
 			started <- name
 			<-release
 			return "result-" + name, nil
-		}}
+		}})
 	}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "parallel", Model: model, Tools: []BaseTool{makeTool("slow"), makeTool("fast")}})
+	agent, err := NewAgent(context.Background(), AgentConfig{Name: "parallel", Model: model, Tools: []ToolDefinition{makeTool("slow"), makeTool("fast")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,8 +213,11 @@ func TestNativeLoopConcurrentToolsKeepResultAndTranscriptSourceOrder(t *testing.
 		if event.Err != nil {
 			t.Fatal(event.Err)
 		}
+		if event.Output == nil || event.Output.MessageOutput == nil {
+			continue
+		}
 		variant := event.Output.MessageOutput
-		if variant.Role == Tool {
+		if variant.Role == ToolRole {
 			toolEvents = append(toolEvents, variant.Message)
 		} else if variant.Role == Assistant {
 			final = variant.Message
@@ -246,15 +260,15 @@ func TestNativeLoopMergesStreamingToolCalls(t *testing.T) {
 	}}
 	var mu sync.Mutex
 	arguments := map[string]string{}
-	makeTool := func(name string) BaseTool {
-		return &functionTool{name: name, run: func(_ context.Context, raw string) (string, error) {
+	makeTool := func(name string) ToolDefinition {
+		return testToolDefinition(&functionTool{name: name, run: func(_ context.Context, raw string) (string, error) {
 			mu.Lock()
 			arguments[name] = raw
 			mu.Unlock()
 			return name, nil
-		}}
+		}})
 	}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "stream-tools", Model: model, Tools: []BaseTool{makeTool("alpha"), makeTool("beta")}})
+	agent, err := NewAgent(context.Background(), AgentConfig{Name: "stream-tools", Model: model, Tools: []ToolDefinition{makeTool("alpha"), makeTool("beta")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,17 +283,20 @@ func TestNativeLoopMergesStreamingToolCalls(t *testing.T) {
 		if event.Err != nil {
 			t.Fatal(event.Err)
 		}
+		if event.Output == nil || event.Output.MessageOutput == nil {
+			continue
+		}
 		variant := event.Output.MessageOutput
 		roles = append(roles, variant.Role)
 		message, err := variant.GetMessage()
 		if err != nil {
 			t.Fatal(err)
 		}
-		if variant.Role == Tool {
+		if variant.Role == ToolRole {
 			toolNames = append(toolNames, message.ToolName)
 		}
 	}
-	if fmt.Sprint(roles) != fmt.Sprint([]RoleType{Assistant, Tool, Tool, Assistant}) {
+	if fmt.Sprint(roles) != fmt.Sprint([]RoleType{Assistant, ToolRole, ToolRole, Assistant}) {
 		t.Fatalf("event roles = %#v", roles)
 	}
 	if fmt.Sprint(toolNames) != fmt.Sprint([]string{"alpha", "beta"}) {
@@ -296,18 +313,19 @@ func TestNativeLoopToolFailuresBecomeToolMessages(t *testing.T) {
 	tests := []struct {
 		name        string
 		call        ToolCall
-		tools       func(*atomic.Int32) []BaseTool
+		tools       func(*atomic.Int32) []ToolDefinition
 		finish      string
 		wantContent string
+		wantReason  ToolSyntheticReason
 		wantCalls   int32
 	}{
 		{
 			name: "unknown", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "missing", Arguments: `{}`}},
-			tools: func(*atomic.Int32) []BaseTool { return nil }, wantContent: "unknown tool", wantCalls: 0,
+			tools: func(*atomic.Int32) []ToolDefinition { return nil }, wantContent: "unknown tool", wantReason: ToolSyntheticUnknownTool, wantCalls: 0,
 		},
 		{
 			name: "invalid arguments", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "typed", Arguments: `{"value":"bad"}`}},
-			tools: func(count *atomic.Int32) []BaseTool {
+			tools: func(count *atomic.Int32) []ToolDefinition {
 				current, err := InferTool("typed", "", func(context.Context, struct {
 					Value int `json:"value"`
 				}) (string, error) {
@@ -317,29 +335,29 @@ func TestNativeLoopToolFailuresBecomeToolMessages(t *testing.T) {
 				if err != nil {
 					panic(err)
 				}
-				return []BaseTool{current}
+				return []ToolDefinition{testToolDefinition(current)}
 			},
-			wantContent: "decode arguments", wantCalls: 0,
+			wantContent: "invalid arguments", wantReason: ToolSyntheticInvalidArguments, wantCalls: 0,
 		},
 		{
 			name: "panic", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "panic", Arguments: `{}`}},
-			tools: func(count *atomic.Int32) []BaseTool {
-				return []BaseTool{&functionTool{name: "panic", run: func(context.Context, string) (string, error) {
+			tools: func(count *atomic.Int32) []ToolDefinition {
+				return []ToolDefinition{testToolDefinition(&functionTool{name: "panic", run: func(context.Context, string) (string, error) {
 					count.Add(1)
 					panic("boom")
-				}}}
+				}})}
 			},
 			wantContent: "panic recovered: boom", wantCalls: 1,
 		},
 		{
 			name: "length", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "never", Arguments: `{`}}, finish: "length",
-			tools: func(count *atomic.Int32) []BaseTool {
-				return []BaseTool{&functionTool{name: "never", run: func(context.Context, string) (string, error) {
+			tools: func(count *atomic.Int32) []ToolDefinition {
+				return []ToolDefinition{testToolDefinition(&functionTool{name: "never", run: func(context.Context, string) (string, error) {
 					count.Add(1)
 					return "unexpected", nil
-				}}}
+				}})}
 			},
-			wantContent: "was not executed", wantCalls: 0,
+			wantContent: "was not executed", wantReason: ToolSyntheticModelIncomplete, wantCalls: 0,
 		},
 	}
 	for _, test := range tests {
@@ -365,12 +383,18 @@ func TestNativeLoopToolFailuresBecomeToolMessages(t *testing.T) {
 				if event.Err != nil {
 					t.Fatal(event.Err)
 				}
-				if event.Output.MessageOutput.Role == Tool {
+				if event.Output == nil || event.Output.MessageOutput == nil {
+					continue
+				}
+				if event.Output.MessageOutput.Role == ToolRole {
 					toolResult = event.Output.MessageOutput.Message
 				}
 			}
 			if toolResult == nil || !strings.Contains(toolResult.Content, test.wantContent) {
 				t.Fatalf("tool result = %#v, want content %q", toolResult, test.wantContent)
+			}
+			if toolResult.ToolResult == nil || toolResult.ToolResult.SyntheticReason != test.wantReason {
+				t.Fatalf("tool result summary = %#v, want reason %q", toolResult.ToolResult, test.wantReason)
 			}
 			if calls.Load() != test.wantCalls {
 				t.Fatalf("tool calls = %d, want %d", calls.Load(), test.wantCalls)
@@ -416,8 +440,18 @@ func TestNativeLoopImmediateCancelClosesPublicStream(t *testing.T) {
 	if _, err := event.Output.MessageOutput.GetMessage(); !errors.Is(err, ErrStreamCanceled) {
 		t.Fatalf("public stream error = %v", err)
 	}
-	cancelEvent, ok := iterator.Next()
-	if !ok {
+	var cancelEvent *AgentEvent
+	for {
+		event, available := iterator.Next()
+		if !available {
+			break
+		}
+		if event.Err != nil {
+			cancelEvent = event
+			break
+		}
+	}
+	if cancelEvent == nil {
 		t.Fatal("missing cancel event")
 	}
 	var cancelErr *CancelError
@@ -462,10 +496,30 @@ func TestNativeLoopImmediateCancelDoesNotWaitForBlockingModelCall(t *testing.T) 
 	if !contributed {
 		t.Fatal("cancel did not contribute")
 	}
-	event, ok := nextAgentEventWithin(t, iterator, 100*time.Millisecond)
 	var cancelErr *CancelError
-	if !ok || !errors.As(event.Err, &cancelErr) || cancelErr.Info.Mode != CancelImmediate {
-		t.Fatalf("cancel event = %#v", event)
+	deadline := time.After(100 * time.Millisecond)
+	for cancelErr == nil {
+		result := make(chan nextAgentEventResult, 1)
+		safeGo(func() {
+			event, ok := iterator.Next()
+			result <- nextAgentEventResult{event: event, ok: ok}
+		}, func(err error) {
+			result <- nextAgentEventResult{err: err}
+		})
+		select {
+		case next := <-result:
+			if next.err != nil || !next.ok {
+				t.Fatalf("cancel stream ended: %#v", next)
+			}
+			if next.event.Err != nil && !errors.As(next.event.Err, &cancelErr) {
+				t.Fatalf("cancel event = %#v", next.event)
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for immediate cancel")
+		}
+	}
+	if cancelErr.Info.Mode != CancelImmediate {
+		t.Fatalf("cancel mode = %#v", cancelErr.Info)
 	}
 	if err := handle.Wait(); err != nil {
 		t.Fatalf("cancel wait = %v", err)
@@ -516,7 +570,7 @@ func TestNativeLoopImmediateCancelDoesNotWaitForBlockingToolCall(t *testing.T) {
 		<-release
 		return "late", nil
 	}}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "blocking-tool", Model: model, Tools: []BaseTool{tool}})
+	agent, err := NewAgent(context.Background(), AgentConfig{Name: "blocking-tool", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,10 +585,23 @@ func TestNativeLoopImmediateCancelDoesNotWaitForBlockingToolCall(t *testing.T) {
 	if !contributed {
 		t.Fatal("cancel did not contribute")
 	}
-	event, ok := nextAgentEventWithin(t, iterator, 100*time.Millisecond)
 	var cancelErr *CancelError
-	if !ok || !errors.As(event.Err, &cancelErr) || cancelErr.Info.Mode != CancelImmediate {
-		t.Fatalf("cancel event = %#v", event)
+	deadline := time.Now().Add(100 * time.Millisecond)
+	for cancelErr == nil {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			t.Fatal("timed out waiting for immediate cancel")
+		}
+		event, ok := nextAgentEventWithin(t, iterator, remaining)
+		if !ok {
+			t.Fatal("missing cancel event")
+		}
+		if event.Err != nil && !errors.As(event.Err, &cancelErr) {
+			t.Fatalf("cancel event = %#v", event)
+		}
+	}
+	if cancelErr.Info.Mode != CancelImmediate {
+		t.Fatalf("cancel mode = %#v", cancelErr.Info)
 	}
 	if err := handle.Wait(); err != nil {
 		t.Fatalf("cancel wait = %v", err)
@@ -591,7 +658,7 @@ func TestNativeLoopCancelAfterModelSkipsTools(t *testing.T) {
 		calls.Add(1)
 		return "unexpected", nil
 	}}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "safe-cancel", Model: model, Tools: []BaseTool{current}})
+	agent, err := NewAgent(context.Background(), AgentConfig{Name: "safe-cancel", Model: model, Tools: []ToolDefinition{testToolDefinition(current)}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -607,13 +674,19 @@ func TestNativeLoopCancelAfterModelSkipsTools(t *testing.T) {
 	if !ok || assistantEvent.Err != nil || assistantEvent.Output.MessageOutput.Role != Assistant {
 		t.Fatalf("assistant event = %#v", assistantEvent)
 	}
-	cancelEvent, ok := iterator.Next()
-	if !ok {
-		t.Fatal("missing cancel event")
-	}
 	var cancelErr *CancelError
-	if !errors.As(cancelEvent.Err, &cancelErr) || cancelErr.Info.Mode != CancelAfterChatModel {
-		t.Fatalf("cancel event = %#v", cancelEvent)
+	for {
+		cancelEvent, next := iterator.Next()
+		if !next {
+			t.Fatal("missing cancel event")
+		}
+		if cancelEvent.Err == nil {
+			continue
+		}
+		if !errors.As(cancelEvent.Err, &cancelErr) || cancelErr.Info.Mode != CancelAfterChatModel {
+			t.Fatalf("cancel event = %#v", cancelEvent)
+		}
+		break
 	}
 	if calls.Load() != 0 {
 		t.Fatalf("tool ran %d times", calls.Load())
@@ -636,7 +709,7 @@ func TestNativeLoopRetryAndNestedEventSink(t *testing.T) {
 		return "child-result", nil
 	}}
 	agent, err := NewAgent(context.Background(), AgentConfig{
-		Name: "retry", Model: model, Tools: []BaseTool{child},
+		Name: "retry", Model: model, Tools: []ToolDefinition{testToolDefinition(child)},
 		Retry: &RetryConfig{MaxRetries: 1},
 	})
 	if err != nil {
@@ -651,6 +724,9 @@ func TestNativeLoopRetryAndNestedEventSink(t *testing.T) {
 		}
 		if event.Err != nil {
 			t.Fatal(event.Err)
+		}
+		if event.Output != nil && event.Output.ToolExecution != nil {
+			continue
 		}
 		names = append(names, event.AgentName)
 	}
@@ -686,36 +762,3 @@ func TestExternalContextCancelTerminatesLoop(t *testing.T) {
 		t.Fatal("unexpected event after context cancellation")
 	}
 }
-
-func TestStreamReaderErrorItemTerminatesToolStream(t *testing.T) {
-	tool := &streamErrorTool{}
-	result := (&Agent{}).executeTool(context.Background(), mustRegistry(t, tool), ToolCall{ID: "1", Function: FunctionCall{Name: "stream-error"}}, &AsyncGenerator[*AgentEvent]{queue: newAsyncQueue[*AgentEvent]()})
-	if result.err == nil || !strings.Contains(result.message.Content, "stream failed") {
-		t.Fatalf("stream result = %#v", result)
-	}
-}
-
-type streamErrorTool struct{}
-
-func (*streamErrorTool) Info(context.Context) (*ToolInfo, error) {
-	return &ToolInfo{Name: "stream-error"}, nil
-}
-
-func (*streamErrorTool) StreamableRun(context.Context, string, ...ToolOption) (*StreamReader[string], error) {
-	reader, writer := Pipe[string](-1)
-	writer.Send("partial", nil)
-	writer.Send("", errors.New("stream failed"))
-	writer.Close()
-	return reader, nil
-}
-
-func mustRegistry(t *testing.T, tools ...BaseTool) *Registry {
-	t.Helper()
-	registry, err := NewRegistry(context.Background(), tools...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return registry
-}
-
-var _ = io.EOF

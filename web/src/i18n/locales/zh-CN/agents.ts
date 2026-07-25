@@ -57,6 +57,8 @@ const agents = {
   'agents.section.skills': 'Skills 可用范围',
   'agents.section.builtIn': '内置能力',
   'agents.section.runtimeContext': '上下文窗口',
+  'agents.section.toolScheduling': '工具调度',
+  'agents.tool.parallelismNote': '所有 Agent 的 parallel_read 最大并发数；工作区写入和 child 工具仍保持严格顺序屏障。',
   'agents.section.context': '上下文',
   'agents.section.subAgents': 'SubAgents',
   'agents.field.modelProfile': '模型配置',

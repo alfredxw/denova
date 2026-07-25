@@ -97,7 +97,7 @@ func TestGenerateMapsCompleteRequestAndResponse(t *testing.T) {
 				},
 			}},
 		},
-		{Role: agent.Tool, ToolCallID: "call_prev", ToolName: "lookup", Content: `{"ok":true}`},
+		{Role: agent.ToolRole, ToolCallID: "call_prev", ToolName: "lookup", Content: `{"ok":true}`},
 	}, agent.WithMaxTokens(99), agent.WithToolChoice(agent.ToolChoiceAllowed, "lookup"))
 	if err != nil {
 		t.Fatalf("generate: %v", err)

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -160,30 +159,73 @@ func TestToolExecutionGateCanonicalizesWorkspaceSymlink(t *testing.T) {
 	}
 }
 
-func TestToolExecutionGateHoldsStreamLockUntilResultEOF(t *testing.T) {
+func TestToolExecutionGateHoldsExclusiveLockUntilToolRunReturns(t *testing.T) {
 	gate := &toolExecutionGate{}
 	middleware := &toolOrchestratorMiddleware{
 		toolSettings:        config.ResolvedAgentToolSettings{FileWrite: true, ShellExecute: true},
 		enforceToolSettings: true,
 		executionGate:       gate,
 	}
-	sourceReader, sourceWriter := agent.Pipe[string](1)
-	stream, err := middleware.WrapStreamableToolCall(
-		context.Background(),
-		func(context.Context, string, ...agent.ToolOption) (*agent.StreamReader[string], error) {
-			return sourceReader, nil
-		},
-		testToolContext("execute", ""),
-	)
-	if err != nil {
-		t.Fatal(err)
+	entered := make(chan string, 2)
+	releaseExecute := make(chan struct{})
+	execute := mustWrapGateTestEndpoint(t, middleware, "execute", func(context.Context, string, ...agent.ToolOption) (string, error) {
+		entered <- "execute"
+		<-releaseExecute
+		return "done", nil
+	})
+	releaseWrite := make(chan struct{})
+	edit := mustWrapGateTestEndpoint(t, middleware, "edit_file", func(ctx context.Context, _ string, _ ...agent.ToolOption) (string, error) {
+		entered <- "edit"
+		select {
+		case <-releaseWrite:
+			return "ok", nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	})
+	errs := make(chan error, 2)
+	go invokeGateTestEndpoint(execute, `{"command":"touch a.md"}`, errs)
+	if got := waitForGateTestEntry(t, entered); got != "execute" {
+		t.Fatalf("first entry = %q", got)
 	}
-	filtered, err := stream(context.Background(), `{"command":"touch a.md"}`)
-	if err != nil {
-		t.Fatal(err)
+	go invokeGateTestEndpoint(edit, `{"file_path":"a.md","edits":[]}`, errs)
+	assertNoGateTestEntry(t, entered)
+	close(releaseExecute)
+	if got := waitForGateTestEntry(t, entered); got != "edit" {
+		t.Fatalf("entry after execute returned = %q", got)
 	}
+	close(releaseWrite)
+	waitForGateTestResults(t, errs, 2)
+}
 
-	entered := make(chan string, 1)
+func TestToolExecutionGateKeepsLockAfterCancelUntilNonCooperativeToolReturns(t *testing.T) {
+	gate := &toolExecutionGate{}
+	middleware := &toolOrchestratorMiddleware{
+		toolSettings:        config.ResolvedAgentToolSettings{FileWrite: true, ShellExecute: true},
+		enforceToolSettings: true,
+		executionGate:       gate,
+	}
+	entered := make(chan string, 2)
+	releaseExecute := make(chan struct{})
+	execute := mustWrapGateTestEndpoint(t, middleware, "execute", func(context.Context, string, ...agent.ToolOption) (string, error) {
+		entered <- "execute"
+		<-releaseExecute
+		return "done", nil
+	})
+	executeCtx, cancelExecute := context.WithCancel(context.Background())
+	executeResult := make(chan error, 1)
+	go func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				executeResult <- fmt.Errorf("panic: %v", recovered)
+			}
+		}()
+		_, runErr := execute(executeCtx, `{"command":"long-running"}`)
+		executeResult <- runErr
+	}()
+	if got := waitForGateTestEntry(t, entered); got != "execute" {
+		t.Fatalf("first entry = %q", got)
+	}
 	releaseWrite := make(chan struct{})
 	edit := mustWrapGateTestEndpoint(t, middleware, "edit_file", func(ctx context.Context, _ string, _ ...agent.ToolOption) (string, error) {
 		entered <- "edit"
@@ -197,91 +239,32 @@ func TestToolExecutionGateHoldsStreamLockUntilResultEOF(t *testing.T) {
 	errs := make(chan error, 1)
 	go invokeGateTestEndpoint(edit, `{"file_path":"a.md","edits":[]}`, errs)
 	assertNoGateTestEntry(t, entered)
+	cancelExecute()
+	assertNoGateTestEntry(t, entered)
 
-	if closed := sourceWriter.Send("done", nil); closed {
-		t.Fatal("source stream closed before test result was sent")
-	}
-	sourceWriter.Close()
-	if _, err := filtered.Recv(); err != nil {
+	// Cancellation asks the tool to stop, but a non-cooperative mutation keeps
+	// the safety lease until its Run method actually returns.
+	close(releaseExecute)
+	if err := <-executeResult; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := filtered.Recv(); err != io.EOF {
-		t.Fatalf("filtered stream EOF = %v", err)
-	}
 	if got := waitForGateTestEntry(t, entered); got != "edit" {
-		t.Fatalf("entry after stream = %q", got)
+		t.Fatalf("entry after non-cooperative tool returned = %q", got)
 	}
 	close(releaseWrite)
 	waitForGateTestResults(t, errs, 1)
 }
 
-func TestToolExecutionGateKeepsStreamLockAfterContextCancelUntilReaderEnds(t *testing.T) {
-	gate := &toolExecutionGate{}
-	middleware := &toolOrchestratorMiddleware{
-		toolSettings:        config.ResolvedAgentToolSettings{FileWrite: true, ShellExecute: true},
-		enforceToolSettings: true,
-		executionGate:       gate,
-	}
-	sourceReader, sourceWriter := agent.Pipe[string](1)
-	stream, err := middleware.WrapStreamableToolCall(
-		context.Background(),
-		func(context.Context, string, ...agent.ToolOption) (*agent.StreamReader[string], error) {
-			return sourceReader, nil
-		},
-		testToolContext("execute", ""),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	streamCtx, cancelStream := context.WithCancel(context.Background())
-	filtered, err := stream(streamCtx, `{"command":"long-running"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	entered := make(chan string, 1)
-	releaseWrite := make(chan struct{})
-	edit := mustWrapGateTestEndpoint(t, middleware, "edit_file", func(ctx context.Context, _ string, _ ...agent.ToolOption) (string, error) {
-		entered <- "edit"
-		select {
-		case <-releaseWrite:
-			return "ok", nil
-		case <-ctx.Done():
-			return "", ctx.Err()
-		}
-	})
-	errs := make(chan error, 1)
-	go invokeGateTestEndpoint(edit, `{"file_path":"a.md","edits":[]}`, errs)
-	assertNoGateTestEntry(t, entered)
-	cancelStream()
-	assertNoGateTestEntry(t, entered)
-
-	// Cancellation asks the endpoint to stop, but must not drop the safety lease
-	// while a non-cooperative stream can still mutate the workspace.
-	sourceWriter.Close()
-	if _, err := filtered.Recv(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := filtered.Recv(); err != io.EOF {
-		t.Fatalf("filtered stream EOF = %v", err)
-	}
-	if got := waitForGateTestEntry(t, entered); got != "edit" {
-		t.Fatalf("entry after source stream ended = %q", got)
-	}
-	close(releaseWrite)
-	waitForGateTestResults(t, errs, 1)
-}
-
-func mustWrapGateTestEndpoint(t *testing.T, middleware *toolOrchestratorMiddleware, name string, endpoint agent.InvokableToolCallEndpoint) agent.InvokableToolCallEndpoint {
+func mustWrapGateTestEndpoint(t *testing.T, middleware *toolOrchestratorMiddleware, name string, endpoint testTextToolEndpoint) testTextToolEndpoint {
 	t.Helper()
-	wrapped, err := middleware.WrapInvokableToolCall(context.Background(), endpoint, testToolContext(name, ""))
+	wrapped, err := wrapTextToolCallForTest(middleware, endpoint, testToolContext(name, ""))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return wrapped
 }
 
-func invokeGateTestEndpoint(endpoint agent.InvokableToolCallEndpoint, args string, results chan<- error) {
+func invokeGateTestEndpoint(endpoint testTextToolEndpoint, args string, results chan<- error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			results <- fmt.Errorf("panic: %v", recovered)

@@ -253,7 +253,7 @@ func TestInteractiveConversationDropsTransientIndexAndThinkingFromNextTurn(t *te
 	}})); err != nil {
 		t.Fatal(err)
 	}
-	if err := conversation.AppendContextMessage(agents.ToolMessage("找到门的机关设定", "call-lore", agents.WithToolName("list_lore_items"))); err != nil {
+	if err := conversation.AppendContextMessage(agents.ToolMessage(agents.TextToolResult("找到门的机关设定"), "call-lore", agents.WithToolName("list_lore_items"))); err != nil {
 		t.Fatal(err)
 	}
 	submitTestTurnResult(t, conversation, "观察门缝", "确认蓝光来源")

@@ -226,14 +226,18 @@ func (r *displayEventRecorder) Record(ev Event) {
 		id := eventDataString(ev.Data, "id")
 		name := eventDataString(ev.Data, "name")
 		result := eventDataString(ev.Data, "content")
+		status := eventDataString(ev.Data, "status")
+		if status == "" {
+			status = "success"
+		}
 		if isPlanProtocolToolName(name) {
 			return
 		}
 		if resultUpdater, ok := r.appender.(displayToolResultUpdater); ok {
-			if err := resultUpdater.UpdateDisplayToolResult(id, name, "success", result); err != nil {
+			if err := resultUpdater.UpdateDisplayToolResult(id, name, status, result); err != nil {
 				log.Printf("[agent-run] persist display tool_result failed name=%s id=%s err=%v", name, id, err)
 			}
-		} else if err := r.appender.UpdateDisplayToolStatus(id, name, "success"); err != nil {
+		} else if err := r.appender.UpdateDisplayToolStatus(id, name, status); err != nil {
 			log.Printf("[agent-run] persist display tool_result status failed name=%s id=%s err=%v", name, id, err)
 		}
 		if illustration := eventDataChapterIllustration(ev.Data, "illustration"); illustration != nil {
@@ -605,6 +609,13 @@ func parseWriteLoreItemsToolResult(toolName, content string) ([]string, []string
 	}
 	var itemIDs []string
 	var deletedIDs []string
+	var structured struct {
+		ItemIDs    []string `json:"item_ids"`
+		DeletedIDs []string `json:"deleted_ids"`
+	}
+	if json.Unmarshal([]byte(content), &structured) == nil && (structured.ItemIDs != nil || structured.DeletedIDs != nil) {
+		return structured.ItemIDs, structured.DeletedIDs
+	}
 	for _, line := range strings.Split(content, "\n") {
 		line = strings.TrimSpace(line)
 		if raw, ok := strings.CutPrefix(line, "item_ids:"); ok {

@@ -4,114 +4,119 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 )
 
-func TestNativeLoopToolInterruptEmitsActionAndStops(t *testing.T) {
+func TestNativeLoopToolInterruptPairsResultAndStops(t *testing.T) {
 	model := &scriptedModel{responses: []scriptedModelResponse{
 		{message: AssistantMessage("", []ToolCall{{ID: "approval", Type: "function", Function: FunctionCall{Name: "approval", Arguments: `{}`}}})},
 		{message: AssistantMessage("must not run", nil)},
 	}}
 	interrupt := &InterruptError{Reason: "approval required", ResumeToken: []byte(`{"request":"approval"}`)}
-	tool := &functionTool{name: "approval", run: func(context.Context, string) (string, error) {
+	definition := testToolDefinition(&functionTool{name: "approval", run: func(context.Context, string) (string, error) {
 		return "", fmt.Errorf("request approval: %w", interrupt)
-	}}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "interrupt", Model: model, Tools: []BaseTool{tool}})
+	}})
+	native, err := NewAgent(context.Background(), AgentConfig{Name: "interrupt", Model: model, Tools: []ToolDefinition{definition}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	iterator := NewRunner(RunnerConfig{Agent: agent}).Query(context.Background(), "go")
-	assistantEvent, ok := iterator.Next()
-	if !ok || assistantEvent == nil || assistantEvent.Err != nil || assistantEvent.Output == nil {
-		t.Fatalf("assistant event = %#v", assistantEvent)
-	}
-	toolEvent, ok := iterator.Next()
-	if !ok || toolEvent == nil || toolEvent.Err != nil || toolEvent.Output == nil ||
-		toolEvent.Output.MessageOutput == nil || toolEvent.Output.MessageOutput.ToolName != "approval" {
-		t.Fatalf("approval result event = %#v", toolEvent)
-	}
-	interruptEvent, ok := iterator.Next()
-	if !ok || interruptEvent == nil || interruptEvent.Err == nil || interruptEvent.Action == nil ||
-		interruptEvent.Action.Interrupted == nil || interruptEvent.Action.Interrupted.Reason != interrupt.Reason {
-		t.Fatalf("interrupt event = %#v", interruptEvent)
-	}
+	events := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	var paired *Message
 	var gotInterrupt *InterruptError
-	if !errors.As(interruptEvent.Err, &gotInterrupt) || gotInterrupt != interrupt {
-		t.Fatalf("interrupt error = %T: %v", interruptEvent.Err, interruptEvent.Err)
+	for {
+		event, ok := events.Next()
+		if !ok {
+			break
+		}
+		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Role == ToolRole {
+			paired = event.Output.MessageOutput.Message
+		}
+		if errors.As(event.Err, &gotInterrupt) {
+			break
+		}
 	}
-	if _, ok := iterator.Next(); ok {
-		t.Fatal("unexpected event after tool interruption")
+	if paired == nil || paired.ToolCallID != "approval" || !strings.Contains(paired.Content, "approval required") {
+		t.Fatalf("paired interrupt result = %#v", paired)
 	}
-	if calls := len(model.capturedInputs()); calls != 1 {
-		t.Fatalf("model calls = %d, want 1", calls)
+	if gotInterrupt != interrupt {
+		t.Fatalf("interrupt = %#v, want %#v", gotInterrupt, interrupt)
+	}
+	if len(model.capturedInputs()) != 1 {
+		t.Fatalf("model calls = %d, want 1", len(model.capturedInputs()))
 	}
 }
 
-func TestNativeLoopToolInterruptPreservesCompletedSiblingResults(t *testing.T) {
-	model := &scriptedModel{responses: []scriptedModelResponse{{message: AssistantMessage("", []ToolCall{
-		{ID: "write", Type: "function", Function: FunctionCall{Name: "write", Arguments: `{}`}},
-		{ID: "approval", Type: "function", Function: FunctionCall{Name: "approval", Arguments: `{}`}},
-	})}}}
-	writeStarted := make(chan struct{})
-	releaseWrite := make(chan struct{})
-	write := &functionTool{name: "write", run: func(context.Context, string) (string, error) {
-		close(writeStarted)
-		<-releaseWrite
-		return `{"written":true}`, nil
+type receiptProbeMiddleware struct {
+	BaseMiddleware
+	mu     sync.Mutex
+	events []string
+}
+
+func (middleware *receiptProbeMiddleware) WrapToolCall(
+	_ context.Context,
+	endpoint ToolCallEndpoint,
+	toolCtx *ToolContext,
+) (ToolCallEndpoint, error) {
+	return func(ctx context.Context, arguments string, options ...ToolOption) (ToolResult, error) {
+		middleware.mu.Lock()
+		middleware.events = append(middleware.events, "start:"+toolCtx.CallID)
+		middleware.mu.Unlock()
+		result, err := endpoint(ctx, arguments, options...)
+		status := "success"
+		if err != nil {
+			status = "error"
+		}
+		middleware.mu.Lock()
+		middleware.events = append(middleware.events, "finish:"+toolCtx.CallID+":"+status)
+		middleware.mu.Unlock()
+		return result, err
+	}, nil
+}
+
+func (middleware *receiptProbeMiddleware) snapshot() []string {
+	middleware.mu.Lock()
+	defer middleware.mu.Unlock()
+	return append([]string(nil), middleware.events...)
+}
+
+func TestConcreteToolPanicCrossesLifecycleWrapperAsPairedError(t *testing.T) {
+	model := &scriptedModel{responses: []scriptedModelResponse{
+		{message: AssistantMessage("", []ToolCall{{ID: "panic-call", Type: "function", Function: FunctionCall{Name: "panic_tool", Arguments: `{}`}}})},
+		{message: AssistantMessage("recovered", nil)},
 	}}
-	interrupt := &InterruptError{Reason: "approval required"}
-	approval := &functionTool{name: "approval", run: func(context.Context, string) (string, error) {
-		<-writeStarted
-		return "", interrupt
+	tool := &functionTool{name: "panic_tool", run: func(context.Context, string) (string, error) {
+		panic("effect panic")
 	}}
-	agent, err := NewAgent(context.Background(), AgentConfig{
-		Name: "interrupt-batch", Model: model, Tools: []BaseTool{write, approval},
+	receipts := &receiptProbeMiddleware{}
+	native, err := NewAgent(context.Background(), AgentConfig{
+		Name: "panic-receipt", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)},
+		Middlewares: []Middleware{receipts},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	iterator := NewRunner(RunnerConfig{Agent: agent}).Query(context.Background(), "go")
-	assistantEvent, ok := iterator.Next()
-	if !ok || assistantEvent == nil || assistantEvent.Err != nil || assistantEvent.Output == nil {
-		t.Fatalf("assistant event = %#v", assistantEvent)
+	iterator := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	var result *Message
+	for {
+		event, ok := iterator.Next()
+		if !ok {
+			break
+		}
+		if event.Err != nil {
+			t.Fatal(event.Err)
+		}
+		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Role == ToolRole {
+			result = event.Output.MessageOutput.Message
+		}
 	}
-
-	next := make(chan nextAgentEventResult, 1)
-	safeGo(func() {
-		event, available := iterator.Next()
-		next <- nextAgentEventResult{event: event, ok: available}
-	}, func(err error) {
-		next <- nextAgentEventResult{err: err}
-	})
-	select {
-	case event := <-next:
-		t.Fatalf("interrupt surfaced before sibling completion: %#v", event)
-	case <-time.After(20 * time.Millisecond):
+	if got := fmt.Sprint(receipts.snapshot()); got != fmt.Sprint([]string{"start:panic-call", "finish:panic-call:error"}) {
+		t.Fatalf("lifecycle receipts = %s", got)
 	}
-	close(releaseWrite)
-
-	writeEvent := <-next
-	if writeEvent.err != nil || !writeEvent.ok || writeEvent.event == nil || writeEvent.event.Err != nil ||
-		writeEvent.event.Output == nil || writeEvent.event.Output.MessageOutput == nil ||
-		writeEvent.event.Output.MessageOutput.ToolName != "write" {
-		t.Fatalf("write result event = %#v", writeEvent)
-	}
-	approvalEvent, ok := iterator.Next()
-	if !ok || approvalEvent == nil || approvalEvent.Err != nil || approvalEvent.Output == nil ||
-		approvalEvent.Output.MessageOutput == nil || approvalEvent.Output.MessageOutput.ToolName != "approval" {
-		t.Fatalf("approval result event = %#v", approvalEvent)
-	}
-	interruptEvent, ok := iterator.Next()
-	if !ok || interruptEvent == nil || interruptEvent.Err == nil || interruptEvent.Action == nil ||
-		interruptEvent.Action.Interrupted != interrupt {
-		t.Fatalf("interrupt event = %#v", interruptEvent)
-	}
-	if _, ok := iterator.Next(); ok {
-		t.Fatal("unexpected event after interruption")
+	if result == nil || result.ToolResult == nil || result.ToolResult.Status != ToolResultError || !strings.Contains(result.Content, "panic recovered: effect panic") {
+		t.Fatalf("paired panic result = %#v", result)
 	}
 }
 
@@ -120,143 +125,132 @@ type cancelBeforeToolExecutionMiddleware struct {
 	cancel context.CancelFunc
 }
 
-func (middleware *cancelBeforeToolExecutionMiddleware) WrapInvokableToolCall(
+func (middleware *cancelBeforeToolExecutionMiddleware) WrapToolCall(
 	_ context.Context,
-	endpoint InvokableToolCallEndpoint,
+	endpoint ToolCallEndpoint,
 	_ *ToolContext,
-) (InvokableToolCallEndpoint, error) {
+) (ToolCallEndpoint, error) {
 	middleware.cancel()
 	return endpoint, nil
-}
-
-func (middleware *cancelBeforeToolExecutionMiddleware) WrapStreamableToolCall(
-	_ context.Context,
-	endpoint StreamableToolCallEndpoint,
-	_ *ToolContext,
-) (StreamableToolCallEndpoint, error) {
-	middleware.cancel()
-	return endpoint, nil
-}
-
-type countingStreamableTool struct {
-	calls *atomic.Int32
-}
-
-func (*countingStreamableTool) Info(context.Context) (*ToolInfo, error) {
-	return &ToolInfo{Name: "target"}, nil
-}
-
-func (tool *countingStreamableTool) StreamableRun(context.Context, string, ...ToolOption) (*StreamReader[string], error) {
-	tool.calls.Add(1)
-	return StreamReaderFromArray([]string{"unexpected"}), nil
 }
 
 func TestNativeLoopChecksContextImmediatelyBeforeToolExecution(t *testing.T) {
-	tests := []struct {
-		name string
-		tool func(*atomic.Int32) BaseTool
-	}{
-		{name: "invokable", tool: func(calls *atomic.Int32) BaseTool {
-			return &functionTool{name: "target", run: func(context.Context, string) (string, error) {
-				calls.Add(1)
-				return "unexpected", nil
-			}}
-		}},
-		{name: "streamable", tool: func(calls *atomic.Int32) BaseTool {
-			return &countingStreamableTool{calls: calls}
-		}},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			var calls atomic.Int32
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			model := &scriptedModel{responses: []scriptedModelResponse{{message: AssistantMessage("", []ToolCall{{
-				ID: "target", Type: "function", Function: FunctionCall{Name: "target", Arguments: `{}`},
-			}})}}}
-			agent, err := NewAgent(context.Background(), AgentConfig{
-				Name: "cancel-before-tool", Model: model, Tools: []BaseTool{test.tool(&calls)},
-				Middlewares: []Middleware{&cancelBeforeToolExecutionMiddleware{cancel: cancel}},
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			iterator := NewRunner(RunnerConfig{Agent: agent}).Query(ctx, "go")
-			assistantEvent, ok := iterator.Next()
-			if !ok || assistantEvent == nil || assistantEvent.Err != nil || assistantEvent.Output == nil {
-				t.Fatalf("assistant event = %#v", assistantEvent)
-			}
-			cancelEvent, ok := iterator.Next()
-			if !ok || cancelEvent == nil || !errors.Is(cancelEvent.Err, context.Canceled) {
-				t.Fatalf("cancellation event = %#v", cancelEvent)
-			}
-			if _, ok := iterator.Next(); ok {
-				t.Fatal("unexpected event after context cancellation")
-			}
-			if got := calls.Load(); got != 0 {
-				t.Fatalf("tool calls = %d, want 0", got)
-			}
-		})
-	}
-}
-
-type closeAwareBlockingStreamTool struct {
-	started   chan struct{}
-	release   chan struct{}
-	closed    chan struct{}
-	startOnce sync.Once
-	closeOnce sync.Once
-}
-
-func (*closeAwareBlockingStreamTool) Info(context.Context) (*ToolInfo, error) {
-	return &ToolInfo{Name: "blocking-stream"}, nil
-}
-
-func (tool *closeAwareBlockingStreamTool) StreamableRun(context.Context, string, ...ToolOption) (*StreamReader[string], error) {
-	return &StreamReader[string]{
-		recvFn: func() (string, error) {
-			tool.startOnce.Do(func() { close(tool.started) })
-			<-tool.release
-			return "", io.EOF
-		},
-		closeFn: func() {
-			tool.closeOnce.Do(func() {
-				close(tool.release)
-				close(tool.closed)
-			})
-		},
-	}, nil
-}
-
-func TestNativeLoopCancellationClosesBlockingToolStream(t *testing.T) {
+	var calls atomic.Int32
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	model := &scriptedModel{responses: []scriptedModelResponse{{message: AssistantMessage("", []ToolCall{{
-		ID: "blocking-stream", Type: "function", Function: FunctionCall{Name: "blocking-stream", Arguments: `{}`},
+		ID: "target", Type: "function", Function: FunctionCall{Name: "target", Arguments: `{}`},
 	}})}}}
-	tool := &closeAwareBlockingStreamTool{
-		started: make(chan struct{}), release: make(chan struct{}), closed: make(chan struct{}),
-	}
-	agent, err := NewAgent(context.Background(), AgentConfig{Name: "stream-cancel", Model: model, Tools: []BaseTool{tool}})
+	definition := testToolDefinition(&functionTool{name: "target", run: func(context.Context, string) (string, error) {
+		calls.Add(1)
+		return "unexpected", nil
+	}})
+	native, err := NewAgent(context.Background(), AgentConfig{
+		Name: "cancel-before-tool", Model: model, Tools: []ToolDefinition{definition},
+		Middlewares: []Middleware{&cancelBeforeToolExecutionMiddleware{cancel: cancel}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	iterator := NewRunner(RunnerConfig{Agent: agent}).Query(ctx, "go")
-	assistantEvent, ok := iterator.Next()
-	if !ok || assistantEvent == nil || assistantEvent.Err != nil || assistantEvent.Output == nil {
-		t.Fatalf("assistant event = %#v", assistantEvent)
+	events := NewRunner(RunnerConfig{Agent: native}).Query(ctx, "go")
+	var canceled bool
+	for {
+		event, ok := events.Next()
+		if !ok {
+			break
+		}
+		if errors.Is(event.Err, context.Canceled) {
+			canceled = true
+		}
 	}
-	<-tool.started
-	cancel()
-	cancelEvent, ok := nextAgentEventWithin(t, iterator, 100*time.Millisecond)
-	if !ok || cancelEvent == nil || !errors.Is(cancelEvent.Err, context.Canceled) {
-		t.Fatalf("cancellation event = %#v", cancelEvent)
+	if !canceled || calls.Load() != 0 {
+		t.Fatalf("canceled=%t tool calls=%d", canceled, calls.Load())
 	}
-	select {
-	case <-tool.closed:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("blocking tool stream was not closed after cancellation")
+}
+
+type rewriteArgumentsMiddleware struct{ BaseMiddleware }
+
+func (*rewriteArgumentsMiddleware) WrapToolCall(_ context.Context, endpoint ToolCallEndpoint, _ *ToolContext) (ToolCallEndpoint, error) {
+	return func(ctx context.Context, _ string, options ...ToolOption) (ToolResult, error) {
+		return endpoint(ctx, `{"value":"wrong"}`, options...)
+	}, nil
+}
+
+func TestMiddlewareArgumentRewriteCannotBypassSchema(t *testing.T) {
+	var calls atomic.Int32
+	tool, err := InferTool("typed", "", func(context.Context, struct {
+		Value int `json:"value"`
+	}) (string, error) {
+		calls.Add(1)
+		return "ok", nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := iterator.Next(); ok {
-		t.Fatal("unexpected event after stream cancellation")
+	model := &scriptedModel{responses: []scriptedModelResponse{
+		{message: AssistantMessage("", []ToolCall{{ID: "typed", Type: "function", Function: FunctionCall{Name: "typed", Arguments: `{"value":1}`}}})},
+		{message: AssistantMessage("done", nil)},
+	}}
+	native, err := NewAgent(context.Background(), AgentConfig{
+		Name: "schema-rewrite", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)},
+		Middlewares: []Middleware{&rewriteArgumentsMiddleware{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	var result *Message
+	for {
+		event, ok := events.Next()
+		if !ok {
+			break
+		}
+		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Role == ToolRole {
+			result = event.Output.MessageOutput.Message
+		}
+	}
+	if calls.Load() != 0 || result == nil || result.ToolResult == nil || result.ToolResult.Status != ToolResultError {
+		t.Fatalf("calls=%d result=%#v", calls.Load(), result)
+	}
+}
+
+type progressOnlyTool struct{}
+
+func (*progressOnlyTool) Info(context.Context) (*ToolInfo, error) {
+	return GoStruct2ToolInfo[struct{}]("progress", "")
+}
+
+func (*progressOnlyTool) Run(ctx context.Context, _ string, _ ...ToolOption) (ToolResult, error) {
+	EmitToolProgress(ctx, "first ")
+	EmitToolProgress(ctx, "second")
+	return ToolResult{Status: ToolResultSuccess}, nil
+}
+
+func TestProgressCollectorBuildsMissingFinalContent(t *testing.T) {
+	model := &scriptedModel{responses: []scriptedModelResponse{
+		{message: AssistantMessage("", []ToolCall{{ID: "p", Type: "function", Function: FunctionCall{Name: "progress", Arguments: `{}`}}})},
+		{message: AssistantMessage("done", nil)},
+	}}
+	native, err := NewAgent(context.Background(), AgentConfig{Name: "progress", Model: model, Tools: []ToolDefinition{testToolDefinition(&progressOnlyTool{})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	var progress strings.Builder
+	var result *Message
+	for {
+		event, ok := events.Next()
+		if !ok {
+			break
+		}
+		if event.Output != nil && event.Output.ToolExecution != nil && event.Output.ToolExecution.Phase == ToolExecutionProgress {
+			progress.WriteString(event.Output.ToolExecution.Delta)
+		}
+		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Role == ToolRole {
+			result = event.Output.MessageOutput.Message
+		}
+	}
+	if progress.String() != "first second" || result == nil || result.Content != "first second" {
+		t.Fatalf("progress=%q result=%#v", progress.String(), result)
 	}
 }

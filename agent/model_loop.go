@@ -120,6 +120,7 @@ func (output *modelStreamOutput) expose() {
 	output.writer = writer
 	event := output.agent.messageEvent(nil, stream, Assistant, "")
 	event.Output.MessageOutput.ToolInfos = output.registry.Schemas()
+	event.Output.MessageOutput.ToolDefinitions = output.registry.Snapshots()
 	output.events.Send(event)
 }
 
@@ -210,6 +211,7 @@ func (agent *Agent) callModel(
 		}
 		event := agent.messageEvent(message.Clone(), nil, Assistant, "")
 		event.Output.MessageOutput.ToolInfos = registry.Schemas()
+		event.Output.MessageOutput.ToolDefinitions = registry.Snapshots()
 		events.Send(event)
 		return message, nil, false
 	}

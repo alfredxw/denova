@@ -174,8 +174,8 @@ type agentBuildSpec struct {
 	EnableSkills      bool
 	DisableWriteTodos bool
 	ExtraMiddlewares  []agent.Middleware
-	ExtraTools        []agent.BaseTool
-	ExtraToolsFactory func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error)
+	ExtraTools        []agent.ToolDefinition
+	ExtraToolsFactory func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error)
 	ModelOutputGuard  func(context.Context, *agent.RetryContext) *agent.RetryDecision
 }
 
@@ -218,14 +218,15 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 	taskAgents := append([]agent.Runnable(nil), configuredSubAgents...)
 	if config.GeneralSubAgentEnabled(cfg, spec.Kind) {
 		general, err := newNativeAgent(ctx, agent.AgentConfig{
-			Name:          producttools.GeneralSubAgentName,
-			Description:   "通用子 Agent，用于研究复杂问题、搜索代码和执行独立的多步骤任务。",
-			Instruction:   composition.Instruction(),
-			Model:         chatModel,
-			Tools:         assembly.Tools,
-			Middlewares:   assembly.Middlewares,
-			MaxIterations: configMaxIteration(cfg),
-			Retry:         modelRetryConfig(cfg, nil),
+			Name:            producttools.GeneralSubAgentName,
+			Description:     "通用子 Agent，用于研究复杂问题、搜索代码和执行独立的多步骤任务。",
+			Instruction:     composition.Instruction(),
+			Model:           chatModel,
+			Tools:           assembly.Tools,
+			Middlewares:     assembly.Middlewares,
+			MaxIterations:   configMaxIteration(cfg),
+			ToolParallelism: configToolParallelism(cfg),
+			Retry:           modelRetryConfig(cfg, nil),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("创建通用子 Agent 失败: %w", err)
@@ -233,7 +234,7 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 		taskAgents = append([]agent.Runnable{general}, taskAgents...)
 	}
 
-	tools := append([]agent.BaseTool(nil), assembly.Tools...)
+	tools := append([]agent.ToolDefinition(nil), assembly.Tools...)
 	if !spec.DisableWriteTodos && toolSettings.Todo {
 		todoTool, err := toolCatalog.WriteTodos()
 		if err != nil {
@@ -243,7 +244,7 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 	}
 	if taskTool, err := toolCatalog.Task(ctx, taskAgents); err != nil {
 		return nil, fmt.Errorf("创建 task 工具失败: %w", err)
-	} else if taskTool != nil {
+	} else if taskTool.Tool != nil {
 		tools = append(tools, taskTool)
 	}
 	if err := producttools.Validate(ctx, tools); err != nil {
@@ -251,14 +252,15 @@ func buildAgent(ctx context.Context, cfg *config.Config, spec agentBuildSpec) (a
 	}
 
 	return newNativeAgent(ctx, agent.AgentConfig{
-		Name:          spec.Name,
-		Description:   spec.Description,
-		Instruction:   composition.Instruction(),
-		Model:         chatModel,
-		Tools:         tools,
-		Middlewares:   assembly.Middlewares,
-		MaxIterations: configMaxIteration(cfg),
-		Retry:         modelRetryConfig(cfg, spec.ModelOutputGuard),
+		Name:            spec.Name,
+		Description:     spec.Description,
+		Instruction:     composition.Instruction(),
+		Model:           chatModel,
+		Tools:           tools,
+		Middlewares:     assembly.Middlewares,
+		MaxIterations:   configMaxIteration(cfg),
+		ToolParallelism: configToolParallelism(cfg),
+		Retry:           modelRetryConfig(cfg, spec.ModelOutputGuard),
 	})
 }
 
@@ -304,15 +306,15 @@ type chatModelAgentAssemblySpec struct {
 	ToolSettings          config.ResolvedAgentToolSettings
 	EnableSkills          bool
 	ExtraMiddlewares      []agent.Middleware
-	ExtraTools            []agent.BaseTool
-	ExtraToolsFactory     func(config.ResolvedAgentToolSettings) ([]agent.BaseTool, error)
+	ExtraTools            []agent.ToolDefinition
+	ExtraToolsFactory     func(config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error)
 	IncludeCompaction     bool
 	ContextWindowTokens   int
 	ProviderInputMaxBytes int
 }
 
 type chatModelAgentAssembly struct {
-	Tools       []agent.BaseTool
+	Tools       []agent.ToolDefinition
 	Middlewares []agent.Middleware
 }
 
@@ -348,7 +350,7 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 			providerInputMaxBytes: spec.ProviderInputMaxBytes,
 		},
 	)
-	tools := append([]agent.BaseTool(nil), spec.ExtraTools...)
+	tools := append([]agent.ToolDefinition(nil), spec.ExtraTools...)
 	if settings.FileRead || settings.FileWrite || settings.ShellExecute {
 		filesystemTools, err := toolCatalog.Filesystem(settings)
 		if err != nil {
@@ -380,13 +382,10 @@ func buildChatModelAgentAssembly(ctx context.Context, cfg *config.Config, spec c
 	if err := producttools.Validate(ctx, tools); err != nil {
 		return chatModelAgentAssembly{}, err
 	}
-	// Keep this last: it validates the final concrete tool set immediately
-	// before every model run.
-	middlewares = append(middlewares, producttools.NewDescriptorGuardMiddleware())
 	return chatModelAgentAssembly{Tools: tools, Middlewares: middlewares}, nil
 }
 
-func buildSkillTools(ctx context.Context, cfg *config.Config, agentKind string, enabled bool, settings config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
+func buildSkillTools(ctx context.Context, cfg *config.Config, agentKind string, enabled bool, settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
 	if !enabled || !settings.Skills || cfg == nil {
 		return nil, nil
 	}
@@ -399,10 +398,10 @@ func buildSkillTools(ctx context.Context, cfg *config.Config, agentKind string, 
 	if err != nil {
 		return nil, fmt.Errorf("创建 Skill 工具失败 agent=%s: %w", agentKind, err)
 	}
-	if skillTool == nil {
+	if skillTool.Tool == nil {
 		return nil, nil
 	}
-	return []agent.BaseTool{skillTool}, nil
+	return []agent.ToolDefinition{skillTool}, nil
 }
 
 func buildConfiguredSubAgents(ctx context.Context, cfg *config.Config, parent agentBuildSpec, parentTools config.ResolvedAgentToolSettings) ([]agent.Runnable, error) {
@@ -455,14 +454,15 @@ func buildConfiguredSubAgent(ctx context.Context, cfg *config.Config, parent age
 		return nil, err
 	}
 	return newNativeAgent(ctx, agent.AgentConfig{
-		Name:          sub.ID,
-		Description:   sub.Description,
-		Instruction:   composition.Instruction(),
-		Model:         subChatModel,
-		MaxIterations: configMaxIteration(cfg),
-		Middlewares:   assembly.Middlewares,
-		Tools:         assembly.Tools,
-		Retry:         modelRetryConfig(cfg, nil),
+		Name:            sub.ID,
+		Description:     sub.Description,
+		Instruction:     composition.Instruction(),
+		Model:           subChatModel,
+		MaxIterations:   configMaxIteration(cfg),
+		ToolParallelism: configToolParallelism(cfg),
+		Middlewares:     assembly.Middlewares,
+		Tools:           assembly.Tools,
+		Retry:           modelRetryConfig(cfg, nil),
 	})
 }
 
@@ -549,4 +549,14 @@ func configToolResultMaxBytes(cfg *config.Config) int {
 		return defaultToolResultMaxBytes
 	}
 	return cfg.AgentToolResultLimitKB * 1024
+}
+
+func configToolParallelism(cfg *config.Config) int {
+	if cfg == nil || cfg.AgentToolParallelism <= 0 {
+		return config.DefaultAgentToolParallelism
+	}
+	if cfg.AgentToolParallelism > config.MaxAgentToolParallelism {
+		return config.MaxAgentToolParallelism
+	}
+	return cfg.AgentToolParallelism
 }

@@ -30,8 +30,7 @@ func TestNativeAgentBuiltInToolsPassDescriptorGuard(t *testing.T) {
 		Instruction:   "Reply without calling tools.",
 		Model:         chatModel,
 		MaxIterations: 1,
-		Tools:         []agent.BaseTool{todoTool, taskTool},
-		Middlewares:   []agent.Middleware{producttools.NewDescriptorGuardMiddleware()},
+		Tools:         []agent.ToolDefinition{todoTool, taskTool},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +101,7 @@ func TestWritingAgentFinalRuntimeToolSurfacePassesDescriptorGuard(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	tools := append([]agent.BaseTool(nil), assembly.Tools...)
+	tools := append([]agent.ToolDefinition(nil), assembly.Tools...)
 	tools = append(tools, todoTool, taskTool)
 
 	chatModel := &descriptorGuardProbeModel{}
@@ -174,41 +173,41 @@ func TestProductToolFactoriesDeclareEveryConcreteTool(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		build func() ([]agent.BaseTool, error)
+		build func() ([]agent.ToolDefinition, error)
 	}{
 		{
 			name: "writing",
-			build: func() ([]agent.BaseTool, error) {
+			build: func() ([]agent.ToolDefinition, error) {
 				return newToolCatalog(cfg).IDE()(config.ResolveAgentTools(cfg, config.AgentKindIDE))
 			},
 		},
 		{
 			name: "game",
-			build: func() ([]agent.BaseTool, error) {
+			build: func() ([]agent.ToolDefinition, error) {
 				return newToolCatalog(cfg).InteractiveStory(projectInteractiveToolContext(storyContext))(config.ResolveAgentTools(cfg, config.AgentKindInteractiveStory))
 			},
 		},
 		{
 			name: "game director",
-			build: func() ([]agent.BaseTool, error) {
+			build: func() ([]agent.ToolDefinition, error) {
 				return newToolCatalog(cfg).InteractiveDirector(projectInteractiveToolContext(directorContext))(config.ResolveAgentTools(cfg, config.AgentKindInteractiveDirector))
 			},
 		},
 		{
 			name: "config manager",
-			build: func() ([]agent.BaseTool, error) {
+			build: func() ([]agent.ToolDefinition, error) {
 				return newToolCatalog(cfg).ConfigManager()(config.ResolveAgentTools(cfg, config.AgentKindConfigManager))
 			},
 		},
 		{
 			name: "image",
-			build: func() ([]agent.BaseTool, error) {
+			build: func() ([]agent.ToolDefinition, error) {
 				return newToolCatalog(cfg).Image()(config.ResolveAgentTools(cfg, config.AgentKindImage))
 			},
 		},
 		{
 			name: "automation",
-			build: func() ([]agent.BaseTool, error) {
+			build: func() ([]agent.ToolDefinition, error) {
 				return newToolCatalog(cfg).Lore(false)(config.ResolveAgentTools(cfg, config.AgentKindAutomation))
 			},
 		},

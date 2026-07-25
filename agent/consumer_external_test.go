@@ -10,7 +10,6 @@ import (
 	"github.com/alfredxw/denova/agent"
 	agentcontext "github.com/alfredxw/denova/agent/context"
 	agentsession "github.com/alfredxw/denova/agent/session"
-	agenttools "github.com/alfredxw/denova/agent/tools"
 )
 
 type lookupInput struct {
@@ -92,18 +91,19 @@ func TestExternalConsumerComposesReusableAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	definition := agenttools.Definition{
+	definition := agent.ToolDefinition{
 		Tool: lookup,
-		Descriptor: agenttools.Descriptor{
-			Source:           agenttools.SourceRead,
+		Descriptor: agent.ToolDescriptor{
+			Source:           agent.ToolSourceRead,
 			Capability:       "knowledge.read",
-			Execution:        agenttools.ExecutionParallelRead,
-			Recovery:         agenttools.RecoveryReadOnly,
-			ResultProjection: agenttools.ResultBoundedModelContext,
+			Execution:        agent.ToolExecutionParallelRead,
+			Recovery:         agent.ToolRecoveryReadOnly,
+			ResultProjection: agent.ToolResultBoundedModelContext,
+			Steering:         agent.SteeringFinishCurrent,
 			MaxResultBytes:   4096,
 		},
 	}
-	registry, err := agenttools.Build(ctx, definition)
+	registry, err := agent.NewRegistry(ctx, definition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestExternalConsumerComposesReusableAgent(t *testing.T) {
 		Name:        "portable-assistant",
 		Instruction: "Use the registered tool before answering.",
 		Model:       model,
-		Tools:       registry.Tools(),
+		Tools:       registry.Definitions(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -183,7 +183,7 @@ func TestExternalConsumerComposesReusableAgent(t *testing.T) {
 			t.Fatal(event.Err)
 		}
 		if event.Output == nil || event.Output.MessageOutput == nil {
-			t.Fatalf("unexpected event = %#v", event)
+			continue
 		}
 		message, err := event.Output.MessageOutput.GetMessage()
 		if err != nil {
@@ -197,7 +197,7 @@ func TestExternalConsumerComposesReusableAgent(t *testing.T) {
 			ID: "lookup-1", Type: "function",
 			Function: agent.FunctionCall{Name: "lookup", Arguments: `{"key":"answer"}`},
 		}}),
-		agent.ToolMessage(`{"value":"portable answer"}`, "lookup-1", agent.WithToolName("lookup")),
+		agent.ToolMessage(agent.TextToolResult(`{"value":"portable answer"}`), "lookup-1", agent.WithToolName("lookup")),
 		agent.AssistantMessage("The portable answer is available.", nil),
 	}
 	if !reflect.DeepEqual(emitted, expectedEmitted) {
@@ -237,9 +237,12 @@ func TestExternalConsumerComposesReusableAgent(t *testing.T) {
 		if len(call.tools) != 1 || call.tools[0].Name != "lookup" {
 			t.Fatalf("model call %d tools = %#v", index, call.tools)
 		}
-		descriptor, ok := agenttools.DescriptorFromInfo(call.tools[0])
-		if !ok || !reflect.DeepEqual(descriptor, definition.Descriptor) {
-			t.Fatalf("model call %d descriptor = %#v, present=%v", index, descriptor, ok)
+		if len(call.tools[0].Extra) != 0 {
+			t.Fatalf("model call %d leaked descriptor metadata: %#v", index, call.tools[0].Extra)
 		}
+	}
+	definitionSnapshot, ok := registry.Snapshot("lookup")
+	if !ok || !reflect.DeepEqual(definitionSnapshot.Descriptor, definition.Descriptor) {
+		t.Fatalf("registry snapshot = %#v, present=%v", definitionSnapshot, ok)
 	}
 }

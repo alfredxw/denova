@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/internal/interactive"
 )
@@ -90,7 +89,7 @@ func (input openingStateSchemaBatchToolInput) batch() interactive.ActorStateSche
 	return batch
 }
 
-func newInteractiveOpeningStateSchemaTools(ctx InteractiveContext) ([]agent.BaseTool, error) {
+func newInteractiveOpeningStateSchemaTools(ctx InteractiveContext) ([]agent.ToolDefinition, error) {
 	if ctx.SubmitStateSchemaBatch == nil {
 		return nil, nil
 	}
@@ -121,9 +120,9 @@ func newInteractiveOpeningStateSchemaTools(ctx InteractiveContext) ([]agent.Base
 	if err != nil {
 		return nil, err
 	}
-	definedSubmitTool, err := defineTool(submitTool, workspaceWriteDescriptor(ToolSourceHistory, "", agenttools.RecoveryReconcilable))
+	definedSubmitTool, err := defineTool(submitTool, workspaceWriteDescriptor(ToolSourceHistory, "", agent.ToolRecoveryReconcilable))
 	if err != nil {
 		return nil, err
 	}
-	return []agent.BaseTool{definedSubmitTool}, nil
+	return []agent.ToolDefinition{definedSubmitTool}, nil
 }

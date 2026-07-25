@@ -26,48 +26,66 @@ type executeInput struct {
 
 type executeTool struct{ runner CommandRunner }
 
-// Execute defines the standard foreground streaming command tool.
-func Execute(runner CommandRunner, options ...DefinitionOption) (Definition, error) {
+// Execute defines the standard foreground command tool. Progress is emitted
+// through the Agent-owned progress collector rather than a second tool API.
+func Execute(runner CommandRunner, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if _, err := agent.GoStruct2ToolInfo[executeInput]("execute", executeDescription); err != nil {
-		return Definition{}, fmt.Errorf("build execute schema: %w", err)
+		return agent.ToolDefinition{}, fmt.Errorf("build execute schema: %w", err)
 	}
-	descriptor := applyDefinitionOptions(Descriptor{
-		Source:            SourceShell,
-		Execution:         ExecutionWorkspaceExclusive,
-		Recovery:          RecoveryNonIdempotent,
-		ResultProjection:  ResultBoundedModelContext,
+	descriptor := applyDefinitionOptions(agent.ToolDescriptor{
+		Source:            agent.ToolSourceShell,
+		Execution:         agent.ToolExecutionWorkspaceExclusive,
+		Recovery:          agent.ToolRecoveryNonIdempotent,
+		ResultProjection:  agent.ToolResultBoundedModelContext,
+		Steering:          agent.SteeringFinishCurrent,
 		MutatesWorkspace:  true,
 		MaxResultBytes:    defaultResultBytes,
 		RequiresPostCheck: true,
 	}, options)
-	return Definition{Tool: &executeTool{runner: runner}, Descriptor: descriptor}, nil
+	return agent.ToolDefinition{Tool: &executeTool{runner: runner}, Descriptor: descriptor}, nil
 }
 
 func (*executeTool) Info(context.Context) (*agent.ToolInfo, error) {
 	return agent.GoStruct2ToolInfo[executeInput]("execute", executeDescription)
 }
 
-func (tool *executeTool) StreamableRun(ctx context.Context, arguments string, _ ...agent.ToolOption) (*agent.StreamReader[string], error) {
+func (tool *executeTool) Run(ctx context.Context, arguments string, _ ...agent.ToolOption) (agent.ToolResult, error) {
 	decoder := json.NewDecoder(strings.NewReader(arguments))
 	decoder.DisallowUnknownFields()
 	var input executeInput
 	if err := decoder.Decode(&input); err != nil {
-		return nil, fmt.Errorf("decode execute arguments: %w", err)
+		return agent.ToolResult{}, fmt.Errorf("decode execute arguments: %w", err)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err == nil {
-			return nil, errors.New("decode execute arguments: multiple JSON values are not allowed")
+			return agent.ToolResult{}, errors.New("decode execute arguments: multiple JSON values are not allowed")
 		}
-		return nil, fmt.Errorf("decode execute arguments: invalid trailing JSON: %w", err)
+		return agent.ToolResult{}, fmt.Errorf("decode execute arguments: invalid trailing JSON: %w", err)
 	}
 	if tool == nil || tool.runner == nil {
-		return nil, errors.New("shell_execute capability is disabled")
+		return agent.ToolResult{}, errors.New("shell_execute capability is disabled")
 	}
 	if strings.TrimSpace(input.Command) == "" {
-		return nil, errors.New("command is required")
+		return agent.ToolResult{}, errors.New("command is required")
 	}
-	return tool.runner.Run(ctx, input.Command)
+	stream, err := tool.runner.Run(ctx, input.Command)
+	if err != nil {
+		return agent.ToolResult{}, err
+	}
+	defer stream.Close()
+	for {
+		delta, recvErr := stream.Recv()
+		if delta != "" {
+			agent.EmitToolProgress(ctx, delta)
+		}
+		if errors.Is(recvErr, io.EOF) {
+			return agent.ToolResult{Status: agent.ToolResultSuccess}, nil
+		}
+		if recvErr != nil {
+			return agent.ToolResult{}, recvErr
+		}
+	}
 }
 
 // LocalCommandRunner runs one foreground shell command in a fixed canonical

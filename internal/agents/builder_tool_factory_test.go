@@ -43,11 +43,11 @@ func TestLoreToolsFactoryHonorsResolvedWriteCapability(t *testing.T) {
 	}
 }
 
-func toolNameSet(t *testing.T, concrete []agent.BaseTool) map[string]bool {
+func toolNameSet(t *testing.T, concrete []agent.ToolDefinition) map[string]bool {
 	t.Helper()
 	names := make(map[string]bool, len(concrete))
 	for _, item := range concrete {
-		info, err := item.Info(context.Background())
+		info, err := item.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}

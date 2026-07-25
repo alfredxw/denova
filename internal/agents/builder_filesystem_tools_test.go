@@ -20,7 +20,7 @@ func TestFilesystemToolsFactoryBuildsStableNativeSurfaceWithoutReadOnlyMutationS
 	}
 	var names []string
 	for _, candidate := range tools {
-		info, err := candidate.Info(context.Background())
+		info, err := candidate.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}

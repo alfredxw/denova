@@ -11,7 +11,6 @@ import (
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
 	"denova/internal/book"
@@ -70,7 +69,7 @@ type generatedImageToolImage struct {
 	RevisedPrompt string `json:"revised_prompt,omitempty"`
 }
 
-func newIllustrationTools(cfg *config.Config) ([]agent.BaseTool, error) {
+func newIllustrationTools(cfg *config.Config) ([]agent.ToolDefinition, error) {
 	if cfg == nil {
 		return nil, nil
 	}
@@ -94,11 +93,11 @@ func newIllustrationTools(cfg *config.Config) ([]agent.BaseTool, error) {
 	if err != nil {
 		return nil, err
 	}
-	definedGenerateTool, err := defineTool(generateTool, workspaceWriteDescriptor(ToolSourceImage, config.AgentToolImageGeneration, agenttools.RecoveryNonIdempotent))
+	definedGenerateTool, err := defineTool(generateTool, workspaceWriteDescriptor(ToolSourceImage, config.AgentToolImageGeneration, agent.ToolRecoveryNonIdempotent))
 	if err != nil {
 		return nil, err
 	}
-	return []agent.BaseTool{definedGenerateTool}, nil
+	return []agent.ToolDefinition{definedGenerateTool}, nil
 }
 
 func generateImageForTool(ctx context.Context, cfg *config.Config, bookService *book.Service, input generateImageInput) (any, error) {

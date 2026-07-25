@@ -42,7 +42,7 @@ func TestSessionConversationRejectsCanonicalWritesWithoutDurableCycleIdentity(t 
 	if err := conversation.AppendAssistant("must not bypass actor"); !errors.Is(err, ErrMissingAgentCycleIdentity) {
 		t.Fatalf("assistant append error = %v, want %v", err, ErrMissingAgentCycleIdentity)
 	}
-	if err := conversation.AppendContextMessage(agent.ToolMessage("must not bypass actor", "call-1")); !errors.Is(err, ErrMissingAgentCycleIdentity) {
+	if err := conversation.AppendContextMessage(agent.ToolMessage(agent.TextToolResult("must not bypass actor"), "call-1")); !errors.Is(err, ErrMissingAgentCycleIdentity) {
 		t.Fatalf("context append error = %v, want %v", err, ErrMissingAgentCycleIdentity)
 	}
 	if got := sess.MessageCountTotal(); got != 0 {

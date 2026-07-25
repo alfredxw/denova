@@ -3,7 +3,6 @@ package agents
 import (
 	"context"
 	"errors"
-	"io"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -19,21 +18,20 @@ func (*capturingToolLifecycleObserver) BeforeTool(context.Context, ToolDecision,
 	return nil
 }
 
-func (o *capturingToolLifecycleObserver) AfterTool(_ context.Context, record ToolExecutionRecord) error {
-	o.records = append(o.records, record)
+func (observer *capturingToolLifecycleObserver) AfterTool(_ context.Context, record ToolExecutionRecord) error {
+	observer.records = append(observer.records, record)
 	return nil
 }
 
-func TestToolOrchestratorBoundsInvokableEndpointErrorsForModelAndPersistence(t *testing.T) {
+func TestToolOrchestratorBoundsEndpointErrorsForModelDisplayAndPersistence(t *testing.T) {
 	const tail = "END_OF_UNBOUNDED_ERROR"
 	hugeError := errors.New(strings.Repeat("巨大错误", 5000) + tail)
 	observer := &capturingToolLifecycleObserver{}
 	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
-		func(context.Context, string, ...agent.ToolOption) (string, error) {
-			return "", hugeError
+	endpoint, err := middleware.WrapToolCall(context.Background(),
+		func(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
+			return agent.ToolResult{}, hugeError
 		},
 		testToolContext("read_file", "call-error"),
 	)
@@ -44,23 +42,24 @@ func TestToolOrchestratorBoundsInvokableEndpointErrorsForModelAndPersistence(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"[tool result truncated]", "schema: tool_result.v1", "truncated: true"} {
-		if !strings.Contains(result, want) {
-			t.Fatalf("bounded model error is missing %q: %q", want, result)
-		}
+	if result.Status != agent.ToolResultError || !result.Metadata.ModelTruncated || !result.Metadata.DisplayTruncated {
+		t.Fatalf("structured error result = %#v", result)
 	}
-	if strings.Contains(result, tail) {
-		t.Fatalf("unbounded error tail entered model context: %q", result)
+	if !strings.Contains(result.ModelContent, "[tool result truncated]") || strings.Contains(result.ModelContent, tail) || strings.Contains(result.ModelContent, "tool_result.v1") {
+		t.Fatalf("bounded model error = %q", result.ModelContent)
+	}
+	if len(result.ModelContent) > 64 || len(result.DisplayContent) > 64 {
+		t.Fatalf("result exceeded descriptor limit: model=%d display=%d", len(result.ModelContent), len(result.DisplayContent))
 	}
 	if len(observer.records) != 1 {
 		t.Fatalf("lifecycle records = %d, want 1", len(observer.records))
 	}
 	record := observer.records[0]
-	if record.Result != result || !record.Truncated || record.ReturnedBytes != len(result) {
+	if record.Result != result.ModelContent || !record.Truncated || record.ReturnedBytes != len(result.ModelContent) {
 		t.Fatalf("persisted result did not use the model projection: %#v", record)
 	}
 	if len(record.Error) > maxToolErrorDiagnosticBytes || !utf8.ValidString(record.Error) || strings.Contains(record.Error, tail) {
-		t.Fatalf("persisted error diagnostic is not safely bounded: bytes=%d valid_utf8=%t tail=%t", len(record.Error), utf8.ValidString(record.Error), strings.Contains(record.Error, tail))
+		t.Fatalf("persisted diagnostic is not bounded: bytes=%d valid=%t", len(record.Error), utf8.ValidString(record.Error))
 	}
 }
 
@@ -69,10 +68,9 @@ func TestToolOrchestratorNormalizesInvalidUTF8InEndpointErrors(t *testing.T) {
 	observer := &capturingToolLifecycleObserver{}
 	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 256}
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
-		func(context.Context, string, ...agent.ToolOption) (string, error) {
-			return "", invalidError
+	endpoint, err := middleware.WrapToolCall(context.Background(),
+		func(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
+			return agent.ToolResult{}, invalidError
 		},
 		testToolContext("read_file", "call-invalid-utf8-error"),
 	)
@@ -83,190 +81,63 @@ func TestToolOrchestratorNormalizesInvalidUTF8InEndpointErrors(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !utf8.ValidString(result) || len(observer.records) != 1 || !utf8.ValidString(observer.records[0].Error) {
-		t.Fatalf("tool error projection must be valid UTF-8: result_valid=%t records=%#v", utf8.ValidString(result), observer.records)
+	if !utf8.ValidString(result.ModelContent) || !utf8.ValidString(result.DisplayContent) || len(observer.records) != 1 || !utf8.ValidString(observer.records[0].Error) {
+		t.Fatalf("tool error projection must be valid UTF-8: result=%#v records=%#v", result, observer.records)
 	}
 }
 
-func TestStreamableToolNeverInfersMutationReceiptFromTruncatedPreview(t *testing.T) {
-	receipt := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","path":"chapters/from-receipt.md","revision":"sha256:after"}`
-	limit := len(receipt) + 8
+func TestToolOrchestratorUsesDetailsForMutationReceiptWhenModelContentIsTruncated(t *testing.T) {
+	receipt := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/from-receipt.md","revision":"sha256:after"}`
 	observer := &capturingToolLifecycleObserver{}
 	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
-	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: limit}
-	endpoint, err := middleware.WrapStreamableToolCall(
-		context.Background(),
-		func(context.Context, string, ...agent.ToolOption) (*agent.StreamReader[string], error) {
-			// The retained prefix is valid receipt JSON plus whitespace even though
-			// the actual stream is larger. Parsing that prefix would falsely treat
-			// a display truncation boundary as an execution receipt boundary.
-			return singleChunkReader(receipt + strings.Repeat(" ", limit+64)), nil
+	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: len(receipt) + 8}
+	endpoint, err := middleware.WrapToolCall(context.Background(),
+		func(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
+			result := agent.TextToolResult(strings.Repeat("display and model content ", 100))
+			result.Details = []byte(receipt)
+			return result, nil
 		},
-		testToolContext("write_file", "call-truncated-receipt"),
+		testToolContext("write_file", "call-details-receipt"),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader, err := endpoint(ctx, `{"path":"chapters/from-args.md"}`)
+	result, err := endpoint(ctx, `{"path":"chapters/from-args.md"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := reader.Recv(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := reader.Recv(); !errors.Is(err, io.EOF) {
-		t.Fatalf("stream EOF = %v", err)
-	}
-	if len(observer.records) != 1 {
-		t.Fatalf("lifecycle records = %d, want 1", len(observer.records))
+	if !result.Metadata.ModelTruncated || len(observer.records) != 1 {
+		t.Fatalf("expected bounded result and lifecycle record: result=%#v records=%#v", result, observer.records)
 	}
 	record := observer.records[0]
-	if !record.Truncated || record.ChangeGroupID != "" || record.Workspace != "" || record.Revision != "" {
-		t.Fatalf("truncated preview was treated as a complete receipt: %#v", record)
-	}
-	mutation, ok := toolMutationFromExecutionRecord(record)
-	if !ok || mutation.Target != "chapters/from-args.md" || mutation.ToolCallID != "call-truncated-receipt" {
-		t.Fatalf("conservative args-derived mutation = %#v ok=%t", mutation, ok)
+	if record.ChangeGroupID != "group-1" || record.Workspace != "/workspace/book-a" || record.Revision != "sha256:after" || record.Target != "chapters/from-receipt.md" {
+		t.Fatalf("Details receipt was not authoritative: %#v", record)
 	}
 }
 
-func TestToolOrchestratorBoundsStreamableEndpointErrorsForModelAndPersistence(t *testing.T) {
-	const tail = "END_OF_STREAM_ENDPOINT_ERROR"
-	hugeError := errors.New(strings.Repeat("流式错误", 5000) + tail)
+func TestToolOrchestratorTurnsInvalidDetailsIntoStructuredToolError(t *testing.T) {
 	observer := &capturingToolLifecycleObserver{}
 	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
-	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
-	endpoint, err := middleware.WrapStreamableToolCall(
-		context.Background(),
-		func(context.Context, string, ...agent.ToolOption) (*agent.StreamReader[string], error) {
-			return nil, hugeError
+	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 256}
+	endpoint, err := middleware.WrapToolCall(context.Background(),
+		func(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
+			result := agent.TextToolResult("looks successful")
+			result.Details = []byte(`{"broken"`)
+			return result, nil
 		},
-		testToolContext("read_file", "call-stream-error"),
+		testToolContext("read_file", "call-invalid-details"),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	reader, err := endpoint(ctx, `{"path":"large.txt"}`)
+	result, err := endpoint(ctx, `{"path":"broken.txt"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := reader.Recv()
-	if err != nil {
-		t.Fatal(err)
+	if result.Status != agent.ToolResultError || len(result.Details) != 0 || !strings.Contains(result.ModelContent, "Invalid structured tool result") {
+		t.Fatalf("invalid Details result = %#v", result)
 	}
-	if _, err := reader.Recv(); !errors.Is(err, io.EOF) {
-		t.Fatalf("stream error = %v, want EOF", err)
-	}
-	if !strings.Contains(result, "[tool result truncated]") || !strings.Contains(result, "schema: tool_result.v1") || strings.Contains(result, tail) {
-		t.Fatalf("stream endpoint error did not use bounded model projection: %q", result)
-	}
-	if len(observer.records) != 1 {
-		t.Fatalf("lifecycle records = %d, want 1", len(observer.records))
-	}
-	record := observer.records[0]
-	if record.Result != result || !record.Truncated || len(record.Error) > maxToolErrorDiagnosticBytes || strings.Contains(record.Error, tail) {
-		t.Fatalf("stream endpoint error was persisted without bounds: %#v", record)
-	}
-}
-
-func TestToolOrchestratorBoundsStreamReadErrorsForModelAndPersistence(t *testing.T) {
-	const tail = "END_OF_STREAM_READ_ERROR"
-	hugeError := errors.New(strings.Repeat("读取错误", 5000) + tail)
-	observer := &capturingToolLifecycleObserver{}
-	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
-	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
-	endpoint, err := middleware.WrapStreamableToolCall(
-		context.Background(),
-		func(context.Context, string, ...agent.ToolOption) (*agent.StreamReader[string], error) {
-			reader, writer := agent.Pipe[string](1)
-			_ = writer.Send("", hugeError)
-			writer.Close()
-			return reader, nil
-		},
-		testToolContext("read_file", "call-stream-read-error"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reader, err := endpoint(ctx, `{"path":"large.txt"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := reader.Recv()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := reader.Recv(); !errors.Is(err, io.EOF) {
-		t.Fatalf("stream error = %v, want EOF", err)
-	}
-	if !strings.Contains(result, "[tool result truncated]") || !strings.Contains(result, "schema: tool_result.v1") || strings.Contains(result, tail) {
-		t.Fatalf("stream read error did not use bounded model projection: %q", result)
-	}
-	if len(observer.records) != 1 {
-		t.Fatalf("lifecycle records = %d, want 1", len(observer.records))
-	}
-	record := observer.records[0]
-	if record.Result != result || !record.Truncated || len(record.Error) > maxToolErrorDiagnosticBytes || strings.Contains(record.Error, tail) {
-		t.Fatalf("stream read error was persisted without bounds: %#v", record)
-	}
-}
-
-func TestToolOrchestratorProjectsNilStreamAsBoundedToolError(t *testing.T) {
-	observer := &capturingToolLifecycleObserver{}
-	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
-	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
-	endpoint, err := middleware.WrapStreamableToolCall(
-		context.Background(),
-		func(context.Context, string, ...agent.ToolOption) (*agent.StreamReader[string], error) {
-			return nil, nil
-		},
-		testToolContext("read_file", "call-nil-stream"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reader, err := endpoint(ctx, `{"path":"large.txt"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := reader.Recv()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result, "streamable tool returned a nil result stream") || !strings.Contains(result, "schema: tool_result.v1") {
-		t.Fatalf("nil stream did not use the standard model projection: %q", result)
-	}
-	if len(observer.records) != 1 || observer.records[0].Result != result || observer.records[0].Error == "" {
-		t.Fatalf("nil stream error was not recorded through the standard projection: %#v", observer.records)
-	}
-}
-
-func TestToolOrchestratorProjectsStreamPanicsAsBoundedToolError(t *testing.T) {
-	observer := &capturingToolLifecycleObserver{}
-	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
-	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
-	endpoint, err := middleware.WrapStreamableToolCall(
-		context.Background(),
-		func(context.Context, string, ...agent.ToolOption) (*agent.StreamReader[string], error) {
-			return &agent.StreamReader[string]{}, nil
-		},
-		testToolContext("read_file", "call-panic-stream"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reader, err := endpoint(ctx, `{"path":"large.txt"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := reader.Recv()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(result, "panic while reading tool result") || !strings.Contains(result, "schema: tool_result.v1") {
-		t.Fatalf("stream panic did not use the standard model projection: %q", result)
-	}
-	if len(observer.records) != 1 || observer.records[0].Result != result || observer.records[0].Error == "" {
-		t.Fatalf("stream panic was not recorded through the standard projection: %#v", observer.records)
+	if len(observer.records) != 1 || observer.records[0].Status != string(agent.ToolResultError) {
+		t.Fatalf("invalid Details lifecycle record = %#v", observer.records)
 	}
 }

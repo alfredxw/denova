@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	"denova/config"
 	"denova/internal/webaccess"
 )
@@ -34,10 +32,7 @@ func TestNewWebAccessToolsRegistersSearchAndFetch(t *testing.T) {
 	}
 	wantNames := []string{config.AgentToolWebSearch, webFetchToolName}
 	for index, tool := range registered {
-		if _, ok := tool.(agent.InvokableTool); !ok {
-			t.Fatalf("tool %d should be invokable: %T", index, tool)
-		}
-		info, err := tool.Info(context.Background())
+		info, err := tool.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -63,7 +58,7 @@ func TestWebAccessToolsExposeEvidenceCitationContract(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tool := range registered {
-		info, err := tool.Info(context.Background())
+		info, err := tool.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -96,7 +91,7 @@ func TestWebFetchToolReturnsStructuredRecoveryResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	fetchTool := registered[1]
-	info, err := fetchTool.Info(context.Background())
+	info, err := fetchTool.Tool.Info(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +100,7 @@ func TestWebFetchToolReturnsStructuredRecoveryResult(t *testing.T) {
 			t.Fatalf("web_fetch description does not explain %q recovery field: %s", contract, info.Desc)
 		}
 	}
-	output, err := fetchTool.(agent.InvokableTool).InvokableRun(context.Background(), `{"url":"https://example.com/article"}`)
+	output, err := runToolForTest(context.Background(), fetchTool, `{"url":"https://example.com/article"}`)
 	if err != nil {
 		t.Fatal(err)
 	}

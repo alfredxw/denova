@@ -30,9 +30,9 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	byName := map[string]agent.BaseTool{}
+	byName := map[string]agent.ToolDefinition{}
 	for _, item := range tools {
-		info, err := item.Info(context.Background())
+		info, err := item.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -47,11 +47,11 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 		}
 	}
 
-	listTool, ok := byName["list_lore_items"].(agent.InvokableTool)
+	listTool, ok := byName["list_lore_items"]
 	if !ok {
-		t.Fatalf("list_lore_items should be invokable: %T", byName["list_lore_items"])
+		t.Fatal("list_lore_items should be defined")
 	}
-	listInfo, err := byName["list_lore_items"].Info(context.Background())
+	listInfo, err := listTool.Tool.Info(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 			t.Fatalf("list_lore_items schema should remove legacy field %s: %s", removed, schemaText)
 		}
 	}
-	output, err := listTool.InvokableRun(context.Background(), `{}`)
+	output, err := runToolForTest(context.Background(), listTool, `{}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 		}
 	}
 
-	queryOutput, err := listTool.InvokableRun(context.Background(), `{"keywords":["无关词","档案柜"],"match":"any","types":["character"],"limit":5}`)
+	queryOutput, err := runToolForTest(context.Background(), listTool, `{"keywords":["无关词","档案柜"],"match":"any","types":["character"],"limit":5}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 	if strings.Contains(queryOutput, "档案柜线索只存在于正文") {
 		t.Fatalf("keyword list_lore_items should not include full content:\n%s", queryOutput)
 	}
-	fullOutput, err := listTool.InvokableRun(context.Background(), `{"keywords":["档案柜"],"detail":"full","limit":5}`)
+	fullOutput, err := runToolForTest(context.Background(), listTool, `{"keywords":["档案柜"],"detail":"full","limit":5}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,15 +113,15 @@ func TestNewLoreToolsUsesListLoreItemsInsteadOfSearch(t *testing.T) {
 		`{"offset":-1}`,
 		`{"keywords":["1","2","3","4","5","6","7","8","9"]}`,
 	} {
-		if _, err := listTool.InvokableRun(context.Background(), args); err == nil {
+		if _, err := runToolForTest(context.Background(), listTool, args); err == nil {
 			t.Fatalf("list_lore_items should reject invalid args: %s", args)
 		}
 	}
-	readTool, ok := byName["read_lore_items"].(agent.InvokableTool)
+	readTool, ok := byName["read_lore_items"]
 	if !ok {
-		t.Fatalf("read_lore_items should be invokable: %T", byName["read_lore_items"])
+		t.Fatal("read_lore_items should be defined")
 	}
-	readOutput, err := readTool.InvokableRun(context.Background(), `{"names":["林川"]}`)
+	readOutput, err := runToolForTest(context.Background(), readTool, `{"names":["林川"]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,20 +145,21 @@ func TestListLoreItemsFiltersByResidentLoadMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var listTool agent.InvokableTool
+	var listTool *agent.ToolDefinition
 	for _, candidate := range tools {
-		info, err := candidate.Info(context.Background())
+		info, err := candidate.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
 		if info.Name == "list_lore_items" {
-			listTool, _ = candidate.(agent.InvokableTool)
+			selected := candidate
+			listTool = &selected
 		}
 	}
 	if listTool == nil {
 		t.Fatal("list_lore_items tool missing")
 	}
-	output, err := listTool.InvokableRun(context.Background(), `{"load_modes":["resident"],"limit":50}`)
+	output, err := runToolForTest(context.Background(), listTool, `{"load_modes":["resident"],"limit":50}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,23 +192,24 @@ func TestLoreReadPolicyTracksVisibleItemsAndEnforcesHardBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var readTool agent.InvokableTool
+	var readTool *agent.ToolDefinition
 	for _, candidate := range tools {
-		info, err := candidate.Info(context.Background())
+		info, err := candidate.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
 		if info.Name == "read_lore_items" {
-			readTool, _ = candidate.(agent.InvokableTool)
+			selected := candidate
+			readTool = &selected
 		}
 	}
 	if readTool == nil {
 		t.Fatal("read_lore_items tool missing")
 	}
-	if _, err := readTool.InvokableRun(context.Background(), `{"ids":["rule-a","rule-b","rule-c"]}`); err == nil {
+	if _, err := runToolForTest(context.Background(), readTool, `{"ids":["rule-a","rule-b","rule-c"]}`); err == nil {
 		t.Fatal("state-schema lore reads must reject oversized batches")
 	}
-	output, err := readTool.InvokableRun(context.Background(), `{"ids":["rule-a","rule-b"]}`)
+	output, err := runToolForTest(context.Background(), readTool, `{"ids":["rule-a","rule-b"]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,11 +230,11 @@ func TestLoreReadPolicyTracksVisibleItemsAndEnforcesHardBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, candidate := range boundedTools {
-		info, _ := candidate.Info(context.Background())
+		info, _ := candidate.Tool.Info(context.Background())
 		if info.Name != "read_lore_items" {
 			continue
 		}
-		if _, err := candidate.(agent.InvokableTool).InvokableRun(context.Background(), `{"ids":["rule-a"]}`); err == nil {
+		if _, err := runToolForTest(context.Background(), candidate, `{"ids":["rule-a"]}`); err == nil {
 			t.Fatal("read result exceeding the context budget must be rejected")
 		}
 	}

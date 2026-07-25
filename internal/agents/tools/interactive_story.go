@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
 	"github.com/invopop/jsonschema"
 
 	"denova/internal/interactive"
@@ -64,7 +63,7 @@ func (input interactiveTurnCheckToolInput) request() interactive.TurnCheckReques
 	}
 }
 
-func newInteractiveHistoryTools(ctx InteractiveContext) ([]agent.BaseTool, error) {
+func newInteractiveHistoryTools(ctx InteractiveContext) ([]agent.ToolDefinition, error) {
 	ctx.StoryID = strings.TrimSpace(ctx.StoryID)
 	ctx.BranchID = strings.TrimSpace(ctx.BranchID)
 	if ctx.Store == nil || ctx.StoryID == "" {
@@ -91,14 +90,14 @@ func newInteractiveHistoryTools(ctx InteractiveContext) ([]agent.BaseTool, error
 	if err != nil {
 		return nil, err
 	}
-	return []agent.BaseTool{definedSearchTool}, nil
+	return []agent.ToolDefinition{definedSearchTool}, nil
 }
 
-func newInteractiveTurnTools(ctx InteractiveContext) ([]agent.BaseTool, error) {
+func newInteractiveTurnTools(ctx InteractiveContext) ([]agent.ToolDefinition, error) {
 	if ctx.PrepareTurn == nil && ctx.SubmitTurnResult == nil {
 		return nil, nil
 	}
-	tools := make([]agent.BaseTool, 0, 2)
+	tools := make([]agent.ToolDefinition, 0, 2)
 	if ctx.PrepareTurn != nil {
 		desc := strings.Join([]string{
 			"执行本回合一次固定 d20 规则检定。Interactive Agent 负责填写用户行为、意图、挑战、消耗、当前状态说明、投前裁定依据、运行时加成来源和值、难度等级，以及大成功/成功/失败/大失败四档后果；本工具负责掷骰、应用优势或劣势、计算目标、判定结果，并返回命中的最终后果。",
@@ -121,7 +120,7 @@ func newInteractiveTurnTools(ctx InteractiveContext) ([]agent.BaseTool, error) {
 		if err != nil {
 			return nil, err
 		}
-		definedPrepareTool, err := defineTool(prepareTool, workspaceWriteDescriptor(ToolSourceHistory, "", agenttools.RecoveryReconcilable))
+		definedPrepareTool, err := defineTool(prepareTool, workspaceWriteDescriptor(ToolSourceHistory, "", agent.ToolRecoveryReconcilable))
 		if err != nil {
 			return nil, err
 		}
@@ -143,7 +142,7 @@ func newInteractiveTurnTools(ctx InteractiveContext) ([]agent.BaseTool, error) {
 		if err != nil {
 			return nil, err
 		}
-		definedSubmitTool, err := defineTool(submitTool, workspaceWriteDescriptor(ToolSourceHistory, "", agenttools.RecoveryReconcilable))
+		definedSubmitTool, err := defineTool(submitTool, workspaceWriteDescriptor(ToolSourceHistory, "", agent.ToolRecoveryReconcilable))
 		if err != nil {
 			return nil, err
 		}
@@ -154,7 +153,7 @@ func newInteractiveTurnTools(ctx InteractiveContext) ([]agent.BaseTool, error) {
 
 // NewInteractiveTurn builds the rule-resolution and turn-submission tools for
 // one story-scoped Agent run.
-func NewInteractiveTurn(ctx InteractiveContext) ([]agent.BaseTool, error) {
+func NewInteractiveTurn(ctx InteractiveContext) ([]agent.ToolDefinition, error) {
 	return newInteractiveTurnTools(ctx)
 }
 
@@ -217,7 +216,7 @@ func newSubmitInteractiveTurnTool(
 	description string,
 	submit func(context.Context, interactive.TurnSubmissionInput) (interactive.TurnSubmissionReceipt, error),
 	requestCompletion func(context.Context) bool,
-) (agent.InvokableTool, error) {
+) (agent.Tool, error) {
 	info, err := agent.GoStruct2ToolInfo[submitInteractiveTurnToolSchema](submitInteractiveTurnToolName, description)
 	if err != nil {
 		return nil, err
@@ -282,11 +281,11 @@ func (t *submitInteractiveTurnTool) Info(context.Context) (*agent.ToolInfo, erro
 	return t.info, nil
 }
 
-func (t *submitInteractiveTurnTool) InvokableRun(ctx context.Context, argumentsInJSON string, _ ...agent.ToolOption) (string, error) {
+func (t *submitInteractiveTurnTool) Run(ctx context.Context, argumentsInJSON string, _ ...agent.ToolOption) (agent.ToolResult, error) {
 	input := interactive.DecodeInteractiveTurnSubmissionInput(argumentsInJSON)
 	receipt, err := t.submit(ctx, input)
 	if err != nil {
-		return "", err
+		return agent.ToolResult{}, err
 	}
 	if receipt.Ready {
 		requested := false
@@ -297,9 +296,11 @@ func (t *submitInteractiveTurnTool) InvokableRun(ctx context.Context, argumentsI
 	}
 	data, err := json.MarshalIndent(receipt, "", "  ")
 	if err != nil {
-		return "", err
+		return agent.ToolResult{}, err
 	}
-	return string(data), nil
+	result := agent.TextToolResult(string(data))
+	result.Details = data
+	return result, nil
 }
 
 func firstNonEmpty(values ...string) string {

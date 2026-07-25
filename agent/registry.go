@@ -2,85 +2,71 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strings"
 	"sync"
 )
 
-// Registry owns a stable, insertion-ordered set of uniquely named tools.
+// Registry owns a stable, insertion-ordered set of complete tool definitions.
 type Registry struct {
-	mu      sync.RWMutex
-	tools   map[string]BaseTool
-	infos   map[string]*ToolInfo
-	ordered []string
+	mu          sync.RWMutex
+	definitions map[string]ToolDefinition
+	snapshots   map[string]ToolDefinitionSnapshot
+	ordered     []string
 }
 
-// NewRegistry validates and registers tools in source order.
-func NewRegistry(ctx context.Context, tools ...BaseTool) (*Registry, error) {
+// NewRegistry validates and registers definitions in source order.
+func NewRegistry(ctx context.Context, definitions ...ToolDefinition) (*Registry, error) {
 	registry := &Registry{}
-	for _, current := range tools {
-		if err := registry.Register(ctx, current); err != nil {
+	for _, definition := range definitions {
+		if err := registry.Register(ctx, definition); err != nil {
 			return nil, err
 		}
 	}
 	return registry, nil
 }
 
-// Register adds one tool and rejects empty or duplicate names.
-func (registry *Registry) Register(ctx context.Context, current BaseTool) error {
-	if current == nil {
-		return errors.New("register tool: nil tool")
-	}
-	info, err := current.Info(ctx)
+// Register adds one definition and rejects invalid or duplicate names.
+func (registry *Registry) Register(ctx context.Context, definition ToolDefinition) error {
+	snapshot, err := definition.snapshot(ctx)
 	if err != nil {
-		return fmt.Errorf("register tool: get info: %w", err)
+		return fmt.Errorf("register tool definition: %w", err)
 	}
-	if info == nil {
-		return errors.New("register tool: nil info")
-	}
-	name := strings.TrimSpace(info.Name)
-	if name == "" {
-		return errors.New("register tool: empty name")
-	}
-	if name != info.Name {
-		return fmt.Errorf("register tool %q: leading or trailing whitespace is not allowed", info.Name)
-	}
+	name := snapshot.Info.Name
 
 	registry.mu.Lock()
 	defer registry.mu.Unlock()
 	registry.ensureMaps()
-	if _, exists := registry.tools[name]; exists {
+	if _, exists := registry.definitions[name]; exists {
 		return fmt.Errorf("register tool %q: duplicate name", name)
 	}
-	registry.tools[name] = current
-	registry.infos[name] = cloneToolInfo(info)
+	registry.definitions[name] = definition
+	registry.snapshots[name] = snapshot
 	registry.ordered = append(registry.ordered, name)
 	return nil
 }
 
-// Lookup returns a named tool.
-func (registry *Registry) Lookup(name string) (BaseTool, bool) {
+// Lookup returns a named definition.
+func (registry *Registry) Lookup(name string) (ToolDefinition, bool) {
 	if registry == nil {
-		return nil, false
+		return ToolDefinition{}, false
 	}
 	registry.mu.RLock()
 	defer registry.mu.RUnlock()
-	current, exists := registry.tools[name]
-	return current, exists
+	definition, exists := registry.definitions[name]
+	return definition, exists
 }
 
-// Info returns the immutable description captured when the tool was
-// registered. Middleware can use Extra metadata without asking the concrete
-// tool to rebuild its schema for every invocation.
-func (registry *Registry) Info(name string) (*ToolInfo, bool) {
+// Snapshot returns immutable schema and descriptor metadata captured during
+// registration.
+func (registry *Registry) Snapshot(name string) (ToolDefinitionSnapshot, bool) {
 	if registry == nil {
-		return nil, false
+		return ToolDefinitionSnapshot{}, false
 	}
 	registry.mu.RLock()
 	defer registry.mu.RUnlock()
-	info, exists := registry.infos[name]
-	return cloneToolInfo(info), exists
+	snapshot, exists := registry.snapshots[name]
+	snapshot.Info = cloneToolInfo(snapshot.Info)
+	return snapshot, exists
 }
 
 // Schemas returns tool descriptions in registration order.
@@ -92,21 +78,37 @@ func (registry *Registry) Schemas() []*ToolInfo {
 	defer registry.mu.RUnlock()
 	result := make([]*ToolInfo, 0, len(registry.ordered))
 	for _, name := range registry.ordered {
-		result = append(result, cloneToolInfo(registry.infos[name]))
+		result = append(result, cloneToolInfo(registry.snapshots[name].Info))
 	}
 	return result
 }
 
-// Tools returns tools in registration order.
-func (registry *Registry) Tools() []BaseTool {
+// Definitions returns complete definitions in registration order.
+func (registry *Registry) Definitions() []ToolDefinition {
 	if registry == nil {
 		return nil
 	}
 	registry.mu.RLock()
 	defer registry.mu.RUnlock()
-	result := make([]BaseTool, 0, len(registry.ordered))
+	result := make([]ToolDefinition, 0, len(registry.ordered))
 	for _, name := range registry.ordered {
-		result = append(result, registry.tools[name])
+		result = append(result, registry.definitions[name])
+	}
+	return result
+}
+
+// Snapshots returns immutable schema/descriptor pairs in registration order.
+func (registry *Registry) Snapshots() []ToolDefinitionSnapshot {
+	if registry == nil {
+		return nil
+	}
+	registry.mu.RLock()
+	defer registry.mu.RUnlock()
+	result := make([]ToolDefinitionSnapshot, 0, len(registry.ordered))
+	for _, name := range registry.ordered {
+		snapshot := registry.snapshots[name]
+		snapshot.Info = cloneToolInfo(snapshot.Info)
+		result = append(result, snapshot)
 	}
 	return result
 }
@@ -122,10 +124,10 @@ func (registry *Registry) Len() int {
 }
 
 func (registry *Registry) ensureMaps() {
-	if registry.tools == nil {
-		registry.tools = make(map[string]BaseTool)
+	if registry.definitions == nil {
+		registry.definitions = make(map[string]ToolDefinition)
 	}
-	if registry.infos == nil {
-		registry.infos = make(map[string]*ToolInfo)
+	if registry.snapshots == nil {
+		registry.snapshots = make(map[string]ToolDefinitionSnapshot)
 	}
 }

@@ -81,11 +81,17 @@ func (r *toolResultContextRecorder) RecordAssistantToolCalls(msg *agent.Message,
 	}
 }
 
-func (r *toolResultContextRecorder) RecordToolResult(toolName, toolCallID, content string, meta agentEventMetadata) {
+func (r *toolResultContextRecorder) RecordToolResult(message *agent.Message, meta agentEventMetadata) {
+	if message == nil {
+		return
+	}
+	toolName := message.ToolName
+	toolCallID := message.ToolCallID
 	if r == nil || r.conversation == nil || meta.SubAgent || isPlanProtocolToolName(toolName) || !retainToolContextAcrossTurns(toolName, r.policy) || !r.retainedCall(toolCallID) {
 		return
 	}
-	msg := agent.ToolMessage(toolResultContextContent(toolName, content, r.policy), toolCallID, agent.WithToolName(toolName))
+	msg := message.Clone()
+	msg.Content = toolResultContextContent(toolName, message.Content, r.policy)
 	if err := r.conversation.AppendContextMessage(msg); err != nil {
 		logAgentContextPersistError("tool_result", err)
 	}
@@ -153,7 +159,7 @@ func applyToolResultContextPolicy(messages []*agent.Message, policy ToolResultCo
 }
 
 func sanitizedToolContextMessage(msg *agent.Message, policy ToolResultContextPolicy) *agent.Message {
-	if msg == nil || msg.Role != agent.Tool {
+	if msg == nil || msg.Role != agent.ToolRole {
 		return msg
 	}
 	content := semanticToolResultContextContent(msg.ToolName, msg.Content, policy)

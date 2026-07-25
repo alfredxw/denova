@@ -308,7 +308,7 @@ func TestIDEContextAnalysisShowsExactModelVisibleToolContext(t *testing.T) {
 					Arguments: `{"path":"chapters/1.md"}`,
 				},
 			}}),
-			agent.ToolMessage(result, "call-read", agent.WithToolName("read_file")),
+			agent.ToolMessage(agent.TextToolResult(result), "call-read", agent.WithToolName("read_file")),
 			agent.AssistantMessage("已读取", nil),
 		},
 		nil,

@@ -9,47 +9,47 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	agenttools "github.com/alfredxw/denova/agent/tools"
+	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
 	producttools "denova/internal/agents/tools"
 )
 
-type ToolSource = agenttools.Source
-type ToolExecutionClass = agenttools.ExecutionClass
-type ToolRecoveryClass = agenttools.RecoveryClass
+type ToolSource = agent.ToolSource
+type ToolExecutionClass = agent.ToolExecutionClass
+type ToolRecoveryClass = agent.ToolRecoveryClass
 
 const (
-	ToolSourceOther   = agenttools.SourceOther
-	ToolSourceRead    = agenttools.SourceRead
-	ToolSourceWrite   = agenttools.SourceWrite
-	ToolSourceShell   = agenttools.SourceShell
-	ToolSourceLore    = agenttools.Source("lore")
-	ToolSourceHistory = agenttools.Source("history")
-	ToolSourceWeb     = agenttools.Source("web")
-	ToolSourceImage   = agenttools.Source("image")
+	ToolSourceOther   = agent.ToolSourceOther
+	ToolSourceRead    = agent.ToolSourceRead
+	ToolSourceWrite   = agent.ToolSourceWrite
+	ToolSourceShell   = agent.ToolSourceShell
+	ToolSourceLore    = agent.ToolSourceLore
+	ToolSourceHistory = agent.ToolSourceHistory
+	ToolSourceWeb     = agent.ToolSourceWeb
+	ToolSourceImage   = agent.ToolSourceImage
 )
 
 const (
-	ToolExecutionParallelRead       = agenttools.ExecutionParallelRead
-	ToolExecutionWorkspaceExclusive = agenttools.ExecutionWorkspaceExclusive
-	ToolExecutionChild              = agenttools.ExecutionChild
+	ToolExecutionParallelRead       = agent.ToolExecutionParallelRead
+	ToolExecutionWorkspaceExclusive = agent.ToolExecutionWorkspaceExclusive
+	ToolExecutionChild              = agent.ToolExecutionChild
 )
 
 const (
-	ToolRecoveryReadOnly      = agenttools.RecoveryReadOnly
-	ToolRecoveryIdempotent    = agenttools.RecoveryIdempotent
-	ToolRecoveryReconcilable  = agenttools.RecoveryReconcilable
-	ToolRecoveryNonIdempotent = agenttools.RecoveryNonIdempotent
+	ToolRecoveryReadOnly      = agent.ToolRecoveryReadOnly
+	ToolRecoveryIdempotent    = agent.ToolRecoveryIdempotent
+	ToolRecoveryReconcilable  = agent.ToolRecoveryReconcilable
+	ToolRecoveryNonIdempotent = agent.ToolRecoveryNonIdempotent
 )
 
-const ToolResultBoundedModelContext = agenttools.ResultBoundedModelContext
+const ToolResultBoundedModelContext = agent.ToolResultBoundedModelContext
 
-// ToolManifest is the runtime projection of an attached Descriptor. Name is
-// derived from Tool.Info and is never supplied when the Definition is built.
+// ToolManifest is the durable, bounded projection of a registered definition.
+// It deliberately excludes the concrete implementation and result payload.
 type ToolManifest struct {
 	Name string `json:"name"`
-	agenttools.Descriptor
+	agent.ToolDescriptor
 }
 
 func unknownToolManifest(name string) ToolManifest {
@@ -59,32 +59,34 @@ func unknownToolManifest(name string) ToolManifest {
 	}
 	return ToolManifest{
 		Name: normalized,
-		Descriptor: agenttools.Descriptor{
-			Source:    ToolSourceOther,
-			Execution: ToolExecutionWorkspaceExclusive, Recovery: ToolRecoveryNonIdempotent,
-			ResultProjection: ToolResultBoundedModelContext,
-			MaxResultBytes:   defaultToolResultMaxBytes,
+		ToolDescriptor: agent.ToolDescriptor{
+			Source: ToolSourceOther, Execution: ToolExecutionWorkspaceExclusive,
+			Recovery: ToolRecoveryNonIdempotent, ResultProjection: ToolResultBoundedModelContext,
+			Steering: agent.SteeringFinishCurrent, MaxResultBytes: defaultToolResultMaxBytes,
 		},
 	}
 }
 
-func manifestForDefinition(name string, descriptor agenttools.Descriptor) ToolManifest {
-	return ToolManifest{Name: normalizeToolName(name), Descriptor: descriptor}
+func manifestForDefinition(name string, descriptor agent.ToolDescriptor) ToolManifest {
+	return ToolManifest{Name: normalizeToolName(name), ToolDescriptor: descriptor}
 }
 
+// FilteredToolResult keeps compatibility for lifecycle consumers while the
+// ToolResult itself remains the source of truth for model/display/details.
 type FilteredToolResult struct {
-	Content        string       `json:"content"`
-	Manifest       ToolManifest `json:"manifest"`
-	OriginalBytes  int          `json:"original_bytes"`
-	ReturnedBytes  int          `json:"returned_bytes"`
-	Truncated      bool         `json:"truncated"`
-	Target         string       `json:"target,omitempty"`
-	IdempotencyKey string       `json:"idempotency_key"`
+	Result         agent.ToolResult `json:"result"`
+	Content        string           `json:"content"`
+	Manifest       ToolManifest     `json:"manifest"`
+	OriginalBytes  int              `json:"original_bytes"`
+	ReturnedBytes  int              `json:"returned_bytes"`
+	Truncated      bool             `json:"truncated"`
+	Target         string           `json:"target,omitempty"`
+	IdempotencyKey string           `json:"idempotency_key"`
 }
 
 const (
 	defaultToolResultMaxBytes = config.DefaultAgentToolResultLimitKB * 1024
-	toolResultMetadataHeader  = "[Denova tool result metadata]"
+	toolResultMetadataHeader  = "[Denova tool result metadata]" // legacy history parser only
 )
 
 func FilterToolResultForModel(toolName, args, content string) FilteredToolResult {
@@ -92,57 +94,46 @@ func FilterToolResultForModel(toolName, args, content string) FilteredToolResult
 }
 
 func FilterToolResultForModelWithLimit(toolName, args, content string, maxBytes int) FilteredToolResult {
-	manifest := unknownToolManifest(toolName)
-	return filterToolResultForModelWithManifest(manifest, args, content, maxBytes)
+	return filterStructuredToolResultWithManifest(
+		unknownToolManifest(toolName), args, agent.TextToolResult(content), maxBytes,
+	)
 }
 
-func filterToolResultForModelWithDescriptor(toolName string, descriptor agenttools.Descriptor, args, content string, maxBytes int) FilteredToolResult {
-	return filterToolResultForModelWithManifest(manifestForDefinition(toolName, descriptor), args, content, maxBytes)
+func filterToolResultForModelWithDescriptor(toolName string, descriptor agent.ToolDescriptor, args, content string, maxBytes int) FilteredToolResult {
+	return filterStructuredToolResultWithDescriptor(toolName, descriptor, args, agent.TextToolResult(content), maxBytes)
 }
 
-func filterToolResultForModelWithManifest(manifest ToolManifest, args, content string, maxBytes int) FilteredToolResult {
-	manifest.MaxResultBytes = normalizeToolResultLimitBytes(maxBytes)
-	content = producttools.WorkspaceChangeResultForModel(manifest.Name, content)
-	body, truncated := truncateUTF8Bytes(content, normalizedToolResultLimit(manifest))
-	return filteredToolResultFromBody(manifest, args, body, len(content), truncated)
+func filterStructuredToolResultWithDescriptor(toolName string, descriptor agent.ToolDescriptor, args string, result agent.ToolResult, maxBytes int) FilteredToolResult {
+	return filterStructuredToolResultWithManifest(manifestForDefinition(toolName, descriptor), args, result, maxBytes)
 }
 
-func filteredToolResultFromBody(manifest ToolManifest, args, body string, originalBytes int, truncated bool) FilteredToolResult {
-	limit := manifest.MaxResultBytes
-	if limit <= 0 {
-		limit = defaultToolResultMaxBytes
+func filterStructuredToolResultWithManifest(manifest ToolManifest, args string, result agent.ToolResult, maxBytes int) FilteredToolResult {
+	manifest.MaxResultBytes = normalizeToolResultLimitBytes(firstPositive(maxBytes, manifest.MaxResultBytes))
+	result.ModelContent = producttools.WorkspaceChangeResultForModel(manifest.Name, result.ModelContent)
+	result.Metadata.Target = filepath.ToSlash(strings.TrimSpace(toolPathFromArgs(args)))
+	result.Metadata.IdempotencyKey = toolIdempotencyKey(manifest.Name, args)
+
+	normalized, err := agent.NormalizeToolResult(result, manifest.ToolDescriptor)
+	if err != nil {
+		normalized = agent.ToolErrorResult("Invalid structured tool result: "+err.Error(), "Invalid structured tool result: "+err.Error())
+		normalized, _ = agent.NormalizeToolResult(normalized, manifest.ToolDescriptor)
 	}
-	if !truncated {
-		body, truncated = truncateUTF8Bytes(body, limit)
-	}
-	if truncated && !strings.Contains(body, "[tool result truncated]") {
-		body = strings.TrimRight(body, "\n")
-		if body != "" {
-			body += "\n"
-		}
-		body += "[tool result truncated]"
-	}
-	target := toolPathFromArgs(args)
-	idempotencyKey := toolIdempotencyKey(manifest.Name, args)
-	metadata := formatToolResultMetadata(manifest, originalBytes, len(body), truncated, target, idempotencyKey)
-	result := strings.TrimRight(body, "\n")
-	if result != "" {
-		result += "\n\n"
-	}
-	result += metadata
 	return FilteredToolResult{
-		Content:        result,
-		Manifest:       manifest,
-		OriginalBytes:  originalBytes,
-		ReturnedBytes:  len(result),
-		Truncated:      truncated,
-		Target:         target,
-		IdempotencyKey: idempotencyKey,
+		Result: normalized, Content: normalized.ModelContent, Manifest: manifest,
+		OriginalBytes: normalized.Metadata.OriginalModelBytes,
+		ReturnedBytes: normalized.Metadata.ReturnedModelBytes,
+		Truncated:     normalized.Metadata.ModelTruncated,
+		Target:        normalized.Metadata.Target, IdempotencyKey: normalized.Metadata.IdempotencyKey,
 	}
 }
 
-func normalizedToolResultLimit(manifest ToolManifest) int {
-	return normalizeToolResultLimitBytes(manifest.MaxResultBytes)
+func firstPositive(values ...int) int {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return defaultToolResultMaxBytes
 }
 
 func normalizeToolResultLimitBytes(maxBytes int) int {
@@ -160,13 +151,19 @@ func truncateUTF8Bytes(content string, limit int) (string, bool) {
 	if limit <= 0 || len(content) <= limit {
 		return content, false
 	}
-	for limit > 0 && !utf8.RuneStart(content[limit]) {
-		limit--
+	const suffix = "\n[tool result truncated]"
+	bodyLimit := limit - len(suffix)
+	if bodyLimit <= 0 {
+		bodyLimit = limit
+		for bodyLimit > 0 && !utf8.RuneStart(content[bodyLimit]) {
+			bodyLimit--
+		}
+		return content[:bodyLimit], true
 	}
-	if limit <= 0 {
-		return "", true
+	for bodyLimit > 0 && !utf8.RuneStart(content[bodyLimit]) {
+		bodyLimit--
 	}
-	return content[:limit] + "\n[tool result truncated]", true
+	return strings.TrimRight(content[:bodyLimit], "\n") + suffix, true
 }
 
 func toolIdempotencyKey(toolName, args string) string {
@@ -174,29 +171,8 @@ func toolIdempotencyKey(toolName, args string) string {
 	return fmt.Sprintf("%s:%s", normalizeToolName(toolName), hex.EncodeToString(hash[:8]))
 }
 
-func formatToolResultMetadata(manifest ToolManifest, originalBytes, returnedBodyBytes int, truncated bool, target, idempotencyKey string) string {
-	fields := []string{
-		toolResultMetadataHeader,
-		"schema: tool_result.v1",
-		"source: " + string(manifest.Source),
-		"capability: " + firstNonEmpty(manifest.Capability, "unclassified"),
-		"execution: " + string(manifest.Execution),
-		"recovery: " + string(manifest.Recovery),
-		"result_projection: " + string(manifest.ResultProjection),
-		fmt.Sprintf("mutates_workspace: %t", manifest.MutatesWorkspace),
-		fmt.Sprintf("requires_post_check: %t", manifest.RequiresPostCheck),
-		fmt.Sprintf("max_result_bytes: %d", manifest.MaxResultBytes),
-		fmt.Sprintf("truncated: %t", truncated),
-		fmt.Sprintf("original_bytes: %d", originalBytes),
-		fmt.Sprintf("returned_body_bytes: %d", returnedBodyBytes),
-		"idempotency_key: " + idempotencyKey,
-	}
-	if target = filepath.ToSlash(strings.TrimSpace(target)); target != "" {
-		fields = append(fields, "target: "+target)
-	}
-	return strings.Join(fields, "\n")
-}
-
+// parseToolResultManifest reads only the legacy text metadata format. New
+// transcripts and lifecycle events carry descriptor and metadata explicitly.
 func parseToolResultManifest(name, content string) (ToolManifest, bool) {
 	marker := strings.LastIndex(content, toolResultMetadataHeader)
 	if marker < 0 {
@@ -215,10 +191,11 @@ func parseToolResultManifest(name, content string) (ToolManifest, bool) {
 	maxBytes, _ := strconv.Atoi(values["max_result_bytes"])
 	mutates, _ := strconv.ParseBool(values["mutates_workspace"])
 	postCheck, _ := strconv.ParseBool(values["requires_post_check"])
-	return manifestForDefinition(name, agenttools.Descriptor{
-		Source: agenttools.Source(values["source"]), Capability: values["capability"],
-		Execution: agenttools.ExecutionClass(values["execution"]), Recovery: agenttools.RecoveryClass(values["recovery"]),
-		ResultProjection: agenttools.ResultProjection(values["result_projection"]),
+	return manifestForDefinition(name, agent.ToolDescriptor{
+		Source: agent.ToolSource(values["source"]), Capability: values["capability"],
+		Execution: agent.ToolExecutionClass(values["execution"]), Recovery: agent.ToolRecoveryClass(values["recovery"]),
+		ResultProjection: agent.ToolResultProjection(values["result_projection"]),
+		Steering:         agent.SteeringFinishCurrent,
 		MutatesWorkspace: mutates, MaxResultBytes: maxBytes, RequiresPostCheck: postCheck,
 	}), true
 }

@@ -378,6 +378,11 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
 			   placeholder={placeholderFor('agent_tool_result_limit_kb')}
 			   min={1}
                onChange={(v) => setField('agent_tool_result_limit_kb', v)} />
+          <Num label={t('settings.agent.toolParallelism')} value={draft.agent_tool_parallelism ?? null}
+               placeholder={placeholderFor('agent_tool_parallelism')}
+               min={1}
+               max={64}
+               onChange={(v) => setField('agent_tool_parallelism', v)} />
           <BoolTri label={t('settings.agent.planModeDefault')} value={draft.plan_mode_default ?? null}
                    inherited={inherited.plan_mode_default}
                    onChange={(v) => setField('plan_mode_default', v)} />
@@ -1799,6 +1804,7 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
   override('model_max_retries', isNonNull)
   override('agent_idle_timeout_seconds', isNonNull)
   override('agent_tool_result_limit_kb', isNonNull)
+  override('agent_tool_parallelism', isNonNull)
   override('llm_input_log_enabled', isNonNull)
   override('trace_capture_level', isNonEmptyString)
   override('trace_exporter', isNonEmptyString)

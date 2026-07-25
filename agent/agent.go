@@ -12,7 +12,7 @@ type AgentConfig struct {
 	Description string
 	Instruction string
 	Model       BaseChatModel
-	Tools       []BaseTool
+	Tools       []ToolDefinition
 
 	Middlewares []Middleware
 	Retry       *RetryConfig
@@ -21,22 +21,27 @@ type AgentConfig struct {
 	// the agent runtime never installs an implicit iteration limit.
 	MaxIterations int
 
-	// EmitToolCompletions emits non-transcript completion notifications as
-	// concurrent calls finish. Tool result message events always remain ordered.
-	EmitToolCompletions bool
+	// ToolParallelism bounds one parallel-read stage. Zero or negative values
+	// use DefaultToolParallelism; values above MaxToolParallelism are clamped.
+	ToolParallelism int
 }
+
+const (
+	DefaultToolParallelism = 8
+	MaxToolParallelism     = 64
+)
 
 // Agent owns the provider-neutral model/tool loop.
 type Agent struct {
-	name                string
-	description         string
-	instruction         string
-	model               BaseChatModel
-	tools               []BaseTool
-	middlewares         []Middleware
-	retry               *RetryConfig
-	maxIterations       int
-	emitToolCompletions bool
+	name            string
+	description     string
+	instruction     string
+	model           BaseChatModel
+	tools           []ToolDefinition
+	middlewares     []Middleware
+	retry           *RetryConfig
+	maxIterations   int
+	toolParallelism int
 }
 
 // ErrMaxIterations is returned only when the caller explicitly configures a limit.
@@ -50,7 +55,7 @@ func NewAgent(ctx context.Context, config AgentConfig) (*Agent, error) {
 	if config.Model == nil {
 		return nil, errors.New("new agent: model is required")
 	}
-	tools := append([]BaseTool(nil), config.Tools...)
+	tools := append([]ToolDefinition(nil), config.Tools...)
 	if _, err := NewRegistry(ctx, tools...); err != nil {
 		return nil, fmt.Errorf("new agent: %w", err)
 	}
@@ -67,16 +72,22 @@ func NewAgent(ctx context.Context, config AgentConfig) (*Agent, error) {
 	if config.MaxIterations < 0 {
 		return nil, errors.New("new agent: MaxIterations cannot be negative")
 	}
+	parallelism := config.ToolParallelism
+	if parallelism < 1 {
+		parallelism = DefaultToolParallelism
+	} else if parallelism > MaxToolParallelism {
+		parallelism = MaxToolParallelism
+	}
 	return &Agent{
-		name:                config.Name,
-		description:         config.Description,
-		instruction:         config.Instruction,
-		model:               config.Model,
-		tools:               tools,
-		middlewares:         middlewares,
-		retry:               retry,
-		maxIterations:       config.MaxIterations,
-		emitToolCompletions: config.EmitToolCompletions,
+		name:            config.Name,
+		description:     config.Description,
+		instruction:     config.Instruction,
+		model:           config.Model,
+		tools:           tools,
+		middlewares:     middlewares,
+		retry:           retry,
+		maxIterations:   config.MaxIterations,
+		toolParallelism: parallelism,
 	}, nil
 }
 
@@ -94,14 +105,6 @@ func (agent *Agent) Description(context.Context) string {
 		return ""
 	}
 	return agent.description
-}
-
-// ToolCompletion is an optional real-time, non-transcript notification.
-type ToolCompletion struct {
-	Index    int
-	CallID   string
-	ToolName string
-	Err      error
 }
 
 // Run starts the native model/tool loop and returns immediately.
@@ -146,7 +149,7 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 
 	runContext := &RunContext{
 		Instruction: agent.instruction,
-		Tools:       append([]BaseTool(nil), agent.tools...),
+		Tools:       append([]ToolDefinition(nil), agent.tools...),
 	}
 	var err error
 	for _, middleware := range agent.middlewares {
@@ -260,16 +263,16 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 		}
 		assistant = lastAssistantMessage(state.Messages, assistant)
 
-		if cancelErr := options.cancel.safePoint(CancelAfterChatModel); cancelErr != nil {
-			events.Send(agent.errorEvent(cancelErr))
-			return
-		}
 		if err := agent.contextError(ctx, options.cancel); err != nil {
 			events.Send(agent.errorEvent(err))
 			return
 		}
 
 		if len(assistant.ToolCalls) == 0 {
+			if cancelErr := options.cancel.safePoint(CancelAfterChatModel); cancelErr != nil {
+				events.Send(agent.errorEvent(cancelErr))
+				return
+			}
 			for _, middleware := range agent.middlewares {
 				ctx, err = middleware.AfterAgent(ctx, state)
 				if err != nil {
@@ -286,16 +289,16 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 
 		var toolResults []toolExecutionResult
 		if assistant.ResponseMeta != nil && assistant.ResponseMeta.FinishReason == "length" {
-			toolResults = lengthToolResults(assistant.ToolCalls)
+			toolResults = agent.lengthToolResults(assistant.ToolCalls, registry, events)
 		} else {
-			toolResults, err = agent.executeToolBatch(ctx, registry, assistant.ToolCalls, events)
+			toolResults, err = agent.executeToolBatch(ctx, registry, assistant.ToolCalls, events, options.cancel)
 		}
 		for _, result := range toolResults {
 			if result.message == nil {
 				continue
 			}
 			state.Messages = append(state.Messages, result.message.Clone())
-			events.Send(agent.messageEvent(result.message.Clone(), nil, Tool, result.message.ToolName))
+			events.Send(agent.messageEvent(result.message.Clone(), nil, ToolRole, result.message.ToolName))
 		}
 		if err != nil {
 			if IsInterruptError(err) {
@@ -309,7 +312,7 @@ func (agent *Agent) run(parent context.Context, input *AgentInput, options *agen
 			return
 		}
 
-		if cancelErr := options.cancel.safePoint(CancelAfterToolCalls); cancelErr != nil {
+		if cancelErr := options.cancel.safePoint(CancelAfterToolCalls | CancelAfterChatModel); cancelErr != nil {
 			events.Send(agent.errorEvent(cancelErr))
 			return
 		}

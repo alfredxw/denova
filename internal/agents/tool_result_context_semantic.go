@@ -153,7 +153,7 @@ func filterToolContextMessages(messages []*agent.Message, policy ToolResultConte
 			}
 			continue
 		}
-		if msg.Role == agent.Tool {
+		if msg.Role == agent.ToolRole {
 			callID := strings.TrimSpace(msg.ToolCallID)
 			if callID != "" {
 				resultCountsByID[callID]++
@@ -190,7 +190,7 @@ func filterToolContextMessages(messages []*agent.Message, policy ToolResultConte
 			if len(next.ToolCalls) > 0 || strings.TrimSpace(next.Content) != "" {
 				filtered = append(filtered, &next)
 			}
-		case agent.Tool:
+		case agent.ToolRole:
 			callID := strings.TrimSpace(msg.ToolCallID)
 			callPolicy, ok := callsByID[callID]
 			if callID == "" || !ok || !callPolicy.valid || resultCountsByID[callID] != 1 ||

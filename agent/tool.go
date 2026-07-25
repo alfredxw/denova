@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -186,23 +187,6 @@ type ToolOption struct {
 	Value any
 }
 
-// BaseTool supplies a name, description, and argument schema.
-type BaseTool interface {
-	Info(ctx context.Context) (*ToolInfo, error)
-}
-
-// InvokableTool executes a complete tool call.
-type InvokableTool interface {
-	BaseTool
-	InvokableRun(ctx context.Context, argumentsInJSON string, opts ...ToolOption) (string, error)
-}
-
-// StreamableTool executes a tool call as a stream of string fragments.
-type StreamableTool interface {
-	BaseTool
-	StreamableRun(ctx context.Context, argumentsInJSON string, opts ...ToolOption) (*StreamReader[string], error)
-}
-
 // InvokeFunc is a typed tool implementation.
 type InvokeFunc[T, D any] func(ctx context.Context, input T) (D, error)
 
@@ -212,8 +196,8 @@ type SchemaModifierFn func(jsonTagName string, fieldType reflect.Type, tag refle
 // UnmarshalArguments customizes typed argument decoding.
 type UnmarshalArguments func(ctx context.Context, arguments string) (any, error)
 
-// MarshalOutput customizes typed result encoding.
-type MarshalOutput func(ctx context.Context, output any) (string, error)
+// MarshalOutput customizes the structured result produced by a typed tool.
+type MarshalOutput func(ctx context.Context, output any) (ToolResult, error)
 
 type inferOptions struct {
 	schemaModifier     SchemaModifierFn
@@ -283,8 +267,8 @@ func GoStruct2ToolInfo[T any](name, description string, opts ...InferOption) (*T
 	return &ToolInfo{Name: name, Desc: description, ParamsOneOf: params}, nil
 }
 
-// InferTool creates a strict typed invokable tool.
-func InferTool[T, D any](name, description string, invoke InvokeFunc[T, D], opts ...InferOption) (InvokableTool, error) {
+// InferTool creates a strict typed tool.
+func InferTool[T, D any](name, description string, invoke InvokeFunc[T, D], opts ...InferOption) (Tool, error) {
 	if strings.TrimSpace(name) == "" {
 		return nil, errors.New("infer tool: name is required")
 	}
@@ -308,7 +292,7 @@ func InferTool[T, D any](name, description string, invoke InvokeFunc[T, D], opts
 }
 
 // NewTool binds a typed function to an explicit ToolInfo.
-func NewTool[T, D any](info *ToolInfo, invoke InvokeFunc[T, D], opts ...InferOption) InvokableTool {
+func NewTool[T, D any](info *ToolInfo, invoke InvokeFunc[T, D], opts ...InferOption) Tool {
 	var schema *jsonschema.Schema
 	if info != nil {
 		schema, _ = info.ToJSONSchema()
@@ -327,41 +311,171 @@ func (tool *inferredTool[T, D]) Info(context.Context) (*ToolInfo, error) {
 	return cloneToolInfo(tool.info), nil
 }
 
-func (tool *inferredTool[T, D]) InvokableRun(ctx context.Context, arguments string, _ ...ToolOption) (string, error) {
+func (tool *inferredTool[T, D]) Run(ctx context.Context, arguments string, _ ...ToolOption) (ToolResult, error) {
 	var input T
 	if tool.options != nil && tool.options.unmarshalArguments != nil {
 		decoded, err := tool.options.unmarshalArguments(ctx, arguments)
 		if err != nil {
-			return "", fmt.Errorf("decode arguments for tool %q: %w", toolName(tool.info), err)
+			return ToolResult{}, fmt.Errorf("decode arguments for tool %q: %w", toolName(tool.info), err)
 		}
 		value, ok := decoded.(T)
 		if !ok {
-			return "", fmt.Errorf("decode arguments for tool %q: got %T, want %T", toolName(tool.info), decoded, input)
+			return ToolResult{}, fmt.Errorf("decode arguments for tool %q: got %T, want %T", toolName(tool.info), decoded, input)
 		}
 		input = value
 	} else if err := strictDecodeArguments(arguments, &input, tool.schema); err != nil {
-		return "", fmt.Errorf("decode arguments for tool %q: %w", toolName(tool.info), err)
+		return ToolResult{}, fmt.Errorf("decode arguments for tool %q: %w", toolName(tool.info), err)
 	}
 
 	output, err := tool.invoke(ctx, input)
 	if err != nil {
-		return "", fmt.Errorf("invoke tool %q: %w", toolName(tool.info), err)
+		return ToolResult{}, fmt.Errorf("invoke tool %q: %w", toolName(tool.info), err)
 	}
 	if tool.options != nil && tool.options.marshalOutput != nil {
 		result, err := tool.options.marshalOutput(ctx, output)
 		if err != nil {
-			return "", fmt.Errorf("encode result for tool %q: %w", toolName(tool.info), err)
+			return ToolResult{}, fmt.Errorf("encode result for tool %q: %w", toolName(tool.info), err)
 		}
 		return result, nil
 	}
-	if value, ok := any(output).(string); ok {
+	if value, ok := any(output).(ToolResult); ok {
 		return value, nil
+	}
+	if value, ok := any(output).(*ToolResult); ok {
+		if value == nil {
+			return ToolResult{}, fmt.Errorf("encode result for tool %q: nil ToolResult", toolName(tool.info))
+		}
+		return *value, nil
+	}
+	if value, ok := any(output).(string); ok {
+		return TextToolResult(value), nil
 	}
 	encoded, err := json.Marshal(output)
 	if err != nil {
-		return "", fmt.Errorf("encode result for tool %q: %w", toolName(tool.info), err)
+		return ToolResult{}, fmt.Errorf("encode result for tool %q: %w", toolName(tool.info), err)
 	}
-	return string(encoded), nil
+	return TextToolResult(string(encoded)), nil
+}
+
+// ValidateToolArguments checks raw arguments against the exact schema exposed
+// to the provider. It is repeated immediately before Tool.Run, so middleware
+// cannot bypass validation by rewriting arguments.
+func ValidateToolArguments(info *ToolInfo, arguments string) error {
+	if info == nil {
+		return errors.New("tool info is nil")
+	}
+	schema, err := info.ToJSONSchema()
+	if err != nil {
+		return err
+	}
+	var value any
+	decoder := json.NewDecoder(strings.NewReader(arguments))
+	decoder.UseNumber()
+	if err := decoder.Decode(&value); err != nil {
+		return err
+	}
+	if err := requireJSONEOF(decoder); err != nil {
+		return err
+	}
+	if err := validateJSONValue("$", value, schema); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateToolSchema rejects malformed schemas at the registry boundary,
+// before a provider can see a tool that the local final-argument validator
+// cannot interpret consistently.
+func validateToolSchema(schema *jsonschema.Schema) error {
+	if schema == nil {
+		return nil
+	}
+	if _, err := json.Marshal(schema); err != nil {
+		return fmt.Errorf("encode JSON schema: %w", err)
+	}
+	return validateToolSchemaAt("$", schema)
+}
+
+func validateToolSchemaAt(path string, schema *jsonschema.Schema) error {
+	if schema == nil {
+		return fmt.Errorf("%s contains a nil schema", path)
+	}
+	switch schema.Type {
+	case "", "object", "array", "string", "boolean", "number", "integer", "null":
+	default:
+		return fmt.Errorf("%s has unsupported type %q", path, schema.Type)
+	}
+	if schema.Pattern != "" {
+		if _, err := regexp.Compile(schema.Pattern); err != nil {
+			return fmt.Errorf("%s has invalid pattern: %w", path, err)
+		}
+	}
+	if schema.MinLength != nil && schema.MaxLength != nil && *schema.MinLength > *schema.MaxLength {
+		return fmt.Errorf("%s has minLength greater than maxLength", path)
+	}
+	if schema.MinItems != nil && schema.MaxItems != nil && *schema.MinItems > *schema.MaxItems {
+		return fmt.Errorf("%s has minItems greater than maxItems", path)
+	}
+	if schema.MinProperties != nil && schema.MaxProperties != nil && *schema.MinProperties > *schema.MaxProperties {
+		return fmt.Errorf("%s has minProperties greater than maxProperties", path)
+	}
+	children := []struct {
+		name   string
+		values []*jsonschema.Schema
+	}{
+		{name: "allOf", values: schema.AllOf},
+		{name: "anyOf", values: schema.AnyOf},
+		{name: "oneOf", values: schema.OneOf},
+		{name: "prefixItems", values: schema.PrefixItems},
+	}
+	for _, group := range children {
+		for index, child := range group.values {
+			if err := validateToolSchemaAt(fmt.Sprintf("%s.%s[%d]", path, group.name, index), child); err != nil {
+				return err
+			}
+		}
+	}
+	single := []struct {
+		name  string
+		value *jsonschema.Schema
+	}{
+		{name: "not", value: schema.Not}, {name: "if", value: schema.If},
+		{name: "then", value: schema.Then}, {name: "else", value: schema.Else},
+		{name: "items", value: schema.Items}, {name: "contains", value: schema.Contains},
+		{name: "additionalProperties", value: schema.AdditionalProperties},
+		{name: "propertyNames", value: schema.PropertyNames},
+		{name: "contentSchema", value: schema.ContentSchema},
+	}
+	for _, child := range single {
+		if child.value != nil {
+			if err := validateToolSchemaAt(path+"."+child.name, child.value); err != nil {
+				return err
+			}
+		}
+	}
+	if schema.Properties != nil {
+		for pair := schema.Properties.Oldest(); pair != nil; pair = pair.Next() {
+			if err := validateToolSchemaAt(path+".properties."+pair.Key, pair.Value); err != nil {
+				return err
+			}
+		}
+	}
+	maps := []struct {
+		name   string
+		values map[string]*jsonschema.Schema
+	}{
+		{name: "$defs", values: schema.Definitions},
+		{name: "dependentSchemas", values: schema.DependentSchemas},
+		{name: "patternProperties", values: schema.PatternProperties},
+	}
+	for _, group := range maps {
+		for name, child := range group.values {
+			if err := validateToolSchemaAt(path+"."+group.name+"."+name, child); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func toolName(info *ToolInfo) string {

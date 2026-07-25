@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	agenttools "github.com/alfredxw/denova/agent/tools"
+	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
 	producttools "denova/internal/agents/tools"
@@ -22,7 +22,7 @@ func TestGeneratedImageToolResultTracksMutationTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	tracker := newMutationTracker()
-	descriptor := producttools.WorkspaceWriteDescriptor(producttools.ToolSourceImage, config.AgentToolImageGeneration, agenttools.RecoveryNonIdempotent)
+	descriptor := producttools.WorkspaceWriteDescriptor(producttools.ToolSourceImage, config.AgentToolImageGeneration, agent.ToolRecoveryNonIdempotent)
 	filtered := filterToolResultForModelWithDescriptor(
 		producttools.GenerateImageToolName,
 		descriptor,
@@ -64,7 +64,7 @@ func TestWorkspaceChangeReceiptHidesInternalRevisionsFromModel(t *testing.T) {
 func TestMutationTrackerAssociatesWorkspaceChangeReceipt(t *testing.T) {
 	tracker := newMutationTracker()
 	receipt := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/ch01.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied"}`
-	descriptor := producttools.WorkspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable)
+	descriptor := producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolFileWrite, agent.ToolRecoveryReconcilable)
 	tracker.Observe(Event{Type: "tool_call", Data: map[string]any{
 		"id":                  "call-1",
 		"name":                "edit_file",
@@ -89,12 +89,12 @@ func TestMutationTrackerAssociatesWorkspaceChangeReceipt(t *testing.T) {
 func TestWorkspaceChangeReceiptUpdatesOnlyTrustedToolExecutionRecords(t *testing.T) {
 	content := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/ch01.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied"}`
 	record := ToolExecutionRecord{ToolName: "write_file"}
-	applyWorkspaceChangeReceiptToExecutionRecord(&record, content)
+	applyWorkspaceChangeReceiptToExecutionRecord(&record, agent.ToolResult{Details: []byte(content)})
 	if record.Workspace != "/workspace/book-a" || record.ChangeSetID != "change-1" {
 		t.Fatalf("execution record lost workspace identity: %#v", record)
 	}
 	forged := ToolExecutionRecord{ToolName: "read_file"}
-	applyWorkspaceChangeReceiptToExecutionRecord(&forged, content)
+	applyWorkspaceChangeReceiptToExecutionRecord(&forged, agent.ToolResult{Details: []byte(content)})
 	if forged.Workspace != "" || forged.ChangeSetID != "" {
 		t.Fatalf("read_file forged an execution record receipt: %#v", forged)
 	}

@@ -54,7 +54,7 @@ type actorStateWriteOperation struct {
 	ActorState interactive.ActorStateModule `json:"actor_state,omitempty" jsonschema:"description=create/update 使用的完整状态系统模块配置；actor_state.templates 定义状态模板和字段 schema，templates[].trait_rules 通过 pool_id 与 draw_count 绑定词条池；actor_state.trait_pools 是可复用词条库，词条只含 id、name、summary、weight，不得含 ops；initial_actors 是初始 Actor 实例。Actor 创建时后端会写入默认值、实例覆盖值并自动抽取词条快照"`
 }
 
-func newListTellersTool(novaDir string) (agent.BaseTool, error) {
+func newListTellersTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("list_tellers", "列出叙事风格索引，返回 ID、名称、简介和槽位概览；叙事风格是共享模块，可用于写作模式和游戏模式；需要完整配置时再调用 read_tellers。叙事风格只负责文风、提示词槽位、场景风格和上下文策略；场景风格应引用 list_style_references 返回的共享 path。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
@@ -81,7 +81,7 @@ func newListTellersTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newReadTellersTool(novaDir string) (agent.BaseTool, error) {
+func newReadTellersTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("read_tellers", "按叙事风格 ID 批量读取完整配置。顶层 style_refs 是所有场景默认生效的文风参考；style_rules 使用 scene + style_refs 引用 .denova/styles/*.md 表示分场景文风参考。旧 style_contents 只为兼容已发布配置保留，新配置不要继续内联长文风内容。事件、TRPG 检定、状态系统和图像方案属于故事导演；Actor 词条属于状态系统 trait_pools，并通过模板 trait_rules 绑定。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
@@ -104,7 +104,7 @@ func newReadTellersTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newWriteTellersTool(novaDir string) (agent.BaseTool, error) {
+func newWriteTellersTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("write_tellers", "批量创建、更新或删除叙事风格配置。叙事风格是共享模块，不存在每个风格可配置的模式字段；只维护文风、提示词槽位、文风参考和上下文策略。顶层 style_refs 表示所有场景默认生效的文风参考；style_rules 表示分场景文风参考，必须优先使用 style_refs 引用 .denova/styles/*.md。如需新增文风参考，先用 write_style_references 创建 md，再把 path 写入顶层 style_refs 或对应 style_rules[].style_refs。故事编排请使用 write_story_directors。更新内置 ID 会在用户空间覆盖同一个叙事风格；删除内置 ID 只用于恢复内置默认内容，必须来自用户明确指令。", func(ctx context.Context, input tellerWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
@@ -141,7 +141,7 @@ func newWriteTellersTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newListEventPackagesTool(novaDir string) (agent.BaseTool, error) {
+func newListEventPackagesTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("list_event_packages", "列出事件包索引，返回 ID、名称、简介、类型和事件卡数量；事件包是游戏模式独占模块，一个事件包就是一组事件卡。需要完整事件卡内容时再调用 read_event_packages。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
@@ -168,7 +168,7 @@ func newListEventPackagesTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newReadEventPackagesTool(novaDir string) (agent.BaseTool, error) {
+func newReadEventPackagesTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("read_event_packages", "按事件包 ID 批量读取完整配置。事件包直接包含 events 事件卡列表。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
@@ -191,7 +191,7 @@ func newReadEventPackagesTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newWriteEventPackagesTool(novaDir string) (agent.BaseTool, error) {
+func newWriteEventPackagesTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("write_event_packages", "批量创建、更新或删除事件包。事件包是游戏模式独占模块，一个事件包就是一组事件卡；create/update 必须写完整 events。删除内置事件包会恢复内置版本；删除自定义事件包必须来自用户明确指令。", func(ctx context.Context, input eventPackageWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
@@ -228,7 +228,7 @@ func newWriteEventPackagesTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newListActorStatesTool(novaDir string) (agent.BaseTool, error) {
+func newListActorStatesTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("list_actor_states", "列出状态系统索引，返回 ID、名称、简介、类型、模板数量、初始 Actor 数量和词条池数量；状态系统是游戏模式结构化 Actor 状态和词条库的唯一真源。模板可表示主角、重要角色、敌人、怪物、世界、故事倒计时、势力、基地或副本等 Actor。需要完整字段 schema、trait_rules 或词条定义时再调用 read_actor_states。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
@@ -255,7 +255,7 @@ func newListActorStatesTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newReadActorStatesTool(novaDir string) (agent.BaseTool, error) {
+func newReadActorStatesTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("read_actor_states", "按状态系统 ID 批量读取完整配置。字段 schema 支持 name/type/default/min/max/options/description/update_instruction/order；规范化后的 name 同时是状态 ID，同一模板内不可重名。trait_pools 定义可复用词条，模板 trait_rules 声明创建 Actor 时的自动抽取规则；initial_actors 定义初始 Actor。新故事在开局页面选择固定模板、Game Agent 动态适配模板或 Game Agent 动态生成；旧故事固定使用已冻结结构。后续所有字段引用使用 actor_id + field_id。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
@@ -278,7 +278,7 @@ func newReadActorStatesTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newWriteActorStatesTool(novaDir string) (agent.BaseTool, error) {
+func newWriteActorStatesTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("write_actor_states", "批量创建、更新或删除状态系统。create/update 必须写完整 actor_state.templates、actor_state.trait_pools 和 initial_actors。模板是 Actor 状态 schema；templates[].trait_rules 只能引用存在的 pool_id，draw_count 必须为正且不超过池内词条数。词条只写 id、name、summary、weight，禁止写 ops、路径或 StateOp。主角、重要角色、敌人和怪物均在 Actor 创建时由后端应用模板默认值、实例覆盖值并自动抽取词条快照；initial_actors 仅声明开局就存在的 Actor。当前时间、地点、事件、资源、关系数值、持续状态、规则标记，以及会影响后续承接或规则检定的结构化状态都放进状态系统；普通叙事记录和场景流水只保留在 Turn 历史。字段 path 不要带 actors.<actor_id>.state 前缀，只写模板内字段路径，例如 crisis.countdown。删除内置状态系统会恢复内置版本；删除自定义状态系统必须来自用户明确指令。", func(ctx context.Context, input actorStateWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
@@ -315,7 +315,7 @@ func newWriteActorStatesTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newListStoryDirectorsTool(novaDir string) (agent.BaseTool, error) {
+func newListStoryDirectorsTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("list_story_directors", "列出故事导演索引，返回 ID、名称、简介、策略、模块引用开关和系统配置概览；策略会用中文名称展示，完整枚举 ID 见 read/write 工具说明。故事导演是游戏模式独占模块；需要完整配置时再调用 read_story_directors。故事导演可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统和图像方案；Actor 词条库属于状态系统。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = ctx
 		_ = input
@@ -367,7 +367,7 @@ func newListStoryDirectorsTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newReadStoryDirectorsTool(novaDir string) (agent.BaseTool, error) {
+func newReadStoryDirectorsTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("read_story_directors", "按故事导演 ID 批量读取完整配置。故事导演是游戏模式独占模块；module_refs 决定引用哪些模块，event_package_ids 可引用多个事件包，rule_system_id 引用一个 TRPG 检定资源，actor_state_id 引用状态系统，*_disabled=true 表示对应模块关闭且保留原 ID 以便重新启用。状态系统的 trait_pools 是通用词条库，模板 trait_rules 决定各类 Actor 创建时从哪些池抽取多少词条。TRPG 资源只配置一项 rule_templates[0]，检定固定 d20，支持 trigger、must_check_examples、skip_check_examples、difficulty_guidance、state_effect_guidance 和 state_bindings；带 state_bindings 的 TRPG 资源需要 actor_state_id。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，event_frequency=off/sparse/balanced/frequent，rule_state_consumption_mode=hybrid_auto/director_only，rule_visibility_mode=audit_only/public_roll；branch_planning_turns 控制最近分支规划回合数；状态结构策略由故事开局配置，不属于 Director strategy；planning_templates.plan 是单份 director.md Markdown 模板；strategy.prompt_markdown 是纯 Markdown 高级策略提示，最多 64KB。", func(ctx context.Context, input idListInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {
@@ -390,7 +390,7 @@ func newReadStoryDirectorsTool(novaDir string) (agent.BaseTool, error) {
 	})
 }
 
-func newWriteStoryDirectorsTool(novaDir string) (agent.BaseTool, error) {
+func newWriteStoryDirectorsTool(novaDir string) (agent.Tool, error) {
 	return agent.InferTool("write_story_directors", "批量创建、更新或删除故事导演配置。故事导演通过 module_refs 可插拔组合叙事风格、多个事件包、TRPG 检定、状态系统和图像方案；用 narrative_style_disabled、event_packages_disabled、rule_system_disabled、actor_state_disabled、image_preset_disabled 关闭模块，关闭时保留原 ID。Actor 词条库和模板抽取规则通过 write_actor_states 更新。事件包引用写 event_package_ids；TRPG 检定引用写 rule_system_id；带 state_bindings 的 TRPG 检定资源必须配置 actor_state_id；状态系统引用写 actor_state_id。strategy 使用枚举：mainline_strength=soft_guidance/balanced/strong_arc，failure_policy=reversible/consequence/fail_forward，pacing_curve=progressive/wave/goal-pressure-payoff，event_frequency=off/sparse/balanced/frequent，rule_state_consumption_mode=hybrid_auto/director_only 默认 hybrid_auto，rule_visibility_mode=audit_only/public_roll 默认 audit_only；branch_planning_turns 默认 5；状态结构策略由故事开局配置，不属于 Director strategy；planning_templates.plan 可写单份 director.md Markdown 模板并必须保留固定标题；strategy.prompt_markdown 可写纯 Markdown 高级策略提示，最多 64KB，不能覆盖结构化策略、工具权限和输出协议。删除内置故事导演会被后端拒绝；删除必须来自用户明确指令。", func(ctx context.Context, input storyDirectorWriteInput) (string, error) {
 		_ = ctx
 		if novaDir == "" {

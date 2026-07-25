@@ -41,7 +41,7 @@ func TestExplicitSkillsAreLoadedBeforeFirstModelCallFromAnywhereInMessage(t *tes
 		Description: "explicit skill preload integration test",
 		Instruction: "test",
 		Model:       model,
-		Tools:       []agent.BaseTool{skillTool},
+		Tools:       []agent.ToolDefinition{skillTool},
 	})
 	if err != nil {
 		t.Fatal(err)

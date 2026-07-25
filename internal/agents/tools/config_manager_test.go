@@ -9,8 +9,6 @@ import (
 	"sync"
 	"testing"
 
-	agenttools "github.com/alfredxw/denova/agent/tools"
-
 	agent "github.com/alfredxw/denova/agent"
 
 	"denova/config"
@@ -46,25 +44,19 @@ func TestConfigManagerToolsExposeStableSchema(t *testing.T) {
 		{name: "write_agent_configs", capability: config.AgentToolAgentConfigWrite},
 		{name: "write_lore_items", capability: config.AgentToolLoreWrite},
 	} {
-		var selected agent.BaseTool
+		var selected *agent.ToolDefinition
 		for _, tool := range tools {
-			info, infoErr := tool.Info(context.Background())
+			info, infoErr := tool.Tool.Info(context.Background())
 			if infoErr == nil && info != nil && info.Name == tc.name {
-				selected = tool
+				value := tool
+				selected = &value
 				break
 			}
 		}
 		if selected == nil {
 			t.Fatalf("tool %q not found", tc.name)
 		}
-		info, err := selected.Info(context.Background())
-		if err != nil {
-			t.Fatal(err)
-		}
-		descriptor, ok := agenttools.DescriptorFromInfo(info)
-		if !ok {
-			t.Fatalf("tool %q has no descriptor", tc.name)
-		}
+		descriptor := selected.Descriptor
 		if got := descriptor.Capability; got != tc.capability {
 			t.Fatalf("%s capability = %q, want %q", tc.name, got, tc.capability)
 		}
@@ -86,7 +78,7 @@ func TestListAutomationsToolUsesTheUserCatalogAcrossWorkspaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := listTool.(agent.InvokableTool).InvokableRun(context.Background(), `{}`)
+	output, err := runToolForTest(context.Background(), listTool, `{}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +124,7 @@ func TestPresetConfigManagerToolIndexesDescribeFixedModuleOwnership(t *testing.T
 	novaDir := t.TempDir()
 	for _, tc := range []struct {
 		name     string
-		build    func(string) (agent.BaseTool, error)
+		build    func(string) (agent.Tool, error)
 		required []string
 	}{
 		{
@@ -161,7 +153,7 @@ func TestPresetConfigManagerToolIndexesDescribeFixedModuleOwnership(t *testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
-			output, err := base.(agent.InvokableTool).InvokableRun(context.Background(), `{}`)
+			output, err := runToolForTest(context.Background(), base, `{}`)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -208,7 +200,7 @@ func TestListAgentConfigsReturnsAllLayersWithoutAPIKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := listTool.(agent.InvokableTool).InvokableRun(context.Background(), `{}`)
+	output, err := runToolForTest(context.Background(), listTool, `{}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,10 +221,10 @@ func TestWriteAgentConfigsRequiresExplicitScopeAndWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writeTool.(agent.InvokableTool).InvokableRun(context.Background(), `{"operations":[]}`); err == nil {
+	if _, err := runToolForTest(context.Background(), writeTool, `{"operations":[]}`); err == nil {
 		t.Fatalf("write_agent_configs should require explicit scope")
 	}
-	if _, err := writeTool.(agent.InvokableTool).InvokableRun(context.Background(), `{"scope":"workspace","operations":[]}`); err == nil {
+	if _, err := runToolForTest(context.Background(), writeTool, `{"scope":"workspace","operations":[]}`); err == nil {
 		t.Fatalf("write_agent_configs should reject workspace scope without workspace")
 	}
 
@@ -240,7 +232,7 @@ func TestWriteAgentConfigsRequiresExplicitScopeAndWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writeTool.(agent.InvokableTool).InvokableRun(context.Background(), `{"scope":"workspace","operations":[{"op":"set_agent_override","agent":"ide","model":{"profile_id":"workspace-model"}}]}`); err == nil {
+	if _, err := runToolForTest(context.Background(), writeTool, `{"scope":"workspace","operations":[{"op":"set_agent_override","agent":"ide","model":{"profile_id":"workspace-model"}}]}`); err == nil {
 		t.Fatalf("write_agent_configs should keep model selection user-scoped")
 	}
 }
@@ -287,7 +279,7 @@ func TestWriteAgentConfigsPreservesUnrelatedSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writeTool.(agent.InvokableTool).InvokableRun(context.Background(), string(data)); err != nil {
+	if _, err := runToolForTest(context.Background(), writeTool, string(data)); err != nil {
 		t.Fatal(err)
 	}
 	read, err := config.ReadSettingsFile(path)
@@ -382,7 +374,7 @@ func TestWriteAutomationsRequiresExplicitCreateTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = writeTool.(agent.InvokableTool).InvokableRun(context.Background(), `{
+	_, err = runToolForTest(context.Background(), writeTool, `{
 		"operations": [{
 			"op": "create",
 			"task": {
@@ -405,18 +397,18 @@ func TestConfigManagerWriteSchemasKeepConditionalFieldsOptional(t *testing.T) {
 	cfg := &config.Config{NovaDir: novaDir, Workspace: t.TempDir()}
 	tests := []struct {
 		name              string
-		build             func() (agent.BaseTool, error)
+		build             func() (agent.Tool, error)
 		optionalOperation []string
 		requiredOperation []string
 	}{
-		{name: "style references", build: func() (agent.BaseTool, error) { return newWriteStyleReferencesTool(novaDir) }, optionalOperation: []string{"path", "reference"}},
-		{name: "tellers", build: func() (agent.BaseTool, error) { return newWriteTellersTool(novaDir) }, optionalOperation: []string{"id", "teller"}},
-		{name: "story directors", build: func() (agent.BaseTool, error) { return newWriteStoryDirectorsTool(novaDir) }, optionalOperation: []string{"id", "director"}},
-		{name: "event packages", build: func() (agent.BaseTool, error) { return newWriteEventPackagesTool(novaDir) }, optionalOperation: []string{"id", "package"}},
-		{name: "actor states", build: func() (agent.BaseTool, error) { return newWriteActorStatesTool(novaDir) }, optionalOperation: []string{"id", "actor_state"}},
-		{name: "image presets", build: func() (agent.BaseTool, error) { return newWriteImagePresetsTool(novaDir) }, optionalOperation: []string{"id", "preset"}},
-		{name: "automations", build: func() (agent.BaseTool, error) { return newWriteAutomationsTool(novaDir, cfg.Workspace, nil) }, optionalOperation: []string{"id", "task"}},
-		{name: "skills", build: func() (agent.BaseTool, error) { return newWriteSkillsTool(cfg) }, optionalOperation: []string{"description", "agents", "content"}, requiredOperation: []string{"scope", "name"}},
+		{name: "style references", build: func() (agent.Tool, error) { return newWriteStyleReferencesTool(novaDir) }, optionalOperation: []string{"path", "reference"}},
+		{name: "tellers", build: func() (agent.Tool, error) { return newWriteTellersTool(novaDir) }, optionalOperation: []string{"id", "teller"}},
+		{name: "story directors", build: func() (agent.Tool, error) { return newWriteStoryDirectorsTool(novaDir) }, optionalOperation: []string{"id", "director"}},
+		{name: "event packages", build: func() (agent.Tool, error) { return newWriteEventPackagesTool(novaDir) }, optionalOperation: []string{"id", "package"}},
+		{name: "actor states", build: func() (agent.Tool, error) { return newWriteActorStatesTool(novaDir) }, optionalOperation: []string{"id", "actor_state"}},
+		{name: "image presets", build: func() (agent.Tool, error) { return newWriteImagePresetsTool(novaDir) }, optionalOperation: []string{"id", "preset"}},
+		{name: "automations", build: func() (agent.Tool, error) { return newWriteAutomationsTool(novaDir, cfg.Workspace, nil) }, optionalOperation: []string{"id", "task"}},
+		{name: "skills", build: func() (agent.Tool, error) { return newWriteSkillsTool(cfg) }, optionalOperation: []string{"description", "agents", "content"}, requiredOperation: []string{"scope", "name"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -512,8 +504,7 @@ func TestWriteAutomationsAcceptsMinimalDefinitionAndRejectsUnknownFields(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	invokable := writeTool.(agent.InvokableTool)
-	if _, err := invokable.InvokableRun(context.Background(), `{
+	if _, err := runToolForTest(context.Background(), writeTool, `{
 		"operations": [{"op": "create", "task": {"target": {"kind": "user"}, "name": "Minimal"}}]
 	}`); err != nil {
 		t.Fatalf("minimal automation definition should use backend defaults: %v", err)
@@ -529,7 +520,7 @@ func TestWriteAutomationsAcceptsMinimalDefinitionAndRejectsUnknownFields(t *test
 	if created.Template != automation.TemplateCustomPrompt || created.WriteMode != automation.WriteModeReadOnly || created.OutputPolicy != automation.OutputPolicyRunRecordOnly {
 		t.Fatalf("minimal definition did not receive defaults: %#v", created)
 	}
-	_, err = invokable.InvokableRun(context.Background(), `{
+	_, err = runToolForTest(context.Background(), writeTool, `{
 		"operations": [{"op": "create", "task": {"target": {"kind": "user"}, "created_at": "2026-01-01T00:00:00Z"}}]
 	}`)
 	if err == nil || !strings.Contains(err.Error(), "unknown field") {
@@ -567,7 +558,7 @@ func TestWriteAutomationsPartialUpdatePreservesOmittedDefinitionFields(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writeTool.(agent.InvokableTool).InvokableRun(context.Background(), string(payload)); err != nil {
+	if _, err := runToolForTest(context.Background(), writeTool, string(payload)); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := store.Get(created.ID)
@@ -611,7 +602,7 @@ func TestWriteAutomationsRejectsAStaleAgentDefinition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = writeTool.(agent.InvokableTool).InvokableRun(context.Background(), string(payload))
+	_, err = runToolForTest(context.Background(), writeTool, string(payload))
 	if err == nil || !strings.Contains(err.Error(), "revision conflict") {
 		t.Fatalf("stale Agent update should fail with revision conflict, got %v", err)
 	}
@@ -624,11 +615,11 @@ func TestWriteAutomationsRejectsAStaleAgentDefinition(t *testing.T) {
 	}
 }
 
-func configManagerToolNameSet(t *testing.T, tools []agent.BaseTool) map[string]bool {
+func configManagerToolNameSet(t *testing.T, tools []agent.ToolDefinition) map[string]bool {
 	t.Helper()
 	names := make(map[string]bool, len(tools))
 	for _, item := range tools {
-		info, err := item.Info(context.Background())
+		info, err := item.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -57,6 +57,8 @@ const agents = {
   'agents.section.skills': 'Skill Availability',
   'agents.section.builtIn': 'Built-in Capabilities',
   'agents.section.runtimeContext': 'Context Window',
+  'agents.section.toolScheduling': 'Tool Scheduling',
+  'agents.tool.parallelismNote': 'Maximum concurrent parallel_read calls for every Agent. Workspace writes and child tools remain strict ordering barriers.',
   'agents.section.context': 'Context',
   'agents.section.subAgents': 'SubAgents',
   'agents.field.modelProfile': 'Model Profile',

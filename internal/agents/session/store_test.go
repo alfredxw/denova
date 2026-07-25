@@ -371,7 +371,7 @@ func TestContextMessagesPersistInEffectiveContextButNotHistory(t *testing.T) {
 	}})); err != nil {
 		t.Fatal(err)
 	}
-	if err := sess.AppendContextMessage(agent.ToolMessage("第一章内容", "call-read", agent.WithToolName("read_file"))); err != nil {
+	if err := sess.AppendContextMessage(agent.ToolMessage(agent.TextToolResult("第一章内容"), "call-read", agent.WithToolName("read_file"))); err != nil {
 		t.Fatal(err)
 	}
 	if err := sess.Append(agent.AssistantMessage("已读取", nil)); err != nil {
@@ -390,7 +390,7 @@ func TestContextMessagesPersistInEffectiveContextButNotHistory(t *testing.T) {
 	if len(effective) != 4 {
 		t.Fatalf("context messages should enter effective context: %#v", effective)
 	}
-	if effective[1].Role != agent.Assistant || len(effective[1].ToolCalls) != 1 || effective[2].Role != agent.Tool || effective[2].Content != "第一章内容" {
+	if effective[1].Role != agent.Assistant || len(effective[1].ToolCalls) != 1 || effective[2].Role != agent.ToolRole || effective[2].Content != "第一章内容" {
 		t.Fatalf("context tool chain mismatch: %#v", effective)
 	}
 	history := reloaded.History()

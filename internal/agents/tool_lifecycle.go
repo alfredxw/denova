@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	agent "github.com/alfredxw/denova/agent"
 )
 
 type toolLifecycleObserverKey struct{}
@@ -39,22 +41,24 @@ func recordToolStart(ctx context.Context, decision ToolDecision, arguments strin
 		return nil
 	}
 	if strings.TrimSpace(decision.ToolCallID) == "" {
-		return fmt.Errorf("record durable tool start for %q: missing tool call id", decision.ToolName)
+		return agent.MarkToolControlError(fmt.Errorf("record durable tool start for %q: missing tool call id", decision.ToolName))
 	}
 	if err := observer.BeforeTool(ctx, decision, arguments); err != nil {
-		return fmt.Errorf("record durable tool start for %q: %w", decision.ToolName, err)
+		return agent.MarkToolControlError(fmt.Errorf("record durable tool start for %q: %w", decision.ToolName, err))
 	}
 	return nil
 }
 
 func recordToolFinish(ctx context.Context, record ToolExecutionRecord) error {
-	RunObserverFromContext(ctx).RecordToolExecution(record)
+	if observer := RunObserverFromContext(ctx); observer != nil {
+		observer.RecordToolExecution(record)
+	}
 	observer := ToolLifecycleObserverFromContext(ctx)
 	if observer == nil {
 		return nil
 	}
 	if err := observer.AfterTool(ctx, record); err != nil {
-		return fmt.Errorf("record durable tool finish for %q: %w", record.ToolName, err)
+		return agent.MarkToolControlError(fmt.Errorf("record durable tool finish for %q: %w", record.ToolName, err))
 	}
 	return nil
 }

@@ -87,7 +87,7 @@ type workspaceWriteFileInput struct {
 
 type WorkspaceMetadataProvider func(context.Context) workspacechange.ChangeMetadata
 
-func newWorkspaceEditFileTool(changes workspaceChangeService, metadataProviders ...WorkspaceMetadataProvider) (agent.BaseTool, error) {
+func newWorkspaceEditFileTool(changes workspaceChangeService, metadataProviders ...WorkspaceMetadataProvider) (agent.Tool, error) {
 	if changes == nil {
 		return nil, fmt.Errorf("workspace change service is nil")
 	}
@@ -95,16 +95,16 @@ func newWorkspaceEditFileTool(changes workspaceChangeService, metadataProviders 
 	if err != nil {
 		return nil, err
 	}
-	return agent.InferTool("edit_file", workspaceEditFileToolDescription, func(ctx context.Context, input workspaceEditFileInput) (string, error) {
+	return agent.InferTool("edit_file", workspaceEditFileToolDescription, func(ctx context.Context, input workspaceEditFileInput) (agent.ToolResult, error) {
 		if strings.TrimSpace(input.FilePath) == "" {
-			return "", fmt.Errorf("file_path is required")
+			return agent.ToolResult{}, fmt.Errorf("file_path is required")
 		}
 		if len(input.Edits) == 0 {
-			return "", fmt.Errorf("at least one edit is required")
+			return agent.ToolResult{}, fmt.Errorf("at least one edit is required")
 		}
 		baseRevision, err := currentWorkspaceBaseRevision(changes, input.FilePath)
 		if err != nil {
-			return "", err
+			return agent.ToolResult{}, err
 		}
 		edits := make([]workspacechange.TextEdit, 0, len(input.Edits))
 		for _, edit := range input.Edits {
@@ -122,13 +122,13 @@ func newWorkspaceEditFileTool(changes workspaceChangeService, metadataProviders 
 			Metadata:     workspaceChangeMetadata(ctx, firstWorkspaceMetadataProvider(metadataProviders)),
 		})
 		if err != nil {
-			return "", err
+			return agent.ToolResult{}, err
 		}
-		return marshalWorkspaceChangeToolReceipt(workspace, changeSet)
+		return workspaceChangeToolResult(workspace, changeSet)
 	})
 }
 
-func newWorkspaceWriteFileTool(changes workspaceChangeService, metadataProviders ...WorkspaceMetadataProvider) (agent.BaseTool, error) {
+func newWorkspaceWriteFileTool(changes workspaceChangeService, metadataProviders ...WorkspaceMetadataProvider) (agent.Tool, error) {
 	if changes == nil {
 		return nil, fmt.Errorf("workspace change service is nil")
 	}
@@ -136,13 +136,13 @@ func newWorkspaceWriteFileTool(changes workspaceChangeService, metadataProviders
 	if err != nil {
 		return nil, err
 	}
-	return agent.InferTool("write_file", workspaceWriteFileToolDescription, func(ctx context.Context, input workspaceWriteFileInput) (string, error) {
+	return agent.InferTool("write_file", workspaceWriteFileToolDescription, func(ctx context.Context, input workspaceWriteFileInput) (agent.ToolResult, error) {
 		if strings.TrimSpace(input.FilePath) == "" {
-			return "", fmt.Errorf("file_path is required")
+			return agent.ToolResult{}, fmt.Errorf("file_path is required")
 		}
 		baseRevision, err := currentWorkspaceBaseRevisionOrMissing(changes, input.FilePath)
 		if err != nil {
-			return "", err
+			return agent.ToolResult{}, err
 		}
 		changeSet, err := changes.ReplaceFile(ctx, workspacechange.ReplaceFileRequest{
 			Path:         input.FilePath,
@@ -151,9 +151,9 @@ func newWorkspaceWriteFileTool(changes workspaceChangeService, metadataProviders
 			Metadata:     workspaceChangeMetadata(ctx, firstWorkspaceMetadataProvider(metadataProviders)),
 		})
 		if err != nil {
-			return "", err
+			return agent.ToolResult{}, err
 		}
-		return marshalWorkspaceChangeToolReceipt(workspace, changeSet)
+		return workspaceChangeToolResult(workspace, changeSet)
 	})
 }
 
@@ -234,6 +234,16 @@ func marshalWorkspaceChangeToolReceipt(workspace string, changeSet workspacechan
 		return "", fmt.Errorf("serialize workspace change receipt: %w", err)
 	}
 	return string(data), nil
+}
+
+func workspaceChangeToolResult(workspace string, changeSet workspacechange.ChangeSet) (agent.ToolResult, error) {
+	content, err := marshalWorkspaceChangeToolReceipt(workspace, changeSet)
+	if err != nil {
+		return agent.ToolResult{}, err
+	}
+	result := agent.TextToolResult(content)
+	result.Details = json.RawMessage(content)
+	return result, nil
 }
 
 func workspaceChangeReceiptStatus(changeSet workspacechange.ChangeSet) string {

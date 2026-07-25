@@ -38,21 +38,22 @@ func TestCatalogFilesystemUsesHostRipgrepExecutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var grep agent.InvokableTool
+	var grep *agent.ToolDefinition
 	for _, candidate := range filesystemTools {
-		info, infoErr := candidate.Info(context.Background())
+		info, infoErr := candidate.Tool.Info(context.Background())
 		if infoErr != nil {
 			t.Fatal(infoErr)
 		}
 		if info.Name == "grep" {
-			grep, _ = candidate.(agent.InvokableTool)
+			selected := candidate
+			grep = &selected
 			break
 		}
 	}
 	if grep == nil {
 		t.Fatal("catalog did not expose invokable grep")
 	}
-	result, err := grep.InvokableRun(context.Background(), `{"pattern":"dragon"}`)
+	result, err := runToolForTest(context.Background(), grep, `{"pattern":"dragon"}`)
 	if err != nil {
 		t.Fatal(err)
 	}

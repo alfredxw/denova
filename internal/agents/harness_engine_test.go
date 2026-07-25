@@ -9,8 +9,6 @@ import (
 	"time"
 
 	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
-
 	runstate "github.com/alfredxw/denova/agent/runtime"
 )
 
@@ -493,7 +491,7 @@ func TestHarnessEngineMapsDescriptorRecoveryToRetrySafety(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := harnessToolRetrySafety(ToolExecutionRecord{ToolName: tt.name, Descriptor: agenttools.Descriptor{Recovery: tt.recovery}}); got != tt.want {
+			if got := harnessToolRetrySafety(ToolExecutionRecord{ToolName: tt.name, Descriptor: agent.ToolDescriptor{Recovery: tt.recovery}}); got != tt.want {
 				t.Fatalf("retry safety = %q, want %q", got, tt.want)
 			}
 		})

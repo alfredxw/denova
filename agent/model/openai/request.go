@@ -107,7 +107,7 @@ func requestMessage(message *agent.Message) (sdk.ChatCompletionMessageParamUnion
 			})
 		}
 		return sdk.ChatCompletionMessageParamUnion{OfAssistant: &assistant}, nil
-	case agent.Tool:
+	case agent.ToolRole:
 		// The string constructor is deliberate: tool outputs that happen to be
 		// valid JSON must remain JSON strings in Chat Completions history.
 		return sdk.ToolMessage(message.Content, message.ToolCallID), nil

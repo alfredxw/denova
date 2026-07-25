@@ -58,12 +58,12 @@ func TestInferToolSchemaAndStrictInvoke(t *testing.T) {
 		t.Fatalf("items schema lost required/minItems/maxItems/description: %#v; required=%#v", items, schema.Required)
 	}
 
-	output, err := current.InvokableRun(context.Background(), `{"mode":"fast","count":3,"items":["x"]}`)
+	output, err := current.Run(context.Background(), `{"mode":"fast","count":3,"items":["x"]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output != `{"total":3}` {
-		t.Fatalf("non-string output = %s", output)
+	if output.ModelContent != `{"total":3}` {
+		t.Fatalf("non-string output = %s", output.ModelContent)
 	}
 	for _, invalid := range []string{
 		`{"mode":"fast","count":3,"items":["x"],"unknown":true}`,
@@ -73,7 +73,7 @@ func TestInferToolSchemaAndStrictInvoke(t *testing.T) {
 		`{"mode":"fast","count":3,"items":["a","b","c","d"]}`,
 		`{"mode":"fast"}`,
 	} {
-		if _, err := current.InvokableRun(context.Background(), invalid); err == nil {
+		if _, err := current.Run(context.Background(), invalid); err == nil {
 			t.Fatalf("expected strict decode error for %s", invalid)
 		}
 	}
@@ -88,12 +88,12 @@ func TestInferToolStringOutputAndOneOfPreservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	output, err := current.InvokableRun(context.Background(), `{"value":"plain"}`)
+	output, err := current.Run(context.Background(), `{"value":"plain"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output != "plain" {
-		t.Fatalf("string output was JSON encoded: %q", output)
+	if output.ModelContent != "plain" {
+		t.Fatalf("string output was JSON encoded: %q", output.ModelContent)
 	}
 
 	var schema jsonschema.Schema
@@ -125,7 +125,9 @@ func TestRegistryRejectsDuplicatesAndPreservesOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry, err := NewRegistry(context.Background(), one, two)
+	oneDefinition := testToolDefinition(one)
+	twoDefinition := testToolDefinition(two)
+	registry, err := NewRegistry(context.Background(), oneDefinition, twoDefinition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +138,7 @@ func TestRegistryRejectsDuplicatesAndPreservesOrder(t *testing.T) {
 	if _, exists := registry.Lookup("two"); !exists {
 		t.Fatal("registered tool not found")
 	}
-	if err := registry.Register(context.Background(), one); err == nil {
+	if err := registry.Register(context.Background(), oneDefinition); err == nil {
 		t.Fatal("expected duplicate error")
 	}
 }

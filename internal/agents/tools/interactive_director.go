@@ -7,7 +7,6 @@ import (
 	"log"
 
 	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/internal/interactive"
 )
@@ -23,37 +22,39 @@ type submitDirectorPlanUpdateInput struct {
 
 type SubmitDirectorPlanUpdateInput = submitDirectorPlanUpdateInput
 
-func newInteractiveDirectorPlanTools(ctx InteractiveContext) ([]agent.BaseTool, error) {
+func newInteractiveDirectorPlanTools(ctx InteractiveContext) ([]agent.ToolDefinition, error) {
 	if ctx.SubmitDirectorPlanUpdate == nil {
 		return nil, nil
 	}
-	submit, err := agent.InferTool(submitDirectorPlanUpdateToolName, "增量提交当前分支导演 Markdown Patch。普通更新默认只 patch agent-brief.md；director.md 仅在阶段规划前提失效或重大偏差时更新，lore-context.md 仅在当前/候场/暂离场资料集合变化时更新。每个 update 使用上下文中的 base_hash，优先 replace_section；文件独立 accepted/rejected，重试只发送 retry_documents。finalize 成功前不写工作区，完成后由后端原子发布。keep 使用空 updates 且 finalize=true；replan 至少更新 director.md 与 agent-brief.md，Lore 仍按需。", func(callCtx context.Context, input submitDirectorPlanUpdateInput) (string, error) {
+	submit, err := agent.InferTool(submitDirectorPlanUpdateToolName, "增量提交当前分支导演 Markdown Patch。普通更新默认只 patch agent-brief.md；director.md 仅在阶段规划前提失效或重大偏差时更新，lore-context.md 仅在当前/候场/暂离场资料集合变化时更新。每个 update 使用上下文中的 base_hash，优先 replace_section；文件独立 accepted/rejected，重试只发送 retry_documents。finalize 成功前不写工作区，完成后由后端原子发布。keep 使用空 updates 且 finalize=true；replan 至少更新 director.md 与 agent-brief.md，Lore 仍按需。", func(callCtx context.Context, input submitDirectorPlanUpdateInput) (agent.ToolResult, error) {
 		receipt, err := ctx.SubmitDirectorPlanUpdate(callCtx, interactive.DirectorPlanUpdateSubmission{Decision: input.Decision, Updates: input.Updates, Finalize: input.Finalize})
 		if err != nil {
-			return "", fmt.Errorf("提交导演规划失败: %w", err)
+			return agent.ToolResult{}, fmt.Errorf("提交导演规划失败: %w", err)
 		}
 		data, err := json.Marshal(receipt)
 		if err != nil {
-			return "", err
+			return agent.ToolResult{}, err
 		}
 		if receipt.Finalized && ctx.RequestDirectorCompletion != nil {
 			requested := ctx.RequestDirectorCompletion(callCtx)
 			log.Printf("[interactive-director] finalized structured plan patch completion_requested=%t changed_documents=%v", requested, receipt.ChangedDocuments)
 		}
-		return string(data), nil
+		result := agent.TextToolResult(string(data))
+		result.Details = data
+		return result, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	definedSubmit, err := defineTool(submit, workspaceWriteDescriptor(ToolSourceHistory, "", agenttools.RecoveryReconcilable))
+	definedSubmit, err := defineTool(submit, workspaceWriteDescriptor(ToolSourceHistory, "", agent.ToolRecoveryReconcilable))
 	if err != nil {
 		return nil, err
 	}
-	return []agent.BaseTool{definedSubmit}, nil
+	return []agent.ToolDefinition{definedSubmit}, nil
 }
 
 // NewInteractiveDirectorPlan builds the structured director plan submission
 // tool for one background Director run.
-func NewInteractiveDirectorPlan(ctx InteractiveContext) ([]agent.BaseTool, error) {
+func NewInteractiveDirectorPlan(ctx InteractiveContext) ([]agent.ToolDefinition, error) {
 	return newInteractiveDirectorPlanTools(ctx)
 }

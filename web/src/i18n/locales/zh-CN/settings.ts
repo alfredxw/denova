@@ -3,6 +3,7 @@ const settings = {
   'settings.agent.modelMaxRetries': '模型重试次数',
   'settings.agent.idleTimeoutSeconds': '空闲超时（秒，0 为不限制）',
   'settings.agent.toolResultLimitKB': '工具结果安全上限（KB）',
+  'settings.agent.toolParallelism': '只读工具并发数（1–64）',
   'settings.agent.planModeDefault': '默认 PlanMode',
   'settings.agent.writingSkillDefault': '默认写作 Skill',
   'settings.webAccess.searxngBaseUrl': 'SearXNG 实例地址',

@@ -15,7 +15,7 @@ type readInteractiveEventCardsInput struct {
 	EventRefs []string `json:"event_refs" jsonschema:"description=要读取的事件卡 event_ref 列表，格式为 package_id/card_id；一次最多 8 张"`
 }
 
-func newInteractiveEventTools(ctx InteractiveContext) ([]agent.BaseTool, error) {
+func newInteractiveEventTools(ctx InteractiveContext) ([]agent.ToolDefinition, error) {
 	ctx.StoryID = strings.TrimSpace(ctx.StoryID)
 	if ctx.Store == nil || ctx.StoryID == "" {
 		return nil, nil
@@ -51,5 +51,5 @@ func newInteractiveEventTools(ctx InteractiveContext) ([]agent.BaseTool, error) 
 	if err != nil {
 		return nil, err
 	}
-	return []agent.BaseTool{definedReadTool}, nil
+	return []agent.ToolDefinition{definedReadTool}, nil
 }

@@ -34,7 +34,7 @@ type skillWriteOperation struct {
 	Content     string   `json:"content,omitempty" jsonschema:"description=create/update 使用的完整 SKILL.md 内容"`
 }
 
-func newListSkillsTool(cfg *config.Config) (agent.BaseTool, error) {
+func newListSkillsTool(cfg *config.Config) (agent.Tool, error) {
 	return agent.InferTool("list_skills", "列出 Skills 索引，返回名称、scope、agent、描述、是否可编辑和是否生效；需要完整 SKILL.md 时再调用 read_skills。", func(ctx context.Context, input struct{}) (string, error) {
 		_ = input
 		snapshot, err := novaskills.SnapshotFor(ctx, skillDirs(cfg))
@@ -53,7 +53,7 @@ func newListSkillsTool(cfg *config.Config) (agent.BaseTool, error) {
 	})
 }
 
-func newReadSkillsTool(cfg *config.Config) (agent.BaseTool, error) {
+func newReadSkillsTool(cfg *config.Config) (agent.Tool, error) {
 	return agent.InferTool("read_skills", "按 scope/name 批量读取完整 SKILL.md。", func(ctx context.Context, input readSkillsInput) (string, error) {
 		docs := []novaskills.Document{}
 		for _, item := range input.Items {
@@ -67,7 +67,7 @@ func newReadSkillsTool(cfg *config.Config) (agent.BaseTool, error) {
 	})
 }
 
-func newWriteSkillsTool(cfg *config.Config) (agent.BaseTool, error) {
+func newWriteSkillsTool(cfg *config.Config) (agent.Tool, error) {
 	return agent.InferTool("write_skills", "批量创建、更新或删除 Skills。scope 必须是 user 或 workspace；修改内置/预制 Skill 时使用 workspace 同名覆盖，禁止写 builtin；删除必须来自用户明确指令。", func(ctx context.Context, input skillsWriteInput) (string, error) {
 		result := map[string][]string{"created": []string{}, "updated": []string{}, "deleted": []string{}}
 		for _, op := range input.Operations {

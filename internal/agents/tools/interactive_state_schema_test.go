@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	"denova/internal/interactive"
 )
 
@@ -22,7 +20,7 @@ func TestOpeningGameStateSchemaToolUsesDedicatedStructureOnlyEntry(t *testing.T)
 	if err != nil || len(tools) != 1 {
 		t.Fatalf("build opening Game Agent schema tool: tools=%d err=%v", len(tools), err)
 	}
-	info, err := tools[0].Info(context.Background())
+	info, err := tools[0].Tool.Info(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,8 +47,7 @@ func TestOpeningGameStateSchemaToolUsesDedicatedStructureOnlyEntry(t *testing.T)
 	if strings.Contains(schemaText, `"initial_actor_ops"`) || strings.Contains(schemaText, `"actor_ops"`) {
 		t.Fatalf("opening structure-only schema must not expose Actor value operations: %s", schemaText)
 	}
-	invokable := tools[0].(agent.InvokableTool)
-	if _, err := invokable.InvokableRun(context.Background(), `{"summary":"现有字段覆盖开局需求","items":[{"item_id":"schema-covered-review","requirements":[{"source":{"kind":"opening","id":"opening-draft"},"requirement":"主角姓名需要长期记录，现有字段已覆盖","value_policy":"schema_only","expected_type":"string","decision":"covered","template_id":"protagonist","field_id":"姓名"}],"adaptation":{"template_ops":[]}}],"finalize":true}`); err != nil {
+	if _, err := runToolForTest(context.Background(), tools[0], `{"summary":"现有字段覆盖开局需求","items":[{"item_id":"schema-covered-review","requirements":[{"source":{"kind":"opening","id":"opening-draft"},"requirement":"主角姓名需要长期记录，现有字段已覆盖","value_policy":"schema_only","expected_type":"string","decision":"covered","template_id":"protagonist","field_id":"姓名"}],"adaptation":{"template_ops":[]}}],"finalize":true}`); err != nil {
 		t.Fatal(err)
 	}
 	if !submitted.Finalize || len(submitted.Items) != 1 || len(submitted.Items[0].Requirements) != 1 {

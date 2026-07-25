@@ -6,142 +6,128 @@ import (
 	"testing"
 
 	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
 	producttools "denova/internal/agents/tools"
 )
 
 func TestToolDescriptorDeclaresExecutionAndRecoveryPolicy(t *testing.T) {
-	tool, err := newToolCatalog(nil).WriteTodos()
+	definition, err := newToolCatalog(nil).WriteTodos()
 	if err != nil {
 		t.Fatal(err)
 	}
-	info, err := tool.Info(context.Background())
+	info, err := definition.Tool.Info(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor, ok := agenttools.DescriptorFromInfo(info)
-	if !ok || descriptor.Capability != config.AgentToolTodo || descriptor.Execution != agenttools.ExecutionWorkspaceExclusive || descriptor.Recovery != agenttools.RecoveryIdempotent {
-		t.Fatalf("todo descriptor = %+v, %t", descriptor, ok)
+	descriptor := definition.Descriptor
+	if info.Name != "write_todos" || descriptor.Capability != config.AgentToolTodo ||
+		descriptor.Execution != agent.ToolExecutionWorkspaceExclusive ||
+		descriptor.Recovery != agent.ToolRecoveryIdempotent {
+		t.Fatalf("todo definition = info=%+v descriptor=%+v", info, descriptor)
 	}
 	if descriptor.MutatesWorkspace || descriptor.RequiresPostCheck {
 		t.Fatalf("write_todos must remain session-local: %+v", descriptor)
 	}
 }
 
-func TestUnknownToolDescriptorIsConservativeWithoutNameInference(t *testing.T) {
+func TestUnknownToolManifestIsConservativeWithoutNameInference(t *testing.T) {
 	for _, name := range []string{"write_custom_plugin_state", "search_private_index", "read_side_effecting_api"} {
 		descriptor := unknownToolManifest(name)
-		if descriptor.Source != ToolSourceOther {
-			t.Fatalf("unknown %q source = %q, want other", name, descriptor.Source)
-		}
-		if descriptor.Capability != "" {
-			t.Fatalf("unknown %q capability = %q, want empty", name, descriptor.Capability)
-		}
-		if descriptor.Execution != ToolExecutionWorkspaceExclusive {
-			t.Fatalf("unknown %q execution = %q, want exclusive", name, descriptor.Execution)
-		}
-		if descriptor.Recovery != ToolRecoveryNonIdempotent {
-			t.Fatalf("unknown %q recovery = %q, want non-idempotent", name, descriptor.Recovery)
+		if descriptor.Source != ToolSourceOther || descriptor.Capability != "" ||
+			descriptor.Execution != ToolExecutionWorkspaceExclusive ||
+			descriptor.Recovery != ToolRecoveryNonIdempotent {
+			t.Fatalf("unknown %q manifest = %+v", name, descriptor)
 		}
 	}
 }
 
-func TestToolResultMetadataIncludesRecoveryContract(t *testing.T) {
-	descriptor := producttools.WorkspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable)
-	result := filterToolResultForModelWithDescriptor("write_file", descriptor, `{"path":"chapters/ch01.md"}`, "ok", 0)
-	for _, want := range []string{
-		"execution: workspace_exclusive",
-		"recovery: reconcilable",
-		"result_projection: bounded_model_context",
-	} {
-		if !containsLine(result.Content, want) {
-			t.Fatalf("filtered result missing %q:\n%s", want, result.Content)
-		}
+func TestStructuredToolResultKeepsRecoveryContractOutOfModelText(t *testing.T) {
+	descriptor := producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolFileWrite, agent.ToolRecoveryReconcilable)
+	filtered := filterToolResultForModelWithDescriptor("write_file", descriptor, `{"path":"chapters/ch01.md"}`, "ok", 0)
+	if filtered.Content != "ok" || filtered.Result.ModelContent != "ok" {
+		t.Fatalf("model content was polluted: %#v", filtered)
+	}
+	if strings.Contains(filtered.Content, "Denova tool result metadata") || strings.Contains(filtered.Content, "recovery:") {
+		t.Fatalf("descriptor leaked into model text: %q", filtered.Content)
+	}
+	if filtered.Manifest.Execution != agent.ToolExecutionWorkspaceExclusive ||
+		filtered.Manifest.Recovery != agent.ToolRecoveryReconcilable ||
+		filtered.Manifest.ResultProjection != agent.ToolResultBoundedModelContext {
+		t.Fatalf("durable manifest lost recovery contract: %+v", filtered.Manifest)
+	}
+	if filtered.Result.Metadata.Target != "chapters/ch01.md" || filtered.Result.Metadata.IdempotencyKey == "" {
+		t.Fatalf("structured metadata missing target or idempotency key: %+v", filtered.Result.Metadata)
 	}
 }
 
-func TestValidateToolDescriptorsRejectsUndeclaredTools(t *testing.T) {
-	err := producttools.Validate(context.Background(), []agent.BaseTool{descriptorTestTool{name: "write_custom_plugin_state"}})
-	if err == nil || !strings.Contains(err.Error(), "write_custom_plugin_state") {
-		t.Fatalf("expected undeclared descriptor error, got %v", err)
+func TestRegistryRejectsUnclassifiedAndDuplicateTools(t *testing.T) {
+	undeclared := agent.ToolDefinition{Tool: descriptorTestTool{name: "write_custom_plugin_state"}}
+	if _, err := agent.NewRegistry(context.Background(), undeclared); err == nil || !strings.Contains(err.Error(), "descriptor") {
+		t.Fatalf("expected unclassified definition error, got %v", err)
 	}
-	declared, bindErr := producttools.Define(descriptorTestTool{name: "write_file"}, producttools.WorkspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable))
-	if bindErr != nil {
-		t.Fatal(bindErr)
+
+	first, err := producttools.Define(descriptorTestTool{name: "read_file"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFileRead))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if err := producttools.Validate(context.Background(), []agent.BaseTool{declared}); err != nil {
-		t.Fatalf("declared tool rejected: %v", err)
+	second, err := producttools.Define(descriptorTestTool{name: "read_file"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFileRead))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agent.NewRegistry(context.Background(), first, second); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("duplicate tool error = %v", err)
 	}
 }
 
-func TestValidateToolSurfaceRejectsDuplicateNames(t *testing.T) {
-	first, _ := producttools.Define(descriptorTestTool{name: "read_file"}, producttools.BoundedReadDescriptor(agenttools.SourceRead, config.AgentToolFileRead))
-	second, _ := producttools.Define(descriptorTestTool{name: "read_file"}, producttools.BoundedReadDescriptor(agenttools.SourceRead, config.AgentToolFileRead))
-	if err := producttools.Validate(context.Background(), []agent.BaseTool{
-		first,
-		second,
-	}); err == nil || !strings.Contains(err.Error(), "duplicate model-visible tool") {
-		t.Fatalf("duplicate static tool error = %v", err)
+func TestRegistrySnapshotCarriesDescriptorWithoutToolInfoExtra(t *testing.T) {
+	definition, err := producttools.Define(descriptorTestTool{name: "read_file"}, producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFileRead))
+	if err != nil {
+		t.Fatal(err)
 	}
-}
-
-func TestToolDescriptorGuardValidatesDynamicallyInjectedTools(t *testing.T) {
-	guard := producttools.NewDescriptorGuardMiddleware()
-	read, _ := producttools.Define(descriptorTestTool{name: "read_file"}, producttools.BoundedReadDescriptor(agenttools.SourceRead, config.AgentToolFileRead))
-	skill, _ := producttools.Define(descriptorTestTool{name: "skill"}, producttools.BoundedReadDescriptor(agenttools.SourceOther, config.AgentToolSkills))
-	runCtx := &agent.RunContext{Tools: []agent.BaseTool{read, skill}}
-	_, guarded, err := guard.BeforeAgent(context.Background(), runCtx)
-	if err != nil || guarded != runCtx {
-		t.Fatalf("declared dynamic tools rejected: context=%p want=%p err=%v", guarded, runCtx, err)
+	registry, err := agent.NewRegistry(context.Background(), definition)
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	runCtx.Tools = append(runCtx.Tools, descriptorTestTool{name: "dynamic_unknown"})
-	if _, _, err := guard.BeforeAgent(context.Background(), runCtx); err == nil || !strings.Contains(err.Error(), "dynamic_unknown") {
-		t.Fatalf("dynamic undeclared tool error = %v", err)
+	snapshot, ok := registry.Snapshot("read_file")
+	if !ok || snapshot.Info == nil || snapshot.Descriptor.Execution != agent.ToolExecutionParallelRead {
+		t.Fatalf("snapshot = %#v ok=%t", snapshot, ok)
+	}
+	if snapshot.Info.Extra != nil {
+		t.Fatalf("provider ToolInfo must not carry descriptor metadata: %#v", snapshot.Info.Extra)
 	}
 }
 
 type descriptorTestTool struct{ name string }
 
-func (t descriptorTestTool) Info(context.Context) (*agent.ToolInfo, error) {
-	return &agent.ToolInfo{Name: t.name}, nil
+func (tool descriptorTestTool) Info(context.Context) (*agent.ToolInfo, error) {
+	return &agent.ToolInfo{Name: tool.name}, nil
+}
+
+func (descriptorTestTool) Run(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
+	return agent.TextToolResult("ok"), nil
 }
 
 func testToolContext(name, callID string) *agent.ToolContext {
-	var descriptor agenttools.Descriptor
+	var descriptor agent.ToolDescriptor
 	switch name {
 	case "read_file", "grep", "search_story_history":
-		descriptor = producttools.BoundedReadDescriptor(agenttools.SourceRead, config.AgentToolFileRead)
+		descriptor = producttools.BoundedReadDescriptor(agent.ToolSourceRead, config.AgentToolFileRead)
 		if name == "search_story_history" {
 			descriptor = producttools.BoundedReadDescriptor(ToolSourceHistory, "")
 		}
 	case "write_file", "edit_file":
-		descriptor = producttools.WorkspaceWriteDescriptor(agenttools.SourceWrite, config.AgentToolFileWrite, agenttools.RecoveryReconcilable)
+		descriptor = producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolFileWrite, agent.ToolRecoveryReconcilable)
 	case "execute", "execute_shell":
-		descriptor = producttools.WorkspaceWriteDescriptor(agenttools.SourceShell, config.AgentToolShellExecute, agenttools.RecoveryNonIdempotent)
+		descriptor = producttools.WorkspaceWriteDescriptor(agent.ToolSourceShell, config.AgentToolShellExecute, agent.ToolRecoveryNonIdempotent)
 	default:
 		return &agent.ToolContext{Name: name, CallID: callID}
 	}
-	definition := agenttools.Definition{Tool: descriptorTestTool{name: name}, Descriptor: descriptor}
-	info, _ := definition.ToolInfo(context.Background())
-	return &agent.ToolContext{Name: name, CallID: callID, Info: info}
-}
-
-func containsLine(content, line string) bool {
-	for start := 0; start <= len(content); {
-		end := start
-		for end < len(content) && content[end] != '\n' {
-			end++
-		}
-		if content[start:end] == line {
-			return true
-		}
-		if end == len(content) {
-			break
-		}
-		start = end + 1
+	return &agent.ToolContext{
+		Name: name, CallID: callID,
+		Definition: agent.ToolDefinitionSnapshot{
+			Info:       &agent.ToolInfo{Name: name},
+			Descriptor: descriptor,
+		},
 	}
-	return false
 }

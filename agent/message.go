@@ -15,7 +15,7 @@ const (
 	System    RoleType = "system"
 	User      RoleType = "user"
 	Assistant RoleType = "assistant"
-	Tool      RoleType = "tool"
+	ToolRole  RoleType = "tool"
 )
 
 // FunctionCall describes a function-style tool invocation.
@@ -79,6 +79,15 @@ type ResponseMeta struct {
 	LogProbs     *LogProbs   `json:"logprobs,omitempty"`
 }
 
+// ToolResultSummary preserves transcript pairing semantics without persisting
+// display content or structured durability details in model history.
+type ToolResultSummary struct {
+	Status           ToolResultStatus    `json:"status"`
+	SyntheticReason  ToolSyntheticReason `json:"synthetic_reason,omitempty"`
+	ModelTruncated   bool                `json:"model_truncated,omitempty"`
+	DisplayTruncated bool                `json:"display_truncated,omitempty"`
+}
+
 // Message is the stable session and model wire type.
 //
 // Multimodal values stay as individual raw JSON array elements. This preserves
@@ -93,9 +102,10 @@ type Message struct {
 
 	Name string `json:"name,omitempty"`
 
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-	ToolName   string     `json:"tool_name,omitempty"`
+	ToolCalls  []ToolCall         `json:"tool_calls,omitempty"`
+	ToolCallID string             `json:"tool_call_id,omitempty"`
+	ToolName   string             `json:"tool_name,omitempty"`
+	ToolResult *ToolResultSummary `json:"tool_result,omitempty"`
 
 	ResponseMeta     *ResponseMeta  `json:"response_meta,omitempty"`
 	ReasoningContent string         `json:"reasoning_content,omitempty"`
@@ -140,8 +150,8 @@ func WithToolName(name string) ToolMessageOption {
 	}
 }
 
-// ToolMessage constructs a tool result message.
-func ToolMessage(content, toolCallID string, opts ...ToolMessageOption) *Message {
+// ToolMessage constructs the model-context projection of a structured result.
+func ToolMessage(result ToolResult, toolCallID string, opts ...ToolMessageOption) *Message {
 	options := &toolMessageOptions{}
 	for _, opt := range opts {
 		if opt != nil {
@@ -149,11 +159,34 @@ func ToolMessage(content, toolCallID string, opts ...ToolMessageOption) *Message
 		}
 	}
 	return &Message{
-		Role:       Tool,
-		Content:    content,
+		Role:       ToolRole,
+		Content:    result.ModelContent,
 		ToolCallID: toolCallID,
 		ToolName:   options.toolName,
+		ToolResult: &ToolResultSummary{
+			Status: result.Status, SyntheticReason: result.SyntheticReason,
+			ModelTruncated:   result.Metadata.ModelTruncated,
+			DisplayTruncated: result.Metadata.DisplayTruncated,
+		},
 	}
+}
+
+// EffectiveToolResult reconstructs a structured result from a transcript. Old
+// histories without a summary remain readable as successful text results.
+func (m *Message) EffectiveToolResult() ToolResult {
+	if m == nil || m.Role != ToolRole {
+		return ToolResult{}
+	}
+	result := TextToolResult(m.Content)
+	if m.ToolResult != nil {
+		if m.ToolResult.Status != "" {
+			result.Status = m.ToolResult.Status
+		}
+		result.SyntheticReason = m.ToolResult.SyntheticReason
+		result.Metadata.ModelTruncated = m.ToolResult.ModelTruncated
+		result.Metadata.DisplayTruncated = m.ToolResult.DisplayTruncated
+	}
+	return result
 }
 
 // Clone returns a deep, independently mutable copy of m.
@@ -166,6 +199,10 @@ func (m *Message) Clone() *Message {
 	clone.UserInputMultiContent = cloneRawMessages(m.UserInputMultiContent)
 	clone.AssistantGenMultiContent = cloneRawMessages(m.AssistantGenMultiContent)
 	clone.ToolCalls = cloneToolCalls(m.ToolCalls)
+	if m.ToolResult != nil {
+		result := *m.ToolResult
+		clone.ToolResult = &result
+	}
 	clone.Extra = cloneStringAnyMap(m.Extra)
 	clone.ResponseMeta = cloneResponseMeta(m.ResponseMeta)
 	return &clone

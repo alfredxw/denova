@@ -593,6 +593,9 @@ func applyLayeredSettingsToConfig(cfg *config.Config, layered config.LayeredSett
 	if effective.AgentToolResultLimitKB != nil {
 		cfg.AgentToolResultLimitKB = appAgentToolResultLimitKB(effective.AgentToolResultLimitKB)
 	}
+	if effective.AgentToolParallelism != nil {
+		cfg.AgentToolParallelism = appAgentToolParallelism(effective.AgentToolParallelism)
+	}
 	if effective.LLMInputLogEnabled != nil {
 		cfg.LLMInputLogEnabled = *effective.LLMInputLogEnabled
 	}
@@ -699,6 +702,9 @@ func applySettingsLayerToConfig(cfg *config.Config, settings config.Settings) {
 	if settings.AgentToolResultLimitKB != nil {
 		cfg.AgentToolResultLimitKB = appAgentToolResultLimitKB(settings.AgentToolResultLimitKB)
 	}
+	if settings.AgentToolParallelism != nil {
+		cfg.AgentToolParallelism = appAgentToolParallelism(settings.AgentToolParallelism)
+	}
 	if settings.LLMInputLogEnabled != nil {
 		cfg.LLMInputLogEnabled = *settings.LLMInputLogEnabled
 	}
@@ -762,6 +768,16 @@ func appAgentToolResultLimitKB(v *int) int {
 		return config.DefaultAgentToolResultLimitKB
 	}
 	return *v
+}
+
+func appAgentToolParallelism(value *int) int {
+	if value == nil || *value <= 0 {
+		return config.DefaultAgentToolParallelism
+	}
+	if *value > config.MaxAgentToolParallelism {
+		return config.MaxAgentToolParallelism
+	}
+	return *value
 }
 
 func agentToolResultMaxBytes(cfg config.Config) int {

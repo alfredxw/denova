@@ -125,15 +125,17 @@ type cancelControl struct {
 	cancel context.CancelFunc
 	timer  *time.Timer
 
-	terminal bool
-	handled  bool
-	result   error
-	done     chan struct{}
+	terminal      bool
+	handled       bool
+	result        error
+	done          chan struct{}
+	requestedDone chan struct{}
+	requestedOnce sync.Once
 }
 
 // WithCancel creates a single-run cancellation option and controller.
 func WithCancel() (AgentRunOption, AgentCancelFunc) {
-	control := &cancelControl{done: make(chan struct{})}
+	control := &cancelControl{done: make(chan struct{}), requestedDone: make(chan struct{})}
 	option := AgentRunOption{apply: func(options *agentRunOptions) {
 		options.cancel = control
 	}}
@@ -181,10 +183,27 @@ func (control *cancelControl) request(opts ...AgentCancelOption) (*CancelHandle,
 		})
 	}
 	control.mu.Unlock()
+	control.requestedOnce.Do(func() { close(control.requestedDone) })
 	if shouldCancel && cancel != nil {
 		cancel()
 	}
 	return handle, true
+}
+
+func (control *cancelControl) pending(point CancelMode) bool {
+	if control == nil {
+		return false
+	}
+	control.mu.Lock()
+	defer control.mu.Unlock()
+	return control.requested && !control.immediate && !control.terminal && !control.handled && control.mode&point != 0
+}
+
+func (control *cancelControl) requestedSignal() <-chan struct{} {
+	if control == nil {
+		return nil
+	}
+	return control.requestedDone
 }
 
 func (control *cancelControl) bind(cancel context.CancelFunc) {

@@ -22,12 +22,13 @@ type chatLoopResult struct {
 }
 
 type chatAgentLoop struct {
-	run         *chatRun
-	ctx         context.Context
-	cancel      context.CancelFunc
-	events      *agent.AsyncIterator[*agent.AgentEvent]
-	watcherDone <-chan struct{}
-	planParser  *planProtocolParser
+	run           *chatRun
+	ctx           context.Context
+	cancel        context.CancelFunc
+	events        *agent.AsyncIterator[*agent.AgentEvent]
+	watcherDone   <-chan struct{}
+	planParser    *planProtocolParser
+	finishedTools map[string]struct{}
 }
 
 func newChatAgentLoop(run *chatRun, history []*agent.Message, agentMessage string) *chatAgentLoop {
@@ -41,11 +42,12 @@ func newChatAgentLoop(run *chatRun, history []*agent.Message, agentMessage strin
 		runCtx = withInteractiveDirectorPlanCancel(runCtx, protocolCancel)
 	}
 	loop := &chatAgentLoop{
-		run:         run,
-		ctx:         runCtx,
-		cancel:      cancelRun,
-		events:      run.runner.Run(runCtx, history, runOptions...),
-		watcherDone: startRunControlWatcher(runCtx, run.options.Controls, cancelAgent, run.control),
+		run:           run,
+		ctx:           runCtx,
+		cancel:        cancelRun,
+		events:        run.runner.Run(runCtx, history, runOptions...),
+		watcherDone:   startRunControlWatcher(runCtx, run.options.Controls, cancelAgent, run.control),
+		finishedTools: make(map[string]struct{}),
 	}
 	if run.req.PlanMode {
 		planMeta := agentEventMetadata{
@@ -101,6 +103,9 @@ func (l *chatAgentLoop) next() chatLoopResult {
 	}
 	if event.Err != nil {
 		return l.runnerFailed(event.Err)
+	}
+	if event.Output != nil && event.Output.ToolExecution != nil {
+		return l.handleToolExecution(event)
 	}
 	if event.Output == nil || event.Output.MessageOutput == nil {
 		run.logger.Warn("invalid_output_skipped", slog.Bool("output_nil", event.Output == nil), slog.Bool("message_output_nil", event.Output != nil && event.Output.MessageOutput == nil))

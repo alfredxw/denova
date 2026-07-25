@@ -24,7 +24,7 @@ type webAccessClient interface {
 	Fetch(context.Context, webaccess.FetchRequest) (webaccess.FetchResponse, error)
 }
 
-func newWebAccessTools(cfg *config.Config) ([]agent.BaseTool, error) {
+func newWebAccessTools(cfg *config.Config) ([]agent.ToolDefinition, error) {
 	runtimeConfig := config.DefaultWebAccessConfig()
 	if cfg != nil {
 		runtimeConfig = config.ResolveWebAccessConfig(cfg.WebAccess)
@@ -42,7 +42,7 @@ func newWebAccessTools(cfg *config.Config) ([]agent.BaseTool, error) {
 	return buildWebAccessTools(client)
 }
 
-func buildWebAccessTools(client webAccessClient) ([]agent.BaseTool, error) {
+func buildWebAccessTools(client webAccessClient) ([]agent.ToolDefinition, error) {
 	searchTool, err := agent.InferTool[webSearchToolInput, webaccess.SearchResponse](
 		config.AgentToolWebSearch,
 		webSearchToolDescription,
@@ -59,7 +59,9 @@ func buildWebAccessTools(client webAccessClient) ([]agent.BaseTool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create web_search tool: %w", err)
 	}
-	definedSearchTool, err := defineTool(searchTool, boundedReadDescriptor(ToolSourceWeb, config.AgentToolWebSearch))
+	searchDescriptor := boundedReadDescriptor(ToolSourceWeb, config.AgentToolWebSearch)
+	searchDescriptor.Steering = agent.SteeringInterruptibleWait
+	definedSearchTool, err := defineTool(searchTool, searchDescriptor)
 	if err != nil {
 		return nil, err
 	}
@@ -80,11 +82,13 @@ func buildWebAccessTools(client webAccessClient) ([]agent.BaseTool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create web_fetch tool: %w", err)
 	}
-	definedFetchTool, err := defineTool(fetchTool, boundedReadDescriptor(ToolSourceWeb, config.AgentToolWebSearch))
+	fetchDescriptor := boundedReadDescriptor(ToolSourceWeb, config.AgentToolWebSearch)
+	fetchDescriptor.Steering = agent.SteeringInterruptibleWait
+	definedFetchTool, err := defineTool(fetchTool, fetchDescriptor)
 	if err != nil {
 		return nil, err
 	}
-	return []agent.BaseTool{definedSearchTool, definedFetchTool}, nil
+	return []agent.ToolDefinition{definedSearchTool, definedFetchTool}, nil
 }
 
 type webSearchToolInput struct {

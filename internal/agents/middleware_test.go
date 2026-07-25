@@ -2,7 +2,6 @@ package agents
 
 import (
 	"context"
-	"io"
 	"strings"
 	"testing"
 
@@ -14,8 +13,7 @@ import (
 func TestInteractiveStoryToolMiddlewareBlocksWriteTools(t *testing.T) {
 	middleware := newInteractiveStoryToolMiddleware()
 	called := false
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
+	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
@@ -39,13 +37,13 @@ func TestInteractiveStoryToolMiddlewareBlocksWriteTools(t *testing.T) {
 
 func TestInteractiveTurnReceiptRecordsDomainOutcomeSeparatelyFromTransport(t *testing.T) {
 	record := ToolExecutionRecord{ToolName: interactiveTurnSubmissionToolName, Status: "success"}
-	applyInteractiveTurnReceiptToExecutionRecord(&record, `{"ready":false,"module_status":{"state_changes":"rejected","choices":"accepted"},"diagnostics":[{"code":"invalid_module"}],"retry_modules":["state_changes"]}`)
+	applyInteractiveTurnReceiptToExecutionRecord(&record, agent.ToolResult{Details: []byte(`{"ready":false,"module_status":{"state_changes":"rejected","choices":"accepted"},"diagnostics":[{"code":"invalid_module"}],"retry_modules":["state_changes"]}`)})
 	if record.Status != "success" || record.DomainStatus != "rejected" || record.DomainDiagnosticCount != 1 || len(record.RetryModules) != 1 || record.RetryModules[0] != "state_changes" {
 		t.Fatalf("transport success should retain the rejected domain outcome: %#v", record)
 	}
 
 	accepted := ToolExecutionRecord{ToolName: interactiveTurnSubmissionToolName, Status: "success"}
-	applyInteractiveTurnReceiptToExecutionRecord(&accepted, `{"ready":true,"module_status":{"state_changes":"accepted","choices":"accepted"}}`)
+	applyInteractiveTurnReceiptToExecutionRecord(&accepted, agent.ToolResult{Details: []byte(`{"ready":true,"module_status":{"state_changes":"accepted","choices":"accepted"}}`)})
 	if accepted.DomainStatus != "accepted" || accepted.DomainDiagnosticCount != 0 {
 		t.Fatalf("ready receipt should be recorded as domain accepted: %#v", accepted)
 	}
@@ -54,8 +52,7 @@ func TestInteractiveTurnReceiptRecordsDomainOutcomeSeparatelyFromTransport(t *te
 func TestInteractiveStoryToolMiddlewareAllowsReadTools(t *testing.T) {
 	middleware := newInteractiveStoryToolMiddleware()
 	called := false
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
+	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
@@ -78,8 +75,7 @@ func TestInteractiveDirectorPlanFileMiddlewareBlocksStateTools(t *testing.T) {
 	middleware := newInteractiveDirectorPlanFileMiddleware()
 	for _, name := range []string{"apply_actor_state_patch"} {
 		called := false
-		endpoint, err := middleware.WrapInvokableToolCall(
-			context.Background(),
+		endpoint, err := wrapTextToolCallForTest(middleware,
 			func(context.Context, string, ...agent.ToolOption) (string, error) {
 				called = true
 				return "ok", nil
@@ -110,8 +106,7 @@ func TestInteractiveDirectorPlanMiddlewareAllowsStructuredSubmitAndBlocksFiles(t
 		{name: "write_file", allowed: false},
 	} {
 		called := false
-		endpoint, err := middleware.WrapInvokableToolCall(
-			context.Background(),
+		endpoint, err := wrapTextToolCallForTest(middleware,
 			func(context.Context, string, ...agent.ToolOption) (string, error) {
 				called = true
 				return "ok", nil
@@ -137,8 +132,7 @@ func TestInteractiveDirectorPlanMiddlewareAllowsStructuredSubmitAndBlocksFiles(t
 func TestInteractiveDirectorPlanFileMiddlewareBlocksUnauthorizedTools(t *testing.T) {
 	middleware := newInteractiveDirectorPlanFileMiddleware()
 	called := false
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
+	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
@@ -163,8 +157,7 @@ func TestInteractiveDirectorPlanFileMiddlewareBlocksUnauthorizedTools(t *testing
 func TestToolOrchestratorBlocksInteractiveWriteTools(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindInteractiveStory}
 	called := false
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
+	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
@@ -189,8 +182,7 @@ func TestToolOrchestratorBlocksInteractiveWriteTools(t *testing.T) {
 func TestToolOrchestratorBlocksInteractiveSubAgentWriteTools(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: "researcher", policyKind: AgentKindInteractiveStory}
 	called := false
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
+	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
@@ -212,11 +204,10 @@ func TestToolOrchestratorBlocksInteractiveSubAgentWriteTools(t *testing.T) {
 	}
 }
 
-func TestToolOrchestratorAllowsIDEWriteAndFiltersResult(t *testing.T) {
+func TestToolOrchestratorKeepsExecutionMetadataOutOfModelResult(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
 	content := strings.Repeat("正文", 100)
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
+	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			return content, nil
 		},
@@ -229,20 +220,17 @@ func TestToolOrchestratorAllowsIDEWriteAndFiltersResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result, "schema: tool_result.v1") ||
-		!strings.Contains(result, "mutates_workspace: true") ||
-		!strings.Contains(result, "target: chapters/ch01.md") {
-		t.Fatalf("result should include filtered metadata: %s", result)
+	if result != content {
+		t.Fatalf("result below the high default limit changed")
 	}
-	if !strings.Contains(result, content) {
-		t.Fatalf("result below the high default limit should stay complete")
+	if strings.Contains(result, "tool_result.v1") || strings.Contains(result, "mutates_workspace") {
+		t.Fatalf("execution metadata leaked into model result: %s", result)
 	}
 }
 
 func TestToolOrchestratorTruncatesResultWhenLimitConfigured(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 128}
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
+	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			return strings.Repeat("正文", 200), nil
 		},
@@ -255,8 +243,7 @@ func TestToolOrchestratorTruncatesResultWhenLimitConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result, "[tool result truncated]") ||
-		!strings.Contains(result, "truncated: true") {
+	if !strings.Contains(result, "[tool result truncated]") || len(result) > 128 {
 		t.Fatalf("configured limit should truncate result: %s", result)
 	}
 }
@@ -264,8 +251,7 @@ func TestToolOrchestratorTruncatesResultWhenLimitConfigured(t *testing.T) {
 func TestToolOrchestratorBlocksMalformedJSONArguments(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
 	called := false
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
+	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
@@ -284,7 +270,7 @@ func TestToolOrchestratorBlocksMalformedJSONArguments(t *testing.T) {
 		t.Fatal("malformed JSON arguments should be blocked before endpoint is called")
 	}
 	if !strings.Contains(result, "参数不是完整 JSON 对象") ||
-		!strings.Contains(result, "Tool arguments must be a complete JSON object") {
+		!strings.Contains(result, "arguments are not a complete JSON object") {
 		t.Fatalf("unexpected malformed-arguments result: %s", result)
 	}
 	if strings.Contains(result, "重新发起同一个工具调用") {
@@ -302,8 +288,7 @@ func TestToolOrchestratorBlocksValidArgumentsWhenModelHitOutputLimit(t *testing.
 			ctx := ContextWithRunObserver(context.Background(), observer)
 			middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
 			called := false
-			endpoint, err := middleware.WrapInvokableToolCall(
-				context.Background(),
+			endpoint, err := wrapTextToolCallForTest(middleware,
 				func(context.Context, string, ...agent.ToolOption) (string, error) {
 					called = true
 					return "ok", nil
@@ -323,43 +308,12 @@ func TestToolOrchestratorBlocksValidArgumentsWhenModelHitOutputLimit(t *testing.
 			for _, want := range []string{
 				"reason: model_output_token_limit", "retryable: true", "workspace_mutated: false",
 				"args_complete: false", "model_finish_reason: " + finishReason,
-				"即使 arguments 恰好是合法 JSON", "even though the remaining arguments may be valid JSON",
 			} {
 				if !strings.Contains(result, want) {
 					t.Fatalf("output-limit result missing %q:\n%s", want, result)
 				}
 			}
 		})
-	}
-}
-
-func TestStreamableToolBlocksValidArgumentsWhenModelHitOutputLimit(t *testing.T) {
-	observer := newRunObserver(nil, "root-span")
-	observer.RecordLLMOutcome(LLMOutcome{FinishReason: "max_output_tokens", RequestedTools: []string{"read_file"}})
-	ctx := ContextWithRunObserver(context.Background(), observer)
-	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
-	called := false
-	endpoint, err := middleware.WrapStreamableToolCall(
-		context.Background(),
-		func(context.Context, string, ...agent.ToolOption) (*agent.StreamReader[string], error) {
-			called = true
-			return singleChunkReader("unsafe"), nil
-		},
-		testToolContext("read_file", "call-stream-output-limit"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reader, err := endpoint(ctx, `{"path":"chapters/ch01.md"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := reader.Recv()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if called || !strings.Contains(result, "model_finish_reason: max_output_tokens") || !strings.Contains(result, "retryable: true") {
-		t.Fatalf("stream output-limit gate called=%t result=%q", called, result)
 	}
 }
 
@@ -379,8 +333,7 @@ func TestToolOrchestratorReturnsContentFilterContextForIncompleteWriteArguments(
 	ctx := ContextWithRunObserver(context.Background(), observer)
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
 	called := false
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
+	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
@@ -405,8 +358,7 @@ func TestToolOrchestratorReturnsContentFilterContextForIncompleteWriteArguments(
 		"args_complete: false",
 		"model_finish_reason: content_filter",
 		"target: chapters/ch01.md",
-		"文件未写入",
-		"do not retry the same tool call",
+		"blocked execution with no side effects",
 	} {
 		if !strings.Contains(result, want) {
 			t.Fatalf("content-filter context missing %q:\n%s", want, result)
@@ -447,8 +399,7 @@ func TestToolOrchestratorBlocksValidArgumentsWhenModelWasContentFiltered(t *test
 	ctx := ContextWithRunObserver(context.Background(), observer)
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
 	called := false
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
+	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			called = true
 			return "unsafe", nil
@@ -468,7 +419,6 @@ func TestToolOrchestratorBlocksValidArgumentsWhenModelWasContentFiltered(t *test
 	for _, want := range []string{
 		"reason: model_output_interrupted_by_content_filter", "retryable: false",
 		"workspace_mutated: false", "args_complete: false", "model_finish_reason: content_filter",
-		"即使 arguments 恰好是合法 JSON", "even if the remaining arguments happen to be valid JSON",
 	} {
 		if !strings.Contains(result, want) {
 			t.Fatalf("content-filter result missing %q:\n%s", want, result)
@@ -486,8 +436,7 @@ func TestToolPathFromArgsExtractsPartialFilePath(t *testing.T) {
 func TestToolOrchestratorAllowsEscapedSpecialCharactersInJSONArguments(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
 	called := false
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
+	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
@@ -506,39 +455,6 @@ func TestToolOrchestratorAllowsEscapedSpecialCharactersInJSONArguments(t *testin
 	}
 }
 
-func TestToolOrchestratorBlocksMalformedJSONArgumentsForStream(t *testing.T) {
-	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE}
-	called := false
-	endpoint, err := middleware.WrapStreamableToolCall(
-		context.Background(),
-		func(context.Context, string, ...agent.ToolOption) (*agent.StreamReader[string], error) {
-			called = true
-			return singleChunkReader("ok"), nil
-		},
-		testToolContext("write_file", "call-1"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reader, err := endpoint(context.Background(), "{\"file_path\":\"chapters/ch01.md\",\"content\":\"过了一遍\n\t^\n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, recvErr := reader.Recv()
-	if recvErr != nil {
-		t.Fatal(recvErr)
-	}
-	if _, eofErr := reader.Recv(); eofErr != io.EOF {
-		t.Fatalf("expected stream EOF after block message, got %v", eofErr)
-	}
-	if called {
-		t.Fatal("malformed JSON stream arguments should be blocked before endpoint is called")
-	}
-	if !strings.Contains(result, "参数不是完整 JSON 对象") {
-		t.Fatalf("unexpected malformed-arguments stream result: %s", result)
-	}
-}
-
 func TestToolOrchestratorBlocksDisabledCapability(t *testing.T) {
 	middleware := &toolOrchestratorMiddleware{
 		agentKind:           AgentKindIDE,
@@ -546,8 +462,7 @@ func TestToolOrchestratorBlocksDisabledCapability(t *testing.T) {
 		toolSettings:        config.ResolvedAgentToolSettings{FileRead: true},
 	}
 	called := false
-	endpoint, err := middleware.WrapInvokableToolCall(
-		context.Background(),
+	endpoint, err := wrapTextToolCallForTest(middleware,
 		func(context.Context, string, ...agent.ToolOption) (string, error) {
 			called = true
 			return "ok", nil
@@ -584,35 +499,6 @@ func TestToolOrchestratorBlocksUndeclaredDynamicTool(t *testing.T) {
 	}
 }
 
-func TestToolOrchestratorTruncatesStreamResultWhenLimitConfigured(t *testing.T) {
-	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 64}
-	endpoint, err := middleware.WrapStreamableToolCall(
-		context.Background(),
-		func(context.Context, string, ...agent.ToolOption) (*agent.StreamReader[string], error) {
-			return singleChunkReader(strings.Repeat("流式正文", 100)), nil
-		},
-		testToolContext("read_file", "call-1"),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reader, err := endpoint(context.Background(), `{"path":"chapters/ch01.md"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, recvErr := reader.Recv()
-	if recvErr != nil {
-		t.Fatal(recvErr)
-	}
-	if _, eofErr := reader.Recv(); eofErr != io.EOF {
-		t.Fatalf("expected stream EOF after filtered result, got %v", eofErr)
-	}
-	if !strings.Contains(result, "[tool result truncated]") ||
-		!strings.Contains(result, "truncated: true") {
-		t.Fatalf("configured stream limit should truncate result: %s", result)
-	}
-}
-
 func TestFilesystemToolsKeepStableSchemaAcrossSettings(t *testing.T) {
 	workspace := t.TempDir()
 	tools, err := newToolCatalog(&config.Config{Workspace: workspace}).Filesystem(config.ResolvedAgentToolSettings{
@@ -625,7 +511,7 @@ func TestFilesystemToolsKeepStableSchemaAcrossSettings(t *testing.T) {
 	}
 	names := map[string]bool{}
 	for _, item := range tools {
-		info, err := item.Info(context.Background())
+		info, err := item.Tool.Info(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}

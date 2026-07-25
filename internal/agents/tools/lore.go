@@ -9,7 +9,6 @@ import (
 	"unicode/utf8"
 
 	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
 	"denova/internal/book"
@@ -133,7 +132,7 @@ func (p *loreReadPolicy) accept(output string, items []book.LoreItem) error {
 	return nil
 }
 
-func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions) ([]agent.BaseTool, error) {
+func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions) ([]agent.ToolDefinition, error) {
 	workspace = strings.TrimSpace(workspace)
 	var readPolicy *loreReadPolicy
 	if len(options) > 0 {
@@ -233,30 +232,39 @@ func newLoreTools(workspace string, allowWrite bool, options ...loreToolsOptions
 	if err != nil {
 		return nil, err
 	}
-	tools := []agent.BaseTool{definedListTool, definedReadTool}
+	tools := []agent.ToolDefinition{definedListTool, definedReadTool}
 	if !allowWrite {
 		return tools, nil
 	}
-	writeTool, err := agent.InferTool("write_lore_items", "批量创建、更新或删除资料库条目。用于同步角色身份、人设、长期关系、能力体系、世界规则、地点、势力和物品等稳定设定；章节新增或实质性改写后的当前位置、伤势、心理、目标、持有物等当前角色状态应写入 setting/character-states.md，不要默认写入资料库；每个创建或更新的条目都要填写 brief_description；不要写入章节规划或未来剧情。", func(ctx context.Context, input writeLoreItemsInput) (string, error) {
+	writeTool, err := agent.InferTool("write_lore_items", "批量创建、更新或删除资料库条目。用于同步角色身份、人设、长期关系、能力体系、世界规则、地点、势力和物品等稳定设定；章节新增或实质性改写后的当前位置、伤势、心理、目标、持有物等当前角色状态应写入 setting/character-states.md，不要默认写入资料库；每个创建或更新的条目都要填写 brief_description；不要写入章节规划或未来剧情。", func(ctx context.Context, input writeLoreItemsInput) (agent.ToolResult, error) {
 		_ = ctx
 		if workspace == "" {
-			return "", fmt.Errorf("当前 workspace 不可用，无法写入资料库")
+			return agent.ToolResult{}, fmt.Errorf("当前 workspace 不可用，无法写入资料库")
 		}
 		store := book.NewLoreStore(workspace)
 		ops, err := buildWriteLoreOperations(store, input)
 		if err != nil {
-			return "", err
+			return agent.ToolResult{}, err
 		}
 		result, err := store.ApplyOperations(input.Message, ops)
 		if err != nil {
-			return "", err
+			return agent.ToolResult{}, err
 		}
-		return formatWriteLoreItemsResult(result), nil
+		details, err := json.Marshal(map[string]any{
+			"schema": "lore.write.v1", "item_ids": writeLoreChangedItemIDs(result),
+			"deleted_ids": result.DeletedIDs,
+		})
+		if err != nil {
+			return agent.ToolResult{}, err
+		}
+		toolResult := agent.TextToolResult(formatWriteLoreItemsResult(result))
+		toolResult.Details = details
+		return toolResult, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	definedWriteTool, err := defineTool(writeTool, workspaceWriteDescriptor(ToolSourceLore, config.AgentToolLoreWrite, agenttools.RecoveryReconcilable))
+	definedWriteTool, err := defineTool(writeTool, workspaceWriteDescriptor(ToolSourceLore, config.AgentToolLoreWrite, agent.ToolRecoveryReconcilable))
 	if err != nil {
 		return nil, err
 	}

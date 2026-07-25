@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { Bot } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { ConfigManagerChat } from '@/components/Chat/ConfigManagerChat'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
+import { SettingsFieldRow } from '@/components/forms/settings-field-row'
 import { AdaptiveSurface } from '@/components/layout/adaptive-surface'
 import { FeaturePageShell } from '@/components/layout/feature-page-shell'
 import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { SectionedNavigation } from '@/components/navigation/sectioned-navigation'
 import { Button } from '@/components/ui/button'
-import type { AgentContextOverride, AgentModelOverride, AgentPromptOverride, AgentSkillOverride, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
+import { Input } from '@/components/ui/input'
+import type { AgentContextOverride, AgentModelOverride, AgentPromptOverride, AgentSkillOverride, LayeredSettings, ModelProfileSettings, Settings, SettingsLayer, SubAgentConfig } from '@/features/settings/types'
 import { modelProfileID, modelProfileLabel, modelProfilesWithDefault } from '@/features/settings/model-profiles'
 import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
 import { getSkills } from '@/lib/api'
@@ -68,6 +70,7 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
   const contextValue = draft.agent_context?.[activeAgent] ?? {}
   const inheritedContext = mergeAgentContextOverride(effective.agent_context?.default ?? {}, effective.agent_context?.[activeAgent] ?? {})
   const generalSubAgents = draft.general_sub_agents ?? {}
+  const inheritedToolParallelism = resolveInheritedToolParallelism(layered, activeLayer)
   const previewGeneralSubAgents = useMemo(() => previewGeneralSubAgentSettings(layered, activeLayer, draft), [activeLayer, draft, layered])
   const subAgents = draft.sub_agents ?? []
   const configManagerWorkspaceKey = layered?.paths.workspace_config || layered?.paths.user_config || 'agents'
@@ -166,6 +169,10 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
       else next[agent] = value
       return { ...current, general_sub_agents: next }
     })
+  }
+
+  const setToolParallelism = (value: number | null) => {
+    setDraft((current) => ({ ...current, agent_tool_parallelism: value }))
   }
 
   return (
@@ -269,6 +276,11 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
             </div>
             <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-5 px-4 py-5 sm:px-6">
               <AgentHeader agent={selected} />
+              <AgentToolSchedulingSection
+                value={draft.agent_tool_parallelism ?? null}
+                inherited={inheritedToolParallelism}
+                onChange={setToolParallelism}
+              />
               {activeLayer === 'user' ? (
                 <AgentModelSection
                   value={modelValue}
@@ -338,6 +350,64 @@ export function AgentsView({ onClose }: { onClose?: () => void }) {
       </AdaptiveSurface>
     </FeaturePageShell>
   )
+}
+
+function AgentToolSchedulingSection({
+  value,
+  inherited,
+  onChange,
+}: {
+  value: number | null
+  inherited: number
+  onChange: (value: number | null) => void
+}) {
+  const { t } = useTranslation()
+  const inputID = useId()
+  return (
+    <section className="border-b border-[var(--nova-border)] pb-5">
+      <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--nova-text-muted)]">
+        {t('agents.section.toolScheduling')}
+      </h2>
+      <SettingsFieldRow
+        htmlFor={inputID}
+        title={t('settings.agent.toolParallelism')}
+        description={t('agents.tool.parallelismNote')}
+        meta={value === null ? <span className="text-[10px] text-[var(--nova-text-faint)]">{t('common.inherit', { value: inherited })}</span> : undefined}
+        controlClassName="sm:w-36"
+      >
+        <Input
+          id={inputID}
+          type="number"
+          min={1}
+          max={64}
+          value={value ?? ''}
+          placeholder={String(inherited)}
+          aria-label={t('settings.agent.toolParallelism')}
+          onChange={(event) => {
+            if (event.target.value === '') {
+              onChange(null)
+              return
+            }
+            const parsed = Number(event.target.value)
+            if (Number.isFinite(parsed)) onChange(Math.min(64, Math.max(1, Math.trunc(parsed))))
+          }}
+        />
+      </SettingsFieldRow>
+    </section>
+  )
+}
+
+function resolveInheritedToolParallelism(layered: LayeredSettings | null, layer: SettingsLayer) {
+  const layers = layer === 'workspace'
+    ? [layered?.default, layered?.global, layered?.user]
+    : [layered?.default, layered?.global]
+  let value = 8
+  for (const settings of layers) {
+    const candidate = settings?.agent_tool_parallelism
+    if (candidate === null || candidate === undefined) continue
+    value = candidate <= 0 ? 8 : Math.min(64, Math.trunc(candidate))
+  }
+  return value
 }
 
 function AgentList({ active, onSelect }: { active: VisibleAgentKey; onSelect: (agent: VisibleAgentKey) => void }) {

@@ -79,6 +79,7 @@ type Settings struct {
 	ModelMaxRetries         *int   `toml:"model_max_retries,omitempty" json:"model_max_retries,omitempty"`
 	AgentIdleTimeoutSeconds *int   `toml:"agent_idle_timeout_seconds,omitempty" json:"agent_idle_timeout_seconds,omitempty"`
 	AgentToolResultLimitKB  *int   `toml:"agent_tool_result_limit_kb,omitempty" json:"agent_tool_result_limit_kb,omitempty"`
+	AgentToolParallelism    *int   `toml:"agent_tool_parallelism,omitempty" json:"agent_tool_parallelism,omitempty"`
 	LLMInputLogEnabled      *bool  `toml:"llm_input_log_enabled,omitempty" json:"llm_input_log_enabled,omitempty"`
 	TraceCaptureLevel       string `toml:"trace_capture_level,omitempty" json:"trace_capture_level,omitempty"`
 	TraceExporter           string `toml:"trace_exporter,omitempty" json:"trace_exporter,omitempty"`
@@ -102,6 +103,8 @@ const (
 	DefaultWritingSkillName        = "novel-lite"
 	DefaultAgentIdleTimeoutSeconds = 0
 	DefaultAgentToolResultLimitKB  = 1024
+	DefaultAgentToolParallelism    = 8
+	MaxAgentToolParallelism        = 64
 	DefaultTraceCaptureLevel       = "summary"
 	DefaultTraceExporter           = "local"
 	DefaultTraceRetentionRuns      = 100
@@ -143,6 +146,7 @@ func DefaultSettings() Settings {
 		ModelMaxRetries:             intPtr(5),
 		AgentIdleTimeoutSeconds:     intPtr(DefaultAgentIdleTimeoutSeconds),
 		AgentToolResultLimitKB:      intPtr(DefaultAgentToolResultLimitKB),
+		AgentToolParallelism:        intPtr(DefaultAgentToolParallelism),
 		LLMInputLogEnabled:          boolPtr(false),
 		TraceCaptureLevel:           DefaultTraceCaptureLevel,
 		TraceExporter:               DefaultTraceExporter,
@@ -299,6 +303,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.AgentToolResultLimitKB != nil {
 		out.AgentToolResultLimitKB = child.AgentToolResultLimitKB
+	}
+	if child.AgentToolParallelism != nil {
+		out.AgentToolParallelism = child.AgentToolParallelism
 	}
 	if child.LLMInputLogEnabled != nil {
 		out.LLMInputLogEnabled = child.LLMInputLogEnabled
@@ -515,6 +522,7 @@ func LoadLayeredWithGlobal(novaDir, workspace string, global Settings) (LayeredS
 		novaDir = normalizePath(novaDir)
 	}
 	global.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(global.AgentToolResultLimitKB)
+	global.AgentToolParallelism = normalizeAgentToolParallelism(global.AgentToolParallelism)
 	user, err := ReadSettingsFile(UserConfigPath(novaDir))
 	if err != nil {
 		return LayeredSettings{}, err
@@ -588,6 +596,7 @@ func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings
 	existing.AgentContexts = scoped.AgentContexts
 	existing.GeneralSubAgents = scoped.GeneralSubAgents
 	existing.SubAgents = scoped.SubAgents
+	existing.AgentToolParallelism = scoped.AgentToolParallelism
 	return existing
 }
 
@@ -595,12 +604,13 @@ func PrepareWorkspaceAgentSettingsForWrite(existing, incoming Settings) Settings
 // Model selection and every setting shown on the Settings page are user-scoped.
 func workspaceAgentSettings(settings Settings) Settings {
 	return Settings{
-		AgentTools:       settings.AgentTools,
-		AgentPrompts:     settings.AgentPrompts,
-		AgentSkills:      settings.AgentSkills,
-		AgentContexts:    settings.AgentContexts,
-		GeneralSubAgents: settings.GeneralSubAgents,
-		SubAgents:        settings.SubAgents,
+		AgentTools:           settings.AgentTools,
+		AgentPrompts:         settings.AgentPrompts,
+		AgentSkills:          settings.AgentSkills,
+		AgentContexts:        settings.AgentContexts,
+		GeneralSubAgents:     settings.GeneralSubAgents,
+		SubAgents:            settings.SubAgents,
+		AgentToolParallelism: settings.AgentToolParallelism,
 	}
 }
 
@@ -624,6 +634,7 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.DefaultImageAPIProfileID = strings.TrimSpace(s.DefaultImageAPIProfileID)
 	s.AgentIdleTimeoutSeconds = normalizeAgentIdleTimeoutSeconds(s.AgentIdleTimeoutSeconds)
 	s.AgentToolResultLimitKB = normalizeAgentToolResultLimitKB(s.AgentToolResultLimitKB)
+	s.AgentToolParallelism = normalizeAgentToolParallelism(s.AgentToolParallelism)
 	s.WebAccess = sanitizeWebAccessSettings(s.WebAccess)
 	s.ModelProfiles = sanitizeModelProfiles(s.ModelProfiles)
 	s.ImageAPIProfiles = sanitizeImageAPIProfiles(s.ImageAPIProfiles)
@@ -668,6 +679,19 @@ func normalizeAgentToolResultLimitKB(limit *int) *int {
 		return intPtr(DefaultAgentToolResultLimitKB)
 	}
 	return limit
+}
+
+func normalizeAgentToolParallelism(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	if *value <= 0 {
+		return intPtr(DefaultAgentToolParallelism)
+	}
+	if *value > MaxAgentToolParallelism {
+		return intPtr(MaxAgentToolParallelism)
+	}
+	return value
 }
 
 func normalizeContextWindowTokens(tokens *int) *int {

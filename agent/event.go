@@ -101,7 +101,8 @@ type MessageVariant struct {
 	ToolName      string
 	// ToolInfos is the validated registry snapshot for model events. It is
 	// transport metadata, not part of the emitted transcript Message.
-	ToolInfos []*ToolInfo
+	ToolInfos       []*ToolInfo
+	ToolDefinitions []ToolDefinitionSnapshot
 }
 
 // GetMessage returns or drains the variant's message.
@@ -118,7 +119,29 @@ func (variant *MessageVariant) GetMessage() (*Message, error) {
 // AgentOutput is the payload of one AgentEvent.
 type AgentOutput struct {
 	MessageOutput    *MessageVariant
+	ToolExecution    *ToolExecutionEvent
 	CustomizedOutput any
+}
+
+// ToolExecutionPhase is the exhaustive lifecycle of one concrete call.
+type ToolExecutionPhase string
+
+const (
+	ToolExecutionStarted  ToolExecutionPhase = "started"
+	ToolExecutionProgress ToolExecutionPhase = "progress"
+	ToolExecutionFinished ToolExecutionPhase = "finished"
+)
+
+// ToolExecutionEvent is a real-time, non-transcript tool notification. Finished
+// events follow completion order; tool messages remain source ordered.
+type ToolExecutionEvent struct {
+	Phase      ToolExecutionPhase
+	Index      int
+	CallID     string
+	ToolName   string
+	Definition ToolDefinitionSnapshot
+	Delta      string
+	Result     *ToolResult
 }
 
 // AgentAction is reserved for transport-neutral host control actions.

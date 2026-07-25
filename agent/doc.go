@@ -3,7 +3,8 @@
 // The package is intentionally layered around stable seams:
 //
 //   - Message and StreamReader define persisted and streaming wire data.
-//   - BaseChatModel and BaseTool isolate provider and tool implementations.
+//   - BaseChatModel and Tool isolate provider and tool implementations.
+//   - ToolDefinition and Registry form one validated schema/descriptor catalog.
 //   - Agent owns the native model/tool loop; Runner is a convenience entry point.
 //   - Middleware and Host expose integration seams without importing a
 //     provider SDK, workflow engine, or application package.

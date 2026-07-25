@@ -12,19 +12,19 @@ import (
 
 // DefinitionOption customizes a standard tool's runtime contract without
 // changing its model-visible schema.
-type DefinitionOption func(*Descriptor)
+type DefinitionOption func(*agent.ToolDescriptor)
 
 // WithCapability associates a product-defined authorization capability.
 func WithCapability(capability string) DefinitionOption {
-	return func(descriptor *Descriptor) { descriptor.Capability = capability }
+	return func(descriptor *agent.ToolDescriptor) { descriptor.Capability = capability }
 }
 
 // WithMaxResultBytes overrides the model-context result ceiling.
 func WithMaxResultBytes(limit int) DefinitionOption {
-	return func(descriptor *Descriptor) { descriptor.MaxResultBytes = limit }
+	return func(descriptor *agent.ToolDescriptor) { descriptor.MaxResultBytes = limit }
 }
 
-func applyDefinitionOptions(descriptor Descriptor, options []DefinitionOption) Descriptor {
+func applyDefinitionOptions(descriptor agent.ToolDescriptor, options []DefinitionOption) agent.ToolDescriptor {
 	for _, option := range options {
 		if option != nil {
 			option(&descriptor)
@@ -33,22 +33,24 @@ func applyDefinitionOptions(descriptor Descriptor, options []DefinitionOption) D
 	return descriptor
 }
 
-func readDescriptor(options ...DefinitionOption) Descriptor {
-	return applyDefinitionOptions(Descriptor{
-		Source:           SourceRead,
-		Execution:        ExecutionParallelRead,
-		Recovery:         RecoveryReadOnly,
-		ResultProjection: ResultBoundedModelContext,
+func readDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
+	return applyDefinitionOptions(agent.ToolDescriptor{
+		Source:           agent.ToolSourceRead,
+		Execution:        agent.ToolExecutionParallelRead,
+		Recovery:         agent.ToolRecoveryReadOnly,
+		ResultProjection: agent.ToolResultBoundedModelContext,
+		Steering:         agent.SteeringFinishCurrent,
 		MaxResultBytes:   defaultResultBytes,
 	}, options)
 }
 
-func writeDescriptor(options ...DefinitionOption) Descriptor {
-	return applyDefinitionOptions(Descriptor{
-		Source:            SourceWrite,
-		Execution:         ExecutionWorkspaceExclusive,
-		Recovery:          RecoveryReconcilable,
-		ResultProjection:  ResultBoundedModelContext,
+func writeDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
+	return applyDefinitionOptions(agent.ToolDescriptor{
+		Source:            agent.ToolSourceWrite,
+		Execution:         agent.ToolExecutionWorkspaceExclusive,
+		Recovery:          agent.ToolRecoveryReconcilable,
+		ResultProjection:  agent.ToolResultBoundedModelContext,
+		Steering:          agent.SteeringFinishCurrent,
 		MutatesWorkspace:  true,
 		MaxResultBytes:    defaultResultBytes,
 		RequiresPostCheck: true,
@@ -69,9 +71,9 @@ type readFileMetadata struct {
 }
 
 // ReadFile defines the bounded, line-numbered read_file tool.
-func ReadFile(reader Reader, options ...DefinitionOption) (Definition, error) {
+func ReadFile(reader Reader, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if reader == nil {
-		return Definition{}, errors.New("read_file Reader is nil")
+		return agent.ToolDefinition{}, errors.New("read_file Reader is nil")
 	}
 	tool, err := agent.InferTool("read_file", readFileDescription, func(ctx context.Context, input readFileInput) (string, error) {
 		result, err := reader.Read(ctx, ReadRequest{Path: input.FilePath, Offset: input.Offset, Limit: input.Limit})
@@ -87,7 +89,7 @@ func ReadFile(reader Reader, options ...DefinitionOption) (Definition, error) {
 		}
 		return string(metadata) + "\n" + lineNumbers(result.Content, result.Offset), nil
 	})
-	return Definition{Tool: tool, Descriptor: readDescriptor(options...)}, err
+	return agent.ToolDefinition{Tool: tool, Descriptor: readDescriptor(options...)}, err
 }
 
 type listInput struct {
@@ -95,9 +97,9 @@ type listInput struct {
 }
 
 // List defines the stable ls tool.
-func List(searcher Searcher, options ...DefinitionOption) (Definition, error) {
+func List(searcher Searcher, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if searcher == nil {
-		return Definition{}, errors.New("ls Searcher is nil")
+		return agent.ToolDefinition{}, errors.New("ls Searcher is nil")
 	}
 	tool, err := agent.InferTool("ls", listDescription, func(ctx context.Context, input listInput) (string, error) {
 		entries, err := searcher.List(ctx, input.Path)
@@ -106,7 +108,7 @@ func List(searcher Searcher, options ...DefinitionOption) (Definition, error) {
 		}
 		return joinedResult(entries, "No files found in the selected directory."), nil
 	})
-	return Definition{Tool: tool, Descriptor: readDescriptor(options...)}, err
+	return agent.ToolDefinition{Tool: tool, Descriptor: readDescriptor(options...)}, err
 }
 
 type globInput struct {
@@ -115,9 +117,9 @@ type globInput struct {
 }
 
 // Glob defines the stable glob tool.
-func Glob(searcher Searcher, options ...DefinitionOption) (Definition, error) {
+func Glob(searcher Searcher, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if searcher == nil {
-		return Definition{}, errors.New("glob Searcher is nil")
+		return agent.ToolDefinition{}, errors.New("glob Searcher is nil")
 	}
 	tool, err := agent.InferTool("glob", globDescription, func(ctx context.Context, input globInput) (string, error) {
 		entries, err := searcher.Glob(ctx, input.Path, input.Pattern)
@@ -126,7 +128,7 @@ func Glob(searcher Searcher, options ...DefinitionOption) (Definition, error) {
 		}
 		return joinedResult(entries, "No files matched the glob pattern."), nil
 	})
-	return Definition{Tool: tool, Descriptor: readDescriptor(options...)}, err
+	return agent.ToolDefinition{Tool: tool, Descriptor: readDescriptor(options...)}, err
 }
 
 type grepInput struct {
@@ -146,9 +148,9 @@ type grepInput struct {
 }
 
 // Grep defines the stable grep tool.
-func Grep(searcher Searcher, options ...DefinitionOption) (Definition, error) {
+func Grep(searcher Searcher, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if searcher == nil {
-		return Definition{}, errors.New("grep Searcher is nil")
+		return agent.ToolDefinition{}, errors.New("grep Searcher is nil")
 	}
 	tool, err := agent.InferTool("grep", grepDescription, func(ctx context.Context, input grepInput) (string, error) {
 		entries, err := searcher.Grep(ctx, GrepRequest{
@@ -162,7 +164,7 @@ func Grep(searcher Searcher, options ...DefinitionOption) (Definition, error) {
 		}
 		return joinedResult(entries, "No matches found."), nil
 	})
-	return Definition{Tool: tool, Descriptor: readDescriptor(options...)}, err
+	return agent.ToolDefinition{Tool: tool, Descriptor: readDescriptor(options...)}, err
 }
 
 type writeFileInput struct {
@@ -171,18 +173,18 @@ type writeFileInput struct {
 }
 
 // WriteFile defines a complete-file replacement tool over an injected Writer.
-func WriteFile(writer Writer, options ...DefinitionOption) (Definition, error) {
+func WriteFile(writer Writer, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if writer == nil {
-		return Definition{}, errors.New("write_file Writer is nil")
+		return agent.ToolDefinition{}, errors.New("write_file Writer is nil")
 	}
-	tool, err := agent.InferTool("write_file", writeDescription, func(ctx context.Context, input writeFileInput) (string, error) {
+	tool, err := agent.InferTool("write_file", writeDescription, func(ctx context.Context, input writeFileInput) (agent.ToolResult, error) {
 		receipt, err := writer.Write(ctx, input.FilePath, input.Content)
 		if err != nil {
-			return "", err
+			return agent.ToolResult{}, err
 		}
-		return marshalWriteReceipt("workspace_file.write.v1", receipt)
+		return structuredWriteReceipt("workspace_file.write.v1", receipt)
 	})
-	return Definition{Tool: tool, Descriptor: writeDescriptor(options...)}, err
+	return agent.ToolDefinition{Tool: tool, Descriptor: writeDescriptor(options...)}, err
 }
 
 type editFileInput struct {
@@ -197,22 +199,22 @@ type editFileEdit struct {
 }
 
 // EditFile defines exact text replacement over an injected Writer.
-func EditFile(writer Writer, options ...DefinitionOption) (Definition, error) {
+func EditFile(writer Writer, options ...DefinitionOption) (agent.ToolDefinition, error) {
 	if writer == nil {
-		return Definition{}, errors.New("edit_file Writer is nil")
+		return agent.ToolDefinition{}, errors.New("edit_file Writer is nil")
 	}
-	tool, err := agent.InferTool("edit_file", editDescription, func(ctx context.Context, input editFileInput) (string, error) {
+	tool, err := agent.InferTool("edit_file", editDescription, func(ctx context.Context, input editFileInput) (agent.ToolResult, error) {
 		edits := make([]TextEdit, 0, len(input.Edits))
 		for _, edit := range input.Edits {
 			edits = append(edits, TextEdit{OldString: edit.OldString, NewString: edit.NewString, ReplaceAll: edit.ReplaceAll})
 		}
 		receipt, err := writer.Edit(ctx, input.FilePath, edits)
 		if err != nil {
-			return "", err
+			return agent.ToolResult{}, err
 		}
-		return marshalWriteReceipt("workspace_file.edit.v1", receipt)
+		return structuredWriteReceipt("workspace_file.edit.v1", receipt)
 	})
-	return Definition{Tool: tool, Descriptor: writeDescriptor(options...)}, err
+	return agent.ToolDefinition{Tool: tool, Descriptor: writeDescriptor(options...)}, err
 }
 
 func marshalWriteReceipt(schema string, receipt WriteReceipt) (string, error) {
@@ -225,6 +227,16 @@ func marshalWriteReceipt(schema string, receipt WriteReceipt) (string, error) {
 		return "", fmt.Errorf("serialize workspace mutation receipt: %w", err)
 	}
 	return string(data), nil
+}
+
+func structuredWriteReceipt(schema string, receipt WriteReceipt) (agent.ToolResult, error) {
+	content, err := marshalWriteReceipt(schema, receipt)
+	if err != nil {
+		return agent.ToolResult{}, err
+	}
+	result := agent.TextToolResult(content)
+	result.Details = json.RawMessage(content)
+	return result, nil
 }
 
 func lineNumbers(content string, start int) string {

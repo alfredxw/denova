@@ -3,6 +3,7 @@ const settings = {
   'settings.agent.modelMaxRetries': 'Model Retries',
   'settings.agent.idleTimeoutSeconds': 'Idle Timeout (s, 0 = unlimited)',
   'settings.agent.toolResultLimitKB': 'Tool Result Safety Limit (KB)',
+  'settings.agent.toolParallelism': 'Parallel Read Tools (1–64)',
   'settings.agent.planModeDefault': 'Default PlanMode',
   'settings.agent.writingSkillDefault': 'Default Writing Skill',
   'settings.webAccess.searxngBaseUrl': 'SearXNG Instance URL',

@@ -3,9 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -143,15 +141,15 @@ func TestReadFileDefinitionReturnsBoundedNumberedWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := definition.Tool.(agent.InvokableTool).InvokableRun(context.Background(), `{"file_path":"story.txt","offset":2,"limit":1}`)
+	result, err := definition.Tool.Run(context.Background(), `{"file_path":"story.txt","offset":2,"limit":1}`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result, `"schema":"workspace_file.read.v2"`) ||
-		!strings.Contains(result, `"file_path":"story.txt"`) ||
-		!strings.Contains(result, "     2\tsecond") ||
-		strings.Contains(result, "first") || strings.Contains(result, "third") {
-		t.Fatalf("unexpected read_file result: %q", result)
+	if !strings.Contains(result.ModelContent, `"schema":"workspace_file.read.v2"`) ||
+		!strings.Contains(result.ModelContent, `"file_path":"story.txt"`) ||
+		!strings.Contains(result.ModelContent, "     2\tsecond") ||
+		strings.Contains(result.ModelContent, "first") || strings.Contains(result.ModelContent, "third") {
+		t.Fatalf("unexpected read_file result: %q", result.ModelContent)
 	}
 }
 
@@ -247,7 +245,7 @@ func TestLocalWorkspaceGrepUsesConfiguredRipgrepWithoutPATH(t *testing.T) {
 	}
 }
 
-func TestExecuteKeepsStreamingCapabilityAndWorkspace(t *testing.T) {
+func TestExecuteStreamsProgressThroughAgentAndKeepsWorkspace(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell assertion is Unix-specific")
 	}
@@ -263,31 +261,29 @@ func TestExecuteKeepsStreamingCapabilityAndWorkspace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	registry, err := Build(context.Background(), definition)
+	model := &shellTestModel{}
+	native, err := agent.NewAgent(context.Background(), agent.AgentConfig{
+		Name: "shell-test", Model: model, Tools: []agent.ToolDefinition{definition},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	tool, ok := registry.Tools()[0].(agent.StreamableTool)
-	if !ok {
-		t.Fatal("execute lost streamable capability")
-	}
-	stream, err := tool.StreamableRun(context.Background(), `{"command":"printf reusable"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var result strings.Builder
+	events := agent.NewRunner(agent.RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	var result string
 	for {
-		fragment, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
+		event, ok := events.Next()
+		if !ok {
 			break
 		}
-		if err != nil {
-			t.Fatal(err)
+		if event.Err != nil {
+			t.Fatal(event.Err)
 		}
-		result.WriteString(fragment)
+		if event.Output != nil && event.Output.MessageOutput != nil && event.Output.MessageOutput.Role == agent.ToolRole {
+			result = event.Output.MessageOutput.Message.Content
+		}
 	}
-	if result.String() != "reusable" {
-		t.Fatalf("result = %q", result.String())
+	if result != "reusable" {
+		t.Fatalf("result = %q", result)
 	}
 }
 
@@ -307,14 +303,10 @@ func TestExecutePublishesStableSchemaAndFailsClosedWithoutRunner(t *testing.T) {
 	if info.Name != "execute" || !strings.Contains(string(raw), `"command"`) {
 		t.Fatalf("execute schema = %s", raw)
 	}
-	tool, ok := definition.Tool.(agent.StreamableTool)
-	if !ok {
-		t.Fatal("execute lost streamable capability")
-	}
-	if _, err := tool.StreamableRun(context.Background(), `{"command":"echo ok","background":true}`); err == nil || !strings.Contains(err.Error(), "unknown field") {
+	if _, err := definition.Tool.Run(context.Background(), `{"command":"echo ok","background":true}`); err == nil || !strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("unknown execute argument should fail, got %v", err)
 	}
-	if _, err := tool.StreamableRun(context.Background(), `{"command":"echo unsafe"}`); err == nil || !strings.Contains(err.Error(), "capability is disabled") {
+	if _, err := definition.Tool.Run(context.Background(), `{"command":"echo unsafe"}`); err == nil || !strings.Contains(err.Error(), "capability is disabled") {
 		t.Fatalf("disabled execute should fail closed, got %v", err)
 	}
 }
@@ -333,6 +325,27 @@ func TestReadBoundedAndDrainConsumesRemainder(t *testing.T) {
 type countingReader struct {
 	reader *strings.Reader
 	read   int
+}
+
+type shellTestModel struct{ calls int }
+
+func (model *shellTestModel) Generate(_ context.Context, input []*agent.Message, _ ...agent.ModelOption) (*agent.Message, error) {
+	model.calls++
+	if model.calls == 1 {
+		return agent.AssistantMessage("", []agent.ToolCall{{
+			ID: "execute-1", Type: "function",
+			Function: agent.FunctionCall{Name: "execute", Arguments: `{"command":"printf reusable"}`},
+		}}), nil
+	}
+	return agent.AssistantMessage("done", nil), nil
+}
+
+func (model *shellTestModel) Stream(ctx context.Context, input []*agent.Message, options ...agent.ModelOption) (*agent.StreamReader[*agent.Message], error) {
+	message, err := model.Generate(ctx, input, options...)
+	if err != nil {
+		return nil, err
+	}
+	return agent.StreamReaderFromArray([]*agent.Message{message}), nil
 }
 
 func (reader *countingReader) Read(buffer []byte) (int, error) {

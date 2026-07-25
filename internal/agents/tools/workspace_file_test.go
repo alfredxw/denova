@@ -89,11 +89,7 @@ func TestWorkspaceEditFileToolBatchesOneFileAndReturnsBoundedReceipt(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	invokable, ok := base.(agent.InvokableTool)
-	if !ok {
-		t.Fatal("edit_file should be invokable")
-	}
-	result, err := invokable.InvokableRun(context.Background(), `{
+	result, err := runToolForTest(context.Background(), base, `{
         "file_path":"chapters/ch01.md",
         "edits":[
           {"id":"opening","old_string":"old 1","new_string":"new 1"},
@@ -146,7 +142,7 @@ func TestWorkspaceEditFileUsesCurrentRevisionWithoutReadDependency(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = editTool.(agent.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","edits":[{"old_string":"manual update","new_string":"agent update"}]}`)
+	_, err = runToolForTest(context.Background(), editTool, `{"file_path":"ideas.md","edits":[{"old_string":"manual update","new_string":"agent update"}]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +223,7 @@ func TestWorkspaceWriteFileToolUsesChangeService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := base.(agent.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","content":"new"}`)
+	result, err := runToolForTest(context.Background(), base, `{"file_path":"ideas.md","content":"new"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +281,7 @@ func TestWorkspaceEditFileToolLeavesFileUntouchedWhenOneBatchEditFails(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = base.(agent.InvokableTool).InvokableRun(context.Background(), `{
+	_, err = runToolForTest(context.Background(), base, `{
 	        "file_path":"chapters/ch01.md",
 	        "edits":[
           {"id":"valid","old_string":"opening","new_string":"new opening"},
@@ -350,7 +346,7 @@ func TestWorkspaceFileToolsResolveCurrentRevisionWithoutModelInput(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := edit.(agent.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","edits":[{"old_string":"a","new_string":"b"}]}`); err != nil {
+	if _, err := runToolForTest(context.Background(), edit, `{"file_path":"ideas.md","edits":[{"old_string":"a","new_string":"b"}]}`); err != nil {
 		t.Fatal(err)
 	}
 	if service.applyCalls != 1 || service.applyRequest.BaseRevision != "sha256:current" {
@@ -361,7 +357,7 @@ func TestWorkspaceFileToolsResolveCurrentRevisionWithoutModelInput(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := write.(agent.InvokableTool).InvokableRun(context.Background(), `{"file_path":"ideas.md","content":"new"}`); err != nil {
+	if _, err := runToolForTest(context.Background(), write, `{"file_path":"ideas.md","content":"new"}`); err != nil {
 		t.Fatal(err)
 	}
 	if service.replaceCalls != 1 || service.replaceRequest.BaseRevision != "sha256:current" || service.readCalls != 2 {
@@ -379,7 +375,7 @@ func TestWorkspaceWriteFileToolDetectsMissingFileInternally(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := write.(agent.InvokableTool).InvokableRun(context.Background(), `{"file_path":"new.md","content":"new"}`); err != nil {
+	if _, err := runToolForTest(context.Background(), write, `{"file_path":"new.md","content":"new"}`); err != nil {
 		t.Fatal(err)
 	}
 	if service.replaceCalls != 1 || service.replaceRequest.BaseRevision != "missing" {

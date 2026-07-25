@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
-	agenttools "github.com/alfredxw/denova/agent/tools"
 
 	"denova/config"
 )
@@ -15,11 +14,11 @@ type idListInput struct {
 }
 
 type configManagerToolBuilder struct {
-	build      func() (agent.BaseTool, error)
-	descriptor agenttools.Descriptor
+	build      func() (agent.Tool, error)
+	descriptor agent.ToolDescriptor
 }
 
-func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentToolSettings) ([]agent.BaseTool, error) {
+func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentToolSettings) ([]agent.ToolDefinition, error) {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
@@ -27,56 +26,56 @@ func newConfigManagerTools(cfg *config.Config, settings config.ResolvedAgentTool
 	novaDir := strings.TrimSpace(cfg.DataDir())
 	workspace := strings.TrimSpace(cfg.Workspace)
 	automationWorkspaces := append([]string(nil), cfg.AutomationWorkspaces...)
-	read := func(capability string, build func() (agent.BaseTool, error)) configManagerToolBuilder {
-		return configManagerToolBuilder{build: build, descriptor: boundedReadDescriptor(agenttools.SourceRead, capability)}
+	read := func(capability string, build func() (agent.Tool, error)) configManagerToolBuilder {
+		return configManagerToolBuilder{build: build, descriptor: boundedReadDescriptor(agent.ToolSourceRead, capability)}
 	}
-	write := func(capability string, build func() (agent.BaseTool, error)) configManagerToolBuilder {
-		return configManagerToolBuilder{build: build, descriptor: workspaceWriteDescriptor(agenttools.SourceWrite, capability, agenttools.RecoveryReconcilable)}
+	write := func(capability string, build func() (agent.Tool, error)) configManagerToolBuilder {
+		return configManagerToolBuilder{build: build, descriptor: workspaceWriteDescriptor(agent.ToolSourceWrite, capability, agent.ToolRecoveryReconcilable)}
 	}
 	builders := []configManagerToolBuilder{
-		read(config.AgentToolLoreRead, func() (agent.BaseTool, error) { return newListStyleReferencesTool(novaDir) }),
-		write(config.AgentToolLoreWrite, func() (agent.BaseTool, error) { return newWriteStyleReferencesTool(novaDir) }),
-		read(config.AgentToolLoreRead, func() (agent.BaseTool, error) { return newListTellersTool(novaDir) }),
-		read(config.AgentToolLoreRead, func() (agent.BaseTool, error) { return newReadTellersTool(novaDir) }),
-		write(config.AgentToolLoreWrite, func() (agent.BaseTool, error) { return newWriteTellersTool(novaDir) }),
-		read(config.AgentToolLoreRead, func() (agent.BaseTool, error) { return newListStoryDirectorsTool(novaDir) }),
-		read(config.AgentToolLoreRead, func() (agent.BaseTool, error) { return newReadStoryDirectorsTool(novaDir) }),
-		write(config.AgentToolLoreWrite, func() (agent.BaseTool, error) { return newWriteStoryDirectorsTool(novaDir) }),
-		read(config.AgentToolLoreRead, func() (agent.BaseTool, error) { return newListEventPackagesTool(novaDir) }),
-		read(config.AgentToolLoreRead, func() (agent.BaseTool, error) { return newReadEventPackagesTool(novaDir) }),
-		write(config.AgentToolLoreWrite, func() (agent.BaseTool, error) { return newWriteEventPackagesTool(novaDir) }),
-		read(config.AgentToolLoreRead, func() (agent.BaseTool, error) { return newListActorStatesTool(novaDir) }),
-		read(config.AgentToolLoreRead, func() (agent.BaseTool, error) { return newReadActorStatesTool(novaDir) }),
-		write(config.AgentToolLoreWrite, func() (agent.BaseTool, error) { return newWriteActorStatesTool(novaDir) }),
-		read(config.AgentToolLoreRead, func() (agent.BaseTool, error) { return newListImagePresetsTool(novaDir) }),
-		read(config.AgentToolLoreRead, func() (agent.BaseTool, error) { return newReadImagePresetsTool(novaDir) }),
-		write(config.AgentToolLoreWrite, func() (agent.BaseTool, error) { return newWriteImagePresetsTool(novaDir) }),
-		read(config.AgentToolTodo, func() (agent.BaseTool, error) {
+		read(config.AgentToolLoreRead, func() (agent.Tool, error) { return newListStyleReferencesTool(novaDir) }),
+		write(config.AgentToolLoreWrite, func() (agent.Tool, error) { return newWriteStyleReferencesTool(novaDir) }),
+		read(config.AgentToolLoreRead, func() (agent.Tool, error) { return newListTellersTool(novaDir) }),
+		read(config.AgentToolLoreRead, func() (agent.Tool, error) { return newReadTellersTool(novaDir) }),
+		write(config.AgentToolLoreWrite, func() (agent.Tool, error) { return newWriteTellersTool(novaDir) }),
+		read(config.AgentToolLoreRead, func() (agent.Tool, error) { return newListStoryDirectorsTool(novaDir) }),
+		read(config.AgentToolLoreRead, func() (agent.Tool, error) { return newReadStoryDirectorsTool(novaDir) }),
+		write(config.AgentToolLoreWrite, func() (agent.Tool, error) { return newWriteStoryDirectorsTool(novaDir) }),
+		read(config.AgentToolLoreRead, func() (agent.Tool, error) { return newListEventPackagesTool(novaDir) }),
+		read(config.AgentToolLoreRead, func() (agent.Tool, error) { return newReadEventPackagesTool(novaDir) }),
+		write(config.AgentToolLoreWrite, func() (agent.Tool, error) { return newWriteEventPackagesTool(novaDir) }),
+		read(config.AgentToolLoreRead, func() (agent.Tool, error) { return newListActorStatesTool(novaDir) }),
+		read(config.AgentToolLoreRead, func() (agent.Tool, error) { return newReadActorStatesTool(novaDir) }),
+		write(config.AgentToolLoreWrite, func() (agent.Tool, error) { return newWriteActorStatesTool(novaDir) }),
+		read(config.AgentToolLoreRead, func() (agent.Tool, error) { return newListImagePresetsTool(novaDir) }),
+		read(config.AgentToolLoreRead, func() (agent.Tool, error) { return newReadImagePresetsTool(novaDir) }),
+		write(config.AgentToolLoreWrite, func() (agent.Tool, error) { return newWriteImagePresetsTool(novaDir) }),
+		read(config.AgentToolTodo, func() (agent.Tool, error) {
 			return newListAutomationsTool(novaDir, workspace, automationWorkspaces)
 		}),
-		read(config.AgentToolTodo, func() (agent.BaseTool, error) {
+		read(config.AgentToolTodo, func() (agent.Tool, error) {
 			return newReadAutomationsTool(novaDir, workspace, automationWorkspaces)
 		}),
-		write(config.AgentToolTodo, func() (agent.BaseTool, error) {
+		write(config.AgentToolTodo, func() (agent.Tool, error) {
 			return newWriteAutomationsTool(novaDir, workspace, automationWorkspaces)
 		}),
-		read(config.AgentToolSkills, func() (agent.BaseTool, error) { return newListSkillsTool(cfg) }),
-		read(config.AgentToolSkills, func() (agent.BaseTool, error) { return newReadSkillsTool(cfg) }),
-		write(config.AgentToolSkills, func() (agent.BaseTool, error) { return newWriteSkillsTool(cfg) }),
-		read(config.AgentToolAgentConfigRead, func() (agent.BaseTool, error) { return newListAgentConfigsTool(cfg) }),
-		write(config.AgentToolAgentConfigWrite, func() (agent.BaseTool, error) { return newWriteAgentConfigsTool(cfg) }),
+		read(config.AgentToolSkills, func() (agent.Tool, error) { return newListSkillsTool(cfg) }),
+		read(config.AgentToolSkills, func() (agent.Tool, error) { return newReadSkillsTool(cfg) }),
+		write(config.AgentToolSkills, func() (agent.Tool, error) { return newWriteSkillsTool(cfg) }),
+		read(config.AgentToolAgentConfigRead, func() (agent.Tool, error) { return newListAgentConfigsTool(cfg) }),
+		write(config.AgentToolAgentConfigWrite, func() (agent.Tool, error) { return newWriteAgentConfigsTool(cfg) }),
 	}
-	tools := make([]agent.BaseTool, 0, len(builders)+2)
+	tools := make([]agent.ToolDefinition, 0, len(builders)+2)
 	for _, builder := range builders {
-		t, err := builder.build()
+		tool, err := builder.build()
 		if err != nil {
 			return nil, err
 		}
-		t, err = defineTool(t, builder.descriptor)
+		definition, err := defineTool(tool, builder.descriptor)
 		if err != nil {
 			return nil, err
 		}
-		tools = append(tools, t)
+		tools = append(tools, definition)
 	}
 	loreTools, err := newLoreTools(workspace, true)
 	if err != nil {

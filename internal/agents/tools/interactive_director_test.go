@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	agent "github.com/alfredxw/denova/agent"
-
 	"denova/internal/interactive"
 )
 
@@ -27,18 +25,14 @@ func TestInteractiveDirectorPlanToolSubmitsMarkdownPatchPayload(t *testing.T) {
 	if err != nil || len(tools) != 1 {
 		t.Fatalf("build director plan tool: tools=%d err=%v", len(tools), err)
 	}
-	info, err := tools[0].Info(context.Background())
+	info, err := tools[0].Tool.Info(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if info.Name != submitDirectorPlanUpdateToolName {
 		t.Fatalf("tool name = %s", info.Name)
 	}
-	invokable, ok := tools[0].(agent.InvokableTool)
-	if !ok {
-		t.Fatal("director plan tool must be invokable")
-	}
-	output, err := invokable.InvokableRun(context.Background(), `{"decision":{"mode":"patch","reason":"场景变化"},"updates":[{"document":"agent-brief.md","base_hash":"brief-hash","edits":[{"op":"replace_section","heading":"状态连续性","content":"抵达门前。"}]}],"finalize":true}`)
+	output, err := runToolForTest(context.Background(), tools[0], `{"decision":{"mode":"patch","reason":"场景变化"},"updates":[{"document":"agent-brief.md","base_hash":"brief-hash","edits":[{"op":"replace_section","heading":"状态连续性","content":"抵达门前。"}]}],"finalize":true}`)
 	if err != nil {
 		t.Fatal(err)
 	}
