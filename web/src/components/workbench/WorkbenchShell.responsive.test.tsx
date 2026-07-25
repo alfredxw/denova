@@ -145,6 +145,24 @@ describe('WorkbenchShell responsive main content', () => {
 
     expect(screen.getByText(`更新：${formatDateTime(updatedAt)} · 行 54`)).toBeInTheDocument()
   })
+
+  it('opens a hidden writing panel instead of toggling its retained state off', () => {
+    const onSetMode = vi.fn()
+    const onSetRightPanel = vi.fn()
+    render(<WorkbenchShell
+      {...workbenchProps(<div />)}
+      mode="books"
+      booksReturnMode="ide"
+      rightPanel="lore"
+      onSetMode={onSetMode}
+      onSetRightPanel={onSetRightPanel}
+    />)
+
+    fireEvent.click(screen.getByRole('button', { name: '资料库' }))
+
+    expect(onSetMode).toHaveBeenCalledWith('ide')
+    expect(onSetRightPanel).toHaveBeenCalledWith('lore')
+  })
 })
 
 function workbenchProps(main: ReactNode) {

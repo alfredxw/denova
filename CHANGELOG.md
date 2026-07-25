@@ -8,13 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复从书籍管理、方案预设等共享界面首次点击资料库时只返回写作界面、需要再次点击才能打开资料库的问题；隐藏的写作面板现在会直接恢复并打开所选面板。
+- Fixed the first Lore click from shared views such as Book Management or Presets only returning to Writing and requiring a second click. Hidden Writing panels now restore and open the requested panel directly.
 - 修复从资料库或方案预设返回写作界面并同时恢复创作 Agent 时，作品目录实际折叠但控制按钮仍显示为展开的问题；目录现在会恢复最后一个有效宽度，且瞬时零宽度不会覆盖已保存布局。
 - Fixed the project outline collapsing to zero width while its toggle still appeared active when returning from Lore or Presets and restoring the Writing Agent at the same time. The outline now restores its last valid width without persisting transient zero-width layouts.
 
 ### Changed
 
-- 资料库角色图片在调用图像模型前，先通过图像 Agent 所配置的语言模型提炼角色设定，只保留外貌、性格、服装配饰和其他可视特点；最终图片 Prompt 不再包含原始角色正文或“角色资料卡”字样。
-- Lore character images now pass character lore through the Image Agent's configured language model before image generation, retaining only appearance, personality, attire/accessories, and other visual traits. The final image prompt no longer includes raw character lore or the “角色资料卡” label.
+- 所有资料库图片在调用图像模型前，都会通过图像 Agent 所配置的语言模型将原始资料提炼为视觉绘制指导；提炼过程遵守当前图像方案的描述与提示，并补全适用的构图、镜头、姿势、光照、肌肤、材质、色彩和景深细节。最终图片 Prompt 不再包含原始资料正文或“角色资料卡”字样。
+- All Lore images now pass raw entries through the Image Agent's configured language model to produce visual drawing guidance before image generation. Refinement follows the selected image preset description and prompts while adding applicable composition, camera, pose, lighting, skin, material, color, and depth-of-field details. The final image prompt no longer includes raw lore content or the “角色资料卡” label.
 
 ## [v0.3.3] - 2026-07-25
 

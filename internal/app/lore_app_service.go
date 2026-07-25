@@ -232,9 +232,14 @@ func (s *LoreAppService) generateLoreItemImage(ctx context.Context, id string, r
 		return book.LoreItem{}, err
 	}
 	image, err := loreimage.NewService().Generate(ctx, &cfg, bookService, loreimage.GenerateRequest{
-		Item:              item,
-		Instruction:       request.Instruction,
-		ImagePresetID:     preset.ID,
+		Item:          item,
+		Instruction:   request.Instruction,
+		ImagePresetID: preset.ID,
+		ImagePresetGuidance: strings.TrimSpace(strings.Join([]string{
+			preset.Description,
+			preset.PromptForTargets(imagepreset.TargetAgentSystem),
+			preset.PromptForTargets(imagepreset.TargetToolRequest),
+		}, "\n\n")),
 		ImagePresetPrompt: preset.PromptForTargets(imagepreset.TargetToolRequest),
 		ProfileID:         request.ProfileID,
 	})

@@ -25,34 +25,41 @@ const (
 	maxBriefChars       = 1000
 	maxContentChars     = 4000
 	maxInstructionChars = 1000
-	maxCharacterTraits  = 2000
+	maxVisualGuidance   = 2500
 )
 
 type ImageGenerator interface {
 	Generate(ctx context.Context, cfg *config.Config, request imagegen.GenerateRequest) (imagegen.Result, error)
 }
 
-type characterTraitsRefiner interface {
-	Refine(ctx context.Context, cfg *config.Config, item book.LoreItem) (string, error)
+type visualGuidanceRefineRequest struct {
+	Item                book.LoreItem
+	ImagePresetGuidance string
+	Instruction         string
+}
+
+type visualGuidanceRefiner interface {
+	Refine(ctx context.Context, cfg *config.Config, request visualGuidanceRefineRequest) (string, error)
 }
 
 type Service struct {
 	generator ImageGenerator
-	refiner   characterTraitsRefiner
+	refiner   visualGuidanceRefiner
 	now       func() time.Time
 	suffix    func() string
 }
 
 type GenerateRequest struct {
-	Item              book.LoreItem
-	Instruction       string
-	ImagePresetID     string
-	ImagePresetPrompt string
-	ProfileID         string
-	Size              string
-	Quality           string
-	OutputFormat      string
-	characterTraits   string
+	Item                book.LoreItem
+	Instruction         string
+	ImagePresetID       string
+	ImagePresetGuidance string
+	ImagePresetPrompt   string
+	ProfileID           string
+	Size                string
+	Quality             string
+	OutputFormat        string
+	visualGuidance      string
 }
 
 type Meta struct {
@@ -80,14 +87,14 @@ type Meta struct {
 }
 
 func NewService() *Service {
-	return newServiceWithDependencies(imagegen.NewService(), newModelCharacterTraitsRefiner())
+	return newServiceWithDependencies(imagegen.NewService(), newModelVisualGuidanceRefiner())
 }
 
 func NewServiceWithGenerator(generator ImageGenerator) *Service {
-	return newServiceWithDependencies(generator, newModelCharacterTraitsRefiner())
+	return newServiceWithDependencies(generator, newModelVisualGuidanceRefiner())
 }
 
-func newServiceWithDependencies(generator ImageGenerator, refiner characterTraitsRefiner) *Service {
+func newServiceWithDependencies(generator ImageGenerator, refiner visualGuidanceRefiner) *Service {
 	return &Service{
 		generator: generator,
 		refiner:   refiner,
@@ -116,16 +123,18 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, bookService 
 	if strings.TrimSpace(item.Name) == "" {
 		return book.LoreItemImage{}, fmt.Errorf("资料名称不能为空")
 	}
-	if isCharacterItem(item) {
-		if s.refiner == nil {
-			return book.LoreItemImage{}, fmt.Errorf("角色图片提示词提炼器不可用")
-		}
-		traits, err := s.refiner.Refine(ctx, cfg, item)
-		if err != nil {
-			return book.LoreItemImage{}, fmt.Errorf("提炼角色图片特点失败: %w", err)
-		}
-		request.characterTraits = traits
+	if s.refiner == nil {
+		return book.LoreItemImage{}, fmt.Errorf("资料图片视觉指导提炼器不可用")
 	}
+	guidance, err := s.refiner.Refine(ctx, cfg, visualGuidanceRefineRequest{
+		Item:                item,
+		ImagePresetGuidance: request.ImagePresetGuidance,
+		Instruction:         request.Instruction,
+	})
+	if err != nil {
+		return book.LoreItemImage{}, fmt.Errorf("提炼资料图片视觉指导失败: %w", err)
+	}
+	request.visualGuidance = guidance
 	prompt := BuildPrompt(request)
 	if prompt == "" {
 		return book.LoreItemImage{}, imagegen.ErrPromptRequired
@@ -224,10 +233,8 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, bookService 
 func BuildPrompt(request GenerateRequest) string {
 	item := request.Item
 	preset := sanitizePromptText(trimRunes(request.ImagePresetPrompt, maxPresetChars))
-	brief := trimRunes(item.BriefDescription, maxBriefChars)
-	content := trimRunes(item.Content, maxContentChars)
 	instruction := sanitizePromptText(trimRunes(request.Instruction, maxInstructionChars))
-	characterTraits := sanitizePromptText(trimRunes(request.characterTraits, maxCharacterTraits))
+	visualGuidance := sanitizePromptText(trimRunes(request.visualGuidance, maxVisualGuidance))
 	var sb strings.Builder
 	if preset != "" {
 		sb.WriteString("# 图像风格要求\n\n")
@@ -238,29 +245,10 @@ func BuildPrompt(request GenerateRequest) string {
 	sb.WriteString("为资料库条目生成一张可作为设定预览和创作参考的视觉图。画面应突出主体、身份或规则意象，适合在资料库列表中识别；不要生成任何文字、标题、作者名、水印、logo、UI 面板或二维码。\n\n")
 	writePromptLine(&sb, "资料类型", loreTypeLabel(item.Type))
 	writePromptLine(&sb, "资料名称", item.Name)
-	if isCharacterItem(item) {
-		if characterTraits != "" {
-			sb.WriteString("\n## 角色特点\n\n")
-			sb.WriteString(characterTraits)
-			sb.WriteString("\n")
-		}
-	} else {
-		if len(item.Tags) > 0 {
-			writePromptLine(&sb, "标签", strings.Join(item.Tags, "、"))
-		}
-		if len(item.Keywords) > 0 {
-			writePromptLine(&sb, "关键词", strings.Join(item.Keywords, "、"))
-		}
-		if brief != "" {
-			sb.WriteString("\n## 简介\n\n")
-			sb.WriteString(brief)
-			sb.WriteString("\n")
-		}
-		if content != "" {
-			sb.WriteString("\n## 资料正文节选\n\n")
-			sb.WriteString(content)
-			sb.WriteString("\n")
-		}
+	if visualGuidance != "" {
+		sb.WriteString("\n## 视觉绘制指导\n\n")
+		sb.WriteString(visualGuidance)
+		sb.WriteString("\n")
 	}
 	if instruction != "" {
 		sb.WriteString("\n## 用户补充要求\n\n")
@@ -268,10 +256,6 @@ func BuildPrompt(request GenerateRequest) string {
 		sb.WriteString("\n")
 	}
 	return sanitizePromptText(strings.TrimSpace(sb.String()))
-}
-
-func isCharacterItem(item book.LoreItem) bool {
-	return strings.EqualFold(strings.TrimSpace(item.Type), "character")
 }
 
 func sanitizePromptText(value string) string {

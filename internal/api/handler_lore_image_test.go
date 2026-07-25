@@ -102,8 +102,22 @@ func newLoreImageTestApplication(t *testing.T) (*runtimeapp.App, *httptest.Serve
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/chat/completions":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			encoded, err := json.Marshal(body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			modelRequest := string(encoded)
+			for _, want := range []string{"image_preset", "互动游戏", "电影化", "光照", "肌肤", "姿势"} {
+				if !strings.Contains(modelRequest, want) {
+					t.Fatalf("visual guidance model request missing %q: %s", want, modelRequest)
+				}
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":      "chatcmpl-character-traits",
+				"id":      "chatcmpl-lore-visual-guidance",
 				"object":  "chat.completion",
 				"created": 123,
 				"model":   "test-model",
@@ -111,7 +125,7 @@ func newLoreImageTestApplication(t *testing.T) (*runtimeapp.App, *httptest.Serve
 					"index": 0,
 					"message": map[string]any{
 						"role":    "assistant",
-						"content": `{"appearance":"黑色短发，灰色眼睛","personality":"谨慎沉静","attire_accessories":"深色风衣","other_visual_traits":""}`,
+						"content": `{"visual_guidance":"黑色短发、灰色眼睛，神情谨慎沉静，穿深色风衣；半身三分之二侧身站姿，双手自然放松，柔和侧逆光勾勒轮廓，自然肌肤毛孔与血色，浅景深；潮湿石砌街巷笼罩薄雾，暖黄路灯形成视觉焦点。"}`,
 					},
 					"finish_reason": "stop",
 				}},
@@ -124,15 +138,22 @@ func newLoreImageTestApplication(t *testing.T) (*runtimeapp.App, *httptest.Serve
 			}
 			prompt, _ := body["prompt"].(string)
 			if strings.Contains(prompt, "资料类型：角色") {
-				for _, want := range []string{"黑色短发", "谨慎沉静", "深色风衣"} {
+				for _, want := range []string{"黑色短发", "谨慎沉静", "深色风衣", "侧身站姿", "侧逆光", "肌肤毛孔"} {
 					if !strings.Contains(prompt, want) {
-						t.Fatalf("character image prompt missing refined trait %q: %s", want, prompt)
+						t.Fatalf("character image prompt missing refined guidance %q: %s", want, prompt)
 					}
 				}
-				for _, forbidden := range []string{"角色资料卡", "谨慎。"} {
-					if strings.Contains(prompt, forbidden) {
-						t.Fatalf("character image prompt leaked raw lore %q: %s", forbidden, prompt)
+			}
+			if strings.Contains(prompt, "资料类型：地点") {
+				for _, want := range []string{"石砌街巷", "薄雾", "暖黄路灯"} {
+					if !strings.Contains(prompt, want) {
+						t.Fatalf("location image prompt missing refined guidance %q: %s", want, prompt)
 					}
+				}
+			}
+			for _, forbidden := range []string{"角色资料卡", "谨慎。", "地点。"} {
+				if strings.Contains(prompt, forbidden) {
+					t.Fatalf("lore image prompt leaked raw lore %q: %s", forbidden, prompt)
 				}
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{

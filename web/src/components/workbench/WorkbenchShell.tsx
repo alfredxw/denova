@@ -233,9 +233,10 @@ export function WorkbenchShell({
   }
 
   const toggleIdePanel = (panel: NonNullable<RightPanel>) => {
+    const panelAlreadyVisible = mode === 'ide' && !settingsOpen && rightPanel === panel
     closeSettingsIfOpen()
     onSetMode('ide')
-    onSetRightPanel(rightPanel === panel ? null : panel)
+    onSetRightPanel(panelAlreadyVisible ? null : panel)
   }
 
   const openVersions = () => {
