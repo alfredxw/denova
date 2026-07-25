@@ -35,13 +35,20 @@ vi.mock('@/components/Chat/AgentPanel', () => ({
 }))
 
 vi.mock('@/components/Editor/MarkdownEditor', () => ({
-  MarkdownEditor: ({ fileName, documentReviewNavigationIntent }: {
+  MarkdownEditor: ({ fileName, chapterSummary, onRevealChapter, documentReviewNavigationIntent }: {
     fileName: string | null
+    chapterSummary?: { path: string }
+    onRevealChapter?: (path: string) => void
     documentReviewNavigationIntent?: { commentID: string; nonce: number } | null
   }) => (
-    <div data-testid="markdown-editor-navigation">
-      {fileName || 'none'}|{documentReviewNavigationIntent?.commentID || 'none'}|{documentReviewNavigationIntent?.nonce || 0}
-    </div>
+    <>
+      <div data-testid="markdown-editor-navigation">
+        {fileName || 'none'}|{documentReviewNavigationIntent?.commentID || 'none'}|{documentReviewNavigationIntent?.nonce || 0}
+      </div>
+      {chapterSummary ? (
+        <button type="button" onClick={() => onRevealChapter?.(chapterSummary.path)}>reveal chapter in outline</button>
+      ) : null}
+    </>
   ),
 }))
 
@@ -219,6 +226,39 @@ describe('ModeRouter autosave navigation policy', () => {
       `${comment.path}|${comment.id}|2`,
     ))
     expect(handleSelectFile).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens the project sidebar and switches to the outline before locating the editor chapter', async () => {
+    const user = userEvent.setup()
+    const onToggleProjectVisible = vi.fn()
+    const onSetSidebarView = vi.fn()
+    const chapter = {
+      path: 'chapters/ch01.md',
+      file_name: 'ch01.md',
+      display_title: '第一章',
+      index: 1,
+      words: 1200,
+      status: 'draft',
+      confirmed: false,
+      updated_at: '2026-07-25T00:00:00Z',
+      volume: '第一卷',
+      volume_path: 'chapters/volume-01',
+    }
+
+    render(<ModeRouter {...modeRouterProps({
+      projectVisible: false,
+      selectedFile: chapter.path,
+      currentChapter: chapter,
+      openTabs: [{ kind: 'file', path: chapter.path }],
+      activeTabKey: `file:${chapter.path}`,
+      onToggleProjectVisible,
+      onSetSidebarView,
+    })} />)
+
+    await user.click(screen.getByRole('button', { name: 'reveal chapter in outline' }))
+
+    expect(onToggleProjectVisible).toHaveBeenCalledTimes(1)
+    expect(onSetSidebarView).toHaveBeenCalledWith('outline')
   })
 })
 

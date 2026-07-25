@@ -45,4 +45,23 @@ describe('TurnNavigator', () => {
     await user.tab()
     expect(screen.getByRole('button', { name: '跳转到第 1 轮' })).toHaveFocus()
   })
+
+  it('aggregates large histories while preserving the active and latest turns', () => {
+    const items = Array.from({ length: 10_000 }, (_, index) => ({
+      anchorId: `turn-${index + 1}`,
+      user: `行动 ${index + 1}`,
+      narrative: `剧情 ${index + 1}`,
+    }))
+    render(
+      <TurnNavigator
+        items={items}
+        activeAnchorId="turn-4322"
+        onSelect={vi.fn()}
+      />,
+    )
+
+    expect(screen.getAllByRole('button').length).toBeLessThanOrEqual(29)
+    expect(screen.getByRole('button', { name: '跳转到第 4322 轮' })).toHaveAttribute('aria-current', 'true')
+    expect(screen.getByRole('button', { name: '跳转到第 10000 轮' })).toBeInTheDocument()
+  })
 })

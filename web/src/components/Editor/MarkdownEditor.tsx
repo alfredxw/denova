@@ -76,6 +76,7 @@ interface MarkdownEditorProps {
   chapterSummary?: ChapterSummary
   searchIntent?: EditorSearchIntent | null
   onGenerateIllustration?: (chapterPath: string) => void
+  onRevealChapter?: (chapterPath: string) => void
   generateIllustrationDisabled?: boolean
   illustrationInsertSignal?: { illustration: ChapterIllustration; nonce: number } | null
   onLineChange?: (line: number) => void
@@ -106,6 +107,7 @@ export function MarkdownEditor({
   chapterSummary,
   searchIntent,
   onGenerateIllustration,
+  onRevealChapter,
   generateIllustrationDisabled = false,
   illustrationInsertSignal,
   onLineChange,
@@ -493,6 +495,7 @@ export function MarkdownEditor({
         settings={settings}
         onSettingsChange={setSettings}
         onGenerateIllustration={onGenerateIllustration}
+        onRevealChapter={onRevealChapter}
         generateIllustrationDisabled={generateIllustrationDisabled}
       />
       {revision === MISSING_WORKSPACE_REVISION && (

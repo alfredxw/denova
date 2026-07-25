@@ -35,8 +35,6 @@ const planning = {
   'planning.chapterPlanHistory': 'Outline History',
   'planning.chapterPlansEmpty': 'No outlines yet',
   'planning.backToTop': 'Back to top',
-  'planning.locateCurrentChapter': 'Locate open chapter',
-  'planning.latestChapter': 'Latest',
   'planning.locateLatestChapter': 'Jump to latest chapter',
   'planning.volumeChapters': 'Volume Chapters',
   'planning.unvolumed': 'Unvolumed',

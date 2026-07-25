@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDownToLine, ArrowUp, BookOpen, ChevronDown, ChevronRight, Crosshair, FileText } from 'lucide-react'
+import { BookOpen, ChevronDown, ChevronRight, FileText } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { ChapterSummary, DocumentPreview } from '@/lib/api'
 import { BookSettingsShortcuts } from '@/components/workbench/BookSettingsShortcuts'
 import { ChapterOutlineItem } from './ChapterOutlineItem'
+import { OutlineFileActions } from './OutlineFileActions'
+
+export interface OutlineRevealRequest {
+  path: string
+  nonce: number
+}
 
 interface ChapterOutlineProps {
   workspace: string
@@ -14,23 +20,25 @@ interface ChapterOutlineProps {
   outline?: DocumentPreview
   chapterPlans: DocumentPreview[]
   selectedFile: string | null
+  revealRequest?: OutlineRevealRequest | null
   onSelectFile: (path: string) => void | Promise<void>
+  onReferenceFile?: (path: string) => void
+  onRevealFile?: (path: string) => void | Promise<void>
+  onRenameItem?: (path: string, newName: string) => Promise<void>
+  onDeleteItem?: (path: string) => Promise<void>
   onRequestBookSettingCreate: (item: { path: string; title: string }) => void
   onSetChapterConfirmed: (path: string, confirmed: boolean) => void | Promise<void>
 }
 
-const floaterButtonBaseClass =
-  'pointer-events-auto flex h-8 items-center justify-center rounded-full border border-[var(--nova-border)] bg-[var(--nova-surface)]/85 text-[var(--nova-text-faint)] shadow-[0_10px_24px_rgba(0,0,0,0.16)] backdrop-blur-xl transition duration-200 hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--nova-ring)]'
-
 const BOOK_SETTINGS_HEADER_PINNED_KEY = 'nova.outline.book-settings-header-pinned'
 
-// 下滑超过该距离后出现「回到顶部」浮标。不能用视口高度做阈值：
+// 下滑超过该距离后启用顶部「回到顶部」动作。不能用视口高度做阈值：
 // 内容高度不足 2 倍视口时 scrollTop 永远到不了一个视口高。
 const BACK_TO_TOP_THRESHOLD_PX = 320
 
 /**
  * 写作页「大纲」tab：可固定的书籍设定与最新细纲入口独立于章节滚动区。
- * 长目录提供最新章、已打开章节与顶部定位；来自面板外部的章节切换会自动定位到当前章节。
+ * 长目录在固定区提供最新章与回顶；来自面板外部的章节切换会自动定位到当前章节。
  */
 export function ChapterOutline({
   workspace,
@@ -40,7 +48,12 @@ export function ChapterOutline({
   outline,
   chapterPlans,
   selectedFile,
+  revealRequest,
   onSelectFile,
+  onReferenceFile,
+  onRevealFile,
+  onRenameItem,
+  onDeleteItem,
   onRequestBookSettingCreate,
   onSetChapterConfirmed,
 }: ChapterOutlineProps) {
@@ -84,8 +97,6 @@ export function ChapterOutline({
   const lastAutoLocatedRef = useRef<string | null>(null)
   const didLocateOnceRef = useRef(false)
   const [backToTopVisible, setBackToTopVisible] = useState(false)
-  const [activeChapterOffscreen, setActiveChapterOffscreen] = useState(false)
-  const [latestChapterOffscreen, setLatestChapterOffscreen] = useState(false)
 
   const handleSelectFileFromPanel = useCallback((path: string) => {
     panelSelectionRef.current = true
@@ -119,7 +130,7 @@ export function ChapterOutline({
     })
   }, [chapters, findChapterElement])
 
-  // 下滑超过固定距离后展示「回到顶部」浮标。
+  // 下滑超过固定距离后启用「回到顶部」。
   useEffect(() => {
     const container = scrollContainerRef.current
     if (!container) return
@@ -147,6 +158,7 @@ export function ChapterOutline({
     const fromPanel = panelSelectionRef.current
     panelSelectionRef.current = false
     if (!selectedFile || chapters.length === 0 || !selectedIsChapter) return
+    if (revealRequest?.path === selectedFile) return
     if (fromPanel) {
       lastAutoLocatedRef.current = selectedFile
       return
@@ -156,29 +168,14 @@ export function ChapterOutline({
     const behavior: ScrollBehavior = didLocateOnceRef.current ? 'smooth' : 'auto'
     didLocateOnceRef.current = true
     locateChapter(selectedFile, behavior)
-  }, [chapters.length, locateChapter, selectedFile, selectedIsChapter])
+  }, [chapters.length, locateChapter, revealRequest?.path, selectedFile, selectedIsChapter])
 
-  const selectedChapterPath = selectedIsChapter ? selectedFile : null
   const latestChapterPath = latestChapter?.path ?? null
 
-  // 同时观测已打开章节和最新章，卷折叠导致节点未渲染时也视为离开视区。
   useEffect(() => {
-    const container = scrollContainerRef.current
-    const activeTarget = selectedChapterPath ? findChapterElement(selectedChapterPath) : null
-    const latestTarget = latestChapterPath ? findChapterElement(latestChapterPath) : null
-    setActiveChapterOffscreen(Boolean(selectedChapterPath && !activeTarget))
-    setLatestChapterOffscreen(Boolean(latestChapterPath && !latestTarget))
-    if (!container || typeof IntersectionObserver === 'undefined') return
-    const observer = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.target === activeTarget) setActiveChapterOffscreen(!entry.isIntersecting)
-        if (entry.target === latestTarget) setLatestChapterOffscreen(!entry.isIntersecting)
-      }
-    }, { root: container })
-    if (activeTarget) observer.observe(activeTarget)
-    if (latestTarget && latestTarget !== activeTarget) observer.observe(latestTarget)
-    return () => observer.disconnect()
-  }, [chapters, collapsedVolumes, findChapterElement, latestChapterPath, selectedChapterPath])
+    if (!revealRequest?.path) return
+    locateChapter(revealRequest.path, 'smooth')
+  }, [locateChapter, revealRequest?.nonce, revealRequest?.path])
 
   const scrollToTop = () => {
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
@@ -195,47 +192,62 @@ export function ChapterOutline({
         selectedFile={selectedFile}
         headerPinned={headerPinned}
         onSelectFile={handleSelectFileFromPanel}
+        latestChapterAvailable={Boolean(latestChapterPath)}
+        backToTopAvailable={backToTopVisible}
+        onLocateLatestChapter={() => { if (latestChapterPath) locateChapter(latestChapterPath, 'smooth') }}
+        onBackToTop={scrollToTop}
         onToggleHeaderPinned={() => setHeaderPinned((pinned) => !pinned)}
+        onReferenceFile={onReferenceFile}
+        onRevealFile={onRevealFile}
+        onRenameItem={onRenameItem}
+        onDeleteItem={onDeleteItem}
         onRequestCreate={onRequestBookSettingCreate}
       />
       {latestChapterPlan ? (
-        <button
-          type="button"
-          title={latestChapterPlan.title}
-          aria-current={selectedFile === latestChapterPlan.path ? 'page' : undefined}
-          className={`nova-nav-item flex w-full items-center gap-2 border px-2 py-1.5 text-left ${
-            selectedFile === latestChapterPlan.path
-              ? 'is-active border-[var(--nova-border)]'
-              : 'border-transparent bg-[var(--nova-surface-2)]'
-          }`}
-          onClick={() => handleSelectFileFromPanel(latestChapterPlan.path)}
+        <OutlineFileActions
+          path={latestChapterPlan.path}
+          onReferenceFile={onReferenceFile}
+          onRevealFile={onRevealFile}
+          onRenameItem={onRenameItem}
+          onDeleteItem={onDeleteItem}
         >
-          <FileText className={`h-3.5 w-3.5 shrink-0 ${selectedFile === latestChapterPlan.path ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-          <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-[var(--nova-text)]">{latestChapterPlan.title}</span>
-        </button>
+          <button
+            type="button"
+            title={latestChapterPlan.title}
+            aria-current={selectedFile === latestChapterPlan.path ? 'page' : undefined}
+            className={`nova-nav-item flex w-full items-center gap-2 border px-2 py-1.5 pr-8 text-left ${
+              selectedFile === latestChapterPlan.path
+                ? 'is-active border-[var(--nova-border)]'
+                : 'border-transparent bg-[var(--nova-surface-2)]'
+            }`}
+            onClick={() => handleSelectFileFromPanel(latestChapterPlan.path)}
+          >
+            <FileText className={`h-3.5 w-3.5 shrink-0 ${selectedFile === latestChapterPlan.path ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
+            <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-[var(--nova-text)]">{latestChapterPlan.title}</span>
+          </button>
+        </OutlineFileActions>
       ) : null}
+    </div>
+  )
+
+  const bookSettingsHeaderFrame = (
+    <div data-testid="book-settings-header-frame" className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
+      {bookSettingsHeader}
     </div>
   )
 
   return (
     <div ref={rootRef} className="flex h-full min-h-0 flex-col">
-      {headerPinned ? (
-        <div className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] px-2 pb-2">
-          {bookSettingsHeader}
-        </div>
-      ) : null}
+      {headerPinned ? bookSettingsHeaderFrame : null}
       <div
         ref={scrollContainerRef}
         role="navigation"
         aria-label={t('planning.outlineNavigation')}
-        className="min-h-0 flex-1 overflow-y-auto p-2"
+        className="min-h-0 flex-1 overflow-y-auto"
       >
-        <div className="space-y-3">
-          {!headerPinned ? (
-            <div className="border-b border-[var(--nova-border)] pb-3">
-              {bookSettingsHeader}
-            </div>
-          ) : null}
+        {!headerPinned ? bookSettingsHeaderFrame : null}
+        <div className="p-2">
+          <div className="space-y-3">
 
           {chapterPlans.length === 0 ? (
             <section className="flex items-center justify-between gap-2 px-1 py-1 text-[11px] font-medium text-[var(--nova-text-faint)]">
@@ -262,7 +274,16 @@ export function ChapterOutline({
               {chapterPlanHistoryExpanded ? (
                 <div className="space-y-1 pl-4">
                   {historicalChapterPlans.map((plan) => (
-                    <PlanningListItem key={plan.path} document={plan} selected={selectedFile === plan.path} onSelectFile={handleSelectFileFromPanel} />
+                    <PlanningListItem
+                      key={plan.path}
+                      document={plan}
+                      selected={selectedFile === plan.path}
+                      onSelectFile={handleSelectFileFromPanel}
+                      onReferenceFile={onReferenceFile}
+                      onRevealFile={onRevealFile}
+                      onRenameItem={onRenameItem}
+                      onDeleteItem={onDeleteItem}
+                    />
                   ))}
                 </div>
               ) : null}
@@ -303,6 +324,10 @@ export function ChapterOutline({
                               active={selectedFile === chapter.path}
                               onSelectFile={handleSelectFileFromPanel}
                               onSetChapterConfirmed={onSetChapterConfirmed}
+                              onReferenceFile={onReferenceFile}
+                              onRevealFile={onRevealFile}
+                              onRenameItem={onRenameItem}
+                              onDeleteItem={onDeleteItem}
                             />
                           ))}
                         </div>
@@ -314,43 +339,6 @@ export function ChapterOutline({
             )}
           </section>
 
-          <div className="pointer-events-none sticky bottom-2 z-20 h-0">
-            <div className="absolute bottom-0 right-0 flex items-center gap-1.5">
-              <button
-                type="button"
-                aria-label={t('planning.locateLatestChapter')}
-                aria-hidden={!latestChapterOffscreen}
-                tabIndex={latestChapterOffscreen ? 0 : -1}
-                title={t('planning.locateLatestChapter')}
-                onClick={() => { if (latestChapterPath) locateChapter(latestChapterPath, 'smooth') }}
-                className={`${floaterButtonBaseClass} gap-1 px-2 text-[10px] ${latestChapterOffscreen ? 'opacity-90 hover:opacity-100' : 'pointer-events-none translate-y-1 opacity-0'}`}
-              >
-                <ArrowDownToLine className="h-3.5 w-3.5" />
-                <span>{t('planning.latestChapter')}</span>
-              </button>
-              <button
-                type="button"
-                aria-label={t('planning.locateCurrentChapter')}
-                aria-hidden={!activeChapterOffscreen}
-                tabIndex={activeChapterOffscreen ? 0 : -1}
-                title={t('planning.locateCurrentChapter')}
-                onClick={() => { if (selectedChapterPath) locateChapter(selectedChapterPath, 'smooth') }}
-                className={`${floaterButtonBaseClass} w-8 ${activeChapterOffscreen ? 'opacity-80 hover:opacity-100' : 'pointer-events-none translate-y-1 opacity-0'}`}
-              >
-                <Crosshair className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                aria-label={t('planning.backToTop')}
-                aria-hidden={!backToTopVisible}
-                tabIndex={backToTopVisible ? 0 : -1}
-                title={t('planning.backToTop')}
-                onClick={scrollToTop}
-                className={`${floaterButtonBaseClass} w-8 ${backToTopVisible ? 'opacity-80 hover:opacity-100' : 'pointer-events-none translate-y-1 opacity-0'}`}
-              >
-                <ArrowUp className="h-3.5 w-3.5" />
-              </button>
-            </div>
           </div>
         </div>
       </div>
@@ -362,27 +350,43 @@ function PlanningListItem({
   document,
   selected,
   onSelectFile,
+  onReferenceFile,
+  onRevealFile,
+  onRenameItem,
+  onDeleteItem,
 }: {
   document: DocumentPreview
   selected: boolean
   onSelectFile: (path: string) => void | Promise<void>
+  onReferenceFile?: (path: string) => void
+  onRevealFile?: (path: string) => void | Promise<void>
+  onRenameItem?: (path: string, newName: string) => Promise<void>
+  onDeleteItem?: (path: string) => Promise<void>
 }) {
   return (
-    <button
-      type="button"
-      title={document.title}
-      className={`nova-nav-item w-full border px-3 py-2 text-left ${
-        selected
-          ? 'is-active border-[var(--nova-border)]'
-          : 'border-transparent bg-[var(--nova-surface)]'
-      }`}
-      onClick={() => onSelectFile(document.path)}
+    <OutlineFileActions
+      path={document.path}
+      onReferenceFile={onReferenceFile}
+      onRevealFile={onRevealFile}
+      onRenameItem={onRenameItem}
+      onDeleteItem={onDeleteItem}
     >
-      <div className="flex min-w-0 items-center gap-2">
-        <FileText className={`h-3.5 w-3.5 shrink-0 ${selected ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-        <span className="min-w-0 flex-1 truncate text-xs font-medium">{document.title}</span>
-      </div>
-    </button>
+      <button
+        type="button"
+        title={document.title}
+        className={`nova-nav-item w-full border px-3 py-2 pr-8 text-left ${
+          selected
+            ? 'is-active border-[var(--nova-border)]'
+            : 'border-transparent bg-[var(--nova-surface)]'
+        }`}
+        onClick={() => onSelectFile(document.path)}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <FileText className={`h-3.5 w-3.5 shrink-0 ${selected ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
+          <span className="min-w-0 flex-1 truncate text-xs font-medium">{document.title}</span>
+        </div>
+      </button>
+    </OutlineFileActions>
   )
 }
 

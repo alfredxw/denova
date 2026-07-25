@@ -31,7 +31,7 @@ func (c *interactiveConversation) ResolveInterruption(id string) error {
 
 type interactiveTurnHistory struct {
 	PreviousSummary string
-	Turns           []interactive.TurnEvent
+	Turns           []interactive.StoryModelTurn
 	PreviousCount   int
 	OmittedCount    int
 }
@@ -46,18 +46,20 @@ const (
 )
 
 func buildInteractiveTurnHistory(turns []interactive.TurnEvent) interactiveTurnHistory {
-	return interactiveTurnHistory{Turns: append([]interactive.TurnEvent(nil), turns...)}
+	return interactiveTurnHistory{Turns: interactiveStoryModelTurns(turns)}
 }
 
 func buildInteractiveModelVisibleTurnHistory(turns []interactive.TurnEvent, compaction *interactive.ContextCompactionEvent) interactiveTurnHistory {
 	return buildInteractiveTurnHistoryWithCompaction(turns, compaction, retainedTurnsForInteractiveCompaction(compaction))
 }
 
-func buildInteractiveModelVisibleSnapshotHistory(snapshot interactive.Snapshot) interactiveTurnHistory {
-	return buildInteractiveTurnHistoryWindowWithCompaction(
-		snapshot.Turns, interactiveSnapshotTurnStart(snapshot), snapshot.ContextCompaction,
-		retainedTurnsForInteractiveCompaction(snapshot.ContextCompaction),
-	)
+func buildInteractiveModelVisibleHistory(history interactive.StoryModelHistory, compaction *interactive.ContextCompactionEvent) interactiveTurnHistory {
+	result := interactiveTurnHistory{Turns: append([]interactive.StoryModelTurn(nil), history.Turns...)}
+	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
+		result.PreviousCount = compaction.SourceTurnCount
+		result.OmittedCount = compaction.SourceTurnCount
+	}
+	return result
 }
 
 func retainedTurnsForInteractiveCompaction(compaction *interactive.ContextCompactionEvent) int {
@@ -101,10 +103,24 @@ func buildInteractiveTurnHistoryWindowWithCompaction(turns []interactive.TurnEve
 	retained = append(retained, appended...)
 	return interactiveTurnHistory{
 		PreviousSummary: "",
-		Turns:           retained,
+		Turns:           interactiveStoryModelTurns(retained),
 		PreviousCount:   compaction.SourceTurnCount,
 		OmittedCount:    compaction.SourceTurnCount,
 	}
+}
+
+func interactiveStoryModelTurns(turns []interactive.TurnEvent) []interactive.StoryModelTurn {
+	if len(turns) == 0 {
+		return nil
+	}
+	result := make([]interactive.StoryModelTurn, 0, len(turns))
+	for _, turn := range turns {
+		result = append(result, interactive.StoryModelTurn{
+			ID: turn.ID, BranchID: turn.BranchID, User: turn.User, Narrative: turn.Narrative,
+			ModelContextMessages: append([]interactive.ModelContextMessage(nil), turn.ModelContextMessages...),
+		})
+	}
+	return result
 }
 
 func interactiveSnapshotTurnCount(snapshot interactive.Snapshot) int {
@@ -114,14 +130,71 @@ func interactiveSnapshotTurnCount(snapshot interactive.Snapshot) int {
 	return len(snapshot.Turns)
 }
 
-func interactiveSnapshotTurnStart(snapshot interactive.Snapshot) int {
-	if snapshot.TurnStart > 0 {
-		return snapshot.TurnStart
+func interactiveModelCompaction(snapshot interactive.Snapshot) *interactive.ContextCompactionEvent {
+	compaction := snapshot.ContextCompaction
+	if compaction == nil || strings.TrimSpace(compaction.Summary) == "" {
+		return nil
 	}
-	return max(0, interactiveSnapshotTurnCount(snapshot)-len(snapshot.Turns))
+	turnCount := interactiveSnapshotTurnCount(snapshot)
+	if compaction.SourceTurnCount < 0 || compaction.SourceTurnCount > turnCount {
+		return nil
+	}
+	return compaction
 }
 
-func formatInteractiveTurnHistory(turns []interactive.TurnEvent, emptyMessage string) string {
+func interactiveModelHistoryRange(snapshot interactive.Snapshot) (startTurn, endTurn int, compaction *interactive.ContextCompactionEvent) {
+	endTurn = interactiveSnapshotTurnCount(snapshot)
+	compaction = interactiveModelCompaction(snapshot)
+	if compaction != nil {
+		startTurn = max(0, compaction.SourceTurnCount-retainedTurnsForInteractiveCompaction(compaction))
+	}
+	return startTurn, endTurn, compaction
+}
+
+func (c *interactiveConversation) modelHistoryForCycle(storyCtx interactive.StoryContext) (interactive.StoryModelHistory, *interactive.ContextCompactionEvent, error) {
+	if c == nil || c.store == nil {
+		return interactive.StoryModelHistory{}, nil, fmt.Errorf("互动故事不存在")
+	}
+	branchID := storyCtx.Snapshot.BranchID
+	startTurn, turnCount, compaction := interactiveModelHistoryRange(storyCtx.Snapshot)
+	compactionID := ""
+	if compaction != nil {
+		compactionID = compaction.ID
+	}
+	branchHead := ""
+	if branch, ok := storyCtx.Meta.Branches[branchID]; ok {
+		branchHead = branch.Head
+	}
+	cacheKey := strings.Join([]string{
+		c.storyID, branchID, branchHead, fmt.Sprint(startTurn), fmt.Sprint(turnCount), compactionID,
+	}, "\x00")
+	c.mu.Lock()
+	if c.modelHistory != nil && c.modelHistoryKey == cacheKey {
+		cached := *c.modelHistory
+		c.mu.Unlock()
+		return cached, compaction, nil
+	}
+	c.mu.Unlock()
+
+	history, err := c.store.ReadModelHistory(c.storyID, interactive.StoryModelHistoryQuery{
+		BranchID: branchID, StartTurn: startTurn, EndTurn: turnCount,
+	})
+	if err != nil {
+		return interactive.StoryModelHistory{}, nil, err
+	}
+	c.mu.Lock()
+	c.modelHistoryKey = cacheKey
+	cached := history
+	c.modelHistory = &cached
+	c.mu.Unlock()
+	log.Printf(
+		"[interactive-agent] loaded model history story_id=%s branch_id=%s start_turn=%d end_turn=%d total_turns=%d model_turns=%d checkpoint_id=%s",
+		c.storyID, branchID, history.StartTurn, history.EndTurn, history.TotalTurns, len(history.Turns), compactionID,
+	)
+	return history, compaction, nil
+}
+
+func formatInteractiveTurnHistory(turns []interactive.StoryModelTurn, emptyMessage string) string {
 	if len(turns) == 0 {
 		return emptyMessage
 	}
@@ -155,9 +228,24 @@ func interactiveMessageListSummary(messages []*agents.Message) string {
 	if len(messages) == 0 {
 		return "count=0"
 	}
-	parts := make([]string, 0, len(messages))
-	for i, msg := range messages {
-		parts = append(parts, interactiveMessageSummary(i, len(messages), msg))
+	const edgeCount = 4
+	if len(messages) <= edgeCount*2 {
+		parts := make([]string, 0, len(messages))
+		for i, msg := range messages {
+			parts = append(parts, interactiveMessageSummary(i, len(messages), msg))
+		}
+		return fmt.Sprintf("count=%d parts=[%s]", len(messages), strings.Join(parts, "; "))
+	}
+	// Context can contain thousands of messages before its first checkpoint.
+	// Keep diagnostics useful without turning the log itself into an unbounded
+	// second copy of model-visible history.
+	parts := make([]string, 0, edgeCount*2+1)
+	for i := 0; i < edgeCount; i++ {
+		parts = append(parts, interactiveMessageSummary(i, len(messages), messages[i]))
+	}
+	parts = append(parts, fmt.Sprintf("... omitted=%d ...", len(messages)-edgeCount*2))
+	for i := len(messages) - edgeCount; i < len(messages); i++ {
+		parts = append(parts, interactiveMessageSummary(i, len(messages), messages[i]))
 	}
 	return fmt.Sprintf("count=%d parts=[%s]", len(messages), strings.Join(parts, "; "))
 }

@@ -8,7 +8,7 @@ import { SearchPanel } from '@/components/Sidebar/SearchPanel'
 import { AgentPanel, WRITING_COMPOSER_SETTING_DEFAULTS } from '@/components/Chat/AgentPanel'
 import { FilePreview } from '@/components/workbench/FilePreview'
 import { MarkdownEditor, type DocumentReviewNavigationIntent, type EditorFlushHandler } from '@/components/Editor/MarkdownEditor'
-import { ChapterOutline } from '@/components/workbench/outline/ChapterOutline'
+import { ChapterOutline, type OutlineRevealRequest } from '@/components/workbench/outline/ChapterOutline'
 import { getImagePresets, getInteractiveTellers } from '@/features/interactive/api'
 import { useInteractiveStore } from '@/features/interactive/stores/interactive-store'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
@@ -20,6 +20,7 @@ import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
 import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
+import { workspaceParentPaths } from '@/lib/workspace-path'
 import { useWritingChangeReview } from '@/features/changes/use-writing-change-review'
 import type { ReviewFeedbackBatch, ReviewFeedbackComment, ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { useDocumentReview } from '@/features/document-review/use-document-review'
@@ -263,6 +264,9 @@ export function ModeRouter(props: ModeRouterProps) {
   const [agentSubAgentDetailsOpen, setAgentSubAgentDetailsOpen] = useState(false)
   const [illustrationInsertSignal, setIllustrationInsertSignal] = useState<{ illustration: ChapterIllustration; nonce: number } | null>(null)
   const [documentReviewNavigationTarget, setDocumentReviewNavigationTarget] = useState<(DocumentReviewNavigationIntent & { path: string }) | null>(null)
+  const [outlineRevealRequest, setOutlineRevealRequest] = useState<OutlineRevealRequest | null>(null)
+  const [projectRevealPath, setProjectRevealPath] = useState('')
+  const projectRevealParents = useMemo(() => workspaceParentPaths(projectRevealPath), [projectRevealPath])
   const documentReviewNavigationRequestRef = useRef(0)
   const documentReviewNavigationNonceRef = useRef(0)
   const [editorLine, setEditorLine] = useState(1)
@@ -301,6 +305,8 @@ export function ModeRouter(props: ModeRouterProps) {
   useEffect(() => {
     documentReviewNavigationRequestRef.current += 1
     setDocumentReviewNavigationTarget(null)
+    setOutlineRevealRequest(null)
+    setProjectRevealPath('')
   }, [workspace])
 
   useEffect(() => {
@@ -367,6 +373,17 @@ export function ModeRouter(props: ModeRouterProps) {
       }))
     }, 0)
   }
+  const revealCurrentChapterInOutline = useCallback((path: string) => {
+    if (!projectVisible) onToggleProjectVisible()
+    onSetSidebarView('outline')
+    setOutlineRevealRequest((current) => ({ path, nonce: (current?.nonce || 0) + 1 }))
+  }, [onSetSidebarView, onToggleProjectVisible, projectVisible])
+  const revealFileInProject = useCallback(async (path: string) => {
+    if (!projectVisible) onToggleProjectVisible()
+    setProjectRevealPath(path)
+    onSetSidebarView('files')
+    await Promise.resolve(onSelectFile(path))
+  }, [onSelectFile, onSetSidebarView, onToggleProjectVisible, projectVisible])
   const requestChapterIllustration = (chapterPath: string) => {
     const target = currentChapter?.path || chapterPath || selectedFile || ''
     if (!target) return
@@ -559,7 +576,12 @@ export function ModeRouter(props: ModeRouterProps) {
             outline={summary?.outline}
             chapterPlans={summary?.chapter_plans || []}
             selectedFile={selectedFile}
+            revealRequest={outlineRevealRequest}
             onSelectFile={(path) => { void onSelectFile(path) }}
+            onReferenceFile={onReferenceFile}
+            onRevealFile={revealFileInProject}
+            onRenameItem={onRenameItem}
+            onDeleteItem={onDeleteItem}
             onRequestBookSettingCreate={(item) => requestSkillsAgent(t('planning.bookSettingCreatePrompt', item))}
             onSetChapterConfirmed={onSetChapterConfirmed}
           />
@@ -585,6 +607,7 @@ export function ModeRouter(props: ModeRouterProps) {
                 onRenameItem={onRenameItem}
                 onCopyItem={onCopyItem}
                 onMoveItem={onMoveItem}
+                defaultExpandedPaths={projectRevealParents}
               />
             )}
           </div>
@@ -648,6 +671,7 @@ export function ModeRouter(props: ModeRouterProps) {
                     autoSaveEnabled={editorAutoSaveEnabled}
                     autoSaveDelayMs={editorAutoSaveDelayMs}
                     chapterSummary={currentChapter}
+                    onRevealChapter={revealCurrentChapterInOutline}
                     searchIntent={editorSearchIntent?.path === selectedFile ? editorSearchIntent : null}
                     onGenerateIllustration={requestChapterIllustration}
                     generateIllustrationDisabled={isStreaming || !currentChapter}

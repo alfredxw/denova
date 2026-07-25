@@ -71,6 +71,7 @@ const storyStage = {
   'storyStage.turnNavigator.emptyUser': '用户输入为空',
   'storyStage.turnNavigator.emptyAgent': '暂无剧情正文',
   'storyStage.turnNavigator.generating': '正在生成…',
+  'storyStage.history.backToLatest': '回到最新剧情',
   'storyStage.mobile.controls': '舞台操作',
   'storyStage.empty': '输入第一句话，开始文字冒险。',
   'storyStage.opening.title': '开场白',

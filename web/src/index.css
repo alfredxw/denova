@@ -906,6 +906,26 @@ html[data-nova-motion="off"] *::after {
   background: var(--nova-surface);
 }
 
+.nova-book-settings-header-row {
+  container: nova-book-settings-header / inline-size;
+}
+
+@container nova-book-settings-header (max-width: 200px) {
+  .nova-book-settings-manage-label {
+    display: none;
+  }
+
+  .nova-book-settings-header-actions {
+    gap: 0;
+  }
+
+  .nova-book-settings-header-actions > button {
+    width: 24px;
+    height: 24px;
+    padding-inline: 0;
+  }
+}
+
 .nova-panel {
   border-color: var(--nova-border);
   background: var(--nova-surface-2);

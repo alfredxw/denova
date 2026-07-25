@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { AgentComposerShell } from './AgentComposerShell'
 import { ModelProfileSwitcher } from './ModelProfileSwitcher'
 import { ComposerTokenInput, type ComposerTokenInputHandle, type ComposerTokenSpec, type ComposerTrigger } from './composer-token-input'
+import { workspaceFileName } from '@/lib/workspace-path'
 import {
   Command,
   CommandEmpty,
@@ -236,7 +237,7 @@ export function InputArea({
     return Array.from(byID.entries()).map(([id, label]) => ({ id, label }))
   }, [loreReferenceLabels, loreReferences, loreSuggestions])
   const externalTokens = useMemo<ComposerTokenSpec[]>(() => [
-    ...referencedFiles.map((path) => ({ kind: 'file' as const, value: path, label: path })),
+    ...referencedFiles.map((path) => ({ kind: 'file' as const, value: path, label: workspaceFileName(path) })),
     ...loreReferences.map((id) => ({ kind: 'lore' as const, value: id, label: loreReferenceLabels[id] || knownLoreTokens.find((item) => item.id === id)?.label || id })),
     ...styleScenes.map((scene) => ({ kind: 'style' as const, value: scene, label: scene })),
   ], [knownLoreTokens, loreReferenceLabels, loreReferences, referencedFiles, styleScenes])
@@ -477,14 +478,14 @@ export function InputArea({
     inputRef.current?.focus()
   }
 
-  /** 选择引用文件并插入 @path 标签 */
+  /** 选择引用文件：输入框只显示文件名，发送值仍保留完整 workspace 路径。 */
   const selectReference = (path: string) => {
     const loreItem = loreSuggestions.find((item) => item.value === path)
     if (loreItem) {
       inputRef.current?.replaceActiveTriggerWithToken({ kind: 'lore', value: loreItem.value, label: loreItem.label })
       onLoreReferenceAdd?.(path)
     } else {
-      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'file', value: path, label: path })
+      inputRef.current?.replaceActiveTriggerWithToken({ kind: 'file', value: path, label: workspaceFileName(path) })
     }
     setReferenceQuery(null)
     inputRef.current?.focus()

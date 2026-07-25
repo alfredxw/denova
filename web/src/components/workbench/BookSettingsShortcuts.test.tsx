@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BookSettingsShortcuts } from './BookSettingsShortcuts'
@@ -127,5 +127,29 @@ describe('BookSettingsShortcuts', () => {
     expect(missingOutlineRow).toHaveAttribute('data-book-setting-state', 'missing')
     expect(missingOutlineRow.closest('div.flex.items-center.gap-1.rounded-md.border')).toHaveClass('border-dashed')
     expect(missingOutlineRow.querySelector('svg.lucide-circle-dashed')).toBeInTheDocument()
+  })
+
+  it('已 Pin 的设定文件提供可发现的文件操作菜单', async () => {
+    const user = userEvent.setup()
+    const onReferenceFile = vi.fn()
+    render(
+      <BookSettingsShortcuts
+        workspace="/books/demo"
+        tree={[{ name: 'CREATOR.md', type: 'file' }]}
+        chapterPlans={[]}
+        selectedFile={null}
+        headerPinned
+        onSelectFile={vi.fn()}
+        onToggleHeaderPinned={vi.fn()}
+        onReferenceFile={onReferenceFile}
+      />,
+    )
+    const shortcut = screen.getByRole('button', { name: '规则' }).parentElement
+    if (!shortcut) throw new Error('pinned shortcut actions are not rendered')
+
+    await user.click(within(shortcut).getByRole('button', { name: '更多操作' }))
+    await user.click(await screen.findByRole('menuitem', { name: '引用到 Chat' }))
+
+    expect(onReferenceFile).toHaveBeenCalledWith('CREATOR.md')
   })
 })

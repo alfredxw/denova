@@ -51,6 +51,8 @@ type interactiveConversation struct {
 	pendingDomainCommit     *interactive.DomainCommitIntent
 	lastDomainReceipt       *interactive.DomainCommitReceipt
 	pendingCompaction       *preparedInteractiveContextCompaction
+	modelHistoryKey         string
+	modelHistory            *interactive.StoryModelHistory
 	openingStateSchemaDraft *interactive.ActorStateSchemaBatchDraft
 	openingStateSchemaAudit interactive.ActorStateSchemaBatchAudit
 }
@@ -467,10 +469,14 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 	teller := c.teller(storyCtx.Meta.StoryTellerID)
 	storyDirector := storyDirectorForSnapshot(c.storyDirectorForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
 	tellerTurnContextPrompt := teller.PromptForTargets("turn_context")
-	turnHistory := buildInteractiveModelVisibleSnapshotHistory(storyCtx.Snapshot)
+	modelHistory, activeCompaction, err := c.modelHistoryForCycle(storyCtx)
+	if err != nil {
+		return agents.ModelContextResult{}, err
+	}
+	turnHistory := buildInteractiveModelVisibleHistory(modelHistory, activeCompaction)
 	checkpointSummary := ""
-	if storyCtx.Snapshot.ContextCompaction != nil {
-		checkpointSummary = strings.TrimSpace(storyCtx.Snapshot.ContextCompaction.Summary)
+	if activeCompaction != nil {
+		checkpointSummary = strings.TrimSpace(activeCompaction.Summary)
 	}
 	directorPlanVisible := ""
 	directorPlan := interactive.DirectorPlan{}
@@ -522,8 +528,8 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		LoreContext:                 loreRuntime,
 	})
 	history := make([]*agents.Message, 0, len(turnHistory.Turns)*2+4)
-	if storyCtx.Snapshot.ContextCompaction != nil && strings.TrimSpace(storyCtx.Snapshot.ContextCompaction.Summary) != "" {
-		history = append(history, agents.NewContextCompactionSummaryMessage(storyCtx.Snapshot.ContextCompaction.Epoch, storyCtx.Snapshot.ContextCompaction.Summary))
+	if activeCompaction != nil {
+		history = append(history, agents.NewContextCompactionSummaryMessage(activeCompaction.Epoch, activeCompaction.Summary))
 	}
 	for _, turn := range turnHistory.Turns {
 		history = append(history, agents.UserMessage(turn.User))
@@ -609,7 +615,7 @@ func (c *interactiveConversation) AssembleModelContext(ctx context.Context, orig
 		interactivePartSummary(tellerTurnContextPrompt),
 		interactivePartSummary(checkpointSummary),
 		interactivePartSummary(directorPlanVisible),
-		len(storyCtx.Snapshot.Turns),
+		modelHistory.TotalTurns,
 		len(turnHistory.Turns),
 		interactiveMessageListSummary(history),
 		interactivePartSummary(history[len(history)-1].Content),

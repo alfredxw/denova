@@ -33,6 +33,8 @@ describe('composer token parsing', () => {
     const serialized = JSON.stringify(doc)
 
     expect(serializeComposerJSON(doc)).toBe('@world/长路径.md @资料:主角')
+    expect(serialized).toContain('"value":"world/长路径.md"')
+    expect(serialized).toContain('"label":"长路径.md"')
     expect(serialized).toContain('"value":"lore-hero"')
     expect(serialized).toContain('"label":"主角"')
   })

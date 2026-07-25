@@ -104,14 +104,18 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	if err != nil {
 		return input.Messages, agents.ContextCompactionResult{}, err
 	}
-	if !input.Force && storyCtx.Snapshot.ContextCompactionRemoval != nil && storyCtx.Snapshot.ContextCompactionRemoval.SourceTurnCount >= interactiveSnapshotTurnCount(storyCtx.Snapshot) {
+	modelHistory, activeCompaction, err := c.modelHistoryForCycle(storyCtx)
+	if err != nil {
+		return input.Messages, agents.ContextCompactionResult{}, err
+	}
+	if !input.Force && storyCtx.Snapshot.ContextCompactionRemoval != nil && storyCtx.Snapshot.ContextCompactionRemoval.SourceTurnCount >= modelHistory.EndTurn {
 		return input.Messages, agents.ContextCompactionResult{SkippedReason: "removed_same_source"}, nil
 	}
-	source, existingCheckpoint := interactiveCompactionSnapshotSource(storyCtx.Snapshot)
+	source, existingCheckpoint := interactiveCompactionModelHistorySource(modelHistory, activeCompaction)
 	source = agents.ApplyToolResultContextPolicyForConversation(source, c.ToolResultContextPolicy())
 	epoch := 1
-	if storyCtx.Snapshot.ContextCompaction != nil {
-		epoch = storyCtx.Snapshot.ContextCompaction.Epoch + 1
+	if activeCompaction != nil {
+		epoch = activeCompaction.Epoch + 1
 	}
 	input.SourceMessages = source
 	if strings.TrimSpace(input.ExistingCheckpoint) == "" {
@@ -134,7 +138,7 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	result = interactiveCompactionResultForMessages(result, newMessages, input.Tools)
 	if !input.Force && (result.Phase == "pre_run" || result.Phase == "mid_run") {
 		c.stagePreparedInteractiveCompaction(preparedInteractiveContextCompaction{
-			Result: result, SourceTurnCount: interactiveSnapshotTurnCount(storyCtx.Snapshot),
+			Result: result, SourceTurnCount: modelHistory.EndTurn,
 		})
 	}
 	// Model-cycle compaction remains a transient projection. Canonical story
@@ -142,20 +146,6 @@ func (c *interactiveConversation) CompactContextIfNeeded(ctx context.Context, in
 	// binding's durable CompactIfNeeded structural command after settlement or
 	// on an explicit manual request.
 	return newMessages, result, nil
-}
-
-func interactiveTurnMessages(turns []interactive.TurnEvent) []*agents.Message {
-	messages := make([]*agents.Message, 0, len(turns)*2)
-	for _, turn := range turns {
-		if strings.TrimSpace(turn.User) != "" {
-			messages = append(messages, agents.UserMessage(turn.User))
-		}
-		messages = append(messages, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
-		if strings.TrimSpace(turn.Narrative) != "" {
-			messages = append(messages, agents.AssistantMessage(turn.Narrative, nil))
-		}
-	}
-	return messages
 }
 
 func interactiveContextMessageFromSchema(msg *agents.Message) (interactive.ModelContextMessage, bool) {
@@ -256,8 +246,20 @@ func interactiveCompactionSource(turns []interactive.TurnEvent, compaction *inte
 	return interactiveCompactionWindowSource(turns, 0, compaction)
 }
 
-func interactiveCompactionSnapshotSource(snapshot interactive.Snapshot) ([]*agents.Message, string) {
-	return interactiveCompactionWindowSource(snapshot.Turns, interactiveSnapshotTurnStart(snapshot), snapshot.ContextCompaction)
+func interactiveCompactionModelHistorySource(history interactive.StoryModelHistory, compaction *interactive.ContextCompactionEvent) ([]*agents.Message, string) {
+	sourceStart := 0
+	existingCheckpoint := ""
+	if compaction != nil && strings.TrimSpace(compaction.Summary) != "" {
+		existingCheckpoint = compaction.Summary
+		sourceStart = compaction.SourceTurnCount - history.StartTurn
+		if sourceStart < 0 {
+			sourceStart = 0
+		}
+		if sourceStart > len(history.Turns) {
+			sourceStart = len(history.Turns)
+		}
+	}
+	return interactiveCompactionModelTurnMessages(history.Turns[sourceStart:]), existingCheckpoint
 }
 
 func interactiveCompactionWindowSource(turns []interactive.TurnEvent, turnStart int, compaction *interactive.ContextCompactionEvent) ([]*agents.Message, string) {
@@ -277,6 +279,21 @@ func interactiveCompactionWindowSource(turns []interactive.TurnEvent, turnStart 
 }
 
 func interactiveCompactionTurnMessages(turns []interactive.TurnEvent) []*agents.Message {
+	messages := make([]*agents.Message, 0, len(turns)*2)
+	for _, turn := range turns {
+		source := fmt.Sprintf("[source turn_id=%s branch_id=%s]", turn.ID, turn.BranchID)
+		if strings.TrimSpace(turn.User) != "" {
+			messages = append(messages, agents.UserMessage(source+"\n"+turn.User))
+		}
+		messages = append(messages, schemaMessagesFromInteractiveContext(turn.ModelContextMessages)...)
+		if strings.TrimSpace(turn.Narrative) != "" {
+			messages = append(messages, agents.AssistantMessage(source+"\n"+turn.Narrative, nil))
+		}
+	}
+	return messages
+}
+
+func interactiveCompactionModelTurnMessages(turns []interactive.StoryModelTurn) []*agents.Message {
 	messages := make([]*agents.Message, 0, len(turns)*2)
 	for _, turn := range turns {
 		source := fmt.Sprintf("[source turn_id=%s branch_id=%s]", turn.ID, turn.BranchID)

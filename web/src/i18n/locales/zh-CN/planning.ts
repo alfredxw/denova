@@ -35,8 +35,6 @@ const planning = {
   'planning.chapterPlanHistory': '历史细纲',
   'planning.chapterPlansEmpty': '还没有细纲',
   'planning.backToTop': '回到顶部',
-  'planning.locateCurrentChapter': '定位已打开章节',
-  'planning.latestChapter': '最新章',
   'planning.locateLatestChapter': '跳到最新章',
   'planning.volumeChapters': '分卷章节',
   'planning.unvolumed': '未分卷',

@@ -17,7 +17,7 @@ import { emptyStoryStageRun, useInteractiveStore } from '../stores/interactive-s
 import type { StoryStageRunState } from '../stores/interactive-store'
 import { useInteractiveAgentCommands, type StoryStageRuntimeUpdater } from '../use-interactive-agent-commands'
 import { buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
-import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller, TurnEvent } from '../types'
+import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller } from '../types'
 import { StoryPicker } from './StoryPicker'
 import { NewStorySetupPanel } from './NewStorySetupPanel'
 import { StoryOpeningPanel } from './StoryOpeningPanel'
@@ -32,6 +32,7 @@ import { useStagePreferences } from './story-stage/use-stage-preferences'
 import { parseInlineStyleScenes, storyStageSnapshotKey } from './story-stage/utils'
 import { useLiveMessageAccumulator } from './story-stage/use-live-message-accumulator'
 import { useStoryStageMessages } from './story-stage/use-story-stage-messages'
+import { useStoryHistoryWindow } from './story-stage/use-story-history-window'
 import { useStoryImages } from './story-stage/use-story-images'
 import { useStoryStageRuntime } from './story-stage/use-story-stage-runtime'
 import { StoryStageComposer } from './story-stage/StoryStageComposer'
@@ -98,40 +99,8 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   })
   const snapshotKey = storyStageSnapshotKey(storyId, branchId, snapshot)
   const stageKey = `${workspace || 'current'}:${storyId || 'none'}:${branchId || snapshot?.branch_id || 'main'}`
-  const [historyWindow, setHistoryWindow] = useState<{
-    stageKey: string
-    turns: TurnEvent[]
-    beforeCursor: string
-    hasMore: boolean
-    expanded: boolean
-  }>({ stageKey, turns: snapshot?.turns || [], beforeCursor: snapshot?.history_before_cursor || '', hasMore: snapshot?.has_earlier_turns === true, expanded: false })
+  const { displaySnapshot, historyWindow, prependPage: prependHistoryPage, resetToLatest: resetHistoryToLatest } = useStoryHistoryWindow(stageKey, snapshot)
   const [historyLoading, setHistoryLoading] = useState(false)
-  useEffect(() => {
-    if (!snapshot) {
-      setHistoryWindow({ stageKey, turns: [], beforeCursor: '', hasMore: false, expanded: false })
-      return
-    }
-    setHistoryWindow((current) => {
-      if (current.stageKey !== stageKey) {
-        return { stageKey, turns: snapshot.turns || [], beforeCursor: snapshot.history_before_cursor || '', hasMore: snapshot.has_earlier_turns === true, expanded: false }
-      }
-      return {
-        ...current,
-        turns: mergeStoryHistoryWindows(current.turns, snapshot.turns || []),
-        beforeCursor: current.expanded ? current.beforeCursor : snapshot.history_before_cursor || '',
-        hasMore: current.expanded ? current.hasMore : snapshot.has_earlier_turns === true,
-      }
-    })
-  }, [snapshot, stageKey])
-  const displaySnapshot = useMemo<Snapshot | null>(() => {
-    if (!snapshot) return null
-    if (historyWindow.stageKey !== stageKey) return snapshot
-    // Merge the new canonical tail during render as well as in the effect
-    // below. This keeps the persisted row present in the exact commit where
-    // the matching optimistic live row is removed, preserving its render key
-    // and preventing a one-frame disappearance at settlement.
-    return { ...snapshot, turns: mergeStoryHistoryWindows(historyWindow.turns, snapshot.turns || []) }
-  }, [historyWindow.stageKey, historyWindow.turns, snapshot, stageKey])
   const stageRun = useInteractiveStore((state) => state.storyStageRuns[stageKey] || EMPTY_STAGE_RUN)
   const setStoryStageRun = useInteractiveStore((state) => state.setStoryStageRun)
   const clearStoryStageRun = useInteractiveStore((state) => state.clearStoryStageRun)
@@ -176,6 +145,9 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
   useEffect(() => {
     setReplyEditTarget(null)
   }, [stageKey])
+  useEffect(() => {
+    if (streaming && !historyWindow.followLatest) resetHistoryToLatest()
+  }, [historyWindow.followLatest, resetHistoryToLatest, streaming])
   const previousSnapshotKeyRef = useRef(snapshotKey)
   const stagePreferences = useStagePreferences()
   const stageTextStyle = useMemo<CSSProperties>(
@@ -354,23 +326,14 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
     setHistoryLoading(true)
     try {
       const page = await getInteractiveHistoryPage(storyId, branchId || snapshot?.branch_id || 'main', historyWindow.beforeCursor)
-      setHistoryWindow((current) => {
-        if (current.stageKey !== stageKey) return current
-        return {
-          stageKey,
-          turns: prependStoryHistoryPage(current.turns, page.turns || []),
-          beforeCursor: page.before_cursor || '',
-          hasMore: page.has_more,
-          expanded: true,
-        }
-      })
+      prependHistoryPage(page)
     } catch (error) {
       console.error('[interactive-stage] load earlier story history failed', error)
       setStageLiveMessages((current) => [...current, { role: 'error', content: error instanceof Error ? error.message : t('chat.history.loadEarlierFailed') }])
     } finally {
       setHistoryLoading(false)
     }
-  }, [branchId, historyLoading, historyWindow.beforeCursor, setStageLiveMessages, snapshot?.branch_id, stageKey, storyId, t])
+  }, [branchId, historyLoading, historyWindow.beforeCursor, prependHistoryPage, setStageLiveMessages, snapshot?.branch_id, storyId, t])
   const latestTurnID = snapshot?.current_turn?.id || snapshot?.turns.at(-1)?.id || ''
   const canMutateStoryView = useCallback((view: AgentMessageView) => {
     const turnID = agentViewToRenderMessage(view)?.turn_id
@@ -726,6 +689,11 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
         <div className="nova-story-stage-content flex min-h-0 flex-1 overflow-hidden bg-[var(--nova-surface-2)]">
           <TurnNavigator items={turnNavigationItems} activeAnchorId={activeTurnAnchorId} onSelect={handleTurnNavigationSelect} />
           <section className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--nova-surface-2)]">
+            {historyWindow.stageKey === stageKey && !historyWindow.followLatest ? (
+              <Button type="button" variant="secondary" size="sm" className="absolute right-4 top-3 z-30 shadow-md" onClick={resetHistoryToLatest}>
+                {t('storyStage.history.backToLatest')}
+              </Button>
+            ) : null}
             {creatingStory ? (
               <NewStorySetupPanel
                 stories={stories}
@@ -779,7 +747,7 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 hasEarlierMessages={historyWindow.stageKey === stageKey && historyWindow.hasMore}
                 isLoadingEarlierMessages={historyLoading}
                 onLoadEarlierMessages={loadEarlierMessages}
-                afterContent={!streaming && storyStateModel.hasState && stateDisplayPreference !== 'director-only' ? (
+                afterContent={historyWindow.followLatest && !streaming && storyStateModel.hasState && stateDisplayPreference !== 'director-only' ? (
                   <StoryStateLedger
                     snapshot={snapshot}
                     displayPreference={stateDisplayPreference}
@@ -835,18 +803,4 @@ function noopStateDisplayPreferenceChange(_value: StoryStateDisplayPreference) {
 
 function noopTurnPersisted() {
   return undefined
-}
-
-function mergeStoryHistoryWindows(current: TurnEvent[], latest: TurnEvent[]): TurnEvent[] {
-  if (current.length === 0) return latest
-  if (latest.length === 0) return current
-  const firstOverlap = latest.findIndex((turn) => current.some((candidate) => candidate.id === turn.id))
-  if (firstOverlap < 0) return latest
-  const currentOverlap = current.findIndex((turn) => turn.id === latest[firstOverlap].id)
-  return [...current.slice(0, currentOverlap), ...latest.slice(firstOverlap)]
-}
-
-function prependStoryHistoryPage(current: TurnEvent[], earlier: TurnEvent[]): TurnEvent[] {
-  const currentIDs = new Set(current.map((turn) => turn.id))
-  return [...earlier.filter((turn) => !currentIDs.has(turn.id)), ...current]
 }

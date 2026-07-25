@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChapterSummary, DocumentPreview } from '@/lib/api'
@@ -87,11 +87,17 @@ describe('ChapterOutline', () => {
     const user = userEvent.setup()
     renderOutline()
 
+    const pinnedFrameClass = screen.getByTestId('book-settings-header-frame').className
+    expect(screen.getByRole('button', { name: '取消固定顶部区域' }).querySelector('.lucide-pin-off')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '取消固定顶部区域' })).not.toHaveClass('bg-[var(--nova-active)]')
+
     await user.click(screen.getByRole('button', { name: '取消固定顶部区域' }))
 
     const navigation = screen.getByRole('navigation', { name: '作品大纲' })
     expect(navigation).toContainElement(screen.getByRole('button', { name: '第 6-10 章细纲' }))
     expect(screen.getByRole('button', { name: '固定顶部区域' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: '固定顶部区域' }).querySelector('.lucide-pin')).toBeInTheDocument()
+    expect(screen.getByTestId('book-settings-header-frame')).toHaveClass(...pinnedFrameClass.split(' '))
     expect(window.localStorage.getItem('nova.outline.book-settings-header-pinned')).toBe('false')
   })
 
@@ -136,38 +142,93 @@ describe('ChapterOutline', () => {
     expect(scrollIntoView).not.toHaveBeenCalled()
   })
 
-  it('最新章不可见时提供明确入口，点击只定位不打开文件', async () => {
+  it('卷折叠后仍在固定区提供最新章入口，点击只定位且不覆盖卷标题', async () => {
     const user = userEvent.setup()
     const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
     const { onSelectFile } = renderOutline()
 
     await user.click(screen.getByRole('button', { name: '未分卷 2 章' }))
-    const locateLatest = await screen.findByRole('button', { name: '跳到最新章' })
+    expect(screen.queryByText('第 2 章 转折')).not.toBeInTheDocument()
+    expect(document.querySelector('.sticky')).not.toBeInTheDocument()
+    const locateLatest = screen.getByRole('button', { name: '跳到最新章' })
+    expect(locateLatest).not.toHaveTextContent('最新章')
+    expect(screen.getByTestId('book-settings-header-frame')).toContainElement(locateLatest)
+    await user.hover(locateLatest)
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('跳到最新章')
     await user.click(locateLatest)
 
     await waitFor(() => {
       expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' })
     })
+    expect(screen.getByText('第 2 章 转折')).toBeInTheDocument()
     expect(onSelectFile).not.toHaveBeenCalled()
   })
 
-  it('下滑超过阈值后出现回顶浮标，点击平滑回顶', async () => {
+  it('下滑超过阈值后启用固定区回顶动作，点击平滑回顶', async () => {
     renderOutline()
     const scrollContainer = screen.getByRole('navigation', { name: '作品大纲' })
     const scrollTo = vi.fn()
     Object.assign(scrollContainer, { scrollTo })
     Object.defineProperty(scrollContainer, 'scrollTop', { configurable: true, writable: true, value: 0 })
 
-    expect(screen.getByTitle('回到顶部')).toHaveClass('opacity-0')
+    const backToTop = screen.getByRole('button', { name: '回到顶部' })
+    expect(backToTop).toBeDisabled()
 
     scrollContainer.scrollTop = 400
     fireEvent.scroll(scrollContainer)
     await waitFor(() => {
-      expect(screen.getByTitle('回到顶部')).toHaveClass('opacity-80')
+      expect(backToTop).toBeEnabled()
     })
 
-    fireEvent.click(screen.getByTitle('回到顶部'))
+    fireEvent.click(backToTop)
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'smooth' })
+  })
+
+  it('响应编辑器发出的目录定位请求，并展开目标章节所在卷', async () => {
+    const user = userEvent.setup()
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, 'scrollIntoView')
+    const { rerender } = renderOutline()
+
+    await user.click(screen.getByRole('button', { name: '未分卷 2 章' }))
+    rerenderOutline(rerender, { revealRequest: { path: 'chapters/ch2.md', nonce: 1 } })
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'center', behavior: 'smooth' })
+    })
+    expect(screen.getByText('第 2 章 转折')).toBeInTheDocument()
+  })
+
+  it('章节文件可从右键菜单引用到 Chat', async () => {
+    const user = userEvent.setup()
+    const onReferenceFile = vi.fn()
+    renderOutline({ onReferenceFile })
+
+    await user.pointer({ keys: '[MouseRight]', target: screen.getByText('第 2 章 转折') })
+    await user.click(await screen.findByRole('menuitem', { name: '引用到 Chat' }))
+
+    expect(onReferenceFile).toHaveBeenCalledWith('chapters/ch2.md')
+  })
+
+  it('章节文件可通过更多菜单重命名和确认删除', async () => {
+    const user = userEvent.setup()
+    const onRenameItem = vi.fn(async () => undefined)
+    const onDeleteItem = vi.fn(async () => undefined)
+    renderOutline({ onRenameItem, onDeleteItem })
+    const chapterRow = screen.getByText('第 2 章 转折').closest('[data-chapter-path]')?.parentElement
+    if (!chapterRow) throw new Error('chapter action row is not rendered')
+
+    await user.click(within(chapterRow).getByRole('button', { name: '更多操作' }))
+    await user.click(await screen.findByRole('menuitem', { name: '重命名文件' }))
+    const renameInput = screen.getByLabelText('新名称')
+    await user.clear(renameInput)
+    await user.type(renameInput, 'chapter-02.md')
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: '确认' }))
+    await waitFor(() => expect(onRenameItem).toHaveBeenCalledWith('chapters/ch2.md', 'chapter-02.md'))
+
+    await user.click(within(chapterRow).getByRole('button', { name: '更多操作' }))
+    await user.click(await screen.findByRole('menuitem', { name: '删除' }))
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: '删除' }))
+    await waitFor(() => expect(onDeleteItem).toHaveBeenCalledWith('chapters/ch2.md'))
   })
 })
 

@@ -48,8 +48,12 @@ func (c *interactiveConversation) buildDirectorInstruction(turn interactive.Turn
 	}
 	storyDirector := storyDirectorForSnapshot(c.storyDirectorForMeta(storyCtx.Meta), storyCtx.Meta.ActorStateSchema)
 	strategyPrompt := interactive.StoryDirectorStrategyPromptMarkdown(storyDirector)
-	visibleHistory := buildInteractiveModelVisibleSnapshotHistory(storyCtx.Snapshot)
-	historyText := formatInteractiveTurnHistoryWithCheckpoint(visibleHistory, storyCtx.Snapshot.ContextCompaction, "（暂无历史回合，请基于本回合审计更新导演计划。）")
+	modelHistory, activeCompaction, err := c.modelHistoryForCycle(storyCtx)
+	if err != nil {
+		return "", err
+	}
+	visibleHistory := buildInteractiveModelVisibleHistory(modelHistory, activeCompaction)
+	historyText := formatInteractiveTurnHistoryWithCheckpoint(visibleHistory, activeCompaction, "（暂无历史回合，请基于本回合审计更新导演计划。）")
 	directorPlan := interactive.DirectorPlan{}
 	if storyCtx.Snapshot.DirectorPlan != nil {
 		directorPlan = *storyCtx.Snapshot.DirectorPlan

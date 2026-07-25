@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { CircleDashed, GripVertical, MessageCircle, Pin, PinOff, Search, Settings2 } from 'lucide-react'
+import { ArrowDownToLine, ArrowUp, CircleDashed, GripVertical, MessageCircle, Pin, PinOff, Search, Settings2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { FileNode } from '@/hooks/useWorkspace'
 import type { DocumentPreview } from '@/lib/api'
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { TooltipIconButton } from '@/components/common/tooltip-icon-button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { OutlineFileActions } from './outline/OutlineFileActions'
 import { flattenFileTree } from './workbench-utils'
 
 const STORAGE_PREFIX = 'nova.outline.pinned-settings:'
@@ -33,6 +34,14 @@ interface BookSettingsShortcutsProps {
   headerPinned: boolean
   onSelectFile: (path: string) => void | Promise<void>
   onToggleHeaderPinned: () => void
+  latestChapterAvailable?: boolean
+  backToTopAvailable?: boolean
+  onLocateLatestChapter?: () => void
+  onBackToTop?: () => void
+  onReferenceFile?: (path: string) => void
+  onRevealFile?: (path: string) => void | Promise<void>
+  onRenameItem?: (path: string, newName: string) => Promise<void>
+  onDeleteItem?: (path: string) => Promise<void>
   onRequestCreate?: (item: { path: string; title: string }) => void
 }
 
@@ -47,6 +56,14 @@ export function BookSettingsShortcuts({
   headerPinned,
   onSelectFile,
   onToggleHeaderPinned,
+  latestChapterAvailable = false,
+  backToTopAvailable = false,
+  onLocateLatestChapter,
+  onBackToTop,
+  onReferenceFile,
+  onRevealFile,
+  onRenameItem,
+  onDeleteItem,
   onRequestCreate,
 }: BookSettingsShortcutsProps) {
   const { t } = useTranslation()
@@ -99,24 +116,48 @@ export function BookSettingsShortcuts({
 
   return (
     <section className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2 px-1">
-        <span className="text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.bookSettings')}</span>
-        <div className="flex items-center gap-0.5">
+      <div className="nova-book-settings-header-row flex items-center justify-between gap-2 px-1">
+        <span className="shrink-0 whitespace-nowrap text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.bookSettings')}</span>
+        <div className="nova-book-settings-header-actions flex shrink-0 items-center gap-0.5">
+          {onLocateLatestChapter && latestChapterAvailable ? (
+            <TooltipIconButton
+              label={t('planning.locateLatestChapter')}
+              size="icon-sm"
+              tooltipSide="bottom"
+              className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+              disabled={!latestChapterAvailable}
+              onClick={onLocateLatestChapter}
+            >
+              <ArrowDownToLine className="h-3.5 w-3.5" />
+            </TooltipIconButton>
+          ) : null}
+          {onBackToTop ? (
+            <TooltipIconButton
+              label={t('planning.backToTop')}
+              size="icon-sm"
+              tooltipSide="bottom"
+              disabled={!backToTopAvailable}
+              className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] disabled:opacity-35"
+              onClick={onBackToTop}
+            >
+              <ArrowUp className="h-3.5 w-3.5" />
+            </TooltipIconButton>
+          ) : null}
           <TooltipIconButton
             label={t(headerPinned ? 'planning.unpinBookSettingsHeader' : 'planning.pinBookSettingsHeader')}
             size="icon-sm"
             tooltipSide="bottom"
             aria-pressed={headerPinned}
-            className={headerPinned ? 'bg-[var(--nova-active)] text-[var(--nova-text)]' : 'text-[var(--nova-text-faint)]'}
+            className="text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
             onClick={onToggleHeaderPinned}
           >
-            <Pin className="h-3.5 w-3.5" />
+            {headerPinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
           </TooltipIconButton>
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[10px] text-[var(--nova-text-faint)]">
+              <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[10px] text-[var(--nova-text-faint)]" aria-label={t('planning.manageBookSettings')} title={t('planning.manageBookSettings')}>
                 <Settings2 className="h-3 w-3" />
-                {t('planning.manageBookSettings')}
+                <span className="nova-book-settings-manage-label">{t('planning.manageBookSettings')}</span>
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-80 border-[var(--nova-border)] bg-[var(--nova-menu-bg)]">
@@ -156,18 +197,26 @@ export function BookSettingsShortcuts({
       {pinnedItems.length > 0 ? (
         <div data-testid="book-setting-shortcuts" className="grid grid-cols-[repeat(auto-fill,minmax(4rem,1fr))] gap-1">
           {pinnedItems.map((item) => (
-            <button
+            <OutlineFileActions
               key={item.path}
-              type="button"
-              data-book-setting-state={item.exists ? 'ready' : 'missing'}
-              aria-label={item.exists ? undefined : t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })}
-              className={`nova-nav-item relative max-w-full px-2.5 py-1 text-[11px] font-medium ${item.exists && selectedFile === item.path ? 'is-active' : item.exists ? 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]' : 'border border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_42%,var(--nova-surface-2))] pr-5 text-[var(--nova-text-muted)] hover:border-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)]'}`}
-              title={item.exists ? item.title : t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })}
-              onClick={() => selectItem(item)}
+              path={item.path}
+              onReferenceFile={item.exists ? onReferenceFile : undefined}
+              onRevealFile={item.exists ? onRevealFile : undefined}
+              onRenameItem={item.exists ? onRenameItem : undefined}
+              onDeleteItem={item.exists ? onDeleteItem : undefined}
             >
-              <span className="block truncate">{item.title}</span>
-              {!item.exists ? <CircleDashed aria-hidden="true" className="absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[color-mix(in_srgb,var(--nova-warning)_68%,var(--nova-text-faint))]" /> : null}
-            </button>
+              <button
+                type="button"
+                data-book-setting-state={item.exists ? 'ready' : 'missing'}
+                aria-label={item.exists ? undefined : t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })}
+                className={`nova-nav-item relative w-full max-w-full px-2.5 py-1 text-[11px] font-medium ${item.exists && selectedFile === item.path ? 'is-active pr-7' : item.exists ? 'bg-[var(--nova-surface-2)] pr-7 text-[var(--nova-text-muted)]' : 'border border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_42%,var(--nova-surface-2))] pr-5 text-[var(--nova-text-muted)] hover:border-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)]'}`}
+                title={item.exists ? item.title : t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })}
+                onClick={() => selectItem(item)}
+              >
+                <span className="block truncate">{item.title}</span>
+                {!item.exists ? <CircleDashed aria-hidden="true" className="absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-[color-mix(in_srgb,var(--nova-warning)_68%,var(--nova-text-faint))]" /> : null}
+              </button>
+            </OutlineFileActions>
           ))}
         </div>
       ) : (

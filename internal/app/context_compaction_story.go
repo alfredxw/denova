@@ -41,7 +41,14 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 	}
 	branchID = storyCtx.Snapshot.BranchID
 	expectedParent := storyCtx.Meta.Branches[branchID].Head
-	source, existingCheckpoint := interactiveCompactionSnapshotSource(storyCtx.Snapshot)
+	startTurn, endTurn, activeCompaction := interactiveModelHistoryRange(storyCtx.Snapshot)
+	modelHistory, err := store.ReadModelHistory(storyID, interactive.StoryModelHistoryQuery{
+		BranchID: branchID, StartTurn: startTurn, EndTurn: endTurn,
+	})
+	if err != nil {
+		return agents.ContextCompactionResult{}, err
+	}
+	source, existingCheckpoint := interactiveCompactionModelHistorySource(modelHistory, activeCompaction)
 	commandID, err := resolveContextStructuralCommandID(
 		requestedCommandID,
 		contextStructuralCommandID("game-compact", workspace, storyID, branchID, expectedParent),
@@ -62,8 +69,8 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 		return agents.ContextCompactionResult{Phase: "manual", SkippedReason: "empty_source"}, fmt.Errorf("没有可压缩的互动上下文")
 	}
 	epoch := 1
-	if storyCtx.Snapshot.ContextCompaction != nil {
-		epoch = storyCtx.Snapshot.ContextCompaction.Epoch + 1
+	if activeCompaction != nil {
+		epoch = activeCompaction.Epoch + 1
 	}
 	_, prepared, err := agents.PrepareContextCompaction(ctx, &runtimeCfg, config.AgentKindInteractiveStory, agents.ContextCompactionInput{
 		Messages: source, SourceMessages: source, Phase: "manual", Force: true,
@@ -75,7 +82,7 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 	if !prepared.Triggered {
 		return prepared, fmt.Errorf("没有可压缩的互动上下文")
 	}
-	event := interactiveCompactionEvent(recordID, expectedParent, interactiveSnapshotTurnCount(storyCtx.Snapshot), prepared)
+	event := interactiveCompactionEvent(recordID, expectedParent, modelHistory.EndTurn, prepared)
 	ref := agents.ContextCompactionRef{
 		Source: "story.turn_events", Purpose: "persist a bounded model-history checkpoint",
 		Resource: storyID + "/" + branchID, ExpectedRevision: contextStoryRevision(expectedParent), Force: true,
@@ -133,7 +140,7 @@ func (s *InteractiveAppService) executeInteractiveContextCompaction(ctx context.
 	if !result.Compaction.Triggered {
 		return result.Compaction, fmt.Errorf("没有可压缩的互动上下文")
 	}
-	log.Printf("[interactive-agent] durable manual context compaction completed workspace=%s story_id=%s branch_id=%s epoch=%d source_turns=%d", workspace, storyID, branchID, result.Compaction.Epoch, interactiveSnapshotTurnCount(storyCtx.Snapshot))
+	log.Printf("[interactive-agent] durable manual context compaction completed workspace=%s story_id=%s branch_id=%s epoch=%d source_turns=%d", workspace, storyID, branchID, result.Compaction.Epoch, modelHistory.EndTurn)
 	return result.Compaction, nil
 }
 

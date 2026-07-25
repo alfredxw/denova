@@ -6,6 +6,7 @@ import { TextSelection } from '@tiptap/pm/state'
 import type { Editor } from '@tiptap/react'
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { measureLongestLineWidth, parseCssPixels, resolveCompactTextWidth } from '@/lib/text-input-measurement'
+import { workspaceFileName } from '@/lib/workspace-path'
 
 type ComposerTokenKind = 'skill' | 'file' | 'lore' | 'style'
 type ComposerTriggerKind = 'slash' | 'reference' | 'style'
@@ -89,6 +90,8 @@ const tokenExtension = Node.create({
       mergeAttributes(HTMLAttributes, {
         'data-nova-composer-token': kind,
         'data-token-value': value,
+        title: kind === 'file' ? value : undefined,
+        'aria-label': kind === 'file' ? `@${value}` : undefined,
         class: `nova-composer-token nova-composer-token-${kind}`,
       }),
       tokenDisplayText({ kind, value, label }),
@@ -536,7 +539,7 @@ function tokenizeLine(line: string, options: ComposerParseOptions) {
     const file = matchKnownToken(line, index, '@', sortedFiles)
     if (file) {
       flush()
-      content.push(tokenNode({ kind: 'file', value: file, label: file }))
+      content.push(tokenNode({ kind: 'file', value: file, label: workspaceFileName(file) }))
       index += file.length + 1
       continue
     }
@@ -632,6 +635,7 @@ function tokenPlainText(token: ComposerTokenSpec) {
 }
 
 function tokenDisplayText(token: ComposerTokenSpec) {
+  if (token.kind === 'file') return `@${workspaceFileName(token.label || token.value)}`
   return tokenPlainText(token)
 }
 
