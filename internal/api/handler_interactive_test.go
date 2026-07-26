@@ -116,12 +116,13 @@ func TestInteractiveStoriesAndTellersAPI(t *testing.T) {
 		t.Fatalf("list tellers status = %d body=%s", tellersResp.Code, tellersResp.Body.String())
 	}
 	var tellersBody struct {
-		Tellers []struct {
+		DefaultID string `json:"default_id"`
+		Tellers   []struct {
 			ID string `json:"id"`
 		} `json:"tellers"`
 	}
 	decodeResponse(t, tellersResp.Body.Bytes(), &tellersBody)
-	if len(tellersBody.Tellers) < 3 {
+	if tellersBody.DefaultID != "rhythm" || len(tellersBody.Tellers) != 5 {
 		t.Fatalf("expected built-in tellers: %#v", tellersBody.Tellers)
 	}
 
@@ -661,7 +662,7 @@ func TestInteractiveDisabledStoryDirectorModulesAPI(t *testing.T) {
 	if created.ID == "" || created.StoryDirectorID != "detached" {
 		t.Fatalf("created detached story mismatch: %#v", created)
 	}
-	if created.StoryTellerID != "classic" {
+	if created.StoryTellerID != "rhythm" {
 		t.Fatalf("disabled narrative style should not be inherited, got %#v", created)
 	}
 	if created.ImageSettings.PresetID != "game-cg" {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"denova/internal/imagepreset"
+	"denova/internal/narrativestyle"
 )
 
 const (
@@ -414,7 +415,7 @@ func (l *RuleSystemLibrary) ensureBuiltins() error {
 
 func DefaultStoryDirectorModuleRefs() StoryDirectorModuleRefs {
 	return StoryDirectorModuleRefs{
-		NarrativeStyleID: "classic",
+		NarrativeStyleID: narrativestyle.DefaultID,
 		EventPackageIDs:  []string{DefaultEventPackageID},
 		RuleSystemID:     DefaultRuleSystemID,
 		ActorStateID:     DefaultActorStateModuleID,

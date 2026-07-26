@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, Teller } from '../../types'
+import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName, narrativeStylesForMode } from '../../narrative-style'
 import { presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from '../preset-config/editor-styles'
 import { PresetEmptyState as EmptyState } from '../preset-config/PresetEmptyState'
 import { PresetMetadataPanel } from '../preset-config/PresetEditorChrome'
@@ -123,7 +124,8 @@ export function StoryDirectorEditor({
   const selectedRuleSystem = findById(ruleSystems, refs.rule_system_id || 'default')
   const selectedActorState = findById(actorStates, refs.actor_state_id || 'default')
   const selectedImagePreset = findById(imagePresets, refs.image_preset_id || 'game-cg')
-  const selectedTeller = findById(tellers, refs.narrative_style_id || 'classic')
+  const gameTellers = narrativeStylesForMode(tellers, 'game')
+  const selectedTeller = findById(gameTellers, refs.narrative_style_id || DEFAULT_NARRATIVE_STYLE_ID)
 
   return (
     <div ref={scrollRef} className="preset-director-editor flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden">
@@ -140,12 +142,12 @@ export function StoryDirectorEditor({
       <div className="grid gap-4 p-3 sm:p-4">
         <DirectorModuleConsole
           refs={refs}
-          selectedTellerName={selectedTeller?.name || refs.narrative_style_id || 'classic'}
+          selectedTellerName={selectedTeller ? narrativeStyleName(selectedTeller, t) : refs.narrative_style_id || DEFAULT_NARRATIVE_STYLE_ID}
           selectedRuleName={selectedRuleSystem?.name || refs.rule_system_id || 'default'}
           selectedActorStateName={selectedActorState?.name || refs.actor_state_id || 'default'}
           selectedImageName={selectedImagePreset?.name || refs.image_preset_id || 'game-cg'}
           selectedEventCardCount={selectedEventCardCount}
-          tellers={tellers}
+          tellers={gameTellers}
           eventPackages={eventPackages}
           ruleSystems={ruleSystems}
           actorStates={actorStates}

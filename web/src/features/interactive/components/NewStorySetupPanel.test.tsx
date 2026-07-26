@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NewStorySetupPanel } from './NewStorySetupPanel'
+import type { Teller } from '../types'
 
 const moduleCatalogMocks = vi.hoisted(() => ({
   getEventPackages: vi.fn(),
@@ -71,6 +72,39 @@ describe('NewStorySetupPanel', () => {
       state_schema_policy: { mode: 'adapt_template' },
       director_run_policy: { mode: 'on_demand' },
     })))
+  })
+
+  it('uses rhythm for a first-time user and restores the previous game selection', async () => {
+    const firstCreate = vi.fn().mockResolvedValue(undefined)
+    const firstPreferenceChange = vi.fn()
+    const rhythm: Teller = { version: 1, id: 'rhythm', name: '节奏叙事', description: '', modes: ['writing', 'game'], context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' }, slots: [], custom: false }
+    const classic = { ...rhythm, id: 'classic', name: '稳健叙事' }
+    const rhythmDirector = { ...director, module_refs: { ...director.module_refs, narrative_style_id: 'rhythm' } }
+    const { unmount } = render(<NewStorySetupPanel stories={[]} tellers={[classic, rhythm]} directors={[rhythmDirector]} imagePresets={[]} onNarrativeStyleChange={firstPreferenceChange} onCancel={vi.fn()} onCreate={firstCreate} />)
+
+    fireEvent.click(screen.getByRole('button', { name: '继续选择开场方式' }))
+    await waitFor(() => expect(firstCreate).toHaveBeenCalledWith(expect.objectContaining({ story_teller_id: 'rhythm' })))
+    expect(firstPreferenceChange).not.toHaveBeenCalled()
+    unmount()
+
+    const returningCreate = vi.fn().mockResolvedValue(undefined)
+    render(<NewStorySetupPanel stories={[]} tellers={[classic, rhythm]} directors={[rhythmDirector]} imagePresets={[]} recentNarrativeStyleID="classic" onCancel={vi.fn()} onCreate={returningCreate} />)
+    fireEvent.click(screen.getByRole('button', { name: '继续选择开场方式' }))
+    await waitFor(() => expect(returningCreate).toHaveBeenCalledWith(expect.objectContaining({ story_teller_id: 'classic' })))
+  })
+
+  it('persists only an explicit narrative-style selection', async () => {
+    const user = userEvent.setup()
+    const onNarrativeStyleChange = vi.fn()
+    const rhythm: Teller = { version: 1, id: 'rhythm', name: '节奏叙事', description: '', modes: ['writing', 'game'], context_policy: { creator: 'always', lore: 'relevant', runtime_state: 'always' }, slots: [], custom: false }
+    const classic = { ...rhythm, id: 'classic', name: '稳健叙事' }
+    const rhythmDirector = { ...director, module_refs: { ...director.module_refs, narrative_style_id: 'rhythm' } }
+    render(<NewStorySetupPanel stories={[]} tellers={[rhythm, classic]} directors={[rhythmDirector]} imagePresets={[]} onNarrativeStyleChange={onNarrativeStyleChange} onCancel={vi.fn()} onCreate={vi.fn()} />)
+
+    await user.click(screen.getByRole('combobox', { name: '叙事风格' }))
+    await user.click(await screen.findByRole('option', { name: '稳健叙事' }))
+    expect(onNarrativeStyleChange).toHaveBeenCalledOnce()
+    expect(onNarrativeStyleChange).toHaveBeenCalledWith('classic')
   })
 
   it('offers three director run modes and submits the configured interval', async () => {

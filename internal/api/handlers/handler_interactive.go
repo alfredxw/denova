@@ -13,6 +13,7 @@ import (
 	appsvc "denova/internal/app"
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
+	"denova/internal/narrativestyle"
 )
 
 func (h *Handlers) HandleInteractiveStories(ctx context.Context, c *app.RequestContext) {
@@ -383,7 +384,7 @@ func (h *Handlers) HandleInteractiveTellers(ctx context.Context, c *app.RequestC
 		writeError(c, consts.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(c, consts.StatusOK, map[string]any{"tellers": tellers})
+	writeJSON(c, consts.StatusOK, map[string]any{"tellers": tellers, "default_id": narrativestyle.DefaultID})
 }
 
 func (h *Handlers) HandleInteractiveTeller(ctx context.Context, c *app.RequestContext) {

@@ -50,6 +50,7 @@ type Config struct {
 	TraceExporter               string                       `toml:"trace_exporter"`
 	TraceRetentionRuns          int                          `toml:"trace_retention_runs"`
 	IDEStoryTellerID            string                       `toml:"-"`
+	InteractiveStoryTellerID    string                       `toml:"-"`
 	IDEImagePresetID            string                       `toml:"-"`
 	ImagePresetToolPrompt       string                       `toml:"-"`
 	WritingSkillDefault         string                       `toml:"writing_skill_default"`
@@ -109,6 +110,7 @@ func LoadWithWorkspace(workspace string) (*Config, LayeredSettings, error) {
 		NovaDir:                     novaDir,
 		Workspace:                   workspace,
 		IDEStoryTellerID:            s.IDEStoryTellerID,
+		InteractiveStoryTellerID:    s.InteractiveStoryTellerID,
 		IDEImagePresetID:            s.IDEImagePresetID,
 		WritingSkillDefault:         s.WritingSkillDefault,
 		MaxIteration:                settingsInt(s.MaxIteration, 0),
@@ -221,6 +223,8 @@ func settingsFromConfig(cfg *Config) Settings {
 		Language:                 cfg.Language,
 		ChapterFilenameFormat:    cfg.ChapterFilenameFormat,
 		VolumeDirFormat:          cfg.VolumeDirFormat,
+		IDEStoryTellerID:         cfg.IDEStoryTellerID,
+		InteractiveStoryTellerID: cfg.InteractiveStoryTellerID,
 		IDEImagePresetID:         cfg.IDEImagePresetID,
 		WritingSkillDefault:      cfg.WritingSkillDefault,
 	}
@@ -310,6 +314,7 @@ func Load() *Config {
 			DenovaDir:                   normalizePath(d.DenovaDir),
 			NovaDir:                     normalizePath(d.NovaDir),
 			IDEStoryTellerID:            d.IDEStoryTellerID,
+			InteractiveStoryTellerID:    d.InteractiveStoryTellerID,
 			IDEImagePresetID:            d.IDEImagePresetID,
 			WritingSkillDefault:         d.WritingSkillDefault,
 			MaxIteration:                settingsInt(d.MaxIteration, 0),

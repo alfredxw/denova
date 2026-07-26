@@ -1,12 +1,15 @@
 package interactive
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"denova/internal/narrativestyle"
 )
 
 func TestTellerLibraryMaterializesBuiltinsAndListsThem(t *testing.T) {
@@ -39,14 +42,66 @@ func TestTellerLibraryMaterializesBuiltinsAndListsThem(t *testing.T) {
 		t.Fatalf("unexpected classic teller: %#v", classic)
 	}
 
-	for _, id := range []string{"direct-erotica", "screenwriter"} {
+	wantNames := map[string]string{
+		"rhythm":         "节奏叙事",
+		"classic":        "稳健叙事",
+		"screenwriter":   "编剧风格",
+		"grimdark":       "暗黑压抑",
+		"direct-erotica": "直白情色",
+	}
+	if len(tellers) != len(wantNames) {
+		t.Fatalf("built-in narrative style count = %d, want %d", len(tellers), len(wantNames))
+	}
+	for id, name := range wantNames {
 		teller, err := library.Get(id)
 		if err != nil {
 			t.Fatalf("Get %s failed: %v", id, err)
 		}
-		if teller.ID != id || teller.Name == "" || teller.PromptForTargets("system") == "" || teller.PromptForTargets("turn_context") == "" {
+		if teller.ID != id || teller.Name != name || teller.PromptForTargets("system") == "" || teller.PromptForTargets("turn_context") == "" {
 			t.Fatalf("unexpected builtin teller %s: %#v", id, teller)
 		}
+		if !teller.SupportsMode(narrativestyle.ModeWriting) || !teller.SupportsMode(narrativestyle.ModeGame) {
+			t.Fatalf("built-in narrative style %s should support writing and game: %#v", id, teller.Modes)
+		}
+	}
+}
+
+func TestBuiltInNarrativeStylePromptContracts(t *testing.T) {
+	if !strings.Contains(screenwriterSystemPrompt, "直接交付标准剧本") || !strings.Contains(screenwriterTurnContext, "不为了影视效果另造线索") {
+		t.Fatalf("screenwriter prompt must request standard screenplay form without changing the plot")
+	}
+	if strings.Contains(screenwriterSystemPrompt, "人物不总是直说真实意图") {
+		t.Fatalf("screenwriter prompt must not force hidden intent")
+	}
+	if !strings.Contains(rhythmSystemPrompt, "铺垫的兑现") || !strings.Contains(steadySystemPrompt, "从容不等于平淡") || !strings.Contains(bleakSystemPrompt, "压力不夺走人物的能动性") {
+		t.Fatalf("narrative style intent is incomplete")
+	}
+	got := fmt.Sprintf("%x", sha256.Sum256([]byte(directEroticaSystemPrompt+"\x00"+directEroticaTurnContext)))
+	const unchangedDirectEroticaHash = "30f2cd3843fb3adebe1c77920051a86c4b7449a723050175dd47f5c6de083f64"
+	if got != unchangedDirectEroticaHash {
+		t.Fatalf("direct-erotica prompt changed: hash=%s", got)
+	}
+	directErotica := builtinTellers["direct-erotica"]
+	if directErotica.Name != "直白情色" || directErotica.Description != "以事件驱动故事，自然导向情色场景，文风直白粗俗" {
+		t.Fatalf("direct-erotica metadata changed: name=%q description=%q", directErotica.Name, directErotica.Description)
+	}
+}
+
+func TestTellerModesNormalizeLegacyAndScopedStyles(t *testing.T) {
+	library := NewTellerLibrary(t.TempDir())
+	legacy, err := library.Create(Teller{ID: "legacy-shared", Name: "Legacy", Slots: []TellerPromptSlot{{ID: "system", Target: "system", Enabled: true, Content: "shared"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !legacy.SupportsMode(narrativestyle.ModeWriting) || !legacy.SupportsMode(narrativestyle.ModeGame) {
+		t.Fatalf("legacy style should remain shared: %#v", legacy.Modes)
+	}
+	writingOnly, err := library.Create(Teller{ID: "writing-only", Name: "Writing", Modes: []string{narrativestyle.ModeWriting}, Slots: []TellerPromptSlot{{ID: "system", Target: "system", Enabled: true, Content: "writing"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !writingOnly.SupportsMode(narrativestyle.ModeWriting) || writingOnly.SupportsMode(narrativestyle.ModeGame) {
+		t.Fatalf("writing-only style mode mismatch: %#v", writingOnly.Modes)
 	}
 }
 

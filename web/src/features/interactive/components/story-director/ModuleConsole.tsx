@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirectorModuleRefs, Teller } from '../../types'
+import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName } from '../../narrative-style'
 import { presetSelectClassName as selectClassName } from '../preset-config/editor-styles'
 import { PresetSectionHeader as SectionTitle } from '../preset-config/PresetSectionHeader'
 import { consoleSectionClassName } from './constants'
@@ -54,9 +55,9 @@ export function DirectorModuleConsole({
           >
             <ModuleSelect
               value={refs.narrative_style_id || ''}
-              fallbackValue="classic"
+              fallbackValue={DEFAULT_NARRATIVE_STYLE_ID}
               enabled={!refs.narrative_style_disabled}
-              items={tellers}
+              items={tellers.map((teller) => ({ ...teller, name: narrativeStyleName(teller, t) }))}
               onChange={(value) => onModuleRefChange('narrative_style_id', value)}
             />
           </ModuleRefRow>

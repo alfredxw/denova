@@ -22,6 +22,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import { getStyleReferences, readStyleReferenceFile, saveStyleReference } from '../api'
 import type { StyleReference, StyleReferenceFileDocument, StyleRule, Teller, TellerPromptSlot } from '../types'
+import { narrativeStyleModes, type NarrativeStyleMode } from '../narrative-style'
 import { presetActionButtonClassName as actionButtonClassName, presetIconActionClassName as iconActionClassName, presetInputClassName as inputClassName, presetSelectClassName as selectClassName } from './preset-config/editor-styles'
 import { PresetEmptyState } from './preset-config/PresetEmptyState'
 import { PresetMetadataPanel } from './preset-config/PresetEditorChrome'
@@ -105,6 +106,12 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
 
   const selectedTarget = targetOption(activeSlot?.target || 'turn_context')
   const editHint = draft.custom ? t('settingPanel.storyDirector.customEditable') : t('settingPanel.storyDirector.builtInCopyHint')
+  const modes = narrativeStyleModes(draft)
+  const updateMode = (mode: NarrativeStyleMode, enabled: boolean) => {
+    const next = enabled ? Array.from(new Set([...modes, mode])) : modes.filter((item) => item !== mode)
+    if (next.length === 0) return
+    setDraft({ ...draft, modes: next })
+  }
 
   return (
     <div data-testid="teller-editor" className="teller-editor flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -117,6 +124,27 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
           onNameChange={(name) => setDraft({ ...draft, name })}
           onDescriptionChange={(description) => setDraft({ ...draft, description })}
         />
+
+        <section className="shrink-0 border-b border-[var(--preset-line)] bg-[var(--preset-surface)] p-3 sm:p-4">
+          <div className="text-xs font-medium text-[var(--nova-text)]">{t('settingPanel.tellerModes.title')}</div>
+          <div className="mt-1 text-[11px] leading-5 text-[var(--nova-text-faint)]">{t('settingPanel.tellerModes.description')}</div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {(['writing', 'game'] as const).map((mode) => {
+              const checked = modes.includes(mode)
+              const onlyMode = checked && modes.length === 1
+              return (
+                <label key={mode} className="flex items-start justify-between gap-3 rounded-[10px] border border-[var(--preset-line)] bg-[var(--preset-raised)] px-3 py-2.5">
+                  <span className="min-w-0">
+                    <span className="block text-xs font-medium text-[var(--nova-text)]">{t(`settingPanel.tellerModes.${mode}`)}</span>
+                    <span className="mt-0.5 block text-[11px] leading-4 text-[var(--nova-text-faint)]">{t(`settingPanel.tellerModes.${mode}Description`)}</span>
+                  </span>
+                  <Switch checked={checked} disabled={onlyMode} onCheckedChange={(enabled) => updateMode(mode, enabled)} aria-label={t(`settingPanel.tellerModes.${mode}`)} />
+                </label>
+              )
+            })}
+          </div>
+          <div className="mt-2 text-[10px] text-[var(--nova-text-faint)]">{t('settingPanel.tellerModes.required')}</div>
+        </section>
 
         <section className="shrink-0 border-b border-[var(--preset-line)] bg-[var(--preset-surface)] p-3 sm:p-4">
           <div className="mb-3">

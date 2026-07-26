@@ -77,7 +77,7 @@ describe('AgentPanel', () => {
     expect(screen.getByRole('button', { name: '运行追踪' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '输入动作' }))
     expect(screen.getByText('叙事')).toBeInTheDocument()
-    expect(screen.getByText('默认叙事')).toBeInTheDocument()
+    expect(screen.getByText('稳健叙事')).toBeInTheDocument()
     expect(screen.getByText('写作 Skill')).toBeInTheDocument()
     expect(screen.getByText(/Lite/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Review' })).not.toBeInTheDocument()

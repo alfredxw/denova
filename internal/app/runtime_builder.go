@@ -11,6 +11,7 @@ import (
 	"denova/internal/agents/session"
 	"denova/internal/book"
 	"denova/internal/interactive"
+	"denova/internal/narrativestyle"
 	"denova/internal/prompts"
 	"denova/internal/workspacechange"
 )
@@ -129,9 +130,9 @@ func ideStoryTellerForConfig(cfg *config.Config) agents.IDEStoryTeller {
 	}
 	tellerID := cfg.IDEStoryTellerID
 	if tellerID == "" {
-		tellerID = "classic"
+		tellerID = narrativestyle.DefaultID
 	}
-	teller := loadInteractiveTeller(cfg.DataDir(), tellerID)
+	teller := loadWritingTeller(cfg.DataDir(), tellerID)
 	if teller.ID == "" {
 		return agents.IDEStoryTeller{}
 	}

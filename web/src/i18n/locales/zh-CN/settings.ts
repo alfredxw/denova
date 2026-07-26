@@ -96,6 +96,7 @@ const settings = {
   'settings.ide.hideNovelChapterBodyInLiveOutputHelp': '开启后，章节正文不在 Agent 流中输出；文件仍正常写入。',
   'settings.ide.maxOpenTabs': '最大同时打开 Tab 数',
   'settings.interactive.lineHeight': '故事舞台行间距',
+  'settings.interactive.defaultTeller': '新故事默认叙事',
   'settings.model.modelProfiles': '语言模型',
   'settings.model.profileBaseUrlPlaceholder': 'Base URL',
   'settings.model.profileEmpty': '继承 {{count}} 个语言模型；新增时只需填写 Base URL、API Key 和模型名。',

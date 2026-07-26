@@ -11,6 +11,7 @@ import (
 	"denova/internal/book"
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
+	"denova/internal/narrativestyle"
 	"denova/internal/styleref"
 )
 
@@ -45,12 +46,14 @@ func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agents.C
 			runtime.cfg.IDEStoryTellerID = requestTellerID
 		}
 		if runtime.cfg.IDEStoryTellerID == "" {
-			runtime.cfg.IDEStoryTellerID = "classic"
+			runtime.cfg.IDEStoryTellerID = narrativestyle.DefaultID
+		}
+		teller := loadWritingTeller(novaDir, runtime.cfg.IDEStoryTellerID)
+		if teller.ID != "" {
+			runtime.cfg.IDEStoryTellerID = teller.ID
 		}
 		req.TellerID = runtime.cfg.IDEStoryTellerID
-		log.Printf("[agent-task] load ide teller id=%s workspace=%s", runtime.cfg.IDEStoryTellerID, runtime.workspace)
-
-		teller := loadInteractiveTeller(novaDir, runtime.cfg.IDEStoryTellerID)
+		log.Printf("[agent-task] load ide narrative style id=%s workspace=%s", runtime.cfg.IDEStoryTellerID, runtime.workspace)
 		if len(teller.StyleRefs) > 0 || len(teller.StyleRules) > 0 {
 			converted := convertTellerStyleRules(novaDir, teller.StyleRefs, teller.StyleRules, req.StyleScenes)
 			req.StyleRules = converted

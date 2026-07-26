@@ -18,6 +18,7 @@ import type { StoryStageRunState } from '../stores/interactive-store'
 import { useInteractiveAgentCommands, type StoryStageRuntimeUpdater } from '../use-interactive-agent-commands'
 import { buildOpeningPrompt, truncateStoryOpeningText, type BookOpeningPreset, type StoryCreateInput } from '../opening'
 import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller } from '../types'
+import { DEFAULT_NARRATIVE_STYLE_ID } from '../narrative-style'
 import { StoryPicker } from './StoryPicker'
 import { NewStorySetupPanel } from './NewStorySetupPanel'
 import { StoryOpeningPanel } from './StoryOpeningPanel'
@@ -49,6 +50,8 @@ interface StoryStageProps {
   tellers?: Teller[]
   storyDirectors?: StoryDirector[]
   imagePresets?: ImagePreset[]
+  recentNarrativeStyleID?: string
+  narrativeStyleLoading?: boolean
   storyId: string
   branchId: string
   snapshot: Snapshot | null
@@ -60,6 +63,7 @@ interface StoryStageProps {
   onStorySelect?: (storyId: string) => void
   onStoryCreate?: (input: StoryCreateInput) => void | Promise<void>
   onStorySetupUpdate?: (input: StoryCreateInput) => void | Promise<void>
+  onNarrativeStyleChange?: (id: string) => void | Promise<unknown>
   onStoryDelete?: (storyIds: string[]) => void | Promise<void>
   onDirectorChange?: (directorId: string) => void
   onReplyTargetCharsChange?: (replyTargetChars: number) => void | Promise<void>
@@ -76,7 +80,7 @@ interface StoryStageProps {
 const DEFAULT_READING_FONT_SIZE = 18
 const EMPTY_STAGE_RUN = emptyStoryStageRun()
 
-export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
+export function StoryStage({ workspace, styleSceneSuggestions = [], stories = [], story, tellers = [], storyDirectors = [], imagePresets = [], recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, storyId, branchId, snapshot, snapshotLoading = false, loreEmpty = false, bookOpeningPresets = [], directorPanelVisible = true, stateDisplayPreference = DEFAULT_STORY_STATE_DISPLAY, onStorySelect = noop, onStoryCreate = noop, onStorySetupUpdate = noop, onNarrativeStyleChange, onStoryDelete = noop, onDirectorChange = noop, onReplyTargetCharsChange, onImageSettingsChange, onRequestLoreInit, onOpenDirectorConfig, onToggleDirectorPanel, onOpenDirectorState, onStateDisplayPreferenceChange = noopStateDisplayPreferenceChange, onTurnPersisted = noopTurnPersisted, onDone }: StoryStageProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const keyboardInset = useKeyboardInset()
@@ -699,7 +703,10 @@ export function StoryStage({ workspace, styleSceneSuggestions = [], stories = []
                 tellers={tellers}
                 directors={storyDirectors}
                 imagePresets={imagePresets}
+                recentNarrativeStyleID={recentNarrativeStyleID}
+                narrativeStyleLoading={narrativeStyleLoading}
                 story={editingStorySetup ? story : undefined}
+                onNarrativeStyleChange={onNarrativeStyleChange}
                 onCancel={() => { setCreatingStory(false); setEditingStorySetup(false) }}
                 onCreate={async (input) => {
                   if (editingStorySetup) await onStorySetupUpdate(input)

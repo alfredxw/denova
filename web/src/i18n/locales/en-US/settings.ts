@@ -96,6 +96,7 @@ const settings = {
   'settings.ide.hideNovelChapterBodyInLiveOutputHelp': 'When enabled, chapter body is hidden from the Agent stream. Files are still written normally.',
   'settings.ide.maxOpenTabs': 'Max Open Tabs',
   'settings.interactive.lineHeight': 'Story Stage Line Height',
+  'settings.interactive.defaultTeller': 'Default Narrative for New Stories',
   'settings.model.modelProfiles': 'Language Models',
   'settings.model.profileBaseUrlPlaceholder': 'Base URL',
   'settings.model.profileEmpty': 'Inheriting {{count}} language model(s). Add one with only Base URL, API Key, and model name.',

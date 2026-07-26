@@ -55,6 +55,9 @@ func TestDefaultSettingsValues(t *testing.T) {
 	if s.InteractiveStageLineHeight == nil || *s.InteractiveStageLineHeight != 1.78 {
 		t.Fatalf("InteractiveStageLineHeight default")
 	}
+	if s.IDEStoryTellerID != "rhythm" || s.InteractiveStoryTellerID != "rhythm" {
+		t.Fatalf("narrative style defaults: writing=%q game=%q", s.IDEStoryTellerID, s.InteractiveStoryTellerID)
+	}
 	if s.ChapterFilenameFormat != "ch{order:05}-{chapter}-{title}.md" {
 		t.Fatalf("ChapterFilenameFormat default: %s", s.ChapterFilenameFormat)
 	}

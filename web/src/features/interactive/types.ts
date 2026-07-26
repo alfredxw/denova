@@ -61,6 +61,7 @@ export interface Teller {
   id: string
   name: string
   description: string
+  modes?: Array<'writing' | 'game'> | null
   style_refs?: string[] | null
   style_rules?: StyleRule[] | null
   context_policy: TellerContextPolicy

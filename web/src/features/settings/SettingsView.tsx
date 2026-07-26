@@ -8,6 +8,7 @@ import { FONT_OPTIONS, fontLabelKeyFor } from './font-options'
 import { useLayeredSettingsDraft } from './use-layered-settings-draft'
 import { getInteractiveTellers } from '@/features/interactive/api'
 import type { Teller } from '@/features/interactive/types'
+import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName, narrativeStylesForMode } from '@/features/interactive/narrative-style'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
 import { SettingsFieldRow } from '@/components/forms/settings-field-row'
@@ -99,6 +100,8 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
   }, [])
 
   const effective = layered?.effective ?? {}
+  const writingTellers = useMemo(() => narrativeStylesForMode(availableTellers, 'writing'), [availableTellers])
+  const gameTellers = useMemo(() => narrativeStylesForMode(availableTellers, 'game'), [availableTellers])
   // The "inherit" display must reflect the value that would apply if the current
   // layer (user/workspace) contributed nothing. `effective` includes the current
   // layer, so we merge only the lower layers to avoid the inherit label changing
@@ -485,7 +488,7 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
             label={t('settings.ide.defaultTeller')}
             value={draft.ide_story_teller_id}
             inherited={inherited.ide_story_teller_id}
-            tellers={availableTellers}
+            tellers={writingTellers}
             onChange={(v) => setField('ide_story_teller_id', v)}
           />
         </>
@@ -528,6 +531,13 @@ export function SettingsView({ onClose }: { onClose?: () => void }) {
       title: t('settings.section.interactive'),
       children: (
         <>
+          <TellerSelect
+            label={t('settings.interactive.defaultTeller')}
+            value={draft.interactive_story_teller_id}
+            inherited={inherited.interactive_story_teller_id}
+            tellers={gameTellers}
+            onChange={(v) => setField('interactive_story_teller_id', v)}
+          />
           <Num label={t('settings.interactive.lineHeight')} value={draft.interactive_stage_line_height ?? null}
                placeholder={placeholderFor('interactive_stage_line_height')}
                step={0.05}
@@ -1253,7 +1263,8 @@ function TellerSelect({ label, value, inherited, tellers, onChange }: {
   onChange: (v: string) => void
 }) {
   const { t } = useTranslation()
-  const inheritedName = tellers.find((teller) => teller.id === inherited)?.name || inherited || 'classic'
+  const inheritedTeller = tellers.find((teller) => teller.id === inherited)
+  const inheritedName = inheritedTeller ? narrativeStyleName(inheritedTeller, t) : inherited || DEFAULT_NARRATIVE_STYLE_ID
   return (
     <FieldRow label={label}>
       <Select value={value || FIELD_INHERIT_VALUE} onValueChange={(v) => onChange(v === FIELD_INHERIT_VALUE ? '' : v)}>
@@ -1264,7 +1275,7 @@ function TellerSelect({ label, value, inherited, tellers, onChange }: {
           <SelectGroup>
             <SelectItem value={FIELD_INHERIT_VALUE}>{t('common.inherit', { value: inheritedName })}</SelectItem>
             {tellers.map((teller) => (
-              <SelectItem key={teller.id} value={teller.id}>{teller.name}</SelectItem>
+              <SelectItem key={teller.id} value={teller.id}>{narrativeStyleName(teller, t)}</SelectItem>
             ))}
           </SelectGroup>
         </SelectContent>
@@ -1811,6 +1822,7 @@ function mergeSettingsLayer(parent: Settings, child: Settings): Settings {
   override('trace_retention_runs', isNonNull)
   override('plan_mode_default', isNonNull)
   override('ide_story_teller_id', isNonEmptyString)
+  override('interactive_story_teller_id', isNonEmptyString)
   override('ide_image_preset_id', isNonEmptyString)
   override('writing_skill_default', isNonEmptyString)
   override('interactive_stage_font_size', isNonNull)

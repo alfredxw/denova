@@ -11,6 +11,7 @@ import (
 	agentcontext "denova/internal/agents/context"
 	"denova/internal/book"
 	"denova/internal/interactive"
+	"denova/internal/narrativestyle"
 	"denova/internal/prompts"
 )
 
@@ -271,7 +272,7 @@ func fitTextToTokenBudget(value string, tokenBudget int) string {
 }
 
 func (c *interactiveConversation) teller(tellerID string) interactive.Teller {
-	return loadInteractiveTeller(c.novaDir, tellerID)
+	return loadGameTeller(c.novaDir, tellerID)
 }
 
 func (c *interactiveConversation) storyDirector(directorID string) interactive.StoryDirector {
@@ -303,18 +304,35 @@ func storyDirectorForSnapshot(director interactive.StoryDirector, snapshot *inte
 	return director
 }
 
-func loadInteractiveTeller(novaDir, tellerID string) interactive.Teller {
+func loadWritingTeller(novaDir, tellerID string) interactive.Teller {
+	return loadInteractiveTeller(novaDir, tellerID, narrativestyle.ModeWriting)
+}
+
+func loadGameTeller(novaDir, tellerID string) interactive.Teller {
+	return loadInteractiveTeller(novaDir, tellerID, narrativestyle.ModeGame)
+}
+
+func loadInteractiveTeller(novaDir, tellerID, mode string) interactive.Teller {
 	if novaDir == "" {
 		return interactive.Teller{}
 	}
-	teller, err := interactive.NewTellerLibrary(novaDir).Get(tellerID)
-	if err == nil {
+	library := interactive.NewTellerLibrary(novaDir)
+	teller, err := library.Get(tellerID)
+	if err == nil && teller.SupportsMode(mode) {
 		return teller
 	}
-	log.Printf("[interactive-agent] load teller failed id=%s err=%v", tellerID, err)
-	fallback, fallbackErr := interactive.NewTellerLibrary(novaDir).Get("classic")
+	if err != nil {
+		log.Printf("[interactive-agent] load narrative style failed id=%s mode=%s err=%v", tellerID, mode, err)
+	} else {
+		log.Printf("[interactive-agent] narrative style is unavailable in mode id=%s mode=%s", tellerID, mode)
+	}
+	fallback, fallbackErr := library.Get(narrativestyle.DefaultID)
 	if fallbackErr != nil {
-		log.Printf("[interactive-agent] load fallback teller failed err=%v", fallbackErr)
+		log.Printf("[interactive-agent] load default narrative style failed id=%s mode=%s err=%v", narrativestyle.DefaultID, mode, fallbackErr)
+		return interactive.Teller{}
+	}
+	if !fallback.SupportsMode(mode) {
+		log.Printf("[interactive-agent] default narrative style is unavailable in mode id=%s mode=%s", fallback.ID, mode)
 		return interactive.Teller{}
 	}
 	return fallback

@@ -1,10 +1,11 @@
 # Narrative style (`narrative_style`)
 
-Narrative styles are shared by Writing and Game modes. They contain prose policy, prompt slots, and references to shared style-reference files.
+Narrative styles can be shared by Writing and Game modes or scoped to either mode. They contain prose policy, prompt slots, and references to shared style-reference files.
 
 ## Editable shape
 
 - `id`, `name`, `description`
+- `modes`: one or both of `writing` and `game`; a legacy resource without this field remains available in both modes
 - `style_refs`: global style-reference display paths
 - `style_rules`: scene-specific objects with `scene` and `style_refs`; preserve legacy `style_contents` but do not add new inline content
 - `context_policy`: short `creator`, `lore`, and `runtime_state` policies

@@ -103,7 +103,7 @@ func (resource jsonConfigResource[T]) receipt(mutation configresources.Mutation,
 func newNarrativeStyleResource(novaDir string) configresources.Adapter {
 	lib := interactive.NewTellerLibrary(novaDir)
 	return jsonConfigResource[interactive.Teller]{
-		name: "narrative_style", description: "Shared narrative style, prompt slots, style references, and context policy.", reference: "references/narrative-style.md",
+		name: "narrative_style", description: "Narrative style with writing/game availability, prompt slots, style references, and context policy.", reference: "references/narrative-style.md",
 		leasePath: configResourceLeasePath(novaDir, "narrative_style"),
 		list:      lib.List, get: lib.Get, create: lib.Create,
 		update: func(id string, value interactive.Teller, revision string) (interactive.Teller, error) {

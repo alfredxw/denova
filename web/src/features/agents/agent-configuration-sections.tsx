@@ -397,7 +397,7 @@ function contextRowsFor(agent: VisibleAgentKey, effective: Settings, t: (key: st
   if (agent === 'ide') {
     return [
       { title: t('agents.context.currentBook'), value: 'workspace' },
-      { title: t('agents.context.defaultTeller'), value: effective.ide_story_teller_id || 'classic' },
+      { title: t('agents.context.defaultTeller'), value: effective.ide_story_teller_id || 'rhythm' },
       { title: t('agents.context.sessionContext'), value: t('agents.context.compactionValue', { threshold }) },
     ]
   }

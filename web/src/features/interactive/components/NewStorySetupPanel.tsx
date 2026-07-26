@@ -1,6 +1,6 @@
 import { ChevronDown, Clock3, GitBranch, Image, Loader2, Lock, MousePointerClick, Package, Scale, Sparkles, UserRound, WandSparkles, Zap } from 'lucide-react'
 import type { ElementType } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,13 +12,17 @@ import { cn } from '@/lib/utils'
 import { getActorStates, getEventPackages, getRuleSystems } from '../api'
 import { DEFAULT_INTERACTIVE_CHOICE_COUNT, DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS, MAX_INTERACTIVE_CHOICE_COUNT, MIN_INTERACTIVE_CHOICE_COUNT, type StoryCreateInput } from '../opening'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, StoryDirectorModuleRefs, StoryDirectorRunMode, StoryDirectorRunPolicy, StoryStateSchemaMode, StorySummary, Teller } from '../types'
+import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleName, narrativeStylesForMode, resolveNarrativeStyle } from '../narrative-style'
 
 interface NewStorySetupPanelProps {
   stories: StorySummary[]
   tellers: Teller[]
   directors: StoryDirector[]
   imagePresets: ImagePreset[]
+  recentNarrativeStyleID?: string
+  narrativeStyleLoading?: boolean
   story?: StorySummary
+  onNarrativeStyleChange?: (id: string) => void | Promise<unknown>
   onCancel: () => void
   onCreate: (input: StoryCreateInput) => void | Promise<void>
 }
@@ -29,8 +33,10 @@ const moduleFields: Array<{ id: keyof StoryDirectorModuleRefs; disabled: keyof S
   { id: 'image_preset_id', disabled: 'image_preset_disabled', label: 'imagePreset', icon: Image },
 ]
 
-export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, story, onCancel, onCreate }: NewStorySetupPanelProps) {
+export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, story, onNarrativeStyleChange, onCancel, onCreate }: NewStorySetupPanelProps) {
   const { t } = useTranslation()
+  const gameTellers = useMemo(() => narrativeStylesForMode(tellers, 'game'), [tellers])
+  const recentTeller = resolveNarrativeStyle(gameTellers, recentNarrativeStyleID, 'game')
   const defaultDirector = directors[0]
   const initialDirector = directors.find((item) => item.id === story?.story_director_id) || defaultDirector
   const [title, setTitle] = useState(() => story?.title || defaultStoryTitle(stories, t))
@@ -38,7 +44,16 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
   const [directorId, setDirectorId] = useState(initialDirector?.id || 'default')
   const [replyTargetChars, setReplyTargetChars] = useState(String(story?.reply_target_chars || DEFAULT_INTERACTIVE_REPLY_TARGET_CHARS))
   const [choiceCount, setChoiceCount] = useState(String(story?.choice_count || DEFAULT_INTERACTIVE_CHOICE_COUNT))
-  const [moduleRefs, setModuleRefs] = useState<StoryDirectorModuleRefs>(() => ({ ...(story?.module_refs || initialDirector?.module_refs || {}) }))
+  // Loading a saved preference may finish after the form opens. Lock the
+  // displayed value once an existing story or an explicit director/style
+  // action has supplied a more local choice, but persist only direct changes
+  // made through the narrative-style selector.
+  const narrativeStyleSelectionLockedRef = useRef(Boolean(story))
+  const [moduleRefs, setModuleRefs] = useState<StoryDirectorModuleRefs>(() => {
+    const initial = { ...(story?.module_refs || initialDirector?.module_refs || {}) }
+    if (story) return { ...initial, narrative_style_id: story.story_teller_id || initial.narrative_style_id }
+    return { ...initial, narrative_style_id: recentTeller?.id || DEFAULT_NARRATIVE_STYLE_ID }
+  })
   const [stateSchemaMode, setStateSchemaMode] = useState<StoryStateSchemaMode>(story?.state_schema_policy?.mode || 'adapt_template')
   const initialRunPolicy = story?.director_run_policy || defaultDirectorRunPolicy(initialDirector)
   const [directorRunMode, setDirectorRunMode] = useState<StoryDirectorRunMode>(initialRunPolicy.mode)
@@ -47,7 +62,12 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
   const [error, setError] = useState('')
   const [moduleCatalog, setModuleCatalog] = useState<DirectorModuleCatalog>({ eventPackages: [], ruleSystems: [], actorStates: [] })
   const director = directors.find((item) => item.id === directorId) || defaultDirector
-  const moduleOptions = useMemo(() => collectModuleOptions(directors, tellers, imagePresets, moduleCatalog), [directors, imagePresets, moduleCatalog, tellers])
+  const moduleOptions = useMemo(() => collectModuleOptions(directors, gameTellers, imagePresets, moduleCatalog, t), [directors, gameTellers, imagePresets, moduleCatalog, t])
+
+  useEffect(() => {
+    if (story || narrativeStyleSelectionLockedRef.current || !recentTeller) return
+    setModuleRefs((current) => ({ ...current, narrative_style_id: recentTeller.id }))
+  }, [recentTeller, story])
 
   useEffect(() => {
     let cancelled = false
@@ -62,17 +82,19 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
   const selectDirector = (id: string) => {
     const next = directors.find((item) => item.id === id)
     const nextRunPolicy = defaultDirectorRunPolicy(next)
+    const nextRefs = { ...(next?.module_refs || {}) }
     setDirectorId(id)
-    setModuleRefs({ ...(next?.module_refs || {}) })
+    setModuleRefs(nextRefs)
     setDirectorRunMode(nextRunPolicy.mode)
     setDirectorIntervalTurns(String(nextRunPolicy.interval_turns || 3))
+    narrativeStyleSelectionLockedRef.current = true
   }
   const submit = async () => {
     if (creating) return
     setCreating(true)
     setError('')
     try {
-      const tellerID = moduleRefs.narrative_style_disabled ? 'classic' : moduleRefs.narrative_style_id || tellers[0]?.id || 'classic'
+      const tellerID = resolveNarrativeStyle(gameTellers, moduleRefs.narrative_style_id || recentNarrativeStyleID, 'game')?.id || DEFAULT_NARRATIVE_STYLE_ID
       const normalizedChoiceCount = parseChoiceCount(choiceCount)
       if (normalizedChoiceCount === null) throw new Error(t('storyPicker.choiceCountError'))
       const directorRunPolicy = buildDirectorRunPolicy(directorRunMode, directorIntervalTurns)
@@ -132,7 +154,7 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
           <section className="border-t border-[var(--nova-border)] pt-4">
             <SectionHeader title={t('storyPicker.setup.modules')} description={t('storyPicker.setup.modulesHint', { director: director?.name || directorId })} />
             <div className="mt-3 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-              {moduleFields.map((field) => <ModuleSelectCard key={field.label} field={field} refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleOptions[field.id]} onChange={setModuleRefs} t={t} />)}
+              {moduleFields.map((field) => <ModuleSelectCard key={field.label} field={field} refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleOptions[field.id]} onChange={setModuleRefs} onNarrativeStyleChange={(id) => { narrativeStyleSelectionLockedRef.current = true; void onNarrativeStyleChange?.(id) }} t={t} />)}
               <EventPackagesCard refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleCatalog.eventPackages.map(moduleOption)} onChange={setModuleRefs} t={t} />
               <StateSchemaPolicyCard mode={stateSchemaMode} onModeChange={setStateSchemaMode} refs={moduleRefs} directorRefs={director?.module_refs || {}} options={moduleOptions.actor_state_id} onRefsChange={setModuleRefs} t={t} />
             </div>
@@ -140,7 +162,7 @@ export function NewStorySetupPanel({ stories, tellers, directors, imagePresets, 
         </div>
 
         {error ? <div className="mt-4 rounded-[var(--nova-radius)] border border-[var(--nova-danger-border)] bg-[var(--nova-danger-bg)] px-3 py-2 text-xs text-[var(--nova-danger)]">{error}</div> : null}
-        <footer className="sticky bottom-0 z-10 mt-5 flex items-center justify-end gap-2 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] pb-1 pt-3"><Button type="button" variant="ghost" disabled={creating} onClick={onCancel}>{t('common.cancel')}</Button><Button type="button" disabled={creating} onClick={() => void submit()}>{creating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{creating ? t('common.creating') : t('storyPicker.setup.continue')}</Button></footer>
+        <footer className="sticky bottom-0 z-10 mt-5 flex items-center justify-end gap-2 border-t border-[var(--nova-border)] bg-[var(--nova-surface-2)] pb-1 pt-3"><Button type="button" variant="ghost" disabled={creating} onClick={onCancel}>{t('common.cancel')}</Button><Button type="button" disabled={creating || narrativeStyleLoading} onClick={() => void submit()}>{creating || narrativeStyleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}{creating ? t('common.creating') : narrativeStyleLoading ? t('common.loading') : t('storyPicker.setup.continue')}</Button></footer>
       </section>
     </div>
   )
@@ -198,11 +220,11 @@ interface DirectorModuleCatalog {
   actorStates: ActorStateModule[]
 }
 
-function collectModuleOptions(directors: StoryDirector[], tellers: Teller[], imagePresets: ImagePreset[], catalog: DirectorModuleCatalog): ModuleOptionMap {
+function collectModuleOptions(directors: StoryDirector[], tellers: Teller[], imagePresets: ImagePreset[], catalog: DirectorModuleCatalog, t: ReturnType<typeof useTranslation>['t']): ModuleOptionMap {
   const map = {} as ModuleOptionMap
   const keys: Array<keyof StoryDirectorModuleRefs> = ['narrative_style_id', 'rule_system_id', 'actor_state_id', 'image_preset_id']
   keys.forEach((key) => { map[key] = [] })
-  map.narrative_style_id = tellers.map(moduleOption)
+  map.narrative_style_id = tellers.map((teller) => ({ id: teller.id, label: narrativeStyleName(teller, t) }))
   map.rule_system_id = catalog.ruleSystems.map(moduleOption)
   map.actor_state_id = catalog.actorStates.map(moduleOption)
   map.image_preset_id = imagePresets.map(moduleOption)
@@ -270,7 +292,7 @@ function StateSchemaPolicyCard({ mode, onModeChange, refs, directorRefs, options
   )
 }
 
-function ModuleSelectCard({ field, refs, directorRefs, options, onChange, t }: { field: (typeof moduleFields)[number]; refs: StoryDirectorModuleRefs; directorRefs: StoryDirectorModuleRefs; options: Array<{ id: string; label: string }>; onChange: React.Dispatch<React.SetStateAction<StoryDirectorModuleRefs>>; t: (key: string, options?: Record<string, unknown>) => string }) {
+function ModuleSelectCard({ field, refs, directorRefs, options, onChange, onNarrativeStyleChange, t }: { field: (typeof moduleFields)[number]; refs: StoryDirectorModuleRefs; directorRefs: StoryDirectorModuleRefs; options: Array<{ id: string; label: string }>; onChange: React.Dispatch<React.SetStateAction<StoryDirectorModuleRefs>>; onNarrativeStyleChange?: (id: string) => void; t: (key: string, options?: Record<string, unknown>) => string }) {
   const Icon = field.icon
   const currentID = typeof refs[field.id] === 'string' ? String(refs[field.id]) : ''
   const directorID = typeof directorRefs[field.id] === 'string' ? String(directorRefs[field.id]) : ''
@@ -282,7 +304,11 @@ function ModuleSelectCard({ field, refs, directorRefs, options, onChange, t }: {
   return (
     <div className="min-w-0 rounded-[10px] border border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-2.5 transition-colors focus-within:border-[var(--nova-field-focus-border)]">
       <div className="mb-1.5 flex items-center gap-2 text-[11px] font-medium text-[var(--nova-text-muted)]"><Icon className="h-3.5 w-3.5 text-[var(--nova-accent)]" /><span>{label}</span></div>
-      <Select value={value} onValueChange={(next) => onChange((current) => next === '__default' ? { ...current, [field.disabled]: Boolean(directorRefs[field.disabled]), [field.id]: directorID } : next === '__disabled' ? { ...current, [field.disabled]: true } : { ...current, [field.disabled]: false, [field.id]: next })}>
+      <Select value={value} onValueChange={(next) => {
+        const nextID = next === '__default' ? directorID : next === '__disabled' ? '' : next
+        onChange((current) => next === '__default' ? { ...current, [field.disabled]: Boolean(directorRefs[field.disabled]), [field.id]: directorID } : next === '__disabled' ? { ...current, [field.disabled]: true } : { ...current, [field.disabled]: false, [field.id]: next })
+        if (field.id === 'narrative_style_id' && nextID && next !== '__disabled') onNarrativeStyleChange?.(nextID)
+      }}>
         <SelectTrigger size="sm" aria-label={label} className="nova-field h-8 w-full border-transparent bg-[var(--nova-surface)] px-2 text-xs"><SelectValue /></SelectTrigger>
         <SelectContent position="popper" className="nova-panel border text-[var(--nova-text)]">
           <SelectItem value="__default">{t('storyPicker.setup.defaultWithValue', { value: directorLabel })}</SelectItem>

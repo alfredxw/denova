@@ -53,6 +53,7 @@ export interface Settings {
   trace_retention_runs?: number | null
   plan_mode_default?: boolean | null
   ide_story_teller_id?: string
+  interactive_story_teller_id?: string
   ide_image_preset_id?: string
   writing_skill_default?: string
   interactive_stage_font_size?: number | null

@@ -10,6 +10,7 @@ import (
 
 	toml "github.com/pelletier/go-toml/v2"
 
+	"denova/internal/narrativestyle"
 	"denova/internal/revisionfile"
 	"denova/internal/workspacepath"
 )
@@ -90,6 +91,7 @@ type Settings struct {
 	WritingSkillDefault     string `toml:"writing_skill_default,omitempty" json:"writing_skill_default,omitempty"`
 
 	// 游戏模式
+	InteractiveStoryTellerID   string   `toml:"interactive_story_teller_id,omitempty" json:"interactive_story_teller_id,omitempty"`
 	InteractiveStageFontSize   *int     `toml:"interactive_stage_font_size,omitempty" json:"interactive_stage_font_size,omitempty"`
 	InteractiveStageLineHeight *float64 `toml:"interactive_stage_line_height,omitempty" json:"interactive_stage_line_height,omitempty"`
 }
@@ -165,9 +167,10 @@ func DefaultSettings() Settings {
 		GeneralSubAgents:           DefaultAgentGeneralSubAgentSettings(),
 		SubAgents:                  nil,
 		PlanModeDefault:            boolPtr(false),
-		IDEStoryTellerID:           "classic",
+		IDEStoryTellerID:           narrativestyle.DefaultID,
 		IDEImagePresetID:           "game-cg",
 		WritingSkillDefault:        DefaultWritingSkillName,
+		InteractiveStoryTellerID:   narrativestyle.DefaultID,
 		InteractiveStageFontSize:   intPtr(16),
 		InteractiveStageLineHeight: floatPtr(1.78),
 	}
@@ -324,6 +327,9 @@ func Merge(parent, child Settings) Settings {
 	}
 	if child.IDEStoryTellerID != "" {
 		out.IDEStoryTellerID = child.IDEStoryTellerID
+	}
+	if child.InteractiveStoryTellerID != "" {
+		out.InteractiveStoryTellerID = child.InteractiveStoryTellerID
 	}
 	if child.IDEImagePresetID != "" {
 		out.IDEImagePresetID = child.IDEImagePresetID
@@ -631,6 +637,8 @@ func sanitizeEditableSettings(s Settings) Settings {
 	s.Language = normalizeLanguage(s.Language)
 	s.Theme = normalizeTheme(s.Theme)
 	s.MotionIntensity = normalizeMotionIntensity(s.MotionIntensity)
+	s.IDEStoryTellerID = strings.TrimSpace(s.IDEStoryTellerID)
+	s.InteractiveStoryTellerID = strings.TrimSpace(s.InteractiveStoryTellerID)
 	s.IDEImagePresetID = strings.TrimSpace(s.IDEImagePresetID)
 	s.WritingSkillDefault = strings.TrimSpace(s.WritingSkillDefault)
 	s.OpenAIContextWindowTokens = normalizeContextWindowTokens(s.OpenAIContextWindowTokens)

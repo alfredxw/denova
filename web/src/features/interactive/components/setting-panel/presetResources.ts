@@ -49,6 +49,7 @@ export function presetResourceDraftSignature(item: object) {
 export function cloneTeller(teller: Teller): Teller {
   return {
     ...teller,
+    modes: [...(teller.modes || [])],
     slots: [...(teller.slots || [])],
     context_policy: { ...teller.context_policy },
     style_refs: [...(teller.style_refs || [])],
@@ -127,6 +128,7 @@ export function newTellerDraft(t?: PresetDraftTranslator): Partial<Teller> {
     id,
     name: presetDraftText(t, 'settingPanel.presetDraft.teller.name', '自定义叙事风格'),
     description: presetDraftText(t, 'settingPanel.presetDraft.teller.description', '新的叙事风格'),
+    modes: ['writing', 'game'],
     style_refs: [],
     style_rules: [],
     context_policy: {
@@ -159,7 +161,7 @@ export function newStoryDirectorDraft(t?: PresetDraftTranslator): Partial<StoryD
     name: presetDraftText(t, 'settingPanel.presetDraft.director.name', '自定义故事导演'),
     description: presetDraftText(t, 'settingPanel.presetDraft.director.description', '新的故事导演，组合叙事风格、事件包、TRPG 检定、状态系统和图像方案。'),
     module_refs: {
-      narrative_style_id: 'classic',
+      narrative_style_id: 'rhythm',
       event_package_ids: ['default'],
       rule_system_id: 'default',
       actor_state_id: 'default',

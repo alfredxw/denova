@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"denova/internal/conversationjournal"
+	"denova/internal/narrativestyle"
 )
 
 func (s *Store) Index() (Index, error) {
@@ -90,7 +91,7 @@ func (s *Store) CreateStory(req CreateStoryRequest) (StorySummary, error) {
 		return StorySummary{}, err
 	}
 	if story.StoryTellerID == "" {
-		story.StoryTellerID = "classic"
+		story.StoryTellerID = narrativestyle.DefaultID
 	}
 	if story.StoryDirectorID == "" {
 		story.StoryDirectorID = DefaultStoryDirectorID

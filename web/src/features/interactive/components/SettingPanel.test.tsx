@@ -380,7 +380,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetPanelHarness />)
 
-    await user.click(screen.getByRole('button', { name: /经典叙事/ }))
+    await user.click(screen.getByRole('button', { name: /稳健叙事/ }))
     fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '覆盖后的经典叙事' } })
     flushSettingPanelAutosave()
 
@@ -402,7 +402,7 @@ describe('SettingPanel', () => {
     const user = userEvent.setup()
     render(<PresetPanelHarness />)
 
-    await user.click(screen.getByRole('button', { name: /经典叙事/ }))
+    await user.click(screen.getByRole('button', { name: /稳健叙事/ }))
     fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '切换前自动保存' } })
     expandSection('图像方案')
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
@@ -432,7 +432,7 @@ describe('SettingPanel', () => {
       }) as Teller)
     render(<PresetPanelHarness />)
 
-    await user.click(screen.getByRole('button', { name: /经典叙事/ }))
+    await user.click(screen.getByRole('button', { name: /稳健叙事/ }))
     fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '失败后重试' } })
     flushSettingPanelAutosave()
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('自动保存失败'))
@@ -733,7 +733,7 @@ describe('SettingPanel', () => {
     expect(sectionToggle('图像方案')).toBeInTheDocument()
     expect(sectionToggle('故事导演')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /默认导演/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /经典叙事/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /稳健叙事/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建故事导演' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新建叙事风格' })).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
@@ -748,7 +748,7 @@ describe('SettingPanel', () => {
 
     await user.click(screen.getByRole('button', { name: '收起全部' }))
     expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /经典叙事/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /稳健叙事/ })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '展开全部' }))
     expect(screen.getByRole('button', { name: /默认导演/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /默认事件包/ })).toBeInTheDocument()
@@ -758,7 +758,7 @@ describe('SettingPanel', () => {
     expect(screen.getByRole('button', { name: '收起全部' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '收起全部' }))
     expect(screen.queryByRole('button', { name: /默认导演/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /经典叙事/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /稳健叙事/ })).not.toBeInTheDocument()
     expandSection('故事导演')
 
     await selectDefaultDirector(user)

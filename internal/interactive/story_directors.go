@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	storyDirectorVersion   = 4
+	storyDirectorVersion   = 5
 	DefaultStoryDirectorID = "default"
 
 	maxStoryDirectorRules               = 64

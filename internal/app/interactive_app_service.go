@@ -85,6 +85,7 @@ func (s *InteractiveAppService) CreateInteractiveStoryContext(ctx context.Contex
 	if err != nil {
 		return interactive.StorySummary{}, err
 	}
+	req.StoryTellerID = s.gameTellerID(req.StoryTellerID)
 	story, err := store.CreateStory(req)
 	if err != nil {
 		return interactive.StorySummary{}, err
@@ -230,6 +231,9 @@ func (s *InteractiveAppService) UpdateInteractiveStory(storyID string, req inter
 			return interactive.StorySummary{}, err
 		}
 	}
+	if strings.TrimSpace(req.StoryTellerID) != "" {
+		req.StoryTellerID = s.gameTellerID(req.StoryTellerID)
+	}
 	fence, err := s.drainInteractiveBinding(context.Background(), storyID, "")
 	if err != nil {
 		return interactive.StorySummary{}, err
@@ -241,6 +245,17 @@ func (s *InteractiveAppService) UpdateInteractiveStory(storyID string, req inter
 		return interactive.StorySummary{}, err
 	}
 	return store.UpdateStory(storyID, req)
+}
+
+func (s *InteractiveAppService) gameTellerID(tellerID string) string {
+	cfg := s.cfg()
+	if cfg == nil || cfg.DataDir() == "" {
+		return strings.TrimSpace(tellerID)
+	}
+	if teller := loadGameTeller(cfg.DataDir(), strings.TrimSpace(tellerID)); teller.ID != "" {
+		return teller.ID
+	}
+	return strings.TrimSpace(tellerID)
 }
 
 func (s *InteractiveAppService) withStoryStateSchemaUpdateDefaults(req interactive.UpdateStoryRequest) (interactive.UpdateStoryRequest, error) {

@@ -41,7 +41,7 @@ export function utf8ByteLength(value: string): number {
 
 export function normalizedStoryDirectorRefs(refs: StoryDirectorModuleRefs | undefined): StoryDirectorModuleRefs {
   return {
-    narrative_style_id: refs?.narrative_style_id || 'classic',
+    narrative_style_id: refs?.narrative_style_id || 'rhythm',
     narrative_style_disabled: refs?.narrative_style_disabled === true,
     event_package_ids: normalizeIDList(refs?.event_package_ids?.length ? refs.event_package_ids : ['default']),
     event_packages_disabled: refs?.event_packages_disabled === true,

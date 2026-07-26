@@ -709,6 +709,9 @@ export function ModeRouter(props: ModeRouterProps) {
           <InteractiveLayout
             workspace={workspace}
             active={visibleMainRoute === 'interactive'}
+            recentNarrativeStyleID={composerSettings.values.interactive_story_teller_id}
+            narrativeStyleLoading={composerSettings.loading}
+            onNarrativeStyleChange={(id) => composerSettings.persist('interactive_story_teller_id', id)}
             imagePresets={imagePresets}
             onImagePresetsChange={setImagePresets}
             loreEmpty={loreEmpty}

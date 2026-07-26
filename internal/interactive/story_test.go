@@ -57,6 +57,9 @@ func TestSelectStoryPersistsCurrentStoryInWorkspaceIndex(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if first.StoryTellerID != "rhythm" {
+		t.Fatalf("new story without a selection should use rhythm, got %q", first.StoryTellerID)
+	}
 	second, err := store.CreateStory(CreateStoryRequest{Title: "第二条故事线"})
 	if err != nil {
 		t.Fatal(err)

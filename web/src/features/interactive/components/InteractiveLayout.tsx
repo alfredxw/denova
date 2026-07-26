@@ -22,12 +22,16 @@ import {
 import { novaEase, panelPresence, subtlePresence } from '@/features/motion/motion-tokens'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { MobilePaneHost } from '@/components/layout/mobile-pane-host'
-import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary } from '../types'
+import type { ImagePreset, InteractiveTurnPersistedEvent, Snapshot, StoryDirector, StoryImageSettings, StorySummary, Teller } from '../types'
 import { INTERACTIVE_OPENING_PRESET_PATH, INTERACTIVE_OPENING_PRESET_UPDATED_EVENT, LEGACY_INTERACTIVE_OPENING_PRESET_PATH, parseBookOpeningPresets, type BookOpeningPreset, type StoryCreateInput } from '../opening'
+import { DEFAULT_NARRATIVE_STYLE_ID, narrativeStylesForMode, resolveNarrativeStyle } from '../narrative-style'
 
 interface InteractiveLayoutProps {
   workspace?: string
   active?: boolean
+  recentNarrativeStyleID?: string
+  narrativeStyleLoading?: boolean
+  onNarrativeStyleChange?: (id: string) => void | Promise<unknown>
   imagePresets?: ImagePreset[]
   onImagePresetsChange?: (presets: ImagePreset[]) => void
   loreEmpty?: boolean
@@ -38,7 +42,7 @@ interface InteractiveLayoutProps {
 
 const SNAPSHOT_POLL_INTERVAL_MS = 1000
 
-export function InteractiveLayout({ workspace, active = true, imagePresets = [], onImagePresetsChange, loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
+export function InteractiveLayout({ workspace, active = true, recentNarrativeStyleID = DEFAULT_NARRATIVE_STYLE_ID, narrativeStyleLoading = false, onNarrativeStyleChange, imagePresets = [], onImagePresetsChange, loreEmpty = false, onRequestLoreInit, rightPanelVisible = true, onToggleRightPanel }: InteractiveLayoutProps) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const {
@@ -81,7 +85,7 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
     resetWorkspaceState: state.resetWorkspaceState,
   })))
   const currentStory = stories.find((story) => story.id === currentStoryId)
-  const currentTeller = tellers.find((teller) => teller.id === currentStory?.story_teller_id)
+  const currentTeller = resolveNarrativeStyle(tellers, currentStory?.story_teller_id, 'game')
   const styleSceneSuggestions = Array.from(new Set((currentTeller?.style_rules || []).map((rule) => rule.scene.trim()).filter((scene) => scene && !isGlobalStyleSceneName(scene))))
   const currentBranchSnapshot = snapshot?.story_id === currentStoryId && snapshot.branch_id === currentBranchId ? snapshot : null
   const storyIndexRequestSeqRef = useRef(0)
@@ -286,9 +290,10 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
   const handleDirectorChange = async (directorId: string) => {
     if (!currentStoryId) return
     const director = storyDirectors.find((item) => item.id === directorId)
+    const narrativeStyleID = storyDirectorNarrativeStyleId(director, tellers, currentStory?.story_teller_id)
     await updateInteractiveStory(currentStoryId, {
       story_director_id: directorId,
-      story_teller_id: storyDirectorNarrativeStyleId(director, tellers, currentStory?.story_teller_id),
+      story_teller_id: narrativeStyleID,
     })
     await reloadStories()
     await reloadSnapshot(undefined, currentStoryId, { silent: true })
@@ -372,6 +377,8 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
       tellers={tellers}
       storyDirectors={storyDirectors}
       imagePresets={imagePresets}
+      recentNarrativeStyleID={recentNarrativeStyleID}
+      narrativeStyleLoading={narrativeStyleLoading}
       storyId={currentStoryId}
       branchId={currentBranchId}
       snapshot={displaySnapshot}
@@ -383,6 +390,7 @@ export function InteractiveLayout({ workspace, active = true, imagePresets = [],
       onStorySelect={handleStorySelect}
       onStoryCreate={handleCreateStory}
       onStorySetupUpdate={handleStorySetupUpdate}
+      onNarrativeStyleChange={onNarrativeStyleChange}
       onStoryDelete={handleDeleteStories}
       onDirectorChange={handleDirectorChange}
       onReplyTargetCharsChange={handleReplyTargetCharsChange}
@@ -457,11 +465,13 @@ function isGlobalStyleSceneName(scene: string) {
   return normalized === '全局' || normalized === 'global'
 }
 
-function storyDirectorNarrativeStyleId(director: StoryDirector | undefined, tellers: { id: string }[], fallbackTellerId = '') {
-  if (director?.module_refs?.narrative_style_disabled !== true && director?.module_refs?.narrative_style_id) {
-    return director.module_refs.narrative_style_id
-  }
-  return tellers[0]?.id || fallbackTellerId || 'classic'
+function storyDirectorNarrativeStyleId(director: StoryDirector | undefined, tellers: Teller[], fallbackTellerId = '') {
+  const available = narrativeStylesForMode(tellers, 'game')
+  const directorTellerID = director?.module_refs?.narrative_style_disabled !== true ? director?.module_refs?.narrative_style_id : ''
+  return available.find((teller) => teller.id === directorTellerID)?.id
+    || available.find((teller) => teller.id === fallbackTellerId)?.id
+    || resolveNarrativeStyle(available, DEFAULT_NARRATIVE_STYLE_ID, 'game')?.id
+    || DEFAULT_NARRATIVE_STYLE_ID
 }
 
 function mergePreferredStory(stories: StorySummary[], preferredStory?: StorySummary) {

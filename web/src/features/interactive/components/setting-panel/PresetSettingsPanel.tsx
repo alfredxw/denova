@@ -12,6 +12,7 @@ import { MobilePaneTrigger } from '@/components/layout/mobile-pane-trigger'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
 import { Button } from '@/components/ui/button'
 import { createActorState, createEventPackage, createImagePreset, createInteractiveTeller, createRuleSystem, createStoryDirector, deleteActorState, deleteEventPackage, deleteImagePreset, deleteInteractiveTeller, deleteRuleSystem, deleteStoryDirector, getActorStates, getEventPackages, getImagePresets, getInteractiveTellers, getRuleSystems, getStoryDirectors, updateActorState, updateEventPackage, updateImagePreset, updateInteractiveTeller, updateRuleSystem, updateStoryDirector } from '../../api'
+import { narrativeStylesForMode } from '../../narrative-style'
 import type { PresetResourceKind, PresetUsageMode } from '../../preset-ownership'
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
 import { PresetResourcePane } from './PresetResourcePane'
@@ -351,7 +352,7 @@ export function PresetSettingsPanel({
     if (kind === 'event') return eventPackages
     if (kind === 'rule') return ruleSystems
     if (kind === 'actor-state') return actorStates
-    return tellers
+    return narrativeStylesForMode(tellers, presetUsageMode)
   }
 
   const { selectPresetResource, handleSelectDirectoryEntry } = usePresetSelection({

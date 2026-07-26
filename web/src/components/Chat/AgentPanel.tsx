@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, Bot, FileText, PenLine, Plus, SearchCheck, Sparkles, WandSparkles, X } from 'lucide-react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { createStablePortalHost, StablePortalSlot } from '@/components/layout/stable-portal-slot'
 import type { ImagePreset, Teller } from '@/features/interactive/types'
+import { DEFAULT_NARRATIVE_STYLE_ID, resolveNarrativeStyle } from '@/features/interactive/narrative-style'
 import { answerSessionAsk, cancelSessionAsk, removeChatContextCompaction } from '@/lib/api'
 import type { ActiveChatTask, AgentAskAnswer, AgentRuntimeQueuedCommand, ChapterIllustration, ChapterSummary, ContextAnalysis, IDEContext, SessionSummary, TextSelection } from '@/lib/api'
 import type { AgentUIMessage } from '@/lib/agent-ui'
@@ -31,7 +32,8 @@ type AgentPanelView = 'chat' | 'sessions' | 'traces'
 
 const WRITING_AGENT_INIT_EVENT = 'nova:writing-agent-init'
 export const WRITING_COMPOSER_SETTING_DEFAULTS = {
-  ide_story_teller_id: 'classic',
+  ide_story_teller_id: DEFAULT_NARRATIVE_STYLE_ID,
+  interactive_story_teller_id: DEFAULT_NARRATIVE_STYLE_ID,
   ide_image_preset_id: 'game-cg',
   writing_skill_default: DEFAULT_WRITING_SKILL,
 } as const
@@ -173,6 +175,7 @@ export function AgentPanel({
   const [activeSubAgentSessionKey, setActiveSubAgentSessionKey] = useState('')
   const [selectedTraceRunId, setSelectedTraceRunId] = useState('')
   const [inputAreaHeight, setInputAreaHeight] = useState(0)
+  const pendingWritingInitRef = useRef<string | null>(null)
   const recoveryPaused = Boolean(runtimeProjection?.recovery_paused)
   const runtimeRecovering = Boolean(runtimeProjection?.runtime_recoverable && (!runtimeProjection.stream_attached || recoveryPaused))
   const recoveryAbortAvailable = Boolean(runtimeProjection?.recovery_actions?.some((action) => action.kind === 'abort'))
@@ -201,7 +204,7 @@ export function AgentPanel({
   }, [isStreaming, messages])
   const messageListBottomPadding = inputAreaHeight > 0 ? inputAreaHeight + 20 : undefined
   const styleSceneSuggestions = useMemo(() => {
-    const teller = tellers.find((item) => item.id === ideTellerId) || tellers.find((item) => item.id === 'classic') || tellers[0]
+    const teller = resolveNarrativeStyle(tellers, ideTellerId, 'writing')
     return Array.from(new Set((teller?.style_rules || []).map((rule) => rule.scene.trim()).filter((scene) => scene && !isGlobalStyleSceneName(scene))))
   }, [ideTellerId, tellers])
 
@@ -210,15 +213,30 @@ export function AgentPanel({
       const detail = (event as CustomEvent<{ prompt?: string; autoSend?: boolean }>).detail
       const prompt = detail?.prompt || t('writingAgent.initPrompt')
       setView('chat')
-      if (detail?.autoSend && !isStreaming) {
+      if (detail?.autoSend && !isStreaming && !persistedSettings.loading) {
         onSend(prompt, { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId })
+        return
+      }
+      if (detail?.autoSend && !isStreaming) {
+        pendingWritingInitRef.current = prompt
         return
       }
       setInputPrefill((current) => ({ prompt, nonce: (current?.nonce || 0) + 1 }))
     }
     window.addEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
     return () => window.removeEventListener(WRITING_AGENT_INIT_EVENT, handleWritingInitRequest)
-  }, [ideContext, ideTellerId, imagePresetId, isStreaming, onSend, t, writingSkill])
+  }, [ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, t, writingSkill])
+
+  useEffect(() => {
+    if (persistedSettings.loading || isStreaming || !pendingWritingInitRef.current) return
+    const prompt = pendingWritingInitRef.current
+    pendingWritingInitRef.current = null
+    onSend(prompt, { writingSkill, ideContext, imagePresetId, tellerId: ideTellerId })
+  }, [ideContext, ideTellerId, imagePresetId, isStreaming, onSend, persistedSettings.loading, writingSkill])
+
+  useEffect(() => {
+    pendingWritingInitRef.current = null
+  }, [workspace])
 
   useEffect(() => {
     onSubAgentDetailsChange?.(Boolean(activeSubAgentSessionKey))
@@ -294,6 +312,7 @@ export function AgentPanel({
   ), [activeRunID, changeGroupsQuery.data, isStreaming, onOpenChangeReview, onWorkspaceChanged, workspace])
 
   const sendWithWritingSkill = async (message: string) => {
+    if (persistedSettings.loading) return false
     const feedbackSelection = reviewFeedback?.filter((selection) => selection.comments.length) ?? []
     const feedback = feedbackSelection.length ? feedbackSelection.map((selection) => ({
       source: selection.source || 'workspace_change' as const,
@@ -347,7 +366,7 @@ export function AgentPanel({
   }
 
   const emptyChatContent = messages.length === 0 && !isStreaming ? (
-    <AgentQuickActions chapter={currentChapter} selectedFile={selectedFile} onSend={sendWithWritingSkill} />
+    <AgentQuickActions chapter={currentChapter} selectedFile={selectedFile} disabled={persistedSettings.loading} onSend={sendWithWritingSkill} />
   ) : null
   const resolveAsk = useCallback(async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
     const askID = typeof view.data.id === 'string' ? view.data.id.trim() : ''
@@ -386,6 +405,7 @@ export function AgentPanel({
     onSend: sendWithWritingSkill,
     onStop,
     disabled: false,
+    sendBlocked: persistedSettings.loading,
     generationActive: isStreaming,
     queuedCommands: runtimeProjection?.queue || [],
     queueActionPendingCommandID,
@@ -601,10 +621,12 @@ function SubAgentDetailsResizeHandle({ label }: { label: string }) {
 function AgentQuickActions({
   chapter,
   selectedFile,
+  disabled,
   onSend,
 }: {
   chapter?: ChapterSummary
   selectedFile: string | null
+  disabled?: boolean
   onSend: (message: string) => void
 }) {
   const { t } = useTranslation()
@@ -631,6 +653,7 @@ function AgentQuickActions({
             <button
               key={action.label}
               type="button"
+              disabled={disabled}
               className="nova-nav-item flex items-center gap-2 border border-[var(--nova-border)] bg-[var(--nova-surface)] px-3 py-2 text-left text-xs"
               onClick={() => onSend(action.prompt)}
             >

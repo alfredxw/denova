@@ -68,7 +68,7 @@ func (s *InteractiveAppService) AnalyzeInteractiveContext(storyID, branchID, mes
 	if err != nil {
 		return agents.ContextAnalysis{}, err
 	}
-	teller := loadInteractiveTeller(novaDir, storyCtx.Meta.StoryTellerID)
+	teller := loadGameTeller(novaDir, storyCtx.Meta.StoryTellerID)
 	runtimeCfg.InteractiveReplyTargetChars = storyCtx.Meta.ReplyTargetChars
 	styleRules := convertTellerStyleRules(novaDir, teller.StyleRefs, teller.StyleRules, styleScenes)
 	req := agents.ChatRequest{
