@@ -22,7 +22,8 @@ const (
 
 type contextWindowConversation interface {
 	ActiveContextCheckpoints(string) ([]session.ContextOperation, error)
-	FreezeContextWindowBoundary([]*agent.Message) (*session.ContextCheckpointBoundary, error)
+	FreezeContextWindowBoundary([]*agent.Message) (*session.ContextBoundarySnapshot, error)
+	StoreContextWindowBoundary(string, *session.ContextBoundarySnapshot) (session.ContextBoundaryLocator, error)
 	StageContextOperation(session.ContextOperation) error
 }
 
@@ -46,7 +47,7 @@ type runContextWindowController struct {
 	conversation   contextWindowConversation
 	agentKind      string
 	baseline       []*agent.Message
-	boundary       *session.ContextCheckpointBoundary
+	boundary       *session.ContextBoundarySnapshot
 	boundaryErr    error
 	checkpoints    []contextWindowCheckpoint
 	receipts       []session.ContextMutationReceipt
@@ -94,18 +95,20 @@ func (controller *runContextWindowController) BeforeModel(_ context.Context, mes
 	}
 
 	pending := controller.pending
-	checkpointBoundary, err := session.CloneContextCheckpointBoundary(pending.checkpoint.Boundary)
-	if err != nil {
-		return nil, fmt.Errorf("restore context checkpoint %q: %w", pending.checkpoint.CheckpointID, err)
+	checkpointBoundary := pending.checkpoint.ResolvedBoundary
+	if checkpointBoundary == nil {
+		return nil, fmt.Errorf("restore context checkpoint %q: resolved boundary is missing", pending.checkpoint.CheckpointID)
 	}
 	operation := session.ContextOperation{
-		Kind:         session.ContextOperationRewind,
-		AgentKind:    controller.agentKind,
-		CheckpointID: pending.checkpoint.CheckpointID,
-		Purpose:      pending.checkpoint.Purpose,
-		MessageCount: pending.checkpoint.MessageCount,
-		Boundary:     checkpointBoundary,
-		Report:       pending.report,
+		Kind:             session.ContextOperationRewind,
+		AgentKind:        controller.agentKind,
+		CheckpointID:     pending.checkpoint.CheckpointID,
+		Purpose:          pending.checkpoint.Purpose,
+		MessageCount:     pending.checkpoint.MessageCount,
+		BoundaryID:       pending.checkpoint.BoundaryID,
+		BoundaryLocator:  pending.checkpoint.BoundaryLocator,
+		ResolvedBoundary: checkpointBoundary,
+		Report:           pending.report,
 	}
 	if pending.receiptsAt < len(controller.receipts) {
 		operation.MutationReceipts = append([]session.ContextMutationReceipt(nil), controller.receipts[pending.receiptsAt:]...)
@@ -118,7 +121,7 @@ func (controller *runContextWindowController) BeforeModel(_ context.Context, mes
 	rewritten = append(rewritten, newContextRewindSummaryMessage(operation))
 	rewrittenCanonical := cloneContextMessages(checkpointBoundary.CanonicalPrefix)
 	rewrittenCanonical = append(rewrittenCanonical, newContextRewindSummaryMessage(operation))
-	controller.boundary, controller.boundaryErr = session.NewContextCheckpointBoundary(
+	controller.boundary, controller.boundaryErr = session.NewContextBoundarySnapshot(
 		checkpointBoundary.Cursor, rewritten, rewrittenCanonical, checkpointBoundary.LimitBytes,
 	)
 	if controller.boundaryErr != nil {
@@ -131,11 +134,11 @@ func (controller *runContextWindowController) BeforeModel(_ context.Context, mes
 	return rewritten, nil
 }
 
-func (controller *runContextWindowController) freezeBoundary(messages []*agent.Message) (*session.ContextCheckpointBoundary, error) {
+func (controller *runContextWindowController) freezeBoundary(messages []*agent.Message) (*session.ContextBoundarySnapshot, error) {
 	if controller.boundary != nil && contextMessagesHavePrefix(messages, controller.boundary.EffectivePrefix) {
 		suffix := cloneContextMessages(messages[len(controller.boundary.EffectivePrefix):])
 		canonical := append(cloneContextMessages(controller.boundary.CanonicalPrefix), suffix...)
-		return session.NewContextCheckpointBoundary(
+		return session.NewContextBoundarySnapshot(
 			controller.boundary.Cursor, messages, canonical, controller.boundary.LimitBytes,
 		)
 	}
@@ -189,12 +192,15 @@ func (controller *runContextWindowController) Checkpoint(_ context.Context, requ
 	if controller.boundaryErr != nil {
 		return agent.ContextCheckpointResult{}, fmt.Errorf("freeze context checkpoint: %w", controller.boundaryErr)
 	}
-	boundary, err := session.CloneContextCheckpointBoundary(controller.boundary)
-	if err != nil {
-		return agent.ContextCheckpointResult{}, fmt.Errorf("freeze context checkpoint: %w", err)
-	}
 	if len(controller.checkpoints) > 0 {
 		return agent.ContextCheckpointResult{}, fmt.Errorf("checkpoint %q is still active; rewind it before creating another", controller.checkpoints[len(controller.checkpoints)-1].operation.CheckpointID)
+	}
+	if controller.boundary == nil {
+		return agent.ContextCheckpointResult{}, fmt.Errorf("freeze context checkpoint: boundary is missing")
+	}
+	locator, err := controller.conversation.StoreContextWindowBoundary(id, controller.boundary)
+	if err != nil {
+		return agent.ContextCheckpointResult{}, fmt.Errorf("store context checkpoint boundary: %w", err)
 	}
 	purpose := truncateContextUTF8(strings.TrimSpace(request.Purpose), contextCheckpointLabelBytes)
 	operation := session.ContextOperation{
@@ -202,8 +208,9 @@ func (controller *runContextWindowController) Checkpoint(_ context.Context, requ
 		AgentKind:    controller.agentKind,
 		CheckpointID: id,
 		Purpose:      purpose,
-		MessageCount: boundary.Cursor.MessageCount,
-		Boundary:     boundary,
+		MessageCount: controller.boundary.Cursor.MessageCount,
+		BoundaryID:   id, BoundaryLocator: locator,
+		ResolvedBoundary: controller.boundary,
 	}
 	if err := controller.conversation.StageContextOperation(operation); err != nil {
 		return agent.ContextCheckpointResult{}, fmt.Errorf("stage context checkpoint: %w", err)
@@ -225,9 +232,9 @@ func (controller *runContextWindowController) Rewind(_ context.Context, request 
 		return agent.ContextRewindResult{}, fmt.Errorf("context checkpoint %q is not active", strings.TrimSpace(request.CheckpointID))
 	}
 	checkpoint := controller.checkpoints[checkpointIndex]
-	boundary, err := session.CloneContextCheckpointBoundary(checkpoint.operation.Boundary)
-	if err != nil {
-		return agent.ContextRewindResult{}, fmt.Errorf("context checkpoint %q has no recoverable projection: %w", checkpoint.operation.CheckpointID, err)
+	boundary := checkpoint.operation.ResolvedBoundary
+	if boundary == nil {
+		return agent.ContextRewindResult{}, fmt.Errorf("context checkpoint %q has no recoverable projection", checkpoint.operation.CheckpointID)
 	}
 	dropped := len(controller.baseline) - len(boundary.EffectivePrefix)
 	if dropped < 0 {

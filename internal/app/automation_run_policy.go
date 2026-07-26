@@ -65,6 +65,9 @@ func (s *AutomationAppService) writeOptionalOutput(snap *automationWorkspaceSnap
 	if task.OutputPolicy != automation.OutputPolicyOptionalFile || strings.TrimSpace(task.OutputPath) == "" {
 		return "", nil
 	}
+	if writeMode == automation.WriteModeReadOnly {
+		return "", nil
+	}
 	if !automationTaskAllowsFileWrite(writeMode, writeScope) {
 		return "", fmt.Errorf("task write mode/scope does not allow file output")
 	}

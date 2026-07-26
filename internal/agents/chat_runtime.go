@@ -42,7 +42,6 @@ type chatRun struct {
 	assistantMetadata session.MessageMetadata
 	subAgentSessions  *subAgentSessionTracker
 	toolContext       *toolResultContextRecorder
-	mutations         *mutationTracker
 	control           *runControlState
 
 	originalMessage    string
@@ -123,7 +122,6 @@ func newChatRun(
 		usage:            newRunTokenUsageCollector(runID, options.AgentKind),
 		subAgentSessions: newSubAgentSessionTracker(runID),
 		toolContext:      newToolResultContextRecorder(conversation),
-		mutations:        newMutationTracker(),
 		control:          &runControlState{},
 		originalMessage:  req.Message,
 	}
@@ -143,7 +141,6 @@ func newChatRun(
 		if run.control.suppressesStreamCanceledError(event) {
 			return
 		}
-		run.mutations.Observe(event)
 		recorder.Record(event)
 		if err := run.ledger.RecordEvent(event); err != nil {
 			run.logger.Warn("run_ledger_event_failed", slog.String("run_id", run.runID), slog.String("event_type", event.Type), slog.Any("error", err))

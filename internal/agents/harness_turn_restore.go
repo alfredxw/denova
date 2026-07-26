@@ -231,7 +231,8 @@ func (descriptor harnessTurnOptionsDescriptor) runOptions() RunOptions {
 		SessionID: descriptor.SessionID, ReviewThreadID: descriptor.ReviewThreadID,
 		StoryID: descriptor.StoryID, BranchID: descriptor.BranchID, TurnID: descriptor.TurnID,
 		MaintenanceTask: descriptor.MaintenanceTask, Workspace: descriptor.Workspace,
-		Mode: descriptor.Mode, IdleTimeout: time.Duration(descriptor.IdleTimeout),
+		Mode: descriptor.Mode, WriteMode: descriptor.WriteMode, WriteScope: descriptor.WriteScope,
+		IdleTimeout:        time.Duration(descriptor.IdleTimeout),
 		ToolResultMaxBytes: descriptor.ToolResultMaxBytes,
 	}
 }

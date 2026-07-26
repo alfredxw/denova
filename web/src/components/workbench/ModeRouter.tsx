@@ -123,6 +123,7 @@ interface ModeRouterProps {
   onRenameChatSession: (id: string, title: string) => void | Promise<void>
   onDeleteChatSession: (id: string) => void | Promise<void>
   onLoadEarlierHistory: () => void | Promise<void>
+  onRefreshChatHistory: (sessionId?: string) => void | Promise<void>
   onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: { currentFile?: string; openFiles?: string[] }; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
@@ -226,6 +227,7 @@ export function ModeRouter(props: ModeRouterProps) {
     onRenameChatSession,
     onDeleteChatSession,
     onLoadEarlierHistory,
+    onRefreshChatHistory,
     onSend,
     onAnalyzeContext,
     onStop,
@@ -809,6 +811,7 @@ export function ModeRouter(props: ModeRouterProps) {
       onRenameSession={onRenameChatSession}
       onDeleteSession={onDeleteChatSession}
       onLoadEarlierHistory={onLoadEarlierHistory}
+      onRefreshHistory={onRefreshChatHistory}
       onSend={onSend}
       onAnalyzeContext={onAnalyzeContext}
       ideContext={ideContext}

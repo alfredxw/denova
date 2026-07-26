@@ -20,6 +20,7 @@ import { selectAgentTokenUsageRecords, type AgentMessageView } from '@/lib/agent
 import { createAgentDataMessage, createAgentTextMessage, useAgentUIMessageStream } from '@/hooks/useAgentUIMessageStream'
 import { agentCommandRetryKey, isKnownAgentCommandOutcome, rememberAgentCommandID } from '@/lib/agent-command'
 import { normalizeAgentUIMessages } from '@/lib/agent-ui'
+import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
 
 interface ConfigManagerChatProps {
   workspace?: string
@@ -403,10 +404,11 @@ export function ConfigManagerChat({ workspace = '', origin, resourceId, storyId,
   const resolveAsk = useCallback(async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
     const askID = typeof view.data.id === 'string' ? view.data.id.trim() : ''
     if (!askID) throw new Error('Cannot resolve an Ask without its interaction ID')
-    return action.status === 'answered'
-      ? answerConfigManagerAsk(scope, askID, action.answers)
-      : cancelConfigManagerAsk(scope, askID)
-  }, [scope])
+    return resolveAgentAskAndRefresh(action, {
+      answer: (answers) => answerConfigManagerAsk(scope, askID, answers),
+      cancel: () => cancelConfigManagerAsk(scope, askID),
+    }, loadMessages)
+  }, [loadMessages, scope])
 
   return (
     <div className={`relative flex h-full min-h-0 flex-col overflow-hidden ${className}`}>

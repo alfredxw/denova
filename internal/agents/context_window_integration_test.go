@@ -102,7 +102,7 @@ func TestCorruptLatestRewindStopsBeforeModelExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	cursor := sess.ContextCursor()
-	boundary, err := session.NewContextCheckpointBoundary(
+	boundary, err := session.NewContextBoundarySnapshot(
 		cursor,
 		[]*agent.Message{agent.UserMessage("stable prefix")},
 		[]*agent.Message{agent.UserMessage("stable prefix")},
@@ -111,12 +111,16 @@ func TestCorruptLatestRewindStopsBeforeModelExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	boundary.CanonicalSHA256 = "corrupt"
+	locator, err := sess.StoreContextBoundary("cp-corrupt-rewind", boundary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locator.SHA256 = strings.Repeat("0", 64)
 	if err := sess.AppendWithMetadata(agent.AssistantMessage("unsafe rewind", nil), session.MessageMetadata{
 		ContextOperations: []session.ContextOperation{{
 			Kind: session.ContextOperationRewind, AgentKind: AgentKindIDE,
 			CheckpointID: "cp-corrupt-rewind", MessageCount: cursor.MessageCount,
-			Boundary: boundary, Report: "must not be trusted",
+			BoundaryID: "cp-corrupt-rewind", BoundaryLocator: locator, Report: "must not be trusted",
 		}},
 	}); err != nil {
 		t.Fatal(err)

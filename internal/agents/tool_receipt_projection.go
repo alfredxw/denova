@@ -66,6 +66,7 @@ func applyWorkspaceChangeReceiptToExecutionRecord(record *ToolExecutionRecord, r
 	record.Revision = receipt.Revision
 	record.ReviewStatus = receipt.ReviewStatus
 	record.ApplyState = receipt.ApplyState
+	record.MutationReceiptSchema = mutationReceiptWorkspaceChange
 	if strings.TrimSpace(receipt.Path) != "" {
 		record.Target = receipt.Path
 	}
@@ -77,7 +78,39 @@ func applyToolMutationReceiptToExecutionRecord(record *ToolExecutionRecord, resu
 	}
 	applyWorkspaceChangeReceiptToExecutionRecord(record, result)
 	payload := string(toolResultDomainPayload(result))
-	itemIDs, deletedIDs := parseWriteLoreItemsToolResult(record.ToolName, payload)
-	record.LoreItemIDs = uniqueStrings(itemIDs)
-	record.DeletedLoreItemIDs = uniqueStrings(deletedIDs)
+	if itemIDs, deletedIDs, ok := parseLoreMutationReceipt(record.ToolName, payload); ok {
+		record.LoreItemIDs = uniqueStrings(itemIDs)
+		record.DeletedLoreItemIDs = uniqueStrings(deletedIDs)
+		record.MutationReceiptSchema = mutationReceiptLoreWrite
+		return
+	}
+	if target := parseGeneratedImageMutationTarget(record.ToolName, payload); target != "" {
+		record.Target = target
+		record.MutationReceiptSchema = mutationReceiptGeneratedImage
+	}
+}
+
+func parseLoreMutationReceipt(toolName, payload string) ([]string, []string, bool) {
+	if normalizeToolName(toolName) != "write_lore_items" {
+		return nil, nil, false
+	}
+	var receipt struct {
+		Schema     string   `json:"schema"`
+		ItemIDs    []string `json:"item_ids"`
+		DeletedIDs []string `json:"deleted_ids"`
+	}
+	if err := json.Unmarshal([]byte(payload), &receipt); err != nil || receipt.Schema != mutationReceiptLoreWrite {
+		return nil, nil, false
+	}
+	return receipt.ItemIDs, receipt.DeletedIDs, true
+}
+
+func parseGeneratedImageMutationTarget(toolName, payload string) string {
+	if illustration, err := producttools.ParseChapterIllustrationResult(toolName, payload); err == nil && illustration != nil {
+		return strings.TrimSpace(illustration.MetaPath)
+	}
+	if interactiveImage, err := producttools.ParseInteractiveImageResult(toolName, payload); err == nil && interactiveImage != nil {
+		return strings.TrimSpace(interactiveImage.MetaPath)
+	}
+	return strings.TrimSpace(producttools.ParseGeneratedImageTarget(toolName, payload))
 }

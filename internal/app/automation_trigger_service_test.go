@@ -517,10 +517,25 @@ func TestUserAutomationTriggerStateAndInboxAreWorkspaceScoped(t *testing.T) {
 }
 
 func TestAutomationWriteModeToolConstraints(t *testing.T) {
-	readOnly := constrainAutomationTools(config.Config{}, automation.WriteModeReadOnly, automation.WriteScopeNone)
+	readOnly := constrainAutomationTools(config.Config{AgentTools: config.AgentToolSettings{Automation: config.AgentToolOverride{
+		config.AgentToolShell: true, config.AgentToolBrowser: true,
+	}}}, automation.WriteModeReadOnly, automation.WriteScopeNone)
 	readOnlyTools := config.ResolveAgentTools(&readOnly, config.AgentKindAutomation)
 	if readOnlyTools.Allows(config.AgentToolWorkspaceWrite) || readOnlyTools.Allows(config.AgentToolLoreWrite) {
 		t.Fatalf("read_only should disable writes: %#v", readOnlyTools)
+	}
+	for _, capability := range []string{
+		config.AgentToolShell, config.AgentToolBrowser, config.AgentToolWebSearch,
+		config.AgentToolWebFetch, config.AgentToolDelegation,
+	} {
+		if !readOnlyTools.Allows(capability) {
+			t.Fatalf("read_only should preserve %s capability: %#v", capability, readOnlyTools)
+		}
+	}
+	if path, err := (&AutomationAppService{}).writeOptionalOutput(nil, automation.Task{
+		OutputPolicy: automation.OutputPolicyOptionalFile, OutputPath: "reports/daily.md",
+	}, "summary", config.Config{}, automation.WriteModeReadOnly, automation.WriteScopeNone); err != nil || path != "" {
+		t.Fatalf("read_only automatic file output path=%q error=%v", path, err)
 	}
 
 	fileOnly := constrainAutomationTools(config.Config{}, automation.WriteModeAutoWrite, automation.WriteScopeFile)

@@ -28,11 +28,11 @@ const (
 )
 
 var (
-	ErrAskNotPending              = errors.New("ask interaction is not pending")
-	ErrAskAlreadyPending          = errors.New("another ask interaction is already pending")
-	ErrAskAlreadyResolved         = errors.New("ask interaction is already resolved")
-	ErrAskContinuationUnavailable = errors.New("ask interaction has no live model continuation")
-	askStableIDPattern            = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]*$`)
+	ErrAskNotFound        = errors.New("ask interaction was not found")
+	ErrAskNotPending      = errors.New("ask interaction is not pending")
+	ErrAskAlreadyPending  = errors.New("another ask interaction is already pending")
+	ErrAskAlreadyResolved = errors.New("ask interaction is already resolved")
+	askStableIDPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]*$`)
 )
 
 // AwaitAsk durably records a pending interaction, then waits without a default
@@ -109,16 +109,15 @@ func (s *Session) AwaitAskWithPending(ctx context.Context, interaction AskIntera
 }
 
 // ResolveAsk atomically answers or cancels a pending interaction and wakes the
-// exact blocked tool call. Repeating an identical resolution is a no-op.
+// exact blocked tool call. Any later submission returns the canonical terminal
+// resolution without revalidating or replacing it.
 func (s *Session) ResolveAsk(ctx context.Context, id, status string, answers []AskAnswer, cancelReason string) (AskResolution, error) {
 	return s.resolveAsk(ctx, id, status, answers, cancelReason, false)
 }
 
-// ResolveAskFromHost accepts an interactive host answer only while the exact
-// in-process tool call is still waiting. A pending record loaded after a cold
-// restart has no continuation to receive an answer; it is atomically cancelled
-// instead and the host receives ErrAskContinuationUnavailable rather than a
-// false success response.
+// ResolveAskFromHost accepts an interactive host answer while the exact tool
+// call is live. If its waiter was lost after a cold restart, the pending Ask is
+// atomically cancelled and that canonical cancellation is returned normally.
 func (s *Session) ResolveAskFromHost(ctx context.Context, id, status string, answers []AskAnswer, cancelReason string) (AskResolution, error) {
 	return s.resolveAsk(ctx, id, status, answers, cancelReason, true)
 }
@@ -134,27 +133,13 @@ func (s *Session) resolveAsk(ctx context.Context, id, status string, answers []A
 	}
 	var resolution AskResolution
 	var notify chan AskResolution
-	continuationUnavailable := false
 	err := s.withCanonicalMutation(ctx, "resolve ask interaction", func() error {
 		interaction := s.askByIDLocked(id)
 		if interaction == nil {
-			return fmt.Errorf("%w: id=%q", ErrAskNotPending, id)
+			return fmt.Errorf("%w: id=%q", ErrAskNotFound, id)
 		}
 		if interaction.Status != AskPending {
-			existing := askResolutionFromInteraction(*interaction)
-			if requireLiveWaiter && existing.Status == AskCancelled && existing.CancelReason == askContinuationLostReason {
-				resolution = existing
-				continuationUnavailable = true
-				return nil
-			}
-			candidate, err := buildAskResolution(*interaction, status, answers, cancelReason)
-			if err != nil {
-				return err
-			}
-			if !sameAskResolution(existing, candidate) {
-				return fmt.Errorf("%w: id=%q status=%s", ErrAskAlreadyResolved, id, interaction.Status)
-			}
-			resolution = existing
+			resolution = askResolutionFromInteraction(*interaction)
 			return nil
 		}
 		if requireLiveWaiter && s.askWaiters[id] == nil {
@@ -167,7 +152,6 @@ func (s *Session) resolveAsk(ctx context.Context, id, status string, answers []A
 				return err
 			}
 			resolution = candidate
-			continuationUnavailable = true
 			delete(s.askWaiters, id)
 			return nil
 		}
@@ -189,9 +173,6 @@ func (s *Session) resolveAsk(ctx context.Context, id, status string, answers []A
 	}
 	if notify != nil {
 		close(notify)
-	}
-	if continuationUnavailable {
-		return AskResolution{}, fmt.Errorf("%w: id=%q", ErrAskContinuationUnavailable, id)
 	}
 	return resolution, nil
 }
@@ -258,7 +239,10 @@ func (s *Session) resolvedAsk(id string) (AskResolution, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	interaction := s.askByIDLocked(strings.TrimSpace(id))
-	if interaction == nil || interaction.Status == AskPending {
+	if interaction == nil {
+		return AskResolution{}, fmt.Errorf("%w: id=%q", ErrAskNotFound, id)
+	}
+	if interaction.Status == AskPending {
 		return AskResolution{}, fmt.Errorf("%w: id=%q", ErrAskNotPending, id)
 	}
 	return askResolutionFromInteraction(*interaction), nil

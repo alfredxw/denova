@@ -40,6 +40,13 @@ type askRecord struct {
 	AskInteraction
 }
 
+type contextBoundaryRecord struct {
+	Type       string                  `json:"type"`
+	BoundaryID string                  `json:"boundary_id"`
+	Boundary   ContextBoundarySnapshot `json:"boundary"`
+	CreatedAt  time.Time               `json:"created_at"`
+}
+
 // displayRecord carries an internal immutable identifier. DisplayEvent.ID is a
 // provider/tool identifier and is not guaranteed to exist or be unique.
 type displayRecord struct {

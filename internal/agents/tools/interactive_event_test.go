@@ -35,8 +35,8 @@ func TestEventCardReadAdapterUsesCanonicalURIAndAdapterSpecificSchema(t *testing
 		t.Fatalf("event-card result = %s", result.ModelContent)
 	}
 
-	if _, err := definition.Tool.Run(context.Background(), `{"path":"event://package/card-1","offset":1}`); err == nil {
-		t.Fatalf("event adapter accepted local-text parameters: %v", err)
+	if _, err := definition.Tool.Run(context.Background(), `{"path":"event://package/card-1","offset":1}`); err != nil {
+		t.Fatalf("event adapter rejected harmless local-text parameters: %v", err)
 	}
 	if _, err := definition.Tool.Run(context.Background(), `{"path":"event://package/outside"}`); err == nil || !strings.Contains(err.Error(), "outside the frozen Director opportunity") {
 		t.Fatalf("event adapter escaped its frozen scope: %v", err)

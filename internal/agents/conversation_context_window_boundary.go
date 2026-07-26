@@ -31,7 +31,7 @@ func (c *SessionConversation) rememberContextWindowModelBase(canonical, effectiv
 // canonical modelHistory projection captured before turn-scoped assembly. The
 // controller extends this frozen boundary with later model/tool messages only
 // when the prior effective projection is still an exact prefix.
-func (c *SessionConversation) FreezeContextWindowBoundary(messages []*agent.Message) (*session.ContextCheckpointBoundary, error) {
+func (c *SessionConversation) FreezeContextWindowBoundary(messages []*agent.Message) (*session.ContextBoundarySnapshot, error) {
 	if c == nil || c.session == nil {
 		return nil, fmt.Errorf("conversation is unavailable")
 	}
@@ -62,7 +62,17 @@ func (c *SessionConversation) FreezeContextWindowBoundary(messages []*agent.Mess
 	suffixStart := baseIndex + len(base.effective)
 	canonical := append(cloneContextMessages(base.canonical), cloneContextMessages(messages[suffixStart:])...)
 	limit := config.ResolveAgentContext(cfg, agentKind).MaxProviderInputBytes
-	return session.NewContextCheckpointBoundary(base.cursor, messages, canonical, limit)
+	return session.NewContextBoundarySnapshot(base.cursor, messages, canonical, limit)
+}
+
+func (c *SessionConversation) StoreContextWindowBoundary(
+	boundaryID string,
+	boundary *session.ContextBoundarySnapshot,
+) (session.ContextBoundaryLocator, error) {
+	if c == nil || c.session == nil {
+		return session.ContextBoundaryLocator{}, fmt.Errorf("conversation is unavailable")
+	}
+	return c.session.StoreContextBoundary(boundaryID, boundary)
 }
 
 func contextMessagesEqual(left, right []*agent.Message) bool {

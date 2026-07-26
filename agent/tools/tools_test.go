@@ -80,17 +80,17 @@ func TestReadRoutesLocalTextAndDirectoryWithAdapterSpecificArguments(t *testing.
 		t.Fatalf("directory result = %q", directoryResult.ModelContent)
 	}
 
-	if _, err := definition.Tool.Run(context.Background(), `{"path":"chapters","offset":1}`); err == nil || !strings.Contains(err.Error(), "unsupported property") {
-		t.Fatalf("directory accepted local_text-only parameter: %v", err)
+	if _, err := definition.Tool.Run(context.Background(), `{"path":"chapters","offset":1}`); err != nil {
+		t.Fatalf("directory rejected harmless local_text-only parameter: %v", err)
 	}
-	if _, err := definition.Tool.Run(context.Background(), `{"path":"chapters/one.md","depth":2}`); err == nil || !strings.Contains(err.Error(), "unsupported property") {
-		t.Fatalf("local text accepted directory-only parameter: %v", err)
+	if _, err := definition.Tool.Run(context.Background(), `{"path":"chapters/one.md","depth":2}`); err != nil {
+		t.Fatalf("local text rejected harmless directory-only parameter: %v", err)
 	}
 	if _, err := definition.Tool.Run(context.Background(), `{"path":"https://example.com"}`); err == nil || !strings.Contains(err.Error(), "web_fetch") {
 		t.Fatalf("read accepted HTTP resource: %v", err)
 	}
-	if _, err := definition.Tool.Run(context.Background(), `{"path":"chapters/one.md","mystery":true}`); err == nil {
-		t.Fatal("read accepted an unknown adapter parameter")
+	if _, err := definition.Tool.Run(context.Background(), `{"path":"chapters/one.md","mystery":true}`); err != nil {
+		t.Fatalf("read rejected harmless unknown parameter: %v", err)
 	}
 }
 
@@ -449,8 +449,11 @@ func TestSearchToolsPublishNewStrictInterfaces(t *testing.T) {
 	if _, err := glob.Tool.Run(context.Background(), `{"pattern":"legacy"}`); err == nil {
 		t.Fatal("glob accepted the removed pattern/path interface")
 	}
-	if _, err := grep.Tool.Run(context.Background(), `{"pattern":"dragon","output_mode":"content"}`); err == nil {
-		t.Fatal("grep accepted the removed output_mode interface")
+	if _, err := grep.Tool.Run(context.Background(), `{"pattern":"dragon","output_mode":"content"}`); err != nil {
+		t.Fatalf("grep rejected harmless removed output_mode: %v", err)
+	}
+	if searcher.grep.Mode != "content" {
+		t.Fatalf("grep default mode = %q", searcher.grep.Mode)
 	}
 }
 

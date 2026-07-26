@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	sessionProjectionVersion      = 7
+	sessionProjectionVersion      = 8
 	sessionRecentTransactionLimit = 200
 	sessionRecentCommitLimit      = 200
 	sessionStructuralRecordLimit  = 64
@@ -294,6 +294,19 @@ func (projection *sessionJournalProjection) Apply(record conversationjournal.Rec
 		projection.PendingAsk = nil
 		projection.PendingAskCursor = 0
 		projection.advanceUpdatedAt(patch.UpdatedAt)
+		return nil
+	case historyTypeContextBoundary:
+		var boundary contextBoundaryRecord
+		if err := json.Unmarshal(record.Payload, &boundary); err != nil {
+			return err
+		}
+		if strings.TrimSpace(boundary.BoundaryID) == "" || len(boundary.BoundaryID) > maxContextLabelBytes {
+			return fmt.Errorf("context boundary id is invalid")
+		}
+		if err := validateContextBoundarySnapshot(&boundary.Boundary); err != nil {
+			return fmt.Errorf("context boundary %q: %w", boundary.BoundaryID, err)
+		}
+		projection.advanceUpdatedAt(boundary.CreatedAt)
 		return nil
 	case historyTypeCompaction:
 		var compaction ContextCompaction

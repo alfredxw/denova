@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -127,10 +128,12 @@ func TestCommittedToolMutationRemainsRuntimeOwnedUntilOutputCommit(t *testing.T)
 		t.Fatal(err)
 	}
 	events := make([]string, 0, 3)
+	hostEffectCount := 0
 	sink := &harnessEngineSink{emit: func(event runstate.EngineEvent) error {
-		switch event.(type) {
+		switch typed := event.(type) {
 		case runstate.EngineToolFinished:
 			events = append(events, "durable-finish")
+			hostEffectCount += len(typed.HostEffects)
 		case runstate.EngineHostEffectAcknowledged:
 			events = append(events, "runtime-ack")
 		}
@@ -141,13 +144,63 @@ func TestCommittedToolMutationRemainsRuntimeOwnedUntilOutputCommit(t *testing.T)
 	}
 	if err := observer.AfterTool(context.Background(), ToolExecutionRecord{
 		ToolName: "write", ExecutionID: "call-committed", Status: "success",
-		Workspace: "/workspace/book-a", Target: "chapters/one.md",
+		Workspace: "/workspace/book-a", Target: "chapters/one.md", ChangeGroupID: "group-1", ChangeSetID: "change-1",
+		MutationReceiptSchema: mutationReceiptWorkspaceChange,
+		Descriptor:            producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"durable-finish"}
 	if !reflect.DeepEqual(events, want) {
 		t.Fatalf("pre-output mutation events = %#v, want Runtime-owned durable outbox %#v", events, want)
+	}
+	if hostEffectCount != 1 {
+		t.Fatalf("committed mutation host effects = %d, want exactly 1", hostEffectCount)
+	}
+}
+
+func TestToolMutationResolutionUsesTerminalReceiptInsteadOfStatus(t *testing.T) {
+	descriptor := producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable)
+	receiptedError := ToolExecutionRecord{
+		ToolName: "write", ExecutionID: "error-with-receipt", Status: "error", Descriptor: descriptor,
+		Workspace: "/workspace/book-a", Target: "chapters/one.md", ChangeGroupID: "group-1", ChangeSetID: "change-1",
+		MutationReceiptSchema: mutationReceiptWorkspaceChange,
+	}
+	if resolution := resolveToolMutation(receiptedError); !resolution.Committed || resolution.Warning != "" {
+		t.Fatalf("error with receipt resolution = %#v", resolution)
+	}
+
+	missingReceipt := ToolExecutionRecord{ToolName: "write", ExecutionID: "missing", Status: "success", Descriptor: descriptor}
+	if resolution := resolveToolMutation(missingReceipt); resolution.Committed || resolution.Warning == "" {
+		t.Fatalf("missing receipt resolution = %#v", resolution)
+	}
+
+	blocked := receiptedError
+	blocked.ExecutionID = "blocked"
+	blocked.Status = "blocked"
+	if resolution := resolveToolMutation(blocked); resolution.Committed || resolution.Warning != "" {
+		t.Fatalf("blocked resolution = %#v", resolution)
+	}
+}
+
+func TestRunObserverProjectsEachTerminalReceiptOnce(t *testing.T) {
+	descriptor := producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable)
+	observer := newRunObserver(nil, "")
+	record := ToolExecutionRecord{
+		ToolName: "edit", ExecutionID: "call-1", Status: "error", Descriptor: descriptor,
+		Workspace: "/workspace/book-a", Target: "chapters/one.md", ChangeGroupID: "group-1", ChangeSetID: "change-1",
+		MutationReceiptSchema: mutationReceiptWorkspaceChange,
+	}
+	observer.RecordToolExecution(record)
+	observer.RecordToolExecution(record)
+	observer.RecordToolExecution(ToolExecutionRecord{ToolName: "write", ExecutionID: "call-2", Status: "success", Descriptor: descriptor})
+
+	mutations, warnings := observer.ResolvedMutations()
+	if len(mutations) != 1 || mutations[0].ToolCallID != "call-1" {
+		t.Fatalf("mutations = %#v", mutations)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "call-2") {
+		t.Fatalf("warnings = %#v", warnings)
 	}
 }
 
@@ -167,7 +220,7 @@ func TestToolExecutionRecordBuildsCompleteMutationReceiptFromRawResult(t *testin
 	}
 
 	loreRecord := ToolExecutionRecord{ToolName: "write_lore_items", ExecutionID: "lore-call", Status: "success", Descriptor: producttools.WorkspaceWriteDescriptor(ToolSourceLore, config.AgentToolLoreWrite, agent.ToolRecoveryReconcilable)}
-	applyToolMutationReceiptToExecutionRecord(&loreRecord, agent.ToolResult{Details: []byte(`{"item_ids":["hero","hero","world"],"deleted_ids":["old"]}`)})
+	applyToolMutationReceiptToExecutionRecord(&loreRecord, agent.ToolResult{Details: []byte(`{"schema":"lore.write.v1","item_ids":["hero","hero","world"],"deleted_ids":["old"]}`)})
 	loreMutation, ok := toolMutationFromExecutionRecord(loreRecord)
 	if !ok {
 		t.Fatal("lore mutation was not recognized")

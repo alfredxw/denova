@@ -214,6 +214,27 @@ func TestBuildSubAgentInstructionInheritsParentSystemPrompt(t *testing.T) {
 	}
 }
 
+func TestAutomationSubAgentInheritsReadOnlyModeAndScope(t *testing.T) {
+	parent := agentBuildSpec{
+		Kind: config.AgentKindAutomation,
+		Composition: BuildAutomationInstructionComposition(&config.Config{}, nil, AutomationTaskInstruction{
+			Name: "Review", WriteMode: RunWriteModeReadOnly, WriteScope: "none", Workspace: "/tmp/book",
+		}),
+	}
+	instruction, err := composeSubAgentInstruction(&config.Config{}, parent, config.SubAgentConfig{
+		ID: "reviewer", Name: "Reviewer", Description: "Reviews without direct writes.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := instruction.Instruction()
+	for _, required := range []string{"执行模式：read_only", "写入范围：none", "read_only` 模式只能输出 review"} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("automation subagent instruction missing %q:\n%s", required, text)
+		}
+	}
+}
+
 func TestBuildSubAgentInstructionInheritsInteractiveStoryBoundary(t *testing.T) {
 	parentInstruction := protectedSystemInstruction(&config.Config{}, config.AgentKindInteractiveStory, "互动故事父级内置规则")
 	instruction := buildSubAgentInstruction(agentBuildSpec{
@@ -384,27 +405,16 @@ func TestDisplayRecorderPersistsSubAgentAssistantChunks(t *testing.T) {
 }
 
 func TestSubAgentWriteToolResultStillTracksMutation(t *testing.T) {
-	tracker := newMutationTracker()
-	filtered := filterToolResultForModelWithDescriptor("write", producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable), `{"file_path":"chapters/ch01.md","content":"new"}`, "ok", 0)
-	tracker.Observe(Event{Type: "tool_call", Data: map[string]interface{}{
-		"id":       "call-write",
-		"name":     "write",
-		"args":     `{"file_path":"chapters/ch01.md","content":"new"}`,
-		"subagent": true,
-	}})
-	tracker.Observe(Event{Type: "tool_result", Data: map[string]interface{}{
-		"id":             "call-write",
-		"name":           "write",
-		"content":        filtered.Content,
-		"source":         string(filtered.Manifest.Source),
-		"mutation_scope": string(filtered.Manifest.MutationScope),
-		"post_check":     string(filtered.Manifest.PostCheck),
-		"target":         filtered.Result.Metadata.Target,
-		"subagent":       true,
-	}})
-	mutations := tracker.Mutations()
+	observer := newRunObserver(nil, "")
+	record := ToolExecutionRecord{
+		ToolName: "write", ExecutionID: "call-write", Status: "success",
+		Descriptor: producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable),
+	}
+	applyToolMutationReceiptToExecutionRecord(&record, agent.ToolResult{Details: []byte(`{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/ch01.md"}`)})
+	observer.RecordToolExecution(record)
+	mutations, warnings := observer.ResolvedMutations()
 	if len(mutations) != 1 {
-		t.Fatalf("expected subagent write tool to be tracked, got %#v", mutations)
+		t.Fatalf("expected subagent write tool to be tracked, got %#v warnings=%#v", mutations, warnings)
 	}
 	if mutations[0].Target != "chapters/ch01.md" || mutations[0].PostCheck != ToolPostCheckWorkspaceChange {
 		t.Fatalf("unexpected mutation: %#v", mutations[0])

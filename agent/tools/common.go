@@ -3,9 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"strings"
 	"unicode/utf8"
 
@@ -97,25 +95,18 @@ func shellDescriptor(options ...DefinitionOption) agent.ToolDescriptor {
 	}, options)
 }
 
-func strictDecode[T any](arguments string) (T, error) {
+func normalizeAndDecode[T any](arguments string) (T, error) {
 	var input T
 	info, err := agent.GoStruct2ToolInfo[T]("arguments", "")
 	if err != nil {
 		return input, err
 	}
-	if err := agent.ValidateToolArguments(info, arguments); err != nil {
+	normalized, err := agent.NormalizeToolArguments(info, arguments)
+	if err != nil {
 		return input, err
 	}
-	decoder := json.NewDecoder(strings.NewReader(arguments))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&input); err != nil {
+	if err := json.Unmarshal([]byte(normalized), &input); err != nil {
 		return input, err
-	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err == nil {
-		return input, fmt.Errorf("multiple JSON values are not allowed")
-	} else if !errors.Is(err, io.EOF) {
-		return input, fmt.Errorf("invalid trailing JSON: %w", err)
 	}
 	return input, nil
 }

@@ -554,6 +554,7 @@ function defaultAgentPanelProps(
     onRenameSession: vi.fn(),
     onDeleteSession: vi.fn(),
     onLoadEarlierHistory: vi.fn(),
+    onRefreshHistory: vi.fn(),
     onSend: vi.fn(),
     onAnalyzeContext: vi.fn().mockResolvedValue({} as any),
     onStop: vi.fn(),

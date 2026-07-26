@@ -53,12 +53,31 @@ func TestAwaitAskAnswersAndCancelsWithoutInterruption(t *testing.T) {
 	if sess.PendingAsk(interaction.ID) != nil || sess.PendingInterruption() != nil {
 		t.Fatal("answer left pending interaction or fabricated an interruption")
 	}
-	// Network retries are idempotent when they carry the exact same answer.
+	// Every retry returns the canonical terminal resolution, even if a stale UI
+	// submits a different action after another client already answered.
 	if replay, replayErr := sess.ResolveAsk(context.Background(), interaction.ID, AskAnswered, []AskAnswer{
-		{QuestionID: "format", SelectedOptionIDs: []string{"markdown"}},
-		{QuestionID: "notes", CustomInput: "Keep the examples concise."},
+		{QuestionID: "format", SelectedOptionIDs: []string{"plain"}},
+		{QuestionID: "notes", CustomInput: "A conflicting retry."},
 	}, ""); replayErr != nil || !sameAskResolution(replay, resolved) {
 		t.Fatalf("resolution replay = %#v err=%v", replay, replayErr)
+	}
+	if replay, replayErr := sess.ResolveAsk(context.Background(), interaction.ID, AskCancelled, nil, "late_cancel"); replayErr != nil || !sameAskResolution(replay, resolved) {
+		t.Fatalf("cross-action replay = %#v err=%v", replay, replayErr)
+	}
+}
+
+func TestResolveAskReturnsNotFoundForUnknownID(t *testing.T) {
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	sess, err := store.GetOrCreate("ask-not-found")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sess.ResolveAskFromHost(context.Background(), "missing", AskCancelled, nil, "user_cancelled"); !errors.Is(err, ErrAskNotFound) {
+		t.Fatalf("unknown Ask error = %v, want %v", err, ErrAskNotFound)
 	}
 }
 
@@ -353,11 +372,12 @@ func TestColdReloadHostAnswerCancelsOrphanedAskAndUnblocksNextAsk(t *testing.T) 
 	if live := reopened.LivePendingAsk(interaction.ID); live != nil {
 		t.Fatalf("cold pending Ask was exposed as live: %#v", live)
 	}
-	if _, err := reopened.ResolveAskFromHost(context.Background(), interaction.ID, AskAnswered, []AskAnswer{
+	resolution, err := reopened.ResolveAskFromHost(context.Background(), interaction.ID, AskAnswered, []AskAnswer{
 		{QuestionID: "format", SelectedOptionIDs: []string{"markdown"}},
 		{QuestionID: "notes", CustomInput: "This answer has no continuation."},
-	}, ""); !errors.Is(err, ErrAskContinuationUnavailable) {
-		t.Fatalf("cold host answer error = %v, want %v", err, ErrAskContinuationUnavailable)
+	}, "")
+	if err != nil || resolution.Status != AskCancelled || resolution.CancelReason != askContinuationLostReason {
+		t.Fatalf("cold host resolution = %#v error=%v", resolution, err)
 	}
 	if pending := reopened.PendingAsk(""); pending != nil {
 		t.Fatalf("orphaned Ask remained pending: %#v", pending)

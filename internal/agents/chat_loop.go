@@ -238,14 +238,15 @@ func (l *chatAgentLoop) complete() RunOutcome {
 			run.logger.Error("resolve_interruption_failed", slog.String("interruption_id", run.resumeInterruption.ID), slog.Any("error", err))
 		}
 	}
-	observedMutations := run.mutations.Mutations()
+	observedMutations, mutationWarnings := run.observer.ResolvedMutations()
 	run.observer.RecordMutations(observedMutations)
 	verification := VerifyPostRunMutations(run.bookService, observedMutations)
+	verification = applyToolMutationWarnings(run.options, verification, mutationWarnings)
 	run.observer.RecordVerification(verification)
 	if run.options.OnMutationsVerified != nil && len(observedMutations) > 0 {
 		run.options.OnMutationsVerified(run.ctx, observedMutations, verification)
 	}
-	if verification.Mutations > 0 {
+	if verification.Mutations > 0 || len(verification.Warnings) > 0 {
 		run.logger.Info("post_run_verification", slog.String("status", verification.Status), slog.Int("mutations", verification.Mutations), slog.Int("checks", len(verification.Checks)), slog.Any("warnings", verification.Warnings))
 		run.emit(Event{Type: "post_run_verification", Data: verification})
 		run.emit(Event{Type: "verification", Data: verification})

@@ -62,24 +62,35 @@ func createSession(id, filePath, title string) (*Session, error) {
 // shared conversation journal. Callers hold s.mu and update their in-memory
 // materialization only after this returns successfully.
 func (s *Session) appendJournalRecordLocked(record any) error {
+	_, err := s.appendJournalRecordsLocked(record)
+	return err
+}
+
+// appendJournalRecordsLocked publishes one canonical transaction and returns
+// exact record locations for references stored by later domain records.
+func (s *Session) appendJournalRecordsLocked(records ...any) (conversationjournal.Commit, error) {
 	if s.journal == nil {
-		return fmt.Errorf("会话 journal 未打开")
+		return conversationjournal.Commit{}, fmt.Errorf("会话 journal 未打开")
 	}
-	data, err := json.Marshal(record)
-	if err != nil {
-		return err
+	payloads := make([]json.RawMessage, len(records))
+	for index, record := range records {
+		data, err := json.Marshal(record)
+		if err != nil {
+			return conversationjournal.Commit{}, err
+		}
+		payloads[index] = data
 	}
 	head := s.journal.Head()
-	commit, err := s.journal.Append(context.Background(), conversationjournal.Guard{Cursor: s.materializedCursor, RecordSHA256: head.RecordSHA256}, data)
+	commit, err := s.journal.Append(context.Background(), conversationjournal.Guard{Cursor: s.materializedCursor, RecordSHA256: head.RecordSHA256}, payloads...)
 	if err != nil {
-		return err
+		return conversationjournal.Commit{}, err
 	}
 	s.materializedCursor = commit.Head.Cursor
 	s.journalSize = commit.Head.VerifiedBytes
 	s.journalOffset = commit.Head.VerifiedBytes
 	s.journalNeedsLF = false
 	s.journalLineCount = int(commit.Head.Cursor)
-	return nil
+	return commit, nil
 }
 
 func writeAndSync(f *os.File, data []byte) error {

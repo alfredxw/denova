@@ -822,6 +822,7 @@ function App() {
         onRenameChatSession={renameChatSession}
         onDeleteChatSession={deleteChatSession}
         onLoadEarlierHistory={loadEarlierHistory}
+        onRefreshChatHistory={loadHistory}
         onSend={send}
         onAnalyzeContext={analyzeContext}
         onStop={stop}

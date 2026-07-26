@@ -216,6 +216,58 @@ func TestMiddlewareArgumentRewriteCannotBypassSchema(t *testing.T) {
 	}
 }
 
+func TestInvalidArgumentsRemainModelVisibleAndCanBeRetried(t *testing.T) {
+	var calls atomic.Int32
+	tool, err := InferTool("typed_retry", "", func(_ context.Context, input struct {
+		Value int `json:"value"`
+	}) (string, error) {
+		calls.Add(1)
+		return fmt.Sprintf("value=%d", input.Value), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := &scriptedModel{responses: []scriptedModelResponse{
+		{message: AssistantMessage("", []ToolCall{{ID: "bad", Type: "function", Function: FunctionCall{Name: "typed_retry", Arguments: `{}`}}})},
+		{message: AssistantMessage("", []ToolCall{{ID: "fixed", Type: "function", Function: FunctionCall{Name: "typed_retry", Arguments: `{"value":"7"}`}}})},
+		{message: AssistantMessage("done", nil)},
+	}}
+	native, err := NewAgent(context.Background(), AgentConfig{
+		Name: "argument-retry", Model: model, Tools: []ToolDefinition{testToolDefinition(tool)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := NewRunner(RunnerConfig{Agent: native}).Query(context.Background(), "go")
+	var invalid, successful *Message
+	for {
+		event, ok := events.Next()
+		if !ok {
+			break
+		}
+		if event.Err != nil {
+			t.Fatal(event.Err)
+		}
+		if event.Output == nil || event.Output.MessageOutput == nil || event.Output.MessageOutput.Message == nil {
+			continue
+		}
+		message := event.Output.MessageOutput.Message
+		if message.ToolResult == nil {
+			continue
+		}
+		if message.ToolResult.SyntheticReason == ToolSyntheticInvalidArguments {
+			invalid = message
+		} else if message.ToolResult.Status == ToolResultSuccess {
+			successful = message
+		}
+	}
+	if calls.Load() != 1 || invalid == nil || successful == nil ||
+		!strings.Contains(invalid.Content, `"code":"invalid_arguments"`) ||
+		!strings.Contains(invalid.Content, `"code":"missing_required"`) {
+		t.Fatalf("calls=%d invalid=%#v successful=%#v", calls.Load(), invalid, successful)
+	}
+}
+
 type progressOnlyTool struct{}
 
 func (*progressOnlyTool) Info(context.Context) (*ToolInfo, error) {

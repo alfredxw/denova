@@ -12,22 +12,34 @@ import (
 )
 
 type contextWindowBackendStub struct {
-	cursor session.ContextCursor
-	active []session.ContextOperation
-	prefix []*agent.Message
-	staged []session.ContextOperation
+	cursor     session.ContextCursor
+	active     []session.ContextOperation
+	prefix     []*agent.Message
+	staged     []session.ContextOperation
+	boundaries map[string]*session.ContextBoundarySnapshot
 }
 
 func (backend *contextWindowBackendStub) ActiveContextCheckpoints(string) ([]session.ContextOperation, error) {
 	return append([]session.ContextOperation(nil), backend.active...), nil
 }
 
-func (backend *contextWindowBackendStub) FreezeContextWindowBoundary(messages []*agent.Message) (*session.ContextCheckpointBoundary, error) {
+func (backend *contextWindowBackendStub) FreezeContextWindowBoundary(messages []*agent.Message) (*session.ContextBoundarySnapshot, error) {
 	canonical := messages
 	if backend.prefix != nil {
 		canonical = backend.prefix
 	}
-	return session.NewContextCheckpointBoundary(backend.cursor, messages, canonical, 4*1024*1024)
+	return session.NewContextBoundarySnapshot(backend.cursor, messages, canonical, 4*1024*1024)
+}
+
+func (backend *contextWindowBackendStub) StoreContextWindowBoundary(
+	id string,
+	boundary *session.ContextBoundarySnapshot,
+) (session.ContextBoundaryLocator, error) {
+	if backend.boundaries == nil {
+		backend.boundaries = make(map[string]*session.ContextBoundarySnapshot)
+	}
+	backend.boundaries[id] = boundary
+	return session.ContextBoundaryLocator{Cursor: 1, SHA256: strings.Repeat("a", 64)}, nil
 }
 
 func (backend *contextWindowBackendStub) StageContextOperation(operation session.ContextOperation) error {
@@ -187,11 +199,14 @@ func TestRunContextWindowCheckpointUsesSynchronousFrozenBoundary(t *testing.T) {
 		t.Fatalf("checkpoint=%+v staged=%+v", checkpoint, backend.staged)
 	}
 	operation := backend.staged[0]
-	if operation.MessageCount != 7 || operation.Boundary == nil || operation.Boundary.Cursor.MessageCount != 7 {
+	if operation.MessageCount != 7 || operation.ResolvedBoundary == nil || operation.ResolvedBoundary.Cursor.MessageCount != 7 {
 		t.Fatalf("checkpoint read mutable host cursor: %+v", operation)
 	}
-	if got := operation.Boundary.EffectivePrefix; len(got) != 2 || got[1].Content != "request" {
+	if got := operation.ResolvedBoundary.EffectivePrefix; len(got) != 2 || got[1].Content != "request" {
 		t.Fatalf("frozen effective projection = %#v", got)
+	}
+	if len(backend.boundaries) != 1 || operation.BoundaryID == "" || operation.BoundaryLocator.Cursor == 0 {
+		t.Fatalf("stored boundary reference = %+v boundaries=%d", operation, len(backend.boundaries))
 	}
 }
 
@@ -247,8 +262,11 @@ func TestCorruptDurableCheckpointBlocksRecoveredModelRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	boundary, err := session.NewContextCheckpointBoundary(
-		session.ContextCursor{MessageCount: 1},
+	if err := sess.Append(agent.UserMessage("request")); err != nil {
+		t.Fatal(err)
+	}
+	boundary, err := session.NewContextBoundarySnapshot(
+		sess.ContextCursor(),
 		[]*agent.Message{agent.UserMessage("request")},
 		[]*agent.Message{agent.UserMessage("request")},
 		4*1024*1024,
@@ -256,11 +274,16 @@ func TestCorruptDurableCheckpointBlocksRecoveredModelRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	boundary.EffectiveSHA256 = "corrupt"
+	locator, err := sess.StoreContextBoundary("cp-corrupt", boundary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locator.SHA256 = strings.Repeat("0", 64)
 	if err := sess.AppendWithMetadata(agent.AssistantMessage("checkpoint", nil), session.MessageMetadata{
 		ContextOperations: []session.ContextOperation{{
 			Kind: session.ContextOperationCheckpoint, AgentKind: AgentKindIDE,
-			CheckpointID: "cp-corrupt", MessageCount: 1, Boundary: boundary,
+			CheckpointID: "cp-corrupt", MessageCount: 1,
+			BoundaryID: "cp-corrupt", BoundaryLocator: locator,
 		}},
 	}); err != nil {
 		t.Fatal(err)
@@ -377,10 +400,16 @@ func TestSessionConversationStagesContextOperationsOnlyWithAuthorizedOutput(t *t
 		Kind: session.ContextOperationCheckpoint, AgentKind: AgentKindIDE,
 		CheckpointID: "cp-1", Purpose: "research", MessageCount: 0,
 	}
-	operation.Boundary, err = session.NewContextCheckpointBoundary(session.ContextCursor{}, nil, nil, 4*1024*1024)
+	boundary, err := session.NewContextBoundarySnapshot(session.ContextCursor{}, nil, nil, 4*1024*1024)
 	if err != nil {
 		t.Fatal(err)
 	}
+	operation.BoundaryID = "cp-1"
+	operation.BoundaryLocator, err = sess.StoreContextBoundary(operation.BoundaryID, boundary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation.ResolvedBoundary = boundary
 	if err := conversation.StageContextOperation(operation); err != nil {
 		t.Fatal(err)
 	}
@@ -421,7 +450,7 @@ func TestModelHistoryAppliesNewestDurableRewindWithoutDeletingTranscript(t *test
 	if err := sess.Append(agent.UserMessage("prefix")); err != nil {
 		t.Fatal(err)
 	}
-	boundary, err := session.NewContextCheckpointBoundary(
+	boundary, err := session.NewContextBoundarySnapshot(
 		session.ContextCursor{MessageCount: 1},
 		[]*agent.Message{agent.UserMessage("prefix")},
 		[]*agent.Message{agent.UserMessage("prefix")},
@@ -430,8 +459,13 @@ func TestModelHistoryAppliesNewestDurableRewindWithoutDeletingTranscript(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
+	locator, err := sess.StoreContextBoundary("cp-1", boundary)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := sess.AppendWithMetadata(agent.AssistantMessage("checkpoint output", nil), session.MessageMetadata{ContextOperations: []session.ContextOperation{{
-		Kind: session.ContextOperationCheckpoint, AgentKind: AgentKindIDE, CheckpointID: "cp-1", MessageCount: 1, Boundary: boundary,
+		Kind: session.ContextOperationCheckpoint, AgentKind: AgentKindIDE, CheckpointID: "cp-1", MessageCount: 1,
+		BoundaryID: "cp-1", BoundaryLocator: locator,
 	}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -439,7 +473,8 @@ func TestModelHistoryAppliesNewestDurableRewindWithoutDeletingTranscript(t *test
 		t.Fatal(err)
 	}
 	if err := sess.AppendWithMetadata(agent.AssistantMessage("answer after rewind", nil), session.MessageMetadata{ContextOperations: []session.ContextOperation{{
-		Kind: session.ContextOperationRewind, AgentKind: AgentKindIDE, CheckpointID: "cp-1", MessageCount: 1, Boundary: boundary, Report: "retained finding",
+		Kind: session.ContextOperationRewind, AgentKind: AgentKindIDE, CheckpointID: "cp-1", MessageCount: 1,
+		BoundaryID: "cp-1", BoundaryLocator: locator, Report: "retained finding",
 	}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -471,15 +506,16 @@ func TestModelHistoryChoosesNewestStructuralContextProjection(t *testing.T) {
 		Kind: session.ContextOperationCheckpoint, AgentKind: AgentKindIDE,
 		CheckpointID: "cp-1", MessageCount: 1,
 	}
-	checkpoint.Boundary, _ = session.NewContextCheckpointBoundary(
+	boundary, _ := session.NewContextBoundarySnapshot(
 		session.ContextCursor{MessageCount: 1},
 		[]*agent.Message{agent.UserMessage("prefix")},
 		[]*agent.Message{agent.UserMessage("prefix")},
 		4*1024*1024,
 	)
+	checkpoint.ResolvedBoundary = boundary
 	rewind := session.ContextOperation{
 		Kind: session.ContextOperationRewind, AgentKind: AgentKindIDE,
-		CheckpointID: "cp-1", MessageCount: 1, Boundary: checkpoint.Boundary, Report: "rewind finding",
+		CheckpointID: "cp-1", MessageCount: 1, ResolvedBoundary: boundary, Report: "rewind finding",
 	}
 	compaction := session.ContextCompaction{
 		AgentKind: AgentKindIDE, Epoch: 1, Summary: "compaction summary",

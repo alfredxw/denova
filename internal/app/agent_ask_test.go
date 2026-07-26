@@ -77,16 +77,16 @@ func TestResolveConfigManagerAskCannotCrossScope(t *testing.T) {
 	}
 }
 
-func TestAnswerSessionAskRejectsColdOrphanWithoutFakeSuccess(t *testing.T) {
+func TestAnswerSessionAskReturnsCanonicalCancellationForColdOrphan(t *testing.T) {
 	store, sess := reopenAppAskWithoutWaiter(t, "ask-cold-app", session.AskCycleIdentity{
 		CommandID: "command-cold-app", OperationID: "operation-cold-app", Cycle: 1,
 	})
 	application := &App{workspace: "/book", sessionStore: store, session: sess}
-	_, err := application.AnswerSessionAsk(context.Background(), sess.ID, "ask-cold-app", []AgentAskAnswer{{
+	resolution, err := application.AnswerSessionAsk(context.Background(), sess.ID, "ask-cold-app", []AgentAskAnswer{{
 		QuestionID: "choice", SelectedOptionIDs: []string{"a"},
 	}})
-	if !errors.Is(err, ErrAgentAskNotPending) {
-		t.Fatalf("cold AnswerSessionAsk error = %v, want %v", err, ErrAgentAskNotPending)
+	if err != nil || resolution.Status != session.AskCancelled || resolution.CancelReason != "runtime_continuation_unavailable" {
+		t.Fatalf("cold AnswerSessionAsk resolution = %#v error=%v", resolution, err)
 	}
 	if pending := sess.PendingAsk(""); pending != nil {
 		t.Fatalf("cold host answer left pending Ask: %#v", pending)
@@ -95,6 +95,36 @@ func TestAnswerSessionAskRejectsColdOrphanWithoutFakeSuccess(t *testing.T) {
 	if len(history) != 1 || history[0].Ask == nil || history[0].Ask.Status != session.AskCancelled ||
 		history[0].Ask.CancelReason != "runtime_continuation_unavailable" {
 		t.Fatalf("cold host answer history = %#v", history)
+	}
+}
+
+func TestResolveAgentAskReturnsCanonicalTerminalAndNotFound(t *testing.T) {
+	store, err := session.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	sess, err := store.Create("ask-terminal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	application := &App{workspace: "/book", sessionStore: store, session: sess}
+	done := startAppAskWaiter(t, sess, "ask-terminal", "ide")
+	want, err := application.CancelSessionAsk(context.Background(), sess.ID, "ask-terminal", "user_cancelled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	got, err := application.AnswerSessionAsk(context.Background(), sess.ID, "ask-terminal", []AgentAskAnswer{{
+		QuestionID: "choice", SelectedOptionIDs: []string{"a"},
+	}})
+	if err != nil || got.Status != want.Status || got.CancelReason != want.CancelReason {
+		t.Fatalf("terminal replay = %#v error=%v, want %#v", got, err, want)
+	}
+	if _, err := application.CancelSessionAsk(context.Background(), sess.ID, "missing", "user_cancelled"); !errors.Is(err, ErrAgentAskNotFound) {
+		t.Fatalf("unknown Ask error = %v, want %v", err, ErrAgentAskNotFound)
 	}
 }
 

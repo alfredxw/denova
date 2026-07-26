@@ -96,23 +96,15 @@ func sanitizeContextOperations(values []ContextOperation) []ContextOperation {
 		value.CheckpointID = strings.TrimSpace(value.CheckpointID)
 		value.Purpose = truncateUTF8ByBytes(strings.TrimSpace(value.Purpose), maxContextLabelBytes)
 		value.Report = truncateUTF8ByBytes(strings.TrimSpace(value.Report), maxContextReportBytes)
+		value.BoundaryID = strings.TrimSpace(value.BoundaryID)
+		value.ResolvedBoundary = nil
 		if value.MessageCount < 0 {
 			value.MessageCount = 0
 		}
-		if (value.Kind != ContextOperationCheckpoint && value.Kind != ContextOperationRewind) || value.AgentKind == "" || value.CheckpointID == "" {
+		if (value.Kind != ContextOperationCheckpoint && value.Kind != ContextOperationRewind) ||
+			value.AgentKind == "" || value.CheckpointID == "" || value.BoundaryID == "" ||
+			len(value.BoundaryID) > maxContextLabelBytes || !validContextBoundaryLocator(value.BoundaryLocator) {
 			continue
-		}
-		if value.Boundary != nil {
-			boundary, err := CloneContextCheckpointBoundary(value.Boundary)
-			if err != nil {
-				// A malformed projection must never be persisted as if it were a
-				// recoverable checkpoint. Keep the operation for audit only; all
-				// recovery paths reject the missing boundary.
-				value.Boundary = nil
-			} else {
-				value.Boundary = boundary
-				value.MessageCount = boundary.Cursor.MessageCount
-			}
 		}
 		receipts := make([]ContextMutationReceipt, 0, min(len(value.MutationReceipts), maxContextMutationReceipts))
 		for _, receipt := range value.MutationReceipts {

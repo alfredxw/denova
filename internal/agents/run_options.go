@@ -15,6 +15,8 @@ const (
 	AgentKindAutomation       = "automation"
 )
 
+const RunWriteModeReadOnly = "read_only"
+
 // RunOptions identifies one Agent run across runtime, trace, and UI surfaces.
 type RunOptions struct {
 	AgentKind     string
@@ -31,6 +33,8 @@ type RunOptions struct {
 	MaintenanceTask    string
 	Workspace          string
 	Mode               string
+	WriteMode          string
+	WriteScope         string
 	IdleTimeout        time.Duration
 	ToolResultMaxBytes int
 	// Controls carries lifecycle requests for this run only. Closing it is a no-op.
@@ -62,6 +66,8 @@ func (o RunOptions) normalized(defaultWorkspace string) RunOptions {
 		o.Workspace = strings.TrimSpace(defaultWorkspace)
 	}
 	o.Mode = strings.TrimSpace(o.Mode)
+	o.WriteMode = strings.ToLower(strings.TrimSpace(o.WriteMode))
+	o.WriteScope = strings.ToLower(strings.TrimSpace(o.WriteScope))
 	if o.IdleTimeout < 0 {
 		o.IdleTimeout = 0
 	}

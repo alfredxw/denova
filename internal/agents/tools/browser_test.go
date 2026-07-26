@@ -103,12 +103,14 @@ func TestBrowserToolPublishesActionUnionAndExternalContract(t *testing.T) {
 	}
 	for _, arguments := range []string{
 		`{"action":"open","tab":"docs","command":"observe"}`,
-		`{"action":"run","tab":"docs","command":"unknown"}`,
 		`{"action":"close","tab":"docs","mystery":true}`,
 	} {
-		if _, err := definition.Tool.Run(context.Background(), arguments); err == nil {
-			t.Fatalf("browser accepted invalid action arguments: %s", arguments)
+		if _, err := definition.Tool.Run(context.Background(), arguments); err != nil {
+			t.Fatalf("browser rejected harmless extra action field %s: %v", arguments, err)
 		}
+	}
+	if _, err := definition.Tool.Run(context.Background(), `{"action":"run","tab":"docs","command":"unknown"}`); err == nil {
+		t.Fatal("browser accepted an unknown command enum")
 	}
 }
 

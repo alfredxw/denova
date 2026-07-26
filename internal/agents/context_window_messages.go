@@ -47,9 +47,8 @@ func newContextRewindSummaryMessage(operation session.ContextOperation) *agent.M
 }
 
 func applyContextWindowProjection(history []*agent.Message, effectiveStart int, projection session.ContextWindowProjection) []*agent.Message {
-	boundary, boundaryErr := session.CloneContextCheckpointBoundary(projection.Checkpoint.Boundary)
 	prefix := []*agent.Message(nil)
-	if boundaryErr == nil {
+	if boundary := projection.Checkpoint.ResolvedBoundary; boundary != nil {
 		prefix = cloneContextMessages(boundary.CanonicalPrefix)
 	}
 	tailStart := projection.RewindAfterIndex - effectiveStart

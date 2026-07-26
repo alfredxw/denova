@@ -340,6 +340,7 @@ function modeRouterProps(
     onRenameChatSession: vi.fn(),
     onDeleteChatSession: vi.fn(),
     onLoadEarlierHistory: vi.fn(),
+    onRefreshChatHistory: vi.fn(),
     onSend: vi.fn(),
     onAnalyzeContext: vi.fn(async () => ({} as any)),
     onStop: vi.fn(),

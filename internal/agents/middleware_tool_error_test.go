@@ -115,6 +115,36 @@ func TestToolOrchestratorUsesDetailsForMutationReceiptWhenModelContentIsTruncate
 	}
 }
 
+func TestToolOrchestratorPreservesCommittedReceiptWhenEndpointAlsoErrors(t *testing.T) {
+	receipt := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/committed.md"}`
+	observer := &capturingToolLifecycleObserver{}
+	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)
+	middleware := &toolOrchestratorMiddleware{agentKind: AgentKindIDE, toolResultMaxBytes: 1024}
+	endpoint, err := middleware.WrapToolCall(context.Background(),
+		func(context.Context, string, ...agent.ToolOption) (agent.ToolResult, error) {
+			result := agent.ToolErrorResult("commit reporting failed", "commit reporting failed")
+			result.Details = []byte(receipt)
+			return result, errors.New("reporting failed after commit")
+		},
+		testToolContext("write", "call-error-receipt"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := endpoint(ctx, `{"path":"chapters/committed.md","content":"done"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != agent.ToolResultError || len(observer.records) != 1 {
+		t.Fatalf("result=%#v records=%#v", result, observer.records)
+	}
+	record := observer.records[0]
+	mutation, committed := toolMutationFromExecutionRecord(record)
+	if !committed || record.Status != "error" || mutation.Target != "chapters/committed.md" {
+		t.Fatalf("error receipt was not committed: record=%#v mutation=%#v committed=%t", record, mutation, committed)
+	}
+}
+
 func TestToolOrchestratorTurnsInvalidDetailsIntoStructuredToolError(t *testing.T) {
 	observer := &capturingToolLifecycleObserver{}
 	ctx := ContextWithToolLifecycleObserver(context.Background(), observer)

@@ -338,7 +338,7 @@ func TestNativeLoopToolFailuresBecomeToolMessages(t *testing.T) {
 				}
 				return []ToolDefinition{testToolDefinition(current)}
 			},
-			wantContent: "invalid arguments", wantReason: ToolSyntheticInvalidArguments, wantCalls: 0,
+			wantContent: "invalid_arguments", wantReason: ToolSyntheticInvalidArguments, wantCalls: 0,
 		},
 		{
 			name: "panic", call: ToolCall{ID: "1", Type: "function", Function: FunctionCall{Name: "panic", Arguments: `{}`}},

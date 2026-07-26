@@ -20,6 +20,7 @@ const (
 	historyTypeClear               = "clear"
 	historyTypeInterrupt           = "interrupt"
 	historyTypeAsk                 = "ask"
+	historyTypeContextBoundary     = "context_boundary"
 	historyTypeCompaction          = "context_compaction"
 	historyTypeCompactionRemoved   = "context_compaction_removed"
 
@@ -119,24 +120,33 @@ const (
 // model-invisible metadata used to project future context without deleting the
 // canonical/display transcript.
 type ContextOperation struct {
-	Kind             string                     `json:"kind"`
-	AgentKind        string                     `json:"agent_kind"`
-	CheckpointID     string                     `json:"checkpoint_id"`
-	Purpose          string                     `json:"purpose,omitempty"`
-	MessageCount     int                        `json:"message_count,omitempty"`
-	Boundary         *ContextCheckpointBoundary `json:"boundary,omitempty"`
-	Report           string                     `json:"report,omitempty"`
-	MutationReceipts []ContextMutationReceipt   `json:"mutation_receipts,omitempty"`
+	Kind             string                   `json:"kind"`
+	AgentKind        string                   `json:"agent_kind"`
+	CheckpointID     string                   `json:"checkpoint_id"`
+	Purpose          string                   `json:"purpose,omitempty"`
+	MessageCount     int                      `json:"message_count,omitempty"`
+	BoundaryID       string                   `json:"boundary_id"`
+	BoundaryLocator  ContextBoundaryLocator   `json:"boundary_locator"`
+	Report           string                   `json:"report,omitempty"`
+	MutationReceipts []ContextMutationReceipt `json:"mutation_receipts,omitempty"`
+
+	// ResolvedBoundary is populated only after canonical journal lookup. It is
+	// never part of message metadata or the rebuildable sidecar projection.
+	ResolvedBoundary *ContextBoundarySnapshot `json:"-"`
 }
 
-const ContextCheckpointBoundarySchema = "denova.context-checkpoint-boundary.v1"
+// ContextBoundaryLocator identifies the one canonical journal record that owns
+// a frozen projection. SHA256 covers that exact record payload.
+type ContextBoundaryLocator struct {
+	Cursor      conversationjournal.Cursor `json:"cursor"`
+	RecordIndex int                        `json:"record_index,omitempty"`
+	SHA256      string                     `json:"sha256"`
+}
 
-// ContextCheckpointBoundary is the immutable model-context projection captured
-// synchronously before a model call. EffectivePrefix resumes the current Agent
-// run, while CanonicalPrefix excludes turn-scoped prompt fragments so future
-// turns can assemble fresh runtime context without duplicating stale inputs.
-type ContextCheckpointBoundary struct {
-	Schema          string           `json:"schema"`
+// ContextBoundarySnapshot is captured synchronously before a model call.
+// EffectivePrefix resumes the current run; CanonicalPrefix excludes turn-only
+// fragments so future turns can assemble fresh runtime context.
+type ContextBoundarySnapshot struct {
 	Cursor          ContextCursor    `json:"cursor"`
 	LimitBytes      int              `json:"limit_bytes"`
 	EffectiveSource string           `json:"effective_source"`

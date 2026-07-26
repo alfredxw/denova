@@ -9,7 +9,7 @@ import (
 	"denova/internal/agents/session"
 )
 
-var ErrAgentAskNotPending = errors.New("agent ask is not pending")
+var ErrAgentAskNotFound = errors.New("agent ask was not found")
 
 // AgentAskAnswer is the App boundary accepted from interactive HTTP hosts.
 // Session validation remains internal to the Agent subsystem.
@@ -116,8 +116,8 @@ func resolveAgentAsk(ctx context.Context, sess askSession, askID, status string,
 	}
 	resolution, err := sess.ResolveAskFromHost(ctx, askID, status, sessionAnswers, cancelReason)
 	if err != nil {
-		if errors.Is(err, session.ErrAskNotPending) || errors.Is(err, session.ErrAskAlreadyResolved) || errors.Is(err, session.ErrAskContinuationUnavailable) {
-			return AgentAskResolution{}, fmt.Errorf("%w: %v", ErrAgentAskNotPending, err)
+		if errors.Is(err, session.ErrAskNotFound) {
+			return AgentAskResolution{}, fmt.Errorf("%w: %v", ErrAgentAskNotFound, err)
 		}
 		return AgentAskResolution{}, err
 	}

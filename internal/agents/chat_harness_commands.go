@@ -231,6 +231,8 @@ type harnessTurnOptionsDescriptor struct {
 	MaintenanceTask    string `json:"maintenance_task,omitempty"`
 	Workspace          string `json:"workspace"`
 	Mode               string `json:"mode,omitempty"`
+	WriteMode          string `json:"write_mode,omitempty"`
+	WriteScope         string `json:"write_scope,omitempty"`
 	IdleTimeout        int64  `json:"idle_timeout,omitempty"`
 	ToolResultMaxBytes int    `json:"tool_result_max_bytes,omitempty"`
 }
@@ -242,7 +244,8 @@ func describeHarnessTurnOptions(options RunOptions) harnessTurnOptionsDescriptor
 		SessionID: options.SessionID, ReviewThreadID: options.ReviewThreadID,
 		StoryID: options.StoryID, BranchID: options.BranchID, TurnID: options.TurnID,
 		MaintenanceTask: options.MaintenanceTask, Workspace: options.Workspace,
-		Mode: options.Mode, IdleTimeout: int64(options.IdleTimeout),
+		Mode: options.Mode, WriteMode: options.WriteMode, WriteScope: options.WriteScope,
+		IdleTimeout:        int64(options.IdleTimeout),
 		ToolResultMaxBytes: options.ToolResultMaxBytes,
 	}
 }

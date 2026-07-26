@@ -25,6 +25,7 @@ import { AgentChangeSummaryCard } from '@/features/changes/agent/AgentChangeSumm
 import { MAX_REVIEW_FEEDBACK_COMMENT_COUNT, MAX_REVIEW_FEEDBACK_CONTEXT_BYTES, reviewFeedbackCommentCount, reviewFeedbackContextBytes, type ReviewFeedbackBatch, type ReviewFeedbackComment, type ReviewFeedbackSelection } from '@/features/changes/agent/ReviewFeedbackTray'
 import { toast } from 'sonner'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
+import { resolveAgentAskAndRefresh } from '@/lib/agent-ask'
 
 type AgentPanelView = 'chat' | 'sessions' | 'traces'
 
@@ -70,6 +71,7 @@ interface AgentPanelProps {
   onRenameSession: (id: string, title: string) => void | Promise<void>
   onDeleteSession: (id: string) => void | Promise<void>
   onLoadEarlierHistory: () => void | Promise<void>
+  onRefreshHistory: (sessionId?: string) => void | Promise<void>
   onSend: (message: string, options?: ChatSendOptions) => boolean | Promise<boolean>
   onAnalyzeContext: (message: string, options?: { writingSkill?: string; ideContext?: IDEContext; imagePresetId?: string; tellerId?: string }) => Promise<ContextAnalysis>
   onStop: () => void
@@ -132,6 +134,7 @@ export function AgentPanel({
   onRenameSession,
   onDeleteSession,
   onLoadEarlierHistory,
+  onRefreshHistory,
   onSend,
   onAnalyzeContext,
   onStop,
@@ -349,10 +352,11 @@ export function AgentPanel({
   const resolveAsk = useCallback(async (view: AgentMessageView, action: { status: 'answered'; answers: AgentAskAnswer[] } | { status: 'cancelled' }) => {
     const askID = typeof view.data.id === 'string' ? view.data.id.trim() : ''
     if (!activeSessionId || !askID) throw new Error('Cannot resolve an Ask without its Session and interaction IDs')
-    return action.status === 'answered'
-      ? answerSessionAsk(activeSessionId, askID, action.answers)
-      : cancelSessionAsk(activeSessionId, askID)
-  }, [activeSessionId])
+    return resolveAgentAskAndRefresh(action, {
+      answer: (answers) => answerSessionAsk(activeSessionId, askID, answers),
+      cancel: () => cancelSessionAsk(activeSessionId, askID),
+    }, () => onRefreshHistory(activeSessionId))
+  }, [activeSessionId, onRefreshHistory])
   const messageListProps = {
     messages,
     isStreaming,

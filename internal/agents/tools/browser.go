@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	agent "github.com/alfredxw/denova/agent"
@@ -167,9 +166,11 @@ func (tool *browserTool) Run(ctx context.Context, arguments string, _ ...agent.T
 	if err != nil {
 		return agent.ToolResult{}, err
 	}
-	if err := agent.ValidateToolArguments(info, arguments); err != nil {
+	normalizedArguments, err := agent.NormalizeToolArguments(info, arguments)
+	if err != nil {
 		return agent.ToolResult{}, fmt.Errorf("decode browser arguments: %w", err)
 	}
+	arguments = normalizedArguments
 	var envelope struct {
 		Action string `json:"action"`
 	}
@@ -279,15 +280,15 @@ func browserDescriptor() agent.ToolDescriptor {
 
 func decodeBrowserArguments[T any](arguments string) (T, error) {
 	var input T
-	decoder := json.NewDecoder(strings.NewReader(arguments))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&input); err != nil {
+	info, err := agent.GoStruct2ToolInfo[T]("browser_arguments", "")
+	if err != nil {
 		return input, err
 	}
-	var trailing any
-	if err := decoder.Decode(&trailing); err == nil {
-		return input, errors.New("browser arguments contain multiple JSON values")
-	} else if !errors.Is(err, io.EOF) {
+	normalized, err := agent.NormalizeToolArguments(info, arguments)
+	if err != nil {
+		return input, err
+	}
+	if err := json.Unmarshal([]byte(normalized), &input); err != nil {
 		return input, err
 	}
 	return input, nil

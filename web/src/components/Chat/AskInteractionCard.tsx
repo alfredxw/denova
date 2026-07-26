@@ -4,10 +4,9 @@ import { useTranslation } from 'react-i18next'
 import type { AgentAskAnswer, AgentAskInteraction, AgentAskQuestion, AgentAskResolution, ChatMessage } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
+import type { AgentAskResolveAction } from '@/lib/agent-ask'
 
-export type AskResolveAction =
-  | { status: 'answered'; answers: AgentAskAnswer[] }
-  | { status: 'cancelled' }
+export type AskResolveAction = AgentAskResolveAction
 
 export type AskInteractionResolver = (message: ChatMessage, action: AskResolveAction) => Promise<AgentAskResolution>
 

@@ -2,6 +2,7 @@ package agents
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -26,6 +27,7 @@ type RunObserver struct {
 	llmSpanID      string
 	lastLLMOutcome LLMOutcome
 	pendingTools   map[string]*traceSpanHandle
+	toolExecutions []ToolExecutionRecord
 	mu             sync.Mutex
 }
 
@@ -155,11 +157,18 @@ func (o *RunObserver) RecordToolDecision(decision ToolDecision) {
 }
 
 func (o *RunObserver) RecordToolExecution(result ToolExecutionRecord) {
-	if o == nil || o.ledger == nil {
+	if o == nil {
 		return
 	}
+	result.RetryModules = append([]string(nil), result.RetryModules...)
+	result.LoreItemIDs = append([]string(nil), result.LoreItemIDs...)
+	result.DeletedLoreItemIDs = append([]string(nil), result.DeletedLoreItemIDs...)
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	o.toolExecutions = append(o.toolExecutions, result)
+	if o.ledger == nil {
+		return
+	}
 	_ = o.ledger.RecordToolExecution(result)
 	key := o.toolKey(result.ExecutionID, result.ToolName)
 	span := o.pendingTools[key]
@@ -221,6 +230,39 @@ func (o *RunObserver) RecordToolExecution(result ToolExecutionRecord) {
 		attrs["model_finish_reason"] = result.ModelFinishReason
 	}
 	span.Finish(status, attrs)
+}
+
+// ResolvedMutations projects terminal tool executions into committed workspace
+// mutations. No display or stream event participates in this decision.
+func (o *RunObserver) ResolvedMutations() ([]ToolMutation, []string) {
+	if o == nil {
+		return nil, nil
+	}
+	o.mu.Lock()
+	records := append([]ToolExecutionRecord(nil), o.toolExecutions...)
+	o.mu.Unlock()
+
+	mutations := make([]ToolMutation, 0, len(records))
+	warnings := make([]string, 0)
+	seenCalls := make(map[string]struct{}, len(records))
+	for index, record := range records {
+		key := strings.TrimSpace(record.ExecutionID)
+		if key == "" {
+			key = fmt.Sprintf("%s:%d", normalizeToolName(record.ToolName), index)
+		}
+		if _, exists := seenCalls[key]; exists {
+			continue
+		}
+		seenCalls[key] = struct{}{}
+		resolution := resolveToolMutation(record)
+		if resolution.Committed {
+			mutations = append(mutations, resolution.Mutation)
+		}
+		if resolution.Warning != "" {
+			warnings = append(warnings, resolution.Warning)
+		}
+	}
+	return mutations, warnings
 }
 
 func (o *RunObserver) RecordMutations(mutations []ToolMutation) {

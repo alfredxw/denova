@@ -93,7 +93,7 @@ func (adapter *typedReadAdapter[T]) Read(ctx context.Context, arguments string) 
 	if adapter == nil || adapter.invoke == nil {
 		return ReadResult{}, errors.New("read adapter is not configured")
 	}
-	input, err := strictDecode[T](arguments)
+	input, err := normalizeAndDecode[T](arguments)
 	if err != nil {
 		return ReadResult{}, fmt.Errorf("decode %s read arguments: %w", adapter.name, err)
 	}
@@ -171,9 +171,11 @@ func (tool *readTool) Run(ctx context.Context, arguments string, _ ...agent.Tool
 	if err != nil {
 		return agent.ToolResult{}, err
 	}
-	if err := agent.ValidateToolArguments(info, arguments); err != nil {
+	normalizedArguments, err := agent.NormalizeToolArguments(info, arguments)
+	if err != nil {
 		return agent.ToolResult{}, fmt.Errorf("decode read arguments: %w", err)
 	}
+	arguments = normalizedArguments
 	resourcePath, err := readPathArgument(arguments)
 	if err != nil {
 		return agent.ToolResult{}, err

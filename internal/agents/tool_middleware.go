@@ -142,6 +142,7 @@ type ToolExecutionRecord struct {
 	ExecutionID           string               `json:"execution_id,omitempty"`
 	Workspace             string               `json:"workspace,omitempty"`
 	Status                string               `json:"status"`
+	SyntheticReason       string               `json:"synthetic_reason,omitempty"`
 	Result                string               `json:"result,omitempty"`
 	DomainStatus          string               `json:"domain_status,omitempty"`
 	DomainDiagnosticCount int                  `json:"domain_diagnostic_count,omitempty"`
@@ -165,6 +166,7 @@ type ToolExecutionRecord struct {
 	ApplyState            string               `json:"apply_state,omitempty"`
 	LoreItemIDs           []string             `json:"lore_item_ids,omitempty"`
 	DeletedLoreItemIDs    []string             `json:"deleted_lore_item_ids,omitempty"`
+	MutationReceiptSchema string               `json:"mutation_receipt_schema,omitempty"`
 	Descriptor            agent.ToolDescriptor `json:"descriptor"`
 }
 
@@ -225,7 +227,7 @@ func (m *toolOrchestratorMiddleware) WrapToolCall(
 				// materialize effect_unknown and never auto-retry the side effect.
 				return agent.ToolResult{}, err
 			} else {
-				result, record := projectToolError(decision, args, err, m.toolResultLimitBytes())
+				result, record := projectToolError(decision, args, result, err, m.toolResultLimitBytes())
 				if recordErr := recordToolFinish(ctx, record); recordErr != nil {
 					return result, recordErr
 				}
@@ -237,7 +239,7 @@ func (m *toolOrchestratorMiddleware) WrapToolCall(
 			toolName(toolCtx), decision.Descriptor, args, result, m.toolResultLimitBytes(),
 		)
 		record := toolExecutionRecordFromFiltered(decision, filtered, string(filtered.Result.Status))
-		applyToolMutationReceiptToExecutionRecord(&record, filtered.Result)
+		applyToolMutationReceiptToExecutionRecord(&record, result)
 		applyInteractiveTurnReceiptToExecutionRecord(&record, filtered.Result)
 		if err := recordToolFinish(ctx, record); err != nil {
 			return filtered.Result, err
@@ -253,14 +255,22 @@ func toolEndpointErrorMessage(toolName string, err error) string {
 	return fmt.Sprintf("[tool error] %v", err)
 }
 
-func projectToolError(decision ToolDecision, args string, err error, maxBytes int) (agent.ToolResult, ToolExecutionRecord) {
+func projectToolError(decision ToolDecision, args string, returned agent.ToolResult, err error, maxBytes int) (agent.ToolResult, ToolExecutionRecord) {
 	message := strings.ToValidUTF8(toolEndpointErrorMessage(decision.ToolName, err), "\uFFFD")
+	errorResult := agent.ToolErrorResult(message, boundedToolErrorDiagnostic(err))
+	// Details is a terminal durability receipt, not display content. Preserve a
+	// valid receipt even when the tool reports a transport/domain error after the
+	// workspace effect committed.
+	if len(returned.Details) != 0 {
+		errorResult.Details = append(errorResult.Details[:0], returned.Details...)
+	}
 	filtered := filterStructuredToolResultWithDescriptor(
 		decision.ToolName, decision.Descriptor, args,
-		agent.ToolErrorResult(message, boundedToolErrorDiagnostic(err)), maxBytes,
+		errorResult, maxBytes,
 	)
 	record := toolExecutionRecordFromFiltered(decision, filtered, "error")
 	record.Error = boundedToolErrorDiagnostic(err)
+	applyToolMutationReceiptToExecutionRecord(&record, returned)
 	return filtered.Result, record
 }
 
@@ -268,13 +278,14 @@ func toolExecutionRecordFromFiltered(decision ToolDecision, filtered FilteredToo
 	return ToolExecutionRecord{
 		ToolName: filtered.Manifest.Name, ProviderCallID: decision.ProviderCallID,
 		ExecutionID: decision.ExecutionID, Status: status,
-		Capability:     filtered.Manifest.Capability,
-		OriginalBytes:  filtered.Result.Metadata.OriginalModelBytes,
-		ReturnedBytes:  filtered.Result.Metadata.ReturnedModelBytes,
-		Truncated:      filtered.Result.Metadata.ModelTruncated,
-		Target:         filtered.Result.Metadata.Target,
-		IdempotencyKey: filtered.Result.Metadata.IdempotencyKey,
-		Result:         filtered.Result.ModelContent, Descriptor: decision.Descriptor,
+		SyntheticReason: string(filtered.Result.SyntheticReason),
+		Capability:      filtered.Manifest.Capability,
+		OriginalBytes:   filtered.Result.Metadata.OriginalModelBytes,
+		ReturnedBytes:   filtered.Result.Metadata.ReturnedModelBytes,
+		Truncated:       filtered.Result.Metadata.ModelTruncated,
+		Target:          filtered.Result.Metadata.Target,
+		IdempotencyKey:  filtered.Result.Metadata.IdempotencyKey,
+		Result:          filtered.Result.ModelContent, Descriptor: decision.Descriptor,
 	}
 }
 

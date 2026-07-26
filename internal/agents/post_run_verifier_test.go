@@ -72,3 +72,15 @@ func TestVerifyPostRunMutationsRejectsAbsolutePathOutsideWorkspace(t *testing.T)
 		t.Fatalf("outside-path diagnostic should explain the boundary: %#v", result.Checks[0])
 	}
 }
+
+func TestReadOnlyMutationReceiptAddsWarningWithoutRejectingMutation(t *testing.T) {
+	verification := applyToolMutationWarnings(
+		RunOptions{WriteMode: RunWriteModeReadOnly, WriteScope: "none"},
+		PostRunVerification{Status: "ok", Mutations: 1},
+		nil,
+	)
+	if verification.Status != "warning" || len(verification.Warnings) != 1 ||
+		!strings.Contains(verification.Warnings[0], "changes were retained") {
+		t.Fatalf("read-only verification = %#v", verification)
+	}
+}

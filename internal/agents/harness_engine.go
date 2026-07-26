@@ -523,6 +523,8 @@ func preserveHarnessBindingOptions(binding, execution RunOptions) RunOptions {
 	execution.BranchID = binding.BranchID
 	execution.Workspace = binding.Workspace
 	execution.Mode = binding.Mode
+	execution.WriteMode = binding.WriteMode
+	execution.WriteScope = binding.WriteScope
 	return execution
 }
 

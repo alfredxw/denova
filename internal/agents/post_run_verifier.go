@@ -61,6 +61,20 @@ func VerifyPostRunMutations(bookService *book.Service, mutations []ToolMutation)
 	return result
 }
 
+func applyToolMutationWarnings(options RunOptions, verification PostRunVerification, warnings []string) PostRunVerification {
+	verification.Warnings = append(verification.Warnings, warnings...)
+	if strings.EqualFold(strings.TrimSpace(options.WriteMode), RunWriteModeReadOnly) && verification.Mutations > 0 {
+		verification.Warnings = append(verification.Warnings, fmt.Sprintf(
+			"read_only run produced %d committed workspace mutation receipt(s); changes were retained",
+			verification.Mutations,
+		))
+	}
+	if len(verification.Warnings) > 0 && verification.Status != "warning" {
+		verification.Status = "warning"
+	}
+	return verification
+}
+
 func verifyMutation(bookService *book.Service, mutation ToolMutation) []PostRunVerificationCheck {
 	checks := []PostRunVerificationCheck{}
 	if mutation.Source == ToolSourceLore || mutation.ToolName == "write_lore_items" {

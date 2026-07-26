@@ -142,10 +142,11 @@ func (agent *Agent) prepareToolCalls(ctx context.Context, registry *Registry, ca
 			snapshot, _ := registry.Snapshot(name)
 			item.definition = definition
 			item.snapshot = snapshot
-			if err := ValidateToolArguments(snapshot.Info, call.Function.Arguments); err != nil {
-				result := syntheticCallResult(call, ToolResultError, ToolSyntheticInvalidArguments,
-					fmt.Sprintf("invalid arguments for tool %q: %v", name, err))
+			if normalized, err := NormalizeToolArguments(snapshot.Info, call.Function.Arguments); err != nil {
+				result := invalidToolArgumentsResult(call, err)
 				item.precomputed = &result
+			} else {
+				item.call.Function.Arguments = normalized
 			}
 		}
 		if item.precomputed != nil {
@@ -315,10 +316,11 @@ func (agent *Agent) executePreparedTool(
 		if err := runCtx.Err(); err != nil {
 			return ToolResult{}, err
 		}
-		if err := ValidateToolArguments(prepared.snapshot.Info, arguments); err != nil {
-			return ToolResult{}, fmt.Errorf("validate final arguments for tool %q: %w", prepared.call.Function.Name, err)
+		normalizedArguments, err := NormalizeToolArguments(prepared.snapshot.Info, arguments)
+		if err != nil {
+			return invalidToolArgumentsToolResult(prepared.call.Function.Name, err), nil
 		}
-		result, err := runToolSafely(prepared.definition.Tool, runCtx, arguments, options...)
+		result, err := runToolSafely(prepared.definition.Tool, runCtx, normalizedArguments, options...)
 		if err == nil && result.ModelContent == "" && result.DisplayContent == "" {
 			progressMu.Lock()
 			progressContent := progress.String()
@@ -509,6 +511,43 @@ func syntheticCallResult(call ToolCall, status ToolResultStatus, reason ToolSynt
 		result:  result,
 		message: ToolMessage(result, call.ID, WithToolName(call.Function.Name)),
 	}
+}
+
+func invalidToolArgumentsResult(call ToolCall, err error) toolExecutionResult {
+	result := invalidToolArgumentsToolResult(call.Function.Name, err)
+	return toolExecutionResult{
+		result:  result,
+		message: ToolMessage(result, call.ID, WithToolName(call.Function.Name)),
+	}
+}
+
+func invalidToolArgumentsToolResult(toolName string, err error) ToolResult {
+	issues := []ToolArgumentIssue{{Code: "constraint_violation", Path: "$", Message: "invalid tool arguments"}}
+	var argumentErr *ToolArgumentsError
+	if errors.As(err, &argumentErr) && argumentErr != nil && len(argumentErr.Issues) > 0 {
+		issues = append([]ToolArgumentIssue(nil), argumentErr.Issues...)
+	} else if err != nil {
+		issues[0].Message = err.Error()
+	}
+	payload := struct {
+		Error struct {
+			Code    string              `json:"code"`
+			Tool    string              `json:"tool"`
+			Message string              `json:"message"`
+			Issues  []ToolArgumentIssue `json:"issues"`
+		} `json:"error"`
+	}{}
+	payload.Error.Code = string(ToolSyntheticInvalidArguments)
+	payload.Error.Tool = strings.TrimSpace(toolName)
+	payload.Error.Message = "Tool arguments could not be normalized safely; correct the listed issues and retry."
+	payload.Error.Issues = issues
+	encoded, marshalErr := json.Marshal(payload)
+	if marshalErr != nil {
+		encoded = []byte(`{"error":{"code":"invalid_arguments","message":"invalid tool arguments"}}`)
+	}
+	result := SyntheticToolResult(ToolResultError, ToolSyntheticInvalidArguments, string(encoded))
+	result.Details = append(json.RawMessage(nil), encoded...)
+	return result
 }
 
 func toolFailureResult(call ToolCall, err error) toolExecutionResult {

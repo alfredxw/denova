@@ -1,18 +1,14 @@
 package agent
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"math/big"
 	"reflect"
 	"regexp"
 	"sort"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/invopop/jsonschema"
 )
@@ -314,8 +310,12 @@ func (tool *inferredTool[T, D]) Info(context.Context) (*ToolInfo, error) {
 
 func (tool *inferredTool[T, D]) Run(ctx context.Context, arguments string, _ ...ToolOption) (ToolResult, error) {
 	var input T
+	normalizedArguments, err := normalizeToolArgumentsWithSchema(arguments, tool.schema)
+	if err != nil {
+		return ToolResult{}, fmt.Errorf("normalize arguments for tool %q: %w", toolName(tool.info), err)
+	}
 	if tool.options != nil && tool.options.unmarshalArguments != nil {
-		decoded, err := tool.options.unmarshalArguments(ctx, arguments)
+		decoded, err := tool.options.unmarshalArguments(ctx, normalizedArguments)
 		if err != nil {
 			return ToolResult{}, fmt.Errorf("decode arguments for tool %q: %w", toolName(tool.info), err)
 		}
@@ -324,13 +324,23 @@ func (tool *inferredTool[T, D]) Run(ctx context.Context, arguments string, _ ...
 			return ToolResult{}, fmt.Errorf("decode arguments for tool %q: got %T, want %T", toolName(tool.info), decoded, input)
 		}
 		input = value
-	} else if err := strictDecodeArguments(arguments, &input, tool.schema); err != nil {
+	} else if err := json.Unmarshal([]byte(normalizedArguments), &input); err != nil {
 		return ToolResult{}, fmt.Errorf("decode arguments for tool %q: %w", toolName(tool.info), err)
 	}
 
 	output, err := tool.invoke(ctx, input)
 	if err != nil {
-		return ToolResult{}, fmt.Errorf("invoke tool %q: %w", toolName(tool.info), err)
+		wrapped := fmt.Errorf("invoke tool %q: %w", toolName(tool.info), err)
+		// A tool can commit its domain effect and then fail while reporting or
+		// finalizing it. Preserve a structured terminal receipt for lifecycle
+		// middleware instead of replacing it with an empty result.
+		if value, ok := any(output).(ToolResult); ok {
+			return value, wrapped
+		}
+		if value, ok := any(output).(*ToolResult); ok && value != nil {
+			return *value, wrapped
+		}
+		return ToolResult{}, wrapped
 	}
 	if tool.options != nil && tool.options.marshalOutput != nil {
 		result, err := tool.options.marshalOutput(ctx, output)
@@ -356,32 +366,6 @@ func (tool *inferredTool[T, D]) Run(ctx context.Context, arguments string, _ ...
 		return ToolResult{}, fmt.Errorf("encode result for tool %q: %w", toolName(tool.info), err)
 	}
 	return TextToolResult(string(encoded)), nil
-}
-
-// ValidateToolArguments checks raw arguments against the exact schema exposed
-// to the provider. It is repeated immediately before Tool.Run, so middleware
-// cannot bypass validation by rewriting arguments.
-func ValidateToolArguments(info *ToolInfo, arguments string) error {
-	if info == nil {
-		return errors.New("tool info is nil")
-	}
-	schema, err := info.ToJSONSchema()
-	if err != nil {
-		return err
-	}
-	var value any
-	decoder := json.NewDecoder(strings.NewReader(arguments))
-	decoder.UseNumber()
-	if err := decoder.Decode(&value); err != nil {
-		return err
-	}
-	if err := requireJSONEOF(decoder); err != nil {
-		return err
-	}
-	if err := validateJSONValue("$", value, schema); err != nil {
-		return err
-	}
-	return nil
 }
 
 // validateToolSchema rejects malformed schemas at the registry boundary,
@@ -484,269 +468,6 @@ func toolName(info *ToolInfo) string {
 		return ""
 	}
 	return info.Name
-}
-
-func strictDecodeArguments(arguments string, destination any, schema *jsonschema.Schema) error {
-	if strings.TrimSpace(arguments) == "" {
-		return errors.New("empty JSON input")
-	}
-	decoder := json.NewDecoder(strings.NewReader(arguments))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(destination); err != nil {
-		return err
-	}
-	if err := requireJSONEOF(decoder); err != nil {
-		return err
-	}
-
-	rawDecoder := json.NewDecoder(strings.NewReader(arguments))
-	rawDecoder.UseNumber()
-	var raw any
-	if err := rawDecoder.Decode(&raw); err != nil {
-		return err
-	}
-	if err := validateJSONValue("$", raw, schema); err != nil {
-		return err
-	}
-	return nil
-}
-
-func requireJSONEOF(decoder *json.Decoder) error {
-	var trailing any
-	err := decoder.Decode(&trailing)
-	if errors.Is(err, io.EOF) {
-		return nil
-	}
-	if err == nil {
-		return errors.New("multiple JSON values are not allowed")
-	}
-	return fmt.Errorf("invalid trailing JSON: %w", err)
-}
-
-func validateJSONValue(path string, value any, schema *jsonschema.Schema) error {
-	if schema == nil {
-		return nil
-	}
-	if allowed, boolean := jsonSchemaBoolean(schema); boolean {
-		if allowed {
-			return nil
-		}
-		return fmt.Errorf("%s is not allowed by schema", path)
-	}
-	if len(schema.OneOf) != 0 {
-		matches := 0
-		for _, candidate := range schema.OneOf {
-			if validateJSONValue(path, value, candidate) == nil {
-				matches++
-			}
-		}
-		if matches != 1 {
-			return fmt.Errorf("%s must match exactly one schema (matched %d)", path, matches)
-		}
-	}
-	if len(schema.AnyOf) != 0 {
-		matches := false
-		for _, candidate := range schema.AnyOf {
-			if validateJSONValue(path, value, candidate) == nil {
-				matches = true
-				break
-			}
-		}
-		if !matches {
-			return fmt.Errorf("%s does not match any allowed schema", path)
-		}
-	}
-	if len(schema.Enum) != 0 && !jsonValueIn(value, schema.Enum) {
-		return fmt.Errorf("%s is not one of the allowed enum values", path)
-	}
-	if schema.Const != nil && !jsonValuesEqual(value, schema.Const) {
-		return fmt.Errorf("%s does not equal the required constant", path)
-	}
-	if schema.Type != "" && !matchesJSONType(value, schema.Type) {
-		return fmt.Errorf("%s has type %T, want %s", path, value, schema.Type)
-	}
-	switch typed := value.(type) {
-	case map[string]any:
-		if schema.MinProperties != nil && uint64(len(typed)) < *schema.MinProperties {
-			return fmt.Errorf("%s has %d properties, want at least %d", path, len(typed), *schema.MinProperties)
-		}
-		if schema.MaxProperties != nil && uint64(len(typed)) > *schema.MaxProperties {
-			return fmt.Errorf("%s has %d properties, want at most %d", path, len(typed), *schema.MaxProperties)
-		}
-		for _, required := range schema.Required {
-			if _, exists := typed[required]; !exists {
-				return fmt.Errorf("%s.%s is required", path, required)
-			}
-		}
-		for key, child := range typed {
-			matched := false
-			if schema.Properties != nil {
-				if property, exists := schema.Properties.Get(key); exists {
-					matched = true
-					if err := validateJSONValue(path+"."+key, child, property); err != nil {
-						return err
-					}
-				}
-			}
-			for pattern, property := range schema.PatternProperties {
-				compiled, err := regexp.Compile(pattern)
-				if err != nil {
-					return fmt.Errorf("%s has invalid property pattern %q: %w", path, pattern, err)
-				}
-				if compiled.MatchString(key) {
-					matched = true
-					if err := validateJSONValue(path+"."+key, child, property); err != nil {
-						return err
-					}
-				}
-			}
-			if !matched && schema.AdditionalProperties != nil {
-				if err := validateJSONValue(path+"."+key, child, schema.AdditionalProperties); err != nil {
-					return fmt.Errorf("%s contains unsupported property %q: %w", path, key, err)
-				}
-			}
-		}
-	case []any:
-		if schema.MinItems != nil && uint64(len(typed)) < *schema.MinItems {
-			return fmt.Errorf("%s has %d items, want at least %d", path, len(typed), *schema.MinItems)
-		}
-		if schema.MaxItems != nil && uint64(len(typed)) > *schema.MaxItems {
-			return fmt.Errorf("%s has %d items, want at most %d", path, len(typed), *schema.MaxItems)
-		}
-		if schema.Items != nil {
-			for index, child := range typed {
-				if err := validateJSONValue(fmt.Sprintf("%s[%d]", path, index), child, schema.Items); err != nil {
-					return err
-				}
-			}
-		}
-	case string:
-		length := uint64(utf8.RuneCountInString(typed))
-		if schema.MinLength != nil && length < *schema.MinLength {
-			return fmt.Errorf("%s has length %d, want at least %d", path, length, *schema.MinLength)
-		}
-		if schema.MaxLength != nil && length > *schema.MaxLength {
-			return fmt.Errorf("%s has length %d, want at most %d", path, length, *schema.MaxLength)
-		}
-		if schema.Pattern != "" {
-			pattern, err := regexp.Compile(schema.Pattern)
-			if err != nil {
-				return fmt.Errorf("%s has invalid string pattern %q: %w", path, schema.Pattern, err)
-			}
-			if !pattern.MatchString(typed) {
-				return fmt.Errorf("%s does not match required pattern %q", path, schema.Pattern)
-			}
-		}
-	case json.Number:
-		if err := validateJSONNumber(path, typed, schema); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func validateJSONNumber(path string, value json.Number, schema *jsonschema.Schema) error {
-	number, ok := new(big.Rat).SetString(value.String())
-	if !ok {
-		return fmt.Errorf("%s contains invalid JSON number %q", path, value)
-	}
-	constraints := []struct {
-		name      string
-		value     json.Number
-		acceptCmp func(int) bool
-	}{
-		{name: "minimum", value: schema.Minimum, acceptCmp: func(cmp int) bool { return cmp >= 0 }},
-		{name: "exclusive minimum", value: schema.ExclusiveMinimum, acceptCmp: func(cmp int) bool { return cmp > 0 }},
-		{name: "maximum", value: schema.Maximum, acceptCmp: func(cmp int) bool { return cmp <= 0 }},
-		{name: "exclusive maximum", value: schema.ExclusiveMaximum, acceptCmp: func(cmp int) bool { return cmp < 0 }},
-	}
-	for _, constraint := range constraints {
-		if constraint.value == "" {
-			continue
-		}
-		boundary, valid := new(big.Rat).SetString(constraint.value.String())
-		if !valid {
-			return fmt.Errorf("%s schema has invalid %s %q", path, constraint.name, constraint.value)
-		}
-		if !constraint.acceptCmp(number.Cmp(boundary)) {
-			return fmt.Errorf("%s value %s violates %s %s", path, value, constraint.name, constraint.value)
-		}
-	}
-	if schema.MultipleOf != "" {
-		multiple, valid := new(big.Rat).SetString(schema.MultipleOf.String())
-		if !valid || multiple.Sign() <= 0 {
-			return fmt.Errorf("%s schema has invalid multipleOf %q", path, schema.MultipleOf)
-		}
-		quotient := new(big.Rat).Quo(number, multiple)
-		if quotient.Denom().Cmp(big.NewInt(1)) != 0 {
-			return fmt.Errorf("%s value %s is not a multiple of %s", path, value, schema.MultipleOf)
-		}
-	}
-	return nil
-}
-
-// jsonschema represents boolean schemas through an internal field. Marshaling
-// is the package-supported way to preserve that representation across cloned
-// schemas, so argument validation recognizes both `true` and `false` here.
-func jsonSchemaBoolean(schema *jsonschema.Schema) (bool, bool) {
-	encoded, err := json.Marshal(schema)
-	if err != nil {
-		return false, false
-	}
-	switch string(encoded) {
-	case "true":
-		return true, true
-	case "false":
-		return false, true
-	default:
-		return false, false
-	}
-}
-
-func matchesJSONType(value any, expected string) bool {
-	switch expected {
-	case "object":
-		_, ok := value.(map[string]any)
-		return ok
-	case "array":
-		_, ok := value.([]any)
-		return ok
-	case "string":
-		_, ok := value.(string)
-		return ok
-	case "boolean":
-		_, ok := value.(bool)
-		return ok
-	case "number":
-		_, ok := value.(json.Number)
-		return ok
-	case "integer":
-		number, ok := value.(json.Number)
-		if !ok {
-			return false
-		}
-		parsed, valid := new(big.Rat).SetString(number.String())
-		return valid && parsed.Denom().Cmp(big.NewInt(1)) == 0
-	case "null":
-		return value == nil
-	default:
-		return true
-	}
-}
-
-func jsonValueIn(value any, candidates []any) bool {
-	for _, candidate := range candidates {
-		if jsonValuesEqual(value, candidate) {
-			return true
-		}
-	}
-	return false
-}
-
-func jsonValuesEqual(left, right any) bool {
-	leftJSON, leftErr := json.Marshal(left)
-	rightJSON, rightErr := json.Marshal(right)
-	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
 }
 
 func applySchemaModifier(t reflect.Type, tag reflect.StructTag, name string, schema *jsonschema.Schema, modifier SchemaModifierFn) {

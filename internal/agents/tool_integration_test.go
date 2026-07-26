@@ -21,32 +21,14 @@ func TestGeneratedImageToolResultTracksMutationTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tracker := newMutationTracker()
 	descriptor := producttools.WorkspaceWriteDescriptor(producttools.ToolSourceImage, config.AgentToolImageGeneration, agent.ToolRecoveryNonIdempotent)
-	filtered := filterToolResultForModelWithDescriptor(
-		producttools.GenerateImageToolName,
-		descriptor,
-		`{"purpose":"chapter_illustration","target_path":"chapters/ch01.md","prompt":"雨夜"}`,
-		string(raw),
-		0,
-	)
-	tracker.Observe(Event{Type: "tool_call", Data: map[string]any{
-		"id":             "call-image",
-		"name":           producttools.GenerateImageToolName,
-		"args":           `{"purpose":"chapter_illustration","target_path":"chapters/ch01.md","prompt":"雨夜"}`,
-		"source":         string(descriptor.Source),
-		"mutation_scope": string(descriptor.MutationScope),
-		"post_check":     string(descriptor.PostCheck),
-	}})
-	tracker.Observe(Event{Type: "tool_result", Data: map[string]any{
-		"id":      "call-image",
-		"name":    producttools.GenerateImageToolName,
-		"content": filtered.Content,
-		"target":  payload.MetaPath,
-	}})
-	mutations := tracker.Mutations()
-	if len(mutations) != 1 || mutations[0].Source != ToolSourceImage || mutations[0].Target != payload.MetaPath || mutations[0].PostCheck != ToolPostCheckWorkspaceChange {
-		t.Fatalf("unexpected mutations: %#v", mutations)
+	record := ToolExecutionRecord{
+		ToolName: producttools.GenerateImageToolName, ExecutionID: "call-image", Status: "success", Descriptor: descriptor,
+	}
+	applyToolMutationReceiptToExecutionRecord(&record, agent.TextToolResult(string(raw)))
+	mutation, ok := toolMutationFromExecutionRecord(record)
+	if !ok || mutation.Source != ToolSourceImage || mutation.Target != payload.MetaPath || mutation.PostCheck != ToolPostCheckWorkspaceChange {
+		t.Fatalf("unexpected mutation: %#v, committed=%t record=%#v", mutation, ok, record)
 	}
 }
 
@@ -61,26 +43,15 @@ func TestWorkspaceChangeReceiptHidesInternalRevisionsFromModel(t *testing.T) {
 	}
 }
 
-func TestMutationTrackerAssociatesWorkspaceChangeReceipt(t *testing.T) {
-	tracker := newMutationTracker()
+func TestToolExecutionRecordAssociatesWorkspaceChangeReceipt(t *testing.T) {
 	receipt := `{"schema":"workspace_change.tool_result.v1","status":"applied","workspace":"/workspace/book-a","change_group_id":"group-1","change_set_id":"change-1","path":"chapters/ch01.md","base_revision":"sha256:before","revision":"sha256:after","review_status":"pending","apply_state":"applied"}`
 	descriptor := producttools.WorkspaceWriteDescriptor(agent.ToolSourceWrite, config.AgentToolWorkspaceWrite, agent.ToolRecoveryReconcilable)
-	tracker.Observe(Event{Type: "tool_call", Data: map[string]any{
-		"id":             "call-1",
-		"name":           "edit",
-		"args":           `{"path":"chapters/ch01.md","edits":[]}`,
-		"source":         string(descriptor.Source),
-		"mutation_scope": string(descriptor.MutationScope),
-		"post_check":     string(descriptor.PostCheck),
-	}})
-	tracker.Observe(Event{Type: "tool_result", Data: map[string]any{
-		"id": "call-1", "name": "edit", "content": receipt,
-	}})
-	mutations := tracker.Mutations()
-	if len(mutations) != 1 {
-		t.Fatalf("mutations = %#v", mutations)
+	record := ToolExecutionRecord{ToolName: "edit", ExecutionID: "call-1", Status: "success", Descriptor: descriptor}
+	applyToolMutationReceiptToExecutionRecord(&record, agent.ToolResult{Details: []byte(receipt)})
+	mutation, ok := toolMutationFromExecutionRecord(record)
+	if !ok {
+		t.Fatalf("record did not produce a mutation: %#v", record)
 	}
-	mutation := mutations[0]
 	if mutation.Workspace != "/workspace/book-a" || mutation.ChangeGroupID != "group-1" || mutation.ChangeSetID != "change-1" || mutation.Revision != "sha256:after" || mutation.Target != "chapters/ch01.md" {
 		t.Fatalf("workspace change identity was not tracked: %#v", mutation)
 	}

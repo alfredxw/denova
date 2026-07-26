@@ -97,7 +97,8 @@ func checkpointOperationFromRewind(operation ContextOperation) ContextOperation 
 	return ContextOperation{
 		Kind: ContextOperationCheckpoint, AgentKind: operation.AgentKind,
 		CheckpointID: operation.CheckpointID, Purpose: operation.Purpose,
-		MessageCount: operation.MessageCount, Boundary: operation.Boundary,
+		MessageCount: operation.MessageCount, BoundaryID: operation.BoundaryID,
+		BoundaryLocator: operation.BoundaryLocator,
 	}
 }
 
@@ -139,11 +140,7 @@ func (projection *sessionJournalProjection) activeContextCheckpoints(agentKind s
 	}
 	result := make([]ContextOperation, 0, len(state.ActiveCheckpoints))
 	for _, located := range state.ActiveCheckpoints {
-		operation, err := cloneValidatedContextOperation(located.Operation)
-		if err != nil {
-			return nil, fmt.Errorf("active context checkpoint %q has an invalid durable boundary: %w", located.Operation.CheckpointID, err)
-		}
-		result = append(result, operation)
+		result = append(result, copyContextOperation(located.Operation))
 	}
 	return result, nil
 }
@@ -162,10 +159,7 @@ func (projection *sessionJournalProjection) latestContextWindowProjection(agentK
 	if err := projection.validateContextWindowState(*state); err != nil {
 		return ContextWindowProjection{}, false, err
 	}
-	rewind, err := cloneValidatedContextOperation(state.LatestRewind.Operation)
-	if err != nil {
-		return ContextWindowProjection{}, false, fmt.Errorf("context rewind %q has an invalid durable boundary: %w", state.LatestRewind.Operation.CheckpointID, err)
-	}
+	rewind := copyContextOperation(state.LatestRewind.Operation)
 	return ContextWindowProjection{
 		Checkpoint: checkpointOperationFromRewind(rewind), Rewind: rewind,
 		RewindAfterIndex: state.LatestRewind.MessageIndex,
@@ -173,15 +167,11 @@ func (projection *sessionJournalProjection) latestContextWindowProjection(agentK
 	}, true, nil
 }
 
-func cloneValidatedContextOperation(operation ContextOperation) (ContextOperation, error) {
-	boundary, err := CloneContextCheckpointBoundary(operation.Boundary)
-	if err != nil {
-		return ContextOperation{}, err
-	}
+func copyContextOperation(operation ContextOperation) ContextOperation {
 	clone := operation
-	clone.Boundary = boundary
+	clone.ResolvedBoundary = nil
 	clone.MutationReceipts = append([]ContextMutationReceipt(nil), operation.MutationReceipts...)
-	return clone, nil
+	return clone
 }
 
 func (projection *sessionJournalProjection) validateContextWindows() error {
@@ -262,15 +252,15 @@ func (projection *sessionJournalProjection) validateLocatedContextOperation(
 		operation.CheckpointID != strings.TrimSpace(operation.CheckpointID) || len(operation.CheckpointID) > maxContextLabelBytes {
 		return fmt.Errorf("context %s operation identity is invalid", kind)
 	}
-	boundary, err := CloneContextCheckpointBoundary(operation.Boundary)
-	if err != nil {
-		return fmt.Errorf("context %s %q has an invalid durable boundary: %w", kind, operation.CheckpointID, err)
+	if operation.BoundaryID == "" || operation.BoundaryID != strings.TrimSpace(operation.BoundaryID) ||
+		len(operation.BoundaryID) > maxContextLabelBytes || !validContextBoundaryLocator(operation.BoundaryLocator) {
+		return fmt.Errorf("context %s %q boundary reference is invalid", kind, operation.CheckpointID)
 	}
-	if operation.MessageCount != boundary.Cursor.MessageCount || operation.MessageCount < projection.ClearAfter || operation.MessageCount > messageIndex {
+	if operation.BoundaryLocator.Cursor >= cursor || (projection.ClearCursor > 0 && operation.BoundaryLocator.Cursor <= projection.ClearCursor) {
+		return fmt.Errorf("context %s %q boundary locator is invalid", kind, operation.CheckpointID)
+	}
+	if operation.MessageCount < projection.ClearAfter || operation.MessageCount > messageIndex {
 		return fmt.Errorf("context %s %q boundary message index is invalid", kind, operation.CheckpointID)
-	}
-	if boundary.Cursor.ClearAfterIndex != projection.ClearAfter {
-		return fmt.Errorf("context %s %q boundary clear index is invalid", kind, operation.CheckpointID)
 	}
 	return nil
 }

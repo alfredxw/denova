@@ -20,7 +20,7 @@ type inferToolResult struct {
 	Total int `json:"total"`
 }
 
-func TestInferToolSchemaAndStrictInvoke(t *testing.T) {
+func TestInferToolSchemaAndNormalizedInvoke(t *testing.T) {
 	current, err := InferTool("sum", "Adds values", func(_ context.Context, input inferToolArgs) (inferToolResult, error) {
 		return inferToolResult{Total: input.Count}, nil
 	})
@@ -58,7 +58,7 @@ func TestInferToolSchemaAndStrictInvoke(t *testing.T) {
 		t.Fatalf("items schema lost required/minItems/maxItems/description: %#v; required=%#v", items, schema.Required)
 	}
 
-	output, err := current.Run(context.Background(), `{"mode":"fast","count":3,"items":["x"]}`)
+	output, err := current.Run(context.Background(), `{"mode":"fast","count":"3","items":["x"],"unknown":true}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,6 @@ func TestInferToolSchemaAndStrictInvoke(t *testing.T) {
 		t.Fatalf("non-string output = %s", output.ModelContent)
 	}
 	for _, invalid := range []string{
-		`{"mode":"fast","count":3,"items":["x"],"unknown":true}`,
 		`{"mode":"fast","count":3,"items":["x"]} {}`,
 		`{"mode":"invalid","count":3,"items":["x"]}`,
 		`{"mode":"fast","count":3,"items":[]}`,
@@ -74,7 +73,7 @@ func TestInferToolSchemaAndStrictInvoke(t *testing.T) {
 		`{"mode":"fast"}`,
 	} {
 		if _, err := current.Run(context.Background(), invalid); err == nil {
-			t.Fatalf("expected strict decode error for %s", invalid)
+			t.Fatalf("expected normalized argument error for %s", invalid)
 		}
 	}
 }
