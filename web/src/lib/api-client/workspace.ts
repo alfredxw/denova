@@ -1,4 +1,4 @@
-import { fetchAPI, jsonHeaders, parseSSEStream, responseAPIError, requestJSON } from './client'
+import { jsonHeaders, requestJSON } from './client'
 import type {
   CharacterCardImportResult,
   CharacterCardPreview,
@@ -9,7 +9,6 @@ import type {
   WorkspaceReplaceResult,
   WorkspaceSearchResult,
   WorkspaceSummary,
-  SSEEvent,
 } from './types'
 
 export const MISSING_WORKSPACE_REVISION = 'missing'
@@ -66,17 +65,6 @@ export function workspaceAssetURL(path: string): string {
 export function versionedWorkspaceAssetURL(path: string, revision?: string): string {
   const url = workspaceAssetURL(path)
   return revision ? `${url}&revision=${encodeURIComponent(revision)}` : url
-}
-
-export async function streamWorkspaceEvents(signal?: AbortSignal): Promise<ReadableStream<SSEEvent>> {
-  const res = await fetchAPI('/api/workspace/events', {
-    headers: { Accept: 'text/event-stream' },
-    signal,
-    suppressBackendUnavailableToast: true,
-  })
-  if (!res.ok) throw await responseAPIError(res)
-  if (!res.body) throw new Error('Workspace event stream has no response body')
-  return parseSSEStream(res.body)
 }
 
 export async function searchWorkspace(query: string, limit = 100, options: { regex?: boolean } = {}): Promise<WorkspaceSearchResult[]> {

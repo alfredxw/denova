@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { parseWorkspaceChangeSSE } from './useWorkspaceFileEvents'
+import { parseWorkspaceChangeSSE } from '@/features/workspace-events/protocol'
 
 describe('parseWorkspaceChangeSSE', () => {
   it('normalizes watcher changes and derives unique paths', () => {

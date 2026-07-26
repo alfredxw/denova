@@ -133,6 +133,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复同一浏览器打开多个 Denova 标签页时，每页各自持有 workspace SSE 并耗尽 HTTP/1.1 连接池、进而阻塞新页面加载的问题。工作区文件事件现在由同源 SharedWorker 统一持有一条连接并通过 MessagePort 分发；新标签页仍会获得权威 resync，最后一个订阅退出后连接自动释放，远程访问认证也保持可恢复。
+- Fixed new Denova pages being blocked after same-browser tabs each occupied a workspace SSE connection and exhausted the HTTP/1.1 pool. A same-origin SharedWorker now owns one workspace event stream and fans changes out over MessagePorts; newly joined tabs still receive an authoritative resync, the stream closes after the last subscriber leaves, and remote-access authentication remains recoverable.
 - 修复叙事风格的「注入位置」选择器在窄布局中同时显示说明而溢出，以及图像规则的长英文标签将启用开关挤出列表的问题；紧凑选择器现在只显示位置名，规则元数据会在可用宽度内截断。
 - Fixed the Narrative Style injection-target selector overflowing narrow layouts by showing only the target name in its compact trigger, and fixed long English image-rule metadata pushing the enabled switch outside the rule rail. Rule metadata now truncates within the available width.
 - 修复 Agent 流结束或刷新后 thinking 与正文各自聚合、打乱原始时间顺序的问题：写作与游戏共用的展示记录现在按真实事件边界持久化 thinking、正文和工具卡片，为流式与历史 part 复用稳定分段 ID，并仅在分段完整重建同一 Run 正文时从展示层隐藏聚合副本，模型上下文仍保留完整规范回复；Plan 模式继续只恢复结构化计划，SubAgent 分段也保持原顺序。既有已完成会话没有保存分段边界，无法可靠反推，仍按旧格式展示。

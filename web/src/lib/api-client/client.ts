@@ -1,7 +1,8 @@
 import { parseJsonEventStream, uiMessageChunkSchema, type UIMessageChunk } from 'ai'
-import type { SSEEvent } from './types'
 import i18next from '@/i18n'
 import { toast } from 'sonner'
+
+export { parseSSEStream } from './sse'
 
 export const jsonHeaders = { 'Content-Type': 'application/json' }
 const BACKEND_UNAVAILABLE_TOAST_ID = 'nova-backend-unavailable'
@@ -96,88 +97,6 @@ export async function readErrorMessage(res: Response): Promise<string> {
   return message
 }
 
-export function parseSSEStream<T extends SSEEvent = SSEEvent>(body: ReadableStream<Uint8Array>): ReadableStream<T> {
-  const reader = body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let scanOffset = 0
-
-  return new ReadableStream<T>({
-    async pull(controller) {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) {
-          buffer += decoder.decode()
-          enqueueSSEBlocks(controller, true)
-          controller.close()
-          reader.releaseLock()
-          return
-        }
-        buffer += decoder.decode(value, { stream: true })
-        if (enqueueSSEBlocks(controller, false) > 0) return
-      }
-    },
-    async cancel(reason) {
-      await reader.cancel(reason)
-      reader.releaseLock()
-    },
-  })
-
-  function enqueueSSEBlocks(controller: ReadableStreamDefaultController<T>, flushRemainder: boolean) {
-    let enqueued = 0
-    while (true) {
-      const boundary = findSSEBoundary(buffer, scanOffset)
-      if (!boundary) break
-      const block = buffer.slice(0, boundary.index)
-      buffer = buffer.slice(boundary.index + boundary.length)
-      scanOffset = 0
-      if (enqueueSSEBlock(controller, block)) enqueued += 1
-    }
-    if (flushRemainder) {
-      if (enqueueSSEBlock(controller, buffer)) enqueued += 1
-      buffer = ''
-      scanOffset = 0
-    } else {
-      // Only rescan the suffix that can contain a separator split across chunks.
-      scanOffset = Math.max(0, buffer.length - 3)
-    }
-    return enqueued
-  }
-}
-
-function findSSEBoundary(value: string, fromIndex: number): { index: number; length: number } | null {
-  const lineFeed = value.indexOf('\n\n', fromIndex)
-  const carriageReturn = value.indexOf('\r\r', fromIndex)
-  const crlf = value.indexOf('\r\n\r\n', fromIndex)
-  const candidates = [
-    lineFeed >= 0 ? { index: lineFeed, length: 2 } : null,
-    carriageReturn >= 0 ? { index: carriageReturn, length: 2 } : null,
-    crlf >= 0 ? { index: crlf, length: 4 } : null,
-  ].filter((candidate): candidate is { index: number; length: number } => candidate !== null)
-  if (candidates.length === 0) return null
-  return candidates.reduce((earliest, candidate) => candidate.index < earliest.index ? candidate : earliest)
-}
-
-function enqueueSSEBlock<T extends SSEEvent>(controller: ReadableStreamDefaultController<T>, block: string) {
-  if (!block.trim()) return false
-  let id: string | undefined
-  let event = ''
-  const data: string[] = []
-  for (const line of block.split(/\r\n|\r|\n/)) {
-    if (!line || line.startsWith(':')) continue
-    const separator = line.indexOf(':')
-    const field = separator >= 0 ? line.slice(0, separator) : line
-    const rawValue = separator >= 0 ? line.slice(separator + 1) : ''
-    const value = rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue
-    if (field === 'id') id = value
-    else if (field === 'event') event = value
-    else if (field === 'data') data.push(value)
-  }
-  if (!event) return false
-  controller.enqueue({ ...(id === undefined ? {} : { id }), event, data: data.join('\n') } as T)
-  return true
-}
-
 export function parseUIMessageStream(body: ReadableStream<Uint8Array>): ReadableStream<UIMessageChunk> {
   return parseJsonEventStream({
     stream: body,
@@ -200,6 +119,19 @@ export function clearRemoteAccessCredentials() {
   window.sessionStorage.removeItem(REMOTE_ACCESS_CREDENTIALS_KEY)
 }
 
+/** Returns the tab-scoped Basic credential that a SharedWorker cannot read itself. */
+export function getRemoteAccessAuthorization(): string | undefined {
+  const credentials = readRemoteAccessCredentials()
+  if (!credentials) return undefined
+  return `Basic ${encodeBasicAuth(credentials.username, credentials.password)}`
+}
+
+/** Applies the same login challenge behavior used by regular API requests. */
+export function handleRemoteAccessChallenge() {
+  clearRemoteAccessCredentials()
+  window.dispatchEvent(new CustomEvent(REMOTE_ACCESS_REQUIRED_EVENT))
+}
+
 function notifyBackendUnavailableIfNeeded(input: RequestInfo | URL, status: number) {
   if (!BACKEND_UNAVAILABLE_STATUS.has(status) || !isLocalAPIRequest(input)) return
   notifyBackendUnavailable()
@@ -208,17 +140,16 @@ function notifyBackendUnavailableIfNeeded(input: RequestInfo | URL, status: numb
 function notifyRemoteAccessRequiredIfNeeded(input: RequestInfo | URL, res: Response) {
   if (res.status !== 401 || !isLocalAPIRequest(input)) return
   if (!res.headers.get('WWW-Authenticate')?.toLowerCase().includes('basic')) return
-  clearRemoteAccessCredentials()
-  window.dispatchEvent(new CustomEvent(REMOTE_ACCESS_REQUIRED_EVENT))
+  handleRemoteAccessChallenge()
 }
 
 function withRemoteAccessAuth(input: RequestInfo | URL, init?: RequestInit): RequestInit | undefined {
   if (!isLocalAPIRequest(input)) return init
-  const credentials = readRemoteAccessCredentials()
-  if (!credentials) return init
+  const authorization = getRemoteAccessAuthorization()
+  if (!authorization) return init
   const headers = new Headers(init?.headers ?? requestHeaders(input))
   if (!headers.has('Authorization')) {
-    headers.set('Authorization', `Basic ${encodeBasicAuth(credentials.username, credentials.password)}`)
+    headers.set('Authorization', authorization)
   }
   return { ...init, headers }
 }

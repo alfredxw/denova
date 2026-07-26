@@ -1,9 +1,13 @@
 import { useEffect } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { WorkspaceChangeEvent } from '@/features/changes/types'
 import { WorkspaceFileRevisionConflictError } from '@/lib/autosave/workspace-file-revision-conflict'
-import type { SSEEvent } from '@/lib/api'
 import { useWorkspace } from './useWorkspace'
+
+const workspaceEventsMock = vi.hoisted(() => ({
+  subscribeWorkspaceFileEvents: vi.fn(),
+}))
 
 const apiMock = vi.hoisted(() => {
   class MockAPIError extends Error {
@@ -29,11 +33,11 @@ const apiMock = vi.hoisted(() => {
     readFile: vi.fn(),
     renameWorkspaceItem: vi.fn(),
     saveFile: vi.fn(),
-    streamWorkspaceEvents: vi.fn(),
   }
 })
 
 vi.mock('@/lib/api', () => apiMock)
+vi.mock('@/features/workspace-events/client', () => workspaceEventsMock)
 
 describe('useWorkspace', () => {
   beforeEach(() => {
@@ -42,7 +46,7 @@ describe('useWorkspace', () => {
     apiMock.getBookshelf.mockResolvedValue({ books: [], sort_mode: 'recent' })
     apiMock.getWorkspaceTree.mockResolvedValue([])
     apiMock.getWorkspaceSummary.mockResolvedValue({ title: '', author: '', chapter_count: 0, total_words: 0, chapters: [] })
-    apiMock.streamWorkspaceEvents.mockImplementation(() => new Promise(() => {}))
+    workspaceEventsMock.subscribeWorkspaceFileEvents.mockReturnValue(vi.fn())
   })
 
   afterEach(() => {
@@ -124,15 +128,13 @@ describe('useWorkspace', () => {
   })
 
   it('watcher 更新只重读命中的普通文件，不扫描目录树和章节统计', async () => {
-    const events = controlledStream<SSEEvent>()
-    apiMock.streamWorkspaceEvents.mockResolvedValue(events.stream)
     apiMock.readFile
       .mockResolvedValueOnce({ workspace: '/books/demo', path: 'notes/reference.md', content: '初始', revision: 'rev-1' })
       .mockResolvedValueOnce({ workspace: '/books/demo', path: 'notes/reference.md', content: '外部更新', revision: 'rev-2' })
 
     let workspace: ReturnType<typeof useWorkspace> | null = null
     render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
-    await waitFor(() => expect(apiMock.streamWorkspaceEvents).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(workspaceEventsMock.subscribeWorkspaceFileEvents).toHaveBeenCalledTimes(1))
     await act(async () => {
       await workspace?.selectFile('notes/reference.md')
     })
@@ -141,8 +143,8 @@ describe('useWorkspace', () => {
     apiMock.readFile.mockClear()
     apiMock.readFile.mockResolvedValue({ workspace: '/books/demo', path: 'notes/reference.md', content: '外部更新', revision: 'rev-2' })
 
-    act(() => {
-      events.enqueue(workspaceChangeSSE([{ path: 'notes/reference.md', type: 'updated' }]))
+    await act(async () => {
+      await emitWorkspaceChange([{ path: 'notes/reference.md', type: 'updated' }])
     })
 
     await waitFor(() => expect(screen.getByTestId('workspace-state')).toHaveTextContent('notes/reference.md|外部更新|rev-2'))
@@ -152,14 +154,12 @@ describe('useWorkspace', () => {
   })
 
   it('watcher 删除保留打开文件内容并把 missing revision 交给显式保存', async () => {
-    const events = controlledStream<SSEEvent>()
-    apiMock.streamWorkspaceEvents.mockResolvedValue(events.stream)
     apiMock.readFile.mockResolvedValue({ workspace: '/books/demo', path: 'chapters/ch01.md', content: '保留内容', revision: 'rev-1' })
     apiMock.saveFile.mockResolvedValue({ path: 'chapters/ch01.md', message: 'ok', revision: 'rev-recreated' })
 
     let workspace: ReturnType<typeof useWorkspace> | null = null
     render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
-    await waitFor(() => expect(apiMock.streamWorkspaceEvents).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(workspaceEventsMock.subscribeWorkspaceFileEvents).toHaveBeenCalledTimes(1))
     await act(async () => {
       await workspace?.selectFile('chapters/ch01.md')
     })
@@ -167,8 +167,8 @@ describe('useWorkspace', () => {
     apiMock.getWorkspaceSummary.mockClear()
     apiMock.readFile.mockClear()
 
-    act(() => {
-      events.enqueue(workspaceChangeSSE([{ path: 'chapters/ch01.md', type: 'deleted' }]))
+    await act(async () => {
+      await emitWorkspaceChange([{ path: 'chapters/ch01.md', type: 'deleted' }])
     })
 
     await waitFor(() => expect(screen.getByTestId('workspace-state')).toHaveTextContent('chapters/ch01.md|保留内容|missing'))
@@ -183,23 +183,21 @@ describe('useWorkspace', () => {
   })
 
   it('watcher 重连 resync 会重新读取当前文件、目录树和统计', async () => {
-    const events = controlledStream<SSEEvent>()
-    apiMock.streamWorkspaceEvents.mockResolvedValue(events.stream)
     apiMock.readFile
       .mockResolvedValueOnce({ workspace: '/books/demo', path: 'chapters/ch01.md', content: '初始', revision: 'rev-1' })
       .mockResolvedValueOnce({ workspace: '/books/demo', path: 'chapters/ch01.md', content: '重连后', revision: 'rev-2' })
 
     let workspace: ReturnType<typeof useWorkspace> | null = null
     render(<WorkspaceHarness onChange={(value) => { workspace = value }} />)
-    await waitFor(() => expect(apiMock.streamWorkspaceEvents).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(workspaceEventsMock.subscribeWorkspaceFileEvents).toHaveBeenCalledTimes(1))
     await act(async () => {
       await workspace?.selectFile('chapters/ch01.md')
     })
     apiMock.getWorkspaceTree.mockClear()
     apiMock.getWorkspaceSummary.mockClear()
 
-    act(() => {
-      events.enqueue(workspaceChangeSSE([], true))
+    await act(async () => {
+      await emitWorkspaceChange([], true)
     })
 
     await waitFor(() => expect(screen.getByTestId('workspace-state')).toHaveTextContent('chapters/ch01.md|重连后|rev-2'))
@@ -628,30 +626,19 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-function controlledStream<T>() {
-  let controller!: ReadableStreamDefaultController<T>
-  const stream = new ReadableStream<T>({
-    start(nextController) {
-      controller = nextController
-    },
+async function emitWorkspaceChange(
+  changes: Array<{ path: string; type: 'added' | 'updated' | 'deleted' }>,
+  resync = false,
+) {
+  const subscriber = workspaceEventsMock.subscribeWorkspaceFileEvents.mock.calls.at(-1)?.[1] as
+    | ((event: WorkspaceChangeEvent) => void | Promise<void>)
+    | undefined
+  if (!subscriber) throw new Error('workspace event subscriber was not registered')
+  await subscriber({
+    workspace: '/books/demo',
+    source: 'watcher',
+    changes,
+    paths: changes.map(change => change.path),
+    resync,
   })
-  return {
-    stream,
-    enqueue(value: T) {
-      controller.enqueue(value)
-    },
-  }
-}
-
-function workspaceChangeSSE(changes: Array<{ path: string; type: 'added' | 'updated' | 'deleted' }>, resync = false): SSEEvent {
-  return {
-    event: 'workspace-change',
-    data: JSON.stringify({
-      workspace: '/books/demo',
-      source: 'watcher',
-      changes,
-      paths: changes.map(change => change.path),
-      ...(resync ? { resync: true } : {}),
-    }),
-  }
 }
