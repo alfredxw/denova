@@ -17,10 +17,12 @@ import (
 const MaxSkillInstallUploadBytes = appsvc.MaxSkillInstallArchiveBytes
 
 type skillCreateRequest struct {
-	Scope       appsvc.SkillScope `json:"scope"`
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Agents      []string          `json:"agents"`
+	Scope        appsvc.SkillScope `json:"scope"`
+	Name         string            `json:"name"`
+	Description  string            `json:"description"`
+	Agents       []string          `json:"agents"`
+	Category     string            `json:"category"`
+	Capabilities []string          `json:"capabilities"`
 }
 
 type skillSaveRequest struct {
@@ -96,7 +98,12 @@ func (h *Handlers) HandleSkillCreate(ctx context.Context, c *app.RequestContext)
 	}
 	body.Scope = appsvc.SkillScope(strings.TrimSpace(string(body.Scope)))
 	body.Name = strings.TrimSpace(body.Name)
-	doc, err := h.app.CreateSkillDocument(ctx, body.Scope, body.Name, body.Description, body.Agents)
+	doc, err := h.app.CreateSkillDocument(ctx, body.Scope, body.Name, appsvc.SkillCreateMetadata{
+		Description:  body.Description,
+		Agents:       body.Agents,
+		Category:     body.Category,
+		Capabilities: body.Capabilities,
+	})
 	if err != nil {
 		writeError(c, consts.StatusBadRequest, err.Error())
 		return

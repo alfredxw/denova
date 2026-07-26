@@ -1,12 +1,13 @@
 ---
 name: chapter-illustration
 description: 为当前或指定章节生成一张非剧透插画，并保存到 workspace assets/illustrations。
+category: image
 agent: ide
 ---
 
 # 章节插画
 
-当作者要求为章节生成插画，或编辑器发送 `/<chapter-illustration>` 请求时，使用这个 Skill。
+当作者要求为章节生成插画，或编辑器发送 `/chapter-illustration` 请求时，使用这个 Skill。
 
 ## 工作流程
 

@@ -103,7 +103,7 @@ func TestLoadWithWorkspaceUsesUserSettingsAndWorkspaceAgentOverrides(t *testing.
 		Settings{
 			OpenAIModel:         "ws-model",
 			Language:            "en-US",
-			WritingSkillDefault: "novel-heavy",
+			WritingSkillDefault: "scene-first",
 			IDEImagePresetID:    "2d-illustration",
 			AgentTools:          AgentToolSettings{IDE: AgentToolOverride{AgentToolShell: false}},
 		}); err != nil {

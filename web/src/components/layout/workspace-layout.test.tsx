@@ -7,11 +7,13 @@ describe('WorkspaceLayout', () => {
     const { container, rerender } = renderWorkspaceLayout(true)
 
     expect(container.querySelector('#sidebar')).toBeInTheDocument()
+    expect(container.querySelector('#sidebar')).toHaveAttribute('data-nova-user-collapsible', 'false')
     expect(screen.getByRole('separator', { name: '调整项目结构宽度' })).toHaveClass('cursor-col-resize')
 
     rerender(workspaceLayout(false))
 
     expect(container.querySelector('#sidebar')).toHaveAttribute('data-disabled', 'true')
+    expect(container.querySelector('#sidebar')).toHaveAttribute('data-nova-user-collapsible', 'true')
     expect(container.querySelector('#sidebar')).not.toBeVisible()
     expect(container.querySelector('#sidebar')).toHaveAttribute('data-nova-collapsible-panel', 'sidebar')
     expect(screen.queryByRole('separator', { name: '调整项目结构宽度' })).not.toBeInTheDocument()

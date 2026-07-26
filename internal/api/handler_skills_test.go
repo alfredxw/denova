@@ -12,7 +12,7 @@ import (
 func TestSkillDocumentUpdateRejectsStaleRevisionAPI(t *testing.T) {
 	application := newTestApplication(t)
 	server := NewServer(application, "0")
-	doc, err := application.CreateSkillDocument(context.Background(), novaskills.ScopeUser, "revision-test", "original", nil)
+	doc, err := application.CreateSkillDocument(context.Background(), novaskills.ScopeUser, "revision-test", novaskills.CreateMetadata{Description: "original"})
 	if err != nil {
 		t.Fatal(err)
 	}

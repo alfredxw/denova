@@ -16,10 +16,24 @@ func TestBuiltinConfigManagerSkillRoutesEveryRegisteredResourceReference(t *test
 		t.Fatalf("read config-manager skill: %v", err)
 	}
 	text := string(content)
-	for _, reference := range []string{
-		"style-reference.md", "narrative-style.md", "story-director.md", "event-package.md", "rule-system.md",
-		"state-system.md", "image-preset.md", "automation.md", "skill.md", "agent-profile.md",
-	} {
+	for _, required := range []string{"## Mutation semantics", "Complete editable-resource replacement", "Sparse patch", "Sectional layered update", "REVISION_FROM_GET"} {
+		if !strings.Contains(text, required) {
+			t.Fatalf("config-manager root is missing mutation contract %q", required)
+		}
+	}
+	references := map[string][]string{
+		"style-reference.md": {"## Field reference", "## Create example", "## Update example", "160 KiB"},
+		"narrative-style.md": {"## Field reference", "## Create example", "## Complete update example", "`turn_context`"},
+		"story-director.md":  {"### `module_refs`", "### `strategy`", "## Create example", "`branch_planning_turns`"},
+		"event-package.md":   {"## Field reference", "## Create example", "## Complete update example", "8,000 characters"},
+		"rule-system.md":     {"## Rule template fields", "## State Binding fields", "## Basic create example", "## State Binding create example"},
+		"state-system.md":    {"## Template and field reference", "## Initial Actors", "## Trait pools and rules", "all six field types"},
+		"image-preset.md":    {"## Field reference", "`agent_system`", "`tool_request`", "## Complete update example"},
+		"automation.md":      {"## Editable fields", "## Schedule fields", "## Trigger fields", "## Sparse update example"},
+		"skill.md":           {"## Identity, scope, and revision", "## Root create values", "## Supporting reference lifecycle", "512 KiB"},
+		"agent-profile.md":   {"## Kinds and operations", "## Fixed Agent sections", "## Custom SubAgent fields", "## Verification"},
+	}
+	for reference, requiredFragments := range references {
 		uri := "skill://config-manager/references/" + reference
 		if !strings.Contains(text, uri) {
 			t.Fatalf("config-manager root does not route %s", uri)
@@ -28,8 +42,14 @@ func TestBuiltinConfigManagerSkillRoutesEveryRegisteredResourceReference(t *test
 		if readErr != nil {
 			t.Fatalf("read config-manager reference %s: %v", reference, readErr)
 		}
-		if len(strings.TrimSpace(string(data))) < 80 {
-			t.Fatalf("config-manager reference %s is unexpectedly empty", reference)
+		referenceText := string(data)
+		if len(strings.TrimSpace(referenceText)) < 1000 {
+			t.Fatalf("config-manager reference %s is unexpectedly shallow", reference)
+		}
+		for _, fragment := range requiredFragments {
+			if !strings.Contains(referenceText, fragment) {
+				t.Fatalf("config-manager reference %s is missing contract fragment %q", reference, fragment)
+			}
 		}
 	}
 	for _, obsolete := range []string{"agent-config", "automation-config", "image-preset-config", "story-director-config", "teller-config"} {

@@ -603,8 +603,8 @@ function App() {
 
   const triggerSave = useCallback(() => setSaveSignal((value) => value + 1), [])
   const continueWriting = useCallback(() => {
-    if (!isStreaming) send('/continue')
-  }, [isStreaming, send])
+    if (!isStreaming) send(t('command.continueWritingPrompt'))
+  }, [isStreaming, send, t])
 
   const handleSetMode = useCallback((nextMode: WorkspaceMode) => {
     if (nextMode === 'books' || nextMode === 'skills' || nextMode === 'agents' || nextMode === 'automations') {

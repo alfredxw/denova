@@ -37,7 +37,7 @@ const BOOK_SETTINGS_HEADER_PINNED_KEY = 'nova.outline.book-settings-header-pinne
 const BACK_TO_TOP_THRESHOLD_PX = 320
 
 /**
- * 写作页「大纲」tab：可固定的书籍设定与最新细纲入口独立于章节滚动区。
+ * 写作页「大纲」tab：书籍设定可固定，当前细纲与章节留在同一滚动目录中。
  * 长目录在固定区提供最新章与回顶；来自面板外部的章节切换会自动定位到当前章节。
  */
 export function ChapterOutline({
@@ -181,8 +181,8 @@ export function ChapterOutline({
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const bookSettingsHeader = (
-    <div className="space-y-2.5">
+  const bookSettingsHeaderFrame = (
+    <div data-testid="book-settings-header-frame" className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
       <BookSettingsShortcuts
         workspace={workspace}
         tree={tree}
@@ -203,36 +203,6 @@ export function ChapterOutline({
         onDeleteItem={onDeleteItem}
         onRequestCreate={onRequestBookSettingCreate}
       />
-      {latestChapterPlan ? (
-        <OutlineFileActions
-          path={latestChapterPlan.path}
-          onReferenceFile={onReferenceFile}
-          onRevealFile={onRevealFile}
-          onRenameItem={onRenameItem}
-          onDeleteItem={onDeleteItem}
-        >
-          <button
-            type="button"
-            title={latestChapterPlan.title}
-            aria-current={selectedFile === latestChapterPlan.path ? 'page' : undefined}
-            className={`nova-nav-item flex w-full items-center gap-2 border px-2 py-1.5 pr-8 text-left ${
-              selectedFile === latestChapterPlan.path
-                ? 'is-active border-[var(--nova-border)]'
-                : 'border-transparent bg-[var(--nova-surface-2)]'
-            }`}
-            onClick={() => handleSelectFileFromPanel(latestChapterPlan.path)}
-          >
-            <FileText className={`h-3.5 w-3.5 shrink-0 ${selectedFile === latestChapterPlan.path ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-            <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-[var(--nova-text)]">{latestChapterPlan.title}</span>
-          </button>
-        </OutlineFileActions>
-      ) : null}
-    </div>
-  )
-
-  const bookSettingsHeaderFrame = (
-    <div data-testid="book-settings-header-frame" className="shrink-0 border-b border-[var(--nova-border)] bg-[var(--nova-surface)] p-2">
-      {bookSettingsHeader}
     </div>
   )
 
@@ -254,41 +224,61 @@ export function ChapterOutline({
               <span>{t('planning.chapterPlans')}</span>
               <span>{t('planning.chapterPlansEmpty')}</span>
             </section>
-          ) : historicalChapterPlans.length > 0 ? (
+          ) : (
             <section className="space-y-1">
-              <button
-                type="button"
-                className="nova-nav-item flex w-full items-center gap-2 rounded-[var(--nova-radius)] px-2 py-1.5 text-left text-[11px] text-[var(--nova-text-muted)]"
-                aria-label={`${t('planning.chapterPlanHistory')} ${t('planning.chapterPlanCount', { count: historicalChapterPlans.length })}`}
-                aria-expanded={chapterPlanHistoryExpanded}
-                onClick={() => setChapterPlanHistoryExpanded((expanded) => !expanded)}
-              >
-                {chapterPlanHistoryExpanded ? (
-                  <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                ) : (
-                  <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
-                )}
-                <span className="min-w-0 flex-1 truncate">{t('planning.chapterPlanHistory')}</span>
-                <span className="shrink-0 text-[var(--nova-text-faint)]">{t('planning.chapterPlanCount', { count: historicalChapterPlans.length })}</span>
-              </button>
-              {chapterPlanHistoryExpanded ? (
-                <div className="space-y-1 pl-4">
-                  {historicalChapterPlans.map((plan) => (
-                    <PlanningListItem
-                      key={plan.path}
-                      document={plan}
-                      selected={selectedFile === plan.path}
-                      onSelectFile={handleSelectFileFromPanel}
-                      onReferenceFile={onReferenceFile}
-                      onRevealFile={onRevealFile}
-                      onRenameItem={onRenameItem}
-                      onDeleteItem={onDeleteItem}
-                    />
-                  ))}
+              {latestChapterPlan ? (
+                <div className="space-y-1">
+                  <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">
+                    {t('planning.currentChapterPlan')}
+                  </div>
+                  <PlanningListItem
+                    document={latestChapterPlan}
+                    selected={selectedFile === latestChapterPlan.path}
+                    onSelectFile={handleSelectFileFromPanel}
+                    onReferenceFile={onReferenceFile}
+                    onRevealFile={onRevealFile}
+                    onRenameItem={onRenameItem}
+                    onDeleteItem={onDeleteItem}
+                  />
                 </div>
               ) : null}
+              {historicalChapterPlans.length > 0 ? (
+                <>
+                  <button
+                    type="button"
+                    className="nova-nav-item flex w-full items-center gap-2 rounded-[var(--nova-radius)] px-2 py-1.5 text-left text-[11px] text-[var(--nova-text-muted)]"
+                    aria-label={`${t('planning.chapterPlanHistory')} ${t('planning.chapterPlanCount', { count: historicalChapterPlans.length })}`}
+                    aria-expanded={chapterPlanHistoryExpanded}
+                    onClick={() => setChapterPlanHistoryExpanded((expanded) => !expanded)}
+                  >
+                    {chapterPlanHistoryExpanded ? (
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate">{t('planning.chapterPlanHistory')}</span>
+                    <span className="shrink-0 text-[var(--nova-text-faint)]">{t('planning.chapterPlanCount', { count: historicalChapterPlans.length })}</span>
+                  </button>
+                  {chapterPlanHistoryExpanded ? (
+                    <div className="space-y-1 pl-4">
+                      {historicalChapterPlans.map((plan) => (
+                        <PlanningListItem
+                          key={plan.path}
+                          document={plan}
+                          selected={selectedFile === plan.path}
+                          onSelectFile={handleSelectFileFromPanel}
+                          onReferenceFile={onReferenceFile}
+                          onRevealFile={onRevealFile}
+                          onRenameItem={onRenameItem}
+                          onDeleteItem={onDeleteItem}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
             </section>
-          ) : null}
+          )}
 
           <section className="space-y-1.5">
             <div className="px-1 text-[11px] font-medium text-[var(--nova-text-faint)]">{t('planning.volumeChapters')}</div>
@@ -374,7 +364,7 @@ function PlanningListItem({
       <button
         type="button"
         title={document.title}
-        className={`nova-nav-item w-full border px-3 py-2 pr-8 text-left ${
+        className={`nova-nav-item w-full border px-2 py-1 pr-8 text-left !text-[11px] !leading-4 ${
           selected
             ? 'is-active border-[var(--nova-border)]'
             : 'border-transparent bg-[var(--nova-surface)]'
@@ -383,7 +373,7 @@ function PlanningListItem({
       >
         <div className="flex min-w-0 items-center gap-2">
           <FileText className={`h-3.5 w-3.5 shrink-0 ${selected ? 'text-[var(--nova-text)]' : 'text-[var(--nova-text-muted)]'}`} />
-          <span className="min-w-0 flex-1 truncate text-xs font-medium">{document.title}</span>
+          <span className="min-w-0 flex-1 truncate font-medium">{document.title}</span>
         </div>
       </button>
     </OutlineFileActions>

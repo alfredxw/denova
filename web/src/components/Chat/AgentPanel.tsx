@@ -11,7 +11,7 @@ import type { ActiveChatTask, AgentAskAnswer, AgentRuntimeQueuedCommand, Chapter
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import { agentSubAgentSessionKey, agentViewContent, buildAgentMessageViews, selectAgentTokenUsageRecords, type AgentMessageView, type AgentPartRef } from '@/lib/agent-message-view'
 import { useSkillCommands } from '@/hooks/useSkillCommands'
-import { DEFAULT_WRITING_SKILL, useWritingSkillOptions } from '@/hooks/useWritingSkillOptions'
+import { DEFAULT_WRITING_SKILL, resolveWritingSkillSelection, useWritingSkillOptions } from '@/hooks/useWritingSkillOptions'
 import type { PersistedUserSettingsController } from '@/hooks/usePersistedUserSettings'
 import { AgentChatPane } from './AgentChatPane'
 import { SessionManagementPanel } from './SessionManagementPanel'
@@ -186,9 +186,13 @@ export function AgentPanel({
   const [chatPaneHost] = useState(() => createStablePortalHost('relative flex h-full min-h-0 w-full min-w-0 flex-col'))
   const ideTellerId = persistedSettings.values.ide_story_teller_id
   const imagePresetId = persistedSettings.values.ide_image_preset_id
-  const writingSkill = persistedSettings.values.writing_skill_default
+  const configuredWritingSkill = persistedSettings.values.writing_skill_default
   const skillCommands = useSkillCommands({ agentKey: 'ide', workspace })
   const writingSkillOptions = useWritingSkillOptions(workspace)
+  const writingSkill = useMemo(
+    () => resolveWritingSkillSelection(configuredWritingSkill, writingSkillOptions),
+    [configuredWritingSkill, writingSkillOptions],
+  )
   const changeGroupsQuery = useWorkspaceChangeGroups(activeSessionId ? workspace : '', { sessionID: activeSessionId })
   const tokenUsageMessages = useMemo(
     () => selectAgentTokenUsageRecords(messages),

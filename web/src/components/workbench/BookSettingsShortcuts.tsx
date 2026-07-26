@@ -17,11 +17,13 @@ const STORAGE_PREFIX = 'nova.outline.pinned-settings:'
 const PINNED_STORAGE_VERSION = 2
 const LEGACY_DEFAULT_PINNED_PATHS = ['setting/outline.md', 'CREATOR.md', 'setting/progress.md']
 const DEFAULT_PINNED_PATHS = [...LEGACY_DEFAULT_PINNED_PATHS, 'ideas.md', 'setting/character-states.md']
+const CURRENT_CHAPTER_PLAN_PIN_KEY = '@current-chapter-plan'
 
 interface BookSettingItem {
   path: string
   title: string
   exists: boolean
+  pinKey?: string
 }
 
 interface BookSettingsShortcutsProps {
@@ -73,6 +75,7 @@ export function BookSettingsShortcuts({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }))
   const candidates = useMemo(() => discoverBookSettings({ tree, outline, ideas, chapterPlans, t }), [chapterPlans, ideas, outline, t, tree])
   const candidatesByPath = useMemo(() => new Map(candidates.map((item) => [item.path, item])), [candidates])
+  const candidatesByPinKey = useMemo(() => new Map(candidates.map((item) => [bookSettingPinKey(item), item])), [candidates])
   const visibleMissingItem = missingItem && !candidatesByPath.get(missingItem.path)?.exists ? missingItem : null
 
   useEffect(() => {
@@ -85,8 +88,8 @@ export function BookSettingsShortcuts({
     window.localStorage.setItem(STORAGE_PREFIX + workspace, JSON.stringify({ version: PINNED_STORAGE_VERSION, paths: pinnedPaths }))
   }, [pinnedPaths, workspace])
 
-  const pinnedItems = pinnedPaths.map((path) => candidatesByPath.get(path)).filter((item): item is BookSettingItem => Boolean(item))
-  const orderedCandidates = [...pinnedItems, ...candidates.filter((item) => !pinnedPaths.includes(item.path))]
+  const pinnedItems = pinnedPaths.map((key) => candidatesByPinKey.get(key)).filter((item): item is BookSettingItem => Boolean(item))
+  const orderedCandidates = [...pinnedItems, ...candidates.filter((item) => !pinnedPaths.includes(bookSettingPinKey(item)))]
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const filteredCandidates = normalizedQuery
     ? orderedCandidates.filter((item) => `${item.title} ${item.path}`.toLocaleLowerCase().includes(normalizedQuery))
@@ -175,9 +178,9 @@ export function BookSettingsShortcuts({
                     <SortableContext items={pinnedPaths} strategy={verticalListSortingStrategy}>
                       {filteredCandidates.map((item) => (
                         <SortableSettingRow
-                          key={item.path}
+                          key={bookSettingPinKey(item)}
                           item={item}
-                          pinned={pinnedPaths.includes(item.path)}
+                          pinned={pinnedPaths.includes(bookSettingPinKey(item))}
                           selected={item.exists && selectedFile === item.path}
                           onSelect={selectItem}
                           onTogglePinned={togglePinned}
@@ -198,8 +201,9 @@ export function BookSettingsShortcuts({
         <div data-testid="book-setting-shortcuts" className="grid grid-cols-[repeat(auto-fill,minmax(4rem,1fr))] gap-1">
           {pinnedItems.map((item) => (
             <OutlineFileActions
-              key={item.path}
+              key={bookSettingPinKey(item)}
               path={item.path}
+              showTrigger={false}
               onReferenceFile={item.exists ? onReferenceFile : undefined}
               onRevealFile={item.exists ? onRevealFile : undefined}
               onRenameItem={item.exists ? onRenameItem : undefined}
@@ -209,7 +213,7 @@ export function BookSettingsShortcuts({
                 type="button"
                 data-book-setting-state={item.exists ? 'ready' : 'missing'}
                 aria-label={item.exists ? undefined : t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })}
-                className={`nova-nav-item relative w-full max-w-full px-2.5 py-1 text-[11px] font-medium ${item.exists && selectedFile === item.path ? 'is-active pr-7' : item.exists ? 'bg-[var(--nova-surface-2)] pr-7 text-[var(--nova-text-muted)]' : 'border border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_42%,var(--nova-surface-2))] pr-5 text-[var(--nova-text-muted)] hover:border-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)]'}`}
+                className={`nova-nav-item relative w-full max-w-full px-2.5 py-1 text-center text-[11px] font-medium ${item.exists && selectedFile === item.path ? 'is-active' : item.exists ? 'bg-[var(--nova-surface-2)] text-[var(--nova-text-muted)]' : 'border border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_42%,var(--nova-surface-2))] text-[var(--nova-text-muted)] hover:border-[var(--nova-warning)] hover:bg-[var(--nova-warning-bg)]'}`}
                 title={item.exists ? item.title : t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })}
                 onClick={() => selectItem(item)}
               >
@@ -248,7 +252,8 @@ function SortableSettingRow({ item, pinned, selected, onSelect, onTogglePinned }
   onTogglePinned: (path: string) => void
 }) {
   const { t } = useTranslation()
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.path, disabled: !pinned })
+  const pinKey = bookSettingPinKey(item)
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: pinKey, disabled: !pinned })
   const missingTooltip = t('planning.bookSettingMissingTooltip', { title: item.title, path: item.path })
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} className={`flex items-center gap-1 rounded-md border px-1 py-1 ${selected ? 'border-[var(--nova-border)] bg-[var(--nova-active)]' : item.exists ? 'border-transparent bg-[var(--nova-surface)]' : 'border-dashed border-[color-mix(in_srgb,var(--nova-warning)_45%,var(--nova-border))] bg-[color-mix(in_srgb,var(--nova-warning-bg)_32%,var(--nova-surface))]'} ${isDragging ? 'z-10 opacity-70 shadow-lg' : ''}`}>
@@ -262,7 +267,7 @@ function SortableSettingRow({ item, pinned, selected, onSelect, onTogglePinned }
           <span className="truncate">{item.path}</span>
         </span>
       </button>
-      <button type="button" aria-label={pinned ? t('planning.unpinBookSetting', { title: item.title }) : t('planning.pinBookSetting', { title: item.title })} className="rounded p-1.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={() => onTogglePinned(item.path)}>
+      <button type="button" aria-label={pinned ? t('planning.unpinBookSetting', { title: item.title }) : t('planning.pinBookSetting', { title: item.title })} className="rounded p-1.5 text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]" onClick={() => onTogglePinned(pinKey)}>
         {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
       </button>
     </div>
@@ -280,6 +285,7 @@ function discoverBookSettings({ tree, outline, ideas, chapterPlans, t }: {
   const existingPaths = new Set(paths)
   const outlinePath = outline?.path ?? 'setting/outline.md'
   const ideasPath = ideas?.path ?? 'ideas.md'
+  const latestChapterPlan = chapterPlans[chapterPlans.length - 1]
   const known = new Map<string, BookSettingItem>([
     [outlinePath, { path: outlinePath, title: t('planning.outlineTab'), exists: Boolean(outline) || existingPaths.has(outlinePath) }],
     ['CREATOR.md', { path: 'CREATOR.md', title: t('planning.creatorRulesTab'), exists: existingPaths.has('CREATOR.md') }],
@@ -287,6 +293,14 @@ function discoverBookSettings({ tree, outline, ideas, chapterPlans, t }: {
     [ideasPath, { path: ideasPath, title: t('planning.ideas'), exists: Boolean(ideas) || existingPaths.has(ideasPath) }],
     ['setting/character-states.md', { path: 'setting/character-states.md', title: t('planning.characterStates'), exists: existingPaths.has('setting/character-states.md') }],
   ])
+  if (latestChapterPlan) {
+    known.set(CURRENT_CHAPTER_PLAN_PIN_KEY, {
+      path: latestChapterPlan.path,
+      title: t('planning.currentChapterPlan'),
+      exists: true,
+      pinKey: CURRENT_CHAPTER_PLAN_PIN_KEY,
+    })
+  }
   const chapterPlanPaths = new Set(chapterPlans.map((plan) => plan.path))
   for (const path of paths) {
     if (!isBookSettingPath(path, chapterPlanPaths)) continue
@@ -309,6 +323,10 @@ function isBookSettingPath(path: string, chapterPlanPaths: Set<string>) {
 function titleFromPath(path: string) {
   const name = path.split('/').pop() || path
   return name.replace(/\.md$/i, '').replace(/[-_]+/g, ' ')
+}
+
+function bookSettingPinKey(item: BookSettingItem) {
+  return item.pinKey ?? item.path
 }
 
 function readPinnedPaths(workspace: string) {

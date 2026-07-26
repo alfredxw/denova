@@ -5,6 +5,9 @@ import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { novaEase, subtlePresence } from '@/features/motion/motion-tokens'
 
+// 224px 恰好保留三列快捷入口；窄屏时仍由 min/max 约束参与布局收缩。
+const DEFAULT_SIDEBAR_WIDTH = '224px'
+
 interface WorkspaceLayoutProps {
   activityBar: ReactNode
   topBar?: ReactNode
@@ -150,16 +153,18 @@ export function WorkspaceLayout({
                 <Panel
                   id="sidebar"
                   panelRef={sidebarPanelRef}
-                  defaultSize="20%"
+                  defaultSize={DEFAULT_SIDEBAR_WIDTH}
                   minSize="180px"
                   maxSize="36%"
                   collapsedSize="0px"
-                  collapsible
+                  collapsible={!sidebarVisible}
+                  groupResizeBehavior="preserve-pixel-size"
                   className="min-w-[180px]"
                   disabled={!sidebarVisible}
                   hidden={!sidebarVisible}
                   aria-hidden={!sidebarVisible}
                   data-nova-collapsible-panel="sidebar"
+                  data-nova-user-collapsible={sidebarVisible ? 'false' : 'true'}
                 >
                   <motion.div
                     className="h-full min-h-0"

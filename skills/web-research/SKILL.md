@@ -1,6 +1,7 @@
 ---
 name: web-research
 description: 当用户需要基于公开网络调查时效性事实、比较方案、核查说法、寻找来源或整合多来源结论，且当前 Agent 已启用 web_search 与 web_fetch 时使用。 Use when a task needs current public-web facts, comparisons, fact-checking, sources, or a multi-source synthesis and both web_search and web_fetch are available.
+category: research
 ---
 
 # Web Research / 网络研究

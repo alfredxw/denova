@@ -24,8 +24,8 @@ func (a *App) SkillFileDocument(ctx context.Context, scope novaskills.Scope, nam
 	return a.skills().FileDocument(ctx, scope, name, path)
 }
 
-func (a *App) CreateSkillDocument(ctx context.Context, scope novaskills.Scope, name, description string, agents []string) (novaskills.Document, error) {
-	return a.skills().Create(ctx, scope, name, description, agents)
+func (a *App) CreateSkillDocument(ctx context.Context, scope novaskills.Scope, name string, metadata novaskills.CreateMetadata) (novaskills.Document, error) {
+	return a.skills().Create(ctx, scope, name, metadata)
 }
 
 func (a *App) SaveSkillFileDocument(ctx context.Context, scope novaskills.Scope, name, path, content, baseRevision string) (novaskills.FileDocument, error) {
@@ -76,8 +76,8 @@ func (s *SkillsAppService) FileDocument(ctx context.Context, scope novaskills.Sc
 	return novaskills.ReadSkillFile(ctx, s.directories(), scope, name, path)
 }
 
-func (s *SkillsAppService) Create(ctx context.Context, scope novaskills.Scope, name, description string, agents []string) (novaskills.Document, error) {
-	doc, err := novaskills.CreateDocument(ctx, s.directories(), scope, name, description, agents...)
+func (s *SkillsAppService) Create(ctx context.Context, scope novaskills.Scope, name string, metadata novaskills.CreateMetadata) (novaskills.Document, error) {
+	doc, err := novaskills.CreateDocumentWithMetadata(ctx, s.directories(), scope, name, metadata)
 	if err != nil {
 		return novaskills.Document{}, err
 	}

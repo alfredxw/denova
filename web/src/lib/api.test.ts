@@ -326,7 +326,7 @@ describe('api', () => {
       ],
       undefined,
       true,
-      'novel-heavy',
+      'scene-first',
       {
         currentFile: 'chapters/ch02.md',
         openFiles: ['chapters/ch01.md', 'chapters/ch02.md'],
@@ -365,7 +365,7 @@ describe('api', () => {
         open_files: ['chapters/ch01.md', 'chapters/ch02.md'],
       },
       plan_mode: true,
-      writing_skill: 'novel-heavy',
+      writing_skill: 'scene-first',
       image_preset_id: 'game-cg',
       teller_id: 'slow-burn',
     })

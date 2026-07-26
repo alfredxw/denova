@@ -1,12 +1,13 @@
-import { useMemo } from 'react'
-import { Bot, Download, Plus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Bot, Download, Plus, Tags } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ResourceDirectory } from '@/components/resource-directory/ResourceDirectory'
 import type { ResourceDirectoryBadge, ResourceDirectorySection } from '@/components/resource-directory/types'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { SkillSnapshot } from '@/lib/api'
 import type { SkillsMode } from './skill-utils'
-import { keyOf, scopeLabel, skillScopes } from './skill-utils'
+import { keyOf, scopeLabel, skillCategory, skillCategoryLabel, skillCategoryOptions, skillScopes } from './skill-utils'
 
 interface SkillListPanelProps {
   snapshot: SkillSnapshot
@@ -33,15 +34,31 @@ export function SkillListPanel({
   onSelect,
 }: SkillListPanelProps) {
   const { t } = useTranslation()
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const categories = useMemo(() => {
+    const discovered = Array.from(new Set(snapshot.skills.map(skillCategory)))
+    const standard = skillCategoryOptions.filter((category) => discovered.includes(category))
+    const custom = discovered.filter((category) => !skillCategoryOptions.includes(category as typeof skillCategoryOptions[number])).sort()
+    return [...standard, ...custom]
+  }, [snapshot.skills])
+  useEffect(() => {
+    if (categoryFilter !== 'all' && !categories.includes(categoryFilter)) setCategoryFilter('all')
+  }, [categories, categoryFilter])
+  const visibleSkills = useMemo(() => (
+    categoryFilter === 'all'
+      ? snapshot.skills
+      : snapshot.skills.filter((skill) => skillCategory(skill) === categoryFilter)
+  ), [categoryFilter, snapshot.skills])
   const sections = useMemo<ResourceDirectorySection[]>(() => skillScopes.map((scope) => {
     const scopeInfo = snapshot.scopes.find((item) => item.scope === scope)
     return {
       id: scope,
       label: scopeLabel(scope, t),
-      items: snapshot.skills
+      items: visibleSkills
         .filter((skill) => skill.scope === scope)
         .map((skill) => {
           const badges: ResourceDirectoryBadge[] = []
+          badges.push({ label: skillCategoryLabel(skillCategory(skill), t), tone: 'muted' })
           if (skill.active) {
             badges.push({ label: '✓', title: t('skills.active'), tone: 'default' })
           } else {
@@ -68,7 +85,7 @@ export function SkillListPanel({
         </span>
       ),
     }
-  }), [snapshot.scopes, snapshot.skills, t])
+  }).filter((section) => categoryFilter === 'all' || section.items.length > 0), [categoryFilter, snapshot.scopes, t, visibleSkills])
 
   const showSkeleton = loading && snapshot.skills.length === 0
 
@@ -100,6 +117,20 @@ export function SkillListPanel({
           <span className="min-w-0 truncate">{t('skills.install.action')}</span>
         </button>
       </div>
+      <div className="shrink-0 border-y border-[var(--nova-border)] px-3 py-2">
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger aria-label={t('skills.category.filter')} className="h-8 w-full border-[var(--nova-border)] bg-[var(--nova-surface)] text-xs">
+            <Tags className="h-3.5 w-3.5 text-[var(--nova-text-muted)]" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="border border-[var(--nova-border)] bg-[var(--nova-surface-2)] text-[var(--nova-text)]">
+            <SelectItem value="all" className="text-xs">{t('skills.category.all')}</SelectItem>
+            {categories.map((category) => (
+              <SelectItem key={category} value={category} className="text-xs">{skillCategoryLabel(category, t)}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       {showSkeleton ? (
         <div className="flex flex-col gap-2 p-2">
           {Array.from({ length: 6 }).map((_, index) => (
@@ -115,7 +146,7 @@ export function SkillListPanel({
           emptyContent={(
             <EmptyState
               variant="compact"
-              title={t('skills.empty')}
+              title={categoryFilter === 'all' ? t('skills.empty') : t('skills.category.empty')}
               className="text-[var(--nova-text-faint)]"
             />
           )}

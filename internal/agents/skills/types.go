@@ -1,11 +1,21 @@
 package skills
 
+import "strings"
+
 const (
 	SkillFileName = "SKILL.md"
 
 	ScopeBuiltin   Scope = "builtin"
 	ScopeUser      Scope = "user"
 	ScopeWorkspace Scope = "workspace"
+
+	CategoryGeneral       = "general"
+	CategoryWriting       = "writing"
+	CategoryImage         = "image"
+	CategoryResearch      = "research"
+	CategoryConfiguration = "configuration"
+
+	CapabilityWritingWorkflow = "writing-workflow"
 )
 
 // ContextMode controls whether a Skill executes in the current Agent context
@@ -21,11 +31,35 @@ const (
 // in the product Skills module so the catalog is independent from any Agent
 // framework implementation.
 type FrontMatter struct {
-	Name        string      `yaml:"name"`
-	Description string      `yaml:"description"`
-	Context     ContextMode `yaml:"context"`
-	Agent       string      `yaml:"agent"`
-	Model       string      `yaml:"model"`
+	Name         string      `yaml:"name"`
+	Description  string      `yaml:"description"`
+	Category     string      `yaml:"category"`
+	Capabilities []string    `yaml:"capabilities"`
+	Context      ContextMode `yaml:"context"`
+	Agent        string      `yaml:"agent"`
+	Model        string      `yaml:"model"`
+}
+
+// HasCapability reports whether this Skill explicitly opts into a stable
+// product integration point. Agent visibility alone must never imply one.
+func (f FrontMatter) HasCapability(capability string) bool {
+	capability = strings.TrimSpace(capability)
+	for _, candidate := range f.Capabilities {
+		if strings.TrimSpace(candidate) == capability {
+			return true
+		}
+	}
+	return false
+}
+
+// CreateMetadata is the bounded metadata accepted when scaffolding a new
+// SKILL.md. Category organizes the catalog; capabilities opt into specialized
+// product surfaces such as the Writing Skill selector.
+type CreateMetadata struct {
+	Description  string
+	Agents       []string
+	Category     string
+	Capabilities []string
 }
 
 // Skill is one resolved instruction bundle. BaseDirectory is the directory
@@ -65,16 +99,18 @@ type ScopeInfo struct {
 
 // SkillSummary describes a discovered skill.
 type SkillSummary struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Context     string `json:"context,omitempty"`
-	Agent       string `json:"agent,omitempty"`
-	Model       string `json:"model,omitempty"`
-	Scope       Scope  `json:"scope"`
-	Path        string `json:"path"`
-	Editable    bool   `json:"editable"`
-	Active      bool   `json:"active"`
-	UpdatedAt   string `json:"updated_at,omitempty"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Category     string   `json:"category"`
+	Capabilities []string `json:"capabilities,omitempty"`
+	Context      string   `json:"context,omitempty"`
+	Agent        string   `json:"agent,omitempty"`
+	Model        string   `json:"model,omitempty"`
+	Scope        Scope    `json:"scope"`
+	Path         string   `json:"path"`
+	Editable     bool     `json:"editable"`
+	Active       bool     `json:"active"`
+	UpdatedAt    string   `json:"updated_at,omitempty"`
 }
 
 // SkillFile describes a regular file stored inside a Skill directory.

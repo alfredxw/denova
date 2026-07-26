@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { EditorSettingsPanel } from './EditorSettingsPanel'
-import type { EditorSettings } from './EditorSettingsPanel'
+import type { EditorSettings, ReadingTypographySettings } from './EditorSettingsPanel'
 
 export type SaveStatus = 'dirty' | 'auto-saving' | 'auto-saved' | 'manual-saving' | 'manual-saved' | 'error'
 
@@ -58,6 +58,7 @@ interface EditorToolbarProps {
   onSettingsOpenChange: (open: boolean) => void
   settings: EditorSettings
   onSettingsChange: (settings: EditorSettings) => void
+  readingTypography?: ReadingTypographySettings
   onGenerateIllustration?: (chapterPath: string) => void
   onRevealChapter?: (chapterPath: string) => void
   generateIllustrationDisabled: boolean
@@ -73,6 +74,7 @@ export function EditorToolbar({
   onSettingsOpenChange,
   settings,
   onSettingsChange,
+  readingTypography,
   onGenerateIllustration,
   onRevealChapter,
   generateIllustrationDisabled,
@@ -168,6 +170,7 @@ export function EditorToolbar({
                 settings={settings}
                 onChange={onSettingsChange}
                 onClose={() => onSettingsOpenChange(false)}
+                readingTypography={readingTypography}
               />
             </PopoverContent>
           </Popover>

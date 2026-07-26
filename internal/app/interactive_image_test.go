@@ -3,9 +3,11 @@ package app
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"denova/config"
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
 	runstate "github.com/alfredxw/denova/agent/runtime"
@@ -48,6 +50,28 @@ func TestImageAgentSemanticMessageIncludesBoundedContextHashes(t *testing.T) {
 	changed.SourceContext = "secret scene two"
 	if first == imageAgentMessage(changed) {
 		t.Fatal("source context change was absent from image command semantics")
+	}
+}
+
+func TestImageAgentMessageDeterministicallyLoadsRequestedSkill(t *testing.T) {
+	req := ImageAgentGenerateRequest{SkillName: "interactive-image", Purpose: "interactive_image"}
+	message := imageAgentMessage(req)
+	if !strings.HasPrefix(message, "/interactive-image\n\n") || strings.Contains(message, "/<interactive-image>") {
+		t.Fatalf("image Agent message uses a non-canonical Skill invocation: %q", message)
+	}
+	conversation := &imageAgentConversation{
+		message: message,
+		skillConfig: config.Config{
+			SkillsDir: filepath.Join("..", "..", "skills"),
+			DenovaDir: t.TempDir(),
+		},
+	}
+	resolved, err := conversation.ResolveExplicitSkills(context.Background(), message)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved) != 1 || resolved[0].Name != "interactive-image" || !strings.Contains(resolved[0].Instructions, "# 互动图像") {
+		t.Fatalf("resolved image Skills = %#v", resolved)
 	}
 }
 

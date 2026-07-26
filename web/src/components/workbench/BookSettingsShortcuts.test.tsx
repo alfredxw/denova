@@ -129,7 +129,53 @@ describe('BookSettingsShortcuts', () => {
     expect(missingOutlineRow.querySelector('svg.lucide-circle-dashed')).toBeInTheDocument()
   })
 
-  it('已 Pin 的设定文件提供可发现的文件操作菜单', async () => {
+  it('当前细纲可选 Pin，并始终指向最新一份细纲', async () => {
+    const user = userEvent.setup()
+    const onSelectFile = vi.fn()
+    const firstPlans = [
+      { path: 'setting/chapter-plans/group-1.md', title: '第一组细纲', excerpt: '', words: 100, updated_at: '' },
+      { path: 'setting/chapter-plans/group-2.md', title: '第二组细纲', excerpt: '', words: 100, updated_at: '' },
+    ]
+    const { rerender } = render(
+      <BookSettingsShortcuts
+        workspace="/books/demo"
+        tree={[]}
+        chapterPlans={firstPlans}
+        selectedFile={null}
+        headerPinned
+        onSelectFile={onSelectFile}
+        onToggleHeaderPinned={vi.fn()}
+      />,
+    )
+
+    expect(within(screen.getByTestId('book-setting-shortcuts')).queryByRole('button', { name: '当前细纲' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '管理' }))
+    expect(screen.getByText('setting/chapter-plans/group-2.md')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Pin 当前细纲' }))
+    expect(within(screen.getByTestId('book-setting-shortcuts')).getByRole('button', { name: '当前细纲' })).toBeInTheDocument()
+    expect(JSON.parse(window.localStorage.getItem('nova.outline.pinned-settings:/books/demo') || '{}').paths).toContain('@current-chapter-plan')
+
+    const latestPlans = [
+      ...firstPlans,
+      { path: 'setting/chapter-plans/group-3.md', title: '第三组细纲', excerpt: '', words: 100, updated_at: '' },
+    ]
+    rerender(
+      <BookSettingsShortcuts
+        workspace="/books/demo"
+        tree={[]}
+        chapterPlans={latestPlans}
+        selectedFile={null}
+        headerPinned
+        onSelectFile={onSelectFile}
+        onToggleHeaderPinned={vi.fn()}
+      />,
+    )
+    await user.click(within(screen.getByTestId('book-setting-shortcuts')).getByRole('button', { name: '当前细纲' }))
+
+    expect(onSelectFile).toHaveBeenLastCalledWith('setting/chapter-plans/group-3.md')
+  })
+
+  it('已 Pin 的设定文件隐藏更多按钮，文件操作保留在右键菜单', async () => {
     const user = userEvent.setup()
     const onReferenceFile = vi.fn()
     render(
@@ -144,10 +190,13 @@ describe('BookSettingsShortcuts', () => {
         onReferenceFile={onReferenceFile}
       />,
     )
-    const shortcut = screen.getByRole('button', { name: '规则' }).parentElement
-    if (!shortcut) throw new Error('pinned shortcut actions are not rendered')
+    const shortcut = screen.getByRole('button', { name: '规则' })
+    expect(shortcut).toHaveClass('text-center')
+    expect(shortcut).not.toHaveClass('pr-7')
+    expect(shortcut.parentElement).not.toBeNull()
+    expect(within(shortcut.parentElement as HTMLElement).queryByRole('button', { name: '更多操作' })).not.toBeInTheDocument()
 
-    await user.click(within(shortcut).getByRole('button', { name: '更多操作' }))
+    await user.pointer({ keys: '[MouseRight]', target: shortcut })
     await user.click(await screen.findByRole('menuitem', { name: '引用到 Chat' }))
 
     expect(onReferenceFile).toHaveBeenCalledWith('CREATOR.md')

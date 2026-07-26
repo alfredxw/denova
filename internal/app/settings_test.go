@@ -393,12 +393,12 @@ func TestApplyLayeredSettingsToConfigAppliesWritingSkillDefaultAndImagePreset(t 
 	cfg := &config.Config{}
 	applyLayeredSettingsToConfig(cfg, config.LayeredSettings{
 		Effective: config.Settings{
-			WritingSkillDefault: "novel-heavy",
+			WritingSkillDefault: "scene-first",
 			IDEImagePresetID:    "realistic",
 		},
 	})
-	if cfg.WritingSkillDefault != "novel-heavy" {
-		t.Fatalf("writing skill default = %s, want novel-heavy", cfg.WritingSkillDefault)
+	if cfg.WritingSkillDefault != "scene-first" {
+		t.Fatalf("writing skill default = %s, want scene-first", cfg.WritingSkillDefault)
 	}
 	if cfg.IDEImagePresetID != "realistic" {
 		t.Fatalf("image preset default = %s, want realistic", cfg.IDEImagePresetID)

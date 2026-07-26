@@ -38,11 +38,13 @@ describe('SkillsView', () => {
     vi.mocked(saveSkillDocument).mockReset()
     vi.mocked(saveSkillFileDocument).mockReset()
     vi.mocked(getSkills).mockResolvedValue(skillsSnapshot())
-    vi.mocked(createSkill).mockImplementation(async (scope, name, description, agents = []) => skillDocument({
+    vi.mocked(createSkill).mockImplementation(async (scope, name, description, agents = [], metadata = {}) => skillDocument({
       scope,
       name,
       description,
       agent: agents.join(','),
+      category: metadata.category || 'general',
+      capabilities: metadata.capabilities || [],
     }))
   })
 
@@ -66,8 +68,49 @@ describe('SkillsView', () => {
     await user.click(screen.getByRole('button', { name: '创建 SKILL.md' }))
 
     await waitFor(() => {
-      expect(vi.mocked(createSkill)).toHaveBeenCalledWith('user', 'draft-plan', '规划章节草稿', ['ide'])
+      expect(vi.mocked(createSkill)).toHaveBeenCalledWith('user', 'draft-plan', '规划章节草稿', ['ide'], {
+        category: 'general',
+        capabilities: [],
+      })
     })
+  })
+
+  it('creates an explicitly classified Writing Skill workflow', async () => {
+    const user = userEvent.setup()
+    render(<SkillsView workspace="/books/demo" />)
+
+    await user.click(await screen.findByRole('button', { name: '新建' }))
+    await user.type(screen.getByLabelText('Skill 名称'), 'slow-burn')
+    await user.type(screen.getByLabelText('触发说明'), '慢节奏写作流程')
+    await user.click(screen.getByRole('combobox', { name: 'Skill 分类' }))
+    await user.click(await screen.findByRole('option', { name: '写作' }))
+    await user.click(screen.getByRole('switch', { name: '可作为 Writing Skill' }))
+    await user.click(screen.getByRole('button', { name: '创建 SKILL.md' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(createSkill)).toHaveBeenCalledWith('user', 'slow-burn', '慢节奏写作流程', ['ide'], {
+        category: 'writing',
+        capabilities: ['writing-workflow'],
+      })
+    })
+  })
+
+  it('filters the Skill directory by catalog category', async () => {
+    const writing = skillDocument({ name: 'slow-burn', description: 'Writing', category: 'writing' })
+    const image = skillDocument({ name: 'image-helper', description: 'Image', category: 'image' })
+    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [writing, image] }))
+    vi.mocked(getSkillDocument).mockImplementation(async (_scope, name) => name === image.name ? image : writing)
+    const user = userEvent.setup()
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    expect(await screen.findByRole('button', { name: /\/slow-burn/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /\/image-helper/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('combobox', { name: '按 Skill 分类筛选' }))
+    await user.click(await screen.findByRole('option', { name: '图像' }))
+
+    expect(screen.queryByRole('button', { name: /\/slow-burn/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /\/image-helper/ })).toBeInTheDocument()
   })
 
   it('creates a user override when editing a built-in Skill', async () => {
@@ -277,6 +320,9 @@ describe('SkillsView', () => {
     render(<SkillsView workspace="/books/demo" />)
 
     await user.click(await screen.findByRole('button', { name: '配置' }))
+    await user.click(screen.getByRole('combobox', { name: 'Skill 分类' }))
+    await user.click(await screen.findByRole('option', { name: '写作' }))
+    await user.click(screen.getByRole('switch', { name: '可作为 Writing Skill' }))
     const description = screen.getByLabelText('触发说明')
     await user.clear(description)
     await user.type(description, 'Beat planning')
@@ -292,6 +338,9 @@ describe('SkillsView', () => {
         'skill-r1',
       )
     })
+    const savedContent = vi.mocked(saveSkillDocument).mock.calls.at(-1)?.[2] || ''
+    expect(savedContent).toContain('category: "writing"')
+    expect(savedContent).toContain('capabilities: ["writing-workflow"]')
   })
 
   it('rebases Skill metadata autosave over an external content update', async () => {
@@ -449,7 +498,7 @@ describe('SkillsView', () => {
 
     const { container } = render(<SkillsView workspace="/books/demo" />)
 
-    await user.click(await screen.findByRole('button', { name: '目录文件' }))
+    expect(await screen.findByRole('button', { name: '目录文件' })).toHaveAttribute('aria-pressed', 'true')
     await user.click(await screen.findByRole('button', { name: /style\.md/ }))
     await waitFor(() => {
       expect(vi.mocked(getSkillFileDocument)).toHaveBeenCalledWith('user', 'draft-plan', 'references/style.md')
@@ -468,6 +517,30 @@ describe('SkillsView', () => {
       expect(vi.mocked(saveSkillFileDocument)).toHaveBeenCalledWith('user', 'draft-plan', 'references/style.md', '# Updated\n', 'file-r1')
     })
     expect(vi.mocked(saveSkillDocument)).not.toHaveBeenCalled()
+  })
+
+  it('preserves a manual file-tree collapse when a multi-file Skill reloads', async () => {
+    const user = userEvent.setup()
+    const doc = skillDocument({
+      files: [
+        { path: 'SKILL.md', size: 64, entry: true, editable: true },
+        { path: 'references/style.md', size: 8, entry: false, editable: true },
+      ],
+    })
+    vi.mocked(getSkills).mockResolvedValue(skillsSnapshot({ skills: [doc] }))
+    vi.mocked(getSkillDocument).mockResolvedValue(doc)
+
+    render(<SkillsView workspace="/books/demo" />)
+
+    const directoryToggle = await screen.findByRole('button', { name: '目录文件' })
+    expect(directoryToggle).toHaveAttribute('aria-pressed', 'true')
+    await user.click(directoryToggle)
+    expect(directoryToggle).toHaveAttribute('aria-pressed', 'false')
+    await user.click(screen.getByRole('button', { name: '刷新' }))
+
+    await waitFor(() => expect(vi.mocked(getSkillDocument)).toHaveBeenCalledTimes(2))
+    expect(screen.getByRole('button', { name: '目录文件' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByRole('button', { name: /style\.md/ })).not.toBeInTheDocument()
   })
 
   it('renders Skill markdown by default and switches to raw editing', async () => {

@@ -1,5 +1,5 @@
 import { jsonHeaders, requestJSON } from './client'
-import type { SkillDocument, SkillFileDocument, SkillInstallPreview, SkillInstallResult, SkillScope, SkillSnapshot } from './types'
+import type { SkillCreateMetadata, SkillDocument, SkillFileDocument, SkillInstallPreview, SkillInstallResult, SkillScope, SkillSnapshot } from './types'
 
 export interface SkillSaveTarget {
   scope: SkillScope
@@ -32,11 +32,11 @@ export async function getSkillFileDocument(scope: SkillScope, name: string, path
   return requestJSON(`/api/skills/file?${query.toString()}`)
 }
 
-export async function createSkill(scope: SkillScope, name: string, description = '', agents: string[] = []): Promise<SkillDocument> {
+export async function createSkill(scope: SkillScope, name: string, description = '', agents: string[] = [], metadata: SkillCreateMetadata = {}): Promise<SkillDocument> {
   return requestJSON('/api/skills', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ scope, name, description, agents }),
+    body: JSON.stringify({ scope, name, description, agents, category: metadata.category, capabilities: metadata.capabilities }),
   })
 }
 

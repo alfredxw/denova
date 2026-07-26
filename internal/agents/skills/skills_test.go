@@ -331,11 +331,16 @@ func TestCreateAndSaveDocument(t *testing.T) {
 	user := filepath.Join(t.TempDir(), "skills")
 	dirs := []Directory{{Scope: ScopeUser, Path: user, Writable: true}}
 
-	doc, err := CreateDocument(ctx, dirs, ScopeUser, "beats", "Draft beat sheets.", "ide", "config_manager")
+	doc, err := CreateDocumentWithMetadata(ctx, dirs, ScopeUser, "beats", CreateMetadata{
+		Description:  "Draft beat sheets.",
+		Agents:       []string{"ide", "config_manager"},
+		Category:     CategoryWriting,
+		Capabilities: []string{CapabilityWritingWorkflow},
+	})
 	if err != nil {
 		t.Fatalf("CreateDocument() error = %v", err)
 	}
-	if doc.Name != "beats" || !doc.Editable || doc.Agent != "ide,config_manager" {
+	if doc.Name != "beats" || !doc.Editable || doc.Agent != "ide,config_manager" || doc.Category != CategoryWriting || len(doc.Capabilities) != 1 || doc.Capabilities[0] != CapabilityWritingWorkflow {
 		t.Fatalf("created doc = %#v", doc)
 	}
 
@@ -501,8 +506,8 @@ func TestSaveDocumentAsRejectsExistingTarget(t *testing.T) {
 func TestAgentBackendFiltersByAgentFrontmatterAndOverrides(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
-	writeSkillFileForAgents(t, root, "outline", "outline", "outline desc", "ide")
-	writeSkillFileForAgents(t, root, "lore-init", "lore-init", "lore desc", "config_manager,interactive_story")
+	writeSkillFileForAgents(t, root, "writing-only", "writing-only", "writing desc", "ide")
+	writeSkillFileForAgents(t, root, "story-helper", "story-helper", "story desc", "config_manager,interactive_story")
 	writeSkillFileForAgents(t, root, "general", "general", "general desc", "")
 
 	backend := NewAgentBackend([]Directory{{Scope: ScopeUser, Path: root, Writable: true}}, "interactive_story", nil)
@@ -511,23 +516,23 @@ func TestAgentBackendFiltersByAgentFrontmatterAndOverrides(t *testing.T) {
 		t.Fatalf("List() error = %v", err)
 	}
 	got := skillNames(list)
-	if len(got) != 2 || !got["lore-init"] || !got["general"] {
+	if len(got) != 2 || !got["story-helper"] || !got["general"] {
 		t.Fatalf("interactive_story skills = %#v", got)
 	}
-	if _, err := backend.Get(ctx, "outline"); err == nil {
-		t.Fatalf("Get(outline) should be filtered out for interactive_story")
+	if _, err := backend.Get(ctx, "writing-only"); err == nil {
+		t.Fatalf("Get(writing-only) should be filtered out for interactive_story")
 	}
 
 	overrideBackend := NewAgentBackend([]Directory{{Scope: ScopeUser, Path: root, Writable: true}}, "interactive_story", map[string]bool{
-		"outline":   true,
-		"lore-init": false,
+		"writing-only": true,
+		"story-helper": false,
 	})
 	overrideList, err := overrideBackend.List(ctx)
 	if err != nil {
 		t.Fatalf("override List() error = %v", err)
 	}
 	overrideGot := skillNames(overrideList)
-	if len(overrideGot) != 2 || !overrideGot["outline"] || !overrideGot["general"] || overrideGot["lore-init"] {
+	if len(overrideGot) != 2 || !overrideGot["writing-only"] || !overrideGot["general"] || overrideGot["story-helper"] {
 		t.Fatalf("override interactive_story skills = %#v", overrideGot)
 	}
 }
@@ -583,7 +588,7 @@ func TestDefaultContentEscapesFrontmatterDescription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseRecord(DefaultContent()) error = %v\ncontent:\n%s", err, content)
 	}
-	if rec.skill.Name != "beats" || rec.skill.Description != "Line one:\n- keep as text\nkey: value" {
+	if rec.skill.Name != "beats" || rec.skill.Description != "Line one:\n- keep as text\nkey: value" || rec.skill.Category != CategoryGeneral {
 		t.Fatalf("parsed frontmatter = %#v", rec.skill.FrontMatter)
 	}
 }

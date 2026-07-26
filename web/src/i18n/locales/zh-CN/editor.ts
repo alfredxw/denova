@@ -12,6 +12,8 @@ const editor = {
   'editor.illustrationMarkdownOnly': '当前文件不是 Markdown 章节，不能插入图像语法',
   'editor.settings': '编辑器设置',
   'editor.settingsDescription': '行间距与编辑器背景',
+  'editor.readingTypography': '字体与字号',
+  'editor.readingTypographyDescription': '与全局外观设置共享，修改后自动保存',
   'editor.closeSearch': '关闭搜索',
   'editor.searchPlaceholder': '搜索当前文章...',
   'editor.searchPrev': '上一处',

@@ -19,7 +19,7 @@ import { SkillCreatePanel } from './SkillCreatePanel'
 import { SkillEditor } from './SkillEditor'
 import { SkillInstallPanel } from './SkillInstallPanel'
 import { SkillListPanel } from './SkillListPanel'
-import { keyOf, preferredBuiltinOverrideScope, scopeLabel, skillEntryFile, skillFilePath, type SkillContentViewMode, type SkillsMode } from './skill-utils'
+import { keyOf, preferredBuiltinOverrideScope, scopeLabel, skillEntryFile, skillFilePath, skillHasSupportingFiles, type SkillContentViewMode, type SkillsMode } from './skill-utils'
 
 interface SkillsViewProps {
   workspace: string
@@ -68,8 +68,8 @@ function skillContentSignature(value: Partial<SkillContentAutosaveDraft>) {
 }
 
 function skillSummaryOf(value: SkillSummary): SkillSummary {
-  const { name, description, context, agent, model, scope, path, editable, active, updated_at } = value
-  return { name, description, context, agent, model, scope, path, editable, active, updated_at }
+  const { name, description, category, capabilities, context, agent, model, scope, path, editable, active, updated_at } = value
+  return { name, description, category, capabilities, context, agent, model, scope, path, editable, active, updated_at }
 }
 
 export function SkillsView({ workspace, onClose }: SkillsViewProps) {
@@ -93,6 +93,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
   const [documentReloadVersion, setDocumentReloadVersion] = useState(0)
   const [eventSource] = useState(() => `skills-view-${nextSkillsViewSourceID++}`)
   const configPanelRef = useRef<SkillConfigPanelHandle | null>(null)
+  const fileTreePreferences = useRef(new Map<string, boolean>())
   const notifySkillsUpdated = useCallback(() => {
     window.dispatchEvent(new CustomEvent('nova:skills-updated', { detail: { source: eventSource } }))
   }, [eventSource])
@@ -261,6 +262,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
       setSelectedFilePath(skillEntryFile)
       setFileDocument(null)
       setFileDraft('')
+      setFileTreeOpen(false)
       return () => { cancelled = true }
     }
     setError(null)
@@ -273,7 +275,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
         setFileDocument(null)
         setFileDraft('')
         setContentViewMode('preview')
-        setFileTreeOpen(false)
+        setFileTreeOpen(fileTreePreferences.current.get(`${workspace}\u0000${keyOf(doc)}`) ?? skillHasSupportingFiles(doc))
       })
       .catch((e) => {
         if (!cancelled) {
@@ -282,6 +284,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
           setSelectedFilePath(skillEntryFile)
           setFileDocument(null)
           setFileDraft('')
+          setFileTreeOpen(false)
           setError((e as Error).message)
         }
       })
@@ -318,6 +321,14 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
     if (!document || path === selectedFilePath) return
     if (!await flushContentAutosave()) return
     await switchSkillFile(path)
+  }
+
+  const toggleFileTree = () => {
+    setFileTreeOpen((current) => {
+      const next = !current
+      if (document) fileTreePreferences.current.set(`${workspace}\u0000${keyOf(document)}`, next)
+      return next
+    })
   }
 
   const onCreateBuiltinOverride = async () => {
@@ -672,7 +683,7 @@ export function SkillsView({ workspace, onClose }: SkillsViewProps) {
                 onDraftChange={setDraft}
                 onFileDraftChange={setFileDraft}
                 onSelectFile={(path) => void selectSkillFile(path)}
-                onToggleFileTree={() => setFileTreeOpen((value) => !value)}
+                onToggleFileTree={toggleFileTree}
                 onViewModeChange={setContentViewMode}
                 onOpenConfig={() => {
                   if (!document.editable) return

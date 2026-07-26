@@ -114,8 +114,6 @@ function writingSkillLabel(name: string, t: ReturnType<typeof useTranslation>['t
       return t('chat.writingSkill.preset.lite')
     case 'novel-standard':
       return t('chat.writingSkill.preset.standard')
-    case 'novel-heavy':
-      return t('chat.writingSkill.preset.heavy')
     default:
       return name
   }

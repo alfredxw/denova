@@ -149,12 +149,23 @@ describe('MarkdownEditor', () => {
 
   it('打开编辑器设置 Popover 后展示行间距、对白高亮和背景主题', async () => {
     const user = userEvent.setup()
+    const onFontFamilyChange = vi.fn()
+    const onFontSizeChange = vi.fn()
 
     render(
       <MarkdownEditor
         fileName="chapters/ch01.md"
         content="第一章"
         onSave={vi.fn()}
+        readingTypography={{
+          fontFamily: 'source-han-serif',
+          fontSize: 18,
+          loading: false,
+          status: 'saved',
+          onFontFamilyChange,
+          onFontSizeChange,
+          onRetry: vi.fn(),
+        }}
       />,
     )
 
@@ -168,6 +179,12 @@ describe('MarkdownEditor', () => {
     expect(screen.getByRole('textbox', { name: '十六进制颜色' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '恢复默认' })).toBeInTheDocument()
     expect(screen.getByText('背景主题')).toBeInTheDocument()
+    expect(screen.getByText('字体与字号')).toBeInTheDocument()
+    expect(screen.getByText('思源宋体阅读')).toBeInTheDocument()
+    const readingFontSize = screen.getByRole('slider', { name: '阅读字号 (px)' })
+    expect(readingFontSize).toHaveValue('18')
+    fireEvent.change(readingFontSize, { target: { value: '22' } })
+    expect(onFontSizeChange).toHaveBeenCalledWith(22)
   })
 
   it('在更新时间右侧实时显示光标所在行号', () => {

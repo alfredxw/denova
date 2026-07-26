@@ -1,6 +1,7 @@
 ---
 name: interactive-image
 description: 为互动故事已发生的回合生成一张互动图像。
+category: image
 agent: image
 ---
 

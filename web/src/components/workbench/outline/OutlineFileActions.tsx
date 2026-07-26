@@ -23,6 +23,7 @@ interface OutlineFileActionsProps {
   path: string
   children: ReactNode
   triggerPlacement?: 'center' | 'top'
+  showTrigger?: boolean
   onReferenceFile?: (path: string) => void
   onRevealFile?: (path: string) => void | Promise<void>
   onRenameItem?: (path: string, newName: string) => Promise<void>
@@ -45,11 +46,12 @@ const MENU_DANGER_CLASS =
   'text-[var(--nova-danger)] focus:bg-[var(--nova-danger-bg)] focus:text-[var(--nova-danger)] data-[highlighted]:bg-[var(--nova-danger-bg)] data-[highlighted]:text-[var(--nova-danger)] [&_svg]:text-[var(--nova-danger)]'
 const MENU_SEPARATOR_CLASS = 'mx-1 my-1 h-px bg-[var(--nova-border)]'
 
-/** 为作品目录中的文件型条目提供与项目文件一致的右键菜单和可发现的更多按钮。 */
+/** 为作品目录中的文件型条目提供右键菜单，并可按场景展示可发现的更多按钮。 */
 export function OutlineFileActions({
   path,
   children,
   triggerPlacement = 'center',
+  showTrigger = true,
   onReferenceFile,
   onRevealFile,
   onRenameItem,
@@ -74,23 +76,25 @@ export function OutlineFileActions({
         <ContextMenuTrigger asChild>
           <div className="group relative min-w-0">
             {children}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  aria-label={t('sidebar.moreActions')}
-                  title={t('sidebar.moreActions')}
-                  className={`pointer-events-none absolute right-1 z-10 flex h-6 w-6 items-center justify-center rounded text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100 max-md:pointer-events-auto max-md:opacity-100 ${triggerPlacement === 'top' ? 'top-1' : 'top-1/2 -translate-y-1/2'}`}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <MoreHorizontal className="h-3.5 w-3.5" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className={MENU_CONTENT_CLASS} align="end" sideOffset={6}>
-                {renderActions(actions, 'dropdown')}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {showTrigger ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t('sidebar.moreActions')}
+                    title={t('sidebar.moreActions')}
+                    className={`pointer-events-none absolute right-1 z-10 flex h-6 w-6 items-center justify-center rounded text-[var(--nova-text-faint)] opacity-0 transition-opacity hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100 max-md:pointer-events-auto max-md:opacity-100 ${triggerPlacement === 'top' ? 'top-1' : 'top-1/2 -translate-y-1/2'}`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <MoreHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className={MENU_CONTENT_CLASS} align="end" sideOffset={6}>
+                  {renderActions(actions, 'dropdown')}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
         </ContextMenuTrigger>
         <ContextMenuContent className={MENU_CONTENT_CLASS}>

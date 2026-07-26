@@ -63,6 +63,15 @@ func readDocumentLocked(ctx context.Context, dirs []Directory, dir Directory, na
 }
 
 func CreateDocument(ctx context.Context, dirs []Directory, scope Scope, name, description string, agents ...string) (Document, error) {
+	return CreateDocumentWithMetadata(ctx, dirs, scope, name, CreateMetadata{
+		Description: description,
+		Agents:      agents,
+	})
+}
+
+// CreateDocumentWithMetadata scaffolds one Skill with explicit catalog and
+// product-integration metadata without requiring callers to assemble YAML.
+func CreateDocumentWithMetadata(ctx context.Context, dirs []Directory, scope Scope, name string, metadata CreateMetadata) (Document, error) {
 	if err := ValidateName(name); err != nil {
 		return Document{}, err
 	}
@@ -70,7 +79,7 @@ func CreateDocument(ctx context.Context, dirs []Directory, scope Scope, name, de
 	if err != nil {
 		return Document{}, err
 	}
-	content := DefaultContent(name, description, agents...)
+	content := DefaultContentWithMetadata(name, metadata)
 	return withSkillLease(ctx, dir, name, func() (Document, error) {
 		return writeDocumentLocked(ctx, dirs, dir, name, content, false)
 	})
@@ -561,11 +570,15 @@ func DeleteDocumentIfRevision(ctx context.Context, dirs []Directory, scope Scope
 }
 
 func DefaultContent(name, description string, agents ...string) string {
-	description = strings.TrimSpace(description)
-	if description == "" {
-		description = fmt.Sprintf("Use this skill when the user asks for %s-specific guidance.", name)
+	return DefaultContentWithMetadata(name, CreateMetadata{Description: description, Agents: agents})
+}
+
+func DefaultContentWithMetadata(name string, metadata CreateMetadata) string {
+	metadata = normalizeCreateMetadata(metadata)
+	if metadata.Description == "" {
+		metadata.Description = fmt.Sprintf("Use this skill when the user asks for %s-specific guidance.", name)
 	}
-	frontmatter := marshalFrontmatter(name, description, normalizeAgentList(agents))
+	frontmatter := marshalFrontmatter(name, metadata)
 	return fmt.Sprintf(`---
 %s---
 

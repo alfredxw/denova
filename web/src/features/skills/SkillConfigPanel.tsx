@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react'
-import { Bot, FileCode2, Loader2, Settings2, Trash2 } from 'lucide-react'
+import { Bot, FileCode2, Loader2, Settings2, Tags, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { InlineErrorNotice } from '@/components/common/inline-error-notice'
 import { AutosaveStatusIndicator } from '@/components/forms/autosave-status'
@@ -11,7 +11,7 @@ import { getSkillDocument, saveSkillDocument } from '@/lib/api'
 import type { SkillDocument, SkillScope, SkillScopeInfo } from '@/lib/api'
 import { isRevisionConflict, saveWithRevisionRecovery } from '@/lib/revision-conflict'
 import { rebaseTextWithRecovery } from '@/lib/autosave/rebase-with-recovery'
-import { SkillAgentSelector } from './skill-form-fields'
+import { SkillAgentSelector, SkillClassificationFields } from './skill-form-fields'
 import { SkillIdentityFields } from './SkillIdentityFields'
 import { parseAgentKeys, skillFilePath, skillNamePattern, updateSkillConfigContent } from './skill-utils'
 
@@ -61,6 +61,8 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
   const [scope, setScope] = useState<SkillScope>(document.scope)
   const [description, setDescription] = useState(document.description)
   const [agents, setAgents] = useState<VisibleAgentKey[]>(() => parseAgentKeys(document.agent))
+  const [category, setCategory] = useState(document.category || 'general')
+  const [capabilities, setCapabilities] = useState<string[]>(() => [...(document.capabilities || [])])
   const [savingIdentity, setSavingIdentity] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const trimmedName = name.trim()
@@ -71,8 +73,8 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
   const targetWritable = scopes.some((item) => item.scope === scope)
   const identityChanged = trimmedName !== document.name || scope !== document.scope
   const configContent = useMemo(
-    () => updateSkillConfigContent(content, document.name, trimmedDescription, agents),
-    [agents, content, document.name, trimmedDescription],
+    () => updateSkillConfigContent(content, document.name, trimmedDescription, agents, category, capabilities),
+    [agents, capabilities, category, content, document.name, trimmedDescription],
   )
   const configDraft = useMemo<SkillConfigAutosaveDraft>(() => ({
     id: `${document.scope}:${document.name}:config`,
@@ -164,7 +166,7 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
     setSavingIdentity(true)
     setError(null)
     try {
-      const nextContent = updateSkillConfigContent(content, trimmedName, trimmedDescription, agents)
+      const nextContent = updateSkillConfigContent(content, trimmedName, trimmedDescription, agents, category, capabilities)
       const target = { scope, name: trimmedName }
       let recoveryBaselineRevision = document.revision
       let latestRevision: string | undefined
@@ -249,6 +251,16 @@ export const SkillConfigPanel = forwardRef<SkillConfigPanelHandle, SkillConfigPa
             targetName={targetName}
             targetPath={targetPath}
             showPreview
+          />
+        </section>
+
+        <section className="flex flex-col gap-3 border-b border-[var(--nova-border)] pb-5">
+          <FormSectionHeader icon={Tags} title={t('skills.create.section.classification')} />
+          <SkillClassificationFields
+            category={category}
+            capabilities={capabilities}
+            onCategoryChange={setCategory}
+            onCapabilitiesChange={setCapabilities}
           />
         </section>
 

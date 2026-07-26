@@ -61,6 +61,7 @@ describe('ModelProfileSwitcher quick control', () => {
     await user.click(trigger)
     expect(screen.getByText('模型')).toBeInTheDocument()
     expect(screen.getByText('推理强度')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: '推理强度' })).toHaveClass('grid-cols-4')
     await user.click(screen.getByRole('menuitem', { name: '默认：GPT 4.1' }))
 
     await waitFor(() => expect(updateUserSettings).toHaveBeenCalledWith(expect.objectContaining({
@@ -74,7 +75,7 @@ describe('ModelProfileSwitcher quick control', () => {
     render(<ModelProfileSwitcher agentKey="ide" workspace="/tmp/book" />)
 
     await user.click(await screen.findByRole('button', { name: '切换模型，当前：Turbo 中' }))
-    await user.click(screen.getByRole('menuitem', { name: '高' }))
+    await user.click(screen.getByRole('button', { name: '高' }))
 
     await waitFor(() => expect(updateUserSettings).toHaveBeenLastCalledWith(expect.objectContaining({
       agent_models: expect.objectContaining({ ide: expect.objectContaining({ reasoning_effort: 'high' }) }),
@@ -83,7 +84,7 @@ describe('ModelProfileSwitcher quick control', () => {
     expect(highTrigger).toHaveAttribute('data-current-reasoning-effort', 'high')
 
     await user.click(highTrigger)
-    await user.click(screen.getByRole('menuitem', { name: '跟随配置' }))
+    await user.click(screen.getByRole('button', { name: '跟随配置' }))
 
     await waitFor(() => {
       const saved = vi.mocked(updateUserSettings).mock.calls.at(-1)?.[0]

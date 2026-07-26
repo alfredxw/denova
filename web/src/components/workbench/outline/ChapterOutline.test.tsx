@@ -69,13 +69,17 @@ describe('ChapterOutline', () => {
     vi.restoreAllMocks()
   })
 
-  it('固定区只展示一次最新细纲，单击直接打开全文', async () => {
+  it('当前细纲只在滚动目录展示一次，单击直接打开全文', async () => {
     const user = userEvent.setup()
     const { onSelectFile } = renderOutline()
 
     const navigation = screen.getByRole('navigation', { name: '作品大纲' })
     const latestPlan = screen.getByRole('button', { name: '第 6-10 章细纲' })
-    expect(navigation).not.toContainElement(latestPlan)
+    expect(screen.getByText('当前细纲')).toBeInTheDocument()
+    expect(navigation).toContainElement(latestPlan)
+    expect(screen.getByTestId('book-settings-header-frame')).not.toContainElement(latestPlan)
+    expect(latestPlan).toHaveClass('px-2', 'py-1', '!text-[11px]', '!leading-4')
+    expect(latestPlan).not.toHaveClass('px-3', 'py-2', 'text-xs')
     expect(screen.getAllByText('第 6-10 章细纲')).toHaveLength(1)
     expect(screen.queryByText('主角在城门口遇到旧识。')).not.toBeInTheDocument()
 
@@ -83,17 +87,20 @@ describe('ChapterOutline', () => {
     expect(onSelectFile).toHaveBeenCalledWith('setting/chapter-plans/group-2.md')
   })
 
-  it('可取消固定顶部区域，并持久化到滚动导航中', async () => {
+  it('可取消固定书籍设定区域，当前细纲始终留在滚动目录中', async () => {
     const user = userEvent.setup()
     renderOutline()
 
+    const navigation = screen.getByRole('navigation', { name: '作品大纲' })
+    const latestPlan = screen.getByRole('button', { name: '第 6-10 章细纲' })
+    expect(navigation).toContainElement(latestPlan)
+    expect(screen.getByTestId('book-settings-header-frame')).not.toContainElement(latestPlan)
     const pinnedFrameClass = screen.getByTestId('book-settings-header-frame').className
     expect(screen.getByRole('button', { name: '取消固定顶部区域' }).querySelector('.lucide-pin-off')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '取消固定顶部区域' })).not.toHaveClass('bg-[var(--nova-active)]')
 
     await user.click(screen.getByRole('button', { name: '取消固定顶部区域' }))
 
-    const navigation = screen.getByRole('navigation', { name: '作品大纲' })
     expect(navigation).toContainElement(screen.getByRole('button', { name: '第 6-10 章细纲' }))
     expect(screen.getByRole('button', { name: '固定顶部区域' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: '固定顶部区域' }).querySelector('.lucide-pin')).toBeInTheDocument()

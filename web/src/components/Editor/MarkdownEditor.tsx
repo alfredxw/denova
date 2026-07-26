@@ -14,7 +14,7 @@ import type { ChapterSummary } from '@/lib/api'
 import { isEditableTarget } from '@/lib/keyboard'
 import { Button } from '@/components/ui/button'
 import { THEME_STYLES, loadEditorSettings } from './EditorSettingsPanel'
-import type { EditorSettings } from './EditorSettingsPanel'
+import type { EditorSettings, ReadingTypographySettings } from './EditorSettingsPanel'
 import { EditorSurface } from './EditorSurface'
 import { EditorToolbar } from './EditorToolbar'
 import {
@@ -85,6 +85,7 @@ interface MarkdownEditorProps {
   onFlushHandlerChange?: (handler: EditorFlushHandler | null) => void
   documentReview?: DocumentReviewController
   documentReviewNavigationIntent?: DocumentReviewNavigationIntent | null
+  readingTypography?: ReadingTypographySettings
 }
 
 interface EditorSearchIntent {
@@ -115,6 +116,7 @@ export function MarkdownEditor({
   onFlushHandlerChange,
   documentReview,
   documentReviewNavigationIntent,
+  readingTypography,
 }: MarkdownEditorProps) {
   const { t } = useTranslation()
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -494,6 +496,7 @@ export function MarkdownEditor({
         onSettingsOpenChange={setSettingsOpen}
         settings={settings}
         onSettingsChange={setSettings}
+        readingTypography={readingTypography}
         onGenerateIllustration={onGenerateIllustration}
         onRevealChapter={onRevealChapter}
         generateIllustrationDisabled={generateIllustrationDisabled}

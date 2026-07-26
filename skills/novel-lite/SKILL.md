@@ -1,6 +1,9 @@
 ---
 name: novel-lite
 description: 快速续写、灵感初稿和低延迟正文生成；由主 Agent 直接输出结果，不启动审稿或修稿子流程。
+category: writing
+capabilities:
+  - writing-workflow
 agent: ide
 ---
 

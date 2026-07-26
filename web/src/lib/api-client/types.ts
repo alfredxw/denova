@@ -731,6 +731,8 @@ export interface SkillScopeInfo {
 export interface SkillSummary {
   name: string
   description: string
+  category?: string
+  capabilities?: string[]
   context?: string
   agent?: string
   model?: string
@@ -739,6 +741,11 @@ export interface SkillSummary {
   editable: boolean
   active: boolean
   updated_at?: string
+}
+
+export interface SkillCreateMetadata {
+  category?: string
+  capabilities?: string[]
 }
 
 export interface SkillFile {

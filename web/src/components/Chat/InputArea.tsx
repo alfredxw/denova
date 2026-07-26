@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, Eraser, Layers3, List, ListTree, PenLine, ScrollText, Sparkles, WandSparkles } from 'lucide-react'
+import { Archive, BadgeHelp, BarChart3, ClipboardList, Command as CommandIcon, Eraser, List, ScrollText, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { FileReferencePicker, type ReferencePickerItem } from './FileReferencePicker'
 import { TokenUsageDialog, type TokenUsageRecord } from './TokenUsagePanel'
@@ -33,10 +33,6 @@ const COMMANDS: Array<{ cmd: string; descKey: string; hintKey: string; icon: Luc
   { cmd: '/compact', descKey: 'chat.command.compact.desc', hintKey: 'chat.command.compact.hint', icon: Archive },
   { cmd: '/status', descKey: 'chat.command.status.desc', hintKey: 'chat.command.status.hint', icon: Sparkles },
   { cmd: '/help', descKey: 'chat.command.help.desc', hintKey: 'chat.command.help.hint', icon: BadgeHelp },
-  { cmd: '/outline', descKey: 'chat.command.outline.desc', hintKey: 'chat.command.outline.hint', icon: ListTree },
-  { cmd: '/group-plan', descKey: 'chat.command.groupPlan.desc', hintKey: 'chat.command.groupPlan.hint', icon: Layers3 },
-  { cmd: '/continue', descKey: 'chat.command.continue.desc', hintKey: 'chat.command.continue.hint', icon: PenLine },
-  { cmd: '/rewrite', descKey: 'chat.command.rewrite.desc', hintKey: 'chat.command.rewrite.hint', icon: WandSparkles },
 ]
 
 interface SkillCommand {
@@ -669,12 +665,12 @@ export function InputArea({
                       checked={planMode}
                       disabled={disabled || isGenerationActive}
                       onCheckedChange={() => onTogglePlanMode()}
-                      className="cursor-pointer pr-16 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
+                      className="cursor-pointer pr-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)] [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:static [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:order-2 [&_[data-slot=dropdown-menu-checkbox-item-indicator]]:size-4"
                       title={t('chat.plan.shiftTabHint')}
                     >
                       <ClipboardList className="h-3.5 w-3.5" />
                       <span className="min-w-0 flex-1">{t('chat.plan.short')}</span>
-                      <span className="text-[10px] text-[var(--nova-text-faint)]">Shift+Tab</span>
+                      <span className="order-3 ml-auto shrink-0 text-[10px] text-[var(--nova-text-faint)]">Shift+Tab</span>
                     </DropdownMenuCheckboxItem>
                     <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />
                   </>

@@ -8,6 +8,7 @@ import (
 
 	"denova/config"
 	agents "denova/internal/agents"
+	novaskills "denova/internal/agents/skills"
 	"denova/internal/book"
 	"denova/internal/imagepreset"
 	"denova/internal/interactive"
@@ -65,7 +66,7 @@ func (s *ChatAppService) prepareIDEChatRuntime(ctx context.Context, req agents.C
 		applyRequestLocaleToConfig(&runtime.cfg, req.Locale)
 	}
 	applyImagePresetRuntimePolicy(&runtime, &req)
-	if err := applyWritingSkillRuntimePolicy(&runtime, &req); err != nil {
+	if err := applyWritingSkillRuntimePolicy(ctx, &runtime, &req); err != nil {
 		return ideChatRuntime{}, req, err
 	}
 	if err := s.resolveReviewFeedback(ctx, runtime, &req); err != nil {
@@ -117,12 +118,46 @@ func applyImagePresetRuntimePolicy(runtime *ideChatRuntime, req *agents.ChatRequ
 	log.Printf("[agent-task] selected image preset id=%s name=%q workspace=%s agent_system_chars=%d tool_request_chars=%d", req.ImagePreset.ID, req.ImagePreset.Name, runtime.workspace, len([]rune(agentSystemPrompt)), len([]rune(toolRequestPrompt)))
 }
 
-func applyWritingSkillRuntimePolicy(runtime *ideChatRuntime, req *agents.ChatRequest) error {
+func applyWritingSkillRuntimePolicy(ctx context.Context, runtime *ideChatRuntime, req *agents.ChatRequest) error {
 	if runtime == nil || req == nil {
 		return nil
 	}
-	req.WritingSkill = agents.ResolveWritingSkillName(&runtime.cfg, req.WritingSkill)
-	log.Printf("[agent-task] selected writing skill name=%s workspace=%s", req.WritingSkill, runtime.workspace)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	selected := agents.ResolveWritingSkillName(&runtime.cfg, req.WritingSkill)
+	backend := novaskills.NewAgentBackend(
+		novaskills.NewDirectories(runtime.cfg.SkillsDir, runtime.cfg.DataDir(), runtime.workspace),
+		config.AgentKindIDE,
+		config.ResolveAgentSkillOverrides(&runtime.cfg, config.AgentKindIDE),
+	)
+	available, err := backend.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list available writing Skills: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	availableNames := make(map[string]bool, len(available))
+	for _, skill := range available {
+		if skill.HasCapability(novaskills.CapabilityWritingWorkflow) {
+			availableNames[skill.Name] = true
+		}
+	}
+	if availableNames[selected] {
+		req.WritingSkill = selected
+		log.Printf("[agent-task] selected writing skill name=%s workspace=%s", req.WritingSkill, runtime.workspace)
+		return nil
+	}
+
+	fallback := config.DefaultWritingSkillName
+	if selected != fallback && availableNames[fallback] {
+		req.WritingSkill = fallback
+		log.Printf("[agent-task] writing skill unavailable name=%s workspace=%s; fallback=%s", selected, runtime.workspace, fallback)
+		return nil
+	}
+	req.WritingSkill = ""
+	log.Printf("[agent-task] no active writing skill available requested=%s workspace=%s; continue without writing skill", selected, runtime.workspace)
 	return nil
 }
 

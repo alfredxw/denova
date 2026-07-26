@@ -5,6 +5,19 @@ import { describe, expect, it, vi } from 'vitest'
 import { InputArea } from './InputArea'
 
 describe('InputArea command menu', () => {
+  it('keeps retired writing actions out of the built-in command list', async () => {
+    const user = userEvent.setup()
+    render(<InputArea onSend={vi.fn()} disabled={false} />)
+
+    await user.type(screen.getByRole('textbox'), '/')
+
+    expect(screen.getByText('/plan')).toBeInTheDocument()
+    expect(screen.queryByText('/outline')).not.toBeInTheDocument()
+    expect(screen.queryByText('/group-plan')).not.toBeInTheDocument()
+    expect(screen.queryByText('/continue')).not.toBeInTheDocument()
+    expect(screen.queryByText('/rewrite')).not.toBeInTheDocument()
+  })
+
   it('shows enabled built-in commands before Skills when typing slash', async () => {
     const user = userEvent.setup()
     render(
@@ -13,14 +26,14 @@ describe('InputArea command menu', () => {
         disabled={false}
         commandScope="all"
         builtinCommands={['/clear']}
-        skills={[{ name: 'skills-creator', description: '创建 Skill' }]}
+        skills={[{ name: 'scene-tone', description: '场景语气' }]}
       />,
     )
 
     await user.type(screen.getByRole('textbox'), '/')
 
     const clearCommand = screen.getByText('/clear')
-    const skillCommand = screen.getByText('/skills-creator')
+    const skillCommand = screen.getByText('/scene-tone')
     expect(clearCommand).toBeInTheDocument()
     expect(skillCommand).toBeInTheDocument()
     expect(screen.queryByText('/plan')).not.toBeInTheDocument()
@@ -35,19 +48,19 @@ describe('InputArea command menu', () => {
         onSend={handleSend}
         disabled={false}
         commandScope="skills"
-        skills={[{ name: 'skills-creator', description: '创建 Skill' }]}
+        skills={[{ name: 'scene-tone', description: '场景语气' }]}
       />,
     )
 
-    await user.type(screen.getByRole('textbox'), '/ski')
-    await user.click(screen.getByText('/skills-creator'))
+    await user.type(screen.getByRole('textbox'), '/sce')
+    await user.click(screen.getByText('/scene-tone'))
 
     const textbox = screen.getByRole('textbox')
-    expect(within(textbox).getByText('/skills-creator')).toHaveClass('nova-composer-token')
+    expect(within(textbox).getByText('/scene-tone')).toHaveClass('nova-composer-token')
 
     await user.click(screen.getByRole('button', { name: '发送' }))
 
-    expect(handleSend).toHaveBeenCalledWith('/skills-creator')
+    expect(handleSend).toHaveBeenCalledWith('/scene-tone')
   })
 
   it('renders external file references inside the input and removes them as tokens', async () => {
@@ -92,7 +105,9 @@ describe('InputArea command menu', () => {
     expect(screen.queryByText('Plan')).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '输入动作' }))
-    await user.click(screen.getByRole('menuitemcheckbox', { name: /Plan/ }))
+    const planAction = screen.getByRole('menuitemcheckbox', { name: /Plan/ })
+    expect(within(planAction).getByText('Shift+Tab')).toHaveClass('order-3', 'ml-auto', 'shrink-0')
+    await user.click(planAction)
 
     expect(handleTogglePlanMode).toHaveBeenCalledTimes(1)
   })

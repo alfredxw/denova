@@ -153,6 +153,8 @@ func parseRecord(ctx context.Context, dir Directory, path, data string) (record,
 	}
 	fm.Name = strings.TrimSpace(fm.Name)
 	fm.Description = strings.TrimSpace(fm.Description)
+	fm.Category = normalizeCategory(fm.Category)
+	fm.Capabilities = normalizeCapabilities(fm.Capabilities)
 	if err := ValidateName(fm.Name); err != nil {
 		return record{}, err
 	}
@@ -173,15 +175,17 @@ func parseRecord(ctx context.Context, dir Directory, path, data string) (record,
 		},
 		directory: dir,
 		summary: SkillSummary{
-			Name:        fm.Name,
-			Description: fm.Description,
-			Context:     string(fm.Context),
-			Agent:       fm.Agent,
-			Model:       fm.Model,
-			Scope:       dir.Scope,
-			Path:        path,
-			Editable:    dir.Writable,
-			UpdatedAt:   updatedAt,
+			Name:         fm.Name,
+			Description:  fm.Description,
+			Category:     fm.Category,
+			Capabilities: append([]string(nil), fm.Capabilities...),
+			Context:      string(fm.Context),
+			Agent:        fm.Agent,
+			Model:        fm.Model,
+			Scope:        dir.Scope,
+			Path:         path,
+			Editable:     dir.Writable,
+			UpdatedAt:    updatedAt,
 		},
 	}, nil
 }

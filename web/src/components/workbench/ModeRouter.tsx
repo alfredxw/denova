@@ -17,6 +17,8 @@ import type { ActiveChatTask, AgentRuntimeQueuedCommand, BookRecord, BookSortMod
 import type { AgentUIMessage } from '@/lib/agent-ui'
 import type { ChatSendOptions } from '@/hooks/useAgentChat'
 import { usePersistedUserSettings } from '@/hooks/usePersistedUserSettings'
+import { useLayeredSettingsDraft } from '@/features/settings/use-layered-settings-draft'
+import { applyReadingTypographySettings } from '@/features/settings/font-variables'
 import type { AgentPartRef } from '@/lib/agent-message-view'
 import type { RightPanel, WorkspaceMode } from '@/stores/workspace-store'
 import { workspaceFileKind } from '@/lib/workspace-file-kind'
@@ -41,6 +43,12 @@ const AutomationsView = lazy(() => import('@/features/automations/AutomationsVie
 const SkillsView = lazy(() => import('@/features/skills/SkillsView').then((module) => ({ default: module.SkillsView })))
 const SettingsView = lazy(() => import('@/features/settings/SettingsView').then((module) => ({ default: module.SettingsView })))
 type MainRouteId = 'settings' | 'skills' | 'agents' | 'automations' | 'books' | 'interactive' | 'versions' | 'ide-lore' | 'ide-teller' | 'ide-writing'
+
+function normalizeReadingFontSize(value: unknown) {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(parsed)) return 18
+  return Math.min(28, Math.max(14, Math.round(parsed)))
+}
 
 interface ModeRouterProps {
   mode: WorkspaceMode
@@ -248,6 +256,26 @@ export function ModeRouter(props: ModeRouterProps) {
     onDismissNotice,
   } = props
 
+  const readingTypographyDraft = useLayeredSettingsDraft({
+    layer: 'user',
+    sourcePrefix: 'editor-reading-typography',
+  })
+  const readingFontFamily = readingTypographyDraft.draft.reading_font_family?.trim()
+    || readingTypographyDraft.layered?.effective.reading_font_family?.trim()
+    || 'source-han-serif'
+  const readingFontSize = normalizeReadingFontSize(
+    readingTypographyDraft.draft.reading_font_size
+      ?? readingTypographyDraft.layered?.effective.reading_font_size,
+  )
+  const updateReadingFontFamily = useCallback((fontFamily: string) => {
+    applyReadingTypographySettings({ readingFont: fontFamily, readingFontSize })
+    readingTypographyDraft.setDraft((current) => ({ ...current, reading_font_family: fontFamily }))
+  }, [readingFontSize, readingTypographyDraft.setDraft])
+  const updateReadingFontSize = useCallback((fontSize: number) => {
+    const normalized = normalizeReadingFontSize(fontSize)
+    applyReadingTypographySettings({ readingFont: readingFontFamily, readingFontSize: normalized })
+    readingTypographyDraft.setDraft((current) => ({ ...current, reading_font_size: normalized }))
+  }, [readingFontFamily, readingTypographyDraft.setDraft])
   const activeTab = openTabs.find((tab) => tabKey(tab) === activeTabKey) ?? null
   const activeFileKind = selectedFile ? workspaceFileKind(selectedFile) : null
   const ideContext = useMemo(() => ({
@@ -396,7 +424,7 @@ export function ModeRouter(props: ModeRouterProps) {
         detail: {
           autoSend: true,
           prompt: [
-            '/<chapter-illustration>',
+            '/chapter-illustration',
             '',
             `目标章节 / Target chapter: ${target}`,
             '',
@@ -682,6 +710,16 @@ export function ModeRouter(props: ModeRouterProps) {
                     onFlushHandlerChange={onEditorFlushHandlerChange}
                     documentReview={documentReviewController}
                     documentReviewNavigationIntent={documentReviewNavigationTarget?.path === selectedFile ? documentReviewNavigationTarget : null}
+                    readingTypography={{
+                      fontFamily: readingFontFamily,
+                      fontSize: readingFontSize,
+                      loading: readingTypographyDraft.layered === null,
+                      status: readingTypographyDraft.autosaveStatus,
+                      error: readingTypographyDraft.autosaveError || readingTypographyDraft.error,
+                      onFontFamilyChange: updateReadingFontFamily,
+                      onFontSizeChange: updateReadingFontSize,
+                      onRetry: readingTypographyDraft.saveNow,
+                    }}
                   />
                 )
               ) : (

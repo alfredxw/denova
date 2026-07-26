@@ -12,6 +12,8 @@ const editor = {
   'editor.illustrationMarkdownOnly': 'The current file is not a Markdown chapter, so image Markdown cannot be inserted',
   'editor.settings': 'Editor Settings',
   'editor.settingsDescription': 'Line height and editor background',
+  'editor.readingTypography': 'Font & Size',
+  'editor.readingTypographyDescription': 'Shared with Appearance settings and saved automatically',
   'editor.closeSearch': 'Close Search',
   'editor.searchPlaceholder': 'Search current article...',
   'editor.searchPrev': 'Previous match',

@@ -29,6 +29,7 @@ const planning = {
   'planning.writingProgress': 'Writing Progress',
   'planning.writingProgressTab': 'Progress',
   'planning.characterStates': 'State',
+  'planning.currentChapterPlan': 'Current Chapter Outline',
   'planning.outlineNavigation': 'Book outline',
   'planning.chapterPlans': 'Chapter Group Outlines',
   'planning.chapterPlanCount': '{{count}} groups',

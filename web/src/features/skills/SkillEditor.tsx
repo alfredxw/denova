@@ -10,10 +10,14 @@ import {
   isMarkdownSkillFile,
   keyOf,
   scopeLabel,
+  skillCategory,
+  skillCategoryLabel,
   skillDisplayPath,
   skillEntryFile,
   skillFileTreeForDocument,
   stripSkillMarkdownFrontmatter,
+  skillHasCapability,
+  writingWorkflowCapability,
 } from './skill-utils'
 
 interface SkillEditorProps {
@@ -83,6 +87,8 @@ export function SkillEditor({
           <div className="flex min-w-0 items-center gap-2">
             <span className="min-w-0 truncate font-mono text-sm text-[var(--nova-text)]">{editingEntryFile ? `/${document.name}` : selectedFilePath}</span>
             <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{scopeLabel(document.scope, t)}</span>
+            <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{skillCategoryLabel(skillCategory(document), t)}</span>
+            {skillHasCapability(document, writingWorkflowCapability) && <span className="rounded bg-[var(--nova-active)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text)]">{t('skills.capabilities.writingWorkflowBadge')}</span>}
             {!editingEntryFile && <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{t('skills.files.reference')}</span>}
             {!document.active && <span className="rounded bg-[var(--nova-warning-bg)] px-1.5 py-0.5 text-[10px] text-[var(--nova-warning)]">{t('skills.shadowed')}</span>}
             {document.agent && <span className="rounded bg-[var(--nova-surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--nova-text-muted)]">{document.agent}</span>}

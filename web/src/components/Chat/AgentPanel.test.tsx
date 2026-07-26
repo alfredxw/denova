@@ -24,7 +24,12 @@ vi.mock('@/hooks/useSkillCommands', () => ({
 
 vi.mock('@/hooks/useWritingSkillOptions', () => ({
   DEFAULT_WRITING_SKILL: 'novel-lite',
-  BUILTIN_WRITING_SKILLS: ['novel-lite', 'novel-standard', 'novel-heavy'],
+  BUILTIN_WRITING_SKILLS: ['novel-lite', 'novel-standard'],
+  resolveWritingSkillSelection: (configured: string, options: Array<{ name: string }>) => (
+    options.length === 0 || options.some((option) => option.name === configured)
+      ? configured || 'novel-lite'
+      : options.find((option) => option.name === 'novel-lite')?.name || options[0].name
+  ),
   useWritingSkillOptions: useWritingSkillOptionsMock,
 }))
 
@@ -57,7 +62,6 @@ describe('AgentPanel', () => {
     useWritingSkillOptionsMock.mockReturnValue([
       { name: 'novel-lite', description: 'Lite', scope: 'builtin', path: '/skills/novel-lite/SKILL.md', active: true, agent: 'ide' },
       { name: 'novel-standard', description: 'Standard', scope: 'builtin', path: '/skills/novel-standard/SKILL.md', active: true, agent: 'ide' },
-      { name: 'novel-heavy', description: 'Heavy', scope: 'builtin', path: '/skills/novel-heavy/SKILL.md', active: true, agent: 'ide' },
       { name: 'slow-burn', description: '慢热写作', scope: 'workspace', path: '/book/.nova/skills/slow-burn/SKILL.md', active: true, agent: 'ide' },
     ])
   })
@@ -222,12 +226,12 @@ describe('AgentPanel', () => {
     })
 
     window.dispatchEvent(new CustomEvent('nova:writing-agent-init', {
-      detail: { autoSend: true, prompt: '/<chapter-illustration>\n目标章节 / Target chapter: chapters/ch01.md' },
+      detail: { autoSend: true, prompt: '/chapter-illustration\n目标章节 / Target chapter: chapters/ch01.md' },
     }))
 
     await waitFor(() => {
       expect(handleSend).toHaveBeenCalledWith(
-        expect.stringContaining('/<chapter-illustration>'),
+        expect.stringContaining('/chapter-illustration'),
         expect.objectContaining({ writingSkill: 'novel-lite', tellerId: 'classic' }),
       )
     })

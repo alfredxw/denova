@@ -181,7 +181,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 		BackendPort:                intPtr(18080),
 		FrontendPort:               intPtr(15173),
 		AllowLANAccess:             boolPtr(true),
-		WritingSkillDefault:        "novel-heavy",
+		WritingSkillDefault:        "scene-first",
 		IDEImagePresetID:           "2d-illustration",
 		RemoteAccessUsername:       "reader",
 		RemoteAccessPasswordHash:   "$2a$10$hash",
@@ -249,7 +249,7 @@ func TestMergeOverridesNonZero(t *testing.T) {
 	if out.AllowLANAccess == nil || !*out.AllowLANAccess {
 		t.Fatalf("AllowLANAccess should override parent")
 	}
-	if out.WritingSkillDefault != "novel-heavy" {
+	if out.WritingSkillDefault != "scene-first" {
 		t.Fatalf("WritingSkillDefault should override parent: %s", out.WritingSkillDefault)
 	}
 	if out.IDEImagePresetID != "2d-illustration" {

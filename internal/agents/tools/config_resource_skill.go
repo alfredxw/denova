@@ -12,10 +12,12 @@ import (
 )
 
 type skillConfigValue struct {
-	Name        string   `json:"name,omitempty"`
-	Description string   `json:"description,omitempty"`
-	Agents      []string `json:"agents,omitempty"`
-	Content     string   `json:"content,omitempty"`
+	Name         string   `json:"name,omitempty"`
+	Description  string   `json:"description,omitempty"`
+	Agents       []string `json:"agents,omitempty"`
+	Category     string   `json:"category,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
+	Content      string   `json:"content,omitempty"`
 }
 
 func newSkillConfigResource(cfg *config.Config) configresources.Adapter {
@@ -92,7 +94,12 @@ func newSkillConfigResource(cfg *config.Config) configresources.Adapter {
 				}
 				var doc novaskills.Document
 				if strings.TrimSpace(value.Content) == "" {
-					doc, err = novaskills.CreateDocument(ctx, dirs, scope, id.Name, value.Description, value.Agents...)
+					doc, err = novaskills.CreateDocumentWithMetadata(ctx, dirs, scope, id.Name, novaskills.CreateMetadata{
+						Description:  value.Description,
+						Agents:       value.Agents,
+						Category:     value.Category,
+						Capabilities: value.Capabilities,
+					})
 				} else {
 					doc, err = novaskills.CreateDocumentWithContent(ctx, dirs, scope, id.Name, value.Content)
 				}

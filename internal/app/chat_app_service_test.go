@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"denova/config"
@@ -11,9 +13,12 @@ import (
 	"denova/internal/interactive"
 )
 
-func TestApplyWritingSkillRuntimePolicyResolvesDefaultNameOnly(t *testing.T) {
+func TestApplyWritingSkillRuntimePolicyKeepsAvailableDefault(t *testing.T) {
+	skillsDir := t.TempDir()
+	writeIDEWritingSkill(t, skillsDir, "novel-standard")
 	runtime := &ideChatRuntime{cfg: config.Config{
-		WritingSkillDefault: "novel-heavy",
+		SkillsDir:           skillsDir,
+		WritingSkillDefault: "novel-standard",
 		SubAgents: []config.SubAgentConfig{{
 			ID:           "researcher",
 			Description:  "Reads context.",
@@ -22,11 +27,11 @@ func TestApplyWritingSkillRuntimePolicyResolvesDefaultNameOnly(t *testing.T) {
 	}}
 	req := &agents.ChatRequest{Message: "帮我分析一下 progress.md 有没有问题"}
 
-	if err := applyWritingSkillRuntimePolicy(runtime, req); err != nil {
+	if err := applyWritingSkillRuntimePolicy(context.Background(), runtime, req); err != nil {
 		t.Fatal(err)
 	}
-	if req.WritingSkill != "novel-heavy" {
-		t.Fatalf("writing skill = %s, want novel-heavy", req.WritingSkill)
+	if req.WritingSkill != "novel-standard" {
+		t.Fatalf("writing skill = %s, want novel-standard", req.WritingSkill)
 	}
 	if len(runtime.cfg.SubAgents) != 1 || runtime.cfg.SubAgents[0].ID != "researcher" {
 		t.Fatalf("writing skill selection should not mutate subagents: %+v", runtime.cfg.SubAgents)
@@ -34,10 +39,12 @@ func TestApplyWritingSkillRuntimePolicyResolvesDefaultNameOnly(t *testing.T) {
 }
 
 func TestApplyWritingSkillRuntimePolicyKeepsCustomSkillAsDynamicHintOnly(t *testing.T) {
-	runtime := &ideChatRuntime{cfg: config.Config{WritingSkillDefault: "novel-standard"}}
+	skillsDir := t.TempDir()
+	writeIDEWritingSkill(t, skillsDir, "slow-burn")
+	runtime := &ideChatRuntime{cfg: config.Config{SkillsDir: skillsDir, WritingSkillDefault: "novel-standard"}}
 	req := &agents.ChatRequest{Message: "写一个雨夜重逢的场景", WritingSkill: "slow-burn"}
 
-	if err := applyWritingSkillRuntimePolicy(runtime, req); err != nil {
+	if err := applyWritingSkillRuntimePolicy(context.Background(), runtime, req); err != nil {
 		t.Fatal(err)
 	}
 	if req.WritingSkill != "slow-burn" {
@@ -45,6 +52,52 @@ func TestApplyWritingSkillRuntimePolicyKeepsCustomSkillAsDynamicHintOnly(t *test
 	}
 	if runtime.cfg.GeneralSubAgents.IDE != nil || len(runtime.cfg.SubAgents) != 0 {
 		t.Fatalf("writing skill selection should not mutate agent config: %+v", runtime.cfg)
+	}
+}
+
+func TestApplyWritingSkillRuntimePolicyFallsBackFromUnavailablePreset(t *testing.T) {
+	skillsDir := t.TempDir()
+	writeIDEWritingSkill(t, skillsDir, config.DefaultWritingSkillName)
+	runtime := &ideChatRuntime{cfg: config.Config{SkillsDir: skillsDir, WritingSkillDefault: "retired-preset"}}
+	req := &agents.ChatRequest{Message: "继续写作"}
+
+	if err := applyWritingSkillRuntimePolicy(context.Background(), runtime, req); err != nil {
+		t.Fatal(err)
+	}
+	if req.WritingSkill != config.DefaultWritingSkillName {
+		t.Fatalf("writing skill = %s, want fallback %s", req.WritingSkill, config.DefaultWritingSkillName)
+	}
+}
+
+func TestApplyWritingSkillRuntimePolicyRejectsUnclassifiedIDEUtility(t *testing.T) {
+	skillsDir := t.TempDir()
+	writeIDEWritingSkill(t, skillsDir, config.DefaultWritingSkillName)
+	writeIDESkill(t, skillsDir, "humanizer", "category: writing\n")
+	runtime := &ideChatRuntime{cfg: config.Config{SkillsDir: skillsDir}}
+	req := &agents.ChatRequest{Message: "润色这一段", WritingSkill: "humanizer"}
+
+	if err := applyWritingSkillRuntimePolicy(context.Background(), runtime, req); err != nil {
+		t.Fatal(err)
+	}
+	if req.WritingSkill != config.DefaultWritingSkillName {
+		t.Fatalf("writing utility should not become workflow: got %s want %s", req.WritingSkill, config.DefaultWritingSkillName)
+	}
+}
+
+func writeIDEWritingSkill(t *testing.T, root, name string) {
+	t.Helper()
+	writeIDESkill(t, root, name, "category: writing\ncapabilities: [writing-workflow]\n")
+}
+
+func writeIDESkill(t *testing.T, root, name, metadata string) {
+	t.Helper()
+	dir := filepath.Join(root, name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: " + name + "\ndescription: writing flow\n" + metadata + "agent: ide\n---\n\n# Writing\n"
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 

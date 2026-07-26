@@ -2,7 +2,7 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, 
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronsDownUp, ChevronsUpDown, FileText, GripVertical, Plus, Search } from 'lucide-react'
+import { ChevronDown, ChevronsDownUp, ChevronsUpDown, FileText, Plus, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 import { Badge } from '@/components/ui/badge'
@@ -323,30 +323,23 @@ export function ResourceDirectory({
 }
 
 function SortableDirectoryItemRow({ item, active, onSelect }: { item: ResourceDirectoryItem; active: boolean; onSelect: () => void }) {
-  const { t } = useTranslation()
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
   return (
-    <div
-      ref={setNodeRef}
+    <button
+      ref={(node) => {
+        setNodeRef(node)
+        setActivatorNodeRef(node)
+      }}
+      type="button"
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn(directoryItemRowClassName(item, active), 'group gap-0.5 px-1.5', isDragging && 'opacity-35')}
+      className={cn(directoryItemRowClassName(item, active), 'cursor-grab active:cursor-grabbing', isDragging && 'opacity-35')}
+      onClick={onSelect}
+      aria-current={active ? 'true' : undefined}
+      {...attributes}
+      {...listeners}
     >
-      <button
-        ref={setActivatorNodeRef}
-        type="button"
-        className="flex size-5 shrink-0 cursor-grab items-center justify-center rounded text-[var(--nova-text-faint)] opacity-45 transition-[opacity,color,background] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] hover:opacity-100 focus-visible:opacity-100 active:cursor-grabbing"
-        aria-label={t('common.reorder')}
-        title={t('common.reorderNamed', { name: item.title })}
-        onClick={(event) => event.stopPropagation()}
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="h-3.5 w-3.5" />
-      </button>
-      <button type="button" onClick={onSelect} aria-current={active ? 'true' : undefined} className="flex min-w-0 flex-1 items-center gap-2 px-0.5 text-left">
-        <DirectoryItemContent item={item} />
-      </button>
-    </div>
+      <DirectoryItemContent item={item} />
+    </button>
   )
 }
 
@@ -365,8 +358,7 @@ function DirectoryItemRow({ item, active, onSelect }: { item: ResourceDirectoryI
 
 function DirectoryItemDragOverlay({ item }: { item: ResourceDirectoryItem }) {
   return (
-    <div className={cn(directoryItemRowClassName(item, false), 'w-60 gap-1.5 bg-[var(--nova-surface-2)] shadow-[0_18px_45px_rgba(0,0,0,0.22)] ring-1 ring-[var(--nova-accent)]/25')}>
-      <span className="flex size-5 shrink-0 items-center justify-center text-[var(--nova-text-faint)]"><GripVertical className="h-3.5 w-3.5" /></span>
+    <div className={cn(directoryItemRowClassName(item, false), 'w-60 bg-[var(--nova-surface-2)] shadow-[0_18px_45px_rgba(0,0,0,0.22)] ring-1 ring-[var(--nova-accent)]/25')}>
       <DirectoryItemContent item={item} />
     </div>
   )

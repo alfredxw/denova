@@ -36,11 +36,12 @@ const REASONING_EFFORTS: readonly ReasoningEffort[] = ['', 'low', 'medium', 'hig
 
 export function ModelProfileSwitcher({ agentKey, workspace, disabled = false }: ModelProfileSwitcherProps) {
   const selector = useModelProfileSelector({ agentKey, workspace, disabled })
+  const [open, setOpen] = useState(false)
 
   if (!selector.enabled) return null
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
@@ -65,7 +66,13 @@ export function ModelProfileSwitcher({ agentKey, workspace, disabled = false }: 
         aria-label={selector.t('chat.modelProfile.action')}
         className="w-60 border-[var(--nova-border)] bg-[var(--nova-surface-2)] p-1.5 text-[var(--nova-text)]"
       >
-        <ModelProfileOptions selector={selector} />
+        <ModelProfileOptions
+          selector={selector}
+          onReasoningEffortSelect={(effort) => {
+            setOpen(false)
+            void selector.selectReasoningEffort(effort)
+          }}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -199,7 +206,13 @@ function useModelProfileSelector({ agentKey, workspace, disabled = false }: Mode
   }
 }
 
-function ModelProfileOptions({ selector }: { selector: ModelProfileSelector }) {
+function ModelProfileOptions({
+  selector,
+  onReasoningEffortSelect,
+}: {
+  selector: ModelProfileSelector
+  onReasoningEffortSelect: (effort: ReasoningEffort) => void
+}) {
   const {
     t,
     options,
@@ -208,7 +221,6 @@ function ModelProfileOptions({ selector }: { selector: ModelProfileSelector }) {
     savingSelection,
     error,
     selectProfile,
-    selectReasoningEffort,
   } = selector
   return (
     <>
@@ -237,24 +249,36 @@ function ModelProfileOptions({ selector }: { selector: ModelProfileSelector }) {
       <div className="px-1.5 pb-1 pt-0.5 text-[10px] font-medium text-[var(--nova-text-faint)]">
         {t('chat.modelProfile.reasoningSection')}
       </div>
-      {REASONING_EFFORTS.map((effort) => {
-        const label = effort
-          ? t(`chat.modelProfile.reasoning.${effort}`)
-          : t('chat.modelProfile.reasoning.inherit')
-        return (
-          <DropdownMenuItem
-            key={effort || 'inherit'}
-            disabled={Boolean(savingSelection)}
-            onSelect={() => void selectReasoningEffort(effort)}
-            className="cursor-pointer py-1.5 text-xs focus:bg-[var(--nova-active)] focus:text-[var(--nova-text)]"
-          >
-            {savingSelection?.kind === 'effort' && savingSelection.value === effort
-              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              : <Check className={`h-3.5 w-3.5 ${effort === currentReasoningEffort ? 'opacity-100' : 'opacity-0'}`} />}
-            <span className="min-w-0 flex-1 truncate">{label}</span>
-          </DropdownMenuItem>
-        )
-      })}
+      <div
+        role="group"
+        aria-label={t('chat.modelProfile.reasoningSection')}
+        className="grid grid-cols-4 gap-1 px-1 pb-1"
+      >
+        {REASONING_EFFORTS.map((effort) => {
+          const selected = effort === currentReasoningEffort
+          const label = effort
+            ? t(`chat.modelProfile.reasoning.${effort}`)
+            : t('chat.modelProfile.reasoning.inherit')
+          return (
+            <button
+              key={effort || 'inherit'}
+              type="button"
+              disabled={Boolean(savingSelection)}
+              aria-pressed={selected}
+              onClick={() => onReasoningEffortSelect(effort)}
+              className={`flex h-7 min-w-0 items-center justify-center rounded-md border px-1 text-[11px] transition-colors disabled:opacity-50 ${
+                selected
+                  ? 'border-[var(--nova-border)] bg-[var(--nova-active)] text-[var(--nova-text)]'
+                  : 'border-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'
+              }`}
+            >
+              {savingSelection?.kind === 'effort' && savingSelection.value === effort
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <span className="truncate">{label}</span>}
+            </button>
+          )
+        })}
+      </div>
       {error ? (
         <>
           <DropdownMenuSeparator className="bg-[var(--nova-border-soft)]" />

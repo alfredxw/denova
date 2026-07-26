@@ -31,6 +31,7 @@ type (
 	AgentSession                     = session.Session
 
 	SkillScope               = skills.Scope
+	SkillCreateMetadata      = skills.CreateMetadata
 	SkillGitHubSource        = skills.GitHubSource
 	SkillRemoteArchiveSource = skills.RemoteArchiveSource
 )

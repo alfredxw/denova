@@ -92,6 +92,7 @@ func (s *ImageAppService) generateWithAgentUsingHooks(runtime *imageWorkspaceRun
 		sourceContext: strings.TrimSpace(req.SourceContext),
 		sourceSummary: imageAgentSourceSummary(req),
 		contextBudget: agents.ContextBudgetForAgent(&cfg, config.AgentKindImage),
+		skillConfig:   cfg,
 	}
 	var result ImageAgentGenerateResult
 	var runErr error
@@ -193,6 +194,7 @@ type imageAgentConversation struct {
 	sourceSummary string
 	assistant     string
 	contextBudget agentcontext.Budget
+	skillConfig   config.Config
 }
 
 func (c *imageAgentConversation) ModelContextBudget() agentcontext.Budget {
@@ -200,6 +202,13 @@ func (c *imageAgentConversation) ModelContextBudget() agentcontext.Budget {
 		return agentcontext.DefaultBudget()
 	}
 	return c.contextBudget
+}
+
+func (c *imageAgentConversation) ResolveExplicitSkills(ctx context.Context, message string) ([]agents.ExplicitSkillInvocation, error) {
+	if c == nil {
+		return nil, nil
+	}
+	return agents.ResolveExplicitSkillInvocations(ctx, &c.skillConfig, config.AgentKindImage, message)
 }
 
 func (c *imageAgentConversation) AssembleModelContext(ctx context.Context, _ string, input agents.ModelContextInput) (agents.ModelContextResult, error) {
@@ -237,9 +246,9 @@ func (c *imageAgentConversation) ContextSourceSummary() string               { r
 func imageAgentMessage(req ImageAgentGenerateRequest) string {
 	var sb strings.Builder
 	if skill := strings.TrimSpace(req.SkillName); skill != "" {
-		sb.WriteString("/<")
+		sb.WriteString("/")
 		sb.WriteString(skill)
-		sb.WriteString(">\n\n")
+		sb.WriteString("\n\n")
 	}
 	sb.WriteString("# 图像生成请求\n\n")
 	writeImageAgentField(&sb, "purpose", req.Purpose)

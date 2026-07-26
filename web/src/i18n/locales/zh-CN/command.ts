@@ -1,6 +1,7 @@
 const command = {
   'command.toggleRightPanel': '切换右侧栏',
   'command.continueWriting': '继续写作',
+  'command.continueWritingPrompt': '请继续写作当前作品。',
   'command.empty': '未找到匹配命令',
   'command.group.workbench': '工作台',
   'command.openAgent': '打开创作Agent',
