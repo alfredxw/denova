@@ -435,7 +435,7 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: /稳健叙事/ }))
     fireEvent.change(screen.getByDisplayValue('经典叙事'), { target: { value: '失败后重试' } })
     flushSettingPanelAutosave()
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('自动保存失败'))
+    await waitFor(() => expect(screen.getByRole('status', { name: /自动保存失败/ })).toHaveTextContent('自动保存失败'))
 
     expandSection('图像方案')
     await user.click(screen.getByRole('button', { name: /游戏 CG/ }))
@@ -640,7 +640,7 @@ describe('SettingPanel', () => {
       'a-r2',
       '/workspace',
     )
-    expect(screen.getByRole('status')).toHaveAccessibleName('所有更改均已保存')
+    expect(screen.getByRole('status', { name: '所有更改均已保存' })).toHaveAccessibleName('所有更改均已保存')
   })
 
   it('restores an overridden built-in narrative style from the top-right action', async () => {
@@ -1054,7 +1054,7 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: /高级 Markdown 策略提示/ }))
     fireEvent.change(screen.getByPlaceholderText(/优先制造可逆但有代价的选择/), { target: { value: 'a'.repeat((64 * 1024) + 1) } })
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('修复配置后将自动保存'))
+    await waitFor(() => expect(screen.getByRole('status', { name: /修复配置后将自动保存/ })).toHaveTextContent('修复配置后将自动保存'))
     expect(screen.getByText('策略提示已超过 65536 bytes（当前 65537 bytes）；缩短后将自动保存。')).toBeInTheDocument()
     expect(updateStoryDirector).not.toHaveBeenCalled()
   })
@@ -1068,7 +1068,7 @@ describe('SettingPanel', () => {
     await user.click(screen.getByRole('button', { name: 'JSON' }))
     fireEvent.change(screen.getByTestId('monaco-json-editor'), { target: { value: '{' } })
 
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('修复配置后将自动保存'))
+    await waitFor(() => expect(screen.getByRole('status', { name: /修复配置后将自动保存/ })).toHaveTextContent('修复配置后将自动保存'))
     expect(screen.getByText('请先修复 JSON，再切回可视化视图。')).toBeInTheDocument()
 
     expandSection('TRPG 检定')

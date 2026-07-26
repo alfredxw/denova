@@ -94,19 +94,36 @@ describe('ResourceDirectory', () => {
 
     await user.click(screen.getByLabelText('新建角色'))
     expect(onCreate).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('艾拉')).toBeInTheDocument()
 
     rerender(<ResourceDirectory sections={sections} activeId={null} onSelect={() => {}} saving />)
     expect(screen.getByLabelText('新建角色')).toBeDisabled()
   })
 
-  it('toggles section collapse via the chevron button', async () => {
+  it('toggles a section from the full header row', async () => {
     const user = userEvent.setup()
-    render(<ResourceDirectory sections={buildSections()} activeId={null} onSelect={() => {}} />)
+    const sections = buildSections()
+    sections[0].toggleOnHeaderClick = true
+    render(<ResourceDirectory sections={sections} activeId={null} onSelect={() => {}} />)
 
-    await user.click(screen.getByLabelText('折叠角色'))
+    await user.click(screen.getByText('角色'))
     expect(screen.queryByText('艾拉')).not.toBeInTheDocument()
-    await user.click(screen.getByLabelText('展开角色'))
+    await user.click(screen.getByText('角色'))
     expect(screen.getByText('艾拉')).toBeInTheDocument()
+  })
+
+  it('shows drag handles only for reorderable unfiltered sections', async () => {
+    const user = userEvent.setup()
+    const sections = buildSections()
+    sections[0].reorderable = true
+    render(<ResourceDirectory sections={sections} activeId={null} onSelect={() => {}} onReorderItems={() => {}} />)
+
+    expect(screen.getAllByLabelText('拖拽排序')).toHaveLength(2)
+    expect(screen.getByTitle('拖拽排序 艾拉')).toBeInTheDocument()
+    expect(screen.getByTitle('拖拽排序 凯尔')).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('搜索'), '艾拉')
+    expect(screen.queryByLabelText('拖拽排序')).not.toBeInTheDocument()
   })
 
   it('renders pinned entries above the groups and selects them', async () => {

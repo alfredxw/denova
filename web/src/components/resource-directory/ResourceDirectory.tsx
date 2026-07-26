@@ -1,5 +1,8 @@
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
+import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronsDownUp, ChevronsUpDown, FileText, Plus, Search } from 'lucide-react'
+import { ChevronDown, ChevronsDownUp, ChevronsUpDown, FileText, GripVertical, Plus, Search } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
 import { Badge } from '@/components/ui/badge'
@@ -45,6 +48,8 @@ interface ResourceDirectoryProps {
   headerContent?: ReactNode
   /** Empty catalog content; search-empty messaging remains built in. */
   emptyContent?: ReactNode
+  /** 同一分组内的排序结果；条目 id 按新的显示顺序返回。 */
+  onReorderItems?: (sectionId: string, orderedItemIds: string[]) => void
 }
 
 /**
@@ -69,6 +74,7 @@ export function ResourceDirectory({
   showSearch = true,
   headerContent,
   emptyContent,
+  onReorderItems,
 }: ResourceDirectoryProps) {
   const { t } = useTranslation()
   const [query = '', setQuery] = useControllableState({
@@ -77,6 +83,11 @@ export function ResourceDirectory({
     onChange: onQueryChange,
   })
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
+  const [draggingItem, setDraggingItem] = useState<ResourceDirectoryItem | null>(null)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   const trimmedQuery = query.trim()
   const searching = trimmedQuery.length > 0
@@ -119,6 +130,117 @@ export function ResourceDirectory({
   }
 
   const totalVisible = visibleSections.reduce((sum, entry) => sum + entry.items.length, 0)
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const activeId = String(event.active.id)
+    const item = visibleSections.flatMap((entry) => entry.items).find((entry) => entry.id === activeId)
+    setDraggingItem(item ?? null)
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setDraggingItem(null)
+    if (!event.over || event.active.id === event.over.id || !onReorderItems) return
+    const activeId = String(event.active.id)
+    const overId = String(event.over.id)
+    const entry = visibleSections.find(({ section, items }) => (
+      section.reorderable
+      && items.some((item) => item.id === activeId)
+      && items.some((item) => item.id === overId)
+    ))
+    if (!entry) return
+    const ids = entry.items.map((item) => item.id)
+    onReorderItems(entry.section.id, arrayMove(ids, ids.indexOf(activeId), ids.indexOf(overId)))
+  }
+
+  const directoryContent = (
+    <div className="w-0 min-w-full p-2">
+      {searching && totalVisible === 0 ? (
+        <div className="px-2 py-6 text-center text-xs text-[var(--nova-text-faint)]">{t('common.searchNoResults')}</div>
+      ) : totalVisible === 0 && emptyContent ? (
+        emptyContent
+      ) : (
+        visibleSections.map(({ section, items }) => {
+          const SectionIcon = section.icon
+          const collapsed = isCollapsed(section, items)
+          const reorderable = Boolean(onReorderItems && section.reorderable && !searching && items.length > 1)
+          const itemRows = items.map((item) => reorderable ? (
+            <SortableDirectoryItemRow
+              key={item.id}
+              item={item}
+              active={activeId === item.id}
+              onSelect={() => onSelect(item.id)}
+            />
+          ) : (
+            <DirectoryItemRow
+              key={item.id}
+              item={item}
+              active={activeId === item.id}
+              onSelect={() => onSelect(item.id)}
+            />
+          ))
+          return (
+            <section key={section.id} className={items.length ? 'mb-2' : 'mb-1'}>
+              <div className={cn('flex h-8 items-center rounded text-xs', !section.toggleOnHeaderClick && 'gap-2 px-2', items.length ? 'text-[var(--nova-text-muted)]' : 'text-[var(--nova-text-faint)]')}>
+                {section.toggleOnHeaderClick ? (
+                  <button
+                    type="button"
+                    className="nova-nav-item flex h-full min-w-0 flex-1 items-center gap-2 rounded px-2 text-left hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+                    onClick={() => toggleSection(section, items)}
+                    aria-label={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
+                    aria-expanded={!collapsed}
+                    title={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
+                  >
+                    <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition-transform', collapsed && '-rotate-90')} />
+                    {SectionIcon && <SectionIcon className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />}
+                    <span className="min-w-0 flex-1 truncate font-medium" title={section.description}>{section.label}</span>
+                    <span className="shrink-0 text-[11px] text-[var(--nova-text-faint)]">{items.length}</span>
+                    {section.headerMeta}
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="nova-nav-item rounded p-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
+                      onClick={() => toggleSection(section, items)}
+                      aria-label={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
+                      aria-expanded={!collapsed}
+                      title={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
+                    >
+                      <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', collapsed && '-rotate-90')} />
+                    </button>
+                    {SectionIcon && <SectionIcon className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />}
+                    <span className="min-w-0 flex-1 truncate font-medium" title={section.description}>{section.label}</span>
+                    <span className="text-[11px] text-[var(--nova-text-faint)]">{items.length}</span>
+                    {section.headerMeta}
+                  </>
+                )}
+                {section.onCreate && (
+                  <button
+                    type="button"
+                    className={cn('nova-nav-item rounded p-1 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]', section.toggleOnHeaderClick && 'mr-1')}
+                    disabled={saving}
+                    onClick={section.onCreate}
+                    aria-label={section.createLabel ?? `${t('common.create')} ${section.label}`}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {!collapsed && items.length > 0 && (
+                <div className="ml-5 flex flex-col gap-0.5 border-l border-[var(--nova-border)] pl-2">
+                  {reorderable ? (
+                    <SortableContext items={items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
+                      {itemRows}
+                    </SortableContext>
+                  ) : itemRows}
+                </div>
+              )}
+            </section>
+          )
+        })
+      )}
+    </div>
+  )
 
   return (
     <>
@@ -183,82 +305,77 @@ export function ResourceDirectory({
         </div>}
       </div>}
       <ScrollArea className="min-h-0 flex-1">
-        <div className="w-0 min-w-full p-2">
-          {searching && totalVisible === 0 ? (
-            <div className="px-2 py-6 text-center text-xs text-[var(--nova-text-faint)]">{t('common.searchNoResults')}</div>
-          ) : totalVisible === 0 && emptyContent ? (
-            emptyContent
-          ) : (
-            visibleSections.map(({ section, items }) => {
-              const SectionIcon = section.icon
-              const collapsed = isCollapsed(section, items)
-              return (
-                <section key={section.id} className={items.length ? 'mb-2' : 'mb-1'}>
-                  <div className={cn('flex h-8 items-center gap-2 rounded px-2 text-xs', items.length ? 'text-[var(--nova-text-muted)]' : 'text-[var(--nova-text-faint)]')}>
-                    <button
-                      type="button"
-                      className="nova-nav-item rounded p-0.5 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-                      onClick={() => toggleSection(section, items)}
-                      aria-label={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
-                      aria-expanded={!collapsed}
-                      title={`${collapsed ? t('common.expand') : t('common.collapse')}${section.label}`}
-                    >
-                      <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', collapsed && '-rotate-90')} />
-                    </button>
-                    {SectionIcon && <SectionIcon className="h-3.5 w-3.5 text-[var(--nova-text-faint)]" />}
-                    <span className="min-w-0 flex-1 truncate font-medium" title={section.description}>{section.label}</span>
-                    <span className="text-[11px] text-[var(--nova-text-faint)]">{items.length}</span>
-                    {section.headerMeta}
-                    {section.onCreate && (
-                      <button
-                        type="button"
-                        className="nova-nav-item rounded p-1 text-[var(--nova-text-faint)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]"
-                        disabled={saving}
-                        onClick={section.onCreate}
-                        aria-label={section.createLabel ?? `${t('common.create')} ${section.label}`}
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                  {!collapsed && items.length > 0 && (
-                    <div className="ml-5 flex flex-col gap-0.5 border-l border-[var(--nova-border)] pl-2">
-                      {items.map((item) => (
-                        <DirectoryItemRow
-                          key={item.id}
-                          item={item}
-                          active={activeId === item.id}
-                          onSelect={() => onSelect(item.id)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </section>
-              )
-            })
-          )}
-        </div>
+        {onReorderItems ? (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragCancel={() => setDraggingItem(null)}
+            onDragEnd={handleDragEnd}
+          >
+            {directoryContent}
+            <DragOverlay>{draggingItem ? <DirectoryItemDragOverlay item={draggingItem} /> : null}</DragOverlay>
+          </DndContext>
+        ) : directoryContent}
       </ScrollArea>
     </>
   )
 }
 
+function SortableDirectoryItemRow({ item, active, onSelect }: { item: ResourceDirectoryItem; active: boolean; onSelect: () => void }) {
+  const { t } = useTranslation()
+  const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id })
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(directoryItemRowClassName(item, active), 'group gap-0.5 px-1.5', isDragging && 'opacity-35')}
+    >
+      <button
+        ref={setActivatorNodeRef}
+        type="button"
+        className="flex size-5 shrink-0 cursor-grab items-center justify-center rounded text-[var(--nova-text-faint)] opacity-45 transition-[opacity,color,background] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)] hover:opacity-100 focus-visible:opacity-100 active:cursor-grabbing"
+        aria-label={t('common.reorder')}
+        title={t('common.reorderNamed', { name: item.title })}
+        onClick={(event) => event.stopPropagation()}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+      <button type="button" onClick={onSelect} aria-current={active ? 'true' : undefined} className="flex min-w-0 flex-1 items-center gap-2 px-0.5 text-left">
+        <DirectoryItemContent item={item} />
+      </button>
+    </div>
+  )
+}
+
 function DirectoryItemRow({ item, active, onSelect }: { item: ResourceDirectoryItem; active: boolean; onSelect: () => void }) {
-  const ItemIcon = item.icon ?? FileText
   return (
     <button
       type="button"
       onClick={onSelect}
       aria-current={active ? 'true' : undefined}
-      className={cn(
-        'flex w-full items-center gap-2 rounded-md px-2 text-left text-xs transition',
-        item.summary ? 'py-1.5' : 'h-8',
-        active
-          ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]'
-          : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
-        item.disabled && 'opacity-50',
-      )}
+      className={directoryItemRowClassName(item, active)}
     >
+      <DirectoryItemContent item={item} />
+    </button>
+  )
+}
+
+function DirectoryItemDragOverlay({ item }: { item: ResourceDirectoryItem }) {
+  return (
+    <div className={cn(directoryItemRowClassName(item, false), 'w-60 gap-1.5 bg-[var(--nova-surface-2)] shadow-[0_18px_45px_rgba(0,0,0,0.22)] ring-1 ring-[var(--nova-accent)]/25')}>
+      <span className="flex size-5 shrink-0 items-center justify-center text-[var(--nova-text-faint)]"><GripVertical className="h-3.5 w-3.5" /></span>
+      <DirectoryItemContent item={item} />
+    </div>
+  )
+}
+
+function DirectoryItemContent({ item }: { item: ResourceDirectoryItem }) {
+  const ItemIcon = item.icon ?? FileText
+  return (
+    <>
       {item.thumbnailUrl ? (
         <span className="flex h-5 w-5 shrink-0 overflow-hidden rounded-md border border-[var(--nova-border)] bg-[var(--nova-surface)]">
           <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
@@ -274,7 +391,18 @@ function DirectoryItemRow({ item, active, onSelect }: { item: ResourceDirectoryI
         {item.summary && <span className="block truncate text-[11px] text-[var(--nova-text-faint)]">{item.summary}</span>}
       </span>
       {item.badges?.map((badge, index) => <ItemBadge key={`${badge.label}-${index}`} badge={badge} />)}
-    </button>
+    </>
+  )
+}
+
+function directoryItemRowClassName(item: ResourceDirectoryItem, active: boolean) {
+  return cn(
+    'flex w-full items-center gap-2 rounded-md px-2 text-left text-xs transition',
+    item.summary ? 'py-1.5' : 'h-8',
+    active
+      ? 'is-active bg-[var(--nova-active)] text-[var(--nova-text)]'
+      : 'text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]',
+    item.disabled && 'opacity-50',
   )
 }
 

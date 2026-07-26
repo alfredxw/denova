@@ -17,6 +17,7 @@ import type { PresetResourceKind, PresetUsageMode } from '../../preset-ownership
 import type { ActorStateModule, EventPackageModule, ImagePreset, RuleSystemModule, StoryDirector, Teller } from '../../types'
 import { PresetResourcePane } from './PresetResourcePane'
 import { buildPresetDirectorySections, presetDirectoryEntryId } from './preset-directory-sections'
+import { applyPresetDirectoryOrder, usePresetDirectoryOrder } from './use-preset-directory-order'
 import { usePresetDraftSync, usePresetResources } from './use-preset-resources'
 import { usePresetSelection } from './use-preset-selection'
 import { createPresetConflictResolver, usePresetResourceAutosave } from './usePresetResourceAutosave'
@@ -125,6 +126,7 @@ export function PresetSettingsPanel({
     refreshRuleSystems,
     refreshActorStates,
   } = resources
+  const presetDirectoryOrder = usePresetDirectoryOrder(workspace)
 
   useEffect(() => {
     presetConfigValidRef.current = presetConfigValid
@@ -573,12 +575,21 @@ export function PresetSettingsPanel({
   const title = isTellerConfigAgentActive ? t('settingPanel.tellerAgent.title') : presetEditorTitle(presetResourceKind, presetDrafts, t)
   const subtitle = isTellerConfigAgentActive ? t('settingPanel.tellerAgent.subtitle') : presetEditorSubtitle(presetResourceKind, presetDrafts, t)
 
-  const presetDirectorySections = buildPresetDirectorySections({
+  const presetDirectorySections = applyPresetDirectoryOrder(buildPresetDirectorySections({
     lists: { tellers, storyDirectors, imagePresets, eventPackages, ruleSystems, actorStates },
     presetUsageMode,
     onCreateKind: (kind) => void createPresetResource(kind),
     t,
-  })
+  }), presetDirectoryOrder.order)
+
+  const directoryItemIdsForKind = (kind: PresetResourceKind) => {
+    if (kind === 'director') return storyDirectors.map((item) => presetDirectoryEntryId(kind, item.id))
+    if (kind === 'image') return imagePresets.map((item) => presetDirectoryEntryId(kind, item.id))
+    if (kind === 'event') return eventPackages.map((item) => presetDirectoryEntryId(kind, item.id))
+    if (kind === 'rule') return ruleSystems.map((item) => presetDirectoryEntryId(kind, item.id))
+    if (kind === 'actor-state') return actorStates.map((item) => presetDirectoryEntryId(kind, item.id))
+    return tellers.map((item) => presetDirectoryEntryId(kind, item.id))
+  }
 
   const activeDirectoryId = isTellerConfigAgentActive
     ? TELLER_CONFIG_AGENT_ENTRY_ID
@@ -595,6 +606,10 @@ export function PresetSettingsPanel({
         searchPlaceholder={t('settingPanel.directory.search')}
         showExpandCollapseAll
         expandedSectionId={presetResourceKind}
+        onReorderItems={(sectionId, orderedItemIds) => {
+          const kind = sectionId as PresetResourceKind
+          presetDirectoryOrder.reorderItems(kind, orderedItemIds, directoryItemIdsForKind(kind))
+        }}
       />
     </div>
   )

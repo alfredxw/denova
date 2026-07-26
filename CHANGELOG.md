@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- 配置管理器的六类预设目录现在支持组内拖拽排序，顺序按工作区保存为本机 UI 偏好，不修改预设文件或产生内置覆盖；分组标题除右侧新建按钮外的整行都可展开或折叠。
+- All six Config Manager preset directories now support drag reordering within their group. The order is stored per workspace as a local UI preference without modifying preset files or creating built-in overrides. The full group header, except its Create action, now expands or collapses the group.
 - 内置叙事风格扩展为五套长期预设：新增默认的「节奏叙事」，将原 `classic` 优化为「稳健叙事」，将「编剧风格」改为忠实承接情节的标准剧本格式，并重写「暗黑压抑」的压力、代价与人物能动性表达；「直白情色」提示保持不变。叙事风格现在可声明适用于写作、游戏或两种模式，旧自定义风格未声明时继续在两种模式可用。写作与游戏分别记住用户最近选择；只有从未选择或所选风格在当前模式不可用时才回退到「节奏叙事」。Beta 行为变化：未覆盖的内置预设和默认故事导演会刷新到新版内容，用户覆盖与显式保存的既有选择不变。
 - Built-in narrative styles now provide five durable presets: the new default Momentum Narrative, the former `classic` preset refined as Steady Narrative, Screenplay Style converted to plot-preserving standard screenplay form, and Bleak Narrative rewritten around pressure, cost, and character agency; the Direct Erotica prompts are unchanged. Styles can target Writing, Game, or both modes, while legacy custom styles without mode metadata remain shared. Writing and Game remember their most recent selections independently and fall back to Momentum Narrative only when no selection exists or the selection is unavailable in that mode. Beta behavior change: untouched built-ins and the default story director refresh to the new definitions; user overrides and explicitly saved selections remain intact.
 - Agent 内置工具集完成 OMP 对齐重构：新增 Adapter 驱动且支持不同参数 schema 的统一 `read`（本地文本、目录、Skill reference 与 EventCard），独立 `web_search` / `web_fetch`，平台原生 `bash` / `pwsh`，整表替换 `todo`，进程内可恢复且冷重启安全取消的 `ask`，invocation 级隔离的命名标签页 `browser`，以及只回退模型有效上下文的持久化 `checkpoint` / `rewind`。子 Agent 现在拥有独立 InvocationScope、run-owned 资源与 provider-independent execution ID，同时继承只记录副作用的 checkpoint receipt sink，不再继承父会话改写权。
@@ -131,6 +133,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- 修复叙事风格的「注入位置」选择器在窄布局中同时显示说明而溢出，以及图像规则的长英文标签将启用开关挤出列表的问题；紧凑选择器现在只显示位置名，规则元数据会在可用宽度内截断。
+- Fixed the Narrative Style injection-target selector overflowing narrow layouts by showing only the target name in its compact trigger, and fixed long English image-rule metadata pushing the enabled switch outside the rule rail. Rule metadata now truncates within the available width.
 - 修复 Agent 流结束或刷新后 thinking 与正文各自聚合、打乱原始时间顺序的问题：写作与游戏共用的展示记录现在按真实事件边界持久化 thinking、正文和工具卡片，为流式与历史 part 复用稳定分段 ID，并仅在分段完整重建同一 Run 正文时从展示层隐藏聚合副本，模型上下文仍保留完整规范回复；Plan 模式继续只恢复结构化计划，SubAgent 分段也保持原顺序。既有已完成会话没有保存分段边界，无法可靠反推，仍按旧格式展示。
 - Fixed Agent reasoning and prose being regrouped by type after stream completion or refresh, which reordered the original timeline. The shared Writing/Game display transcript now persists reasoning, prose, and tool cards at their real event boundaries, reuses stable segment IDs across live and historical parts, and hides a Run's aggregate display copy only when the segments reconstruct it completely, while retaining the canonical reply for model context. Plan mode still restores only structured plans, and SubAgent segments retain their order. Existing completed sessions did not store segment boundaries and therefore remain in the legacy layout.
 - 修复写作 Agent 请求从提交阶段进入流式响应时未重新读取运行投影，导致首次查询早于后端 Task 注册后，Stop 按钮可能整轮保持禁用的问题；响应流建立后现在会再次获取精确 operation ID，中断仍只通过有作用域的 Abort 执行。

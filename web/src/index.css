@@ -275,6 +275,14 @@
   container-type: inline-size;
 }
 
+/* Radix ScrollArea's display:table wrapper must not use long rule labels as intrinsic width. */
+.preset-rule-list-scroll [data-slot="scroll-area-viewport"] > div {
+  display: block !important;
+  width: 100%;
+  min-width: 0 !important;
+  max-width: 100%;
+}
+
 :is(.image-preset-layout, .teller-injection-layout),
 :is(.image-preset-rule-grid, .teller-rule-grid) {
   grid-template-columns: minmax(0, 1fr);

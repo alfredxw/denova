@@ -41,6 +41,8 @@ const common = {
   'common.expand': '展开',
   'common.expandAll': '展开全部',
   'common.collapseAll': '收起全部',
+  'common.reorder': '拖拽排序',
+  'common.reorderNamed': '拖拽排序 {{name}}',
   'common.preview': '预览',
   'common.raw': 'Raw',
   'common.unknown': '未知',

@@ -41,6 +41,8 @@ const common = {
   'common.expand': 'Expand',
   'common.expandAll': 'Expand all',
   'common.collapseAll': 'Collapse all',
+  'common.reorder': 'Reorder',
+  'common.reorderNamed': 'Reorder {{name}}',
   'common.preview': 'Preview',
   'common.raw': 'Raw',
   'common.unknown': 'Unknown',

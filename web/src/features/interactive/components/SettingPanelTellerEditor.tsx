@@ -169,16 +169,16 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
               <Plus data-icon="inline-start" />
             </Button>
           </div>
-          <ScrollArea className="min-h-0 flex-1">
+          <ScrollArea className="preset-rule-list-scroll min-h-0 flex-1">
             <div className="p-2">
               {(draft.slots || []).map((slot) => (
-                <div key={slot.id} className={`mb-0.5 flex min-h-10 w-full items-center gap-2 rounded-[9px] border px-2.5 py-1.5 text-xs transition ${activeSlot?.id === slot.id ? 'border-[var(--preset-line)] bg-[var(--nova-active)] text-[var(--nova-text)]' : 'border-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}>
-                  <button type="button" onClick={() => setActiveSlotId(slot.id)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                <div key={slot.id} className={`mb-0.5 flex min-h-10 w-full min-w-0 items-center gap-2 overflow-hidden rounded-[9px] border px-2.5 py-1.5 text-xs transition ${activeSlot?.id === slot.id ? 'border-[var(--preset-line)] bg-[var(--nova-active)] text-[var(--nova-text)]' : 'border-transparent text-[var(--nova-text-muted)] hover:bg-[var(--nova-hover)] hover:text-[var(--nova-text)]'}`}>
+                  <button type="button" onClick={() => setActiveSlotId(slot.id)} className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left">
                     <FileText className="h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)]" />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-medium">{slot.name}</span>
                       <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--nova-text-faint)]">
-                        <span className="truncate">{targetLabel(slot.target, t)}</span>
+                        <span className="min-w-0 flex-1 truncate">{targetLabel(slot.target, t)}</span>
                         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${slot.enabled ? 'bg-[var(--nova-accent-green)]' : 'bg-[var(--nova-text-faint)]/35'}`} />
                         <span className="shrink-0">{slot.enabled ? t('settingPanel.enabled') : t('settingPanel.disabled')}</span>
                       </span>
@@ -204,7 +204,7 @@ export function TellerEditor({ workspace, draft, setDraft, activeSlotId, setActi
                     <PopoverTrigger asChild>
                       <button type="button" aria-label={t('settingPanel.field.injectTarget')} className={`${selectClassName} flex w-full items-center justify-between gap-2 px-3 text-left text-[var(--nova-text)]`}>
                         <span className="min-w-0 flex-1 truncate">
-                          {targetLabel(selectedTarget.value as TellerTarget, t)} · {targetSummary(selectedTarget.value as TellerTarget, t)}
+                          {targetLabel(selectedTarget.value as TellerTarget, t)}
                         </span>
                         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-[var(--nova-text-faint)] transition ${targetPickerOpen ? 'rotate-180' : ''}`} />
                       </button>

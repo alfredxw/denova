@@ -63,6 +63,8 @@ export function buildPresetDirectorySections({
       onCreate: () => onCreateKind(kind),
       createLabel: presetKindCreateLabel(kind, t),
       defaultCollapsed: false,
+      reorderable: true,
+      toggleOnHeaderClick: true,
     }))
 }
 

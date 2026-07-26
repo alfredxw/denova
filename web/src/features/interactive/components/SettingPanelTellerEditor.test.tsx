@@ -80,6 +80,17 @@ describe('TellerEditor style contents', () => {
     expect(screen.getByDisplayValue('旧图像风格')).toBeInTheDocument()
   })
 
+  it('keeps long image rule metadata inside the rule rail', () => {
+    render(<ImagePresetHarness initial={imagePreset()} onChange={() => {}} onSave={() => {}} />)
+
+    const ruleList = screen.getByTestId('image-preset-editor').querySelector('.preset-rule-list-scroll')
+    expect(ruleList).toBeInTheDocument()
+    const ruleButton = within(ruleList as HTMLElement).getAllByText('图像请求 Prompt')[0].closest('button')
+    expect(ruleButton).toHaveClass('min-w-0', 'overflow-hidden')
+    expect(ruleButton?.parentElement).toHaveClass('min-w-0', 'overflow-hidden')
+    expect(within(ruleList as HTMLElement).getByLabelText('停用规则')).toBeInTheDocument()
+  })
+
   it('adds toggles and deletes image preset rules', () => {
     let currentDraft = imagePreset()
     render(<ImagePresetHarness initial={currentDraft} onChange={(draft) => { currentDraft = draft }} onSave={() => {}} />)
@@ -395,6 +406,14 @@ describe('TellerEditor style contents', () => {
     expect(ruleEditor).not.toBeNull()
     expect(ruleEditor).not.toHaveClass('overflow-y-auto')
     expect(ruleEditor).not.toHaveClass('overflow-hidden')
+  })
+
+  it('shows only the selected injection target in the compact trigger', () => {
+    render(<Harness initial={teller()} onChange={() => {}} onSave={() => {}} />)
+
+    const trigger = screen.getByRole('button', { name: '注入位置' })
+    expect(trigger).toHaveTextContent('系统提示')
+    expect(trigger).not.toHaveTextContent('Agent 初始化时注入')
   })
 
   it('fills unused preset height without shrinking the injection editor', () => {
